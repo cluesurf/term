@@ -23,6 +23,7 @@ import { raiseSetsOf } from '@term/make/code/check/effects'
 import type { Expression, Program, Statement, Type } from '@term/make/code/compile/node'
 import { fillTasks, inspectFormsOf, lastReads, ownedFields, slotTakes, tailTasks, recordCopies, redeclaredLets, textCursors } from '@term/make/code/compile/backend'
 import type { FormSpec, TextCursors } from '@term/make/code/compile/backend'
+import type { WakeGroup } from '@term/make/code/compile/wake'
 import { rustBoxing } from '@term/make/code/compile/rust'
 import { privateForms, recordPlaces, recordReuse } from '@term/make/code/compile/place'
 import { gatedTasks, listFacts, fixedLists } from '@term/make/code/compile/backend'
@@ -523,14 +524,6 @@ export function hoistKotlinImports(source: string): string {
   return imports.length > 0
     ? `${imports.join('\n')}\n${body.join('\n')}`
     : source
-}
-
-// the roll grouped by deck, for the generated wake chain (the same shape emitTypeScript takes)
-export type WakeGroup = {
-  deck: string
-  entries: Record<string, unknown>[]
-  // the deck's static exception, tell and dock entries, for `hiveWakeTyped` (compile.ts `wakeGroups`)
-  typed?: { exceptions: Record<string, unknown>[]; tells: Record<string, unknown>[]; docks: Record<string, unknown>[] }
 }
 
 // The reflective count of nodes in a task's body (every object with a `form`, past `type` and `span`), as the original

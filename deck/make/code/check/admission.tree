@@ -39,6 +39,7 @@ load ../parser/diagnostic
   find diagnose
   find diagnostic-input
   find diagnostic-name
+  find span
 
 load ../compile/node
   find expression

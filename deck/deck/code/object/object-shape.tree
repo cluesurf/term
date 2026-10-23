@@ -1,0 +1,347 @@
+# The object model: a blob, a directory's entries and prolly-tree nodes, a commit, their canonical JSON and their
+# content addresses. Ported from deck/deck/code/object/model.ts (term-cli-in-term-0081): isLeafNode, canonicalJson,
+# chunkId, blobId, nodeId, commitId, sortEntries, DEFAULT_TREE_PARAMS, idNumber, isNodeBoundary, validateEntryName,
+# validateEntries, and the shapes EntryMode, Blob, TreeEntry, NodeRef, LeafNode, InnerNode, TreeNode, Commit,
+# TreeParams.
+#
+# Content addressing works only if the client and the server serialize and hash identically, byte for byte, so this
+# file is the one definition of that format (note/term/registry/12): canonical JSON, keys sorted at every level, no
+# insignificant whitespace, lists in their given order.
+#
+# The decisions:
+#   - `canonical-json` walks the host value as the original did, by its own keys sorted in UTF-16 order, so it takes
+#     and answers a host value (`undefined` answers `undefined`, as JSON.stringify does); every id takes the value it
+#     addresses as a host value too, since a node read back from the store is one and a commit's deps are an object
+#   - a node is told leaf or inner by its level, as the original told it: the shapes carry no tag, which would change
+#     every node's bytes and so every id
+#   - `sort-entries` is the host's sort with the original's comparison (UTF-16 order, stable)
+#   - the 32-bit work of `id-number` and `is-node-boundary` is host binds, each the original's own expression
+#   - `validate-entry-name` and `validate-entries` answer a maybe where the original answered null
+#   - DEFAULT_TREE_PARAMS is the task `default-tree-params()`: a top-level host is not exported
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/hash
+  find hash
+
+load @term/base/text
+  find contains
+  find to-lower-case
+
+load ./object-address
+  find hash-object
+  find hash-object-text
+  find is-object-id
+
+form tree-entry
+  link id, like text
+  # `blob` or `tree`
+  link kind, like text
+  # `file`, `exec` or `dir`
+  link mode, like text
+  link name, like text
+
+form blob
+  link chunks, like list, like text
+  link size, like number
+
+# a reference from an inner node to a child node, keyed by the child's least entry name
+form node-ref
+  link id, like text
+  link key, like text
+
+# a content-defined run of entries, sorted by name; its level is 0
+form leaf-node
+  link entries, like list, like tree-entry
+  link level, like number
+
+# references to child nodes, in key order
+form inner-node
+  link level, like number
+  link refs, like list, like node-ref
+
+# a commit's deps are an object of name to id, read by `canonical-json` as the host value it is
+form commit
+  link author, like text
+  link deps, like dynamic
+  link manifest, like text
+  link message, like text
+  link package, like text
+  link parents, like list, like text
+  link time, like text
+  link tree, like text
+
+form tree-params
+  link avg-fanout, like number
+  link min, like number
+  link max, like number
+
+bind is-leaf-level
+  take node, like dynamic
+  like boolean
+  case node
+    text <($node.level === 0)>
+
+# `value === null || typeof value !== "object"`
+bind is-host-scalar
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === null || typeof $value !== "object")>
+
+bind is-host-array
+  take value, like dynamic
+  like boolean
+  case node
+    text <Array.isArray($value)>
+
+bind json-text
+  take value, like dynamic
+  like dynamic
+  case node
+    text <JSON.stringify($value)>
+
+bind host-items
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <$value>
+
+bind sorted-keys
+  take value, like dynamic
+  like list, like text
+  case node
+    text <Object.keys($value).sort()>
+
+bind member-of
+  take value, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$value[$key]>
+
+# the parts joined as the host joins them: an `undefined` part writes nothing
+bind joined-parts
+  take parts, like list, like dynamic
+  like text
+  case node
+    text <$parts.join(",")>
+
+# `${JSON.stringify(key)}:${child}`, an `undefined` child written `undefined` as the original's template wrote it
+bind key-part
+  take key, like text
+  take child, like dynamic
+  like text
+  case node
+    text <(JSON.stringify($key) + ":" + $child)>
+
+bind units-sorted-entries
+  take entries, like list, like tree-entry
+  like list, like tree-entry
+  case node
+    text <<[...$entries].sort(function (a, b) { return a.name < b.name ? -1 : b.name < a.name ? 1 : 0 })>>
+
+bind id-hex-number
+  take id, like text
+  like number
+  case node
+    text <(parseInt($id.slice(7, 15), 16) \>\>\> 0)>
+
+bind fanout-mask
+  take fanout, like number
+  like number
+  case node
+    text <((1 \<\< Math.max(1, Math.round(Math.log2($fanout)))) - 1)>
+
+bind is-masked-zero
+  take value, like number
+  take mask, like number
+  like boolean
+  case node
+    text <(($value & $mask) === 0)>
+
+bind has-null-character
+  take name, like text
+  like boolean
+  case node
+    text <$name.includes(String.fromCharCode(0))>
+
+bind folded-name
+  take name, like text
+  like text
+  case node
+    text <$name.normalize("NFC").toLowerCase()>
+
+task is-leaf-node
+  take node, like dynamic
+  like boolean
+
+  back is-leaf-level(node)
+
+task canonical-json
+  take value, like dynamic
+  like dynamic
+
+  fork test, is-host-scalar(value)
+    hold
+      back json-text(value)
+
+  save parts, make list
+
+  fork test, is-host-array(value)
+    hold
+      walk host-items(value)
+        take item
+        parts/push(canonical-json(item))
+      back <[{joined-parts(parts)}]>
+
+  walk sorted-keys(value)
+    take key
+    save child, canonical-json(member-of(value, key))
+    parts/push(key-part(key, child))
+  back <\{{joined-parts(parts)}\}>
+
+task chunk-id
+  take bytes, like dynamic
+  like text
+
+  back hash-object(<chunk>, bytes)
+
+task blob-id
+  take blob, like dynamic
+  like text
+
+  back hash-object-text(<blob>, canonical-json(blob))
+
+# a directory node's id, leaf or inner
+task node-id
+  take node, like dynamic
+  like text
+
+  back hash-object-text(<tree>, canonical-json(node))
+
+# a commit's id, the value its signature covers
+task commit-id
+  take commit, like dynamic
+  like text
+
+  back hash-object-text(<commit>, canonical-json(commit))
+
+# a new list of the entries by name in UTF-16 order, the canonical order
+task sort-entries
+  take entries, like list, like tree-entry
+  like list, like tree-entry
+
+  back units-sorted-entries(entries)
+
+# the prolly-tree chunking of a directory listing: about `avg-fanout` children a node, never fewer than `min` or more
+# than `max`
+task default-tree-params
+  like tree-params
+
+  back make(tree-params, bind(avg-fanout, 64), bind(min, 16), bind(max, 256))
+
+# a stable 32-bit number from an object id: its 8 hex characters after `sha256:`
+task id-number
+  take id, like text
+  like number
+
+  back id-hex-number(id)
+
+# whether an id ends a node at the given fanout: about 1 id in `avg-fanout`, chosen by the id itself, so a boundary
+# depends only on content and the same items always chunk into the same nodes
+task is-node-boundary
+  take id, like text
+  take avg-fanout, like number
+  like boolean
+
+  back is-masked-zero(id-number(id), fanout-mask(avg-fanout))
+
+# device names unsafe as a path component on some hosts
+task reserved-names
+  like list, like text
+  mark private
+
+  save all, make list
+  all/push(<con>)
+  all/push(<prn>)
+  all/push(<aux>)
+  all/push(<nul>)
+  all/push(<com1>)
+  all/push(<com2>)
+  all/push(<com3>)
+  all/push(<com4>)
+  all/push(<lpt1>)
+  all/push(<lpt2>)
+  all/push(<lpt3>)
+  back all
+
+# why an entry name could escape the package folder or collide on checkout (note/term/registry/07), or none
+task validate-entry-name
+  take name, like text
+  like maybe, like text
+
+  fork test, is-equal(name, <>)
+    hold
+      back make(some, <empty name>)
+  fork test, or(is-equal(name, <.>), is-equal(name, <..>))
+    hold
+      back make(some, <dot name>)
+  fork test, or(contains(name, </>), contains(name, <\\>))
+    hold
+      back make(some, <path separator in name>)
+  fork test, has-null-character(name)
+    hold
+      back make(some, <null byte in name>)
+  save lower, to-lower-case(name)
+  walk reserved-names()
+    take reserved
+    fork test, is-equal(lower, reserved)
+      hold
+        back make(some, <reserved device name>)
+  back make none
+
+bind id-text
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+# why a directory's whole entry list is not valid, or none: each name valid and unique under NFC and case folding (so
+# no two collide on a normalizing or case-insensitive file system), each id well formed, each mode fitting its kind.
+# Held at publish and at checkout
+task validate-entries
+  take entries, like list, like tree-entry
+  like maybe, like text
+
+  save seen, make hash
+  walk entries
+    take entry
+    save name, entry/name
+    # saved before the sift: a sift directly on a call's answer tests the type's tag (self-host traps T008)
+    save name-reason, validate-entry-name(name)
+    sift name-reason
+      case some
+        link reason
+        back make(some, <{name}: {reason}>)
+      case none
+        save valid-name, true
+    fork test, not(is-object-id(id-text(entry/id)))
+      hold
+        back make(some, <{name}: malformed id>)
+    fork test, and(is-equal(entry/kind, <tree>), not(is-equal(entry/mode, <dir>)))
+      hold
+        back make(some, <{name}: tree entry must have dir mode>)
+    fork test, and(is-equal(entry/kind, <blob>), is-equal(entry/mode, <dir>))
+      hold
+        back make(some, <{name}: blob entry cannot have dir mode>)
+    save folded, folded-name(name)
+    fork test, seen/has(folded)
+      hold
+        back make(some, <{name}: name collides under normalization>)
+    seen/set(folded, true)
+  back make none

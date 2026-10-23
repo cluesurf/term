@@ -1,0 +1,419 @@
+# THE CALL HIERARCHY: the task under the cursor as an item, the tasks that call it (each with where), and the tasks it
+# calls. Incoming calls are its references across the packages grouped by the task that holds each; outgoing calls are
+# the calls in its own body to a name defined somewhere this server can see.
+#
+# Ported from server.ts (term-cli-in-term-0103, part 4 of 5): handle's cases `textDocument/prepareCallHierarchy`,
+# `callHierarchy/incomingCalls` and `callHierarchy/outgoingCalls`, with incomingCalls and outgoingCalls. The decisions:
+#   - every task takes language-server.tree's record first; an item and a call are records with the original's keys
+#   - the item the client hands back is the host's JSON value, read as the original read it (`item.data?.name ??
+#     item.name`)
+#   - the calls are kept in a hash by the original's key, so they come out in the order each was first seen
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/make/parser/diagnostic
+  find span
+
+load @term/make/compile/node
+  find statement
+  find expression
+
+load @term/call/context-slice
+  find written-name
+
+load ./geometry
+  find lsp-range
+  find mapping
+  find inner-position
+  find outer-range
+
+load ./analysis
+  find to-range
+
+load ./symbol-index
+  find symbol-index
+  find named-symbol
+  find symbol-at
+  find calls-of
+
+load ./package-index
+  find read-text
+  find index-file
+  find outer-span
+  find canonical
+
+load ./language-server
+  find language-server
+  find document
+  find path-for
+
+load ./document-analysis
+  find settled
+
+load ./navigation
+  find location
+  find locate
+  find occurrences
+
+load ./server-reply
+  find respond
+  find position-of
+  find null-value
+  find require-param
+
+form item-data
+  link name, like text
+  link uri, like text
+
+form hierarchy-item
+  link name, like text
+  link kind, like number
+  link uri, like text
+  link range, like lsp-range
+  link selection-range, like lsp-range
+  link data, like item-data
+
+form incoming-call
+  link from, like hierarchy-item
+  link from-ranges, like list, like lsp-range
+
+form outgoing-call
+  link to, like hierarchy-item
+  link from-ranges, like list, like lsp-range
+
+# an index to read spans from: an open document's view, or a file indexed from the workspace
+form span-source
+  link index, like symbol-index
+  link map, like mapping
+
+# ---- the host ----
+
+bind item-of
+  take params, like dynamic
+  like dynamic
+  case node
+    text <($params)?.item>
+
+# not `item-uri`: document-sync.tree has a bind of that name, and two binds of one name in one port are one bind
+bind item-data-uri
+  take item, like dynamic
+  like dynamic
+  case node
+    text <$item.data?.uri>
+
+# `item.data?.name ?? item.name`
+bind item-name
+  take item, like dynamic
+  like dynamic
+  case node
+    text <($item.data?.name ?? $item.name)>
+
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# ---- prepare ----
+
+task prepare-call-hierarchy
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  take outbox, like list, like dynamic
+  like dynamic
+
+  save found, settled(server, params, outbox)
+  save position, position-of(params)
+  sift found
+    case some
+      link doc
+      sift doc/view
+        case some
+          link view
+          sift symbol-at(view/index, inner-position(view/map, position))
+            case some
+              link named
+              sift named/scope
+                case some
+                  back respond(message, null-value())
+                case none
+                  save skipped, true
+              sift locate(server, doc, view, named)
+                case some
+                  link place
+                  save items, make list
+                  push(items, make(hierarchy-item, bind(name, written-name(named/name)), bind(kind, 12), bind(uri, place/uri), bind(range, place/range), bind(selection-range, place/range), bind(data, make(item-data, bind(name, named/name), bind(uri, doc/uri)))))
+                  back respond(message, items)
+                case none
+                  back respond(message, null-value())
+            case none
+              back respond(message, null-value())
+        case none
+          back respond(message, null-value())
+    case none
+      back respond(message, null-value())
+
+# ---- incoming ----
+
+# the index of a document or file a reference was found in
+task source-at
+  take server, like language-server
+  take where, like text
+  like maybe, like span-source
+  mark private
+
+  fork test, server/documents/has(where)
+    hold
+      sift server/documents/get(where)/view
+        case some
+          link view
+          back make(some, make(span-source, bind(index, view/index), bind(map, view/map)))
+        case none
+          save skipped, true
+  save file, path-for(where)
+  fork test, is-equal(file, <>)
+    hold
+      back make none
+  save real, canonical(file)
+  sift read-text(server/workspace, real)
+    case some
+      link body
+      sift index-file(server/workspace, real, body)
+        case some
+          link indexed
+          back make(some, make(span-source, bind(index, indexed/index), bind(map, indexed/map)))
+        case none
+          back make none
+    case none
+      back make none
+
+# whether a scope's span, placed in the author's text, holds a position (both ends inclusive)
+task scope-holds
+  take where, like span
+  take line, like number
+  take column, like number
+  like boolean
+  mark private
+
+  save after, or(is-below(where/start/line, line), and(is-equal(where/start/line, line), is-maximum(where/start/column, column)))
+  fork test, after
+    miss
+      back false
+  back or(is-above(where/end/line, line), and(is-equal(where/end/line, line), is-minimum(where/end/column, column)))
+
+task incoming-calls
+  take server, like language-server
+  take params, like dynamic
+  like list, like incoming-call
+
+  save item, require-param(item-of(params), <item>)
+  save uri, item-data-uri(item)
+  save name, item-name(item)
+  save out, make list
+  fork test, is-truthy(uri)
+    miss
+      back out
+  fork test, server/documents/has(uri)
+    miss
+      back out
+  save doc, server/documents/get(uri)
+  fork test, is-truthy(name)
+    miss
+      back out
+  sift doc/view
+    case some
+      link view
+      save calls, make hash
+      save order, make list
+      save named, make(named-symbol, bind(name, name))
+      # each place the name is written, grouped by the task that holds it
+      save found, occurrences(server, doc, view, named, false)
+      walk found/keys()
+        take where
+        sift source-at(server, where)
+          case some
+            link source
+            walk found/get(where)
+              take one
+              save holder, make none
+              walk source/index/scopes
+                take scope
+                save placed, outer-span(source/map, scope/span)
+                fork test, scope-holds(placed, one/start/line, one/start/column)
+                  hold
+                    save holder, make(some, scope)
+                    halt
+              save own, false
+              sift holder
+                case some
+                  link caller
+                  save own, and(is-equal(caller/name, name), is-equal(where, uri))
+                case none
+                  save own, true
+              # the definition itself is not a call of it
+              fork test, own
+                hold
+                  fork test, source/index/definitions/has(name)
+                    hold
+                      sift source/index/definitions/get(name)/at
+                        case some
+                          link written
+                          fork test, is-equal(outer-span(source/map, written)/start/line, one/start/line)
+                            hold
+                              turn next
+                        case none
+                          save skipped, true
+              sift holder
+                case some
+                  link caller
+                  save where-at, caller/span
+                  fork test, source/index/definitions/has(caller/name)
+                    hold
+                      sift source/index/definitions/get(caller/name)/at
+                        case some
+                          link written
+                          save where-at, written
+                        case none
+                          save skipped, true
+                  save range, to-range(outer-span(source/map, where-at))
+                  save key, <{where}#{caller/name}>
+                  fork test, calls/has(key)
+                    miss
+                      save entry, make(incoming-call, bind(from, make(hierarchy-item, bind(name, written-name(caller/name)), bind(kind, 12), bind(uri, where), bind(range, to-range(outer-span(source/map, caller/span))), bind(selection-range, range), bind(data, make(item-data, bind(name, caller/name), bind(uri, where))))), bind(from-ranges, make list))
+                      calls/set(key, entry)
+                      push(order, key)
+                  save entry, calls/get(key)
+                  push(entry/from-ranges, to-range(one))
+                  calls/set(key, entry)
+                case none
+                  turn next
+          case none
+            save skipped, true
+      walk order
+        take key
+        push(out, calls/get(key))
+      back out
+    case none
+      back out
+
+# ---- outgoing ----
+
+task outgoing-calls
+  take server, like language-server
+  take params, like dynamic
+  like list, like outgoing-call
+
+  save item, require-param(item-of(params), <item>)
+  save uri, item-data-uri(item)
+  # not `name`: an arm over a statement or an expression binds its own `name` field (arm shadows)
+  save asked-name, item-name(item)
+  save out, make list
+  fork test, is-truthy(uri)
+    miss
+      back out
+  fork test, server/documents/has(uri)
+    miss
+      back out
+  save doc, server/documents/get(uri)
+  sift doc/view
+    case some
+      link view
+      fork test, is-truthy(asked-name)
+        miss
+          back out
+      save chosen, make list
+      walk view/program
+        take statement
+        sift statement
+          case function
+            fork test, and(is-equal(chosen/length, 0), is-equal(statement/name, asked-name))
+              hold
+                push(chosen, statement)
+          miss
+            save skipped, true
+      fork test, is-equal(chosen/length, 0)
+        hold
+          back out
+      save calls, make hash
+      save order, make list
+      save index, view/index
+      walk calls-of(chosen)
+        take call
+        sift call
+          case call
+            sift callee
+              case variable
+                link callee-name
+                link callee-span
+                # a call of a parameter (a task passed in) is not a call of a definition
+                save own-param, false
+                walk index/scopes
+                  take scope
+                  fork test, is-equal(scope/name, asked-name)
+                    hold
+                      walk scope/locals
+                        take local
+                        fork test, is-equal(local/name, callee-name)
+                          hold
+                            save own-param, true
+                      halt
+                fork test, own-param
+                  hold
+                    turn next
+                save from, callee-span
+                walk index/references
+                  take ref
+                  fork test, and(and(is-equal(ref/name, callee-name), is-equal(ref/span/start/line, callee-span/start/line)), is-equal(ref/span/start/column, callee-span/start/column))
+                    hold
+                      sift ref/at
+                        case some
+                          link written
+                          save from, written
+                        case none
+                          save skipped, true
+                      halt
+                sift locate(server, doc, view, make(named-symbol, bind(name, callee-name)))
+                  case some
+                    link place
+                    fork test, calls/has(callee-name)
+                      miss
+                        save entry, make(outgoing-call, bind(to, make(hierarchy-item, bind(name, written-name(callee-name)), bind(kind, 12), bind(uri, place/uri), bind(range, place/range), bind(selection-range, place/range), bind(data, make(item-data, bind(name, callee-name), bind(uri, place/uri))))), bind(from-ranges, make list))
+                        calls/set(callee-name, entry)
+                        push(order, callee-name)
+                    save entry, calls/get(callee-name)
+                    push(entry/from-ranges, outer-range(view/map, to-range(from)))
+                    calls/set(callee-name, entry)
+                  case none
+                    turn next
+              miss
+                turn next
+          miss
+            save skipped, true
+      walk order
+        take key
+        push(out, calls/get(key))
+      back out
+    case none
+      back out
+
+task incoming-calls-request
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  like dynamic
+
+  back respond(message, incoming-calls(server, params))
+
+task outgoing-calls-request
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  like dynamic
+
+  back respond(message, outgoing-calls(server, params))

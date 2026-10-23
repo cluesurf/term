@@ -89,6 +89,7 @@ load ./node
 
 load ./node-children
   find node-handle
+  find node-children
 
 load ./frames
   find frames-of
@@ -2396,6 +2397,64 @@ task type-and-span
   push(out, <span>)
   back out
 
+# every name a task's body binds for itself, at any depth and inside its closures: a `let`, a walk's item and index, a
+# closure's parameters, the names an arm's `link` lines give, a caught value's name. The set check/effects.ts
+# `boundNames` drops from the raise sets, so a call through a walk local named like a raising task (`take site, name
+# run` / `call run`) is never written `run()?` here while the raise sets call it infallible (seam-0026)
+task bound-names-into
+  take handle, like node-handle
+  take found, like hash, like text, like boolean
+  mark private
+
+  sift handle
+    case statement-handle
+      link held
+      sift held
+        case let
+          link let-name
+          found/set(let-name, true)
+        case for-each
+          link for-each-item
+          link for-each-index
+          found/set(for-each-item, true)
+          fork test, is-unequal(for-each-index, <>)
+            hold
+              found/set(for-each-index, true)
+        case match
+          link match-subject
+          link match-cases
+          walk match-cases
+            take arm
+            walk arm/binds
+              take given
+              found/set(given, true)
+        case guard
+          link guard-body
+          link guard-catch
+          sift guard-catch
+            case some
+              link clause
+              found/set(clause/name, true)
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+    case expression-handle
+      link held
+      sift held
+        case closure
+          link closure-params
+          walk closure-params
+            take param
+            found/set(param/name, true)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, type-and-span())
+    take child
+    bound-names-into(child, found)
+
 task statement-handles
   take body, like list, like statement
   like list, like node-handle
@@ -3852,6 +3911,19 @@ task emit-call
       fork test, and(and(not(skip-background), background), is-async-call(call-callee, facts))
         hold
           save st/spawn-uses, add(st/spawn-uses, 1)
+          # a call that can raise is spawned as its own future, awaited inside the queued work: its raise is that work's,
+          # handled there as an unhandled raise (`__term_spawn`), never a `?` on the future here, which rustc refuses
+          # (seam-0021, test/compile/tick-raise-native.ts)
+          fork test, and(and(callee-variable, facts/raising/has(callee-name)), not(st/current-params/has(callee-name)))
+            hold
+              push(st/awaited-calls, node)
+              save tick-bare, emit-call(node, true, st, facts)
+              save tick-framed, <e>
+              save tick-site, frames-of(node)
+              fork test, is-unequal(tick-site, <>)
+                hold
+                  save tick-framed, <e.at({json-text(tick-site)})>
+              back <__term_spawn(\{ let ticked = {tick-bare}; async move \{ ticked.await.unwrap_or_else(|e| __term_unhandled({tick-framed})) \} \})>
           save started, emit-call(node, true, st, facts)
           back <__term_spawn({started})>
       # a call the guarded loop copy may make to the task's unchecked copy
@@ -6076,10 +6148,14 @@ task arm-field-type
         case named
           link subject-name
           link subject-args
-          fork test, is-above(subject-args/length, at)
-            hold
-              save placed, get(subject-args, at)
-              back make(some, placed)
+          # a `need false` list, read only by walking it: its length read is lowered to a defaulting write
+          # (`subject.args ??= []`) into the program the compiler reads (count-defaulting-writes)
+          walk subject-args
+            take placed
+            take index
+            fork test, is-equal(index, at)
+              hold
+                back make(some, placed)
         miss
           save nothing, 0
     case none
@@ -6365,7 +6441,16 @@ task emit-case-arm
             take one
             owned-copy/set(one, false)
           save st/owned-names, owned-copy
+  # the fields the arm binds are its locals, so a closure in the arm that reads one clones it before its `move`: an
+  # async closure moved `tree` into its future out of an `Fn` (supervisor.tree child-work, term-compiler-0029)
+  save outer-local-names, st/local-names
+  save arm-names, copy-flags(st/local-names)
+  walk locals
+    take local
+    arm-names/set(local/local, true)
+  save st/local-names, arm-names
   save body, emit-block(branch/body, add(depth, 2), st, facts)
+  save st/local-names, outer-local-names
   save st/borrowed-names, outer-borrowed
   save st/lent-names, outer-lent
   save st/owned-names, outer-owned
@@ -7275,10 +7360,15 @@ task emit-function
       save st/current-async, fn-async
       save previous-result, st/current-result
       save previous-params, st/current-params
+      # its parameters and every name its body binds (`bound-names-into`): a call through one is never the task of
+      # that name, so it takes no `?` (seam-0029)
       save param-names, make hash
       walk fn-params
         take param
         param-names/set(param/name, true)
+      walk statement-handles(fn-body)
+        take bound-handle
+        bound-names-into(bound-handle, param-names)
       save st/current-params, param-names
       save st/current-raising, raises
       save st/current-result, declared

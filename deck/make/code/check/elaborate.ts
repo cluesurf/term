@@ -75,14 +75,15 @@ const BASE_SIGNATURE = elaborating.baseSignature() as { name: string; type: Term
 // the program's transparent aliases, and the ones being read through right now, one state per elaboration
 let aliasState = elaborating.newAliasState(new Map())
 
-// two lists of value arguments, compared as written (spans, resolved types and bindings set aside)
+// two lists of value arguments, compared as written (spans, resolved types, bindings and call sites set aside: a
+// call's `site` is its Term frame, `<task> <file>:<line>`, hive decision 001)
 function sameValueArgs(
   a: Expression[] | undefined,
   b: Expression[] | undefined,
 ): boolean {
   const text = (e: Expression[] | undefined): string =>
     JSON.stringify(e ?? [], (key, value) =>
-      key === 'span' || key === 'type' || key === 'binding' ? undefined : value,
+      key === 'span' || key === 'type' || key === 'binding' || key === 'site' ? undefined : value,
     )
 
   return text(a) === text(b)

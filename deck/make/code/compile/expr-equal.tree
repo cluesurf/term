@@ -24,6 +24,9 @@ load ./node
 load ./type-text
   find integer-text
 
+load @term/base/maybe
+  find maybe
+
 task expressions-equal
   take a, like expression
   take b, like expression

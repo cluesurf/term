@@ -1,0 +1,243 @@
+# `term link` and its undo: use a working copy of a package instead of a published one. Prints a `link` (or `unlink`)
+# run, one item for what was done, and a closing verdict. An error from the package manager here is the user's to fix
+# (a name that is not registered, a folder that is not a package), so it ends the run as a failed item and exit 1,
+# never as a bug in Term.
+#
+# Ported from call/code/link.ts (term-cli-in-term-0053). The link registry and the links are @cluesurf/deck.tree's,
+# docked (decision cli-in-term/002), and every item prints through the output library, docked. Each task takes the
+# original's input record as it is, so a caller passes what it passed before.
+
+dock load
+  load <@cluesurf/deck.tree>, name deck-tree-module
+    mark async
+  load <@term/call/code/output>, name output
+  load <node:fs>, name node-fs
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <node:path>, name node-path
+  load <global:Error>, name host-error
+  load <global:String>, name host-string
+
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# `name.split('/')`, each part a folder under `link/`
+bind parts-of
+  take name, like dynamic
+  like list, like dynamic
+  case node
+    text <$name.split("/")>
+
+form plain-open
+  link verb, like text
+  link root, like dynamic
+  link facts, like list, like dynamic
+
+form problem-item
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+
+form looked-item
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form change-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like dynamic
+  link facts, like list, like dynamic
+
+form plain-close
+  link verdict, like text
+
+form next-close
+  link verdict, like text
+  link next, like text
+
+form done-close
+  link verdict, like text
+  link done, like boolean
+
+form next-done-close
+  link verdict, like text
+  link next, like text
+  link done, like boolean
+
+form usage-close
+  link verdict, like text
+  link next, like text
+  link failure, like text
+
+form register-ask
+  link package-dir, like dynamic
+
+form consume-ask
+  link root, like dynamic
+  link name, like dynamic
+
+form dev-link-ask
+  link root, like dynamic
+  link package-dir, like text
+
+form unlink-ask
+  link root, like dynamic
+  link name, like dynamic
+
+task one-of
+  take value, like dynamic
+  like list, like dynamic
+  mark private
+
+  save out, make list
+  out/push(value)
+  back out
+
+# whether anything is at a path, a link that points nowhere included
+task is-anything-at
+  take file, like text
+  like boolean
+  mark private
+
+  save found, false
+  fork
+    mark unsafe
+    node-fs/lstat-sync(file)
+    save found, true
+  halt take
+    take error
+    save found, false
+  back found
+
+# a refusal from the package manager: its message as a failed item, then the closing item
+task refused
+  take error, like dynamic
+  take verdict, like text
+  like void
+  mark private
+
+  save subject, host-string/call(<>, error)
+  # `error instanceof Error`
+  fork test, host-error/prototype/is-prototype-of(error)
+    hold
+      save subject, error/message
+  output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject)))
+  output/close-run(make(plain-close, bind(verdict, verdict)))
+
+# no argument: register the current package in the global link registry, so any project can later `term link
+# <name>` to use this working copy
+task register-link
+  take root, like dynamic
+  like void
+  mark private
+
+  save full-name, deck-tree-module/register-global-link(make(register-ask, bind(package-dir, root)))
+  output/report(make(change-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, full-name), bind(facts, one-of(<global link>))))
+  output/close-run(make(next-done-close, bind(verdict, <{full-name} is registered>), bind(next, <term link {full-name}, in the project that uses it>), bind(done, true)))
+
+task link-deck
+  take root, like dynamic
+  take deck, like dynamic
+  like void
+  mark private
+
+  # first the global registry by name (the npm-link consume step)
+  save consumed, deck-tree-module/consume-global-link(make(consume-ask, bind(root, root), bind(name, deck)))
+  fork test, is-truthy(consumed)
+    hold
+      output/report(make(change-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, deck), bind(facts, one-of(<from the global registry>))))
+      output/close-run(make(done-close, bind(verdict, <{deck} is linked>), bind(done, true)))
+      back
+  # otherwise the argument is a path to a local package
+  save package-dir, node-path/resolve(deck)
+  save manifest, node-path/join(package-dir, <deck.tree>)
+  save present, false
+  fork
+    mark unsafe
+    fs-promise/access(manifest)
+    save present, true
+  halt take
+    take error
+    save present, false
+  fork test, not(present)
+    hold
+      output/report(make(looked-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <{deck} is not in the global link registry and is not a local package>), bind(fields, one-of(output/field(<looked>, output/show-path(manifest))))))
+      output/close-run(make(next-close, bind(verdict, <Not linked>), bind(next, <term link, inside {deck}, to register it>)))
+      back
+  deck-tree-module/dev-link(make(dev-link-ask, bind(root, root), bind(package-dir, package-dir)))
+  output/report(make(change-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, deck), bind(facts, one-of(output/show-path(package-dir)))))
+  output/close-run(make(done-close, bind(verdict, <{deck} is linked>), bind(done, true)))
+
+task call-link
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  save deck, input/deck
+  fork test, not(is-truthy(deck))
+    hold
+      output/open-run(make(plain-open, bind(verb, <link>), bind(root, root), bind(facts, one-of(<global>))))
+      fork
+        mark unsafe
+        register-link(root)
+      halt take
+        take error
+        refused(error, <Not registered>)
+      back
+  output/open-run(make(plain-open, bind(verb, <link>), bind(root, root), bind(facts, one-of(deck))))
+  fork
+    mark unsafe
+    link-deck(root, deck)
+  halt take
+    take error
+    refused(error, <Not linked>)
+
+task unlink-deck
+  take root, like dynamic
+  take deck, like dynamic
+  like void
+  mark private
+
+  deck-tree-module/dev-unlink(make(unlink-ask, bind(root, root), bind(name, deck)))
+  output/report(make(change-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <remove>), bind(subject, deck), bind(facts, one-of(<link>))))
+  output/close-run(make(done-close, bind(verdict, <{deck} is unlinked>), bind(done, true)))
+
+task call-unlink
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  save deck, input/deck
+  save facts, make list
+  fork test, is-truthy(deck)
+    hold
+      facts/push(deck)
+  output/open-run(make(plain-open, bind(verb, <unlink>), bind(root, root), bind(facts, facts)))
+  fork test, not(is-truthy(deck))
+    hold
+      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <Name the deck to unlink>)))
+      output/close-run(make(usage-close, bind(verdict, <Nothing unlinked>), bind(next, <term link --toss \<deck\>>), bind(failure, <usage>)))
+      back
+  # a name with no link is said to have none, not reported as unlinked
+  # `path.join(root, 'link', ...parts)`, one part at a time: join normalizes the whole, so the two agree
+  save linked, node-path/join(root, <link>)
+  walk parts-of(deck)
+    take part
+    save linked, node-path/join(linked, part)
+  fork test, not(is-anything-at(linked))
+    hold
+      output/report(make(looked-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no link named {deck}>), bind(fields, one-of(output/field(<looked>, output/show-path(linked, root))))))
+      output/close-run(make(plain-close, bind(verdict, <Nothing unlinked>)))
+      back
+  fork
+    mark unsafe
+    unlink-deck(root, deck)
+  halt take
+    take error
+    refused(error, <Not unlinked>)

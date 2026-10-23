@@ -1,0 +1,342 @@
+# The slow half of dispatch (note/project/term/term-versions.md, "Dispatch"): what `host/need.mjs` reaches only when a
+# command cannot simply run, bundled on its own so the fast half stays small. Ported from call/code/need-hand.ts
+# (term-cli-in-term-0041), whole. Two jobs, both printed through the output library like every other command's lines:
+#
+#   load    install the version resolution asked for, verified (need-load.ts, docked), with one `load` item
+#   refuse  say why nothing ran, in one sentence naming the fix, and exit non-zero
+#
+# It never runs the command itself. The choice and the install's answer are the host objects need.ts and need-load.ts
+# hand out, read key by key as the original read them.
+
+load @term/base/list
+  find list
+  find contains
+
+load @term/base/text
+  find starts-with
+  find char-count
+  find substring
+
+load @term/call/work/output/printer
+  find set-output
+  find open-run
+  find report
+  find close-run
+  find field
+  find show-path
+
+dock load
+  load <@term/call/code/need-load>, name need-loading
+  load <global:process>, name host-process
+
+# ---- the host's values, read as the original read them ----
+
+# `Boolean(value)`
+bind host-truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# a host text, or the empty text for anything else
+bind text-or-empty
+  take value, like dynamic
+  like text
+  case node
+    text <(typeof $value === "string" ? $value : "")>
+
+# `value ?? fallback`
+bind text-or
+  take value, like dynamic
+  take fallback, like text
+  like text
+  case node
+    text <($value ?? $fallback)>
+
+# `value ?? fallback`, a number
+bind number-or
+  take value, like dynamic
+  take fallback, like number
+  like number
+  case node
+    text <($value ?? $fallback)>
+
+# a host value as a template literal writes it: `String(value)`
+bind host-text
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+# ---- the shapes ----
+
+# loadNeeded's input: the `load` choice need.ts made, the running version, TERM_NEED=local, the arguments
+form load-ask
+  link choice, like dynamic
+  link running, like text
+  link local, like boolean
+  link argv, like list, like text
+
+# refuseNeed's input
+form refuse-ask
+  link reason, like text
+  link running, like text
+  # read by its truth, as the original's `usage ? ... : ...`
+  link usage
+    like dynamic
+    need false
+  link argv, like list, like text
+
+# the global output flags, each left out where the command was not given it
+form output-ask
+  link quiet
+    like maybe, like boolean
+    need false
+  link verbose
+    like maybe, like boolean
+    need false
+  link trace
+    like maybe, like boolean
+    need false
+  link utc
+    like maybe, like boolean
+    need false
+  link plain
+    like maybe, like boolean
+    need false
+  link strict
+    like maybe, like boolean
+    need false
+  link raw
+    like maybe, like boolean
+    need false
+  link motion
+    like maybe, like boolean
+    need false
+  link color
+    like maybe, like text
+    need false
+  link log
+    like maybe, like text
+    need false
+
+form subject-open
+  link verb, like text
+  link root, like text
+  link subject, like text
+  link facts, like list, like text
+
+form plain-open
+  link verb, like text
+  link root, like text
+
+form problem-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+
+form loaded-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like dynamic
+  link bytes
+    like maybe, like dynamic
+    need false
+  link facts, like list, like text
+  link fields, like list, like dynamic
+
+form failed-close
+  link verdict, like text
+  link failure, like text
+
+form next-close
+  link verdict, like text
+  link failure, like text
+  link next, like text
+
+form done-close
+  link verdict, like text
+  link done, like boolean
+
+# loadVersion's input: the choice's own fields, handed on as they came (a host value bound to a maybe would be read as
+# a boxed one)
+form version-ask
+  link version
+    like dynamic
+    need false
+  link hold, like dynamic
+  link expect
+    like dynamic
+    need false
+
+# ---- the arguments ----
+
+# a flag's value, `--name value` or `--name=value`, the joined spelling first; none when neither is there
+task flag-value
+  take argv, like list, like text
+  take name, like text
+  like maybe, like text
+  mark private
+
+  save joined, <--{name}=>
+  walk argv
+    take one
+    fork test, starts-with(one, joined)
+      hold
+        save rest, substring(one, char-count(joined))
+        back make(some, rest)
+  save flag, <--{name}>
+  save at, 0
+  walk argv
+    take one
+    fork test, is-equal(one, flag)
+      hold
+        fork test, is-below(add(at, 1), argv/length)
+          hold
+            save after, get(argv, add(at, 1))
+            back make(some, after)
+        back make none
+    save at, add(at, 1)
+  back make none
+
+# The global output flags the command was given (output.ts `OutputFlags`), so what dispatch prints before the command
+# runs looks like what the command prints after it. Read from the arguments by name, because the console's parser has
+# not run yet. A flag dispatch does not print through is left to the command
+task output-flags
+  take argv, like list, like text
+  like output-ask
+  mark private
+
+  save flags, make output-ask
+  fork test, contains(argv, <--quiet>)
+    hold
+      save flags/quiet, make(some, true)
+  fork test, contains(argv, <--verbose>)
+    hold
+      save flags/verbose, make(some, true)
+  fork test, contains(argv, <--trace>)
+    hold
+      save flags/trace, make(some, true)
+  fork test, contains(argv, <--utc>)
+    hold
+      save flags/utc, make(some, true)
+  fork test, contains(argv, <--plain>)
+    hold
+      save flags/plain, make(some, true)
+  fork test, contains(argv, <--strict>)
+    hold
+      save flags/strict, make(some, true)
+  fork test, contains(argv, <--raw>)
+    hold
+      save flags/raw, make(some, true)
+  fork test, contains(argv, <--no-motion>)
+    hold
+      save flags/motion, make(some, false)
+  save flags/color, flag-value(argv, <color>)
+  save flags/log, flag-value(argv, <log>)
+  back flags
+
+# ---- where a request came from ----
+
+# `deck.tree:3`, `TERM_VERSION=2.6.x`, `+2.6.x`: where the request was written
+task where-from
+  take request, like dynamic
+  like text
+  mark private
+
+  save source, text-or-empty(request/source)
+  save range, host-text(request/text)
+  fork test, is-equal(source, <flag>)
+    hold
+      back <+{range}>
+  fork test, is-equal(source, <env>)
+    hold
+      back <TERM_VERSION={range}>
+  fork test, host-truth(request/file)
+    hold
+      save shown, show-path(text-or-empty(request/file))
+      save line, host-text(number-or(request/line, 1))
+      back <{shown}:{line}>
+  back host-text(request/source)
+
+task who-needs
+  take request, like dynamic
+  like text
+  mark private
+
+  save source, text-or-empty(request/source)
+  fork test, is-equal(source, <project>)
+    hold
+      back <This project>
+  fork test, is-equal(source, <default>)
+    hold
+      back <The default (term self pick)>
+  fork test, is-equal(source, <env>)
+    hold
+      back <TERM_VERSION>
+  back <This command>
+
+# ---- the two jobs ----
+
+# Install what a `load` choice names. The version on success, or the empty text once the refusal is printed: a caller
+# that tests the answer by its truth reads both as the original's string and undefined
+task load-needed
+  take input, like load-ask
+  like text
+
+  save choice, input/choice
+  save asked, text-or(choice/version, host-text(choice/request/text))
+  save root, host-process/cwd()
+  save facts, make list
+  facts/push(where-from(choice/request))
+
+  set-output(output-flags(input/argv), input/running)
+  open-run(make(subject-open, bind(verb, <need>), bind(root, root), bind(subject, <term {asked}>), bind(facts, facts)))
+
+  fork test, input/local
+    hold
+      save who, who-needs(choice/request)
+      report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <need>), bind(subject, <{who} needs term {asked} and none is installed, and TERM_NEED=local forbids a download>)))
+      close-run(make(next-close, bind(verdict, <Nothing ran>), bind(failure, <environment>), bind(next, <term self load {asked}>)))
+      back <>
+
+  save asking, make(version-ask, bind(version, choice/version), bind(hold, choice/hold), bind(expect, choice/expect))
+  save loaded, wait need-loading/load-version(asking)
+
+  fork test, not(host-truth(loaded/ok))
+    hold
+      report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <load>), bind(subject, host-text(loaded/reason))))
+      close-run(make(failed-close, bind(verdict, <Nothing ran>), bind(failure, <environment>)))
+      back <>
+
+  save version, host-text(loaded/version)
+  save platform, host-text(loaded/platform)
+  save fields, make list
+  fork test, host-truth(loaded/fresh)
+    hold
+      fields/push(field(<layer>, loaded/layer))
+      fields/push(field(<signed>, loaded/keys))
+  save bytes, make none
+  fork test, host-truth(loaded/bytes)
+    hold
+      save bytes, make(some, loaded/bytes)
+  save shared, need-loading/shared-facts(loaded/shared)
+  report(make(loaded-item, bind(glyph, <done>), bind(verb, <load>), bind(subject, <term {version} for {platform}>), bind(duration, loaded/duration), bind(bytes, bytes), bind(facts, shared), bind(fields, fields)))
+  close-run(make(done-close, bind(verdict, <Running term {version}>), bind(done, true)))
+  back version
+
+# Print why nothing ran
+task refuse-need
+  take input, like refuse-ask
+  like void
+
+  set-output(output-flags(input/argv), input/running)
+  open-run(make(plain-open, bind(verb, <need>), bind(root, host-process/cwd())))
+  report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <need>), bind(subject, input/reason)))
+  save failure, <environment>
+  fork test, host-truth(input/usage)
+    hold
+      save failure, <usage>
+  close-run(make(failed-close, bind(verdict, <Nothing ran>), bind(failure, failure)))

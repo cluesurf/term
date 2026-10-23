@@ -1,0 +1,834 @@
+# `term work --target compose|compose-android` (live-reload): a Compose app rebuilt and relaunched on every `.tree`
+# edit, opening on the screen it was on, with the same screens behind it for back. Ported from
+# deck/call/code/compose-work.ts (term-cli-in-term-0036).
+#
+# A native build is compiled ahead of time and carries no interpreter, so a change to a view is a new program: the loop
+# builds it while the running app stays up, and only a build that succeeds replaces it. The app's NAVIGATION HISTORY
+# crosses the relaunch through a dev address (deck/site/code/view/native/toolkit/address.tree): the navigation contract
+# writes its history there on every move, and the next run starts from it.
+#
+#   compose          kotlinc into a jar, run on this machine's JVM with TERM_DEV_ADDRESS set
+#   compose-android  an APK, installed over the running one and started with the address as an Intent extra
+#
+# The loop is `start-compose-work`, which a test drives directly; `work-compose` is the command around it.
+#
+# THE LOOP'S STATE IS ONE `work-session` RECORD. The original's watcher callback, settle timer, build promise and the
+# running app's stop closed over the loop's locals; here each is a task over the session, and the host callbacks are
+# inline tasks closing over it. A session per call, so two loops in one process stay apart.
+
+load ../cask/host-value
+  find nothing
+  find is-truthy
+  find value-or
+  find now-ms
+  find text-or-empty
+  find raise-error
+
+load ../cask/toolchain
+  find android-tools
+
+load ../cask/android
+  find android-device
+  find launch-on-android
+  find android-launch-ask
+
+load ./desktop
+  find build-compose
+  find compose-ask
+  find compose-built
+
+load ./android
+  find empty-record
+  find build-compose-android
+  find compose-android-ask
+  find compose-android-built
+
+load ./packaging
+  find compose-identity-of
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <node:child_process>, name node-child
+  load <node:timers>, name timers
+  load <global:process>, name node-process
+  load <@term/call/code/kotlin-worker>, name kotlin-worker
+  load <@term/make/code/compile/cache>, name cache-module
+  load <@term/make/code/compile/load>, name load-module
+  load <@term/call/code/output>, name output
+  load <@term/call/code/boot>, name boot-module
+
+# what the loop is started with: the app folder, the target, the entry `--entry` names, what the desktop app's
+# environment adds (a test runs it headless with TERM_WINDOW_AWAY=1), and the callback told every event
+form work-ask
+  link root, like text
+  link target, like text
+  link entry
+    like dynamic
+    need false
+  link env
+    like dynamic
+    need false
+  link on-event, like dynamic
+
+# the loop as it runs: what it was started with, what it keeps warm between builds (one Kotlin compiler, the Term
+# compiler's parsed modules, and the parses the scope check walks), the build count, the running app, the build in
+# flight, whether a change came during it, the settle timer and whether a change waits out its settle, whether the loop
+# was stopped, and the watcher
+form work-session
+  mark shared
+  link root, like text
+  link target, like text
+  link entry, like text
+  link out, like text
+  link identifier, like text
+  link address, like text
+  link env, like dynamic
+  link on-event, like dynamic
+  link kotlin, like dynamic
+  link cache, like dynamic
+  link memo, like dynamic
+  link generation, like number
+  link running, like dynamic
+  link building, like dynamic
+  link dirty, like boolean
+  link timer, like dynamic
+  link scheduled, like boolean
+  link stopped, like boolean
+  link watcher, like dynamic
+
+# the loop as a caller holds it: `idle` resolves once no build is running or waiting, `stop` stops the running app and
+# closes the watcher
+form work-face
+  link idle, like dynamic
+  link stop, like dynamic
+
+# the app as the loop holds it while it runs
+form running-face
+  link stop, like dynamic
+
+# a launched app: how to stop it, and the child whose standard output is the app's own lines
+form launched
+  link running, like dynamic
+  link child, like dynamic
+
+# what the loop did, in order
+form built-event
+  link kind, like text
+  link generation, like number
+  link duration, like number
+  link stages, like list, like dynamic
+
+form failed-event
+  link kind, like text
+  link generation, like number
+  link stage, like text
+  link reason, like text
+
+form launch-event
+  link kind, like text
+  link generation, like number
+  link child, like dynamic
+
+form exit-event
+  link kind, like text
+  link generation, like number
+
+# an Android app's run: its process, the logcat poll, and whether it has ended
+form android-run
+  mark shared
+  link poll, like dynamic
+  link ended, like boolean
+
+form work-folder
+  link recursive, like boolean
+
+form work-remove
+  link recursive, like boolean
+  link force, like boolean
+
+form work-force
+  link force, like boolean
+
+form work-watch
+  link recursive, like boolean
+
+form work-scope
+  link root, like text
+  link memo, like dynamic
+
+form work-spawn
+  link cwd, like text
+  link env, like dynamic
+  link stdio, like list, like text
+
+form work-pipes
+  link stdio, like list, like text
+
+form work-utf8
+  link encoding, like text
+
+form work-open
+  link verb, like text
+  link root, like text
+  link facts, like list, like text
+
+form work-start-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+
+form work-built-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link facts, like list, like text
+
+form work-failed-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+
+form work-launch-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+
+form work-close
+  link verdict, like text
+  link failure, like text
+  link uptime, like boolean
+
+# ---- the host values Term has no word for ----
+
+# a host function called with one value
+bind call-with
+  take callback, like dynamic
+  take value, like dynamic
+  like dynamic
+  case node
+    text <$callback($value)>
+
+# a promise awaited
+bind await-value
+  take value, like dynamic
+  like dynamic
+  case node
+    text <(await $value)>
+
+# a promise that resolves after `ms` milliseconds
+bind settle-promise
+  take ms, like number
+  like dynamic
+  case node
+    text <new Promise((done) =\> setTimeout(done, $ms))>
+
+# a caught failure as the loop reports it: its message, else the failure itself
+bind error-text
+  take problem, like dynamic
+  like text
+  case node
+    text <($problem instanceof Error ? $problem.message : String($problem))>
+
+# a new compile cache: compile/cache.ts `new CompileCache()`, on the docked module by its exact name
+bind new-compile-cache
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.CompileCache()>
+
+# the desktop app's environment: this process's, what the caller adds, and the dev address
+bind desktop-env
+  take env, like dynamic
+  take address, like text
+  like dynamic
+  case node
+    text <(\{ ...process.env, ...$env, TERM_DEV_ADDRESS: $address \})>
+
+# a promise that resolves when the child exits
+bind exit-promise
+  take child, like dynamic
+  like dynamic
+  case node
+    text <new Promise((done) =\> $child.once("exit", () =\> done()))>
+
+# `promise.then(callback)`, not waited on
+bind after-promise
+  take promise, like dynamic
+  take callback, like dynamic
+  like void
+  case node
+    text <void $promise.then($callback)>
+
+# whether a child has exited or was ended by a signal
+bind child-ended
+  take child, like dynamic
+  like boolean
+  case node
+    text <($child.exitCode !== null || $child.signalCode !== null)>
+
+# a child's first word of standard output, `stdout.trim().split(/\s+/)[0]`, or the empty text
+bind first-word
+  take ran, like dynamic
+  like text
+  case node
+    text <(($ran.stdout ?? "").trim().split(/\\s+/)[0] ?? "")>
+
+# one stage's time as the build item shows it: `term 1.2s`
+bind stage-fact
+  take entry, like dynamic
+  like text
+  case node
+    text <($entry[0] + " " + ($entry[1] / 1000).toFixed(1) + "s")>
+
+# a promise that resolves on the first ctrl-c
+bind interrupted
+  like dynamic
+  case node
+    text <new Promise((done) =\> process.once("SIGINT", () =\> done()))>
+
+# the build folder a generation writes, `String(generation % 2)`
+bind turn-folder
+  take generation, like number
+  like text
+  case node
+    text <String($generation % 2)>
+
+# ---- the loop ----
+
+# the file the desktop's history is written to, and the name of the one in an Android app's external files directory
+task address-name
+  like text
+
+  back <dev-address>
+
+# a burst of saves (an editor writing a file twice, a formatter after it) is one change
+task settle-ms
+  like number
+
+  back 80
+
+task report-event
+  take session, like work-session
+  take event, like dynamic
+  like void
+
+  call-with(session/on-event, event)
+
+task report-failed
+  take session, like work-session
+  take generation, like number
+  take stage, like text
+  take reason, like text
+  like void
+
+  report-event(session, make(failed-event, bind(kind, <failed>), bind(generation, generation), bind(stage, stage), bind(reason, reason)))
+
+# one build at a time; a change during it is built right after, once, however many changes came. Answers the build in
+# flight
+task rebuild
+  take session, like work-session
+  like dynamic
+
+  fork test, is-truthy(session/building)
+    hold
+      save session/dirty, true
+      back session/building
+  save session/building, call-with(rebuild-loop, session)
+  back session/building
+
+# the build in flight: built and launched, again while a change came during it
+task rebuild-loop
+  take session, like work-session
+  like void
+  mark async
+
+  save again, true
+  walk test
+    hook test, again
+    hook hold
+      save session/dirty, false
+      fork
+        mark unsafe
+        build-and-launch(session)
+      halt take
+        take problem
+        # a launch that could not happen (no device online, a JVM that would not start) is reported and the loop goes
+        # on: the next edit tries again
+        report-failed(session, session/generation, <launch>, error-text(problem))
+      save again, and(session/dirty, not(session/stopped))
+  save session/building, nothing()
+
+# one build, and the app relaunched when it built
+task build-and-launch
+  take session, like work-session
+  like void
+  mark async
+
+  save session/generation, add(session/generation, 1)
+  save current, session/generation
+  # two folders in turn: the build never writes over the jar the running app was loaded from
+  save dir, node-path/join(session/out, <work>, turn-folder(current))
+  node-fs/rm-sync(dir, make(work-remove, bind(recursive, true), bind(force, true)))
+  node-fs/mkdir-sync(dir, make(work-folder, bind(recursive, true)))
+  save started, now-ms()
+  save text, <>
+  fork test, node-fs/exists-sync(session/entry)
+    hold
+      save text, node-fs/read-file-sync(session/entry, <utf8>)
+  save scope, make(work-scope, bind(root, session/root), bind(memo, session/memo))
+  save compiler, session/kotlin/compile
+
+  fork test, is-equal(session/target, <compose>)
+    hold
+      save desktop
+        build-compose
+          make compose-ask
+            bind root, session/root
+            bind dir, dir
+            bind name, <app>
+            bind text, text
+            bind file, session/entry
+            bind compiler, compiler
+            bind cache, session/cache
+            bind scope, scope
+      save duration, subtract(now-ms(), started)
+      sift desktop
+        case skipped
+          link skip-reason
+          # the running app is kept: an edit that does not build changes nothing a person can see but the report
+          report-failed(session, current, <skipped>, skip-reason)
+        case failed
+          link failed-stage
+          link failed-reason
+          report-failed(session, current, failed-stage, failed-reason)
+        case built
+          link built-jar
+          link built-classpath
+          link built-main
+          link built-runtime-jars
+          link built-stages
+          report-event(session, make(built-event, bind(kind, <built>), bind(generation, current), bind(duration, duration), bind(stages, built-stages)))
+          fork test, not(session/stopped)
+            hold
+              stop-running(session)
+              save app, launch-desktop(session, built-jar, built-classpath, built-main, current)
+              save session/running, app/running
+              report-event(session, make(launch-event, bind(kind, <launch>), bind(generation, current), bind(child, app/child)))
+    miss
+      save android
+        build-compose-android
+          make compose-android-ask
+            bind root, session/root
+            bind dir, dir
+            bind name, <app>
+            bind text, text
+            bind identifier, session/identifier
+            bind file, session/entry
+            bind compiler, compiler
+            bind cache, session/cache
+            bind scope, scope
+      save duration, subtract(now-ms(), started)
+      sift android
+        case skipped
+          link skip-reason
+          report-failed(session, current, <skipped>, skip-reason)
+        case failed
+          link failed-stage
+          link failed-reason
+          report-failed(session, current, failed-stage, failed-reason)
+        case built
+          link built-apk
+          link built-stages
+          report-event(session, make(built-event, bind(kind, <built>), bind(generation, current), bind(duration, duration), bind(stages, built-stages)))
+          fork test, not(session/stopped)
+            hold
+              stop-running(session)
+              save app, launch-android(session, built-apk, current)
+              save session/running, app/running
+              report-event(session, make(launch-event, bind(kind, <launch>), bind(generation, current), bind(child, app/child)))
+
+# the running app asked to stop, when there is one
+task stop-running
+  take session, like work-session
+  like void
+  mark async
+
+  fork test, is-truthy(session/running)
+    hold
+      await-value(session/running/stop())
+
+# the history of an earlier session thrown away: the desktop's file, or the one in the Android app's files
+task forget-address
+  take target, like text
+  take address, like text
+  take identifier, like text
+  like void
+
+  fork test, is-equal(target, <compose>)
+    hold
+      node-fs/rm-sync(address, make(work-force, bind(force, true)))
+      back
+  save found, android-device()
+  fork test, not(is-equal(found/serial, <>))
+    hold
+      save args, make list
+      args/push(<-s>)
+      args/push(found/serial)
+      args/push(<shell>)
+      args/push(<rm>)
+      args/push(<-f>)
+      args/push(</sdcard/Android/data/{identifier}/files/{address-name()}>)
+      node-child/spawn-sync(android-tools()/adb, args)
+
+# the app on this machine's JVM, its history at the session's address, started IN the app's folder (`root`, named by
+# path): a JVM cannot start in a folder that no longer exists, and inheriting the loop's own let a folder deleted under
+# the loop stop every relaunch after it. Stopping asks it to end and, after three seconds, makes it
+task launch-desktop
+  take session, like work-session
+  take jar, like text
+  take classpath, like text
+  take main, like text
+  take generation, like number
+  like launched
+
+  save args, make list
+  args/push(<--enable-native-access=ALL-UNNAMED>)
+  args/push(<-classpath>)
+  args/push(<{jar}:{classpath}>)
+  args/push(main)
+  save stdio, make list
+  stdio/push(<ignore>)
+  stdio/push(<pipe>)
+  stdio/push(<pipe>)
+  save child, node-child/spawn(<java>, args, make(work-spawn, bind(cwd, session/root), bind(env, desktop-env(session/env, session/address)), bind(stdio, stdio)))
+  save ended, exit-promise(child)
+  save on-exit
+    task
+      like void
+      report-event(session, make(exit-event, bind(kind, <exit>), bind(generation, generation)))
+  after-promise(ended, on-exit)
+  save stop
+    task
+      like void
+      stop-desktop(child, ended)
+  back make(launched, bind(running, make(running-face, bind(stop, stop))), bind(child, child))
+
+# a desktop app stopped: asked to end, made to after three seconds, and waited for
+task stop-desktop
+  take child, like dynamic
+  take ended, like dynamic
+  like void
+  mark async
+
+  fork test, child-ended(child)
+    hold
+      back
+  child/kill(<SIGTERM>)
+  save kill
+    task
+      like void
+      child/kill(<SIGKILL>)
+  save late, timers/set-timeout(kill, 3000)
+  await-value(ended)
+  timers/clear-timeout(late)
+
+# the process id an Android app runs as, or the empty text
+task android-pid
+  take adb, like text
+  take serial, like text
+  take identifier, like text
+  like text
+
+  save args, make list
+  args/push(<-s>)
+  args/push(serial)
+  args/push(<shell>)
+  args/push(<pidof>)
+  args/push(identifier)
+  back first-word(node-child/spawn-sync(adb, args, make(work-utf8, bind(encoding, <utf8>))))
+
+# the app installed over the running one and started with its address; its lines are its own process's `native-dom`
+# log, read while it runs. It has ended when its process is gone
+task launch-android
+  take session, like work-session
+  take apk, like text
+  take generation, like number
+  like launched
+  mark async
+
+  save found, android-device()
+  fork test, is-equal(found/serial, <>)
+    hold
+      raise-error(<{found/missing}>)
+  save serial, <{found/serial}>
+  save adb, android-tools()/adb
+  save identifier, session/identifier
+  launch-on-android(make(android-launch-ask, bind(serial, serial), bind(apk, apk), bind(identifier, identifier), bind(extras, dev-address-extras(address-name()))))
+
+  # the process the Activity starts in, looked for over five seconds
+  save pid, <>
+  save tries, 0
+  walk test
+    hook test, and(is-below(tries, 50), is-equal(pid, <>))
+    hook hold
+      save pid, android-pid(adb, serial, identifier)
+      fork test, is-equal(pid, <>)
+        hold
+          await-value(settle-promise(100))
+      save tries, add(tries, 1)
+
+  save args, make list
+  args/push(<-s>)
+  args/push(serial)
+  args/push(<logcat>)
+  args/push(<-v>)
+  args/push(<raw>)
+  args/push(<--pid={pid}>)
+  args/push(<-s>)
+  args/push(<native-dom:I>)
+  save stdio, make list
+  stdio/push(<ignore>)
+  stdio/push(<pipe>)
+  stdio/push(<pipe>)
+  save child, node-child/spawn(adb, args, make(work-pipes, bind(stdio, stdio)))
+  save run, make(android-run, bind(poll, nothing()), bind(ended, false))
+  save on-exit
+    task
+      like void
+      report-event(session, make(exit-event, bind(kind, <exit>), bind(generation, generation)))
+  save check
+    task
+      like void
+      fork test, not(is-equal(android-pid(adb, serial, identifier), pid))
+        hold
+          timers/clear-interval(run/poll)
+          save run/ended, true
+          child/kill()
+          call-with(on-exit, nothing())
+  save run/poll, timers/set-interval(check, 500)
+  save stop
+    task
+      like void
+      timers/clear-interval(run/poll)
+      child/kill()
+      fork test, not(run/ended)
+        hold
+          save stop-args, make list
+          stop-args/push(<-s>)
+          stop-args/push(serial)
+          stop-args/push(<shell>)
+          stop-args/push(<am>)
+          stop-args/push(<force-stop>)
+          stop-args/push(identifier)
+          node-child/spawn-sync(adb, stop-args)
+          save run/ended, true
+          call-with(on-exit, nothing())
+  back make(launched, bind(running, make(running-face, bind(stop, async-stop(stop)))), bind(child, child))
+
+# the launch Intent's extras: the dev address, by the name the app reads it under
+bind dev-address-extras
+  take address, like text
+  like dynamic
+  case node
+    text <(\{ TERM_DEV_ADDRESS: $address \})>
+
+# a plain stop made the async one the loop awaits: `async () => stop()`
+bind async-stop
+  take stop, like dynamic
+  like dynamic
+  case node
+    text <(async () =\> \{ $stop() \})>
+
+# whether a build is running or a change waits out its settle, waited out
+task idle-session
+  take session, like work-session
+  like void
+  mark async
+
+  walk test
+    hook test, or(session/scheduled, is-truthy(session/building))
+    hook hold
+      await-value(value-or(session/building, settle-promise(settle-ms())))
+
+# the loop stopped: no change taken up after this, the build in flight waited for, the running app stopped, the warm
+# compiler closed
+task stop-session
+  take session, like work-session
+  like void
+  mark async
+
+  save session/stopped, true
+  timers/clear-timeout(session/timer)
+  save session/scheduled, false
+  session/watcher/close()
+  await-value(session/building)
+  stop-running(session)
+  session/kotlin/close()
+
+# one change the watcher saw: a `.tree` file under the root, never the build's own output, built once the burst of
+# saves settles
+task on-change
+  take session, like work-session
+  take name, like dynamic
+  like void
+
+  save file, text-or-empty(name)
+  save inside, node-path/relative(session/root, node-path/join(session/root, file))
+  fork test, or(not(ends-with-text(file, <.tree>)), or(starts-with-text(inside, <host/>), starts-with-text(inside, <node_modules/>)))
+    hold
+      back
+  timers/clear-timeout(session/timer)
+  save session/scheduled, true
+  save settled
+    task
+      like void
+      save session/scheduled, false
+      rebuild(session)
+  save session/timer, timers/set-timeout(settled, settle-ms())
+
+bind ends-with-text
+  take value, like text
+  take end, like text
+  like boolean
+  case node
+    text <$value.endsWith($end)>
+
+bind starts-with-text
+  take value, like text
+  take start, like text
+  like boolean
+  case node
+    text <$value.startsWith($start)>
+
+# the loop started: the app built and launched at once, and again on every `.tree` edit under its root
+task start-compose-work
+  take ask, like work-ask
+  like work-face
+
+  save root, node-path/resolve(ask/root)
+  # the file `--entry` names, else the manifest's `boot` line, else the older `app.tree` (packaging.tree `make-compose`)
+  save named, <{value-or(ask/entry, <app.tree>)}>
+  save entry, <{value-or(boot-module/find-entry(root, ask/entry), node-path/join(root, named))}>
+  save out, node-path/join(root, <host>, ask/target)
+  save identifier, compose-identity-of(root)/identifier
+  save address, node-path/join(out, address-name())
+  node-fs/mkdir-sync(out, make(work-folder, bind(recursive, true)))
+  # what the session keeps warm between builds: one Kotlin compiler, so a rebuild pays for the code and not for
+  # starting a JVM, and the Term compiler's parsed modules, so an edit reparses only the files that changed
+  save kotlin, kotlin-worker/start-kotlin-worker(node-path/join(out, <kotlin>))
+  save cache, new-compile-cache(cache-module)
+  # and the parses the scope check walks (call/code/scope.ts), which an edit to the scope itself rechecks
+  save memo, load-module/make-parse-memo()
+
+  # a session starts at the app's first screen: the history of an earlier session is not this one's
+  forget-address(ask/target, address, identifier)
+
+  save session
+    make work-session
+      bind root, root
+      bind target, ask/target
+      bind entry, entry
+      bind out, out
+      bind identifier, identifier
+      bind address, address
+      bind env, value-or(ask/env, empty-record())
+      bind on-event, ask/on-event
+      bind kotlin, kotlin
+      bind cache, cache
+      bind memo, memo
+      bind generation, 0
+      bind running, nothing()
+      bind building, nothing()
+      bind dirty, false
+      bind timer, nothing()
+      bind scheduled, false
+      bind stopped, false
+      bind watcher, nothing()
+
+  # the source files: every `.tree` under the root, never the build's own output
+  save changed
+    task
+      take event, like dynamic
+      take name, like dynamic
+      like void
+      on-change(session, name)
+  save session/watcher, node-fs/watch(root, make(work-watch, bind(recursive, true)), changed)
+
+  rebuild(session)
+
+  save idle
+    task
+      like void
+      idle-session(session)
+  save stop
+    task
+      like void
+      stop-session(session)
+  back make(work-face, bind(idle, idle), bind(stop, stop))
+
+# `term work --target compose|compose-android`: the loop, each build and launch an item, the app's lines followed under
+# its name, until Ctrl-C
+task work-compose
+  take ask, like work-ask
+  like void
+  mark async
+
+  save root, node-path/resolve(ask/root)
+  save name, compose-identity-of(root)/name
+  save target, ask/target
+  save facts, make list
+  facts/push(<--target {target}>)
+  output/open-run(make(work-open, bind(verb, <work>), bind(root, root), bind(facts, facts)))
+  save message, make list
+  message/push(<Edit a .tree file and the app is rebuilt and relaunched on the screen it was on. Ctrl-C stops.>)
+  output/report(make(work-start-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, name), bind(message, message)))
+
+  save on-event
+    task
+      take event, like dynamic
+      like void
+      show-event(event, target, name)
+  save work, start-compose-work(make(work-ask, bind(root, root), bind(target, target), bind(entry, ask/entry), bind(on-event, on-event)))
+
+  await-value(interrupted())
+  await-value(call-with(work/stop, nothing()))
+  node-process/exit(output/close-run(make(work-close, bind(verdict, <Stopped>), bind(failure, <interrupted>), bind(uptime, true))))
+
+# one event of the loop as an item: a build with where its time went stage by stage, a failure with the running app
+# kept, and a launch with the app's lines followed under its name
+task show-event
+  take event, like dynamic
+  take target, like text
+  take name, like text
+  like void
+
+  save kind, <{event/kind}>
+  fork test, is-equal(kind, <built>)
+    hold
+      save facts, make list
+      walk event/stages
+        take entry, like dynamic
+        facts/push(stage-fact(entry))
+      output/report(make(work-built-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, target), bind(duration, event/duration), bind(facts, facts)))
+      back
+  fork test, is-equal(kind, <failed>)
+    hold
+      save verb, <build>
+      fork test, is-equal(<{event/stage}>, <launch>)
+        hold
+          save verb, <start>
+      save message, make list
+      message/push(<{event/reason}>)
+      message/push(<The running app is kept.>)
+      output/report(make(work-failed-item, bind(glyph, <failed>), bind(verb, verb), bind(subject, target), bind(message, message)))
+      back
+  fork test, is-equal(kind, <launch>)
+    hold
+      output/report(make(work-launch-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, <{name} #{event/generation}>)))
+      output/follow-child(event/child, name)

@@ -418,7 +418,37 @@ function checkProgram(
 
       // the two unified: an `unknown` handed on to a typed place is the seam's to refuse (check/seam.ts)
       diagnostics.push(...(found.length > 0 ? found : unknownSeam(unknownSeamOn(), sub, actual, wanted, span, what, currentFile)))
+
+      if (found.length === 0) {
+        diagnostics.push(...asyncIntoSync(actual, wanted, span, what))
+      }
     }
+  }
+
+  // ASYNC IS PART OF A TASK TYPE, in one direction (term/compiler decision 006): a task that is not async may stand
+  // where an async one is wanted, and an async task may not stand where one that is not async is wanted, because every
+  // native emitter types a task value by its type's flag (a Kotlin `suspend` lambda, a Rust boxed future, a Swift `async`
+  // closure). Here, on the expect path that knows which side is wanted, never in the symmetric unification
+  const asyncIntoSync = (actual: Type, wanted: Type, span: Span, what: string): Diagnostic[] => {
+    const given = resolve(actual)
+    const slot = resolve(wanted)
+
+    if (given.kind !== 'function' || slot.kind !== 'function') {
+      return []
+    }
+
+    if (!given.effects?.includes('async') || slot.effects?.includes('async')) {
+      return []
+    }
+
+    return [
+      diagnose('type-mismatch', {
+        file: currentFile,
+        span,
+        message: `${what}: an async task where a task that is not async is wanted`,
+        hint: 'write `mark async` under that `like task`, so the slot takes an async task',
+      }),
+    ]
   }
 
   // a declared type, with generic names mapped to their variables and unknown names left to inference
@@ -2356,7 +2386,8 @@ function checkProgram(
         // carries the type it tests for (`case point`, `case list` / `like text`, `case hash` / `like text` /
         // `like number`): natively the value is downcast to that type, and on TypeScript, where a record is a plain
         // object with no name, it is tested by its shape, every field the form's (the walk a `fill` makes, read off the
-        // live value). A form with cases or type parameters is not one: TypeScript cannot tell it apart. And a `miss`,
+        // live value). A form with cases is tested by its tag, a case name, and that case's fields (seam decision
+        // 003). A form with type parameters is not one: TypeScript cannot tell its instances apart. And a `miss`,
         // since an `unknown` can hold anything. test/compile/unknown-narrow.ts
         if (subjectType.kind === 'unknown' && node.cases.length > 0) {
           const narrowed: Record<string, () => Type> = { number: numberType, float: floatType, text: stringType, boolean: booleanType }
@@ -2385,10 +2416,9 @@ function checkProgram(
                   return `"${held.name}", which is no form`
                 }
 
-                if (enums.has(held.name)) {
-                  return `"${held.name}", a form with cases`
-                }
-
+                // a form with cases is told apart like a form of fields (seam decision 003): natively the downcast to its
+                // enum, on TypeScript by its tag, one of its case names (a `mark text` form: one of its case texts).
+                // Its type parameters and a second declaration still refuse it, below
                 if ((formGenerics.get(held.name) ?? []).length > 0 || (held.args ?? []).length > 0) {
                   return `"${held.name}", a form with type parameters`
                 }
@@ -2431,7 +2461,7 @@ function checkProgram(
               diagnose('type-mismatch', {
                 file: currentFile,
                 span: node.span,
-                message: `a sift over an unknown tests what type its value is, and ${outside.join(', ')} is not one every backend can tell apart: number, float, text, boolean, a form of fields, or a list or hash of those`,
+                message: `a sift over an unknown tests what type its value is, and ${outside.join(', ')} is not one every backend can tell apart: number, float, text, boolean, a form of fields, a form with cases, or a list or hash of those`,
                 hint: 'give the value a form with a case per kind it can be, and sift that',
               }),
             )

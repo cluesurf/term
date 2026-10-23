@@ -32,6 +32,9 @@ load @term/base/text
 load @term/base/text/string
   find concat, name text-concat
 
+load @term/base/maybe
+  find maybe
+
 # a byte order for a multi-byte integer field
 form byte-order
   case big

@@ -1,0 +1,170 @@
+# A Postgres engine for `term base project`, loaded only when a projection is written.
+#
+# @cluesurf/save is transport-free and driver-free on purpose, so the driver is OPTIONAL AND LAZY: `pg` is imported at
+# the moment a projection is written, never at startup, so every offline verb works with `pg` absent and a person who
+# wants to project installs one package and is told which. The engine seam is `{ dialect, transact }` and nothing else:
+# everything above it is dialect-free, so a second engine is another adapter rather than a second projector.
+#
+# Ported from call/code/base-engine.ts (term-cli-in-term-0038). The pool and its clients are pg's, reached through the
+# host; `transact` is a Term task handed to the projector as the engine's own.
+
+load @term/base/list
+  find list
+  find push
+
+# ---- host values ----
+
+bind engine-import-pg
+  like dynamic
+  case node
+    text <(await import("pg"))>
+
+# `pg` is CommonJS, so the constructor may arrive on `default` depending on how the module was interoperated
+bind engine-pool-class
+  take module, like dynamic
+  like dynamic
+  case node
+    text <($module.Pool ?? $module.default?.Pool)>
+
+bind engine-new-pool
+  take maker, like dynamic
+  take url, like dynamic
+  like dynamic
+  case node
+    text <new $maker(\{ connectionString: $url \})>
+
+bind engine-is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined || $value === null)>
+
+bind engine-fail
+  take message, like text
+  like void
+  case node
+    text <((text) =\> \{ throw new Error(text) \})($message)>
+
+bind engine-rethrow
+  take error, like dynamic
+  like void
+  case node
+    text <((problem) =\> \{ throw problem \})($error)>
+
+bind engine-awaited
+  take promise, like dynamic
+  like dynamic
+  case node
+    text <(await $promise)>
+
+bind engine-line-break
+  like text
+  case node
+    text <String.fromCharCode(10)>
+
+bind engine-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+# ---- the engine ----
+
+# what the projector takes: the dialect, and a task that runs a body inside one transaction
+form engine-face
+  link dialect, like text
+  link transact, like dynamic
+
+# what a body is handed: run a statement, or run one and read its rows
+form transaction-face
+  link run, like dynamic
+  link all, like dynamic
+
+# Open a pool, or explain what to install: "cannot find module 'pg'" from inside a CLI tells a person nothing about
+# what they were supposed to do
+task open-postgres
+  take url, like dynamic
+  like dynamic
+  mark async
+
+  save pg, engine-nothing()
+  save found, false
+  fork
+    mark unsafe
+    save pg, engine-awaited(engine-import-pg())
+    save found, true
+  halt take
+    take error
+    save found, false
+  fork test, not(found)
+    hold
+      save line, engine-line-break()
+      engine-fail(<writing a projection needs a Postgres driver, and `pg` is not installed.{line}It is deliberately optional, so every other verb works without a database:{line}  pnpm add pg{line}Then run this again.>)
+  save pool-class, engine-pool-class(pg)
+  fork test, engine-is-absent(pool-class)
+    hold
+      engine-fail(<the installed `pg` does not export a Pool>)
+  back engine-new-pool(pool-class, url)
+
+# One body in one transaction on ONE connection, because the projector's correctness is that a commit's row writes
+# and its bookkeeping land together. A failure rolls back before it is thrown again, and a failed rollback is
+# swallowed so the first error is the one read. The connection is released either way
+task transact-on
+  take pool, like dynamic
+  take body, like dynamic
+  like dynamic
+  mark async
+  mark private
+
+  save client, engine-awaited(pool/connect())
+  save out, engine-nothing()
+  save failed, false
+  save problem, engine-nothing()
+  fork
+    mark unsafe
+    engine-awaited(client/query(<BEGIN>, make list))
+    save runner
+      task
+        take statement, like dynamic
+        like void
+        mark async
+        engine-awaited(client/query(statement/sql, statement/params))
+    save reader
+      task
+        take statement, like dynamic
+        like dynamic
+        mark async
+        save answer, engine-awaited(client/query(statement/sql, statement/params))
+        back answer/rows
+    save tx, make(transaction-face, bind(run, runner), bind(all, reader))
+    save out, engine-awaited(body(tx))
+    engine-awaited(client/query(<COMMIT>, make list))
+  halt take
+    take error
+    save failed, true
+    save problem, error
+  fork test, failed
+    hold
+      fork
+        mark unsafe
+        engine-awaited(client/query(<ROLLBACK>, make list))
+      halt take
+        take ignored
+        save failed, true
+  client/release()
+  fork test, failed
+    hold
+      engine-rethrow(problem)
+  back out
+
+# an engine over a pool
+task postgres-engine
+  take pool, like dynamic
+  like dynamic
+
+  save transact
+    task
+      take body, like dynamic
+      like dynamic
+      mark async
+      back transact-on(pool, body)
+  back make(engine-face, bind(dialect, <postgres>), bind(transact, transact))

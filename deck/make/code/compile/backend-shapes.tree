@@ -1342,10 +1342,12 @@ task inspect-kind-of
               bind values, values
         case named
           link named-name
+          # `args` is a `need false` list, read only by walking it: a read of its length is lowered to a defaulting
+          # write (`known.args ??= []`) into the program the compiler reads (count-defaulting-writes)
           save given-args, make list
-          fork test, is-above(args/length, 0)
-            hold
-              save given-args, args
+          walk args
+            take arg
+            push(given-args, arg)
           back inspect-named(known, named-name, given-args, forms, seen)
         case function
           back opaque-kind(<task>)

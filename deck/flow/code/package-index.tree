@@ -1,0 +1,683 @@
+# The workspace half of navigation: references, rename, symbols and incoming calls across every file of a package,
+# not only the open one.
+#
+# WHAT COUNTS AS A REFERENCE ACROSS FILES is what the build binds by: a name reaches another file only through
+# `load ... / find` (note/project/term/module-scope/readme.md). So a file refers to a definition in module M when it has a
+# `load` whose path RESOLVES to M's file and `find`s the name, and does not define the name itself. Matching the
+# name alone would rename every same-named task in the package, which module scope exists to keep apart.
+#
+# THE SCOPE IS A PACKAGE, the files `term make` builds from the nearest `deck.tree` (findTreeFiles in
+# call/code/make.ts, which skips drafts, manifests, role files and nested packages). The defining file's package and
+# the package of every open document are searched. A package that imports this one from elsewhere on disk is not.
+#
+# Each file is read once per question, its text from the open document when there is one, and milled alone with
+# its role and `mark lean` (no type check, no imports): a reference is a name in a position, and the mill already
+# knows every position. A file that does not hold the name as a whole word is never milled.
+#
+# Ported from workspace.ts (term-cli-in-term-0099). The decisions:
+#   - the class `Workspace` is the shared record `workspace`, its methods tasks taking it first: `forget`,
+#     `forget-file`, `files-of` (files), `read-text` (read), `index-file` (indexOf), `find-symbols` (symbols),
+#     `importers-of` (importers). `WORKSPACE_FILE_CAP` is the task `workspace-file-cap` (self-host traps.md T022)
+#   - the host (`textOf`, `readersOf`, `resolverOf`) is the caller's object, called through host expressions; the
+#     readers it answers are handed to the analyzer as they came
+#   - `read` and `indexOf` answer a maybe, not undefined, and a file index's `map` is geometry.tree's `mapping`
+#   - every pattern is written out by character on UTF-16 units (T001, T024): `mentions`' `[A-Za-z0-9-]`, the test
+#     line `^\s*test ` (m), and `fuzzy`, which walks the query by code point as `for (const ch of query)` did
+#   - the compiler's analyzer, import scan and test rewrite, and the build's file list, are still TypeScript, docked;
+#     `scanDefs` is package-paths.tree's `scan-defs`, which resolve.ts answers with
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find starts-with
+  find ends-with
+  find to-lower-case
+
+load @term/make/parser/diagnostic
+  find position
+  find span
+
+load @term/make/fixing
+  find units-of
+
+load @term/make/compile/main-entry
+  find whitespace-code
+
+load @term/make/package-paths
+  find scan-defs
+  find module-export
+
+load ./geometry
+  find lsp-position
+  find mapping
+  find identity-mapping
+  find make-mapping
+  find outer-position
+
+load ./symbol-index
+  find symbol-index
+  find named-symbol
+  find build-index
+  find find-name
+  find occurrences-of
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <@term/make/code/analyze>, name source-module
+  load <@term/make/code/compile/load>, name load-module
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/test-preprocess>, name test-module
+
+# a file's top-level definitions, kept beside the text they were scanned from
+form kept-defs
+  link text, like text
+  link defs, like list, like module-export
+
+# what a workspace keeps between questions
+form workspace
+  mark shared
+  # the caller's `{ textOf, readersOf, resolverOf }`
+  link host, like dynamic
+  # the build's file list per package, until a file is created or deleted under it
+  link lists, like hash, like text, like list, like text
+  # a file's top-level definitions, so a symbol search typed one character at a time scans each file once and not
+  # once a keystroke
+  link defs, like hash, like text, like kept-defs
+
+form file-index
+  link file, like text
+  link text, like text
+  link index, like symbol-index
+  # compiler coordinates to the author's (a test file is compiled rewritten)
+  link map, like mapping
+
+form workspace-symbol
+  link name, like text
+  link kind, like text
+  link file, like text
+  link line, like number
+  link column, like number
+
+# the files that import a name from its definer, and where
+form importer
+  link file, like text
+  # the `find <name>` tokens (a rename edits these)
+  link finds, like list, like span
+  # the name's other occurrences in that file (a rename edits these too, unless the import is aliased)
+  link spans, like list, like span
+  # where an aliased import's OTHER name is used (`find shout, name yell`, then `call yell`): references of the
+  # definition, and never edited by a rename
+  link alias-spans, like list, like span
+  link aliased, like boolean
+  link index
+    like maybe, like file-index
+    need false
+
+# the source the compiler's import scan and analyzer read
+form index-document
+  link file, like text
+  link text, like text
+
+# ---- the host ----
+
+bind host-text-of
+  take host, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <$host.textOf($file)>
+
+bind host-readers-of
+  take host, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <$host.readersOf($file)>
+
+bind host-resolver-of
+  take host, like dynamic
+  take root, like text
+  like dynamic
+  case node
+    text <$host.resolverOf($root)>
+
+# `readers.role ?? ''`
+bind readers-role
+  take readers, like dynamic
+  like text
+  case node
+    text <($readers.role ?? "")>
+
+# `resolve(path, from)?.file`, the empty text for none
+bind resolve-file
+  take resolve, like dynamic
+  take path, like text
+  take origin, like text
+  like text
+  case node
+    text <($resolve($path, $origin)?.file ?? "")>
+
+bind is-defined
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value !== undefined)>
+
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# `items[at]`, undefined past the end
+bind item-at
+  take items, like dynamic
+  take at, like number
+  like dynamic
+  case node
+    text <$items[$at]>
+
+# ---- the text ----
+
+# a package with more files than this is not searched file by file: the question would take longer than the
+# editor waits for it. @term/bind (3,091 files) is the one package in the tree above it
+task workspace-file-cap
+  like number
+
+  back 4000
+
+# a unit of a name: `[A-Za-z0-9-]`
+task is-name-char
+  take unit, like number
+  like boolean
+  mark private
+
+  fork test, or(and(is-minimum(unit, 65), is-maximum(unit, 90)), and(is-minimum(unit, 97), is-maximum(unit, 122)))
+    hold
+      back true
+  back or(and(is-minimum(unit, 48), is-maximum(unit, 57)), is-equal(unit, 45))
+
+# a line terminator as a multiline `^` reads one: `\n`, `\r`, U+2028, U+2029
+task is-line-end
+  take unit, like number
+  like boolean
+  mark private
+
+  back or(or(is-equal(unit, 10), is-equal(unit, 13)), or(is-equal(unit, 8232), is-equal(unit, 8233)))
+
+# `haystack.indexOf(needle, from)` over units: the first place at or after `from` the needle's units stand, or -1
+task units-index
+  take haystack, like list, like number
+  take needle, like list, like number
+  take from, like number
+  like number
+  mark private
+
+  save at, from
+  fork test, is-below(at, 0)
+    hold
+      save at, 0
+  fork test, is-above(at, haystack/length)
+    hold
+      save at, haystack/length
+  save last, subtract(haystack/length, needle/length)
+  walk test
+    hook test, is-maximum(at, last)
+    hook hold
+      save k, 0
+      save same, true
+      walk test
+        hook test, and(same, is-below(k, needle/length))
+        hook hold
+          fork test, is-unequal(get(haystack, add(at, k)), get(needle, k))
+            hold
+              save same, false
+          save k, add(k, 1)
+      fork test, same
+        hold
+          back at
+      save at, add(at, 1)
+  back -1
+
+# a name written as a whole word somewhere in the text: the cheap test that keeps most files from being milled
+task mentions
+  take body, like text
+  take name, like text
+  like boolean
+
+  save units, units-of(body)
+  save wanted, units-of(name)
+  save at, units-index(units, wanted, 0)
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      save before, 32
+      fork test, is-above(at, 0)
+        hold
+          save before, get(units, subtract(at, 1))
+      save after, 32
+      save past, add(at, wanted/length)
+      fork test, is-below(past, units/length)
+        hold
+          save after, get(units, past)
+      fork test, and(is-equal(is-name-char(before), false), is-equal(is-name-char(after), false))
+        hold
+          back true
+      save at, units-index(units, wanted, add(at, 1))
+  back false
+
+# `/^\s*test /m`: `test ` with nothing but white space between it and the start of the text or of a line (server.ts
+# asks the same of a document, language server part 2)
+task has-test-line
+  take body, like text
+  like boolean
+
+  save units, units-of(body)
+  save word, units-of(<test >)
+  save at, units-index(units, word, 0)
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      save back-at, subtract(at, 1)
+      save open, true
+      walk test
+        hook test, and(open, is-minimum(back-at, 0))
+        hook hold
+          save unit, get(units, back-at)
+          fork test, is-line-end(unit)
+            hold
+              save open, false
+            miss
+              fork test, whitespace-code(unit)
+                hold
+                  save back-at, subtract(back-at, 1)
+                miss
+                  save open, false
+      fork test, is-below(back-at, 0)
+        hold
+          back true
+      fork test, is-line-end(get(units, back-at))
+        hold
+          back true
+      save at, units-index(units, word, add(at, 1))
+  back false
+
+# every character of the query appears in the name, in order (the matching an editor's symbol search expects). The
+# query is walked by code point, a surrogate pair as one, and the name searched by unit
+task fuzzy
+  take name, like text
+  take query, like text
+  like boolean
+  mark private
+
+  save name-units, units-of(name)
+  save query-units, units-of(query)
+  save at, 0
+  save q, 0
+  walk test
+    hook test, is-below(q, query-units/length)
+    hook hold
+      save unit, get(query-units, q)
+      save size, 1
+      fork test, and(and(is-minimum(unit, 55296), is-maximum(unit, 56319)), is-below(add(q, 1), query-units/length))
+        hold
+          save low, get(query-units, add(q, 1))
+          fork test, and(is-minimum(low, 56320), is-maximum(low, 57343))
+            hold
+              save size, 2
+      save piece, make list
+      push(piece, unit)
+      fork test, is-equal(size, 2)
+        hold
+          push(piece, get(query-units, add(q, 1)))
+      save at, units-index(name-units, piece, at)
+      fork test, is-below(at, 0)
+        hold
+          back false
+      save at, add(at, 1)
+      save q, add(q, size)
+  back true
+
+# where a name stands in a list of names, or -1
+task name-position
+  take names, like list, like text
+  take name, like text
+  like number
+  mark private
+
+  save at, 0
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back at
+    save at, add(at, 1)
+  back -1
+
+# ---- paths ----
+
+# A file's one spelling: its real path. A file not on disk yet (open in the editor, not saved) takes the real path of
+# its nearest folder that is, and keeps the rest as written, so it is spelled the way its saved neighbors are. It kept
+# its raw path, and on macOS `/var/...` and `/private/var/...` named one folder two ways, so a load from a saved file
+# never found the unsaved one (basics/editor)
+task canonical
+  take file, like text
+  like text
+
+  save real, <>
+  save found, false
+  fork
+    mark unsafe
+    save real, node-fs/realpathSync(file)
+    save found, true
+  halt take
+    take problem
+    save found, false
+  fork test, found
+    hold
+      back real
+  save parent, node-path/dirname(file)
+  fork test, is-equal(parent, file)
+    hold
+      back file
+  back node-path/join(canonical(parent), node-path/basename(file))
+
+task outer-span
+  take map, like mapping
+  take where, like span
+  like span
+
+  fork test, map/identity
+    hold
+      back where
+  save start, outer-position(map, make(lsp-position, bind(line, where/start/line), bind(character, where/start/column)), <start>)
+  save end, outer-position(map, make(lsp-position, bind(line, where/end/line), bind(character, where/end/column)), <end>)
+  back
+    make span
+      bind start, make(position, bind(line, start/line), bind(column, start/character))
+      bind end, make(position, bind(line, end/line), bind(column, end/character))
+
+# ---- the workspace ----
+
+task make-workspace
+  take host, like dynamic
+  like workspace
+
+  back
+    make workspace
+      bind host, host
+      bind lists, make hash
+      bind defs, make hash
+
+# forget what is cached for a package (a file created, deleted or renamed), or for all of them
+task forget
+  take space, like workspace
+  take root, like text, fall <>
+  like void
+
+  fork test, is-unequal(root, <>)
+    hold
+      space/lists/remove(root)
+    miss
+      space/lists/clear()
+
+# forget the file list of every package holding this file, and no other: a file created or deleted in one package
+# used to send every package's next question back to disk
+task forget-file
+  take space, like workspace
+  take file, like text
+  like void
+
+  save roots, make list
+  walk space/lists/keys()
+    take one
+    push(roots, one)
+  walk roots
+    take root
+    save prefix, root
+    fork test, is-equal(ends-with(root, </>), false)
+      hold
+        save prefix, <{root}/>
+    fork test, starts-with(file, prefix)
+      hold
+        space/lists/remove(root)
+  space/defs/remove(file)
+
+# the build's own list, which never enters scratch, caches or installed dependencies (findTreeFiles)
+task files-of
+  take space, like workspace
+  take root, like text
+  like list, like text
+
+  fork test, space/lists/has(root)
+    miss
+      save found, make-module/findTreeFiles(root)
+      save space/lists/{root}, found
+  save kept, space/lists/get(root)
+  fork test, is-above(kept/length, workspace-file-cap())
+    hold
+      back make list
+  back kept
+
+task defs-of
+  take space, like workspace
+  take file, like text
+  take body, like text
+  like list, like module-export
+  mark private
+
+  fork test, space/defs/has(file)
+    hold
+      save kept, space/defs/get(file)
+      fork test, is-equal(kept/text, body)
+        hold
+          back kept/defs
+  save found, scan-defs(body)
+  save space/defs/{file}, make(kept-defs, bind(text, body), bind(defs, found))
+  back found
+
+# the open document's text, else the file's on disk
+task read-text
+  take space, like workspace
+  take file, like text
+  like maybe, like text
+
+  save open, host-text-of(space/host, file)
+  fork test, is-defined(open)
+    hold
+      back make(some, open)
+  save body, <>
+  save found, false
+  fork
+    mark unsafe
+    save body, node-fs/readFileSync(file, <utf8>)
+    save found, true
+  halt take
+    take problem
+    save found, false
+  fork test, found
+    hold
+      back make(some, body)
+  back make none
+
+task no-index
+  like maybe, like file-index
+  mark private
+
+  back make none
+
+# whether a role has its own reader, so a file of it is never rewritten as a test file
+task is-own-reader
+  take role, like text
+  like boolean
+  mark private
+
+  back or(or(is-equal(role, <view>), is-equal(role, <host>)), is-equal(role, <mill>))
+
+# one file milled alone, with its own role and lean flag, indexed with name spans
+task index-file
+  take space, like workspace
+  take file, like text
+  take body, like text
+  like maybe, like file-index
+
+  save readers, host-readers-of(space/host, file)
+  save compiled, body
+  save mapped, identity-mapping()
+  # only a file read as code is rewritten: a view document, a data file and a mill definition have their own reader
+  fork test, and(is-equal(is-own-reader(readers-role(readers)), false), has-test-line(body))
+    hold
+      save rewritten, test-module/preprocessTests(body)
+      save compiled, rewritten/text
+      save mapped, make-mapping(body, compiled, rewritten/origin)
+  save outcome, no-index()
+  fork
+    mark unsafe
+    save milled, source-module/analyze(make(index-document, bind(file, file), bind(text, compiled)), readers)
+    fork test, is-truthy(milled/program)
+      hold
+        save outcome
+          make some
+            make file-index
+              bind file, file
+              bind text, body
+              bind index, build-index(milled/program, compiled)
+              bind map, mapped
+  halt take
+    take problem
+    save outcome, no-index()
+  back outcome
+
+# every top-level definition of every file in the packages, matched against a query
+task find-symbols
+  take space, like workspace
+  take roots, like list, like text
+  take query, like text
+  take limit, like number, fall 500
+  like list, like workspace-symbol
+
+  save out, make list
+  save wanted, to-lower-case(query)
+  walk roots
+    take root
+    walk files-of(space, root)
+      take file
+      save read-answer, read-text(space, file)
+      sift read-answer
+        case some
+          link body
+          walk defs-of(space, file, body)
+            take def
+            fork test, and(is-unequal(wanted, <>), is-equal(fuzzy(to-lower-case(def/name), wanted), false))
+              hold
+                turn next
+            push(out, make(workspace-symbol, bind(name, def/name), bind(kind, def/kind), bind(file, file), bind(line, def/line), bind(column, def/column)))
+            fork test, is-minimum(out/length, limit)
+              hold
+                back out
+        case none
+          save skipped, true
+  back out
+
+# The files that import `name` from `definer`, and where. `finds` are the `find <name>` tokens (a rename edits
+# these), `spans` the name's other occurrences in that file (a rename edits these too, unless the import is aliased
+# with `find x, name y`, when the file's own uses are of `y`).
+task importers-of
+  take space, like workspace
+  take roots, like list, like text
+  take name, like text
+  take definer, like text
+  like list, like importer
+
+  save target, canonical(definer)
+  save out, make list
+  save parsed, load-module/makeParseMemo()
+  save seen, make hash
+  save heads, make list
+  push(heads, <find>)
+  walk roots
+    take root
+    save resolve, host-resolver-of(space/host, root)
+    walk files-of(space, root)
+      take file
+      save real, canonical(file)
+      fork test, or(is-equal(real, target), seen/has(real))
+        hold
+          turn next
+      save seen/{real}, true
+      save read-answer, read-text(space, file)
+      save body, <>
+      sift read-answer
+        case some
+          link given
+          save body, given
+        case none
+          turn next
+      fork test, mentions(body, name)
+        miss
+          turn next
+      save finds, make list
+      save lines, split(body, <\n>)
+      save aliased, false
+      walk load-module/importFindsOf(make(index-document, bind(file, real), bind(text, body)), parsed)
+        take entry
+        save i, name-position(entry/names, name)
+        fork test, is-below(i, 0)
+          hold
+            turn next
+        save resolved, <>
+        fork
+          mark unsafe
+          save resolved, resolve-file(resolve, entry/path, real)
+        halt take
+          take problem
+          save resolved, <>
+        fork test, or(is-equal(resolved, <>), is-unequal(canonical(resolved), target))
+          hold
+            turn next
+        save line, item-at(entry/spans, i)
+        fork test, is-truthy(line)
+          miss
+            turn next
+        save token, find-name(lines, line, name, heads)
+        sift token
+          case some
+            link found-span
+            push(finds, found-span)
+          case none
+            save skipped, true
+        fork test, is-truthy(item-at(entry/aliases, i))
+          hold
+            save aliased, true
+      fork test, is-equal(finds/length, 0)
+        hold
+          turn next
+      save indexed, index-file(space, real, body)
+      save spans, make list
+      sift indexed
+        case some
+          link found-index
+          fork test, found-index/index/definitions/has(name)
+            miss
+              walk occurrences-of(found-index/index, make(named-symbol, bind(name, name)))
+                take one
+                push(spans, outer-span(found-index/map, one))
+        case none
+          save skipped, true
+      # the mill binds an alias's every use to the imported name, so the index already lists them under `name`,
+      # written as the alias (symbol-index.tree reads the `find` lines for where)
+      save own-spans, spans
+      save other-spans, make list
+      fork test, aliased
+        hold
+          save own-spans, make list
+          save other-spans, spans
+      push(out, make(importer, bind(file, real), bind(finds, finds), bind(spans, own-spans), bind(alias-spans, other-spans), bind(aliased, aliased), bind(index, indexed)))
+  back out

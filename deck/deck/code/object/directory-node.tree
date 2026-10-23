@@ -1,0 +1,251 @@
+# A directory as a prolly tree, a content-defined B-tree over its entries: built and stored, read back, and its node
+# closure walked. Ported from deck/deck/code/object/tree.ts (term-cli-in-term-0081): buildDirNode, readDirEntries,
+# dirNodeIds.
+#
+# A directory's entries are sorted, then chunked into leaf nodes where an entry's own id is a boundary (about 1 in
+# avg-fanout), the leaves' references chunked into inner nodes the same way, and so up until one root remains. A
+# boundary depends only on content, so the same entries always make the same nodes, and a change to one entry
+# re-stores only its leaf and the O(log n) nodes above it. A small directory is one leaf (note/term/registry/15, 16).
+#
+# The decisions:
+#   - the store is the host object the caller hands in (deck/deck/code/object/store.ts's ObjectStore until its lane),
+#     reached by its own `put` and `get`, awaited
+#   - a node read back from the store is the host value JSON.parse made, told leaf or inner by its level
+#   - `dir-node-ids` writes into the caller's own set, a host Set, as the original did
+#   - every task takes its parameters positionally, the tree parameters last and always given (the caller's
+#     `default-tree-params()` where the original defaulted them)
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ./object-shape
+  find tree-entry
+  find node-ref
+  find leaf-node
+  find inner-node
+  find tree-params
+  find canonical-json
+  find is-leaf-node
+  find is-node-boundary
+  find node-id
+  find sort-entries
+  find validate-entries
+
+# what a store's `put` takes
+form stored-object
+  link id, like text
+  link bytes, like dynamic
+
+bind utf8-of
+  take value, like dynamic
+  like dynamic
+  case node
+    text <Buffer.from($value, "utf8")>
+
+bind store-put
+  take shelf, like dynamic
+  take item, like stored-object
+  like dynamic
+  case node
+    # no parameter may begin another's name: `$store` was spliced into `$stored` first
+    text <$shelf.put($item)>
+
+bind store-get
+  take store, like dynamic
+  take id, like text
+  like dynamic
+  case node
+    text <$store.get($id)>
+
+bind parsed-node
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <JSON.parse($bytes.toString("utf8"))>
+
+bind leaf-entries
+  take node, like dynamic
+  like list, like tree-entry
+  case node
+    text <$node.entries>
+
+bind inner-refs
+  take node, like dynamic
+  like list, like node-ref
+  case node
+    text <$node.refs>
+
+bind set-has
+  take into, like dynamic
+  take id, like text
+  like boolean
+  case node
+    text <$into.has($id)>
+
+bind set-add
+  take into, like dynamic
+  take id, like text
+  like dynamic
+  case node
+    text <$into.add($id)>
+
+task put-node
+  take node, like dynamic
+  take store, like dynamic
+  like text
+  mark private
+
+  save id, node-id(node)
+  save bytes, utf8-of(canonical-json(node))
+  wait store-put(store, make(stored-object, bind(id, id), bind(bytes, bytes)))
+  back id
+
+# a sorted entry list chunked into leaf nodes, stored; their references in order
+task chunk-entries
+  take entries, like list, like tree-entry
+  take store, like dynamic
+  take params, like tree-params
+  like list, like node-ref
+  mark private
+
+  save refs, make list
+  save current, make list
+
+  walk entries
+    take entry
+    current/push(entry)
+    save at-max, is-minimum(current/length, params/max)
+    save boundary, is-node-boundary(entry/id, params/avg-fanout)
+    fork test, or(at-max, boundary)
+      hold
+        save key, get(current, 0)/name
+        save id, put-node(make(leaf-node, bind(entries, current), bind(level, 0)), store)
+        refs/push(make(node-ref, bind(id, id), bind(key, key)))
+        save current, make list
+
+  fork test, is-above(current/length, 0)
+    hold
+      save key, get(current, 0)/name
+      save id, put-node(make(leaf-node, bind(entries, current), bind(level, 0)), store)
+      refs/push(make(node-ref, bind(id, id), bind(key, key)))
+
+  back refs
+
+# node references chunked into inner nodes one level up, stored; their references in order
+task chunk-refs
+  take refs, like list, like node-ref
+  take level, like number
+  take store, like dynamic
+  take params, like tree-params
+  like list, like node-ref
+  mark private
+
+  save out, make list
+  save current, make list
+
+  walk refs
+    take ref
+    current/push(ref)
+    save at-max, is-minimum(current/length, params/max)
+    save boundary, is-node-boundary(ref/id, params/avg-fanout)
+    fork test, or(at-max, boundary)
+      hold
+        save key, get(current, 0)/key
+        save id, put-node(make(inner-node, bind(level, level), bind(refs, current)), store)
+        out/push(make(node-ref, bind(id, id), bind(key, key)))
+        save current, make list
+
+  fork test, is-above(current/length, 0)
+    hold
+      save key, get(current, 0)/key
+      save id, put-node(make(inner-node, bind(level, level), bind(refs, current)), store)
+      out/push(make(node-ref, bind(id, id), bind(key, key)))
+
+  back out
+
+# a directory's prolly tree built from its entries, every node stored; the root node's id, the directory's tree id
+task build-dir-node
+  take entries, like list, like tree-entry
+  take store, like dynamic
+  take params, like tree-params
+  like text
+
+  save sorted, sort-entries(entries)
+  save problem, validate-entries(sorted)
+  sift problem
+    case some
+      link reason
+      halt <invalid directory entries: {reason}>
+    case none
+      save valid, true
+
+  # an empty directory is one empty leaf
+  fork test, is-equal(sorted/length, 0)
+    hold
+      back put-node(make(leaf-node, bind(entries, make list), bind(level, 0)), store)
+
+  save refs, chunk-entries(sorted, store, params)
+  save level, 1
+
+  walk test
+    hook test, is-above(refs/length, 1)
+    hook hold
+      save refs, chunk-refs(refs, level, store, params)
+      save level, add(level, 1)
+
+  back get(refs, 0)/id
+
+task read-node
+  take store, like dynamic
+  take id, like text
+  like dynamic
+  mark private
+
+  save bytes, wait store-get(store, id)
+  back parsed-node(bytes)
+
+# a directory's whole entry list in order, its prolly tree walked from the root down to the leaves
+task read-dir-entries
+  take node-id, like text
+  take store, like dynamic
+  like list, like tree-entry
+  mark async
+
+  save node, read-node(store, node-id)
+  fork test, is-leaf-node(node)
+    hold
+      back leaf-entries(node)
+
+  save out, make list
+  walk inner-refs(node)
+    take ref
+    walk read-dir-entries(ref/id, store)
+      take entry
+      out/push(entry)
+  back out
+
+# every node id of a directory's prolly tree, inner and leaf, written into `into`, for the object closure; child
+# directories and blobs are the caller's, from the entries
+task dir-node-ids
+  take node-id, like text
+  take store, like dynamic
+  take into, like dynamic
+  like void
+  mark async
+
+  fork test, set-has(into, node-id)
+    hold
+      back
+
+  set-add(into, node-id)
+  save node, read-node(store, node-id)
+
+  fork test, not(is-leaf-node(node))
+    hold
+      walk inner-refs(node)
+        take ref
+        dir-node-ids(ref/id, store, into)

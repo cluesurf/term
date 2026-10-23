@@ -1,0 +1,317 @@
+# Object packing: many small text blobs bundled into solid-compressed, content-addressed packs, so a large package
+# moves as a few hundred pack objects instead of ninety thousand loose ones, and its small source files compress
+# against a shared dictionary (note/term/registry/17). Ported from deck/deck/code/object/pack.ts
+# (term-cli-in-term-0083): DEFAULT_PACK_PARAMS, isPackable, reconstructBlob, buildPacks, openPack, slicePack.
+#
+# A hybrid store: binaries and large text stay LOOSE (their own object, streamable, perfect dedup); only small text is
+# PACKED. Packs are cut by CONTENT (a boundary decided by each blob's id over the sorted file list), so a change to one
+# file re-cuts one local pack and every other pack keeps its hash and is never sent again.
+#
+# A pack on disk is `gzip(u32(toc length) + toc JSON + body)`, the TOC naming each blob's `site` (its offset into the
+# body) and `size`, the body the files' bytes in order. A pack is addressed by its compressed bytes.
+#
+# The decisions:
+#   - DEFAULT_PACK_PARAMS is default-pack-params(), and every task takes its parameters (the caller's default where the
+#     original defaulted them)
+#   - a placement is the original's `{ kind }` record, tagged on kind; build-packs answers the placement as a hash,
+#     which is the host Map the original answered
+#   - a pack boundary is object-shape's node boundary, the original's isPackBoundary being the same mask over the same
+#     id number; the extension is file-treatment's, the same cut
+#   - bytes are host Buffers: the TOC header, gzip at level 9, the TOC's JSON and every slice are the original's own
+#     expressions, in binds
+
+load @term/base/list
+  find list
+
+load ./object-address
+  find hash-object
+
+load ./object-shape
+  find is-node-boundary
+
+load ./file-treatment
+  find extension-of
+
+dock load
+  load <node:zlib>, name node-zlib
+
+form pack-params
+  # the size at or above which a text blob stays loose
+  link loose-threshold, like number
+  link min-pack, like number
+  link max-pack, like number
+  # how often a blob id is a content-defined cut once past `min-pack`
+  link boundary-avg, like number
+
+# where a blob's bytes live: `loose` (its own object) by default
+form placement
+  mark tag, name kind
+  case loose
+  case pack
+    link pack, like text
+    link site, like number
+    link size, like number
+
+# a built pack: its content id, its compressed bytes, and the blob ids it holds
+form sealed-pack
+  link id, like text
+  link bytes, like dynamic
+  link blobs, like list, like text
+
+form packing
+  link packs, like list, like sealed-pack
+  link placement, like hash, like text, like placement
+
+# an opened pack: its decompressed body and the TOC, ready to slice
+form opened-pack
+  link body, like dynamic
+  link toc, like list, like dynamic
+
+form gzip-ask
+  link level, like number
+
+bind strict-utf8-decode
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<new TextDecoder("utf-8", { fatal: true }).decode($bytes)>>
+
+bind pack-byte-length
+  take bytes, like dynamic
+  like number
+  case node
+    text <$bytes.length>
+
+bind pack-store-get
+  take shelf, like dynamic
+  take id, like text
+  like dynamic
+  case node
+    text <$shelf.get($id)>
+
+bind pack-json-of
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <JSON.parse($bytes.toString("utf8"))>
+
+bind pack-blob-chunks
+  take blob, like dynamic
+  like list, like text
+  case node
+    text <$blob.chunks>
+
+bind pack-concat
+  take parts, like list, like dynamic
+  like dynamic
+  case node
+    text <Buffer.concat($parts)>
+
+bind pack-toc-entry
+  take id, like text
+  take site, like number
+  take size, like number
+  like dynamic
+  case node
+    text <<({ id: $id, site: $site, size: $size })>>
+
+# u32(toc length) + toc JSON + body, before compression
+bind pack-raw
+  take toc, like list, like dynamic
+  take body, like list, like dynamic
+  like dynamic
+  case node
+    text <<((json) => { const head = Buffer.alloc(4); head.writeUInt32BE(json.length, 0); return Buffer.concat([head, json, ...$body]) })(Buffer.from(JSON.stringify({ v: 1, toc: $toc }), "utf8"))>>
+
+bind pack-toc-length
+  take raw, like dynamic
+  like number
+  case node
+    text <$raw.readUInt32BE(0)>
+
+bind pack-toc-of
+  take raw, like dynamic
+  take length, like number
+  like list, like dynamic
+  case node
+    text <JSON.parse($raw.subarray(4, 4 + $length).toString("utf8")).toc>
+
+bind pack-slice
+  take bytes, like dynamic
+  take start, like number
+  take stop, like number
+  like dynamic
+  case node
+    text <$bytes.subarray($start, $stop)>
+
+task default-pack-params
+  like pack-params
+
+  back make(pack-params, bind(loose-threshold, 65536), bind(min-pack, 262144), bind(max-pack, 1048576), bind(boundary-avg, 64))
+
+# extensions whose bytes are not text: always loose (already compressed, and must stay streamable), in step with the
+# serving transport's set
+task pack-binary-extensions
+  like list, like text
+  mark private
+
+  back split-words(<png jpg jpeg gif webp ico avif bmp svg woff woff2 ttf otf eot mp3 wav ogg mp4 webm mov pdf wasm zip gz br zst tar>)
+
+bind split-words
+  take value, like text
+  like list, like text
+  case node
+    text <$value.split(" ")>
+
+task is-binary-name
+  take path, like text
+  like boolean
+  mark private
+
+  save extension, extension-of(path)
+  walk pack-binary-extensions()
+    take one
+    fork test, is-equal(one, extension)
+      hold
+        back true
+  back false
+
+# whether a blob is small text, and so packable, by its path, size and bytes
+task is-packable
+  take path, like text
+  take size, like number
+  take bytes, like dynamic
+  take params, like pack-params
+  like boolean
+
+  fork test, is-minimum(size, params/loose-threshold)
+    hold
+      back false
+  fork test, is-binary-name(path)
+    hold
+      back false
+
+  # bytes that are not UTF-8 are binary whatever the extension
+  fork
+    mark unsafe
+    strict-utf8-decode(bytes)
+    back true
+  halt take
+    take malformed
+    back false
+
+# a blob's whole file, its chunks read from the store and joined
+task reconstruct-blob
+  take blob-id, like text
+  take store, like dynamic
+  like dynamic
+
+  # each read saved before it is used: a bind around an awaited call would read the promise
+  save blob-bytes, wait pack-store-get(store, blob-id)
+  save blob, pack-json-of(blob-bytes)
+  save parts, make list
+  walk pack-blob-chunks(blob)
+    take chunk-id
+    save chunk, wait pack-store-get(store, chunk-id)
+    parts/push(chunk)
+  back pack-concat(parts)
+
+# one pack sealed: its TOC lists each blob's offset into the body and length, so the pack describes itself
+task seal-pack
+  take entries, like list, like dynamic
+  like sealed-pack
+  mark private
+
+  save toc, make list
+  save body, make list
+  save blobs, make list
+  save site, 0
+  walk entries
+    take entry
+    save size, pack-byte-length(entry/bytes)
+    toc/push(pack-toc-entry(entry/id, site, size))
+    body/push(entry/bytes)
+    blobs/push(entry/id)
+    save site, add(site, size)
+
+  save bytes, node-zlib/gzip-sync(pack-raw(toc, body), make(gzip-ask, bind(level, 9)))
+  back make(sealed-pack, bind(id, hash-object(<pack>, bytes)), bind(bytes, bytes), bind(blobs, blobs))
+
+task flush-pack
+  take current, like list, like dynamic
+  take packs, like list, like sealed-pack
+  take placement, like hash, like text, like placement
+  like void
+  mark private
+
+  fork test, is-equal(current/length, 0)
+    hold
+      back
+  save sealed, seal-pack(current)
+  packs/push(sealed)
+  save site, 0
+  walk current
+    take entry
+    save size, pack-byte-length(entry/bytes)
+    placement/set(entry/id, make(pack, bind(pack, sealed/id), bind(site, site), bind(size, size)))
+    save site, add(site, size)
+
+# packable blobs grouped into content-defined packs, the blobs sorted by path (directory-major) so similar and
+# co-changing files sit together; the packs built and every blob's placement
+task build-packs
+  take blobs, like list, like dynamic
+  take params, like pack-params
+  like packing
+
+  save packs, make list
+  save placement, make hash
+  save current, make list
+  save current-size, 0
+  # the same content at many paths packs once, in the path order the caller made
+  save seen, make hash
+
+  walk blobs
+    take blob
+    save id, blob/id
+    fork test, seen/has(id)
+      hold
+        turn next
+    seen/set(id, true)
+    save bytes, blob/bytes
+    current/push(blob-entry(id, bytes))
+    save current-size, add(current-size, pack-byte-length(bytes))
+    save at-boundary, and(is-minimum(current-size, params/min-pack), is-node-boundary(id, params/boundary-avg))
+    fork test, or(is-minimum(current-size, params/max-pack), at-boundary)
+      hold
+        flush-pack(current, packs, placement)
+        save current, make list
+        save current-size, 0
+
+  flush-pack(current, packs, placement)
+  back make(packing, bind(packs, packs), bind(placement, placement))
+
+bind blob-entry
+  take id, like text
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<({ id: $id, bytes: $bytes })>>
+
+# a pack's bytes decompressed and read into its body and TOC
+task open-pack
+  take bytes, like dynamic
+  like opened-pack
+
+  save raw, node-zlib/gunzip-sync(bytes)
+  save length, pack-toc-length(raw)
+  save toc, pack-toc-of(raw, length)
+  back make(opened-pack, bind(body, pack-slice(raw, add(4, length), pack-byte-length(raw))), bind(toc, toc))
+
+# one blob's bytes out of an opened pack, by offset and length
+task slice-pack
+  take open, like opened-pack
+  take site, like number
+  take size, like number
+  like dynamic
+
+  back pack-slice(open/body, site, add(site, size))

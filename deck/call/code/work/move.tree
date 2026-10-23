@@ -1,60 +1,29 @@
 load @term/call/work/home
   find root, name project-root
 
-load @term/call/work/tint
-  find log-good
-  find log-fail
-  find log-step
-  find log-warn
-  find fade
-  find name, name tint-name
-  find bold
-  find mark
-  find format-error
+load @term/call/work/small/version-move
+  find call-move
 
-# `term move mark [1|2|3]` -- bump the package version (`code` is the target's old spelling).
+# `term move mark [1|2|3|rc]` -- bump the package version, or start or move a pre-release named by a word (`code`
+# is the target's old spelling).
 #
-# The level names which part moves: 3 the patch, 2 the minor, 1 the major, and 3 when none is given. It is the
-# ONE target the verb takes, so anything else is a mistake worth naming rather than ignoring.
-#
-# Ported from deck/call/code/move.ts (cli-in-term-0004).
+# The hook binds `bump-code`, so the verb is that task. It takes the hook's arguments and hands them to the handler,
+# the small lane's port of deck/call/code/move.ts (work/small/version-move.tree `call-move`), which rewrites the
+# manifest and prints through the output library. It prints nothing of its own, catches nothing and never exits: a
+# throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term, part 2).
 
-load @term/base/path
-  find join
+# line.ts passed `argv.target` and `argv.level`, absent when not named, and callMove names an absent target `that` in
+# its refusal where an empty one names nothing. The hook hands an absent argument over as the empty text, so the
+# empty text is none here
+task given
+  take value, like text
 
-load @term/base/file
-  find write, name write-file
+  like maybe, like text
 
-dock load
-  load <@cluesurf/deck.tree>, name deck-tree
-  load <node:process>, name node-process
-
-form manifest-ask
-  link dir, like text
-
-form bump-ask
-  link code, like unknown
-  link level, like number
-
-form write-ask
-  link manifest, like unknown
-
-# The level a `term move mark <n>` names. Anything but `1` or `2` is the patch, which is what an omitted level
-# means too, so a typo bumps the smallest part rather than failing.
-task parse-level
-  take level, like text
-
-  like number
-
-  fork test
-    is-equal level, <2>
+  fork test, is-equal(value, <>)
     hold
-      back code 2
-  fork test
-    is-equal level, <1>
-    hold
-      back code 1
-  back code 3
+      back make none
+  back make(some, value)
 
 task bump-code
   mark async
@@ -65,34 +34,4 @@ task bump-code
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  # `mark` is the manifest's version field; `code` its old spelling, still taken
-  fork test
-    is-unequal target, <code>
-    hold
-      fork test
-        is-unequal target, <mark>
-        hold
-          log-fail <Unknown move target: {{target}}. Use: term move mark [1|2|3]>
-          node-process/exit code 1
-  save chosen, parse-level level
-  log-step <Bumping version...>
-
-  fork
-    mark unsafe
-    save manifest
-      call deck-tree/loadManifest
-        make manifest-ask, bind dir, read root
-        wait true
-    save old-code, call deck-tree/showCode, read manifest/mark
-    save new-code
-      call deck-tree/bumpCode
-        make bump-ask, bind(code, read manifest/mark), bind level, read chosen
-    save shown, call deck-tree/showCode, read new-code
-    call write-file
-      call join, read(root), text <deck.tree>
-      call deck-tree/writeManifest, make write-ask, bind manifest, read manifest
-    call log-good, text <Version bumped: {{old-code}} -\> {{shown}}>
-  halt take
-    take error
-    log-fail format-error error
-    node-process/exit code 1
+  call-move(root, given(target), given(level))

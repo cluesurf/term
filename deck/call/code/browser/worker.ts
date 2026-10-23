@@ -237,6 +237,7 @@ export async function compileAll(id: number, text: string): Promise<Reply> {
       typescript: result.typescript,
       target,
       readRuntime,
+      wake: result.wake,
     })
 
     // the same warning comes back from every target, so each is kept once

@@ -1,0 +1,447 @@
+# `term view`: check a document and print what it uses.
+#
+# One implementation, called by the command line, the save path and the editor, so the three cannot drift on what a
+# document is allowed to say. Reports by default and writes nothing. `--find` prints the query manifest, which is the
+# `host` dialect, so it pipes into `term mold --json` for a route loader that wants it that way. See
+# note/project/term/view/08-package-and-cli.md.
+#
+# The manifest and the JSON are DATA on stdout, byte for byte: word.surf's guide save gate reads `--find` from stdout
+# (mesh/deck/back/code/tool/guide.ts). What a document uses is a `read` item per document, its uses as fields. A
+# document that does not read is a Problem item per diagnostic, with its `at` and frame, in the human view on stderr.
+#
+# Ported from call/code/view.ts (term-cli-in-term-0056). The view gate (compile/view), the role reader and the output
+# library are docked until their own ports land; a document's forms are host values, `dynamic` here.
+
+dock load
+  load <@term/make/code/compile/view>, name view-gate
+  load <@term/call/code/role-of>, name view-roles
+  load <@term/call/code/output>, name view-output
+  load <node:fs>, name view-fs
+  load <node:path>, name view-path
+
+# ---- the host values Term has no word for ----
+
+bind view-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# a field of a host value by its name, for the names that are words of Term (`bind`, `node`, `hook`, `find`, ...)
+bind view-member
+  take value, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$value[$key]>
+
+bind view-role-of
+  take roles, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <$roles($file)>
+
+# a role given, and not the view role
+bind view-role-other
+  take role, like dynamic
+  like boolean
+  case node
+    text <($role !== null && $role !== "view")>
+
+bind view-names-sorted
+  take fs, like dynamic
+  take dir, like text
+  like list, like text
+  case node
+    text <$fs.readdirSync($dir).sort()>
+
+bind view-is-folder
+  take fs, like dynamic
+  take path, like text
+  like boolean
+  case node
+    text <$fs.statSync($path).isDirectory()>
+
+# a call's arguments: its slots, then the bond of each of its binds
+bind view-call-arguments
+  take called, like dynamic
+  like list, like dynamic
+  case node
+    text <<[...$called.slot, ...$called.bind.map(one => one.bond)]>>
+
+bind view-bonds
+  take use, like dynamic
+  like list, like dynamic
+  case node
+    text <<$use.bind.map(one => one.bond)>>
+
+# every distinct text, sorted as JavaScript sorts
+bind view-distinct-sorted
+  take values, like list, like text
+  like list, like text
+  case node
+    text <[...new Set($values)].sort()>
+
+bind view-field-each
+  take values, like dynamic
+  take key, like text
+  like list, like text
+  case node
+    text <<$values.map(one => one[$key])>>
+
+# the module name a manifest is written for: the document's path without `.tree`
+bind view-module-name
+  take file, like text
+  like text
+  case node
+    text <<$file.replace(/\.tree$/, "")>>
+
+# a manifest without its own trailing newlines
+bind view-trim-newlines
+  take text, like text
+  like text
+  case node
+    text <$text.replace(new RegExp(String.fromCharCode(10) + "+$"), "")>
+
+# what a document uses, in the original's key order: file, view, call, find, tree, load, node, deep, manifest
+bind view-look
+  take file, like text
+  take views, like list, like text
+  take calls, like list, like text
+  take finds, like list, like text
+  take trees, like number
+  take loads, like list, like text
+  take nodes, like number
+  take deep, like number
+  take manifest, like text
+  like dynamic
+  case node
+    text <<({ file: $file, view: $views, call: $calls, find: $finds, tree: $trees, load: $loads, node: $nodes, deep: $deep, manifest: $manifest })>>
+
+# every look as JSON, the manifest left out
+bind view-json
+  take looks, like list, like dynamic
+  like text
+  case node
+    text <<JSON.stringify($looks.map(({ manifest, ...rest }) => rest), null, 2)>>
+
+# ---- what is said ----
+
+form view-open
+  link verb, like text
+  link root, like dynamic
+  link facts, like list, like text
+
+form view-problem
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+
+form view-warning
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+
+form view-read
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form view-close
+  link verdict, like text
+
+form view-next-close
+  link verdict, like text
+  link next, like text
+
+form view-usage-close
+  link verdict, like text
+  link failure, like text
+
+form view-counted-close
+  link verdict, like text
+  link counts, like list, like dynamic
+
+form view-source
+  link file, like text
+  link text, like text
+
+form view-problem-entry
+  link diagnostic, like dynamic
+  link text, like text
+
+# an empty list of host values, typed so, which a bare make list local is not until something is pushed
+task view-no-items
+  like list, like dynamic
+  mark private
+
+  back make list
+
+# ---- the walk ----
+
+# every `.tree` under a folder, names sorted, skipping node_modules, host and dot folders
+task walk-documents
+  take dir, like text
+  take into, like list, like text
+  like list, like text
+  mark private
+
+  walk view-names-sorted(view-fs, dir)
+    take name
+    fork test, or(or(is-equal(name, <node_modules>), is-equal(name, <host>)), name/starts-with(<.>))
+      hold
+        turn next
+    save path, view-path/join(dir, name)
+    fork test, view-is-folder(view-fs, path)
+      hold
+        walk-documents(path, into)
+      miss
+        fork test, path/ends-with(<.tree>)
+          hold
+            into/push(path)
+  back into
+
+# ---- what a document uses ----
+
+# the operators a value calls, and the ones its arguments call
+task seed-calls
+  take one, like dynamic
+  take calls, like list, like text
+  like void
+  mark private
+
+  fork test, is-unequal(view-member(one, <form>), <call>)
+    hold
+      back
+  save called, one/value
+  fork test, not(view-truthy(called/made))
+    hold
+      calls/push(called/name)
+  walk view-call-arguments(called)
+    take argument, like dynamic
+    seed-calls(argument, calls)
+
+# the views placed, the operators called, and the depth of every node, in the original's order
+task count-nodes
+  take nodes, like dynamic
+  take depth, like number
+  take views, like list, like text
+  take calls, like list, like text
+  take depths, like list, like number
+  take seen, like list, like number
+  like void
+  mark private
+
+  depths/push(depth)
+  walk nodes
+    take one, like dynamic
+    seen/push(1)
+    save shape, view-member(one, <form>)
+    save value, one/value
+    fork test, is-equal(shape, <view>)
+      hold
+        views/push(value/name)
+        walk view-bonds(value)
+          take bond, like dynamic
+          seed-calls(bond, calls)
+        count-nodes(view-member(value, <node>), add(depth, 1), views, calls, depths, seen)
+    fork test, is-equal(shape, <walk>)
+      hold
+        seed-calls(view-member(value, <road>), calls)
+        walk view-member(value, <next>)
+          take next-one, like dynamic
+          count-nodes(view-member(next-one, <node>), add(depth, 1), views, calls, depths, seen)
+    fork test, is-equal(shape, <fork>)
+      hold
+        walk view-member(value, <hook>)
+          take arm, like dynamic
+          fork test, is-equal(view-member(arm, <form>), <test>)
+            hold
+              seed-calls(view-member(arm, <seed>), calls)
+            miss
+              count-nodes(view-member(arm, <node>), add(depth, 1), views, calls, depths, seen)
+
+# built from the FORMS, never by reading the manifest back with a pattern, which is a second reader of one grammar
+task look-at
+  take file, like text
+  take document, like dynamic
+  like dynamic
+  mark private
+
+  save views, make list
+  save calls, make list
+  save depths, make list
+  save seen, make list
+  save defs, view-member(document, <view>)
+  walk defs
+    take def, like dynamic
+    count-nodes(view-member(def, <node>), 1, views, calls, depths, seen)
+  save deep, 0
+  walk depths
+    take one, like number
+    fork test, is-above(one, deep)
+      hold
+        save deep, one
+  save finds, view-field-each(view-member(document, <find>), <task>)
+  save loads, view-field-each(view-member(document, <load>), <path>)
+  save manifest, view-gate/viewManifest(document, view-module-name(file))
+  back view-look(file, view-distinct-sorted(views), view-distinct-sorted(calls), finds, defs/length, loads, seen/length, deep, manifest)
+
+# what one document uses, as fields: the views it places, the queries it finds, the operators it calls and the
+# modules it loads (each left out when it has none), then how many nodes it has and how deep they go
+task uses-of
+  take one, like dynamic
+  like list, like dynamic
+  mark private
+
+  save fields, view-no-items()
+  save keys, make list
+  keys/push(<view>)
+  keys/push(<find>)
+  keys/push(<call>)
+  keys/push(<load>)
+  walk keys
+    take key, like text
+    save values, view-member(one, key)
+    fork test, is-above(values/length, 0)
+      hold
+        fields/push(view-output/field(key, values/join(<, >)))
+  fields/push(view-output/field(<node>, <{view-member(one, <node>)}>))
+  fields/push(view-output/field(<deep>, <{view-member(one, <deep>)}>))
+  back fields
+
+task document-plural
+  take amount, like number
+  like text
+  mark private
+
+  fork test, is-equal(amount, 1)
+    hold
+      back <document>
+  back <documents>
+
+task call-view
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  save asked, input/path
+  # `resolve`, not `join`: join APPENDS an absolute path to the root, so an absolute temp file was looked for under
+  # the project and reported as no such path
+  save target, root
+  fork test, view-truthy(asked)
+    hold
+      save target, view-path/resolve(root, asked)
+  save facts, make list
+  fork test, view-truthy(asked)
+    hold
+      facts/push(asked)
+  fork test, view-truthy(view-member(input, <find>))
+    hold
+      facts/push(<--find>)
+  view-output/openRun(make(view-open, bind(verb, <view>), bind(root, root), bind(facts, facts)))
+
+  fork test, not(view-fs/existsSync(target))
+    hold
+      save shown, <.>
+      fork test, view-truthy(asked)
+        hold
+          save shown, asked
+      view-output/report(make(view-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <read>), bind(subject, <There is no path {shown}>)))
+      # a path that is not there is the caller's mistake, exit 2 as it always was
+      view-output/closeRun(make(view-usage-close, bind(verdict, <Nothing to check>), bind(failure, <usage>)))
+      back
+
+  # With no path, the documents are the files `role.tree` gives the `view` role, the same ones `term make` builds as
+  # documents. A path given is checked as written: that is the caller saying what is a document
+  save role-of, view-roles/projectRoleOf(root)
+  save files, make list
+  fork test, not(view-truthy(asked))
+    hold
+      walk walk-documents(target, make list)
+        take file
+        fork test, is-equal(view-role-of(role-of, file), <view>)
+          hold
+            files/push(file)
+    miss
+      fork test, view-is-folder(view-fs, target)
+        hold
+          save files, walk-documents(target, make list)
+        miss
+          files/push(target)
+
+  # a named file `role.tree` gives another role is still checked as a document, as asked, and the build reads it as
+  # that role: said here, or the two disagree about the same file in silence
+  fork test, view-truthy(asked)
+    hold
+      walk files
+        take file
+        save role, view-role-of(role-of, file)
+        fork test, view-role-other(role)
+          hold
+            save shown, view-path/relative(root, file)
+            fork test, is-equal(shown, <>)
+              hold
+                save shown, file
+            view-output/report(make(view-warning, bind(glyph, <warning>), bind(verb, <check>), bind(subject, <role.tree gives {shown} the {role} role, so term make builds it as {role}>)))
+
+  fork test, is-equal(files/length, 0)
+    hold
+      fork test, view-truthy(asked)
+        hold
+          view-output/closeRun(make(view-close, bind(verdict, <No .tree file here>)))
+        miss
+          view-output/closeRun(make(view-next-close, bind(verdict, <No document here>), bind(next, <give the documents the view role in role.tree, or name their folder: term view page>)))
+      back
+
+  save looks, view-no-items()
+  save problems, make list
+  save failed, 0
+  walk files
+    take file
+    save text, view-fs/readFileSync(file, <utf8>)
+    save name, view-path/relative(root, file)
+    fork test, is-equal(name, <>)
+      hold
+        save name, file
+    # the one gate: the same call the compiler and a save path make, so the three cannot drift
+    save checked, view-gate/checkView(make(view-source, bind(file, file), bind(text, text)))
+    fork test, not(view-truthy(checked/ok))
+      hold
+        save failed, add(failed, 1)
+        walk checked/diagnostics
+          take diagnostic, like dynamic
+          problems/push(make(view-problem-entry, bind(diagnostic, diagnostic), bind(text, text)))
+        turn next
+    looks/push(look-at(name, view-member(checked, <file>)))
+
+  view-output/reportProblems(problems, root)
+
+  fork test, view-truthy(view-member(input, <find>))
+    hold
+      # each manifest ends in its own newline, and one more after it was the two blank lines at the end
+      save printed, make list
+      walk looks
+        take one, like dynamic
+        printed/push(<{view-trim-newlines(view-member(one, <manifest>))}\n>)
+      view-output/printData(printed/join(<>))
+    miss
+      fork test, is-equal(view-member(input, <back>), <json>)
+        hold
+          view-output/printData(<{view-json(looks)}\n>)
+        miss
+          # what each document uses is an item of the run, its uses as fields at the body column
+          walk looks
+            take one, like dynamic
+            view-output/report(make(view-read, bind(glyph, <done>), bind(verb, <read>), bind(subject, view-member(one, <file>)), bind(fields, uses-of(one))))
+
+  save verdict, <{looks/length} {document-plural(looks/length)} read>
+  fork test, is-above(failed, 0)
+    hold
+      save verdict, <{failed} {document-plural(failed)} did not read>
+  save counts, view-no-items()
+  counts/push(view-output/count(files/length, <files>, <file>))
+  view-output/closeRun(make(view-counted-close, bind(verdict, verdict), bind(counts, counts)))

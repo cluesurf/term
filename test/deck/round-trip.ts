@@ -33,8 +33,10 @@ const TERM = join(HERE, '../..')
 // took `cite`, `line`, `make`, `mark` and `text`, which no manifest still in the tree uses. Then 7 the same day
 // again: the version became `mark` (where it had been `code`) and `bear ./code`, the old spelling of the default
 // code root, left every manifest (note/project/term/manifest/manifest-mark-and-code-root.md, `pnpm term:manifest-mark`). Then 8
-// on 2026-10-05, when the benchmark suite moved into deck/mark and brought its `line ./code/line`.
-const CHECKED = 8
+// on 2026-10-05, when the benchmark suite moved into deck/mark and brought its `line ./code/line`. Then 10: deck/bind's
+// manifest declares `mind`, and the site test app's (deck/site/test/site/deck.tree, 2026-10-22) its `boot`, the field
+// this test exists for, both surviving the trip.
+const CHECKED = 10
 
 let pass = 0
 let fail = 0

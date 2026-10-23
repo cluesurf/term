@@ -57,6 +57,16 @@ task has-text
         back true
   back false
 
+# a member of a `dock load` module named with no `-` is the host's own spelling, emitted as written (`HUNT_FUZZ_CHILD`,
+# `snake_case`): the kebab conversion dropped its underscores, and the read was undefined at run time
+# (term-compiler-0033). A kebab member (`read-file`) is still converted by each backend
+task host-spelled
+  take name, like text
+  like boolean
+
+  save parts, split(name, <->)
+  back is-equal(parts/length, 1)
+
 task add-name
   take found, like list, like text
   take name, like text

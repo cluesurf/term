@@ -1,0 +1,273 @@
+# A package's name in the registry and in `.tree` code, its scope, and the registry a name routes to. Ported from
+# deck/deck/code/name.ts (term-cli-in-term-0080): toRegistryName, toTreeName, isScoped, TERM_REGISTRY,
+# DEFAULT_SCOPE_REGISTRIES, DEFAULT_OCI_HOST, normalizeRegistry, resolveRegistry, parseScope, scopeName, rootScope.
+#
+# .tree code references packages without the `.tree` suffix, but in the registry they are published with it:
+# `@term/deck` in .tree code is `@term/deck.tree` in the registry.
+#
+# The custom registry at `tool.base.surf`, with its object store at `land.base.surf`, was never deployed and is
+# retired: `@term` publishes to and installs from an OCI registry (note/project/term/registry/18-oci-registry-default.md).
+#
+# The decisions:
+#   - the three constants are the tasks `show-term-registry`, `show-default-oci-host` (a top-level `host` is not
+#     exported) and `default-scope-registries`, which answers a fresh hash each time (the original's one shared object,
+#     which every reader copied)
+#   - `resolve-registry` takes the scope routes as a hash, empty for none, and a route to the empty text counts as no
+#     route, as the original's truthiness read it
+#   - the patterns, trims and slices are host binds, each the original's own expression, so they cut UTF-16 units and
+#     trim JavaScript's whitespace as it did
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+form scope-parts
+  link scope, like text
+  link base, like text
+
+# Where the `@term` packages are published: an OCI registry, with each package a repository under the namespace
+# (`@term/bind` is `ghcr.io/cluesurf/term/bind`) and the scope's key set at the namespace itself
+# (`ghcr.io/cluesurf/term:keys`)
+host term-registry, <oci://ghcr.io/cluesurf/term>
+
+# The OCI host a scope no project names comes from. `@alice/x` is `ghcr.io/alice/x`, which only the GitHub account
+# `alice` can push to: the registry's own ownership is the claim on the name, and nothing has to store a mapping from
+# scopes to registries
+host default-oci-host, <ghcr.io>
+
+# the two constants for another module: a top-level `host` is the module's own
+task show-term-registry
+  like text
+
+  back term-registry
+
+task show-default-oci-host
+  like text
+
+  back default-oci-host
+
+bind naming-ends-with-tree
+  take name, like text
+  like boolean
+  case node
+    text <$name.endsWith(".tree")>
+
+bind naming-without-tree
+  take name, like text
+  like text
+  case node
+    text <$name.slice(0, -5)>
+
+bind naming-starts-with-at
+  take name, like text
+  like boolean
+  case node
+    text <$name.startsWith("@")>
+
+bind naming-trim
+  take value, like text
+  like text
+  case node
+    text <$value.trim()>
+
+bind naming-has-scheme
+  take value, like text
+  like boolean
+  case node
+    text <</^(oci|https?):\/\//.test($value)>>
+
+bind naming-without-slashes
+  take value, like text
+  like text
+  case node
+    text <<$value.replace(/^\/+/, "")>>
+
+bind naming-without-at
+  take value, like text
+  like text
+  case node
+    text <$value.replace(/^@/, "")>
+
+bind naming-parts
+  take name, like text
+  like list, like text
+  case node
+    text <$name.split("/")>
+
+bind naming-join-slice
+  take parts, like list, like text
+  take start, like number
+  take end, like number
+  like text
+  case node
+    text <$parts.slice($start, $end).join("/")>
+
+bind naming-index-of-slash
+  take value, like text
+  like number
+  case node
+    text <$value.indexOf("/")>
+
+bind naming-slice
+  take value, like text
+  take start, like number
+  take end, like number
+  like text
+  case node
+    text <$value.slice($start, $end)>
+
+bind naming-from
+  take value, like text
+  take start, like number
+  like text
+  case node
+    text <$value.slice($start)>
+
+# the default scope to registry map. Any scope not listed falls back to the config's `registry` field (npmjs.org
+# unless overridden), which is what keeps a mixed dependency tree working. A value is an npm-style https registry or an
+# `oci://<host>/<namespace>` one
+task default-scope-registries
+  like hash, like text, like text
+
+  save routes, make hash
+  routes/set(<@term>, term-registry)
+  back routes
+
+task to-registry-name
+  take name, like text
+  like text
+
+  fork test, naming-ends-with-tree(name)
+    hold
+      back name
+
+  back <{name}.tree>
+
+task to-tree-name
+  take name, like text
+  like text
+
+  fork test, naming-ends-with-tree(name)
+    hold
+      back naming-without-tree(name)
+
+  back name
+
+task is-scoped
+  take name, like text
+  like boolean
+
+  back naming-starts-with-at(name)
+
+# A registry as a `base` line or a scope map writes it. A bare `host/path` is an OCI registry, so
+# `<ghcr.io/alice-gh/term>` is `oci://ghcr.io/alice-gh/term`. `oci://` and `https://` pass through unchanged
+task normalize-registry
+  take value, like text
+  like text
+
+  save trimmed, naming-trim(value)
+
+  fork test, naming-has-scheme(trimmed)
+    hold
+      back trimmed
+
+  back <oci://{naming-without-slashes(trimmed)}>
+
+# a route of the scope map, the empty text when there is none
+task route-of
+  take routes, like hash, like text, like text
+  take scope, like text
+  like text
+  mark private
+
+  fork test, routes/has(scope)
+    hold
+      back routes/get(scope)
+
+  back <>
+
+# Pick the registry for a given package name. A scoped package (`@scope/name`) uses `scope-registries[@scope]` when
+# present, then its root space's entry, then `oci://ghcr.io/<root space>`. An unscoped package uses the fallback
+# `registry` (npmjs.org), which is what keeps a plain npm dependency working
+task resolve-registry
+  take name, like text
+  take registry, like text
+  take scope-registries, like hash, like text, like text
+  like text
+
+  save parsed, parse-scope(name)
+  save scope, parsed/scope
+
+  fork test, not(is-equal(scope, <>))
+    hold
+      save routed, route-of(scope-registries, scope)
+      fork test, not(is-equal(routed, <>))
+        hold
+          back normalize-registry(routed)
+
+  # a nested scope routes by its root space when the full path is not listed
+  save root, root-scope(scope)
+
+  fork test, and(not(is-equal(root, <>)), not(is-equal(root, scope)))
+    hold
+      save routed, route-of(scope-registries, root)
+      fork test, not(is-equal(routed, <>))
+        hold
+          back normalize-registry(routed)
+
+  fork test, not(is-equal(root, <>))
+    hold
+      back <oci://{default-oci-host}/{naming-from(root, 1)}>
+
+  back registry
+
+# The scope is the SPACE PATH, which nests: `@cluesurf/@wordsurf/@alice/x` is the repository `x` in the space
+# `@cluesurf/@wordsurf/@alice`. Every leading `@` segment belongs to the scope and the first bare segment starts the
+# base, so the two-layer `@scope/name` is the depth-one case. The scope is what routes to a registry
+# (`resolve-registry`), and it routes by its FIRST segment, the root space, so `@cluesurf/@wordsurf/...` goes where
+# `@cluesurf` goes
+task parse-scope
+  take name, like text
+  like scope-parts
+
+  fork test, not(naming-starts-with-at(name))
+    hold
+      back make(scope-parts, bind(scope, <>), bind(base, name))
+
+  save parts, naming-parts(name)
+  save at, 0
+
+  walk test
+    hook test, and(is-below(at, parts/length), naming-starts-with-at(parts/{at}))
+    hook hold
+      save at, add(at, 1)
+
+  back make(scope-parts, bind(scope, naming-join-slice(parts, 0, at)), bind(base, naming-join-slice(parts, at, parts/length)))
+
+# A scope as a `base` line names it, `alice` or `@alice`, always written back with its `@`
+task scope-name
+  take word, like text
+  like text
+
+  save bare, naming-without-at(naming-trim(word))
+
+  fork test, is-equal(bare, <>)
+    hold
+      back <>
+
+  back <@{bare}>
+
+# The root space of a scope, the segment a registry is chosen by: `@cluesurf` of `@cluesurf/@wordsurf`
+task root-scope
+  take scope, like text
+  like text
+
+  save slash, naming-index-of-slash(scope)
+
+  fork test, is-equal(slash, -1)
+    hold
+      back scope
+
+  back naming-slice(scope, 0, slash)

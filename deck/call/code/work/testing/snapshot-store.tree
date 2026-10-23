@@ -1,0 +1,152 @@
+# A test file's snapshots (decisions-2026-10.md, D11): `<test>.snapshot.tree` beside it, a Term data file holding a
+# hash from each test's phrase to the list of the texts its `want snapshot`s hold, in order:
+#
+#   list <renders a page>
+#     <\<h1\>Hello\</h1\>>, <second>
+#
+# Read and written through the data reader and writer every data file goes through (compile/host.ts, docked), so
+# `term form`, `term mold` and `term look` read it as they read any other. `term test --update` writes it; a run
+# without the flag only reads it.
+#
+# Ported from deck/call/code/test-snapshot.ts (term-cli-in-term-0018). The store's name and what a run writes back
+# were Term already (call/code/snapshot-keep.tree): a caller asks `is-snapshot-file` and `snapshot-file-of` there.
+
+load @term/base/list
+  find list
+
+load @term/call/snapshot-keep
+  find snapshot-file-of
+  find kept-snapshots
+
+dock load
+  load <node:fs>, name node-file
+  load <@term/make/code/compile/host>, name host-data
+
+# a test file's stored snapshots by phrase, or why its store could not be read
+form snapshot-read
+  case snapshots
+    link stored, like hash, like text, like list, like text
+  case unreadable
+    link problem, like text
+
+# ---- the host values Term has no word for ----
+
+# `{ kind: "hash", list }`: the data reader's hash
+bind data-hash
+  take list, like dynamic
+  like dynamic
+  case node
+    text <(\{ kind: "hash", list: $list \})>
+
+# `{ name, base: { kind: "list", list } }`: one entry of a hash, its value a list
+bind data-entry
+  take name, like text
+  take list, like dynamic
+  like dynamic
+  case node
+    text <(\{ name: $name, base: \{ kind: "list", list: $list \} \})>
+
+# `{ kind: "text", value }`
+bind data-text
+  take value, like text
+  like dynamic
+  case node
+    text <(\{ kind: "text", value: $value \})>
+
+# `read.diagnostics[0]?.message ?? "it did not parse"`
+bind first-message
+  take read, like dynamic
+  like text
+  case node
+    text <($read.diagnostics[0]?.message ?? "it did not parse")>
+
+# `{ file, text }`: what the data reader is handed
+bind data-source
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+# `a === b` over host values
+bind is-same
+  take a, like dynamic
+  take b, like dynamic
+  like boolean
+  case node
+    text <($a === $b)>
+
+# ---- the store ----
+
+# a test file's stored snapshots by phrase, empty when it has none, or why the store could not be read
+task read-snapshots
+  take test-file, like text
+  like snapshot-read
+
+  save file, snapshot-file-of(test-file)
+  save stored, make hash
+  fork test, not(node-file/exists-sync(file))
+    hold
+      back make(snapshots, bind(stored, stored))
+  save read, host-data/read-data-text(data-source(file, node-file/read-file-sync(file, <utf8>)))
+  fork test, not(is-same(read/ok, true))
+    hold
+      back make(unreadable, bind(problem, <{file} is not a data file: {first-message(read)}>))
+  save root, read/data/root
+  fork test, not(is-same(root/kind, <hash>))
+    hold
+      back make(unreadable, bind(problem, <{file} holds a {back-text(root/kind)}, where a hash from each test's phrase to its snapshots goes>))
+  walk root/list
+    take entry, like dynamic
+    save items, make list
+    fork test, is-same(entry/base/kind, <list>)
+      hold
+        save items, entry/base/list
+      miss
+        push(items, entry/base)
+    save texts, make list
+    walk items
+      take one, like dynamic
+      fork test, not(is-same(one/kind, <text>))
+        hold
+          back make(unreadable, bind(problem, <{file}: the snapshots of "{back-text(entry/name)}" are not all text>))
+      push(texts, back-text(one/value))
+    save stored/{back-text(entry/name)}, texts
+  back make(snapshots, bind(stored, stored))
+
+# a host value read as text, as a template literal reads it
+task back-text
+  take value, like dynamic
+  like text
+  mark private
+
+  back value
+
+# Write a test file's snapshots: those taken this run replace the test's stored ones whole, a test that took none
+# keeps what it had, and a phrase the file no longer holds is dropped. Nothing is written when there is nothing to
+# keep. Answers how many snapshot texts were written.
+task write-snapshots
+  take test-file, like text
+  take stored, like hash, like text, like list, like text
+  take taken, like hash, like text, like list, like text
+  # every test phrase the file holds now, in source order
+  take phrases, like list, like text
+  like number
+
+  save kept, kept-snapshots(phrases, taken, stored)
+  save file, snapshot-file-of(test-file)
+  fork test, is-equal(kept/length, 0)
+    hold
+      back 0
+  save entries, make list
+  save written, 0
+  walk kept
+    take one
+    save texts, make list
+    walk one/texts
+      take value
+      push(texts, data-text(value))
+    push(entries, data-entry(one/phrase, texts))
+    save written, add(written, one/texts/length)
+  node-file/write-file-sync(file, host-data/write-long(data-hash(entries)))
+  back written

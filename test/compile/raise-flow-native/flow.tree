@@ -46,25 +46,37 @@ task again
       bind thing, text <again>
 
 # a closure's sites are named by the task it is written in
+task apply
+  take body
+    like task
+      take k, like text
+      like text
+  take key, like text
+  like text
+  save got
+    call body
+      read key
+  send back, read got
+
 task through
   take key, like text
   like text
-  save each
-    task inner
-      take k, like text
-      like text
-      fork
-        mark unsafe
-        send back
-          call deep-c
-            read k
-      halt take
-        take problem
-        send back
-          call inspect
-            read problem
   send back
-    call each
+    call apply
+      task inner
+        take k, like text
+        like text
+        fork
+          mark unsafe
+          send back
+            call deep-c
+              read k
+        halt take
+          take problem
+          send back
+            call inspect
+              read problem
+        send back, text <none>
       read key
 
 # a recursion 100 deep: the flow keeps the innermost 64 frames

@@ -1,0 +1,58 @@
+# The package manager's configs and a registry's answer as Term holds them: the rest of deck/deck/code/form.ts
+# (term-cli-in-term-0078). form.ts holds types alone, and every other type in it already has its form:
+#
+#   Code, CodeHold (MarkBand, MarkWild, MarkTest)           version.tree        code, code-hold
+#   DeckManifest, DeckLink, DeckMind, DeckHostGroup,
+#   DeckBase, DeckNeed                                       manifest-shape.tree
+#   RoleRule, RoleConfig                                     role-shape.tree     role-rule, role-config (role-take)
+#   Lockfile, LockEntry, LockNeed                            lockfile-shape.tree
+#   ResolvedDeck, ResolutionMap                              resolution.tree     resolved-deck, resolution
+#
+# The decisions:
+#   - an optional field is a plain `need false` field (stdlib-parity decision 001), absent on TypeScript when left out
+#   - a field name emits camelCase (self-host traps T022), so a registry's `dist-tags` key is not this form's field
+#     name on TypeScript: `registry-package-meta` is the shape a port fills from the JSON, never the JSON itself
+
+load @term/base/hash
+  find hash
+
+form fetch-config
+  # the fallback registry, for any package whose scope has no route of its own
+  link registry, like text
+  # per-scope routes, keyed by the scope with its `@`: an npm-style https registry or an `oci://<host>/<namespace>`
+  link scope-registries
+    like hash, like text
+      like text
+    need false
+  link concurrency, like number
+  link offline, like boolean
+
+form store-config
+  link root, like text
+
+form install-config
+  link root, like text
+  link store, like store-config
+  link fetch, like fetch-config
+  link clean, like boolean
+
+form registry-dist
+  link shasum, like text
+  link tarball, like text
+  link integrity, like text
+
+form registry-version
+  link dist, like registry-dist
+  link dependencies
+    like hash, like text
+      like text
+    need false
+
+form registry-package-meta
+  link name, like text
+  link versions
+    like hash, like text
+      like registry-version
+  link dist-tags
+    like hash, like text
+      like text

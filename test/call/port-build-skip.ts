@@ -221,7 +221,9 @@ try {
   const cold = run()
   ok('cold: every module compiles to the port already there', cold.built === 0 && cold.failed === 0 && cold.skipped.size === 0, cold.out.slice(-400))
 
-  const total = cold.unchanged
+  // every module, so a cold run that had to build some (a port left stale in the tree) fails only the line above,
+  // not the steady and stdlib counts after it (term-cli-in-term-0149)
+  const total = cold.unchanged + Math.max(cold.built, 0)
   const started = Date.now()
   const steady = run()
   const seconds = (Date.now() - started) / 1000

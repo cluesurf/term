@@ -46,6 +46,7 @@ load ../compile/node
   find statement
   find statement-span
   find type
+  find binary-op
 
 load ./certificate
   find linear

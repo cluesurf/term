@@ -1,0 +1,135 @@
+# The paths the cask bridge generator reads: a file as the build resolves it (its real path), the `load` path a program
+# writes for it, and the parts of a native module's path. Part 1 of the port of deck/call/code/cask-generate.ts
+# (cli-in-term-0029).
+#
+# The original read the last two with regular expressions. They are read here by path segment, which is the same
+# answer: a path is split on `/`, and every part of either expression is a whole segment or the file name's
+# `.tree` ending.
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find split
+  find ends-with
+  find substring
+  find char-count
+
+dock load
+  load <node:fs>, name node-fs
+
+# the parts of `<...>/deck/<package>/code[/<under>]/native[/node]/<name>.tree`. `code-dir` is everything before
+# `/native`, the folders under the code root included, `under` is the empty text when the module sits right in the
+# code root, and `matched` is false for a path of any other shape
+form bridge-native-path
+  link matched, like boolean
+  link code-dir, like text
+  link package, like text
+  link under, like text
+  link name, like text
+
+# a file's real path when it exists, else the path as given
+task real-of
+  take file, like text
+  like text
+
+  fork test, node-fs/existsSync(file)
+    hold
+      back node-fs/realpathSync(file)
+  back file
+
+# the `load` path a program writes for a file: `<...>/deck/<package>/code/<rest>.tree` is `@term/<package>/<rest>`, the
+# short form, since a package path resolves inside the package's code root first. The FIRST `/deck/<package>/code/`
+# along the real path, as the original's unanchored expression found it. The empty text when the path has no such part
+task import-path-of
+  take file, like text
+  like text
+
+  save segments, split(real-of(file), </>)
+  save size, segments/length
+  save at, 1
+  walk test
+    hook test, is-below(add(at, 2), size)
+    hook hold
+      save tail, segments/slice(add(at, 3), size)
+      save rest, tail/join(</>)
+      fork test
+        and
+          and(is-equal(segments/get(at), <deck>), is-equal(segments/get(add(at, 2)), <code>))
+          and
+            is-unequal(segments/get(add(at, 1)), <>)
+            and(ends-with(rest, <.tree>), is-above(char-count(rest), 5))
+        hold
+          save package, segments/get(add(at, 1))
+          save inner, substring(rest, 0, subtract(char-count(rest), 5))
+          back <@term/{package}/{inner}>
+      save at, add(at, 1)
+  back <>
+
+# the parts of a native module's path, as the original's `native` expression read them: the LAST
+# `/deck/<package>/code` before the `native` folder, then whatever folders lie between (`under`), then
+# `native/node/<name>.tree` or `native/<name>.tree`
+task native-path-of
+  take path, like text
+  like bridge-native-path
+
+  save missed
+    make bridge-native-path
+      bind matched, false
+      bind code-dir, <>
+      bind package, <>
+      bind under, <>
+      bind name, <>
+  save segments, split(path, </>)
+  save size, segments/length
+  fork test, is-below(size, 3)
+    hold
+      back missed
+  save last, segments/get(subtract(size, 1))
+  fork test, not(and(ends-with(last, <.tree>), is-above(char-count(last), 5)))
+    hold
+      back missed
+  save name, substring(last, 0, subtract(char-count(last), 5))
+  # where `native` stands: `native/node/<name>.tree` when the folder above the file is `node` under `native`,
+  # `native/<name>.tree` when it is `native`
+  save native-at, -1
+  fork test
+    and
+      is-above(size, 3)
+      and(is-equal(segments/get(subtract(size, 3)), <native>), is-equal(segments/get(subtract(size, 2)), <node>))
+    hold
+      save native-at, subtract(size, 3)
+    miss
+      fork test, is-equal(segments/get(subtract(size, 2)), <native>)
+        hold
+          save native-at, subtract(size, 2)
+  fork test, is-below(native-at, 0)
+    hold
+      back missed
+  # the last `deck/<package>/code` whose `code` stands before `native`, with a `/` before `deck`
+  save at, subtract(native-at, 3)
+  walk test
+    hook test, is-minimum(at, 1)
+    hook hold
+      fork test
+        and
+          and(is-equal(segments/get(at), <deck>), is-equal(segments/get(add(at, 2)), <code>))
+          is-unequal(segments/get(add(at, 1)), <>)
+        hold
+          save code-at, add(at, 2)
+          save under, <>
+          fork test, is-below(add(code-at, 1), native-at)
+            hold
+              save between, segments/slice(add(code-at, 1), native-at)
+              save under, between/join(</>)
+          # everything before `native`: the code root and the folders under it, as the expression's first group
+          save head, segments/slice(0, native-at)
+          back
+            make bridge-native-path
+              bind matched, true
+              bind code-dir, head/join(</>)
+              bind package, segments/get(add(at, 1))
+              bind under, under
+              bind name, name
+      save at, subtract(at, 1)
+  back missed

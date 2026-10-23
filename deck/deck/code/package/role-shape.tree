@@ -1,0 +1,19 @@
+# A role file as Term holds it: the shape of deck/deck/code/form.ts's `RoleConfig` (term-cli-in-term-0075).
+
+load @term/base/list
+  find list
+
+# one `take <glob>` and the `miss <glob>` lines under it
+form role-take
+  link pattern, like text
+  link miss, like list, like text
+
+# `role <name>`, its `mark <word>` flags and its `take` lines
+form role-rule
+  link name, like text
+  # how the files it matches are READ (`lean`), rather than which mill reads them
+  link mark, like list, like text
+  link take, like list, like role-take
+
+form role-config
+  link rules, like list, like role-rule

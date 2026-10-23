@@ -16,6 +16,7 @@ load @term/base/native/{platform}/channel
   find mailbox-send
   find mailbox-receive
   find mailbox-close
+  find channel-handle
 
 # a channel carrying messages of type `t` (one letter, as every stdlib generic is: the native emitters spell a
 # generic by upper-casing it, and a longer name reads differently where it is declared and where it is used)

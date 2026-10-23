@@ -1,0 +1,266 @@
+# The Apple app: the `.app` layouts of macOS and iOS, the usage strings a program's device capabilities need, the
+# signature, the disk image, and a simulator to run on. Part of the port of deck/call/code/cask.ts (cli-in-term-0033):
+# its `assembleIosBundle`, `declareUsage`, `usageOf`, `simulator`, `launchOnSimulator`, `assembleBundle`,
+# `signBundle` and `makeDmg`.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/call/cask-plan
+  find usage-text
+  find usage-added
+  find ios-plist
+  find macos-plist
+  find phone-of
+
+load ./host-value
+  find value-or
+  find entries-of
+  find simulator-devices
+
+load ./bundle
+  find app-bundle
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <node:child_process>, name node-child
+  load <@term/call/code/device-declare>, name declare-module
+  load <@term/call/code/output>, name output
+
+form apple-folder
+  link recursive, like boolean
+
+form apple-remove
+  link recursive, like boolean
+  link force, like boolean
+
+form apple-text
+  link encoding, like text
+
+form apple-quiet
+  link stdio, like text
+
+# what an iOS bundle is assembled from: where, the app's names and version, and the program's native half, whose
+# device capabilities decide the usage strings Info.plist carries (iOS ends an app that asks for a privacy grant
+# without one)
+form ios-bundle-ask
+  link out, like text
+  link name, like text
+  link identifier, like text
+  link version, like text
+  link native
+    like text
+    need false
+
+form usage-ask
+  link plist, like text
+  link native, like text
+
+form mac-bundle-ask
+  link out, like text
+  link name, like text
+  link identifier, like text
+  link version, like text
+
+form sign-ask
+  link app, like text
+  link identity
+    like dynamic
+    need false
+
+form dmg-ask
+  link app, like text
+  link name, like text
+  link out, like text
+
+form simulator-ask
+  link udid, like text
+  link app, like text
+  link identifier, like text
+
+# a booted simulator, or the reason there is none: exactly one of the two
+form found-simulator
+  link udid
+    like text
+    need false
+  link missing
+    like text
+    need false
+
+# the usage strings a program's native half needs, in the order device-declare.ts gives them
+task usage-of
+  take native, like text
+  like list, like usage-text
+
+  save usage, make list
+  walk entries-of(declare-module/apple-usage(native))
+    take entry, like list, like dynamic
+    save key, <{entry/0}>
+    save said, <{entry/1}>
+    usage/push(make(usage-text, bind(key, key), bind(said, said)))
+  back usage
+
+# the flat `.app` iOS expects: Info.plist, the executable and the resources all at the top. Installed on a simulator
+# with `xcrun simctl install`; a device build needs a provisioning profile and a signature
+task assemble-ios-bundle
+  take ask, like ios-bundle-ask
+  like app-bundle
+
+  save name, ask/name
+  save app, node-path/join(ask/out, <{name}.app>)
+  node-fs/rm-sync(app, make(apple-remove, bind(recursive, true), bind(force, true)))
+  node-fs/mkdir-sync(app, make(apple-folder, bind(recursive, true)))
+  node-fs/write-file-sync(node-path/join(app, <Info.plist>), ios-plist(name, ask/identifier, ask/version, usage-of(ask/native)))
+  back
+    make app-bundle
+      bind app, app
+      bind exe, node-path/join(app, name)
+      bind resources, app
+
+# The usage strings a program's device capabilities need, added to an Info.plist already written: a cask's bundle is
+# made before its program is compiled, so its capabilities are known only after. A key the plist already carries is
+# left as it is
+task declare-usage
+  take ask, like usage-ask
+  like void
+
+  fork test, node-fs/exists-sync(ask/plist)
+    hold
+      save update, usage-added(node-fs/read-file-sync(ask/plist, <utf8>), usage-of(ask/native))
+      fork test, is-above(update/missing, 0)
+        hold
+          node-fs/write-file-sync(ask/plist, update/text)
+
+# a booted iOS simulator to run a cask on, or the reason there is none. Boots the first available iPhone when none is
+# booted; creating a device needs a runtime, and installing one is `xcodebuild -downloadPlatform iOS`
+task simulator
+  like found-simulator
+
+  save list-args, make list
+  list-args/push(<simctl>)
+  list-args/push(<list>)
+  list-args/push(<devices>)
+  list-args/push(<available>)
+  list-args/push(<--json>)
+  save listed, node-child/exec-file-sync(<xcrun>, list-args, make(apple-text, bind(encoding, <utf8>)))
+  save devices, simulator-devices(listed)
+  save names, make list
+  save states, make list
+  walk devices
+    take device, like dynamic
+    names/push(<{device/name}>)
+    states/push(<{device/state}>)
+  save index, phone-of(names, states)
+  fork test, is-below(index, 0)
+    hold
+      back make(found-simulator, bind(missing, <no iOS simulator runtime is installed. Run `xcodebuild -downloadPlatform iOS`, then `term make --target ios` again>))
+  save booted, devices/{index}
+  save udid, <{booted/udid}>
+  fork test, is-unequal(<{booted/state}>, <Booted>)
+    hold
+      save boot-args, make list
+      boot-args/push(<simctl>)
+      boot-args/push(<boot>)
+      boot-args/push(udid)
+      output/run-tool(<xcrun>, boot-args)
+  back make(found-simulator, bind(udid, udid))
+
+# a `simctl` step whose failure is not the build's: its output and exit are ignored
+task quiet-simctl
+  take verb, like text
+  take udid, like text
+  take identifier, like text
+  like void
+  mark private
+
+  save args, make list
+  args/push(<simctl>)
+  args/push(verb)
+  args/push(udid)
+  args/push(identifier)
+  node-child/spawn-sync(<xcrun>, args, make(apple-quiet, bind(stdio, <ignore>)))
+
+# install the app on a simulator and launch it. Returns at once; the app keeps running on the simulator. A clean
+# install: the simulator keeps an earlier install's Info.plist decisions across an install over it
+task launch-on-simulator
+  take ask, like simulator-ask
+  like void
+
+  quiet-simctl(<terminate>, ask/udid, ask/identifier)
+  quiet-simctl(<uninstall>, ask/udid, ask/identifier)
+  save install, make list
+  install/push(<simctl>)
+  install/push(<install>)
+  install/push(ask/udid)
+  install/push(ask/app)
+  output/run-tool(<xcrun>, install)
+  save launch, make list
+  launch/push(<simctl>)
+  launch/push(<launch>)
+  launch/push(ask/udid)
+  launch/push(ask/identifier)
+  output/run-tool(<xcrun>, launch)
+
+# the `.app` layout AppKit expects, so the process gets a Dock icon and a menu bar of its own
+task assemble-bundle
+  take ask, like mac-bundle-ask
+  like app-bundle
+
+  save name, ask/name
+  save app, node-path/join(ask/out, <{name}.app>)
+  save contents, node-path/join(app, <Contents>)
+  save macos, node-path/join(contents, <MacOS>)
+  save resources, node-path/join(contents, <Resources>)
+  node-fs/rm-sync(app, make(apple-remove, bind(recursive, true), bind(force, true)))
+  node-fs/mkdir-sync(macos, make(apple-folder, bind(recursive, true)))
+  node-fs/mkdir-sync(resources, make(apple-folder, bind(recursive, true)))
+  node-fs/write-file-sync(node-path/join(contents, <Info.plist>), macos-plist(name, ask/identifier, ask/version))
+  back
+    make app-bundle
+      bind app, app
+      bind exe, node-path/join(macos, name)
+      bind resources, resources
+
+# sign the bundle: ad hoc (`-`) so Gatekeeper on this machine runs it, or with a Developer ID identity when given.
+# Notarization is the identity's owner's step after this, with `notarytool`, and is not run here
+task sign-bundle
+  take ask, like sign-ask
+  like void
+
+  save sign, make list
+  sign/push(<--force>)
+  sign/push(<--deep>)
+  sign/push(<--sign>)
+  sign/push(value-or(ask/identity, <->))
+  sign/push(ask/app)
+  output/run-tool(<codesign>, sign)
+  save verify, make list
+  verify/push(<--verify>)
+  verify/push(<--deep>)
+  verify/push(<--strict>)
+  verify/push(ask/app)
+  output/run-tool(<codesign>, verify)
+
+# a `.dmg` holding the app, the way a macOS download ships
+task make-dmg
+  take ask, like dmg-ask
+  like text
+
+  save name, ask/name
+  save dmg, node-path/join(ask/out, <{name}.dmg>)
+  node-fs/rm-sync(dmg, make(apple-remove, bind(recursive, false), bind(force, true)))
+  save args, make list
+  args/push(<create>)
+  args/push(<-volname>)
+  args/push(name)
+  args/push(<-srcfolder>)
+  args/push(ask/app)
+  args/push(<-ov>)
+  args/push(<-format>)
+  args/push(<UDZO>)
+  args/push(<-quiet>)
+  args/push(dmg)
+  output/run-tool(<hdiutil>, args)
+  back dmg

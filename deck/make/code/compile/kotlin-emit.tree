@@ -44,6 +44,7 @@ load ./node
   find binary-op
   find assign-op
   find unary-op
+  find variant-field
 
 load ./node-children
   find node-handle
@@ -90,6 +91,7 @@ load ./backend-shapes
   find inspect-kind-of
 
 load ./backend-names
+  find host-spelled
   find names-in
   find assigns-name
   find text-append-of
@@ -3043,6 +3045,10 @@ task kt-member
       fork test, and(is-digits(member-name), is-equal(expression-kind(member-target), <array>))
         hold
           back <{kt-expr(member-target, st, facts)}[{member-name}]>
+      # a dock module's member with no `-` is the host's spelling (backend-names `host-spelled`)
+      fork test, and(and(is-unequal(target-name, <>), facts/native-aliases/has(target-name)), host-spelled(member-name))
+        hold
+          back <{kt-expr(member-target, st, facts)}.{member-name}>
       back <{kt-expr(member-target, st, facts)}.{kotlin-camel(member-name)}>
     miss
       back <>

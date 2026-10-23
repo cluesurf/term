@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import { nativePrelude } from '@term/make/code/compile/native'
 import { emitSwift } from '@term/make/code/compile/swift'
+import { nativeMain } from '@term/make/code/compile/native-main'
 import { projectResolver } from '@term/call/code/make'
 
 let pass = 0
@@ -100,7 +101,9 @@ if (result.ok) {
   const prelude = nativePrelude(result.program, 'swift', readRuntime, swift)
   ok('the string runtime is in it, as `strings`', prelude.includes('enum strings'))
   const file = join(dir, 'names.swift')
-  writeFileSync(file, ['import Foundation', prelude, swift, 'print(run())', ''].join('\n'))
+  // the shared main: `run` joins through the docked string runtime, so it can raise `failure` (term/compiler decision
+  // 001) and is `throws`, which a bare `print(run())` does not build against
+  writeFileSync(file, ['import Foundation', prelude, swift, nativeMain('swift', swift), ''].join('\n'))
   const exe = join(dir, 'names')
 
   try {

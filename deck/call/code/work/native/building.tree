@@ -1,0 +1,607 @@
+# `term make --emit <target> <file> --build` (and `--run`): the emitted program with the main that calls it, built by
+# its toolchain, and run. The main is compile/main-entry.tree, the one every test harness appends too, so a program
+# runs the same way here and in the suites.
+#
+# The entry is the task `--main` names, else `run`, else `boot`, else `main`. What it answers is printed, with no line
+# break after it; an entry that answers nothing prints nothing. A raise ends with its message on stderr and exit 1.
+#
+#   node     the TypeScript bundled by esbuild into one ES module, run by node
+#   rust     rustc, or a cargo project with the stdlib's crates the program names (num-bigint, regex, ...)
+#   swift    swiftc, with the flags the native cache keeps (work/cask/toolchain.tree `swift-flags`)
+#   kotlin   kotlinc to a jar with the Kotlin runtime in it, run by java
+#
+# THE TWO TARGETS THROUGH RUST (note/project/term/backends-complete.md, step 4): `llvm`, rustc's LLVM IR built by the
+# `llc` of rustup's llvm-tools and linked against rustc's std, and `wasm`, a WebAssembly module for WASI run by node's
+# own WASI. A program that names a crate is refused for both. A missing tool is refused with the command that installs
+# it.
+#
+# Port of deck/call/code/native-build.ts (cli-in-term-0034): `buildNative`, `buildThroughRust` and `runBuilt`, each
+# answering the original's shapes.
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/environment
+  find variable
+  find has-variable
+
+load @term/make/compile/main-entry
+  find entry-of
+  find native-main
+  find crates-named
+
+load ../cask/host-value
+  find nothing
+  find is-truthy
+  find value-or
+  find is-absent
+
+load ../cask/toolchain
+  find swift-flags
+
+load ./native-value
+  find failure-text
+  find is-error-line
+  find lines-of
+  find unit-slice
+  find crate-of
+  find binary-of
+  find class-stem-of
+  find capital-first
+  find host-triple-of
+  find is-dynamic-std
+  find library-of
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:os>, name node-os
+  load <node:path>, name node-path
+  load <node:child_process>, name node-child
+  load <global:process>, name node-process
+  load <esbuild>, name esbuild-module
+  load <@term/make/code/compile/kotlin>, name kotlin-module
+  load <@term/make/code/resolve>, name resolve-module
+
+# a build: the command that runs it and the file it made, or why there is none
+form built
+  link ok, like boolean
+  link command
+    like list, like text
+    need false
+  link artifact
+    like text
+    need false
+  link reason
+    like text
+    need false
+
+form spawn-text
+  link encoding, like text
+
+form spawn-inherit
+  link stdio, like text
+
+form tool-options
+  link stdio, like text
+  link cwd, like dynamic
+  link env, like dynamic
+
+form build-folder
+  link recursive, like boolean
+
+form bundle-options
+  link entry-points, like list, like text
+  link bundle, like boolean
+  link platform, like text
+  link format, like text
+  link outfile, like text
+  link log-level, like text
+
+task built-ok
+  take command, like list, like text
+  take artifact, like text
+  like built
+  mark private
+
+  back make(built, bind(ok, true), bind(command, command), bind(artifact, artifact))
+
+task refused-build
+  take reason, like text
+  like built
+  mark private
+
+  back make(built, bind(ok, false), bind(reason, reason))
+
+# the toolchain each target needs
+task tools-of
+  take target, like text
+  like list, like text
+  mark private
+
+  save tools, make list
+  fork test, is-equal(target, <rust>)
+    hold
+      tools/push(<rustc>)
+  fork test, is-equal(target, <swift>)
+    hold
+      tools/push(<swiftc>)
+  fork test, is-equal(target, <kotlin>)
+    hold
+      tools/push(<kotlinc>)
+      tools/push(<java>)
+      tools/push(<jar>)
+  back tools
+
+task have
+  take tool, like text
+  like boolean
+  mark private
+
+  save args, make list
+  args/push(tool)
+  save ran, node-child/spawn-sync(<which>, args, make(spawn-text, bind(encoding, <utf8>)))
+  back is-equal(ran/status, 0)
+
+# a toolchain's errors, not the warnings in front of them
+task errors-of
+  take problem, like dynamic
+  like text
+  mark private
+
+  save text, failure-text(problem)
+  save errors, make list
+  walk lines-of(text)
+    take line, like text
+    fork test, is-error-line(line)
+      hold
+        errors/push(line)
+  save said, text
+  fork test, is-above(errors/length, 0)
+    hold
+      save said, join(errors, <\n>)
+  back unit-slice(said, 4000)
+
+# run a tool, its output kept: nothing when it succeeded, else its errors
+task run-tool
+  take command, like text
+  take args, like list, like text
+  take cwd, like dynamic
+  like dynamic
+  mark private
+
+  save failed, nothing()
+  fork
+    mark unsafe
+    node-child/exec-file-sync(command, args, make(tool-options, bind(stdio, <pipe>), bind(cwd, cwd), bind(env, nothing())))
+  halt take
+    take problem
+    save failed, errors-of(problem)
+  back failed
+
+# the entry `--main` names, as main-entry.tree asks for it
+task named-entry
+  take entry, like dynamic
+  like maybe, like text
+  mark private
+
+  fork test, is-truthy(entry)
+    hold
+      back make(some, <{entry}>)
+  back make none
+
+# the stdlib's Cargo.toml, or the empty text when there is none
+task cargo-toml-text
+  like text
+  mark private
+
+  save stdlib, resolve-module/stdlib-base()
+  fork test, is-truthy(stdlib)
+    hold
+      save toml, node-path/join(stdlib, <code/native/rust/Cargo.toml>)
+      fork test, node-fs/exists-sync(toml)
+        hold
+          back node-fs/read-file-sync(toml, <utf8>)
+  back <>
+
+# the crates a program names, as the refusals list them
+task crate-names
+  take crates, like list, like text
+  like text
+  mark private
+
+  save names, make list
+  walk crates
+    take line, like text
+    names/push(crate-of(line))
+  back join(names, <, >)
+
+# `process.env[name] ?? fallback`
+task variable-or
+  take name, like text
+  take fallback, like text
+  like text
+  mark private
+
+  fork test, has-variable(name)
+    hold
+      back variable(name)
+  back fallback
+
+# build `source` (the emitted program, prelude and all, no main) for `target` into `folder`, as `name`
+task build-native
+  take input, like dynamic
+  like built
+
+  save target, <{input/target}>
+  save source, <{input/source}>
+  save missing, make list
+  walk tools-of(target)
+    take one, like text
+    fork test, not(have(one))
+      hold
+        missing/push(one)
+  fork test, is-above(missing/length, 0)
+    hold
+      save names, join(missing, < and >)
+      save verb, <is>
+      fork test, is-above(missing/length, 1)
+        hold
+          save verb, <are>
+      back refused-build(<{names} {verb} not installed, which a {target} build needs>)
+
+  save entry, <>
+  sift entry-of(target, source, named-entry(input/entry))
+    case none
+      fork test, is-truthy(input/entry)
+        hold
+          back refused-build(<the program has no task `{input/entry}` taking nothing, which --main names>)
+      back refused-build(<the program has no `run`, `boot` or `main` task taking nothing to start it. Name one with --main>)
+    case some
+      save entry, value
+
+  save folder, <{input/folder}>
+  node-fs/mkdir-sync(folder, make(build-folder, bind(recursive, true)))
+  save stem, node-path/join(folder, input/name)
+
+  fork test, is-equal(target, <node>)
+    hold
+      save file, <{stem}.ts>
+      save main, native-main(<node>, source, entry, true)
+      node-fs/write-file-sync(file, <{source}\n{main}\n>)
+      save artifact, <{stem}.mjs>
+      save points, make list
+      points/push(file)
+      save failed, nothing()
+      fork
+        mark unsafe
+        esbuild-module/build-sync(make(bundle-options, bind(entry-points, points), bind(bundle, true), bind(platform, <node>), bind(format, <esm>), bind(outfile, artifact), bind(log-level, <silent>)))
+      halt take
+        take problem
+        save failed, errors-of(problem)
+      fork test, not(is-absent(failed))
+        hold
+          back refused-build(<{failed}>)
+      save command, make list
+      command/push(<{node-process/exec-path}>)
+      command/push(artifact)
+      back built-ok(command, artifact)
+
+  fork test, is-equal(target, <rust>)
+    hold
+      save main, native-main(<rust>, source, entry, true)
+      save full, <{source}\n{main}\n>
+      save crates, crates-named(full, cargo-toml-text())
+
+      # a program that names a crate is a cargo project with those crates alone
+      fork test, is-above(crates/length, 0)
+        hold
+          fork test, not(have(<cargo>))
+            hold
+              save names, crate-names(crates)
+              back refused-build(<cargo is not installed, and the program names {names}>)
+          save project, <{stem}-cargo>
+          save binary, binary-of(<{input/name}>)
+          save source-dir, node-path/join(project, <src>)
+          node-fs/mkdir-sync(source-dir, make(build-folder, bind(recursive, true)))
+          save listed, join(crates, <\n>)
+          node-fs/write-file-sync(node-path/join(project, <Cargo.toml>), <[package]\nname = "{binary}"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\n{listed}\n\n[profile.release]\npanic = "abort"\n>)
+          node-fs/write-file-sync(node-path/join(project, <src>, <main.rs>), full)
+          save cargo-args, make list
+          cargo-args/push(<build>)
+          cargo-args/push(<--release>)
+          cargo-args/push(<--quiet>)
+          save failed, run-tool(<cargo>, cargo-args, project)
+          fork test, is-truthy(failed)
+            hold
+              back refused-build(<{failed}>)
+          save artifact, node-path/join(project, <target>, <release>, binary)
+          save command, make list
+          command/push(artifact)
+          back built-ok(command, artifact)
+
+      save file, <{stem}.rs>
+      node-fs/write-file-sync(file, full)
+      save args, make list
+      args/push(<--edition>)
+      args/push(<2021>)
+      args/push(<-O>)
+      args/push(<-A>)
+      args/push(<warnings>)
+      args/push(<-o>)
+      args/push(stem)
+      args/push(file)
+      save failed, run-tool(<rustc>, args, nothing())
+      fork test, is-truthy(failed)
+        hold
+          back refused-build(<{failed}>)
+      save command, make list
+      command/push(stem)
+      back built-ok(command, stem)
+
+  fork test, is-equal(target, <swift>)
+    hold
+      save file, <{stem}.swift>
+      save main, native-main(<swift>, source, entry, true)
+      node-fs/write-file-sync(file, <import Foundation\n{source}\n{main}\n>)
+      save args, make list
+      walk swift-flags()
+        take flag, like text
+        args/push(flag)
+      args/push(<-O>)
+      args/push(<-o>)
+      args/push(stem)
+      args/push(file)
+      save failed, run-tool(<swiftc>, args, nothing())
+      fork test, is-truthy(failed)
+        hold
+          back refused-build(<{failed}>)
+      save command, make list
+      command/push(stem)
+      back built-ok(command, stem)
+
+  save file, <{stem}.kt>
+  save main, native-main(<kotlin>, source, entry, true)
+  node-fs/write-file-sync(file, kotlin-module/hoist-kotlin-imports(<{source}\n{main}\n>))
+  save artifact, <{stem}.jar>
+  save classpath, kotlin-classpath()
+  save args, make list
+  args/push(file)
+  fork test, is-truthy(classpath)
+    hold
+      args/push(<-classpath>)
+      args/push(<{classpath}>)
+  args/push(<-include-runtime>)
+  args/push(<-nowarn>)
+  args/push(<-d>)
+  args/push(artifact)
+  save failed, run-tool(<kotlinc>, args, nothing())
+  fork test, is-truthy(failed)
+    hold
+      back refused-build(<{failed}>)
+
+  # The jar's manifest grants native access too (JDK 24 and newer read `Enable-Native-Access` from the main jar), so a
+  # jar handed out and run with a plain `java -jar` prints no restricted-method warning either. An older JDK ignores it
+  save manifest, <{stem}-manifest.txt>
+  node-fs/write-file-sync(manifest, <Enable-Native-Access: ALL-UNNAMED\n>)
+  save jar-args, make list
+  jar-args/push(<--update>)
+  jar-args/push(<--file>)
+  jar-args/push(artifact)
+  jar-args/push(<--manifest>)
+  jar-args/push(manifest)
+  save updated, run-tool(<jar>, jar-args, nothing())
+  fork test, is-truthy(updated)
+    hold
+      back refused-build(<{updated}>)
+
+  # with the runtime's jars beside it the main class is named, since `-jar` reads no classpath but the jar's own.
+  # Native access is granted because the process runner spawns through java.lang.foreign (JDK 22 and newer), and
+  # without it JDK 24 and newer print a restricted-method warning on stderr that no other target prints
+  save command, make list
+  command/push(<java>)
+  command/push(<--enable-native-access=ALL-UNNAMED>)
+  fork test, is-truthy(classpath)
+    hold
+      command/push(<-cp>)
+      command/push(<{artifact}:{classpath}>)
+      command/push(kotlin-main-class(<{input/name}>))
+    miss
+      command/push(<-jar>)
+      command/push(artifact)
+  back built-ok(command, artifact)
+
+# the classpath the Kotlin backend's runtime needs (coroutines, ktor), where task/term/native/kotlin.sh `deps` keeps
+# it: the same cache the Swift flags are read from. Absent, a program that reaches neither still builds
+task kotlin-classpath
+  like dynamic
+  mark private
+
+  save cache, variable-or(<TERM_NATIVE_CACHE>, node-path/join(variable-or(<TMPDIR>, node-os/tmpdir()), <term-native>))
+  save file, node-path/join(cache, <kotlin>, <classpath.txt>)
+  fork test, not(node-fs/exists-sync(file))
+    hold
+      back nothing()
+  save text, node-fs/read-file-sync(file, <utf8>)
+  save trimmed, text/trim()
+  fork test, is-truthy(trimmed)
+    hold
+      back trimmed
+  back nothing()
+
+# the class kotlinc puts a file's top-level `main` in: `term-test.kt` is `Term_testKt`
+task kotlin-main-class
+  take name, like text
+  like text
+  mark private
+
+  save stem, capital-first(class-stem-of(name))
+  back <{stem}Kt>
+
+task rust-host
+  like text
+  mark private
+
+  save args, make list
+  args/push(<--version>)
+  args/push(<--verbose>)
+  save ran, node-child/spawn-sync(<rustc>, args, make(spawn-text, bind(encoding, <utf8>)))
+  save said, value-or(ran/stdout, <>)
+  back host-triple-of(<{said}>)
+
+task sysroot
+  like text
+  mark private
+
+  save args, make list
+  args/push(<--print>)
+  args/push(<sysroot>)
+  save ran, node-child/spawn-sync(<rustc>, args, make(spawn-text, bind(encoding, <utf8>)))
+  save said, value-or(ran/stdout, <>)
+  back said/trim()
+
+# the IR (`llvm`) or the module (`wasm`) of the program's Rust source, written to `folder`, built and runnable when the
+# tools are there
+task build-through-rust
+  take input, like dynamic
+  like built
+
+  fork test, not(have(<rustc>))
+    hold
+      back refused-build(<rustc is not installed, which both llvm and wasm are built through>)
+
+  save target, <{input/target}>
+  save given, <{input/source}>
+  save entry, <>
+  sift entry-of(<rust>, given, named-entry(input/entry))
+    case none
+      back refused-build(<the program has no `run`, `boot` or `main` task taking nothing to start it. Name one with --main>)
+    case some
+      save entry, value
+
+  save toml, cargo-toml-text()
+  save main, native-main(<rust>, given, entry, is-unequal(target, <wasm>))
+  save source, <{given}\n{main}\n>
+  save crates, crates-named(source, toml)
+  fork test, is-above(crates/length, 0)
+    hold
+      save names, crate-names(crates)
+      back refused-build(<the program names {names}, and a {target} build takes no crates>)
+
+  save folder, <{input/folder}>
+  node-fs/mkdir-sync(folder, make(build-folder, bind(recursive, true)))
+  save name, <{input/name}>
+  save stem, node-path/join(folder, name)
+  save rust-file, <{stem}.rs>
+  node-fs/write-file-sync(rust-file, source)
+
+  fork test, is-equal(target, <wasm>)
+    hold
+      save libdir, node-path/join(sysroot(), <lib>, <rustlib>, <wasm32-wasip1>, <lib>)
+      fork test, not(node-fs/exists-sync(libdir))
+        hold
+          back refused-build(<the wasm32-wasip1 target is not installed: rustup target add wasm32-wasip1>)
+      save module, <{stem}.wasm>
+      save args, make list
+      args/push(<--edition>)
+      args/push(<2021>)
+      args/push(<-O>)
+      args/push(<-A>)
+      args/push(<warnings>)
+      args/push(<--target>)
+      args/push(<wasm32-wasip1>)
+      args/push(<-o>)
+      args/push(module)
+      args/push(rust-file)
+      save failed, run-tool(<rustc>, args, nothing())
+      fork test, is-truthy(failed)
+        hold
+          back refused-build(<{failed}>)
+      # node runs it under its own WASI, the program's stdout and exit code its own
+      save runner, <{stem}.mjs>
+      node-fs/write-file-sync(runner, <import \{ readFileSync \} from 'node:fs'\nimport \{ WASI \} from 'node:wasi'\nconst wasi = new WASI(\{ version: 'preview1', args: [], env: \{\}, returnOnExit: true \})\nconst \{ instance \} = await WebAssembly.instantiate(readFileSync(new URL('./{name}.wasm', import.meta.url)), wasi.getImportObject())\nprocess.exitCode = wasi.start(instance)\n>)
+      save command, make list
+      command/push(<{node-process/exec-path}>)
+      command/push(<--no-warnings>)
+      command/push(runner)
+      back built-ok(command, module)
+
+  # llvm: the IR, always; built only when asked
+  save ir, <{stem}.ll>
+  save ir-args, make list
+  ir-args/push(<--edition>)
+  ir-args/push(<2021>)
+  ir-args/push(<-O>)
+  ir-args/push(<-A>)
+  ir-args/push(<warnings>)
+  ir-args/push(<--emit=llvm-ir>)
+  ir-args/push(<-o>)
+  ir-args/push(ir)
+  ir-args/push(rust-file)
+  save emitted, run-tool(<rustc>, ir-args, nothing())
+  fork test, is-truthy(emitted)
+    hold
+      back refused-build(<{emitted}>)
+  fork test, not(is-truthy(input/build))
+    hold
+      save none-to-run, make list
+      back built-ok(none-to-run, ir)
+
+  save triple, rust-host()
+  save llc, node-path/join(sysroot(), <lib>, <rustlib>, triple, <bin>, <llc>)
+  fork test, not(node-fs/exists-sync(llc))
+    hold
+      back refused-build(<llc is not installed: it comes with rustup's llvm-tools, whose LLVM is rustc's own: rustup component add llvm-tools>)
+  save object, <{stem}.o>
+  save llc-args, make list
+  llc-args/push(<-O2>)
+  llc-args/push(<-filetype=obj>)
+  llc-args/push(<-o>)
+  llc-args/push(object)
+  llc-args/push(ir)
+  save compiled, run-tool(llc, llc-args, nothing())
+  fork test, is-truthy(compiled)
+    hold
+      back refused-build(<{compiled}>)
+
+  # linked against rustc's own std, the dynamic one, found again at run time through the rpath
+  save libdir, node-path/join(sysroot(), <lib>, <rustlib>, triple, <lib>)
+  save ls-args, make list
+  ls-args/push(libdir)
+  save listed, node-child/spawn-sync(<ls>, ls-args, make(spawn-text, bind(encoding, <utf8>)))
+  save std, <>
+  save found, false
+  walk lines-of(<{listed/stdout}>)
+    take one, like text
+    fork test, and(not(found), is-dynamic-std(one))
+      hold
+        save std, one
+        save found, true
+  fork test, not(found)
+    hold
+      back refused-build(<rustc's dynamic std is not in {libdir}>)
+  save cc-args, make list
+  cc-args/push(object)
+  cc-args/push(<-o>)
+  cc-args/push(stem)
+  cc-args/push(<-L{libdir}>)
+  cc-args/push(<-l{library-of(std)}>)
+  cc-args/push(<-Wl,-rpath,{libdir}>)
+  save linked, run-tool(<cc>, cc-args, nothing())
+  fork test, is-truthy(linked)
+    hold
+      back refused-build(<{linked}>)
+  save command, make list
+  command/push(stem)
+  back built-ok(command, stem)
+
+# run a built program, its output and its exit code passed through
+task run-built
+  take command, like dynamic
+  like number
+
+  save ran, node-child/spawn-sync(command/0, command/slice(1), make(spawn-inherit, bind(stdio, <inherit>)))
+  back value-or(ran/status, 1)

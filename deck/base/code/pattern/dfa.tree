@@ -73,6 +73,7 @@ load @term/base/pattern/program
   find op-edge
   find op-clear
   find op-mark
+  find op-look
 
 load @term/base/pattern/scene
   find scene

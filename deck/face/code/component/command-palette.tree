@@ -15,6 +15,9 @@ load ../logic/registry
   find list-actions
   find run-action
 
+load @term/site/view/reactive
+  find signal
+
 view command-palette
   take host, like view
   take class, like text

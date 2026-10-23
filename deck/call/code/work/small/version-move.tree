@@ -1,0 +1,227 @@
+# `term move mark [1|2|3|rc]`: bump the manifest's version, or start or move a pre-release named by a word. Prints
+# one `change` item `old → new`, and the closing verdict. Ported from call/code/move.ts (term-cli-in-term-0060);
+# work/move.tree was an earlier conversion of an older move (no pre-release, no usage refusal).
+#
+# The manifest is read, bumped and written by @cluesurf/deck.tree, docked (decision cli-in-term/002). Every call into it
+# is awaited, as the one asynchronous one (`loadManifest`) was; the rest answer at once.
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find char-code-at
+
+load @term/base/list
+  find get
+
+dock load
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <node:path>, name node-path
+  load <@cluesurf/deck.tree>, name deck-tree-module
+    mark async
+  load <@term/call/code/output>, name output
+  load <global:Error>, name host-error
+  load <global:String>, name host-string
+
+form move-open
+  link verb, like text
+  link root, like text
+
+form problem-item
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+
+form problem-said
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link message, like list, like text
+
+form usage-close
+  link verdict, like text
+  link next, like text
+  link failure, like text
+
+form change-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link facts, like list, like text
+
+form failed-change
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+
+form done-close
+  link verdict, like text
+  link done, like boolean
+
+form plain-close
+  link verdict, like text
+
+form load-ask
+  link dir, like text
+
+form bump-ask
+  link code, like dynamic
+  link level, like number
+
+form prerelease-ask
+  link code, like dynamic
+  link id, like text
+
+form write-ask
+  link manifest, like dynamic
+
+task usage
+  like text
+  mark private
+
+  back <term move mark [1|2|3|rc]>
+
+# 1, 2 or 3, or the name of a pre-release (`rc`, `beta`): `/^[A-Za-z][0-9A-Za-z-]*$/`. Nothing, or the empty text, is
+# 3. Anything else is the empty text, refused: it moved the patch without a word
+task level-of
+  take level, like maybe, like text
+  like text
+
+  save given, <>
+  sift level
+    case some
+      link value
+      save given, value
+    case none
+      save given, <>
+  fork test, or(is-equal(given, <>), is-equal(given, <3>))
+    hold
+      back <3>
+  fork test, or(is-equal(given, <2>), is-equal(given, <1>))
+    hold
+      back given
+  save points, split(given, <>)
+  fork test, not(is-letter-code(char-code-at(get(points, 0), 0)))
+    hold
+      back <>
+  save at, 1
+  walk test
+    hook test, is-below(at, points/length)
+    hook hold
+      save code, char-code-at(get(points, at), 0)
+      fork test, not(or(is-letter-code(code), or(and(is-minimum(code, 48), is-maximum(code, 57)), is-equal(code, 45))))
+        hold
+          back <>
+      save at, add(at, 1)
+  back given
+
+task is-letter-code
+  take code, like number
+  like boolean
+  mark private
+
+  fork test, and(is-minimum(code, 65), is-maximum(code, 90))
+    hold
+      back true
+  back and(is-minimum(code, 97), is-maximum(code, 122))
+
+# the message of a failure the host raised, as the original printed it: an Error's message, else the value as text
+task message-of
+  take error, like dynamic
+  like text
+  mark private
+
+  # `error instanceof Error`
+  fork test, host-error/prototype/is-prototype-of(error)
+    hold
+      back error/message
+  back host-string/call(<>, error)
+
+task close-usage
+  like void
+  mark private
+
+  output/close-run(make(usage-close, bind(verdict, <Nothing moved>), bind(next, usage()), bind(failure, <usage>)))
+
+# the manifest read, its version moved by `level` and written back, and the change reported
+task move-version
+  take root, like text
+  take level, like text
+  like void
+  mark private
+
+  save manifest, deck-tree-module/load-manifest(make(load-ask, bind(dir, root)))
+  save old-code, deck-tree-module/show-code(manifest/mark)
+  save new-code, manifest/mark
+  fork test, or(is-equal(level, <1>), or(is-equal(level, <2>), is-equal(level, <3>)))
+    hold
+      save number-level, 3
+      fork test, is-equal(level, <1>)
+        hold
+          save number-level, 1
+      fork test, is-equal(level, <2>)
+        hold
+          save number-level, 2
+      save new-code, deck-tree-module/bump-code(make(bump-ask, bind(code, manifest/mark), bind(level, number-level)))
+    miss
+      save new-code, deck-tree-module/bump-prerelease(make(prerelease-ask, bind(code, manifest/mark), bind(id, level)))
+  save manifest/mark, new-code
+  save new-text, deck-tree-module/show-code(new-code)
+  save text, deck-tree-module/write-manifest(make(write-ask, bind(manifest, manifest)))
+  fs-promise/write-file(node-path/join(root, <deck.tree>), text, <utf-8>)
+  save facts, make list
+  facts/push(<{old-code} → {new-text}>)
+  output/report(make(change-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <change>), bind(subject, <mark>), bind(facts, facts)))
+  output/close-run(make(done-close, bind(verdict, <Version is {new-text}>), bind(done, true)))
+
+# `target` names the manifest field that moves: `mark`, the version. `code` is its old spelling (the version was
+# `code <...>` until `code` came to name the code root), still taken so a script written against it works
+task call-move
+  take root, like text
+  take target, like maybe, like text
+  take level, like maybe, like text
+  like void
+
+  output/open-run(make(move-open, bind(verb, <move>), bind(root, root)))
+  save named, <that>
+  save known, false
+  sift target
+    case some
+      link value
+      save named, value
+      save known, or(is-equal(value, <mark>), is-equal(value, <code>))
+    case none
+      save known, false
+  fork test, not(known)
+    hold
+      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is nothing named {named} to move>)))
+      close-usage()
+    miss
+      save moved-by, level-of(level)
+      fork test, is-equal(moved-by, <>)
+        hold
+          save shown, <undefined>
+          sift level
+            case some
+              link value
+              save shown, value
+            case none
+              save shown, <undefined>
+          save said, make list
+          said/push(<1, 2 or 3 moves the major, minor or patch, and a word such as rc starts or moves a pre-release>)
+          output/report(make(problem-said, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <{shown} is not a part of the version>), bind(message, said)))
+          close-usage()
+        miss
+          fork
+            mark unsafe
+            move-version(root, moved-by)
+          halt take
+            take error
+            save said, make list
+            said/push(message-of(error))
+            output/report(make(failed-change, bind(glyph, <failed>), bind(verb, <change>), bind(subject, <mark>), bind(message, said)))
+            output/close-run(make(plain-close, bind(verdict, <Version not moved>)))

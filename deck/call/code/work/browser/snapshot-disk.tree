@@ -1,0 +1,226 @@
+# The filesystem the compiler sees in a browser: a snapshot of the standard library, held in memory, read-only.
+# Ported from call/code/browser/disk.ts, term-cli-in-term-0063.
+#
+# The bundle aliases `fs` and `node:fs` to this module (call/code/browser/build.mjs). The compiler's own resolver,
+# `stdlibResolver` in make/code/resolve.ts, then runs unchanged over the snapshot: `resolvePackagePath` probes
+# candidates with `existsSync`, `codeRootOf` reads the manifest with `statSync` and `readFileSync`, and `nativePrelude`
+# reads a runtime shim the same way. So the browser resolves `load @term/base/list` by THE rule the CLI uses.
+#
+# Every path is posix and absolute. A directory exists when some file lies under it. Anything that would write, watch
+# or spawn throws `read-only`. The snapshot and every decision on it are call/code/browser/snapshot.tree; this module
+# holds the one snapshot and makes it look like Node's module: a URL taken where a path is, an Error with `code` for
+# a missing path, the read-only writes, and a file's size as JavaScript's `.length`.
+#
+# What a Term module cannot say is left to the bundle: there is no default export and no `promises` record.
+
+load @term/call/code/browser/snapshot
+  find snapshot
+  find make-snapshot
+  find mount-file
+  find file-count
+  find has-file
+  find has-path
+  find is-directory
+  find file-text
+  find list-directory
+  find normal-path
+
+host disk, make-snapshot()
+
+# a path given as text or as a URL, as `typeof path === 'string' ? path : path.pathname` reads it
+bind disk-path-text
+  take path, like dynamic
+  like text
+  case node
+    text <(typeof $path === "string" ? $path : $path.pathname)>
+
+# `String(path)`, which is a URL's whole href
+bind disk-shown-path
+  take path, like dynamic
+  like text
+  case node
+    text <String($path)>
+
+# the error a Node caller expects from a missing path: an Error with `code` set, which the compiler's callers catch
+bind disk-absence-throw
+  take message, like text
+  like dynamic
+  case node
+    text <(() =\> \{ throw Object.assign(new Error($message), \{ code: "ENOENT" \}) \})()>
+
+bind disk-read-only-throw
+  like dynamic
+  case node
+    text <(() =\> \{ throw Object.assign(new Error("the browser filesystem is read-only"), \{ code: "EROFS" \}) \})()>
+
+# JavaScript's `.length` of a text, in UTF-16 units, which is what a Node caller reads as a size
+bind disk-unit-length
+  take value, like text
+  like number
+  case node
+    text <$value.length>
+
+# the record `statSync` answers
+bind disk-stat-record
+  take file, like boolean
+  take size, like number
+  like dynamic
+  case node
+    text <(\{ isFile: () =\> $file, isDirectory: () =\> !$file, isSymbolicLink: () =\> false, mtimeMs: 0, size: $size \})>
+
+# the entries of a record of texts, as `Object.entries` lists them
+bind disk-entries
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <Object.entries($value)>
+
+task absence
+  take path, like dynamic
+  like dynamic
+
+  back disk-absence-throw(<ENOENT: no such file or directory, {disk-shown-path(path)}>)
+
+# put a set of files under `root`, keyed by their path relative to it. Called once, when the snapshot arrives
+task mount-files
+  take input, like dynamic
+
+  save root, input/root
+  walk disk-entries(input/file)
+    take entry, like dynamic
+    mount-file(disk, root, entry/0, entry/1)
+
+# how many files are mounted, for the worker's report
+task mounted-count
+  like number
+
+  back file-count(disk)
+
+task exists-sync
+  take path, like dynamic
+  like boolean
+
+  back has-path(disk, disk-path-text(path))
+
+task read-file-sync
+  take path, like dynamic
+  take encoding, like dynamic, fall disk-nothing()
+  like text
+
+  save at, disk-path-text(path)
+  fork test, not(has-file(disk, at))
+    hold
+      absence(path)
+  back file-text(disk, at)
+
+task stat-sync
+  take path, like dynamic
+  take options, like dynamic, fall disk-nothing()
+  like dynamic
+
+  save at, disk-path-text(path)
+  save file, has-file(disk, at)
+  fork test, and(not(file), not(is-directory(disk, at)))
+    hold
+      absence(path)
+  save size, 0
+  fork test, file
+    hold
+      save size, disk-unit-length(file-text(disk, at))
+  # a snapshot never changes while it is mounted, so every file is as old as every other
+  back disk-stat-record(file, size)
+
+task lstat-sync
+  take path, like dynamic
+  take options, like dynamic, fall disk-nothing()
+  like dynamic
+
+  back stat-sync(path, options)
+
+task readdir-sync
+  take path, like dynamic
+  take options, like dynamic, fall disk-nothing()
+  like list, like text
+
+  save at, disk-path-text(path)
+  fork test, not(is-directory(disk, at))
+    hold
+      absence(path)
+  back list-directory(disk, at)
+
+# there are no links in a snapshot, so every path is already its own real path
+task realpath-sync
+  take path, like dynamic
+  like text
+
+  save at, disk-path-text(path)
+  fork test, not(has-path(disk, at))
+    hold
+      absence(path)
+  back normal-path(at)
+
+# `undefined`, the argument a call without one passes
+bind disk-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+task write-file-sync
+  like dynamic
+
+  back disk-read-only-throw()
+
+task mkdir-sync
+  like dynamic
+
+  back disk-read-only-throw()
+
+task append-file-sync
+  like dynamic
+
+  back disk-read-only-throw()
+
+task rm-sync
+  like dynamic
+
+  back disk-read-only-throw()
+
+task rename-sync
+  like dynamic
+
+  back disk-read-only-throw()
+
+task watch
+  like dynamic
+
+  back disk-read-only-throw()
+
+task open-sync
+  like dynamic
+
+  back disk-read-only-throw()
+
+task close-sync
+  like dynamic
+
+  back disk-read-only-throw()
+
+task write-sync
+  like dynamic
+
+  back disk-read-only-throw()
+
+task read-sync
+  like dynamic
+
+  back disk-read-only-throw()
+
+task create-write-stream
+  like dynamic
+
+  back disk-read-only-throw()
+
+task create-read-stream
+  like dynamic
+
+  back disk-read-only-throw()

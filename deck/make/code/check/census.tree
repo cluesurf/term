@@ -48,6 +48,7 @@ load ../compile/import-scope
   find gather-exported
   find new-file-set
   find holds-file
+  find file-set
 
 load ../compile/view-lower
   find is-html-tag

@@ -364,7 +364,8 @@ function kotlinFailure(job: KotlinJob, e: unknown): void {
 
 function runKotlinJob(job: KotlinJob, jar: string, at: number): void {
   try {
-    job.check(execFileSync('java', ['-cp', jar, `p${at}.${kotlinFacade(job.file)}`], { stdio: 'pipe' }).toString())
+    // bounded: a program that never answers fails here, named, rather than holding the whole suite to its limit
+    job.check(execFileSync('java', ['-cp', jar, `p${at}.${kotlinFacade(job.file)}`], { stdio: 'pipe', timeout: 120_000 }).toString())
   } catch (e) {
     fail++
     console.log(`FAIL  ${job.name}  (java error: ${String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 300)})`)
@@ -845,13 +846,13 @@ function runKotlinCrypto(
     {return skipped(name, 'kotlinc/java not installed')}
 
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
+  // the shared main (compile/main-entry.tree): a suspending `compute` runs on `termLoop.block`, so a completion the
+  // runtime posts to the loop (`termLoop.await` of `sendAsync`, `handBack`) is run. A bare `suspend fun main()` never
+  // drives the loop, and such a program waited forever (the http GET held the suite to its 2400 s limit)
+  const kotlin = emitKotlin(program)
   writeFileSync(
     file,
-    hoistKotlinImports(
-      `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
-        program,
-      )}\nsuspend fun main() { print(compute()) }\n`,
-    ),
+    hoistKotlinImports(`${nativePrelude(program, 'kotlin', readRuntime, kotlin)}\n${kotlin}\n${nativeMain('kotlin', kotlin, 'compute')}\n`),
   )
 
   deferKotlin(name, file, out => ok(name, out.trim(), want), 'skip')
@@ -939,14 +940,13 @@ function runKotlinText(
     {return skipped(name, 'kotlinc/java not installed')}
 
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
-  const mainSig = isAsync ? 'suspend fun main()' : 'fun main()'
+  // an asynchronous `compute` runs through the shared main on `termLoop.block`, which runs what the runtime posts to
+  // the loop; a bare `suspend fun main()` never drives it (runKotlinCrypto)
+  const kotlin = emitKotlin(program)
+  const main = isAsync ? nativeMain('kotlin', kotlin, 'compute') : 'fun main() { print(compute()) }'
   writeFileSync(
     file,
-    hoistKotlinImports(
-      `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
-        program,
-      )}\n${mainSig} { print(compute()) }\n`,
-    ),
+    hoistKotlinImports(`${nativePrelude(program, 'kotlin', readRuntime, kotlin)}\n${kotlin}\n${main}\n`),
   )
 
   deferKotlin(name, file, out => ok(name, out.trim(), want))
@@ -973,7 +973,7 @@ aes-gcm = "0.10"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 chrono = "0.4"
-reqwest = { version = "0.12", features = ["rustls-tls"] }
+reqwest = { version = "0.12", features = ["rustls-tls", "blocking", "json"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 notify = "7"

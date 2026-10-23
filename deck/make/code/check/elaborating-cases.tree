@@ -64,6 +64,9 @@ load ./ring
   find equation, name ring-equation
   find ring-equal-by-equations
 
+load ../parser/diagnostic
+  find span
+
 # ---- the host's numbers ----
 
 bind number-of-digits

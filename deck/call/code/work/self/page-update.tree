@@ -1,0 +1,348 @@
+# Over-the-air page updates for a cask (native-dom-0016): the publishing half. A cask app's page (its TypeScript bundle
+# and the files beside it) can change without a store release, as long as the native half it talks to is the one it
+# was built against, which is exactly what the runtime version says (work/self/runtime-stamp.tree). Ported from
+# call/code/update.ts (term-cli-in-term-0040), whole.
+#
+# The SHAPE is Expo's (expo-updates-1): a manifest names one launch asset and the other assets by content hash, the
+# manifest's exact bytes are signed RSA PKCS#1 v1.5 with SHA-256 under a key whose public half is inside the app, and an
+# asset is trusted because its hash is in the signed manifest. See note/project/term/app/research/13-expo-lessons.md.
+#
+# THE TRANSPORT IS STATIC. The publisher writes files, and anything that serves files serves updates:
+#
+#   <out>/<platform>/<runtime-version>/<channel>.json       the manifest, the newest for that channel
+#   <out>/<platform>/<runtime-version>/<channel>.json.sig   `sig=":<base64>:", keyid="root", alg="rsa-v1_5-sha256"`
+#   <out>/assets/<sha256 hex>                               every asset, immutable, shared by every update
+#
+# The signing key never leaves this machine: `~/.base/@term/code/update/<identifier>.pem`, written 0600 and never
+# overwritten. Its public half goes into the app at build time, in the two encodings the runtimes read. The keys, the
+# hashes and the signature are node:crypto's, and the manifest's bytes are JSON.stringify's (its key order is the wire
+# format), each through a bind.
+
+load @term/base/list
+  find list
+  find contains
+
+dock load
+  load <@term/call/code/home>, name home-module
+  load <node:crypto>, name node-crypto
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+
+# ---- the host's values ----
+
+# `createHash('sha256').update(bytes).digest('hex')`
+bind update-sha256
+  take crypto, like dynamic
+  take bytes, like dynamic
+  like text
+  case node
+    text <$crypto.createHash("sha256").update($bytes).digest("hex")>
+
+# `Buffer.from(hex, 'hex').toString('base64url')`
+bind update-base64url
+  take hex, like text
+  like text
+  case node
+    text <Buffer.from($hex, "hex").toString("base64url")>
+
+# a new RSA key's private half as PKCS#8 PEM
+bind update-new-key
+  take crypto, like dynamic
+  like text
+  case node
+    text <$crypto.generateKeyPairSync("rsa", \{ modulusLength: 2048 \}).privateKey.export(\{ type: "pkcs8", format: "pem" \}).toString()>
+
+# the public half in PKCS#1 DER and SubjectPublicKeyInfo DER
+bind update-public-halves
+  take crypto, like dynamic
+  take pem, like text
+  like dynamic
+  case node
+    text <((key) =\> (\{ pkcs1: key.export(\{ type: "pkcs1", format: "der" \}), spki: key.export(\{ type: "spki", format: "der" \}) \}))($crypto.createPublicKey($crypto.createPrivateKey($pem)))>
+
+# `sign('sha256', bytes, createPrivateKey(pem)).toString('base64')`
+bind update-signature
+  take crypto, like dynamic
+  take bytes, like dynamic
+  take pem, like text
+  like text
+  case node
+    text <$crypto.sign("sha256", $bytes, $crypto.createPrivateKey($pem)).toString("base64")>
+
+# `writeFileSync(file, text, { mode: 0o600 })`
+bind update-write-private
+  take files, like dynamic
+  take file, like text
+  take text, like text
+  like void
+  case node
+    text <$files.writeFileSync($file, $text, \{ mode: 0o600 \})>
+
+# `readdirSync(dir).sort()`, by UTF-16 unit as JavaScript sorts
+bind update-sorted-names
+  take files, like dynamic
+  take dir, like text
+  like list, like text
+  case node
+    text <$files.readdirSync($dir).sort()>
+
+# one asset, its keys in the wire order
+bind update-asset
+  take key, like text
+  take hash, like text
+  take type, like text
+  take extension, like text
+  take url, like text
+  like dynamic
+  case node
+    text <(\{ key: $key, hash: $hash, contentType: $type, fileExtension: $extension, url: $url \})>
+
+# the manifest, its keys in the wire order
+bind update-manifest
+  take crypto, like dynamic
+  take version, like text
+  take launch, like dynamic
+  take assets, like list, like dynamic
+  take channel, like text
+  take platform, like text
+  like dynamic
+  case node
+    text <(\{ id: $crypto.randomUUID(), createdAt: new Date().toISOString(), runtimeVersion: $version, launchAsset: $launch, assets: $assets, metadata: \{ channel: $channel, platform: $platform \}, extra: \{\} \})>
+
+# `Buffer.from(JSON.stringify(manifest, null, 2))`
+bind update-manifest-bytes
+  take manifest, like dynamic
+  like dynamic
+  case node
+    text <Buffer.from(JSON.stringify($manifest, null, 2))>
+
+# `value === undefined || value === null`, which `??` tests
+bind update-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined || $value === null)>
+
+# `stat.isDirectory()`
+bind update-is-folder
+  take stat, like dynamic
+  like boolean
+  case node
+    text <$stat.isDirectory()>
+
+# `file ?? fallback`
+bind update-file-or
+  take file, like dynamic
+  take fallback, like text
+  like text
+  case node
+    text <($file ?? $fallback)>
+
+# `throw new Error(message)`
+bind update-refuse
+  take message, like text
+  like void
+  case node
+    text <(() =\> \{ throw new Error($message) \})()>
+
+# ---- the shapes ----
+
+form update-key-made
+  link private-pem, like text
+  link made, like boolean
+
+form stamp-ask
+  link identifier, like text
+  link into, like text
+  link key-file
+    like dynamic
+    need false
+
+form publish-ask
+  link page, like text
+  link out, like text
+  link identifier, like text
+  link platform, like text
+  link runtime-version, like text
+  link channel, like text
+  link key-file
+    like dynamic
+    need false
+
+form published
+  link manifest, like dynamic
+  link file, like text
+
+form folder-ask
+  link recursive, like boolean
+
+# ---- the key ----
+
+# where the private key for an app lives
+task update-key-path
+  take identifier, like text
+  like text
+
+  back home-module/user-home(<update>, <{identifier}.pem>)
+
+# The app's update key: read when it exists, made once when it does not. Never overwritten, because every installed
+# copy of the app trusts only this key, and a new one would orphan them all. `key-file` overrides where it lives (a
+# test points it at a temporary directory), left out for the default: `keyFile ?? updateKeyPath(identifier)`
+task update-key
+  take identifier, like text
+  take key-file, like dynamic
+  like update-key-made
+
+  # the default is asked for only when no file is named, as `??` asks it (userHome settles the home folder)
+  save file, update-file-or(key-file, <>)
+  fork test, update-absent(key-file)
+    hold
+      save file, update-key-path(identifier)
+
+  fork test, node-file/exists-sync(file)
+    hold
+      back make(update-key-made, bind(private-pem, node-file/read-file-sync(file, <utf8>)), bind(made, false))
+
+  save pem, update-new-key(node-crypto)
+  node-file/mkdir-sync(node-path/dirname(file), make(folder-ask, bind(recursive, true)))
+  update-write-private(node-file, file, pem)
+  node-file/chmod-sync(file, 384)
+  back make(update-key-made, bind(private-pem, pem), bind(made, true))
+
+
+# the public half, in the encodings the runtimes read: PKCS#1 DER for Apple's Security framework and SubjectPublicKeyInfo
+# DER for the JVM's X509EncodedKeySpec and Rust. A record of two Buffers, `pkcs1` and `spki`
+task public-key-files
+  take private-pem, like text
+  like dynamic
+
+  back update-public-halves(node-crypto, private-pem)
+
+# write the public key into an app's resources, beside its runtime version
+task stamp-update-key
+  take input, like stamp-ask
+  like void
+
+  save key, update-key(input/identifier, input/key-file)
+  save halves, public-key-files(key/private-pem)
+  node-file/mkdir-sync(input/into, make(folder-ask, bind(recursive, true)))
+  node-file/write-file-sync(node-path/join(input/into, <update-key.der>), halves/pkcs1)
+  node-file/write-file-sync(node-path/join(input/into, <update-key.spki.der>), halves/spki)
+
+# ---- the update ----
+
+# every file under a directory, as paths relative to it, in a stable order
+task files-under
+  take root, like text
+  take at, like text
+  like list, like text
+  mark private
+
+  save found, make list
+  walk update-sorted-names(node-file, node-path/join(root, at))
+    take name
+    save relative, name
+    fork test, is-unequal(at, <>)
+      hold
+        save relative, <{at}/{name}>
+    save stat, node-file/stat-sync(node-path/join(root, relative))
+    fork test, update-is-folder(stat)
+      hold
+        walk files-under(root, relative)
+          take inner
+          found/push(inner)
+      miss
+        found/push(relative)
+  back found
+
+# the content type a page asset is served with
+task content-type-of
+  take extension, like text
+  like text
+  mark private
+
+  fork test, is-equal(extension, <.html>)
+    hold
+      back <text/html>
+  fork test, is-equal(extension, <.js>)
+    hold
+      back <application/javascript>
+  fork test, is-equal(extension, <.css>)
+    hold
+      back <text/css>
+  fork test, is-equal(extension, <.json>)
+    hold
+      back <application/json>
+  fork test, is-equal(extension, <.png>)
+    hold
+      back <image/png>
+  fork test, is-equal(extension, <.jpg>)
+    hold
+      back <image/jpeg>
+  fork test, is-equal(extension, <.svg>)
+    hold
+      back <image/svg+xml>
+  fork test, is-equal(extension, <.woff2>)
+    hold
+      back <font/woff2>
+  back <application/octet-stream>
+
+# one asset: stored once under its hash, named in the manifest by its key
+task asset-of
+  take page, like text
+  take key, like text
+  take out, like text
+  like dynamic
+  mark private
+
+  save bytes, node-file/read-file-sync(node-path/join(page, key))
+  save hex, update-sha256(node-crypto, bytes)
+  save stored, node-path/join(out, <assets>, hex)
+  fork test, not(node-file/exists-sync(stored))
+    hold
+      node-file/mkdir-sync(node-path/dirname(stored), make(folder-ask, bind(recursive, true)))
+      node-file/copy-file-sync(node-path/join(page, key), stored)
+  save extension, node-path/extname(key)
+  back update-asset(key, update-base64url(hex), content-type-of(extension), extension, <assets/{hex}>)
+
+# the signature header value over a manifest's exact bytes, in the structured-field form Expo's client reads
+task sign-manifest
+  take bytes, like dynamic
+  take private-pem, like text
+  like text
+
+  save signature, update-signature(node-crypto, bytes, private-pem)
+  back <sig=":{signature}:", keyid="root", alg="rsa-v1_5-sha256">
+
+# Publish one update: the page directory's files as content-addressed assets, and a signed manifest naming them as the
+# newest for this platform, runtime version and channel. `index.html` is the launch asset
+task publish-update
+  take input, like publish-ask
+  like published
+
+  save page, input/page
+  save files, files-under(page, <>)
+  fork test, not(contains(files, <index.html>))
+    hold
+      update-refuse(<no index.html in {page}: a page update launches from it>)
+
+  save launch, make list
+  save rest, make list
+  walk files
+    take key
+    save asset, asset-of(page, key, input/out)
+    fork test, is-equal(key, <index.html>)
+      hold
+        launch/push(asset)
+      miss
+        rest/push(asset)
+  save manifest, update-manifest(node-crypto, input/runtime-version, launch/0, rest, input/channel, input/platform)
+  save bytes, update-manifest-bytes(manifest)
+  save dir, node-path/join(input/out, input/platform, input/runtime-version)
+  node-file/mkdir-sync(dir, make(folder-ask, bind(recursive, true)))
+  save channel, input/channel
+  save file, node-path/join(dir, <{channel}.json>)
+  node-file/write-file-sync(file, bytes)
+  save key, update-key(input/identifier, input/key-file)
+  node-file/write-file-sync(<{file}.sig>, sign-manifest(bytes, key/private-pem))
+  back make(published, bind(manifest, manifest), bind(file, file))

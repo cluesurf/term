@@ -1,0 +1,332 @@
+# One WARM Kotlin compiler for a session (live-reload). Ported from call/code/kotlin-worker.ts, term-cli-in-term-0026.
+#
+# `kotlinc` starts a JVM and the compiler for every build, and on this Mac that alone is 13 seconds of a 30 second
+# Compose build: an empty file takes 13.2s. A session that rebuilds on every edit keeps one compiler running instead: a
+# JVM holding `K2JVMCompiler` with `kotlin.environment.keepalive`, the switch the Kotlin daemon itself uses to keep the
+# compiler's environment between compilations.
+#
+# The worker is a few lines of Java run by the JDK's single-file source launcher, so it needs no build of its own and no
+# library beyond the compiler jar it is started with, which it reaches by reflection. A request is the argument count on
+# one line and then one argument a line; the reply is the compiler's messages and then a line `@@term-kotlin-done
+# <exit>`. The compiler is given its messages stream, so nothing it prints can be mistaken for the reply.
+#
+# The builders (work/compose/) call a compiler SYNCHRONOUSLY, as they call `kotlinc`, so the worker answers
+# synchronously too: a worker thread owns the pipe to the JVM, and the caller waits on a shared flag (`Atomics.wait`)
+# until the thread has the reply. One request at a time, which is what one dev loop makes. The thread is evaluated
+# source (`eval: true`), as it was: it is not a module of its own.
+#
+# Both sources are written a line at a time as raw texts and joined with a line break, so nothing in them is read as an
+# escape (a `\n` in a bind's text is a real line break, traps.md).
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <node:child_process>, name child-process
+  load <node:worker_threads>, name worker-threads
+
+# what one compilation said: the exit status and the compiler's messages (`KotlinRun`)
+form kotlin-run
+  link status, like number
+  link output, like text
+
+# a warm compiler (`startKotlinWorker`'s answer): `compile` takes `kotlinc`'s arguments, `close` ends the JVM
+form kotlin-session
+  link compile
+    like task
+      take args, like list, like text
+      like kotlin-run
+  link close
+    like task
+      like void
+
+form spawn-ask
+  link encoding, like text
+  link max-buffer, like number
+
+form text-ask
+  link encoding, like text
+
+form folder-ask
+  link recursive, like boolean
+
+# a line break, by its code (a `\n` in a bind's text would be a real one)
+bind kotlin-line-break
+  like text
+  case node
+    text <String.fromCharCode(10)>
+
+bind kotlin-joined
+  take lines, like list, like text
+  take between, like text
+  like text
+  case node
+    text <$lines.join($between)>
+
+bind kotlin-status-of
+  take ran, like dynamic
+  like number
+  case node
+    text <($ran.status ?? 1)>
+
+# the run's standard output and then its standard error, as a template literal writes them
+bind kotlin-said-of
+  take ran, like dynamic
+  like text
+  case node
+    text <(String($ran.stdout) + String($ran.stderr))>
+
+# raise a plain Error with the message, as `throw new Error(message)` does
+bind kotlin-throw
+  take message, like text
+  like dynamic
+  case node
+    text <(() =\> \{ throw new Error($message) \})()>
+
+bind kotlin-trimmed
+  take value, like dynamic
+  like text
+  case node
+    text <$value.trim()>
+
+bind kotlin-or-empty
+  take value, like dynamic
+  like text
+  case node
+    text <($value ?? "")>
+
+# `openjdk version "25.0.2"` is 25, `"1.8.0"` is 8, nothing found is 0
+bind kotlin-major-of
+  take said, like text
+  like number
+  case node
+    text <((found) =\> !found ? 0 : found[1] === "1" ? Number(found[2] ?? 0) : Number(found[1]))(/version "([0-9]+)(?:[.]([0-9]+))?/.exec($said))>
+
+# `kotlinc` itself, a JVM per call: what a one-off build (`term make`, a test) uses
+task kotlinc
+  take args, like list, like text
+  like kotlin-run
+
+  save ran, child-process/spawn-sync(<kotlinc>, args, make(spawn-ask, bind(encoding, <utf8>), bind(max-buffer, 67108864)))
+  back make(kotlin-run, bind(status, kotlin-status-of(ran)), bind(output, kotlin-said-of(ran)))
+
+# the source of the JVM side (`WORKER_JAVA`)
+task kotlin-worker-source
+  like text
+
+  save lines, make list
+  lines/push(<<import java.io.*;>>)
+  lines/push(<<import java.lang.reflect.Method;>>)
+  lines/push(<<import java.nio.charset.StandardCharsets;>>)
+  lines/push(<<>>)
+  lines/push(<<// one warm Kotlin compiler: deck/call/code/kotlin-worker.ts writes this file and starts it>>)
+  lines/push(<<public class KotlinWorker {>>)
+  lines/push(<<  public static void main(String[] ignored) throws Exception {>>)
+  lines/push(<<    BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));>>)
+  lines/push(<<    PrintStream reply = new PrintStream(new FileOutputStream(FileDescriptor.out), true, "UTF-8");>>)
+  lines/push(<<    // anything else that prints goes to standard error, never into a reply>>)
+  lines/push(<<    System.setOut(System.err);>>)
+  lines/push(<<    Class<?> compiler = Class.forName("org.jetbrains.kotlin.cli.jvm.K2JVMCompiler");>>)
+  lines/push(<<    Method exec = compiler.getMethod("exec", PrintStream.class, String[].class);>>)
+  lines/push(<<    String count;>>)
+  lines/push(<<    while ((count = in.readLine()) != null) {>>)
+  lines/push(<<      String[] args = new String[Integer.parseInt(count.trim())];>>)
+  lines/push(<<      for (int i = 0; i < args.length; i++) args[i] = in.readLine();>>)
+  lines/push(<<      ByteArrayOutputStream said = new ByteArrayOutputStream();>>)
+  lines/push(<<      int status;>>)
+  lines/push(<<      try (PrintStream messages = new PrintStream(said, true, "UTF-8")) {>>)
+  lines/push(<<        Object exit = exec.invoke(compiler.getDeclaredConstructor().newInstance(), messages, args);>>)
+  lines/push(<<        status = (Integer) exit.getClass().getMethod("getCode").invoke(exit);>>)
+  lines/push(<<      } catch (Throwable thrown) {>>)
+  lines/push(<<        Throwable cause = thrown.getCause() != null ? thrown.getCause() : thrown;>>)
+  lines/push(<<        said.write(("error: the compiler threw " + cause + "\n").getBytes(StandardCharsets.UTF_8));>>)
+  lines/push(<<        status = 2;>>)
+  lines/push(<<      }>>)
+  lines/push(<<      reply.print(said.toString("UTF-8"));>>)
+  lines/push(<<      reply.println();>>)
+  lines/push(<<      reply.println("@@term-kotlin-done " + status);>>)
+  lines/push(<<    }>>)
+  lines/push(<<  }>>)
+  lines/push(<<}>>)
+  lines/push(<<>>)
+  back kotlin-joined(lines, kotlin-line-break())
+
+# the thread that owns the pipe (`THREAD`): it starts the JVM, writes each request, and hands back each reply through
+# the port, raising the shared flag the caller is waiting on
+task kotlin-thread-source
+  like text
+
+  save lines, make list
+  lines/push(<<>>)
+  lines/push(<<const { spawn } = require('node:child_process')>>)
+  lines/push(<<const { workerData } = require('node:worker_threads')>>)
+  lines/push(<<const { java, args, cwd, port, flag } = workerData>>)
+  lines/push(<<const signal = new Int32Array(flag)>>)
+  lines/push(<<const child = spawn(java, args, { cwd, stdio: ['pipe', 'pipe', 'inherit'] })>>)
+  lines/push(<<let buffer = ''>>)
+  lines/push(<<let ended = false>>)
+  lines/push(<<const answer = reply => {>>)
+  lines/push(<<  port.postMessage(reply)>>)
+  lines/push(<<  Atomics.store(signal, 0, 1)>>)
+  lines/push(<<  Atomics.notify(signal, 0)>>)
+  lines/push(<<}>>)
+  lines/push(<<child.stdout.setEncoding('utf8')>>)
+  lines/push(<<child.stdout.on('data', chunk => {>>)
+  lines/push(<<  buffer += chunk>>)
+  lines/push(<<  let at>>)
+  lines/push(<<  while ((at = buffer.indexOf("@@term-kotlin-done ")) >= 0) {>>)
+  lines/push(<<    const end = buffer.indexOf('\n', at)>>)
+  lines/push(<<    if (end < 0) break>>)
+  lines/push(<<    const status = Number(buffer.slice(at + 19, end))>>)
+  lines/push(<<    answer({ status, output: buffer.slice(0, at) })>>)
+  lines/push(<<    buffer = buffer.slice(end + 1)>>)
+  lines/push(<<  }>>)
+  lines/push(<<})>>)
+  lines/push(<<child.on('exit', code => {>>)
+  lines/push(<<  ended = true>>)
+  lines/push(<<  answer({ status: 2, output: 'error: the Kotlin worker ended (exit ' + code + ')' })>>)
+  lines/push(<<})>>)
+  lines/push(<<port.on('message', request => {>>)
+  lines/push(<<  if (request === 'close') {>>)
+  lines/push(<<    child.stdin.end()>>)
+  lines/push(<<    port.close()>>)
+  lines/push(<<    return>>)
+  lines/push(<<  }>>)
+  lines/push(<<  if (ended) {>>)
+  lines/push(<<    answer({ status: 2, output: 'error: the Kotlin worker has ended' })>>)
+  lines/push(<<    return>>)
+  lines/push(<<  }>>)
+  lines/push(<<  child.stdin.write(request.length + '\n' + request.join('\n') + '\n')>>)
+  lines/push(<<})>>)
+  lines/push(<<>>)
+  back kotlin-joined(lines, kotlin-line-break())
+
+# the Kotlin home the `kotlinc` on the PATH belongs to, whose lib/ holds the compiler jar
+task find-kotlin-home
+  like text
+  mark private
+
+  save which, child-process/spawn-sync(<which>, make(list, <kotlinc>), make(text-ask, bind(encoding, <utf8>)))
+  save found, kotlin-trimmed(which/stdout)
+  fork test, is-equal(found, <>)
+    hold
+      kotlin-throw(<kotlinc is not installed>)
+  # Homebrew's bin/kotlinc links into <cellar>/bin, whose libexec is the home; an unpacked release's bin is the home's
+  save bin, node-path/dirname(node-file/realpath-sync(found))
+  save homes, make list
+  homes/push(node-path/join(bin, <..>, <libexec>))
+  homes/push(node-path/join(bin, <..>))
+  walk homes
+    take dir
+    fork test, node-file/exists-sync(node-path/join(dir, <lib>, <kotlin-compiler.jar>))
+      hold
+        back dir
+  kotlin-throw(<no lib/kotlin-compiler.jar beside {found}>)
+  back <>
+
+# the major version of the `java` on the PATH
+task find-java-major
+  like number
+  mark private
+
+  save ran, child-process/spawn-sync(<java>, make(list, <-version>), make(text-ask, bind(encoding, <utf8>)))
+  save said, kotlin-or-empty(ran/stderr)
+  back kotlin-major-of(said)
+
+# ---- the warm compiler ----
+
+bind kotlin-shared-flag
+  like dynamic
+  case node
+    text <new SharedArrayBuffer(4)>
+
+bind kotlin-signal-of
+  take flag, like dynamic
+  like dynamic
+  case node
+    text <new Int32Array($flag)>
+
+bind kotlin-channel
+  like dynamic
+  case node
+    text <new (process.getBuiltinModule("node:worker_threads").MessageChannel)()>
+
+bind kotlin-member
+  take value, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$value[$key]>
+
+# the thread, started on its source with the JVM's command and the port and flag it answers through
+bind kotlin-new-thread
+  take source, like text
+  take args, like list, like text
+  take dir, like text
+  take port, like dynamic
+  take flag, like dynamic
+  like dynamic
+  case node
+    text <new (process.getBuiltinModule("node:worker_threads").Worker)($source, \{ eval: true, workerData: \{ java: "java", args: $args, cwd: $dir, port: $port, flag: $flag \}, transferList: [$port] \})>
+
+bind kotlin-lower
+  take signal, like dynamic
+  like void
+  case node
+    text <Atomics.store($signal, 0, 0)>
+
+# ten minutes, far past any build: a compiler that never answers fails the build rather than hanging the session
+bind kotlin-wait
+  take signal, like dynamic
+  like void
+  case node
+    text <Atomics.wait($signal, 0, 0, 600000)>
+
+bind kotlin-received
+  take port, like dynamic
+  like dynamic
+  case node
+    text <(process.getBuiltinModule("node:worker_threads").receiveMessageOnPort($port)?.message ?? \{ status: 2, output: "error: the Kotlin worker gave no answer in ten minutes" \})>
+
+# a warm compiler, its source written into `dir`, which is also where it runs. `close` ends the JVM
+task start-kotlin-worker
+  take dir, like text
+  like kotlin-session
+
+  save home, find-kotlin-home()
+  node-file/mkdir-sync(dir, make(folder-ask, bind(recursive, true)))
+  save source, node-path/join(dir, <KotlinWorker.java>)
+  node-file/write-file-sync(source, kotlin-worker-source())
+  save flag, kotlin-shared-flag()
+  save signal, kotlin-signal-of(flag)
+  save channel, kotlin-channel()
+  save mine, kotlin-member(channel, <port1>)
+  save theirs, kotlin-member(channel, <port2>)
+  save args, make list
+  args/push(<-Xmx3g>)
+  # what `kotlinc` passes from Java 24, which knows these flags: native access for the compiler, and no
+  # `sun.misc.Unsafe` deprecation warnings printed into the session's output (KT-76799)
+  fork test, is-minimum(find-java-major(), 24)
+    hold
+      args/push(<--enable-native-access=ALL-UNNAMED>)
+      args/push(<--sun-misc-unsafe-memory-access=allow>)
+  args/push(<-Dkotlin.home={home}>)
+  args/push(<-Dkotlin.environment.keepalive=true>)
+  args/push(<-cp>)
+  args/push(node-path/join(home, <lib>, <kotlin-compiler.jar>))
+  args/push(source)
+  save thread, kotlin-new-thread(kotlin-thread-source(), args, dir, theirs, flag)
+  thread/unref()
+  save compile
+    task
+      take request, like list, like text
+      like kotlin-run
+      kotlin-lower(signal)
+      mine/post-message(request)
+      kotlin-wait(signal)
+      back kotlin-received(mine)
+  save close
+    task
+      like void
+      mine/post-message(<close>)
+      mine/close()
+  back make(kotlin-session, bind(compile, compile), bind(close, close))

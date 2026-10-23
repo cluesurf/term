@@ -1,0 +1,1083 @@
+# `term make --emit <node|rust|swift|kotlin> <file.tree> [--out <path>]`: ONE program's complete source for one backend.
+#
+# The entry and its whole import closure go through the build's own front end (`compile`, with the project resolver
+# for that env, so `{platform}` native modules resolve to the target's implementation), and the runtime shims the
+# program docks are prepended. What comes out is a single file a toolchain takes as it is: TypeScript for node, one `.rs`
+# for rustc, one `.swift` for swiftc, one `.kt` for kotlinc. `--build` adds the main and builds it, `--run` runs it
+# (call/code/native-build.ts). WGSL and HVM lower a numeric fragment of the language, and a construct outside it is
+# refused naming it. LLVM IR and WebAssembly go through the program's Rust.
+#
+# The program is DATA, on stdout (or the `--out` file); the run around it is the human view on stderr. A check error
+# REFUSES: every diagnostic drawn as a Problem item, nothing written, exit 1.
+#
+# Ported from deck/call/code/emit.ts (term-cli-in-term-0051). Each public task takes the original's one input record
+# as it came, so a TypeScript caller moves to it unchanged. The run is printed through call/code/output.ts, docked, so
+# it shares the options the console set (traps.md: a loaded port carries its own copy of the printer's state).
+
+load @term/base/list
+  find list
+  find join
+  find get
+
+load @term/base/text
+  find split
+
+load @term/make/compile/target-source
+  find list-emit-targets
+  find is-emit-target
+
+load @term/call/work/need/running-install
+  find find-install-root
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <node:os>, name node-os
+  load <global:process>, name node-process
+  load <@term/make/code/compile/compile>, name compile-module
+  load <@term/make/code/compile/emit-target>, name target-module
+  load <@term/make/code/check/binds>, name binds-module
+  load <@term/make/code/compile/hvm>, name hvm-module
+  load <@term/make/code/compile/wgsl>, name wgsl-module
+  load <@term/make/code/parser/diagnostic>, name diagnostic-module
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/boot>, name boot-module
+  load <@term/call/code/deck-of>, name deck-module
+  load <@term/call/code/role-of>, name role-module
+  load <@term/call/code/report>, name report-module
+  load <@term/call/code/output>, name output
+  load <@term/call/code/native-build>, name native-build
+
+# ---- the host values Term has no word for ----
+
+# `undefined`
+bind nothing
+  like dynamic
+  case node
+    text <undefined>
+
+# whether a host value is truthy, as `if (value)` reads it
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# `a === b`
+bind is-same
+  take a, like dynamic
+  take b, like dynamic
+  like boolean
+  case node
+    text <($a === $b)>
+
+# `value ?? fallback`
+bind value-or
+  take value, like dynamic
+  take fallback, like dynamic
+  like dynamic
+  case node
+    text <($value ?? $fallback)>
+
+# the epoch milliseconds now
+bind now-ms
+  like number
+  case node
+    text <Date.now()>
+
+# the UTF-8 length of a text, `Buffer.byteLength`
+bind byte-length
+  take value, like text
+  like number
+  case node
+    text <Buffer.byteLength($value)>
+
+# a text with its first UTF-16 unit upper-cased, `error.charAt(0).toUpperCase() + error.slice(1)`
+bind capitalized
+  take value, like text
+  like text
+  case node
+    text <($value.charAt(0).toUpperCase() + $value.slice(1))>
+
+# `JSON.stringify` of a text: a JavaScript string literal of it
+bind json-text
+  take value, like text
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# whether a text ends in a line feed
+bind ends-with-line
+  take value, like text
+  like boolean
+  case node
+    text <$value.endsWith(String.fromCharCode(10))>
+
+# whether a text holds a space
+bind has-space
+  take value, like text
+  like boolean
+  case node
+    text <$value.includes(" ")>
+
+# `gap.span?.file`
+bind span-file
+  take gap, like dynamic
+  like dynamic
+  case node
+    text <$gap.span?.file>
+
+# one refusal per construct and place: `${gap.form}@${gap.span?.start.line}:${gap.span?.start.column}`
+bind gap-key
+  take gap, like dynamic
+  like text
+  case node
+    text <(String($gap.form) + "@" + String($gap.span?.start.line) + ":" + String($gap.span?.start.column))>
+
+# ---- the shapes the docked modules are handed and the answers given ----
+
+form program-source
+  link file, like text
+  link text, like text
+
+form compile-options
+  link resolve, like dynamic
+  link env, like dynamic
+  link deck-of, like dynamic
+  link role-of, like dynamic
+  link lean-of, like dynamic
+
+# what `emitTarget` is asked
+form target-ask
+  link program, like dynamic
+  link typescript, like dynamic
+  link target, like dynamic
+  link read-runtime, like dynamic
+
+# what `emitTargetUnits` is asked
+form units-ask
+  link program, like dynamic
+  link target, like dynamic
+  link read-runtime, like dynamic
+
+# a diagnostic as the command draws it, with the text its span points into when it is the entry's
+form shown-problem
+  link diagnostic, like dynamic
+  link text, like dynamic
+
+# the program's source, and a native program's files when it was cut by module
+form emitted-source
+  link ok, like boolean
+  link source, like text
+  link files
+    like dynamic
+    need false
+
+# a refusal: every diagnostic rendered, and drawn whole when there is one
+form emit-refusal
+  link ok, like boolean
+  link errors, like list, like text
+  link problems
+    like list, like shown-problem
+    need false
+
+form span-point
+  link line, like number
+  link column, like number
+
+form zero-span
+  link start, like span-point
+  link end, like span-point
+
+# what `diagnose` is asked for a construct outside a fragment
+form fragment-ask
+  link file, like dynamic
+  link span, like dynamic
+  link message, like text
+  link hint, like text
+
+# what the two emitters are asked by the command
+form program-ask
+  link root, like dynamic
+  link file, like dynamic
+  link target, like dynamic
+  link units
+    like dynamic
+    need false
+
+form fragment-program-ask
+  link root, like dynamic
+  link file, like dynamic
+  link target, like dynamic
+
+# the output library's inputs
+form run-ask
+  link verb, like text
+  link root, like dynamic
+  link facts, like list, like dynamic
+
+form item-ask
+  link glyph, like text
+  link kind
+    like text
+    need false
+  link verb
+    like text
+    need false
+  link subject, like dynamic
+  link duration
+    like number
+    need false
+  link bytes
+    like number
+    need false
+  link facts
+    like list, like text
+    need false
+  link fields
+    like list, like dynamic
+    need false
+  link counts
+    like list, like dynamic
+    need false
+  link quote
+    like list, like text
+    need false
+
+form close-ask
+  link verdict, like text
+  link next
+    like dynamic
+    need false
+  link failure
+    like text
+    need false
+  link counts
+    like list, like dynamic
+    need false
+
+form folder-make
+  link recursive, like boolean
+
+# what the native builds are asked
+form native-ask
+  link source, like text
+  link target, like dynamic
+  link folder, like text
+  link name, like text
+  link entry
+    like dynamic
+    need false
+
+form rust-ask
+  link source, like text
+  link target, like dynamic
+  link folder, like text
+  link name, like text
+  link build, like boolean
+  link entry
+    like dynamic
+    need false
+
+# ---- the emit ----
+
+# a runtime shim's text, or `undefined` when there is none
+task read-runtime
+  take file, like text
+  like dynamic
+  mark private
+
+  fork test, node-fs/exists-sync(file)
+    hold
+      back node-fs/read-file-sync(file, <utf8>)
+  back nothing()
+
+# the entry's text when the diagnostic is in the entry, else `undefined`
+task text-shown
+  take diagnostic, like dynamic
+  take file, like text
+  take text, like text
+  like dynamic
+  mark private
+
+  fork test, is-same(diagnostic/file, file)
+    hold
+      back text
+  back nothing()
+
+# every diagnostic rendered and kept whole for the command to draw
+task refused
+  take diagnostics, like dynamic
+  take file, like text
+  take text, like text
+  like emit-refusal
+  mark private
+
+  save errors, make list
+  walk diagnostics
+    take diagnostic
+    push(errors, report-module/render-diagnostic(diagnostic, text-shown(diagnostic, file, text)))
+  save problems, make list
+  walk diagnostics
+    take diagnostic
+    save shown
+      make shown-problem
+        bind diagnostic, diagnostic
+        bind text, text-shown(diagnostic, file, text)
+    push(problems, shown)
+  back
+    make emit-refusal
+      bind ok, false
+      bind errors, errors
+      bind problems, problems
+
+# a refusal of one message, drawn without a diagnostic
+task refused-with
+  take message, like text
+  like emit-refusal
+  mark private
+
+  save errors, make list
+  push(errors, message)
+  back
+    make emit-refusal
+      bind ok, false
+      bind errors, errors
+
+# the program compiled from `file` for `env` through the project's resolver
+task compile-entry
+  take root, like dynamic
+  take file, like text
+  take text, like text
+  take env, like dynamic
+  like dynamic
+  mark private
+
+  # the original read its own folder, `host/` in the bundle: the running install's host/ (decision 006)
+  save install-root, boot-module/find-project-root(node-path/join(find-install-root(), <host>))
+  save source
+    make program-source
+      bind file, file
+      bind text, text
+  save options
+    make compile-options
+      bind resolve, make-module/project-resolver(root, env, install-root)
+      bind env, env
+      bind deck-of, deck-module/project-deck-of()
+      bind role-of, role-module/project-role-of(root)
+      bind lean-of, role-module/project-lean-of(root)
+  back compile-module/compile(source, options)
+
+# the main file's text of a program cut by module, or the empty text
+task main-source
+  take files, like dynamic
+  like text
+  mark private
+
+  walk files/files
+    take one
+    fork test, is-same(one/0, files/main)
+      hold
+        back one/1
+  back <>
+
+# the source text, or every diagnostic rendered. `problems` carries the same diagnostics whole, with the text their
+# spans point into, for the command to draw as Problem items
+task emit-program
+  take input, like dynamic
+  like dynamic
+
+  save file, node-path/resolve(input/root, input/file)
+  fork test, not(node-fs/exists-sync(file))
+    hold
+      back refused-with(<no such file: {input/file}>)
+
+  save text, node-fs/read-file-sync(file, <utf8>)
+  save env, input/target
+  save result, compile-entry(input/root, file, text, env)
+  fork test, not(result/ok)
+    hold
+      back refused(result/diagnostics, file, text)
+
+  # a data file or a stylesheet compiles to no program, and there is nothing a backend could run
+  fork test, is-same(result/program/length, 0)
+    hold
+      back refused-with(<{input/file} is not a program (data or a stylesheet), so it has no {env} source>)
+
+  # every bind the emitted program calls has a case for this backend (check/binds.ts)
+  save checked, binds-module/check-bind-targets(result/program, file, env)
+  save unbound, checked/errors
+  fork test, is-above(unbound/length, 0)
+    hold
+      back refused(unbound, file, text)
+
+  fork test, and(is-truthy(input/units), not(is-same(env, <node>)))
+    hold
+      save asked
+        make units-ask
+          bind program, result/program
+          bind target, env
+          bind read-runtime, read-runtime
+      save files, target-module/emit-target-units(asked)
+      back
+        make emitted-source
+          bind ok, true
+          bind source, main-source(files)
+          bind files, files
+
+  save asked
+    make target-ask
+      bind program, result/program
+      bind typescript, result/typescript
+      bind target, env
+      bind read-runtime, read-runtime
+  back
+    make emitted-source
+      bind ok, true
+      bind source, target-module/emit-target(asked)
+
+# ---- the fragment targets: WGSL (a GPU shader) and HVM (the interaction-combinator runtime) ----
+
+# the targets that lower a numeric, recursive part of the language, not every program
+task fragment-targets
+  like list, like text
+
+  save out, make list
+  push(out, <wgsl>)
+  push(out, <hvm>)
+  back out
+
+task is-fragment-target
+  take target, like dynamic
+  like boolean
+  mark private
+
+  walk fragment-targets()
+    take one
+    fork test, is-same(one, target)
+      hold
+        back true
+  back false
+
+task fragment-name
+  take target, like dynamic
+  like text
+  mark private
+
+  fork test, is-same(target, <wgsl>)
+    hold
+      back <WGSL>
+  back <HVM>
+
+task fragment-holds
+  take target, like dynamic
+  like text
+  mark private
+
+  fork test, is-same(target, <wgsl>)
+    hold
+      back <numbers, booleans, arithmetic, branches and loops over them, and calls>
+  back <numbers, booleans, arithmetic, branches and recursion, each task one returned value>
+
+task no-span
+  like zero-span
+  mark private
+
+  save start
+    make span-point
+      bind line, 0
+      bind column, 0
+  save end
+    make span-point
+      bind line, 0
+      bind column, 0
+  back
+    make zero-span
+      bind start, start
+      bind end, end
+
+# the program's source for WGSL or HVM, or a refusal naming each construct outside the fragment and where it is
+task emit-fragment
+  take input, like dynamic
+  like dynamic
+
+  save file, node-path/resolve(input/root, input/file)
+  fork test, not(node-fs/exists-sync(file))
+    hold
+      back refused-with(<no such file: {input/file}>)
+
+  save text, node-fs/read-file-sync(file, <utf8>)
+  save result, compile-entry(input/root, file, text, <node>)
+  fork test, not(result/ok)
+    hold
+      back refused(result/diagnostics, file, text)
+
+  save gaps, make list
+  save source, <>
+  fork test, is-same(input/target, <wgsl>)
+    hold
+      save source, wgsl-module/emit-wgsl(result/program, gaps)
+    miss
+      save source, hvm-module/emit-hvm(result/program, gaps)
+
+  fork test, is-same(gaps/length, 0)
+    hold
+      back
+        make emitted-source
+          bind ok, true
+          bind source, source
+
+  save name, fragment-name(input/target)
+  save holds, fragment-holds(input/target)
+  # one refusal per construct and place
+  save seen, make hash
+  save refusals, make list
+  walk gaps
+    take gap
+    save key, gap-key(gap)
+    fork test, seen/has(key)
+      hold
+        turn next
+    save seen/{key}, true
+    save asked
+      make fragment-ask
+        bind file, value-or(span-file(gap), file)
+        bind span, value-or(gap/span, no-span())
+        bind message, <{gap/form} is outside what {name} lowers: {holds}>
+        bind hint, <keep the part that runs on {name} to that fragment, or emit this program for node, rust, swift or kotlin>
+    push(refusals, diagnostic-module/diagnose(<not-implemented>, asked))
+  back refused(refusals, file, text)
+
+# ---- the command ----
+
+task failed-item
+  take subject, like dynamic
+  like item-ask
+  mark private
+
+  back
+    make item-ask
+      bind glyph, <failed>
+      bind kind, <problem>
+      bind subject, subject
+
+# a usage failure: the problem drawn, the run closed with exit 2
+task fail-usage
+  take subject, like text
+  take next, like dynamic
+  like void
+  mark private
+
+  output/report(failed-item(subject))
+  save closing
+    make close-ask
+      bind verdict, <Nothing emitted>
+      bind next, next
+      bind failure, <usage>
+  node-process/exit(output/close-run(closing))
+
+# a refusal drawn, every problem or every message, and the run closed with exit 1
+task fail-refused
+  take emitted, like dynamic
+  take root, like dynamic
+  like void
+  mark private
+
+  fork test, is-truthy(emitted/problems)
+    hold
+      output/report-problems(emitted/problems, root)
+    miss
+      walk emitted/errors
+        take error
+        save item
+          make item-ask
+            bind glyph, <failed>
+            bind kind, <problem>
+            bind verb, <check>
+            bind subject, capitalized(error)
+        output/report(item)
+  save counts, make list
+  push(counts, output/count(emitted/errors/length, <errors>, <error>))
+  save closing
+    make close-ask
+      bind verdict, <Refused, nothing written>
+      bind counts, counts
+  node-process/exit(output/close-run(closing))
+
+# a build that failed: its first line the subject, the next 29 quoted
+task fail-built
+  take reason, like text
+  take target, like dynamic
+  like void
+  mark private
+
+  save lines, split(reason, <\n>)
+  fork test, is-above(lines/length, 1)
+    hold
+      save quote, make list
+      save at, 1
+      walk test
+        hook test, and(is-below(at, lines/length), is-below(at, 30))
+        hook hold
+          push(quote, get(lines, at))
+          save at, add(at, 1)
+      save item
+        make item-ask
+          bind glyph, <failed>
+          bind kind, <problem>
+          bind verb, <build>
+          bind subject, get(lines, 0)
+          bind quote, quote
+      output/report(item)
+    miss
+      save item
+        make item-ask
+          bind glyph, <failed>
+          bind kind, <problem>
+          bind verb, <build>
+          bind subject, get(lines, 0)
+      output/report(item)
+  save closing
+    make close-ask
+      bind verdict, <Not built for {target}>
+      bind failure, <failure>
+  node-process/exit(output/close-run(closing))
+
+# the command a built program runs, each part with a space quoted
+task command-line
+  take command, like dynamic
+  like text
+  mark private
+
+  save parts, make list
+  walk command
+    take one
+    fork test, has-space(one)
+      hold
+        push(parts, json-text(one))
+      miss
+        push(parts, one)
+  back join(parts, < >)
+
+# the source written to `out` (under the root) or printed to stdout, and the run closed
+task write-source
+  take source, like text
+  take subject, like dynamic
+  take out, like dynamic
+  take root, like dynamic
+  take started, like number
+  like void
+  mark private
+
+  fork test, not(is-truthy(out))
+    hold
+      output/print-data(source)
+      save facts, make list
+      push(facts, <stdout>)
+      save item
+        make item-ask
+          bind glyph, <done>
+          bind verb, <emit>
+          bind subject, subject
+          bind duration, subtract(now-ms(), started)
+          bind bytes, byte-length(source)
+          bind facts, facts
+      output/report(item)
+    miss
+      save at, node-path/resolve(root, out)
+      save folder
+        make folder-make
+          bind recursive, true
+      node-fs/mkdir-sync(node-path/dirname(at), folder)
+      node-fs/write-file-sync(at, source)
+      save fields, make list
+      push(fields, output/location(output/show-path(at, root)))
+      save item
+        make item-ask
+          bind glyph, <done>
+          bind verb, <emit>
+          bind subject, subject
+          bind duration, subtract(now-ms(), started)
+          bind bytes, byte-length(source)
+          bind fields, fields
+      output/report(item)
+  save closing
+    make close-ask
+      bind verdict, <Emitted {subject}>
+  output/close-run(closing)
+
+# the source with its line feed at the end
+task ended
+  take source, like text
+  like text
+  mark private
+
+  fork test, ends-with-line(source)
+    hold
+      back source
+  back <{source}\n>
+
+# a fragment target: the program's source for WGSL or HVM, or a refusal naming each construct outside the fragment
+task call-fragment
+  take input, like dynamic
+  like void
+  mark private
+
+  save target, input/target
+  fork test, or(or(not(is-truthy(input/file)), is-truthy(input/build)), or(is-truthy(input/run), is-truthy(input/units)))
+    hold
+      save subject, <There is no file to emit>
+      fork test, is-truthy(input/file)
+        hold
+          save flag, <units>
+          fork test, is-truthy(input/run)
+            hold
+              save flag, <run>
+          fork test, is-truthy(input/build)
+            hold
+              save flag, <build>
+          save subject, <--{flag} is for node, rust, swift and kotlin: {target} is emitted as source>
+      fail-usage(subject, <term make --emit {target} \<file.tree\> [--out \<path\>]>)
+
+  save started, now-ms()
+  save asked
+    make fragment-program-ask
+      bind root, input/root
+      bind file, input/file
+      bind target, target
+  save emitted, emit-fragment(asked)
+  fork test, not(emitted/ok)
+    hold
+      fail-refused(emitted, input/root)
+  write-source(ended(emitted/source), target, input/out, input/root, started)
+
+# LLVM IR and WebAssembly, through the program's Rust (call/code/native-build.ts `buildThroughRust`)
+task call-through-rust
+  take input, like dynamic
+  like void
+  mark private
+
+  save target, input/target
+  fork test, not(is-truthy(input/file))
+    hold
+      output/report(failed-item(<There is no file to emit>))
+      save closing
+        make close-ask
+          bind verdict, <Nothing emitted>
+          bind next, <term make --emit {target} \<file.tree\> [--run]>
+          bind failure, <usage>
+      node-process/exit(output/close-run(closing))
+
+  save started, now-ms()
+  save asked
+    make program-ask
+      bind root, input/root
+      bind file, input/file
+      bind target, <rust>
+  save emitted, emit-program(asked)
+  fork test, not(emitted/ok)
+    hold
+      fail-refused(emitted, input/root)
+
+  save name, node-path/basename(input/file, <.tree>)
+  # the IR alone goes to stdout, or `--out`; anything built goes in a folder
+  save ir-only, and(is-same(target, <llvm>), not(or(is-truthy(input/build), is-truthy(input/run))))
+  save folder, <>
+  fork test, ir-only
+    hold
+      save folder, node-path/join(node-os/tmpdir(), <term-llvm-{node-process/pid}>)
+    miss
+      save folder, node-path/resolve(input/root, value-or(input/out, node-path/join(<host>, target)))
+  save built, nothing()
+  fork test, is-truthy(input/main)
+    hold
+      save rust
+        make rust-ask
+          bind source, emitted/source
+          bind target, target
+          bind folder, folder
+          bind name, name
+          bind build, not(ir-only)
+          bind entry, input/main
+      save built, native-build/build-through-rust(rust)
+    miss
+      save rust
+        make rust-ask
+          bind source, emitted/source
+          bind target, target
+          bind folder, folder
+          bind name, name
+          bind build, not(ir-only)
+      save built, native-build/build-through-rust(rust)
+
+  fork test, not(built/ok)
+    hold
+      fail-built(built/reason, target)
+
+  fork test, ir-only
+    hold
+      save ir, node-fs/read-file-sync(built/artifact, <utf8>)
+      fork test, is-truthy(input/out)
+        hold
+          save out, node-path/resolve(input/root, input/out)
+          save making
+            make folder-make
+              bind recursive, true
+          node-fs/mkdir-sync(node-path/dirname(out), making)
+          node-fs/write-file-sync(out, ir)
+          save fields, make list
+          push(fields, output/location(output/show-path(out, input/root)))
+          save item
+            make item-ask
+              bind glyph, <done>
+              bind verb, <emit>
+              bind subject, <llvm>
+              bind duration, subtract(now-ms(), started)
+              bind bytes, byte-length(ir)
+              bind fields, fields
+          output/report(item)
+        miss
+          output/print-data(ir)
+          save facts, make list
+          push(facts, <stdout>)
+          save item
+            make item-ask
+              bind glyph, <done>
+              bind verb, <emit>
+              bind subject, <llvm>
+              bind duration, subtract(now-ms(), started)
+              bind bytes, byte-length(ir)
+              bind facts, facts
+          output/report(item)
+      save closing
+        make close-ask
+          bind verdict, <Emitted llvm>
+      output/close-run(closing)
+    miss
+      finish-built(built, target, input, started)
+
+# a native build done: its artifact drawn, and the run closed, or the program run
+task finish-built
+  take built, like dynamic
+  take target, like dynamic
+  take input, like dynamic
+  take started, like number
+  like void
+  mark private
+
+  save fields, make list
+  push(fields, output/location(output/show-path(built/artifact, input/root)))
+  save item
+    make item-ask
+      bind glyph, <done>
+      bind verb, <build>
+      bind subject, target
+      bind duration, subtract(now-ms(), started)
+      bind fields, fields
+  output/report(item)
+
+  fork test, not(is-truthy(input/run))
+    hold
+      save closing
+        make close-ask
+          bind verdict, <Built {target}>
+          bind next, command-line(built/command)
+      output/close-run(closing)
+    miss
+      save closing
+        make close-ask
+          bind verdict, <Built {target}, running>
+      output/close-run(closing)
+      node-process/exit(native-build/run-built(built/command))
+
+# one file per module, each written only when its text changed, and `units.txt` naming the files of this program
+task write-units
+  take files, like dynamic
+  take input, like dynamic
+  take started, like number
+  like void
+  mark private
+
+  save folder, node-path/resolve(input/root, input/out)
+  save making
+    make folder-make
+      bind recursive, true
+  node-fs/mkdir-sync(folder, making)
+  save names, make list
+  walk files/files
+    take one
+    push(names, one/0)
+  save count-files, names/length
+  save changed, 0
+  save pairs, make list
+  walk files/files
+    take one
+    push(pairs, one)
+  save listing, make list
+  push(listing, <units.txt>)
+  push(listing, <{join(names, <\n>)}\n>)
+  push(pairs, listing)
+  walk pairs
+    take one
+    save at, node-path/join(folder, one/0)
+    save fresh, not(node-fs/exists-sync(at))
+    fork test, not(fresh)
+      hold
+        save fresh, not(is-same(node-fs/read-file-sync(at, <utf8>), one/1))
+    fork test, fresh
+      hold
+        node-fs/write-file-sync(at, one/1)
+        save changed, add(changed, 1)
+
+  save counts, make list
+  push(counts, output/count(count-files, <files>, <file>))
+  push(counts, output/count(changed, <written>, <written>))
+  save fields, make list
+  push(fields, output/location(output/show-path(folder, input/root)))
+  push(fields, output/field(<main>, files/main))
+  save item
+    make item-ask
+      bind glyph, <done>
+      bind verb, <emit>
+      bind subject, input/target
+      bind duration, subtract(now-ms(), started)
+      bind counts, counts
+      bind fields, fields
+  output/report(item)
+  save closing
+    make close-ask
+      bind verdict, <Emitted {input/target}>
+  output/close-run(closing)
+
+# node, rust, swift or kotlin: the program's source, or one file per module, or built and run
+task call-native
+  take input, like dynamic
+  like void
+  mark private
+
+  save target, input/target
+  # wrong usage, exit 2
+  fork test, not(is-emit-target(target))
+    hold
+      save named, make list
+      walk list-emit-targets()
+        take one
+        push(named, one)
+      walk fragment-targets()
+        take one
+        push(named, one)
+      push(named, <llvm>)
+      push(named, <wasm>)
+      save fields, make list
+      push(fields, output/field(<targets>, join(named, <, >)))
+      save item
+        make item-ask
+          bind glyph, <failed>
+          bind kind, <problem>
+          bind subject, <There is no target named {target}>
+          bind fields, fields
+      output/report(item)
+      save closing
+        make close-ask
+          bind verdict, <Nothing emitted>
+          bind failure, <usage>
+      node-process/exit(output/close-run(closing))
+
+  fork test, not(is-truthy(input/file))
+    hold
+      fail-usage(<There is no file to emit>, <term make --emit \<node|rust|swift|kotlin\> \<file.tree\> [--out \<path\>]>)
+
+  # one file per module goes in a folder, and needs a native target
+  fork test, and(is-truthy(input/units), or(is-same(target, <node>), not(is-truthy(input/out))))
+    hold
+      fail-usage(<--units writes a native program to a folder, and needs rust, swift or kotlin and --out \<folder\>>, <term make --emit rust \<file.tree\> --out \<folder\> --units>)
+
+  save started, now-ms()
+  save asked
+    make program-ask
+      bind root, input/root
+      bind file, input/file
+      bind target, target
+      bind units, input/units
+  save emitted, emit-program(asked)
+
+  # a check error refuses: every problem drawn, nothing written, exit 1
+  fork test, not(emitted/ok)
+    hold
+      fail-refused(emitted, input/root)
+
+  fork test, is-truthy(emitted/files)
+    hold
+      write-units(emitted/files, input, started)
+    miss
+      save source, ended(emitted/source)
+      fork test, or(is-truthy(input/build), is-truthy(input/run))
+        hold
+          build-native(source, input, started)
+        miss
+          write-source(source, target, input/out, input/root, started)
+
+# `--build` and `--run`: the program with its main, built by its toolchain into `--out` (host/<target>/ by default)
+task build-native
+  take source, like text
+  take input, like dynamic
+  take started, like number
+  like void
+  mark private
+
+  save target, input/target
+  save folder, node-path/resolve(input/root, value-or(input/out, node-path/join(<host>, target)))
+  save name, node-path/basename(input/file, <.tree>)
+  save built, nothing()
+  fork test, is-truthy(input/main)
+    hold
+      save asked
+        make native-ask
+          bind source, source
+          bind target, target
+          bind folder, folder
+          bind name, name
+          bind entry, input/main
+      save built, native-build/build-native(asked)
+    miss
+      save asked
+        make native-ask
+          bind source, source
+          bind target, target
+          bind folder, folder
+          bind name, name
+      save built, native-build/build-native(asked)
+
+  fork test, not(built/ok)
+    hold
+      fail-built(built/reason, target)
+  finish-built(built, target, input, started)
+
+# `term make --emit <target> <file.tree>`: one program's source for one backend, a fragment target's, or built
+task call-emit
+  take input, like dynamic
+  like void
+
+  # the project folder is the subject; the program and the backend are what this run is about, as facts
+  save facts, make list
+  push(facts, <--emit>)
+  push(facts, input/target)
+  fork test, is-truthy(input/file)
+    hold
+      push(facts, input/file)
+  save opening
+    make run-ask
+      bind verb, <make>
+      bind root, input/root
+      bind facts, facts
+  output/open-run(opening)
+
+  fork test, is-fragment-target(input/target)
+    hold
+      call-fragment(input)
+    miss
+      fork test, or(is-same(input/target, <llvm>), is-same(input/target, <wasm>))
+        hold
+          call-through-rust(input)
+        miss
+          call-native(input)

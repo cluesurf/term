@@ -30,6 +30,7 @@ load ../compile/node
   find binary-op
   find expression
   find expression-span
+  find type
 
 load ./egraph
   find expr

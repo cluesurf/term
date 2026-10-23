@@ -1,0 +1,540 @@
+# The Term test runner. A test file is ordinary Term with `test <phrase>` blocks, each lowering (via the
+# preprocessor) to a zero-argument boolean task that ends in a `want`. This compiles the file, imports the module, runs
+# each test task (awaiting async ones), and answers the per-test results. It takes the resolver and the native-runtime
+# reader, so both `term test` (the project resolver) and a dev harness (the stdlib tree) use it. No process exit, no
+# printing. What it decides beside its build and its module is call/code/test-run-words.tree.
+#
+# Ported from deck/call/code/test-run.ts (term-cli-in-term-0019). Docked: the compiler's TypeScript modules
+# (compile/compile, compile/separate, compile/mill, compile/native, compile/typescript), the parser and its renderer
+# (handed straight to the docked mill and given the original's input), the preprocessor (call/code/test-preprocess.ts,
+# its own items), the unit naming and bundle writer (call/code/make.ts, unit-bundle.ts) and esbuild (decision 002).
+
+load @term/base/list
+  find list
+
+load @term/make/term/hash
+  find hash-text
+
+load @term/call/test-run-words
+  find test-label
+  find unproven-note
+  find taken-of
+  find case-matches, name words-case-matches
+
+dock load
+  load <node:fs>, name node-file
+  load <node:os>, name node-os
+  load <node:path>, name node-path
+  load <esbuild>, name esbuild-module
+  load <@term/make/code/parser/tree>, name tree-module
+  load <@term/make/code/parser/diagnostic>, name diagnostic-module
+  load <@term/make/code/compile/mill>, name mill-module
+  load <@term/make/code/compile/compile>, name compile-module
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/make/code/compile/native>, name native-module
+  load <@term/make/code/compile/typescript>, name typescript-module
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/unit-bundle>, name bundle-module
+  load <@term/call/code/test-preprocess>, name preprocess-module
+
+# moved when the bundling itself changes, so a kept bundle from before is never run
+# 3: the prelude is a module of the bundle, imported by each module that docks a shim, and the entry the closure's shim
+task bundle-epoch
+  like text
+
+  back <test-bundle-3>
+
+# ---- what the runner answers ----
+
+# one test: whether it held, how long it took in milliseconds, the error it threw, and its line as written
+form test-result
+  link name, like text
+  link label, like text
+  link held, like boolean
+  # absent for a native run, which times no test
+  link ms
+    like number
+    need false
+  link error
+    like text
+    need false
+  link line, like dynamic
+
+# a file's run: every test's result, or why the file did not build (its diagnostics, whole, and the text their spans
+# point into), and under `--update` what each test's `want snapshot`s saw, by its phrase
+form test-run
+  link ok, like boolean
+  link results, like list, like dynamic
+  link failure
+    like text
+    need false
+  link diagnostics
+    like list, like dynamic
+    need false
+  link text
+    like text
+    need false
+  link taken
+    like hash, like text, like list, like text
+    need false
+
+# a test as `term test` lists it: its task, its label, and its `test` line as written when it has one
+form listed-test
+  link name, like text
+  link label, like text
+  link line
+    like number
+    need false
+
+form listed-tests
+  link text, like text
+  link tests, like list, like listed-test
+
+# a test as `--case` asks of it
+form case-ask
+  link name, like text
+  link label, like text
+
+# ---- what the docked modules are handed ----
+
+form source-ask
+  link file, like text
+  link text, like text
+
+form compile-ask
+  link resolve, like dynamic
+  link role-of, like dynamic
+  link lean-of, like dynamic
+
+form separate-ask
+  link resolve, like dynamic
+  link cache, like dynamic
+  link modules, like dynamic
+  link role-of, like dynamic
+  link lean-of, like dynamic
+  link deck-of, like dynamic
+  link parsed, like dynamic
+  link units, like dynamic
+  link walked, like dynamic
+
+form bundle-ask
+  link dir, like text
+  link entry, like text
+  link modules, like dynamic
+  link slug, like dynamic
+  link exports, like dynamic
+  link prelude, like text
+
+form transform-ask
+  link loader, like text
+  link format, like text
+
+form folder-make
+  link recursive, like boolean
+
+# a unit build, the native modules its closure docks as its program, which is all the prelude reads of one
+form units-built
+  link ok, like boolean
+  link program, like dynamic
+  link warnings, like dynamic
+  link modules, like dynamic
+  link names, like dynamic
+  link entry, like text
+  link closure-key, like text
+  link exports, like dynamic
+
+# ---- the host values Term has no word for ----
+
+bind nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind is-nothing
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind host-text
+  take value, like dynamic
+  like text
+  case node
+    text <$value>
+
+bind now-ms
+  like number
+  case node
+    text <Date.now()>
+
+# `map.get(key)`
+bind map-get
+  take map, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$map.get($key)>
+
+# a top-level task of a built program that is a test: no parameters, a boolean result
+bind test-names-of
+  take program, like dynamic
+  like list, like text
+  case node
+    text <$program.filter((node) =\> node.form === "function" && node.params.length === 0 && node.result?.kind === "boolean").map((node) =\> node.name)>
+
+# each diagnostic of the file moved back onto its line as written, and every one rendered against those lines
+bind as-written
+  take found, like dynamic
+  take file, like text
+  take place, like dynamic
+  like dynamic
+  case node
+    text <$found.map((d) =\> (d.file === $file ? $place(d).diagnostic : d))>
+
+bind render-each
+  take diagnostics, like dynamic
+  take source, like text
+  take render, like dynamic
+  like text
+  case node
+    text <$diagnostics.map((d) =\> $render(d, $source.split(String.fromCharCode(10)), false)).join(String.fromCharCode(10))>
+
+# the warnings a build left that are holds it could not prove
+bind unproven-of
+  take warnings, like dynamic
+  like dynamic
+  case node
+    text <($warnings ?? []).filter((d) =\> d.name === "unchecked-hold")>
+
+# esbuild's bundle of one entry, its text
+bind bundle-text
+  take esbuild, like dynamic
+  take entry, like text
+  like text
+  case node
+    text <$esbuild.buildSync(\{ entryPoints: [$entry], bundle: true, format: "esm", platform: "node", packages: "external", write: false \}).outputFiles[0].text>
+
+# the module at a file, imported
+bind import-file
+  take file, like text
+  like dynamic
+  case node
+    text <(await import(process.getBuiltinModule("node:url").pathToFileURL($file).href))>
+
+# a test task of the module called and its answer awaited, read as a boolean
+bind call-test-task
+  take loaded, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <Boolean(await $loaded[$name]())>
+
+# `await mod[name]?.()`: what an optional export answers, when the module has it
+bind call-optional
+  take loaded, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <(await $loaded[$name]?.())>
+
+bind message-of
+  take problem, like dynamic
+  like text
+  case node
+    text <($problem instanceof Error ? $problem.message : String($problem))>
+
+# `wantFailed(error, source) ?? message`
+bind text-or
+  take value, like dynamic
+  take fallback, like text
+  like text
+  case node
+    text <($value ?? $fallback)>
+
+# ---- listing ----
+
+# the entry file's own top-level test tasks: a zero-argument task that answers a boolean. Imported helpers take
+# arguments, so they are left out. Order is source order
+task discover-tests
+  take rewritten, like text
+  take file, like text
+  like list, like text
+
+  save parsed, tree-module/parse(make(source-ask, bind(file, file), bind(text, rewritten)))
+  fork test, not(is-truthy(parsed/ok))
+    hold
+      back make list
+  save built, mill-module/mill(parsed/tree, file)
+  fork test, not(is-truthy(built/ok))
+    hold
+      back make list
+  back test-names-of(built/program)
+
+# a test's label: its phrase, or its task's name with every dash a space
+task label-of
+  take labels, like dynamic
+  take name, like text
+  like text
+
+  save label, map-get(labels, name)
+  fork test, is-nothing(label)
+    hold
+      back test-label(name, false, <>)
+  back test-label(name, true, host-text(label))
+
+# A test file's tests in source order, each with its label and the line its `test` stands on as written, and the file
+# as `term test` rewrites it (`term test --case`, `term test --env`). `options` as the preprocessor takes it: a native
+# run writes every `want` as the plain marker, and `term test` hands in the file's snapshots
+task tests-of
+  take file, like text
+  take source, like text
+  take options, like dynamic
+  like listed-tests
+
+  save made, preprocess-module/preprocess-tests(source, options)
+  save tests, make list
+  walk discover-tests(host-text(made/text), file)
+    take name
+    save head, map-get(made/heads, name)
+    save one, make(listed-test, bind(name, name), bind(label, label-of(made/labels, name)))
+    fork test, not(is-nothing(head))
+      hold
+        save one/line, add(head, 1)
+    tests/push(one)
+  back make(listed-tests, bind(text, host-text(made/text)), bind(tests, tests))
+
+# whether a test is one `term test --case <phrase>` asked for: the phrase in its label or its task's name, in any case
+task case-matches
+  take phrase, like text
+  take test, like dynamic
+  like boolean
+
+  back words-case-matches(phrase, host-text(test/name), host-text(test/label))
+
+# ---- building ----
+
+# a test file built through units. `program` is only the native modules its closure docks, which is all the prelude
+# reads of a program
+task compile-units
+  take source, like source-ask
+  take input, like dynamic
+  take units, like dynamic
+  like dynamic
+
+  save names
+    task
+      take file, like text
+      like text
+      back make-module/unit-slug(units/root, file, units/deck-of)
+  save modules
+    task
+      take file, like text
+      like text
+      back <./{names(file)}>
+  save ask, make(separate-ask, bind(resolve, input/resolve), bind(cache, units/cache), bind(modules, modules), bind(role-of, input/role-of), bind(lean-of, input/lean-of), bind(deck-of, units/deck-of), bind(parsed, units/parsed), bind(units, units/units), bind(walked, units/walked))
+  save result, separate-module/compile-separate(source, ask)
+  fork test, not(is-truthy(result/ok))
+    hold
+      back result
+  back make(units-built, bind(ok, true), bind(program, result/natives), bind(warnings, result/warnings), bind(modules, result/modules), bind(names, names), bind(entry, source/file), bind(closure-key, host-text(result/closure-key)), bind(exports, result/exports))
+
+# Every module of a unit build written beside one another, and bundled from the test file's own into one module with
+# the native prelude in front of it. A bundle is decided by the test file's closure and its prelude, so it is kept
+# under the project's cache by both and reused while neither moves
+task bundle-units
+  take built, like units-built
+  take prelude, like text
+  take dir, like text
+  take units, like dynamic
+  like text
+
+  # the closure key names what was built and not what built it, so the compiler's own fingerprint goes in beside it
+  save kept, host-text(units/bundles)
+  save version, host-text(units/cache/version-of(<unit>))
+  save key, hash-text(<{bundle-epoch()}\nesbuild@{host-text(esbuild-module/version)}\n{version}\n{built/closure-key}\n{prelude}>)
+  save at, node-path/join(kept, <{key}.mjs>)
+  fork test, node-file/exists-sync(at)
+    hold
+      back host-text(node-file/read-file-sync(at, <utf8>))
+  # the prelude is a module of the bundle, and the entry re-exports the closure's public tasks (call/code/unit-bundle.ts)
+  save entry, bundle-module/write-unit-bundle(make(bundle-ask, bind(dir, dir), bind(entry, built/entry), bind(modules, entries-of(built/modules)), bind(slug, built/names), bind(exports, built/exports), bind(prelude, prelude)))
+  save bundled, bundle-text(esbuild-module, entry)
+  fork
+    mark unsafe
+    node-file/mkdir-sync(kept, make(folder-make, bind(recursive, true)))
+    node-file/write-file-sync(at, bundled)
+  halt take
+    take problem
+    # a bundle not kept is built again next run, never a failed test
+    save unkept, true
+  back bundled
+
+# `[...map]`
+bind entries-of
+  take map, like dynamic
+  like dynamic
+  case node
+    text <[...$map]>
+
+# `'closureKey' in result`: a unit build, not a whole one
+bind is-unit-build
+  take result, like dynamic
+  like boolean
+  case node
+    text <("closureKey" in $result)>
+
+# ---- running ----
+
+# a run that failed before any test ran
+task failed-run
+  take failure, like text
+  take diagnostics, like dynamic
+  take source, like text
+  like test-run
+
+  save run, make(test-run, bind(ok, false), bind(results, make list), bind(failure, failure), bind(text, source))
+  save run/diagnostics, diagnostics
+  back run
+
+# One test file compiled, imported and run. `input` holds the original's record: file, source, resolve, env,
+# readRuntime, and when given roleOf, leanOf, units (build through units, with what one build learns kept for the
+# next), select (run only the tests it answers yes for) and snapshots (the file's stored snapshots, and whether to
+# record new ones)
+task run-test-file
+  take input, like dynamic
+  like test-run
+  mark async
+
+  save file, host-text(input/file)
+  save source, host-text(input/source)
+  # expand `test <phrase>` blocks into top-level tasks; a file with none passes through unchanged. `heads`: each test
+  # task's 0-based line in the file as written
+  save made, preprocess-module/preprocess-tests(source, make-preprocess-options(input/snapshots))
+  save rewritten, host-text(made/text)
+  save names, make list
+  walk discover-tests(rewritten, file)
+    take name
+    fork test, not(is-truthy(input/select))
+      hold
+        names/push(name)
+      miss
+        fork test, is-truthy(input/select(make(case-ask, bind(name, name), bind(label, label-of(made/labels, name)))))
+          hold
+            names/push(name)
+  save entry, make(source-ask, bind(file, file), bind(text, rewritten))
+  save result, nothing()
+  fork test, is-truthy(input/units)
+    hold
+      save result, compile-units(entry, input, input/units)
+    miss
+      # the real file path is the entry, so `@/...` local-package aliases resolve against this file's deck.tree
+      save result, compile-module/compile(entry, make(compile-ask, bind(resolve, input/resolve), bind(role-of, input/role-of), bind(lean-of, input/lean-of)))
+  save readable, preprocess-module/readable(source, input/snapshots)
+  fork test, not(is-truthy(result/ok))
+    hold
+      save diagnostics, as-written(result/diagnostics, file, readable/place)
+      back failed-run(<{render-each(diagnostics, source, diagnostic-module/render)}\ndid not compile>, diagnostics, source)
+  # a proof obligation the compiler could not discharge is only a warning, but for `term test` an unproven `hold` is a
+  # failure: a stated proposition with no accepted proof must not pass
+  save unproven, unproven-of(result/warnings)
+  fork test, is-above(unproven/length, 0)
+    hold
+      save diagnostics, as-written(unproven, file, readable/place)
+      save drawn, render-each(diagnostics, source, diagnostic-module/render)
+      back failed-run(unproven-note(drawn, unproven/length), diagnostics, source)
+  # a file with no runnable `test` tasks but a clean compile is a pass: any `hold` / `rule` proofs it carries were
+  # checked during that compile
+  fork test, is-equal(names/length, 0)
+    hold
+      back make(test-run, bind(ok, true), bind(results, make list))
+  save prelude, host-text(native-module/native-prelude(result/program, input/env, input/read-runtime))
+  save dir, host-text(node-file/mkdtemp-sync(node-path/join(node-os/tmpdir(), <seed-test->)))
+  save out, node-path/join(dir, <module.mjs>)
+  fork test, is-unit-build(result)
+    hold
+      node-file/write-file-sync(out, bundle-units(result, prelude, dir, input/units))
+    miss
+      save transformed, esbuild-module/transform-sync(<{prelude}\n{host-text(result/typescript)}>, make(transform-ask, bind(loader, <ts>), bind(format, <esm>)))
+      node-file/write-file-sync(out, transformed/code)
+  save loaded, import-file(out)
+  save results, make list
+  walk names
+    take name
+    save label, label-of(made/labels, name)
+    save head, map-get(made/heads, name)
+    save line, nothing()
+    fork test, not(is-nothing(head))
+      hold
+        save line, add(head, 1)
+    save started, now-ms()
+    # a test that throws is a test that failed, with what it threw, and the tests after it still run
+    fork
+      mark unsafe
+      save held, call-test-task(loaded,host-text(typescript-module/to-camel(name)))
+      results/push(make(test-result, bind(name, name), bind(label, label), bind(held, held), bind(ms, subtract(now-ms(), started)), bind(line, line)))
+    halt take
+      take problem
+      results/push(failed-test(problem, source, name, label, started, line))
+  # under `--update`, what each `want snapshot` saw, by its test's phrase, in the order taken
+  save taken, make hash
+  save any-taken, false
+  fork test, and(is-truthy(input/snapshots), is-truthy(input/snapshots/update))
+    hold
+      save keys, call-optional(loaded, <termSnapshotTakenKeys>)
+      save values, call-optional(loaded, <termSnapshotTakenValues>)
+      fork test, is-nothing(keys)
+        hold
+          save keys, make list
+      fork test, is-nothing(values)
+        hold
+          save values, make list
+      walk taken-of(keys, values)
+        take one
+        save taken/{one/phrase}, one/values
+        save any-taken, true
+  save all-held, true
+  walk results
+    take one, like dynamic
+    fork test, not(is-truthy(one/held))
+      hold
+        save all-held, false
+  save run, make(test-run, bind(ok, all-held), bind(results, results))
+  fork test, any-taken
+    hold
+      save run/taken, taken
+  back run
+
+# a test that threw: a failing `want` raises a marker naming its line, read back as the line itself with the two
+# values a comparison held, and placed on the `want`'s own line, else the test's `test` line
+task failed-test
+  take problem, like dynamic
+  take source, like text
+  take name, like text
+  take label, like text
+  take started, like number
+  take line, like dynamic
+  like test-result
+
+  save why, text-or(preprocess-module/want-failed(problem, source), message-of(problem))
+  save wanted, preprocess-module/want-line(problem)
+  save at, line
+  fork test, not(is-nothing(wanted))
+    hold
+      save at, add(wanted, 1)
+  back make(test-result, bind(name, name), bind(label, label), bind(held, false), bind(ms, subtract(now-ms(), started)), bind(error, why), bind(line, at))
+
+# `{ snapshots }`: what the preprocessor takes
+form preprocess-options
+  link snapshots, like dynamic
+
+task make-preprocess-options
+  take snapshots, like dynamic
+  like preprocess-options
+
+  back make(preprocess-options, bind(snapshots, snapshots))

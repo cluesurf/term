@@ -102,6 +102,9 @@ load ./elaborating-induction
   find structural-induction
   find multi-induction
 
+load ../parser/diagnostic
+  find span
+
 bind json-key
   take term, like kernel-term
   like text

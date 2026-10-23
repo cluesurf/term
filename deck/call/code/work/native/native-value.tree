@@ -1,0 +1,154 @@
+# The host values the native lane reads that Term has no word for: a record built from usage entries, an error's
+# message and its stderr, a text cut by UTF-16 unit, and the patterns native-build.ts and make-native.ts test lines and
+# names against, each written as the original's regular expression. Node only, as the cask lane's host-value.tree.
+# Part of the port of device-declare.ts, uikit.ts, native-build.ts and make-native.ts (cli-in-term-0034).
+
+# the usage strings by key, as device-declare.ts `appleUsage` builds its record: each entry's key to its text, in order
+bind usage-record
+  take usage, like list, like dynamic
+  like dynamic
+  case node
+    text <Object.fromEntries($usage.map((one) =\> [one.key, one.text]))>
+
+# a caught failure's message, as `(error as Error).message` reads it in a template
+bind message-of
+  take problem, like dynamic
+  like text
+  case node
+    text <String($problem.message)>
+
+# `encodeURIComponent`
+bind encode-component
+  take value, like text
+  like text
+  case node
+    text <encodeURIComponent($value)>
+
+# `link.replace(/\/$/, '')`: one trailing slash dropped
+bind without-trailing-slash
+  take value, like text
+  like text
+  case node
+    text <($value.endsWith("/") ? $value.slice(0, -1) : $value)>
+
+# `text.slice(0, end)`, by UTF-16 unit
+bind unit-slice
+  take value, like text
+  take end, like number
+  like text
+  case node
+    text <$value.slice(0, $end)>
+
+# a spawn's stdout and stderr together, as the template `${ran.stdout}${ran.stderr}` writes them
+bind ran-text
+  take ran, like dynamic
+  like text
+  case node
+    text <(String($ran.stdout) + String($ran.stderr))>
+
+# a toolchain failure's text: its stderr, else the failure itself
+bind failure-text
+  take problem, like dynamic
+  like text
+  case node
+    text <String($problem.stderr ?? $problem)>
+
+# `/error:|^e: |^error\[|^\s+--> /`: a line that says a toolchain's error, not a warning in front of it
+bind is-error-line
+  take line, like text
+  like boolean
+  case node
+    text </error:|^e: |^error\\[|^\\s+--\> /.test($line)>
+
+# `line.split(/\s*=/)[0]`: the crate a manifest line names
+bind crate-of
+  take line, like text
+  like text
+  case node
+    text <$line.split(/\\s*=/)[0]>
+
+# `name.replace(/[^a-z0-9]/gi, '-').toLowerCase()`: the binary a cargo project builds
+bind binary-of
+  take name, like text
+  like text
+  case node
+    text <$name.replace(/[^a-z0-9]/gi, "-").toLowerCase()>
+
+# `name.replace(/[^A-Za-z0-9_]/g, '_')`: a file name as kotlinc spells its class
+bind class-stem-of
+  take name, like text
+  like text
+  case node
+    text <$name.replace(/[^A-Za-z0-9_]/g, "_")>
+
+# `text.charAt(0).toUpperCase() + text.slice(1)`
+bind capital-first
+  take value, like text
+  like text
+  case node
+    text <($value.charAt(0).toUpperCase() + $value.slice(1))>
+
+# `/^host: (.+)$/m.exec(verbose)?.[1]?.trim() ?? ''`: the host triple `rustc --version --verbose` names
+bind host-triple-of
+  take verbose, like text
+  like text
+  case node
+    text <(/^host: (.+)$/m.exec($verbose)?.[1]?.trim() ?? "")>
+
+# `/^libstd-.*\.(dylib|so)$/`: rustc's dynamic std among a folder's names
+bind is-dynamic-std
+  take name, like text
+  like boolean
+  case node
+    text </^libstd-.*\\.(dylib|so)$/.test($name)>
+
+# `std.replace(/^lib/, '').replace(/\.(dylib|so)$/, '')`: the library a linker's `-l` names
+bind library-of
+  take name, like text
+  like text
+  case node
+    text <$name.replace(/^lib/, "").replace(/\\.(dylib|so)$/, "")>
+
+# `relative.replace(/\.tree$/, '')`
+bind without-tree
+  take value, like text
+  like text
+  case node
+    text <$value.replace(/\\.tree$/, "")>
+
+# `Buffer.byteLength(text)`
+bind byte-length
+  take value, like text
+  like number
+  case node
+    text <Buffer.byteLength($value)>
+
+# `text.split('\n').slice(0, count)`: a message's first lines
+bind first-lines
+  take value, like text
+  take count, like number
+  like list, like text
+  case node
+    text <$value.split("\\n").slice(0, $count)>
+
+# `text.split('\n').slice(-count)`: a message's last lines
+bind last-lines
+  take value, like text
+  take count, like number
+  like list, like text
+  case node
+    text <$value.split("\\n").slice(-$count)>
+
+# whether `value ?? fallback` takes the fallback: `undefined` or `null`
+bind is-nullish
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value == null)>
+
+# `text.split('\n')`, by the host, so an empty text is one empty line
+bind lines-of
+  take value, like text
+  like list, like text
+  case node
+    text <$value.split("\\n")>

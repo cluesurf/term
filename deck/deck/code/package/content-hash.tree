@@ -1,0 +1,67 @@
+# The SHA-512 of a file, bytes or a text, in hex, and a check of bytes against one. Ported from deck/deck/code/hash.ts
+# (term-cli-in-term-0080): hashFile, hashBuffer, hashText, verifyHash.
+#
+# The decisions:
+#   - the digest is the host's (node:crypto), and a file is read as the original read it, a stream in 64 KiB chunks,
+#     its chunks fed to the digest by a host bind
+#   - `hash-buffer` and `hash-text` stay async, as the original's were
+
+dock load
+  load <node:crypto>, name node-crypto
+  load <node:fs>, name node-fs
+
+form stream-ask
+  link high-water-mark, like number
+
+bind content-digest-stream
+  take hasher, like dynamic
+  take stream, like dynamic
+  like dynamic
+  case node
+    text <<(async () => { for await (const chunk of $stream) { $hasher.update(chunk) } return $hasher.digest("hex") })()>>
+
+bind content-digest-of
+  take hasher, like dynamic
+  take data, like dynamic
+  like text
+  case node
+    text <$hasher.update($data).digest("hex")>
+
+bind content-digest-of-text
+  take hasher, like dynamic
+  take value, like text
+  like text
+  case node
+    text <$hasher.update($value, "utf-8").digest("hex")>
+
+task hash-file
+  take path, like text
+  like text
+  mark async
+
+  save hasher, node-crypto/create-hash(<sha512>)
+  save stream, node-fs/create-read-stream(path, make(stream-ask, bind(high-water-mark, 65536)))
+  save digest, wait content-digest-stream(hasher, stream)
+  back digest
+
+task hash-buffer
+  take data, like dynamic
+  like text
+  mark async
+
+  back content-digest-of(node-crypto/create-hash(<sha512>), data)
+
+task hash-text
+  take value, like text
+  like text
+  mark async
+
+  back content-digest-of-text(node-crypto/create-hash(<sha512>), value)
+
+task verify-hash
+  take data, like dynamic
+  take expected, like text
+  like boolean
+
+  save actual, content-digest-of(node-crypto/create-hash(<sha512>), data)
+  back is-equal(actual, expected)

@@ -1,134 +1,144 @@
-// A parameter or local that shadows a task of its name is called with the arguments written, on every backend. Each
-// emitter padded a short call to the arity of the TASK of that name, filling the gap with the type's empty value: the
-// stdlib's vector `map` calls its parameter `fn`, so a program defining `task fn` with two `fall` parameters had
-// `fn_(x, at, Vec::new(), false)` emitted inside `map`, and rustc refused it (E0057). TypeScript emitted the same extra
-// arguments and JavaScript ignored them, so only the native gate saw it (deck/make/test/engine.tree, 2026-10-04).
-// Run: npx tsx test/compile/shadowed-callee.ts
+// A call through a LOCAL is never the global task of the same name (term-decisions-2026-10-seam-0029, the diagnosis in
+// seam-0026). site's view/reactive.tree walks a scope's cleanups as `take site, name run` / `call run`, and the raise
+// sets (check/effects.ts and effects.tree) and Rust's `?` (compile/rust-emit.tree) read the callee by its bare name,
+// shadowing only parameters: once a test program's entry task `run` raised, the walk local took its raises, so
+// `dispose_scope` turned fallible and Rust wrote `run()?` on an `Rc<dyn Fn()>`, which rustc refuses. Every name a body
+// binds (a let, a walk's item, a closure's parameter, an arm's link, a caught name) now shadows a task of its name in
+// all three, from one set (`boundNames`, `bound-names`, `bound-names-into`).
+//
+// Here: a raising top-level task `run`, and `fire`, which walks a list of closures as `take site, name run` and calls
+// each. `fire`'s raise set must be empty in both twins, its Rust signature infallible with no `run()?`, and the program
+// must build and run on every backend.
+// Run: npx tsx test/compile/shadowed-callee.ts   (SC_ONLY=typescript, rust, swift or kotlin runs one backend)
 
-import { spawnSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { projectResolver } from '@term/call/code/make'
 import { compile } from '@term/make/code/compile/compile'
 import { emitRust } from '@term/make/code/compile/rust'
-import { emitSwift } from '@term/make/code/compile/swift'
-import { emitKotlin } from '@term/make/code/compile/kotlin'
-import { stdlibResolver } from '@term/make/code/resolve'
-import { withNativeEnv } from '@term/make/code/compile/native'
+import { raiseSetsOf } from '@term/make/code/check/effects'
+import { raiseSetsOf as raiseSetsOfTree } from '@term/make/host/port/code/check/effects'
+import { BACKENDS, runOn } from './shared/run-on'
 
 let pass = 0
 let fail = 0
 
-function ok(name: string, holds: boolean, detail = ''): void {
-  if (holds) {
+function ok(name: string, cond: boolean, info = ''): void {
+  if (cond) {
     pass++
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}${detail ? `\n        ${detail}` : ''}`)
+    console.log(`FAIL  ${name}  ${info}`)
   }
 }
 
-const text = `load @term/base/list
-  find list
+const PROGRAM = `load @term/base/exception
+  find absence
 
-task fn
-  take name, like text
-  take extra, like number, fall 7
-  take more, like list, like number, fall make list
-  like text
-  send back, text <{name}{extra}>
+load @term/base/list
+  find push
 
-task twice
-  take x, like number
-  like number
-  send back
-    call add
-      read x
-      read x
+form outage
+  like absence
+    bind note, <down>
 
-task apply
-  take value, like number
-  take fn
+form tally
+  mark shared
+  link count, like number
+  link cleanups
+    like list
+      like task
+
+task add-cleanup
+  take t, like tally
+  take work
     like task
-      take x, like number
-      like number
-  like number
-  send back
-    call fn
-      read value
+  call push
+    bind list, read t/cleanups
+    bind item, read work
 
-task local-call
-  take value, like number
-  like number
-  save fn, read twice
-  send back
-    call fn
-      read value
+# every cleanup, each called through a walk local named like the raising task below
+task fire
+  take t, like tally
+  walk list, read t/cleanups
+    hook next
+      take site, name run
+      call run
 
+# the entry, which raises: a call to it raises \`outage\`, a call through \`fire\`'s local does not
 task run
-  like number
-  send back
-    call add
-      call apply
-        code 3
-        read twice
-      call local-call
-        code 4
+  like text
+  save t
+    make tally
+      bind count, 0
+      bind cleanups
+        make list
+  call add-cleanup
+    read t
+    task bump
+      save t/count
+        call add
+          read t/count
+          code 1
+  call add-cleanup
+    read t
+    task bump-twice
+      save t/count
+        call add
+          read t/count
+          code 2
+  call fire
+    read t
+  fork test
+    hook test
+      call is-above
+        read t/count
+        code 5
+    hook hold
+      halt outage
+        bind thing, text <power>
+  send back, text <fired {t/count}>
 `
 
-const want = '14'
-const entryPoints = ['run', 'apply', 'local-call']
-const lines = (source: string, pattern: RegExp): string => source.split('\n').filter(line => pattern.test(line)).join(' | ')
+const dir = mkdtempSync(join(tmpdir(), 'term-shadowed-callee-'))
+const resolve = projectResolver(process.cwd(), 'rust')
+const result = compile({ file: join(dir, 'shadowed.tree'), text: PROGRAM }, { resolve, env: 'rust' })
 
-for (const env of ['node', 'rust', 'swift', 'kotlin'] as const) {
-  const built = compile(
-    { file: 'shadowed-callee.tree', text },
-    { resolve: withNativeEnv(env, stdlibResolver()!), ...(env === 'node' ? {} : { env }), entryPoints },
-  )
+ok('compiles', result.ok, result.ok ? '' : result.diagnostics.map(d => d.message).slice(0, 4).join(' | '))
 
-  if (!built.ok) {
-    ok(`the program builds for ${env}`, false, built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+if (result.ok) {
+  const exceptions = ['exception', 'absence', 'outage', 'failure']
+  const ts = raiseSetsOf(result.program, exceptions)
+  const tree = raiseSetsOfTree(result.program as never, exceptions) as { raises: Map<string, string[]> }
+
+  ok('effects.ts: run raises outage', (ts.raises.get('run') ?? []).includes('outage'), JSON.stringify(ts.raises.get('run')))
+  ok('effects.ts: fire raises nothing', (ts.raises.get('fire') ?? ['missing']).length === 0, JSON.stringify(ts.raises.get('fire')))
+  ok('effects.tree: run raises outage', (tree.raises.get('run') ?? []).includes('outage'), JSON.stringify(tree.raises.get('run')))
+  ok('effects.tree: fire raises nothing', (tree.raises.get('fire') ?? ['missing']).length === 0, JSON.stringify(tree.raises.get('fire')))
+
+  const rust = emitRust(result.program)
+  const signature = rust.split('\n').find(line => /fn fire\b/.test(line)) ?? ''
+  ok('rust: fire is infallible', signature !== '' && !signature.includes('Result'), signature)
+  ok('rust: no `run()?` in fire', !/\brun\(\)\?/.test(rust), '')
+}
+
+const only = process.env.SC_ONLY
+
+for (const backend of BACKENDS.filter(one => !only || one === only)) {
+  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'shadowed' })
+
+  if (ran.form === 'skipped') {
+    console.log(`skip  ${backend}: ${ran.reason}`)
     continue
   }
 
-  const source =
-    env === 'node'
-      ? built.typescript
-      : env === 'rust'
-        ? emitRust(built.program)
-        : env === 'swift'
-          ? emitSwift(built.program)
-          : emitKotlin(built.program)
-  // the shadowing call, however the backend spells the name `fn` and the argument
-  const call = /\bfn_?\((value|value\.clone\(\))\)/
-
-  ok(`${env}: the parameter is called with its one argument`, call.test(lines(source, /fn_?\(value/)), lines(source, /fn_?\(value/))
-  ok(`${env}: no call of fn is padded`, !/\bfn_?\(value[^)]*,/.test(source), lines(source, /fn_?\(value/))
-
-  if (env === 'rust') {
-    const rustc = spawnSync('rustc', ['--version'], { encoding: 'utf8' })
-
-    if (rustc.status !== 0) {
-      console.log('skip  rustc  (not installed)')
-      continue
-    }
-
-    const dir = mkdtempSync(join(tmpdir(), 'term-shadowed-callee-'))
-    writeFileSync(join(dir, 'main.rs'), `${source}\nfn main() {\n    println!("{}", run());\n}\n`)
-    const binary = join(dir, 'main')
-    const out = spawnSync('rustc', ['--edition', '2021', '-A', 'warnings', '-o', binary, join(dir, 'main.rs')], { encoding: 'utf8' })
-    ok('rustc compiles it', out.status === 0, out.stderr.split('\n').filter(l => /^error/.test(l)).join(' | '))
-
-    if (out.status === 0) {
-      const ran = spawnSync(binary, [], { encoding: 'utf8' })
-      ok('Rust answers 6 + 8', ran.stdout.trim() === want, (ran.stdout + ran.stderr).trim())
-    }
-  }
+  ok(`${backend}: a walk local named like a raising task builds and runs`, ran.form === 'ran' && ran.output === 'fired 3', ran.form === 'ran' ? ran.output : `${ran.stage}: ${ran.reason}`)
 }
 
 console.log(`\nshadowed-callee: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {
-  process.exitCode = 1
+  process.exit(1)
 }

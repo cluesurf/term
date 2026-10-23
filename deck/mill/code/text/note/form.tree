@@ -5,6 +5,9 @@
 load @term/base/unit
   find unit-entry
 
+load @term/base/maybe
+  find maybe
+
 # one factor of a quantity's unit: `s` to -2 in `m/s^2`, with the registered unit it names
 form unit-factor
   link entry, like unit-entry

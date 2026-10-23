@@ -1,0 +1,316 @@
+# What the cask bridge carries, and the shapes the generator reads a module into: the constants and records of
+# deck/call/code/cask-generate.ts, part 1 of its port (cli-in-term-0029). The generator mints, from the public
+# signatures of every native-backed module a page docks, the `webview` shim for that module and the app's dispatcher
+# with its allowlist. Design: note/project/term/cask/readme.md.
+#
+# A kind is what one parameter or result is as it crosses: text, boolean, number, decimal, nothing (`void`), bytes
+# (as base64 text), a dynamic value (as its json), an opaque HANDLE (a form whose one field is a private `handle`: the
+# value stays in the cask and the page holds an id), a RECORD by value (a form declared in a module of its own, `from`
+# naming that module), or a LIST of any of those (`item`). The forms are named `bridge-*` because a form name is
+# package-global in @term/call.
+
+load @term/base/list
+  find list
+  find sort
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/hash
+  find hash
+
+load @term/base/text
+  find replace-all
+
+# -1, 0 or 1 as `a` sorts before, with or after `b` in the host's collation, which is what the original's
+# `localeCompare` is. deck/make/code/deck/lock.tree holds the same bind; loading that module would pull the parser in
+bind locale-sign
+  take a, like text
+  take b, like text
+  like number
+  case node
+    text <$a.localeCompare($b)>
+  case browser
+    text <$a.localeCompare($b)>
+  case rust
+    text <match $a.as_str().cmp($b.as_str()) \{ std::cmp::Ordering::Less =\> -1i64, std::cmp::Ordering::Equal =\> 0i64, std::cmp::Ordering::Greater =\> 1i64 \}>
+  case swift
+    text <Int64($a.localizedCompare($b).rawValue)>
+  case kotlin
+    text <java.text.Collator.getInstance().compare($a, $b).toLong()>
+
+task order-of-sign
+  take sign, like number
+  like ordering
+  mark private
+
+  fork test, is-below(sign, 0)
+    hold
+      back make less
+  fork test, is-above(sign, 0)
+    hold
+      back make greater
+  back make equal
+
+# ---- the shapes ----
+
+# one kind of value as it crosses. `form` names a handle's or a record's form, `from` the module a record is loaded
+# from, `item` a list's element
+form bridge-kind
+  link kind, like text
+  link form
+    like text
+    need false
+  link from
+    like text
+    need false
+  link item
+    like bridge-kind
+    need false
+
+# a kind, or why the bridge cannot carry the type: `refuse` is the empty text when it can
+form bridge-kind-answer
+  link kind, like bridge-kind
+  link refuse, like text
+
+form bridge-param
+  link name, like text
+  link kind, like bridge-kind
+
+form bridge-name
+  link name, like text
+
+# one public task of a module, and the native task it forwards to
+form bridge-signature
+  link module, like text
+  link task, like text
+  link native, like text
+  link params, like list, like bridge-param
+  link result, like bridge-kind
+  link async, like boolean
+
+# a public task the bridge cannot carry yet, with the reason
+form bridge-refused
+  link module, like text
+  link task, like text
+  link native, like text
+  link params, like list, like bridge-name
+  link reason, like text
+
+# a device watcher (term-device-layer-0002): `watch-x(handler)`, the handler taking one text and the task answering
+# the drop. The handler stays in the page under a watch id, and the cask pushes each answer back
+form bridge-watcher
+  link module, like text
+  link task, like text
+  link native, like text
+
+# what the bridge does with every task of one module
+form bridge-reading
+  link carried, like list, like bridge-signature
+  link refused, like list, like bridge-refused
+  link watched, like list, like bridge-watcher
+
+# a module with a native half, found through the page's closure. `abstract-file` and `page-env` are the empty text
+# where the original left them undefined
+form bridge-module
+  link name, like text
+  # the `load` path a program writes for the public module: `@term/site/base/postgres`
+  link import-path, like text
+  link public-file, like text
+  # the abstract module beside the env directories, when it exists
+  link abstract-file, like text
+  # where the shim goes
+  link shim-file, like text
+  # the env beside the shim that also serves the module in the page, which a task that cannot cross forwards to
+  # rather than raising: a device module's watchers run on the browser host
+  link page-env, like text
+
+# a generated shim for a module that no longer crosses: rewritten to forward to the env the page serves it from, and
+# reported for removal by hand, since the generator never deletes a file
+form bridge-orphan
+  link shim-file, like text
+  link forward, like text
+
+form bridge-docks
+  link modules, like list, like bridge-module
+  link orphans, like list, like bridge-orphan
+
+# a record form a signature mentions, and the module it is loaded from
+form bridge-record
+  link form, like text
+  link from, like text
+
+# ---- the constants ----
+
+# the commands every cask answers on its own behalf, in the order the dispatcher lists them. `cask_release` lets a
+# handle go: the page sends it when it has dropped one, so a value the cask holds for a page lives exactly as long as
+# the page holds its id (native-dom-0017)
+task list-cask-commands
+  like list, like text
+
+  back
+    make list, <cask_bundle_path>, <cask_data_path>, <cask_exit>, <cask_quit>, <cask_log>, <cask_release>
+
+# the modules the shim itself is written with, which therefore never cross
+task list-never-cross
+  like list, like text
+
+  back
+    make list, <json>, <float>, <uuid>
+
+# the modules that cross even though the page could serve them: their browser impl is a sandbox stand-in (OPFS for
+# `file`, an empty environment, a process that is a tab), and inside a cask the process is the truth
+task list-cross-anyway
+  like list, like text
+
+  back
+    make list, <file>, <environment>, <process>
+
+# the device capabilities of `@term/site/view` (device-layer-0013), which cross for the same reason: a WebView offers a
+# subset of each, and the cask's process reaches the platform's own API through the toolkit host. Matched with their
+# package and folder, so another package's `open` or `network` is not caught. A task of one that cannot cross (a
+# watcher, which takes a handler) stays in the page, on the browser host. The original's `DEVICE_MODULES`
+task list-device-modules
+  like list, like text
+
+  back
+    make list, <permission>, <camera>, <microphone>, <audio>, <download>, <files>, <contacts>, <calendar>, <photos>, <torch>, <location>, <clipboard>, <vibration>, <notification>, <open>, <battery>, <network>, <motion>, <secret>, <biometric>
+
+# the env directories the page's own build can serve a module from: `webview` borrows `browser`, and the
+# javascript-wide impls serve every javascript env
+task list-page-envs
+  like list, like text
+
+  back
+    make list, <webview>, <browser>, <javascript>, <shared>
+
+# the env directories a cask's process can serve a module from
+task list-cask-envs
+  like list, like text
+
+  back
+    make list, <swift>, <kotlin>, <rust>
+
+# ---- small answers ----
+
+# the command a page sends to start a watcher
+task watch-command-of
+  take watcher, like bridge-watcher
+  like text
+
+  back replace-all(<{watcher/module}_{watcher/task}>, <->, <_>)
+
+# the cask's task that starts a watcher for one window
+task watch-starter-of
+  take watcher, like bridge-watcher
+  like text
+
+  back <start-{watcher/module}-{watcher/task}>
+
+# a kind that carries no form, no module and no item
+task plain-kind
+  take kind, like text
+  like bridge-kind
+
+  back make bridge-kind, bind kind, kind
+
+task carried-kind
+  take kind, like bridge-kind
+  like bridge-kind-answer
+
+  back
+    make bridge-kind-answer
+      bind kind, kind
+      bind refuse, <>
+
+task refused-kind
+  take reason, like text
+  like bridge-kind-answer
+
+  back
+    make bridge-kind-answer
+      bind kind, plain-kind(<void>)
+      bind refuse, reason
+
+# the field kinds `fill` and `melt` carry: scalars, lists of them, and nested records
+task crosses-by-value
+  take kind, like bridge-kind
+  like boolean
+
+  save name, kind/kind
+  fork test, is-equal(name, <list>)
+    hold
+      back crosses-by-value(kind/item)
+  fork test, is-equal(name, <text>)
+    hold
+      back true
+  fork test, is-equal(name, <boolean>)
+    hold
+      back true
+  fork test, is-equal(name, <number>)
+    hold
+      back true
+  fork test, is-equal(name, <decimal>)
+    hold
+      back true
+  back is-equal(name, <record>)
+
+# every record a kind mentions, through lists
+task records-in
+  take kind, like bridge-kind
+  like list, like bridge-record
+
+  save found, make list
+  fork test, is-equal(kind/kind, <record>)
+    hold
+      found/push
+        make bridge-record
+          bind form, kind/form
+          bind from, kind/from
+      back found
+  fork test, is-equal(kind/kind, <list>)
+    hold
+      back records-in(kind/item)
+  back found
+
+task record-order
+  take left, like bridge-record
+  take right, like bridge-record
+  like ordering
+  mark private
+
+  back order-of-sign(locale-sign(left/form, right/form))
+
+# every record form a set of signatures mentions, with the module each is loaded from, ordered by the host's
+# collation. A form mentioned twice keeps the module it was first seen with, and the last one written wins, as the
+# original's map did
+task record-forms
+  take signatures, like list, like bridge-signature
+  like list, like bridge-record
+
+  save froms, make hash
+  save order, make list
+  walk signatures
+    take site, name one
+    save kinds, make list
+    walk one/params
+      take site, name param
+      kinds/push param/kind
+    kinds/push one/result
+    walk kinds
+      take site, name each
+      walk records-in(each)
+        take site, name record
+        fork test, not(froms/has(record/form))
+          hold
+            order/push record/form
+        save key, record/form
+        save froms/{key}, record/from
+  save out, make list
+  walk order
+    take site, name key
+    out/push
+      make bridge-record
+        bind form, key
+        bind from, froms/get(key)
+  back sort(out, record-order)

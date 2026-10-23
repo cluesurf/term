@@ -26,6 +26,11 @@ load @term/base/list
   find push
   find get
 
+# the caught value of a click handler's guard (compile/view-lower.tree `handler-of`) is the exception form only when
+# the program holds it, so its `note` is a text and not an unknown (seam decision 002, group A)
+load @term/base/exception
+  find exception
+
 load ./reactive
   find signal
   find read-signal
@@ -36,6 +41,9 @@ load ./reactive
   find open-scope
   find close-scope
   find dispose-scope
+
+load ../dom/native/{platform}/view
+  find view
 
 # the owner of the branch a renderer has mounted now. ONE object, shared, because the effect that swaps the branch and
 # the cleanup that disposes it both hold it

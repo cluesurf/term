@@ -121,7 +121,7 @@ export function emitProgram(input: {
   }
 
   if (input.units && env !== 'node') {
-    const files = emitTargetUnits({ program: result.program, target: env, readRuntime })
+    const files = emitTargetUnits({ program: result.program, target: env, readRuntime, wake: result.wake })
 
     return { ok: true, source: files.files.find(([name]) => name === files.main)?.[1] ?? '', files }
   }
@@ -133,6 +133,7 @@ export function emitProgram(input: {
       typescript: result.typescript,
       target: env,
       readRuntime,
+      wake: result.wake,
     }),
   }
 }

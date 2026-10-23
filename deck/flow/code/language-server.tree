@@ -1,0 +1,863 @@
+# WHAT THE LANGUAGE SERVER HOLDS, and the plumbing every handler shares: the open documents, each with its text, its
+# version and the VIEW of its last analysis, the one compile cache and build memos every document shares, the readers
+# of each package, the workspace, and the requests the client cancelled.
+#
+# Every document holds:
+#   its text and version, and the revision analyzed last
+#   a VIEW of the last analysis: this file's own statements (typed when the compile succeeded, milled alone when it
+#   did not, so navigation still works on a file with an error), the symbol index over them, span-free summaries
+#   of the whole closure (signatures, top-level names, fields, methods), the diagnostics and the lint findings
+# and nothing of the merged program itself, so what an open file costs is its own size plus the summaries.
+#
+# Ported from server.ts (term-cli-in-term-0100, part 1 of 5). The decisions:
+#   - the class `LanguageServer` is the shared record `language-server`, made by `make-language-server(options)`. Its
+#     methods are tasks taking it first, in the module that ports them, so no state lives at a module's top level (a
+#     port is emitted whole with its own copy of each module it loads: traps.md)
+#   - a document (`Doc`) is the shared record `document`, its view (`View`) the record `document-view`, and the closure
+#     summary (`Summary`) the record `summary`. An absent `path` or `role` is the empty text (neither is ever empty when
+#     present: a path is a file's, a role a word), an absent `view`, `published`, `tokens` and `timer` a maybe
+#   - `closure` (a `Set`) is a hash of file to true, in the order the files were added
+#   - the options, the compiler's cache and memos, the package readers and a resolver are the host's values
+#     (`like dynamic`), handed to the compiler as they came; identity (`open !== doc`) is a host comparison
+#   - every path pattern is written out by unit (self-host traps T001, T024)
+#   - the TypeScript siblings the server reaches (resolve.ts, compile/cache.ts, compile/load.ts, compile/native.ts,
+#     call/code/role-of.ts, deck-of.ts, make.ts) are docked; workspace.ts is package-index.tree
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find starts-with
+  find ends-with
+
+load @term/make/fixing
+  find units-of
+
+load @term/make/compile/node
+  find statement
+
+load ./geometry
+  find mapping
+
+load ./symbol-index
+  find symbol-index
+  find signature
+
+load ./package-index
+  find workspace
+  find make-workspace
+  find canonical
+
+dock load
+  load <node:url>, name node-url
+  load <node:path>, name node-path
+  load <@term/make/code/resolve>, name resolving-module
+  load <@term/make/code/compile/cache>, name cache-module
+  load <@term/make/code/compile/load>, name load-module
+  load <@term/make/code/compile/native>, name native-module
+  load <@term/call/code/role-of>, name role-module
+  load <@term/call/code/deck-of>, name deck-module
+  load <@term/call/code/make>, name make-module
+
+# ---- the records ----
+
+# a top-level, bare-callable definition of the closure: a function, a form, a mask (imported names for completion)
+form summary-entry
+  link name, like text
+  link kind, like number
+  link detail, like text
+
+form field-entry
+  link name, like text
+  link type, like text
+
+form method-entry
+  link name, like text
+  link detail, like text
+
+# span-free facts about the whole closure, kept when the merged program itself is dropped
+form summary
+  link signatures, like hash, like text, like signature
+  link top-level, like list, like summary-entry
+  link fields, like hash, like text, like list, like field-entry
+  link methods, like hash, like text, like list, like method-entry
+
+form document-view
+  # the text the compiler read (a test file's after its `test` blocks are rewritten) and the mapping back
+  link inner, like text
+  link map, like mapping
+  # this document's own statements: typed when the compile succeeded, milled alone when it did not
+  link program, like list, like statement
+  link typed, like boolean
+  link index, like symbol-index
+  link summary, like summary
+  # the LSP diagnostics as they go on the wire: the host's JSON values, since a placed diagnostic carries its fixes
+  # as raw `data` and an imported module's its `relatedInformation`, keys the original spread in only when they apply
+  link diagnostics, like list, like dynamic
+  # the lint engine's findings (make/code/lint/rule.ts), kept as they came
+  link findings, like list, like dynamic
+  link lean, like boolean
+  # the empty text when the file has no role
+  link role, like text
+
+# the semantic tokens last sent for a document, for a delta
+form held-tokens
+  link id, like text
+  link data, like list, like number
+
+form document
+  mark shared
+  link uri, like text
+  # the file the compiler is told about: the real path for a `file:` uri, the uri itself otherwise
+  link file, like text
+  # the empty text when the uri is not a file
+  link path, like text
+  link text, like text
+  # what the client sent, kept as it came
+  link version, like dynamic
+  # bumped on every text change; `analyzed` is the revision the view was built from
+  link revision, like number
+  link analyzed, like number
+  # a dependency changed since the view was built
+  link stale, like boolean
+  link timer, like maybe, like dynamic
+  link view, like maybe, like document-view
+  # the files the last compile read, for refreshing this document when one of them changes
+  link closure, like hash, like text, like boolean
+  # the import path each directly loaded file was reached by, for placing an error found inside it
+  link direct, like hash, like text, like text
+  # the serialized diagnostics last published, and a result id that changes only when they do
+  link published, like maybe, like text
+  link result-id, like number
+  link tokens, like maybe, like held-tokens
+
+form language-server
+  mark shared
+  link documents, like hash, like text, like document
+  # an open document by the file it is, so an import of it reads the editor's text rather than the disk's
+  link by-file, like hash, like text, like document
+  # ONE mill and output cache for every document, capped (compile/cache.ts): a module the open files share is milled
+  # once, and nothing grows with the session
+  link cache, like dynamic
+  # and one build session's memos for every document: each unit's answer, each module's walk, each parse, so a
+  # keystroke rebuilds the edited module's unit and what reads it (compile/separate.ts)
+  link units, like hash, like text, like dynamic
+  link walked, like hash, like text, like dynamic
+  link parsed, like dynamic
+  # `ServerOptions`, as the caller gave them (a bare resolver is `{ resolve }`)
+  link options, like dynamic
+  # the role and lean readers of each package root, read once
+  link readers-by-root, like hash, like text, like dynamic
+  link deck-of, like dynamic
+  # the auto-import's answer per package and name, found or not, until a `.tree` file changes on disk: the lightbulb
+  # asks again every time the cursor moves onto the diagnostic
+  link exporting, like hash, like text, like dynamic
+  # the ids of the requests the client cancelled: the host's `Set`, so an id is matched as the original matched it
+  # (a hash keys a record by its fields)
+  link cancelled, like dynamic
+  link workspace, like workspace
+  link shutting-down, like boolean
+  # the client pulls diagnostics (`textDocument/diagnostic`), so none are pushed
+  link pull, like boolean
+  link token-counter, like number
+
+# the role and lean readers for a file, and its package root (the empty text for none)
+form file-readers
+  link role-of, like dynamic
+  link lean-of, like dynamic
+  link root, like text
+
+# what the server holds, for a test that a closed document is released
+form held-count
+  link documents, like number
+  link files, like number
+  link timers, like number
+
+# a module's text as the compiler reads it
+form source
+  link file, like text
+  link text, like text
+
+# ---- the host ----
+
+bind no-value
+  like dynamic
+  case node
+    text <undefined>
+
+bind is-defined
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value !== undefined)>
+
+# `value !== undefined && value !== null`
+bind is-given
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value !== undefined && $value !== null)>
+
+bind is-same
+  take one, like dynamic
+  take other, like dynamic
+  like boolean
+  case node
+    text <($one === $other)>
+
+# `typeof options === 'function' ? { resolve: options } : (options ?? {})`
+bind server-options
+  take given, like dynamic
+  like dynamic
+  case node
+    text <(typeof $given === "function" ? \{ resolve: $given \} : ($given ?? \{\}))>
+
+bind option-resolve
+  take options, like dynamic
+  like dynamic
+  case node
+    text <$options.resolve>
+
+bind option-role-of
+  take options, like dynamic
+  like dynamic
+  case node
+    text <$options.roleOf>
+
+bind option-lean-of
+  take options, like dynamic
+  like dynamic
+  case node
+    text <$options.leanOf>
+
+# `options.roleOf || options.leanOf`, by truth
+bind has-own-readers
+  take options, like dynamic
+  like boolean
+  case node
+    text <Boolean($options.roleOf || $options.leanOf)>
+
+bind new-compile-cache
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.CompileCache()>
+
+# `{ roleOf: projectRoleOf(root), leanOf: projectLeanOf(root) }`
+bind package-readers
+  take roles, like dynamic
+  take leans, like dynamic
+  like dynamic
+  case node
+    text <(\{ roleOf: $roles, leanOf: $leans \})>
+
+bind readers-role-of
+  take readers, like dynamic
+  like dynamic
+  case node
+    text <$readers.roleOf>
+
+bind readers-lean-of
+  take readers, like dynamic
+  like dynamic
+  case node
+    text <$readers.leanOf>
+
+# what the workspace is told of a file's readers: `{ role: roleOf?.(file) ?? undefined, lean: leanOf?.(file) ?? false }`
+bind readers-answer
+  take roles, like dynamic
+  take leans, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <(\{ role: $roles?.($file) ?? undefined, lean: $leans?.($file) ?? false \})>
+
+# the host object the workspace asks: `{ textOf, readersOf, resolverOf }`
+bind workspace-host
+  take texts
+    like task
+      take file, like text
+      like dynamic
+  take readers
+    like task
+      take file, like text
+      like dynamic
+  take resolvers
+    like task
+      take root, like text
+      like dynamic
+  like dynamic
+  case node
+    text <(\{ textOf: $texts, readersOf: $readers, resolverOf: $resolvers \})>
+
+# `resolve(importPath, from, how)`
+bind call-resolver
+  take resolve, like dynamic
+  take path, like text
+  take origin, like text
+  take how, like dynamic
+  like dynamic
+  case node
+    text <$resolve($path, $origin, $how)>
+
+# `resolve(path, from)`, two arguments as the original's call passed
+bind call-resolver-two
+  take resolve, like dynamic
+  take path, like text
+  take origin, like text
+  like dynamic
+  case node
+    text <$resolve($path, $origin)>
+
+bind source-file
+  take found, like dynamic
+  like text
+  case node
+    text <$found.file>
+
+bind new-set
+  like dynamic
+  case node
+    text <new Set()>
+
+bind set-add
+  take items, like dynamic
+  take item, like dynamic
+  like void
+  case node
+    text <$items.add($item)>
+
+bind set-has
+  take items, like dynamic
+  take item, like dynamic
+  like boolean
+  case node
+    text <$items.has($item)>
+
+bind set-delete
+  take items, like dynamic
+  take item, like dynamic
+  like void
+  case node
+    text <$items.delete($item)>
+
+bind clear-timer
+  take timer, like dynamic
+  like void
+  case node
+    text <clearTimeout($timer)>
+
+# ---- paths ----
+
+# whether a unit is an ASCII letter, `[A-Za-z]`
+task is-letter-unit
+  take unit, like number
+  like boolean
+  mark private
+
+  back or(and(is-minimum(unit, 65), is-maximum(unit, 90)), and(is-minimum(unit, 97), is-maximum(unit, 122)))
+
+# whether a unit is a path separator, `[\\/]`
+task is-slash-unit
+  take unit, like number
+  like boolean
+  mark private
+
+  back or(is-equal(unit, 47), is-equal(unit, 92))
+
+# whether a text begins with a drive, `^[A-Za-z]:`
+task has-drive
+  take units, like list, like number
+  like boolean
+  mark private
+
+  fork test, is-below(units/length, 2)
+    hold
+      back false
+  back and(is-letter-unit(get(units, 0)), is-equal(get(units, 1), 58))
+
+# a path on disk, as opposed to an in-memory name a test resolver hands back: `^(?:[\\/]|[A-Za-z]:[\\/])`
+task is-file-path
+  take file, like text
+  like boolean
+
+  save units, units-of(file)
+  fork test, is-equal(units/length, 0)
+    hold
+      back false
+  fork test, is-slash-unit(get(units, 0))
+    hold
+      back true
+  fork test, and(has-drive(units), is-above(units/length, 2))
+    hold
+      back is-slash-unit(get(units, 2))
+  back false
+
+# whether a file can have a package root: not a `file:` uri, and `^[\\/]|^[A-Za-z]:`
+task is-rooted
+  take file, like text
+  like boolean
+  mark private
+
+  fork test, starts-with(file, <file:>)
+    hold
+      back false
+  save units, units-of(file)
+  fork test, is-equal(units/length, 0)
+    hold
+      back false
+  fork test, is-slash-unit(get(units, 0))
+    hold
+      back true
+  back has-drive(units)
+
+# the on-disk path of a `file:` uri, or the empty text
+task path-for
+  take uri, like text
+  like text
+
+  fork test, starts-with(uri, <file:>)
+    miss
+      back <>
+  save path, <>
+  fork
+    mark unsafe
+    save path, node-url/fileURLToPath(uri)
+  halt take
+    take problem
+    save path, <>
+  back path
+
+# `file === dir` or the file is inside it
+task is-under
+  take file, like text
+  take dir, like text
+  like boolean
+
+  fork test, is-equal(file, dir)
+    hold
+      back true
+  save separator, node-path/sep
+  save prefix, dir
+  fork test, ends-with(dir, separator)
+    miss
+      save prefix, <{dir}{separator}>
+  back starts-with(file, prefix)
+
+# a file as a uri: a path on disk (`/...` or `C:\...`) becomes a `file:` url, anything else is a uri already
+task uri-for
+  take file, like text
+  like text
+
+  save units, units-of(file)
+  save on-disk, starts-with(file, </>)
+  fork test, and(has-drive(units), is-above(units/length, 2))
+    hold
+      fork test, is-slash-unit(get(units, 2))
+        hold
+          save on-disk, true
+  fork test, on-disk
+    hold
+      back node-url/pathToFileURL(file)/href
+  back file
+
+# ---- the server ----
+
+task make-language-server
+  take given, like dynamic
+  like language-server
+
+  save server
+    make language-server
+      bind documents, make hash
+      bind by-file, make hash
+      bind cache, new-compile-cache(cache-module)
+      bind units, make hash
+      bind walked, make hash
+      bind parsed, load-module/makeParseMemo()
+      bind options, server-options(given)
+      bind readers-by-root, make hash
+      bind deck-of, deck-module/projectDeckOf()
+      bind exporting, make hash
+      bind cancelled, new-set()
+      # set below, once the record its host asks exists
+      bind workspace, no-value()
+      bind shutting-down, false
+      bind pull, false
+      bind token-counter, 0
+
+  save server/workspace
+    make-workspace
+      workspace-host
+        task
+          take file, like text
+          like dynamic
+          back text-of-file(server, file)
+        task
+          take file, like text
+          like dynamic
+          save readers, readers-for(server, file)
+          back readers-answer(readers/role-of, readers/lean-of, file)
+        task
+          take root, like text
+          like dynamic
+          back
+            task
+              take path, like text
+              take origin, like text
+              like dynamic
+              back resolve-for-workspace(server, path, origin)
+  back server
+
+# `byFile.get(file)?.text`
+task text-of-file
+  take server, like language-server
+  take file, like text
+  like dynamic
+  mark private
+
+  fork test, server/by-file/has(file)
+    hold
+      back server/by-file/get(file)/text
+  back no-value()
+
+# `resolveModule(byFile.get(from) ?? fileDoc(from), path)`, the source or undefined
+task resolve-for-workspace
+  take server, like language-server
+  take path, like text
+  take origin, like text
+  like dynamic
+  mark private
+
+  fork test, server/by-file/has(origin)
+    hold
+      back source-or-nothing(resolve-module(server, server/by-file/get(origin), path))
+  back source-or-nothing(resolve-module(server, file-doc(origin), path))
+
+# a maybe's value, or undefined
+task source-or-nothing
+  take found, like maybe, like dynamic
+  like dynamic
+  mark private
+
+  sift found
+    case some
+      link source-found
+      back source-found
+    case none
+      back no-value()
+
+task is-shut-down
+  take server, like language-server
+  like boolean
+
+  back server/shutting-down
+
+task held
+  take server, like language-server
+  like held-count
+
+  save timers, 0
+  walk server/documents/values()
+    take doc
+    sift doc/timer
+      case some
+        save timers, add(timers, 1)
+      case none
+        save timers, timers
+  back
+    make held-count
+      bind documents, server/documents/size
+      bind files, server/by-file/size
+      bind timers, timers
+
+# a `$/cancelRequest`, read as it arrives. The request is answered RequestCancelled when its turn comes.
+task cancel
+  take server, like language-server
+  take id, like dynamic
+  like void
+
+  fork test, is-given(id)
+    hold
+      set-add(server/cancelled, id)
+
+# the role, lean and deck readers for a file, read from its package once
+task readers-for
+  take server, like language-server
+  take file, like text
+  like file-readers
+
+  save root, <>
+  fork test, is-rooted(file)
+    hold
+      save found, resolving-module/findProjectRoot(file)
+      fork test, is-given(found)
+        hold
+          save root, found
+  save options, server/options
+  fork test, has-own-readers(options)
+    hold
+      back make(file-readers, bind(role-of, option-role-of(options)), bind(lean-of, option-lean-of(options)), bind(root, root))
+  fork test, is-equal(root, <>)
+    hold
+      back make(file-readers, bind(role-of, no-value()), bind(lean-of, no-value()), bind(root, <>))
+  fork test, server/readers-by-root/has(root)
+    miss
+      save made, package-readers(role-module/projectRoleOf(root), role-module/projectLeanOf(root))
+      server/readers-by-root/set(root, made)
+  save kept, server/readers-by-root/get(root)
+  back make(file-readers, bind(role-of, readers-role-of(kept)), bind(lean-of, readers-lean-of(kept)), bind(root, root))
+
+# the build resolver a document's package gives, or for a file outside every package (and a buffer with no file at
+# all, `untitled:`), the stdlib's with its `{platform}` slots filled for node, as `projectResolver` fills them
+task base-resolver
+  take server, like language-server
+  take doc, like document
+  take root, like text
+  like dynamic
+  mark private
+
+  save base, option-resolve(server/options)
+  fork test, is-truthy(base)
+    hold
+      back base
+  save made, no-value()
+  fork
+    mark unsafe
+    fork test, is-unequal(root, <>)
+      hold
+        save made, make-module/projectResolver(root)
+      miss
+        save at, doc/path
+        fork test, is-equal(at, <>)
+          hold
+            save at, </>
+        save made, native-module/withNativeEnv(<node>, resolving-module/editorResolver(at))
+  halt take
+    take problem
+    save made, no-value()
+  back made
+
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# The resolver one analysis uses: the package's build resolver, made fresh so a file changed on disk is read again,
+# with every open document's text in place of its file's. It starts the document's closure and direct loads over.
+task resolver-for
+  take server, like language-server
+  take doc, like document
+  take root, like text
+  like maybe, like dynamic
+
+  save base, base-resolver(server, doc, root)
+  fork test, is-truthy(base)
+    miss
+      back make none
+  save doc/closure, make hash
+  save doc/direct, make hash
+  back
+    make some
+      task
+        take import-path, like text
+        take origin, like text
+        take how, like dynamic
+        like dynamic
+        back resolve-through(server, doc, base, import-path, origin, how)
+
+# one question to a document's resolver: the disk's answer, else an open document not yet saved, recorded in the
+# document's closure, and an open document's text in place of its file's
+task resolve-through
+  take server, like language-server
+  take doc, like document
+  take base, like dynamic
+  take import-path, like text
+  take origin, like text
+  take how, like dynamic
+  like dynamic
+  mark private
+
+  save found, call-resolver(base, import-path, origin, how)
+  fork test, is-given(found)
+    miss
+      save unsaved, unsaved-at(server, import-path, origin)
+      sift unsaved
+        case some
+          link unsaved-source
+          save found, unsaved-source
+        case none
+          back no-value()
+  save found-file, source-file(found)
+  doc/closure/set(found-file, true)
+  fork test, and(is-equal(origin, doc/file), is-equal(doc/direct/has(found-file), false))
+    hold
+      doc/direct/set(found-file, import-path)
+  fork test, server/by-file/has(found-file)
+    hold
+      save open, server/by-file/get(found-file)
+      fork test, is-same(open, doc)
+        miss
+          back make(source, bind(file, found-file), bind(text, open/text))
+  back found
+
+# an open document at one of the paths a relative load tries, in the resolver's order (`x.tree`, `x/base.tree`,
+# `x/note.tree`), for a file the disk does not hold yet
+task unsaved-at
+  take server, like language-server
+  take import-path, like text
+  take origin, like text
+  like maybe, like source
+
+  fork test, or(starts-with(import-path, <./>), starts-with(import-path, <../>))
+    miss
+      back make none
+  save base, node-path/resolve(node-path/dirname(origin), import-path)
+  save candidates, make list
+  push(candidates, <{base}.tree>)
+  push(candidates, node-path/join(base, <base.tree>))
+  push(candidates, node-path/join(base, <note.tree>))
+  walk candidates
+    take candidate
+    fork test, server/by-file/has(candidate)
+      hold
+        back make(some, make(source, bind(file, candidate), bind(text, server/by-file/get(candidate)/text)))
+  back make none
+
+# a file that is not open, as the document `resolve-module` asks from
+task file-doc
+  take file, like text
+  like document
+
+  save path, <>
+  fork test, is-file-path(file)
+    hold
+      save path, file
+  back
+    make document
+      bind uri, uri-for(file)
+      bind file, file
+      bind path, path
+      bind text, <>
+      bind version, 0
+      bind revision, 0
+      bind analyzed, -1
+      bind stale, false
+      bind timer, make none
+      bind view, make none
+      bind closure, make hash
+      bind direct, make hash
+      bind published, make none
+      bind result-id, 0
+      bind tokens, make none
+
+# THE ONE PLACE A PATH BECOMES A FILE, for every editor feature: definition, document links, `find` targets, a
+# manifest's `code` and `link`. It asks the resolver the compiler is given for this document (the package's
+# `projectResolver`, `{platform}` filled for node, with open buffers in place of their files), so a path the editor
+# opens is the module the build reads. None when the path names nothing, never a guess. It asks through a copy of the
+# document with a closure of its own, so the question leaves the document's closure as it was.
+task resolve-module
+  take server, like language-server
+  take doc, like document
+  take path, like text
+  like maybe, like dynamic
+
+  save copy
+    make document
+      bind uri, doc/uri
+      bind file, doc/file
+      bind path, doc/path
+      bind text, doc/text
+      bind version, doc/version
+      bind revision, doc/revision
+      bind analyzed, doc/analyzed
+      bind stale, doc/stale
+      bind timer, doc/timer
+      bind view, doc/view
+      bind closure, make hash
+      bind direct, make hash
+      bind published, doc/published
+      bind result-id, doc/result-id
+      bind tokens, doc/tokens
+  save asked, resolver-for(server, copy, readers-for(server, doc/file)/root)
+  sift asked
+    case some
+      link resolve
+      save found, no-value()
+      fork
+        mark unsafe
+        save found, call-resolver-two(resolve, path, doc/file)
+      halt take
+        take problem
+        save found, no-value()
+      fork test, is-given(found)
+        hold
+          back make(some, found)
+      back make none
+    case none
+      back make none
+
+# open a document, replacing one open at the same uri
+task open-document
+  take server, like language-server
+  take uri, like text
+  take body, like text
+  take version, like dynamic
+  like document
+
+  save path, path-for(uri)
+  save file, uri
+  fork test, is-unequal(path, <>)
+    hold
+      save file, canonical(path)
+  save doc
+    make document
+      bind uri, uri
+      bind file, file
+      bind path, path
+      bind text, body
+      bind version, version
+      bind revision, 0
+      bind analyzed, -1
+      bind stale, false
+      bind timer, make none
+      bind view, make none
+      bind closure, make hash
+      bind direct, make hash
+      bind published, make none
+      bind result-id, 0
+      bind tokens, make none
+  close-document(server, uri)
+  server/documents/set(uri, doc)
+  fork test, is-unequal(path, <>)
+    hold
+      server/by-file/set(file, doc)
+  back doc
+
+# forget a document entirely: its text, its view, its timer
+task close-document
+  take server, like language-server
+  take uri, like text
+  like void
+
+  fork test, server/documents/has(uri)
+    miss
+      send back
+  save doc, server/documents/get(uri)
+  sift doc/timer
+    case some
+      link timer
+      clear-timer(timer)
+    case none
+      save skipped, true
+  server/documents/remove(uri)
+  fork test, server/by-file/has(doc/file)
+    hold
+      fork test, is-same(server/by-file/get(doc/file), doc)
+        hold
+          server/by-file/remove(doc/file)

@@ -1,0 +1,40 @@
+# A lockfile as Term holds it: the shape of deck/deck/code/form.ts's `Lockfile` (term-cli-in-term-0075). A version
+# is version.tree's `code`, as the manifest's is (manifest-shape.tree).
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load ../version
+  find code
+
+# one link of a locked package: its name and the version it resolved to, as written
+form lock-link
+  link name, like text
+  link code, like text
+
+form lock-entry
+  link name, like text
+  link code, like code
+  link hash, like text
+  link site, like text
+  # the signer's public key of an `oci://` package, written only when there is one
+  link key
+    like text
+    need false
+  link link, like list, like lock-link
+
+# the toolchain release the manifest's `need` resolved to
+form lock-need
+  link name, like text
+  link code, like code
+  link hash, like text
+
+form lockfile
+  link version, like number
+  link decks, like list, like lock-entry
+  link need
+    like maybe, like lock-need
+    need false

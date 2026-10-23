@@ -1,0 +1,511 @@
+# The installer behind `curl -fsSL https://term.surf/load | sh`, bundled as `load.mjs` and served beside the script
+# (note/project/term/term-load-install.md, note/project/term/output/standard.md). Ported from call/code/load-term.ts
+# (term-cli-in-term-0043), whole. It starts itself when it is loaded, as the original's top-level `await main()` did,
+# so it is only ever an entry. The shell script (load.ps1 on Windows) only checks for Node and runs this:
+#
+#   1  the version: TERM_LOAD_VERSION, or the newest release
+#   2  installed through version-install.tree, the ONE install path `term self load`, `self update` and dispatch take
+#   3  the front, call/term, linked to it only after all of that
+#   4  call/ on PATH for every new shell: one marked line in the shell's profile, never twice. TERM_LOAD_PATH=0 leaves
+#      every profile alone
+#
+# IT PRINTS THROUGH THE ONE OUTPUT LIBRARY, as one `load` run. That library is call/code/output.ts, DOCKED, not its port
+# work/output/printer.tree: `releases` and `reportLoaded` are still self.ts's, docked, and print through output.ts's
+# run, which a port's own copy of the run never sees (traps.md). Both move together when self.ts is ported.
+#
+# What the installer decides beside the registry, the files and the shell is call/code/load-words.tree.
+# TERM_LOAD_REGISTRY=<http(s)://host> reads releases from another registry (the end-to-end test's loopback one).
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/text
+  find split
+
+load @term/call/load-words
+  find is-version
+  find on-path
+  find refresh-line
+  find portable
+  find shown-file
+  find profile-line
+  find profile-files
+  find profile-edit
+  find profile-edit-of
+  find windows-path-of
+  find remove-hint
+  find closing-message
+
+load @term/call/work/need/version-install
+  find load-ask
+  find load-version
+  find link-front
+
+dock load
+  load <@term/call/code/home>, name home-module
+  load <@term/call/code/output>, name output
+  load <@term/call/code/self>, name self-module
+  load <node:fs>, name node-file
+  load <node:os>, name node-os
+  load <node:path>, name node-path
+  load <node:child_process>, name node-child
+  load <global:process>, name host-process
+
+# ---- the host's values ----
+
+# an environment variable trimmed, or none when it is unset: `process.env[name]?.trim()`
+bind trimmed-or-absent
+  take name, like text
+  like dynamic
+  case node
+    text <process.env[$name]?.trim()>
+
+# an environment variable, the empty text when it is unset
+bind variable-or-empty
+  take name, like text
+  like text
+  case node
+    text <(process.env[$name] ?? "")>
+
+# `process.env[name] = value`
+bind put-variable
+  take name, like text
+  take value, like text
+  like void
+  case node
+    text <(process.env[$name] = $value, undefined)>
+
+# `new URL(text).host`
+bind url-host
+  take text, like text
+  like text
+  case node
+    text <new URL($text).host>
+
+# `Boolean(value)`
+bind host-truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# `value === undefined || value === null`, which `??` tests
+bind is-nullish
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined || $value === null)>
+
+# `!process.stdout.isTTY`
+bind stdout-captured
+  like boolean
+  case node
+    text <!process.stdout.isTTY>
+
+# `(await releases())?.[0]`: the newest release, or undefined when the registry could not be read (self.ts reports why)
+bind newest-release
+  take selves, like dynamic
+  like dynamic
+  case node
+    text <(await $selves.releases())?.[0]>
+
+# this process's environment with the next Path in TERM_NEXT_PATH, for PowerShell to read: `{ ...process.env, ... }`
+bind next-path-env
+  take next, like text
+  like dynamic
+  case node
+    text <(\{ ...process.env, TERM_NEXT_PATH: $next \})>
+
+# `(text).trim()`
+bind trim-host
+  take text, like dynamic
+  like text
+  case node
+    text <String($text).trim()>
+
+# ---- the shapes ----
+
+form empty-flags
+  link quiet
+    like maybe, like boolean
+    need false
+
+form load-open
+  link verb, like text
+  link root, like text
+  link subject, like text
+  link tool, like text
+
+form problem-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+
+form plain-close
+  link verdict, like text
+  link failure, like text
+
+form link-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form added-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form moved-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link facts, like list, like text
+
+form there-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link facts, like list, like text
+
+form warning-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+  link fields, like list, like dynamic
+
+form next-close
+  link verdict, like text
+  link done, like boolean
+  link next, like text
+
+form message-close
+  link verdict, like text
+  link done, like boolean
+  link message, like list, like text
+
+form version-only
+  link version, like text
+
+form folder-ask
+  link recursive, like boolean
+
+form version-run
+  link encoding, like text
+  link timeout, like number
+  link stdio, like list, like text
+
+form shell-ask
+  link encoding, like text
+
+form path-env-ask
+  link env, like dynamic
+
+# a profile: `added`, `there`, or `moved` (one that named the front's folder by an old name, rewritten in place)
+form profile
+  link state, like text
+  link shown, like text
+  link line, like text
+
+# another `term` on PATH: its file, its version, and how to remove it, when known
+form other-term
+  link file, like text
+  link version, like text
+  link remove, like text
+
+# ---- the names ----
+
+# the front's folder as a profile line names it, under `$HOME` or spelled out: home.ts HOME_POSIX and FRONT, written out
+# (a dock read of an UPPER_SNAKE constant loses its underscores, traps.md)
+task front-posix
+  like text
+  mark private
+
+  back <.base/@term/code/call>
+
+# its old names: `bin/` under the folder before it moved, and `bin/` under the moved folder before the front was renamed
+# `call/` (home.ts). Both still reach the front through the links the renames left, and are rewritten here so the
+# profile names the folder that exists
+task previous-fronts
+  like list, like text
+  mark private
+
+  save names, make list
+  names/push(<.base/@cluesurf/term/bin>)
+  names/push(<.base/@term/code/bin>)
+  back names
+
+# ---- the profiles ----
+
+# one profile: the marked line appended, unless the file names bin already
+task write-profile
+  take file, like text
+  take line, like text
+  take bin, like text
+  take home, like text
+  like profile
+  mark private
+
+  save shown, shown-file(file, home)
+  save body, <>
+  fork
+    mark unsafe
+    save body, node-file/read-file-sync(file, <utf8>)
+  halt take
+    # a profile that does not exist yet is made
+    take problem
+    save body, <>
+  # the line this writes says `$HOME/...`, and a person may have spelled the path out: either is there already. The line
+  # an earlier install wrote, for an old name, is renamed where it stands, nothing else in the file touched
+  save edit, profile-edit-of(body, bin, front-posix(), previous-fronts(), line)
+  fork test, is-equal(edit/form, <moved>)
+    hold
+      node-file/write-file-sync(file, edit/text)
+  fork test, is-equal(edit/form, <added>)
+    hold
+      node-file/mkdir-sync(node-path/dirname(file), make(folder-ask, bind(recursive, true)))
+      # appended rather than written whole, as it always was: the text it was read as is not written back
+      node-file/append-file-sync(file, edit/appended)
+  back make(profile, bind(state, edit/form), bind(shown, shown), bind(line, line))
+
+# the user's Path on Windows, read and written through PowerShell so nothing else in it is touched
+task windows-path
+  take bin, like text
+  like profile
+  mark private
+
+  save shown, <the user Path>
+  save read-args, make list
+  read-args/push(<-NoProfile>)
+  read-args/push(<-Command>)
+  read-args/push(<[Environment]::GetEnvironmentVariable("Path", "User")>)
+  save current, trim-host(node-child/exec-file-sync(<powershell.exe>, read-args, make(shell-ask, bind(encoding, <utf8>))))
+  # the entry an earlier install made for an old name, renamed where it stands (home.ts)
+  save previous, make list
+  previous/push(node-path/join(node-os/homedir(), <.base>, <@cluesurf>, <term>, <bin>))
+  previous/push(node-path/join(node-os/homedir(), <.base>, <@term>, <code>, <bin>))
+  save edit, windows-path-of(current, bin, previous)
+  fork test, is-equal(edit/form, <there>)
+    hold
+      back make(profile, bind(state, <there>), bind(shown, shown), bind(line, bin))
+  save write-args, make list
+  write-args/push(<-NoProfile>)
+  write-args/push(<-Command>)
+  write-args/push(<[Environment]::SetEnvironmentVariable("Path", $env:TERM_NEXT_PATH, "User")>)
+  node-child/exec-file-sync(<powershell.exe>, write-args, make(path-env-ask, bind(env, next-path-env(edit/text))))
+  save state, <added>
+  fork test, is-equal(edit/form, <moved>)
+    hold
+      save state, <moved>
+  back make(profile, bind(state, state), bind(shown, shown), bind(line, bin))
+
+# Put bin on PATH for every NEW shell, the way rustup, bun and deno do: one marked line in the profile of the shell the
+# person logs in with, written once (load-words.tree `profile-files` names which)
+task put-on-path
+  take bin, like text
+  like list, like profile
+  mark private
+
+  save home, node-os/homedir()
+  save profiles, make list
+  fork test, is-equal(host-process/platform, <win32>)
+    hold
+      profiles/push(windows-path(bin))
+      back profiles
+  # `$HOME/...` rather than the expanded path, so a synced profile works on another machine
+  save portable-bin, portable(bin, home)
+  save shell, node-path/basename(variable-or-empty(<SHELL>))
+  save zdot, home
+  save zdot-given, trimmed-or-absent(<ZDOTDIR>)
+  fork test, host-truth(zdot-given)
+    hold
+      save zdot, zdot-given
+  save line, profile-line(shell, portable-bin)
+  walk profile-files(shell, home, zdot, is-equal(host-process/platform, <darwin>))
+    take file
+    profiles/push(write-profile(node-path/normalize(file), line, bin, home))
+  back profiles
+
+# ---- other terms on PATH ----
+
+# a folder with its links resolved, or the folder as written when it does not exist
+task real-of
+  take dir, like text
+  like text
+  mark private
+
+  save real, dir
+  fork
+    mark unsafe
+    save real, node-file/realpath-sync(dir)
+  halt take
+    take problem
+    save real, dir
+  back real
+
+# Every other `term` on PATH, with its version and how to remove it: an npm or pnpm global from before term had an
+# installer of its own is the one this finds (2.5.22, `@cluesurf/term`), and a person typing `term` there gets it
+task other-terms
+  take bin, like text
+  like list, like other-term
+  mark private
+
+  save name, <term>
+  fork test, is-equal(host-process/platform, <win32>)
+    hold
+      save name, <term.cmd>
+  save found, make list
+  save seen, make hash
+  save real, real-of(bin)
+  walk split(variable-or-empty(<PATH>), node-path/delimiter)
+    take dir
+    save file, node-path/join(dir, name)
+    # this install's own bin under another name is not another term: `.base/@cluesurf/term/bin` is a link to it since the
+    # folder moved (home.ts), and a terminal opened before the move still has it on PATH
+    fork test, or(or(is-equal(dir, <>), is-equal(dir, bin)), is-equal(real-of(dir), real))
+      hold
+        turn next
+    fork test, or(seen/has(file), not(node-file/exists-sync(file)))
+      hold
+        turn next
+    save seen/{file}, true
+    save version, <version unknown>
+    fork
+      mark unsafe
+      save stdio, make list
+      stdio/push(<ignore>)
+      stdio/push(<pipe>)
+      stdio/push(<ignore>)
+      save version-args, make list
+      version-args/push(<--version>)
+      save said, trim-host(node-child/exec-file-sync(file, version-args, make(version-run, bind(encoding, <utf8>), bind(timeout, 10000), bind(stdio, stdio))))
+      fork test, is-unequal(said, <>)
+        hold
+          save version, said
+    halt take
+      # a `term` that is not this one at all: named by its path alone
+      take problem
+      save nothing-here, 0
+    found/push(make(other-term, bind(file, file), bind(version, version), bind(remove, remove-hint(file))))
+  back found
+
+# ---- the install ----
+
+task install-term
+  like void
+  mark async
+
+  # the loader's registry is a URL; the release route takes `oci://host/namespace`
+  save registry, variable-or-empty(<TERM_LOAD_REGISTRY>)
+  save registry, trim-host(registry)
+  fork test, and(is-unequal(registry, <>), not(host-truth(trimmed-or-absent(<TERM_RELEASE_REGISTRY>))))
+    hold
+      save host, url-host(registry)
+      put-variable(<TERM_RELEASE_REGISTRY>, <oci://{host}/cluesurf/term>)
+
+  save home, home-module/user-home()
+  save flags, make empty-flags
+  output/set-output(flags, <>)
+  output/open-run(make(load-open, bind(verb, <load>), bind(root, home), bind(subject, output/show-path(home)), bind(tool, <term.surf/load>)))
+
+  save asked, trimmed-or-absent(<TERM_LOAD_VERSION>)
+  fork test, and(host-truth(asked), not(is-version(asked)))
+    hold
+      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <load>), bind(subject, <TERM_LOAD_VERSION={asked} is not a version: write it as 1.2.3>)))
+      output/close-run(make(plain-close, bind(verdict, <Nothing was installed>), bind(failure, <usage>)))
+      back
+
+  save version, asked
+  fork test, is-nullish(asked)
+    hold
+      save version, newest-release(self-module)
+  fork test, not(host-truth(version))
+    hold
+      output/close-run(make(plain-close, bind(verdict, <Nothing was installed>), bind(failure, <environment>)))
+      back
+
+  save loaded, load-version(make(load-ask, bind(version, version)))
+  fork test, not(self-module/report-loaded(loaded))
+    hold
+      output/close-run(make(plain-close, bind(verdict, <Nothing was installed>), bind(failure, <environment>)))
+      back
+
+  link-front(version)
+
+  # the front's folder, the one put on PATH: `call/` (home.ts `frontDir`)
+  save bin, home-module/front-dir(home)
+  save windows, is-equal(host-process/platform, <win32>)
+  save front-name, <term>
+  fork test, windows
+    hold
+      save front-name, <term.cmd>
+  save base-name, node-path/basename(bin)
+  save link-fields, make list
+  link-fields/push(output/location(output/show-path(node-path/join(bin, front-name))))
+  output/report(make(link-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <link>), bind(subject, <{base-name}/term to {version}>), bind(fields, link-fields)))
+
+  save here-on-path, on-path(variable-or-empty(<PATH>), node-path/delimiter, bin, windows)
+  save automatic, true
+  save path-wish, trimmed-or-absent(<TERM_LOAD_PATH>)
+  fork test, and(not(is-nullish(path-wish)), is-equal(path-wish, <0>))
+    hold
+      save automatic, false
+  save profiles, make list
+  fork test, automatic
+    hold
+      save profiles, put-on-path(bin)
+
+  walk profiles
+    take one
+    fork test, is-equal(one/state, <added>)
+      hold
+        save added-fields, make list
+        added-fields/push(output/field(<line>, one/line))
+        output/report(make(added-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <path>), bind(subject, one/shown), bind(fields, added-fields)))
+      miss
+        fork test, is-equal(one/state, <moved>)
+          hold
+            save moved-facts, make list
+            save now-front, front-posix()
+            moved-facts/push(<now {now-front}>)
+            output/report(make(moved-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <path>), bind(subject, one/shown), bind(facts, moved-facts)))
+          miss
+            save there-facts, make list
+            there-facts/push(<already there>)
+            output/report(make(there-item, bind(glyph, <skipped>), bind(verb, <path>), bind(subject, one/shown), bind(facts, there-facts)))
+
+  walk other-terms(bin)
+    take other
+    save other-fields, make list
+    other-fields/push(output/location(output/show-path(other/file)))
+    fork test, is-unequal(other/remove, <>)
+      hold
+        other-fields/push(output/field(<next>, other/remove))
+    save said, make list
+    said/push(<A terminal runs whichever term comes first on its PATH. Remove the other to have one.>)
+    save other-version, other/version
+    output/report(make(warning-item, bind(glyph, <warning>), bind(verb, <path>), bind(subject, <another term is on PATH, {other-version}>), bind(message, said), bind(fields, other-fields)))
+
+  # THIS shell's PATH is its own, and a child cannot change it. The line that does is data, on stdout, so
+  # `eval "$(curl -fsSL https://term.surf/load | sh)"` runs it in the shell that asked
+  save captured, stdout-captured()
+  fork test, and(not(here-on-path), not(windows))
+    hold
+      output/print-data(refresh-line(node-path/basename(variable-or-empty(<SHELL>)), bin))
+
+  fork test, here-on-path
+    hold
+      output/close-run(make(next-close, bind(verdict, <term {version} is installed>), bind(done, true), bind(next, <term --help>)))
+    miss
+      save closing, make list
+      closing/push(closing-message(automatic, windows, captured))
+      output/close-run(make(message-close, bind(verdict, <term {version} is installed>), bind(done, true), bind(message, closing)))
+
+tick install-term()

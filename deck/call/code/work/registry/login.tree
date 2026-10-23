@@ -1,0 +1,665 @@
+# `term bind`: log this machine in to term.surf, so `term host` credits what it publishes to your account.
+#
+# THE FLOW IS GOOGLE'S, FOR AN INSTALLED APP: listen on `http://127.0.0.1:<a free port>/` until one answer arrives,
+# ask term.surf for the Google URL (`/sessions/terminal/create!`) with the loopback address, a PKCE challenge and a
+# random state, open that URL in the browser and print it too, take the code the browser brings back (its state must
+# be ours), post it with the PKCE verifier to `/sessions/terminal/verify!`, and write the `package:publish` token it
+# answers with to the user-level `auth` file `term host` reads. The Google client secret never reaches this machine.
+#
+# A LOGIN IS REMEMBERED: a saved token term.surf still takes (`/sessions/terminal/select!`) is reported and kept, with
+# no browser, and so is one that could not be checked. Only a refused token, or `--again`, starts a login. `--toss`
+# forgets the token locally and does not revoke it, and says so.
+#
+# Ported from call/code/bind.ts (term-cli-in-term-0054). bind-words.tree holds the decisions beside the network and
+# the browser, loaded. The user-level home and the output library are docked until their own ports land. callBind
+# takes the original's input record as it is.
+
+load @term/base/list
+  find get
+
+load ../../bind-words
+  find landing
+  find landing-of
+  find who-of
+  find opener-of
+  find index-base
+
+dock load
+  load <@term/call/code/home>, name home-module
+  load <@term/call/code/output>, name output
+  load <node:crypto>, name node-crypto
+  load <node:child_process>, name child-process
+  load <node:fs>, name node-fs
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <node:http>, name node-http
+  load <node:os>, name node-os
+  load <node:path>, name node-path
+  load <node:timers>, name node-timers
+
+# ---- the host values Term has no word for ----
+
+bind nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind is-null
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === null)>
+
+# `value?.trim()`
+bind trim-maybe
+  take value, like dynamic
+  like dynamic
+  case node
+    text <$value?.trim()>
+
+bind trim-text
+  take value, like dynamic
+  like text
+  case node
+    text <$value.trim()>
+
+# `record?.[key] ?? ""`
+bind member-text
+  take record, like dynamic
+  take key, like text
+  like text
+  case node
+    text <(($record)?.[$key] ?? "")>
+
+# `record?.[key]`, a host value or undefined
+bind member
+  take record, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <($record)?.[$key]>
+
+# whether `record?.[key]` is neither undefined nor null
+bind has-member
+  take record, like dynamic
+  take key, like text
+  like boolean
+  case node
+    text <(($record)?.[$key] !== undefined && ($record)?.[$key] !== null)>
+
+# a key and its value, as one entry of a host record
+bind pair-of
+  take key, like text
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <[$key, $value]>
+
+bind record-of
+  take entries, like list, like dynamic
+  like dynamic
+  case node
+    text <Object.fromEntries($entries)>
+
+bind base64url
+  take bytes, like dynamic
+  like text
+  case node
+    text <$bytes.toString("base64url")>
+
+# the PKCE challenge of a verifier: its SHA-256, base64url
+bind challenge-of
+  take crypto, like dynamic
+  take verifier, like text
+  like text
+  case node
+    text <$crypto.createHash("sha256").update($verifier).digest("base64url")>
+
+# `new URL(text)`, or nothing when the text is no URL
+bind address-of
+  take text, like text
+  like dynamic
+  case node
+    text <(() =\> \{ try \{ return new URL($text) \} catch \{ return undefined \} \})()>
+
+# the address a request asked for, read against the loopback host
+bind request-address
+  take request, like dynamic
+  like dynamic
+  case node
+    text <new URL($request.url ?? "/", "http://127.0.0.1")>
+
+bind query-value
+  take address, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$address.searchParams.get($name)>
+
+# one answer on the loopback listener: plain text, so it renders the same everywhere, and the connection closed
+bind answer-with
+  take response, like dynamic
+  take status, like number
+  take body, like text
+  like void
+  case node
+    text <$response.writeHead($status, \{ "content-type": "text/plain; charset=utf-8", connection: "close" \}).end($body)>
+
+bind not-found
+  take response, like dynamic
+  like void
+  case node
+    text <$response.writeHead(404).end()>
+
+# a promise and the function that settles it
+bind make-settler
+  like dynamic
+  case node
+    text <(() =\> \{ let settle = () =\> \{\}; const promise = new Promise((resolve) =\> \{ settle = resolve \}); return \{ promise, settle \} \})()>
+
+bind settle-with
+  take settler, like dynamic
+  take value, like dynamic
+  like void
+  case node
+    text <$settler.settle($value)>
+
+# `server.listen(0, '127.0.0.1')`, awaited, refused by the server's first error
+bind listen-on
+  take server, like dynamic
+  like void
+  case node
+    text <(await new Promise((resolve, reject) =\> \{ $server.once("error", reject); $server.listen(0, "127.0.0.1", () =\> resolve()) \}))>
+
+bind port-of
+  take server, like dynamic
+  like number
+  case node
+    text <$server.address().port>
+
+# the landing, with the timer cleared once it settles
+bind landing-then-clear
+  take settler, like dynamic
+  take timer, like dynamic
+  like dynamic
+  case node
+    text <$settler.promise.finally(() =\> clearTimeout($timer))>
+
+bind wait-for
+  take promise, like dynamic
+  like landing
+  case node
+    text <(await $promise)>
+
+bind close-server
+  take server, like dynamic
+  like void
+  case node
+    text <($server.close(), $server.closeAllConnections())>
+
+bind rethrow
+  take error, like dynamic
+  like void
+  case node
+    text <(() =\> \{ throw $error \})()>
+
+bind ignore-answer
+  like dynamic
+  case node
+    text <(() =\> \{\})>
+
+bind list-rest
+  take items, like list, like text
+  like list, like text
+  case node
+    text <$items.slice(1)>
+
+# POST JSON, a 20 second limit, and the answer read as JSON or as an empty record
+bind send-post
+  take address, like text
+  take headers, like dynamic
+  take body, like dynamic
+  like dynamic
+  case node
+    text <(await fetch($address, \{ method: "POST", headers: $headers, body: JSON.stringify($body), signal: AbortSignal.timeout(20000) \}))>
+
+bind json-or-empty
+  take response, like dynamic
+  like dynamic
+  case node
+    text <(await $response.json().catch(() =\> (\{\})))>
+
+bind key-folder-options
+  like dynamic
+  case node
+    text <(\{ recursive: true, mode: 0o700 \})>
+
+bind key-file-options
+  like dynamic
+  case node
+    text <(\{ mode: 0o600 \})>
+
+# ---- what is said ----
+
+form subject-open
+  link verb, like text
+  link root, like dynamic
+  link subject, like text
+
+form problem-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+
+form fields-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form change-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form warning-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+  link fields, like list, like dynamic
+
+form plain-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+
+form plain-close
+  link verdict, like text
+
+form failure-close
+  link verdict, like text
+  link failure, like text
+
+form next-close
+  link verdict, like text
+  link next, like text
+
+form said-close
+  link verdict, like text
+  link done, like boolean
+  link message, like list, like text
+
+form done-next-close
+  link verdict, like text
+  link done, like boolean
+  link next, like text
+
+# ---- term.surf's answer ----
+
+# a call's answer: its `result`, or the reason there is none and the status when it had one
+form posted
+  link ok, like boolean
+  link value, like dynamic
+  link reason, like text
+  link status, like dynamic
+
+form listener
+  link port, like number
+  link landing, like dynamic
+  link server, like dynamic
+  link timer, like dynamic
+
+task one-field
+  take value, like dynamic
+  like list, like dynamic
+  mark private
+
+  save out, make list
+  out/push(value)
+  back out
+
+task one-text
+  take value, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  out/push(value)
+  back out
+
+# who a token names: its handle, else its email, else `your account`
+task who-of-user
+  take user, like dynamic
+  like text
+  mark private
+
+  back who-of(member-text(user, <slug>), has-member(user, <email>), member-text(user, <email>))
+
+# a token travels only over https, or to a loopback API in development, the rule the publish ping keeps
+task is-safe
+  take base, like text
+  like boolean
+  mark private
+
+  save address, address-of(base)
+  fork test, not(is-truthy(address))
+    hold
+      back false
+  save protocol, <{address/protocol}>
+  fork test, is-equal(protocol, <https:>)
+    hold
+      back true
+  fork test, not(is-equal(protocol, <http:>))
+    hold
+      back false
+  save host, <{address/hostname}>
+  back or(or(is-equal(host, <localhost>), is-equal(host, <127.0.0.1>)), is-equal(host, <[::1]>))
+
+# POST JSON to term.surf and read the `{ result }` envelope, or the reason in its `{ note }` and the status. A token
+# rides as a Bearer header, which is-safe has already limited to https
+task post
+  take base, like text
+  take path, like text
+  take body, like dynamic
+  take token, like text
+  like posted
+  mark async
+  mark private
+
+  save headers, make list
+  headers/push(pair-of(<content-type>, <application/json>))
+  headers/push(pair-of(<user-agent>, <term>))
+  fork test, is-unequal(token, <>)
+    hold
+      headers/push(pair-of(<authorization>, <Bearer {token}>))
+  save answered, make(posted, bind(ok, false), bind(value, nothing()), bind(reason, <>), bind(status, nothing()))
+  fork
+    mark unsafe
+    save response, send-post(<{base}{path}>, record-of(headers), body)
+    save answer, json-or-empty(response)
+    fork test, not(is-truthy(response/ok))
+      hold
+        save reason, <{response/status} from {base}{path}>
+        fork test, has-member(answer, <note>)
+          hold
+            save reason, <{answer/note}>
+        save answered, make(posted, bind(ok, false), bind(value, nothing()), bind(reason, reason), bind(status, response/status))
+      miss
+        fork test, is-truthy(answer/result)
+          hold
+            save answered, make(posted, bind(ok, true), bind(value, answer/result), bind(reason, <>), bind(status, nothing()))
+          miss
+            save answered, make(posted, bind(ok, false), bind(value, nothing()), bind(reason, <{base}{path} answered without a result>), bind(status, nothing()))
+  halt take
+    take error
+    save answered, make(posted, bind(ok, false), bind(value, nothing()), bind(reason, <{base} could not be reached: {error/message}>), bind(status, nothing()))
+  back answered
+
+# forget the token on this machine. Revoking it is term.surf's, and the message says where
+task toss
+  take file, like text
+  like void
+  mark private
+
+  fork test, not(node-fs/exists-sync(file))
+    hold
+      output/report(make(fields-item, bind(glyph, <info>), bind(verb, <toss>), bind(subject, <no token on this machine>), bind(fields, one-field(output/field(<token>, output/show-path(file))))))
+      output/close-run(make(plain-close, bind(verdict, <Nothing to forget>)))
+      back
+  fs-promise/rm(file)
+  output/report(make(change-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <toss>), bind(subject, <the term.surf token on this machine>), bind(fields, one-field(output/field(<token>, output/show-path(file))))))
+  output/close-run(make(said-close, bind(verdict, <Logged out on this machine>), bind(done, true), bind(message, one-text(<The token still works until it is revoked at https://term.surf/settings/tokens.>))))
+
+# The saved token, asked about before any browser opens. True when the run is over: the token works, or could not be
+# checked and is kept. False when there is none, or term.surf refused it, and a login must follow
+task keeps-login
+  take base, like text
+  take file, like text
+  like boolean
+  mark private
+
+  save token, <>
+  fork
+    mark unsafe
+    fork test, node-fs/exists-sync(file)
+      hold
+        save text, fs-promise/read-file(file, <utf8>)
+        save token, trim-text(text)
+  halt take
+    take error
+    # unreadable is the same as absent: log in
+    save token, <>
+  fork test, is-equal(token, <>)
+    hold
+      back false
+  save held, post(base, </sessions/terminal/select!>, record-of(make list), token)
+  fork test, held/ok
+    hold
+      save who, who-of-user(member(held/value, <user>))
+      save fields, one-field(output/field(<token>, output/show-path(file)))
+      save expires, member(held/value, <expires_at>)
+      fork test, is-truthy(expires)
+        hold
+          fields/push(output/field(<expires>, expires))
+      output/report(make(fields-item, bind(glyph, <done>), bind(verb, <check>), bind(subject, <this machine is logged in as {who}>), bind(fields, fields)))
+      output/close-run(make(next-close, bind(verdict, <Logged in as {who}>), bind(next, <term bind --again, to log in as someone else>)))
+      back true
+  fork test, is-equal(held/status, 401)
+    hold
+      output/report(make(fields-item, bind(glyph, <info>), bind(verb, <check>), bind(subject, <the saved token no longer works, so this logs in again>), bind(fields, one-field(output/field(<token>, output/show-path(file))))))
+      back false
+  # offline, or an API that does not answer this yet: the token stays, and nothing opens
+  output/report(make(warning-item, bind(glyph, <warning>), bind(verb, <check>), bind(subject, <the saved token could not be checked, and is kept>), bind(message, one-text(held/reason)), bind(fields, one-field(output/field(<token>, output/show-path(file))))))
+  output/close-run(make(next-close, bind(verdict, <Logged in, unchecked>), bind(next, <term bind --again, to log in anew>)))
+  back true
+
+# write the token alone, readable by this user only, in a directory only this user can enter
+task keep
+  take file, like text
+  take token, like dynamic
+  like void
+  mark private
+
+  fs-promise/mkdir(node-path/dirname(file), key-folder-options())
+  fs-promise/write-file(file, <{token}\n>, key-file-options())
+  # `mode` applies only when the file is created, so an older token file keeps whatever it had without this
+  fs-promise/chmod(file, 384)
+
+# what the browser brought back: a code with our state, or the reason it is not one
+task read-landing
+  take address, like dynamic
+  take wanted, like text
+  like landing
+  mark private
+
+  save state, query-value(address, <state>)
+  save error, query-value(address, <error>)
+  save code, query-value(address, <code>)
+  save state-text, <>
+  fork test, not(is-null(state))
+    hold
+      save state-text, <{state}>
+  save error-text, <>
+  fork test, not(is-null(error))
+    hold
+      save error-text, <{error}>
+  save code-text, <>
+  fork test, not(is-null(code))
+    hold
+      save code-text, <{code}>
+  back landing-of(error-text, not(is-null(state)), state-text, wanted, code-text)
+
+# One loopback listener that answers exactly one landing, then stops listening. Its landing settles with the code,
+# or with why there is none: Google's own error, a state that is not ours, or the wait running out
+task listen
+  take state, like text
+  like listener
+  mark async
+  mark private
+
+  save settler, make-settler()
+  save server
+    node-http/create-server
+      task
+        take request, like dynamic
+        take response, like dynamic
+        like void
+        save address, request-address(request)
+        # a browser asks for /favicon.ico beside the landing; it is not the answer
+        fork test, is-unequal(<{address/pathname}>, </>)
+          hold
+            not-found(response)
+          miss
+            save answer, read-landing(address, state)
+            fork test, is-equal(answer/error, <>)
+              hold
+                answer-with(response, 200, <Logged in to term.surf. You can close this tab and go back to the terminal.\n>)
+              miss
+                answer-with(response, 400, <The login did not finish. Go back to the terminal for the reason.\n>)
+            settle-with(settler, answer)
+  listen-on(server)
+  # how long the loopback listener waits for the browser to come back before giving up: five minutes
+  save timer
+    node-timers/set-timeout
+      task
+        like void
+        settle-with(settler, make(landing, bind(code, <>), bind(error, <No answer from the browser within 5 minutes>)))
+      300000
+  back make(listener, bind(port, port-of(server)), bind(landing, landing-then-clear(settler, timer)), bind(server, server), bind(timer, timer))
+
+task close-listener
+  take open, like listener
+  like void
+  mark private
+
+  node-timers/clear-timeout(open/timer)
+  close-server(open/server)
+
+# open the URL in the default browser. A failure is not one: the URL is already printed
+task open-browser
+  take url, like text
+  like void
+  mark private
+
+  save opener, opener-of(node-os/platform(), url)
+  child-process/exec-file(get(opener, 0), list-rest(opener), ignore-answer())
+
+task log-in
+  take base, like text
+  take verifier, like text
+  take challenge, like text
+  take state, like text
+  take redirect, like text
+  take open, like listener
+  like void
+  mark async
+  mark private
+
+  save asked, make list
+  asked/push(pair-of(<redirect>, redirect))
+  asked/push(pair-of(<challenge>, challenge))
+  asked/push(pair-of(<state>, state))
+  save started, post(base, </sessions/terminal/create!>, record-of(asked), <>)
+  fork test, or(not(started/ok), not(is-truthy(member(started/value, <url>))))
+    hold
+      save subject, started/reason
+      fork test, started/ok
+        hold
+          save subject, <term.surf did not send a login address>
+      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <start>), bind(subject, subject)))
+      output/close-run(make(failure-close, bind(verdict, <Not logged in>), bind(failure, <environment>)))
+      back
+  save url, <{started/value/url}>
+  output/report(make(fields-item, bind(glyph, <info>), bind(verb, <open>), bind(subject, <the Google login in your browser>), bind(fields, one-field(output/field(<url>, url)))))
+  open-browser(url)
+  save landed, wait-for(open/landing)
+  fork test, is-unequal(landed/error, <>)
+    hold
+      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <login>), bind(subject, landed/error)))
+      output/close-run(make(failure-close, bind(verdict, <Not logged in>), bind(failure, <environment>)))
+      back
+  save sent, make list
+  sent/push(pair-of(<code>, landed/code))
+  sent/push(pair-of(<verifier>, verifier))
+  sent/push(pair-of(<redirect>, redirect))
+  sent/push(pair-of(<machine>, node-os/hostname()))
+  save verified, post(base, </sessions/terminal/verify!>, record-of(sent), <>)
+  fork test, or(not(verified/ok), not(is-truthy(member(verified/value, <token>))))
+    hold
+      save subject, verified/reason
+      fork test, verified/ok
+        hold
+          save subject, <term.surf did not send a token>
+      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <verify>), bind(subject, subject)))
+      output/close-run(make(failure-close, bind(verdict, <Not logged in>), bind(failure, <environment>)))
+      back
+  keep(home-module/user-home(<auth>), member(verified/value, <token>))
+  save who, who-of-user(member(verified/value, <user>))
+  save fields, make list
+  fields/push(output/field(<token>, output/show-path(home-module/user-home(<auth>))))
+  fields/push(output/field(<name>, member-text(verified/value, <name>)))
+  save expires, member(verified/value, <expires_at>)
+  fork test, is-truthy(expires)
+    hold
+      fields/push(output/field(<expires>, expires))
+  output/report(make(change-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <bind>), bind(subject, <this machine to {who}>), bind(fields, fields)))
+  fork test, is-truthy(home-module/env(<TOKEN>))
+    hold
+      output/report(make(plain-item, bind(glyph, <warning>), bind(verb, <check>), bind(subject, <TERM_TOKEN is set, and term host reads it before this file>)))
+  output/close-run(make(done-next-close, bind(verdict, <Logged in as {who}>), bind(done, true), bind(next, <term host>)))
+
+task call-bind
+  take input, like dynamic
+  like void
+
+  output/open-run(make(subject-open, bind(verb, <bind>), bind(root, input/root), bind(subject, <term.surf>)))
+  save file, home-module/kept-at(home-module/user-home(<auth>), home-module/legacy-user-home(<auth>))
+  fork test, is-truthy(input/toss)
+    hold
+      toss(file)
+      back
+  # the index `term host` pings, and the same override (`TERM_INDEX_URL`) for a local API
+  save given, trim-maybe(home-module/env(<INDEX_URL>))
+  save given-text, <>
+  fork test, is-truthy(given)
+    hold
+      save given-text, <{given}>
+  save base, index-base(given-text)
+  fork test, not(is-safe(base))
+    hold
+      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <check>), bind(subject, <{base} is not https, so no token is fetched from it>)))
+      output/close-run(make(failure-close, bind(verdict, <Not logged in>), bind(failure, <usage>)))
+      back
+  fork test, not(is-truthy(input/again))
+    hold
+      fork test, keeps-login(base, file)
+        hold
+          back
+  save verifier, base64url(node-crypto/random-bytes(32))
+  save challenge, challenge-of(node-crypto, verifier)
+  save state, base64url(node-crypto/random-bytes(24))
+  save open, listen(state)
+  save redirect, <http://127.0.0.1:{open/port}/>
+  save thrown, nothing()
+  save failed, false
+  fork
+    mark unsafe
+    log-in(base, verifier, challenge, state, redirect, open)
+  halt take
+    take error
+    save failed, true
+    save thrown, error
+  close-listener(open)
+  fork test, failed
+    hold
+      rethrow(thrown)

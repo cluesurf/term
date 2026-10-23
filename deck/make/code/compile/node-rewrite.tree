@@ -2123,6 +2123,19 @@ task async-slot-expression
         push(args-out, written)
       save given/args, args-out
       back given
+    # a task literal bound to a record field that is an async task, keyed `<form>/<field>` in `slots`
+    # (check/async-slots.tree, term/compiler decision 006)
+    case record
+      save fields-out, make list
+      walk fields
+        take field
+        save field-key, <{name}/{field/name}>
+        fork test, and(slots/has(field-key), is-equal(field/value/form, <closure>))
+          hold
+            save field/value, made-async(field/value)
+        push(fields-out, field)
+      save given/fields, fields-out
+      back given
     miss
       back given
 

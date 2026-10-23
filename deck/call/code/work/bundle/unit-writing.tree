@@ -1,0 +1,132 @@
+# A program built one unit at a time, written out for a bundler (note/project/term/incremental-best-in-class.md, steps 9
+# and 10). Ported from call/code/unit-bundle.ts, term-cli-in-term-0024.
+#
+# `term boot` and `term test` both hand esbuild a program made of units: every module of the closure beside one another
+# under `host/.unit/`, an entry that re-exports every public task the run reaches (call/code/make.ts `entryShim`), and
+# the native prelude as a module of its own. THE PRELUDE IS A MODULE, AND EACH MODULE IMPORTS THE SHIMS IT DOCKS: the
+# reading of the emitted modules is call/code/unit-shim.tree, this writes the files.
+#
+# Docked: call/code/make.ts (`entryShim`, still TypeScript) and compile/typescript.ts (`toCamel`).
+
+load @term/call/unit-shim
+  find docked-of
+  find offered-of
+  find rewrite-docked
+  find prelude-module
+  find export-name
+  find runtime-exports, name kept-by-place
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <@term/call/code/make>, name make-module
+  load <@term/make/code/compile/typescript>, name typescript-module
+
+# `writeUnitBundle`'s one input record: the folder, the module the program starts from, every module of its closure as
+# [file, emit] with the name its siblings import it by (`slug`), the closure's exports, the shims the program docks
+# (compile/native.ts `nativePrelude`), and the names the run calls that the entry neither defines nor imports
+form unit-ask
+  link dir, like text
+  link entry, like text
+  link modules, like list, like dynamic
+  link slug, like dynamic
+  link exports, like list, like dynamic
+  link prelude, like text
+  link keep, like dynamic
+
+form folder-ask
+  link recursive, like boolean
+
+# a function value called on one text (the unit's slug)
+bind bundle-apply-slug
+  take slug, like dynamic
+  take file, like text
+  like text
+  case node
+    text <$slug($file)>
+
+# the names a run is asked to keep, the empty list when the caller gave none (`keep = []`), read without writing it
+bind bundle-keep-of
+  take ask, like dynamic
+  like list, like text
+  case node
+    text <($ask.keep ?? [])>
+
+# a module's emitted code: `[file, emit]`'s `emit.code`
+bind bundle-code-of
+  take module, like dynamic
+  like text
+  case node
+    text <$module[1].code>
+
+# a module's file: `[file, emit]`'s `file`
+bind bundle-file-of
+  take module, like dynamic
+  like text
+  case node
+    text <$module[0]>
+
+# writes the program under `dir` and answers the file to hand the bundler
+task write-unit-bundle
+  take input, like unit-ask
+  like text
+
+  save host, node-path/join(input/dir, <host>)
+  node-file/mkdir-sync(node-path/join(host, <.unit>), make(folder-ask, bind(recursive, true)))
+  # the namespaces the modules dock, and of those the ones a shim defines
+  save codes, make list
+  walk input/modules
+    take module
+    codes/push(bundle-code-of(module))
+  save docked, docked-of(codes)
+  save offered, offered-of(input/prelude, docked)
+  walk input/modules
+    take module
+    save slugged, bundle-apply-slug(input/slug, bundle-file-of(module))
+    node-file/write-file-sync(node-path/join(host, <.unit>, <{slugged}.ts>), rewrite-docked(bundle-code-of(module), offered))
+  node-file/write-file-sync(node-path/join(host, <prelude.ts>), prelude-module(input/prelude, offered))
+  save app, node-path/join(host, <app.ts>)
+  save entry-code, <>
+  save found, false
+  walk input/modules
+    take module
+    fork test, and(not(found), is-equal(bundle-file-of(module), input/entry))
+      hold
+        save entry-code, bundle-code-of(module)
+        save found, true
+  save kept, runtime-exports(input/entry, entry-code, input/exports, bundle-keep-of(input))
+  node-file/write-file-sync(app, make-module/entryShim(input/dir, node-path/join(input/dir, <app.tree>), kept, input/slug))
+  back app
+
+# the names the program's run reaches it by, which are all the bundler may keep: the entry's own (its tests, a server's
+# `boot`), every name the entry imports (a command's task is often another file's), and the hive's wake wherever it is
+# defined. THE BUNDLE IS SHAKEN BY ITS ENTRY: esbuild keeps every export of the module it starts from. Each export is
+# answered as it was given, the ones kept in their order
+task runtime-exports
+  take entry, like text
+  take entry-code, like text
+  take exports, like list, like dynamic
+  take keep
+    like list, like text
+    fall make list
+  like list, like dynamic
+
+  save names, make list
+  walk exports
+    take one
+    names/push(make(export-name, bind(name, one/name), bind(file, one/file)))
+  save camel
+    task
+      take name, like text
+      like text
+      back typescript-module/toCamel(name)
+  save flags, kept-by-place(entry, entry-code, names, keep, camel)
+  save out, make list
+  save at, 0
+  walk exports
+    take one
+    fork test, flags/{at}
+      hold
+        out/push(one)
+    save at, add(at, 1)
+  back out

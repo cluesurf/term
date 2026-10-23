@@ -1,0 +1,481 @@
+# `term make --target uikit`: a Term app as a native iPhone app, its views UIKit's, no WebView (swiftui-target-0004),
+# built for a DEVICE: the program compiled for the toolkit host the simulator suites run, put into a generated Xcode
+# project, archived, and, with a team to sign for, exported as an .ipa.
+#
+# WHY AN XCODE PROJECT. An iPhone runs only a signed app, signed with a certificate AND a provisioning profile that
+# names the app and the phones it may run on. Only Xcode makes and fetches a profile on its own
+# (`-allowProvisioningUpdates`), from the account signed in at Xcode, Settings, Accounts. A project around the one
+# Swift file is the smallest way to ask it to.
+#
+#   term make --target uikit                    the project and an unsigned device build: the code builds for a phone
+#   term make --target uikit --team <id>        signed ad hoc for the phones registered to that team, as an .ipa
+#   term make --target uikit --team <id> --link <https url>
+#                                               the same, with the install page an iPhone opens at that address
+#
+# AD HOC, not development: a development build needs Developer Mode on the phone, which cannot be turned on without
+# connecting the phone to a Mac once. An ad hoc build installs from a link (itms-services), on any phone the team has
+# registered. The team is read from the signing identity when exactly one is in the keychain.
+#
+# What the build decides beside the compiler and Xcode is call/code/uikit-words.tree. Port of deck/call/code/uikit.ts
+# (cli-in-term-0034): `uikitIdentity`, `xcodeProject`, `signingTeam` and `makeUikit`.
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/make/compile/main-entry
+  find entry-of
+
+load @term/call/uikit-words
+  find uikit-identity-of
+  find start-line
+  find xcode-project, name words-xcode-project
+  find signing-team, name words-signing-team
+  find install-manifest
+  find install-page
+  find export-options
+  find is-failure-line
+  find usage-entry
+
+load ../cask/identity
+  find swift-module
+
+load ../cask/toolchain
+  find read-runtime
+
+load ../cask/host-value
+  find nothing
+  find is-truthy
+  find value-or
+  find refuse
+  find entries-of
+  find now-ms
+
+load ./declaration
+  find apple-usage
+
+load ./native-value
+  find message-of
+  find encode-component
+  find without-trailing-slash
+  find unit-slice
+  find ran-text
+  find lines-of
+  find last-lines
+  find is-nullish
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <node:child_process>, name node-child
+  load <node:crypto>, name node-crypto
+  load <global:process>, name node-process
+  load <@term/make/code/compile/compile>, name compile-module
+  load <@term/make/code/compile/load>, name load-module
+  load <@term/make/code/compile/native>, name native-module
+  load <@term/make/code/compile/swift>, name swift-emit
+  load <@term/call/code/boot>, name boot-module
+  # scope.ts, whose port is work/context/app-scope.tree, DOCKED: a load of it puts its one-argument `bind refuse`
+  # beside work/cask/host-value.tree's two-argument one, and a bind is not bound by import, so every call here took
+  # the wrong one (traps.md, cli-in-term-0034)
+  load <@term/call/code/scope>, name scope-module
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/output>, name output
+
+form iphone-source
+  link file, like text
+  link text, like text
+
+form iphone-compile
+  link resolve, like dynamic
+  link env, like text
+
+form iphone-scope
+  link root, like text
+  link files, like list, like text
+
+form iphone-text
+  link encoding, like text
+
+form iphone-step
+  link cwd, like text
+  link encoding, like text
+  link max-buffer, like number
+
+form iphone-folder
+  link recursive, like boolean
+
+form iphone-remove
+  link recursive, like boolean
+  link force, like boolean
+
+# what `xcodeProject` is asked: the app's names and version, the team to sign for and the usage strings by key, both
+# left out when there are none
+form xcode-ask
+  link name, like text
+  link identifier, like text
+  link version, like text
+  link team, like dynamic
+  link usage, like dynamic
+
+form iphone-open
+  link verb, like text
+  link root, like text
+  link facts, like list, like text
+
+form iphone-wrote
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form iphone-built
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link facts, like list, like text
+  link fields, like list, like dynamic
+
+form iphone-close
+  link verdict, like text
+  link next, like text
+
+form iphone-made
+  link app, like text
+
+# an app folder's name as the app is named after it, and its bundle identifier
+task uikit-identity
+  take root, like text
+  like dynamic
+
+  save identity, uikit-identity-of(node-path/basename(root))
+  back identity
+
+# the first three diagnostics' messages, as the refusal names them
+task compile-said
+  take diagnostics, like dynamic
+  like text
+  mark private
+
+  save said, make list
+  save at, 0
+  walk test
+    hook test, and(is-below(at, 3), is-below(at, diagnostics/length))
+    hook hold
+      save one, diagnostics/{at}
+      said/push(<{one/message}>)
+      save at, add(at, 1)
+  back join(said, <; >)
+
+# the program with the toolkit host's prelude, as one Swift file. In an app target top-level code is allowed only in
+# `main.swift`, which is what the file is called
+task program-source
+  take root, like text
+  take entry, like text
+  like text
+  mark private
+
+  save text, <{node-fs/read-file-sync(entry, <utf8>)}>
+  save resolve, make-module/project-resolver(root, <ios>)
+  save source, make(iphone-source, bind(file, entry), bind(text, text))
+
+  # the app's scope first (app-scope): every capability its modules reach is one its scope.tree names, as a Compose
+  # or a cask build refuses it
+  fork
+    mark unsafe
+    save collected, load-module/collect-modules(source, resolve)
+    save files, make list
+    walk collected/sources
+      take one, like dynamic
+      files/push(<{one/file}>)
+    scope-module/check-scope(make(iphone-scope, bind(root, root), bind(files, files)))
+  halt take
+    take problem
+    refuse(<scope: {message-of(problem)}>, <usage>)
+
+  save result, compile-module/compile(source, make(iphone-compile, bind(resolve, resolve), bind(env, <ios>)))
+  fork test, not(is-truthy(result/ok))
+    hold
+      refuse(<the app failed to compile: {compile-said(result/diagnostics)}>, <>)
+
+  save swift, <{swift-emit/emit-swift(result/program)}>
+  save prelude, value-or(native-module/native-prelude(result/program, <ios>, read-runtime, swift), <>)
+  # the entry task: `boot`, as every Term program's is, else the older `main`. It throws when anything it reaches can
+  # raise, and a raise nothing handles ends the program
+  save named, <>
+  sift entry-of(<swift>, swift, make(some, <boot>))
+    case some
+      save named, value
+    case none
+      sift entry-of(<swift>, swift, make(some, <main>))
+        case some
+          save named, value
+        case none
+          save shown, output/show-path(entry, root)
+          refuse(<{shown} has no `boot` task, which is what a UIKit app starts at>, <usage>)
+
+  save start, start-line(swift, named)
+  save parts, make list
+  parts/push(<import Foundation>)
+  parts/push(<{prelude}>)
+  parts/push(swift)
+  parts/push(start)
+  parts/push(<>)
+  back join(parts, <\n>)
+
+# A stable 24-digit object id per name, so the same app writes the same project byte for byte
+task object-id
+  take name, like text
+  like text
+  mark private
+
+  save hash, node-crypto/create-hash(<sha256>)
+  save fed, hash/update(name)
+  save hex, fed/digest(<hex>)
+  save cut, hex/slice(0, 24)
+  save upper, cut/to-upper-case()
+  back <{upper}>
+
+# The smallest project.pbxproj for one app target with one Swift file and a generated Info.plist. Its build settings
+# are the simulator build's flags (work/cask/program.tree `build-program`): -O, whole module, exclusivity checks off,
+# Swift 5 mode
+task xcode-project
+  take input, like dynamic
+  like text
+
+  save name, <{input/name}>
+  # in the order the project text takes them (uikit-words.tree `xcode-project`)
+  save ids, make list
+  ids/push(object-id(<{name}:file>))
+  ids/push(object-id(<{name}:build>))
+  ids/push(object-id(<{name}:product>))
+  ids/push(object-id(<{name}:group>))
+  ids/push(object-id(<{name}:sources-group>))
+  ids/push(object-id(<{name}:products-group>))
+  ids/push(object-id(<{name}:phase>))
+  ids/push(object-id(<{name}:target>))
+  ids/push(object-id(<{name}:target-list>))
+  ids/push(object-id(<{name}:target-debug>))
+  ids/push(object-id(<{name}:target-release>))
+  ids/push(object-id(<{name}:project>))
+  ids/push(object-id(<{name}:project-list>))
+  ids/push(object-id(<{name}:project-debug>))
+  ids/push(object-id(<{name}:project-release>))
+  save usage, make list
+  walk entries-of(input/usage)
+    take entry, like list, like dynamic
+    usage/push(make(usage-entry, bind(key, <{entry/0}>), bind(said, <{entry/1}>)))
+  save team, value-or(input/team, <>)
+  # never the app's own name as its module, which may be an Apple framework's (work/cask/identity.tree)
+  back words-xcode-project(name, <{input/identifier}>, <{input/version}>, <{team}>, usage, swift-module(), ids)
+
+# The team of the one Apple signing identity in the keychain, when there is exactly one team among them
+task signing-team
+  like dynamic
+
+  save args, make list
+  args/push(<find-identity>)
+  args/push(<-v>)
+  args/push(<-p>)
+  args/push(<codesigning>)
+  save ran, node-child/spawn-sync(<security>, args, make(iphone-text, bind(encoding, <utf8>)))
+  save listed, value-or(ran/stdout, <>)
+  save team, words-signing-team(<{listed}>)
+  fork test, is-truthy(team)
+    hold
+      back team
+  back nothing()
+
+# The install page an iPhone opens: an itms-services link to the manifest, which names the .ipa. Both must be served
+# over HTTPS with a certificate the phone trusts, from `base`
+task write-install-page
+  take name, like text
+  take identifier, like text
+  take version, like text
+  take base, like text
+  take out, like text
+  like text
+  mark private
+
+  node-fs/write-file-sync(node-path/join(out, <manifest.plist>), install-manifest(name, identifier, version, base))
+  save page, node-path/join(out, <index.html>)
+  node-fs/write-file-sync(page, install-page(name, version, encode-component(<{base}/manifest.plist>)))
+  back <{page}>
+
+task run-step
+  take command, like text
+  take args, like list, like text
+  take cwd, like text
+  like void
+  mark private
+
+  save ran, node-child/spawn-sync(command, args, make(iphone-step, bind(cwd, cwd), bind(encoding, <utf8>), bind(max-buffer, 268435456)))
+  fork test, is-unequal(ran/status, 0)
+    hold
+      # xcodebuild's own error lines, which name the setting or the profile at fault
+      save all, ran-text(ran)
+      save said, make list
+      walk lines-of(all)
+        take line, like text
+        fork test, is-failure-line(line)
+          hold
+            said/push(line)
+      save shown, said
+      fork test, is-equal(said/length, 0)
+        hold
+          save shown, last-lines(all, 20)
+      save joined, join(shown, <\n>)
+      save first, <{args/0}>
+      refuse(<{command} {first} failed: {unit-slice(joined, 2400)}>, <>)
+
+task make-uikit
+  take input, like dynamic
+  like dynamic
+  mark async
+
+  # the file `--entry` names, else the one the manifest's `boot` line names (`boot ./code/boot`), else the older
+  # `app.tree` beside the manifest
+  save root, <{input/root}>
+  save entry, <{value-or(boot-module/find-entry(root, input/entry), node-path/join(root, value-or(input/entry, <app.tree>)))}>
+  save opened, make list
+  opened/push(<--target uikit>)
+  output/open-run(make(iphone-open, bind(verb, <make>), bind(root, root), bind(facts, opened)))
+
+  fork test, is-unequal(<{node-process/platform}>, <darwin>)
+    hold
+      refuse(<an iPhone app builds on macOS, where Xcode is>, <environment>)
+
+  save version-args, make list
+  version-args/push(<-version>)
+  save xcode, node-child/spawn-sync(<xcodebuild>, version-args, make(iphone-text, bind(encoding, <utf8>)))
+  fork test, is-unequal(xcode/status, 0)
+    hold
+      refuse(<an iPhone app needs Xcode, and xcodebuild is not working here>, <environment>)
+
+  fork test, not(node-fs/exists-sync(entry))
+    hold
+      save shown, output/show-path(entry, root)
+      refuse(<There is no app entry at {shown}: a UIKit app is a program with a `boot` task, named by the `boot` line of deck.tree (--entry names another file)>, <usage>)
+
+  save identity, uikit-identity(root)
+  save name, <{identity/name}>
+  save identifier, <{identity/identifier}>
+  save version, <{value-or(input/version, <0.0.2>)}>
+  save team, input/team
+  fork test, is-nullish(team)
+    hold
+      save team, signing-team()
+  save out, node-path/join(root, <host>, <uikit>)
+  save started, now-ms()
+
+  # the project: main.swift and project.pbxproj, rewritten whole each time
+  save project-dir, node-path/join(out, <{name}.xcodeproj>)
+  node-fs/rm-sync(project-dir, make(iphone-remove, bind(recursive, true), bind(force, true)))
+  node-fs/mkdir-sync(node-path/join(out, name), make(iphone-folder, bind(recursive, true)))
+  node-fs/mkdir-sync(project-dir, make(iphone-folder, bind(recursive, true)))
+  save source, program-source(root, entry)
+  node-fs/write-file-sync(node-path/join(out, name, <main.swift>), source)
+  save asked
+    make xcode-ask
+      bind name, name
+      bind identifier, identifier
+      bind version, version
+      bind team, team
+      bind usage, apple-usage(source)
+  node-fs/write-file-sync(node-path/join(project-dir, <project.pbxproj>), xcode-project(asked))
+  save wrote, make list
+  wrote/push(output/location(output/show-path(project-dir, root)))
+  output/report(make(iphone-wrote, bind(glyph, <done>), bind(verb, <write>), bind(subject, <Xcode project>), bind(fields, wrote)))
+
+  save archive, node-path/join(out, <{name}.xcarchive>)
+  node-fs/rm-sync(archive, make(iphone-remove, bind(recursive, true), bind(force, true)))
+  save common, make list
+  common/push(<-project>)
+  common/push(project-dir)
+  common/push(<-scheme>)
+  common/push(name)
+  common/push(<-configuration>)
+  common/push(<Release>)
+  common/push(<-destination>)
+  common/push(<generic/platform=iOS>)
+  common/push(<-derivedDataPath>)
+  common/push(node-path/join(out, <derived>))
+
+  fork test, not(is-truthy(team))
+    hold
+      # no team to sign for: the device build, unsigned, so the code is known to build for a phone
+      save unsigned, make list
+      unsigned/push(<archive>)
+      walk common
+        take one, like text
+        unsigned/push(one)
+      unsigned/push(<-archivePath>)
+      unsigned/push(archive)
+      unsigned/push(<CODE_SIGNING_ALLOWED=NO>)
+      unsigned/push(<-quiet>)
+      run-step(<xcodebuild>, unsigned, out)
+      save facts, make list
+      facts/push(<unsigned>)
+      save fields, make list
+      fields/push(output/location(output/show-path(archive, root)))
+      output/report(make(iphone-built, bind(glyph, <done>), bind(verb, <build>), bind(subject, <uikit>), bind(duration, subtract(now-ms(), started)), bind(facts, facts), bind(fields, fields)))
+      output/close-run(make(iphone-close, bind(verdict, <Built for an iPhone, unsigned>), bind(next, <sign in at Xcode → Settings → Accounts and make an Apple Distribution certificate, then term make --target uikit --team \<id\>>)))
+      back make(iphone-made, bind(app, archive))
+
+  # signed for the team: Xcode makes or fetches the ad hoc profile for the phones registered to it
+  save signed, make list
+  signed/push(<archive>)
+  walk common
+    take one, like text
+    signed/push(one)
+  signed/push(<-archivePath>)
+  signed/push(archive)
+  signed/push(<-allowProvisioningUpdates>)
+  signed/push(<DEVELOPMENT_TEAM={team}>)
+  signed/push(<-quiet>)
+  run-step(<xcodebuild>, signed, out)
+  save options, node-path/join(out, <export.plist>)
+  node-fs/write-file-sync(options, export-options(<{team}>))
+  save exported, node-path/join(out, <export>)
+  node-fs/rm-sync(exported, make(iphone-remove, bind(recursive, true), bind(force, true)))
+  save export-args, make list
+  export-args/push(<-exportArchive>)
+  export-args/push(<-archivePath>)
+  export-args/push(archive)
+  export-args/push(<-exportOptionsPlist>)
+  export-args/push(options)
+  export-args/push(<-exportPath>)
+  export-args/push(exported)
+  export-args/push(<-allowProvisioningUpdates>)
+  run-step(<xcodebuild>, export-args, out)
+  save ipa, node-path/join(exported, <{name}.ipa>)
+  fork test, not(node-fs/exists-sync(ipa))
+    hold
+      save shown, output/show-path(exported, root)
+      refuse(<the export wrote no {name}.ipa in {shown}>, <>)
+
+  save facts, make list
+  facts/push(<signed ad hoc for {team}>)
+  save fields, make list
+  fields/push(output/location(output/show-path(ipa, root)))
+  output/report(make(iphone-built, bind(glyph, <done>), bind(verb, <build>), bind(subject, <uikit>), bind(duration, subtract(now-ms(), started)), bind(facts, facts), bind(fields, fields)))
+
+  save link, input/link
+  fork test, is-truthy(link)
+    hold
+      save page, write-install-page(name, identifier, version, without-trailing-slash(<{link}>), exported)
+      save placed, make list
+      placed/push(output/location(output/show-path(page, root)))
+      output/report(make(iphone-wrote, bind(glyph, <done>), bind(verb, <write>), bind(subject, <install page>), bind(fields, placed)))
+
+  save next, <term make --target uikit --link \<https url\> also writes the install page>
+  fork test, is-truthy(link)
+    hold
+      save shown, output/show-path(exported, root)
+      save next, <serve {shown} at {link}, then open it in Safari on the phone>
+  output/close-run(make(iphone-close, bind(verdict, <iPhone app built and signed>), bind(next, next)))
+  back make(iphone-made, bind(app, ipa))

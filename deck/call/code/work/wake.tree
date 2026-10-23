@@ -1,97 +1,16 @@
 load @term/call/work/home
   find root, name project-root
 
-load @term/call/work/tint
-  find log-good
-  find log-fail
-  find log-step
-  find log-warn
-  find fade
-  find name, name tint-name
-  find bold
-  find mark
-  find format-error
+load @term/call/work/small/scaffold
+  find call-wake
 
 # `term wake [name]` -- scaffold a new Term project: a manifest, a starter entry module, a readme and a gitignore.
 # With a name it makes a directory; without one it scaffolds where you are.
 #
-# WHAT IT SCAFFOLDS HAS TO BE CLEAN, because it is the first Term anyone reads. It once said `seed` throughout (the
-# language was renamed), imported `@term/base` (the legacy prefix, which resolves but is not the name any more),
-# and wrote an 87-character comment, so a new project failed `term lint` on a line the scaffold itself wrote.
-# test/call/lifecycle.ts runs `wake` then `lint` and holds it. The version starts at 0.0.2 because `term host`
-# refuses an odd patch, and the files are written as `term form` prints them (see wake.ts).
-#
-# Ported from deck/call/code/wake.ts (cli-in-term-0004).
-
-load @term/base/path
-  find join
-
-load @term/base/file
-  find write, name write-file
-
-load @term/base/file/directory
-  find make, name make-directory
-  find exists, name directory-exists
-
-load @term/base/text
-  find trim
-
-dock load
-  load <node:path>, name node-path
-  load <node:process>, name node-process
-  load <global:console>, name console
-
-# the manifest a new project starts from
-task deck-text
-  take project, like text
-
-  like text
-
-  back <deck {{project}}
-  mark <0.0.2>
-  test ./test
-  boot ./code/boot
->
-
-# the entry module `term boot` runs, in `term form`'s canonical layout so a fresh project passes `form --check`
-task boot-text
-  like text
-
-  back <# The application entry point. `term boot` compiles and runs
-# this module's `boot` task.
-load @term/base/console
-  find log
-
-task boot
-  mark async
-  log <hello from term>
->
-
-task readme-text
-  take project, like text
-
-  like text
-
-  back <# {{project}}
-
-A Term project.
-
-## Develop
-
-    term boot     # compile and run
-    term feed     # dev server with hot reload
-    term test     # run tests
-    term make     # build
->
-
-task ignore-text
-  like text
-
-  back <host
-link
-.base/
-node_modules
->
+# The verb takes its hook's argument and hands it to the handler, the small lane's port of deck/call/code/wake.ts
+# (work/small/scaffold.tree `call-wake`), which writes the files and prints through the output library. It prints
+# nothing of its own, catches nothing and never exits: a throw reaches dispatch.tree `fail-line` (decision 005 of
+# cli-in-term, part 2).
 
 task wake
   mark async
@@ -101,74 +20,4 @@ task wake
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  save project, trim read name
-  save named, is-real-name project
-
-  save target
-    fork test
-      named
-      hold
-        node-path/resolve root, project
-      miss
-        read root
-  save label
-    fork test
-      named
-      hold
-        read project
-      miss
-        node-path/basename target
-  log-step <Waking {{label}}...>
-
-  fork
-    mark unsafe
-    call make-directory, read target
-    fork test
-      call directory-exists
-        call join, read(target), text <deck.tree>
-      hook hold
-        call log-fail, text <A deck.tree already exists in {{target}}>
-        call node-process/exit, code 1
-    call make-directory
-      call join, read(target), text <code>
-    call make-directory
-      call join, read(target), text <test>
-    call write-file
-      call join, read(target), text <deck.tree>
-      call deck-text, read label
-    call write-file
-      call join, call(join, read(target), text <code>), text <boot.tree>
-      call boot-text
-    call write-file
-      call join, read(target), text <readme.md>
-      call readme-text, read label
-    call write-file
-      call join, read(target), text <.gitignore>
-      call ignore-text
-    call log-good, text <Woke {{label}}>
-    fork test
-      read named
-      hook hold
-        call console/log, call fade, text <  cd {{project}} && term boot>
-      hook miss
-        call console/log, call fade, text <  term boot>
-  halt take
-    take error
-    log-fail format-error error
-    node-process/exit code 1
-
-# a name that means "make a directory", as opposed to none or `.`, which both mean "here"
-task is-real-name
-  take project, like text
-
-  like boolean
-
-  fork test
-    is-equal project, <>
-    hold
-      back false
-  fork test
-    is-equal project, <.>
-    hold
-      back false
-  back true
+  call-wake(root, name)

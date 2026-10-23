@@ -279,6 +279,51 @@ const MEASURE_NATIVE = `bind measure\n  take x, like number\n  like number\n  ca
   }
 }
 
+// a LOCAL named like the aliased task's own name never captures the alias: `find root, name project-root` then
+// `save root, call project-root`. applyAliases renames the reference to `root` at mill time, so the local took it:
+// the TypeScript was `const root = root()` (a TDZ ReferenceError, every verb of the Term console, term-compiler-0032),
+// and with the local saved first a later `call project-root` was refused as not callable (it has type text)
+const ROOT_MODULE = `task root\n  like text\n  send back, text <here>\n`
+
+{
+  const main = `load @app/r\n  find root, name project-root\n\ntask run\n  like text\n  save root, call project-root\n  send back, read root\n`
+  const result = build({ '@app/r': ROOT_MODULE }, main)
+  ok('a local named like the aliased task, saved from the alias, compiles', result.ok, said(result))
+
+  if (result.ok) {
+    const mod = await runOf(result.typescript)
+    ok('the local holds the import\'s answer', mod.run?.() === 'here', String(mod.run?.()))
+  }
+}
+
+{
+  const main = `load @app/r\n  find root, name project-root\n\ntask run\n  like text\n  save root, text <x>\n  save other, call project-root\n  send back, read other\n`
+  const result = build({ '@app/r': ROOT_MODULE }, main)
+  ok('an alias called after a local of the imported name exists is still the task', result.ok, said(result))
+
+  if (result.ok) {
+    const mod = await runOf(result.typescript)
+    ok('the later call reaches the import', mod.run?.() === 'here', String(mod.run?.()))
+  }
+}
+
+// two tasks of one name told apart only by ARITY, both in the entry, nothing calling them: the arity pass names them
+// `front-dir__0` and `front-dir__1`, and the entry's roots held only `front-dir`, so both were left out of the module,
+// silently (term-cli-in-term-0060's front-dir, term-compiler-0036)
+{
+  const main = `task front-dir\n  like text\n  send back, text <none>\n\ntask front-dir\n  take home, like text\n  like text\n  send back, text <{home}/front>\n\ntask other\n  like text\n  send back, text <o>\n`
+  const result = build({}, main)
+  ok('an entry\'s two arities of one name compile', result.ok, said(result))
+
+  if (result.ok) {
+    const mod = (await runOf(result.typescript)) as Record<string, (...args: unknown[]) => unknown>
+    const made = Object.entries(mod).filter(([name]) => /^frontDir/.test(name))
+    const answers = made.map(([, one]) => (one.length === 0 ? one() : one('h'))).sort()
+    ok('both arities are in the module', made.length === 2, result.typescript)
+    ok('and each answers its own body', answers.join(',') === 'h/front,none', answers.join(','))
+  }
+}
+
 // an alias keeps two same-named FORMS apart: `element` from one module, `find element, name chart-element` from
 // another. The bridge dropped the alias on a `make` and a `like`, and form binding reached a bare name through every
 // find of it, so both spellings bound to the form merged last and `make element, bind name` failed as needing `size`

@@ -206,6 +206,99 @@ task run
 
 const SHAPES_EXPECTED = 'point 3, names ada+bo, hash 2, number 7, other, other, other, other'
 
+// A FORM WITH CASES OUT OF AN UNKNOWN (seam decision 003): `case shape` tests for a value of any of its cases (natively
+// the enum, on TypeScript its tag and that case's fields), a `mark tag` form by its own tag field, a `mark text` form
+// by its case texts, and a list or a hash of a form with cases item by item. A record of a form of fields and a
+// number go to the miss
+const CASED = `load @term/base/list
+  find push
+
+form shape
+  case dot
+  case box
+    link side, like number
+
+form flag
+  mark tag, name kind
+  case up
+  case down
+    link by, like number
+
+form tone
+  mark text
+  case warm
+  case cool, text <ice>
+
+form point
+  link x, like number
+
+task describe
+  take value, like unknown
+
+  like text
+
+  sift value
+    case shape
+      link s
+      sift s
+        case dot
+          back <dot>
+        case box
+          back <box {side}>
+    case flag
+      link f
+      sift f
+        case up
+          back <up>
+        case down
+          back <down {by}>
+    case tone
+      link t
+      sift t
+        case warm
+          back <warm>
+        case cool
+          back <cool>
+    case list
+      like shape
+      link shapes
+      back <shapes {shapes/length}>
+    case hash
+      like text
+      like shape
+      link table
+      back <table {table/length()}>
+    miss
+      back <other>
+
+task run
+  like text
+
+  save d, make dot
+  save b
+    make box
+      bind side, 3
+  save u, make up
+  save n
+    make down
+      bind by, 2
+  save w, make warm
+  save c, make cool
+  save shapes, like list, like shape
+    make list
+  push(shapes, d)
+  push(shapes, b)
+  save table, like hash, like text, like shape
+    make hash
+  table/set(<one>, b)
+  save p
+    make point
+      bind x, 1
+  back <{describe(d)}, {describe(b)}, {describe(u)}, {describe(n)}, {describe(w)}, {describe(c)}, {describe(shapes)}, {describe(table)}, {describe(p)}, {describe(7)}>
+`
+
+const CASED_EXPECTED = 'dot, box 3, up, down 2, warm, cool, shapes 2, table 1, other, other'
+
 // A TEST OF A FORM'S CASE NARROWS (gap 105): `is-some(m)` is the `sift m` arm `case some`, so inside the branch
 // `m/value` reads, and the other case is the rest. A field named like a local in scope is not bound over it
 const CASES = `load @term/base/maybe
@@ -300,6 +393,14 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
     shapes.form === 'ran' ? `got ${JSON.stringify(shapes.output)}` : shapes.form === 'skipped' ? shapes.reason : `${shapes.stage}: ${shapes.reason}`,
   )
 
+  const cased = runOn({ backend, program: CASED, resolve: env => projectResolver(process.cwd(), env), dir, name: 'cased' })
+
+  ok(
+    `${backend}: a form with cases, a mark tag form, a mark text form and a list and hash of one are narrowed out of an unknown, a record and a number go to the miss`,
+    cased.form === 'ran' && cased.output === CASED_EXPECTED,
+    cased.form === 'ran' ? `got ${JSON.stringify(cased.output)}` : cased.form === 'skipped' ? cased.reason : `${cased.stage}: ${cased.reason}`,
+  )
+
   const cases = runOn({ backend, program: CASES, resolve: env => projectResolver(process.cwd(), env), dir, name: 'cases' })
 
   ok(
@@ -344,7 +445,10 @@ if (!only || only === 'typescript') {
   ok('a form arm over an unknown builds, its subject the form inside it', form.length === 0, form.join(' | '))
 
   const cased = refused(`form shape\n  case dot\n  case box\n    link side, like number\n\ntask f\n  take value, like unknown\n\n  like number\n\n  sift value\n    case shape\n      back 1\n    miss\n      back 0\n`)
-  ok('an arm naming a form with cases is refused, saying what can be told apart', cased.some(m => m.includes('a form with cases') && m.includes('a form of fields')), cased.join(' | '))
+  ok('an arm naming a form with cases builds (seam decision 003)', cased.length === 0, cased.join(' | '))
+
+  const generic = refused(`form held\n  head t\n  case empty\n  case full\n    link item, like t\n\ntask f\n  take value, like unknown\n\n  like number\n\n  sift value\n    case held\n      back 1\n    miss\n      back 0\n`)
+  ok('an arm naming a form with cases and a type parameter is refused, saying what can be told apart', generic.some(m => m.includes('a form with type parameters') && m.includes('a form with cases')), generic.join(' | '))
 
   const bare = refused(`task f\n  take value, like unknown\n\n  like number\n\n  sift value\n    case list\n      back 1\n    miss\n      back 0\n`)
   ok('a list arm that does not say what the list holds is refused', bare.some(m => m.includes('says what it holds')), bare.join(' | '))

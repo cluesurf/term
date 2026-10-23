@@ -1,0 +1,1013 @@
+# ANALYSIS of an open document: compile it as the build would and keep what the editor needs from it (its view), place
+# each diagnostic in it, publish what changed, and run it again when it or a file it read changed.
+#
+# WHAT IT COMPILES WITH IS WHAT `term make` COMPILES WITH. Diagnostics come from the compiler, given the same resolver,
+# role, `mark lean` and deck readers the build passes, so a file is an error in the editor exactly when it is an error
+# in the build. A keystroke builds the edited module's unit and reads every other from the server's memory
+# (compile/separate.ts); a file that is not a program is compiled whole, as `term make` compiles it.
+#
+# Analysis waits `debounce` milliseconds after the last edit, and any request about a document first settles it, so
+# an answer is never about text the editor no longer shows.
+#
+# Ported from server.ts (term-cli-in-term-0101, part 2 of 5): analyzeNow, place, publish, run, deferred, schedule,
+# settled, summarize, mergeSummary, signatureOf. The decisions:
+#   - every task takes language-server.tree's record first; a document's timer is a maybe of the host's timer, set
+#     and cleared by the host's `setTimeout` and `clearTimeout`, its callback a task
+#   - the compiler (compile.ts, separate.ts), the file analyzer (make/code/analyze.ts), the test rewrite and the build's
+#     unit names stay TypeScript, docked; the options they are handed are built by host expressions with the original's
+#     keys, so `resolve: undefined` is still a key
+#   - a diagnostic on the wire is the host's JSON value: `place` spreads the ported `to-lsp-diagnostic` record as the
+#     original spread `toLspDiagnostic`'s, and its fixes are fixing.tree's `fixes-of`, mapped into the author's text
+#   - the `load` line patterns are written out by unit (self-host traps T001, T024); a line's length is its UTF-16
+#     units, as `.length` counted
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find starts-with
+
+load @term/make/fixing
+  find units-of
+  find fixes-of
+
+load @term/make/compile/main-entry
+  find whitespace-code
+
+load @term/make/parser/diagnostic
+  find diagnostic
+  find span
+
+load @term/make/compile/node
+  find statement
+  find unknown-type
+  find unit-type
+
+load @term/make/compile/type-text
+  find show-type
+
+load ./geometry
+  find mapping
+  find identity-mapping
+  find make-mapping
+  find outer-range
+  find lsp-range
+  find lsp-position
+
+load ./analysis
+  find to-range
+  find to-lsp-diagnostic
+
+load ./symbol-index
+  find build-index
+  find signatures-of
+
+load ./package-index
+  find has-test-line
+
+load ./language-server
+  find language-server
+  find document
+  find document-view
+  find summary
+  find summary-entry
+  find field-entry
+  find method-entry
+  find readers-for
+  find resolver-for
+  find uri-for
+  find no-value
+  find is-defined
+  find is-truthy
+  find is-same
+  find clear-timer
+
+load ./server-reply
+  find notify
+  find log-message
+  find uri-of
+
+dock load
+  load <node:path>, name node-path
+  load <@term/make/code/compile/compile>, name compile-module
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/make/code/analyze>, name source-module
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/test-preprocess>, name test-module
+
+# a quick fix on the wire: the fix's edits placed in the author's text
+form text-edit
+  link range, like lsp-range
+  link new-text, like text
+
+form quick-fix
+  link title, like text
+  link sure, like boolean
+  link edits, like list, like text-edit
+
+# ---- the host ----
+
+# `readers.roleOf?.(file) ?? undefined`
+bind role-answer
+  take roles, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <($roles?.($file) ?? undefined)>
+
+# `readers.leanOf?.(file) ?? false`
+bind lean-answer
+  take leans, like dynamic
+  take file, like text
+  like boolean
+  case node
+    text <($leans?.($file) ?? false)>
+
+# a role with its own reader: a view document, a data file and a mill definition are never rewritten as test files
+bind is-own-reader-role
+  take role, like dynamic
+  like boolean
+  case node
+    text <($role === "view" || $role === "host" || $role === "mill")>
+
+# `options.deckOf ?? server.deckOf`
+bind deck-reader
+  take options, like dynamic
+  take kept, like dynamic
+  like dynamic
+  case node
+    text <($options.deckOf ?? $kept)>
+
+bind source-of
+  take file, like text
+  take body, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $body \})>
+
+bind separate-options
+  take resolve, like dynamic
+  take cache, like dynamic
+  take modules
+    like task
+      take file, like text
+      like text
+  take roles, like dynamic
+  take leans, like dynamic
+  take decks, like dynamic
+  take parsed, like dynamic
+  take units, like dynamic
+  take walked, like dynamic
+  like dynamic
+  case node
+    text <(\{ resolve: $resolve, cache: $cache, modules: $modules, roleOf: $roles, leanOf: $leans, deckOf: $decks, parsed: $parsed, units: $units, walked: $walked, keepProgram: true \})>
+
+bind compile-options
+  take resolve, like dynamic
+  take cache, like dynamic
+  take roles, like dynamic
+  take leans, like dynamic
+  take decks, like dynamic
+  like dynamic
+  case node
+    text <(\{ resolve: $resolve, cache: $cache, roleOf: $roles, leanOf: $leans, deckOf: $decks, optimize: false \})>
+
+# `{ ok: false, diagnostics }` and `{ ok: true, program, typescript: '', warnings }`, the shapes a compile answers
+bind failed-result
+  take built, like dynamic
+  like dynamic
+  case node
+    text <(\{ ok: false, diagnostics: $built.diagnostics \})>
+
+bind built-result
+  take built, like dynamic
+  like dynamic
+  case node
+    text <(\{ ok: true, program: $built.program, typescript: "", warnings: $built.warnings \})>
+
+bind reader-options
+  take role, like dynamic
+  take lean, like boolean
+  like dynamic
+  case node
+    text <(\{ role: $role, lean: $lean \})>
+
+# `the compiler failed on this file: ${fault?.message ?? String(fault)}`
+bind fault-message
+  take fault, like dynamic
+  like text
+  case node
+    text <`the compiler failed on this file: $\{($fault)?.message ?? String($fault)\}`>
+
+bind fault-diagnostic
+  take message, like text
+  like dynamic
+  case node
+    text <(\{ range: \{ start: \{ line: 0, character: 0 \}, end: \{ line: 0, character: 0 \} \}, severity: 1, code: "compiler-fault", source: "term", message: $message \})>
+
+# a lint finding on the wire, with `data: { fix: true }` only when it carries a fix
+bind lint-diagnostic
+  take finding, like dynamic
+  take range, like lsp-range
+  like dynamic
+  case node
+    text <(\{ range: $range, severity: $finding.severity === "error" ? 1 : $finding.severity === "warning" ? 2 : 3, code: $finding.code, source: "term lint", message: $finding.message, ...($finding.fix ? \{ data: \{ fix: true \} \} : \{\}) \})>
+
+# `d.span.file || d.file`
+bind diagnostic-file
+  take found, like dynamic
+  like text
+  case node
+    text <($found.span.file || $found.file)>
+
+bind is-error
+  take found, like dynamic
+  like boolean
+  case node
+    text <($found.severity === "error")>
+
+# `{ ...lsp, range, data: { name, fixes } }`
+bind placed-here
+  take lsp, like dynamic
+  take range, like lsp-range
+  take name, like dynamic
+  take fixes, like list, like quick-fix
+  like dynamic
+  case node
+    text <(\{ ...$lsp, range: $range, data: \{ name: $name, fixes: $fixes \} \})>
+
+# an error inside an imported module, shown on the `load` that reached it, with the place itself as related
+# information when the file is on disk
+bind placed-on-load
+  take lsp, like dynamic
+  take line, like number
+  take width, like number
+  take message, like text
+  take name, like dynamic
+  take related, like boolean
+  take uri, like text
+  take range, like lsp-range
+  take detail, like dynamic
+  like dynamic
+  case node
+    text <(\{ ...$lsp, range: \{ start: \{ line: $line, character: 0 \}, end: \{ line: $line, character: $width \} \}, message: $message, data: \{ name: $name \}, ...($related ? \{ relatedInformation: [\{ location: \{ uri: $uri, range: $range \}, message: $detail \}] \} : \{\}) \})>
+
+bind publish-params
+  take uri, like text
+  take version, like dynamic
+  take diagnostics, like list, like dynamic
+  like dynamic
+  case node
+    text <(\{ uri: $uri, version: $version, diagnostics: $diagnostics \})>
+
+bind json-text
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# `options.send !== undefined && (options.debounce ?? 0) > 0`
+bind is-deferred
+  take options, like dynamic
+  like boolean
+  case node
+    text <($options.send !== undefined && ($options.debounce ?? 0) \> 0)>
+
+bind start-timer
+  take run
+    like task
+  take options, like dynamic
+  like dynamic
+  case node
+    text <setTimeout($run, $options.debounce ?? 0)>
+
+bind send-message
+  take options, like dynamic
+  take message, like dynamic
+  like void
+  case node
+    text <$options.send?.($message)>
+
+bind problem-text
+  take problem, like dynamic
+  like text
+  case node
+    text <String(($problem)?.message ?? $problem)>
+
+bind lines-length
+  take items, like dynamic
+  like number
+  case node
+    text <$items.length>
+
+# ---- the summary ----
+
+task empty-summary
+  like summary
+
+  back make(summary, bind(signatures, make hash), bind(top-level, make list), bind(fields, make hash), bind(methods, make hash))
+
+# a function statement's signature, for a method's completion detail: `(a: number, b: text) -> number`
+task signature-of
+  take fn, like statement
+  like text
+
+  save parts, make list
+  save result-text, <>
+  sift fn
+    case function
+      walk params
+        take param
+        save shown, <unknown>
+        sift param/type
+          case some
+            link given
+            save shown, show-type(given)
+          case none
+            save shown, show-type(unknown-type())
+        push(parts, <{param/name}: {shown}>)
+      sift result
+        case some
+          link given
+          save result-text, show-type(given)
+        case none
+          save result-text, show-type(unit-type())
+    miss
+      save result-text, <>
+  save joined, <>
+  save at, 0
+  walk parts
+    take part
+    fork test, is-above(at, 0)
+      hold
+        save joined, <{joined}, >
+    save joined, <{joined}{part}>
+    save at, add(at, 1)
+  back <({joined}) -\> {result-text}>
+
+# span-free facts about the whole closure, kept when the merged program itself is dropped
+task summarize
+  take program, like list, like statement
+  like summary
+
+  save top-level, make list
+  save field-lists, make hash
+  save method-lists, make hash
+  walk program
+    take one
+    sift one
+      case function
+        sift method
+          case some
+            link owner
+            save listed, make list
+            fork test, method-lists/has(owner/form)
+              hold
+                save listed, method-lists/get(owner/form)
+            push(listed, make(method-entry, bind(name, owner/name), bind(detail, signature-of(one))))
+            method-lists/set(owner/form, listed)
+          case none
+            push(top-level, make(summary-entry, bind(name, name), bind(kind, 3), bind(detail, signature-of(one))))
+      case record-type
+        save kind, 22
+        fork test, is-above(variants/length, 0)
+          hold
+            save kind, 13
+        push(top-level, make(summary-entry, bind(name, name), bind(kind, kind), bind(detail, <form>)))
+        save shown, make list
+        walk fields
+          take field
+          push(shown, make(field-entry, bind(name, field/name), bind(type, show-type(field/type))))
+        field-lists/set(name, shown)
+      case mask
+        push(top-level, make(summary-entry, bind(name, name), bind(kind, 8), bind(detail, <mask>)))
+      miss
+        save skipped, true
+  back make(summary, bind(signatures, signatures-of(program)), bind(top-level, top-level), bind(fields, field-lists), bind(methods, method-lists))
+
+# `over` wins where both name a thing
+task merge-summary
+  take under, like summary
+  take over, like summary
+  like summary
+
+  save names, make hash
+  walk over/top-level
+    take one
+    names/set(one/name, true)
+  save signatures, make hash
+  walk under/signatures/keys()
+    take key
+    signatures/set(key, under/signatures/get(key))
+  walk over/signatures/keys()
+    take key
+    signatures/set(key, over/signatures/get(key))
+  save top-level, make list
+  walk under/top-level
+    take one
+    fork test, names/has(one/name)
+      miss
+        push(top-level, one)
+  walk over/top-level
+    take one
+    push(top-level, one)
+  save fields, make hash
+  walk under/fields/keys()
+    take key
+    fields/set(key, under/fields/get(key))
+  walk over/fields/keys()
+    take key
+    fields/set(key, over/fields/get(key))
+  save methods, make hash
+  walk under/methods/keys()
+    take key
+    methods/set(key, under/methods/get(key))
+  walk over/methods/keys()
+    take key
+    methods/set(key, over/methods/get(key))
+  back make(summary, bind(signatures, signatures), bind(top-level, top-level), bind(fields, fields), bind(methods, methods))
+
+# ---- placing a diagnostic ----
+
+# `/^(?:load|bear)\s/`
+task starts-load
+  take units, like list, like number
+  like boolean
+  mark private
+
+  fork test, is-below(units/length, 5)
+    hold
+      back false
+  save word, units-of(<load>)
+  save other, units-of(<bear>)
+  save same, true
+  save also, true
+  save at, 0
+  walk test
+    hook test, is-below(at, 4)
+    hook hold
+      fork test, is-unequal(get(units, at), get(word, at))
+        hold
+          save same, false
+      fork test, is-unequal(get(units, at), get(other, at))
+        hold
+          save also, false
+      save at, add(at, 1)
+  fork test, or(same, also)
+    miss
+      back false
+  back whitespace-code(get(units, 4))
+
+# `/^(?:load|bear)\s+<path>\s*$/`: a `load` (or `bear`) of exactly this path, nothing after it but white space. The
+# `\s+` before the path backtracks (a path may itself begin with white space the run took), so every split is tried,
+# as the pattern tries them
+task is-load-line
+  take line, like text
+  take path, like text
+  like boolean
+  mark private
+
+  save units, units-of(line)
+  fork test, starts-load(units)
+    miss
+      back false
+  save wanted, units-of(path)
+  save start, 5
+  walk test
+    hook test, is-maximum(start, units/length)
+    hook hold
+      save k, 0
+      save same, is-maximum(add(start, wanted/length), units/length)
+      walk test
+        hook test, and(same, is-below(k, wanted/length))
+        hook hold
+          fork test, is-unequal(get(units, add(start, k)), get(wanted, k))
+            hold
+              save same, false
+          save k, add(k, 1)
+      fork test, same
+        hold
+          save rest, add(start, wanted/length)
+          save blank, true
+          walk test
+            hook test, and(blank, is-below(rest, units/length))
+            hook hold
+              fork test, whitespace-code(get(units, rest))
+                miss
+                  save blank, false
+              save rest, add(rest, 1)
+          fork test, blank
+            hold
+              back true
+      # the run before the path is white space up to here, or no later start can match
+      fork test, whitespace-code(get(units, subtract(start, 1)))
+        miss
+          back false
+      fork test, is-below(start, units/length)
+        hold
+          fork test, whitespace-code(get(units, start))
+            miss
+              back false
+      save start, add(start, 1)
+  back false
+
+# `path.replace(/[^/]+$/, '')`: the path up to and with its last `/`
+task folder-of
+  take path, like text
+  like text
+  mark private
+
+  save units, units-of(path)
+  save last, -1
+  save at, 0
+  walk units
+    take unit
+    fork test, is-equal(unit, 47)
+      hold
+        save last, at
+    save at, add(at, 1)
+  fork test, is-below(last, 0)
+    hold
+      back <>
+  back slice-units(path, add(last, 1))
+
+bind slice-units
+  take value, like text
+  take stop, like number
+  like text
+  case node
+    text <$value.slice(0, $stop)>
+
+# A compiler diagnostic, placed in this document. One in this file maps through the test rewrite; one inside an
+# imported module (which is how a broken dependency fails this file's compile) is shown on the `load` that reached
+# it, naming the file and line, with the location itself as related information. None for an imported module's
+# warning, which is that module's business.
+task place
+  take found, like dynamic
+  take doc, like document
+  take map, like mapping
+  take inner, like text
+  like maybe, like dynamic
+
+  save file, diagnostic-file(found)
+  fork test, or(or(is-equal(file, <>), is-equal(file, doc/file)), is-equal(file, doc/uri))
+    hold
+      save lsp, to-lsp-diagnostic(found)
+      save fixes, make list
+      walk fixes-of(found, inner, false, no-exports)
+        take fix
+        save edits, make list
+        walk fix/edits
+          take one
+          push(edits, make(text-edit, bind(range, outer-range(map, to-range(one/span))), bind(new-text, one/text)))
+        push(fixes, make(quick-fix, bind(title, fix/title), bind(sure, fix/sure), bind(edits, edits)))
+      save placed, placed-here(lsp, outer-range(map, lsp/range), found/name, fixes)
+      back make(some, placed)
+  fork test, is-error(found)
+    miss
+      back make none
+  save lines, split(doc/text, <\n>)
+  save at, -1
+  fork test, doc/direct/has(file)
+    hold
+      save import-path, doc/direct/get(file)
+      fork test, is-unequal(import-path, <>)
+        hold
+          save index, 0
+          walk lines
+            take one
+            fork test, is-load-line(one, import-path)
+              hold
+                save at, index
+                halt
+            save index, add(index, 1)
+  save line, at
+  fork test, is-below(at, 0)
+    hold
+      save line, 0
+      save index, 0
+      walk lines
+        take one
+        fork test, starts-load(units-of(one))
+          hold
+            save line, index
+            halt
+        save index, add(index, 1)
+  save shown, file
+  fork test, and(starts-with(file, </>), is-unequal(doc/path, <>))
+    hold
+      save shown, node-path/relative(folder-of(doc/path), file)
+  save lsp, to-lsp-diagnostic(found)
+  save width, 0
+  fork test, is-below(line, lines/length)
+    hold
+      save width, units-of(get(lines, line))/length
+  save message, <{shown}:{add(found/span/start/line, 1)}: {lsp/message}>
+  save placed, placed-on-load(lsp, line, width, message, found/name, starts-with(file, </>), uri-for(file), to-range(found/span), found/message)
+  back make(some, placed)
+
+# the import lookup `fixesOf` is not given: the editor asks for imports in a code action, never here
+task no-exports
+  take name, like text
+  like list, like text
+  mark private
+
+  back make list
+
+# ---- analysis ----
+
+# compile one document as the build would and keep what the editor needs from it
+task analyze-now
+  take server, like language-server
+  take doc, like document
+  like void
+
+  save readers, readers-for(server, doc/file)
+  save role, role-answer(readers/role-of, doc/file)
+  save lean, lean-answer(readers/lean-of, doc/file)
+
+  # a file of `test` blocks is compiled the way `term make` and `term test` compile it, rewritten into tasks; only a
+  # file read as code is rewritten
+  save inner, doc/text
+  save map, identity-mapping()
+  fork test, and(is-equal(is-own-reader-role(role), false), has-test-line(doc/text))
+    hold
+      save rewritten, test-module/preprocessTests(doc/text)
+      save inner, rewritten/text
+      save map, make-mapping(doc/text, inner, rewritten/origin)
+
+  save asked, resolver-for(server, doc, readers/root)
+  save resolve, no-value()
+  save resolving, false
+  sift asked
+    case some
+      link given
+      save resolve, given
+      save resolving, true
+    case none
+      save resolving, false
+
+  save result, no-value()
+  # the closure's typed surface, from units, which the summary is made of (a merged compile's program holds it)
+  save surface, no-value()
+  save fault, no-value()
+  save faulted, false
+  fork
+    mark unsafe
+    save decks, deck-reader(server/options, server/deck-of)
+    fork test, and(resolving, is-equal(make-module/isWholeFile(doc/file, inner, role), false))
+      hold
+        # every keystroke's text is a unit answer of its own, so a long session's memo is bounded: past the cap it
+        # starts over, and the next analysis reads the closure's units from the cache again
+        fork test, is-above(server/units/size, unit-memo-cap())
+          hold
+            server/units/clear()
+        save base, readers/root
+        fork test, is-equal(base, <>)
+          hold
+            save base, node-path/dirname(doc/file)
+        save slugs
+          task
+            take file, like text
+            like text
+            back <./{make-module/unitSlug(base, file, decks)}>
+        save asking, separate-options(resolve, server/cache, slugs, readers/role-of, readers/lean-of, decks, server/parsed, server/units, server/walked)
+        save built, separate-module/compileSeparate(source-of(doc/file, inner), asking)
+        fork test, built/ok
+          hold
+            fork test, is-truthy(built/program)
+              hold
+                save result, built-result(built)
+                save surface, built/surface
+          miss
+            save result, failed-result(built)
+    # a document answered whole from memory (its text back to one the server built) has no checked program in hand,
+    # and navigation needs one
+    fork test, is-given-value(result)
+      miss
+        save result, compile-module/compile(source-of(doc/file, inner), compile-options(resolve, server/cache, readers/role-of, readers/lean-of, decks))
+  halt take
+    take problem
+    save fault, problem
+    save faulted, is-defined(problem)
+
+  save diagnostics, make list
+  fork test, faulted
+    hold
+      push(diagnostics, fault-diagnostic(fault-message(fault)))
+    miss
+      fork test, is-truthy(result)
+        hold
+          save found, result/diagnostics
+          fork test, result/ok
+            hold
+              save found, result/warnings
+          walk found
+            take one
+            sift place(one, doc, map, inner)
+              case some
+                link placed
+                push(diagnostics, placed)
+              case none
+                save skipped, true
+
+  # this file alone, milled with its role and lean flag: the lint engine's input, and the navigation program when the
+  # compile did not produce one. The author's text, since lint findings carry fixes against it
+  save findings, make list
+  save milled, no-value()
+  fork
+    mark unsafe
+    save local, source-module/analyze(source-of(doc/file, doc/text), reader-options(role, lean))
+    save milled, local/program
+    save findings, local/lint()
+  halt take
+    take problem
+    save findings, make list
+
+  walk findings
+    take finding
+    push(diagnostics, lint-diagnostic(finding, to-range(finding/span)))
+
+  save program, make list
+  save typed, false
+  save summary, empty-summary()
+  sift doc/view
+    case some
+      link earlier
+      save summary, earlier/summary
+    case none
+      save skipped, true
+
+  fork test, and(is-truthy(result), is-truthy(result/ok))
+    hold
+      save program, own-statements(result/program, doc/file)
+      save typed, true
+      fork test, is-truthy(surface)
+        hold
+          save summary, summarize(joined-statements(surface, program))
+        miss
+          save summary, summarize(result/program)
+    miss
+      fork test, and(map/identity, is-truthy(milled))
+        hold
+          save program, milled
+        miss
+          # a test file whose compile failed: the rewritten text milled alone, in the coordinates `map` expects
+          fork
+            mark unsafe
+            save program, program-or-empty(source-module/analyze(source-of(doc/file, inner), reader-options(role, lean))/program)
+          halt take
+            take problem
+            save program, make list
+
+  # a failed compile keeps the last good closure summary, with this file's own forms and tasks laid over it, so a
+  # record declared here still completes its fields while a line below it is half written
+  fork test, typed
+    miss
+      save summary, merge-summary(summary, summarize(program))
+
+  save index, build-index(program, inner)
+  # whole-closure signatures (span-free), so signature help and argument ranking work for imported tasks
+  walk summary/signatures/keys()
+    take name
+    fork test, index/signatures/has(name)
+      miss
+        index/signatures/set(name, summary/signatures/get(name))
+
+  save role-text, <>
+  fork test, is-text-value(role)
+    hold
+      save role-text, role
+  save doc/view
+    make some
+      make document-view
+        bind inner, inner
+        bind map, map
+        bind program, program
+        bind typed, typed
+        bind index, index
+        bind summary, summary
+        bind diagnostics, diagnostics
+        bind findings, findings
+        bind lean, lean
+        bind role, role-text
+  save doc/analyzed, doc/revision
+  save doc/stale, false
+
+bind is-given-value
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value !== undefined && $value !== null)>
+
+bind is-text-value
+  take value, like dynamic
+  like boolean
+  case node
+    text <(typeof $value === "string")>
+
+# `program ?? []`
+bind program-or-empty
+  take program, like dynamic
+  like list, like statement
+  case node
+    text <($program ?? [])>
+
+# `program.filter(s => s.span.file === file)`
+bind own-statements
+  take program, like dynamic
+  take file, like text
+  like list, like statement
+  case node
+    text <$program.filter((s) =\> s.span.file === $file)>
+
+bind joined-statements
+  take surface, like dynamic
+  take program, like list, like statement
+  like list, like statement
+  case node
+    text <[...$surface, ...$program]>
+
+# how many unit answers the server keeps before it starts its memo over: the standard library is about 600 units, and
+# every keystroke adds one for the edited module
+task unit-memo-cap
+  like number
+
+  back 20000
+
+# the publish for a document, or none when its diagnostics are what was last sent (backdating), or when the client
+# pulls them instead
+task publish
+  take server, like language-server
+  take doc, like document
+  like maybe, like dynamic
+
+  save diagnostics, make list
+  sift doc/view
+    case some
+      link seen
+      save diagnostics, seen/diagnostics
+    case none
+      save skipped, true
+  save key, json-text(diagnostics)
+  sift doc/published
+    case some
+      link sent
+      fork test, is-equal(sent, key)
+        hold
+          back make none
+    case none
+      save skipped, true
+  save doc/published, make(some, key)
+  save doc/result-id, add(doc/result-id, 1)
+  fork test, server/pull
+    hold
+      back make none
+  save note, notify(<textDocument/publishDiagnostics>, publish-params(doc/uri, doc/version, diagnostics))
+  back make(some, note)
+
+task is-deferred-server
+  take server, like language-server
+  like boolean
+
+  back is-deferred(server/options)
+
+task is-behind
+  take doc, like document
+  like boolean
+  mark private
+
+  fork test, or(is-unequal(doc/analyzed, doc/revision), doc/stale)
+    hold
+      back true
+  sift doc/view
+    case some
+      back false
+    case none
+      back true
+
+# analyze a document if its view is behind its text, then the open documents that import it (when `cascade`), and
+# answer the publishes that produced
+task run-document
+  take server, like language-server
+  take doc, like document
+  take cascade, like boolean
+  like list, like dynamic
+
+  save out, make list
+  fork test, server/documents/has(doc/uri)
+    miss
+      back out
+  fork test, is-same(server/documents/get(doc/uri), doc)
+    miss
+      back out
+  stop-timer(doc)
+  fork test, is-behind(doc)
+    hold
+      analyze-now(server, doc)
+      sift publish(server, doc)
+        case some
+          link note
+          push(out, note)
+        case none
+          save skipped, true
+  fork test, cascade
+    hold
+      walk server/documents/values()
+        take other
+        fork test, or(is-same(other, doc), is-equal(other/closure/has(doc/file), false))
+          hold
+            turn next
+        save other/stale, true
+        fork test, is-deferred-server(server)
+          hold
+            schedule(server, other, false)
+          miss
+            walk run-document(server, other, false)
+              take note
+              push(out, note)
+  back out
+
+task stop-timer
+  take doc, like document
+  like void
+  mark private
+
+  sift doc/timer
+    case some
+      link timer
+      clear-timer(timer)
+      save doc/timer, make none
+    case none
+      save skipped, true
+
+# analyze after the debounce, publishing through `send`
+task schedule
+  take server, like language-server
+  take doc, like document
+  take cascade, like boolean
+  like void
+
+  sift doc/timer
+    case some
+      link timer
+      clear-timer(timer)
+    case none
+      save skipped, true
+  save options, server/options
+  save timer
+    start-timer
+      task
+        like void
+        fire(server, doc, cascade)
+      options
+  save doc/timer, make(some, timer)
+
+# the debounce run: the document's publishes go out through `send`, and a failure goes to the client's log
+task fire
+  take server, like language-server
+  take doc, like document
+  take cascade, like boolean
+  like void
+  mark private
+
+  save doc/timer, make none
+  save options, server/options
+  fork
+    mark unsafe
+    walk run-document(server, doc, cascade)
+      take message
+      send-message(options, message)
+  halt take
+    take problem
+    send-message(options, log-message(<analysis failed for {doc/uri}: {problem-text(problem)}>))
+
+# the document a request names, brought up to date first so the answer is about the text the editor shows
+task settled
+  take server, like language-server
+  take params, like dynamic
+  take outbox, like list, like dynamic
+  like maybe, like document
+
+  save uri, uri-of(params)
+  fork test, server/documents/has(uri)
+    miss
+      back make none
+  save doc, server/documents/get(uri)
+  save timed, false
+  sift doc/timer
+    case some
+      save timed, true
+    case none
+      save timed, false
+  fork test, or(timed, is-behind(doc))
+    hold
+      walk run-document(server, doc, timed)
+        take note
+        push(outbox, note)
+  back make(some, doc)

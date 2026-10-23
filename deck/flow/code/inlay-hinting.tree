@@ -1,0 +1,531 @@
+# INLAY HINTS, two kinds:
+#   a TYPE after a `save x` / `host x` with no `, like` annotation (`: <type>`), in every file
+#   a PARAMETER NAME before each positional argument of a call in a LEAN file, where an argument is written `f(a, b)`
+#   or as a bare line under the call, with nothing saying which parameter it fills
+#
+# Ported from server.ts (term-cli-in-term-0103, part 4 of 5): inlayHints and handle's case `textDocument/inlayHint`.
+# The decisions:
+#   - `inlayHints(program, text, range, options?)` is `inlay-hints(program, text, range, lean, signatures)`, the
+#     options' two fields as parameters (`lean` false and no signatures for none); a hint is the record `inlay-hint`,
+#     its padding fields left out where the original left them out
+#   - the three patterns are written out by unit (self-host traps T001, T024): `^\s*(?:save|host)\s+[a-z]...` for a
+#     binding, its `, like` form, and the argument's own-name test `(?:^|[\s(,])(?:bind\s+)?<name>\s*,?\s*$`, which
+#     tries every place the name can end as the pattern does
+#   - a let's type is read as the host's `node.init.type ?? node.type`; a column is a UTF-16 unit
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+
+load @term/make/fixing
+  find units-of
+
+load @term/make/compile/main-entry
+  find whitespace-code
+
+load @term/make/parser/diagnostic
+  find span
+
+load @term/make/compile/node
+  find statement
+  find expression
+
+load @term/make/compile/type-text
+  find show-type
+
+load ./geometry
+  find lsp-position
+  find inner-position
+  find outer-position
+
+load ./symbol-index
+  find signature
+  find calls-of
+
+load ./language-server
+  find language-server
+
+load ./document-analysis
+  find settled
+
+load ./server-reply
+  find respond
+
+form line-range-edge
+  link line, like number
+
+form line-range
+  link start, like line-range-edge
+  link end, like line-range-edge
+
+form inlay-hint
+  link position, like lsp-position
+  link label, like text
+  link kind, like number
+  link padding-left
+    like boolean
+    need false
+  link padding-right
+    like boolean
+    need false
+
+# ---- the host ----
+
+# `node.init.type ?? node.type`
+bind let-type
+  take node, like dynamic
+  like dynamic
+  case node
+    text <($node.init.type ?? $node.type)>
+
+# a type to show: there, and not `unknown`
+bind is-shown-type
+  take type, like dynamic
+  like boolean
+  case node
+    text <(Boolean($type) && $type.kind !== "unknown")>
+
+bind range-of-params
+  take params, like dynamic
+  like dynamic
+  case node
+    text <($params)?.range>
+
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# ---- the patterns ----
+
+task is-name-start
+  take unit, like number
+  like boolean
+  mark private
+
+  back and(is-minimum(unit, 97), is-maximum(unit, 122))
+
+task is-name-unit
+  take unit, like number
+  like boolean
+  mark private
+
+  fork test, or(and(is-minimum(unit, 65), is-maximum(unit, 90)), and(is-minimum(unit, 97), is-maximum(unit, 122)))
+    hold
+      back true
+  back or(and(is-minimum(unit, 48), is-maximum(unit, 57)), is-equal(unit, 45))
+
+# a word character, `[A-Za-z0-9_]`, for `\b`
+task is-word-unit
+  take unit, like number
+  like boolean
+  mark private
+
+  fork test, is-name-unit(unit)
+    hold
+      back is-unequal(unit, 45)
+  back is-equal(unit, 95)
+
+task spells-at
+  take units, like list, like number
+  take at, like number
+  take word, like text
+  like boolean
+  mark private
+
+  save wanted, units-of(word)
+  fork test, is-above(add(at, wanted/length), units/length)
+    hold
+      back false
+  save k, 0
+  walk test
+    hook test, is-below(k, wanted/length)
+    hook hold
+      fork test, is-unequal(get(units, add(at, k)), get(wanted, k))
+        hold
+          back false
+      save k, add(k, 1)
+  back true
+
+task skip-space
+  take units, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  save k, at
+  walk test
+    hook test, and(is-below(k, units/length), whitespace-code(get(units, k)))
+    hook hold
+      save k, add(k, 1)
+  back k
+
+# `^(\s*(?:save|host)\s+)([a-z][A-Za-z0-9-]*)`: the end of the bound name, or -1 when the line is no such binding
+task binding-name-end
+  take units, like list, like number
+  like number
+  mark private
+
+  save at, skip-space(units, 0)
+  fork test, or(spells-at(units, at, <save>), spells-at(units, at, <host>))
+    miss
+      back -1
+  save past-word, add(at, 4)
+  save name-at, skip-space(units, past-word)
+  fork test, is-equal(name-at, past-word)
+    hold
+      back -1
+  fork test, is-below(name-at, units/length)
+    miss
+      back -1
+  fork test, is-name-start(get(units, name-at))
+    miss
+      back -1
+  save k, add(name-at, 1)
+  walk test
+    hook test, and(is-below(k, units/length), is-name-unit(get(units, k)))
+    hook hold
+      save k, add(k, 1)
+  back k
+
+# `^\s*(?:save|host)\s+[a-z][A-Za-z0-9-]*\s*,\s*like\b`: an explicitly annotated binding
+task is-annotated
+  take units, like list, like number
+  like boolean
+  mark private
+
+  save end, binding-name-end(units)
+  fork test, is-below(end, 0)
+    hold
+      back false
+  save k, skip-space(units, end)
+  fork test, and(is-below(k, units/length), is-equal(get(units, k), 44))
+    miss
+      back false
+  save k, skip-space(units, add(k, 1))
+  fork test, spells-at(units, k, <like>)
+    miss
+      back false
+  save past, add(k, 4)
+  fork test, is-below(past, units/length)
+    miss
+      back true
+  back is-equal(is-word-unit(get(units, past)), false)
+
+# a unit before an argument's name that starts it: `[\s(,]`
+task is-opener
+  take unit, like number
+  like boolean
+  mark private
+
+  fork test, whitespace-code(unit)
+    hold
+      back true
+  back or(is-equal(unit, 40), is-equal(unit, 44))
+
+# `(?:^|[\s(,])(?:bind\s+)?<name>\s*,?\s*$` over the text before an argument: the argument already says its name
+task says-name
+  take units, like list, like number
+  take name, like text
+  like boolean
+  mark private
+
+  save wanted, units-of(name)
+  save size, units/length
+  save end, size
+  save commas, 0
+  # every place the name can end: the tail after it is white space with at most one comma
+  walk test
+    hook test, is-minimum(end, 0)
+    hook hold
+      save start, subtract(end, wanted/length)
+      fork test, and(is-minimum(start, 0), spells-at(units, start, name))
+        hold
+          fork test, or(is-equal(start, 0), is-opener(get(units, subtract(start, 1))))
+            hold
+              back true
+          # `bind` and white space before the name
+          save k, start
+          walk test
+            hook test, and(is-above(k, 0), whitespace-code(get(units, subtract(k, 1))))
+            hook hold
+              save k, subtract(k, 1)
+          fork test, and(is-below(k, start), and(is-minimum(k, 4), spells-at(units, subtract(k, 4), <bind>)))
+            hold
+              save bind-at, subtract(k, 4)
+              fork test, or(is-equal(bind-at, 0), is-opener(get(units, subtract(bind-at, 1))))
+                hold
+                  back true
+      fork test, is-equal(end, 0)
+        hold
+          back false
+      save unit, get(units, subtract(end, 1))
+      fork test, is-equal(unit, 44)
+        hold
+          save commas, add(commas, 1)
+          fork test, is-above(commas, 1)
+            hold
+              back false
+        miss
+          fork test, whitespace-code(unit)
+            miss
+              back false
+      save end, subtract(end, 1)
+  back false
+
+# ---- the hints ----
+
+task is-in-range
+  take range, like line-range
+  take line, like number
+  like boolean
+  mark private
+
+  back and(is-minimum(line, range/start/line), is-maximum(line, range/end/line))
+
+task visit-statements
+  take statements, like list, like statement
+  take lines, like list, like text
+  take range, like line-range
+  take hints, like list, like inlay-hint
+  like void
+  mark private
+
+  walk statements
+    take node
+    sift node
+      case let
+        visit-let(node, span, lines, range, hints)
+      case function
+        visit-statements(body, lines, range, hints)
+      case while
+        visit-statements(body, lines, range, hints)
+      case for-each
+        visit-statements(body, lines, range, hints)
+      case guard
+        visit-statements(body, lines, range, hints)
+        sift catch
+          case some
+            link clause
+            visit-statements(clause/body, lines, range, hints)
+          case none
+            save skipped, true
+      case if
+        walk branches
+          take branch
+          visit-statements(branch/body, lines, range, hints)
+        sift otherwise
+          case some
+            link rest
+            visit-statements(rest, lines, range, hints)
+          case none
+            save skipped, true
+      case match
+        walk cases
+          take one
+          visit-statements(one/body, lines, range, hints)
+        sift otherwise
+          case some
+            link rest
+            visit-statements(rest, lines, range, hints)
+          case none
+            save skipped, true
+      miss
+        save skipped, true
+
+task visit-let
+  take node, like statement
+  take where, like span
+  take lines, like list, like text
+  take range, like line-range
+  take hints, like list, like inlay-hint
+  like void
+  mark private
+
+  save line, where/start/line
+  fork test, is-in-range(range, line)
+    miss
+      send back
+  save source, <>
+  fork test, and(is-minimum(line, 0), is-below(line, lines/length))
+    hold
+      save source, get(lines, line)
+  save units, units-of(source)
+  # an explicitly annotated binding (`save x, like number`) needs no hint
+  fork test, is-annotated(units)
+    hold
+      send back
+  save end, binding-name-end(units)
+  save type, let-type(node)
+  fork test, or(is-below(end, 0), is-equal(is-shown-type(type), false))
+    hold
+      send back
+  push(hints, make(inlay-hint, bind(position, make(lsp-position, bind(line, line), bind(character, end))), bind(label, <: {show-type(type)}>), bind(kind, 1), bind(padding-left, true)))
+
+task inlay-hints
+  take program, like list, like statement
+  take text, like text
+  take range, like line-range
+  take lean, like boolean
+  take signatures, like maybe, like hash, like text, like signature
+  like list, like inlay-hint
+
+  save lines, split(text, <\n>)
+  save hints, make list
+  visit-statements(program, lines, range, hints)
+  fork test, lean
+    miss
+      back hints
+  sift signatures
+    case some
+      link known
+      walk calls-of(program)
+        take call
+        sift call
+          case call
+            visit-call(callee, args, span, known, lines, range, hints)
+          miss
+            save skipped, true
+    case none
+      save skipped, true
+  back hints
+
+task visit-call
+  take callee, like expression
+  take args, like list, like expression
+  take where, like span
+  take known, like hash, like text, like signature
+  take lines, like list, like text
+  take range, like line-range
+  take hints, like list, like inlay-hint
+  like void
+  mark private
+
+  sift callee
+    case variable
+      link callee-name
+      fork test, known/has(callee-name)
+        miss
+          send back
+      save sig, known/get(callee-name)
+      # one parameter has nothing to tell apart
+      fork test, is-below(sig/params/length, 2)
+        hold
+          send back
+      save i, 0
+      walk args
+        take arg
+        save index, i
+        save i, add(i, 1)
+        fork test, is-minimum(index, sig/params/length)
+          hold
+            turn next
+        save param, get(sig/params, index)
+        save arg-span, arg-span-of(arg)
+        save at-line, arg-span/start/line
+        save at-column, arg-span/start/column
+        # an argument from another file, or outside the call's own text, was filled in (a `fall` default), not written
+        fork test, is-elsewhere(arg-span, where)
+          hold
+            turn next
+        fork test, is-in-range(range, at-line)
+          miss
+            turn next
+        fork test, or(is-below(at-line, where/start/line), is-above(at-line, where/end/line))
+          hold
+            turn next
+        fork test, and(is-equal(at-line, where/start/line), is-maximum(at-column, where/start/column))
+          hold
+            turn next
+        save row, <>
+        fork test, and(is-minimum(at-line, 0), is-below(at-line, lines/length))
+          hold
+            save row, get(lines, at-line)
+        save row-units, units-of(row)
+        save before, make list
+        save k, 0
+        walk test
+          hook test, and(is-below(k, at-column), is-below(k, row-units/length))
+          hook hold
+            push(before, get(row-units, k))
+            save k, add(k, 1)
+        # a named argument already says its name, and an argument that IS the parameter's name says it too
+        fork test, says-name(before, param/name)
+          hold
+            turn next
+        fork test, is-named-variable(arg, param/name)
+          hold
+            turn next
+        # a text literal's span starts inside its `<`: the hint goes before the bracket
+        save column, at-column
+        fork test, and(and(is-above(at-column, 0), is-maximum(at-column, row-units/length)), is-equal(get(row-units, subtract(at-column, 1)), 60))
+          hold
+            save column, subtract(at-column, 1)
+        push(hints, make(inlay-hint, bind(position, make(lsp-position, bind(line, at-line), bind(character, column))), bind(label, <{param/name}:>), bind(kind, 2), bind(padding-right, true)))
+    miss
+      save skipped, true
+
+bind arg-span-of
+  take arg, like dynamic
+  like span
+  case node
+    text <$arg.span>
+
+bind is-named-variable
+  take arg, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <($arg.form === "variable" && $arg.name === $name)>
+
+# `arg.span.file !== undefined && arg.span.file !== call.span.file`
+bind is-elsewhere
+  take one, like dynamic
+  take other, like dynamic
+  like boolean
+  case node
+    text <($one.file !== undefined && $one.file !== $other.file)>
+
+# the hints in a range of the author's text: asked in the compiled text's coordinates, placed back in the author's
+task inlay-hint-request
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  take outbox, like list, like dynamic
+  like dynamic
+
+  save found, settled(server, params, outbox)
+  save asked, range-of-params(params)
+  save out, make list
+  sift found
+    case some
+      link doc
+      sift doc/view
+        case some
+          link view
+          fork test, is-truthy(asked)
+            miss
+              back respond(message, out)
+          save start, inner-position(view/map, asked/start)
+          save end, inner-position(view/map, asked/end)
+          save inner, make(line-range, bind(start, make(line-range-edge, bind(line, start/line))), bind(end, make(line-range-edge, bind(line, end/line))))
+          walk inlay-hints(view/program, view/inner, inner, view/lean, make(some, view/index/signatures))
+            take hint
+            save placed, outer-position(view/map, hint/position, <start>)
+            fork test, is-equal(hint/kind, 1)
+              hold
+                push(out, make(inlay-hint, bind(position, placed), bind(label, hint/label), bind(kind, hint/kind), bind(padding-left, true)))
+              miss
+                push(out, make(inlay-hint, bind(position, placed), bind(label, hint/label), bind(kind, hint/kind), bind(padding-right, true)))
+          back respond(message, out)
+        case none
+          back respond(message, out)
+    case none
+      back respond(message, out)

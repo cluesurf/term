@@ -1,0 +1,80 @@
+# A Term type as the generator derives it: a whole number, an integer, a flag (`wave`), a text, a list, a record of
+# named fields, or a choice between types (`pick`). Any value such a type describes is testable with no generator
+# written by hand, because the generator is folded from the type.
+#
+# Ported from deck/test/code/type.ts (cli-in-term-0105). There `genForType` folded a type into a pair of closures,
+# `sample` and `shrink`. property-check.tree's `shape` IS that generator, data that `sample-of` and `shrink-of` fold,
+# so a type here is built as a shape and `gen-for-type` hands it back as it is. type.ts's convenience constants are
+# tasks (traps.md T022, a top-level `host` is private to its module), with the original's names.
+
+load @term/base/list
+  find list
+
+load ./property-check
+  find shape
+
+# a record's field, as type.ts's `{ name, type }`
+form type-field
+  link name, like text
+  link type, like shape
+
+task t-whole
+  like shape
+
+  back make shape/whole
+
+task t-int
+  like shape
+
+  back make shape/int
+
+task t-wave
+  like shape
+
+  back make shape/wave
+
+task t-text
+  like shape
+
+  back make shape/text
+
+task t-list
+  take item, like shape
+  like shape
+
+  back
+    make shape/list
+      bind item, item
+
+# a record: one value per field, in the fields' order
+task t-record
+  take fields, like list, like type-field
+  like shape
+
+  host names, make list
+  host types, make list
+  walk fields
+    take each
+    names/push(each/name)
+    types/push(each/type)
+
+  back
+    make shape/record
+      bind names, names
+      bind types, types
+
+# a union: one of the options, the arm by one draw
+task t-pick
+  take options, like list, like shape
+  like shape
+
+  back
+    make shape/pick
+      bind options, options
+
+# the generator of a type: the shape itself, which sample-of and shrink-of read
+task gen-for-type
+  take type, like shape
+  like shape
+
+  back type

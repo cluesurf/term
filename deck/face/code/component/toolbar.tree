@@ -11,6 +11,9 @@ load @term/site/dom/dom
 load ../logic/registry
   find run-action
 
+load @term/site/view/reactive
+  find signal
+
 view toolbar
   take host, like view
   take class, like text

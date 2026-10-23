@@ -393,7 +393,7 @@
       "host": "@term/site",
       "kind": "exception",
       "name": "body-exclusion",
-      "site": "code/http/body.tree:50:1",
+      "site": "code/http/body.tree:54:1",
       "like": "exclusion",
       "chain": [
         "exception",
@@ -4277,7 +4277,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "hive-clear",
-      "site": "code/hive.tree:260:1",
+      "site": "code/hive.tree:263:1",
       "take": [
         {
           "name": "kind",
@@ -4291,7 +4291,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "hive-docks",
-      "site": "code/hive.tree:396:1",
+      "site": "code/hive.tree:399:1",
       "take": [
         {
           "name": "host",
@@ -4306,7 +4306,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "hive-exceptions",
-      "site": "code/hive.tree:338:1",
+      "site": "code/hive.tree:341:1",
       "take": [
         {
           "name": "host",
@@ -4321,7 +4321,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "hive-hear",
-      "site": "code/hive.tree:426:1",
+      "site": "code/hive.tree:429:1",
       "take": [
         {
           "name": "kind",
@@ -4339,7 +4339,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "hive-roll",
-      "site": "code/hive.tree:304:1",
+      "site": "code/hive.tree:307:1",
       "take": [
         {
           "name": "kind",
@@ -4358,7 +4358,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "hive-size",
-      "site": "code/hive.tree:437:1",
+      "site": "code/hive.tree:440:1",
       "take": [],
       "like": "number",
       "halt": []
@@ -4367,7 +4367,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "hive-tell",
-      "site": "code/hive.tree:236:1",
+      "site": "code/hive.tree:239:1",
       "take": [
         {
           "name": "entry",
@@ -4381,7 +4381,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "hive-tells",
-      "site": "code/hive.tree:367:1",
+      "site": "code/hive.tree:370:1",
       "take": [
         {
           "name": "host",
@@ -4396,7 +4396,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "hive-wake",
-      "site": "code/hive.tree:109:1",
+      "site": "code/hive.tree:112:1",
       "take": [
         {
           "name": "name",
@@ -4414,7 +4414,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "hive-wake-typed",
-      "site": "code/hive.tree:166:1",
+      "site": "code/hive.tree:169:1",
       "take": [
         {
           "name": "name",
@@ -9175,7 +9175,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "add-route",
-      "site": "code/http/http.tree:204:1",
+      "site": "code/http/http.tree:205:1",
       "take": [
         {
           "name": "root",
@@ -9235,7 +9235,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "answer-json",
-      "site": "code/http/body.tree:192:1",
+      "site": "code/http/body.tree:196:1",
       "take": [
         {
           "name": "value",
@@ -9317,7 +9317,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "attach-event",
-      "site": "code/view/render.tree:147:1",
+      "site": "code/view/render.tree:155:1",
       "take": [
         {
           "name": "node",
@@ -9339,7 +9339,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "bare-of",
-      "site": "code/http/tell.tree:157:1",
+      "site": "code/http/tell.tree:160:1",
       "take": [
         {
           "name": "name",
@@ -9367,7 +9367,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "bind-attribute",
-      "site": "code/view/render.tree:161:1",
+      "site": "code/view/render.tree:169:1",
       "take": [
         {
           "name": "node",
@@ -9389,7 +9389,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "bind-params",
-      "site": "code/http/http.tree:471:1",
+      "site": "code/http/http.tree:472:1",
       "take": [
         {
           "name": "specs",
@@ -9425,7 +9425,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "build-owned",
-      "site": "code/view/render.tree:98:1",
+      "site": "code/view/render.tree:106:1",
       "take": [
         {
           "name": "build",
@@ -9443,7 +9443,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "case-of",
-      "site": "code/http/tell.tree:174:1",
+      "site": "code/http/tell.tree:177:1",
       "take": [
         {
           "name": "name",
@@ -9457,7 +9457,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "case-path",
-      "site": "code/http/tell.tree:184:1",
+      "site": "code/http/tell.tree:187:1",
       "take": [
         {
           "name": "case",
@@ -9499,7 +9499,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "child-or-empty",
-      "site": "code/http/http.tree:169:1",
+      "site": "code/http/http.tree:170:1",
       "take": [
         {
           "name": "slot",
@@ -9573,7 +9573,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "decode-field",
-      "site": "code/http/body.tree:57:1",
+      "site": "code/http/body.tree:61:1",
       "take": [
         {
           "name": "value",
@@ -9601,7 +9601,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "empty-node",
-      "site": "code/http/http.tree:122:1",
+      "site": "code/http/http.tree:123:1",
       "take": [],
       "like": "node",
       "halt": []
@@ -9610,7 +9610,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "error-page",
-      "site": "code/http/tell.tree:430:1",
+      "site": "code/http/tell.tree:433:1",
       "take": [
         {
           "name": "case",
@@ -9633,7 +9633,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "error-row",
-      "site": "code/http/tell.tree:375:1",
+      "site": "code/http/tell.tree:378:1",
       "take": [
         {
           "name": "entry",
@@ -9647,7 +9647,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "errors-page",
-      "site": "code/http/tell.tree:406:1",
+      "site": "code/http/tell.tree:409:1",
       "take": [],
       "like": "response",
       "halt": []
@@ -9766,7 +9766,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "expose",
-      "site": "code/http/tell.tree:278:1",
+      "site": "code/http/tell.tree:281:1",
       "take": [
         {
           "name": "e",
@@ -9788,7 +9788,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "field-name",
-      "site": "code/http/body.tree:71:1",
+      "site": "code/http/body.tree:75:1",
       "take": [
         {
           "name": "name",
@@ -9802,7 +9802,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "find-node",
-      "site": "code/http/http.tree:379:1",
+      "site": "code/http/http.tree:380:1",
       "take": [
         {
           "name": "node",
@@ -9906,7 +9906,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "handle-request",
-      "site": "code/http/http.tree:510:1",
+      "site": "code/http/http.tree:511:1",
       "take": [
         {
           "name": "server",
@@ -9924,7 +9924,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "hint-key",
-      "site": "code/http/tell.tree:212:1",
+      "site": "code/http/tell.tree:215:1",
       "take": [
         {
           "name": "host",
@@ -9984,7 +9984,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "insert-route",
-      "site": "code/http/http.tree:230:1",
+      "site": "code/http/http.tree:231:1",
       "take": [
         {
           "name": "node",
@@ -10032,7 +10032,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "is-wildcard",
-      "site": "code/http/http.tree:138:1",
+      "site": "code/http/http.tree:139:1",
       "take": [
         {
           "name": "segment",
@@ -10060,7 +10060,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "keep-raise",
-      "site": "code/view/render.tree:601:1",
+      "site": "code/view/render.tree:609:1",
       "take": [
         {
           "name": "note",
@@ -10074,7 +10074,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "last-raise",
-      "site": "code/view/render.tree:609:1",
+      "site": "code/view/render.tree:617:1",
       "take": [],
       "like": "text",
       "halt": []
@@ -10083,7 +10083,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "like-of",
-      "site": "code/http/tell.tree:229:1",
+      "site": "code/http/tell.tree:232:1",
       "take": [
         {
           "name": "host",
@@ -10101,7 +10101,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "list-integers",
-      "site": "code/view/render.tree:242:1",
+      "site": "code/view/render.tree:250:1",
       "take": [
         {
           "name": "base",
@@ -10209,7 +10209,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "make-branch-list",
-      "site": "code/view/render.tree:82:1",
+      "site": "code/view/render.tree:90:1",
       "take": [],
       "like": "branch-list",
       "halt": []
@@ -10218,7 +10218,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "make-branch-slot",
-      "site": "code/view/render.tree:70:1",
+      "site": "code/view/render.tree:78:1",
       "take": [],
       "like": "branch-slot",
       "halt": []
@@ -10227,7 +10227,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "make-dynamic-text",
-      "site": "code/view/render.tree:177:1",
+      "site": "code/view/render.tree:185:1",
       "take": [
         {
           "name": "source",
@@ -10255,7 +10255,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "make-element",
-      "site": "code/view/render.tree:124:1",
+      "site": "code/view/render.tree:132:1",
       "take": [
         {
           "name": "tag",
@@ -10269,7 +10269,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "make-empty-owners",
-      "site": "code/view/render.tree:63:1",
+      "site": "code/view/render.tree:71:1",
       "take": [],
       "like": "list, like owner",
       "halt": []
@@ -10278,7 +10278,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "make-empty-texts",
-      "site": "code/view/render.tree:268:1",
+      "site": "code/view/render.tree:276:1",
       "take": [],
       "like": "list, like text",
       "halt": []
@@ -10287,7 +10287,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "make-empty-views",
-      "site": "code/view/render.tree:262:1",
+      "site": "code/view/render.tree:270:1",
       "take": [],
       "like": "list, like view",
       "halt": []
@@ -10296,7 +10296,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "make-idle-owner",
-      "site": "code/view/render.tree:54:1",
+      "site": "code/view/render.tree:62:1",
       "take": [],
       "like": "owner",
       "halt": []
@@ -10361,7 +10361,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "make-text",
-      "site": "code/view/render.tree:131:1",
+      "site": "code/view/render.tree:139:1",
       "take": [
         {
           "name": "value",
@@ -10389,7 +10389,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "mount",
-      "site": "code/view/render.tree:616:1",
+      "site": "code/view/render.tree:624:1",
       "take": [
         {
           "name": "host",
@@ -10407,7 +10407,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "mount-portal",
-      "site": "code/view/render.tree:630:1",
+      "site": "code/view/render.tree:638:1",
       "take": [
         {
           "name": "target",
@@ -10462,7 +10462,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "note-key",
-      "site": "code/http/tell.tree:197:1",
+      "site": "code/http/tell.tree:200:1",
       "take": [
         {
           "name": "host",
@@ -10526,7 +10526,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "one-child",
-      "site": "code/http/http.tree:189:1",
+      "site": "code/http/http.tree:190:1",
       "take": [
         {
           "name": "child",
@@ -10609,7 +10609,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "param-name-of",
-      "site": "code/http/http.tree:147:1",
+      "site": "code/http/http.tree:148:1",
       "take": [
         {
           "name": "segment",
@@ -10651,7 +10651,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "read-body",
-      "site": "code/http/body.tree:142:1",
+      "site": "code/http/body.tree:146:1",
       "take": [
         {
           "name": "request",
@@ -10694,7 +10694,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "read-form",
-      "site": "code/http/body.tree:82:1",
+      "site": "code/http/body.tree:86:1",
       "take": [
         {
           "name": "body",
@@ -10708,7 +10708,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "read-json",
-      "site": "code/http/body.tree:134:1",
+      "site": "code/http/body.tree:138:1",
       "take": [
         {
           "name": "body",
@@ -10806,7 +10806,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "rebuild",
-      "site": "code/view/render.tree:111:1",
+      "site": "code/view/render.tree:119:1",
       "take": [
         {
           "name": "slot",
@@ -10824,7 +10824,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "redirect",
-      "site": "code/http/body.tree:177:1",
+      "site": "code/http/body.tree:181:1",
       "take": [
         {
           "name": "path",
@@ -10902,7 +10902,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "render-dynamic-view",
-      "site": "code/view/render.tree:496:1",
+      "site": "code/view/render.tree:504:1",
       "take": [
         {
           "name": "host",
@@ -10920,7 +10920,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "render-each",
-      "site": "code/view/render.tree:274:1",
+      "site": "code/view/render.tree:282:1",
       "take": [
         {
           "name": "host",
@@ -10942,7 +10942,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "render-each-keyed",
-      "site": "code/view/render.tree:339:1",
+      "site": "code/view/render.tree:347:1",
       "take": [
         {
           "name": "host",
@@ -10968,7 +10968,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "render-error",
-      "site": "code/http/tell.tree:471:1",
+      "site": "code/http/tell.tree:474:1",
       "take": [
         {
           "name": "entry",
@@ -10994,7 +10994,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "render-gate",
-      "site": "code/view/render.tree:524:1",
+      "site": "code/view/render.tree:532:1",
       "take": [
         {
           "name": "host",
@@ -11105,7 +11105,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "route-server",
-      "site": "code/http/http.tree:357:1",
+      "site": "code/http/http.tree:358:1",
       "take": [
         {
           "name": "routes",
@@ -11128,7 +11128,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "routes-of",
-      "site": "code/http/tell.tree:350:1",
+      "site": "code/http/tell.tree:353:1",
       "take": [
         {
           "name": "form",
@@ -11437,7 +11437,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "show",
-      "site": "code/view/render.tree:196:1",
+      "site": "code/view/render.tree:204:1",
       "take": [
         {
           "name": "host",
@@ -11472,7 +11472,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "status-of",
-      "site": "code/http/tell.tree:45:1",
+      "site": "code/http/tell.tree:48:1",
       "take": [
         {
           "name": "case",
@@ -11486,7 +11486,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "tell-of",
-      "site": "code/http/tell.tree:248:1",
+      "site": "code/http/tell.tree:251:1",
       "take": [
         {
           "name": "host",
@@ -11586,7 +11586,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "write-attribute",
-      "site": "code/view/render.tree:138:1",
+      "site": "code/view/render.tree:146:1",
       "take": [
         {
           "name": "node",

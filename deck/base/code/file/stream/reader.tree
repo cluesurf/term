@@ -10,6 +10,7 @@ load @term/base/native/{platform}/file/asynchronous/stream/reader
   find reader-create
   find reader-read
   find reader-close
+  find reader-dock
 
 form reader
   link dock

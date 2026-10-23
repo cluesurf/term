@@ -15,6 +15,7 @@ load @term/base/maybe
 
 load ./node
   find type
+  find expression
 
 # the text a backend writes for an integer literal: its exact digits past 2^53, else its number
 task integer-text

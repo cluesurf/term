@@ -1,0 +1,206 @@
+# The Android app: the APK, signed with a debug key made on first use, and a device or emulator to install it on.
+# Part of the port of deck/call/code/cask.ts (cli-in-term-0033): its `assembleApk`, `androidDevice` and
+# `launchOnAndroid`.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/environment
+  find variable
+  find has-variable
+
+load @term/call/cask-plan
+  find android-manifest
+  find ready-serial
+
+load ./host-value
+  find entries-of
+
+load ./toolchain
+  find android-tools
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <node:child_process>, name node-child
+  load <@term/call/code/device-declare>, name declare-module
+  load <@term/call/code/output>, name output
+
+form android-folder
+  link recursive, like boolean
+
+form android-remove
+  link force, like boolean
+
+form android-text
+  link encoding, like text
+
+form android-quiet
+  link stdio, like text
+
+# what an APK is assembled from. `native` is the program's native half (buildAndroidProgram's), whose device
+# capabilities decide the permissions the manifest declares (device-declare.ts)
+form apk-ask
+  link out, like text
+  link name, like text
+  link identifier, like text
+  link version, like text
+  link dex, like text
+  link assets, like text
+  link work, like text
+  link native
+    like text
+    need false
+
+# a device adb can see, or the reason there is none: exactly one of the two
+form found-device
+  link serial
+    like text
+    need false
+  link missing
+    like text
+    need false
+
+# what is installed where. `extras` are the launch Intent's text extras, how a host hands an Activity what a desktop
+# app gets as environment variables
+form android-launch-ask
+  link serial, like text
+  link apk, like text
+  link identifier, like text
+  link extras
+    like dynamic
+    need false
+
+# the APK: a manifest linked by aapt2 with the page and the app's files as assets, the dex added, aligned, and signed
+# with a debug key made on first use
+task assemble-apk
+  take ask, like apk-ask
+  like text
+
+  save tools, android-tools()
+  save work, ask/work
+  save name, ask/name
+  save manifest, node-path/join(work, <AndroidManifest.xml>)
+  node-fs/write-file-sync(manifest, android-manifest(name, ask/identifier, ask/version, declare-module/permission-lines(ask/native)))
+
+  save unsigned, node-path/join(work, <{name}-unsigned.apk>)
+  save aligned, node-path/join(work, <{name}-aligned.apk>)
+  save apk, node-path/join(ask/out, <{name}.apk>)
+  node-fs/mkdir-sync(ask/out, make(android-folder, bind(recursive, true)))
+  node-fs/rm-sync(unsigned, make(android-remove, bind(force, true)))
+  node-fs/rm-sync(aligned, make(android-remove, bind(force, true)))
+  node-fs/rm-sync(apk, make(android-remove, bind(force, true)))
+
+  save link, make list
+  link/push(<link>)
+  link/push(<-o>)
+  link/push(unsigned)
+  link/push(<-I>)
+  link/push(tools/platform)
+  link/push(<--manifest>)
+  link/push(manifest)
+  link/push(<-A>)
+  link/push(ask/assets)
+  output/run-tool(node-path/join(tools/build-tools, <aapt2>), link)
+  # classes.dex at the top of the archive. `zip` stores the path as given, so it is added from its own directory
+  save zip, make list
+  zip/push(<-q>)
+  zip/push(<-j>)
+  zip/push(unsigned)
+  zip/push(ask/dex)
+  output/run-tool(<zip>, zip)
+  save align, make list
+  align/push(<-f>)
+  align/push(<-p>)
+  align/push(<4>)
+  align/push(unsigned)
+  align/push(aligned)
+  output/run-tool(node-path/join(tools/build-tools, <zipalign>), align)
+
+  save home, <>
+  fork test, has-variable(<HOME>)
+    hold
+      save home, variable(<HOME>)
+  save keystore, node-path/join(home, <.android>, <debug.keystore>)
+  fork test, not(node-fs/exists-sync(keystore))
+    hold
+      node-fs/mkdir-sync(node-path/dirname(keystore), make(android-folder, bind(recursive, true)))
+      save key, make list
+      key/push(<-genkeypair>)
+      key/push(<-v>)
+      key/push(<-keystore>)
+      key/push(keystore)
+      key/push(<-storepass>)
+      key/push(<android>)
+      key/push(<-alias>)
+      key/push(<androiddebugkey>)
+      key/push(<-keypass>)
+      key/push(<android>)
+      key/push(<-keyalg>)
+      key/push(<RSA>)
+      key/push(<-keysize>)
+      key/push(<2048>)
+      key/push(<-validity>)
+      key/push(<10000>)
+      key/push(<-dname>)
+      key/push(<CN=Android Debug,O=Android,C=US>)
+      node-child/exec-file-sync(<keytool>, key, make(android-quiet, bind(stdio, <ignore>)))
+
+  save sign, make list
+  sign/push(<sign>)
+  sign/push(<--ks>)
+  sign/push(keystore)
+  sign/push(<--ks-pass>)
+  sign/push(<pass:android>)
+  sign/push(<--ks-key-alias>)
+  sign/push(<androiddebugkey>)
+  sign/push(<--key-pass>)
+  sign/push(<pass:android>)
+  sign/push(<--out>)
+  sign/push(apk)
+  sign/push(aligned)
+  output/run-tool(node-path/join(tools/build-tools, <apksigner>), sign)
+  back apk
+
+# an Android device or emulator adb can see, or the reason there is none
+task android-device
+  like found-device
+
+  save tools, android-tools()
+  save args, make list
+  args/push(<devices>)
+  save listed, node-child/exec-file-sync(tools/adb, args, make(android-text, bind(encoding, <utf8>)))
+  save serial, ready-serial(listed)
+  fork test, is-equal(serial, <>)
+    hold
+      back make(found-device, bind(missing, <no Android device is online. Start the emulator: `emulator -avd pixel_api_36`, then `adb devices`>))
+  back make(found-device, bind(serial, serial))
+
+# install the APK and launch its Activity. Returns at once; the app's lines are in `adb logcat -s cask`
+task launch-on-android
+  take ask, like android-launch-ask
+  like void
+
+  save tools, android-tools()
+  save install, make list
+  install/push(<-s>)
+  install/push(ask/serial)
+  install/push(<install>)
+  install/push(<-r>)
+  install/push(ask/apk)
+  output/run-tool(tools/adb, install)
+  save start, make list
+  start/push(<-s>)
+  start/push(ask/serial)
+  start/push(<shell>)
+  start/push(<am>)
+  start/push(<start>)
+  start/push(<-n>)
+  start/push(<{ask/identifier}/.TermActivity>)
+  walk entries-of(ask/extras)
+    take entry, like list, like dynamic
+    start/push(<--es>)
+    start/push(<{entry/0}>)
+    start/push(<{entry/1}>)
+  output/run-tool(tools/adb, start)

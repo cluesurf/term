@@ -45,6 +45,7 @@ load ../compile/node
 
 load ../parser/tree
   find root-node
+  find node
 
 load ../parser/token
   find tokenize

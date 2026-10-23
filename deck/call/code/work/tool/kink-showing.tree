@@ -1,0 +1,198 @@
+# `term show kink [name]`: what a diagnostic means and what resolves it, looked up by the name or code a run printed.
+# Every compiler diagnostic (make/code/parser/diagnostic.tree, the catalog) and every lint finding (the driver's
+# `lintCatalog` and the manifest findings of work/inspect/linting.tree) has one entry, so any code `term make`,
+# `term scan` or `term lint` prints can be looked up. Without a name it lists them all, which is the catalog an agent
+# reads once.
+#
+# Ported from deck/call/code/kink.ts (term-cli-in-term-0058). The lookup and the words are call/code/kink-find.tree's;
+# this builds the catalog and prints. The catalog's entries are kink-find's `kink` records (a compiler code as its
+# number, a lint rule's -1, an absent remedy or fix kind the empty text), so `kinkCatalog()` and `findKink(query)`
+# answer those records, and a maybe, where the original answered its own Kink shape; the JSON printed is the original's.
+# The linter's catalog (make/code/lint/lint.ts) and the output library are docked.
+
+load @term/base/list
+  find list
+
+load @term/make/parser/diagnostic
+  find diagnostic-names
+  find entry-of
+  find nearest
+
+load @term/make/fixing
+  find fixable
+
+load @term/call/kink-find
+  find kink
+  find find-kink
+  find listed
+  find shown
+
+load ../inspect/linting
+  find manifest-catalog
+
+dock load
+  load <@term/make/code/lint/lint>, name lint-module
+  load <@term/call/code/output>, name output
+
+# ---- the host values Term has no word for ----
+
+# a compiler code as a run prints it, `0036`
+bind tool-hex-label
+  take code, like number
+  like text
+  case node
+    text <$code.toString(16).padStart(4, "0")>
+
+bind tool-as-text
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+# the linter's rules and the manifest findings, by code (`localeCompare`, as the original sorted them)
+bind tool-lint-rules
+  take driver, like dynamic
+  take manifest, like dynamic
+  like list, like dynamic
+  case node
+    text <[...$driver, ...$manifest].sort((a, b) =\> a.code.localeCompare(b.code))>
+
+# an entry as JSON shows it: the compiler's code as its number, a lint rule's as its label, and the remedy and the fix
+# kind only when there are
+bind tool-kink-json
+  take one, like dynamic
+  like dynamic
+  case node
+    text <(\{ kind: $one.kind, name: $one.name, code: $one.kind === "compiler" ? $one.number : $one.label, label: $one.label, severity: $one.severity, says: $one.says, ...($one.remedy ? \{ remedy: $one.remedy \} : \{\}), fixable: $one.fixable, ...($one.fixes ? \{ fixes: $one.fixes \} : \{\}) \})>
+
+bind tool-json-text
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+bind tool-not-found
+  take query, like text
+  take near, like text
+  like dynamic
+  case node
+    text <(\{ error: "not-found", query: $query, ...($near ? \{ nearest: $near \} : \{\}) \})>
+
+bind tool-lower
+  take value, like text
+  like text
+  case node
+    text <$value.toLowerCase()>
+
+bind tool-exit-one
+  like void
+  case node
+    text <(process.exitCode = 1, undefined)>
+
+bind tool-defined
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value !== undefined)>
+
+form kink-open
+  link verb, like text
+  link root, like text
+
+form kink-problem
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+
+form kink-problem-near
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form kink-close
+  link verdict, like text
+  link next, like text
+
+# every entry, the compiler's in catalog order and then the lint findings by code
+task kink-catalog
+  like list, like kink
+
+  save fixes, fixable()
+  save out, make list
+  walk diagnostic-names()
+    take name
+    save entry, entry-of(name)
+    save word, to-text(name)
+    save fixable-here, fixes/has(word)
+    save fix-kind, <>
+    fork test, fixable-here
+      hold
+        save fix-kind, to-text(fixes/get(word))
+    out/push(make(kink, bind(kind, <compiler>), bind(name, word), bind(number, entry/code), bind(label, tool-hex-label(entry/code)), bind(severity, to-text(entry/severity)), bind(says, entry/message), bind(remedy, entry/fix), bind(fixable, fixable-here), bind(fixes, fix-kind)))
+  walk tool-lint-rules(lint-module/lint-catalog(), manifest-catalog())
+    take rule, like dynamic
+    out/push(make(kink, bind(kind, <lint>), bind(name, rule/name), bind(number, -1), bind(label, rule/code), bind(severity, tool-as-text(rule/severity)), bind(says, rule/docs), bind(remedy, <>), bind(fixable, rule/fixable), bind(fixes, <>)))
+  back out
+
+task kink-names
+  take all, like list, like kink
+  like list, like text
+  mark private
+
+  save out, make list
+  walk all
+    take one
+    out/push(one/name)
+  back out
+
+task show-kink
+  take input, like dynamic
+  like void
+
+  save json, is-equal(input/json, true)
+  fork test, not(tool-defined(input/query))
+    hold
+      save all, kink-catalog()
+      fork test, json
+        hold
+          save shaped, make list
+          walk all
+            take one
+            shaped/push(tool-kink-json(one))
+          output/print-data(<{tool-json-text(shaped)}\n>)
+        miss
+          save lines, make list
+          walk all
+            take one
+            lines/push(listed(one))
+          output/print-data(lines/join(<>))
+      back
+
+  save query, tool-as-text(input/query)
+  save all, kink-catalog()
+  sift find-kink(query, all)
+    case some
+      link found
+      fork test, json
+        hold
+          output/print-data(<{tool-json-text(tool-kink-json(found))}\n>)
+        miss
+          output/print-data(shown(found))
+    case none
+      save near, nearest(tool-lower(query), kink-names(all))
+      fork test, json
+        hold
+          output/print-data(<{tool-json-text(tool-not-found(query, near))}\n>)
+          tool-exit-one()
+          back
+      output/open-run(make(kink-open, bind(verb, <show>), bind(root, input/root)))
+      save subject, <There is no diagnostic named {query}>
+      fork test, is-unequal(near, <>)
+        hold
+          save fields, make list
+          fields/push(output/field(<near>, near))
+          output/report(make(kink-problem-near, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject), bind(fields, fields)))
+        miss
+          output/report(make(kink-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject)))
+      output/close-run(make(kink-close, bind(verdict, <Nothing shown>), bind(next, <term show kink, which lists every name and code>)))

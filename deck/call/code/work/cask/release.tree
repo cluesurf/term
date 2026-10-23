@@ -1,0 +1,132 @@
+# What makes a built app updatable: the runtime version stamped into it, and the page just built published as an
+# update for exactly that version. Part of the port of deck/call/code/cask.ts (cli-in-term-0033): its
+# `stampRuntimeVersion` and `publishBuilt`.
+
+load @term/base/list
+  find list
+
+load @term/call/cask-plan
+  find minimum-of
+
+load ./host-value
+  find is-truthy
+  find value-or
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <@term/call/code/runtime-version>, name version-module
+  load <@term/call/code/update>, name update-module
+  load <@term/call/code/output>, name output
+
+form release-folder
+  link recursive, like boolean
+
+form version-source
+  link name, like text
+  link text, like text
+
+form version-ask
+  link target, like text
+  link minimum, like text
+  link toolchain, like text
+  link sources, like list, like version-source
+
+form stamp-ask
+  link target, like text
+  link native, like text
+  link into, like text
+
+form stamp-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+# what `--publish` is asked: the directory to publish into (nothing when not asked), the channel (`main` when not
+# given), the page directory, the app's identifier, its platform and the runtime version just stamped
+form publish-ask
+  link publish
+    like dynamic
+    need false
+  link channel
+    like dynamic
+    need false
+  link page, like text
+  link identifier, like text
+  link platform, like text
+  link runtime-version, like text
+
+form update-ask
+  link page, like text
+  link out, like text
+  link identifier, like text
+  link platform, like text
+  link runtime-version, like text
+  link channel, like dynamic
+
+form publish-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link facts, like list, like dynamic
+  link fields, like list, like dynamic
+
+# stamp the runtime version into the app: one sha256 over the native half as compiled (the generated dispatcher and its
+# allowlist, the runtime shims, the program), the target, its minimum OS and the toolchain. A page update is compatible
+# exactly when its runtime version equals this file's. See runtime-version.ts and note/term/app/13.
+task stamp-runtime-version
+  take ask, like stamp-ask
+  like dynamic
+
+  save target, ask/target
+  save sources, make list
+  sources/push(make(version-source, bind(name, <program>), bind(text, ask/native)))
+  save asked
+    make version-ask
+      bind target, target
+      bind minimum, minimum-of(target)
+      bind toolchain, version-module/toolchain-of(target)
+      bind sources, sources
+  save version, version-module/runtime-version(asked)
+  node-fs/mkdir-sync(ask/into, make(release-folder, bind(recursive, true)))
+  node-fs/write-file-sync(node-path/join(ask/into, <runtime-version>), <{version/hex}\n>)
+  # the tone code is an identifier of 64 characters, a field value that wraps on its own line rather than a fact that
+  # leaves the clock alone on the facts line
+  save fields, make list
+  fields/push(output/field(<version>, version/tone))
+  output/report(make(stamp-item, bind(glyph, <info>), bind(verb, <stamp>), bind(subject, <runtime version>), bind(fields, fields)))
+  back version
+
+# `--publish`: the page that was just built, as an update for exactly the runtime version that was just stamped, so a
+# publish can never pair a page with a native half it was not built against
+task publish-built
+  take ask, like publish-ask
+  like void
+
+  fork test, not(is-truthy(ask/publish))
+    hold
+      send back
+  save channel, value-or(ask/channel, <main>)
+  save asked
+    make update-ask
+      bind page, ask/page
+      bind out, node-path/resolve(ask/publish)
+      bind identifier, ask/identifier
+      bind platform, ask/platform
+      bind runtime-version, ask/runtime-version
+      bind channel, channel
+  save published, update-module/publish-update(asked)
+  save facts, make list
+  facts/push(channel)
+  save fields, make list
+  fields/push(output/location(output/show-path(published/file)))
+  output/report
+    make publish-item
+      bind glyph, <added>
+      bind kind, <change>
+      bind verb, <publish>
+      bind subject, published/manifest/id
+      bind facts, facts
+      bind fields, fields

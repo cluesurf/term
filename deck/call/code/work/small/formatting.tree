@@ -1,0 +1,208 @@
+# `term form`: format `.tree` files into canonical layout. By default it rewrites them in place; `--check` only reports
+# which files would change (for CI); `--list` prints the formatted source to stdout without writing. Files with parse
+# errors are reported and left untouched, so a broken file is never overwritten. Ported from call/code/form.ts
+# (term-cli-in-term-0062).
+#
+# Through the terminal output library: a `change` item per file rewritten, a failed `check` item per file `--check`
+# finds unformatted, each parse error a Problem item with its frame. `--list`'s formatted source is data, on stdout.
+#
+# The formatter is the compiler's (make/code/analyze.ts), the walk of the paths call/code/files.ts and each file's role
+# and `mark lean` call/code/role-of.ts, all docked until their own ports land. The role readers are host functions
+# the role-of module makes per project, called through `call`.
+
+dock load
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <node:path>, name node-path
+  load <@term/make/code/analyze>, name analyze-module
+  load <@term/call/code/files>, name files-module
+    mark async
+  load <@term/call/code/role-of>, name role-module
+  load <@term/call/code/output>, name output
+
+form form-open
+  link verb, like text
+  link root, like text
+  link counts, like list, like dynamic
+  link facts, like list, like text
+
+form problem-item
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+
+form plain-close
+  link verdict, like text
+
+form broken-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link facts, like list, like text
+
+form check-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+
+form change-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+
+form source-ask
+  link file, like text
+  link text, like text
+
+form analyze-ask
+  link role, like dynamic
+  link lean, like dynamic
+
+form problem-of
+  link diagnostic, like dynamic
+  link text, like text
+
+form counted-close
+  link verdict, like text
+  link counts, like list, like dynamic
+
+form next-close
+  link verdict, like text
+  link counts, like list, like dynamic
+  link next, like text
+
+form done-close
+  link verdict, like text
+  link counts, like list, like dynamic
+  link done, like boolean
+
+# `paths` the files and folders to format (none for the project), `check` and `list` the two modes
+task call-form
+  take root, like text
+  take paths, like list, like text
+  take check, like boolean
+  take list, like boolean
+  like void
+
+  save files, files-module/collect-tree-files(paths, root)
+  save mode, <>
+  fork test, check
+    hold
+      save mode, <--check>
+    miss
+      fork test, list
+        hold
+          save mode, <--list>
+  save counts, make list
+  counts/push(output/count(files/length, <files>, <file>))
+  save facts, make list
+  fork test, is-unequal(mode, <>)
+    hold
+      facts/push(mode)
+  output/open-run(make(form-open, bind(verb, <form>), bind(root, root), bind(counts, counts), bind(facts, facts)))
+  fork test, is-equal(files/length, 0)
+    hold
+      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no .tree file to format>)))
+      output/close-run(make(plain-close, bind(verdict, <Nothing to format>)))
+    miss
+      format-files(root, files, check, list)
+
+task format-files
+  take root, like text
+  take files, like list, like dynamic
+  take check, like boolean
+  take list, like boolean
+  like void
+  mark private
+
+  save changed, 0
+  save broken, 0
+  save problems, make list
+  # each file's role and `mark lean`, as the build reads them: a lean file's layout is checked against the program the
+  # build compiles, and a `mill` or `view` file gets no call parentheses (format-rules.md, rule 3)
+  save role-of, role-module/project-role-of(root)
+  save lean-of, role-module/project-lean-of(root)
+  walk files
+    take file
+    save text, fs-promise/read-file(file, <utf-8>)
+    save relative, node-path/relative(root, file)
+    save absolute, node-path/resolve(root, file)
+    save role, role-of/call(<>, absolute)
+    save lean, lean-of/call(<>, absolute)
+    save analysis, analyze-module/analyze(make(source-ask, bind(file, relative), bind(text, text)), make(analyze-ask, bind(role, role), bind(lean, lean)))
+    save errors, make list
+    walk analysis/diagnostics
+      take diagnostic
+      fork test, is-equal(diagnostic/severity, <error>)
+        hold
+          errors/push(diagnostic)
+    fork test, is-above(errors/length, 0)
+      hold
+        save broken, add(broken, 1)
+        save facts, make list
+        fork test, is-equal(analysis/kind, <data>)
+          hold
+            facts/push(<data that could not be read>)
+          miss
+            facts/push(<could not be parsed>)
+        output/report(make(broken-item, bind(glyph, <failed>), bind(verb, <form>), bind(subject, relative), bind(facts, facts)))
+        walk errors
+          take diagnostic
+          problems/push(make(problem-of, bind(diagnostic, diagnostic), bind(text, text)))
+        turn next
+    save formatted, analysis/format()
+    fork test, is-equal(formatted, text)
+      hold
+        turn next
+    save changed, add(changed, 1)
+    fork test, list
+      hold
+        output/print-data(formatted)
+      miss
+        fork test, check
+          hold
+            output/report(make(check-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <check>), bind(subject, <{relative} is not formatted>)))
+          miss
+            fs-promise/write-file(file, formatted, <utf-8>)
+            output/report(make(change-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <change>), bind(subject, relative)))
+  output/report-problems(problems, root)
+  save noun, <changed>
+  fork test, check
+    hold
+      save noun, <unformatted>
+    miss
+      fork test, list
+        hold
+          save noun, <printed>
+  save counted, make list
+  counted/push(output/count(changed, noun))
+  fork test, is-above(broken, 0)
+    hold
+      counted/push(output/count(broken, <unreadable>))
+      output/close-run(make(counted-close, bind(verdict, <Some files could not be read>), bind(counts, counted)))
+    miss
+      fork test, and(check, is-above(changed, 0))
+        hold
+          save need, <s need>
+          fork test, is-equal(changed, 1)
+            hold
+              save need, < needs>
+          output/close-run(make(next-close, bind(verdict, <{changed} file{need} formatting>), bind(counts, counted), bind(next, <term form>)))
+        miss
+          # `--list` writes nothing, so it must not say it formatted anything (guides: commands/form, 2026-10-04)
+          save verdict, <All files already formatted>
+          fork test, is-above(changed, 0)
+            hold
+              fork test, list
+                hold
+                  save verdict, <Printed as they would be formatted, nothing written>
+                miss
+                  save plural, <s>
+                  fork test, is-equal(changed, 1)
+                    hold
+                      save plural, <>
+                  save verdict, <Formatted {changed} file{plural}>
+          # files rewritten is work done; `--list` only showed what it would write, and closes `·`
+          output/close-run(make(done-close, bind(verdict, verdict), bind(counts, counted), bind(done, and(is-above(changed, 0), not(list)))))

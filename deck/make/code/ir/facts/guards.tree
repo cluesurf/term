@@ -41,11 +41,16 @@ load ../../compile/node
   find function-param
   find statement
   find type
+  find assign-op
+  find binary-op
 
 load ../../compile/node-reach
   find reached
   find reach-statements
   find reach-expression
+
+load @term/base/text
+  find split
 
 task skipped
   like list, like text

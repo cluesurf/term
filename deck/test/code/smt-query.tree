@@ -12,6 +12,10 @@ load @term/base/list
 load @term/base/text
   find split
   find trim
+  find contains
+
+load @term/base/exception
+  find failure
 
 load @term/base/text/number
   find parse-integer
@@ -65,6 +69,14 @@ form formula
   case for-every
     link names, like list, like text
     link body, like formula
+
+# the solver answered with an error where an answer belongs: a status that is not `sat`, `unsat` or `unknown`, or an
+# error among a `sat`'s values. It is raised, never read as a verdict: read as one, its text became a status or a value
+# and a port threw "Not a number" far from the cause (term-cli-in-term-0128)
+form solver-failure
+  like failure
+    bind note, <The solver answered with an error>
+    link answer, like text
 
 # what the solver said: `sat` with a value per asked name, `unsat`, or `unknown`
 form verdict
@@ -299,6 +311,16 @@ task check-sat
   host printed, solver-answer(evaluated)
   host answer, split(trim(printed), <\n>)
   host status, trim(get(answer, 0))
+  fork test, not(or(or(is-equal(status, <sat>), is-equal(status, <unsat>)), is-equal(status, <unknown>)))
+    hold
+      halt solver-failure
+        bind thing, <smt-text>
+        bind answer, printed
+  fork test, and(is-equal(status, <sat>), contains(printed, <(error>))
+    hold
+      halt solver-failure
+        bind thing, <smt-text>
+        bind answer, printed
   host none, make list
   fork test, and(is-equal(status, <sat>), is-above(names/length, 0))
     hold

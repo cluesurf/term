@@ -22,6 +22,7 @@ load @term/base/native/{platform}/file/synchronous
   find grip-seek
   find grip-flush
   find grip-clear
+  find grip-dock
 
 # an open file: the platform handle, private, plus the path it was opened from
 form synchronous-file

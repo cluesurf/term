@@ -40,6 +40,9 @@ load ./http
 load ./escape
   find escape-html
 
+load @term/base/maybe
+  find maybe
+
 # The seventeen and their statuses. A `bundle` answers with the highest status among its entries, which the caller
 # computes over the entries it holds; here it is 500, the floor of a failure it did not unpack.
 task status-of

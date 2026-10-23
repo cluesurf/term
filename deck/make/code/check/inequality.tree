@@ -254,14 +254,15 @@ bind holds-nul
   case kotlin
     text <$value.contains('\\u0000')>
 
-# an expression as JSON with its spans and inferred types left out: how two are written alike
+# an expression as JSON with its spans, inferred types and call sites left out: how two are written alike. A call's
+# `site` is its Term frame, `<task> <file>:<line>` (hive decision 001), so it says where it was written as a span does
 bind bare-json
   take value, like expression
   like text
   case node
-    text <JSON.stringify($value, (key, value) =\> (key === 'span' || key === 'type' ? undefined : value))>
+    text <JSON.stringify($value, (key, value) =\> (key === 'span' || key === 'type' || key === 'site' ? undefined : value))>
   case browser
-    text <JSON.stringify($value, (key, value) =\> (key === 'span' || key === 'type' ? undefined : value))>
+    text <JSON.stringify($value, (key, value) =\> (key === 'span' || key === 'type' || key === 'site' ? undefined : value))>
   case rust
     text <String::new()>
   case swift

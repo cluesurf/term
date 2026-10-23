@@ -1,0 +1,399 @@
+# SEMANTIC TOKENS: precise identifier coloring the TextMate grammar cannot do (a function call against a type against
+# a local), sent whole or as the edits from the last set sent. The legend order is fixed (request-loop.tree's
+# `semantic-token-types`), and `tokenModifiers` has only `declaration`.
+#
+# Every token is a NAME span: a definition's name where it is declared, and a reference's name where it is used,
+# colored by what it resolves to (a parameter or local of the enclosing task first, then a top-level definition).
+# Never a whole expression: the compiler's span for `call helper` covers the call and its arguments.
+#
+# Ported from server.ts (term-cli-in-term-0103, part 4 of 5): semanticTokens, tokenEdits, and handle's cases
+# `textDocument/semanticTokens/full` and `full/delta`. The decisions:
+#   - `semanticTokens(text, index, map)` is `semantic-tokens(text, index, map)` answering the list of integers, where
+#     the original answered `{ data }`; the mapping is geometry.tree's record (`identity-mapping()` for the original's
+#     default `IDENTITY`)
+#   - the tokens are sorted by a stable merge sort, line then character, as `Array.prototype.sort` sorted them
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+
+load @term/make/parser/diagnostic
+  find span
+
+load ./geometry
+  find mapping
+  find lsp-position
+  find outer-position
+
+load ./symbol-index
+  find symbol-index
+  find find-name
+
+load ./language-server
+  find language-server
+  find document
+  find held-tokens
+
+load ./document-analysis
+  find settled
+
+load ./server-reply
+  find respond
+
+form color-token
+  link line, like number
+  link char, like number
+  link length, like number
+  link type, like number
+  link mod, like number
+
+form token-edit
+  link start, like number
+  link delete-count, like number
+  link data, like list, like number
+
+form tokens-data
+  link data, like list, like number
+
+form tokens-full
+  link result-id, like text
+  link data, like list, like number
+
+form tokens-delta
+  link result-id, like text
+  link edits, like list, like token-edit
+
+bind previous-result-id
+  take params, like dynamic
+  like dynamic
+  case node
+    text <($params)?.previousResultId>
+
+bind is-same-id
+  take one, like text
+  take other, like dynamic
+  like boolean
+  case node
+    text <($one === $other)>
+
+bind number-text
+  take value, like number
+  like text
+  case node
+    text <String($value)>
+
+# a definition kind's token type: function, type (a variant too), interface, parameter, variable
+task kind-token
+  take kind, like text
+  like number
+  mark private
+
+  fork test, is-equal(kind, <function>)
+    hold
+      back 0
+  fork test, or(is-equal(kind, <type>), is-equal(kind, <variant>))
+    hold
+      back 1
+  fork test, is-equal(kind, <trait>)
+    hold
+      back 2
+  fork test, is-equal(kind, <parameter>)
+    hold
+      back 3
+  back 4
+
+# a token for a name span on one line, placed in the author's text; none when the span runs over lines or maps to
+# nothing
+task push-token
+  take tokens, like list, like color-token
+  take map, like mapping
+  take where, like maybe, like span
+  take type, like number
+  take mod, like number
+  like void
+  mark private
+
+  sift where
+    case some
+      link found
+      fork test, is-unequal(found/start/line, found/end/line)
+        hold
+          send back
+      save start, outer-position(map, make(lsp-position, bind(line, found/start/line), bind(character, found/start/column)), <start>)
+      save end, outer-position(map, make(lsp-position, bind(line, found/end/line), bind(character, found/end/column)), <end>)
+      fork test, or(is-unequal(start/line, end/line), is-maximum(end/character, start/character))
+        hold
+          send back
+      push(tokens, make(color-token, bind(line, start/line), bind(char, start/character), bind(length, subtract(end/character, start/character)), bind(type, type), bind(mod, mod)))
+    case none
+      save skipped, true
+
+# an index built without the text has no name spans: find them here rather than color nothing
+task name-span
+  take lines, like list, like text
+  take at, like maybe, like span
+  take where, like span
+  take name, like text
+  like maybe, like span
+  mark private
+
+  sift at
+    case some
+      back at
+    case none
+      back find-name(lines, where, name)
+
+# whether a token comes before another: line, then character
+task is-before
+  take one, like color-token
+  take other, like color-token
+  like boolean
+  mark private
+
+  fork test, is-below(one/line, other/line)
+    hold
+      back true
+  fork test, is-above(one/line, other/line)
+    hold
+      back false
+  back is-below(one/char, other/char)
+
+# a stable merge sort by line, then character
+task sorted-tokens
+  take tokens, like list, like color-token
+  like list, like color-token
+  mark private
+
+  fork test, is-below(tokens/length, 2)
+    hold
+      back tokens
+  save middle, floor-half(tokens/length)
+  save left, make list
+  save right, make list
+  save at, 0
+  walk tokens
+    take one
+    fork test, is-below(at, middle)
+      hold
+        push(left, one)
+      miss
+        push(right, one)
+    save at, add(at, 1)
+  save a, sorted-tokens(left)
+  save b, sorted-tokens(right)
+  save out, make list
+  save i, 0
+  save j, 0
+  walk test
+    hook test, and(is-below(i, a/length), is-below(j, b/length))
+    hook hold
+      # the right one goes first only when strictly before: equal tokens keep their order
+      fork test, is-before(get(b, j), get(a, i))
+        hold
+          push(out, get(b, j))
+          save j, add(j, 1)
+        miss
+          push(out, get(a, i))
+          save i, add(i, 1)
+  walk test
+    hook test, is-below(i, a/length)
+    hook hold
+      push(out, get(a, i))
+      save i, add(i, 1)
+  walk test
+    hook test, is-below(j, b/length)
+    hook hold
+      push(out, get(b, j))
+      save j, add(j, 1)
+  back out
+
+bind floor-half
+  take value, like number
+  like number
+  case node
+    text <Math.floor($value / 2)>
+
+# whether a scope's span holds a position (both ends inclusive)
+task scope-holds
+  take where, like span
+  take line, like number
+  take column, like number
+  like boolean
+  mark private
+
+  save after, or(is-below(where/start/line, line), and(is-equal(where/start/line, line), is-maximum(where/start/column, column)))
+  fork test, after
+    miss
+      back false
+  back or(is-above(where/end/line, line), and(is-equal(where/end/line, line), is-minimum(where/end/column, column)))
+
+task semantic-tokens
+  take text, like text
+  take index, like symbol-index
+  take map, like mapping
+  like list, like number
+
+  save tokens, make list
+  save lines, split(text, <\n>)
+  walk index/definitions/values()
+    take def
+    push-token(tokens, map, name-span(lines, def/at, def/span, def/name), kind-token(def/kind), 1)
+  walk index/scopes
+    take scope
+    walk scope/locals
+      take local
+      push-token(tokens, map, local/at, kind-token(local/kind), 1)
+  walk index/references
+    take ref
+    save kind, 4
+    save known, false
+    save holder, make none
+    walk index/scopes
+      take scope
+      fork test, scope-holds(scope/span, ref/span/start/line, ref/span/start/column)
+        hold
+          save holder, make(some, scope)
+          halt
+    sift holder
+      case some
+        link scope
+        walk scope/locals
+          take local
+          fork test, is-equal(local/name, ref/name)
+            hold
+              save kind, kind-token(local/kind)
+              save known, true
+              halt
+      case none
+        save skipped, true
+    fork test, known
+      miss
+        fork test, index/definitions/has(ref/name)
+          hold
+            save kind, kind-token(index/definitions/get(ref/name)/kind)
+    push-token(tokens, map, name-span(lines, ref/at, ref/span, ref/name), kind, 0)
+
+  # delta-encode (LSP), skipping a token that overlaps one already emitted
+  save data, make list
+  save previous-line, 0
+  save previous-char, 0
+  save previous-end, -1
+  save first, true
+  walk sorted-tokens(tokens)
+    take token
+    fork test, and(and(is-equal(first, false), is-equal(token/line, previous-line)), is-below(token/char, previous-end))
+      hold
+        turn next
+    save delta-line, subtract(token/line, previous-line)
+    fork test, first
+      hold
+        save delta-line, token/line
+    save delta-char, subtract(token/char, previous-char)
+    fork test, or(first, is-above(delta-line, 0))
+      hold
+        save delta-char, token/char
+    push(data, delta-line)
+    push(data, delta-char)
+    push(data, token/length)
+    push(data, token/type)
+    push(data, token/mod)
+    save previous-line, token/line
+    save previous-char, token/char
+    save previous-end, add(token/char, token/length)
+    save first, false
+  back data
+
+# the edits between two semantic token arrays: one replacement from the first differing integer to the last
+task token-edits
+  take before, like list, like number
+  take after, like list, like number
+  like list, like token-edit
+
+  save start, 0
+  walk test
+    hook test, and(and(is-below(start, before/length), is-below(start, after/length)), is-equal(get(before, start), get(after, start)))
+    hook hold
+      save start, add(start, 1)
+  fork test, and(is-equal(start, before/length), is-equal(start, after/length))
+    hold
+      back make list
+  save end-before, before/length
+  save end-after, after/length
+  walk test
+    hook test, and(and(is-above(end-before, start), is-above(end-after, start)), is-equal(get(before, subtract(end-before, 1)), get(after, subtract(end-after, 1))))
+    hook hold
+      save end-before, subtract(end-before, 1)
+      save end-after, subtract(end-after, 1)
+  save data, make list
+  save at, start
+  walk test
+    hook test, is-below(at, end-after)
+    hook hold
+      push(data, get(after, at))
+      save at, add(at, 1)
+  save out, make list
+  push(out, make(token-edit, bind(start, start), bind(delete-count, subtract(end-before, start)), bind(data, data)))
+  back out
+
+task semantic-tokens-full
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  take outbox, like list, like dynamic
+  like dynamic
+
+  sift settled(server, params, outbox)
+    case some
+      link doc
+      sift doc/view
+        case some
+          link view
+          save data, semantic-tokens(view/inner, view/index, view/map)
+          save server/token-counter, add(server/token-counter, 1)
+          save id, number-text(server/token-counter)
+          save doc/tokens, make(some, make(held-tokens, bind(id, id), bind(data, data)))
+          back respond(message, make(tokens-full, bind(result-id, id), bind(data, data)))
+        case none
+          back respond(message, make(tokens-data, bind(data, make list)))
+    case none
+      back respond(message, make(tokens-data, bind(data, make list)))
+
+task semantic-tokens-delta
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  take outbox, like list, like dynamic
+  like dynamic
+
+  save found, settled(server, params, outbox)
+  save previous, previous-result-id(params)
+  sift found
+    case some
+      link doc
+      sift doc/view
+        case some
+          link view
+          save data, semantic-tokens(view/inner, view/index, view/map)
+          save server/token-counter, add(server/token-counter, 1)
+          save id, number-text(server/token-counter)
+          save before, doc/tokens
+          save doc/tokens, make(some, make(held-tokens, bind(id, id), bind(data, data)))
+          sift before
+            case some
+              link held
+              fork test, is-same-id(held/id, previous)
+                hold
+                  back respond(message, make(tokens-delta, bind(result-id, id), bind(edits, token-edits(held/data, data))))
+            case none
+              save skipped, true
+          back respond(message, make(tokens-full, bind(result-id, id), bind(data, data)))
+        case none
+          back respond(message, make(tokens-data, bind(data, make list)))
+    case none
+      back respond(message, make(tokens-data, bind(data, make list)))

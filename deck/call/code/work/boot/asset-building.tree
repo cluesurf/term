@@ -1,0 +1,277 @@
+# What a booted app serves beside its program: the look stylesheets compiled to CSS, the development reload id, the
+# production asset manifest, and the style watcher of the dev loop. Ported from call/code/boot.ts (`toneEncode`,
+# `hashAssets`, `writeBuildId`, `buildStyles`, `watchStyles`), part 2 of that file, term-cli-in-term-0023. The tone
+# alphabet, the asset sources and the hashed names are boot-plan.tree's; the compiler and the output run are docked.
+
+load @term/call/boot-plan
+  find tone-encode
+  find asset-sources
+  find hashed-name
+
+load @term/make/term/hash
+  find hash-text
+
+load @term/base/text
+  find ends-with
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <@term/make/code/compile/compile>, name style-compiler
+  load <@term/call/code/output>, name output
+  load <global:global>, name host-global
+
+form folder-ask
+  link recursive, like boolean
+
+form style-source
+  link file, like text
+  link text, like text
+
+form style-problem
+  link diagnostic, like dynamic
+  link text, like text
+
+form manifest-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link counts, like list, like dynamic
+  link fields, like list, like dynamic
+
+form reload-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+
+# the style watcher's debounce timer, read by the watch callback, the timer and the stop function
+form style-watch
+  mark shared
+  link timer, like dynamic
+
+# the prior manifest, `{}` when there is none or it does not read as JSON
+bind boot-prior-manifest
+  take file, like text
+  like dynamic
+  case node
+    text <(() =\> \{ try \{ return JSON.parse(process.getBuiltinModule("node:fs").readFileSync($file, "utf8")) \} catch \{ return \{\} \} \})()>
+
+bind boot-record-values
+  take record, like dynamic
+  like list, like dynamic
+  case node
+    text <Object.values($record)>
+
+bind boot-empty-record
+  like dynamic
+  case node
+    text <(\{\})>
+
+bind boot-record-put
+  take record, like dynamic
+  take key, like text
+  take value, like text
+  like void
+  case node
+    text <void ($record[$key] = $value)>
+
+bind boot-record-size
+  take record, like dynamic
+  like number
+  case node
+    text <Object.keys($record).length>
+
+bind boot-record-json
+  take record, like dynamic
+  like text
+  case node
+    text <JSON.stringify($record, null, 2)>
+
+# the first `count` UTF-16 units of a text
+bind boot-head
+  take text, like text
+  take count, like number
+  like text
+  case node
+    text <$text.slice(0, $count)>
+
+bind boot-time-text
+  like text
+  case node
+    text <String(Date.now())>
+
+bind boot-is-defined
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value !== undefined)>
+
+# a stylesheet's output name: `look.tree` is `look.css`
+bind boot-css-name
+  take name, like text
+  like text
+  case node
+    text <($name.slice(0, -5) + ".css")>
+
+# a stop function that stops nothing
+bind boot-stop-nothing
+  like dynamic
+  case node
+    text <(() =\> \{\})>
+
+# PRODUCTION asset hashing and manifest. Content-hash each cache-bust-critical build output (the stylesheet and the
+# client bundle), tone-encode the hash into a short suffix, write a hashed copy (`style/look-mndb-tksh.css`), and record
+# the logical to hashed mapping in `build/asset-manifest.json`. The SSR document shell reads that manifest to emit the
+# hashed URLs, so a deploy busts every cache automatically. DEV writes no manifest and uses the stable names.
+# Idempotent: a prior run's hashed copies and manifest are removed first
+task hash-assets
+  take build-dir, like text
+  take prod, like boolean
+  like void
+
+  save manifest-file, node-path/join(build-dir, <asset-manifest.json>)
+  # clear any prior manifest and the hashed files it named, so stale hashed copies never accumulate or get re-hashed
+  save prior, boot-prior-manifest(manifest-file)
+  walk boot-record-values(prior)
+    take hashed
+    # a missing or unremovable stale file is not fatal
+    fork
+      mark unsafe
+      save file, node-path/join(build-dir, hashed)
+      fork test, node-file/exists-sync(file)
+        hold
+          node-file/rm-sync(file)
+    halt take
+      take problem
+      save ignored, problem
+  fork
+    mark unsafe
+    fork test, node-file/exists-sync(manifest-file)
+      hold
+        node-file/rm-sync(manifest-file)
+  halt take
+    take problem
+    save ignored, problem
+  # dev: stable names, no manifest (the shell resolves every asset to itself)
+  fork test, prod
+    hold
+      write-manifest(build-dir, manifest-file)
+
+task write-manifest
+  take build-dir, like text
+  take manifest-file, like text
+  like void
+  mark private
+
+  save map, boot-empty-record()
+  walk asset-sources()
+    take logical
+    save file, node-path/join(build-dir, logical)
+    fork test, node-file/exists-sync(file)
+      hold
+        save tone, tone-encode(boot-head(hash-text(node-file/read-file-sync(file, <utf8>)), 8))
+        save hashed, hashed-name(logical, tone)
+        node-file/copy-file-sync(file, node-path/join(build-dir, hashed))
+        boot-record-put(map, logical, hashed)
+  node-file/write-file-sync(manifest-file, boot-record-json(map))
+  save counts, make list
+  counts/push(output/count(boot-record-size(map), <assets>, <asset>))
+  save fields, make list
+  fields/push(output/location(<build/asset-manifest.json>))
+  output/report(make(manifest-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, <asset manifest>), bind(counts, counts), bind(fields, fields)))
+
+# the dev live-reload build id: the client polls `/base/__id` and reloads when it changes. Bumped on boot and on every
+# hot style rebuild. A timestamp is enough (monotonic and unique). A failed write never fails the build
+task write-build-id
+  take app-dir, like text
+  like void
+
+  fork
+    mark unsafe
+    save build-dir, node-path/join(app-dir, <build>)
+    node-file/mkdir-sync(build-dir, make(folder-ask, bind(recursive, true)))
+    node-file/write-file-sync(node-path/join(build-dir, <__id>), boot-time-text())
+  halt take
+    take problem
+    save ignored, problem
+
+# recompile every look stylesheet (`site/style/*.tree`) to `build/style/*.css`. Look files are self-contained, so they
+# compile with no resolver. A refused sheet is reported, and its last good `.css` stays served
+task build-styles
+  take app-dir, like text
+  like void
+
+  save style-dir, node-path/join(app-dir, <site>, <style>)
+  fork test, node-file/exists-sync(style-dir)
+    hold
+      save out-dir, node-path/join(app-dir, <build>, <style>)
+      node-file/mkdir-sync(out-dir, make(folder-ask, bind(recursive, true)))
+      walk node-file/readdir-sync(style-dir)
+        take name
+        fork test, ends-with(name, <.tree>)
+          hold
+            build-style(app-dir, out-dir, node-path/join(style-dir, name), name)
+
+task build-style
+  take app-dir, like text
+  take out-dir, like text
+  take file, like text
+  take name, like text
+  like void
+  mark private
+
+  # a single bad stylesheet must not crash the dev loop
+  fork
+    mark unsafe
+    save text, node-file/read-file-sync(file, <utf8>)
+    save result, style-compiler/compile(make(style-source, bind(file, file), bind(text, text)))
+    fork test, not(result/ok)
+      hold
+        save problems, make list
+        walk result/diagnostics
+          take diagnostic
+          problems/push(make(style-problem, bind(diagnostic, diagnostic), bind(text, text)))
+        output/reportProblems(problems, app-dir)
+    fork test, and(result/ok, boot-is-defined(result/css))
+      hold
+        node-file/write-file-sync(node-path/join(out-dir, boot-css-name(name)), result/css)
+  halt take
+    take problem
+    save ignored, problem
+
+# dev hot-reload for styles: `site/style` watched, and on each edit the sheets recompiled and the reload id bumped,
+# debounced 60 ms. Answers a stop function
+task watch-styles
+  take app-dir, like text
+  like dynamic
+
+  save style-dir, node-path/join(app-dir, <site>, <style>)
+  fork test, not(node-file/exists-sync(style-dir))
+    hold
+      back boot-stop-nothing()
+  save state, make(style-watch, bind(timer, void))
+  save watcher
+    node-file/watch
+      style-dir
+      make(folder-ask, bind(recursive, true))
+      task
+        like void
+        fork test, is-unequal(state/timer, void)
+          hold
+            host-global/clearTimeout(state/timer)
+        save state/timer
+          host-global/setTimeout
+            task
+              like void
+              build-styles(app-dir)
+              write-build-id(app-dir)
+              output/report(make(reload-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <reload>), bind(subject, <styles>)))
+            60
+  back
+    task
+      like void
+      fork test, is-unequal(state/timer, void)
+        hold
+          host-global/clearTimeout(state/timer)
+      watcher/close()

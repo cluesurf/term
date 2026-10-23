@@ -1,0 +1,989 @@
+# Installing a version of `term`, verified, beside the others (note/project/term/term-versions.md, "Installing a
+# version"). Ported from call/code/need-load.ts (term-cli-in-term-0042), whole: the registry, the checks, the download,
+# the unpack and the install lock. The texts it writes and its decisions about a payload's files were already Term,
+# call/code/need-files.tree, and stay there. The ONE path every install takes: `term self load`, `pick`, `need` and
+# `update`, and dispatch when a project needs a version that is not here.
+#
+#   1  the release's image index, under the version tag. A lock.tree pin's digest must equal it, or nothing installs
+#   2  this platform's manifest and config, the signature over the layer, and the signer in the scope's key set
+#   3  the layer, downloaded, its sha256 against the digest
+#   4  unpacked into a staging directory and renamed into code/<version>/ whole, with its install.tree
+#
+# TWO INSTALLS OF ONE VERSION AT ONCE are serialized by a lock directory beside the version, made with one atomic
+# `mkdir`. The second waits, then finds the first one's result.
+#
+# The registry is @cluesurf/deck.tree's, docked (decision cli-in-term/002); its answers are host values read by their
+# fields. What this module answers keeps the original's shapes: a field the original left out is a need-false maybe.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/hash
+  find hash
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/task
+  find gather
+
+load @term/base/text
+  find split
+
+load @term/deck/package/tree-reading
+  find tree-form
+  find read-tree
+  find value-of
+
+load @term/call/need-files
+  find install-text
+  find front-shim-text
+  find sorted-paths
+  find file-list-text
+  find listed-file
+  find installed-list
+  find shared-file
+  find shared-files
+  find rest-entries
+
+load @term/call/work/need/version-choice
+  find front-of
+  find installed-versions
+
+dock load
+  load <@cluesurf/deck.tree>, name deck-tree
+  load <@term/call/code/home>, name home-module
+  load <node:fs>, name node-file
+  load <node:fs/promises>, name file-promise
+  load <node:path>, name node-path
+  load <node:child_process>, name node-child
+  load <node:crypto>, name node-crypto
+  load <node:timers/promises>, name node-timers
+  load <global:process>, name host-process
+  load <global:Date>, name host-date
+
+# ---- the host's values ----
+
+# `Boolean(value)`
+bind host-truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# `value === undefined || value === null`, which `??` tests
+bind is-nullish
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined || $value === null)>
+
+# `undefined`
+bind nothing
+  like dynamic
+  case node
+    text <undefined>
+
+# a failure's message as the original printed one: an Error's message, else the value as text
+bind message-of
+  take problem, like dynamic
+  like text
+  case node
+    text <($problem instanceof Error ? $problem.message : String($problem))>
+
+# `(error as Error).message` written into a template
+bind message-field
+  take problem, like dynamic
+  like text
+  case node
+    text <String($problem.message)>
+
+# a caught failure, raised again as it was
+bind raise-again
+  take problem, like dynamic
+  like void
+  case node
+    text <(() =\> \{ throw $problem \})()>
+
+# `crypto.randomUUID()`, through node:crypto as the original called it
+bind random-id
+  take crypto, like dynamic
+  like text
+  case node
+    text <$crypto.randomUUID()>
+
+# `count.toLocaleString('en-US')`
+bind en-count
+  take count, like number
+  like text
+  case node
+    text <$count.toLocaleString("en-US")>
+
+# `(bytes / 1e6).toFixed(1)`
+bind megabytes
+  take bytes, like number
+  like text
+  case node
+    text <($bytes / 1e6).toFixed(1)>
+
+# `(mode & 0o777).toString(8)`
+bind mode-text
+  take mode, like number
+  like text
+  case node
+    text <($mode & 0o777).toString(8)>
+
+# ---- the constants, as tasks (self-host traps T022) ----
+
+# the toolchain's package name (09, "The name"), PACKAGE
+task release-package
+  like text
+
+  back <@term/code>
+
+# the list of every file in a release payload, FILE_LIST
+task file-list-name
+  like text
+
+  back <hash.tree>
+
+# On Windows the system's own tar.exe, by its full path: Git for Windows puts GNU tar on PATH, which reads the `C:` of
+# `-C C:\...` as a remote host name and fails
+task tar-path
+  like text
+  mark private
+
+  fork test, is-unequal(host-process/platform, <win32>)
+    hold
+      back <tar>
+  save root, host-process/env/SystemRoot
+  fork test, is-nullish(root)
+    hold
+      save root, <C:\\Windows>
+  back node-path/join(root, <System32>, <tar.exe>)
+
+# ---- the shapes ----
+
+form route-ask
+  link package, like text
+
+form host-ask
+  link host, like dynamic
+
+form versions-ask
+  link transport, like dynamic
+  link repository, like dynamic
+
+form release-ask
+  link transport, like dynamic
+  link repository, like dynamic
+  link package, like text
+  link version, like text
+  link platform, like text
+
+form keys-ask
+  link transport, like dynamic
+  link repository, like dynamic
+  link scope, like dynamic
+  link host, like dynamic
+  link trust-dir, like dynamic
+
+form matching-ask
+  link versions, like dynamic
+  link hold, like dynamic
+
+form manifest-ask
+  link repository, like dynamic
+  link reference, like text
+
+form blob-ask
+  link repository, like dynamic
+  link digest, like text
+  link size, like dynamic
+  link limit, like number
+
+form folder-ask
+  link recursive, like boolean
+
+form remove-ask
+  link recursive, like boolean
+  link force, like boolean
+
+form force-ask
+  link force, like boolean
+
+form entries-ask
+  link with-file-types, like boolean
+  link recursive, like boolean
+
+form quiet-ask
+  link stdio, like text
+
+form listing-ask
+  link encoding, like text
+  link max-buffer, like number
+
+# a version and the platform it is for
+form release-pick
+  link version, like text
+  link platform, like text
+
+# what this install of term is: the version, the platform, and the layer digest it was unpacked from
+form install-record
+  link version, like text
+  link platform, like text
+  link hash, like text
+
+# files hard-linked to the same file in a version already installed, and their bytes
+form shared-count
+  link files, like number
+  link bytes, like number
+
+# a release verified in full, or why not
+form verified
+  link ok, like boolean
+  link layer
+    like maybe, like text
+    need false
+  link size
+    like dynamic
+    need false
+  link keys
+    like maybe, like text
+    need false
+  link config
+    like dynamic
+    need false
+  link reason
+    like maybe, like text
+    need false
+
+# a version installed (fresh, or here already), or why not
+form loaded
+  link ok, like boolean
+  link version
+    like maybe, like text
+    need false
+  link platform
+    like maybe, like text
+    need false
+  link layer
+    like maybe, like text
+    need false
+  link keys
+    like maybe, like text
+    need false
+  link bytes
+    like maybe, like number
+    need false
+  link duration
+    like maybe, like number
+    need false
+  link fresh
+    like maybe, like boolean
+    need false
+  link shared
+    like maybe, like shared-count
+    need false
+  link reason
+    like maybe, like text
+    need false
+
+# loadVersion's input: an exact version, or a range (`hold`, @term/deck's shape), the pin's digest, the platform. Each
+# is read by its truth or by `??`, as the original read it
+form load-ask
+  link version
+    like dynamic
+    need false
+  link hold
+    like dynamic
+    need false
+  link expect
+    like dynamic
+    need false
+  link platform
+    like dynamic
+    need false
+
+form install-ask
+  link version, like text
+  link platform, like text
+  link expect, like dynamic
+  link route, like dynamic
+  link transport, like dynamic
+
+form extract-ask
+  link archive, like text
+  link into, like text
+  link others, like list, like text
+
+form link-plan
+  link from, like text
+  link to, like text
+  link path, like text
+
+# the links still to make and what the linking made, shared by the LINK_WIDTH workers that take them in turn
+form link-run
+  mark shared
+  link links, like list, like link-plan
+  link next, like number
+  link files, like number
+  link bytes, like number
+  link linked, like hash, like text, like boolean
+
+# ---- answers ----
+
+task none-shared
+  like shared-count
+  mark private
+
+  back make(shared-count, bind(files, 0), bind(bytes, 0))
+
+task not-loaded
+  take reason, like text
+  like loaded
+  mark private
+
+  back make(loaded, bind(ok, false), bind(reason, make(some, reason)))
+
+task was-loaded
+  take version, like text
+  take platform, like text
+  take layer, like text
+  take keys, like text
+  take bytes, like number
+  take duration, like number
+  take fresh, like boolean
+  take shared, like shared-count
+  like loaded
+  mark private
+
+  back make(loaded, bind(ok, true), bind(version, make(some, version)), bind(platform, make(some, platform)), bind(layer, make(some, layer)), bind(keys, make(some, keys)), bind(bytes, make(some, bytes)), bind(duration, make(some, duration)), bind(fresh, make(some, fresh)), bind(shared, make(some, shared)))
+
+task not-verified
+  take reason, like text
+  like verified
+  mark private
+
+  back make(verified, bind(ok, false), bind(reason, make(some, reason)))
+
+# a text value present and not empty, as the original's `!value` tested it
+task filled
+  take value
+    like maybe, like text
+  like text
+  mark private
+
+  sift value
+    case some
+      link inner
+      back inner
+    case none
+      back <>
+
+# ---- the registry ----
+
+# Where releases are: the scope's route, or TERM_RELEASE_REGISTRY (release.ts `releaseRoute`)
+task route-of
+  like dynamic
+
+  back deck-tree/release-route(make(route-ask, bind(package, release-package())))
+
+# every released version, newest first
+task list-releases
+  like dynamic
+
+  save route, route-of()
+  save transport, deck-tree/transport-for(make(host-ask, bind(host, route/registry/host)))
+  back wait deck-tree/released-versions(make(versions-ask, bind(transport, transport), bind(repository, route/repository/name)))
+
+# One release, verified in full: the index, the platform's manifest, the signature over the layer, and the signer in the
+# scope's key set
+task verify-release
+  take input, like release-pick
+  like verified
+
+  save route, route-of()
+  save transport, deck-tree/transport-for(make(host-ask, bind(host, route/registry/host)))
+  save answer, not-verified(<>)
+  fork
+    mark unsafe
+    save release, wait deck-tree/read-release(make(release-ask, bind(transport, transport), bind(repository, route/repository/name), bind(package, release-package()), bind(version, input/version), bind(platform, input/platform)))
+    save trusted, wait deck-tree/trusted-keys(make(keys-ask, bind(transport, transport), bind(repository, route/keys-repository), bind(scope, route/scope), bind(host, route/registry/host), bind(trust-dir, deck-tree/trust-dir())))
+    save scope, route/scope
+    fork test, not(host-truth(trusted))
+      hold
+        save host, route/registry/host
+        save keys-repository, route/keys-repository
+        save answer, not-verified(<{scope} publishes no key set at {host}/{keys-repository}>)
+      miss
+        fork test, not(trusted/keys/includes(release/config/key))
+          hold
+            save version, input/version
+            save package, release-package()
+            save answer, not-verified(<{package}@{version} is signed by a key outside the key set of {scope}>)
+          miss
+            save layer, release/layer
+            save source, trusted/source
+            save keys, <the key set of {scope} ({source})>
+            save answer, make(verified, bind(ok, true), bind(layer, make(some, layer)), bind(size, release/size), bind(config, release/config), bind(keys, make(some, keys)))
+  halt take
+    take problem
+    save answer, not-verified(message-of(problem))
+  back answer
+
+# Install a version: an exact one, or the newest release in a range. `expect` is a lock.tree pin's index digest, which
+# the registry must still serve. Installing a version that is already here answers at once, `fresh` false
+task load-version
+  take input, like load-ask
+  like loaded
+
+  save platform, input/platform
+  fork test, is-nullish(platform)
+    hold
+      save platform, deck-tree/current-platform()
+  fork test, not(host-truth(platform))
+    hold
+      save os, host-process/platform
+      save arch, host-process/arch
+      back not-loaded(<No release is built for {os}-{arch}>)
+
+  save route, route-of()
+  save transport, deck-tree/transport-for(make(host-ask, bind(host, route/registry/host)))
+  save version, <>
+  fork test, host-truth(input/version)
+    hold
+      save version, input/version
+
+  fork test, is-equal(version, <>)
+    hold
+      fork test, not(host-truth(input/hold))
+        hold
+          back not-loaded(<loadVersion needs a version or a range>)
+      save versions, nothing()
+      save unread, <>
+      fork
+        mark unsafe
+        save versions, wait deck-tree/released-versions(make(versions-ask, bind(transport, transport), bind(repository, route/repository/name)))
+      halt take
+        take problem
+        save host, route/registry/host
+        save name, route/repository/name
+        save said, message-field(problem)
+        save unread, <the releases at {host}/{name} could not be read: {said}>
+      fork test, is-unequal(unread, <>)
+        hold
+          back not-loaded(unread)
+      save newest, deck-tree/newest-matching(make(matching-ask, bind(versions, versions), bind(hold, input/hold)))
+      fork test, not(host-truth(newest))
+        hold
+          save tail, <>
+          save first, versions/0
+          fork test, host-truth(first)
+            hold
+              save tail, <. The newest is {first}: term self find>
+          save package, release-package()
+          back not-loaded(<{package} has no release in that range{tail}>)
+      save version, newest
+
+  fork test, is-installed(version)
+    hold
+      save layer, <>
+      sift read-install(install-file(version))
+        case some
+          link found
+          save layer, found/hash
+        case none
+          save nothing-here, 0
+      back was-loaded(version, platform, layer, <>, 0, 0, false, none-shared())
+
+  back with-install-lock(make(install-ask, bind(version, version), bind(platform, platform), bind(expect, input/expect), bind(route, route), bind(transport, transport)))
+
+# `2,104 files shared, 37.9 MB`: what a new version did not cost, by linking to a version already installed
+task shared-facts
+  take shared, like shared-count
+  like list, like text
+
+  save facts, make list
+  fork test, is-above(shared/files, 0)
+    hold
+      save files, en-count(shared/files)
+      save size, megabytes(shared/bytes)
+      facts/push(<{files} files shared, {size} MB>)
+  back facts
+
+# Is this version unpacked here, with its install.tree?
+task is-installed
+  take version, like text
+  like boolean
+
+  back node-file/exists-sync(install-file(version))
+
+# `install.tree`, through the one `.tree` reader
+task read-install
+  take file, like text
+  like maybe, like install-record
+
+  fork test, not(node-file/exists-sync(file))
+    hold
+      back make none
+  save read, read-tree(file, node-file/read-file-sync(file, <utf8>))
+  fork test, not(read/ok)
+    hold
+      back make none
+  walk read/forms
+    take form
+    fork test, is-equal(form/head, <install>)
+      hold
+        save version, filled(value-of(form, <code>))
+        save platform, filled(value-of(form, <form>))
+        save hash, filled(value-of(form, <hash>))
+        fork test, or(or(is-equal(version, <>), is-equal(platform, <>)), is-equal(hash, <>))
+          hold
+            back make none
+        save record, make(install-record, bind(version, version), bind(platform, platform), bind(hash, hash))
+        back make(some, record)
+  back make none
+
+# a version's install.tree
+task install-file
+  take version, like text
+  like text
+
+  back home-module/user-home(<code>, version, <install.tree>)
+
+# Point the front (call/term) at a version, atomically: a new link beside it, renamed over the old one. ON WINDOWS
+# call\term.cmd is a one-line shim instead (need-files.tree `front-shim-text`)
+task link-front
+  take version, like text
+  like void
+
+  save windows, is-equal(host-process/platform, <win32>)
+  save name, <term>
+  fork test, windows
+    hold
+      save name, <term.cmd>
+  # `call/`, or `bin/` while Windows holds it (home.ts `frontDir`). Either is one level under the home, so the link and
+  # the shim reach the version by the same `..`
+  save front, node-path/join(home-module/front-dir(), name)
+  save id, random-id(node-crypto)
+  save next, <{front}.{id}>
+  node-file/mkdir-sync(node-path/dirname(front), make(folder-ask, bind(recursive, true)))
+  fork test, windows
+    hold
+      node-file/write-file-sync(next, front-shim-text(version))
+    miss
+      node-file/symlink-sync(node-path/join(<..>, <code>, version, <term>, <bin>, <term>), next)
+  node-file/rename-sync(next, front)
+
+# The version the front points at, or none when there is no front here
+task front-version
+  like maybe, like text
+
+  back front-of(home-module/user-home())
+
+# When a command last ran on a version, or when it was installed if never: the host's Date, or undefined
+task last-used
+  take version, like text
+  like dynamic
+
+  save files, make list
+  files/push(home-module/user-home(<code>, version, <used>))
+  files/push(install-file(version))
+  walk files
+    take file
+    save stamp, nothing()
+    fork
+      mark unsafe
+      save stamp, node-file/stat-sync(file)/mtime
+    halt take
+      take problem
+      # try the next
+      save stamp, nothing()
+      turn next
+    back stamp
+  back nothing()
+
+# ---- the download and the unpack ----
+
+# The download and the unpack, under the install lock
+task install
+  take input, like install-ask
+  like loaded
+  mark private
+
+  # another install may have finished while this one waited for the lock
+  fork test, is-installed(input/version)
+    hold
+      save layer, <>
+      sift read-install(install-file(input/version))
+        case some
+          link found
+          save layer, found/hash
+        case none
+          save nothing-here, 0
+      back was-loaded(input/version, input/platform, layer, <>, 0, 0, false, none-shared())
+
+  save started, host-date/now()
+  save package, release-package()
+  save version, input/version
+  save repository, input/route/repository/name
+
+  fork test, host-truth(input/expect)
+    hold
+      save index, wait input/transport/get-manifest(make(manifest-ask, bind(repository, repository), bind(reference, version)))
+      fork test, not(host-truth(index))
+        hold
+          back not-loaded(<{package}@{version} is not released>)
+      fork test, is-unequal(index/digest, input/expect)
+        hold
+          save expect, input/expect
+          save served, index/digest
+          back not-loaded(<lock.tree pins {package}@{version} as {expect}, and the registry now serves {served}. Nothing ran>)
+
+  save verified, verify-release(make(release-pick, bind(version, version), bind(platform, input/platform)))
+  fork test, not(verified/ok)
+    hold
+      back not-loaded(filled(verified/reason))
+  save layer, filled(verified/layer)
+  save bytes, wait input/transport/get-blob(make(blob-ask, bind(repository, repository), bind(digest, layer), bind(size, verified/size), bind(limit, 536870912)))
+  save hasher, node-crypto/create-hash(<sha256>)
+  save fed, hasher/update(bytes)
+  save hex, fed/digest(<hex>)
+  save digest, <sha256:{hex}>
+  fork test, is-unequal(digest, layer)
+    hold
+      back not-loaded(<The download hashes to {digest}, not the signed {layer}>)
+
+  save shared, unpack(version, bytes, make(install-record, bind(version, version), bind(platform, input/platform), bind(hash, layer)))
+  save took, subtract(host-date/now(), started)
+  back was-loaded(version, input/platform, layer, filled(verified/keys), bytes/length, took, true, shared)
+
+task write-install
+  take file, like text
+  take record, like install-record
+  like void
+  mark private
+
+  node-file/write-file-sync(file, install-text(record/version, record/platform, record/hash))
+
+# Unpack a payload beside the others and write its install.tree. Into a temporary directory first, renamed into place
+# whole, so a failed unpack never leaves a half-written version that anything could later run
+task unpack
+  take version, like text
+  take bytes, like dynamic
+  take record, like install-record
+  like shared-count
+  mark private
+
+  save code, home-module/user-home(<code>)
+  save target, node-path/join(code, version)
+  save id, random-id(node-crypto)
+  save staging, node-path/join(code, <.{version}.{id}>)
+  save archive, <{staging}.tar.gz>
+
+  node-file/mkdir-sync(staging, make(folder-ask, bind(recursive, true)))
+  save shared, none-shared()
+  fork
+    mark unsafe
+    node-file/write-file-sync(archive, bytes)
+    save others, make list
+    walk installed-versions(home-module/user-home())
+      take other
+      others/push(node-path/join(code, other, <term>))
+    save shared, extract-shared(make(extract-ask, bind(archive, archive), bind(into, staging), bind(others, others)))
+    write-install(node-path/join(staging, <install.tree>), record)
+    node-file/rm-sync(target, make(remove-ask, bind(recursive, true), bind(force, true)))
+    node-file/rename-sync(staging, target)
+  halt take
+    take problem
+    node-file/rm-sync(archive, make(force-ask, bind(force, true)))
+    node-file/rm-sync(staging, make(remove-ask, bind(recursive, true), bind(force, true)))
+    raise-again(problem)
+  node-file/rm-sync(archive, make(force-ask, bind(force, true)))
+  node-file/rm-sync(staging, make(remove-ask, bind(recursive, true), bind(force, true)))
+  back shared
+
+# ---- the file list ----
+
+# every regular file under a directory, relative to it. Links and directories are not files to share
+task files-under
+  take dir, like text
+  like list, like text
+  mark private
+
+  save found, make list
+  walk node-file/readdir-sync(dir, make(entries-ask, bind(with-file-types, true), bind(recursive, true)))
+    take entry
+    fork test, entry/is-file()
+      hold
+        found/push(node-path/relative(dir, node-path/join(entry/parent-path, entry/name)))
+  back found
+
+# List every regular file under a payload root with its sha256 and mode, and write the list as `hash.tree` beside them.
+# `pnpm term:release` runs this before it packs each platform, so the list travels inside the signed layer
+task write-file-list
+  take root, like text
+  like list, like listed-file
+
+  save paths, make list
+  walk files-under(root)
+    take path
+    fork test, is-unequal(path, file-list-name())
+      hold
+        paths/push(path)
+  save listed, make list
+  walk sorted-paths(paths)
+    take path
+    save file, node-path/join(root, path)
+    save parts, split(path, node-path/sep)
+    save shown, join(parts, </>)
+    save hasher, node-crypto/create-hash(<sha256>)
+    save fed, hasher/update(node-file/read-file-sync(file))
+    save hash, fed/digest(<hex>)
+    save mode, mode-text(node-file/stat-sync(file)/mode)
+    listed/push(make(listed-file, bind(path, shown), bind(hash, hash), bind(mode, mode)))
+  node-file/write-file-sync(node-path/join(root, file-list-name()), file-list-text(listed))
+  back listed
+
+# A payload's file list, through the one `.tree` reader, keyed by path. None when the payload has none
+task read-file-list
+  take file, like text
+  like maybe, like hash, like text, like listed-file
+
+  save body, <>
+  fork
+    mark unsafe
+    save body, node-file/read-file-sync(file, <utf8>)
+  halt take
+    take problem
+    back make none
+  save read, read-tree(file, body)
+  fork test, not(read/ok)
+    hold
+      back make none
+  save listed, make hash
+  walk read/forms
+    take form
+    save path, <>
+    fork test, is-equal(form/head, <file>)
+      hold
+        save path, filled(form/value)
+    save hash, filled(value-of(form, <hash>))
+    save mode, filled(value-of(form, <mode>))
+    fork test, and(and(is-unequal(path, <>), is-unequal(hash, <>)), is-unequal(mode, <>))
+      hold
+        save listed/{path}, make(listed-file, bind(path, path), bind(hash, hash), bind(mode, mode))
+  back make(some, listed)
+
+# One worker of the linking: take the next link, make it, count it, until none are left. A link that fails (the file is
+# gone from that version, or the filesystem refuses a link) is extracted after all, from the archive
+task link-some
+  take run, like link-run
+  like boolean
+  mark private
+
+  walk test
+    hook test, is-below(run/next, run/links/length)
+    hook hold
+      save plan, get(run/links, run/next)
+      save run/next, add(run/next, 1)
+      fork
+        mark unsafe
+        save stat, wait file-promise/lstat(plan/from)
+        save size, stat/size
+        wait file-promise/link(plan/from, plan/to)
+        save entry, <term/{plan/path}>
+        save run/linked/{entry}, true
+        save run/files, add(run/files, 1)
+        save run/bytes, add(run/bytes, size)
+      halt take
+        take problem
+        save nothing-here, 0
+  back true
+
+# Unpack a payload into `into`, hard-linking every file a version already installed holds alike instead of writing it
+# again (note/project/term/term-versions.md, "Disk", V10). THE LISTS DECIDE, not the disk: the new payload's
+# `hash.tree` comes out first and alone; a file whose path, sha256 and mode match an installed version's own
+# `hash.tree` is linked, and tar extracts only the rest, by name. A payload without a list, or a version without one,
+# shares nothing and unpacks whole. Answers how many files and bytes are shared
+task extract-shared
+  take input, like extract-ask
+  like shared-count
+
+  save tar, tar-path()
+  save list-file, node-path/join(input/into, <term>, file-list-name())
+  fork
+    mark unsafe
+    save first-args, make list
+    first-args/push(<-xzf>)
+    first-args/push(input/archive)
+    first-args/push(<-C>)
+    first-args/push(input/into)
+    save listed-entry, <term/{file-list-name()}>
+    first-args/push(listed-entry)
+    node-child/exec-file-sync(tar, first-args, make(quiet-ask, bind(stdio, <ignore>)))
+  halt take
+    # an older payload with no list: unpack it whole
+    take problem
+    save nothing-here, 0
+
+  save mine, read-file-list(list-file)
+  save mine-files, make list
+  save theirs, make list
+  save roots, make list
+  sift mine
+    case some
+      link my-list
+      walk my-list/values()
+        take one
+        mine-files/push(one)
+      walk input/others
+        take root
+        save their-file, node-path/join(root, file-list-name())
+        save listed, read-file-list(their-file)
+        sift listed
+          case some
+            link their-list
+            save at, theirs/length
+            roots/push(root)
+            theirs/push(make(installed-list, bind(at, at), bind(listed, their-list)))
+          case none
+            save nothing-here, 0
+    case none
+      save nothing-here, 0
+
+  # which files are linked, and from which version, is need-files.tree `shared-files`
+  save links, make list
+  walk shared-files(mine-files, theirs)
+    take file
+    save from, node-path/join(get(roots, file/at), file/path)
+    save to, node-path/join(input/into, <term>, file/path)
+    links/push(make(link-plan, bind(from, from), bind(to, to), bind(path, file/path)))
+
+  fork test, is-equal(links/length, 0)
+    hold
+      save whole-args, make list
+      whole-args/push(<-xzf>)
+      whole-args/push(input/archive)
+      whole-args/push(<-C>)
+      whole-args/push(input/into)
+      node-child/exec-file-sync(tar, whole-args)
+      back none-shared()
+
+  # the directories first, once each, then the links four at a time: a link is a metadata write, and on APFS four in
+  # flight took 4,649 links from 2.6 s to 1.6 s where sixteen or sixty-four did no better
+  save made, make hash
+  walk links
+    take one
+    save parent, node-path/dirname(one/to)
+    fork test, not(made/has(parent))
+      hold
+        node-file/mkdir-sync(parent, make(folder-ask, bind(recursive, true)))
+        save made/{parent}, true
+
+  save run, make(link-run, bind(links, links), bind(next, 0), bind(files, 0), bind(bytes, 0), bind(linked, make hash))
+  save worker
+    task
+      mark async
+      like boolean
+      back link-some(run)
+  save workers, make list
+  workers/push(worker)
+  workers/push(worker)
+  workers/push(worker)
+  workers/push(worker)
+  gather(workers)
+
+  # EVERY OTHER ENTRY, from tar's own listing rather than the file list, so a symlink or anything else the list does not
+  # name still arrives. Named with `-T`, never excluded with `-X`
+  save list-args, make list
+  list-args/push(<-tzf>)
+  list-args/push(input/archive)
+  save listing, node-child/exec-file-sync(tar, list-args, make(listing-ask, bind(encoding, <utf8>), bind(max-buffer, 268435456)))
+  save rest, rest-entries(listing, run/linked)
+
+  fork test, is-above(rest/length, 0)
+    hold
+      save names, <{input/archive}.names>
+      save lines, make list
+      walk rest
+        take entry
+        lines/push(<{entry}\n>)
+      node-file/write-file-sync(names, join(lines, <>))
+      fork
+        mark unsafe
+        save rest-args, make list
+        rest-args/push(<-xzf>)
+        rest-args/push(input/archive)
+        rest-args/push(<-C>)
+        rest-args/push(input/into)
+        rest-args/push(<-T>)
+        rest-args/push(names)
+        node-child/exec-file-sync(tar, rest-args)
+      halt take
+        take problem
+        node-file/rm-sync(names, make(force-ask, bind(force, true)))
+        raise-again(problem)
+      node-file/rm-sync(names, make(force-ask, bind(force, true)))
+
+  back make(shared-count, bind(files, run/files), bind(bytes, run/bytes))
+
+# ---- the install lock ----
+
+# One install of a version at a time on this machine: an atomic `mkdir` of a lock directory beside it. A lock older than
+# the wait (five minutes) is taken to be from a process that died, and is cleared; the second install looks every 250 ms
+task with-install-lock
+  take input, like install-ask
+  like loaded
+  mark private
+
+  save version, input/version
+  save lock, home-module/user-home(<code>, <.{version}.lock>)
+  save started, host-date/now()
+  node-file/mkdir-sync(home-module/user-home(<code>), make(folder-ask, bind(recursive, true)))
+
+  walk test
+    hook test, true
+    hook hold
+      save taken, false
+      fork
+        mark unsafe
+        node-file/mkdir-sync(lock)
+        save taken, true
+      halt take
+        take problem
+        save nothing-here, 0
+      fork test, taken
+        hold
+          halt
+      save again, false
+      fork
+        mark unsafe
+        fork test, is-above(subtract(host-date/now(), node-file/stat-sync(lock)/mtime-ms), 300000)
+          hold
+            node-file/rm-sync(lock, make(remove-ask, bind(recursive, true), bind(force, true)))
+            save again, true
+      halt take
+        take problem
+        save again, true
+      fork test, not(again)
+        hold
+          fork test, is-above(subtract(host-date/now(), started), 300000)
+            hold
+              save package, release-package()
+              back not-loaded(<another install of {package}@{version} has held {lock} for five minutes>)
+          wait node-timers/set-timeout(250)
+
+  save answer, not-loaded(<>)
+  fork
+    mark unsafe
+    save answer, install(input)
+  halt take
+    take problem
+    node-file/rm-sync(lock, make(remove-ask, bind(recursive, true), bind(force, true)))
+    raise-again(problem)
+  node-file/rm-sync(lock, make(remove-ask, bind(recursive, true), bind(force, true)))
+  back answer

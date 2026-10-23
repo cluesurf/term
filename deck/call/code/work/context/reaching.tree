@@ -1,0 +1,297 @@
+# WHAT A TASK CAN TOUCH: the native modules (`dock load <node:fs/promises>`) its calls reach, through every task it
+# calls, in its own deck and in every deck it loads. The roll says what a task can RAISE, and this says what it can DO,
+# so `term roll --diff` can report that a change gave a task the file system or the network.
+#
+# Read off each file milled alone (make/code/analyze.ts), followed by MODULE SCOPE, with `{platform}` filled for node as
+# `term make` fills it. The search, the scope rules and the walk over a body are call/code/reach-graph.tree; this module
+# reads and mills each file once, keeps it, and hands that module the module a file or a load is.
+#
+# Ported from deck/call/code/reach.ts (term-cli-in-term-0051). The original's `reachGraph(root)` answered an object
+# closing over its tables; here `make-reach-graph(root)` answers the tables as a record and `reach-at-line(graph, file,
+# line)` asks it, so `graph.reachAt(file, line)` is `reachAtLine(graph, file, line)`. `siteFile` answers a maybe.
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/call/reach-graph
+  find reach-module
+  find find-target
+  find reach-at
+  find site-parts-of
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <@term/make/code/analyze>, name analyze-module
+  load <@term/make/code/compile/load>, name load-module
+  load <@term/make/code/compile/native>, name native-module
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/role-of>, name role-module
+
+# whether a host value is truthy, as `if (value)` reads it
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# `value ?? fallback`
+bind value-or
+  take value, like dynamic
+  take fallback, like dynamic
+  like dynamic
+  case node
+    text <($value ?? $fallback)>
+
+# whether a host value is `undefined`
+bind is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+# `Number(text)`
+bind number-of
+  take value, like text
+  like number
+  case node
+    text <Number($value)>
+
+# what `analyze` is asked of a file
+form analyze-source
+  link file, like text
+  link text, like text
+
+form analyze-options
+  link role, like dynamic
+  link lean, like boolean
+
+# the tables a reach graph keeps for one root: the readers it was made with, and every file read, as the module it is,
+# or none for a file that could not be read or milled (and while it is being read, so a cycle of loads meets none)
+form reach-graph
+  link role-of, like dynamic
+  link lean-of, like dynamic
+  link resolve, like dynamic
+  link parsed, like dynamic
+  link modules, like hash, like text, like maybe, like reach-module
+
+# the file and line a roll site names
+form site-file
+  link file, like text
+  link line, like number
+
+task make-reach-graph
+  take root, like text
+  like reach-graph
+
+  save role-of, role-module/project-role-of(root)
+  save lean-of, role-module/project-lean-of(root)
+  save resolve, native-module/with-native-env(<node>, make-module/project-resolver(root, <node>, root))
+  back
+    make reach-graph
+      bind role-of, role-of
+      bind lean-of, lean-of
+      bind resolve, resolve
+      bind parsed, load-module/make-parse-memo()
+      bind modules, make hash
+
+# a file's text, or none when it cannot be read
+task text-of
+  take file, like text
+  like maybe, like text
+  mark private
+
+  save read, make none
+  fork
+    mark unsafe
+    save read
+      make some
+        node-fs/read-file-sync(file, <utf8>)
+  halt take
+    take problem
+    save read, make none
+  back read
+
+# one file as the graph reads it: its tasks by name, its methods, the native modules it docks by alias, and what each
+# found name came from. `given` is its text when the caller has it
+task module-of
+  take graph, like reach-graph
+  take file, like text
+  take given, like maybe, like text
+  like maybe, like reach-module
+  mark private
+
+  fork test, graph/modules/has(file)
+    hold
+      back graph/modules/get(file)
+
+  # marked before it is read, so a cycle of loads meets an empty answer rather than recursing
+  save marked, make none
+  save graph/modules/{file}, marked
+
+  save text, <>
+  sift given
+    case some
+      link known
+      save text, known
+    case none
+      sift text-of(file)
+        case some
+          link read
+          save text, read
+        case none
+          back make none
+
+  save source
+    make analyze-source
+      bind file, file
+      bind text, text
+  save options
+    make analyze-options
+      bind role, graph/role-of(file)
+      bind lean, value-or(graph/lean-of(file), false)
+  save milled, analyze-module/analyze(source, options)
+  save program, milled/program
+  fork test, not(is-truthy(program))
+    hold
+      back make none
+
+  save one
+    make reach-module
+      bind file, file
+      bind tasks, make hash
+      bind methods, make hash
+      bind natives, make hash
+      bind finds, make hash
+      bind bears, make list
+      bind loads, make list
+
+  walk program
+    take statement
+    fork test, is-equal(statement/form, <function>)
+      hold
+        add-task(one/tasks, statement/name, statement)
+        fork test, is-truthy(statement/method)
+          hold
+            add-task(one/methods, statement/method/name, statement)
+      miss
+        fork test, is-equal(statement/form, <native>)
+          hold
+            save one/natives/{statement/alias}, statement/module
+
+  save asked
+    make analyze-source
+      bind file, file
+      bind text, text
+  walk load-module/import-finds-of(asked, graph/parsed)
+    take found
+    push(one/loads, found/path)
+    fork test, is-truthy(found/bear)
+      hold
+        push(one/bears, found/path)
+    # under the alias it was found by and under its own name, which is what the mill writes an aliased call as
+    save at, 0
+    walk found/names
+      take real
+      save target
+        make find-target
+          bind path, found/path
+          bind real, real
+      save alias, found/aliases/{at}
+      save key, value-or(alias, real)
+      save one/finds/{key}, target
+      fork test, not(one/finds/has(real))
+        hold
+          save again
+            make find-target
+              bind path, found/path
+              bind real, real
+          save one/finds/{real}, again
+      save at, add(at, 1)
+
+  save made
+    make some
+      read one
+  save graph/modules/{file}, made
+  back made
+
+# a task added under its name, after any other of that name
+task add-task
+  take table, like hash, like text, like list, like dynamic
+  take name, like text
+  take statement, like dynamic
+  like void
+  mark private
+
+  save named, make list
+  fork test, table/has(name)
+    hold
+      walk table/get(name)
+        take earlier
+        push(named, earlier)
+  push(named, statement)
+  save table/{name}, named
+
+# the module a load in `from` reaches, read once
+task loaded
+  take graph, like reach-graph
+  take path, like text
+  take from, like text
+  like maybe, like reach-module
+  mark private
+
+  save source, graph/resolve(path, from)
+  fork test, not(is-truthy(source))
+    hold
+      back make none
+  # a resolver's answer without its text leaves the file to be read
+  save given, make none
+  fork test, not(is-absent(source/text))
+    hold
+      save given
+        make some
+          read source/text
+  back module-of(graph, source/file, given)
+
+# the native modules the task defined at a line of a file reaches (one-based, as a roll site counts), sorted. A line no
+# task starts on reaches nothing
+task reach-at-line
+  take graph, like reach-graph
+  take file, like text
+  take line, like number
+  like list, like text
+
+  save given, make none
+  sift module-of(graph, file, given)
+    case some
+      link start
+      save asked
+        task
+          take path, like text
+          take from, like text
+          like maybe, like reach-module
+          back loaded(graph, path, from)
+      back reach-at(start, line, asked)
+    case none
+      back make list
+
+# the file a roll site names (`code/save.tree:12:1`), under the root it is relative to
+task site-file-of
+  take root, like text
+  take site, like text
+  like maybe, like site-file
+
+  save parts, site-parts-of(site)
+  fork test, is-equal(parts/line, <>)
+    hold
+      back make none
+  save found
+    make site-file
+      bind file, node-path/resolve(root, parts/file)
+      bind line, number-of(parts/line)
+  back
+    make some
+      read found

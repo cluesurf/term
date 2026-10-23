@@ -51,6 +51,11 @@ load ../compile/node
   find type
   find view-node
 
+load ../compile/node-children
+  find node-handle
+  find node-children
+  find block-handles
+
 load ./extend
   find exception-form
   find is-generic-exception
@@ -380,6 +385,72 @@ task called-in-statement
     miss
       save nothing, 0
 
+# EVERY NAME A TASK'S BODY BINDS FOR ITSELF, at any depth and inside its closures: a `let`, a walk's item and index, a
+# closure's parameters, the names an arm's `link` lines give, a caught value's name. A call through one of them is never
+# the task of that name, for the effect rows, the raise sets, or Rust's `?` (compile/rust-emit.tree `bound-names-into`,
+# the same set): site's reactive.tree walks its cleanups as `take site, name run` / `call run`, and the walk local took
+# the raises of a test entry task `run` (seam-0026). The set is the whole body's, as async resolution's `shadowed` is,
+# so the passes agree on every call. A SET: its order is never read. Twin: check/effects.ts `boundNames`
+task bound-names
+  take body, like list, like statement
+  like list, like text
+  mark private
+
+  save found, make list
+  walk block-handles(body)
+    take handle
+    bound-names-into(handle, found)
+  back found
+
+task bound-names-into
+  take handle, like node-handle
+  take found, like list, like text
+  mark private
+
+  sift handle
+    case statement-handle
+      link held
+      sift held
+        case let
+          add-text(found, name)
+        case for-each
+          add-text(found, item)
+          fork test, is-unequal(index, <>)
+            hold
+              add-text(found, index)
+        case match
+          walk cases
+            take arm
+            walk arm/binds
+              take given
+              add-text(found, given)
+        case guard
+          sift catch
+            case some
+              link clause
+              add-text(found, clause/name)
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+    case expression-handle
+      link held
+      sift held
+        case closure
+          walk params
+            take param
+            add-text(found, param/name)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  save skip, make list
+  push(skip, <type>)
+  push(skip, <span>)
+  walk node-children(handle, skip)
+    take child
+    bound-names-into(child, found)
+
 # does the body contain a throw statement anywhere? A guarded body's throws are caught by its handler, so only the
 # handler's own throws escape a guard that has one
 task body-throws
@@ -505,12 +576,13 @@ task effect-rows
                 save row, add-text(row, effect)
         save rows/{name}, row
         # a call to one of its own parameters is that parameter, whose effects were added just above, never the
-        # top-level task of the same name
+        # top-level task of the same name. A local it binds is the same (`bound-names`)
+        save bound, bound-names(body)
         save callees, make list
         save every, called-names(body, known)
         walk every
           take callee
-          fork test, not(has-text(own-params, callee))
+          fork test, and(not(has-text(own-params, callee)), not(has-text(bound, callee)))
             hold
               push(callees, callee)
         save calls/{name}, callees
@@ -1763,12 +1835,14 @@ task raise-sets-of
         fork test, is-above(fills/length, 0)
           hold
             save direct, add-text(direct, <data-mismatch>)
-        # a call to one of its own parameters is that parameter, not the task of the same name
+        # a call to one of its own parameters is that parameter, not the task of the same name, and a call to a local it
+        # binds is that local (`bound-names`)
         save own-params, param-names(one)
+        save bound, bound-names(body)
         save callees, make list
         walk state/called
           take callee
-          fork test, not(has-text(own-params, callee))
+          fork test, and(not(has-text(own-params, callee)), not(has-text(bound, callee)))
             hold
               push(callees, callee)
         save raised-by/{name}, direct

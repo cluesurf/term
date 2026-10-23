@@ -1,0 +1,218 @@
+# THE NODE ENTRY for the Term language server: pump stdin and stdout through the wire codec (framing.tree) and the
+# dispatcher. Editors launch it with `--stdio`. Everything interesting lives in server.ts (logic) and framing.tree
+# (framing); this module only owns the real streams.
+#
+# Three things it guarantees that a bare pump did not:
+#
+#   ONE MESSAGE AT A TIME, IN ORDER. Every chunk used to start its own async loop, so two edits arriving in two chunks
+#   were analyzed concurrently and could finish in either order. Messages now go through one queue.
+#
+#   A CANCEL IS READ ON ARRIVAL, not when its turn comes, so a request still waiting in the queue is answered
+#   RequestCancelled instead of being computed for an editor that no longer wants it.
+#
+#   NOTHING TAKES THE PROCESS DOWN. The dispatcher answers a failing request with an error itself, and anything that
+#   still escapes is logged to stderr. A crashed server leaves the editor with no diagnostics and no word why.
+#
+# Ported from main.ts (term-cli-in-term-0097). The decisions:
+#   - main.ts ran its `main()` when loaded. Here it is the task `serve-stdio`, and the entry calls it, so loading the
+#     module starts nothing
+#   - the server is language-server.tree's record (`make-language-server`, `cancel`, `is-shut-down`) and
+#     request-loop.tree's `dispatch` (term-cli-in-term-0117; it was server.ts's `LanguageServer`, docked)
+#   - the queue is a list read from `next`, emptied once every message in it is answered, where `queue.shift()` took
+#     the first. The order and the moment each message is dispatched are the same
+#   - a message is the host's JSON value, and what main.ts read off one (`id`, `method`, `params?.id`) and wrote into
+#     an error reply are host expressions, so a message that is not what the protocol says reads as it read
+
+load @term/base/list
+  find list
+  find get
+
+load ./framing
+  find message-reader
+  find make-reader
+  find append-bytes
+  find encode
+
+load ./language-server
+  find language-server
+  find make-language-server
+  find cancel
+  find is-shut-down
+
+load ./request-loop
+  find dispatch
+
+dock load
+  # the global, not `<node:process>`: that docks the module NAMESPACE, and `process.on` called on it runs with the
+  # namespace as `this` ("Cannot set property _eventsCount of #<process>")
+  load <global:process>, name node-process
+
+# what the pump holds between chunks: the server, the reader, the messages waiting, and whether a drain is running
+form pump-state
+  mark shared
+  link server, like language-server
+  link reader, like message-reader
+  link queue, like list, like dynamic
+  link next, like number
+  link draining, like boolean
+
+# `{ debounce: 150, send }`: diagnostics wait this long after the last keystroke, so a burst of typing is analyzed
+# once
+bind server-options
+  take send
+    like task
+      take message, like dynamic
+  like dynamic
+  case node
+    text <(\{ debounce: 150, send: $send \})>
+
+# `(message.params as { id? } | null)?.id`, the same text as request-loop.tree's bind of this name
+bind cancel-id
+  take message, like dynamic
+  like dynamic
+  case node
+    text <($message.params)?.id>
+bind is-method
+  take message, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <($message.method === $name)>
+
+# whether a message carries an id and a method, so a fault answering it is answered with an error
+bind is-request
+  take message, like dynamic
+  like boolean
+  case node
+    text <($message.id !== undefined && $message.method !== undefined)>
+
+# the error reply main.ts wrote for a fault in the dispatcher itself
+bind fault-reply
+  take message, like dynamic
+  take problem, like dynamic
+  like dynamic
+  case node
+    text <(\{ jsonrpc: "2.0", id: $message.id, error: \{ code: -32603, message: String(($problem)?.message ?? $problem) \} \})>
+
+# `String(error)`
+bind stated-problem
+  take problem, like dynamic
+  like text
+  case node
+    text <String($problem)>
+
+# `String(error?.stack ?? error)`
+bind error-stack
+  take problem, like dynamic
+  like text
+  case node
+    text <String(($problem)?.stack ?? $problem)>
+
+task write-message
+  take message, like dynamic
+  like void
+
+  fork
+    mark unsafe
+    node-process/stdout/write(encode(message))
+  halt take
+    take problem
+    node-process/stderr/write(<term flow: could not write a message: {stated-problem(problem)}\n>)
+
+# 0 after a shutdown request, 1 without one (the protocol's rule)
+task exit-code
+  take state, like pump-state
+  like number
+
+  fork test, is-shut-down(state/server)
+    hold
+      back 0
+  back 1
+
+task drain
+  mark async
+  take state, like pump-state
+  like void
+
+  fork test, state/draining
+    hold
+      send back
+  save state/draining, true
+  walk test
+    hook test, is-below(state/next, state/queue/length)
+    hook hold
+      save message, get(state/queue, state/next)
+      save state/next, add(state/next, 1)
+      fork
+        mark unsafe
+        save replies, dispatch(state/server, message)
+        walk replies
+          take outgoing
+          write-message(outgoing)
+      halt take
+        take problem
+        # dispatch catches its own handlers; this is the last line, for a fault in the dispatcher itself
+        node-process/stderr/write(<term flow: {error-stack(problem)}\n>)
+        fork test, is-request(message)
+          hold
+            write-message(fault-reply(message, problem))
+      fork test, is-method(message, <exit>)
+        hold
+          node-process/exit(exit-code(state))
+  save state/queue, make list
+  save state/next, 0
+  save state/draining, false
+
+# one chunk off stdin: a cancel is read on arrival, every other message waits its turn
+task take-chunk
+  take state, like pump-state
+  take chunk, like bytes
+  like void
+
+  walk append-bytes(state/reader, chunk)
+    take message
+    fork test, is-method(message, <$/cancelRequest>)
+      hold
+        cancel(state/server, cancel-id(message))
+      miss
+        push(state/queue, message)
+  tick drain(state)
+
+task serve-stdio
+  like void
+
+  save state
+    make pump-state
+      bind server, make-language-server(server-options(write-message))
+      bind reader, make-reader()
+      bind queue, make list
+      bind next, 0
+      bind draining, false
+
+  node-process/stdin/on
+    <data>
+    task
+      take chunk, like bytes
+      like void
+      take-chunk(state, chunk)
+
+  # the editor closing the pipe is the end of the session
+  node-process/stdin/on
+    <end>
+    task
+      like void
+      node-process/exit(exit-code(state))
+
+  node-process/on
+    <uncaughtException>
+    task
+      take problem, like dynamic
+      like void
+      node-process/stderr/write(<term flow: uncaught {error-stack(problem)}\n>)
+
+  node-process/on
+    <unhandledRejection>
+    task
+      take problem, like dynamic
+      like void
+      node-process/stderr/write(<term flow: unhandled {error-stack(problem)}\n>)

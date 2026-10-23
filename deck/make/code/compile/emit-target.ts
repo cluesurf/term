@@ -19,6 +19,7 @@ import { emitRust } from '@term/make/code/compile/rust'
 import { emitSwift } from '@term/make/code/compile/swift'
 import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
 import * as source from '@term/make/code/compile/target-source'
+import type { WakeGroup } from '@term/make/code/compile/wake'
 
 export type EmitTarget = 'node' | 'rust' | 'swift' | 'kotlin'
 
@@ -30,22 +31,26 @@ export function isEmitTarget(value: string): value is EmitTarget {
 
 // the source for one target. `typescript` is the compile's own TypeScript, which the `node` target uses as it is; the
 // native targets emit from `program`. The compile must have been run with `env` set to the same target, because the
-// env decides which `{platform}` modules the program was built from.
+// env decides which `{platform}` modules the program was built from. `wake` is the compile's own (`result.wake`), which
+// every native emitter writes as the hive's wake chain when the program holds `hive-wake` (term/hive decision 002)
 export function emitTarget(input: {
   program: Program
   typescript: string
   target: EmitTarget
   readRuntime: (path: string) => string | undefined
+  wake?: WakeGroup[]
 }): string {
+  const wake = input.wake
+
   return source.emitTarget(
     input.program,
     input.typescript,
     input.target,
     (program, target) => nativePrelude(program, target, input.readRuntime),
     joinTypeScriptPrelude,
-    program => emitRust(program),
-    program => emitSwift(program),
-    program => emitKotlin(program),
+    program => emitRust(program, { wake }),
+    program => emitSwift(program, { wake }),
+    program => emitKotlin(program, { wake }),
     hoistKotlinImports,
   )
 }
@@ -64,14 +69,16 @@ export function emitTargetUnits(input: {
   program: Program
   target: Exclude<EmitTarget, 'node'>
   readRuntime: (path: string) => string | undefined
+  wake?: WakeGroup[]
 }): UnitFiles {
+  const wake = input.wake
   const written = source.emitTargetUnits(
     input.program,
     input.target,
     (program, target) => nativePrelude(program, target, input.readRuntime),
-    program => emitRust(program, { units: true }),
-    program => emitSwift(program, { units: true }),
-    program => emitKotlin(program, { units: true }),
+    program => emitRust(program, { units: true, wake }),
+    program => emitSwift(program, { units: true, wake }),
+    program => emitKotlin(program, { units: true, wake }),
     hoistKotlinImports,
   )
 

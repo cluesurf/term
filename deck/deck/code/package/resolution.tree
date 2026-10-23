@@ -1,0 +1,522 @@
+# A manifest's links resolved to one version of each deck, and the lockfile that pins them. Ported from
+# deck/deck/code/resolve.ts (term-cli-in-term-0076).
+#
+# THE WHOLE GRAPH, BREADTH FIRST, IN DECLARED ORDER. Every link of one depth is LOOKED UP at once (the slow part,
+# concurrent), and the answers are RECORDED in the order the links were declared, so one manifest and one lockfile
+# resolve to one graph however the registries answer, and a failure is the first in that order. One version of a deck
+# is installed: every other link to it must accept that version, or the resolution is refused naming both.
+#
+# The decisions:
+#   - the lookups of one depth are started with `tick` and each answers a `looked` (what it found, or what it raised),
+#     so every lookup settles before the first failure in order is raised, as the original's `Promise.allSettled`
+#   - a failure the lookup raised is passed on as that very error (an awaited `Promise.reject`), so a registry's own
+#     refusal reaches the caller unchanged
+#   - the registry and OCI readers (fetch.ts, oci/client.ts, oci/install.ts, oci/reference.ts) are docked until their
+#     lanes port them, and the fetch config passes through them as the host value it is. A version the registry's list
+#     answers is a host `Code` and is read into version.tree's `code`
+#   - a workspace deck is a `workspace-deck`: its manifest, and the folder it lives in when there is one (the original
+#     read `dir` off the manifest object by reflection)
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/text
+  find trim
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/hash
+  find hash
+
+load @term/base/task
+  find handle
+
+load ../version
+  find code
+  find code-hold
+  find parse-code
+  find parse-code-hold
+  find show-code
+  find code-match
+  find pick-best-code
+  find best-code
+
+load ./manifest-shape
+  find deck-manifest
+  find deck-link
+
+load ./lockfile-shape
+  find lock-link
+  find lock-entry
+  find lockfile
+
+load ./manifest-text
+  find write-code-hold
+
+dock load
+  load <@term/deck/code/fetch>, name deck-fetch
+  load <@term/deck/code/oci/client>, name oci-client
+  load <@term/deck/code/oci/install>, name oci-install
+  load <@term/deck/code/oci/reference>, name oci-reference
+  load <global:Object>, name host-object
+  load <global:Promise>, name host-promise
+  load <global:console>, name host-console
+
+form resolved-deck
+  link name, like text
+  link code, like code
+  # the integrity the registry declared, or for an `oci://` package the manifest digest
+  link hash, like text
+  # the tarball url, or for an `oci://` package the pinned reference
+  link site, like text
+  # the signer's public key, for an `oci://` package
+  link key
+    like text
+    need false
+  link link
+    like hash, like text
+      like text
+  # a deck from the project's own `deck/` folder: the folder itself
+  link local
+    like text
+    need false
+
+form resolution
+  link decks
+    like hash, like text
+      like resolved-deck
+
+# a workspace deck: its manifest, and the folder it lives in
+form workspace-deck
+  link manifest, like deck-manifest
+  link dir
+    like maybe, like text
+    need false
+
+# one link waiting to be resolved, and who asked for it: `deck.tree`, or the deck whose own link it is
+form pending
+  link link, like deck-link
+  link from, like text
+
+# a range one deck was asked for, and who asked
+form asked-hold
+  link hold, like code-hold
+  link from, like text
+
+# what looking one link up found: the deck to record under its key, and its own links, resolved next
+form found
+  link key, like text
+  link deck, like resolved-deck
+  link links, like list, like deck-link
+
+# a lookup settled: what it found, or what it raised
+form looked
+  link ok, like boolean
+  link found
+    like maybe, like found
+    need false
+  link error, like unknown
+
+# what the docked registry readers are asked
+form meta-ask
+  link name, like text
+  link config, like dynamic
+
+form version-ask
+  link meta, like dynamic
+  link code, like text
+
+form route-ask
+  link name, like text
+  link config, like dynamic
+
+form transport-ask
+  link host, like text
+  link offline, like boolean
+
+form tags-ask
+  link transport, like dynamic
+  link repository, like text
+
+form expect-version
+  link version, like text
+
+form oci-version-ask
+  link transport, like dynamic
+  link repository, like text
+  link package, like text
+  link reference, like text
+  link scope, like text
+  link keys-repository, like text
+  link host, like text
+  link trust-dir, like text
+  link expect, like expect-version
+  link warn
+    like task
+      take message, like text
+      like void
+
+form pinned-ask
+  link repository, like dynamic
+  link digest, like text
+
+# a host `Code` (prerelease and build absent when there are none) as version.tree's `code`
+task code-of-host
+  take host, like dynamic
+  like code
+  mark private
+
+  back make(code, bind(major, host/major), bind(minor, host/minor), bind(patch, host/patch), bind(prerelease, text-or-empty(host/prerelease)), bind(build, text-or-empty(host/build)))
+
+task text-or-empty
+  take value, like unknown
+  like text
+  mark private
+
+  sift value
+    case text
+      back value
+    miss
+      back <>
+
+# the host's items as a list, so they can be walked
+task host-items
+  take items, like list, like dynamic
+  like list, like dynamic
+  mark private
+
+  back items
+
+task warn-indented
+  take message, like text
+  like void
+  mark private
+
+  host-console/warn(<  {message}>)
+
+# a link a lockfile holds, read as the range it is. `*` is what a workspace deck's links were written as before they
+# carried their own ranges: any version
+task locked-hold
+  take value, like text
+  like code-hold
+  mark private
+
+  fork test, is-equal(trim(value), <*>)
+    hold
+      back make(band, bind(base, parse-code(<0.0.0>)), bind(head, parse-code(<9007199254740991.0.0>)))
+  back parse-code-hold(value)
+
+task find-locked-version
+  take name, like text
+  take hold, like code-hold
+  take lock, like maybe, like lockfile
+  like maybe, like lock-entry
+  mark private
+
+  sift lock
+    case some
+      link locked
+      walk locked/decks
+        take entry
+        fork test, and(is-equal(entry/name, name), code-match(entry/code, hold))
+          hold
+            back make(some, entry)
+      back make none
+    case none
+      back make none
+
+# One link looked up on an OCI registry: the tags are the versions, the best one's manifest and config read and
+# VERIFIED before anything is recorded, and the links followed are the signed config's
+task look-up-oci
+  take link, like deck-link
+  take config, like dynamic
+  take route, like dynamic
+  like found
+  mark private
+
+  save host, route/registry/host
+  save transport, oci-client/transport-for(make(transport-ask, bind(host, host), bind(offline, config/offline)))
+  save tags, wait oci-install/list-oci-versions(make(tags-ask, bind(transport, transport), bind(repository, route/repository/name)))
+  save versions, make list
+  walk host-items(tags)
+    take tag
+    fork
+      mark unsafe
+      versions/push(parse-code(tag))
+    halt take
+      take refused
+      # a tag that starts with a digit and is not a version is not one of ours
+      save nothing, 0
+  save best, pick-best-code(versions, link/mark)
+  fork test, not(best/found)
+    hold
+      halt <No version of {link/name} matches constraint ({versions/length} published at {transport/label}/{route/repository/name})>
+  save code-text, show-code(best/code)
+  save asked
+    make oci-version-ask
+      bind transport, transport
+      bind repository, route/repository/name
+      bind package, link/name
+      bind reference, oci-reference/tag-of-version(code-text)
+      bind scope, route/scope
+      bind keys-repository, route/keys-repository
+      bind host, host
+      bind trust-dir, oci-client/trust-dir()
+      bind expect, make(expect-version, bind(version, code-text))
+      bind warn, warn-indented
+  save version, wait oci-install/read-oci-version(asked)
+  save links, make hash
+  save follow, make list
+  walk host-items(version/config/link)
+    take each
+    links/set(each/deck, each/code)
+    follow/push(make(deck-link, bind(name, each/deck), bind(mark, parse-code-hold(each/code))))
+  save deck
+    make resolved-deck
+      bind name, link/name
+      bind code, best/code
+      bind hash, version/digest
+      bind site, oci-reference/pinned-reference(make(pinned-ask, bind(repository, route/repository), bind(digest, version/digest)))
+      bind link, links
+  fork test, not(is-equal(text-or-empty(version/config/key), <>))
+    hold
+      save deck/key, text-or-empty(version/config/key)
+  back make(found, bind(key, <{link/name}@{code-text}>), bind(deck, deck), bind(links, follow))
+
+# One link looked up: a workspace deck first, then the lockfile, then its registry. It reads what it is given and
+# writes none of it, so the links of one depth can be looked up at once and recorded in order
+task look-up
+  take link, like deck-link
+  take config, like dynamic
+  take lock, like maybe, like lockfile
+  take workspaces
+    like hash, like text
+      like workspace-deck
+  like found
+  mark private
+
+  fork test, workspaces/has(link/name)
+    hold
+      save workspace, workspaces/get(link/name)
+      save ws-version, workspace/manifest/mark
+      fork test, code-match(ws-version, link/mark)
+        hold
+          save ws-links, make hash
+          walk workspace/manifest/link
+            take declared
+            ws-links/set(declared/name, write-code-hold(declared/mark))
+          save deck, make(resolved-deck, bind(name, link/name), bind(code, ws-version), bind(hash, <>), bind(site, <>), bind(link, ws-links))
+          sift workspace/dir
+            case some
+              link folder
+              save deck/local, folder
+            case none
+              save nothing, 0
+          back make(found, bind(key, <{link/name}@{show-code(ws-version)}>), bind(deck, deck), bind(links, workspace/manifest/link))
+
+  sift find-locked-version(link/name, link/mark, lock)
+    case some
+      link locked
+      save locked-links, make hash
+      save follow, make list
+      walk locked/link
+        take each
+        locked-links/set(each/name, each/code)
+      # A locked deck's links are the RANGES it declares (`0.1.x`, `1.2.0..2.0.0`), so each is read as a range and
+      # finds its own lock entry
+      walk locked/link
+        take each
+        follow/push(make(deck-link, bind(name, each/name), bind(mark, locked-hold(each/code))))
+      save deck, make(resolved-deck, bind(name, locked/name), bind(code, locked/code), bind(hash, locked/hash), bind(site, locked/site), bind(link, locked-links))
+      fork test, not(is-equal(locked/key, <>))
+        hold
+          save deck/key, locked/key
+      back make(found, bind(key, <{link/name}@{show-code(locked/code)}>), bind(deck, deck), bind(links, follow))
+    case none
+      save nothing, 0
+
+  # a scope on an `oci://` registry resolves over its tag list and its signed configs
+  save route, oci-client/oci-route-of(make(route-ask, bind(name, link/name), bind(config, config)))
+  fork test, route
+    hold
+      back look-up-oci(link, config, route)
+
+  save meta, wait deck-fetch/fetch-package-meta(make(meta-ask, bind(name, link/name), bind(config, config)))
+  save versions, make list
+  walk host-items(deck-fetch/get-version-list(make(version-ask, bind(meta, meta), bind(code, <>))))
+    take listed
+    versions/push(code-of-host(listed))
+  save best, pick-best-code(versions, link/mark)
+  fork test, not(best/found)
+    hold
+      halt <No version of {link/name} matches constraint>
+  save code-text, show-code(best/code)
+  save version-meta, deck-fetch/get-version-meta(make(version-ask, bind(meta, meta), bind(code, code-text)))
+  fork test, not(version-meta)
+    hold
+      halt <Version metadata not found for {link/name}@{code-text}>
+  save dep-links, make hash
+  save follow, make list
+  walk host-items(host-object/entries(version-meta/dependencies))
+    take entry
+    save dep-name, entry/0
+    save dep-hold, entry/1
+    dep-links/set(dep-name, dep-hold)
+    follow/push(make(deck-link, bind(name, dep-name), bind(mark, parse-code-hold(dep-hold))))
+  save deck, make(resolved-deck, bind(name, link/name), bind(code, best/code), bind(hash, version-meta/integrity), bind(site, version-meta/tarball), bind(link, dep-links))
+  back make(found, bind(key, <{link/name}@{code-text}>), bind(deck, deck), bind(links, follow))
+
+# one lookup, settled: its answer, or what it raised
+task look-settled
+  take link, like deck-link
+  take config, like dynamic
+  take lock, like maybe, like lockfile
+  take workspaces
+    like hash, like text
+      like workspace-deck
+  like looked
+  mark private
+  mark async
+
+  fork
+    mark unsafe
+    save answer, look-up(link, config, lock, workspaces)
+    back make(looked, bind(ok, true), bind(found, make(some, answer)), bind(error, 0))
+  halt take
+    take problem
+    back make(looked, bind(ok, false), bind(found, make none), bind(error, problem))
+
+# One version of a deck is installed, the first link's pick. Every other link to it must accept that version: Term
+# refuses, naming both
+task check-holds
+  take holds
+    like hash, like text
+      like list, like asked-hold
+  take resolved
+    like hash, like text
+      like resolved-deck
+  like void
+  mark private
+
+  walk holds/keys()
+    take name
+    save picked, make none
+    walk resolved/values()
+      take deck
+      fork test, is-equal(deck/name, name)
+        hold
+          save picked, make(some, deck)
+          halt
+    sift picked
+      case some
+        link picked-deck
+        save asked, holds/get(name)
+        save refused, make none
+        walk asked
+          take one
+          fork test, not(code-match(picked-deck/code, one/hold))
+            hold
+              save refused, make(some, one)
+              halt
+        sift refused
+          case some
+            link refused-hold
+            save first, get(asked, 0)
+            walk asked
+              take one
+              fork test, code-match(picked-deck/code, one/hold)
+                hold
+                  save first, one
+                  halt
+            halt <{name}: {first/from} accepts {write-code-hold(first/hold)} and {refused-hold/from} accepts {write-code-hold(refused-hold/hold)}, and one version of a deck is installed. {show-code(picked-deck/code)} fits only the first. Widen one of the two ranges>
+          case none
+            save nothing, 0
+      case none
+        save nothing, 0
+
+task resolve
+  take manifest, like deck-manifest
+  take config, like dynamic
+  take lock, like maybe, like lockfile
+  take workspaces
+    like hash, like text
+      like workspace-deck
+  like resolution
+  mark async
+
+  save resolved, make hash
+  save seen, make hash
+  save holds, make hash
+  save level, make list
+  walk manifest/link
+    take each
+    level/push(make(pending, bind(link, each), bind(from, <deck.tree>)))
+
+  walk test
+    hook test, is-above(level/length, 0)
+    hook hold
+      save fresh, make list
+      walk level
+        take one
+        save asked, make list
+        fork test, holds/has(one/link/name)
+          hold
+            save asked, holds/get(one/link/name)
+        asked/push(make(asked-hold, bind(hold, one/link/mark), bind(from, one/from)))
+        holds/set(one/link/name, asked)
+        fork test, not(seen/has(one/link/name))
+          hold
+            seen/set(one/link/name, true)
+            fresh/push(one)
+      save works, make list
+      walk fresh
+        take one
+        works/push(tick look-settled(one/link, config, lock, workspaces))
+      save answers, make list
+      walk works
+        take work
+        answers/push(work/wait())
+      save next, make list
+      save at, 0
+      walk answers
+        take answer
+        fork test, not(answer/ok)
+          hold
+            wait host-promise/reject(answer/error)
+        sift answer/found
+          case some
+            link got
+            fork test, not(resolved/has(got/key))
+              hold
+                resolved/set(got/key, got/deck)
+                save asker, get(fresh, at)
+                walk got/links
+                  take each
+                  next/push(make(pending, bind(link, each), bind(from, asker/link/name)))
+          case none
+            save nothing, 0
+        save at, add(at, 1)
+      save level, next
+
+  check-holds(holds, resolved)
+  back make(resolution, bind(decks, resolved))
+
+task build-lockfile
+  take resolved, like resolution
+  like lockfile
+
+  save decks, make list
+  walk resolved/decks/values()
+    take deck
+    save links, make list
+    walk deck/link/entries()
+      take entry
+      links/push(make(lock-link, bind(name, entry/first), bind(code, entry/second)))
+    save entry-out, make(lock-entry, bind(name, deck/name), bind(code, deck/code), bind(hash, deck/hash), bind(site, deck/site), bind(link, links))
+    fork test, not(is-equal(deck/key, <>))
+      hold
+        save entry-out/key, deck/key
+    decks/push(entry-out)
+  back make(lockfile, bind(version, 1), bind(decks, decks))

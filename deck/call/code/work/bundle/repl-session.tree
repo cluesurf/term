@@ -1,0 +1,533 @@
+# `term walk`, the REPL. Ported from call/code/walk.ts, term-cli-in-term-0024.
+#
+# A live session: accumulate definitions, and evaluate an expression by wrapping it in a task, compiling the whole
+# accumulated program with the real compiler, transpiling the emitted TypeScript to JavaScript, importing it, and calling
+# the wrapper. `make-repl` and `feed-block` hold no terminal I/O, so they are testable; `call-walk` is the session on a
+# terminal or a pipe. How a block is read (call/code/repl-read.tree) was already Term.
+#
+# Docked: the compiler, the project resolver (call/code/make.ts), the output run (output.ts), node's readline and
+# esbuild's transform (decision 002).
+
+load @term/call/repl-read
+  find read-block
+  find repl-input
+  find trim-start
+  find is-blank
+  find is-definition
+
+dock load
+  load <node:fs>, name node-file
+  load <node:os>, name node-system
+  load <node:path>, name node-path
+  load <node:url>, name node-address
+  load <node:readline>, name node-readline
+  load <esbuild>, name esbuild-module
+  load <@term/make/code/compile/compile>, name compile-module
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/output>, name output
+  load <global:process>, name host-process
+
+# ---- the session ----
+
+# the definitions accepted so far, the resolver loads go through (none for the standard library alone), and the file
+# the session's text is taken to live in, so a relative `load` resolves from the project folder
+form repl-session
+  mark shared
+  link definitions, like list, like text
+  link resolve, like dynamic
+  link file, like text
+
+form compile-source
+  link file, like text
+  link text, like text
+
+form compile-options
+  link resolve, like dynamic
+
+# what a block answered: `definition` (its name) or `value` (the value's line)
+form fed-text
+  link kind, like text
+  link text, like text
+
+# a block refused: the compiler's diagnostics when it refused it, each drawn as its own Problem item
+form fed-refusal
+  link kind, like text
+  link text, like text
+  link diagnostics, like list, like dynamic
+
+form fed-error
+  link kind, like text
+  link text, like text
+
+form fed-empty
+  link kind, like text
+
+form transform-ask
+  link loader, like text
+  link format, like text
+
+# lines joined with a line break (a `\n` in a bind's text is written out as the break itself, inside a string)
+bind repl-joined-lines
+  take parts, like list, like text
+  like text
+  case node
+    text <$parts.join(String.fromCharCode(10))>
+
+# a text's lines (split at a line feed)
+bind repl-split-lines
+  take text, like text
+  like list, like text
+  case node
+    text <$text.split(String.fromCharCode(10))>
+
+# `name: message` per diagnostic, one a line
+bind repl-diagnostic-lines
+  take diagnostics, like list, like dynamic
+  like text
+  case node
+    text <$diagnostics.map((one) =\> one.name + ": " + one.message).join(String.fromCharCode(10))>
+
+# the resolver's answer for a load, true as JavaScript reads it; false with no resolver
+bind repl-answers-load
+  take resolve, like dynamic
+  take name, like text
+  take file, like text
+  like boolean
+  case node
+    text <Boolean($resolve && $resolve($name, $file))>
+
+# the session has a resolver
+bind repl-has-resolver
+  take resolve, like dynamic
+  like boolean
+  case node
+    text <Boolean($resolve)>
+
+# import the module and call its eval wrapper, the answer awaited as `await run()` awaited it
+bind repl-evaluate
+  take href, like text
+  like dynamic
+  case node
+    text <import($href).then((module) =\> (module.seedReplEval ? module.seedReplEval() : undefined))>
+
+# a runtime value to a readable line
+bind repl-display
+  take value, like dynamic
+  like text
+  case node
+    text <(typeof $value === "string" || ($value && typeof $value === "object") ? JSON.stringify($value) : String($value))>
+
+# a thrown value's message
+bind repl-thrown-message
+  take error, like dynamic
+  like text
+  case node
+    text <($error instanceof Error ? $error.message : String($error))>
+
+task make-repl
+  take resolve, like dynamic
+  take file
+    like text
+    fall <repl.tree>
+  like repl-session
+
+  back make(repl-session, bind(definitions, make list), bind(resolve, resolve), bind(file, file))
+
+# the accepted definitions and one more, as one program
+task program-with
+  take session, like repl-session
+  take last, like text
+  like text
+  mark private
+
+  save parts, make list
+  walk session/definitions
+    take one
+    parts/push(one)
+  parts/push(last)
+  back repl-blank-joined(parts)
+
+# definitions are separated by a blank line
+bind repl-blank-joined
+  take parts, like list, like text
+  like text
+  case node
+    text <$parts.join(String.fromCharCode(10, 10))>
+
+task refused
+  take diagnostics, like list, like dynamic
+  like dynamic
+  mark private
+
+  back make(fed-refusal, bind(kind, <error>), bind(text, repl-diagnostic-lines(diagnostics)), bind(diagnostics, diagnostics))
+
+task feed-block
+  take session, like repl-session
+  take block, like text
+  like dynamic
+  mark async
+
+  save read, read-block(block)
+  sift read
+    case empty
+      back make(fed-empty, bind(kind, <empty>))
+    case definition
+      link trimmed
+      link named
+      # a definition: accept it only if the program still compiles with it added
+      save result, compile-module/compile(make(compile-source, bind(file, session/file), bind(text, program-with(session, trimmed))), make(compile-options, bind(resolve, session/resolve)))
+      fork test, not(result/ok)
+        hold
+          back refused(result/diagnostics)
+      # a `load` of a path nothing answers is refused, not `added`: it was accepted, and the first call to a name it
+      # was to bring failed as an unknown name
+      fork test, and(repl-starts-with-load(trim-start(trimmed)), and(repl-has-resolver(session/resolve), not(repl-answers-load(session/resolve, named, session/file))))
+        hold
+          back make(fed-error, bind(kind, <error>), bind(text, <nothing answers load {named}>))
+      session/definitions/push(trimmed)
+      back make(fed-text, bind(kind, <definition>), bind(text, named))
+    case expression
+      link wrapped
+      # an expression: wrapped as `task seed-repl-eval / send back / <expr>`, and the wrapper run
+      save result, compile-module/compile(make(compile-source, bind(file, session/file), bind(text, program-with(session, wrapped))), make(compile-options, bind(resolve, session/resolve)))
+      fork test, not(result/ok)
+        hold
+          back refused(result/diagnostics)
+      save answer, repl-none()
+      fork
+        mark unsafe
+        save value, run-program(result/typescript)
+        save answer, make(fed-text, bind(kind, <value>), bind(text, repl-display(value)))
+      halt take
+        take error
+        save answer, make(fed-error, bind(kind, <error>), bind(text, repl-thrown-message(error)))
+      back answer
+
+# nothing yet (`undefined`)
+bind repl-none
+  like dynamic
+  case node
+    text <undefined>
+
+# a text begins `load `
+bind repl-starts-with-load
+  take text, like text
+  like boolean
+  case node
+    text <$text.startsWith("load ")>
+
+# transpile the emitted TypeScript to an ES module, import it, and answer the value of the eval wrapper
+task run-program
+  take typescript, like text
+  like dynamic
+  mark async
+  mark private
+
+  save transformed, esbuild-module/transform-sync(typescript, make(transform-ask, bind(loader, <ts>), bind(format, <esm>)))
+  save dir, node-file/mkdtemp-sync(node-path/join(node-system/tmpdir(), <seed-repl->))
+  save file, node-path/join(dir, <repl.mjs>)
+  node-file/write-file-sync(file, transformed/code)
+  save address, node-address/path-to-file-url(file)
+  save value, wait repl-evaluate(address/href)
+  back value
+
+# ---- the session on a terminal or a pipe ----
+
+# one `term walk`: the session, the folder it runs in, the readline interface, the lines of the block being typed, the
+# chain of steps still to run, and whether the interface has closed
+form walk-run
+  mark shared
+  link repl, like repl-session
+  link root, like text
+  link reader, like dynamic
+  link buffer, like list, like text
+  link work, like dynamic
+  link closed, like boolean
+
+form walk-ask
+  link root, like text
+
+form open-ask
+  link verb, like text
+  link root, like text
+  link subject, like text
+
+form said-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+
+form diagnostic-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link facts, like list, like text
+  link message, like list, like text
+  link fields, like list, like dynamic
+
+form run-problem
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+
+form caught-problem
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+
+form ended-close
+  link verdict, like text
+
+form reader-ask
+  link input, like dynamic
+  link output, like dynamic
+  link prompt, like text
+
+# the first character upper-cased (`text.charAt(0).toUpperCase() + text.slice(1)`)
+bind repl-capital
+  take text, like text
+  like text
+  case node
+    text <($text.charAt(0).toUpperCase() + $text.slice(1))>
+
+# a value is true as JavaScript reads it
+bind repl-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# an answer carries diagnostics, at least one
+bind repl-has-diagnostics
+  take answer, like dynamic
+  like boolean
+  case node
+    text <Boolean($answer.diagnostics?.length)>
+
+# a text without its surrounding white space, as JavaScript trims
+bind repl-trimmed
+  take text, like text
+  like text
+  case node
+    text <$text.trim()>
+
+# a settled promise, the chain's start
+bind repl-resolved
+  like dynamic
+  case node
+    text <Promise.resolve()>
+
+# the step queued after the chain so far
+bind repl-chain
+  take work, like dynamic
+  take job, like dynamic
+  like dynamic
+  case node
+    text <$work.then($job)>
+
+# the session's end: the chain drained, the last block flushed, a failure on the way reported, then the goodbye; a
+# failure of the goodbye itself fails the run
+bind repl-finish
+  take work, like dynamic
+  take flush, like dynamic
+  take caught, like dynamic
+  take done, like dynamic
+  take failed, like dynamic
+  like void
+  case node
+    text <void $work.then($flush).catch($caught).then($done).catch($failed)>
+
+# a caught value as the subject of its item (`String(error.message ?? error)`)
+bind repl-caught-subject
+  take error, like dynamic
+  like text
+  case node
+    text <String($error.message ?? $error)>
+
+# the process's input and output streams
+bind repl-stdin
+  like dynamic
+  case node
+    text <process.stdin>
+
+bind repl-stdout
+  like dynamic
+  case node
+    text <process.stdout>
+
+# prompt again, only while the interface is open: once closed, `prompt` throws (`readline was closed`), and a closed
+# interface is normal here (`exit`, or piped input ending while a definition still compiles)
+task prompt-again
+  take run, like walk-run
+  like void
+  mark private
+
+  fork test, not(run/closed)
+    hold
+      run/reader/prompt()
+
+# the block typed so far, fed, and what it answered printed
+task flush-walk
+  take run, like walk-run
+  like void
+  mark async
+  mark private
+
+  save block, repl-joined-lines(run/buffer)
+  save run/buffer, make list
+  fork test, is-blank(block)
+    hold
+      back void
+  save answer, feed-block(run/repl, block)
+  save kind, repl-kind-of(answer)
+  fork test, is-equal(kind, <value>)
+    hold
+      output/printData(<{repl-text-of(answer)}\n>)
+      back void
+  fork test, is-equal(kind, <definition>)
+    hold
+      output/printData(<added {repl-text-of(answer)}\n>)
+      back void
+  fork test, and(is-equal(kind, <error>), repl-has-diagnostics(answer))
+    hold
+      # the message is the subject and the name a fact (section 12); the session's text is not a file, so no `at`
+      walk repl-diagnostics-of(answer)
+        take diagnostic
+        report-diagnostic(diagnostic)
+      back void
+  fork test, is-equal(kind, <error>)
+    hold
+      output/report(make(run-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <run>), bind(subject, repl-capital(repl-text-of(answer)))))
+
+bind repl-kind-of
+  take answer, like dynamic
+  like text
+  case node
+    text <$answer.kind>
+
+bind repl-text-of
+  take answer, like dynamic
+  like text
+  case node
+    text <$answer.text>
+
+bind repl-diagnostics-of
+  take answer, like dynamic
+  like list, like dynamic
+  case node
+    text <$answer.diagnostics>
+
+# one diagnostic as a Problem item: its first line the subject, its name a fact, the rest the message, its hint next
+task report-diagnostic
+  take diagnostic, like dynamic
+  like void
+  mark private
+
+  save lines, repl-split-lines(diagnostic/message)
+  save first, lines/0
+  save rest, make list
+  save at, 1
+  walk test
+    hook test, is-below(at, lines/length)
+    hook hold
+      rest/push(lines/{at})
+      save at, add(at, 1)
+  save glyph, <failed>
+  fork test, repl-is-warning(diagnostic)
+    hold
+      save glyph, <warning>
+  save facts, make list
+  facts/push(diagnostic/name)
+  save fields, make list
+  fork test, repl-truthy(diagnostic/hint)
+    hold
+      fields/push(output/field(<next>, diagnostic/hint))
+  output/report(make(diagnostic-item, bind(glyph, glyph), bind(kind, <problem>), bind(verb, <check>), bind(subject, repl-capital(first)), bind(facts, facts), bind(message, rest), bind(fields, fields)))
+
+bind repl-is-warning
+  take diagnostic, like dynamic
+  like boolean
+  case node
+    text <($diagnostic.severity === "warning")>
+
+# THE SESSION IS AN INTERACTION, so its dialog is data on stdout: the prompt, each value, `added <name>` for a
+# definition, and `bye`, exactly as typed and answered. Around it the run is items on stderr: the opening with how to
+# use it, a Problem item per input that did not compile or threw, and the closing item
+task call-walk
+  take input, like walk-ask
+  like void
+  mark async
+
+  output/openRun(make(open-ask, bind(verb, <walk>), bind(root, input/root), bind(subject, <Term REPL>)))
+  save said, make list
+  said/push(<A definition is task, form or load. Finish a multi-line block with a blank line.>)
+  output/report(make(said-item, bind(glyph, <info>), bind(verb, <walk>), bind(subject, <Type a definition to add it, an expression to evaluate it, or exit>), bind(message, said)))
+  # the project the session was started in, as `term make` resolves it: its own files by a relative path and its
+  # linked decks as well as the standard library
+  save repl, make-repl(make-module/projectResolver(input/root, <node>, input/root), node-path/join(input/root, <repl.tree>))
+  save reader, node-readline/create-interface(make(reader-ask, bind(input, repl-stdin()), bind(output, repl-stdout()), bind(prompt, <term\> >)))
+  save run, make(walk-run, bind(repl, repl), bind(root, input/root), bind(reader, reader), bind(buffer, make list), bind(work, repl-resolved()), bind(closed, false))
+  reader/on
+    <close>
+    task
+      like void
+      save run/closed, true
+  reader/prompt()
+  # READLINE DOES NOT AWAIT AN ASYNC `line` LISTENER: piped, every queued line fires back to back and `close` follows
+  # at once. Chaining the work makes the order the input's order, and `close` waits for the chain to drain. THE WHOLE
+  # STEP GOES IN THE QUEUE, the buffer push included: the listener runs for every piped line before a single queued
+  # job does
+  reader/on
+    <line>
+    task
+      take line, like text
+      like void
+      fork test, is-equal(repl-trimmed(line), <exit>)
+        hold
+          run/reader/close()
+          back void
+      save job
+        task
+          like void
+          mark async
+          fork test, is-blank(line)
+            hold
+              flush-walk(run)
+            miss
+              run/buffer/push(line)
+              # a single-line expression evaluates at once; an indented block waits for a blank line
+              fork test, and(is-equal(run/buffer/length, 1), not(is-definition(trim-start(line))))
+                hold
+                  flush-walk(run)
+          prompt-again(run)
+      save run/work, repl-chain(run/work, job)
+  reader/on
+    <close>
+    task
+      like void
+      # whatever is still evaluating gets to finish and print, and a block the input ended without a blank line after
+      # is flushed, never dropped
+      save flush
+        task
+          like void
+          mark async
+          flush-walk(run)
+      save caught
+        task
+          take error, like dynamic
+          like void
+          output/report(make(caught-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, repl-caught-subject(error))))
+      save done
+        task
+          like void
+          output/printData(<bye\n>)
+          host-process/exit(output/closeRun(make(ended-close, bind(verdict, <Session ended>))))
+      save failed
+        task
+          take error, like dynamic
+          like void
+          host-process/exit(output/failRun(error, input/root))
+      repl-finish(run/work, flush, caught, done, failed)

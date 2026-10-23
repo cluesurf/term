@@ -1,0 +1,205 @@
+# A real language model asked for a synthesis body: its settings read from the environment, the request sent to a
+# chat-completions endpoint, and the reply read as an expression the synthesis loop then proves. A wrong reply is
+# refused by the proof and a missing one is no proposal, so the model can never ship a wrong body. The key is read from
+# the environment and never written down.
+#
+# Ported from deck/test/code/model.ts (cli-in-term-0105). Its reply parser is model-reply.tree already. The request
+# goes through the host's own `fetch` and `JSON`, docked, so a refused connection, a status and a body that is not
+# JSON fail the way the original's did. `realModelProposer(config)` was a closure over the settings, which Term has no
+# spelling for: `ask-model-for-gap` is its body, and a caller's proposer task (model-proposer.tree's `async-proposer`)
+# calls it with the settings it holds.
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/environment
+  find variable
+  find has-variable
+
+load @term/base/json
+  find get-field
+  find get-item
+  find json-kind
+  find as-text
+  find as-boolean
+  find make-object
+  find set-field
+  find make-array
+  find push-item
+  find from-text
+  find from-number
+
+load ./expression-grammar
+  find expression
+
+load ./model-reply
+  find parse-reply
+
+load ./repair-loop
+  find gap-report
+
+load ./model-proposer
+  find gap-prompt
+
+dock load
+  # node's global scope, whose `fetch` and `JSON` the original called. `globalThis` is emitted renamed, as
+  # `globalThis_`, so the node name is docked; and a `<global:JSON>` dock beside a load of @term/base/json prepends
+  # the json runtime shim a second time (`const json` declared twice), so JSON is reached through this one too
+  load <global:global>, name host-global
+
+# where and how to reach the model
+form model-config
+  # the chat-completions endpoint, such as https://api.openai.com/v1/chat/completions
+  link endpoint, like text
+  # read from the environment, never written down
+  link api-key, like text
+  link model, like text
+  # the inputs' names, in order, for reading the reply
+  link names, like list, like text
+
+# `TERM_<name>`, else the older `SEED_<name>`, else none: the CLI's own rule, written here so the library does not
+# load the CLI back. A variable that is set but empty is that empty text, as the original's `??` kept it
+task env-value
+  take name, like text
+  like maybe, like text
+
+  host current, <TERM_{name}>
+  fork test, has-variable(current)
+    hold
+      back
+        make some
+          bind value, variable(current)
+
+  host legacy, <SEED_{name}>
+  fork test, has-variable(legacy)
+    hold
+      back
+        make some
+          bind value, variable(legacy)
+
+  back make none
+
+# the text of a maybe, the empty text when there is none: an endpoint or a key that is empty counts as unset
+task text-or-empty
+  take found, like maybe, like text
+  like text
+
+  sift found
+    case some
+      back value
+    case none
+      back <>
+
+# the settings from the environment, or none while the endpoint or the key is unset
+task model-config-from-env
+  take names, like list, like text
+  like maybe, like model-config
+
+  host endpoint, text-or-empty(env-value(<MODEL_ENDPOINT>))
+  host api-key, text-or-empty(env-value(<MODEL_KEY>))
+  save model, <gpt-4o-mini>
+  sift env-value(<MODEL>)
+    case some
+      save model, value
+    case none
+
+  fork test, or(is-equal(endpoint, <>), is-equal(api-key, <>))
+    hold
+      back make none
+
+  back
+    make some
+      bind value
+        make model-config
+          bind endpoint, endpoint
+          bind api-key, api-key
+          bind model, model
+          bind names, names
+
+# one chat message as the API reads it: `{"role": ..., "content": ...}`, in that order
+task chat-message
+  take role, like text
+  take content, like text
+  like dynamic
+
+  host message, make-object()
+  set-field(message, <role>, from-text(role))
+  set-field(message, <content>, from-text(content))
+
+  back message
+
+# the instructions the model is given: one expression over the named inputs, and nothing else
+task system-prompt
+  take names, like list, like text
+  like text
+
+  host shown, join(names, <, >)
+
+  back <You synthesize a function body as a single expression over the integer inputs {shown}. Use only: the input names, integer constants, + , - , min(x, y), max(x, y), and parentheses. Reply with ONLY the expression, nothing else.>
+
+# the request's body: the model, the two messages and a temperature of 0, keys in the original's order
+task request-body
+  take config, like model-config
+  take prompt, like text
+  like text
+
+  host messages, make-array()
+  push-item(messages, chat-message(<system>, system-prompt(config/names)))
+  push-item(messages, chat-message(<user>, prompt))
+
+  host payload, make-object()
+  set-field(payload, <model>, from-text(config/model))
+  set-field(payload, <messages>, messages)
+  set-field(payload, <temperature>, from-number(0))
+
+  back host-global/JSON/stringify(payload)
+
+# ask the model for a body: the prompt sent, the reply's first choice read as an expression, or none when the request
+# is refused (a status outside 200 to 299), the reply holds no text, or the text holds no expression
+task ask-model
+  mark async
+  take config, like model-config
+  take prompt, like text
+  like maybe, like expression
+
+  host headers, make-object()
+  set-field(headers, <content-type>, from-text(<application/json>))
+  set-field(headers, <authorization>, from-text(<Bearer {config/api-key}>))
+
+  host init, make-object()
+  set-field(init, <method>, from-text(<POST>))
+  set-field(init, <headers>, headers)
+  set-field(init, <body>, from-text(request-body(config, prompt)))
+
+  host response, wait host-global/fetch(config/endpoint, init)
+  fork test, not(as-boolean(get-field(response, <ok>)))
+    hold
+      back make none
+
+  host body
+    call response/text
+      wait true
+  host data, host-global/JSON/parse(body)
+  host reply, get-field(get-field(get-item(get-field(data, <choices>), 0), <message>), <content>)
+  fork test, not(is-equal(json-kind(reply), <text>))
+    hold
+      back make none
+
+  host written, as-text(reply)
+  fork test, is-equal(written, <>)
+    hold
+      back make none
+
+  back parse-reply(written, config/names)
+
+# what `realModelProposer(config)` asked for a gap: the gap's prompt, put to the model
+task ask-model-for-gap
+  mark async
+  take config, like model-config
+  take gap, like gap-report
+  like maybe, like expression
+
+  back ask-model(config, gap-prompt(gap))

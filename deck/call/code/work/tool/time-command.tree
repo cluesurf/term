@@ -1,0 +1,651 @@
+# `term time`: the project's `time-*` benchmarks, or with --cpu / --memory one file's profile. The table, the JSON,
+# the comparison, the markdown and the history are DATA, on stdout through printData. What happened around them (a
+# file that did not compile, a saved baseline, regressions, the gate) is items through the output library.
+#
+# Ported from deck/call/code/time.ts (term-cli-in-term-0058). The comparison, the table and the profile's words are the
+# compiler's own Term (make/code/time/compare.tree, table.tree, profile.tree), loaded; the benchmark runner, the
+# executor (CompileFailure), the suite writer, the profilers, the build's file walk and resolver, the role reader, the
+# home folder and the output library are docked. `callTime(input)` takes the original's record.
+
+load @term/base/list
+  find list
+
+load @term/make/time/compare
+  find compare-results
+  find format-comparison
+  find format-markdown
+  find should-fail
+
+load @term/make/time/table
+  find format-table
+
+load @term/make/time/profile
+  find format-cpu-result
+  find format-memory-result
+
+dock load
+  load <@term/make/code/time/runner>, name runner-module
+  load <@term/make/code/time/execute>, name execute-module
+  load <@term/make/code/time/output>, name suite-module
+  load <@term/make/code/time/cpu>, name cpu-module
+  load <@term/make/code/time/memory>, name memory-module
+  load <@term/make/code/compile/native>, name native-module
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/role-of>, name role-module
+  load <@term/call/code/home>, name home-module
+  load <@term/call/code/output>, name output
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <node:path>, name node-path
+
+# ---- the host values Term has no word for ----
+
+bind time-given
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# time/output.ts `formatJson(suite)`, by its exact name: a dock call spelled format-json is emitted formatJSON (traps.md)
+bind time-suite-json
+  take suites, like dynamic
+  take suite, like dynamic
+  like text
+  case node
+    text <$suites.formatJson($suite)>
+
+bind time-diagnostics
+  take problem, like dynamic
+  like list, like dynamic
+  case node
+    text <$problem.diagnostics>
+
+bind time-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind time-present
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value != null)>
+
+bind time-call-role
+  take roles, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <$roles($file)>
+
+bind time-has-faults
+  take unit, like dynamic
+  like boolean
+  case node
+    text <("faults" in $unit)>
+
+bind time-place
+  take unit, like dynamic
+  take diagnostic, like dynamic
+  like dynamic
+  case node
+    text <$unit.place($diagnostic)>
+
+bind time-is-compile-failure
+  take execute, like dynamic
+  take problem, like dynamic
+  like boolean
+  case node
+    text <($problem instanceof $execute.CompileFailure)>
+
+bind time-rethrow
+  take problem, like dynamic
+  like void
+  case node
+    text <<(() => { throw $problem })()>>
+
+bind time-thrown-message
+  take problem, like dynamic
+  like text
+  case node
+    text <($problem instanceof Error ? $problem.message : String($problem))>
+
+bind time-exit
+  take code, like number
+  like void
+  case node
+    text <process.exit($code)>
+
+bind time-compile-ask
+  take text, like text
+  take file, like text
+  take resolve, like dynamic
+  take filter, like dynamic
+  like dynamic
+  case node
+    text <<({ text: $text, file: $file, resolve: $resolve, filter: $filter })>>
+
+bind time-run-ask
+  take module, like dynamic
+  take root, like text
+  like dynamic
+  case node
+    text <<({ module: $module, root: $root })>>
+
+bind time-profile-ask
+  take text, like text
+  take file, like text
+  take resolve, like dynamic
+  take root, like text
+  take name, like text
+  take top, like dynamic
+  like dynamic
+  case node
+    text <<({ text: $text, file: $file, resolve: $resolve, root: $root, name: $name, top: $top })>>
+
+bind time-memory-ask
+  take text, like text
+  take file, like text
+  take resolve, like dynamic
+  take root, like text
+  take name, like text
+  like dynamic
+  case node
+    text <<({ text: $text, file: $file, resolve: $resolve, root: $root, name: $name })>>
+
+bind time-append
+  take list, like list, like dynamic
+  take more, like list, like dynamic
+  like void
+  case node
+    text <<($list.push(...$more), undefined)>>
+
+bind time-benchmarks-count
+  take module, like dynamic
+  like number
+  case node
+    text <$module.benchmarks.length>
+
+# a compile problem drawn as a ▲: the file is skipped, and the run goes on
+bind time-skipped-item
+  take output, like dynamic
+  take placed, like dynamic
+  take root, like text
+  like dynamic
+  case node
+    text <<({ ...$output.problemOf($placed.diagnostic, $root, $placed.text), glyph: "warning" })>>
+
+bind time-history-entry
+  take suites, like dynamic
+  take suite, like dynamic
+  like text
+  case node
+    text <<JSON.stringify($suites.buildHistoryEntry({ suite: $suite }), null, 2)>>
+
+bind time-now
+  like number
+  case node
+    text <Date.now()>
+
+bind time-folder-ask
+  like dynamic
+  case node
+    text <<({ recursive: true })>>
+
+# a saved baseline's results: snake_case on disk, a pre-2026-10-04 baseline the mean alone. A result with no mean
+# compares as new
+bind time-baseline-results
+  take suites, like dynamic
+  take text, like text
+  like list, like dynamic
+  case node
+    text <<((saved) => (saved.results ?? saved.benchmarks ?? []).filter((r) => typeof r.mean_ns === "number").map($suites.fromSaved))(JSON.parse($text))>>
+
+bind time-platform
+  take suite, like dynamic
+  like text
+  case node
+    text <$suite.platform>
+
+# the saved runs, newest twenty, in file order
+bind time-history-files
+  take names, like list, like text
+  like list, like text
+  case node
+    text <<$names.filter((f) => f.endsWith(".json")).sort().slice(-20)>>
+
+# one run's mean for a benchmark, or undefined when the run has none of that name
+bind time-history-point
+  take text, like text
+  take file, like text
+  take name, like text
+  like dynamic
+  case node
+    text <<((data) => { const bench = data.benchmarks?.find((b) => b.name === $name); return bench ? { timestamp: data.timestamp ?? $file, mean_ns: bench.mean_ns } : undefined })(JSON.parse($text))>>
+
+bind time-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+# one history line: the run's local time and its mean
+bind time-history-line
+  take entry, like dynamic
+  like text
+  case node
+    text <<((entry) => { const ns = entry.mean_ns; const time = ns < 1_000 ? `${ns.toFixed(1)}ns` : ns < 1_000_000 ? `${(ns / 1_000).toFixed(1)}us` : ns < 1_000_000_000 ? `${(ns / 1_000_000).toFixed(1)}ms` : `${(ns / 1_000_000_000).toFixed(2)}s`; const date = new Date(entry.timestamp); const two = (n) => String(n).padStart(2, "0"); const stamp = Number.isNaN(date.getTime()) ? String(entry.timestamp).slice(0, 19) : `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())} ${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}`; return `  ${stamp}  ${time}` })($entry)>>
+
+bind time-joined-lines
+  take parts, like list, like text
+  like text
+  case node
+    text <$parts.join(String.fromCharCode(10))>
+
+bind time-basename
+  take path, like dynamic
+  take file, like text
+  like text
+  case node
+    text <$path.basename($file, ".tree")>
+
+# ---- what is said ----
+
+form time-open
+  link verb, like text
+  link root, like text
+  link facts, like list, like text
+
+form profile-open
+  link verb, like text
+  link root, like text
+  link subject, like text
+  link facts, like list, like text
+
+form time-problem
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+
+form time-problem-fields
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form time-compare-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form time-counted-warning
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link counts, like list, like dynamic
+
+form time-done-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form time-verb-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+
+form time-verb-fields
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form time-close
+  link verdict, like text
+
+form time-close-counts
+  link verdict, like text
+  link counts, like list, like dynamic
+
+task one-field
+  take key, like text
+  take value, like text
+  like list, like dynamic
+  mark private
+
+  save out, make list
+  out/push(output/field(key, value))
+  back out
+
+task one-count
+  take amount, like number
+  take many, like text
+  take one, like text
+  like list, like dynamic
+  mark private
+
+  save out, make list
+  out/push(output/count(amount, many, one))
+  back out
+
+# a failed problem item, the run closed with a verdict, and the process ended with what closing answered
+task stop-with
+  take subject, like text
+  take verdict, like text
+  like void
+  mark private
+
+  output/report(make(time-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject)))
+  time-exit(output/close-run(make(time-close, bind(verdict, verdict))))
+
+# a saved baseline (`term time --save <name>`), or the run stops with exit 1 naming the file it looked for
+task read-baseline
+  take root, like text
+  take name, like text
+  like list, like dynamic
+  mark private
+
+  save where, home-module/project-home(root, <time>, <{name}.json>)
+  save results, make list
+  save read, false
+  fork
+    mark unsafe
+    save text, fs-promise/read-file(where, <utf-8>)
+    save results, time-baseline-results(suite-module, text)
+    save read, true
+  halt take
+    take error, like dynamic
+    save read, false
+  fork test, not(read)
+    hold
+      save fields, make list
+      fields/push(output/field(<looked>, output/show-path(where, root)))
+      fields/push(output/field(<next>, <term time --save {name}>))
+      output/report(make(time-problem-fields, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no baseline named {name}>), bind(fields, fields)))
+      time-exit(output/close-run(make(time-close, bind(verdict, <Nothing compared>))))
+  back results
+
+task show-history
+  take root, like text
+  take name, like text
+  like void
+  mark private
+
+  save history-dir, home-module/project-home(root, <time>, <history>)
+  save shown, false
+  fork
+    mark unsafe
+    # saved before the bind reads it: a bind's text is spliced around its argument, awaited or not (traps.md)
+    save names, fs-promise/readdir(history-dir)
+    save files, time-history-files(names)
+    save entries, make list
+    walk files
+      take file
+      save text, fs-promise/read-file(node-path/join(history-dir, file), <utf-8>)
+      save point, time-history-point(text, file, name)
+      fork test, not(time-absent(point))
+        hold
+          entries/push(point)
+    save shown, true
+    fork test, is-equal(entries/length, 0)
+      hold
+        output/report(make(time-verb-item, bind(glyph, <warning>), bind(verb, <history>), bind(subject, <There is no history for {name}>)))
+      miss
+        # the history is data: one line per run, oldest first
+        save lines, make list
+        lines/push(<>)
+        lines/push(<History for "{name}" (last {entries/length}):>)
+        walk entries
+          take entry, like dynamic
+          lines/push(time-history-line(entry))
+        output/print-data(<{time-joined-lines(lines)}\n>)
+  halt take
+    take error, like dynamic
+    save shown, false
+  fork test, not(shown)
+    hold
+      output/report(make(time-verb-fields, bind(glyph, <warning>), bind(verb, <history>), bind(subject, <There is no history yet>), bind(fields, one-field(<looked>, output/show-path(history-dir, root)))))
+
+# profile one file: CPU hotspots (V8 --cpu-prof) or memory (heap delta)
+task run-profile
+  take input, like dynamic
+  like void
+  mark private
+
+  save root, input/root
+  save cpu, time-given(input/cpu)
+  save target, input/memory
+  fork test, time-present(input/cpu)
+    hold
+      save target, input/cpu
+  save file-path, node-path/resolve(root, target)
+  # profiling compiles the file, and it has to compile it the way the build does
+  save resolve, native-module/with-native-env(<node>, make-module/project-resolver(root))
+  save facts, make list
+  fork test, cpu
+    hold
+      facts/push(<cpu>)
+    miss
+      facts/push(<memory>)
+  output/open-run(make(profile-open, bind(verb, <profile>), bind(root, root), bind(subject, target), bind(facts, facts)))
+
+  save there, false
+  fork
+    mark unsafe
+    fs-promise/access(file-path)
+    save there, true
+  halt take
+    take error, like dynamic
+    save there, false
+  fork test, not(there)
+    hold
+      output/report(make(time-problem-fields, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no file {target}>), bind(fields, one-field(<looked>, output/show-path(file-path, root)))))
+      time-exit(output/close-run(make(time-close, bind(verdict, <Nothing profiled>))))
+
+  save text, fs-promise/read-file(file-path, <utf-8>)
+  save relative, node-path/relative(root, file-path)
+  save name, time-basename(node-path, file-path)
+
+  fork
+    mark unsafe
+    # the profile is the answer the user asked for: data on stdout
+    fork test, cpu
+      hold
+        save result, wait cpu-module/run-cpu-profile(time-profile-ask(text, relative, resolve, root, name, input/top))
+        output/print-data(<\n{format-cpu-result(result)}\n\n>)
+        output/close-run(make(time-close, bind(verdict, <CPU profile complete>)))
+      miss
+        save result, wait memory-module/run-memory-profile(time-memory-ask(text, relative, resolve, root, name))
+        output/print-data(<\n{format-memory-result(result)}\n\n>)
+        output/close-run(make(time-close, bind(verdict, <Memory profile complete>)))
+  halt take
+    take error, like dynamic
+    fork test, time-is-compile-failure(execute-module, error)
+      hold
+        save diagnostics, time-diagnostics(error)
+        walk diagnostics
+          take diagnostic, like dynamic
+          save shown-text, text
+          fork test, is-unequal(diagnostic/file, relative)
+            hold
+              output/report(output/problem-of(diagnostic, root))
+              turn next
+          output/report(output/problem-of(diagnostic, root, shown-text))
+        time-exit(output/close-run(make(time-close-counts, bind(verdict, <Nothing profiled>), bind(counts, one-count(diagnostics/length, <errors>, <error>)))))
+    stop-with(time-thrown-message(error), <Nothing profiled>)
+
+task call-time
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  # profiling mode: `term time --cpu <file>` / `--memory <file>` profiles one file's hotspots instead of benchmarking
+  fork test, or(time-given(input/cpu), time-given(input/memory))
+    hold
+      run-profile(input)
+      back
+
+  save facts, make list
+  fork test, time-given(input/filter)
+    hold
+      facts/push(input/filter)
+  fork test, time-given(input/compare)
+    hold
+      facts/push(<--compare {input/compare}>)
+  output/open-run(make(time-open, bind(verb, <time>), bind(root, root), bind(facts, facts)))
+
+  # `--history` alone reads the saved runs and runs nothing
+  fork test, and(time-given(input/history), and(not(time-given(input/save)), not(time-given(input/compare))))
+    hold
+      show-history(root, input/history)
+      output/close-run(make(time-close, bind(verdict, <History shown>)))
+      back
+
+  # the same resolver `term make` uses, so a benchmark file's imports resolve the way its build does
+  save resolve, native-module/with-native-env(<node>, make-module/project-resolver(root))
+  save roles, role-module/project-role-of(root)
+
+  fork
+    mark unsafe
+    # the baseline is read first, so a name that does not exist fails before anything runs
+    save baseline, make list
+    save compared-with, time-given(input/compare)
+    fork test, compared-with
+      hold
+        save baseline, read-baseline(root, input/compare)
+
+    # the walk `term make` does for node, leaving out `link/`
+    save link, <{node-path/join(root, <link>)}{node-path/sep}>
+    save files, make list
+    fork test, time-given(input/file)
+      hold
+        files/push(node-path/resolve(root, input/file))
+      miss
+        save none-ignored, make list
+        walk make-module/find-tree-files(root, none-ignored, <node>)
+          take found
+          fork test, not(found/starts-with(link))
+            hold
+              files/push(found)
+
+    fork test, is-equal(files/length, 0)
+      hold
+        stop-with(<There is no .tree file to benchmark>, <Nothing benchmarked>)
+
+    save all-results, make list
+    walk files
+      take file
+      save unit, make-module/buildable(file, fs-promise/read-file(file, <utf-8>), time-call-role(roles, file))
+      save relative, node-path/relative(root, file)
+      # a grammar that cannot generate a reader holds no benchmark, and `term make` reports why
+      fork test, time-has-faults(unit)
+        hold
+          turn next
+      save compiled, false
+      save module, time-nothing()
+      fork
+        mark unsafe
+        save module, runner-module/compile-benchmarks(time-compile-ask(unit/text, relative, resolve, input/filter))
+        save compiled, true
+      halt take
+        take problem, like dynamic
+        # a file that does not compile is skipped, not fatal: its problems drawn as ▲
+        fork test, not(time-is-compile-failure(execute-module, problem))
+          hold
+            time-rethrow(problem)
+        save diagnostics, time-diagnostics(problem)
+        walk diagnostics
+          take diagnostic, like dynamic
+          output/report(time-skipped-item(output, time-place(unit, diagnostic), root))
+        output/report(make(time-counted-warning, bind(glyph, <warning>), bind(verb, <time>), bind(subject, <{relative} did not compile, and its benchmarks did not run>), bind(counts, one-count(diagnostics/length, <errors>, <error>))))
+      fork test, not(compiled)
+        hold
+          turn next
+      fork test, is-equal(time-benchmarks-count(module), 0)
+        hold
+          turn next
+      save ran, wait runner-module/run-benchmarks(time-run-ask(module, root))
+      time-append(all-results, ran)
+
+    fork test, is-equal(all-results/length, 0)
+      hold
+        output/report(make(time-problem-fields, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no benchmark to run>), bind(fields, one-field(<next>, <define a zero-argument task named time-...>))))
+        time-exit(output/close-run(make(time-close, bind(verdict, <Nothing benchmarked>))))
+
+    save suite, suite-module/build-suite(all-results)
+    fork test, time-given(input/json)
+      hold
+        output/print-data(<{time-suite-json(suite-module, suite)}\n>)
+      miss
+        output/print-data(<\n{format-table(all-results)}\n\n>)
+
+    fork test, time-given(input/save)
+      hold
+        save dir, home-module/project-home(root, <time>)
+        fs-promise/mkdir(dir, time-folder-ask())
+        save saved, node-path/join(dir, <{input/save}.json>)
+        fs-promise/write-file(saved, time-suite-json(suite-module, suite))
+        output/report(make(time-done-item, bind(glyph, <done>), bind(verb, <save>), bind(subject, <Baseline {input/save}>), bind(fields, one-of-location(output/location(output/show-path(saved, root))))))
+        save history-dir, node-path/join(dir, <history>)
+        fs-promise/mkdir(history-dir, time-folder-ask())
+        fs-promise/write-file(node-path/join(history-dir, <{time-now()}.json>), time-history-entry(suite-module, suite))
+
+    # the comparison's counts ride on the closing item
+    save compared, make list
+    fork test, compared-with
+      hold
+        save comparison, compare-results(all-results, baseline)
+        fork test, time-given(input/markdown)
+          hold
+            output/print-data(<{format-markdown(comparison, time-platform(suite))}\n>)
+          miss
+            output/print-data(<\n{format-comparison(comparison, false)}\n>)
+        compared/push(output/count(comparison/improvements, <improvements>, <improvement>))
+        compared/push(output/count(comparison/regressions, <regressions>, <regression>))
+        save gated, false
+        fork test, time-present(input/fail-on-regression)
+          hold
+            save gated, should-fail(comparison, input/fail-on-regression)
+        # a regression is ▲; past the --fail-on-regression threshold it is ✗, and the gate exits 1 at once
+        fork test, or(is-above(comparison/regressions, 0), gated)
+          hold
+            save glyph, <warning>
+            save fields, make list
+            fork test, gated
+              hold
+                save glyph, <failed>
+                fields/push(output/field(<budget>, <{input/fail-on-regression}%>))
+            save plural, <s>
+            fork test, is-equal(comparison/regressions, 1)
+              hold
+                save plural, <>
+            output/report(make(time-compare-item, bind(glyph, glyph), bind(kind, <problem>), bind(verb, <compare>), bind(subject, <{comparison/regressions} benchmark{plural} regressed against {input/compare}>), bind(fields, fields)))
+        fork test, gated
+          hold
+            time-exit(output/close-run(make(time-close-counts, bind(verdict, <A regression is past the {input/fail-on-regression}% threshold>), bind(counts, one-count(all-results/length, <benchmarks>, <benchmark>)))))
+
+    fork test, time-given(input/history)
+      hold
+        show-history(root, input/history)
+
+    save counts, make list
+    counts/push(output/count(all-results/length, <benchmarks>, <benchmark>))
+    walk compared
+      take one, like dynamic
+      counts/push(one)
+    output/close-run(make(time-close-counts, bind(verdict, <Benchmarks complete>), bind(counts, counts)))
+  halt take
+    take error, like dynamic
+    stop-with(time-thrown-message(error), <Benchmarks did not complete>)
+
+task one-of-location
+  take value, like dynamic
+  like list, like dynamic
+  mark private
+
+  save out, make list
+  out/push(value)
+  back out

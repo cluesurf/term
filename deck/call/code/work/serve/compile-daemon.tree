@@ -1,0 +1,220 @@
+# The term daemon (Tier 4): a long-lived process holding a warm compiler, so several clients (the language server,
+# `term feed`, the command line) can share one instead of each cold-starting its own. The transport is hono over HTTP
+# (decision 002). Ported from call/code/dev/daemon.ts, term-cli-in-term-0064.
+#
+# IT RUNS THE BUILD'S OWN `compile`, with the project's resolver, roles, lean flag and decks, and one compile cache
+# for every file it is asked about, the way the language server does. The cache is what keeps a second answer fast:
+# only the module that changed is read again.
+#
+# `POST /analyze {file, text}` answers that document's diagnostics, the build's errors or, when it builds, its
+# warnings. `POST /close {file}` drops a document's warm state. `GET /health` reports liveness and how many documents
+# are warm. Docked: hono, @hono/node-server, compile/compile, compile/cache, call/code/make (projectResolver),
+# call/code/boot (findProjectRoot), call/code/role-of, call/code/deck-of.
+
+dock load
+  load <hono>, name hono-module
+  load <@hono/node-server>, name node-server
+  load <node:path>, name node-path
+  load <@term/make/code/compile/compile>, name compiling-module
+  load <@term/make/code/compile/cache>, name cache-module
+  load <@term/call/code/make>, name making-module
+  load <@term/call/code/boot>, name booting-module
+  load <@term/call/code/role-of>, name role-reading
+  load <@term/call/code/deck-of>, name deck-reading
+
+# ---- the host values Term has no word for ----
+
+# `a ?? b`
+bind daemon-or
+  take value, like dynamic
+  take fallback, like dynamic
+  like dynamic
+  case node
+    text <($value ?? $fallback)>
+
+bind daemon-new-hono
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.Hono()>
+
+bind daemon-new-cache
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.CompileCache()>
+
+bind daemon-new-set
+  like dynamic
+  case node
+    text <new Set()>
+
+bind daemon-set-add
+  take set, like dynamic
+  take value, like dynamic
+  like void
+  case node
+    text <void $set.add($value)>
+
+bind daemon-set-delete
+  take set, like dynamic
+  take value, like dynamic
+  like void
+  case node
+    text <void $set.delete($value)>
+
+bind daemon-set-size
+  take set, like dynamic
+  like number
+  case node
+    text <$set.size>
+
+bind daemon-is-text
+  take value, like dynamic
+  like boolean
+  case node
+    text <(typeof $value === "string")>
+
+# a promise awaited
+bind daemon-await
+  take value, like dynamic
+  like dynamic
+  case node
+    text <(await $value)>
+
+bind daemon-health
+  take warm, like number
+  like dynamic
+  case node
+    text <(\{ ok: true, warm: $warm \})>
+
+bind daemon-required
+  like dynamic
+  case node
+    text <(\{ error: "file and text required" \})>
+
+bind daemon-closed
+  like dynamic
+  case node
+    text <(\{ ok: true \})>
+
+bind daemon-diagnostics
+  take diagnostics, like dynamic
+  like dynamic
+  case node
+    text <(\{ diagnostics: $diagnostics \})>
+
+bind daemon-json
+  take context, like dynamic
+  take value, like dynamic
+  like dynamic
+  case node
+    text <$context.json($value)>
+
+bind daemon-json-status
+  take context, like dynamic
+  take value, like dynamic
+  take status, like number
+  like dynamic
+  case node
+    text <$context.json($value, $status)>
+
+bind daemon-body
+  take context, like dynamic
+  like dynamic
+  case node
+    text <$context.req.json()>
+
+# ---- the shapes ----
+
+form daemon-source
+  link file, like text
+  link text, like text
+
+form daemon-options
+  link resolve, like dynamic
+  link cache, like dynamic
+  link role-of, like dynamic
+  link lean-of, like dynamic
+  link deck-of, like dynamic
+  link optimize, like boolean
+
+form serve-ask
+  link fetch, like dynamic
+  link port, like number
+
+form daemon
+  link port, like number
+  # number of warm documents (for diagnostics and tests)
+  link warm, like dynamic
+  link close, like dynamic
+
+# start the daemon. `options` is the original's record: root, and port and env when given
+task start-daemon
+  take options, like dynamic
+  like daemon
+
+  save project-root, booting-module/find-project-root(options/root)
+  save resolve, making-module/project-resolver(project-root, daemon-or(options/env, <node>))
+  save role-of, role-reading/project-role-of(project-root)
+  save lean-of, role-reading/project-lean-of(project-root)
+  save deck-of, deck-reading/project-deck-of()
+  save port, daemon-or(options/port, 5179)
+  # one compile cache for every document: a second question about a file reads again only what changed
+  save cache, daemon-new-cache(cache-module)
+  # the documents asked about and not closed
+  save warm, daemon-new-set()
+
+  save app, daemon-new-hono(hono-module)
+
+  save health
+    task
+      take context, like dynamic
+      like dynamic
+      back daemon-json(context, daemon-health(daemon-set-size(warm)))
+  app/get(</health>, health)
+
+  save analyze
+    task
+      take context, like dynamic
+      like dynamic
+      mark async
+      save body, daemon-await(daemon-body(context))
+      fork test, or(not(daemon-is-text(body/file)), not(daemon-is-text(body/text)))
+        hold
+          back daemon-json-status(context, daemon-required(), 400)
+      # a file named relative to the project, as a client in it writes one
+      save file, node-path/resolve(project-root, body/file)
+      daemon-set-add(warm, file)
+      save result, compiling-module/compile(make(daemon-source, bind(file, file), bind(text, body/text)), make(daemon-options, bind(resolve, resolve), bind(cache, cache), bind(role-of, role-of), bind(lean-of, lean-of), bind(deck-of, deck-of), bind(optimize, false)))
+      save diagnostics, result/diagnostics
+      fork test, result/ok
+        hold
+          save diagnostics, result/warnings
+      back daemon-json(context, daemon-diagnostics(diagnostics))
+  app/post(</analyze>, analyze)
+
+  # drop a document's warm state (the editor closed it)
+  save forget
+    task
+      take context, like dynamic
+      like dynamic
+      mark async
+      save body, daemon-await(daemon-body(context))
+      fork test, daemon-is-text(body/file)
+        hold
+          daemon-set-delete(warm, node-path/resolve(project-root, body/file))
+      back daemon-json(context, daemon-closed())
+  app/post(</close>, forget)
+
+  save server, node-server/serve(make(serve-ask, bind(fetch, app/fetch), bind(port, port)))
+
+  save count
+    task
+      like number
+      back daemon-set-size(warm)
+  save close
+    task
+      like dynamic
+      back server/close()
+  back make(daemon, bind(port, port), bind(warm, count), bind(close, close))

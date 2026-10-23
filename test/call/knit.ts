@@ -498,7 +498,10 @@ if (existsSync(line)) {
   ok('a --law the library lacks is a usage error before any request, naming the laws it has', madeUp.status === 2 && /no law named made-up/.test(madeUp.stderr) && /isolation/.test(madeUp.stderr), `${madeUp.status} ${madeUp.stderr.slice(0, 400)}`)
   const { ANTHROPIC_API_KEY: _key, ...env } = process.env
   const keyless = spawnSync(process.execPath, [line, 'knit', 'only the owner can delete a note', '--name', 'keyless', '--out', join(workDir, `keyless-${process.pid}`)], { cwd: workDir, encoding: 'utf8', env })
-  ok('term knit without a key stops before any request, naming the zone', keyless.status !== 0 && /ANTHROPIC_API_KEY is not set/.test(keyless.stderr) && /zone load deck\/make/.test(keyless.stderr), `${keyless.status} ${keyless.stderr.slice(0, 400)}`)
+  // the next step names a zone generically (knit-model.ts, 2026-10-22: a shipped CLI names no path of this repository),
+  // and the renderer wraps it, so the words are matched with the line breaks read as spaces
+  const keylessText = keyless.stderr.replace(/\s+/g, ' ')
+  ok('term knit without a key stops before any request, naming the zone', keyless.status !== 0 && /ANTHROPIC_API_KEY is not set/.test(keylessText) && /zone load <zone> -- term knit/.test(keylessText), `${keyless.status} ${keyless.stderr.slice(0, 400)}`)
   const help = spawnSync(process.execPath, [line, '--hint'], { cwd: workDir, encoding: 'utf8', env })
   ok('term starts with no key and lists knit', help.status === 0 && /term knit/.test(help.stdout), help.stdout.slice(0, 200))
 } else {

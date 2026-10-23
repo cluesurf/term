@@ -63,6 +63,7 @@ load ../parser/diagnostic
   find diagnostic
   find diagnostic-input
   find diagnose
+  find diagnostic-name
 
 load ../parser/token
   find token-source

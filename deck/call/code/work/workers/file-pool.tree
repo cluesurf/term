@@ -1,0 +1,548 @@
+# The parallel batch build driver (node). Ported from call/code/build-parallel.ts, term-cli-in-term-0025.
+#
+# It fans the project's .tree files out across a pool of worker threads, each running the ordinary `compile()` on one
+# file at a time, so routes, env and every whole-program transform are handled exactly as in the sequential
+# `compileProject`. The on-disk `.base/@term/code/cache` is shared across workers, so the stdlib is parsed and milled once
+# for the whole pool. Output is byte-identical to the sequential build; only the work is spread across cores. All file
+# writes stay on the main thread (workers only compile and post the emitted text back).
+#
+# The worker entry (build-worker.ts) is still bundled here with esbuild, located from the running install's host/. Docked:
+# make.ts (findTreeFiles), cache-store.ts (compilerVersions), compile/resolve.ts (stdlibBase), check/holds.ts
+# (addOwed), node's worker_threads and esbuild (decision 002).
+
+load ./heap-limit
+  find worker-heap-mb
+  find is-out-of-memory
+  find out-of-memory-diagnostic
+
+load ../need/running-install
+  find find-install-root
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <node:os>, name node-system
+  load <node:worker_threads>, name worker-threads
+  load <esbuild>, name esbuild-module
+  load <@term/call/code/cache-store>, name cache-store
+  load <@term/call/code/make>, name make-module
+  load <@term/make/code/resolve>, name resolving-module
+  load <@term/make/code/check/holds>, name holds-module
+
+# ---- the worker bundle ----
+
+# `undefined`, the answer for nothing found
+bind pool-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+# a value is `undefined`
+bind pool-is-nothing
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+# raise a plain Error with the message, as `throw new Error(message)` does
+bind pool-throw
+  take message, like text
+  like dynamic
+  case node
+    text <(() =\> \{ throw new Error($message) \})()>
+
+# the esbuild options a worker module is bundled with: self-contained ESM resolving `@term/...` from the package tsconfig,
+# this module and the separate pool's kept out (the worker never runs them, and esbuild's native binary must not end up
+# in a temp-folder worker), and a `require` defined from import.meta.url for a CommonJS module in the compiler graph
+bind pool-worker-build
+  take source, like text
+  take out, like text
+  take tsconfig, like text
+  like dynamic
+  case node
+    text <(\{ entryPoints: [$source], outfile: $out, bundle: true, platform: "node", format: "esm", tsconfig: $tsconfig, external: ["@term/call/code/build-parallel", "@term/call/code/build-separate-parallel"], banner: \{ js: "import \{ createRequire as __seedCreateRequire \} from 'module'; const require = __seedCreateRequire(import.meta.url);" \} \})>
+
+# this process's id
+bind pool-pid
+  like number
+  case node
+    text <process.pid>
+
+# The original's `import.meta.url` was `deck/call/code/` from source under tsx and `host/` from the bundled CLI, so the
+# worker source and the package root are LOCATED rather than reached by a fixed number of `..` hops: the file named, in
+# the running install's host/ (decision 006, what the bundle read) or one of its seven nearest ancestors
+task find-up
+  take relative, like text
+  like dynamic
+
+  save dir, node-path/join(find-install-root(), <host>)
+  save level, 0
+  walk test
+    hook test, is-below(level, 8)
+    hook hold
+      save candidate, node-path/join(dir, relative)
+      fork test, node-file/exists-sync(candidate)
+        hold
+          back candidate
+      save parent, node-path/dirname(dir)
+      fork test, is-equal(parent, dir)
+        hold
+          back pool-nothing()
+      save dir, parent
+      save level, add(level, 1)
+  back pool-nothing()
+
+# A worker module, bundled. `name` is a file `deck/call/code/<name>.ts`, found from the running install's host/
+task bundle-worker
+  take name, like text
+  like text
+
+  save source, find-up(<{name}.ts>)
+  fork test, pool-is-nothing(source)
+    hold
+      save source, find-up(node-path/join(<deck>, <call>, <code>, <{name}.ts>))
+  # the package root, whose tsconfig carries the `@term/...` path mappings
+  save tsconfig, find-up(<tsconfig.json>)
+  fork test, or(pool-is-nothing(source), pool-is-nothing(tsconfig))
+    hold
+      # fail before esbuild does, so the caller's fallback is taken without esbuild first printing a resolve error that
+      # looks like a broken build
+      pool-throw(<parallel build unavailable: could not locate {name}.ts or tsconfig.json>)
+  save out, node-path/join(node-system/tmpdir(), <term-{name}-{pool-pid()}.mjs>)
+  esbuild-module/build-sync(pool-worker-build(source, out, tsconfig))
+  back out
+
+# the per-file worker, bundled once per process
+form bundle-memo
+  mark shared
+  link build, like text
+
+host bundles, make(bundle-memo, bind(build, <>))
+
+task ensure-build-worker-bundle
+  like text
+  mark private
+
+  fork test, is-equal(bundles/build, <>)
+    hold
+      save bundles/build, bundle-worker(<build-worker>)
+  back bundles/build
+
+# ---- the pool ----
+
+# `compileProjectParallel`'s options, each read as the original read it
+bind pool-platform-of
+  take options, like dynamic
+  like text
+  case node
+    text <($options?.platform ?? $options?.env ?? "node")>
+
+bind pool-env-of
+  take options, like dynamic
+  like dynamic
+  case node
+    text <$options?.env>
+
+# the pool's size: the concurrency asked for, else the cores but one, never more than the files nor fewer than one
+bind pool-size-of
+  take options, like dynamic
+  take files, like number
+  like number
+  case node
+    text <Math.max(1, Math.min($options?.concurrency ?? Math.max(1, process.getBuiltinModule("node:os").cpus().length - 1), $files))>
+
+# the worker bundle lives in the temp folder, from where stdlibBase() cannot walk up to the standard library: pin it
+# for the workers (worker_threads share process.env)
+bind pool-pin-stdlib
+  take stdlib, like dynamic
+  like void
+  case node
+    text <(($stdlib && !process.env.TERM_STDLIB) ? (process.env.TERM_STDLIB = $stdlib) : undefined)>
+
+# a new worker on the bundle, the compiler version handed down, its heap limited
+bind pool-new-worker
+  take worker, like dynamic
+  take bundle, like text
+  take version, like dynamic
+  take heap, like number
+  like dynamic
+  case node
+    text <new $worker($bundle, \{ workerData: \{ version: $version \}, resourceLimits: \{ maxOldGenerationSizeMb: $heap \} \})>
+
+# an empty Map and Set (keyed by identity, as the original's were)
+bind pool-new-map
+  like dynamic
+  case node
+    text <new Map()>
+
+bind pool-new-set
+  like dynamic
+  case node
+    text <new Set()>
+
+# a promise the pool settles: `start` is handed the function that settles it
+bind pool-promise
+  take start, like dynamic
+  like dynamic
+  case node
+    text <new Promise((finish) =\> $start(finish))>
+
+# call a function value with no argument
+bind pool-call
+  take done, like dynamic
+  like void
+  case node
+    text <$done()>
+
+# the run's end: every worker terminated, then the answer
+bind pool-after
+  take run, like dynamic
+  take workers, like list, like dynamic
+  take answer, like dynamic
+  like dynamic
+  case node
+    text <$run.then(() =\> Promise.all($workers.map((worker) =\> worker.terminate()))).then(() =\> $answer())>
+
+# a reply's fields, each read as the original read it
+bind pool-reply-ok
+  take reply, like dynamic
+  like boolean
+  case node
+    text <Boolean($reply.ok)>
+
+bind pool-reply-list
+  take reply, like dynamic
+  take key, like text
+  like list, like dynamic
+  case node
+    text <($reply[$key] ?? [])>
+
+bind pool-problem-text
+  take reply, like dynamic
+  take diagnostic, like dynamic
+  like dynamic
+  case node
+    text <($diagnostic.file === $reply.file ? $reply.text : undefined)>
+
+bind pool-has-no-problems
+  take reply, like dynamic
+  like boolean
+  case node
+    text <!$reply.problems?.length>
+
+bind pool-reply-error
+  take reply, like dynamic
+  like text
+  case node
+    text <($reply.error ?? `$\{$reply.file\}: compile failed`)>
+
+# where a compiled file's artifact goes: host/ mirrors the project, `.tree` becoming `.css` for a look sheet, else `.ts`
+bind pool-out-path
+  take root, like text
+  take reply, like dynamic
+  like text
+  case node
+    text <process.getBuiltinModule("node:path").join($root, "host", process.getBuiltinModule("node:path").relative($root, $reply.file).replace(/\.tree$/, $reply.isCss ? ".css" : ".ts"))>
+
+bind pool-css-with
+  take path, like text
+  take ending, like text
+  like text
+  case node
+    text <$path.replace(/\.css$/, $ending)>
+
+bind pool-is-css-with
+  take reply, like dynamic
+  take key, like text
+  like boolean
+  case node
+    text <Boolean($reply.isCss && $reply[$key] !== undefined)>
+
+bind pool-reply-output
+  take reply, like dynamic
+  like text
+  case node
+    text <($reply.output ?? "")>
+
+bind pool-reply-member
+  take reply, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$reply[$key]>
+
+# a Set's members, sorted as `[...set].sort()` sorts
+bind pool-sorted
+  take set, like dynamic
+  like list, like text
+  case node
+    text <[...$set].sort()>
+
+bind pool-set-add
+  take set, like dynamic
+  take value, like dynamic
+  like void
+  case node
+    text <$set.add($value)>
+
+bind pool-map-set
+  take map, like dynamic
+  take key, like dynamic
+  take value, like dynamic
+  like void
+  case node
+    text <$map.set($key, $value)>
+
+bind pool-map-delete
+  take map, like dynamic
+  take key, like dynamic
+  like void
+  case node
+    text <$map.delete($key)>
+
+# the file a worker holds, `<worker>` when none
+bind pool-held-file
+  take map, like dynamic
+  take key, like dynamic
+  like text
+  case node
+    text <($map.get($key) ?? "<worker>")>
+
+bind pool-error-text
+  take error, like dynamic
+  like text
+  case node
+    text <String($error)>
+
+form owed-count
+  link total, like number
+  link proven, like number
+
+form build-problem
+  link diagnostic, like dynamic
+  link text, like dynamic
+
+form job-message
+  link type, like text
+  link id, like number
+  link root, like text
+  link file, like text
+  link env, like dynamic
+
+form failed-reply
+  link file, like text
+  link ok, like boolean
+  link error, like text
+  link problems, like list, like dynamic
+
+form error-reply
+  link file, like text
+  link ok, like boolean
+  link error, like text
+
+form folder-ask
+  link recursive, like boolean
+
+form pool-answer
+  link compiled, like number
+  link failed, like number
+  link errors, like list, like text
+  link warnings, like list, like text
+  link problems, like list, like build-problem
+  link faults, like list, like text
+  link open, like list, like text
+  link obligations, like owed-count
+
+# one pool run: the files, the workers and what each holds, and what the replies added up to
+form file-run
+  mark shared
+  link root, like text
+  link env, like dynamic
+  link files, like list, like text
+  link bundle, like text
+  link heap, like number
+  link workers, like list, like dynamic
+  link holding, like dynamic
+  link compiled, like number
+  link failed, like number
+  link errors, like list, like text
+  link warnings, like list, like text
+  link problems, like list, like build-problem
+  link faults, like list, like text
+  link open, like dynamic
+  link obligations, like owed-count
+  link next, like number
+  link done, like number
+  link finish, like dynamic
+
+task spawn-file-worker
+  take run, like file-run
+  like dynamic
+  mark private
+
+  back pool-new-worker(worker-threads/Worker, run/bundle, cache-store/compilerVersions(), run/heap)
+
+# one reply taken in: its claims, warnings and problems gathered, its artifact written on the main thread
+task write-reply
+  take run, like file-run
+  take reply, like dynamic
+  like void
+  mark private
+
+  walk pool-reply-list(reply, <openClaims>)
+    take claim
+    pool-set-add(run/open, claim)
+  walk pool-reply-list(reply, <warnings>)
+    take warning
+    run/warnings/push(warning)
+  walk pool-reply-list(reply, <problems>)
+    take diagnostic
+    run/problems/push(make(build-problem, bind(diagnostic, diagnostic), bind(text, pool-problem-text(reply, diagnostic))))
+  # a failure with no diagnostic behind it (a worker that threw, or died) is still reported, as a line
+  save ok, pool-reply-ok(reply)
+  fork test, and(not(ok), pool-has-no-problems(reply))
+    hold
+      run/faults/push(pool-reply-error(reply))
+  holds-module/addOwed(run/obligations, pool-reply-member(reply, <obligations>))
+  fork test, ok
+    hold
+      save out-path, pool-out-path(run/root, reply)
+      node-file/mkdir-sync(node-path/dirname(out-path), make(folder-ask, bind(recursive, true)))
+      node-file/write-file-sync(out-path, pool-reply-output(reply))
+      # and a look sheet's style table beside its CSS, for a host with no CSS engine (native-dom-0008)
+      fork test, pool-is-css-with(reply, <style>)
+        hold
+          node-file/write-file-sync(pool-css-with(out-path, <.style>), pool-reply-member(reply, <style>))
+      fork test, pool-is-css-with(reply, <styleDark>)
+        hold
+          node-file/write-file-sync(pool-css-with(out-path, <.dark.style>), pool-reply-member(reply, <styleDark>))
+      save run/compiled, add(run/compiled, 1)
+    miss
+      save run/failed, add(run/failed, 1)
+      run/errors/push(pool-reply-error(reply))
+
+task dispatch-file
+  take run, like file-run
+  take worker, like dynamic
+  like void
+  mark private
+
+  fork test, not(is-below(run/next, run/files/length))
+    hold
+      back void
+  save at, run/next
+  save file, run/files/{at}
+  save run/next, add(at, 1)
+  pool-map-set(run/holding, worker, file)
+  worker/post-message(make(job-message, bind(type, <job>), bind(id, run/next), bind(root, run/root), bind(file, file), bind(env, run/env)))
+
+task settle-file
+  take run, like file-run
+  take reply, like dynamic
+  like void
+  mark private
+
+  write-reply(run, reply)
+  save run/done, add(run/done, 1)
+  fork test, is-equal(run/done, run/files/length)
+    hold
+      pool-call(run/finish)
+
+task listen-file
+  take run, like file-run
+  take worker, like dynamic
+  like void
+  mark private
+
+  worker/on
+    <message>
+    task
+      take reply, like dynamic
+      like void
+      pool-map-delete(run/holding, worker)
+      settle-file(run, reply)
+      dispatch-file(run, worker)
+  # a worker that dies mid-job: surfaced as a build failure rather than hanging the pool. One that ran out of its heap
+  # fails its file as `out-of-memory` and is replaced, so the files still queued are built
+  worker/on
+    <error>
+    task
+      take error, like dynamic
+      like void
+      save file, pool-held-file(run/holding, worker)
+      pool-map-delete(run/holding, worker)
+      fork test, is-out-of-memory(error)
+        hold
+          save diagnostic, out-of-memory-diagnostic(file, run/heap)
+          save problems, make list
+          problems/push(diagnostic)
+          settle-file(run, make(failed-reply, bind(file, file), bind(ok, false), bind(error, <{file}: {diagnostic/message}>), bind(problems, problems)))
+          save replacement, spawn-file-worker(run)
+          run/workers/push(replacement)
+          listen-file(run, replacement)
+          dispatch-file(run, replacement)
+          back void
+      settle-file(run, make(error-reply, bind(file, file), bind(ok, false), bind(error, pool-error-text(error))))
+
+task compile-project-parallel
+  take root, like text
+  take options
+    like dynamic
+    fall pool-nothing()
+  like dynamic
+
+  # the SAME selection the sequential build makes: a build targets one platform, and the other platforms' native trees
+  # are not compiled. Defaults to the worker's own default env, so the two cannot drift apart
+  save platform, pool-platform-of(options)
+  save found, make list
+  save files, make-module/findTreeFiles(root, found, platform)
+  fork test, is-equal(files/length, 0)
+    hold
+      back pool-promise(pool-zero-answer)
+  save size, pool-size-of(options, files/length)
+  save bundle, ensure-build-worker-bundle()
+  save stdlib, resolving-module/stdlibBase()
+  pool-pin-stdlib(stdlib)
+  # The compiler version travels WITH the worker: a worker's own module is the bundle in the temp folder, so it cannot
+  # find the package root to fingerprint the compiler. Each worker's heap is limited, so one that runs out of memory
+  # ends alone: its file is reported as `out-of-memory` and a new worker takes its place (heap-limit.tree)
+  save heap, worker-heap-mb(size)
+  save run, make(file-run, bind(root, root), bind(env, pool-env-of(options)), bind(files, files), bind(bundle, bundle), bind(heap, heap), bind(workers, make list), bind(holding, pool-new-map()), bind(compiled, 0), bind(failed, 0), bind(errors, make list), bind(warnings, make list), bind(problems, make list), bind(faults, make list), bind(open, pool-new-set()), bind(obligations, make(owed-count, bind(total, 0), bind(proven, 0))), bind(next, 0), bind(done, 0), bind(finish, pool-nothing()))
+  save count, 0
+  walk test
+    hook test, is-below(count, size)
+    hook hold
+      run/workers/push(spawn-file-worker(run))
+      save count, add(count, 1)
+  save start
+    task
+      take finisher, like dynamic
+      like void
+      save run/finish, finisher
+      walk run/workers
+        take worker
+        listen-file(run, worker)
+      walk run/workers
+        take worker
+        dispatch-file(run, worker)
+  save answer
+    task
+      like pool-answer
+      back make(pool-answer, bind(compiled, run/compiled), bind(failed, run/failed), bind(errors, run/errors), bind(warnings, run/warnings), bind(problems, run/problems), bind(faults, run/faults), bind(open, pool-sorted(run/open)), bind(obligations, run/obligations))
+  back pool-after(pool-promise(start), run/workers, answer)
+
+# the answer for a project with no files
+task pool-zero-answer
+  take finish, like dynamic
+  like void
+  mark private
+
+  save none, make(pool-answer, bind(compiled, 0), bind(failed, 0), bind(errors, make list), bind(warnings, make list), bind(problems, make list), bind(faults, make list), bind(open, make list), bind(obligations, make(owed-count, bind(total, 0), bind(proven, 0))))
+  pool-hand(finish, none)
+
+bind pool-hand
+  take finish, like dynamic
+  take value, like dynamic
+  like void
+  case node
+    text <$finish($value)>

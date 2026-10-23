@@ -1,0 +1,397 @@
+# `term mind`: the project's durable memory, one fact per file under `.base/@term/code/memory/`, with an index. This is
+# what lets an unattended session (a disposable agent) start cold and still know the project's decisions and
+# conventions. Ported from call/code/mind.ts (term-cli-in-term-0062): the words (a fact's name and kind, how its file
+# reads and is written, the index, which facts a query recalls) were Term already, call/code/mind-words.tree, and
+# this is the rest, the files and the verb.
+#
+#   term mind <fact>            remember a fact
+#   term mind                   list every remembered fact
+#   term mind --find <query>    recall the facts matching a query
+#   term mind --forget <name>   forget one fact, its file and its line in the index
+#
+# The store is plain markdown (a person or any agent can read it); `--back json` answers structured records, written
+# by the host's JSON.stringify from records whose fields are in the original's order.
+#
+# Every argument is a maybe: the original told a name or a kind left out (`??`) from one given empty.
+
+load @term/call/mind-words
+  find fact
+  find fact-kind
+  find fact-slug
+  find fact-of
+  find fact-text
+  find index-with
+  find index-without
+  find recalls
+  find recall-verdict
+
+load ./home-folder
+  find kept-at
+  find project-home
+  find legacy-project-home
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+
+load @term/base/list
+  find get
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <@term/call/code/output>, name output
+  load <global:JSON>, name host-json
+  load <global:String>, name host-string
+  load <global:process>, name host-process
+
+# a fact read from its file
+form fact-file
+  link name, like text
+  link kind, like text
+  link description, like text
+  link body, like text
+  link file, like text
+
+form mind-open
+  link verb, like text
+  link root, like text
+
+form mind-open-facts
+  link verb, like text
+  link root, like text
+  link facts, like list, like text
+
+form fact-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link facts, like list, like text
+
+form placed-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link facts, like list, like text
+  link fields, like list, like dynamic
+
+form recall-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link facts, like list, like text
+
+form problem-item
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+
+form done-close
+  link verdict, like text
+  link done, like boolean
+
+form next-close
+  link verdict, like text
+  link next, like text
+
+form plain-close
+  link verdict, like text
+
+form counted-close
+  link verdict, like text
+  link counts, like list, like dynamic
+
+form folder-ask
+  link recursive, like boolean
+
+form forgot-record
+  link ok, like boolean
+  link name, like text
+
+form saved-record
+  link ok, like boolean
+  link name, like text
+  link kind, like text
+  link file, like text
+
+form replaced-record
+  link ok, like boolean
+  link name, like text
+  link kind, like text
+  link file, like text
+  link replaced, like text
+
+form fact-record
+  link name, like text
+  link kind, like text
+  link description, like text
+  link body, like text
+  link file, like text
+
+form facts-record
+  link ok, like boolean
+  link facts, like list, like fact-record
+
+# what a remember wrote: the fact's name and kind, its file from the root, and the description it replaced, if any
+form saved-fact
+  link name, like text
+  link kind, like text
+  link file, like text
+  link replaced, like maybe, like text
+
+# a value's text, or the empty text when it was left out
+task given
+  take value, like maybe, like text
+  like text
+  mark private
+
+  sift value
+    case some
+      link text
+      back text
+    case none
+      back <>
+
+# the project's memory, the one thing here a person WROTE. A project whose facts are still at the pre-2026-08-30 path
+# has them read and written there rather than abandoned (home-folder.tree `kept-at`)
+task memory-dir
+  take root, like text
+  like text
+  mark private
+
+  save parts, make list
+  parts/push(<memory>)
+  back kept-at(project-home(root, parts), legacy-project-home(root, parts))
+
+task read-fact
+  take file, like text
+  like fact-file
+  mark private
+
+  save read, fact-of(node-file/read-file-sync(file, <utf8>), node-path/basename(file, <.md>))
+  back make(fact-file, bind(name, read/name), bind(kind, read/kind), bind(description, read/description), bind(body, read/body), bind(file, file))
+
+task all-facts
+  take root, like text
+  like list, like fact-file
+  mark private
+
+  save dir, memory-dir(root)
+  save out, make list
+  fork test, not(node-file/exists-sync(dir))
+    hold
+      back out
+  walk node-file/readdir-sync(dir)
+    take name
+    fork test, and(name/ends-with(<.md>), is-unequal(name, <index.md>))
+      hold
+        out/push(read-fact(node-path/join(dir, name)))
+  back out
+
+# the first line of a fact, its first 100 UTF-16 units, as the original's `split('\n')[0].slice(0, 100)` cut it
+task description-of
+  take fact, like text
+  like text
+  mark private
+
+  save first, get(split(fact, <\n>), 0)
+  back host-string/prototype/slice/call(first, 0, 100)
+
+task remember
+  take root, like text
+  take fact, like text
+  take name-given, like maybe, like text
+  take kind-given, like maybe, like text
+  like saved-fact
+  mark private
+
+  save dir, memory-dir(root)
+  node-file/mkdir-sync(dir, make(folder-ask, bind(recursive, true)))
+  save kind, fact-kind(given(kind-given))
+  save name, fact-slug(fact)
+  sift name-given
+    case some
+      link chosen
+      save name, fact-slug(chosen)
+    case none
+      save keep, true
+  save description, description-of(fact)
+  save file, node-path/join(dir, <{name}.md>)
+  # the fact this one replaces, so the run says it changed one rather than added one
+  save replaced, make none
+  fork test, node-file/exists-sync(file)
+    hold
+      save was, read-fact(file)/description
+      save replaced, make(some, was)
+  node-file/write-file-sync(file, fact-text(name, kind, description, fact))
+  # keep a one-line index, deduped by name (the index is the thing a session loads up front)
+  save index-path, node-path/join(dir, <index.md>)
+  save existing, <>
+  fork test, node-file/exists-sync(index-path)
+    hold
+      save existing, node-file/read-file-sync(index-path, <utf8>)
+  node-file/write-file-sync(index-path, index-with(existing, name, description))
+  back make(saved-fact, bind(name, name), bind(kind, kind), bind(file, node-path/relative(root, file)), bind(replaced, replaced))
+
+# forget one fact: its file, and its line in the index. Answers what it forgot, or nothing for a name never used
+task forget
+  take root, like text
+  take name, like text
+  like maybe, like fact-file
+  mark private
+
+  save dir, memory-dir(root)
+  save file, node-path/join(dir, <{fact-slug(name)}.md>)
+  fork test, not(node-file/exists-sync(file))
+    hold
+      back make none
+  save gone, read-fact(file)
+  node-file/rm-sync(file)
+  save index-path, node-path/join(dir, <index.md>)
+  fork test, node-file/exists-sync(index-path)
+    hold
+      node-file/write-file-sync(index-path, index-without(node-file/read-file-sync(index-path, <utf8>), gone/name))
+  back make(some, gone)
+
+task call-forget
+  take root, like text
+  take name, like text
+  take json, like boolean
+  like void
+  mark private
+
+  save gone, forget(root, name)
+  fork test, json
+    hold
+      sift gone
+        case some
+          link one
+          output/print-data(<{host-json/stringify(make(forgot-record, bind(ok, true), bind(name, one/name)))}\n>)
+          save host-process/exit-code, 0
+        case none
+          output/print-data(<{host-json/stringify(make(forgot-record, bind(ok, false), bind(name, name)))}\n>)
+          save host-process/exit-code, 1
+    miss
+      output/open-run(make(mind-open, bind(verb, <mind>), bind(root, root)))
+      sift gone
+        case some
+          link one
+          save facts, make list
+          facts/push(one/kind)
+          facts/push(one/description)
+          output/report(make(fact-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <remove>), bind(subject, one/name), bind(facts, facts)))
+          output/close-run(make(done-close, bind(verdict, <Forgotten>), bind(done, true)))
+        case none
+          output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no fact named {name}>)))
+          output/close-run(make(next-close, bind(verdict, <Nothing forgotten>), bind(next, <term mind, to list the names>)))
+
+task call-remember
+  take root, like text
+  take fact, like text
+  take name, like maybe, like text
+  take kind, like maybe, like text
+  take json, like boolean
+  like void
+  mark private
+
+  save saved, remember(root, fact, name, kind)
+  fork test, json
+    hold
+      sift saved/replaced
+        case some
+          link was
+          output/print-data(<{host-json/stringify(make(replaced-record, bind(ok, true), bind(name, saved/name), bind(kind, saved/kind), bind(file, saved/file), bind(replaced, was)))}\n>)
+        case none
+          output/print-data(<{host-json/stringify(make(saved-record, bind(ok, true), bind(name, saved/name), bind(kind, saved/kind), bind(file, saved/file)))}\n>)
+    miss
+      output/open-run(make(mind-open, bind(verb, <mind>), bind(root, root)))
+      save fields, make list
+      fields/push(output/location(saved/file))
+      save verdict, <Remembered>
+      # a name already used replaces its fact: a `change` naming what it was, never an `add` like a new one
+      sift saved/replaced
+        case some
+          link was
+          save facts, make list
+          facts/push(saved/kind)
+          facts/push(<was: {was}>)
+          output/report(make(placed-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <change>), bind(subject, saved/name), bind(facts, facts), bind(fields, fields)))
+          save verdict, <Replaced>
+        case none
+          save facts, make list
+          facts/push(saved/kind)
+          output/report(make(placed-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, saved/name), bind(facts, facts), bind(fields, fields)))
+      output/close-run(make(plain-close, bind(verdict, verdict)))
+
+task call-recall
+  take root, like text
+  take find, like maybe, like text
+  take json, like boolean
+  like void
+  mark private
+
+  save asked, given(find)
+  save query, host-string/prototype/to-lower-case/call(asked)
+  save facts, make list
+  walk all-facts(root)
+    take one
+    fork test, recalls(query, make(fact, bind(name, one/name), bind(kind, one/kind), bind(description, one/description), bind(body, one/body)))
+      hold
+        facts/push(one)
+  fork test, json
+    hold
+      save records, make list
+      walk facts
+        take one
+        records/push(make(fact-record, bind(name, one/name), bind(kind, one/kind), bind(description, one/description), bind(body, one/body), bind(file, node-path/relative(root, one/file))))
+      output/print-data(<{host-json/stringify(make(facts-record, bind(ok, true), bind(facts, records)))}\n>)
+    miss
+      # each fact one `recall` item: its description as the subject, its kind and name as facts
+      save opening, make list
+      fork test, is-unequal(asked, <>)
+        hold
+          opening/push(asked)
+      output/open-run(make(mind-open-facts, bind(verb, <mind>), bind(root, root), bind(facts, opening)))
+      walk facts
+        take one
+        save subject, one/description
+        fork test, is-equal(subject, <>)
+          hold
+            save subject, one/name
+        save item-facts, make list
+        item-facts/push(one/kind)
+        item-facts/push(one/name)
+        output/report(make(recall-item, bind(glyph, <info>), bind(verb, <recall>), bind(subject, subject), bind(facts, item-facts)))
+      save counts, make list
+      counts/push(output/count(facts/length, <facts>, <fact>))
+      output/close-run(make(counted-close, bind(verdict, recall-verdict(facts/length, query)), bind(counts, counts)))
+
+# `fact` to remember (with its `name` and `kind`), `find` to recall by, `forget` the name to forget, `response` the
+# response format, the original's `back` (`json` answers records; `back` is the word that returns here)
+task call-mind
+  take root, like text
+  take fact, like maybe, like text
+  take name, like maybe, like text
+  take kind, like maybe, like text
+  take find, like maybe, like text
+  take forget, like maybe, like text
+  take response, like maybe, like text
+  like void
+
+  save json, is-equal(given(response), <json>)
+  sift forget
+    case some
+      link gone
+      call-forget(root, gone, json)
+    case none
+      # a fact given empty is no fact, as the original's `if (input.fact)` read it
+      save told, given(fact)
+      fork test, is-unequal(told, <>)
+        hold
+          call-remember(root, told, name, kind, json)
+        miss
+          call-recall(root, find, json)

@@ -61,3 +61,30 @@ mint hook, like code-hook
       bind view, read view
       bind flow, read flow
       bind drop, read drop
+
+# a CLI command's positional, minted as its own kind (`hook-slot`) into the hook's `take` site, beside the takes in
+# source order (decision term/003 part 1)
+mint hook-slot
+  case name
+    site name
+  case like
+    site like
+  case need
+    site need
+  case bind
+    site bind
+  case pick
+    site pick
+  case note
+    site note
+  case drop
+    site drop
+  hook make
+    make hook-slot
+      bind name, read name
+      bind like, read like
+      bind need, read need
+      bind bind, read bind
+      bind pick, read pick
+      bind note, read note
+      bind drop, read drop

@@ -1,0 +1,497 @@
+# The compiler in a browser Web Worker: Term source in, the four targets of `term make --emit` out. Ported from
+# call/code/browser/worker.ts, term-cli-in-term-0063: a worker entry (decision 003), bundled by browser/build.mjs.
+#
+# THE SAME CALLS AS THE CLI, NOT A COPY OF THEM. A compile here is `compile()` with the stdlib resolver for the
+# target's env (wrapped by `withNativeEnv`, as `projectResolver` wraps it), the role, lean and deck readers the CLI
+# passes, and then `emitTarget` (compile/emit-target.ts), which is what call/code/emit.ts runs per target. The only
+# difference is the disk: `fs` and `path` are aliased to the in-memory snapshot of the standard library, so the CLI's
+# own readers run unchanged over it.
+#
+# THE SNAPSHOT IS FETCHED ONLY WHEN A PROGRAM LOADS A PACKAGE. A program with no `load @...` line (the Fibonacci
+# sample) compiles with nothing fetched at all.
+#
+# The protocol, both directions, `form` the tag. One page sends `start` once and then `compile` per edit; the worker
+# answers every `compile` with exactly one `made`, `refused` or `fault` carrying the same `id`. Mirrored by
+# `site/component/page/explore/protocol.ts` on term.surf, which is where to change it on both sides.
+#
+#   page -> worker   { form: 'start', snapshot: '<url of the stdlib snapshot json>' }
+#                    { form: 'compile', id, text }
+#   worker -> page   { form: 'made', id, ms, output: { node, rust, swift, kotlin }, issue: Issue[] }   warnings in issue
+#                    { form: 'refused', id, ms, issue: Issue[] }
+#                    { form: 'fault', id, message }                                                  the compiler threw
+#
+# The disk is DOCKED, never loaded: a port is emitted whole with its own copy of what it loads, and the snapshot the
+# worker mounts must be the one instance the bundle's `fs` alias hands every compiler module. Docked too, as still
+# TypeScript or as the compiler's own modules: compile/compile, compile/load, compile/native, compile/emit-target,
+# resolve, parser/diagnostic, call/code/deck-of, call/code/role-of.
+
+dock load
+  load <@term/make/code/compile/compile>, name compiling-module
+  load <@term/make/code/compile/load>, name loading-module
+  load <@term/make/code/compile/native>, name native-module
+  load <@term/make/code/compile/emit-target>, name target-module
+  load <@term/make/code/resolve>, name resolving-module
+  load <@term/make/code/parser/diagnostic>, name diagnostic-module
+  load <@term/call/code/deck-of>, name deck-reading
+  load <@term/call/code/role-of>, name role-reading
+  load <@term/call/code/browser/disk>, name snapshot-disk
+
+# ---- the host values Term has no word for ----
+
+# `undefined`
+bind worker-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind worker-is-nothing
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+# `performance.now()`
+bind worker-now
+  like number
+  case node
+    text <performance.now()>
+
+# a number subtracted from another, as JavaScript does (no integer division in it)
+bind worker-elapsed
+  take started, like number
+  like number
+  case node
+    text <(performance.now() - $started)>
+
+# a promise awaited
+bind worker-await
+  take value, like dynamic
+  like dynamic
+  case node
+    text <(await $value)>
+
+# a host function called with one value, its answer (a promise) not awaited
+bind worker-call-with
+  take callback, like dynamic
+  take value, like dynamic
+  like dynamic
+  case node
+    text <$callback($value)>
+
+# `promise.catch(callback)`, not waited on
+bind worker-on-failure
+  take promise, like dynamic
+  take callback, like dynamic
+  like void
+  case node
+    text <void $promise.catch($callback)>
+
+# `Promise.reject(new Error(message))`
+bind worker-rejected
+  take message, like text
+  like dynamic
+  case node
+    text <Promise.reject(new Error($message))>
+
+# raise a plain Error with the message, as `throw new Error(message)` does
+bind worker-throw
+  take message, like text
+  like dynamic
+  case node
+    text <(() =\> \{ throw new Error($message) \})()>
+
+# a caught failure as the page is told it: its message, else the failure itself
+bind worker-error-text
+  take problem, like dynamic
+  like text
+  case node
+    text <($problem instanceof Error ? $problem.message : String($problem))>
+
+# `new Map()`
+bind worker-new-map
+  like dynamic
+  case node
+    text <new Map()>
+
+bind worker-map-has
+  take map, like dynamic
+  take key, like text
+  like boolean
+  case node
+    text <$map.has($key)>
+
+bind worker-map-get
+  take map, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$map.get($key)>
+
+bind worker-map-set
+  take map, like dynamic
+  take key, like text
+  take value, like dynamic
+  like void
+  case node
+    text <void $map.set($key, $value)>
+
+bind worker-map-values
+  take map, like dynamic
+  like list, like dynamic
+  case node
+    text <[...$map.values()]>
+
+# the memo key of one resolve, `${importPath}\0${how?.base ?? ''}`
+bind worker-resolve-key
+  take wanted, like dynamic
+  take how, like dynamic
+  like text
+  case node
+    text <(String($wanted) + String.fromCharCode(0) + String($how?.base ?? ""))>
+
+# the stdlib resolver called, `stdlib?.(importPath, fromFile, how)`
+bind worker-resolve-with
+  take stdlib, like dynamic
+  take wanted, like dynamic
+  take from, like dynamic
+  take how, like dynamic
+  like dynamic
+  case node
+    text <$stdlib?.($wanted, $from, $how)>
+
+# a warning's key, `${name}\0${line}\0${column}\0${message}`, an absent line written `undefined` as a template writes it
+bind worker-warning-key
+  take issue, like dynamic
+  like text
+  case node
+    text <[$issue.name, $issue.line, $issue.column, $issue.message].map(String).join(String.fromCharCode(0))>
+
+# a text cut at every line end, `text.split('\n')`
+bind worker-lines
+  take text, like text
+  like list, like text
+  case node
+    text <$text.split(String.fromCharCode(10))>
+
+bind worker-starts-with-at
+  take value, like dynamic
+  like boolean
+  case node
+    text <$value.startsWith("@")>
+
+# the targets in order, `EMIT_TARGETS`, read by its exact name (a dock read loses an UPPER_SNAKE name's underscores)
+bind worker-emit-targets
+  take module, like dynamic
+  like list, like text
+  case node
+    text <$module.EMIT_TARGETS>
+
+bind worker-new-record
+  like dynamic
+  case node
+    text <(\{\})>
+
+bind worker-put
+  take record, like dynamic
+  take key, like text
+  take value, like dynamic
+  like void
+  case node
+    text <void ($record[$key] = $value)>
+
+# the diagnostic's span, read whole (its lines and columns are the compiler's, zero-based)
+bind worker-issue-own
+  take diagnostic, like dynamic
+  take frame, like text
+  like dynamic
+  case node
+    text <(\{ severity: $diagnostic.severity, name: $diagnostic.name, message: $diagnostic.message, line: $diagnostic.span.start.line, column: $diagnostic.span.start.column, endLine: $diagnostic.span.end.line, endColumn: $diagnostic.span.end.column, frame: $frame \})>
+
+bind worker-issue-other
+  take diagnostic, like dynamic
+  take frame, like text
+  like dynamic
+  case node
+    text <(\{ severity: $diagnostic.severity, name: $diagnostic.name, message: $diagnostic.message, frame: $frame \})>
+
+bind worker-not-a-program
+  like dynamic
+  case node
+    text <(\{ severity: "error", name: "not-a-program", message: "this file is data or a stylesheet, so it has no target source", frame: "kink \<this file is data or a stylesheet, so it has no target source\>" \})>
+
+bind worker-made
+  take id, like number
+  take ms, like number
+  take output, like dynamic
+  take issue, like list, like dynamic
+  like dynamic
+  case node
+    text <(\{ form: "made", id: $id, ms: $ms, output: $output, issue: $issue \})>
+
+bind worker-refused
+  take id, like number
+  take ms, like number
+  take issue, like list, like dynamic
+  like dynamic
+  case node
+    text <(\{ form: "refused", id: $id, ms: $ms, issue: $issue \})>
+
+bind worker-fault
+  take id, like dynamic
+  take message, like text
+  like dynamic
+  case node
+    text <(\{ form: "fault", id: $id, message: $message \})>
+
+# the worker's own scope, `globalThis`: its `postMessage`, and the handler it calls per message
+bind worker-post
+  take reply, like dynamic
+  like void
+  case node
+    text <void globalThis.postMessage($reply)>
+
+bind worker-listen
+  take handler, like dynamic
+  like boolean
+  case node
+    text <((globalThis.onmessage = $handler), true)>
+
+# ---- the shapes ----
+
+# the module's state: the snapshot's url once `start` gave it, the fetch of it while one runs, and one parse memo for
+# the life of the worker, shared by the four targets and by every edit (a memo keyed by file and text can only cost a
+# re-parse, never a wrong tree, compile/load.ts)
+form worker-state
+  mark shared
+  link snapshot-url, like dynamic
+  link mounting, like dynamic
+  link parsed, like dynamic
+
+host state, make(worker-state, bind(snapshot-url, worker-nothing()), bind(mounting, worker-nothing()), bind(parsed, loading-module/make-parse-memo()))
+
+# one file handed to the compiler
+form entry-source
+  link file, like text
+  link text, like text
+
+# what `compile` is asked with
+form compile-options
+  link resolve, like dynamic
+  link parsed, like dynamic
+  link env, like text
+  link deck-of, like dynamic
+  link role-of, like dynamic
+  link lean-of, like dynamic
+
+# what `emitTarget` is asked with
+form target-ask
+  link program, like dynamic
+  link typescript, like dynamic
+  link target, like text
+  link read-runtime, like dynamic
+  link wake, like dynamic
+
+# ---- the worker ----
+
+# where the snapshot is mounted. The bundle pins `process.env.TERM_STDLIB` to the same path (build.mjs), which is
+# how `stdlibBase()` finds it without walking up from a file URL a worker does not have
+task stdlib-root
+  like text
+
+  back </term/base>
+
+# the one file the page edits. The basename matches the file the build-time outputs were made from, so the first
+# compile in the browser emits the same bytes the server rendered
+task entry-file
+  like text
+
+  back </explore/fibonacci.tree>
+
+# for a test that drives the worker under Node, mounting the snapshot itself rather than fetching it
+task mount-files
+  take input, like dynamic
+
+  snapshot-disk/mount-files(input)
+
+# the snapshot fetched and mounted, or a failure saying why
+task fetch-snapshot
+  take url, like dynamic
+  mark async
+
+  save response, worker-await(host-fetch(url))
+  fork test, not(response/ok)
+    hold
+      worker-throw(<the stdlib snapshot answered {response/status}>)
+  save snapshot, worker-await(response/json())
+  mount-files(make(mount-ask, bind(root, stdlib-root()), bind(file, snapshot/file)))
+
+form mount-ask
+  link root, like text
+  link file, like dynamic
+
+bind host-fetch
+  take url, like dynamic
+  like dynamic
+  case node
+    text <fetch($url)>
+
+# the one fetch of the snapshot, shared by every edit that waits on it. A failed fetch is tried again on the next edit
+# rather than remembered
+task mount
+  like dynamic
+
+  fork test, not(worker-is-nothing(state/mounting))
+    hold
+      back state/mounting
+  fork test, worker-is-nothing(state/snapshot-url)
+    hold
+      back worker-rejected(<no snapshot url: the page sends `start` first>)
+  save state/mounting, worker-call-with(fetch-snapshot, state/snapshot-url)
+  save forget
+    task
+      take problem, like dynamic
+      like void
+      save state/mounting, worker-nothing()
+  worker-on-failure(state/mounting, forget)
+  back state/mounting
+
+# does this program ask the resolver for anything? Read with the compiler's own import scan, so a `load` inside a
+# text literal or a comment is not counted
+task loads-a-package
+  take text, like text
+  like boolean
+
+  save paths, loading-module/import-paths-of(make(entry-source, bind(file, entry-file()), bind(text, text)), state/parsed)
+  walk paths
+    take path, like dynamic
+    fork test, worker-starts-with-at(path)
+      hold
+        back true
+  back false
+
+# the stdlib resolver, memoized per path the way `projectResolver` memoizes, then the env's `{platform}` rung on top
+task resolver-for
+  take env, like text
+  take stdlib, like dynamic
+  like dynamic
+
+  save memo, worker-new-map()
+  save base
+    task
+      take import-path, like dynamic
+      take from-file, like dynamic
+      take how, like dynamic
+      like dynamic
+      save key, worker-resolve-key(import-path, how)
+      fork test, worker-map-has(memo, key)
+        hold
+          back worker-map-get(memo, key)
+      save found, worker-resolve-with(stdlib, import-path, from-file, how)
+      worker-map-set(memo, key, found)
+      back found
+  back native-module/with-native-env(env, base)
+
+task read-runtime
+  take path, like dynamic
+  like dynamic
+
+  fork test, snapshot-disk/exists-sync(path)
+    hold
+      back snapshot-disk/read-file-sync(path)
+  back worker-nothing()
+
+task lines-of
+  take file, like dynamic
+  like list, like text
+
+  fork test, snapshot-disk/exists-sync(file)
+    hold
+      back worker-lines(snapshot-disk/read-file-sync(file))
+  back make list
+
+task issue-of
+  take diagnostic, like dynamic
+  take lines, like list, like text
+  like dynamic
+
+  fork test, is-equal(diagnostic/file, entry-file())
+    hold
+      back worker-issue-own(diagnostic, diagnostic-module/render-kink(diagnostic, lines, false))
+  back worker-issue-other(diagnostic, diagnostic-module/render-kink(diagnostic, lines-of(diagnostic/file), false))
+
+# exported so a test can drive the worker under Node, with the snapshot mounted by `mount-files` instead of fetched
+task compile-all
+  take id, like number
+  take text, like text
+  like dynamic
+  mark async
+
+  save started, worker-now()
+  fork test, and(loads-a-package(text), is-equal(snapshot-disk/mounted-count(), 0))
+    hold
+      worker-await(mount())
+
+  # after the mount, so `stdlibBase()` sees the snapshot's directories. Undefined before it, which is the right
+  # answer for a program that loads nothing
+  save stdlib, worker-nothing()
+  fork test, is-above(snapshot-disk/mounted-count(), 0)
+    hold
+      save stdlib, resolving-module/stdlib-resolver()
+  save lines, worker-lines(text)
+  save output, worker-new-record()
+  save warned, worker-new-map()
+  save deck-of, deck-reading/project-deck-of()
+  save role-of, role-reading/project-role-of(</explore>)
+  save lean-of, role-reading/project-lean-of(</explore>)
+
+  walk worker-emit-targets(target-module)
+    take target, like text
+    save options, make(compile-options, bind(resolve, resolver-for(target, stdlib)), bind(parsed, state/parsed), bind(env, target), bind(deck-of, deck-of), bind(role-of, role-of), bind(lean-of, lean-of))
+    save result, compiling-module/compile(make(entry-source, bind(file, entry-file()), bind(text, text)), options)
+
+    # the first target to refuse speaks for all four: a check error is the program's, not the backend's
+    fork test, not(result/ok)
+      hold
+        save refusals, make list
+        walk result/diagnostics
+          take diagnostic, like dynamic
+          refusals/push(issue-of(diagnostic, lines))
+        back worker-refused(id, worker-elapsed(started), refusals)
+
+    fork test, is-equal(result/program/length, 0)
+      hold
+        save alone, make list
+        alone/push(worker-not-a-program())
+        back worker-refused(id, worker-elapsed(started), alone)
+
+    save ask, make(target-ask, bind(program, result/program), bind(typescript, result/typescript), bind(target, target), bind(read-runtime, read-runtime), bind(wake, result/wake))
+    worker-put(output, target, target-module/emit-target(ask))
+
+    # the same warning comes back from every target, so each is kept once
+    walk result/warnings
+      take diagnostic, like dynamic
+      save issue, issue-of(diagnostic, lines)
+      worker-map-set(warned, worker-warning-key(issue), issue)
+
+  back worker-made(id, worker-elapsed(started), output, worker-map-values(warned))
+
+# one message from the page
+task answer-message
+  take event, like dynamic
+  like void
+  mark async
+
+  save request, event/data
+  fork test, is-equal(request/form, <start>)
+    hold
+      save state/snapshot-url, request/snapshot
+      back
+  fork
+    mark unsafe
+    save reply, compile-all(request/id, request/text)
+    worker-post(reply)
+  halt take
+    take problem
+    worker-post(worker-fault(request/id, worker-error-text(problem)))
+
+host listening, worker-listen(answer-message)

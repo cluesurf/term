@@ -46,6 +46,10 @@ load ./http
   find request
   find response
 
+load @term/host/json
+  find from-json
+  find to-json
+
 # a body whose type is neither a form nor JSON. `value` is the type it came as
 form body-exclusion
   like exclusion

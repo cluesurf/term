@@ -1,0 +1,503 @@
+# `term cast --target cloudflare`: build a Term `.tree` SSR app into a deployable Cloudflare Worker. Ported from
+# call/code/cast.ts, term-cli-in-term-0024.
+#
+# A `.tree` SSR app (`boot ./site/boot`, the `hook` routing DSL, `@term/site`) runs three ways from ONE source: the
+# browser (client bundle), a node HTTP server (`term feed` / `term boot`), and a Cloudflare Worker. The env-abstracted
+# `host` picks the impl; this drives the Worker build:
+#
+#   1. compile the SSR entry for the `cloudflare` env (the router, DOM and render are the same pure code as node),
+#   2. build the browser client bundle and styles into `build/` (served by the Worker's ASSETS binding),
+#   3. bundle the compiled app to `work/app.mjs` (ESM; node built-ins stay external for `nodejs_compat`),
+#   4. emit `work/index.ts`, the Worker entry that runs the app and re-exports the fetch handler its `boot` returns.
+#
+# `wrangler deploy` then bundles `work/index.ts` and uploads it, with `build/` as the static-assets binding.
+#
+# The boot lane's ports find the entry and build the client bundle and assets. Docked: the compiler, the native
+# prelude, the project resolver (call/code/make.ts), the project cache (cache-store.ts), the output run (output.ts) and
+# esbuild (decision 002).
+
+load ../boot/entry-finding
+  find find-project-root
+  find find-entry
+  find find-app-dir
+
+load ../boot/client-bundle
+  find build-client-bundle
+  find client-ask
+
+load ../boot/asset-building
+  find build-styles
+  find hash-assets
+  find write-build-id
+
+load ../need/running-install
+  find find-install-root
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <esbuild>, name esbuild-module
+  load <@term/make/code/compile/compile>, name compile-module
+  load <@term/make/code/compile/native>, name native-module
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/cache-store>, name cache-store
+  load <@term/call/code/output>, name output
+  load <global:Date>, name host-date
+
+# ---- does `boot` hand back a fetch handler ----
+
+# a value is a list
+bind cast-is-list
+  take value, like dynamic
+  like boolean
+  case node
+    text <Array.isArray($value)>
+
+# a value is an object (a node), neither a list nor nothing
+bind cast-is-record
+  take value, like dynamic
+  like boolean
+  case node
+    text <(typeof $value === "object" && $value !== null)>
+
+# a node's `form` is the text given
+bind cast-form-is
+  take node, like dynamic
+  take form, like text
+  like boolean
+  case node
+    text <($node.form === $form)>
+
+# a node's `value` is there (`node.value !== undefined`)
+bind cast-has-value
+  take node, like dynamic
+  like boolean
+  case node
+    text <($node.value !== undefined)>
+
+# a node's `value`
+bind cast-value-of
+  take node, like dynamic
+  like dynamic
+  case node
+    text <$node.value>
+
+# a node's own keys, in their order (Object.entries's order)
+bind cast-keys-of
+  take node, like dynamic
+  like list, like text
+  case node
+    text <Object.keys($node)>
+
+# a node's member by key
+bind cast-member
+  take node, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$node[$key]>
+
+# a node's `name` when it is a text, else the empty text
+bind cast-name-of
+  take node, like dynamic
+  like text
+  case node
+    text <(typeof $node.name === "string" ? $node.name : "")>
+
+# a node's `body`
+bind cast-body-of
+  take node, like dynamic
+  like dynamic
+  case node
+    text <$node.body>
+
+# a return's value is a call of a variable with a name: that name, else the empty text
+bind cast-called-name
+  take value, like dynamic
+  like text
+  case node
+    text <($value.form === "call" &&$value.callee?.form === "variable" && typeof $value.callee.name === "string" ? $value.callee.name : "")>
+
+# the values a body returns, outside a nested task or closure, in the order met
+task returned-values
+  take value, like dynamic
+  take into, like list, like dynamic
+  like void
+  mark private
+
+  fork test, cast-is-list(value)
+    hold
+      save count, cast-list-size(value)
+      save at, 0
+      walk test
+        hook test, is-below(at, count)
+        hook hold
+          returned-values(cast-at(value, at), into)
+          save at, add(at, 1)
+      back void
+  fork test, not(cast-is-record(value))
+    hold
+      back void
+  fork test, or(cast-form-is(value, <function>), cast-form-is(value, <closure>))
+    hold
+      back void
+  fork test, and(cast-form-is(value, <return>), cast-has-value(value))
+    hold
+      into/push(cast-value-of(value))
+      back void
+  walk cast-keys-of(value)
+    take key
+    fork test, is-unequal(key, <span>)
+      hold
+        returned-values(cast-member(value, key), into)
+
+# a list's size
+bind cast-list-size
+  take value, like dynamic
+  like number
+  case node
+    text <$value.length>
+
+# a list's item at a place
+bind cast-at
+  take value, like dynamic
+  take at, like number
+  like dynamic
+  case node
+    text <$value[$at]>
+
+form handler-walk
+  mark shared
+  link functions, like hash, like text, like dynamic
+  link seen, like hash, like text, like boolean
+
+# does the task of this name return a call that reaches `serve`
+task returns-serve
+  take walk, like handler-walk
+  take name, like text
+  like boolean
+  mark private
+
+  fork test, or(not(walk/functions/has(name)), walk/seen/has(name))
+    hold
+      back false
+  save walk/seen/{name}, true
+  save returned, make list
+  returned-values(cast-body-of(walk/functions/get(name)), returned)
+  walk returned
+    take one
+    save called, cast-called-name(one)
+    fork test, is-unequal(called, <>)
+      hold
+        fork test, is-equal(called, <serve>)
+          hold
+            back true
+        fork test, returns-serve(walk, called)
+          hold
+            back true
+  back false
+
+# does the program's `boot` hand back a fetch handler. A handler is made by `serve` (`@term/site/http/serve`), which the
+# cloudflare `host` returns, so `back host(route, port)` passes one on. The types cannot say so, since `serve` is
+# declared with no result on this target, so this follows what `boot` returns: a call to a task of the program is
+# followed into that task's own returns, until one is a call to `serve`. A `boot` that returns nothing, or a number,
+# or anything that never reaches `serve`, answers false (guides: commands/cast)
+task returns-handler
+  take program, like list, like dynamic
+  like boolean
+
+  save functions, make hash
+  walk program
+    take node
+    fork test, and(cast-is-record(node), cast-form-is(node, <function>))
+      hold
+        save named, cast-name-of(node)
+        save functions/{named}, node
+  save walk, make(handler-walk, bind(functions, functions), bind(seen, make hash))
+  back returns-serve(walk, <boot>)
+
+# ---- the cast ----
+
+# `callCast`'s one input record, every key read as the original read it
+form cast-ask
+  link root, like text
+  link entry, like dynamic
+  link target, like dynamic
+
+form open-ask
+  link verb, like text
+  link root, like text
+  link facts, like list, like text
+
+form fielded-item
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form build-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link facts, like list, like text
+
+form write-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+
+form refused-close
+  link verdict, like text
+  link failure, like text
+
+form plain-close
+  link verdict, like text
+
+form next-close
+  link verdict, like text
+  link next, like text
+
+form compile-source
+  link file, like text
+  link text, like text
+
+form compile-options
+  link resolve, like dynamic
+  link cache, like dynamic
+  link env, like text
+
+form problem-entry
+  link diagnostic, like dynamic
+
+form folder-copy
+  link recursive, like boolean
+
+# the target asked for, `cloudflare` when none was given (`input.target ?? 'cloudflare'`)
+bind cast-target-of
+  take ask, like dynamic
+  like text
+  case node
+    text <($ask.target ?? "cloudflare")>
+
+# a value is there and true as JavaScript reads it
+bind cast-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# a value is `undefined` or `null`
+bind cast-nothing
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined || $value === null)>
+
+# a dynamic value as the text it is
+bind cast-text-of
+  take value, like dynamic
+  like text
+  case node
+    text <$value>
+
+# a cast is always a production build (a Worker deploy): the client bundle is minified and the style build takes its
+# production path
+bind cast-set-production
+  like text
+  case node
+    text <(process.env.NODE_ENV = "production")>
+
+# `:<line>` of the program's first `boot` task, one-based, or the empty text when it has none or no span
+bind cast-boot-line
+  take program, like dynamic
+  like text
+  case node
+    text <((found) =\> (found?.span ? ":" + (found.span.start.line + 1) : ""))($program.find((node) =\> node.form === "function" && node.name === "boot"))>
+
+# the Worker bundle: everything inlined but node built-ins (platform node), ESM, production written in, minified
+bind cast-worker-build
+  take entry, like text
+  take outfile, like text
+  like dynamic
+  case node
+    text <(\{ entryPoints: [$entry], outfile: $outfile, bundle: true, format: "esm", platform: "node", target: "es2022", define: \{ "process.env.NODE_ENV": JSON.stringify("production") \}, minify: true \})>
+
+# lines joined with a line break (a `\n` in a bind's text is written out as the break itself, inside a string)
+bind cast-joined-lines
+  take parts, like list, like text
+  like text
+  case node
+    text <$parts.join(String.fromCharCode(10))>
+
+# a runtime shim's text, or undefined when the file is not there
+task read-cast-runtime
+  take file, like text
+  like dynamic
+
+  fork test, node-file/exists-sync(file)
+    hold
+      back node-file/read-file-sync(file, <utf8>)
+  back cast-nothing-value()
+
+bind cast-nothing-value
+  like dynamic
+  case node
+    text <undefined>
+
+task problem-entries
+  take diagnostics, like list, like dynamic
+  like list, like problem-entry
+  mark private
+
+  save entries, make list
+  walk diagnostics
+    take diagnostic
+    entries/push(make(problem-entry, bind(diagnostic, diagnostic)))
+  back entries
+
+task call-cast
+  take input, like cast-ask
+  like void
+  mark async
+
+  save target, cast-target-of(input)
+  save started, host-date/now()
+  save facts, make list
+  facts/push(target)
+  output/openRun(make(open-ask, bind(verb, <cast>), bind(root, input/root), bind(facts, facts)))
+  fork test, is-unequal(target, <cloudflare>)
+    hold
+      save fields, make list
+      fields/push(output/field(<next>, <term cast --target cloudflare>))
+      output/report(make(fielded-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no cast target named {target}>), bind(fields, fields)))
+      output/closeRun(make(refused-close, bind(verdict, <Nothing cast>), bind(failure, <usage>)))
+      back void
+  fork
+    mark unsafe
+    cast-worker(input, started)
+  halt take
+    take error
+    output/failRun(error, input/root)
+
+task cast-worker
+  take input, like cast-ask
+  take started, like number
+  like void
+  mark async
+  mark private
+
+  save cwd, input/root
+  save project-root, find-project-root(cwd)
+  save entry, find-entry(cwd, input/entry)
+  save present, cast-truthy(entry)
+  fork test, present
+    hold
+      save present, node-file/exists-sync(cast-text-of(entry))
+  fork test, not(present)
+    hold
+      save fields, make list
+      save subject, <There is no entry: none was given and deck.tree has no `boot \<path\>`>
+      fork test, cast-truthy(entry)
+        hold
+          save subject, <The entry file does not exist>
+          fields/push(output/location(output/showPath(cast-text-of(entry), input/root)))
+      output/report(make(fielded-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject), bind(fields, fields)))
+      output/closeRun(make(plain-close, bind(verdict, <Nothing cast>)))
+      back void
+  save entry-file, cast-text-of(entry)
+  save app-dir, find-app-dir(entry-file)
+  fork test, cast-nothing(app-dir)
+    hold
+      save app-dir, find-app-dir(cwd)
+  fork test, cast-nothing(app-dir)
+    hold
+      save app-dir, project-root
+  save app, cast-text-of(app-dir)
+  # the original's link/ walk from its own folder, `host/` in the bundle: the running install's host/ (decision 006)
+  save install-root, find-project-root(node-path/join(find-install-root(), <host>))
+  save production, cast-set-production()
+  save env, <cloudflare>
+  save resolve, make-module/projectResolver(app, env, install-root)
+  save cache, cache-store/projectCache(project-root)
+  # 1. compile the SSR entry for the cloudflare env
+  save source, make(compile-source, bind(file, entry-file), bind(text, node-file/read-file-sync(entry-file, <utf8>)))
+  save result, compile-module/compile(source, make(compile-options, bind(resolve, resolve), bind(cache, cache), bind(env, env)))
+  save shown, output/showPath(entry-file, input/root)
+  save build-facts, make list
+  build-facts/push(<cloudflare>)
+  fork test, not(result/ok)
+    hold
+      output/reportProblems(problem-entries(result/diagnostics), input/root)
+      output/report(make(build-item, bind(glyph, <failed>), bind(verb, <build>), bind(subject, shown), bind(duration, subtract(host-date/now(), started)), bind(facts, build-facts)))
+      output/closeRun(make(plain-close, bind(verdict, <Cast failed>)))
+      back void
+  # the Worker's default export is what `boot` returns, so a `boot` that returns nothing casts to a Worker with no
+  # `fetch`, and the first request is where that showed (guides: commands/cast, 2026-10-04). Refused here instead
+  fork test, not(returns-handler(result/program))
+    hold
+      save fields, make list
+      fields/push(output/location(<{shown}{cast-boot-line(result/program)}>))
+      fields/push(output/field(<next>, <end boot with `back host(route, port)`>))
+      output/report(make(fielded-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <`boot` returns no fetch handler, so the Worker would have none>), bind(fields, fields)))
+      output/report(make(build-item, bind(glyph, <failed>), bind(verb, <build>), bind(subject, shown), bind(duration, subtract(host-date/now(), started)), bind(facts, build-facts)))
+      output/closeRun(make(plain-close, bind(verdict, <Nothing cast>)))
+      back void
+  output/report(make(build-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, shown), bind(duration, subtract(host-date/now(), started)), bind(facts, build-facts)))
+  # 2. the browser client bundle and styles the SSR page loads (served from build/ via the Worker's ASSETS binding).
+  # Same pipeline as the node SSR build, content hashes included: a Worker cannot read `build/asset-manifest.json`, so
+  # the manifest is baked into the bundle below, as the import map is
+  build-styles(app)
+  build-client-bundle(make(client-ask, bind(entry, entry-file), bind(app-dir, app), bind(project-root, project-root), bind(install-root, install-root), bind(prod, true)))
+  hash-assets(node-path/join(app, <build>), true)
+  write-build-id(app)
+  # static passthrough: everything under the app's `asset/` is copied into `build/` verbatim (fonts, logos, favicons),
+  # served from `/base/...` by the ASSETS binding
+  save asset-dir, node-path/join(app, <asset>)
+  fork test, node-file/exists-sync(asset-dir)
+    hold
+      node-file/cp-sync(asset-dir, node-path/join(app, <build>), make(folder-copy, bind(recursive, true)))
+  # 3. bundle the compiled app to work/app.mjs. Node built-ins stay external (platform node), so the Worker's
+  # `nodejs_compat` provides them at runtime; everything else is inlined
+  save prelude, native-module/nativePrelude(result/program, env, read-cast-runtime)
+  # the client bundle's import map and the asset manifest, baked in as `globalThis` constants: a Worker has no file
+  # system for the document shell to read them from
+  save import-map-file, node-path/join(app, <build>, <import-map.json>)
+  save import-map-json, <\{"imports":\{\}\}>
+  fork test, node-file/exists-sync(import-map-file)
+    hold
+      save import-map-json, node-file/read-file-sync(import-map-file, <utf8>)
+  save baked-import-map, <globalThis.__SEED_IMPORT_MAP__ = {import-map-json};\n>
+  save manifest-file, node-path/join(app, <build>, <asset-manifest.json>)
+  save baked-manifest, <>
+  fork test, node-file/exists-sync(manifest-file)
+    hold
+      save baked-manifest, <globalThis.__SEED_ASSET_MANIFEST__ = {node-file/read-file-sync(manifest-file, <utf8>)};\n>
+  save typescript, result/typescript
+  save body, make list
+  body/push(<{baked-import-map}{baked-manifest}{prelude}>)
+  body/push(typescript)
+  save work-dir, node-path/join(app, <work>)
+  node-file/mkdir-sync(work-dir, make(folder-copy, bind(recursive, true)))
+  save app-ts, node-path/join(work-dir, <app.ts>)
+  node-file/write-file-sync(app-ts, cast-joined-lines(body))
+  save app-mjs, node-path/join(work-dir, <app.mjs>)
+  esbuild-module/build-sync(cast-worker-build(app-ts, app-mjs))
+  # 4. the Worker entry: run the app (its `boot` builds the routes and returns the fetch handler) and re-export that
+  # handler as the Worker's default export
+  save lines, make list
+  lines/push(<// GENERATED by `term cast --target cloudflare`. The Cloudflare Worker entry: it runs the>)
+  lines/push(<// compiled Term SSR app (./app.mjs) and re-exports the Web fetch handler its `boot` returns>)
+  lines/push(<// as the Worker's default export. Static assets are served from build/ via the ASSETS>)
+  lines/push(<// binding (see wrangler.toml). Do not edit by hand -- re-run `term cast` to regenerate.>)
+  lines/push(<import * as app from './app.mjs'>)
+  lines/push(<>)
+  lines/push(<const worker = await app.boot('', 0)>)
+  lines/push(<>)
+  lines/push(<export default worker>)
+  lines/push(<>)
+  save index-ts, node-path/join(work-dir, <index.ts>)
+  node-file/write-file-sync(index-ts, cast-joined-lines(lines))
+  output/report(make(write-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, output/showPath(app-mjs, input/root))))
+  output/report(make(write-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, output/showPath(index-ts, input/root))))
+  output/closeRun(make(next-close, bind(verdict, <Cast to a Cloudflare Worker>), bind(next, <wrangler deploy>)))

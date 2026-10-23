@@ -1,0 +1,338 @@
+# What both Compose builds share: whether a tool is installed, the entry file a build compiles, the app's scope checked
+# against the modules its build loads, the program's entry task as Kotlin spells it, the script that resolves the
+# Compose libraries, and the program's Kotlin compiled against a runtime kept between builds. Part of the port of
+# deck/call/code/compose.ts (term-cli-in-term-0035): its `startTask`, `toolchainScript`, `have`, `entryOf`,
+# `refusedScope`, `RUNTIME_CACHE` and `compileKotlin`. What a build decides without a tool is
+# deck/call/code/compose-plan.tree.
+
+load @term/base/list
+  find list
+
+load @term/base/environment
+  find variable
+  find has-variable
+
+load ../cask/host-value
+  find nothing
+  find is-truthy
+  find value-or
+  find raise-error
+  find now-ms
+
+# scope.ts DOCKED, not a load of work/context/app-scope.tree: that port's one-argument `refuse` bind and
+# host-value.tree's two-argument one meet in one program, and the build binds app-scope's calls to the other
+# (type-mismatch "refuse needs failure"). The integrate may swap it once binds are scoped by import
+dock load
+  load <@term/call/code/scope>, name scope-module
+  load <node:fs>, name node-fs
+  load <node:os>, name node-os
+  load <node:path>, name node-path
+  load <node:crypto>, name node-crypto
+  load <node:child_process>, name node-child
+  load <global:process>, name node-process
+  load <@term/make/code/compile/load>, name load-module
+  load <@term/make/code/compile/kotlin>, name kotlin-module
+  load <@term/make/code/compile/native-main>, name native-main
+  load <@term/make/code/resolve>, name resolve-module
+
+form tool-text
+  link encoding, like text
+
+form runtime-folder
+  link recursive, like boolean
+
+form scope-source
+  link file, like text
+  link text, like text
+
+form scope-ask
+  link root, like text
+  link files, like list, like text
+
+# what the program's Kotlin is compiled with: the compiler (`kotlinc`, or a session's warm worker), the build's stage
+# times, the folder the Kotlin files are written to, the file name, the text opening each file (Android's `package`),
+# the runtime (the prelude), the program, the classpath, kotlinc's flags and the jar or folder to write
+form kotlin-ask
+  link compiler, like dynamic
+  link stages, like list, like dynamic
+  link dir, like text
+  link name, like text
+  link header, like text
+  link runtime, like text
+  link program, like text
+  link classpath, like list, like text
+  link flags, like list, like text
+  link out, like text
+
+# kotlinc's exit status and what it said, and the runtime jars the program needs beside it at run time
+form kotlin-built
+  link status, like number
+  link output, like text
+  link runtime-jars, like list, like text
+
+# ---- the host values Term has no word for ----
+
+# a Kotlin compiler (kotlin-worker.ts `KotlinCompiler`) called with its arguments
+bind run-compiler
+  take compiler, like dynamic
+  take args, like list, like text
+  like dynamic
+  case node
+    text <$compiler($args)>
+
+# `text.split(separator)`
+bind split-on
+  take value, like text
+  take separator, like text
+  like list, like text
+  case node
+    text <$value.split($separator)>
+
+# `list.join(separator)`
+bind join-on
+  take items, like list, like text
+  take separator, like text
+  like text
+  case node
+    text <$items.join($separator)>
+
+# the one-character text holding U+0000, what the runtime's key joins its parts with
+bind nul-text
+  like text
+  case node
+    text <String.fromCharCode(0)>
+
+# `value.slice(0, count)`, by UTF-16 code unit
+bind head-units
+  take value, like text
+  take count, like number
+  like text
+  case node
+    text <$value.slice(0, $count)>
+
+# `value.slice(-count)`, by UTF-16 code unit
+bind tail-units
+  take value, like text
+  take count, like number
+  like text
+  case node
+    text <$value.slice(-$count)>
+
+# a host value's own `===` against a text
+bind same-text
+  take value, like dynamic
+  take other, like text
+  like boolean
+  case node
+    text <($value === $other)>
+
+# a caught failure's `message`, as `(e as Error).message` reads it
+bind message-of
+  take problem, like dynamic
+  like dynamic
+  case node
+    text <$problem.message>
+
+# one stage's name and time, as `Stages` holds it: `[stage, ms]`
+bind stage-entry
+  take stage, like text
+  take ms, like number
+  like dynamic
+  case node
+    text <[$stage, $ms]>
+
+# ---- the toolchain ----
+
+# whether a tool is on the PATH
+task have-tool
+  take tool, like text
+  like boolean
+
+  save args, make list
+  args/push(tool)
+  save said, node-child/spawn-sync(<which>, args, make(tool-text, bind(encoding, <utf8>)))
+  back is-equal(said/status, 0)
+
+# the toolchain script that resolves the Compose libraries, beside the repository the stdlib lives in
+task toolchain-script
+  like text
+
+  save stdlib, resolve-module/stdlib-base()
+  save script, <>
+  fork test, is-truthy(stdlib)
+    hold
+      save script, node-path/join(stdlib, <../../../../../..>, <task/term/native/kotlin.sh>)
+  fork test, or(is-equal(script, <>), not(node-fs/exists-sync(script)))
+    hold
+      raise-error(<the Compose toolchain script task/term/native/kotlin.sh was not found beside the stdlib>)
+  back script
+
+# where compiled Compose runtimes are kept between builds: the native toolchain's cache (task/term/native/common.sh)
+task runtime-cache
+  like text
+
+  save cache, node-path/join(node-os/tmpdir(), <term-native>)
+  fork test, has-variable(<TERM_NATIVE_CACHE>)
+    hold
+      save cache, variable(<TERM_NATIVE_CACHE>)
+  back node-path/join(cache, <kotlin>, <compose-runtime>)
+
+# the program's entry task as Kotlin spells it: `boot`, as every Term program's is, else the older `main` (`main_` in
+# Kotlin, compile/native-main.ts `entrySpelling`, which keeps `main` for the JVM's own start). THE ENTRY FILE'S OWN
+# first: a program may load a `boot` from another module and start at its own `main`, and the emitted text alone
+# cannot tell the two
+task start-task
+  take program, like dynamic
+  take file, like text
+  take kotlin, like text
+  like text
+
+  save named, <>
+  save candidates, make list
+  candidates/push(<boot>)
+  candidates/push(<main>)
+  walk candidates
+    take name, like text
+    save own, false
+    walk program
+      take statement, like dynamic
+      fork test, and(same-text(statement/form, <function>), and(same-text(statement/name, name), same-text(statement/span/file, file)))
+        hold
+          save own, true
+          halt
+    fork test, own
+      hold
+        save named, name
+        halt
+  save found, nothing()
+  fork test, not(is-equal(named, <>))
+    hold
+      save found, native-main/entry-of(<kotlin>, kotlin, named)
+  save found, value-or(found, native-main/entry-of(<kotlin>, kotlin, <boot>))
+  save found, value-or(found, native-main/entry-of(<kotlin>, kotlin, <main>))
+  back value-or(found, <main_>)
+
+# the entry file a build compiles: the app's own `file` when it has one, so its relative loads (`load ./notes`) resolve
+# beside it, else `text` written into the build's folder (a test's program, which loads only packages)
+task entry-file
+  take file, like dynamic
+  take dir, like text
+  take name, like text
+  take text, like text
+  like text
+
+  fork test, is-truthy(file)
+    hold
+      back file
+  save entry, node-path/join(dir, <{name}.tree>)
+  node-fs/write-file-sync(entry, text)
+  back entry
+
+# an APP build's scope (work/context/app-scope.tree): the capabilities the program reaches, from the modules its build
+# loads, each of which its `scope.tree` must name. Answers the refusal, or nothing when the program is within it. A
+# test's program is no app and is built with no scope. `scope/memo` is the session's parse memo, keyed by content, so a
+# rebuild does not parse the closure twice
+task refused-scope
+  take scope, like dynamic
+  take entry, like text
+  take text, like text
+  take resolve, like dynamic
+  like dynamic
+
+  fork test, not(is-truthy(scope))
+    hold
+      back nothing()
+  fork
+    mark unsafe
+    save collected, load-module/collect-modules(make(scope-source, bind(file, entry), bind(text, text)), resolve, scope/memo)
+    save files, make list
+    walk collected/sources
+      take one, like dynamic
+      files/push(one/file)
+    scope-module/check-scope(make(scope-ask, bind(root, scope/root), bind(files, files)))
+  halt take
+    take problem
+    back message-of(problem)
+  back nothing()
+
+# one Kotlin file written, its imports hoisted, and compiled against `classpath` into `out`
+task compile-file
+  take ask, like kotlin-ask
+  take file, like text
+  take text, like text
+  take classpath, like list, like text
+  take out, like text
+  like dynamic
+  mark private
+
+  node-fs/write-file-sync(file, <{ask/header}{kotlin-module/hoist-kotlin-imports(text)}\n>)
+  save args, make list
+  args/push(file)
+  args/push(<-classpath>)
+  args/push(join-on(classpath, <:>))
+  walk ask/flags
+    take flag, like text
+    args/push(flag)
+  args/push(<-d>)
+  args/push(out)
+  back run-compiler(ask/compiler, args)
+
+# the program's Kotlin compiled against its RUNTIME, the prelude, which is compiled once per distinct text into a jar
+# kept in the runtime cache. The runtime is 1,700 lines that change only when the program's docks do, and the program a
+# fraction of that, so an edit pays for the program alone. The jar is written under a name of its own and then
+# renamed, so two builds at once never read half of one. A runtime that does not compile on its own is compiled with
+# the program in one file, as every build was before. The answer names the jars the program needs beside it at run time
+task compile-kotlin
+  take ask, like kotlin-ask
+  like kotlin-built
+
+  save runtime-cache-dir, runtime-cache()
+  save runtime, <{ask/header}{kotlin-module/hoist-kotlin-imports(ask/runtime)}>
+  save key-parts, make list
+  key-parts/push(runtime)
+  key-parts/push(join-on(ask/classpath, <:>))
+  key-parts/push(join-on(ask/flags, < >))
+  save hash, node-crypto/create-hash(<sha256>)
+  save hashed, hash/update(join-on(key-parts, nul-text()))
+  save digest, hashed/digest(<hex>)
+  save key, head-units(digest, 32)
+  save jar, node-path/join(runtime-cache-dir, <{key}.jar>)
+  save stages, ask/stages
+
+  fork test, not(node-fs/exists-sync(jar))
+    hold
+      node-fs/mkdir-sync(runtime-cache-dir, make(runtime-folder, bind(recursive, true)))
+      save fresh, node-path/join(runtime-cache-dir, <{key}.{node-process/pid}.{now-ms()}.jar>)
+      save runtime-started, now-ms()
+      save built, compile-file(ask, node-path/join(ask/dir, <{ask/name}-runtime.kt>), ask/runtime, ask/classpath, fresh)
+      stages/push(stage-entry(<runtime>, subtract(now-ms(), runtime-started)))
+      fork test, not(is-equal(built/status, 0))
+        hold
+          save both, make list
+          both/push(ask/runtime)
+          both/push(ask/program)
+          save whole-started, now-ms()
+          save whole, compile-file(ask, node-path/join(ask/dir, <{ask/name}.kt>), join-on(both, <\n>), ask/classpath, ask/out)
+          stages/push(stage-entry(<kotlin>, subtract(now-ms(), whole-started)))
+          back
+            make kotlin-built
+              bind status, whole/status
+              bind output, whole/output
+              bind runtime-jars, make list
+      node-fs/rename-sync(fresh, jar)
+
+  save against, make list
+  against/push(jar)
+  walk ask/classpath
+    take one, like text
+    against/push(one)
+  save program-started, now-ms()
+  save program, compile-file(ask, node-path/join(ask/dir, <{ask/name}.kt>), ask/program, against, ask/out)
+  stages/push(stage-entry(<kotlin>, subtract(now-ms(), program-started)))
+  save jars, make list
+  jars/push(jar)
+  back
+    make kotlin-built
+      bind status, program/status
+      bind output, program/output
+      bind runtime-jars, jars

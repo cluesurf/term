@@ -39,6 +39,9 @@ load ./diagnostic
   find diagnostic-input
   find diagnose
 
+load @term/base/maybe
+  find maybe
+
 # what a token is
 form token-kind
   mark text

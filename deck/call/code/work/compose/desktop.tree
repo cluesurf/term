@@ -1,0 +1,226 @@
+# The desktop build: a Term program compiled for the `compose` env (Compose Multiplatform on the desktop JVM), which
+# reaches the toolkit dom (deck/site/code/dom/native/toolkit/dom.tree), and built by kotlinc with the Compose compiler
+# plugin into a jar. Part of the port of deck/call/code/compose.ts (term-cli-in-term-0035): its `buildCompose`, with
+# `ComposeBuilt` as the form `compose-built` and `Stages` as a list of `[stage, ms]` pairs.
+
+load @term/base/list
+  find list
+
+load @term/call/compose-plan
+  find failure-reason
+  find holds-compose-alone
+  find holds-compose-flags
+  find build-errors
+  find main-class-of
+
+load ../cask/host-value
+  find is-truthy
+  find value-or
+  find now-ms
+
+load ../cask/toolchain
+  find read-runtime
+
+load ./toolchain
+  find have-tool
+  find toolchain-script
+  find start-task
+  find entry-file
+  find refused-scope
+  find compile-kotlin
+  find kotlin-ask
+  find split-on
+  find join-on
+  find tail-units
+  find stage-entry
+
+dock load
+  load <node:path>, name node-path
+  load <node:child_process>, name node-child
+  load <@term/make/code/compile/compile>, name compile-module
+  load <@term/make/code/compile/native>, name native-module
+  load <@term/make/code/compile/kotlin>, name kotlin-module
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/kotlin-worker>, name kotlin-worker
+
+form desktop-source
+  link file, like text
+  link text, like text
+
+form desktop-options
+  link resolve, like dynamic
+  link env, like text
+  link cache, like dynamic
+
+form desktop-text
+  link encoding, like text
+
+# how the Kotlin is emitted: the program's `wake` list, as the compile answered it
+form desktop-emit
+  link wake, like dynamic
+
+# what a desktop build is asked: where the program's packages resolve (`root`), the build's folder, the program's name
+# and text, and the entry's own path when the program is an app's (toolchain.tree `entry-file`). A session that builds
+# again and again (`term work`) passes what it keeps warm: a `compiler` (kotlin-worker.ts, else `kotlinc`) and a
+# `cache`, the Term compiler's parsed modules. `scope` is the app's (`root`, and `memo`, the session's parse memo)
+form compose-ask
+  link root, like text
+  link dir, like text
+  link name, like text
+  link text, like text
+  link file
+    like dynamic
+    need false
+  link compiler
+    like dynamic
+    need false
+  link cache
+    like dynamic
+    need false
+  link scope
+    like dynamic
+    need false
+
+# what a build answers: skipped is a toolchain this machine lacks, a failed stage is a problem, and a built program is
+# its jar, the classpath it runs with, the class kotlinc named, the program's own compiled runtime (which every OS's app
+# image carries beside that OS's Compose libraries) and how long each stage took
+form compose-built
+  case skipped
+    link reason, like text
+  case failed
+    link stage, like text
+    link reason, like text
+  case built
+    link jar, like text
+    link classpath, like text
+    link main, like text
+    link runtime-jars, like list, like text
+    link stages, like list, like dynamic
+
+# compile `text` (entry file `<dir>/<name>.tree`) for Compose on the desktop JVM and build it into a jar
+task build-compose
+  take ask, like compose-ask
+  like compose-built
+
+  fork test, or(not(have-tool(<kotlinc>)), not(have-tool(<java>)))
+    hold
+      back make(skipped, bind(reason, <kotlinc or java not installed>))
+
+  # the `compose` env: the toolkit dom, Kotlin's JVM natives, and the runtime the prelude finds for it,
+  # deck/site/code/dom/native/toolkit/runtime/compose/native-view.kt (the shared Compose runtime and the desktop host)
+  save stages, make list
+  save dir, ask/dir
+  save name, ask/name
+  save text, ask/text
+  save entry, entry-file(ask/file, dir, name, text)
+  save resolve, make-module/project-resolver(ask/root, <compose>)
+  save term-started, now-ms()
+  save result, compile-module/compile(make(desktop-source, bind(file, entry), bind(text, text)), make(desktop-options, bind(resolve, resolve), bind(env, <compose>), bind(cache, ask/cache)))
+  stages/push(stage-entry(<term>, subtract(now-ms(), term-started)))
+
+  fork test, not(result/ok)
+    hold
+      save messages, make list
+      walk result/diagnostics
+        take one, like dynamic
+        messages/push(<{one/message}>)
+      back make(failed, bind(stage, <compile>), bind(reason, failure-reason(messages)))
+
+  save scope-started, now-ms()
+  save refused, refused-scope(ask/scope, entry, text, resolve)
+  stages/push(stage-entry(<scope>, subtract(now-ms(), scope-started)))
+  fork test, is-truthy(refused)
+    hold
+      back make(failed, bind(stage, <scope>), bind(reason, <{refused}>))
+
+  # the JVM's own start, which calls the program's entry
+  save emitted, kotlin-module/emit-kotlin(result/program, make(desktop-emit, bind(wake, result/wake)))
+  save kotlin, <{emitted}\nfun main() \{ {start-task(result/program, entry, emitted)}() \}\n>
+  save prelude, native-module/native-prelude(result/program, <compose>, read-runtime, kotlin)
+
+  # the Compose runtime and not the Android one: no Android class may reach a desktop build
+  fork test, not(holds-compose-alone(prelude))
+    hold
+      back make(failed, bind(stage, <prelude>), bind(reason, <the prelude does not hold the Compose runtime alone>))
+
+  save classpath, <>
+  save plugin, <>
+  fork
+    mark unsafe
+    save flags-started, now-ms()
+    save script, toolchain-script()
+    save flag-args, make list
+    flag-args/push(script)
+    flag-args/push(<compose-flags>)
+    save out, node-child/exec-file-sync(<bash>, flag-args, make(desktop-text, bind(encoding, <utf8>)))
+    stages/push(stage-entry(<flags>, subtract(now-ms(), flags-started)))
+    save lines, split-on(out/trim(), <\n>)
+    save classpath, line-at(lines, 0)
+    save plugin, line-at(lines, 1)
+  halt take
+    take problem
+    back make(failed, bind(stage, <flags>), bind(reason, flags-failure(problem)))
+
+  fork test, not(holds-compose-flags(classpath, plugin))
+    hold
+      back make(failed, bind(stage, <flags>), bind(reason, <no Compose classpath or plugin: {plugin}>))
+
+  save jar, node-path/join(dir, <{name}.jar>)
+  save flags, make list
+  flags/push(<-Xplugin={plugin}>)
+  flags/push(<-jvm-target>)
+  flags/push(<17>)
+  flags/push(<-nowarn>)
+  save built
+    compile-kotlin
+      make kotlin-ask
+        bind compiler, value-or(ask/compiler, read(kotlin-worker/kotlinc))
+        bind stages, stages
+        bind dir, dir
+        bind name, name
+        bind header, <>
+        bind runtime, prelude
+        bind program, kotlin
+        bind classpath, split-on(classpath, <:>)
+        bind flags, flags
+        bind out, jar
+
+  fork test, not(is-equal(built/status, 0))
+    hold
+      save said, build-errors(built/output)
+      fork test, is-equal(said, <>)
+        hold
+          save said, tail-units(built/output, 800)
+      back make(failed, bind(stage, <build>), bind(reason, said))
+
+  # kotlinc names a file's top-level class after the file, capitalized, a character no name may hold written `_`
+  save main, main-class-of(name)
+
+  # the runtime's jar first: the program is run, and packaged, with it beside the Compose libraries
+  save path, make list
+  walk built/runtime-jars
+    take one, like text
+    path/push(one)
+  path/push(classpath)
+  back
+    make built
+      bind jar, jar
+      bind classpath, join-on(path, <:>)
+      bind main, main
+      bind runtime-jars, built/runtime-jars
+      bind stages, stages
+
+# the line at `at` of a tool's output, or the empty text past its end: `[classpath = '', plugin = ''] = lines`
+bind line-at
+  take lines, like list, like text
+  take at, like number
+  like text
+  case node
+    text <($lines[$at] ?? "")>
+
+# what a failed flags step is reported as: the tool's standard error, else the failure itself, cut to 800 UTF-16 units
+bind flags-failure
+  take problem, like dynamic
+  like text
+  case node
+    text <String($problem.stderr ?? $problem).slice(0, 800)>

@@ -1,0 +1,596 @@
+# The seam the cask bridge generator writes on both sides: the Term lines that turn a value of one kind into json and
+# back, on the page and in the cask, and the loads, names and small texts the shim and the dispatcher both use. Part 2
+# of the port of deck/call/code/cask-generate.ts (cli-in-term-0030), from `commandOf` on.
+#
+# The original numbered its temporaries with one module counter, reset at the start of each shim and dispatcher, and
+# named the json-array task through one module variable set by each. Both are explicit here: a `bridge-counter`,
+# `mark shared` so every call writes the one count, and the task's name passed down as `items`.
+
+load @term/base/list
+  find list
+  find sort
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/hash
+  find hash
+
+load @term/base/text
+  find replace-all
+
+load ./kinds
+  find bridge-kind
+  find bridge-signature
+  find bridge-record
+
+# -1, 0 or 1 as `a` sorts before, with or after `b` by UTF-16 code unit, which is the order of a JavaScript array's
+# default `sort()`
+bind unit-sign
+  take a, like text
+  take b, like text
+  like number
+  case node
+    text <($a \< $b ? -1 : $a \> $b ? 1 : 0)>
+  case browser
+    text <($a \< $b ? -1 : $a \> $b ? 1 : 0)>
+  case rust
+    text <match $a.encode_utf16().cmp($b.encode_utf16()) \{ std::cmp::Ordering::Less =\> -1i64, std::cmp::Ordering::Equal =\> 0i64, std::cmp::Ordering::Greater =\> 1i64 \}>
+  case swift
+    text <Int64($a.utf16.lexicographicallyPrecedes($b.utf16) ? -1 : ($b.utf16.lexicographicallyPrecedes($a.utf16) ? 1 : 0))>
+  case kotlin
+    text <$a.compareTo($b).sign.toLong()>
+
+task unit-order
+  take left, like text
+  take right, like text
+  like ordering
+  mark private
+
+  save sign, unit-sign(left, right)
+  fork test, is-below(sign, 0)
+    hold
+      back make less
+  fork test, is-above(sign, 0)
+    hold
+      back make greater
+  back make equal
+
+# the running number of the temporaries of one program being written
+form bridge-counter
+  mark shared
+  link count, like number
+
+# lines that leave a value in a local, and the local's name
+form bridge-lines
+  link lines, like list, like text
+  link local, like text
+
+task fresh-counter
+  like bridge-counter
+
+  back make bridge-counter, bind count, 0
+
+# a fresh local name per emitted temporary
+task temporary
+  take counter, like bridge-counter
+  take base, like text
+  like text
+
+  save counter/count, add(counter/count, 1)
+  save number, counter/count
+  back <{base}-{number}>
+
+# the command a page sends for a signature: the public module, an underscore, the public task, hyphens as underscores
+task command-of
+  take signature, like bridge-signature
+  like text
+
+  back replace-all(<{signature/module}_{signature/task}>, <->, <_>)
+
+# the name of the cask's table for a handle form: `row-handles`
+task table-of
+  take form, like text
+  like text
+
+  back <{form}-handles>
+
+# whether a kind carries bytes, directly or in a list
+task holds-bytes
+  take kind, like bridge-kind
+  like boolean
+
+  fork test, is-equal(kind/kind, <bytes>)
+    hold
+      back true
+  fork test, is-equal(kind/kind, <list>)
+    hold
+      back holds-bytes(kind/item)
+  back false
+
+# when any parameter or result of these signatures carries bytes, both sides load the base64 pair, under names no
+# module's own task can take
+task bytes-loads
+  take signatures, like list, like bridge-signature
+  like list, like text
+
+  save found, false
+  walk signatures
+    take site, name one
+    fork test, holds-bytes(one/result)
+      hold
+        save found, true
+    walk one/params
+      take site, name param
+      fork test, holds-bytes(param/kind)
+        hold
+          save found, true
+  fork test, not(found)
+    hold
+      back make list
+  back
+    make list, <load @term/base/bytes>, <  find to-base64, name bytes-to-base64>, <  find from-base64, name bytes-from-base64>, <>
+
+# the `like` lines of a kind
+task like-of
+  take kind, like bridge-kind
+  like list, like text
+
+  save name, kind/kind
+  fork test, is-equal(name, <text>)
+    hold
+      back make list, <like text>
+  fork test, is-equal(name, <boolean>)
+    hold
+      back make list, <like boolean>
+  fork test, is-equal(name, <number>)
+    hold
+      back make list, <like number>
+  fork test, is-equal(name, <decimal>)
+    hold
+      back make list, <like decimal>
+  fork test, is-equal(name, <void>)
+    hold
+      back make list, <like void>
+  fork test, is-equal(name, <dynamic>)
+    hold
+      back make list, <like unknown>
+  fork test, is-equal(name, <bytes>)
+    hold
+      back make list, <like bytes>
+  fork test, is-equal(name, <list>)
+    hold
+      save out, make list, <like list>
+      walk like-of(kind/item)
+        take site, name line
+        out/push <  {line}>
+      back out
+  save form, kind/form
+  back make list, <like {form}>
+
+# the bridge's invoke task for a scalar result
+task invoke-of
+  take kind, like text
+  like text
+
+  back <invoke-{kind}>
+
+# lines and the local they leave the value in
+task lines-of
+  take lines, like list, like text
+  take local, like text
+  like bridge-lines
+
+  back
+    make bridge-lines
+      bind lines, lines
+      bind local, local
+
+# STATEMENTS that leave a json value of `read` in a local. The page side of the seam: what a Term value of this kind
+# is as json. Scalars are one call; a handle is its id; a list walks its items
+task page-to-json
+  take kind, like bridge-kind
+  take read, like text
+  take indent, like text
+  take counter, like bridge-counter
+  like bridge-lines
+
+  save local, temporary(counter, <json>)
+  save name, kind/kind
+  save out, make list
+  out/push <{indent}save {local}>
+  fork test, is-equal(name, <text>)
+    hold
+      out/push <{indent}  call from-text>
+      out/push <{indent}    read {read}>
+      back lines-of(out, local)
+  fork test, is-equal(name, <boolean>)
+    hold
+      out/push <{indent}  call from-boolean>
+      out/push <{indent}    read {read}>
+      back lines-of(out, local)
+  fork test, is-equal(name, <number>)
+    hold
+      out/push <{indent}  call from-number>
+      out/push <{indent}    call to-decimal>
+      out/push <{indent}      read {read}>
+      back lines-of(out, local)
+  fork test, is-equal(name, <decimal>)
+    hold
+      out/push <{indent}  call from-number>
+      out/push <{indent}    read {read}>
+      back lines-of(out, local)
+  fork test, is-equal(name, <void>)
+    hold
+      out/push <{indent}  call make-null>
+      back lines-of(out, local)
+  fork test, is-equal(name, <dynamic>)
+    hold
+      out/push <{indent}  read {read}>
+      back lines-of(out, local)
+  fork test, is-equal(name, <bytes>)
+    hold
+      out/push <{indent}  call from-text>
+      out/push <{indent}    call bytes-to-base64>
+      out/push <{indent}      read {read}>
+      back lines-of(out, local)
+  fork test, is-equal(name, <handle>)
+    hold
+      # the page holds the id in the form's private field
+      out/push <{indent}  call from-text>
+      out/push <{indent}    read {read}/handle>
+      back lines-of(out, local)
+  fork test, is-equal(name, <record>)
+    hold
+      # the record as host data text: melt walks the form's fields, write lays the data out
+      save form, kind/form
+      out/push <{indent}  call from-text>
+      out/push <{indent}    call data-to-text>
+      out/push <{indent}      call melt>
+      out/push <{indent}        read {read}>
+      out/push <{indent}        like {form}>
+      back lines-of(out, local)
+  # a list
+  save item, temporary(counter, <item>)
+  save inner, page-to-json(kind/item, item, <{indent}    >, counter)
+  out/push <{indent}  call make-array>
+  out/push <{indent}walk list, read {read}>
+  out/push <{indent}  hook next>
+  out/push <{indent}    take site, name {item}>
+  walk inner/lines
+    take site, name line
+    out/push line
+  save inner-local, inner/local
+  out/push <{indent}    save {local}>
+  out/push <{indent}      call push-item>
+  out/push <{indent}        read {local}>
+  out/push <{indent}        read {inner-local}>
+  back lines-of(out, local)
+
+# STATEMENTS that leave a Term value of this kind in a local, from the json in `read`. The page side receiving a reply.
+# `items` names the program's json-array task
+task page-from-json
+  take kind, like bridge-kind
+  take read, like text
+  take indent, like text
+  take counter, like bridge-counter
+  take items, like text
+  like bridge-lines
+
+  save local, temporary(counter, <value>)
+  save name, kind/kind
+  fork test, is-equal(name, <list>)
+    hold
+      back list-from-json(kind/item, read, indent, <page>, counter, items)
+  save out, make list
+  out/push <{indent}save {local}>
+  fork test, is-equal(name, <text>)
+    hold
+      out/push <{indent}  call as-text>
+      out/push <{indent}    read {read}>
+      back lines-of(out, local)
+  fork test, is-equal(name, <boolean>)
+    hold
+      out/push <{indent}  call as-boolean>
+      out/push <{indent}    read {read}>
+      back lines-of(out, local)
+  fork test, is-equal(name, <number>)
+    hold
+      out/push <{indent}  call to-number>
+      out/push <{indent}    call as-number>
+      out/push <{indent}      read {read}>
+      back lines-of(out, local)
+  fork test, is-equal(name, <decimal>)
+    hold
+      out/push <{indent}  call as-number>
+      out/push <{indent}    read {read}>
+      back lines-of(out, local)
+  fork test, is-equal(name, <void>)
+    hold
+      out/push <{indent}  call make-null>
+      back lines-of(out, local)
+  fork test, is-equal(name, <dynamic>)
+    hold
+      out/push <{indent}  read {read}>
+      back lines-of(out, local)
+  fork test, is-equal(name, <bytes>)
+    hold
+      out/push <{indent}  call bytes-from-base64>
+      out/push <{indent}    call as-text>
+      out/push <{indent}      read {read}>
+      back lines-of(out, local)
+  save form, kind/form
+  fork test, is-equal(name, <handle>)
+    hold
+      out/push <{indent}  make {form}>
+      out/push <{indent}    bind handle>
+      out/push <{indent}      call as-text>
+      out/push <{indent}        read {read}>
+      # held: when the page drops this value and the WebView collects it, the cask is told to drop its own
+      out/push <{indent}call bridge/held>
+      out/push <{indent}  text \<{form}\>>
+      out/push <{indent}  read {local}>
+      out/push <{indent}  call as-text>
+      out/push <{indent}    read {read}>
+      back lines-of(out, local)
+  # a record: the host data text read back and filled into the form. A field missing, or of the wrong kind, raises
+  # `data-mismatch` naming its path, which the dispatcher answers as the exception and the page's call rejects with
+  out/push <{indent}  call fill>
+  out/push <{indent}    call data-from-text>
+  out/push <{indent}      call as-text>
+  out/push <{indent}        read {read}>
+  out/push <{indent}    like {form}>
+  back lines-of(out, local)
+
+# the loads a program carrying records needs: each form from its own module, and the host dialect's reader and
+# writer under names no program around them would use
+task record-loads
+  take records, like list, like bridge-record
+  like list, like text
+
+  save out, make list
+  fork test, is-equal(records/length, 0)
+    hold
+      back out
+  walk records
+    take site, name record
+    save from, record/from
+    save form, record/form
+    out/push <load {from}>
+    out/push <  find {form}>
+    out/push <>
+  # under names of their own, never aliases: the dispatcher imports `file` too, whose `read` and `write` share their
+  # names with the host dialect's, and an alias is rewritten to the original name inside its file
+  out/push <load @term/host/base>
+  out/push <  find data>
+  out/push <>
+  out/push <load @term/host/text>
+  out/push <  find data-from-text>
+  out/push <  find data-to-text>
+  out/push <>
+  back out
+
+# a list from a json array: the items as a list, then each one converted, on the page (`side` is `page`) or in the cask
+# (`cask`). A list of dynamic is the items as they are
+task list-from-json
+  take item, like bridge-kind
+  take read, like text
+  take indent, like text
+  take side, like text
+  take counter, like bridge-counter
+  take items, like text
+  like bridge-lines
+
+  save local, temporary(counter, <value>)
+  save listed, temporary(counter, <items>)
+  save out, make list
+  fork test, is-equal(item/kind, <dynamic>)
+    hold
+      out/push <{indent}save {local}>
+      out/push <{indent}  call {items}>
+      out/push <{indent}    read {read}>
+      back lines-of(out, local)
+  save each, temporary(counter, <item>)
+  # one side converts the item, never both: each takes temporaries from the counter
+  save none, make list
+  save inner, lines-of(none, <>)
+  fork test, is-equal(side, <cask>)
+    hold
+      save inner, cask-from-json(item, each, <{indent}    >, counter, items)
+    miss
+      save inner, page-from-json(item, each, <{indent}    >, counter, items)
+  out/push <{indent}save {listed}>
+  out/push <{indent}  call {items}>
+  out/push <{indent}    read {read}>
+  out/push <{indent}save {local}>
+  out/push <{indent}  make list>
+  out/push <{indent}walk list, read {listed}>
+  out/push <{indent}  hook next>
+  out/push <{indent}    take site, name {each}>
+  walk inner/lines
+    take site, name line
+    out/push line
+  save inner-local, inner/local
+  out/push <{indent}    call push>
+  out/push <{indent}      bind list, read {local}>
+  out/push <{indent}      bind item, read {inner-local}>
+  back lines-of(out, local)
+
+# the cask side: a Term value from the json in `read`. A handle id is looked up in the cask's table for its form,
+# under this window's key (native-dom-0030): an id another window's page was given is not in this window's part of
+# the table, and a released or forged one is refused by `unwrap` with the stdlib `absence`
+task cask-from-json
+  take kind, like bridge-kind
+  take read, like text
+  take indent, like text
+  take counter, like bridge-counter
+  take items, like text
+  like bridge-lines
+
+  save local, temporary(counter, <value>)
+  save name, kind/kind
+  fork test, is-equal(name, <handle>)
+    hold
+      save found, temporary(counter, <found>)
+      save id, temporary(counter, <id>)
+      save table, table-of(kind/form)
+      save out, make list
+      out/push <{indent}save {id}>
+      out/push <{indent}  call as-text>
+      out/push <{indent}    read {read}>
+      out/push <{indent}save {found}>
+      out/push <{indent}  call get>
+      out/push <{indent}    read {table}>
+      out/push <{indent}    text \<\{\{owner\}\}/\{\{{id}\}\}\>>
+      out/push <{indent}save {local}>
+      out/push <{indent}  call unwrap>
+      out/push <{indent}    read {found}>
+      back lines-of(out, local)
+  fork test, is-equal(name, <list>)
+    hold
+      back list-from-json(kind/item, read, indent, <cask>, counter, items)
+  back page-from-json(kind, read, indent, counter, items)
+
+# the cask side: json from a Term value. A handle is kept in the table under a fresh id, under the window that asked
+# (native-dom-0030), and the id crosses
+task cask-to-json
+  take kind, like bridge-kind
+  take read, like text
+  take indent, like text
+  take counter, like bridge-counter
+  like bridge-lines
+
+  save local, temporary(counter, <json>)
+  save name, kind/kind
+  save out, make list
+  fork test, is-equal(name, <handle>)
+    hold
+      save id, temporary(counter, <id>)
+      save table, table-of(kind/form)
+      out/push <{indent}save {id}>
+      out/push <{indent}  call version4>
+      out/push <{indent}call set>
+      out/push <{indent}  read {table}>
+      out/push <{indent}  text \<\{\{owner\}\}/\{\{{id}\}\}\>>
+      out/push <{indent}  read {read}>
+      out/push <{indent}save {local}>
+      out/push <{indent}  call from-text>
+      out/push <{indent}    read {id}>
+      back lines-of(out, local)
+  fork test, is-equal(name, <list>)
+    hold
+      save item, temporary(counter, <item>)
+      save inner, cask-to-json(kind/item, item, <{indent}    >, counter)
+      out/push <{indent}save {local}>
+      out/push <{indent}  call make-array>
+      out/push <{indent}walk list, read {read}>
+      out/push <{indent}  hook next>
+      out/push <{indent}    take site, name {item}>
+      walk inner/lines
+        take site, name line
+        out/push line
+      save inner-local, inner/local
+      out/push <{indent}    save {local}>
+      out/push <{indent}      call push-item>
+      out/push <{indent}        read {local}>
+      out/push <{indent}        read {inner-local}>
+      back lines-of(out, local)
+  back page-to-json(kind, read, indent, counter)
+
+# the task that turns a json array into a list of its items, one per program: the checker learns a list's element
+# from a declared signature, where a `make list` fed dynamic items would leave it to inference
+task items-of-text
+  take name, like text
+  like list, like text
+
+  save out, make list
+  out/push <# the items of a json array, as a list whose element the checker knows>
+  out/push <task {name}>
+  out/push <  take array, like dynamic>
+  out/push <  like list>
+  out/push <    like unknown>
+  out/push <  save items>
+  out/push <    make list>
+  out/push <  walk size>
+  out/push <    bind base, code 0>
+  out/push <    bind head>
+  out/push <      call array-size>
+  out/push <        read array>
+  out/push <    hook next>
+  out/push <      take site, name index>
+  out/push <      # declared unknown, so a backend that boxes its dynamic boxes it here>
+  out/push <      save item>
+  out/push <        like unknown>
+  out/push <        call get-item>
+  out/push <          read array>
+  out/push <          read index>
+  out/push <      call push>
+  out/push <        bind list, read items>
+  out/push <        bind item, read item>
+  out/push <  send back, read items>
+  out/push <>
+  back out
+
+# every handle form a kind mentions, through lists
+task handles-in
+  take kind, like bridge-kind
+  like list, like text
+
+  fork test, is-equal(kind/kind, <handle>)
+    hold
+      save form, kind/form
+      back make list, form
+  fork test, is-equal(kind/kind, <list>)
+    hold
+      back handles-in(kind/item)
+  back make list
+
+# every handle form a set of signatures mentions, once each, in UTF-16 order
+task handle-forms
+  take signatures, like list, like bridge-signature
+  like list, like text
+
+  save seen, make hash
+  save out, make list
+  walk signatures
+    take site, name one
+    save kinds, make list
+    walk one/params
+      take site, name param
+      kinds/push param/kind
+    kinds/push one/result
+    walk kinds
+      take site, name each
+      walk handles-in(each)
+        take site, name form
+        fork test, not(seen/has(form))
+          hold
+            save seen/{form}, true
+            out/push form
+  back sort(out, unit-order)
+
+# what a program finds in @term/base/json
+task list-json-finds
+  like list, like text
+
+  back
+    make list, <make-object>, <set-field>, <from-text>, <from-boolean>, <from-number>, <make-null>, <as-text>, <as-boolean>, <as-number>, <make-array>, <push-item>, <get-item>, <array-size>
+
+# the lifetime verb: a task named `release` that takes exactly one handle and answers nothing. It is not a command:
+# the page lets the handle go through `bridge/release`, which tells the cask to drop it from its table, and the native
+# task it names never runs (native-dom-0029)
+task is-release
+  take signature, like bridge-signature
+  like boolean
+
+  fork test, is-unequal(signature/task, <release>)
+    hold
+      back false
+  fork test, is-unequal(signature/params/length, 1)
+    hold
+      back false
+  save param, signature/params/0
+  fork test, is-unequal(param/kind/kind, <handle>)
+    hold
+      back false
+  back is-equal(signature/result/kind, <void>)

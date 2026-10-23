@@ -153,7 +153,8 @@ export function checkMissingWaits(program: Program, file?: string): Diagnostic[]
         ) {
           out.push(
             diagnose('missing-wait', {
-              file: at || file,
+              // the call's own file, else the build's entry file, else none known (a diagnostic's file is a text)
+              file: at || file || '',
               span: value.span as Span,
               message: `"${into.alias}/${into.name}" answers a promise, and nothing waits for it, so the promise itself is handed on as the answer. Write \`wait ${into.alias}/${into.name}(...)\`, \`tick\` to start it without waiting, or \`mark async\` under the load line of "${into.alias}"`,
             }),

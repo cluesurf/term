@@ -37,6 +37,7 @@ load ../../compile/node
   find expression-type
   find statement
   find type
+  find assign-op
 
 load ../../compile/node-reach
   find reached

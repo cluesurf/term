@@ -1,0 +1,625 @@
+# THE SYMBOL REQUESTS: rename (and the check before it), the highlights of a name in its document, the document's
+# outline, a search over every package's top-level names, folds and nested selections, signature help, a reference
+# count above each definition, and go to the implementations of a mask.
+#
+# Ported from server.ts (term-cli-in-term-0103, part 4 of 5): handle's cases `textDocument/prepareRename`, `rename`,
+# `documentHighlight`, `documentSymbol`, `workspace/symbol`, `foldingRange`, `selectionRange`, `signatureHelp`,
+# `codeLens` and `implementation`. The decisions:
+#   - every task takes language-server.tree's record first and answers the reply; the answers are records with the
+#     original's keys, and `rename`'s `changes` the host's object keyed by uri, built in the order the uris came
+#   - a new name is checked by unit, `^[A-Za-z][A-Za-z0-9-]*$`, and refused InvalidParams with the original's words
+#   - a name's length is its UTF-16 units
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/make/fixing
+  find units-of
+
+load @term/make/parser/diagnostic
+  find span
+
+load @term/make/compile/node
+  find statement
+
+load @term/call/context-slice
+  find written-name
+
+load ./geometry
+  find lsp-position
+  find lsp-range
+  find inner-position
+  find outer-range
+  find folding-ranges
+  find selection-range
+
+load ./analysis
+  find to-range
+
+load ./symbol-index
+  find named-symbol
+  find symbol-at
+  find occurrences-of
+  find call-at
+
+load ./package-index
+  find find-symbols
+  find outer-span
+
+load ./language-server
+  find language-server
+  find uri-for
+
+load ./document-analysis
+  find settled
+
+load ./navigation
+  find location
+  find occurrences
+  find search-roots
+
+load ./server-reply
+  find respond
+  find position-of
+  find uri-of
+  find null-value
+  find raise-params
+
+form rename-range
+  link range, like lsp-range
+  link placeholder, like text
+
+form text-change
+  link range, like lsp-range
+  link new-text, like text
+
+form highlight
+  link range, like lsp-range
+  link kind, like number
+
+form outline-symbol
+  link name, like text
+  link detail, like text
+  link kind, like number
+  link range, like lsp-range
+  link selection-range, like lsp-range
+
+form found-symbol
+  link name, like text
+  link kind, like number
+  link location, like location
+
+form parameter-label
+  link label, like text
+
+form signature-label
+  link label, like text
+  link parameters, like list, like parameter-label
+
+form signature-help-answer
+  link signatures, like list, like signature-label
+  link active-signature, like number
+  link active-parameter, like number
+
+form lens-command
+  link title, like text
+  link command, like text
+
+form code-lens
+  link range, like lsp-range
+  link command, like lens-command
+
+# ---- the host ----
+
+bind new-name-of
+  take params, like dynamic
+  like dynamic
+  case node
+    text <($params)?.newName>
+
+bind is-text
+  take value, like dynamic
+  like boolean
+  case node
+    text <(typeof $value === "string")>
+
+bind empty-object
+  like dynamic
+  case node
+    text <(\{\})>
+
+bind set-key
+  take target, like dynamic
+  take key, like text
+  take value, like dynamic
+  like void
+  case node
+    text <($target[$key] = $value)>
+
+bind changes-answer
+  take changes, like dynamic
+  like dynamic
+  case node
+    text <(\{ changes: $changes \})>
+
+# `String(params?.query ?? '')`
+bind query-of
+  take params, like dynamic
+  like text
+  case node
+    text <String(($params)?.query ?? "")>
+
+bind positions-of
+  take params, like dynamic
+  like dynamic
+  case node
+    text <($params)?.positions>
+
+bind is-list
+  take value, like dynamic
+  like boolean
+  case node
+    text <Array.isArray($value)>
+
+bind as-list
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <$value>
+
+bind smaller
+  take one, like number
+  take other, like number
+  like number
+  case node
+    text <Math.min($one, $other)>
+
+bind larger
+  take one, like number
+  take other, like number
+  like number
+  case node
+    text <Math.max($one, $other)>
+
+# ---- the kinds ----
+
+# LSP SymbolKind for a definition kind
+task symbol-kind
+  take kind, like text
+  like number
+  mark private
+
+  fork test, is-equal(kind, <function>)
+    hold
+      back 12
+  fork test, is-equal(kind, <type>)
+    hold
+      back 10
+  fork test, is-equal(kind, <variant>)
+    hold
+      back 22
+  fork test, is-equal(kind, <trait>)
+    hold
+      back 11
+  back 13
+
+# LSP SymbolKind for a top-level head a symbol search finds: task, form, mask, bind; anything else 13
+task head-symbol-kind
+  take kind, like text
+  like number
+  mark private
+
+  fork test, is-equal(kind, <task>)
+    hold
+      back 12
+  fork test, is-equal(kind, <form>)
+    hold
+      back 23
+  fork test, is-equal(kind, <mask>)
+    hold
+      back 11
+  back 13
+
+task is-outline-kind
+  take kind, like text
+  like boolean
+  mark private
+
+  back or(or(is-equal(kind, <function>), is-equal(kind, <type>)), is-equal(kind, <trait>))
+
+# `^[A-Za-z][A-Za-z0-9-]*$`
+task is-term-name
+  take value, like text
+  like boolean
+  mark private
+
+  save units, units-of(value)
+  fork test, is-equal(units/length, 0)
+    hold
+      back false
+  save at, 0
+  walk units
+    take unit
+    save letter, or(and(is-minimum(unit, 65), is-maximum(unit, 90)), and(is-minimum(unit, 97), is-maximum(unit, 122)))
+    fork test, is-equal(at, 0)
+      hold
+        fork test, letter
+          miss
+            back false
+      miss
+        fork test, or(letter, or(and(is-minimum(unit, 48), is-maximum(unit, 57)), is-equal(unit, 45)))
+          miss
+            back false
+    save at, add(at, 1)
+  back true
+
+# ---- the handlers ----
+
+task prepare-rename
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  take outbox, like list, like dynamic
+  like dynamic
+
+  save found, settled(server, params, outbox)
+  save position, position-of(params)
+  sift found
+    case some
+      link doc
+      sift doc/view
+        case some
+          link view
+          sift symbol-at(view/index, inner-position(view/map, position), true)
+            case some
+              link named
+              walk occurrences-of(view/index, named)
+                take one
+                save placed, outer-span(view/map, one)
+                fork test, and(and(is-equal(placed/start/line, position/line), is-maximum(placed/start/column, position/character)), is-minimum(placed/end/column, position/character))
+                  hold
+                    back respond(message, make(rename-range, bind(range, to-range(placed)), bind(placeholder, written-name(named/name))))
+              back respond(message, null-value())
+            case none
+              back respond(message, null-value())
+        case none
+          back respond(message, null-value())
+    case none
+      back respond(message, null-value())
+
+task rename
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  take outbox, like list, like dynamic
+  like dynamic
+
+  save found, settled(server, params, outbox)
+  save position, position-of(params)
+  save asked, new-name-of(params)
+  save valid, false
+  fork test, is-text(asked)
+    hold
+      save valid, is-term-name(asked)
+  fork test, valid
+    miss
+      raise-params(<newName must be a Term name (letters, digits and dashes, starting with a letter)>)
+  save new-name, <>
+  fork test, is-text(asked)
+    hold
+      save new-name, asked
+  sift found
+    case some
+      link doc
+      sift doc/view
+        case some
+          link view
+          # not strict: a client that skips prepareRename may send the start of `call helper`, and every edit below is
+          # a NAME span whichever way the symbol was found
+          sift symbol-at(view/index, inner-position(view/map, position))
+            case some
+              link named
+              save changes, empty-object()
+              save out, occurrences(server, doc, view, named, true)
+              walk out/keys()
+                take uri
+                save edits, make list
+                walk out/get(uri)
+                  take one
+                  push(edits, make(text-change, bind(range, to-range(one)), bind(new-text, new-name)))
+                set-key(changes, uri, edits)
+              back respond(message, changes-answer(changes))
+            case none
+              back respond(message, null-value())
+        case none
+          back respond(message, null-value())
+    case none
+      back respond(message, null-value())
+
+task document-highlight
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  take outbox, like list, like dynamic
+  like dynamic
+
+  save found, settled(server, params, outbox)
+  save position, position-of(params)
+  save out, make list
+  sift found
+    case some
+      link doc
+      sift doc/view
+        case some
+          link view
+          sift symbol-at(view/index, inner-position(view/map, position))
+            case some
+              link named
+              save declared, make none
+              sift named/scope
+                case some
+                  link scope
+                  walk scope/locals
+                    take local
+                    fork test, is-equal(local/name, named/name)
+                      hold
+                        save declared, local/at
+                        halt
+                case none
+                  fork test, view/index/definitions/has(named/name)
+                    hold
+                      save declared, view/index/definitions/get(named/name)/at
+              walk occurrences-of(view/index, named)
+                take one
+                # 3 Write at the declaration, 2 Read at every use
+                save kind, 2
+                sift declared
+                  case some
+                    link at
+                    fork test, and(is-equal(at/start/line, one/start/line), is-equal(at/start/column, one/start/column))
+                      hold
+                        save kind, 3
+                  case none
+                    save skipped, true
+                push(out, make(highlight, bind(range, to-range(outer-span(view/map, one))), bind(kind, kind)))
+              back respond(message, out)
+            case none
+              back respond(message, out)
+        case none
+          back respond(message, out)
+    case none
+      back respond(message, out)
+
+task document-symbols
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  take outbox, like list, like dynamic
+  like dynamic
+
+  save out, make list
+  sift settled(server, params, outbox)
+    case some
+      link doc
+      sift doc/view
+        case some
+          link view
+          walk view/index/definitions/values()
+            take def
+            fork test, is-outline-kind(def/kind)
+              miss
+                turn next
+            save range, outer-range(view/map, to-range(def/span))
+            save name-range, range
+            sift def/at
+              case some
+                link written
+                save name-range, outer-range(view/map, to-range(written))
+              case none
+                save skipped, true
+            push(out, make(outline-symbol, bind(name, written-name(def/name)), bind(detail, def/detail), bind(kind, symbol-kind(def/kind)), bind(range, range), bind(selection-range, name-range)))
+        case none
+          save skipped, true
+    case none
+      save skipped, true
+  back respond(message, out)
+
+task workspace-symbols
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  like dynamic
+
+  save query, query-of(params)
+  save roots, search-roots(server, <>)
+  save out, make list
+  walk find-symbols(server/workspace, roots, query)
+    take one
+    save width, units-of(one/name)/length
+    save start, make(lsp-position, bind(line, one/line), bind(character, one/column))
+    save end, make(lsp-position, bind(line, one/line), bind(character, add(one/column, width)))
+    save place, make(location, bind(uri, uri-for(one/file)), bind(range, make(lsp-range, bind(start, start), bind(end, end))))
+    push(out, make(found-symbol, bind(name, one/name), bind(kind, head-symbol-kind(one/kind)), bind(location, place)))
+  back respond(message, out)
+
+task folding-range-request
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  like dynamic
+
+  save uri, uri-of(params)
+  fork test, server/documents/has(uri)
+    hold
+      back respond(message, folding-ranges(server/documents/get(uri)/text))
+  back respond(message, make list)
+
+task selection-range-request
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  like dynamic
+
+  save uri, uri-of(params)
+  save positions, positions-of(params)
+  fork test, is-list(positions)
+    miss
+      raise-params(<missing positions>)
+  save out, make list
+  fork test, server/documents/has(uri)
+    hold
+      save body, server/documents/get(uri)/text
+      walk as-list(positions)
+        take position
+        push(out, selection-range(body, position))
+  back respond(message, out)
+
+task signature-help
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  take outbox, like list, like dynamic
+  like dynamic
+
+  save found, settled(server, params, outbox)
+  save position, position-of(params)
+  sift found
+    case some
+      link doc
+      sift doc/view
+        case some
+          link view
+          sift call-at(view/program, inner-position(view/map, position))
+            case some
+              link site
+              fork test, view/index/signatures/has(site/name)
+                miss
+                  back respond(message, null-value())
+              save sig, view/index/signatures/get(site/name)
+              save labels, make list
+              save joined, <>
+              save at, 0
+              walk sig/params
+                take param
+                save label, <{param/name}: {param/type}>
+                push(labels, make(parameter-label, bind(label, label)))
+                fork test, is-above(at, 0)
+                  hold
+                    save joined, <{joined}, >
+                save joined, <{joined}{label}>
+                save at, add(at, 1)
+              save signatures, make list
+              push(signatures, make(signature-label, bind(label, <{written-name(site/name)}({joined}) -\> {sig/result}>), bind(parameters, labels)))
+              save active, smaller(site/active-param, larger(0, subtract(sig/params/length, 1)))
+              back respond(message, make(signature-help-answer, bind(signatures, signatures), bind(active-signature, 0), bind(active-parameter, active)))
+            case none
+              back respond(message, null-value())
+        case none
+          back respond(message, null-value())
+    case none
+      back respond(message, null-value())
+
+# a reference count above each top-level definition, from this document's index
+task code-lenses
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  take outbox, like list, like dynamic
+  like dynamic
+
+  save out, make list
+  sift settled(server, params, outbox)
+    case some
+      link doc
+      sift doc/view
+        case some
+          link view
+          walk view/index/definitions/values()
+            take def
+            fork test, is-outline-kind(def/kind)
+              miss
+                turn next
+            # occurrences include the definition itself, so subtract it
+            save own, 0
+            save where, def/span
+            sift def/at
+              case some
+                link written
+                save own, 1
+                save where, written
+              case none
+                save skipped, true
+            save refs, larger(0, subtract(occurrences-of(view/index, make(named-symbol, bind(name, def/name)))/length, own))
+            save title, <{refs} references>
+            fork test, is-equal(refs, 1)
+              hold
+                save title, <{refs} reference>
+            push(out, make(code-lens, bind(range, outer-range(view/map, to-range(where))), bind(command, make(lens-command, bind(title, title), bind(command, <>)))))
+        case none
+          save skipped, true
+    case none
+      save skipped, true
+  back respond(message, out)
+
+# go to the implementations of a trait (mask) or one of its methods: the instance targets that conform to it
+task implementation
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  take outbox, like list, like dynamic
+  like dynamic
+
+  save found, settled(server, params, outbox)
+  save position, position-of(params)
+  sift found
+    case some
+      link doc
+      sift doc/view
+        case some
+          link view
+          sift symbol-at(view/index, inner-position(view/map, position))
+            case some
+              link named
+              save locations, make list
+              walk view/program
+                take statement
+                sift statement
+                  case instance
+                    # the cursor is on the trait name itself, or on a method the trait declares (the instance
+                    # implements it)
+                    save on-method, false
+                    walk methods
+                      take method
+                      fork test, is-equal(method, named/name)
+                        hold
+                          save on-method, true
+                    fork test, or(is-equal(mask, named/name), on-method)
+                      miss
+                        turn next
+                    fork test, view/index/definitions/has(target)
+                      hold
+                        save def, view/index/definitions/get(target)
+                        save where, def/span
+                        sift def/at
+                          case some
+                            link written
+                            save where, written
+                          case none
+                            save skipped, true
+                        push(locations, make(location, bind(uri, doc/uri), bind(range, outer-range(view/map, to-range(where)))))
+                  miss
+                    save skipped, true
+              fork test, is-above(locations/length, 0)
+                hold
+                  back respond(message, locations)
+              back respond(message, null-value())
+            case none
+              back respond(message, null-value())
+        case none
+          back respond(message, null-value())
+    case none
+      back respond(message, null-value())

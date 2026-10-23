@@ -1,0 +1,324 @@
+# The browser CLIENT bundle of an SSR app. Ported from call/code/boot.ts (`buildClientBundle`, `BOOT_CACHE_EPOCH`),
+# part 1 of that file, term-cli-in-term-0022.
+#
+# The SAME entry compiled for the browser env (route lowering appends a top-level `boot("",0)` so it runs on load), the
+# browser native prelude in front, and esbuild's bundle written to `<app>/build/boot.js`. The SSR document shell
+# references it as `/base/boot.js`, and the static `/base/**` route serves it. This is what turns the server-rendered
+# HTML interactive. Cached on a content hash of the emitted source and the toolchain, so an unchanged app reuses the
+# prior bundle. Best-effort: a failure reports a warning and returns (SSR still serves without it).
+#
+# The compiler, the native prelude, the process's compile cache (cache-store.ts, whose state the TypeScript build path
+# shares), the toolchain home (home.ts), the output run (output.ts) and esbuild are docked. The resolver, the deck
+# finder and the role readers are the build lane's ports, faced as the host functions the compiler takes.
+
+load @term/call/boot-plan
+  find runs-boot
+  find client-entry-text
+
+load @term/make/term/hash
+  find hash-text
+
+load ../build/project-resolving
+  find make-project-resolver
+  find resolve-in-project
+  find project-resolver
+
+load ../build/host-faces
+  find host-source
+  find how-of
+  find face-deck-finder
+  find face-role-reader
+  find face-lean-reader
+
+load ../build/deck-finding
+  find make-deck-finder
+
+load ../build/role-reading
+  find make-role-reader
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <esbuild>, name esbuild-module
+  load <@term/make/code/compile/compile>, name compile-module
+  load <@term/make/code/compile/native>, name native-module
+  load <@term/call/code/cache-store>, name cache-store
+  load <@term/call/code/home>, name home-module
+  load <@term/call/code/output>, name output
+  load <global:Date>, name host-date
+  load <global:global>, name host-global
+
+# bump to invalidate every boot cache at once (turborepo's `global_cache_key`). Change this on any boot-pipeline change
+# that the per-build hash does not already capture (e.g. a new prelude assembly rule).
+# 9: the client bundle enters through a one-line import of the program, and its import map names only the externals
+# the bundle kept (2026-10-04)
+# 10: a program is built one unit at a time, and bundled from its modules and its entry's shim (2026-10-05)
+# 11: a units bundle's entry exports what the run calls, not the whole closure (call/code/unit-bundle.ts
+# `runtimeExports`), and a bundle written under 10 held every name (2026-10-05)
+task boot-cache-epoch
+  like text
+
+  back <11>
+
+# what `build-client-bundle` is handed, as the original's one input record
+form client-ask
+  link entry, like text
+  link app-dir, like text
+  link project-root, like text
+  link install-root, like text
+  link prod, like boolean
+
+form compile-source
+  link file, like text
+  link text, like text
+
+form compile-options
+  link resolve, like dynamic
+  link cache, like dynamic
+  link parsed, like dynamic
+  link env, like text
+  link deck-of, like dynamic
+  link role-of, like dynamic
+  link lean-of, like dynamic
+
+form problem-entry
+  link diagnostic, like dynamic
+
+# the browser bundle: everything inlined (no `packages: external`), minified in prod for the smallest payload. Its
+# fields in the original's order: the cache key holds it as JSON
+form client-config
+  link bundle, like boolean
+  link format, like text
+  link platform, like text
+  link minify, like boolean
+
+form client-build
+  link entry-points, like list, like text
+  link outfile, like text
+  link bundle, like boolean
+  link format, like text
+  link platform, like text
+  link minify, like boolean
+  link metafile, like boolean
+  link plugins, like list, like dynamic
+
+form folder-ask
+  link recursive, like boolean
+
+form refused-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link counts, like list, like dynamic
+  link message, like list, like text
+
+form cached-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link facts, like list, like text
+  link fields, like list, like dynamic
+
+form built-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link fields, like list, like dynamic
+
+form thrown-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link message, like list, like text
+
+# lines joined with a line break (a `\n` in a bind's text is written out as the break itself, inside a string)
+bind boot-joined-lines
+  take parts, like list, like text
+  like text
+  case node
+    text <$parts.join(String.fromCharCode(10))>
+
+# a thrown value's message: `err instanceof Error ? err.message : String(err)`
+bind boot-thrown-message
+  take error, like dynamic
+  like text
+  case node
+    text <($error instanceof Error ? $error.message : String($error))>
+
+# externalize every bare (npm) specifier, so the import map loads it from a CDN. `sideEffects: false` lets esbuild drop
+# an import whose bindings nothing uses, and the metafile then names only the externals the bundle kept
+bind boot-bare-externals
+  like dynamic
+  case node
+    text <(\{ name: "externalize-bare-specifiers", setup(b) \{ b.onResolve(\{ filter: /^[^./]/ \}, (args) =\> (\{ path: args.path, external: true, sideEffects: false \})) \} \})>
+
+# the externals the bundle kept, once each in the order met, without `node:` builtins
+bind boot-kept-externals
+  take metafile, like dynamic
+  like list, like text
+  case node
+    text <[...new Set(Object.values($metafile.outputs).flatMap((output) =\> output.imports).filter((found) =\> found.external && !found.path.startsWith("node:")).map((found) =\> found.path))]>
+
+# a web-standard import map sending each external to its esm.sh module, as JSON with two-space indentation
+bind boot-import-map
+  take externals, like list, like text
+  like text
+  case node
+    text <JSON.stringify(\{ imports: Object.fromEntries($externals.map((dep) =\> [dep, "https://esm.sh/" + dep])) \}, null, 2)>
+
+# a runtime shim's text, or undefined when the file is not there
+task read-boot-runtime
+  take file, like text
+  like dynamic
+
+  fork test, node-file/exists-sync(file)
+    hold
+      back node-file/read-file-sync(file, <utf8>)
+  back void
+
+# a project resolver as the function the compiler takes (`projectResolver`'s answer); boot-running.tree builds its
+# program through it too
+task boot-resolver-face
+  take resolver, like project-resolver
+  like dynamic
+
+  back
+    task
+      take path, like text
+      take from, like text
+      take how, like dynamic
+      like dynamic
+      back host-source(resolve-in-project(resolver, path, from, how-of(how)))
+
+task problem-entries
+  take diagnostics, like list, like dynamic
+  like list, like problem-entry
+  mark private
+
+  save entries, make list
+  walk diagnostics
+    take diagnostic
+    entries/push(make(problem-entry, bind(diagnostic, diagnostic)))
+  back entries
+
+task build-client-bundle
+  take opts, like client-ask
+  like void
+  mark async
+
+  save started, host-date/now()
+  fork
+    mark unsafe
+    bundle-client(opts, started)
+  halt take
+    take error
+    save message, make list
+    message/push(boot-thrown-message(error))
+    message/push(<The server still renders every page, without the client taking over.>)
+    output/report(make(thrown-item, bind(glyph, <warning>), bind(verb, <build>), bind(subject, <client bundle>), bind(duration, subtract(host-date/now(), started)), bind(message, message)))
+
+task bundle-client
+  take opts, like client-ask
+  take started, like number
+  like void
+  mark async
+  mark private
+
+  save resolve, boot-resolver-face(make-project-resolver(opts/app-dir, <browser>, opts/install-root))
+  save source, make(compile-source, bind(file, opts/entry), bind(text, node-file/read-file-sync(opts/entry, <utf8>)))
+  # the process's one cache and parse memo for this project, kept across rebuilds (cache-store.ts). The role and the
+  # lean surface, exactly as `term make` reads them: without these a `mark lean` module in a booted program compiled
+  # as longhand, every property head an unknown name (self-hosting-0015)
+  save options, make(compile-options, bind(resolve, resolve), bind(cache, cache-store/processCache(opts/project-root)), bind(parsed, cache-store/processParse()), bind(env, <browser>), bind(deck-of, face-deck-finder(make-deck-finder())), bind(role-of, face-role-reader(make-role-reader(opts/project-root))), bind(lean-of, face-lean-reader(make-role-reader(opts/project-root))))
+  save result, compile-module/compile(source, options)
+  fork test, result/ok
+    hold
+      bundle-compiled(opts, result, started)
+    miss
+      output/reportProblems(problem-entries(result/diagnostics), opts/project-root)
+      # a warning, not a failure: the server still renders every page, only without the client taking over
+      save counts, make list
+      counts/push(output/count(result/diagnostics/length, <errors>, <error>))
+      save message, make list
+      message/push(<The server still renders every page, without the client taking over.>)
+      output/report(make(refused-item, bind(glyph, <warning>), bind(verb, <build>), bind(subject, <client bundle>), bind(duration, subtract(host-date/now(), started)), bind(counts, counts), bind(message, message)))
+
+task bundle-compiled
+  take opts, like client-ask
+  take result, like dynamic
+  take started, like number
+  like void
+  mark async
+  mark private
+
+  # only the shims actually referenced, so an unused dock (e.g. floating-ui `position`) stays out of the bundle
+  save prelude, native-module/nativePrelude(result/program, <browser>, read-boot-runtime, result/typescript)
+  save lines, make list
+  lines/push(prelude)
+  lines/push(result/typescript)
+  save source, boot-joined-lines(lines)
+  # a hook table's lowering ends the program with `boot("", 0)`, or the `host(route, 0)` the simplifier makes of it,
+  # so it runs itself on load. A `route` and a `boot` written by hand have no such line: the entry calls it for them
+  save runs, runs-boot(result/program)
+  save config, make(client-config, bind(bundle, true), bind(format, <esm>), bind(platform, <browser>), bind(minify, opts/prod))
+  save calls, <entry: import and call boot>
+  fork test, runs
+    hold
+      save calls, <entry: import>
+  save parts, make list
+  parts/push(boot-cache-epoch())
+  parts/push(cache-store/compilerVersion())
+  parts/push(<browser-client>)
+  parts/push(<esbuild@{esbuild-module/version}>)
+  parts/push(host-global/JSON/stringify(config))
+  parts/push(calls)
+  parts/push(source)
+  save key, hash-text(boot-joined-lines(parts))
+  save build-dir, node-path/join(opts/app-dir, <build>)
+  node-file/mkdir-sync(build-dir, make(folder-ask, bind(recursive, true)))
+  save out-file, node-path/join(build-dir, <boot.js>)
+  save map-file, node-path/join(build-dir, <import-map.json>)
+  save stamp-file, node-path/join(build-dir, <.boot.js.key>)
+  # the stamp is the content hash of the last-built bundle: if it matches, build/boot.js is already current
+  save current, false
+  fork test, and(node-file/exists-sync(out-file), node-file/exists-sync(stamp-file))
+    hold
+      save current, is-equal(node-file/read-file-sync(stamp-file, <utf8>), key)
+  fork test, current
+    hold
+      save facts, make list
+      facts/push(<cached>)
+      save fields, make list
+      fields/push(output/location(<build/boot.js>))
+      output/report(make(cached-item, bind(glyph, <skipped>), bind(verb, <build>), bind(subject, <client bundle>), bind(duration, subtract(host-date/now(), started)), bind(facts, facts), bind(fields, fields)))
+    miss
+      # bundle once into the shared cache dir (keyed by content), then copy into the app's build output
+      save cache-out, home-module/projectHome(opts/project-root, <client>, key)
+      save cache-file, node-path/join(cache-out, <boot.js>)
+      save cache-map, node-path/join(cache-out, <import-map.json>)
+      fork test, not(node-file/exists-sync(cache-file))
+        hold
+          node-file/mkdir-sync(cache-out, make(folder-ask, bind(recursive, true)))
+          node-file/write-file-sync(node-path/join(cache-out, <boot.ts>), source)
+          # the entry IMPORTS the program rather than being it, so the program keeps its own top-level run and esbuild
+          # drops every task nothing reaches (guides: applications/web, 2026-10-04)
+          save entry-file, node-path/join(cache-out, <entry.ts>)
+          node-file/write-file-sync(entry-file, client-entry-text(runs))
+          save entries, make list
+          entries/push(entry-file)
+          save plugins, make list
+          plugins/push(boot-bare-externals())
+          save built, wait esbuild-module/build(make(client-build, bind(entry-points, entries), bind(outfile, cache-file), bind(bundle, true), bind(format, <esm>), bind(platform, <browser>), bind(minify, opts/prod), bind(metafile, true), bind(plugins, plugins)))
+          node-file/write-file-sync(cache-map, boot-import-map(boot-kept-externals(built/metafile)))
+      node-file/copy-file-sync(cache-file, out-file)
+      fork test, node-file/exists-sync(cache-map)
+        hold
+          node-file/copy-file-sync(cache-map, map-file)
+      node-file/write-file-sync(stamp-file, key)
+      save fields, make list
+      fields/push(output/location(<build/boot.js>))
+      output/report(make(built-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <client bundle>), bind(duration, subtract(host-date/now(), started)), bind(fields, fields)))

@@ -1,0 +1,508 @@
+# THE PARALLEL SEPARATE BUILD (note/project/term/incremental-best-in-class.md, step 5). Ported from
+# call/code/build-separate-parallel.ts, term-cli-in-term-0025.
+#
+# The separate build checks one unit at a time, a module or a cycle of modules, against the stubs of the units it
+# reaches (compile/separate.ts). Units that do not reach one another can be checked at once. This walks every entry's
+# closure on the main thread, cuts the union of the closures into its units, and hands each unit to a pool of workers
+# (separate-worker.ts) the moment every unit it reaches is built (compile/schedule.tree). Each worker compiles the unit's
+# module as its own entry, and leaves it in the cache the pool shares on disk.
+#
+# A project file's answer comes back whole, and `compileProjectSeparate` takes it as built. Anything the pool did not
+# answer, it compiles. So a pool that fails part way costs time, never a wrong build. The one exception is a unit whose
+# worker ran out of its heap (heap-limit.tree): it is answered here as its own `out-of-memory` failure, since the main
+# thread compiling it again would run out the same way.
+#
+# Docked: cache-store.ts (compilerVersions, projectCache), make.ts (buildable, isWholeFile), compile/load.ts
+# (collectModules), compile/separate.ts (units), compile/resolve.ts (stdlibBase), role-of.ts (projectRoleOf) and node's
+# worker_threads.
+
+load ./heap-limit
+  find worker-heap-mb
+  find is-out-of-memory
+  find out-of-memory-diagnostic
+
+load ./file-pool
+  find bundle-worker
+
+load @term/make/compile/schedule
+  find make-schedule
+  find first, name first-ready
+  find finish, name finish-node
+
+dock load
+  load <node:fs>, name node-file
+  load <node:worker_threads>, name worker-threads
+  load <global:Date>, name host-date
+  load <@term/call/code/cache-store>, name cache-store
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/role-of>, name role-module
+  load <@term/make/code/compile/load>, name load-module
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/make/code/resolve>, name resolving-module
+
+# a function value called on one value
+bind units-apply
+  take function, like dynamic
+  take value, like dynamic
+  like dynamic
+  case node
+    text <$function($value)>
+
+# a unit that is no program entry: faults instead of text, or a whole file (a page, a look sheet)
+bind units-has-faults
+  take unit, like dynamic
+  like boolean
+  case node
+    text <("faults" in $unit)>
+
+# a module's own import edges the walk recorded, the empty list when none
+bind units-walked-edges
+  take walked, like dynamic
+  take file, like text
+  like list, like text
+  case node
+    text <($walked.get($file)?.edges ?? [])>
+
+# the pool's size: the concurrency asked for, else the cores but one and at most eight, never more than the jobs
+bind units-size-of
+  take options, like dynamic
+  take jobs, like number
+  like number
+  case node
+    text <Math.max(1, Math.min($options?.concurrency ?? Math.min(8, Math.max(1, process.getBuiltinModule("node:os").cpus().length - 1)), $jobs))>
+
+bind units-pin-stdlib
+  take stdlib, like dynamic
+  like void
+  case node
+    text <(($stdlib && !process.env.TERM_STDLIB) ? (process.env.TERM_STDLIB = $stdlib) : undefined)>
+
+# a new worker on the bundle, the compiler version handed down, its heap limited, and with `TERM_POOL_PROFILE=<dir>`
+# each worker's CPU profile written there
+bind units-new-worker
+  take worker, like dynamic
+  take bundle, like text
+  take version, like dynamic
+  take heap, like number
+  like dynamic
+  case node
+    text <((profile) =\> new $worker($bundle, \{ workerData: \{ version: $version \}, resourceLimits: \{ maxOldGenerationSizeMb: $heap \}, ...(profile ? \{ execArgv: ["--cpu-prof", "--cpu-prof-dir=" + profile] \} : \{\}) \}))(process.env.TERM_POOL_PROFILE)>
+
+bind units-new-map
+  like dynamic
+  case node
+    text <new Map()>
+
+bind units-new-set
+  like dynamic
+  case node
+    text <new Set()>
+
+bind units-set-add
+  take set, like dynamic
+  take value, like dynamic
+  like void
+  case node
+    text <$set.add($value)>
+
+bind units-map-set
+  take map, like dynamic
+  take key, like dynamic
+  take value, like dynamic
+  like void
+  case node
+    text <$map.set($key, $value)>
+
+bind units-map-delete
+  take map, like dynamic
+  take key, like dynamic
+  like void
+  case node
+    text <$map.delete($key)>
+
+bind units-map-get
+  take map, like dynamic
+  take key, like dynamic
+  like dynamic
+  case node
+    text <$map.get($key)>
+
+bind units-is-nothing
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+# the first item taken off a list, and the last
+bind units-shift
+  take list, like list, like dynamic
+  like dynamic
+  case node
+    text <$list.shift()>
+
+bind units-pop
+  take list, like list, like dynamic
+  like dynamic
+  case node
+    text <$list.pop()>
+
+# a worker taken out of the idle list when it is there
+bind units-drop-idle
+  take idle, like list, like dynamic
+  take worker, like dynamic
+  like void
+  case node
+    text <($idle.includes($worker) ? void $idle.splice($idle.indexOf($worker), 1) : undefined)>
+
+bind units-promise
+  take start, like dynamic
+  like dynamic
+  case node
+    text <new Promise((settle) =\> $start(settle))>
+
+bind units-call
+  take done, like dynamic
+  like void
+  case node
+    text <$done()>
+
+bind units-terminate
+  take workers, like list, like dynamic
+  like dynamic
+  case node
+    text <Promise.all($workers.map((worker) =\> worker.terminate()))>
+
+# a reply's fields, each read as the original read it
+bind units-reply-member
+  take reply, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$reply[$key]>
+
+bind units-reply-built
+  take reply, like dynamic
+  like number
+  case node
+    text <($reply.built ?? 0)>
+
+bind units-reply-spent
+  take reply, like dynamic
+  take key, like text
+  like number
+  case node
+    text <($reply.spent?.[$key] ?? 0)>
+
+bind units-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind units-error-text
+  take error, like dynamic
+  like text
+  case node
+    text <String($error)>
+
+bind units-file-or-worker
+  take file, like dynamic
+  like text
+  case node
+    text <($file ?? "<worker>")>
+
+form units-spent
+  mark shared
+  link walking, like number
+  link building, like number
+  link rolling, like number
+
+form scan-source
+  link file, like text
+  link text, like text
+
+form unit-job
+  link type, like text
+  link root, like text
+  link file, like text
+  link entry, like boolean
+
+form oom-result
+  link ok, like boolean
+  link diagnostics, like list, like dynamic
+
+form units-answer
+  link results, like hash, like text, like dynamic
+  link jobs, like number
+  link workers, like number
+  link failures, like list, like text
+  link out-of-memory, like dynamic
+  link heap-mb, like number
+  link built, like number
+  link spent, like units-spent
+
+# one pool run: the jobs and their schedule, the workers, which are idle and what each busy one holds, and the answers
+form unit-run
+  mark shared
+  link root, like text
+  link bundle, like text
+  link heap, like number
+  link entries, like hash, like text, like boolean
+  link graph-size, like number
+  link plan, like dynamic
+  link ready, like list, like text
+  link results, like hash, like text, like dynamic
+  link failures, like list, like text
+  link out-of-memory, like dynamic
+  link workers, like list, like dynamic
+  link idle, like list, like dynamic
+  link holding, like dynamic
+  link alive, like number
+  link done, like number
+  link built, like number
+  link spent, like units-spent
+  link settle, like dynamic
+
+task spawn-unit-worker
+  take run, like unit-run
+  like dynamic
+  mark private
+
+  back units-new-worker(worker-threads/Worker, run/bundle, cache-store/compilerVersions(), run/heap)
+
+task dispatch-units
+  take run, like unit-run
+  like void
+  mark private
+
+  walk test
+    hook test, and(is-above(run/idle/length, 0), is-above(run/ready/length, 0))
+    hook hold
+      save file, units-shift(run/ready)
+      save worker, units-pop(run/idle)
+      units-map-set(run/holding, worker, file)
+      worker/post-message(make(unit-job, bind(type, <job>), bind(root, run/root), bind(file, file), bind(entry, run/entries/has(file))))
+  # every job answered, or nobody left to answer the rest, which the main build then compiles itself (all but an
+  # out-of-memory unit, which is answered as its failure)
+  fork test, or(is-equal(run/done, run/graph-size), is-equal(run/alive, 0))
+    hold
+      units-call(run/settle)
+
+# a unit that failed still releases what waits on it: each of those then fails or builds on its own terms
+task release-unit
+  take run, like unit-run
+  take file, like text
+  like void
+  mark private
+
+  save run/done, add(run/done, 1)
+  walk finish-node(run/plan, file)
+    take waiter
+    run/ready/push(waiter)
+
+task listen-units
+  take run, like unit-run
+  take worker, like dynamic
+  like void
+  mark private
+
+  worker/on
+    <message>
+    task
+      take reply, like dynamic
+      like void
+      units-map-delete(run/holding, worker)
+      save file, units-reply-member(reply, <file>)
+      save result, units-reply-member(reply, <result>)
+      fork test, units-truthy(result)
+        hold
+          save run/results/{file}, result
+        miss
+          save run/built, add(run/built, units-reply-built(reply))
+      save error, units-reply-member(reply, <error>)
+      fork test, units-truthy(error)
+        hold
+          run/failures/push(<{file}: {error}>)
+      save run/spent/building, add(run/spent/building, units-reply-spent(reply, <building>))
+      save run/spent/rolling, add(run/spent/rolling, units-reply-spent(reply, <rolling>))
+      release-unit(run, file)
+      run/idle/push(worker)
+      dispatch-units(run)
+  # a worker that dies takes its job with it. One that ran out of its heap answers its unit as an `out-of-memory`
+  # failure and is replaced, so the pool keeps its size. Any other death releases the job with no answer, and the pool
+  # goes on without that worker
+  worker/on
+    <error>
+    task
+      take error, like dynamic
+      like void
+      save held, units-map-get(run/holding, worker)
+      units-map-delete(run/holding, worker)
+      units-drop-idle(run/idle, worker)
+      save run/alive, subtract(run/alive, 1)
+      run/failures/push(<{units-file-or-worker(held)}: {units-error-text(error)}>)
+      fork test, is-out-of-memory(error)
+        hold
+          fork test, not(units-is-nothing(held))
+            hold
+              save one, units-file-or-worker(held)
+              units-set-add(run/out-of-memory, one)
+              save diagnostics, make list
+              diagnostics/push(out-of-memory-diagnostic(one, run/heap))
+              save run/results/{one}, make(oom-result, bind(ok, false), bind(diagnostics, diagnostics))
+          save replacement, spawn-unit-worker(run)
+          run/workers/push(replacement)
+          save run/alive, add(run/alive, 1)
+          listen-units(run, replacement)
+      fork test, not(units-is-nothing(held))
+        hold
+          release-unit(run, units-file-or-worker(held))
+      dispatch-units(run)
+  run/idle/push(worker)
+
+task compile-units-parallel
+  take root, like text
+  take files, like list, like text
+  take session, like dynamic
+  take options
+    like dynamic
+    fall units-nothing()
+  like units-answer
+  mark async
+
+  save walked-at, host-date/now()
+  save cache, cache-store/projectCache(root)
+  save role-of, role-module/projectRoleOf(root)
+  # every program entry's closure, walked once through the session, so the main build after this walks nothing new
+  save entries, make hash
+  save modules, make list
+  save module-seen, make hash
+  save scanned
+    task
+      take source, like dynamic
+      take compute, like dynamic
+      like dynamic
+      back cache/scanned(source/file, source/text, compute)
+  walk files
+    take file
+    save unit, make-module/buildable(file, node-file/read-file-sync(file, <utf8>), units-apply(role-of, file))
+    fork test, units-has-faults(unit)
+      hold
+        turn next
+    fork test, units-truthy(make-module/isWholeFile(file, unit/text, units-apply(role-of, file)))
+      hold
+        turn next
+    save entries/{file}, true
+    save walked, load-module/collectModules(make(scan-source, bind(file, file), bind(text, unit/text)), session/resolve, session/parsed, scanned, session/walked)
+    walk walked/sources
+      take source
+      save named, source/file
+      fork test, not(module-seen/has(named))
+        hold
+          save module-seen/{named}, true
+          modules/push(named)
+  # the union of the closures, cut into units, each named by its first file. A unit's job is that file compiled as its
+  # own entry. A project file a cycle holds beside another is its own entry too, once the cycle is built
+  save edges, make hash
+  walk modules
+    take module
+    save kept, make list
+    walk units-walked-edges(session/walked, module)
+      take edge
+      fork test, module-seen/has(edge)
+        hold
+          kept/push(edge)
+    save edges/{module}, kept
+  save cut, separate-module/units(modules, edges)
+  save spent, make(units-spent, bind(walking, subtract(host-date/now(), walked-at)), bind(building, 0), bind(rolling, 0))
+  save unit-of, make hash
+  walk cut
+    take one-unit
+    walk one-unit
+      take file
+      save unit-of/{file}, one-unit/0
+  save graph, make hash
+  walk cut
+    take one-unit
+    save head, one-unit/0
+    save deps, make list
+    walk one-unit
+      take file
+      walk units-edges-of(edges, file)
+        take edge
+        save dep, unit-of/get(edge)
+        fork test, and(is-unequal(dep, head), not(units-contains(deps, dep)))
+          hold
+            deps/push(dep)
+    save graph/{head}, deps
+    save at, 1
+    walk test
+      hook test, is-below(at, one-unit/length)
+      hook hold
+        save member, one-unit/{at}
+        fork test, entries/has(member)
+          hold
+            save heads, make list
+            heads/push(head)
+            save graph/{member}, heads
+        save at, add(at, 1)
+  # at most eight: each worker holds every unit it has read, which on @term/bind is the standard library and more
+  save graph-size, units-hash-size(graph)
+  save size, units-size-of(options, graph-size)
+  save bundle, bundle-worker(<separate-worker>)
+  # the worker bundle lives in the temp folder, from where stdlibBase() cannot walk up to the standard library
+  save stdlib, resolving-module/stdlibBase()
+  units-pin-stdlib(stdlib)
+  # each worker's heap is limited, so one that runs out of memory ends alone and its unit is reported (heap-limit.tree)
+  save heap, worker-heap-mb(size)
+  save plan, make-schedule(graph)
+  save run, make(unit-run, bind(root, root), bind(bundle, bundle), bind(heap, heap), bind(entries, entries), bind(graph-size, graph-size), bind(plan, plan), bind(ready, first-ready(plan)), bind(results, make hash), bind(failures, make list), bind(out-of-memory, units-new-set()), bind(workers, make list), bind(idle, make list), bind(holding, units-new-map()), bind(alive, 0), bind(done, 0), bind(built, 0), bind(spent, spent), bind(settle, units-nothing()))
+  save count, 0
+  walk test
+    hook test, is-below(count, size)
+    hook hold
+      run/workers/push(spawn-unit-worker(run))
+      save count, add(count, 1)
+  save run/alive, run/workers/length
+  save start
+    task
+      take settler, like dynamic
+      like void
+      save run/settle, settler
+      walk run/workers
+        take worker
+        listen-units(run, worker)
+      dispatch-units(run)
+  wait units-promise(start)
+  wait units-terminate(run/workers)
+  back make(units-answer, bind(results, run/results), bind(jobs, graph-size), bind(workers, size), bind(failures, run/failures), bind(out-of-memory, run/out-of-memory), bind(heap-mb, heap), bind(built, run/built), bind(spent, run/spent))
+
+bind units-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind units-hash-size
+  take hash, like dynamic
+  like number
+  case node
+    text <$hash.size>
+
+bind units-contains
+  take list, like list, like text
+  take value, like text
+  like boolean
+  case node
+    text <$list.includes($value)>
+
+# a file's kept edges, the empty list when the file holds none
+task units-edges-of
+  take edges, like hash, like text, like list, like text
+  take file, like text
+  like list, like text
+  mark private
+
+  fork test, edges/has(file)
+    hold
+      back edges/get(file)
+  back make list

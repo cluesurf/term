@@ -78,6 +78,9 @@ load ./elaborating-proof
 load ./elaborating-theorems
   find elaborate-goal-sides
 
+load ../parser/diagnostic
+  find span
+
 # what an induction reads besides the terms' state: the lemmas, the fold's case and counterexample, the truncating
 # tasks and the face's span for the ring, the hold checker's `orderFollows`, and the finite forms found so far
 form induction-state

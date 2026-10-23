@@ -1,157 +1,34 @@
 load @term/call/work/home
   find root, name project-root
 
-load @term/call/work/tint
-  find log-good
-  find log-fail
-  find log-step
-  find log-warn
-  find fade
-  find name, name tint-name
-  find bold
-  find mark
-  find format-error
-
-# `term scan <file>` -- type check one file with its project's imports resolved, and report what it finds.
+# `term scan <file>` -- type-check one file and report its diagnostics (the verifier). `--fix` writes the sure
+# fixes into the file and scans again.
 #
-# This is the fast inner-loop verifier. `--back json` returns `{ ok, diagnostics }` with codes and spans so a loop
-# or a skill can decide "done" mechanically, and the process exits non-zero on any error so a plain shell check
-# works too.
-#
-# ERRORS WHEN IT FAILED, WARNINGS WHEN IT COMPILED, and `ok` is the gate. A file that compiles with warnings is a
-# file that compiles.
-#
-# Ported from deck/call/code/scan.ts (cli-in-term-0004).
+# The verb takes its hook's arguments and hands them to the shipped handler (deck/call/code/scan.ts `callScan`),
+# which checks the file and prints through the output library. It prints nothing of its own, catches nothing and
+# never exits: a throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term, part 2). The global `--back`
+# that line.ts passed is not reached yet: the dispatcher keeps it for the output library only.
 
-load @term/base/file
-  find read, name read-file
-  find test, name file-test
-
-dock load
-  load <@term/make/code/compile/compile>, name compile-module
-  load <@term/make/code/resolve>, name resolve-module
-  load <@term/call/code/report>, name report-module
-  load <@term/call/code/scan>, name scan-module
-  load <node:path>, name node-path
-  load <node:process>, name node-process
-  load <global:console>, name console
-  load <global:JSON>, name json-global
-
-form source-ask
-  link file, like text
-  link text, like text
-
-form compile-ask
-  link resolve, like unknown
-
-form missing-answer
-  link ok, like boolean
-  link error, like text
-  link file, like text
-
-form scan-fix-ask
+form scan-ask
   link root, like text
   link file, like text
-  link back, like text
   link fix, like boolean
 
-# `fix` stands second, in the hook's order: a parameter no take names is filled by position, so `back` after it is
-# filled by nothing rather than by `--fix`
+dock load
+  load <@term/call/code/scan>, name scan-module
+
 task scan
   mark async
   take file, like text
   take fix, like boolean
-  take back, like text
 
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  # `--fix` is the TypeScript verb's, whole. Its fixes are spans into the file as `term make` reads it, with the
-  # project's resolver, its role and `mark lean` and a test file rewritten (scan.ts `scanOnce`), and this port
-  # compiles the file as written with the editor's resolver. A fix computed against that reading would be written
-  # into a lean file at the wrong place, so the edit is left to the one reading that is right
-  fork test
-    fix
-    hold
-      scan-fix(root, file, back)
-      send back
-  save want-json
-    is-equal read(back), <json>
-  save full, node-path/resolve root, file
-  save there, file-test full, wait true
-
-  fork test
-    there
-    miss
-      fork test
-        want-json
-        hold
-          console/log
-            json-global/stringify
-              make missing-answer
-                bind ok, false
-                bind error, <not-found>
-                bind file, file
-        miss
-          log-fail <File not found: {{file}}>
-      node-process/exit code 1
-  save text, read-file full
-
-  save result
-    compile-module/compile
-      make source-ask, bind(file, full), bind text, read text
-      make compile-ask, bind resolve, call resolve-module/editorResolver, full
-  save found
-    fork test
-      read result/ok
-      hold
-        read result/warnings
-      miss
-        read result/diagnostics
-  fork test
-    want-json
-    hold
-      console/log json-global/stringify result
-      fork test
-        read result/ok
-        miss
-          node-process/exit code 1
-      send back
-  walk found
-    take site, name one
-    call report-module/printDiagnostic, one
-  fork test
-    read result/ok
-    miss
-      node-process/exit code 1
-  fork test
-    is-above read(found/length), code 0
-    hold
-      log-good <{{file}} ok ({{found}} warnings)>
-      send back
-  log-good <{{file}} ok>
-
-# `term scan <file> --fix`: write the sure fixes into the file and scan again, through scan.ts
-task scan-fix
-  mark async
-  mark private
-  take root, like text
-  take file, like text
-  take back, like text
-
-  like void
-
-  fork
-    mark unsafe
-    call scan-module/callScan
-      make scan-fix-ask
-        bind root, read root
-        bind file, read file
-        bind back, read back
-        bind fix, true
-      wait true
-  halt take
-    take error
-    log-fail format-error error
-    node-process/exit code 1
+  call scan-module/callScan
+    make scan-ask
+      bind root, read root
+      bind file, read file
+      bind fix, read fix
+    wait true

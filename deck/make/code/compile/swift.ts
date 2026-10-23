@@ -35,6 +35,7 @@ import {
   lastReads,
 } from '@term/make/code/compile/backend'
 import type { OwnedElements, TextCursors } from '@term/make/code/compile/backend'
+import type { WakeGroup } from '@term/make/code/compile/wake'
 import {
   collectBinds,
   bindImports,
@@ -372,8 +373,13 @@ const SWIFT_HELPERS = {
     // `flow`: the Term frames the raise passes (term/hive decision 001), the raise's own first, then each call it
     // leaves through, appended by `termCall` on the error path alone. A frame text holds several a line apart where a
     // task was inlined into its caller; past 64 a frame adds nothing
-    'struct TermException: Error { let host: String; let form: String; let note: String; let code: String; let time: Int; let link: Any?; let base: Any?; var flow: [String] = [] }',
-    'extension TermException { func at(_ site: String) -> TermException { var raised = self; for frame in site.split(separator: "\\n") { if raised.flow.count >= 64 { break }; raised.flow.append(String(frame)) }; return raised } }',
+    // A frame text is kept whole as the program holds it, an inlined call's several frames in one constant, split only
+    // when `flow` is read, and the first two in the carrier itself, so a raise passing one call allocates nothing for its
+    // frames: splitting at the raise made a String per frame, counting a text's lines read it byte by byte, and one array
+    // held in the struct was copied whole at each frame (Swift 470 ms for 100k raises one call deep, 2,488 ten deep). At
+    // most 64 texts are kept, each at least one frame, and reading keeps the first 64 frames
+    'struct TermException: Error { let host: String; let form: String; let note: String; let code: String; let time: Int; let link: Any?; let base: Any?; var first: String? = nil; var second: String? = nil; var rest: [String] = [] }',
+    'extension TermException { var flow: [String] { Array(([first, second].compactMap { $0 } + rest).flatMap { $0.split(separator: "\\n").map(String.init) }.prefix(64)) }; func at(_ site: String) -> TermException { var raised = self; if raised.first == nil { raised.first = site } else if raised.second == nil { raised.second = site } else if raised.rest.count < 62 { raised.rest.append(site) }; return raised } }',
     'func termException(_ thrown: Any) -> TermException { if let e = thrown as? TermException { return e }; return TermException(host: "", form: "failure", note: "\\(thrown)", code: "", time: 0, link: nil, base: thrown) }',
     // a call that passes a raise out, its frame added as the raise leaves through it; `termEnd` where nothing around
     // the call can carry a raise (`try!` before), which ends the program as a raise nothing caught
@@ -746,14 +752,6 @@ function swiftKeyConformances(
 
 function pascal(name: string): string {
   return swiftNames.pascal(name)
-}
-
-// the roll grouped by deck, for the generated wake chain (the same shape emitTypeScript takes)
-export type WakeGroup = {
-  deck: string
-  entries: Record<string, unknown>[]
-  // the deck's static exception, tell and dock entries, for `hiveWakeTyped` (compile.ts `wakeGroups`)
-  typed?: { exceptions: Record<string, unknown>[]; tells: Record<string, unknown>[]; docks: Record<string, unknown>[] }
 }
 
 export function emitSwift(

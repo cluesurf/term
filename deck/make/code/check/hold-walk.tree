@@ -50,6 +50,7 @@ load ../compile/node
   find universal
   find type
   find binary-op
+  find match-case
 
 load ../compile/node-children
   find node-handle
@@ -113,11 +114,13 @@ load ./inequality
   find theorem-parts
   find written-alike
   find element-width-of
+  find constant-of
 
 load ./hold-state
   find hold-state
   find hold-delta
   find delta-count
+  find binder-fact
 
 load ./hold-facts
   find forget

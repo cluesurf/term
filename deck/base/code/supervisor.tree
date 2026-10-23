@@ -20,6 +20,7 @@ mark unstable
 
 load @term/base/task
   find spawn
+  find handle
 
 load @term/base/clock
   find now
@@ -49,8 +50,10 @@ form child
   case worker
     link name, like text
     link restart, like restart
+    # async, so a worker's own work and a nested supervisor's run both fit it and `spawn` (term/compiler decision 006)
     link work
       like task
+        mark async
         like text
   case nested
     link tree, like supervisor
@@ -96,6 +99,7 @@ task make-supervisor
 task child-work
   take one, like child
   like task
+    mark async
     like text
   fork case, read one
     case worker

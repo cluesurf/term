@@ -19,6 +19,9 @@ load ../../../logic/disclosure
   find disclosure-open
   find toggle-disclosure
 
+load @term/site/view/reactive
+  find signal
+
 task checked-text
   take control, like signal boolean
   like text

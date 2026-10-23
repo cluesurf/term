@@ -19,6 +19,7 @@ import { join } from 'node:path'
 import { runOn } from './shared/run-on'
 import { DEVICE_MODULES } from '@term/call/code/cask-generate'
 import { projectResolver } from '@term/call/code/make'
+import { readTree } from '../../deck/deck/code/read'
 
 const ROOT = join(import.meta.dirname, '..', '..')
 const VIEW = join(ROOT, 'deck/site/code/view')
@@ -60,8 +61,12 @@ function tableRows(): Map<string, string[]> {
 }
 
 // the public tasks a contract declares, so a row may name them without the runtime calling them
+// read through the parser (note/project/term/one-parser.md): each top-level `task <name>` form
 function tasksOf(module: string): string[] {
-  return [...readFileSync(join(VIEW, `${module}.tree`), 'utf8').matchAll(/^task ([a-z-]+)$/gm)].map(match => match[1]!)
+  const file = join(VIEW, `${module}.tree`)
+  const read = readTree({ file, text: readFileSync(file, 'utf8') })
+
+  return read.ok ? read.forms.flatMap(form => (form.head === 'task' && form.terms.length === 1 ? [form.terms[0]!] : [])) : []
 }
 
 const rows = tableRows()

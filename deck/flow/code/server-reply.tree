@@ -1,0 +1,193 @@
+# The messages the language server writes back, and the reading of a request's parameters every handler shares.
+# A message is the host's JSON value (`like dynamic`), as framing.tree reads and writes it, so a reply prints exactly
+# as it did, key order and all.
+#
+# Ported from server.ts (term-cli-in-term-0100, part 1 of 5). The decisions:
+#   - `ParamsError` (a class private to server.ts) is a host error carrying the mark `Symbol.for("term.flow.params")`,
+#     raised by `raise-params` and told apart by `is-params-error`, so the dispatcher answers it InvalidParams and
+#     anything else InternalError as the original did. Its message is the original's word for word
+#   - `need(value, what)` is `require-param`: `need` is a word of Term's own
+#   - `positionOf` answers geometry.tree's `lsp-position`, clamped at zero by the host's `Math.max`, so a position
+#     the client sent as `NaN` reads as it read
+
+load ./geometry
+  find lsp-position
+
+# the codes a JSON-RPC error carries (the LSP's own, beside the protocol's)
+task invalid-params-code
+  like number
+
+  back -32602
+
+task internal-error-code
+  like number
+
+  back -32603
+
+task request-cancelled-code
+  like number
+
+  back -32800
+
+task method-not-found-code
+  like number
+
+  back -32601
+
+bind result-reply
+  take message, like dynamic
+  take result, like dynamic
+  like dynamic
+  case node
+    text <(\{ jsonrpc: "2.0", id: $message.id, result: $result \})>
+
+bind notification
+  take method, like text
+  take params, like dynamic
+  like dynamic
+  case node
+    text <(\{ jsonrpc: "2.0", method: $method, params: $params \})>
+
+# `{ jsonrpc: '2.0', id, error: { code, message } }`
+bind failure-reply
+  take id, like dynamic
+  take code, like number
+  take message, like text
+  like dynamic
+  case node
+    text <(\{ jsonrpc: "2.0", id: $id, error: \{ code: $code, message: $message \} \})>
+
+# the answer to a request (a bind is written into its caller, so each is a task its callers and a test can reach)
+task respond
+  take message, like dynamic
+  take result, like dynamic
+  like dynamic
+
+  back result-reply(message, result)
+
+task notify
+  take method, like text
+  take params, like dynamic
+  like dynamic
+
+  back notification(method, params)
+
+task error-reply
+  take id, like dynamic
+  take code, like number
+  take message, like text
+  like dynamic
+
+  back failure-reply(id, code, message)
+
+bind log-params
+  take message, like text
+  like dynamic
+  case node
+    text <(\{ type: 1, message: $message \})>
+
+bind null-value
+  like dynamic
+  case node
+    text <null>
+
+task log-message
+  take body, like text
+  like dynamic
+
+  back notify(<window/logMessage>, log-params(<term flow: {body}>))
+
+# ---- the parameters ----
+
+bind raise-params
+  take message, like text
+  like void
+  case node
+    text <(() =\> \{ throw Object.assign(new Error($message), \{ [Symbol.for("term.flow.params")]: true \}) \})()>
+
+bind has-params-mark
+  take problem, like dynamic
+  like boolean
+  case node
+    text <(($problem)?.[Symbol.for("term.flow.params")] === true)>
+
+# whether a problem is the InvalidParams kind `raise-params` raises
+task is-params-error
+  take problem, like dynamic
+  like boolean
+
+  back has-params-mark(problem)
+
+bind is-missing
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined || $value === null)>
+
+bind position-in
+  take params, like dynamic
+  like dynamic
+  case node
+    text <($params)?.position>
+
+# `p && typeof p.line === 'number' && typeof p.character === 'number'`
+bind is-position
+  take value, like dynamic
+  like boolean
+  case node
+    text <(Boolean($value) && typeof $value.line === "number" && typeof $value.character === "number")>
+
+bind line-at-least-zero
+  take value, like dynamic
+  like number
+  case node
+    text <Math.max(0, $value.line)>
+
+bind character-at-least-zero
+  take value, like dynamic
+  like number
+  case node
+    text <Math.max(0, $value.character)>
+
+bind uri-in
+  take params, like dynamic
+  like dynamic
+  case node
+    text <($params)?.textDocument?.uri>
+
+bind is-text-value
+  take value, like dynamic
+  like boolean
+  case node
+    text <(typeof $value === "string")>
+
+# a parameter the request must carry: refused InvalidParams as `missing <what>` when it is undefined or null
+task require-param
+  take value, like dynamic
+  take what, like text
+  like dynamic
+
+  fork test, is-missing(value)
+    hold
+      raise-params(<missing {what}>)
+  back value
+
+task position-of
+  take params, like dynamic
+  like lsp-position
+
+  save given, position-in(params)
+  fork test, is-position(given)
+    miss
+      raise-params(<missing or malformed position>)
+  back make(lsp-position, bind(line, line-at-least-zero(given)), bind(character, character-at-least-zero(given)))
+
+task uri-of
+  take params, like dynamic
+  like text
+
+  save given, uri-in(params)
+  fork test, is-text-value(given)
+    miss
+      raise-params(<missing textDocument.uri>)
+  back given

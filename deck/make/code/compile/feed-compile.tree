@@ -53,6 +53,9 @@ load ./templates
 load ../check/eliminate
   find utf16-order
 
+load @term/base/float
+  find to-decimal
+
 # ---- the values ----
 
 form feed-rule
@@ -2997,16 +3000,12 @@ task compile-expr
       push(out, <{p}  make list>)
       walk bound
         take part
-        save kind, type-words(scope, part)
-        fork test, starts-with(kind, <like maybe>)
+        save conversion, text-conversion(type-words(scope, part))
+        fork test, is-unequal(conversion, <>)
           hold
-            push(out, <{p}    call unwrap-or(read({part}), text \<\>)>)
+            push(out, <{p}    call {conversion}(read({part}), text \<\>)>)
           miss
-            fork test, starts-with(kind, <like list>)
-              hold
-                push(out, <{p}    call join(read({part}), text \<\>)>)
-              miss
-                push(out, <{p}    read {part}>)
+            push(out, <{p}    read {part}>)
       push(out, <{p}save {span-send}>)
       push(out, <{p}  call join(read({span-send}-parts), text \<\>)>)
 
@@ -3311,6 +3310,22 @@ task span-test
         save chain, <call or({closed-argument(chain)}, {part})>
   back chain
 
+# how a captured value of these type words is turned into text, the way a span joins its parts: a maybe by `unwrap-or`,
+# a list by `join`, and `<>` for a value used as it is. Shared by `case span` and an any helper's branches (mill decision
+# 001)
+task text-conversion
+  take kind, like text
+  like text
+  mark private
+
+  fork test, starts-with(kind, <like maybe>)
+    hold
+      back <unwrap-or>
+  fork test, starts-with(kind, <like list>)
+    hold
+      back <join>
+  back <>
+
 task compile-any-helper
   take name, like text
   take branches, like list, like feed-rule
@@ -3327,7 +3342,12 @@ task compile-any-helper
   # The helper is written with it, and with `like unknown` only where the branches differ (seam decision 002, group
   # D): it used to be unknown as soon as any branch was a form rule, so a rule returning what it matched as a text
   # returned an unknown
+  # On a text cursor a form branch answering a list of text or a maybe of text is turned into text where the helper
+  # calls it, by the conversion a span applies to its parts (mill decision 001), so the helper still answers text
   save shared, element
+  save converts, like hash, like text, like text
+    make hash
+  save on-text, is-text-cursor(ops)
   save fresh, like list, like text
     make list
   walk branches
@@ -3336,9 +3356,17 @@ task compile-any-helper
       case form
         link branch-name
         save own, join(return-type-of(branch-name, ops, grammar, fresh), <\n>)
-        fork test, not(is-equal(own, element))
+        save turned, <>
+        fork test, and(on-text, or(is-equal(own, <like list\n  like text>), is-equal(own, <like maybe\n  like text>)))
           hold
-            save shared, <like unknown>
+            save turned, text-conversion(own)
+        fork test, is-unequal(turned, <>)
+          hold
+            converts/set(branch-name, turned)
+          miss
+            fork test, not(is-equal(own, element))
+              hold
+                save shared, <like unknown>
       miss
         save nothing, 0
   save lines, make list
@@ -3406,7 +3434,11 @@ task compile-any-helper
         sift form-name
           case some
             link known
-            push(lines, <        call read-{known}(read(cursor))>)
+            fork test, and(is-equal(shared, element), converts/has(known))
+              hold
+                push(lines, <        call {converts/get(known)}(call(read-{known}(read(cursor))), text \<\>)>)
+              miss
+                push(lines, <        call read-{known}(read(cursor))>)
           case none
             push(lines, <        call {ops/advance}(read(cursor))>)
         save dispatched, add(dispatched, 1)

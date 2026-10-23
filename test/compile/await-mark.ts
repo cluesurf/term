@@ -21,6 +21,11 @@ import { applyFixes } from '@term/make/code/lint/lint'
 import { parse } from '@term/make/code/parser/tree'
 import { mill } from '@term/make/code/compile/mill'
 import { format } from '@term/make/code/format/format'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { projectResolver } from '@term/call/code/make'
+import { BACKENDS, runOn } from './shared/run-on'
 
 let pass = 0
 let fail = 0
@@ -179,7 +184,9 @@ task start
   send back, read work
 `)
 
-  ok('2. in a value position `tick` is the pending job, a `handle` of the answer', pending.ok && /const work: Handle<string> = spawn\(async \(\) => \(await fetchPage\(url\)\)\)/.test(pending.ts), pending.ok ? pending.ts : pending.why)
+  // `spawn` docks the job runtime, so it can raise `failure` and its call records its Term frame first (term/hive
+  // decision 001): `(__site = "<frame>", spawn(...))`
+  ok('2. in a value position `tick` is the pending job, a `handle` of the answer', pending.ok && /const work: Handle<string> = (\(__site = "[^"]*", )?spawn\(async \(\) => \(await fetchPage\(url\)\)\)/.test(pending.ts), pending.ok ? pending.ts : pending.why)
 
   const unloaded = build(`${FETCH}
 task start
@@ -252,7 +259,8 @@ host page, tick fetch-page(<home>)
   ok('3. with the switch off, an async call in a top-level `host` builds, un-awaited (the old rule)', old.ok && /const page[^=]*= fetchPage\("home"\)/.test(old.ts), old.ok ? old.ts : old.why)
   ok('3. with it on, the same call is an error naming `tick`', !now.ok && /outside any task/.test(now.why) && /tick fetch-page/.test(now.why), now.ok ? 'built' : now.why)
   // a ticked `host` is a value, so it is the pending job too, started where the module loads
-  ok('3. ...and `tick` there builds, the host holding the pending job', fixed.ok && /const page: Handle<string> = spawn\(async \(\) => \(await fetchPage\("home"\)\)\)/.test(fixed.ts), fixed.ok ? fixed.ts : fixed.why)
+  // outside every task the raising call is wrapped once in `__termTop("<frame>", () => ...)` (term/hive decision 001)
+  ok('3. ...and `tick` there builds, the host holding the pending job', fixed.ok && /const page: Handle<string> = (__termTop\("[^"]*", \(\) => )?spawn\(async \(\) => \(await fetchPage\("home"\)\)\)/.test(fixed.ts), fixed.ok ? fixed.ts : fixed.why)
 
   const insideTask = build(`${FETCH}
 task caller
@@ -536,6 +544,79 @@ task shown
     ok('and in the Rust', /later\(3\)\.await/.test(built.rs), built.rs.slice(-400))
     ok('and in the Swift', /await later\(n: 3\)/.test(built.swift), built.swift.slice(-400))
     ok('and the task holding it is async in the Kotlin', /suspend fun shown/.test(built.kotlin), built.kotlin.slice(-400))
+  }
+}
+
+// ASYNC IS PART OF A TASK TYPE (term/compiler decision 006): an async task literal bound to a field typed `like task`
+// without `mark async` is refused at the bind, naming the fix; a task literal that is not async bound to a field that is
+// `mark async` is made async (check/async-slots.tree) and runs on every backend
+{
+  const refused = buildWithBase(`form slot
+  link work
+    like task
+      like text
+
+task make-slot
+  like slot
+  send back
+    make slot
+      bind work
+        task inner
+          mark async
+          like text
+          send back, text <x>
+`)
+  ok('6. an async task into a task that is not async is refused, naming mark async', !refused.ok && /an async task where a task that is not async is wanted/.test(refused.why), refused.ok ? 'built' : refused.why)
+
+  const SYNC_INTO_ASYNC = `form job
+  link work
+    like task
+      mark async
+      like text
+
+task run-work
+  mark async
+  take work
+    like task
+      mark async
+      like text
+  like text
+  send back
+    call work
+
+task run-job
+  mark async
+  take one, like job
+  like text
+  send back
+    call run-work
+      read one/work
+
+task run
+  mark async
+  like text
+  save plain
+    make job
+      bind work
+        task plain-work
+          like text
+          send back, text <sync>
+  save first
+    call run-job
+      read plain
+  send back, read first
+`
+  const dir = mkdtempSync(join(tmpdir(), 'term-await-mark-'))
+
+  for (const backend of BACKENDS) {
+    const ran = runOn({ backend, program: SYNC_INTO_ASYNC, resolve: env => projectResolver(process.cwd(), env), dir, name: 'sync-into-async' })
+
+    if (ran.form === 'skipped') {
+      console.log(`skip  ${backend}: ${ran.reason}`)
+      continue
+    }
+
+    ok(`6. ${backend}: a task that is not async bound to a mark async field builds and runs`, ran.form === 'ran' && ran.output === 'sync', ran.form === 'ran' ? ran.output : `${ran.stage}: ${ran.reason}`)
   }
 }
 

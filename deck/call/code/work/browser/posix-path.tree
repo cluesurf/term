@@ -1,0 +1,75 @@
+# `path` for the browser compile: posix only, over the absolute paths of the in-memory snapshot (snapshot-disk.tree).
+# Ported from call/code/browser/path.ts, term-cli-in-term-0063. Each task behaves as Node's posix `path` does for an
+# absolute input, and every decision is call/code/browser/posix.tree's.
+#
+# posix.tree is DOCKED (its emitted port), not loaded: loaded, this file's own `join` took the calls posix.tree makes
+# to @term/base/list's `join` (type-mismatch at each), a gap in binding by import.
+#
+# What Node's module shape needs and a Term module cannot say is left to the bundle: `sep` and `delimiter` are tasks
+# here, `join` and `resolve` take their paths as one list, and there is no default export or `posix` record.
+
+dock load
+  load <@term/call/code/browser/posix>, name posix-port
+
+# `sep`
+task read-separator
+  like text
+
+  back </>
+
+# `delimiter`
+task read-delimiter
+  like text
+
+  back <:>
+
+task normalize
+  take value, like text
+  like text
+
+  back posix-port/normalize(value)
+
+task join
+  take paths, like list, like text
+  like text
+
+  back posix-port/join-paths(paths)
+
+# the working directory of a worker is the root of the snapshot's filesystem
+task resolve
+  take paths, like list, like text
+  like text
+
+  back posix-port/resolve-paths(paths)
+
+task dirname
+  take value, like text
+  like text
+
+  back posix-port/dirname(value)
+
+task basename
+  take value, like text
+  take extension, like text, fall <>
+  like text
+
+  back posix-port/basename(value, extension)
+
+task extname
+  take value, like text
+  like text
+
+  back posix-port/extname(value)
+
+task is-absolute
+  take value, like text
+  like boolean
+
+  back posix-port/is-absolute(value)
+
+task relative
+  take from, like text
+  take to, like text
+  like text
+
+  back posix-port/relative(from, to)

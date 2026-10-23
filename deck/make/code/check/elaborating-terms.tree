@@ -38,6 +38,8 @@ load ../compile/node
   find field-value
   find match-case
   find statement-branch
+  find assign-op
+  find binary-op
 
 load ../compile/type-text
   find integer-text
@@ -58,6 +60,7 @@ load ./judging
   find bind-context
   find neutral-var
   find show-term
+  find kernel-closure
 
 load ./elaborating-data
   find elaboration-data

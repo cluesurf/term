@@ -1,0 +1,716 @@
+# `term halt`: stop running `term boot` servers. Ported from call/code/halt.ts (term-cli-in-term-0060), whole:
+# work/halt.tree was an earlier conversion of an older halt (every boot on the machine, no services, no owning boot).
+#
+#   term halt -p <port>   stop the app serving on that port
+#   term halt             stop this project's term boot, feed and work, or every one on the machine outside a project
+#
+# Term boot servers are easy to find without a registry: each runs `node <project>/.base/@term/code/boot/<hash>/run.mjs`,
+# a path unique to term boot (`.base/@cluesurf/term/boot/` for one an older version started). That is matched in the
+# process table, machine-wide, so `term halt` works from anywhere with no shared state to go stale. `term halt -p
+# <port>` asks the operating system who is listening on the port instead.
+#
+# THE PATTERNS ARE WRITTEN OUT BY CHARACTER (self-host traps T024): a `ps` line is read as the original's
+# `^\s*(\d+)\s+(\d+)\s+(.*)$` reads it, with JavaScript's `\s` (draft-mark.tree `is-space`), `.` stopping at the four
+# line ends, and `$` at the end of the text only. Every number is read by the host's `Number`, as the original read it.
+
+load @term/call/draft-mark
+  find is-space
+
+load @term/base/text
+  find split
+  find substring
+  find index-of
+  find last-index-of
+  find char-code-at
+  find char-count
+
+load @term/base/list
+  find get
+  find join
+  find contains
+
+load @term/base/maybe
+  find maybe
+
+load ./home-folder
+  find home-posix
+
+dock load
+  load <node:child_process>, name child
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <node:process>, name node-process
+  load <global:Number>, name host-number
+  load <@term/call/code/output>, name output
+
+form process-row
+  link pid, like number
+  link parent, like number
+  link command, like text
+
+# a term boot program, the process to stop for it, and the project it belongs to
+form boot-row
+  link program, like number
+  link target, like number
+  link project, like text
+
+# a `term feed`, `term work` or browser `term boot`, its verb, and its project when `lsof` could say
+form service-row
+  link pid, like number
+  link verb, like text
+  link project, like maybe, like text
+
+form run-ask
+  link encoding, like text
+
+form open-ask
+  link verb, like text
+  link root, like text
+  link facts, like list, like text
+
+form item-ask
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+
+form fact-item-ask
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link facts, like list, like text
+
+form close-ask
+  link verdict, like text
+  link counts, like list, like dynamic
+
+# the markers that identify a term boot server process in the process table: the folder's name now, and the name it
+# had until 2026-10-05, which a server an older `term` started still runs from (home-folder.tree)
+task boot-markers
+  like list, like text
+
+  save out, make list
+  out/push(<{home-posix()}/boot/>)
+  out/push(<.base/@cluesurf/term/boot/>)
+  back out
+
+# the host's `Number` of a text
+task host-number-of
+  take value, like text
+  like number
+  mark private
+
+  back host-number/call(<>, value)
+
+# the code unit of one code point, for the class tests
+task point-code
+  take points, like list, like text
+  take at, like number
+  like number
+  mark private
+
+  back char-code-at(get(points, at), 0)
+
+task is-digit-code
+  take code, like number
+  like boolean
+  mark private
+
+  back and(is-minimum(code, 48), is-maximum(code, 57))
+
+# the code points from `start` up to, not including, `end`, as one text
+task points-text
+  take points, like list, like text
+  take start, like number
+  take end, like number
+  like text
+  mark private
+
+  save kept, make list
+  save at, start
+  walk test
+    hook test, is-below(at, end)
+    hook hold
+      kept/push(get(points, at))
+      save at, add(at, 1)
+  back join(kept, <>)
+
+# one of the four ends `.` does not cross: line feed, carriage return, and the two Unicode separators
+task is-line-end-code
+  take code, like number
+  like boolean
+  mark private
+
+  fork test, or(is-equal(code, 10), is-equal(code, 13))
+    hold
+      back true
+  back or(is-equal(code, 8232), is-equal(code, 8233))
+
+# One line of `ps -ax -o pid=,ppid=,command=`, read as `^\s*(\d+)\s+(\d+)\s+(.*)$`: the process id, its parent and
+# the command, or nothing when the line is not one
+task read-process-row
+  take line, like text
+  like maybe, like process-row
+
+  save points, split(line, <>)
+  save size, points/length
+  save at, 0
+  walk test
+    hook test, and(is-below(at, size), is-space(point-code(points, at)))
+    hook hold
+      save at, add(at, 1)
+  save pid-start, at
+  walk test
+    hook test, and(is-below(at, size), is-digit-code(point-code(points, at)))
+    hook hold
+      save at, add(at, 1)
+  fork test, is-equal(at, pid-start)
+    hold
+      back make none
+  save pid-end, at
+  walk test
+    hook test, and(is-below(at, size), is-space(point-code(points, at)))
+    hook hold
+      save at, add(at, 1)
+  fork test, is-equal(at, pid-end)
+    hold
+      back make none
+  save parent-start, at
+  walk test
+    hook test, and(is-below(at, size), is-digit-code(point-code(points, at)))
+    hook hold
+      save at, add(at, 1)
+  fork test, is-equal(at, parent-start)
+    hold
+      back make none
+  save parent-end, at
+  walk test
+    hook test, and(is-below(at, size), is-space(point-code(points, at)))
+    hook hold
+      save at, add(at, 1)
+  fork test, is-equal(at, parent-end)
+    hold
+      back make none
+  # `(.*)$`: the rest, which must hold no line end, since `.` stops at one and `$` is the end of the text
+  save command-start, at
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      fork test, is-line-end-code(point-code(points, at))
+        hold
+          back make none
+      save at, add(at, 1)
+  save pid, host-number-of(points-text(points, pid-start, pid-end))
+  save parent, host-number-of(points-text(points, parent-start, parent-end))
+  save command, points-text(points, command-start, size)
+  save row, make(process-row, bind(pid, pid), bind(parent, parent), bind(command, command))
+  back make(some, row)
+
+# every line of the table that reads as a process, in order
+task read-process-table
+  take text, like text
+  like list, like process-row
+
+  save out, make list
+  walk split(text, <\n>)
+    take line
+    sift read-process-row(line)
+      case some
+        link row
+        out/push(row)
+      case none
+        save skipped, 0
+  back out
+
+# the process table, or none when `ps` cannot be run
+task process-table
+  like list, like process-row
+  mark private
+
+  fork
+    mark unsafe
+    save text, child/exec-sync(<ps -ax -o pid=,ppid=,command=>, make(run-ask, bind(encoding, <utf8>)))
+    back read-process-table(text)
+  halt take
+    take error
+    back make list
+
+# whether a code unit is one of `\w`'s: an ASCII letter, a digit or `_`
+task is-word-code
+  take code, like number
+  like boolean
+  mark private
+
+  fork test, is-digit-code(code)
+    hold
+      back true
+  fork test, and(is-minimum(code, 65), is-maximum(code, 90))
+    hold
+      back true
+  fork test, and(is-minimum(code, 97), is-maximum(code, 122))
+    hold
+      back true
+  back is-equal(code, 95)
+
+# whether `word` stands at `at` with a word boundary before it (`\b` then the word)
+task word-starts-at
+  take points, like list, like text
+  take at, like number
+  take word, like text
+  like boolean
+  mark private
+
+  save letters, split(word, <>)
+  fork test, is-above(add(at, letters/length), points/length)
+    hold
+      back false
+  fork test, is-unequal(points-text(points, at, add(at, letters/length)), word)
+    hold
+      back false
+  fork test, is-equal(at, 0)
+    hold
+      back true
+  back not(is-word-code(point-code(points, subtract(at, 1))))
+
+# `/\bboot\b/`: the word `boot` somewhere, with a boundary on both sides
+task names-boot-word
+  take command, like text
+  like boolean
+
+  save points, split(command, <>)
+  save at, 0
+  walk test
+    hook test, is-maximum(add(at, 4), points/length)
+    hook hold
+      fork test, word-starts-at(points, at, <boot>)
+        hold
+          save after, add(at, 4)
+          fork test, or(is-equal(after, points/length), not(is-word-code(point-code(points, after))))
+            hold
+              back true
+      save at, add(at, 1)
+  back false
+
+# Every running term boot program, the project it belongs to, and the process to stop for it: the `term boot` that
+# started it when that is its parent, so the boot shuts it down and ends with its own closing item
+task find-boots
+  take table, like list, like process-row
+  like list, like boot-row
+
+  # a pid listed twice is the later line, as a Map made from the list keeps it
+  save by-pid, make hash
+  walk table
+    take one
+    save key, <{one/pid}>
+    save by-pid/{key}, one
+  save out, make list
+  walk table
+    take one
+    save marker, <>
+    walk boot-markers()
+      take each
+      fork test, and(is-equal(marker, <>), one/command/includes(each))
+        hold
+          save marker, each
+    fork test, and(is-unequal(marker, <>), one/command/includes(<run.mjs>))
+      hold
+        save at, index-of(one/command, marker)
+        save start, add(last-index-of(substring(one/command, 0, at), < >), 1)
+        save project, substring(one/command, start, at)
+        fork test, project/ends-with(</>)
+          hold
+            save project, substring(project, 0, subtract(char-count(project), 1))
+        save target, one/pid
+        save parent-key, <{one/parent}>
+        fork test, by-pid/has(parent-key)
+          hold
+            save parent, by-pid/get(parent-key)
+            fork test, and(names-boot-word(parent/command), not(parent/command/includes(<run.mjs>)))
+              hold
+                save target, parent/pid
+        out/push(make(boot-row, bind(program, one/pid), bind(target, target), bind(project, project)))
+  back out
+
+task boots
+  like list, like boot-row
+  mark private
+
+  back find-boots(process-table())
+
+# The verb of a `term feed`, `term work` or browser `term boot` command line, or the empty text: the original's
+# `/(?:line\.js|need\.mjs|\bterm)\s+(feed|work|boot)(?:\s|$)/`, its leftmost match, and a `boot` only with
+# `--env browser`
+task verb-of
+  take command, like text
+  like text
+
+  save points, split(command, <>)
+  save size, points/length
+  save at, 0
+  walk test
+    hook test, is-maximum(at, size)
+    hook hold
+      save head-end, -1
+      fork test, is-equal(points-text(points, at, smaller(add(at, 7), size)), <line.js>)
+        hold
+          save head-end, add(at, 7)
+      fork test, is-equal(points-text(points, at, smaller(add(at, 8), size)), <need.mjs>)
+        hold
+          save head-end, add(at, 8)
+      fork test, word-starts-at(points, at, <term>)
+        hold
+          save head-end, add(at, 4)
+      fork test, is-minimum(head-end, 0)
+        hold
+          save verb, verb-after(points, head-end)
+          fork test, is-unequal(verb, <>)
+            hold
+              fork test, and(is-equal(verb, <boot>), not(names-browser-env(command)))
+                hold
+                  back <>
+              back verb
+      save at, add(at, 1)
+  back <>
+
+# `\s+(feed|work|boot)(?:\s|$)` from `at`: the verb, or the empty text when it does not follow
+task verb-after
+  take points, like list, like text
+  take start, like number
+  like text
+  mark private
+
+  save size, points/length
+  save at, start
+  walk test
+    hook test, and(is-below(at, size), is-space(point-code(points, at)))
+    hook hold
+      save at, add(at, 1)
+  fork test, is-equal(at, start)
+    hold
+      back <>
+  save word, points-text(points, at, smaller(add(at, 4), size))
+  fork test, not(or(is-equal(word, <feed>), or(is-equal(word, <work>), is-equal(word, <boot>))))
+    hold
+      back <>
+  save after, add(at, 4)
+  fork test, is-equal(after, size)
+    hold
+      back word
+  fork test, is-space(point-code(points, after))
+    hold
+      back word
+  back <>
+
+task smaller
+  take a, like number
+  take b, like number
+  like number
+  mark private
+
+  fork test, is-below(a, b)
+    hold
+      back a
+  back b
+
+# `/--env[= ]browser(?:\s|$)/`
+task names-browser-env
+  take command, like text
+  like boolean
+  mark private
+
+  save points, split(command, <>)
+  save size, points/length
+  save at, 0
+  walk test
+    hook test, is-maximum(add(at, 13), size)
+    hook hold
+      save head, points-text(points, at, add(at, 13))
+      fork test, or(is-equal(head, <--env=browser>), is-equal(head, <--env browser>))
+        hold
+          save after, add(at, 13)
+          fork test, or(is-equal(after, size), is-space(point-code(points, after)))
+            hold
+              back true
+      save at, add(at, 1)
+  back false
+
+# Every running `term feed` and `term work`, the verb, and the project its working folder is in. They run no
+# `run.mjs`, so bare `halt` did not see them. A service's project is where it was started, which the process table does
+# not say and `lsof` does
+task services
+  like list, like service-row
+  mark private
+
+  save out, make list
+  save own, node-process/pid
+  walk process-table()
+    take one
+    save verb, verb-of(one/command)
+    fork test, and(is-unequal(verb, <>), is-unequal(one/pid, own))
+      hold
+        save project, project-of-cwd(one/pid)
+        out/push(make(service-row, bind(pid, one/pid), bind(verb, verb), bind(project, project)))
+  back out
+
+# the project holding a process's working folder, or nothing where `lsof` cannot say
+task project-of-cwd
+  take pid, like number
+  like maybe, like text
+  mark private
+
+  fork
+    mark unsafe
+    save text, child/exec-sync(<lsof -a -p {pid} -d cwd -Fn>, make(run-ask, bind(encoding, <utf8>)))
+    walk split(text, <\n>)
+      take line
+      fork test, line/starts-with(<n>)
+        hold
+          save cwd, substring(line, 1)
+          fork test, is-equal(cwd, <>)
+            hold
+              back make none
+          back project-of(cwd)
+    back make none
+  halt take
+    take error
+    back make none
+
+# the folder holding the nearest deck.tree, from `from` up, or nothing outside a project
+task project-of
+  take from, like text
+  like maybe, like text
+
+  save at, node-path/resolve(from)
+  walk test
+    hook test, true
+    hook hold
+      fork test, node-file/exists-sync(node-path/join(at, <deck.tree>))
+        hold
+          back make(some, at)
+      save up, node-path/dirname(at)
+      fork test, is-equal(up, at)
+        hold
+          back make none
+      save at, up
+  back make none
+
+# the process ids listening on a TCP port, as `lsof -t` lists them
+task read-port-pids
+  take text, like text
+  like list, like number
+
+  save out, make list
+  walk split(text, <\n>)
+    take line
+    # `Number(line.trim())`: the host's `Number` passes over the same white space `trim` removes
+    save pid, host-number-of(line)
+    fork test, and(host-number/is-integer(pid), is-above(pid, 0))
+      hold
+        out/push(pid)
+  back out
+
+task pids-on-port
+  take port, like number
+  like list, like number
+  mark private
+
+  fork
+    mark unsafe
+    save text, child/exec-sync(<lsof -nP -iTCP:{port} -sTCP:LISTEN -t>, make(run-ask, bind(encoding, <utf8>)))
+    back read-port-pids(text)
+  halt take
+    # lsof exits non-zero when nothing is listening
+    take error
+    back make list
+
+# SIGTERM a pid, answering false when it is already gone
+task stop-pid
+  take pid, like number
+  like boolean
+  mark private
+
+  fork
+    mark unsafe
+    node-process/kill(pid, <SIGTERM>)
+    back true
+  halt take
+    take error
+    back false
+
+# a folder's real path, or the folder itself when it cannot be resolved
+task real-folder
+  take folder, like text
+  like text
+  mark private
+
+  fork
+    mark unsafe
+    save found, node-file/realpath-sync(folder)
+    back found
+  halt take
+    take error
+    back folder
+
+# a number not already in the list, pushed
+task push-new
+  take list, like list, like number
+  take value, like number
+  like void
+  mark private
+
+  fork test, not(contains(list, value))
+    hold
+      list/push(value)
+
+task report-item
+  take glyph, like text
+  take kind, like text
+  take verb, like text
+  take subject, like text
+  like void
+  mark private
+
+  output/report(make(item-ask, bind(glyph, glyph), bind(kind, kind), bind(verb, verb), bind(subject, subject)))
+
+task report-stop
+  take subject, like text
+  take pid, like number
+  like void
+  mark private
+
+  save facts, make list
+  facts/push(<pid {pid}>)
+  output/report(make(fact-item-ask, bind(glyph, <done>), bind(kind, <lifecycle>), bind(verb, <stop>), bind(subject, subject), bind(facts, facts)))
+
+task close-halt
+  take verdict, like text
+  take stopped, like number
+  take noun, like text
+  take one, like text
+  like void
+  mark private
+
+  save counts, make list
+  counts/push(output/count(stopped, noun, one))
+  output/close-run(make(close-ask, bind(verdict, verdict), bind(counts, counts)))
+
+# `term halt -p 2400,2401` stops the apps on those ports; bare `term halt` (no ports) stops this project's term boot
+# instances, or every one outside a project. Each process stopped is a `stop` lifecycle item, its pid a fact
+task call-halt
+  take ports, like list, like number
+  like void
+
+  save root, node-process/cwd()
+  fork test, is-above(ports/length, 0)
+    hold
+      save facts, make list
+      walk ports
+        take port
+        facts/push(<:{port}>)
+      output/open-run(make(open-ask, bind(verb, <halt>), bind(root, root), bind(facts, facts)))
+      save stopped, 0
+      # a program a `term boot` started is stopped through its boot, as bare `halt` does
+      save owner, make hash
+      walk boots()
+        take one
+        save program-key, <{one/program}>
+        save owner/{program-key}, one/target
+      walk ports
+        take port
+        save pids, make list
+        walk pids-on-port(port)
+          take pid
+          save key, <{pid}>
+          fork test, owner/has(key)
+            hold
+              push-new(pids, owner/get(key))
+            miss
+              push-new(pids, pid)
+        fork test, is-equal(pids/length, 0)
+          hold
+            report-item(<warning>, <lifecycle>, <stop>, <Nothing is serving on :{port}>)
+            turn next
+        walk pids
+          take pid
+          fork test, stop-pid(pid)
+            hold
+              save stopped, add(stopped, 1)
+              report-stop(<:{port}>, pid)
+      save verdict, <Nothing stopped>
+      fork test, is-above(stopped, 0)
+        hold
+          save verdict, <Stopped>
+      close-halt(verdict, stopped, <processes>, <process>)
+    miss
+      halt-project(root)
+
+# bare `term halt`: in a project, its own boots, its browser server and its `term work`; outside any project there is
+# no "own", and it stops them all, saying so
+task halt-project
+  take root, like text
+  like void
+  mark private
+
+  save project, project-of(root)
+  save here, <>
+  save inside, false
+  sift project
+    case some
+      link found
+      save inside, true
+      save here, real-folder(found)
+    case none
+      save outside, true
+  save facts, make list
+  fork test, inside
+    hold
+      facts/push(<this project's term boot>)
+    miss
+      facts/push(<every term boot>)
+  output/open-run(make(open-ask, bind(verb, <halt>), bind(root, root), bind(facts, facts)))
+  save targets, make list
+  walk boots()
+    take one
+    fork test, or(not(inside), is-equal(real-folder(one/project), here))
+      hold
+        push-new(targets, one/target)
+  save stopped, 0
+  walk targets
+    take pid
+    fork test, stop-pid(pid)
+      hold
+        save stopped, add(stopped, 1)
+        report-stop(<term boot>, pid)
+  # the project's browser server and `term work` too, by where each was started; outside a project, every one
+  save running, make list
+  walk services()
+    take one
+    fork test, not(contains(targets, one/pid))
+      hold
+        fork test, not(inside)
+          hold
+            running/push(one)
+          miss
+            sift one/project
+              case some
+                link where
+                fork test, is-equal(real-folder(where), here)
+                  hold
+                    running/push(one)
+              case none
+                save unknown, true
+  walk running
+    take one
+    fork test, stop-pid(one/pid)
+      hold
+        save stopped, add(stopped, 1)
+        report-stop(<term {one/verb}>, one/pid)
+  save verdict, <No term boot instance is running>
+  fork test, inside
+    hold
+      save verdict, <No term boot of this project is running>
+  fork test, is-above(add(targets/length, running/length), 0)
+    hold
+      save verdict, <Stopped>
+  close-halt(verdict, stopped, <instances>, <instance>)

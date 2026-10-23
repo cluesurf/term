@@ -1,0 +1,320 @@
+# A role file read, and the rule a file path falls under. Ported from deck/deck/code/role.ts (term-cli-in-term-0078):
+# parseRoleFile, parseRoleFileByHand, matchRole, matchRoleRule, globMatch.
+#
+# The decisions:
+#   - `parse-role-file` reads THROUGH THE MILL, grammar-reading.tree's `parse-role-mill`, with the grammars record the
+#     caller made once, taken last as every mill read takes it. `parse-role-file-by-hand`, the retired reader the
+#     grammar is held against, reads the forms of tree-reading.tree
+#   - a glob is turned into the original's regular expression text here, rune by rune (every character the
+#     translation looks at is ASCII, and any other is copied whole, so runes and UTF-16 units write the same text),
+#     and the host's `RegExp` tests it, as the original's did: a `[...]` class passes into it as written
+#   - `match-role` and `match-role-rule` answer a maybe where the original answered null
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/text
+  find split
+  find starts-with
+  find substring
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load @term/base/maybe
+  find maybe
+
+load ./role-shape
+  find role-take
+  find role-rule
+  find role-config
+
+load ./grammar-reading
+  find manifest-grammars
+  find parse-role-mill
+
+load ./tree-reading
+  find tree-form
+  find read-tree
+  find forms-with
+  find terms-of
+
+# whether a text, as a regular expression the host reads, matches the whole of another
+bind regex-tests
+  take source, like text
+  take value, like text
+  like boolean
+  case node
+    text <new RegExp($source).test($value)>
+
+# `@/x` and `@` name the package root; anything else is as written
+task expand-root
+  take pattern, like text
+  take root, like text
+  like text
+  mark private
+
+  fork test, starts-with(pattern, <@/>)
+    hold
+      back <{root}{substring(pattern, 1)}>
+  fork test, is-equal(pattern, <@>)
+    hold
+      back root
+  back pattern
+
+task parse-role-file
+  take text, like text
+  take root, like text
+  take grammars, like manifest-grammars
+  like role-config
+
+  back parse-role-mill(text, root, expand-root, grammars)
+
+# `value ?? termsOf(form)`
+task value-or-terms
+  take form, like tree-form
+  like text
+  mark private
+
+  sift form/value
+    case some
+      link found-value
+      back found-value
+    case none
+      back terms-of(form)
+
+task parse-role-file-by-hand
+  take text, like text
+  take root, like text
+  like role-config
+
+  save result, read-tree(<role.tree>, text)
+  fork test, not(result/ok)
+    hold
+      save said, <>
+      fork test, is-above(result/diagnostics/length, 0)
+        hold
+          save first, get(result/diagnostics, 0)
+          save said, <: {first/message}>
+      halt <role file could not be parsed{said}>
+
+  save rules, make list
+  # `load` forms declare which vocabularies are available and are not needed here
+  walk result/forms
+    take form
+    fork test, is-equal(form/head, <role>)
+      hold
+        save name, <>
+        fork test, is-above(form/terms/length, 0)
+          hold
+            save name, get(form/terms, 0)
+        # `mark <name>`: a flag on the rule, not a glob
+        save marks, make list
+        walk forms-with(form, <mark>)
+          take entry
+          save flag, value-or-terms(entry)
+          fork test, not(is-equal(flag, <>))
+            hold
+              marks/push(flag)
+        # a glob is bare (`@/code/**/*.tree`) or quoted when it holds braces; terms only, never a phrase walk, since
+        # a `take` carries `miss` children a phrase walk would swallow
+        save takes, make list
+        walk forms-with(form, <take>)
+          take entry
+          save misses, make list
+          walk forms-with(entry, <miss>)
+            take missed
+            misses/push(expand-root(value-or-terms(missed), root))
+          takes/push(make(role-take, bind(pattern, expand-root(value-or-terms(entry), root)), bind(miss, misses)))
+        rules/push(make(role-rule, bind(name, name), bind(mark, marks), bind(take, takes)))
+  back make(role-config, bind(rules, rules))
+
+# The rule a file path falls under. THE FIRST MATCHING RULE WINS, which is what lets one role name appear twice with
+# different marks: written order IS the precedence
+task match-role-rule
+  take file-path, like text
+  take config, like role-config
+  like maybe, like role-rule
+
+  walk config/rules
+    take rule
+    walk rule/take
+      take entry
+      fork test, glob-match(entry/pattern, file-path)
+        hold
+          save excluded, false
+          walk entry/miss
+            take missed
+            fork test, glob-match(missed, file-path)
+              hold
+                save excluded, true
+                halt
+          fork test, not(excluded)
+            hold
+              back make(some, rule)
+  back make none
+
+# the name of the rule a file path falls under
+task match-role
+  take file-path, like text
+  take config, like role-config
+  like maybe, like text
+
+  sift match-role-rule(file-path, config)
+    case some
+      link rule
+      back make(some, rule/name)
+    case none
+      back make none
+
+# where a rune is next found at or after `from`, or -1
+task rune-index
+  take runes, like list, like number
+  take rune, like number
+  take from, like number
+  like number
+  mark private
+
+  save at, from
+  walk test
+    hook test, is-below(at, runes/length)
+    hook hold
+      fork test, is-equal(get(runes, at), rune)
+        hold
+          back at
+      save at, add(at, 1)
+  back -1
+
+# the runes from `start` up to `stop`, as text
+task runes-text
+  take runes, like list, like number
+  take start, like number
+  take stop, like number
+  like text
+  mark private
+
+  save out, make list
+  save at, start
+  walk test
+    hook test, is-below(at, stop)
+    hook hold
+      out/push(get(runes, at))
+      save at, add(at, 1)
+  back from-runes(out)
+
+# whether a rune is one of a text's
+task rune-among
+  take rune, like number
+  take among, like text
+  like boolean
+  mark private
+
+  walk to-runes(among)
+    take one
+    fork test, is-equal(one, rune)
+      hold
+        back true
+  back false
+
+# a text with every character a regular expression reads backslashed
+task escape-regex
+  take text, like text
+  like text
+  mark private
+
+  save out, make list
+  walk to-runes(text)
+    take rune
+    fork test, rune-among(rune, <.*+?^$\{\}()|[]\\>)
+      hold
+        out/push(92)
+    out/push(rune)
+  back from-runes(out)
+
+# A glob as the original's regular expression text: `**/` any folders, `**` anything, `*` anything but `/`, `?` one
+# character but `/`, `{a,b}` either, `[...]` a class as written, and the expression's own characters backslashed
+task glob-source
+  take pattern, like text
+  like text
+  mark private
+
+  save runes, to-runes(pattern)
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, runes/length)
+    hook hold
+      save rune, get(runes, at)
+      save next-rune, -1
+      fork test, is-below(add(at, 1), runes/length)
+        hold
+          save next-rune, get(runes, add(at, 1))
+      save after-rune, -1
+      fork test, is-below(add(at, 2), runes/length)
+        hold
+          save after-rune, get(runes, add(at, 2))
+      fork test, is-equal(rune, 42)
+        hold
+          fork test, is-equal(next-rune, 42)
+            hold
+              fork test, is-equal(after-rune, 47)
+                hold
+                  save out, <{out}(?:.+/)?>
+                  save at, add(at, 3)
+                miss
+                  save out, <{out}.*>
+                  save at, add(at, 2)
+            miss
+              save out, <{out}[^/]*>
+              save at, add(at, 1)
+        miss
+          fork test, is-equal(rune, 63)
+            hold
+              save out, <{out}[^/]>
+              save at, add(at, 1)
+            miss
+              fork test, is-equal(rune, 123)
+                hold
+                  save end, rune-index(runes, 125, at)
+                  fork test, is-equal(end, -1)
+                    hold
+                      save out, <{out}\\\{>
+                      save at, add(at, 1)
+                    miss
+                      save alternatives, make list
+                      walk split(runes-text(runes, add(at, 1), end), <,>)
+                        take alternative
+                        alternatives/push(escape-regex(alternative))
+                      save out, <{out}(?:{join(alternatives, <|>)})>
+                      save at, add(end, 1)
+                miss
+                  fork test, is-equal(rune, 91)
+                    hold
+                      save end, rune-index(runes, 93, at)
+                      fork test, is-equal(end, -1)
+                        hold
+                          save out, <{out}\\[>
+                          save at, add(at, 1)
+                        miss
+                          save out, <{out}{runes-text(runes, at, add(end, 1))}>
+                          save at, add(end, 1)
+                    miss
+                      save one, runes-text(runes, at, add(at, 1))
+                      fork test, rune-among(rune, <.+^$|()\\>)
+                        hold
+                          save out, <{out}\\{one}>
+                        miss
+                          save out, <{out}{one}>
+                      save at, add(at, 1)
+  back <^{out}$>
+
+# whether a path matches a glob: `*`, `**`, `?`, `{a,b}` and `[...]`
+task glob-match
+  take pattern, like text
+  take path, like text
+  like boolean
+
+  back regex-tests(glob-source(pattern), path)

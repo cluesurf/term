@@ -1,0 +1,204 @@
+# What `term hold --log json --json` printed, as `term knit` reads it: ported from call/code/knit-plan.ts `readHold`
+# (term-cli-in-term-0044). The summary is the one multi-line block, opened by a line `{` and closed by a line `}`;
+# every other line is an event, one JSON object per line. The summary and the events are host values, read as the
+# original read them.
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find trim
+
+dock load
+  load <global:JSON>, name host-json
+
+# ---- the host's values ----
+
+# `text.split("\n")`
+bind knit-lines
+  take text, like text
+  like list, like text
+  case node
+    text <$text.split(String.fromCharCode(10))>
+
+# `lines.join("\n")`
+bind knit-joined
+  take lines, like list, like text
+  like text
+  case node
+    text <$lines.join(String.fromCharCode(10))>
+
+# an item a problem is read from: `kind === "problem" || glyph === "failed"`, which throws on null as the original
+bind is-problem-event
+  take event, like dynamic
+  like boolean
+  case node
+    text <($event.kind === "problem" || $event.glyph === "failed")>
+
+# `lines.indexOf("}", at)`
+bind closing-line
+  take lines, like list, like text
+  take at, like number
+  like number
+  case node
+    text <$lines.indexOf(String.fromCharCode(125), $at)>
+
+bind is-close-event
+  take event, like dynamic
+  like boolean
+  case node
+    text <($event.kind === "close")>
+
+bind event-subject
+  take event, like dynamic
+  like text
+  case node
+    text <($event.subject ?? "")>
+
+bind event-code
+  take event, like dynamic
+  like dynamic
+  case node
+    text <$event.code>
+
+bind event-file
+  take event, like dynamic
+  like dynamic
+  case node
+    text <$event.fields?.file>
+
+bind event-next
+  take event, like dynamic
+  like dynamic
+  case node
+    text <$event.fields?.next>
+
+# the message's lines, none when it has no message
+bind event-message-lines
+  take event, like dynamic
+  like list, like text
+  case node
+    text <($event.message ? $event.message.split(String.fromCharCode(10)) : [])>
+
+bind hold-truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind hold-text
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+# ---- the shapes ----
+
+form hold-problem
+  link subject, like text
+  link code
+    like maybe, like text
+    need false
+  link at
+    like maybe, like text
+    need false
+  link detail, like list, like text
+
+form hold-read
+  link holds, like boolean
+  # `--json`'s summary as it was printed, a host value
+  link summary
+    like maybe, like dynamic
+    need false
+  link problems, like list, like hold-problem
+  # lines of stdout that were neither an event nor the summary
+  link stray, like number
+
+# ---- reading ----
+
+# one event as a problem, or none when it is not one
+task problem-of
+  take event, like dynamic
+  like maybe, like hold-problem
+
+  fork test, not(is-problem-event(event))
+    hold
+      back make none
+  fork test, is-close-event(event)
+    hold
+      back make none
+  save problem, make(hold-problem, bind(subject, event-subject(event)), bind(detail, event-message-lines(event)))
+  save code, event-code(event)
+  fork test, hold-truth(code)
+    hold
+      save shown, hold-text(code)
+      save problem/code, make(some, shown)
+  save file, event-file(event)
+  fork test, hold-truth(file)
+    hold
+      save place, hold-text(file)
+      save problem/at, make(some, place)
+  save next, event-next(event)
+  fork test, hold-truth(next)
+    hold
+      problem/detail/push <next: {hold-text(next)}>
+  back make(some, problem)
+
+task push-problem
+  take problems, like list, like hold-problem
+  take event, like dynamic
+  like void
+  mark private
+
+  sift problem-of(event)
+    case some
+      problems/push value
+    case none
+      back
+
+task read-hold
+  take stdout, like text
+  take exit, like number
+  like hold-read
+
+  save lines, knit-lines(stdout)
+  save problems, make list
+  save summary, make none
+  save stray, 0
+  save at, 0
+  walk test
+    hook test, is-below(at, lines/length)
+    hook hold
+      save line, lines/{at}
+      fork test, is-equal(line, <\{>)
+        hold
+          save end, closing-line(lines, at)
+          fork test, is-above(end, at)
+            hold
+              save block, knit-joined(lines/slice(at, add(end, 1)))
+              fork
+                mark unsafe
+                save summary, make(some, host-json/parse(block))
+              halt take
+                take problem
+                save stray, add(stray, add(subtract(end, at), 1))
+              save at, add(end, 1)
+              turn next
+      fork test, is-equal(trim(line), <>)
+        hold
+          save at, add(at, 1)
+          turn next
+      save event, make none
+      fork
+        mark unsafe
+        save event, make(some, host-json/parse(line))
+      halt take
+        take problem
+        save stray, add(stray, 1)
+      sift event
+        case some
+          push-problem(problems, value)
+        case none
+          save at, at
+      save at, add(at, 1)
+  back make(hold-read, bind(holds, is-equal(exit, 0)), bind(summary, summary), bind(problems, problems), bind(stray, stray))

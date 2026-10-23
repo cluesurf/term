@@ -1,0 +1,118 @@
+# `term note`: what a package says about itself, read from its deck.tree. Prints the way the output standard's
+# Key-values card does: one `deck` item, the name as its subject and the version as a fact, the description as its
+# message, license and authors as fields, and the dependencies as a list (section 14). Ported from call/code/note.ts
+# (term-cli-in-term-0061). The original also took a `deck` it never read; the port takes only the root.
+
+load @term/base/list
+  find join
+
+dock load
+  load <@cluesurf/deck.tree>, name deck-tree-module
+    mark async
+  load <@term/call/code/output>, name output
+  load <global:Error>, name host-error
+  load <global:String>, name host-string
+  load <global:Boolean>, name host-boolean
+
+form plain-open
+  link verb, like text
+  link root, like text
+
+form load-ask
+  link dir, like text
+
+form deck-item-ask
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link facts, like list, like text
+  link message, like list, like text
+  link fields, like list, like dynamic
+
+form list-entry
+  link label, like text
+  link detail, like text
+
+form counted-close
+  link verdict, like text
+  link counts, like list, like dynamic
+
+form problem-item
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+
+form next-close
+  link verdict, like text
+  link next, like text
+
+# the message of a failure the host raised, as the original printed it: an Error's message, else the value as text
+task message-of
+  take error, like dynamic
+  like text
+  mark private
+
+  # `error instanceof Error`
+  fork test, host-error/prototype/is-prototype-of(error)
+    hold
+      back error/message
+  back host-string/call(<>, error)
+
+# the host's truth of a value
+task holds
+  take value, like dynamic
+  like boolean
+  mark private
+
+  back host-boolean/call(<>, value)
+
+task note-package
+  take root, like text
+  like void
+  mark private
+
+  save manifest, deck-tree-module/load-manifest(make(load-ask, bind(dir, root)))
+  save full-name, <{manifest/name}>
+  fork test, holds(manifest/host)
+    hold
+      save full-name, <@{manifest/host}/{manifest/name}>
+  save fields, make list
+  fork test, holds(manifest/lock)
+    hold
+      fields/push(output/field(<license>, manifest/lock))
+  fork test, and(holds(manifest/mind), is-above(manifest/mind/length, 0))
+    hold
+      save names, make list
+      walk manifest/mind
+        take author
+        names/push(<{author/name}>)
+      fields/push(output/field(<authors>, join(names, <, >)))
+  save facts, make list
+  facts/push(<{deck-tree-module/show-code(manifest/mark)}>)
+  save message, make list
+  fork test, holds(manifest/head)
+    hold
+      message/push(<{manifest/head}>)
+  save item, output/make-item(make(deck-item-ask, bind(glyph, <info>), bind(verb, <deck>), bind(subject, full-name), bind(facts, facts), bind(message, message), bind(fields, fields)))
+  save entries, make list
+  walk manifest/link
+    take dependency
+    entries/push(make(list-entry, bind(label, <{dependency/name}>), bind(detail, <>)))
+  save item/entries, entries
+  output/report(item)
+  save counts, make list
+  counts/push(output/count(manifest/link/length, <dependencies>, <dependency>))
+  output/close-run(make(counted-close, bind(verdict, <{full-name} read>), bind(counts, counts)))
+
+task call-note
+  take root, like text
+  like void
+
+  output/open-run(make(plain-open, bind(verb, <note>), bind(root, root)))
+  fork
+    mark unsafe
+    note-package(root)
+  halt take
+    take error
+    output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, message-of(error))))
+    output/close-run(make(next-close, bind(verdict, <No package to read>), bind(next, <term wake, to make a package here>)))

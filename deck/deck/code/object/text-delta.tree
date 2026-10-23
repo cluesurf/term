@@ -1,0 +1,123 @@
+# Text deltas: the changed lines sent instead of the changed file. Ported from deck/deck/code/object/delta.ts
+# (term-cli-in-term-0083): makeTextDelta, applyTextDelta, deltaIsWorthwhile, applyVerifiedTextDelta.
+#
+# Content-defined chunking deduplicates, it does not diff: two versions of a file a line apart share no chunks unless
+# the chunker cut around the edit, so a one-line change can upload the whole file again. A delta fixes that for TEXT,
+# the way a git thin pack does: it names a base the receiver holds, sends the hunks that differ, and the receiver
+# rebuilds. Binary gains nothing (a line is no unit there), nor does `.tree` (records, not lines).
+# See note/project/base/design/content-types.md.
+#
+# The decisions:
+#   - the line diff, the tokenizer and its inverse are @cluesurf/save/text/diff's own, docked
+#   - a hunk is save's ChangeHunk host record, kept as it is; a delta is the original's `{ base, result, hunks }`
+#   - the hunks are applied from the END back, each a splice of the line list, in binds over the host list (the sort
+#     is the original's stable one, by start, descending)
+
+load @term/base/list
+  find list
+
+load ./object-address
+  find hash-object
+
+dock load
+  load <@cluesurf/save/text/diff>, name save-diff
+
+# one version of a text: its object id and its text
+form text-version
+  link id, like text
+  link text, like text
+
+# a delta against a base the receiver holds: `base` the id of the text it was diffed against, so the receiver can find
+# it or refuse, `result` the id the rebuilt text must hash to, so a bad apply is caught rather than written
+form text-delta
+  link base, like text
+  link result, like text
+  link hunks, like list, like dynamic
+
+bind delta-hunks
+  take delta, like dynamic
+  like list, like dynamic
+  case node
+    text <$delta.hunks>
+
+bind delta-result
+  take delta, like dynamic
+  like text
+  case node
+    text <$delta.result>
+
+bind hunks-from-end
+  take hunks, like list, like dynamic
+  like list, like dynamic
+  case node
+    text <<[...$hunks].sort(function (a, b) { return b.start - a.start })>>
+
+bind splice-hunk
+  take lines, like list, like dynamic
+  take hunk, like dynamic
+  like void
+  case node
+    text <$lines.splice($hunk.start, $hunk.length, ...$hunk.content)>
+
+bind encoded-length
+  take hunks, like list, like dynamic
+  like number
+  case node
+    text <Buffer.byteLength(JSON.stringify($hunks), "utf8")>
+
+bind text-bytes
+  take value, like text
+  like dynamic
+  case node
+    text <Buffer.from($value, "utf8")>
+
+# two texts diffed by line into a delta
+task make-text-delta
+  take base, like text-version
+  take next, like text-version
+  like text-delta
+
+  save before, save-diff/tokenize(base/text, <line>)
+  save after, save-diff/tokenize(next/text, <line>)
+  back make(text-delta, bind(base, base/id), bind(result, next/id), bind(hunks, save-diff/change-hunks(before, after)))
+
+# the text a delta describes. The hunks are applied from the END back, so each hunk's `start` still counts the base's
+# lines when it is used; applied forwards, every later hunk would be shifted by every earlier one's change in length
+task apply-text-delta
+  take base, like text
+  take delta, like dynamic
+  like text
+
+  save lines, save-diff/tokenize(base, <line>)
+  walk hunks-from-end(delta-hunks(delta))
+    take hunk
+    splice-hunk(lines, hunk)
+  back save-diff/detokenize(lines, <line>)
+
+# whether a delta is worth sending: measured on its encoded size, not its hunk count (ten one-line hunks are cheaper
+# than one replacing the file). Below 512 bytes the object is smaller than the message saying how to rebuild it, and a
+# delta must be under 0.6 of the content it replaces, or the base lookup, rebuild and check buy nothing
+task delta-is-worthwhile
+  take delta, like dynamic
+  take next-size, like number
+  like boolean
+
+  fork test, is-below(next-size, 512)
+    hold
+      back false
+  back is-below(encoded-length(delta-hunks(delta)), multiply(next-size, 0.6))
+
+# a delta applied and its result checked: the rebuilt text must hash to the id the delta claims, so a delta made
+# against another base, or damaged in transit, is refused here rather than written
+task apply-verified-text-delta
+  take base, like text
+  take delta, like dynamic
+  like text
+
+  save text, apply-text-delta(base, delta)
+  save id, hash-object(<blob>, text-bytes(text))
+  save result, delta-result(delta)
+  fork test, not(is-equal(id, result))
+    hold
+      halt <delta did not reconstruct its stated result: expected {result}, got {id}>
+  back text

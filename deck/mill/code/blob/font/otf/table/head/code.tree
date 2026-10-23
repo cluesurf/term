@@ -19,6 +19,7 @@ load ../shared/code
   find write-i16
   find write-u32
   find write-i64
+  find write-i32
 
 load ./form
   find otf-head-table

@@ -76,6 +76,7 @@ load ./backend-shapes
   find inspect-kind-of
 
 load ./backend-names
+  find host-spelled
   find names-in
   find map-update-of
   find fill-call-of
@@ -293,6 +294,10 @@ form emit-state
   link flow-used, like boolean
   # the task or closure being written keeps `__site`, the frame of the call it is making (term/hive decision 001)
   link site-local, like boolean
+  # set by an `await` over a call while that call is written, and by the call when it wrote the `await` itself, after
+  # its frame's store: `(__site = <frame>, await f(x))`, so the await stays on the call
+  link awaiting-call, like boolean
+  link awaited-in-call, like boolean
   # the field-less variants' constants and the identity guards a match called, each in the order first met
   link fieldless, like hash, like text, like text
   link guards, like hash, like text, like text
@@ -341,6 +346,8 @@ task new-emit-state
       bind list-used, false
       bind flow-used, false
       bind site-local, false
+      bind awaiting-call, false
+      bind awaited-in-call, false
       bind fieldless, fieldless
       bind guards, guards
       bind arm-cases, text-texts()
@@ -972,6 +979,11 @@ task holds-type
   like text
   mark private
 
+  # a form with cases is told by its tag (seam decision 003, `holds-cases`)
+  save cased-owner, named-of(make(some, given))
+  fork test, and(is-unequal(cased-owner, <>), facts/variant-fields-by-owner/has(cased-owner))
+    hold
+      back holds-cases(held, cased-owner, depth, facts)
   sift given
     case array
       link element
@@ -1003,6 +1015,72 @@ task holds-type
           back facts/record-fields/has(name)
       save seen, make list
       back holds-kind(held, fill-kind-of(make(some, given), seen, fields-of, is-record), depth)
+
+# A VALUE OF A FORM WITH CASES, for an arm over an `unknown` that names one (seam decision 003). A case value carries its
+# name in its tag field (`form`, or the field `mark tag` names), so it is an object whose tag is one of the case names and
+# which holds exactly that case's fields, each of its kind, by the shape rule `holds-type` applies to a form of fields.
+# A `mark text` form's value is its text, so it is a string equal to one of its case texts
+task holds-cases
+  take held, like text
+  take owner, like text
+  take depth, like number
+  take facts, like emit-facts
+  like text
+  mark private
+
+  fork test, facts/text-by-owner/has(owner)
+    hold
+      save texts, facts/text-by-owner/get(owner)
+      save quoted, make list
+      walk texts/keys()
+        take variant
+        push(quoted, json-quote(texts/get(variant)))
+      back <(typeof {held} === "string" && [{join-texts(quoted, <, >)}].includes({held}))>
+  save tag, to-member(<form>)
+  fork test, facts/tag-by-owner/has(owner)
+    hold
+      save tag, to-member(facts/tag-by-owner/get(owner))
+  save fields-of
+    task
+      take name, like text
+      like list, like ts-field
+      fork test, facts/record-fields/has(name)
+        hold
+          back facts/record-fields/get(name)
+      back make list
+  save is-record
+    task
+      take name, like text
+      like boolean
+      back facts/record-fields/has(name)
+  save cases, facts/variant-fields-by-owner/get(owner)
+  save tests, make list
+  walk cases/keys()
+    take variant
+    save seen, make list
+    push(seen, owner)
+    save parts, make list
+    save members, make list
+    push(members, json-quote(tag))
+    push(parts, <{held}[{json-quote(tag)}] === {json-quote(variant)}>)
+    walk cases/get(variant)
+      take field
+      save member, to-member(field/name)
+      push(members, json-quote(member))
+      save at, <{held}[{json-quote(member)}]>
+      save field-type, field/type
+      save kind, fill-kind-of(make(some, field-type), seen, fields-of, is-record)
+      fork test, field/optional
+        hold
+          push(parts, <({at} === undefined || {holds-kind(at, kind, depth)})>)
+        miss
+          push(parts, holds-kind(at, kind, depth))
+    push(parts, <Object.keys({held}).every((__f: string) =\> [{join-texts(members, <, >)}].includes(__f))>)
+    push(tests, <({join-texts(parts, < && >)})>)
+  fork test, is-equal(tests/length, 0)
+    hold
+      back <false>
+  back <(typeof {held} === "object" && {held} !== null && !Array.isArray({held}) && !({held} instanceof Map) && ({join-texts(tests, < || >)}))>
 
 task holds-kind
   take held, like text
@@ -1487,7 +1565,19 @@ task emit-expression
       back emit-member(node, st, facts)
     case await
       link awaited
-      back <await {emit-expression(awaited, 0, st, facts)}>
+      save st/awaited-in-call, false
+      sift awaited
+        case call
+          save st/awaiting-call, true
+        miss
+          save st/awaiting-call, false
+      save inner, emit-expression(awaited, 0, st, facts)
+      save st/awaiting-call, false
+      fork test, st/awaited-in-call
+        hold
+          save st/awaited-in-call, false
+          back inner
+      back <await {inner}>
     case closure
       link closure-params
       link closure-body
@@ -1645,6 +1735,9 @@ task emit-call
       link callee
       link args
       link into
+      # whether an `await` stands over this call, read before the arguments write calls of their own
+      save awaiting, st/awaiting-call
+      save st/awaiting-call, false
       save callee-name, variable-callee(callee)
       # a call at a reuse site: the task's copy that builds its result in the object it is given
       fork test, and(facts/is-reuse-site(node), is-unequal(callee-name, <>))
@@ -2009,6 +2102,10 @@ task emit-call
           save st/flow-used, true
           fork test, st/site-local
             hold
+              fork test, awaiting
+                hold
+                  save st/awaited-in-call, true
+                  back <(__site = {json-quote(frames-of(node))}, await {called})>
               back <(__site = {json-quote(frames-of(node))}, {called})>
           back <__termTop({json-quote(frames-of(node))}, () =\> {called})>
       back called
@@ -2212,6 +2309,15 @@ task emit-member
       fork test, is-equal(spelled, <>)
         hold
           save spelled, to-member(member-name)
+          # a dock module's member with no `-` is the host's spelling (backend-names `host-spelled`)
+          sift member-target
+            case variable
+              link dock-root
+              fork test, and(facts/dock-names/has(dock-root), host-spelled(member-name))
+                hold
+                  save spelled, member-name
+            miss
+              save nothing, 0
       # a `need false` maybe field reads as a maybe (D10), never under an assignment
       save field, make none
       fork test, not(writing)

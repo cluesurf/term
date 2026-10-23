@@ -1,0 +1,330 @@
+# The one page of a `term knit` run, ported from call/code/knit-plan.ts `reportOf` (term-cli-in-term-0044): the shape
+# of mvp.md "The report". Every law is its sentence from the Term form (check/law-english.ts), never the model's
+# description. The summary `term hold --json` printed is a host value, read as the original read it.
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/list
+  find contains
+
+load @term/call/work/knit/spend
+  find spend-total
+  find dollars
+
+load @term/call/work/knit/gate
+  find gate
+  find law-sentence
+  find law-instance
+
+# ---- the summary's parts ----
+
+# `String(summary?.<key> ?? 0)`
+bind summary-count
+  take summary, like dynamic
+  take key, like text
+  like text
+  case node
+    text <String($summary?.[$key] ?? 0)>
+
+bind summary-axioms
+  take summary, like dynamic
+  like list, like text
+  case node
+    text <$summary.ledger.axioms>
+
+bind summary-native-count
+  take summary, like dynamic
+  like text
+  case node
+    text <String($summary.ledger.native.length)>
+
+bind summary-fresh-count
+  take summary, like dynamic
+  like text
+  case node
+    text <String($summary.fresh.length)>
+
+bind summary-open-count
+  take summary, like dynamic
+  like text
+  case node
+    text <String($summary.open.length)>
+
+bind summary-declined
+  take summary, like dynamic
+  like text
+  case node
+    text <String($summary.kernel.declined)>
+
+# `summary?.lean?.claims ?? []`
+bind summary-claims
+  take summary, like dynamic
+  like list, like dynamic
+  case node
+    text <($summary?.lean?.claims ?? [])>
+
+bind checked-claims
+  take claims, like list, like dynamic
+  like number
+  case node
+    text <<$claims.filter(one => one.verdict === "checked").length>>
+
+# `summary?.report?.page`, the empty text when there is none
+bind report-page
+  take summary, like dynamic
+  like text
+  case node
+    text <($summary?.report?.page || "")>
+
+bind page-trimmed
+  take page, like text
+  like text
+  case node
+    text <$page.trimEnd()>
+
+# `hole name, hole name`, the fill's entries
+bind fill-text
+  take fill, like dynamic
+  like text
+  case node
+    text <<Object.entries($fill ?? {}).map(entry => entry[0] + " " + entry[1]).join(", ")>>
+
+bind whole-seconds
+  take seconds, like float
+  like float
+  case node
+    text <Math.round($seconds)>
+
+# `lines.join("\n") + "\n"`
+bind report-lines
+  take lines, like list, like text
+  like text
+  case node
+    text <($lines.join(String.fromCharCode(10)) + String.fromCharCode(10))>
+
+# ---- the shape ----
+
+form knit-result
+  link name, like text
+  link date, like text
+  link spec, like text
+  link model, like text
+  # holds or stopped
+  link verdict, like text
+  link stop, like text
+  link rounds, like number
+  link turns, like number
+  link seconds, like float
+  link spend, like spend-total
+  link cap, like float
+  link gate, like gate
+  link laws, like list, like law-sentence
+  link required, like list, like text
+  # each named law against the law library
+  link instances
+    like maybe, like list, like law-instance
+    need false
+  link summary
+    like maybe, like dynamic
+    need false
+  link emitted, like list, like text
+
+# ---- the page ----
+
+# the instance of a law, none when the run has none for it
+task instance-for
+  take run, like knit-result
+  take name, like text
+  like maybe, like law-instance
+  mark private
+
+  sift run/instances
+    case some
+      walk value
+        take one
+        fork test, is-equal(one/law, name)
+          hold
+            back make(some, one)
+      back make none
+    case none
+      back make none
+
+task rendered-law
+  take law, like law-sentence
+  like text
+  mark private
+
+  sift law/text
+    case some
+      back value
+    case none
+      sift law/refused
+        case some
+          back <(not rendered: {value})>
+        case none
+          back <(not rendered: no sentence)>
+
+task report-of
+  take run, like knit-result
+  like text
+
+  save out, make list
+  save summary, make none
+  sift run/summary
+    case some
+      fork test, report-truth(value)
+        hold
+          save summary, make(some, value)
+    case none
+      save summary, make none
+  save present, make none
+  sift run/summary
+    case some
+      save present, make(some, value)
+    case none
+      save present, make none
+
+  # every rule of the program, the laws the person named first: a lemma is a law too, and a person may reject one
+  save rules, make list
+  walk run/laws
+    take law
+    fork test, contains(run/required, law/name)
+      hold
+        rules/push law
+  walk run/laws
+    take law
+    fork test, not(contains(run/required, law/name))
+      hold
+        rules/push law
+
+  out/push <{run/name}  {run/date}  {run/model}>
+  out/push <>
+  fork test, is-equal(run/verdict, <holds>)
+    hold
+      save proven, <0>
+      save total, <0>
+      sift present
+        case some
+          save proven, summary-count(value, <proven>)
+          save total, summary-count(value, <total>)
+        case none
+          save proven, proven
+      out/push <holds: {run/required/join(<, >)}, {proven}/{total} obligations, {run/laws/length} rules in the program>
+    miss
+      out/push <does not hold: {run/stop}>
+
+  fork test, not(run/gate/ok)
+    hold
+      walk run/gate/reasons
+        take reason
+        out/push <  {reason}>
+  walk run/gate/notes
+    take note
+    out/push <  note: {note}>
+
+  out/push <>
+  out/push <the laws, in words from their Term form (approve each before the proof counts):>
+
+  save status, <not shown to hold>
+  fork test, is-equal(run/verdict, <holds>)
+    hold
+      save status, <holds>
+  walk rules
+    take law
+    out/push <  {law/name}  {status}>
+    out/push <    {rendered-law(law)}>
+    fork test, is-above(law/words/length, 0)
+      hold
+        out/push <    names tasks by their own names: {law/words/join(<, >)}>
+    sift instance-for(run, law/name)
+      case some
+        fork test, value/ok
+          hold
+            save fill, <>
+            sift value/fill
+              case some
+                link holes
+                save fill, fill-text(holes)
+              case none
+                save fill, fill-text-empty()
+            out/push <    the law library's {law/name} (@term/site/law/{law/name}.tree), filled with {fill}>
+          miss
+            save problem, <refused>
+            sift value/problem
+              case some
+                link why
+                save problem, why
+              case none
+                save problem, problem
+            out/push <    NOT the law library's {law/name}: {problem}>
+      case none
+        save status, status
+
+  out/push <>
+
+  sift summary
+    case some
+      save axioms, summary-axioms(value)
+      save assumed, <none>
+      fork test, is-above(axioms/length, 0)
+        hold
+          save assumed, axioms/join(<, >)
+      out/push <assumed (each an axiom of the proof): {assumed}>
+      out/push <impure tasks (reach native code, nothing proves them): {summary-native-count(value)}>
+      out/push <not proven: {summary-fresh-count(value)} obligations, {summary-open-count(value)} open claims. declined by the kernel: {summary-declined(value)} tasks>
+    case none
+      save status, status
+
+  save lean, run/gate/lean
+  fork test, is-equal(lean, <off>)
+    hold
+      out/push <re-checked in Lean 4: not asked (--no-lean)>
+    miss
+      fork test, is-equal(lean, <unavailable>)
+        hold
+          out/push <re-checked in Lean 4: not available in this build of term hold>
+        miss
+          save claims, make list
+          sift present
+            case some
+              save claims, summary-claims(value)
+            case none
+              save claims, claims
+          out/push <re-checked in Lean 4: {checked-claims(claims)} of {claims/length}>
+  out/push <>
+  out/push <rounds of term hold: {run/rounds}, requests: {run/turns}, time: {whole-seconds(run/seconds)}s>
+  save spend, run/spend
+  out/push <spent: {dollars(spend/dollars)} of a {dollars(run/cap)} cap (input {spend/input}, output {spend/output}, cache read {spend/cache-read}, cache write {spend/cache-write} tokens)>
+
+  fork test, is-above(run/emitted/length, 0)
+    hold
+      out/push <emitted TypeScript: {run/emitted/join(<, >)}>
+
+  sift present
+    case some
+      save page, report-page(value)
+      fork test, is-unequal(page, <>)
+        hold
+          out/push <>
+          out/push <term hold --report:>
+          out/push <>
+          out/push page-trimmed(page)
+    case none
+      save status, status
+
+  out/push <>
+  out/push <These laws hold of this code, assuming what is listed above. The English is what was proven: read it.>
+
+  back report-lines(out)
+
+bind report-truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind fill-text-empty
+  like text
+  case node
+    text <"">

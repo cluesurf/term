@@ -1,0 +1,1670 @@
+# `term self`: the versions of the `term` command on this machine (note/project/term/term-load-install.md,
+# note/project/term/term-versions.md). Ported from call/code/self.ts (term-cli-in-term-0039), whole.
+#
+#   check    is the copy running this the signed release it claims to be
+#   update   install the newest release and move the front to it
+#   back     move the front to the version before it, no download
+#   list     what is installed, the front, the default, what runs here, and when each was last used
+#   find     what is released, newest first
+#   load     install a version, switching nothing
+#   pick     the default outside any project (need.tree)
+#   need     this project's request (deck.tree) and its pin (lock.tree)
+#   show     which version runs here, and every rule that decided it
+#   toss     remove one version
+#   wash     list what nothing has used in --days, and remove it with --commit
+#
+# `self` RUNS ON THE COPY THAT WAS STARTED, never on a project's version: managing versions is the front's job, and a
+# project pinned to an older release must not take `term self` back to that release's verbs.
+#
+# THE FRONT AND THE VERSION THAT RUNS ARE TWO THINGS. `call/term` is the front: the one thing on PATH, which starts and
+# dispatches. Which version a command runs is resolution's answer (work/need/version-choice.tree), so `update` and
+# `back` move the front and change nothing a pinned project runs.
+#
+# A COPY THIS DID NOT INSTALL is said to be so. Homebrew, apt, dnf and winget update their own, and a source checkout is
+# built, not installed, so `update` and `back` refuse all of them, naming the way that does work.
+#
+# The decisions and the words are call/code/self-words.tree. Resolution is work/need/version-choice.tree and the one
+# install path work/need/version-install.tree, both loaded. It prints through call/code/output.ts, DOCKED: every other
+# verb prints through that one run, and a port's own copy of the printer would hold a second, empty run (traps.md).
+# @cluesurf/deck.tree (manifests, lockfiles, the registry) is docked (decision 002). A verb's input is the original's
+# record, each optional field read as the original read it (by truth, or by `??`).
+
+load @term/base/list
+  find list
+  find contains
+
+load @term/call/need-choose
+  find toolchain
+  find is-version
+
+load @term/call/self-words
+  find kept-version
+  find kept-versions
+  find manager-of
+  find check-message
+  find unmanaged-subject
+  find previous-version
+  find by-fact
+  find used-fact
+  find need-tree-text
+  find wash-verdict
+
+load @term/call/work/need/version-choice
+  find need-request
+  find need-answer
+  find request-found
+  find request-read
+  find choose-ask
+  find world-ask
+  find current-world
+  find read-request
+  find project-request
+  find default-request
+  find choose-request
+  find installed-versions
+  find request-pin-holds
+
+load @term/call/work/need/version-install
+  find install-record
+  find release-pick
+  find load-ask
+  find release-package
+  find route-of
+  find list-releases
+  find verify-release
+  find load-version
+  find shared-facts
+  find is-installed
+  find read-install
+  find install-file
+  find link-front
+  find front-version
+  find last-used
+
+load @term/call/work/need/running-install
+  find find-install-root
+
+dock load
+  load <@cluesurf/deck.tree>, name deck-tree
+  load <@term/deck/code/code>, name deck-code
+  load <@term/call/code/home>, name home-module
+  load <@term/call/code/output>, name output
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <global:process>, name host-process
+
+# ---- the host's values, read as the original read them ----
+
+# `Boolean(value)`, the original's tests by truth
+bind keeper-truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# `value === true`
+bind keeper-true
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === true)>
+
+# `value !== undefined`
+bind keeper-present
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value !== undefined)>
+
+# `undefined`
+bind keeper-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+# a host value as a template literal writes it
+bind keeper-text
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+# `value ?? fallback`, a text
+bind keeper-text-or
+  take value, like dynamic
+  take fallback, like text
+  like text
+  case node
+    text <($value ?? $fallback)>
+
+# `value ?? fallback`, a number
+bind keeper-number-or
+  take value, like dynamic
+  take fallback, like number
+  like number
+  case node
+    text <($value ?? $fallback)>
+
+# `text.trim()`
+bind keeper-trimmed
+  take value, like text
+  like text
+  case node
+    text <$value.trim()>
+
+# `env[name]?.trim()`, the empty text when it is unset
+bind keeper-variable
+  take env, like dynamic
+  take name, like text
+  like text
+  case node
+    text <($env[$name]?.trim() ?? "")>
+
+# a failure's message: an Error's message, else the value as text
+bind keeper-message
+  take problem, like dynamic
+  like text
+  case node
+    text <($problem instanceof Error ? $problem.message : String($problem))>
+
+# a package.json's version, `'0.0.0'` when it names none
+bind keeper-package-version
+  take body, like text
+  like text
+  case node
+    text <(JSON.parse($body).version ?? "0.0.0")>
+
+# `list?.[0]`
+bind keeper-first
+  take value, like dynamic
+  like dynamic
+  case node
+    text <$value?.[0]>
+
+# a host list of texts, walked as a Term list
+bind keeper-texts
+  take value, like dynamic
+  like list, like text
+  case node
+    text <$value>
+
+# `!!platform && !!index?.platforms.includes(platform)`
+bind keeper-has-platform
+  take index, like dynamic
+  take platform, like dynamic
+  like boolean
+  case node
+    text <(Boolean($platform) && Boolean($index?.platforms.includes($platform)))>
+
+# `index.platforms.join(', ')`
+bind keeper-platforms
+  take index, like dynamic
+  like text
+  case node
+    text <$index.platforms.join(", ")>
+
+# `Date.now() - date.getTime()`, the milliseconds since
+bind keeper-elapsed
+  take date, like dynamic
+  like float
+  case node
+    text <(Date.now() - $date.getTime())>
+
+# `Date.now() - days * DAY_MS`
+bind keeper-cutoff
+  take days, like number
+  like dynamic
+  case node
+    text <(Date.now() - $days * 86400000)>
+
+# `date.getTime() >= cutoff`
+bind keeper-since
+  take date, like dynamic
+  take cutoff, like dynamic
+  like boolean
+  case node
+    text <($date.getTime() \>= $cutoff)>
+
+# `{ name, mark: hold }`, a manifest's `need`
+bind keeper-need
+  take name, like text
+  take hold, like dynamic
+  like dynamic
+  case node
+    text <(\{ name: $name, mark: $hold \})>
+
+# `record?.need`
+bind keeper-need-of
+  take record, like dynamic
+  like dynamic
+  case node
+    text <$record?.need>
+
+# `delete record.need`
+bind keeper-drop-need
+  take record, like dynamic
+  like void
+  case node
+    text <(delete $record.need, undefined)>
+
+# `record.need = need`
+bind keeper-put-need
+  take record, like dynamic
+  take need, like dynamic
+  like void
+  case node
+    text <($record.need = $need, undefined)>
+
+# `{ ...(lockfile ?? { version: 1, decks: [] }), need: pin }`
+bind keeper-pinned-lock
+  take lock, like dynamic
+  take pin, like dynamic
+  like dynamic
+  case node
+    text <(\{ ...($lock ?? \{ version: 1, decks: [] \}), need: $pin \})>
+
+# `input.mark`, a field named by a reserved word
+bind keeper-mark-of
+  take input, like dynamic
+  like text
+  case node
+    text <$input.mark>
+
+# ---- the shapes ----
+
+form root-ask
+  link root, like text
+
+form find-ask
+  link root, like text
+  link range
+    like dynamic
+    need false
+  link all
+    like dynamic
+    need false
+
+form range-ask
+  link root, like text
+  link range, like text
+
+form need-ask
+  link root, like text
+  link range
+    like dynamic
+    need false
+  link none
+    like dynamic
+    need false
+
+form show-ask
+  link root, like text
+  link flag
+    like dynamic
+    need false
+
+form wash-ask
+  link root, like text
+  link days
+    like dynamic
+    need false
+  link commit
+    like dynamic
+    need false
+
+# what is running: an install this layout owns (install.tree beside the payload), a package manager's copy, or a source
+# build
+form held-copy
+  case held-installed
+    link install, like install-record
+  case held-managed
+    link by, like text
+    link held-version, like text
+  case held-source
+    link source-version, like text
+
+form keeper-open
+  link verb, like text
+  link root, like text
+  link subject, like text
+  link facts
+    like dynamic
+    need false
+
+# one item, each optional field left out where the original left it out
+form keeper-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link kind
+    like dynamic
+    need false
+  link facts
+    like dynamic
+    need false
+  link fields
+    like dynamic
+    need false
+  link message
+    like dynamic
+    need false
+  link duration
+    like dynamic
+    need false
+  link bytes
+    like dynamic
+    need false
+
+form keeper-close
+  link verdict, like text
+  link failure
+    like dynamic
+    need false
+  link message
+    like dynamic
+    need false
+  link done
+    like dynamic
+    need false
+  link next
+    like dynamic
+    need false
+  link facts
+    like dynamic
+    need false
+  link counts
+    like dynamic
+    need false
+
+form transport-ask
+  link host, like dynamic
+
+form index-ask
+  link transport, like dynamic
+  link repository, like dynamic
+  link version, like text
+
+form dir-ask
+  link dir, like text
+
+form manifest-write
+  link manifest, like dynamic
+
+form lock-write
+  link dir, like text
+  link lockfile, like dynamic
+
+form pin-ask
+  link need, like dynamic
+  link previous, like dynamic
+
+form removal-ask
+  link recursive, like boolean
+  link force, like boolean
+
+# one rule `show` prints, and whether it decided
+form show-step
+  link rule, like text
+  link facts, like list, like text
+  link fields, like list, like dynamic
+  link hit, like boolean
+
+# ---- printing ----
+
+task open-self
+  take root, like text
+  take subject, like text
+  like void
+  mark private
+
+  output/open-run(make(keeper-open, bind(verb, <self>), bind(root, root), bind(subject, subject)))
+
+# a `failed` problem item
+task tell-failed
+  take verb, like text
+  take subject, like text
+  like void
+  mark private
+
+  output/report(make(keeper-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, verb), bind(subject, subject)))
+
+task close-failed
+  take verdict, like text
+  take failure, like text
+  like void
+  mark private
+
+  output/close-run(make(keeper-close, bind(verdict, verdict), bind(failure, failure)))
+
+task close-failed-next
+  take verdict, like text
+  take failure, like text
+  take next, like text
+  like void
+  mark private
+
+  output/close-run(make(keeper-close, bind(verdict, verdict), bind(failure, failure), bind(next, next)))
+
+task close-plain
+  take verdict, like text
+  like void
+  mark private
+
+  output/close-run(make(keeper-close, bind(verdict, verdict)))
+
+task close-done
+  take verdict, like text
+  like void
+  mark private
+
+  output/close-run(make(keeper-close, bind(verdict, verdict), bind(done, true)))
+
+task close-done-next
+  take verdict, like text
+  take next, like text
+  like void
+  mark private
+
+  output/close-run(make(keeper-close, bind(verdict, verdict), bind(done, true), bind(next, next)))
+
+# a file's `at` field
+task at-field
+  take file, like text
+  like dynamic
+  mark private
+
+  back output/location(output/show-path(file))
+
+# ---- maybes ----
+
+# a maybe's text, the empty text for none
+task text-in
+  take value, like maybe, like text
+  like text
+  mark private
+
+  sift value
+    case some
+      link inner
+      back inner
+    case none
+      back <>
+
+# a maybe's text, or the fallback for none: `value ?? fallback`
+task text-in-or
+  take value, like maybe, like text
+  take fallback, like text
+  like text
+  mark private
+
+  sift value
+    case some
+      link inner
+      back inner
+    case none
+      back fallback
+
+# a maybe's text as a template literal writes it, `undefined` for none
+task text-shown
+  take value, like maybe, like text
+  like text
+  mark private
+
+  sift value
+    case some
+      link inner
+      back inner
+    case none
+      back <undefined>
+
+# `version === maybe`: false for none
+task is-version-of
+  take version, like text
+  take value, like maybe, like text
+  like boolean
+  mark private
+
+  sift value
+    case some
+      link inner
+      back is-equal(version, inner)
+    case none
+      back false
+
+# ---- what runs ----
+
+# the payload the running CLI belongs to, host/line.js one level under it: the original's
+# `path.resolve(dirname(import.meta.url's file), '..')` from the bundle, the running install (decision 006)
+task payload-root
+  like text
+  mark private
+
+  back find-install-root()
+
+# a payload's package.json version, `0.0.0` when it cannot be read
+task package-version
+  take payload, like text
+  like text
+  mark private
+
+  save version, <0.0.0>
+  fork
+    mark unsafe
+    save body, node-file/read-file-sync(node-path/join(payload, <package.json>), <utf8>)
+    save version, keeper-package-version(body)
+  halt take
+    take problem
+    save version, <0.0.0>
+  back version
+
+# The package manager that owns the payload at `payload`, by where it put it (task/distro.ts, the Homebrew formula):
+# the original's managerOf. `dpkg-knows` is whether dpkg keeps a record of the package (dpkg-record)
+task payload-manager
+  take payload, like text
+  take dpkg-knows, like boolean
+  like maybe, like text
+
+  save by, manager-of(payload, dpkg-knows)
+  fork test, is-equal(by, <>)
+    hold
+      back make none
+  back make(some, by)
+
+# dpkg's own record of the package, which tells apt's /usr/lib/term from dnf's
+task dpkg-record
+  like boolean
+
+  back node-file/exists-sync(</var/lib/dpkg/info/term.list>)
+
+# What is running: an install this layout owns (install.tree beside the payload), a package manager's copy, or a source
+# build
+task what-runs
+  like held-copy
+  mark private
+
+  save payload, payload-root()
+  save install, read-install(node-path/join(payload, <..>, <install.tree>))
+  sift install
+    case some
+      link found
+      back make(held-installed, bind(install, found))
+    case none
+      save nothing-here, 0
+  save version, package-version(payload)
+  save managed, payload-manager(payload, dpkg-record())
+  sift managed
+    case some
+      link owner
+      back make(held-managed, bind(by, owner), bind(held-version, version))
+    case none
+      back make(held-source, bind(source-version, version))
+
+# the install this layout owns, or none for a copy it did not install
+task held-install
+  take held, like held-copy
+  like maybe, like install-record
+  mark private
+
+  sift held
+    case held-installed
+      link found
+      back make(some, found)
+    miss
+      back make none
+
+task running-version
+  take held, like held-copy
+  like text
+  mark private
+
+  sift held
+    case held-installed
+      link found
+      back found/version
+    case held-managed
+      link owner
+      link managed-version
+      back managed-version
+    case held-source
+      link built-version
+      back built-version
+
+# the manager that owns a copy, the empty text for a source build or an install
+task held-by
+  take held, like held-copy
+  like text
+  mark private
+
+  sift held
+    case held-managed
+      link owner
+      back owner
+    miss
+      back <>
+
+# `managed` or `source`, as `list` names a copy it did not install
+task held-form
+  take held, like held-copy
+  like text
+  mark private
+
+  sift held
+    case held-installed
+      back <installed>
+    case held-managed
+      back <managed>
+    case held-source
+      back <source>
+
+task refuse-unmanaged
+  take held, like held-copy
+  like void
+  mark private
+
+  tell-failed(<self>, unmanaged-subject(held-by(held)))
+  close-failed(<Nothing was changed>, <usage>)
+
+# ---- shared ----
+
+# Every released version, newest first, or undefined with the reason reported
+task releases
+  like dynamic
+
+  save listed, keeper-nothing()
+  fork
+    mark unsafe
+    save listed, list-releases()
+  halt take
+    take problem
+    save route, route-of()
+    save host, route/registry/host
+    save name, route/repository/name
+    save said, keeper-message(problem)
+    tell-failed(<find>, <The releases at {host}/{name} could not be read: {said}>)
+    back keeper-nothing()
+  back listed
+
+# One `load` item for an install, or the problem; true when the version is here. `loaded` is loadVersion's answer, read
+# field by field as the original read it
+task report-loaded
+  take loaded, like dynamic
+  like boolean
+
+  fork test, not(keeper-truth(loaded/ok))
+    hold
+      tell-failed(<load>, keeper-text(loaded/reason))
+      back false
+
+  save version, keeper-text(loaded/version)
+  fork test, not(keeper-truth(loaded/fresh))
+    hold
+      save facts, make list
+      facts/push(<installed already>)
+      output/report(make(keeper-item, bind(glyph, <skipped>), bind(verb, <load>), bind(subject, <term {version}>), bind(facts, facts)))
+      back true
+
+  save platform, keeper-text(loaded/platform)
+  save fields, make list
+  fields/push(output/field(<layer>, loaded/layer))
+  fields/push(output/field(<signed>, loaded/keys))
+  fields/push(at-field(install-file(version)))
+  output/report(make(keeper-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <load>), bind(subject, <term {version} for {platform}>), bind(duration, loaded/duration), bind(bytes, loaded/bytes), bind(facts, shared-facts(loaded/shared)), bind(fields, fields)))
+  back true
+
+# loadVersion, its answer handed on as the host value it is
+task load-release
+  take ask, like load-ask
+  like dynamic
+  mark private
+
+  back load-version(ask)
+
+# a range as a person typed it, or a refusal that closes the run
+task hold-or-refuse
+  take range, like text
+  like maybe, like dynamic
+  mark private
+
+  save hold, keeper-nothing()
+  fork
+    mark unsafe
+    save hold, deck-tree/parse-code-hold(range)
+  halt take
+    take problem
+    tell-failed(<self>, <{range} is not a version or a range: write 2.8.0, 2.8.x or 2.x.x>)
+    close-failed(<Nothing was changed>, <usage>)
+    back make none
+  back make(some, hold)
+
+# an exact version installs exactly; a range installs its newest release
+task exact-or
+  take range, like text
+  take hold, like dynamic
+  like load-ask
+  mark private
+
+  fork test, is-version(range)
+    hold
+      back make(load-ask, bind(version, range))
+  back make(load-ask, bind(hold, hold))
+
+# the nearest directory holding a deck.tree, walking up
+task project-dir
+  take cwd, like text
+  like maybe, like text
+  mark private
+
+  save dir, node-path/resolve(cwd)
+  walk test
+    hook test, true
+    hook hold
+      fork test, node-file/exists-sync(node-path/join(dir, <deck.tree>))
+        hold
+          back make(some, dir)
+      save parent, node-path/dirname(dir)
+      fork test, is-equal(parent, dir)
+        hold
+          back make none
+      save dir, parent
+  back make none
+
+# what one request runs here
+task choose-with
+  take request, like maybe, like need-request
+  take home, like text
+  take running, like text
+  like need-answer
+  mark private
+
+  back choose-request(make(choose-ask, bind(request, request), bind(home, home), bind(running, running)))
+
+# What resolution runs in this directory, as a command here would (TERM_VERSION included)
+task choose-version-here
+  take running, like text
+  like need-answer
+  mark private
+
+  save argv, make list
+  save read, read-request(current-world(make(world-ask, bind(argv, argv), bind(running, running))))
+  save refused, read/refuse
+  sift refused
+    case some
+      link why
+      back make(refuse, bind(reason, why))
+    case none
+      back choose-with(read/request, home-module/user-home(), running)
+
+# the version a choice runs or installs, none for a refusal (or a range the releases resolve)
+task version-of-choice
+  take choice, like need-answer
+  like maybe, like text
+  mark private
+
+  sift choice
+    case run
+      link chosen
+      back make(some, chosen)
+    case load
+      link loading
+      back loading
+    case refuse
+      back make none
+
+# the request a found request carries, none when there is no project
+task request-in
+  take found, like maybe, like request-found
+  like maybe, like need-request
+  mark private
+
+  sift found
+    case some
+      link here
+      back here/request
+    case none
+      back make none
+
+# a project's lock.tree pin, as `show` prints it
+task pin-fields
+  take request, like need-request
+  take home, like text
+  like list, like dynamic
+  mark private
+
+  save fields, make list
+  save pin, request/pin
+  sift pin
+    case none
+      fields/push(output/field(<pin>, <none: term load or term self need pins it>))
+      back fields
+    case some
+      link pinned
+      save version, keeper-text(deck-tree/show-code(pinned/code))
+      save asked-text, request/text
+      save state, <not installed>
+      fork test, not(request-pin-holds(request))
+        hold
+          save state, <stale: {asked-text} excludes it, and term load re-pins it>
+        miss
+          fork test, node-file/exists-sync(node-path/join(home, <code>, version, <install.tree>))
+            hold
+              save state, <installed>
+      # the pin's file is always lock.tree beside the deck.tree named above it, so it is said rather than given a
+      # second `at`
+      fields/push(output/field(<pin>, <{version} in lock.tree, {state}>))
+      back fields
+
+# The versions `wash` never removes, each with why: the front, the running copy, the default's answer, and this
+# directory's (its answer and its pin)
+task kept-here
+  take home, like text
+  take running, like text
+  like list, like kept-version
+  mark private
+
+  save project, request-in(project-request(host-process/cwd()))
+  save asked, make list
+  asked/push(make(kept-version, bind(version, text-in(front-version())), bind(why, <the front>)))
+  asked/push(make(kept-version, bind(version, running), bind(why, <running>)))
+  save fallback, default-request(home)
+  save by-default, choose-with(fallback/request, home, running)
+  asked/push(make(kept-version, bind(version, text-in(version-of-choice(by-default))), bind(why, <the default>)))
+  save pinned-version, <>
+  save here-version, <>
+  sift project
+    case some
+      link given
+      save pin, given/pin
+      sift pin
+        case some
+          link pinned
+          save pinned-version, keeper-text(deck-tree/show-code(pinned/code))
+        case none
+          save nothing-pinned, 0
+      save here-version, text-in(version-of-choice(choose-with(make(some, given), home, running)))
+    case none
+      save nothing-here, 0
+  asked/push(make(kept-version, bind(version, pinned-version), bind(why, <pinned here>)))
+  asked/push(make(kept-version, bind(version, here-version), bind(why, <runs here>)))
+  back kept-versions(asked)
+
+# why `wash` keeps a version, none when it does not
+task kept-why
+  take kept, like list, like kept-version
+  take version, like text
+  like maybe, like text
+  mark private
+
+  walk kept
+    take one
+    fork test, is-equal(one/version, version)
+      hold
+        back make(some, one/why)
+  back make none
+
+# `used today`, `used 12 days ago`, `never used`
+task used-text
+  take used, like dynamic
+  like text
+  mark private
+
+  save elapsed, 0.0
+  fork test, keeper-truth(used)
+    hold
+      save elapsed, keeper-elapsed(used)
+  back used-fact(keeper-present(used), elapsed)
+
+task compare-versions
+  take a, like text
+  take b, like text
+  like number
+  mark private
+
+  back deck-code/compare-code(deck-tree/parse-code(a), deck-tree/parse-code(b))
+
+# ---- check, update, back ----
+
+task call-self-check
+  take input, like root-ask
+  like void
+
+  open-self(input/root, <check>)
+
+  save held, what-runs()
+  save install, held-install(held)
+  save platform, keeper-nothing()
+  save version, running-version(held)
+  sift install
+    case some
+      link found
+      save platform, found/platform
+    case none
+      save platform, deck-tree/current-platform()
+
+  fork test, not(keeper-truth(platform))
+    hold
+      save os, host-process/platform
+      save arch, host-process/arch
+      tell-failed(<check>, <No release is built for {os}-{arch}>)
+      close-failed(<Not checked>, <environment>)
+      back
+
+  save package, release-package()
+  save verified, verify-release(make(release-pick, bind(version, version), bind(platform, platform)))
+  save seen, keeper-nothing()
+  save seen, verified
+
+  fork test, not(keeper-truth(seen/ok))
+    hold
+      tell-failed(<check>, keeper-text(seen/reason))
+      close-failed(<{package}@{version} did not verify>, <environment>)
+      back
+
+  save keys, keeper-text(seen/keys)
+  save layer, keeper-text(seen/layer)
+  save shown-platform, keeper-text(platform)
+  sift install
+    case none
+      # a release exists for this version and is signed, but these bytes were not installed from it by term.surf/load
+      save message, make list
+      message/push(check-message(held-by(held)))
+      output/report(make(keeper-item, bind(glyph, <info>), bind(verb, <check>), bind(subject, <{package}@{version} for {shown-platform} is released and signed by {keys}>), bind(message, message)))
+      close-plain(<The release verifies>)
+    case some
+      link found
+      save unpacked, found/hash
+      fork test, is-unequal(layer, unpacked)
+        hold
+          tell-failed(<check>, <This install was unpacked from {unpacked}, and the signed release is {layer}>)
+          close-failed(<This install is not the release>, <environment>)
+        miss
+          save fields, make list
+          fields/push(output/field(<layer>, layer))
+          fields/push(output/field(<signed>, keys))
+          output/report(make(keeper-item, bind(glyph, <done>), bind(verb, <check>), bind(subject, <{package}@{version} for {shown-platform}>), bind(fields, fields)))
+          close-plain(<This install is the signed release>)
+
+task call-self-update
+  take input, like root-ask
+  like void
+
+  open-self(input/root, <update>)
+
+  save held, what-runs()
+  save install, held-install(held)
+  sift install
+    case none
+      refuse-unmanaged(held)
+    case some
+      link found
+      save front, text-in-or(front-version(), found/version)
+      save newest, keeper-first(releases())
+
+      fork test, not(keeper-truth(newest))
+        hold
+          close-failed(<Nothing was changed>, <environment>)
+          back
+
+      save package, release-package()
+      save newest-text, keeper-text(newest)
+      fork test, is-maximum(compare-versions(newest-text, front), 0)
+        hold
+          output/report(make(keeper-item, bind(glyph, <info>), bind(verb, <update>), bind(subject, <{package}@{front} is the newest release>)))
+          close-plain(<Already up to date>)
+          back
+
+      save loaded, load-release(make(load-ask, bind(version, newest), bind(platform, found/platform)))
+      fork test, not(report-loaded(loaded))
+        hold
+          close-failed(<{package}@{newest-text} was not installed>, <environment>)
+          back
+
+      link-front(newest-text)
+      output/report(make(keeper-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <front>), bind(subject, <call/term {front} to {newest-text}>)))
+
+      # a range default follows on its own; an exact one is named, because it now holds the default back
+      save message, make list
+      save fallback, default-request(home-module/user-home())
+      save asked, fallback/request
+      sift asked
+        case some
+          link given
+          fork test, not(deck-tree/code-match(deck-tree/parse-code(newest-text), given/hold))
+            hold
+              save default-text, given/text
+              message/push(<The default is {default-text} (term self pick), so outside a project term {default-text} still runs, not {newest-text}.>)
+        case none
+          save nothing-asked, 0
+
+      output/close-run(make(keeper-close, bind(verdict, <Updated to {newest-text}>), bind(message, message), bind(done, true), bind(next, <term self back, to return to the previous version>)))
+
+task call-self-back
+  take input, like root-ask
+  like void
+
+  open-self(input/root, <back>)
+
+  save held, what-runs()
+  save install, held-install(held)
+  sift install
+    case none
+      refuse-unmanaged(held)
+    case some
+      link found
+      save front, text-in-or(front-version(), found/version)
+      save previous, previous-version(installed-versions(home-module/user-home()), front)
+
+      fork test, is-equal(previous, <>)
+        hold
+          tell-failed(<back>, <No version older than {front} is installed here>)
+          close-failed-next(<Nothing to go back to>, <usage>, <term self find, then term self load \<version\>>)
+          back
+
+      link-front(previous)
+      output/report(make(keeper-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <front>), bind(subject, <call/term {front} to {previous}>)))
+      close-done-next(<Back on {previous}>, <term self update, to move forward again>)
+
+# ---- list, find ----
+
+task call-self-list
+  take input, like root-ask
+  like void
+
+  open-self(input/root, <list>)
+
+  save home, home-module/user-home()
+  save held, what-runs()
+  save running, running-version(held)
+  save installed, installed-versions(home)
+  save front, front-version()
+  save fallback, default-request(home)
+  save fallback-request, fallback/request
+  # `default` marks the version need.tree resolves to, and nothing when there is no need.tree: the front then runs, and
+  # it is marked `front` already
+  save by-default, make none
+  sift fallback-request
+    case some
+      link given
+      save by-default, version-of-choice(choose-with(make(some, given), home, running))
+    case none
+      save by-default, make none
+  save here, version-of-choice(choose-version-here(running))
+
+  walk installed
+    take version
+    save facts, make list
+    fork test, is-version-of(version, front)
+      hold
+        facts/push(<front>)
+    fork test, is-version-of(version, by-default)
+      hold
+        facts/push(<default>)
+    fork test, is-version-of(version, here)
+      hold
+        facts/push(<runs here>)
+    facts/push(used-text(last-used(version)))
+    output/report(make(keeper-item, bind(glyph, <info>), bind(verb, <list>), bind(subject, <term {version}>), bind(facts, facts)))
+
+  save install, held-install(held)
+  save total, installed/length
+  sift install
+    case none
+      save total, add(total, 1)
+      save facts, make list
+      facts/push(held-form(held))
+      fork test, is-version-of(running, by-default)
+        hold
+          facts/push(<default>)
+      fork test, is-version-of(running, here)
+        hold
+          facts/push(<runs here>)
+      save fields, make list
+      fields/push(at-field(payload-root()))
+      output/report(make(keeper-item, bind(glyph, <info>), bind(verb, <list>), bind(subject, <term {running}>), bind(facts, facts), bind(fields, fields)))
+    case some
+      save nothing-held, 0
+
+  save verdict, <No version is installed>
+  fork test, is-equal(total, 1)
+    hold
+      save verdict, <1 version here>
+  fork test, is-above(total, 1)
+    hold
+      save verdict, <{total} versions here>
+  save closing-facts, make list
+  sift fallback-request
+    case some
+      link given
+      save default-text, given/text
+      closing-facts/push(<default {default-text}>)
+    case none
+      closing-facts/push(<no default: the front runs>)
+  fork test, is-equal(total, 0)
+    hold
+      output/close-run(make(keeper-close, bind(verdict, verdict), bind(facts, closing-facts), bind(next, <term self load \<version\>>)))
+    miss
+      output/close-run(make(keeper-close, bind(verdict, verdict), bind(facts, closing-facts)))
+
+task call-self-find
+  take input, like find-ask
+  like void
+
+  open-self(input/root, <find>)
+
+  save ranged, keeper-truth(input/range)
+  save range, keeper-text-or(input/range, <>)
+  save all, keeper-truth(input/all)
+  save hold, keeper-nothing()
+  fork test, ranged
+    hold
+      save asked-hold, hold-or-refuse(range)
+      sift asked-hold
+        case some
+          link parsed
+          save hold, parsed
+        case none
+          back
+
+  save listed, releases()
+  fork test, not(keeper-truth(listed))
+    hold
+      close-failed(<The releases could not be read>, <environment>)
+      back
+  save versions, make list
+  walk keeper-texts(listed)
+    take version
+    fork test, or(not(ranged), deck-tree/code-match(deck-tree/parse-code(version), hold))
+      hold
+        versions/push(version)
+
+  save route, route-of()
+  save transport, deck-tree/transport-for(make(transport-ask, bind(host, route/registry/host)))
+  save platform, deck-tree/current-platform()
+  save installed, installed-versions(home-module/user-home())
+  save indexes, make list
+  walk versions
+    take version
+    save index, wait deck-tree/read-release-index(make(index-ask, bind(transport, transport), bind(repository, route/repository/name), bind(version, version)))
+    indexes/push(index)
+  save shown, 0
+
+  save at, 0
+  walk versions
+    take version
+    save index, indexes/{at}
+    save at, add(at, 1)
+    save here, keeper-has-platform(index, platform)
+    fork test, and(not(all), not(here))
+      hold
+        turn next
+    save shown, add(shown, 1)
+    save facts, make list
+    fork test, contains(installed, version)
+      hold
+        facts/push(<installed>)
+    save fields, make list
+    fork test, and(all, keeper-truth(index))
+      hold
+        fields/push(output/field(<platforms>, keeper-platforms(index)))
+    output/report(make(keeper-item, bind(glyph, <info>), bind(verb, <find>), bind(subject, <term {version}>), bind(facts, facts), bind(fields, fields)))
+
+  save verdict, <{shown} releases>
+  fork test, is-equal(shown, 1)
+    hold
+      save verdict, <1 release>
+  fork test, is-equal(shown, 0)
+    hold
+      save in-range, <>
+      fork test, ranged
+        hold
+          save in-range, < in {range}>
+      save for-platform, <>
+      fork test, not(all)
+        hold
+          save platform-text, keeper-text-or(platform, <this platform>)
+          save for-platform, < for {platform-text}>
+      save verdict, <No release{in-range}{for-platform}>
+  save registry-host, route/registry/host
+  save repository, route/repository/name
+  save closing-facts, make list
+  closing-facts/push(<{registry-host}/{repository}>)
+  fork test, is-above(shown, 0)
+    hold
+      output/close-run(make(keeper-close, bind(verdict, verdict), bind(facts, closing-facts), bind(next, <term self load \<version\>>)))
+    miss
+      output/close-run(make(keeper-close, bind(verdict, verdict), bind(facts, closing-facts)))
+
+# ---- load, pick, need ----
+
+task call-self-load
+  take input, like range-ask
+  like void
+
+  save range, input/range
+  open-self(input/root, <load {range}>)
+
+  save asked-hold, hold-or-refuse(range)
+  sift asked-hold
+    case none
+      back
+    case some
+      link hold
+      save loaded, load-release(exact-or(range, hold))
+      fork test, not(report-loaded(loaded))
+        hold
+          close-failed(<Nothing was installed>, <environment>)
+          back
+      save version, keeper-text(loaded/version)
+      save verdict, <{version} was installed already>
+      fork test, keeper-truth(loaded/fresh)
+        hold
+          save verdict, <Installed {version}>
+      output/close-run(make(keeper-close, bind(verdict, verdict), bind(done, loaded/fresh), bind(next, <term +{version} \<command\>, or term self pick {version}>)))
+
+task call-self-pick
+  take input, like range-ask
+  like void
+
+  save range, input/range
+  open-self(input/root, <pick {range}>)
+
+  save asked-hold, hold-or-refuse(range)
+  sift asked-hold
+    case none
+      back
+    case some
+      link hold
+      save home, home-module/user-home()
+      save request, make(need-request, bind(source, <default>), bind(text, range), bind(hold, hold))
+      save choice, choose-with(make(some, request), home, running-version(what-runs()))
+      sift choice
+        case load
+          link choice-version
+          link choice-hold
+          save loaded, load-release(exact-or(range, hold))
+          fork test, not(report-loaded(loaded))
+            hold
+              close-failed(<The default was not changed>, <environment>)
+              back
+        miss
+          save nothing-loaded, 0
+
+      save file, node-path/join(home, <need.tree>)
+      node-file/write-file-sync(file, need-tree-text(range))
+      save fields, make list
+      fields/push(at-field(file))
+      output/report(make(keeper-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <pick>), bind(subject, <the default is {range}>), bind(fields, fields)))
+      save runs, text-shown(version-of-choice(choose-with(make(some, request), home, running-version(what-runs()))))
+      close-done(<term {runs} runs outside a project>)
+
+task call-self-need
+  take input, like need-ask
+  like void
+
+  save none, keeper-truth(input/none)
+  save ranged, keeper-truth(input/range)
+  save range, keeper-text-or(input/range, <>)
+  save subject, <need --none>
+  fork test, not(none)
+    hold
+      save subject, keeper-trimmed(<need {range}>)
+  open-self(input/root, subject)
+
+  save chain, toolchain()
+  save found-dir, project-dir(host-process/cwd())
+  sift found-dir
+    case none
+      tell-failed(<need>, <There is no deck.tree here or above, so there is no project to need a version>)
+      close-failed-next(<Nothing was changed>, <usage>, <term self pick \<range\>, for the default outside a project>)
+    case some
+      link dir
+      save manifest, wait deck-tree/load-manifest(make(dir-ask, bind(dir, dir)))
+      save lockfile, wait deck-tree/load-lockfile(make(dir-ask, bind(dir, dir)))
+      save manifest-file, node-path/join(dir, <deck.tree>)
+      save lock-file, node-path/join(dir, <lock.tree>)
+
+      fork test, none
+        hold
+          fork test, and(not(keeper-truth(keeper-need-of(manifest))), not(keeper-truth(keeper-need-of(lockfile))))
+            hold
+              close-plain(<This project needs no version already>)
+              back
+
+          keeper-drop-need(manifest)
+          node-file/write-file-sync(manifest-file, deck-tree/write-manifest(make(manifest-write, bind(manifest, manifest))))
+          save removed-fields, make list
+          removed-fields/push(at-field(manifest-file))
+          output/report(make(keeper-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <need>), bind(subject, chain), bind(fields, removed-fields)))
+
+          fork test, keeper-truth(keeper-need-of(lockfile))
+            hold
+              keeper-drop-need(lockfile)
+              wait deck-tree/save-lockfile(make(lock-write, bind(dir, dir), bind(lockfile, lockfile)))
+              save pin-fields-removed, make list
+              pin-fields-removed/push(at-field(lock-file))
+              output/report(make(keeper-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <pin>), bind(subject, chain), bind(fields, pin-fields-removed)))
+
+          close-done(<This project runs the default now>)
+          back
+
+      fork test, not(ranged)
+        hold
+          tell-failed(<need>, <term self need takes a version or a range, or --none>)
+          close-failed-next(<Nothing was changed>, <usage>, <term self need 2.6.x>)
+          back
+
+      save asked-hold, hold-or-refuse(range)
+      sift asked-hold
+        case none
+          back
+        case some
+          link hold
+          save need, keeper-need(chain, hold)
+          save pinned, wait deck-tree/pin-need(make(pin-ask, bind(need, need), bind(previous, keeper-need-of(lockfile))))
+          save pin, pinned/pin
+
+          fork test, not(keeper-truth(pin))
+            hold
+              tell-failed(<pin>, keeper-text-or(pinned/reason, <{chain} could not be pinned>))
+              close-failed-next(<Nothing was changed>, <environment>, <term self find>)
+              back
+
+          save version, keeper-text(deck-tree/show-code(pin/code))
+          save loaded, load-release(make(load-ask, bind(version, version), bind(expect, pin/hash)))
+          fork test, not(report-loaded(loaded))
+            hold
+              close-failed(<Nothing was changed>, <environment>)
+              back
+
+          keeper-put-need(manifest, need)
+          node-file/write-file-sync(manifest-file, deck-tree/write-manifest(make(manifest-write, bind(manifest, manifest))))
+          save need-fields, make list
+          need-fields/push(at-field(manifest-file))
+          output/report(make(keeper-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <need>), bind(subject, <{chain}, mark \<{range}\>>), bind(fields, need-fields)))
+
+          save next-lock, keeper-pinned-lock(lockfile, pin)
+          wait deck-tree/save-lockfile(make(lock-write, bind(dir, dir), bind(lockfile, next-lock)))
+          save kept, keeper-truth(pinned/kept)
+          save glyph, <changed>
+          save pin-facts, make list
+          fork test, kept
+            hold
+              save glyph, <skipped>
+              pin-facts/push(<kept>)
+          save pin-fields-made, make list
+          pin-fields-made/push(output/field(<hash>, pin/hash))
+          pin-fields-made/push(at-field(lock-file))
+          output/report(make(keeper-item, bind(glyph, glyph), bind(kind, <change>), bind(verb, <pin>), bind(subject, <{chain} {version}>), bind(facts, pin-facts), bind(fields, pin-fields-made)))
+          close-done-next(<This project runs term {version}>, <commit deck.tree and lock.tree>)
+
+# ---- show ----
+
+task call-self-show
+  take input, like show-ask
+  like void
+
+  open-self(input/root, <show>)
+
+  save held, what-runs()
+  save running, running-version(held)
+  save home, home-module/user-home()
+  save flagged, keeper-truth(input/flag)
+  save flag-text, keeper-text-or(input/flag, <>)
+  save argv, make list
+  fork test, flagged
+    hold
+      argv/push(<+{flag-text}>)
+  save world, current-world(make(world-ask, bind(argv, argv), bind(running, running)))
+  save read, read-request(world)
+  save env, keeper-variable(world/env, <TERM_VERSION>)
+  save project, request-in(project-request(world/cwd))
+  save fallback, default-request(home)
+  save fallback-request, fallback/request
+  save read-asked, read/request
+  save source, <>
+  sift read-asked
+    case some
+      link given
+      save source, given/source
+    case none
+      save nothing-read, 0
+
+  save chain, toolchain()
+  save steps, make list
+
+  save flag-facts, make list
+  save flag-fact, <none>
+  fork test, flagged
+    hold
+      save flag-fact, <+{flag-text}>
+  flag-facts/push(flag-fact)
+  steps/push(make(show-step, bind(rule, <1  +flag>), bind(facts, flag-facts), bind(fields, make list), bind(hit, is-equal(source, <flag>))))
+
+  save env-facts, make list
+  save env-fact, env
+  fork test, is-equal(env, <>)
+    hold
+      save env-fact, <unset>
+  env-facts/push(env-fact)
+  steps/push(make(show-step, bind(rule, <2  TERM_VERSION>), bind(facts, env-facts), bind(fields, make list), bind(hit, is-equal(source, <env>))))
+
+  save project-facts, make list
+  save project-fields, make list
+  sift project
+    case some
+      link asked
+      save asked-text, asked/text
+      project-facts/push(<need {chain}, mark \<{asked-text}\>>)
+      save file, text-in(asked/file)
+      save shown-file, output/show-path(file)
+      save line, number-in(asked/line)
+      project-fields/push(output/location(<{shown-file}:{line}>))
+      walk pin-fields(asked, home)
+        take pin-field
+        project-fields/push(pin-field)
+    case none
+      project-facts/push(<no deck.tree here or above names one>)
+  steps/push(make(show-step, bind(rule, <3  project>), bind(facts, project-facts), bind(fields, project-fields), bind(hit, is-equal(source, <project>))))
+
+  save default-facts, make list
+  save default-fields, make list
+  sift fallback-request
+    case some
+      link fallback-asked
+      save fallback-text, fallback-asked/text
+      default-facts/push(<need {chain}, mark \<{fallback-text}\>>)
+      default-fields/push(at-field(text-in(fallback-asked/file)))
+    case none
+      default-facts/push(<none>)
+  steps/push(make(show-step, bind(rule, <4  default>), bind(facts, default-facts), bind(fields, default-fields), bind(hit, is-equal(source, <default>))))
+
+  walk steps
+    take step
+    save glyph, <info>
+    fork test, step/hit
+      hold
+        save glyph, <done>
+    output/report(make(keeper-item, bind(glyph, glyph), bind(verb, <show>), bind(subject, step/rule), bind(facts, step/facts), bind(fields, step/fields)))
+    fork test, step/hit
+      hold
+        halt
+
+  save refused, read/refuse
+  sift refused
+    case some
+      link why
+      tell-failed(<show>, why)
+      close-failed(<Nothing would run here>, <usage>)
+      back
+    case none
+      save nothing-refused, 0
+
+  save choice, choose-with(read-asked, home, running)
+
+  sift read-asked
+    case none
+      save rule, <5  the newest installed>
+      sift choice
+        case run
+          link run-version
+          link run-by
+          fork test, is-equal(run-by, <running>)
+            hold
+              save rule, <6  the running copy>
+        miss
+          save nothing-ran, 0
+      output/report(make(keeper-item, bind(glyph, <done>), bind(verb, <show>), bind(subject, rule), bind(facts, make list)))
+    case some
+      save nothing-asked, 0
+
+  sift choice
+    case run
+      link chosen-version
+      link chosen-by
+      link chosen-request
+      link chosen-launcher
+      save launcher-name, <term>
+      fork test, is-equal(host-process/platform, <win32>)
+        hold
+          save launcher-name, <term.cmd>
+      save at, text-in-or(chosen-launcher, node-path/join(payload-root(), <bin>, launcher-name))
+      save asked-text, <>
+      save asked, false
+      sift chosen-request
+        case some
+          link chosen-asked
+          save asked-text, chosen-asked/text
+          save asked, true
+        case none
+          save asked, false
+      save facts, make list
+      facts/push(by-fact(chosen-by, asked-text, asked))
+      save fields, make list
+      fields/push(at-field(at))
+      output/report(make(keeper-item, bind(glyph, <info>), bind(verb, <show>), bind(subject, <term {chosen-version}>), bind(facts, facts), bind(fields, fields)))
+      close-plain(<term {chosen-version} runs here>)
+    case load
+      link loading-version
+      link loading-hold
+      link loading-expect
+      link loading-request
+      save loading-asked, loading-request/text
+      save wanted, text-in-or(loading-version, loading-asked)
+      output/close-run(make(keeper-close, bind(verdict, <term {wanted} is needed here and not installed: the next command installs it>), bind(next, <term self load {wanted}, to install it now>)))
+    case refuse
+      close-failed(<Nothing would run here>, <usage>)
+
+# a maybe's number, 1 for none: `line ?? 1`
+task number-in
+  take value, like maybe, like number
+  like number
+  mark private
+
+  sift value
+    case some
+      link inner
+      back inner
+    case none
+      back 1
+
+# ---- toss, wash ----
+
+# `input.mark` is the version to remove (a field named by a reserved word, so the input is read as the host value)
+task call-self-toss
+  take input, like dynamic
+  like void
+
+  save version, keeper-mark-of(input)
+  open-self(keeper-text(input/root), <toss {version}>)
+
+  save held, what-runs()
+  save front, front-version()
+
+  fork test, not(is-installed(version))
+    hold
+      tell-failed(<toss>, <term {version} is not installed here>)
+      close-failed-next(<Nothing was removed>, <usage>, <term self list>)
+      back
+
+  fork test, is-version-of(version, front)
+    hold
+      tell-failed(<toss>, <term {version} is the front (call/term)>)
+      close-failed-next(<Nothing was removed>, <usage>, <term self back or term self update first>)
+      back
+
+  save install, held-install(held)
+  sift install
+    case some
+      link found
+      fork test, is-equal(found/version, version)
+        hold
+          tell-failed(<toss>, <term {version} is running this command>)
+          close-failed(<Nothing was removed>, <usage>)
+          back
+    case none
+      save nothing-held, 0
+
+  node-file/rm-sync(home-module/user-home(<code>, version), make(removal-ask, bind(recursive, true), bind(force, true)))
+  save fields, make list
+  fields/push(at-field(home-module/user-home(<code>, version)))
+  output/report(make(keeper-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <toss>), bind(subject, <term {version}>), bind(fields, fields)))
+  close-done(<Removed {version}>)
+
+task call-self-wash
+  take input, like wash-ask
+  like void
+
+  # how long `wash` waits before it calls a version unused
+  save days, keeper-number-or(input/days, 90)
+  save commit, keeper-truth(input/commit)
+  save open-facts, make list
+  open-facts/push(<unused {days} days>)
+  fork test, commit
+    hold
+      open-facts/push(<--commit>)
+  output/open-run(make(keeper-open, bind(verb, <self>), bind(root, input/root), bind(subject, <wash>), bind(facts, open-facts)))
+
+  save home, home-module/user-home()
+  save held, what-runs()
+  save running, running-version(held)
+  save kept, kept-here(home, running)
+  save cutoff, keeper-cutoff(days)
+  save washed, 0
+
+  walk installed-versions(home)
+    take version
+    save used, last-used(version)
+    save why, kept-why(kept, version)
+    sift why
+      case some
+        link reason
+        # information, not a skipped step: a plan that only lists closes `·`, the glyph of a run that changed nothing
+        save keep-facts, make list
+        keep-facts/push(reason)
+        output/report(make(keeper-item, bind(glyph, <info>), bind(verb, <keep>), bind(subject, <term {version}>), bind(facts, keep-facts)))
+        turn next
+      case none
+        save nothing-kept, 0
+
+    fork test, and(keeper-truth(used), keeper-since(used, cutoff))
+      hold
+        turn next
+
+    save washed, add(washed, 1)
+    save facts, make list
+    facts/push(used-text(used))
+    fork test, commit
+      hold
+        node-file/rm-sync(home-module/user-home(<code>, version), make(removal-ask, bind(recursive, true), bind(force, true)))
+        output/report(make(keeper-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <wash>), bind(subject, <term {version}>), bind(facts, facts)))
+      miss
+        facts/push(<would be removed>)
+        output/report(make(keeper-item, bind(glyph, <info>), bind(verb, <wash>), bind(subject, <term {version}>), bind(facts, facts)))
+
+  save counts, make list
+  counts/push(output/count(washed, <versions>, <version>))
+  save verdict, wash-verdict(washed, days, keeper-true(input/commit))
+  fork test, and(is-above(washed, 0), not(commit))
+    hold
+      output/close-run(make(keeper-close, bind(verdict, verdict), bind(counts, counts), bind(done, false), bind(next, <term self wash --commit>)))
+    miss
+      output/close-run(make(keeper-close, bind(verdict, verdict), bind(counts, counts), bind(done, and(commit, is-above(washed, 0)))))

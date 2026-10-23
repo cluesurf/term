@@ -46,6 +46,12 @@ load ./elaborating-terms
   find term-state
   find expr
 
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find span
+
 # an equation true on a path, as its two side expressions
 form expression-pair
   link left, like expression

@@ -1,0 +1,1229 @@
+# The symbol index: the static model an editor navigates. Built from a checked program, it records every definition
+# (function, type, variant, trait, parameter, local) with its span and signature, every name reference with its span,
+# and the scope visible at any position. Go-to-definition, find-references, rename, document symbols, completion and
+# signature help are all thin queries over this index. Spans are 0-based, matching the compiler and the LSP wire.
+#
+# TWO SPANS PER ENTRY. `span` is what the compiler recorded: for a reference, the whole expression it stands in (the
+# mill gives a call's callee the span of the entire call, arguments and all), and for a definition, the whole
+# statement. `at` is where the NAME itself is written, found in the document text. Rename edits `at` and never `span`:
+# editing `span` replaced a whole `task` with its new name, body included.
+#
+# Ported from symbols.ts (term-cli-in-term-0098). The decisions:
+#   - a name is searched for in the text's UTF-16 units (self-host traps.md T001), since a span's column counts them
+#   - `findName`'s `after` pattern `(?:^|\s)(?:task|rule)\s+$` is the list of head words (`task`, `rule`): the text
+#     before the name ends in one of them and a run of JavaScript white space, with the start of the line or white
+#     space before the word (T024: every `\s` unit written out)
+#   - `buildIndex(program, text?)`: no text is the empty text, which finds no name, as no text did
+#   - `forEachExpression` / `forEachCall` took a visitor: `expressions-of` and `calls-of` answer the list, in the order
+#     the visitor saw them (call/code/reach-graph.tree `statements-in`, which was written to that order)
+#   - `occurrencesOf` took a name or a `Named`: it takes the `named-symbol` (`{ name }` for a bare name)
+#   - an absent answer (`referenceAt`, `symbolAt`, `callAt`, `findName`) is a maybe
+#   - `writtenName` is call/code/context-slice.tree's `written-name`; `within` is analysis.tree's (term-cli-in-term-0117)
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/make/parser/diagnostic
+  find position
+  find span
+
+load @term/make/compile/node
+  find expression
+  find statement
+  find function-param
+  find closure-param
+  find unknown-type
+  find unit-type
+  find expression-span
+
+load @term/make/compile/type-text
+  find show-type
+
+load @term/make/fixing
+  find units-of
+
+load @term/call/context-slice
+  find written-name
+
+load @term/call/reach-graph
+  find statements-in
+
+load ./geometry
+  find lsp-position
+
+load ./analysis
+  find within
+
+dock load
+  load <@term/make/code/compile/load>, name load-module
+
+form definition
+  link name, like text
+  # `function`, `type`, `variant`, `trait`, `parameter` or `local`
+  link kind, like text
+  link span, like span
+  link detail, like text
+  # where the name is written, when the text was given and the name was found in it
+  link at
+    like maybe, like span
+    need false
+
+form reference
+  link name, like text
+  link span, like span
+  link at
+    like maybe, like span
+    need false
+
+# a parameter or local a function makes available, with the span where it is introduced
+form scope-local
+  link name, like text
+  link kind, like text
+  link detail, like text
+  link span, like span
+  link at
+    like maybe, like span
+    need false
+
+# the names a function makes available (for scope-aware completion)
+form function-scope
+  link name, like text
+  link span, like span
+  link locals, like list, like scope-local
+
+form param-type
+  link name, like text
+  link type, like text
+
+# a function's parameter types and result, for signature help
+form signature
+  link params, like list, like param-type
+  link result, like text
+
+form symbol-index
+  link definitions, like hash, like text, like definition
+  link references, like list, like reference
+  link functions, like list, like definition
+  link scopes, like list, like function-scope
+  link signatures, like hash, like text, like signature
+
+# what a position names, with the function whose scope holds it for a parameter or a local
+form named-symbol
+  link name, like text
+  link scope
+    like maybe, like function-scope
+    need false
+
+form call-site
+  link name, like text
+  link active-param, like number
+
+# what `build-index` holds while it walks
+form index-build
+  mark shared
+  link rows
+    like list
+      like list, like number
+  # `find shout, name yell`: the mill binds every `yell` to `shout`, so a reference named `shout` is WRITTEN `yell`
+  link aliases, like hash, like text, like text
+  link definitions, like hash, like text, like definition
+  link references, like list, like reference
+
+# the source handed to the compiler's import scan
+form index-source
+  link file, like text
+  link text, like text
+
+# one `load` of the import scan, as compile/load.ts answers it: an alias is a text or undefined
+form find-entry
+  link names, like list, like text
+  link aliases, like list, like unknown
+
+# ---- finding a name in the text ----
+
+# a unit that may be part of a Term name: `[A-Za-z0-9-]`
+task is-name-unit
+  take unit, like number
+  like boolean
+  mark private
+
+  fork test, or(and(is-minimum(unit, 65), is-maximum(unit, 90)), and(is-minimum(unit, 97), is-maximum(unit, 122)))
+    hold
+      back true
+  back or(and(is-minimum(unit, 48), is-maximum(unit, 57)), is-equal(unit, 45))
+
+# a unit JavaScript's `\s` matches
+task is-space-unit
+  take unit, like number
+  like boolean
+  mark private
+
+  fork test, or(and(is-minimum(unit, 9), is-maximum(unit, 13)), is-equal(unit, 32))
+    hold
+      back true
+  fork test, or(is-equal(unit, 160), is-equal(unit, 5760))
+    hold
+      back true
+  fork test, and(is-minimum(unit, 8192), is-maximum(unit, 8202))
+    hold
+      back true
+  fork test, or(or(is-equal(unit, 8232), is-equal(unit, 8233)), or(is-equal(unit, 8239), is-equal(unit, 8287)))
+    hold
+      back true
+  back or(is-equal(unit, 12288), is-equal(unit, 65279))
+
+# whether `word` is written in `row` from `start`
+task units-at
+  take row, like list, like number
+  take start, like number
+  take word, like list, like number
+  like boolean
+  mark private
+
+  fork test, is-above(add(start, word/length), row/length)
+    hold
+      back false
+  save k, 0
+  walk test
+    hook test, is-below(k, word/length)
+    hook hold
+      fork test, is-unequal(get(row, add(start, k)), get(word, k))
+        hold
+          back false
+      save k, add(k, 1)
+  back true
+
+# the first place from `from` where `word` is written in `row`, -1 for none, as `indexOf` answers
+task index-of-units
+  take row, like list, like number
+  take word, like list, like number
+  take from, like number
+  like number
+  mark private
+
+  save at, from
+  fork test, is-below(at, 0)
+    hold
+      save at, 0
+  walk test
+    hook test, is-maximum(add(at, word/length), row/length)
+    hook hold
+      fork test, units-at(row, at, word)
+        hold
+          back at
+      save at, add(at, 1)
+  back -1
+
+# whether the units before `at` end in one of the head words and white space: `(?:^|\s)(?:task|rule)\s+$`
+task follows-head
+  take row, like list, like number
+  take at, like number
+  take heads, like list, like text
+  like boolean
+  mark private
+
+  save end, at
+  walk test
+    hook test, and(is-above(end, 0), is-space-unit(get(row, subtract(end, 1))))
+    hook hold
+      save end, subtract(end, 1)
+  fork test, is-equal(end, at)
+    hold
+      back false
+  walk heads
+    take one
+    save word, units-of(one)
+    save start, subtract(end, word/length)
+    fork test, and(is-minimum(start, 0), units-at(row, start, word))
+      hold
+        fork test, is-equal(start, 0)
+          hold
+            back true
+        fork test, is-space-unit(get(row, subtract(start, 1)))
+          hold
+            back true
+  back false
+
+# the span of `name` written as a whole word inside `where`, searching from its start, over the lines as units. None
+# when the text does not hold it (a synthesized node, or a span from a different text)
+task name-in-rows
+  take rows
+    like list
+      like list, like number
+  take where, like span
+  take name, like text
+  take heads, like list, like text
+  like maybe, like span
+  mark private
+
+  save written, written-name(name)
+  fork test, is-equal(written, <>)
+    hold
+      back make none
+  save word, units-of(written)
+  save last, where/end/line
+  fork test, is-above(last, subtract(rows/length, 1))
+    hold
+      save last, subtract(rows/length, 1)
+  save passes, make list
+  fork test, is-above(heads/length, 0)
+    hold
+      push(passes, true)
+  push(passes, false)
+  walk passes
+    take strict
+    save line, where/start/line
+    fork test, is-below(line, 0)
+      hold
+        save line, 0
+    walk test
+      hook test, is-maximum(line, last)
+      hook hold
+        save row, get(rows, line)
+        save from, 0
+        fork test, is-equal(line, where/start/line)
+          hold
+            save from, where/start/column
+        save to, row/length
+        fork test, and(is-equal(line, where/end/line), is-below(where/end/column, to))
+          hold
+            save to, where/end/column
+        save at, index-of-units(row, word, from)
+        walk test
+          hook test, and(is-minimum(at, 0), is-maximum(add(at, word/length), to))
+          hook hold
+            save before-unit, 32
+            fork test, is-above(at, 0)
+              hold
+                save before-unit, get(row, subtract(at, 1))
+            save after-unit, 32
+            fork test, is-below(add(at, word/length), row/length)
+              hold
+                save after-unit, get(row, add(at, word/length))
+            save whole, and(is-equal(is-name-unit(before-unit), false), is-equal(is-name-unit(after-unit), false))
+            save placed, true
+            fork test, strict
+              hold
+                save placed, follows-head(row, at, heads)
+            fork test, and(whole, placed)
+              hold
+                save start
+                  make position
+                    bind line, line
+                    bind column, at
+                save end
+                  make position
+                    bind line, line
+                    bind column, add(at, word/length)
+                save found
+                  make span
+                    bind start, start
+                    bind end, end
+                back make(some, found)
+            save at, index-of-units(row, word, add(at, 1))
+        save line, add(line, 1)
+  back make none
+
+# a text's lines, as UTF-16 units
+task rows-of
+  take text, like text
+  like list
+    like list, like number
+  mark private
+
+  save rows, make list
+  save row, make list
+  walk units-of(text)
+    take unit
+    fork test, is-equal(unit, 10)
+      hold
+        push(rows, row)
+        save row, make list
+      miss
+        push(row, unit)
+  push(rows, row)
+  back rows
+
+# the span of `name` written as a whole word inside `where`, searching from its start. `heads` are the words the name
+# must follow on its line, tried first (`take` for a parameter); none tries anywhere
+task find-name
+  take lines, like list, like text
+  take where, like span
+  take name, like text
+  take heads
+    like list, like text
+    fall make list
+  like maybe, like span
+
+  # only the lines the span reaches are read
+  save rows, make list
+  save line, 0
+  walk lines
+    take one
+    fork test, and(is-minimum(line, where/start/line), is-maximum(line, where/end/line))
+      hold
+        push(rows, units-of(one))
+      miss
+        save blank, make list
+        push(rows, blank)
+    save line, add(line, 1)
+  back name-in-rows(rows, where, name, heads)
+
+# ---- building the index ----
+
+# a host answer that is a non-empty text, as a maybe. Narrowed through `like unknown` (traps.md: a `sift` on a dock's
+# `dynamic` compares with the word), which also tells a need-false text that is absent
+task given-text
+  take value, like unknown
+  like maybe, like text
+  mark private
+
+  sift value
+    case text
+      fork test, is-unequal(value, <>)
+        hold
+          back make(some, value)
+    miss
+      back make none
+  back make none
+
+task add-aliases
+  take entries, like list, like find-entry
+  take aliases, like hash, like text, like text
+  like void
+  mark private
+
+  walk entries
+    take entry
+    save at, 0
+    walk test
+      hook test, is-below(at, entry/names/length)
+      hook hold
+        save alias, given-text(get(entry/aliases, at))
+        sift alias
+          case some
+            link written
+            aliases/set(get(entry/names, at), written)
+          case none
+            save skipped, true
+        save at, add(at, 1)
+
+# the aliases the text's `find` lines write, by the name each binds
+task aliases-of
+  take text, like text
+  like hash, like text, like text
+  mark private
+
+  save aliases, make hash
+  fork test, is-equal(text, <>)
+    hold
+      back aliases
+  save source
+    make index-source
+      bind file, <\<index\>>
+      bind text, text
+  save memo, load-module/makeParseMemo(4)
+  add-aliases(load-module/importFindsOf(source, memo), aliases)
+  back aliases
+
+task name-in
+  take build, like index-build
+  take where, like span
+  take name, like text
+  take heads, like list, like text
+  like maybe, like span
+  mark private
+
+  back name-in-rows(build/rows, where, name, heads)
+
+task closure-param-text
+  take param, like closure-param
+  like text
+  mark private
+
+  sift param/type
+    case some
+      link given
+      back show-type(given)
+    case none
+      back show-type(unknown-type())
+
+task function-param-text
+  take param, like function-param
+  like text
+  mark private
+
+  sift param/type
+    case some
+      link given
+      back show-type(given)
+    case none
+      back show-type(unknown-type())
+
+# a function's parameter types and result, none for any other statement's
+task signature-of
+  take one, like statement
+  like signature
+  mark private
+
+  save shown, make list
+  save result-text, show-type(unit-type())
+  sift one
+    case function
+      walk params
+        take param
+        save typed
+          make param-type
+            bind name, param/name
+            bind type, function-param-text(param)
+        push(shown, typed)
+      sift result
+        case some
+          link given
+          save result-text, show-type(given)
+        case none
+          save kept, true
+    miss
+      save kept, true
+  back make(signature, bind(params, shown), bind(result, result-text))
+
+# `(a: number, b: number) -> number`
+task signature-text
+  take sig, like signature
+  like text
+  mark private
+
+  save parts, make list
+  walk sig/params
+    take one
+    push(parts, <{one/name}: {one/type}>)
+  save joined, join(parts, <, >)
+  back <({joined}) -\> {sig/result}>
+
+task define
+  take build, like index-build
+  take name, like text
+  take kind, like text
+  take where, like span
+  take detail, like text
+  take heads, like list, like text
+  like definition
+  mark private
+
+  save entry
+    make definition
+      bind name, name
+      bind kind, kind
+      bind span, where
+      bind detail, detail
+      bind at, name-in(build, where, name, heads)
+  fork test, is-equal(build/definitions/has(name), false)
+    hold
+      build/definitions/set(name, entry)
+  back entry
+
+task reference-at-name
+  take build, like index-build
+  take name, like text
+  take where, like span
+  like maybe, like span
+  mark private
+
+  save none-heads, make list
+  save found, name-in(build, where, name, none-heads)
+  sift found
+    case some
+      link hit
+      back make(some, hit)
+    case none
+      fork test, build/aliases/has(name)
+        hold
+          back name-in(build, where, build/aliases/get(name), none-heads)
+  back make none
+
+task refer
+  take build, like index-build
+  take name, like text
+  take where, like span
+  like void
+  mark private
+
+  save one
+    make reference
+      bind name, name
+      bind span, where
+      bind at, reference-at-name(build, name, where)
+  push(build/references, one)
+
+task local-of
+  take build, like index-build
+  take name, like text
+  take kind, like text
+  take detail, like text
+  take where, like span
+  take heads, like list, like text
+  like scope-local
+  mark private
+
+  back make(scope-local, bind(name, name), bind(kind, kind), bind(detail, detail), bind(span, where), bind(at, name-in(build, where, name, heads)))
+
+# references, and the parameters a task written as a value adds to the enclosing function's scope
+task index-expression
+  take build, like index-build
+  take node, like expression
+  take locals, like list, like scope-local
+  like void
+  mark private
+
+  sift node
+    case variable
+      refer(build, name, span)
+    case hole
+      refer(build, name, span)
+    case record
+      refer(build, name, span)
+      walk fields
+        take field
+        index-expression(build, field/value, locals)
+      # read where it stands, never handed to a call, which would write an empty list into a record that has none
+      walk positional
+        take one
+        index-expression(build, one, locals)
+    case binary
+      index-expression(build, left, locals)
+      index-expression(build, right, locals)
+    case unary
+      index-expression(build, operand, locals)
+    case call
+      index-expression(build, callee, locals)
+      walk args
+        take arg
+        index-expression(build, arg, locals)
+    case member
+      index-expression(build, target, locals)
+      sift index
+        case some
+          link inner
+          index-expression(build, inner, locals)
+        case none
+          save nothing, 0
+    case await
+      index-expression(build, expr, locals)
+    case array
+      walk items
+        take item
+        index-expression(build, item, locals)
+    case map
+      walk entries
+        take entry
+        index-expression(build, entry/key, locals)
+        index-expression(build, entry/value, locals)
+    case template
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            index-expression(build, inner, locals)
+          miss
+            save nothing, 0
+    case closure
+      save take-heads, make list, <take>
+      walk params
+        take param
+        push(locals, local-of(build, param/name, <parameter>, closure-param-text(param), span, take-heads))
+      index-statements(build, body, locals)
+    case conditional
+      walk branches
+        take branch
+        index-expression(build, branch/cond, locals)
+        index-expression(build, branch/value, locals)
+      sift otherwise
+        case some
+          link last
+          index-expression(build, last, locals)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+
+task index-statements
+  take build, like index-build
+  take block, like list, like statement
+  take locals, like list, like scope-local
+  like void
+  mark private
+
+  walk block
+    take one
+    sift one
+      case let
+        index-expression(build, init, locals)
+        save detail, show-type(unknown-type())
+        sift type
+          case some
+            link given
+            save detail, show-type(given)
+          case none
+            save kept, true
+        save let-heads, make list, <save>, <host>
+        push(locals, local-of(build, name, <local>, detail, span, let-heads))
+      case assign
+        index-expression(build, target, locals)
+        index-expression(build, value, locals)
+      case expression
+        index-expression(build, expr, locals)
+      case hold
+        index-expression(build, expr, locals)
+      case return
+        sift value
+          case some
+            link sent
+            index-expression(build, sent, locals)
+          case none
+            save nothing, 0
+      case throw
+        index-expression(build, value, locals)
+      case while
+        index-expression(build, cond, locals)
+        index-statements(build, body, locals)
+      case for-each
+        index-expression(build, iterable, locals)
+        save loop-heads, make list, <name>, <take>
+        save names, make list
+        save item-name, given-text(item)
+        sift item-name
+          case some
+            link written
+            push(names, written)
+          case none
+            save kept, true
+        save index-name, given-text(index)
+        sift index-name
+          case some
+            link written
+            push(names, written)
+          case none
+            save kept, true
+        walk names
+          take one-name
+          push(locals, local-of(build, one-name, <local>, <iteration item>, span, loop-heads))
+        index-statements(build, body, locals)
+      case if
+        walk branches
+          take branch
+          index-expression(build, branch/cond, locals)
+          index-statements(build, branch/body, locals)
+        sift otherwise
+          case some
+            link rest
+            index-statements(build, rest, locals)
+          case none
+            save nothing, 0
+      case match
+        index-expression(build, subject, locals)
+        walk cases
+          take arm
+          index-statements(build, arm/body, locals)
+        sift otherwise
+          case some
+            link rest
+            index-statements(build, rest, locals)
+          case none
+            save nothing, 0
+      case guard
+        # `mark unsafe` and its handler: the body is ordinary code, and the handler's `take <name>` a local
+        index-statements(build, body, locals)
+        sift catch
+          case some
+            link handler
+            save catch-heads, make list, <take>
+            push(locals, local-of(build, handler/name, <local>, <exception>, handler/span, catch-heads))
+            index-statements(build, handler/body, locals)
+          case none
+            save nothing, 0
+      case function
+        index-statements(build, body, locals)
+      miss
+        save nothing, 0
+
+task build-index
+  take program, like list, like statement
+  take text
+    like text
+    fall <>
+  like symbol-index
+
+  save build
+    make index-build
+      bind rows, rows-of(text)
+      bind aliases, aliases-of(text)
+      bind definitions, make hash
+      bind references, make list
+  save functions, make list
+  save scopes, make list
+  save signatures, make hash
+
+  # top-level definitions first, so forward references resolve
+  walk program
+    take statement
+    sift statement
+      case function
+        save sig, signature-of(statement)
+        save task-heads, make list, <task>, <rule>
+        save entry, define(build, name, <function>, span, signature-text(sig), task-heads)
+        push(functions, entry)
+        signatures/set(name, sig)
+      case record-type
+        save form-kind, <struct>
+        fork test, is-above(variants/length, 0)
+          hold
+            save form-kind, <enum>
+        save form-heads, make list, <form>
+        define(build, name, <type>, span, form-kind, form-heads)
+        save case-heads, make list, <case>
+        walk variants
+          take variant
+          define(build, variant/name, <variant>, span, <{name} variant>, case-heads)
+      case mask
+        save mask-heads, make list, <mask>
+        define(build, name, <trait>, span, <trait>, mask-heads)
+      miss
+        save nothing, 0
+
+  # references, and each function's local scope
+  walk program
+    take statement
+    sift statement
+      case function
+        save locals, make list
+        save param-heads, make list, <take>, <slot>
+        walk params
+          take param
+          push(locals, local-of(build, param/name, <parameter>, function-param-text(param), span, param-heads))
+        index-statements(build, body, locals)
+        walk read have
+          take one
+          index-expression(build, one, locals)
+        walk read must
+          take one
+          index-expression(build, one, locals)
+        save scope
+          make function-scope
+            bind name, name
+            bind span, span
+            bind locals, locals
+        push(scopes, scope)
+      miss
+        save nothing, 0
+
+  back make(symbol-index, bind(definitions, build/definitions), bind(references, build/references), bind(functions, functions), bind(scopes, scopes), bind(signatures, signatures))
+
+# every function's signature. A signature is span-free, so this is safe over the whole merged program: signature help
+# and argument-type ranking then work for imported functions too, while the document-scoped index keeps definitions and
+# references local
+task signatures-of
+  take program, like list, like statement
+  like hash, like text, like signature
+
+  save signatures, make hash
+  walk program
+    take statement
+    sift statement
+      case function
+        signatures/set(name, signature-of(statement))
+      miss
+        save nothing, 0
+  back signatures
+
+# ---- queries ----
+
+# a compiler position as an LSP one (the two differ only in the column's name)
+task lsp-of
+  take at, like position
+  like lsp-position
+  mark private
+
+  back make(lsp-position, bind(line, at/line), bind(character, at/column))
+
+task holds-position
+  take where, like span
+  take at, like lsp-position
+  like boolean
+  mark private
+
+  back within(where, at)
+
+task span-size
+  take where, like span
+  like number
+  mark private
+
+  back add(multiply(subtract(where/end/line, where/start/line), 100000), subtract(where/end/column, where/start/column))
+
+# is the position at or after the start of a span (a local is in scope once its declaration has begun)
+task begun-at
+  take where, like span
+  take at, like lsp-position
+  like boolean
+  mark private
+
+  back or(is-above(at/line, where/start/line), and(is-equal(at/line, where/start/line), is-minimum(at/character, where/start/column)))
+
+# the reference under the position. A reference whose NAME is under the cursor wins; failing that, the narrowest
+# reference whose expression contains it (the cursor on `read` of `read n` still means `n`)
+task reference-at
+  take symbols, like symbol-index
+  take at, like lsp-position
+  take strict
+    like boolean
+    fall false
+  like maybe, like reference
+
+  walk symbols/references
+    take ref
+    sift ref/at
+      case some
+        link written
+        fork test, holds-position(written, at)
+          hold
+            back make(some, ref)
+      case none
+        save kept, true
+  fork test, strict
+    hold
+      back make none
+
+  save best, -1
+  save best-size, 0
+  save k, 0
+  walk symbols/references
+    take ref
+    fork test, holds-position(ref/span, at)
+      hold
+        save size, span-size(ref/span)
+        fork test, or(is-below(best, 0), is-below(size, best-size))
+          hold
+            save best, k
+            save best-size, size
+    save k, add(k, 1)
+  fork test, is-below(best, 0)
+    hold
+      back make none
+  save chosen, get(symbols/references, best)
+  back make(some, chosen)
+
+# whether a function holding the position has a parameter or local of this name
+task scope-holding
+  take symbols, like symbol-index
+  take at, like lsp-position
+  take name, like text
+  like maybe, like function-scope
+  mark private
+
+  walk symbols/scopes
+    take scope
+    fork test, holds-position(scope/span, at)
+      hold
+        walk scope/locals
+          take local
+          fork test, is-equal(local/name, name)
+            hold
+              back make(some, scope)
+  back make none
+
+# what a position names: a reference, a top-level definition's name, or a parameter's or local's name, with the
+# function it is confined to for a parameter or a local
+task symbol-at
+  take symbols, like symbol-index
+  take at, like lsp-position
+  take strict
+    like boolean
+    fall false
+  like maybe, like named-symbol
+
+  # a definition's own name
+  walk symbols/definitions/values()
+    take one
+    sift one/at
+      case some
+        link written
+        fork test, holds-position(written, at)
+          hold
+            save plain, make(named-symbol, bind(name, one/name))
+            back make(some, plain)
+      case none
+        save kept, true
+
+  walk symbols/scopes
+    take scope
+    walk scope/locals
+      take local
+      sift local/at
+        case some
+          link written
+          fork test, holds-position(written, at)
+            hold
+              save confined, make(named-symbol, bind(name, local/name), bind(scope, make(some, scope)))
+              back make(some, confined)
+        case none
+          save kept, true
+
+  save found, reference-at(symbols, at, strict)
+  sift found
+    case some
+      link ref
+      # a reference to a parameter or local of the function it sits in is that local, not a top-level name
+      save holder, scope-holding(symbols, lsp-of(ref/span/start), ref/name)
+      sift holder
+        case some
+          link scope
+          save confined, make(named-symbol, bind(name, ref/name), bind(scope, make(some, scope)))
+          back make(some, confined)
+        case none
+          save plain, make(named-symbol, bind(name, ref/name))
+          back make(some, plain)
+    case none
+      back make none
+  back make none
+
+# a span, unless one starting at the same place is already in
+task add-once
+  take out, like list, like span
+  take seen, like hash, like text, like boolean
+  take one, like span
+  like void
+  mark private
+
+  save key, <{one/start/line}:{one/start/column}>
+  fork test, is-equal(seen/has(key), false)
+    hold
+      seen/set(key, true)
+      push(out, one)
+
+# spans by line, then column, the equal ones in the order they came
+task sort-spans
+  take spans, like list, like span
+  like list, like span
+  mark private
+
+  save out, make list
+  walk spans
+    take one
+    save place, out/length
+    walk test
+      hook test, and(is-above(place, 0), span-after(get(out, subtract(place, 1)), one))
+      hook hold
+        save place, subtract(place, 1)
+    save moved, make list
+    save k, 0
+    walk out
+      take kept
+      fork test, is-equal(k, place)
+        hold
+          push(moved, one)
+      push(moved, kept)
+      save k, add(k, 1)
+    fork test, is-equal(place, out/length)
+      hold
+        push(moved, one)
+    save out, moved
+  back out
+
+task span-after
+  take left, like span
+  take right, like span
+  like boolean
+  mark private
+
+  back or(is-above(left/start/line, right/start/line), and(is-equal(left/start/line, right/start/line), is-above(left/start/column, right/start/column)))
+
+# every place a symbol's NAME is written: its references and its definition, confined to the declaring function for a
+# parameter or local. Only name spans: a reference whose name was not found in the text is left out rather than
+# answered with its whole expression
+task occurrences-of
+  take symbols, like symbol-index
+  take symbol, like named-symbol
+  like list, like span
+
+  save out, make list
+  save seen, make hash
+  walk symbols/references
+    take ref
+    fork test, is-equal(ref/name, symbol/name)
+      hold
+        save start, lsp-of(ref/span/start)
+        save counted, true
+        sift symbol/scope
+          case some
+            link scope
+            save counted, holds-position(scope/span, start)
+          case none
+            # a reference inside a function that has its own local of this name is that local's, not the top-level one
+            save holder, scope-holding(symbols, start, symbol/name)
+            sift holder
+              case some
+                save counted, false
+              case none
+                save kept, true
+        fork test, counted
+          hold
+            sift ref/at
+              case some
+                link written
+                add-once(out, seen, written)
+              case none
+                save kept, true
+
+  sift symbol/scope
+    case some
+      link scope
+      walk scope/locals
+        take local
+        fork test, is-equal(local/name, symbol/name)
+          hold
+            sift local/at
+              case some
+                link written
+                add-once(out, seen, written)
+              case none
+                save kept, true
+    case none
+      fork test, symbols/definitions/has(symbol/name)
+        hold
+          save one, symbols/definitions/get(symbol/name)
+          sift one/at
+            case some
+              link written
+              add-once(out, seen, written)
+            case none
+              save kept, true
+  back sort-spans(out)
+
+# the names visible at a position: every top-level definition plus the enclosing function's parameters and the locals
+# introduced before the cursor
+task scope-at
+  take symbols, like symbol-index
+  take at, like lsp-position
+  like list, like definition
+
+  save out, make list
+  walk symbols/definitions/values()
+    take one
+    push(out, one)
+  walk symbols/scopes
+    take scope
+    fork test, holds-position(scope/span, at)
+      hold
+        walk scope/locals
+          take local
+          fork test, or(is-equal(local/kind, <parameter>), begun-at(local/span, at))
+            hold
+              save shown
+                make definition
+                  bind name, local/name
+                  bind kind, local/kind
+                  bind span, local/span
+                  bind detail, local/detail
+                  bind at, local/at
+              push(out, shown)
+        back out
+  back out
+
+# every expression in a program, a parent before its parts. Every statement and expression form a body can hold is
+# walked, so one inside `mark unsafe`, a closure or a text template is found as well
+task expressions-of
+  take program, like list, like statement
+  like list, like expression
+
+  save out, make list
+  statements-in(program, out)
+  back out
+
+# every call in a program, in the same order
+task calls-of
+  take program, like list, like statement
+  like list, like expression
+
+  save out, make list
+  walk expressions-of(program)
+    take node
+    sift node
+      case call
+        push(out, node)
+      miss
+        save nothing, 0
+  back out
+
+# the name a callee is written by, when it is a plain name
+task callee-name
+  take node, like expression
+  like maybe, like text
+  mark private
+
+  sift node
+    case variable
+      back make(some, name)
+    miss
+      back make none
+
+# the innermost call enclosing the position, with the active argument index, for signature help
+task call-at
+  take program, like list, like statement
+  take at, like lsp-position
+  like maybe, like call-site
+
+  save best-name, <>
+  save best-active, 0
+  save best-size, 0
+  save found, false
+  walk calls-of(program)
+    take node
+    sift node
+      case call
+        save call-span, span
+        save named, callee-name(callee)
+        sift named
+          case some
+            link written
+            fork test, holds-position(call-span, at)
+              hold
+                # the active parameter is the count of arguments that begin before the cursor
+                save begun, 0
+                save inside, false
+                walk args
+                  take arg
+                  save arg-span, expression-span(arg)
+                  fork test, begun-at(arg-span, at)
+                    hold
+                      save begun, add(begun, 1)
+                  fork test, holds-position(arg-span, at)
+                    hold
+                      save inside, true
+                fork test, inside
+                  hold
+                    save begun, subtract(begun, 1)
+                fork test, is-below(begun, 0)
+                  hold
+                    save begun, 0
+                save size, span-size(call-span)
+                fork test, or(is-equal(found, false), is-below(size, best-size))
+                  hold
+                    save found, true
+                    save best-name, written
+                    save best-active, begun
+                    save best-size, size
+          case none
+            save kept, true
+      miss
+        save kept, true
+  fork test, found
+    hold
+      save site, make(call-site, bind(name, best-name), bind(active-param, best-active))
+      back make(some, site)
+  back make none

@@ -45,6 +45,7 @@ load ../compile/node
   find statement-span
   find expression-span
   find type
+  find form-extend
 
 load ../compile/node-rewrite
   find copy-expression

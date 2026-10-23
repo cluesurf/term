@@ -37,6 +37,12 @@ async function openFile(rel: string, text?: string): Promise<{ uri: string; text
   return { uri, text: body }
 }
 
+// work/halt.tree as it stood when this suite was written, opened at its own path with the fixture as the editor's
+// buffer: the file on disk is rewritten by the CLI's port lanes (its lines moved to work/small/halting.tree on
+// 2026-10-23), and a suite that reads it from disk measured that churn instead of the server
+const HALT = readFileSync(join(term, 'test/server/fixture/navigate/halt.tree'), 'utf8')
+const openHalt = (): Promise<{ uri: string; text: string }> => openFile('deck/call/code/work/halt.tree', HALT)
+
 // the position of `needle` on the first line holding `line`, `offset` characters into the needle
 function at(text: string, line: string | number, needle: string, offset = 1): { line: number; character: number } {
   const lines = text.split('\n')
@@ -69,7 +75,7 @@ const ends = (location: Location | null, suffix: string): boolean => !!location 
 
 // ---- 1. names, across files, through load / find ----
 {
-  const halt = await openFile('deck/call/code/work/halt.tree')
+  const halt = await openHalt()
 
   const lean = await definition(halt.uri, at(halt.text, 'log-good <Nothing to stop>', 'log-good'))
   ok('name: a bare lean call goes to its task in the module that exports it', ends(lean, 'work/tint.tree') && /log-good/.test(lineAt(lean)), JSON.stringify(lean))
@@ -91,7 +97,7 @@ const ends = (location: Location | null, suffix: string): boolean => !!location 
 
 // ---- 2. the path of a load ----
 {
-  const halt = await openFile('deck/call/code/work/halt.tree')
+  const halt = await openHalt()
   // the short form: `@term/call/work/tint` resolves in @term/call's code root first
   const tint = await definition(halt.uri, at(halt.text, 'load @term/call/work/tint', 'work/tint'))
   ok('path: a package path opens the module, line 1', ends(tint, 'deck/call/code/work/tint.tree') && tint!.range.start.line === 0, JSON.stringify(tint))
@@ -110,7 +116,7 @@ const ends = (location: Location | null, suffix: string): boolean => !!location 
 
 // ---- 3. a `find` under a load ----
 {
-  const halt = await openFile('deck/call/code/work/halt.tree')
+  const halt = await openHalt()
   const found = await definition(halt.uri, at(halt.text, '  find log-step', 'log-step'))
   ok('find: goes to the name in the module the load opens', ends(found, 'work/tint.tree') && /log-step/.test(lineAt(found)), JSON.stringify(found))
 
@@ -176,7 +182,7 @@ const ends = (location: Location | null, suffix: string): boolean => !!location 
 
 // ---- links in a code file ----
 {
-  const halt = await openFile('deck/call/code/work/halt.tree')
+  const halt = await openHalt()
   const links = (await server.dispatch({ jsonrpc: '2.0', id: id++, method: 'textDocument/documentLink', params: { textDocument: { uri: halt.uri } } }))[0]!.result as { range: Range; target: string }[]
   const first = halt.text.split('\n')[0]!
   ok(

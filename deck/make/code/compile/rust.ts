@@ -45,6 +45,7 @@ import {
   inspectFormsOf,
 } from '@term/make/code/compile/backend'
 import type { Lend, TextCursors } from '@term/make/code/compile/backend'
+import type { WakeGroup } from '@term/make/code/compile/wake'
 import { privateForms } from '@term/make/code/compile/place'
 import { raiseSetsOf } from '@term/make/code/check/effects'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
@@ -95,14 +96,6 @@ const rustContext: {
 
 function rustType(type: Type | undefined): string {
   return rustNames.rustType(boxed(type) as never, rustContext as never)
-}
-
-// the roll grouped by deck, for the generated wake chain (the same shape emitTypeScript takes)
-export type WakeGroup = {
-  deck: string
-  entries: Record<string, unknown>[]
-  // the deck's static exception, tell and dock entries, for `hive_wake_typed` (compile.ts `wakeGroups`)
-  typed?: { exceptions: Record<string, unknown>[]; tells: Record<string, unknown>[]; docks: Record<string, unknown>[] }
 }
 
 // what one emission pass cloned (item 0029): the forms named in any cloned type, and whether any clone was of a type

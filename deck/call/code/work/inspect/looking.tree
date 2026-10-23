@@ -1,0 +1,369 @@
+# `term look <module>`: what a module exposes (forms and tasks with signatures), following its load and bear graph.
+# The target is a package path (`@cluesurf/bind/code/browser/dom`) or a `.tree` file. A data file lists its keys
+# instead, a path per row. Output: a table (default), `--json`, or `--csv`.
+#
+# THE ANSWER IS DATA. The table, the JSON and the CSV go to stdout through printData, so a pipe gets them clean; the
+# run around them (what was read, the counts, a failure) is items on stderr.
+#
+# Ported from call/code/look.ts (term-cli-in-term-0055). The type printer (compile/type-text) is loaded; the module
+# inspector, the compiler, the data reader (compile/host), the role readers, the project resolver and the deck reader
+# are docked until their own ports land, and every item prints through the output library, docked.
+
+load @term/make/compile/type-text
+  find show-type
+
+dock load
+  load <@term/make/code/inspect>, name inspect-module
+  load <@term/make/code/compile/compile>, name compile-module
+  load <@term/make/code/compile/host>, name data-module
+  load <@term/call/code/role-of>, name role-module
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/deck-of>, name deck-of-module
+  load <@term/call/code/output>, name output
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+
+# ---- the host values Term has no word for ----
+
+bind nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind new-map
+  like dynamic
+  case node
+    text <new Map()>
+
+bind map-set
+  take map, like dynamic
+  take key, like dynamic
+  take value, like text
+  like void
+  case node
+    text <$map.set($key, $value)>
+
+bind resolve-with
+  take resolve, like dynamic
+  take path, like dynamic
+  take from, like dynamic
+  like dynamic
+  case node
+    text <$resolve($path, $from)>
+
+# compile/host.ts `toJsonValue(data)`, called by its exact name: a dock member spelled to-json-value is emitted
+# toJSONValue (traps.md)
+bind json-value-of
+  take module, like dynamic
+  take data, like dynamic
+  like dynamic
+  case node
+    text <$module.toJsonValue($data)>
+
+# compile/host.ts and inspect.ts `toJson(...)`, by their exact name
+bind json-text-of
+  take module, like dynamic
+  take value, like dynamic
+  like text
+  case node
+    text <$module.toJson($value)>
+
+bind json-pretty
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value, null, 2)>
+
+# a text's length in UTF-16 units, which is what a column is padded by
+bind units
+  take value, like dynamic
+  like number
+  case node
+    text <$value.length>
+
+bind pad-end
+  take value, like dynamic
+  take width, like number
+  like text
+  case node
+    text <$value.padEnd($width)>
+
+# a CSV cell: quoted, its quotes doubled, when it holds a quote, a comma or a line break
+bind cell
+  take value, like dynamic
+  like text
+  case node
+    text <(/[",\\n]/.test($value) ? '"' + $value.replace(/"/g, '""') + '"' : $value)>
+
+# ---- what is said ----
+
+form facts-open
+  link verb, like text
+  link root, like dynamic
+  link facts, like list, like dynamic
+
+form problem-item
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+
+form verb-problem-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+
+form fields-problem-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form check-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link counts, like list, like dynamic
+  link fields, like list, like dynamic
+
+form counted-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link counts, like list, like dynamic
+
+form plain-close
+  link verdict, like text
+
+form next-close
+  link verdict, like text
+  link next, like text
+
+form usage-close
+  link verdict, like text
+  link next, like text
+  link failure, like text
+
+form counted-close
+  link verdict, like text
+  link counts, like list, like dynamic
+
+form facts-close
+  link verdict, like text
+  link facts, like list, like text
+
+form source
+  link file, like dynamic
+  link text, like dynamic
+
+form compile-ask
+  link resolve, like dynamic
+  link role-of, like dynamic
+  link lean-of, like dynamic
+
+form problem-entry
+  link diagnostic, like dynamic
+  link text, like dynamic
+
+task one-of
+  take value, like dynamic
+  like list, like dynamic
+  mark private
+
+  save out, make list
+  out/push(value)
+  back out
+
+# `name` or `names`
+task plural-s
+  take amount, like number
+  like text
+  mark private
+
+  fork test, is-equal(amount, 1)
+    hold
+      back <>
+  back <s>
+
+# `term look` on a data file: every key as a path, its kind, and its value (or how much a map or a list holds).
+# `--json` prints the value itself, keys in snake case, the way `term make` would export it
+task look-data
+  take entry, like dynamic
+  take input, like dynamic
+  take root, like dynamic
+  like void
+  mark private
+
+  save read, data-module/read-data-text(entry)
+  save expanded, read
+  fork test, is-truthy(read/ok)
+    hold
+      save expanded, data-module/expand-data(read/data, entry/file)
+  fork test, not(is-truthy(expanded/ok))
+    hold
+      # each defect a Problem item with its frame (section 12)
+      save problems, make list
+      walk expanded/diagnostics
+        take diagnostic
+        problems/push(make(problem-entry, bind(diagnostic, diagnostic), bind(text, entry/text)))
+      output/report-problems(problems, root)
+      output/close-run(make(plain-close, bind(verdict, <The data file does not read>)))
+      back
+  save keys, data-module/data-keys(expanded/data)
+  fork test, is-truthy(input/json)
+    hold
+      output/print-data(<{json-pretty(json-value-of(data-module, expanded/data))}\n>)
+    miss
+      fork test, is-truthy(input/csv)
+        hold
+          save lines, make list
+          lines/push(<path,kind,value>)
+          walk keys
+            take key
+            lines/push(<{cell(key/path)},{cell(key/kind)},{cell(key/value)}>)
+          output/print-data(<{lines/join(<\n>)}\n>)
+        miss
+          save path-width, 4
+          save kind-width, 4
+          walk keys
+            take key
+            fork test, is-above(units(key/path), path-width)
+              hold
+                save path-width, units(key/path)
+            fork test, is-above(units(key/kind), kind-width)
+              hold
+                save kind-width, units(key/kind)
+          save lines, make list
+          lines/push(<  {pad-end(<path>, path-width)}  {pad-end(<kind>, kind-width)}  value>)
+          walk keys
+            take key
+            lines/push(<  {pad-end(key/path, path-width)}  {pad-end(key/kind, kind-width)}  {key/value}>)
+          output/print-data(<{lines/join(<\n>)}\n>)
+  save facts, make list
+  facts/push(<data>)
+  output/close-run(make(facts-close, bind(verdict, <{keys/length} key{plural-s(keys/length)} listed>), bind(facts, facts)))
+
+task call-look
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  save target, input/target
+  save facts, make list
+  fork test, is-truthy(target)
+    hold
+      facts/push(target)
+  fork test, is-truthy(input/kind)
+    hold
+      facts/push(input/kind)
+  output/open-run(make(facts-open, bind(verb, <look>), bind(root, root), bind(facts, facts)))
+  fork test, not(is-truthy(target))
+    hold
+      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <Name a module to look at>)))
+      output/close-run(make(usage-close, bind(verdict, <Nothing to look at>), bind(next, <term look \<module\> [--json|--csv] [--kind form|task]>), bind(failure, <usage>)))
+      back
+  save resolve, make-module/project-resolver(root)
+  # a package path resolves through the project resolver; otherwise it is a file on disk
+  save entry, nothing()
+  fork test, target/starts-with(<@>)
+    hold
+      save entry, resolve-with(resolve, target, root)
+      fork test, not(is-truthy(entry))
+        hold
+          output/report(make(fields-problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <resolve>), bind(subject, <{target} does not resolve>), bind(fields, one-of(output/field(<why>, <the package may not be linked>)))))
+          output/close-run(make(next-close, bind(verdict, <Nothing to look at>), bind(next, <term link>)))
+          back
+    miss
+      save file, node-path/resolve(root, target)
+      save read, false
+      fork
+        mark unsafe
+        save entry, make(source, bind(file, file), bind(text, node-fs/read-file-sync(file, <utf-8>)))
+        save read, true
+      halt take
+        take error
+        save read, false
+      fork test, not(read)
+        hold
+          output/report(make(verb-problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <read>), bind(subject, <There is no file {target}>)))
+          output/close-run(make(plain-close, bind(verdict, <Nothing to look at>)))
+          back
+  # a data file has no forms or tasks: list its keys instead, a path per row
+  fork test, data-module/is-data-file(entry)
+    hold
+      look-data(entry, input, root)
+      back
+  save inspection, inspect-module/inspect-module(entry, resolve, deck-of-module/project-deck-of())
+  # a task that writes no result type gets the one the checker infers, when the module compiles. One that does not
+  # compile is listed as written, which is what `look` printed for everything until 2026-10-04
+  save checked, compile-module/compile(entry, make(compile-ask, bind(resolve, resolve), bind(role-of, role-module/project-role-of(root)), bind(lean-of, role-module/project-lean-of(root))))
+  fork test, is-truthy(checked/ok)
+    hold
+      save results, new-map()
+      walk checked/program
+        take one
+        fork test, and(is-equal(one/form, <function>), is-truthy(one/result))
+          hold
+            map-set(results, one/name, show-type(one/result))
+      inspect-module/fill-inferred(inspection/symbols, results)
+    miss
+      save errors, 0
+      walk checked/diagnostics
+        take one
+        fork test, is-unequal(one/severity, <warning>)
+          hold
+            save errors, add(errors, 1)
+      fork test, is-above(errors, 0)
+        hold
+          # listed from its source all the same, which is still the answer to "what does it offer", and said so
+          output/report(make(check-item, bind(glyph, <warning>), bind(verb, <check>), bind(subject, <The module does not compile, so its signatures are as written>), bind(counts, one-of(output/count(errors, <errors>, <error>))), bind(fields, one-of(output/field(<next>, <term scan {target}>)))))
+  save listed, inspection/offered
+  save modules, inspection/offered-modules
+  fork test, is-truthy(input/all)
+    hold
+      save listed, inspection/symbols
+      save modules, inspection/modules
+  save filtered, listed
+  fork test, is-truthy(input/kind)
+    hold
+      save filtered, make list
+      walk listed
+        take one
+        fork test, is-equal(one/kind, input/kind)
+          hold
+            filtered/push(one)
+  fork test, is-truthy(input/json)
+    hold
+      output/print-data(<{json-text-of(inspect-module, filtered)}\n>)
+    miss
+      fork test, is-truthy(input/csv)
+        hold
+          output/print-data(<{inspect-module/to-csv(filtered)}\n>)
+        miss
+          output/print-data(<{inspect-module/to-table(filtered)}\n>)
+  # the counts are of what was LISTED: they counted every task while `--kind form` listed forms
+  save forms, 0
+  save tasks, 0
+  walk filtered
+    take one
+    fork test, is-equal(one/kind, <form>)
+      hold
+        save forms, add(forms, 1)
+    fork test, is-equal(one/kind, <task>)
+      hold
+        save tasks, add(tasks, 1)
+  fork test, is-truthy(inspection/load-diagnostics)
+    hold
+      output/report(make(counted-item, bind(glyph, <warning>), bind(verb, <resolve>), bind(subject, <Some imports did not resolve>), bind(counts, one-of(output/count(inspection/load-diagnostics, <unresolved>, <unresolved>)))))
+  save counts, make list
+  counts/push(output/count(modules, <modules>, <module>))
+  counts/push(output/count(forms, <forms>, <form>))
+  counts/push(output/count(tasks, <tasks>, <task>))
+  output/close-run(make(counted-close, bind(verdict, <{filtered/length} name{plural-s(filtered/length)} listed>), bind(counts, counts)))

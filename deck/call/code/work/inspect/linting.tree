@@ -1,0 +1,566 @@
+# `term lint`: lint `.tree` files. `--fix` applies the autofixes in place, otherwise the findings are reported, and the
+# run exits non-zero while an error-severity finding remains (so it gates CI). Beside the compiler's rules (analyze),
+# the findings that need the FILESYSTEM live here: L050 manifest-code-version and L051 manifest-bear (the manifest's
+# old spellings, fixable), L052 ambiguous-load (a package path naming a file in the code root AND the package root),
+# and L055 manifest-inert (a manifest field no tool reads). note/project/term/manifest/manifest-mark-and-code-root.md.
+#
+# Ported from call/code/lint.ts (term-cli-in-term-0055). lint-words.tree holds the decisions beside the parser and the
+# rules, loaded, and so is the one parser (parser/tree). The rules (analyze), the mill's span reader, the files walk,
+# the role readers, the project resolver, the manifest name and @cluesurf/deck.tree's manifest spellings are docked
+# until their own ports land, and every item prints through the output library, docked.
+
+load @term/base/list
+  find get
+
+load @term/make/parser/tree
+  find parse
+  find render-head
+  find node
+
+load @term/make/parser/token
+  find token-source
+
+load ../../lint-words
+  find text-edit
+  find edit-range
+  find applied-edits
+  find is-inert
+  find inert-message
+  find manifest-code
+  find is-package-load
+  find ambiguous-message
+  find lint-verdict
+
+dock load
+  load <@cluesurf/deck.tree>, name deck-tree-module
+  load <@term/make/code/analyze>, name analyze-module
+  load <@term/make/code/compile/mill-run>, name mill-run-module
+  load <@term/call/code/files>, name files-module
+    mark async
+  load <@term/call/code/role-of>, name role-module
+  load <@term/call/code/manifest-name>, name manifest-name-module
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/output>, name output
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <node:path>, name node-path
+
+# ---- the host values Term has no word for ----
+
+bind nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# a text's length in UTF-16 units, as a column counts it
+bind units
+  take value, like text
+  like number
+  case node
+    text <$value.length>
+
+# `parseInt(code.replace(/\D/g, ''), 10)`: the number of a rule code, `L003` -> 3
+bind code-number
+  take code, like dynamic
+  like number
+  case node
+    text <parseInt($code.replace(/\\D/g, ""), 10)>
+
+# a host function of one argument, called
+bind call-one
+  take task, like dynamic
+  take value, like dynamic
+  like dynamic
+  case node
+    text <$task($value)>
+
+# the resolver, called as the build calls it
+bind resolve-with
+  take resolve, like dynamic
+  take path, like text
+  take file, like text
+  like dynamic
+  case node
+    text <$resolve($path, $file)>
+
+# the rules' findings of one analysis
+bind lint-of
+  take analysis, like dynamic
+  like list, like dynamic
+  case node
+    text <$analysis.lint()>
+
+# `text.slice(0, start) + inserted + text.slice(end)`, by UTF-16 offsets
+bind splice
+  take text, like text
+  take start, like number
+  take end, like number
+  take inserted, like text
+  like text
+  case node
+    text <($text.slice(0, $start) + $inserted + $text.slice($end))>
+
+# ---- the shapes a finding is made of ----
+
+form place
+  link line, like dynamic
+  link column, like dynamic
+
+form stretch
+  link start, like dynamic
+  link end, like place
+
+form edit
+  link span, like stretch
+  link text, like dynamic
+
+form finding
+  link rule, like text
+  link code, like text
+  link message, like dynamic
+  link severity, like text
+  link span, like stretch
+
+form fixed-finding
+  link rule, like dynamic
+  link code, like text
+  link message, like dynamic
+  link severity, like text
+  link span, like stretch
+  link fix, like edit
+
+form spelling-ask
+  link text, like text
+  link file, like text
+
+form analysis-ask
+  link file, like text
+  link text, like text
+
+form readers
+  link role, like dynamic
+  link lean, like dynamic
+
+form marker
+  link span, like dynamic
+
+form diagnostic-entry
+  link code, like number
+  link rule, like dynamic
+  link name, like dynamic
+  link message, like dynamic
+  link file, like text
+  link span, like dynamic
+  link markers, like list, like marker
+  link hint, like dynamic
+  link severity, like dynamic
+
+form problem-entry
+  link diagnostic, like diagnostic-entry
+  link text, like text
+
+form catalog-entry
+  link code, like text
+  link name, like text
+  link severity, like text
+  link docs, like text
+  link fixable, like boolean
+
+# ---- what is said ----
+
+form counted-open
+  link verb, like text
+  link root, like dynamic
+  link counts, like list, like dynamic
+  link facts, like list, like text
+
+form message-item
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link message, like list, like text
+
+form counted-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link counts, like list, like dynamic
+
+form plain-close
+  link verdict, like text
+
+form counted-close
+  link verdict, like text
+  link counts, like list, like dynamic
+
+form next-close
+  link verdict, like text
+  link counts, like list, like dynamic
+  link next, like text
+
+# ---- the catalog ----
+
+# the four manifest and load findings as catalog entries, for `term show kink`, which lists them beside the driver's
+# (make/code/lint/lint.ts `lintCatalog`). Kept here, next to the checks, so a new one is added in one place. It was
+# the constant MANIFEST_CATALOG
+task manifest-catalog
+  like list, like catalog-entry
+
+  save out, make list
+  out/push(make(catalog-entry, bind(code, <L050>), bind(name, <manifest-code-version>), bind(severity, <warning>), bind(docs, <a manifest's `code \<version\>` (or a link's `code \<range\>`) is the old spelling of `mark`>), bind(fixable, true)))
+  out/push(make(catalog-entry, bind(code, <L051>), bind(name, <manifest-bear>), bind(severity, <warning>), bind(docs, <a manifest's `bear ./dir` is the old spelling of the code root, `code ./dir`>), bind(fixable, true)))
+  out/push(make(catalog-entry, bind(code, <L052>), bind(name, <ambiguous-load>), bind(severity, <warning>), bind(docs, <a package path names a file in the package's code root AND one in its package root. The code root wins, and `base \<dir\>` under the load picks the package root>), bind(fixable, false)))
+  out/push(make(catalog-entry, bind(code, <L055>), bind(name, <manifest-inert>), bind(severity, <warning>), bind(docs, <a manifest field no tool reads, which looks like it chooses something and chooses nothing>), bind(fixable, false)))
+  back out
+
+# ---- reading the tree ----
+
+# the head word of a group, or the empty text when the node is no group or its first node is no name
+task head-of
+  take one, like node
+  like text
+  mark private
+
+  sift one
+    case group
+      fork test, is-above(nodes/length, 0)
+        hold
+          save first, get(nodes, 0)
+          sift first
+            case name
+              back render-head(first)
+            miss
+              back <>
+    miss
+      back <>
+  back <>
+
+# the nodes a group holds, the empty list for any other node
+task nodes-of
+  take one, like node
+  like list, like node
+  mark private
+
+  save none, make list
+  sift one
+    case group
+      back nodes
+    miss
+      back none
+  back none
+
+# the top-level groups of a parsed text, the empty list when it does not parse
+task top-groups
+  take text, like text
+  take file, like text
+  like list, like node
+  mark private
+
+  save parsed, parse(make(token-source, bind(file, file), bind(text, text)))
+  save out, make list
+  fork test, not(parsed/ok)
+    hold
+      back out
+  save tree, parsed/tree
+  sift tree
+    case root
+      walk nodes
+        take one
+        sift one
+          case group
+            out/push(one)
+          miss
+            turn next
+  back out
+
+# ---- findings that need the filesystem ----
+
+# L055 manifest-inert: a manifest field the grammar accepts and the writer keeps, which no tool reads. No `--fix`,
+# because the line may record an intent, and deleting it is the author's call
+task inert-manifest-fields
+  take text, like text
+  take file, like text
+  like list, like finding
+
+  save out, make list
+  fork test, is-absent(manifest-name-module/manifest-name(text, file))
+    hold
+      back out
+  walk top-groups(text, file)
+    take root
+    fork test, is-equal(head-of(root), <deck>)
+      hold
+        save fields, nodes-of(root)
+        # the deck's name, then its fields
+        save at, 2
+        walk test
+          hook test, is-below(at, fields/length)
+          hook hold
+            save field, get(fields, at)
+            save at, add(at, 1)
+            save word, head-of(field)
+            save named, nodes-of(field)
+            save span, nothing()
+            fork test, is-above(named/length, 0)
+              hold
+                save span, mill-run-module/span-of-node(get(named, 0))
+            fork test, and(is-unequal(word, <>), and(is-inert(word), not(is-absent(span))))
+              hold
+                save start, span/start
+                save end, make(place, bind(line, start/line), bind(column, add(start/column, units(word))))
+                out/push(make(finding, bind(rule, <manifest-inert>), bind(code, <L055>), bind(message, inert-message(word)), bind(severity, <warning>), bind(span, make(stretch, bind(start, start), bind(end, end)))))
+  back out
+
+# L050 and L051: the manifest's old spellings, each with the fix that rewrites it (a whole line removed, or a word
+# replaced)
+task manifest-findings
+  take text, like text
+  take file, like text
+  like list, like fixed-finding
+
+  save out, make list
+  fork test, is-absent(manifest-name-module/manifest-name(text, file))
+    hold
+      back out
+  walk deck-tree-module/manifest-spellings(make(spelling-ask, bind(text, text), bind(file, file)))
+    take found
+    save span, make(stretch, bind(start, make(place, bind(line, found/line), bind(column, found/column))), bind(end, make(place, bind(line, found/line), bind(column, found/end))))
+    save fix, make(edit, bind(span, span), bind(text, found/text))
+    fork test, is-truthy(found/whole-line)
+      hold
+        save whole, make(stretch, bind(start, make(place, bind(line, found/line), bind(column, 0))), bind(end, make(place, bind(line, add(found/line, 1)), bind(column, 0))))
+        save fix, make(edit, bind(span, whole), bind(text, <>))
+    out/push(make(fixed-finding, bind(rule, found/rule), bind(code, manifest-code(<{found/rule}>)), bind(message, found/message), bind(severity, <warning>), bind(span, span), bind(fix, fix)))
+  back out
+
+# L052: a package path that names a file in the package's code root AND one in its package root. The code root
+# wins; this names both, so a shadowed folder is never silent. `base <dir>` under the load silences it
+task ambiguous-loads
+  take text, like text
+  take file, like text
+  take resolve, like dynamic
+  like list, like finding
+
+  save out, make list
+  walk top-groups(text, file)
+    take group
+    fork test, is-equal(head-of(group), <load>)
+      hold
+        save parts, nodes-of(group)
+        fork test, is-above(parts/length, 1)
+          hold
+            save target, get(parts, 1)
+            save path, head-of(target)
+            save named, nodes-of(target)
+            save span, nothing()
+            fork test, is-above(named/length, 0)
+              hold
+                save span, mill-run-module/span-of-node(get(named, 0))
+            fork test, and(is-unequal(path, <>), not(is-absent(span)))
+              hold
+                # the first `base` under the load, which picks the package root when it names a word (a bare `base`
+                # names none, and the load is read as having no base)
+                save has-base, false
+                save seen-base, false
+                save at, 2
+                walk test
+                  hook test, and(is-below(at, parts/length), not(seen-base))
+                  hook hold
+                    save under, get(parts, at)
+                    fork test, is-equal(head-of(under), <base>)
+                      hold
+                        save seen-base, true
+                        save words, nodes-of(under)
+                        fork test, is-above(words/length, 1)
+                          hold
+                            save has-base, is-unequal(head-of(get(words, 1)), <>)
+                    save at, add(at, 1)
+                fork test, is-package-load(path, has-base)
+                  hold
+                    save found, nothing()
+                    save resolved, false
+                    fork
+                      mark unsafe
+                      save found, resolve-with(resolve, path, file)
+                      save resolved, true
+                    halt take
+                      take error
+                      save resolved, false
+                    fork test, and(resolved, is-truthy(found))
+                      hold
+                        fork test, is-truthy(found/shadowed)
+                          hold
+                            save start, span/start
+                            save end, make(place, bind(line, start/line), bind(column, add(start/column, units(path))))
+                            out/push(make(finding, bind(rule, <ambiguous-load>), bind(code, <L052>), bind(severity, <warning>), bind(span, make(stretch, bind(start, start), bind(end, end))), bind(message, ambiguous-message(path, <{found/file}>, <{found/shadowed}>))))
+  back out
+
+# ---- the run ----
+
+# a lint finding in the compiler's Diagnostic shape, so it renders identically: the stable rule code (`L003`) printed
+# as written, the rule name the heading
+task diagnostic-of
+  take found, like dynamic
+  take file, like text
+  like diagnostic-entry
+  mark private
+
+  save markers, make list
+  markers/push(make(marker, bind(span, found/span)))
+  save hint, nothing()
+  fork test, is-truthy(found/fix)
+    hold
+      save hint, <fixable: run `term lint --fix`>
+  back make(diagnostic-entry, bind(code, code-number(found/code)), bind(rule, found/code), bind(name, found/rule), bind(message, found/message), bind(file, file), bind(span, found/span), bind(markers, markers), bind(hint, hint), bind(severity, found/severity))
+
+# the text with its fixes applied, right to left so earlier offsets stay valid; an overlapping one is dropped
+task apply-edits
+  take text, like text
+  take edits, like list, like dynamic
+  like text
+  mark private
+
+  save asked, make list
+  walk edits
+    take one
+    asked/push(make(text-edit, bind(start-line, one/span/start/line), bind(start-column, one/span/start/column), bind(end-line, one/span/end/line), bind(end-column, one/span/end/column), bind(text, one/text)))
+  save result, text
+  walk applied-edits(text, asked)
+    take range
+    save result, splice(result, range/start, range/end, range/text)
+  back result
+
+# every finding of one text: the rules', then the filesystem's
+task findings-of
+  take text, like text
+  take relative, like text
+  take absolute, like text
+  take readers, like readers
+  take resolve, like dynamic
+  like list, like dynamic
+  mark private
+
+  save out, like list, like dynamic
+    make list
+  walk lint-of(analyze-module/analyze(make(analysis-ask, bind(file, relative), bind(text, text)), readers))
+    take one
+    out/push(one)
+  walk manifest-findings(text, absolute)
+    take one
+    out/push(one)
+  walk inert-manifest-fields(text, absolute)
+    take one
+    out/push(one)
+  walk ambiguous-loads(text, absolute, resolve)
+    take one
+    out/push(one)
+  back out
+
+task call-lint
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  save paths, input/paths
+  save files, files-module/collect-tree-files(paths, root)
+  save fixing, is-truthy(input/fix)
+  save facts, make list
+  fork test, fixing
+    hold
+      facts/push(<--fix>)
+  save opening, make list
+  opening/push(output/count(files/length, <files>, <file>))
+  output/open-run(make(counted-open, bind(verb, <lint>), bind(root, root), bind(counts, opening), bind(facts, facts)))
+  fork test, is-equal(files/length, 0)
+    hold
+      save said, make list
+      fork test, is-above(paths/length, 0)
+        hold
+          said/push(<Looked in {paths/join(<, >)}.>)
+      output/report(make(message-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no .tree file to lint>), bind(message, said)))
+      output/close-run(make(plain-close, bind(verdict, <Nothing to lint>)))
+      back
+  # the role and `mark lean` each file's role rule gives it, as the build reads them: without these a lean file is
+  # milled as longhand and linted as a program the build never compiles
+  save role-of, role-module/project-role-of(root)
+  save lean-of, role-module/project-lean-of(root)
+  save total-findings, 0
+  save total-errors, 0
+  save total-fixed, 0
+  save hinted, false
+  # every finding of every file, drawn together at the end so they sort by path, line and column (section 12)
+  save found, make list
+  # the build's own resolver, so an ambiguity is reported exactly where the build would resolve one
+  save resolve, make-module/project-resolver(root)
+  walk files
+    take file
+    save text, fs-promise/read-file(file, <utf-8>)
+    save relative, node-path/relative(root, file)
+    save absolute, node-path/resolve(root, file)
+    save reading, make(readers, bind(role, call-one(role-of, absolute)), bind(lean, call-one(lean-of, absolute)))
+    save findings, findings-of(text, relative, absolute, reading, resolve)
+    fork test, is-above(findings/length, 0)
+      hold
+        save reported, findings
+        save shown, text
+        fork test, fixing
+          hold
+            save fixes, make list
+            walk findings
+              take one
+              fork test, is-truthy(one/fix)
+                hold
+                  fixes/push(one/fix)
+            save fixed-text, text
+            fork test, is-above(fixes/length, 0)
+              hold
+                save fixed-text, apply-edits(text, fixes)
+                fs-promise/write-file(file, fixed-text, <utf-8>)
+                save total-fixed, add(total-fixed, fixes/length)
+            # re-lint to report what the fixes did not resolve
+            save reported, findings-of(fixed-text, relative, absolute, reading, resolve)
+            save shown, fixed-text
+        walk reported
+          take one
+          fork test, is-equal(one/severity, <error>)
+            hold
+              save total-errors, add(total-errors, 1)
+          save total-findings, add(total-findings, 1)
+          save diagnostic, diagnostic-of(one, relative)
+          fork test, is-truthy(diagnostic/hint)
+            hold
+              save hinted, true
+          found/push(make(problem-entry, bind(diagnostic, diagnostic), bind(text, shown)))
+  output/report-problems(found, root)
+  fork test, is-above(total-fixed, 0)
+    hold
+      save fixed-counts, make list
+      fixed-counts/push(output/count(total-fixed, <fixes>, <fix>))
+      output/report(make(counted-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <fix>), bind(subject, <findings fixed in place>), bind(counts, fixed-counts)))
+  save warnings, subtract(total-findings, total-errors)
+  save counts, make list
+  fork test, is-above(total-errors, 0)
+    hold
+      counts/push(output/count(total-errors, <errors>, <error>))
+  fork test, is-above(warnings, 0)
+    hold
+      counts/push(output/count(warnings, <warnings>, <warning>))
+  # the closing glyph is the worst finding's: an error fails the run (exit 1), warnings alone do not (1 under --strict)
+  fork test, and(hinted, not(fixing))
+    hold
+      output/close-run(make(next-close, bind(verdict, lint-verdict(total-findings)), bind(counts, counts), bind(next, <term lint --fix>)))
+    miss
+      output/close-run(make(counted-close, bind(verdict, lint-verdict(total-findings)), bind(counts, counts)))

@@ -496,8 +496,11 @@ function typescript(file: string, text: string): { ok: boolean; text: string } {
   ok('the hand-written program compiles', hand.ok, hand.text)
   ok('the shorthand find compiles', short.ok, short.text)
   ok('the explicit find compiles', explicit.ok, explicit.text)
-  ok('the shorthand emits the TypeScript of the hand-written program', hand.ok && short.ok && short.text === hand.text, 'differs')
-  ok('the explicit spelling emits it too', hand.ok && explicit.ok && explicit.text === hand.text, 'differs')
+  // a raising call carries its Term frame, `<task> <file>:<line>` (term/hive decision 001): the three programs are three
+  // files of different lengths, so the frame texts are set aside and the rest must be the same
+  const framed = (text: string): string => text.replace(/"[^"\n]* find-(hand|short|explicit)\.tree:\d+"/g, '"<frame>"')
+  ok('the shorthand emits the TypeScript of the hand-written program', hand.ok && short.ok && framed(short.text) === framed(hand.text), 'differs')
+  ok('the explicit spelling emits it too', hand.ok && explicit.ok && framed(explicit.text) === framed(hand.text), 'differs')
   ok('the emitted program calls find-one with the query and a body', short.ok && /findOne\(/.test(short.text), short.ok ? short.text.slice(-600) : '')
 
   // a find with a refusal in it fails the build, naming the find

@@ -1,0 +1,216 @@
+# The ref store: mutable branches and write-once versions, per package. Ported from deck/deck/code/object/refs.ts
+# (term-cli-in-term-0082): memoryRefStore.
+#
+# Objects are immutable and content-addressed. Refs are the small, consistency-critical layer on top
+# (note/term/registry/03 and 14):
+#   - a VERSION is write-once: created once, frozen forever
+#   - a BRANCH is mutable: it fast-forwards to new commits, by a compare-and-set on its previous commit, so a single
+#     editor never conflicts and a race resolves cleanly
+#
+# This is the in-memory store, for tests and a single-process registry. The production store is Postgres, where a
+# UNIQUE(package, version) constraint IS the write-once guarantee.
+#
+# The decisions:
+#   - the store is the original's RefStore shape, a record of six async tasks each taking the original's one input
+#     record, so a caller (registry, serve) reaches it unchanged
+#   - a refusal is the original's `{ kind }` record (ref-refusal, tagged on kind), success the host's null, and a
+#     missing ref null, as the original answered them
+#   - a key is the package and the name joined by a NUL, split back at the NUL, as the original's
+#   - `expected` is read off the host input, so left out (undefined) and null stay apart, as the original told them
+
+load @term/base/list
+  find list
+
+form version-ask
+  link package, like text
+  link version, like text
+
+form version-entry
+  link package, like text
+  link version, like text
+  link commit, like text
+
+form branch-ask
+  link package, like text
+  link branch, like text
+
+form version-ref
+  link version, like text
+  link commit, like text
+
+form branch-ref
+  link branch, like text
+  link commit, like text
+
+# why a ref write was refused
+form ref-refusal
+  mark tag, name kind
+  case version-exists
+  case branch-moved
+    link current, like dynamic
+
+form ref-store
+  link get-version
+    like task
+      mark async
+      take ask, like version-ask
+      like dynamic
+  link create-version
+    like task
+      mark async
+      take ask, like version-entry
+      like dynamic
+  link list-versions
+    like task
+      mark async
+      take name, like text
+      like list, like version-ref
+  link get-branch
+    like task
+      mark async
+      take ask, like branch-ask
+      like dynamic
+  link set-branch
+    like task
+      mark async
+      take ask, like dynamic
+      like dynamic
+  link list-branches
+    like task
+      mark async
+      take name, like text
+      like list, like branch-ref
+
+bind host-null
+  like dynamic
+  case node
+    text <null>
+
+bind nul-joined
+  take left, like text
+  take right, like text
+  like text
+  case node
+    text <($left + String.fromCharCode(0) + $right)>
+
+bind nul-part
+  take key, like text
+  take index, like number
+  like text
+  case node
+    text <$key.split(String.fromCharCode(0))[$index]>
+
+bind ask-expected
+  take ask, like dynamic
+  like dynamic
+  case node
+    text <$ask.expected>
+
+bind ask-field
+  take ask, like dynamic
+  take field, like text
+  like text
+  case node
+    text <$ask[$field]>
+
+bind is-undefined
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind is-same-value
+  take left, like dynamic
+  take right, like dynamic
+  like boolean
+  case node
+    text <($left === $right)>
+
+# the commit at `key`, else null
+task held-at
+  take refs, like hash, like text, like text
+  take key, like text
+  like dynamic
+  mark private
+
+  fork test, refs/has(key)
+    hold
+      back refs/get(key)
+  back host-null()
+
+task memory-ref-store
+  like ref-store
+
+  # `<package> NUL <version>` to its commit, and `<package> NUL <branch>` to its commit
+  save versions, make hash
+  save branches, make hash
+
+  save get-version
+    task
+      take ask, like version-ask
+      like dynamic
+      mark async
+      back held-at(versions, nul-joined(ask/package, ask/version))
+
+  save create-version
+    task
+      take ask, like version-entry
+      like dynamic
+      mark async
+      save key, nul-joined(ask/package, ask/version)
+      fork test, versions/has(key)
+        hold
+          back make version-exists
+      versions/set(key, ask/commit)
+      back host-null()
+
+  save list-versions
+    task
+      take name, like text
+      like list, like version-ref
+      mark async
+      save out, make list
+      walk versions/keys()
+        take key
+        fork test, is-equal(nul-part(key, 0), name)
+          hold
+            out/push(make(version-ref, bind(version, nul-part(key, 1)), bind(commit, versions/get(key))))
+      back out
+
+  save get-branch
+    task
+      take ask, like branch-ask
+      like dynamic
+      mark async
+      back held-at(branches, nul-joined(ask/package, ask/branch))
+
+  save set-branch
+    task
+      take ask, like dynamic
+      like dynamic
+      mark async
+      save key, nul-joined(ask-field(ask, <package>), ask-field(ask, <branch>))
+      save current, held-at(branches, key)
+      save expected, ask-expected(ask)
+      # fast-forward compare-and-set: an expectation the caller stated must be the current head, or another writer
+      # moved it
+      fork test, and(not(is-undefined(expected)), not(is-same-value(expected, current)))
+        hold
+          back make(branch-moved, bind(current, current))
+      branches/set(key, ask-field(ask, <commit>))
+      back host-null()
+
+  save list-branches
+    task
+      take name, like text
+      like list, like branch-ref
+      mark async
+      save out, make list
+      walk branches/keys()
+        take key
+        fork test, is-equal(nul-part(key, 0), name)
+          hold
+            out/push(make(branch-ref, bind(branch, nul-part(key, 1)), bind(commit, branches/get(key))))
+      back out
+
+  back make(ref-store, bind(get-version, get-version), bind(create-version, create-version), bind(list-versions, list-versions), bind(get-branch, get-branch), bind(set-branch, set-branch), bind(list-branches, list-branches))

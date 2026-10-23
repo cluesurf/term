@@ -71,7 +71,8 @@ async function main(): Promise<void> {
   ok('a halt of an exception compiles', raised.ok, messages(raised))
 
   const ts = raised.ok ? raised.typescript : ''
-  ok('the raise throws the runtime class', ts.includes('throw new TermException('))
+  // its Term frame added as it is thrown (term/hive decision 001)
+  ok('the raise throws the runtime class', ts.includes('throw __termRaised(new TermException('))
   ok('the class is emitted once', ts.split('class TermException').length === 2)
   ok('host is filled', ts.includes('host: "@local"'))
   ok('form is filled', ts.includes('form: "excess"'))
@@ -226,7 +227,7 @@ form example
   const bounded = build(BOUNDED.replace('  halt kink\n', ''))
   ok('a task bounded to what it raises compiles', bounded.ok, messages(bounded))
   ok('the bound is not a raise', bounded.ok && !bounded.typescript.includes('throw new TermException(new Excess({}'))
-  ok('the roll still infers the set', bounded.ok && bounded.typescript.includes('throw new TermException('))
+  ok('the roll still infers the set', bounded.ok && bounded.typescript.includes('throw __termRaised(new TermException('))
 
   const ABSENCE = `form absence
   like exception

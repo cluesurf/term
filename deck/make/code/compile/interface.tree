@@ -29,6 +29,7 @@ load @term/base/ordering
 load ./node
   find statement
   find type
+  find native-kind
 
 load ../term/hash
   find hash-text

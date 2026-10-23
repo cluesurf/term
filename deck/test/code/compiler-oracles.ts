@@ -34,15 +34,16 @@ import { emitRust } from '@term/make/code/compile/rust'
 import { emitKotlin } from '@term/make/code/compile/kotlin'
 import { emitSwift } from '@term/make/code/compile/swift'
 import type { Resolver } from '@term/make/code/compile/load'
+import type { WakeGroup } from '@term/make/code/compile/wake'
 
 type Resolve = Resolver
 
-/** The emitters the backend-emit oracle drives, in order. */
-export const EMIT_BACKENDS: { name: string; emit: (program: any) => string }[] = [
-  { name: 'typescript', emit: program => emitTypeScript(program, {}) },
-  { name: 'rust', emit: program => emitRust(program) },
-  { name: 'kotlin', emit: program => emitKotlin(program) },
-  { name: 'swift', emit: program => emitSwift(program) },
+/** The emitters the backend-emit oracle drives, in order, each handed the compile's own wake (term/hive decision 002). */
+export const EMIT_BACKENDS: { name: string; emit: (program: any, wake?: WakeGroup[]) => string }[] = [
+  { name: 'typescript', emit: (program, wake) => emitTypeScript(program, { wake }) },
+  { name: 'rust', emit: (program, wake) => emitRust(program, { wake }) },
+  { name: 'kotlin', emit: (program, wake) => emitKotlin(program, { wake }) },
+  { name: 'swift', emit: (program, wake) => emitSwift(program, { wake }) },
 ]
 
 export type OracleViolation = {
@@ -138,7 +139,7 @@ export function backendEmit(
   const out: OracleViolation[] = []
   for (const backend of EMIT_BACKENDS) {
     try {
-      const emitted = backend.emit(compiled.program)
+      const emitted = backend.emit(compiled.program, compiled.wake)
       if (typeof emitted !== 'string' || emitted.length === 0) {
         out.push({ oracle: 'backend-emit', detail: `${backend.name} emitted nothing for a well-typed program`, input: text })
       }

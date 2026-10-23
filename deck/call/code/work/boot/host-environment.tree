@@ -1,0 +1,45 @@
+# An app's host settings as environment variables: `bind/host/base.tree`, a `host` group whose kebab children name
+# values (`database-url <...>`). Each kebab key becomes a SCREAMING_SNAKE variable (`toConstant`). File values are
+# defaults: anything already in the environment wins, so a shell override applies. Ported from call/code/boot.ts
+# (`loadHostEnv`), part 1 of that file, term-cli-in-term-0022. The settings are read by boot-plan.tree, the constant
+# name by the compiler's TypeScript emitter, docked.
+
+load @term/call/boot-plan
+  find host-settings
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <@term/make/code/compile/typescript>, name typescript-emitter
+
+# whether the process's environment has the variable, `process.env[name] !== undefined`
+bind boot-variable-set
+  take name, like text
+  like boolean
+  case node
+    text <(process.env[$name] !== undefined)>
+
+bind boot-set-variable
+  take name, like text
+  take value, like text
+  like void
+  case node
+    text <void (process.env[$name] = $value)>
+
+# the names of the variables this loaded, in the file's order; none when the app has no host settings
+task load-host-env
+  take app-dir, like text
+  like list, like text
+
+  save file, node-path/join(app-dir, <bind>, <host>, <base.tree>)
+  save loaded, make list
+  fork test, node-file/exists-sync(file)
+    hold
+      walk host-settings(node-file/read-file-sync(file, <utf8>), file)
+        take setting
+        save name, typescript-emitter/toConstant(setting/key)
+        fork test, not(boot-variable-set(name))
+          hold
+            boot-set-variable(name, setting/value)
+            loaded/push(name)
+  back loaded

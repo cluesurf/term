@@ -1,0 +1,276 @@
+# `term make --target compose|compose-android`: the app's entry built into `host/<target>/`, and the desktop app packaged
+# by jpackage as an app image with its own JVM, for the OS the build runs on (a `.app` on macOS, a folder with a launcher
+# on Linux and Windows). Part of the port of deck/call/code/compose.ts (term-cli-in-term-0036): its `composeInput`,
+# `jpackageArguments`, `packageComposeDesktop`, `composeIdentity`, `makeCompose` and `refusal`.
+#
+# It prints through the terminal output library (call/code/output.ts, docked so the options the console set reach it):
+# a `make` run with one `build` item for the target, and a closing item. A failure is THROWN, marked `expected`, so a
+# caller (test/compile/compose-make.ts) can read the reason and the CLI's `failRun` reports it as a refusal.
+
+load @term/call/compose-plan
+  find library-name
+  find jpackage-arguments, name plan-jpackage-arguments
+  find identity-of
+  find compose-identity
+
+load ../cask/host-value
+  find is-truthy
+  find value-or
+  find now-ms
+  find refuse
+
+load ./toolchain
+  find split-on
+  find stage-entry
+
+load ./desktop
+  find build-compose
+  find compose-ask
+  find compose-built
+
+load ./android
+  find build-compose-android
+  find compose-android-ask
+  find compose-android-built
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <node:child_process>, name node-child
+  load <global:process>, name node-process
+  load <@term/call/code/boot>, name boot-module
+  load <@term/call/code/output>, name output
+
+form package-folder
+  link recursive, like boolean
+
+form package-remove
+  link recursive, like boolean
+  link force, like boolean
+
+form package-run
+  link stdio, like text
+  link max-buffer, like number
+
+# jpackage's input folder: the program's jar, every library beside it, and the folder to make
+form compose-input-ask
+  link jar, like text
+  link libraries, like list, like text
+  link input, like text
+
+# jpackage's arguments asked for: every path as the machine that RUNS jpackage sees it. `console` keeps a Windows
+# launcher's standard output
+form jpackage-ask
+  link input, like text
+  link jar, like text
+  link main, like text
+  link name, like text
+  link dest, like text
+  link console
+    like dynamic
+    need false
+
+# a built desktop jar to package: its classpath, the class kotlinc named, the app's name and the folder to write
+form package-ask
+  link jar, like text
+  link classpath, like text
+  link main, like text
+  link name, like text
+  link out, like text
+
+# `term make --target compose|compose-android`: the app folder, the target, and the entry `--entry` names
+form make-compose-ask
+  link root, like text
+  link target, like text
+  link entry
+    like dynamic
+    need false
+
+form made-app
+  link app, like text
+
+form make-open
+  link verb, like text
+  link root, like text
+  link facts, like list, like text
+
+form make-built-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link fields, like list, like dynamic
+
+form make-close
+  link verdict, like text
+
+form make-scope
+  link root, like text
+
+# jpackage's input folder for a desktop app, made at `input`: the program's jar and every library beside it. Each
+# library under a name of its own: two Compose jars share a file name (`runtime-desktop-1.12.1.jar` is both
+# org.jetbrains.compose.runtime's redirect and androidx.compose.runtime's runtime), and copied by name alone the second
+# replaced the first, so the packaged app had no `Composer`. Shared by the image made here and one made on another
+# machine for its own OS
+task compose-input
+  take ask, like compose-input-ask
+  like void
+
+  node-fs/rm-sync(ask/input, make(package-remove, bind(recursive, true), bind(force, true)))
+  node-fs/mkdir-sync(ask/input, make(package-folder, bind(recursive, true)))
+  node-fs/copy-file-sync(ask/jar, node-path/join(ask/input, node-path/basename(ask/jar)))
+  save index, 0
+  walk ask/libraries
+    take library, like text
+    node-fs/copy-file-sync(library, node-path/join(ask/input, library-name(index, node-path/basename(library))))
+    save index, add(index, 1)
+
+# jpackage's arguments for a desktop app image, every path as the machine that RUNS jpackage sees it: this one's, or
+# another's for its own OS (jpackage builds only for the OS it runs on)
+task jpackage-arguments
+  take ask, like jpackage-ask
+  like list, like text
+
+  back plan-jpackage-arguments(ask/input, node-path/basename(ask/jar), ask/main, ask/name, ask/dest, is-truthy(ask/console))
+
+# a built desktop jar packaged by jpackage as an app image with its own JVM, for the OS this runs on: the jar and every
+# Compose library in one input folder, `main` the class kotlinc named after the program's file. Answers the image's path
+task package-compose-desktop
+  take ask, like package-ask
+  like text
+
+  save input, node-path/join(ask/out, <input>)
+  save libraries, make list
+  walk split-on(ask/classpath, <:>)
+    take one, like text
+    fork test, not(is-equal(one, <>))
+      hold
+        libraries/push(one)
+  compose-input(make(compose-input-ask, bind(jar, ask/jar), bind(libraries, libraries), bind(input, input)))
+  save image, node-path/join(ask/out, ask/name)
+  fork test, is-equal(<{node-process/platform}>, <darwin>)
+    hold
+      save image, node-path/join(ask/out, <{ask/name}.app>)
+  node-fs/rm-sync(image, make(package-remove, bind(recursive, true), bind(force, true)))
+  save args, jpackage-arguments(make(jpackage-ask, bind(input, input), bind(jar, ask/jar), bind(main, ask/main), bind(name, ask/name), bind(dest, ask/out)))
+  node-child-run(<jpackage>, args)
+  back image
+
+# an app folder's name as an app is named after it, and its Android package: what `make` builds and `work` launches
+task compose-identity-of
+  take root, like text
+  like compose-identity
+
+  save identity, identity-of(node-path/basename(root))
+  back make(compose-identity, bind(name, identity/name), bind(identifier, identity/identifier))
+
+# a build that did not finish, as the error `make-compose` throws: skipped is a toolchain this machine lacks
+# (`environment`), a failed stage is a problem
+task refuse-skipped
+  take reason, like text
+  like void
+
+  refuse(reason, <environment>)
+
+task refuse-failed
+  take stage, like text
+  take reason, like text
+  like void
+
+  refuse(<{stage}: {reason}>, <>)
+
+# `term make --target compose|compose-android`: the app's entry (the file the manifest's `boot` line names, else the
+# older `app.tree`: a program with a `boot` task, or the older `main`, that opens a root, mounts its views and runs the
+# app) built into `host/<target>/`
+task make-compose
+  take ask, like make-compose-ask
+  like made-app
+  mark async
+
+  save root, ask/root
+  save target, ask/target
+  save named, <{value-or(ask/entry, <app.tree>)}>
+  save entry, value-or(boot-module/find-entry(root, ask/entry), node-path/join(root, named))
+  save facts, make list
+  facts/push(<--target {target}>)
+  output/open-run(make(make-open, bind(verb, <make>), bind(root, root), bind(facts, facts)))
+
+  fork test, not(node-fs/exists-sync(entry))
+    hold
+      refuse(<There is no app entry at {output/show-path(entry, root)}: a Compose app is a program with a `boot` task, named by the `boot` line of deck.tree (--entry names another file)>, <usage>)
+
+  save identity, compose-identity-of(root)
+  save name, identity/name
+  save out, node-path/join(root, <host>, target)
+  save work, node-path/join(out, <work>)
+  node-fs/mkdir-sync(work, make(package-folder, bind(recursive, true)))
+  save text, node-fs/read-file-sync(entry, <utf8>)
+  save started, now-ms()
+
+  fork test, is-equal(target, <compose-android>)
+    hold
+      save built
+        build-compose-android
+          make compose-android-ask
+            bind root, root
+            bind dir, work
+            bind name, <app>
+            bind text, text
+            bind file, entry
+            bind identifier, identity/identifier
+            bind scope, make(make-scope, bind(root, root))
+      save apk, node-path/join(out, <{name}.apk>)
+      sift built
+        case skipped
+          link skip-reason
+          refuse-skipped(skip-reason)
+        case failed
+          link failed-stage
+          link failed-reason
+          refuse-failed(failed-stage, failed-reason)
+        case built
+          link built-apk
+          node-fs/copy-file-sync(built-apk, apk)
+      save fields, make list
+      fields/push(output/location(output/show-path(apk, root)))
+      output/report(make(make-built-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <compose-android>), bind(duration, subtract(now-ms(), started)), bind(fields, fields)))
+      output/close-run(make(make-close, bind(verdict, <Android app built>)))
+      back make(made-app, bind(app, apk))
+
+  save desktop
+    build-compose
+      make compose-ask
+        bind root, root
+        bind dir, work
+        bind name, <app>
+        bind text, text
+        bind file, entry
+        bind scope, make(make-scope, bind(root, root))
+  save app, <>
+  sift desktop
+    case skipped
+      link skip-reason
+      refuse-skipped(skip-reason)
+    case failed
+      link failed-stage
+      link failed-reason
+      refuse-failed(failed-stage, failed-reason)
+    case built
+      link built-jar
+      link built-classpath
+      link built-main
+      save app, package-compose-desktop(make(package-ask, bind(jar, built-jar), bind(classpath, built-classpath), bind(main, built-main), bind(name, name), bind(out, out)))
+  save fields, make list
+  fields/push(output/location(output/show-path(app, root)))
+  output/report(make(make-built-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <compose>), bind(duration, subtract(now-ms(), started)), bind(fields, fields)))
+  output/close-run(make(make-close, bind(verdict, <Desktop app built>)))
+  back make(made-app, bind(app, app))
+
+# a tool run with its output kept, for its failure to name
+task node-child-run
+  take command, like text
+  take args, like list, like text
+  like void
+  mark private
+
+  node-child/exec-file-sync(command, args, make(package-run, bind(stdio, <pipe>), bind(max-buffer, 67108864)))

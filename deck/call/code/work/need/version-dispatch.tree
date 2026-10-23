@@ -1,0 +1,399 @@
+# The first module every `term` command starts in, bundled as `host/need.mjs` (note/project/term/term-versions.md,
+# "Dispatch"). Ported from call/code/need-run.ts (term-cli-in-term-0043), whole. The launcher runs THIS, not the large
+# `host/line.js`, so choosing a version costs one small module. It starts itself when it is loaded, as the original's
+# top-level `await main()` did, so it is only ever an entry: nothing loads it.
+#
+#   1  resolve (version-choice.tree): files and one variable, no network
+#   2  the answer is THIS version: import ./line.js in this process, with the `+range` argument removed
+#   3  another version: install it if it is not here (./need-hand.mjs, imported only then), then run that version's CLI
+#      as a child, same arguments, same directory, inherited stdio, signals forwarded, its exit code ours
+#
+# THE HANDSHAKE (Go's, `GOTOOLCHAIN_INTERNAL_SWITCH_VERSION`). The child is started with TERM_NEED_SWITCH set to the
+# version it must be. A `term` that finds it set does not resolve again: it checks it IS that version and runs, or
+# refuses. TERM_NEED_DEPTH, counted on every handoff and refused at the fourth, guards against something outside that
+# keeps passing the variables on. A version older than dispatch (2.6.2, 2.6.4) has no need.mjs: it is started at its
+# line.js, which ignores both.
+#
+# It reaches no compiler: only version-choice.tree, the parser that one reads with, running-install.tree and node.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/text
+  find split
+
+load @term/call/work/need/version-choice
+  find need-world
+  find current-world
+  find world-ask
+  find choose-version
+  find mark-used
+  find split-flag
+  find version-ask
+
+load @term/call/work/need/running-install
+  find find-install-root
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <node:url>, name node-url
+  load <node:child_process>, name node-child
+  load <node:events>, name node-events
+  load <global:process>, name host-process
+
+# ---- the host's values ----
+
+# `pathToFileURL(path).href`, through node:url
+bind file-url-of
+  take urls, like dynamic
+  take path, like text
+  like text
+  case node
+    text <$urls.pathToFileURL($path).href>
+
+# an environment variable, the empty text when it is unset
+bind variable-or-empty
+  take name, like text
+  like text
+  case node
+    text <(process.env[$name] ?? "")>
+
+# whether an environment variable is set at all
+bind has-variable-set
+  take name, like text
+  like boolean
+  case node
+    text <(process.env[$name] !== undefined)>
+
+# `delete process.env[name]`
+bind forget-variable
+  take name, like text
+  like void
+  case node
+    text <(delete process.env[$name], undefined)>
+
+# `process.env[name] = value`
+bind put-variable
+  take name, like text
+  take value, like text
+  like void
+  case node
+    text <(process.env[$name] = $value, undefined)>
+
+# `Number(env.TERM_NEED_DEPTH ?? '0') || 0`
+bind need-depth
+  like number
+  case node
+    text <(Number(process.env.TERM_NEED_DEPTH ?? "0") || 0)>
+
+# the version a package.json names, `0.0.0` when it names none
+bind version-in
+  take text, like text
+  like text
+  case node
+    text <(JSON.parse($text).version ?? "0.0.0")>
+
+# `process.argv = [process.argv[0], line, ...argv]`
+bind put-argv
+  take line, like text
+  take argv, like list, like text
+  like void
+  case node
+    text <(process.argv = [process.argv[0], $line, ...$argv], undefined)>
+
+# a module imported by its file URL, awaited
+bind import-file
+  take url, like text
+  like dynamic
+  case node
+    text <(await import($url))>
+
+# the child's environment: this one, with the handshake's three variables
+bind child-env
+  take version, like text
+  take depth, like text
+  take trail, like text
+  like dynamic
+  case node
+    text <(\{ ...process.env, TERM_NEED_SWITCH: $version, TERM_NEED_DEPTH: $depth, TERM_NEED_TRAIL: $trail \})>
+
+# `process.exitCode = code ?? 1`
+bind put-exit-code
+  take code, like dynamic
+  like void
+  case node
+    text <(process.exitCode = $code ?? 1, undefined)>
+
+# `Boolean(value)`
+bind host-truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# a failure's message, `error.message`
+bind message-field
+  take problem, like dynamic
+  like text
+  case node
+    text <String($problem.message)>
+
+# ---- the shapes ----
+
+form refuse-ask
+  link reason, like text
+  link running, like text
+  link usage, like boolean
+  link argv, like list, like text
+
+form load-ask
+  link choice, like dynamic
+  link running, like text
+  link local, like boolean
+  link argv, like list, like text
+
+form spawn-ask
+  link stdio, like text
+  link env, like dynamic
+
+# ---- the halves of dispatch ----
+
+# this payload's version: package.json beside host/
+task read-running
+  take host, like text
+  like text
+  mark private
+
+  save running, <0.0.0>
+  fork
+    mark unsafe
+    save running, version-in(node-file/read-file-sync(node-path/join(host, <..>, <package.json>), <utf8>))
+  halt take
+    take problem
+    save running, <0.0.0>
+  back running
+
+task load-hand
+  take host, like text
+  like dynamic
+  mark async
+  mark private
+
+  save url, file-url-of(node-url, node-path/join(host, <need-hand.mjs>))
+  back import-file(url)
+
+# say why nothing ran: the closing item sets the exit code by the kind of failure, as every command's does
+task say-refused
+  take host, like text
+  take running, like text
+  take reason, like text
+  take argv, like list, like text
+  take usage, like boolean
+  like void
+  mark async
+  mark private
+
+  save hand, load-hand(host)
+  hand/refuse-need(make(refuse-ask, bind(reason, reason), bind(running, running), bind(usage, usage), bind(argv, argv)))
+
+# this version runs the command: the CLI in this process, with the arguments as the command should see them
+task run-here
+  take host, like text
+  take running, like text
+  take argv, like list, like text
+  like void
+  mark async
+  mark private
+
+  save line, node-path/join(host, <line.js>)
+  save world, current-world(make(world-ask, bind(argv, argv), bind(running, running)))
+  mark-used(make(version-ask, bind(home, world/home), bind(version, running)))
+  put-argv(line, argv)
+  save url, file-url-of(node-url, line)
+  import-file(url)
+
+# another version runs it: its own first module, or line.js for a version older than dispatch
+task entry-of
+  take dir, like text
+  like text
+  mark private
+
+  save need, node-path/join(dir, <need.mjs>)
+  fork test, node-file/exists-sync(need)
+    hold
+      back need
+  back node-path/join(dir, <line.js>)
+
+# The child, and this process only its shadow: stdio inherited, signals passed on, its exit (or its signal) ours. SIGINT
+# from a terminal reaches the whole process group already, so the child gets it once and this process only waits; a
+# SIGTERM or SIGHUP sent to this process alone is forwarded
+task hand-off
+  take host, like text
+  take running, like text
+  take version, like text
+  take entry, like text
+  take argv, like list, like text
+  take depth, like number
+  take trail, like text
+  like void
+  mark async
+  mark private
+
+  save args, make list
+  args/push(entry)
+  walk argv
+    take one
+    args/push(one)
+  save trail-parts, make list
+  fork test, is-unequal(trail, <>)
+    hold
+      trail-parts/push(trail)
+  fork test, is-unequal(running, <>)
+    hold
+      trail-parts/push(running)
+  save env, child-env(version, <{add(depth, 1)}>, join(trail-parts, < >))
+  save child, node-child/spawn(host-process/exec-path, args, make(spawn-ask, bind(stdio, <inherit>), bind(env, env)))
+
+  save on-interrupt
+    task
+      take signal, like dynamic
+      like void
+      save nothing-here, 0
+  save on-terminate
+    task
+      take signal, like dynamic
+      like void
+      child/kill(<SIGTERM>)
+  save on-hangup
+    task
+      take signal, like dynamic
+      like void
+      child/kill(<SIGHUP>)
+  host-process/on(<SIGINT>, on-interrupt)
+  host-process/on(<SIGTERM>, on-terminate)
+  host-process/on(<SIGHUP>, on-hangup)
+
+  save ended, make list
+  save failed, <>
+  fork
+    mark unsafe
+    save ended, wait node-events/once(child, <exit>)
+  halt take
+    take problem
+    save failed, message-field(problem)
+  fork test, is-unequal(failed, <>)
+    hold
+      say-refused(host, running, <term {version} could not start: {failed}>, argv, false)
+      back
+
+  host-process/off(<SIGINT>, on-interrupt)
+  host-process/off(<SIGTERM>, on-terminate)
+  host-process/off(<SIGHUP>, on-hangup)
+  save signal, ended/1
+  fork test, host-truth(signal)
+    hold
+      # die the way the child died, so a shell sees `term` killed by the same signal
+      host-process/kill(host-process/pid, signal)
+  put-exit-code(ended/0)
+
+task dispatch
+  take host, like text
+  like void
+  mark async
+
+  save running, read-running(host)
+  save switch-to, variable-or-empty(<TERM_NEED_SWITCH>)
+  save depth, need-depth()
+  save trail, variable-or-empty(<TERM_NEED_TRAIL>)
+  save args, host-process/argv/slice(2)
+
+  # a child of a handoff: be the version asked for, or nothing
+  fork test, is-unequal(switch-to, <>)
+    hold
+      fork test, is-unequal(switch-to, running)
+        hold
+          say-refused(host, running, <asked to run as term {switch-to}, and this is {running}>, args, false)
+          back
+      forget-variable(<TERM_NEED_SWITCH>)
+      run-here(host, running, args)
+      back
+
+  # `term self` manages versions, so it runs on the copy that was started, never on a project's. A `+range` before it
+  # is for `self show`. `term update` is `term self update`, and runs on the front for the same reason
+  save own, split-flag(args)
+  save verb, <>
+  fork test, is-above(own/argv/length, 0)
+    hold
+      save verb, get(own/argv, 0)
+  fork test, or(is-equal(verb, <self>), is-equal(verb, <update>))
+    hold
+      sift own/text
+        case some
+          link flag-text
+          put-variable(<TERM_NEED_FLAG>, flag-text)
+        case none
+          save nothing-here, 0
+      run-here(host, running, own/argv)
+      back
+
+  save mode, <auto>
+  fork test, has-variable-set(<TERM_NEED>)
+    hold
+      save mode, variable-or-empty(<TERM_NEED>)
+  fork test, and(is-unequal(mode, <auto>), is-unequal(mode, <local>))
+    hold
+      say-refused(host, running, <TERM_NEED={mode} is neither auto nor local>, args, true)
+      back
+
+  save world, current-world(make(world-ask, bind(argv, args), bind(running, running)))
+  save chosen, choose-version(world)
+  save argv, chosen/argv
+  save version, <>
+  sift chosen/choice
+    case refuse
+      link reason
+      say-refused(host, running, reason, argv, true)
+      back
+    case load
+      link load-version
+      save hand, load-hand(host)
+      save loaded, wait hand/load-needed(make(load-ask, bind(choice, chosen/choice), bind(running, running), bind(local, is-equal(mode, <local>)), bind(argv, argv)))
+      fork test, not(host-truth(loaded))
+        hold
+          back
+      save version, loaded
+    case run
+      link run-version
+      save version, run-version
+
+  fork test, is-equal(version, running)
+    hold
+      run-here(host, running, argv)
+      back
+
+  fork test, is-minimum(depth, 3)
+    hold
+      save seen, make list
+      walk split(trail, < >)
+        take part
+        fork test, is-unequal(part, <>)
+          hold
+            seen/push(part)
+      seen/push(running)
+      seen/push(version)
+      save shown, join(seen, <, >)
+      say-refused(host, running, <term handed over {add(depth, 1)} times without settling ({shown})>, argv, false)
+      back
+
+  mark-used(make(version-ask, bind(home, world/home), bind(version, version)))
+  save entry, entry-of(node-path/join(world/home, <code>, version, <term>, <host>))
+  hand-off(host, running, version, entry, argv, depth, trail)
+
+# the payload's host/, where the bundle `host/need.mjs` is: the running install's (work/need/running-install.tree,
+# decision 006 of term-cli-in-term), never this module's own address
+host here, node-path/join(find-install-root(), <host>)
+
+tick dispatch(here)

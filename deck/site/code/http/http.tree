@@ -6,6 +6,7 @@
 
 load @term/base/maybe
   find unwrap-or
+  find maybe
 
 load @term/base/list
   find length

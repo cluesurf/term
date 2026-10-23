@@ -7,6 +7,7 @@ load @term/base/native/{platform}/file/asynchronous/stream/writer
   find writer-create
   find writer-write
   find writer-close
+  find writer-dock
 
 form writer
   link dock

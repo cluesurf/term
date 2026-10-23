@@ -73,8 +73,12 @@ export function effectRows(program: Program): Map<string, string[]> {
     rows.set(name, row)
     // a call to one of its own parameters is that parameter, whose effects were added just above, never the
     // top-level task of the same name: `list/find-index` calling its `test` read as `file/test`, and a native backend
-    // then put `?` on a callback that returns a plain `bool` (2026-10-04)
-    calls.set(name, new Set([...calledNames(statement.body, names)].filter(callee => !paramNames.has(callee))))
+    // then put `?` on a callback that returns a plain `bool` (2026-10-04). A local it binds is the same (`boundNames`)
+    const bound = boundNames(statement.body)
+    calls.set(
+      name,
+      new Set([...calledNames(statement.body, names)].filter(callee => !paramNames.has(callee) && !bound.has(callee))),
+    )
   }
 
   // least fixed point: a function throws if it calls (transitively) a throwing function
@@ -97,6 +101,77 @@ export function effectRows(program: Program): Map<string, string[]> {
 
   // each row a list, in the order its effects were found (check/effects.tree)
   return new Map([...rows].map(([name, row]) => [name, [...row]]))
+}
+
+// EVERY NAME A TASK'S BODY BINDS FOR ITSELF, at any depth and inside its closures: a `let`, a walk's item and index, a
+// closure's parameters, the names an arm's `link` lines give, a caught value's name. A call through one of them is
+// never the task of that name, for the effect rows, the raise sets, or Rust's `?` (compile/rust-emit.tree
+// `bound-names-into`, the same set): site's reactive.tree walks its cleanups as `take site, name run` / `call run`, and
+// the walk local took the raises of a test entry task `run` (seam-0026). The set is the whole body's, as async
+// resolution's `shadowed` is, so the three passes agree on every call. Twin: check/effects.tree `bound-names`
+function boundNames(body: Statement[]): Set<string> {
+  const bound = new Set<string>()
+
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') {
+      return
+    }
+
+    if (Array.isArray(node)) {
+      node.forEach(visit)
+
+      return
+    }
+
+    const record = node as Record<string, unknown>
+
+    switch (record.form) {
+      case 'let':
+        bound.add(record.name as string)
+        break
+      case 'for-each':
+        bound.add(record.item as string)
+
+        if (typeof record.index === 'string' && record.index !== '') {
+          bound.add(record.index)
+        }
+
+        break
+      case 'match':
+        for (const arm of record.cases as { binds?: string[] }[]) {
+          arm.binds?.forEach(name => bound.add(name))
+        }
+
+        break
+      case 'guard': {
+        const caught = record.catch as { name: string } | undefined
+
+        if (caught) {
+          bound.add(caught.name)
+        }
+
+        break
+      }
+      case 'closure':
+        for (const param of record.params as { name: string }[]) {
+          bound.add(param.name)
+        }
+
+        break
+      default:
+        break
+    }
+
+    for (const [key, value] of Object.entries(record)) {
+      if (key !== 'span' && key !== 'type') {
+        visit(value)
+      }
+    }
+  }
+
+  visit(body)
+
+  return bound
 }
 
 // does the body contain a throw statement anywhere? A guarded body's throws are caught by its handler, so only
@@ -1025,9 +1100,14 @@ function raiseSetsWith(
       direct.add('data-mismatch')
     }
 
-    // a call to one of its own parameters is that parameter, not the task of the same name (see the effect rows above)
+    // a call to one of its own parameters is that parameter, not the task of the same name (see the effect rows above),
+    // and a call to a local it binds is that local (`boundNames`)
     for (const param of statement.params) {
       called.delete(param.name)
+    }
+
+    for (const local of boundNames(statement.body)) {
+      called.delete(local)
     }
 
     raises.set(name, direct)

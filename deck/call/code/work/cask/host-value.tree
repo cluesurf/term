@@ -1,0 +1,106 @@
+# The few host values the cask build reads or raises that Term has no word for: JavaScript's `undefined`, a value's
+# truth, `??`, a text compared by UTF-16 unit, `JSON.stringify` of a text, and the two errors cask.ts throws. Node
+# only: the cask build docks esbuild and the compiler, so it runs on node alone (decision cli-in-term/002). Part of the
+# port of deck/call/code/cask.ts (cli-in-term-0032).
+
+# `undefined`, which a host callback answers for "nothing" and a host reader answers for a file it did not find
+bind nothing
+  like dynamic
+  case node
+    text <undefined>
+
+# whether a host value is truthy, as `if (value)` reads it
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# `value ?? fallback`
+bind value-or
+  take value, like dynamic
+  take fallback, like dynamic
+  like dynamic
+  case node
+    text <($value ?? $fallback)>
+
+# `a > b` on two texts, by UTF-16 code unit, the order a JavaScript array's default `sort()` puts them in
+bind unit-above
+  take a, like text
+  take b, like text
+  like boolean
+  case node
+    text <($a \> $b)>
+
+# `JSON.stringify` of a text: a JavaScript string literal of it
+bind json-text
+  take value, like text
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# `Object.entries(record)`: each key and value of a host record as a two-element list, in its key order
+bind entries-of
+  take record, like dynamic
+  like list, like dynamic
+  case node
+    text <Object.entries($record ?? \{\})>
+
+# every simulator `xcrun simctl list devices available --json` names, all runtimes' lists flattened in their order
+bind simulator-devices
+  take listed, like text
+  like list, like dynamic
+  case node
+    text <Object.values(JSON.parse($listed).devices).flat()>
+
+# whether a host record carries a key, as `key in record` reads it
+bind has-key
+  take record, like dynamic
+  take key, like text
+  like boolean
+  case node
+    text <($key in $record)>
+
+# whether a host value is `undefined`
+bind is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+# a host value that is a text, or the empty text: `typeof value === 'string' ? value : ''`
+bind text-or-empty
+  take value, like dynamic
+  like text
+  case node
+    text <(typeof $value === "string" ? $value : "")>
+
+# a caught failure, raised again as it was
+bind raise-again
+  take problem, like dynamic
+  like void
+  case node
+    text <(() =\> \{ throw $problem \})()>
+
+# the epoch milliseconds now, `Date.now()`
+bind now-ms
+  like number
+  case node
+    text <Date.now()>
+
+# AN ERROR A PERSON CAN ACT ON, not a bug in Term: `expected` keeps failRun from reporting it as a crash (exit 70), and
+# `failure` is the exit it means: `environment` for a toolchain this machine lacks, `usage` for a target or an entry
+# that is not there, the empty text for neither
+bind refuse
+  take message, like text
+  take failure, like text
+  like void
+  case node
+    text <(() =\> \{ throw Object.assign(new Error($message), \{ expected: true, failure: $failure \}) \})()>
+
+# a plain `Error`, for a state the build cannot be in
+bind raise-error
+  take message, like text
+  like void
+  case node
+    text <(() =\> \{ throw new Error($message) \})()>

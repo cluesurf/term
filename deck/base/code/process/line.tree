@@ -16,6 +16,7 @@ load @term/base/native/{platform}/process/line
   find line-ask
   find line-read
   find line-close
+  find line-dock
 
 # a line reader over standard input and standard output
 form tool

@@ -236,7 +236,7 @@ export function buildProgram({
     )
   }
 
-  const swift = emitSwift(result.program)
+  const swift = emitSwift(result.program, { wake: result.wake })
   const prelude = nativePrelude(result.program, env, readRuntime, swift)
   // a `boot` that can raise is `throws` in Swift, and the top-level line calling it must say `try`: it did not, and
   // the windows cask stopped building once `file/read` raised `absence` (2026-10-04). An error reaching the top
@@ -333,7 +333,7 @@ export function buildRustProgram({
     )
   }
 
-  const rust = emitRust(result.program)
+  const rust = emitRust(result.program, { wake: result.wake })
   const prelude = nativePrelude(result.program, 'rust', readRuntime, rust)
   const source = [prelude, rust, `fn main() {\n  ${driver}\n}`, ''].join('\n')
   const project = path.join(work, 'cargo')
@@ -573,7 +573,7 @@ export function buildAndroidProgram({
     )
   }
 
-  const kotlin = emitKotlin(result.program)
+  const kotlin = emitKotlin(result.program, { wake: result.wake })
   const prelude = nativePrelude(result.program, env, readRuntime, kotlin)
   // one package, the app's identifier, so the manifest's `.TermActivity` resolves; imports hoisted above everything
   const source = `package ${identifier}\n\n${hoistKotlinImports([prelude, kotlin, driver].join('\n'))}\n`

@@ -1,86 +1,22 @@
 load @term/call/work/home
   find root, name project-root
 
-load @term/call/work/tint
-  find log-good
-  find log-fail
-  find log-step
-  find log-warn
-  find fade
-  find name, name tint-name
-  find bold
-  find mark
-  find format-error
+load @term/call/work/small/package-note
+  find call-note
 
-# `term note` -- what this package is: its name, version, description, licence, authors and dependencies.
+# `term note [deck]` -- what a package says about itself, read from its deck.tree.
 #
-# Ported from deck/call/code/note.ts (cli-in-term-0004).
-
-dock load
-  load <@cluesurf/deck.tree>, name deck-tree
-  load <chalk>, name chalk
-  load <node:process>, name node-process
-  load <global:console>, name console
-
-form manifest-ask
-  link dir, like text
-
-# `@scope/name` when the manifest names a host, the bare name when it does not
-task full-name
-  # the manifest the docked `@cluesurf/deck.tree` read: a host value (D1)
-  take manifest, like dynamic
-
-  like text
-
-  save host, read manifest/host
-
-  fork test
-    is-unequal read(host), <>
-    hold
-      save short, read manifest/name
-      back <@{{host}}/{{short}}>
-  back read manifest/name
+# The verb hands the run to the handler, the small lane's port of deck/call/code/note.ts (work/small/package-note.tree
+# `call-note`), which reads the manifest and prints through the output library. line.ts passed the hook's `deck`
+# too, and callNote never read it, so the port takes the root alone. It prints nothing of its own, catches nothing
+# and never exits: a throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term, part 2).
 
 task note
   mark async
+  take deck, like text
+
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  fork
-    mark unsafe
-    save manifest
-      call deck-tree/loadManifest
-        make manifest-ask, bind dir, read root
-        wait true
-    save shown, call full-name, read manifest
-    save version, call deck-tree/showCode, read manifest/mark
-    call console/log, text <>
-    call console/log, text <  {{shown}} {{version}}>
-    save head, read manifest/head
-    fork test
-      call is-unequal, read(head), text <>
-      hook hold
-        call console/log, text <  {{head}}>
-    save lock, read manifest/lock
-    fork test
-      call is-unequal, read(lock), text <>
-      hook hold
-        call console/log, text <  License: {{lock}}>
-    save links, read manifest/link
-    fork test
-      call is-above, read(links/length), code 0
-      hook hold
-        call console/log, text <>
-        call console/log, call chalk/bold, text <  Dependencies:>
-        walk list
-          read links
-          hook next
-            take site, name dep
-            save shown-dep, read dep/name
-            call console/log, text <    {{shown-dep}}>
-    call console/log, text <>
-  halt take
-    take error
-    log-fail format-error error
-    node-process/exit code 1
+  call-note(root)

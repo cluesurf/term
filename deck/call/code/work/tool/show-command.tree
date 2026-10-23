@@ -1,0 +1,362 @@
+# `term show [mark]`: the toolchain's version and platform, or the project's version. Each is the answer itself, so it
+# is data on stdout (`printData`), and `--back json` prints it as one JSON object instead of the block.
+#
+# - `term show mark` reads the NEAREST deck.tree, this folder or a parent, the way every other command finds its project
+# - a deck.tree that is there and cannot be read says so, with the reader's message
+# - an argument it does not know is refused (failure usage, exit 2)
+#
+# Ported from deck/call/code/show.ts (term-cli-in-term-0058). `term show kink` is kink-showing.tree, `term show name`
+# work/context/name-context.tree. The banner text (make/code/show.ts) and the output library are docked, and the
+# manifest reader (@cluesurf/deck.tree) is imported only when `show mark` reads one, as the original did. `callShow`,
+# `termVersion` and `toolVersion` keep their names and shapes; `toolVersion` answers undefined for a tool that is not
+# there, as before.
+
+load @term/base/list
+  find list
+
+load ./kink-showing
+  find show-kink
+
+load ../context/name-context
+  find show-context
+
+load ../need/running-install
+  find find-install-root
+
+dock load
+  load <@term/make/code/show>, name banner-module
+  load <@term/call/code/output>, name output
+  load <node:child_process>, name node-child
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <node:os>, name node-os
+
+# ---- the host values Term has no word for ----
+
+bind tool-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+# the toolchain, as `term show --back json` prints it
+bind tool-platform-json
+  take os, like dynamic
+  take version, like dynamic
+  like text
+  case node
+    text <<JSON.stringify({ term: $version, platform: $os.platform(), arch: $os.arch(), node: process.version, home: $os.homedir() })>>
+
+bind tool-mark-json
+  take mark, like dynamic
+  like text
+  case node
+    text <JSON.stringify(\{ mark: $mark \})>
+
+# a package manifest's version, `0.0.0` when it cannot be read or names none
+bind tool-manifest-version
+  take fs, like dynamic
+  take file, like text
+  like text
+  case node
+    text <<(() => { try { const read = JSON.parse($fs.readFileSync($file, "utf8")); return String(read.version ?? "0.0.0") } catch { return "0.0.0" } })()>>
+
+# the manifest reader, imported when it is needed
+bind tool-deck-tree
+  like dynamic
+  case node
+    text <(await import("@cluesurf/deck.tree"))>
+
+bind tool-load-manifest
+  take reader, like dynamic
+  take dir, like text
+  like dynamic
+  case node
+    text <(await $reader.loadManifest(\{ dir: $dir \}))>
+
+bind tool-show-code
+  take reader, like dynamic
+  take mark, like dynamic
+  like text
+  case node
+    text <$reader.showCode($mark)>
+
+bind tool-thrown-message
+  take problem, like dynamic
+  like text
+  case node
+    text <($problem instanceof Error ? $problem.message : String($problem))>
+
+# one tool asked for its version: its run, with a 30 second limit
+bind tool-ask-version
+  take child, like dynamic
+  take name, like text
+  take args, like list, like text
+  like dynamic
+  case node
+    text <$child.spawnSync($name, $args, \{ encoding: "utf8", timeout: 30000 \})>
+
+# the first line that names a version, from stdout or stderr (`java -version` and `kotlinc -version` print on stderr),
+# or the word `found`; undefined when the tool is not there or will not answer
+bind tool-version-said
+  take run, like dynamic
+  like dynamic
+  case node
+    text <<($run.error || $run.status !== 0 ? undefined : ((($run.stdout ?? "") + "\n" + ($run.stderr ?? "")).split("\n").map((line) => line.trim()).find((line) => /\d+\.\d+/.test(line))?.replace(/^info:\s*/, "") ?? "found"))>>
+
+bind tool-tools-json
+  take found, like list, like dynamic
+  like text
+  case node
+    text <JSON.stringify($found.map((one) =\> (\{ backend: one.backend, tool: one.name, version: one.version ?? null \})))>
+
+bind tool-tool-line
+  take tool, like dynamic
+  take width, like number
+  like text
+  case node
+    text <<($tool.backend.padEnd(7) + " " + $tool.name.padEnd($width) + "  " + ($tool.version ?? "not found") + "\n")>>
+
+bind tool-found-tool
+  take backend, like text
+  take name, like text
+  take version, like dynamic
+  like dynamic
+  case node
+    text <(\{ backend: $backend, name: $name, version: $version \})>
+
+bind tool-name-units
+  take value, like text
+  like number
+  case node
+    text <$value.length>
+
+form show-open
+  link verb, like text
+  link root, like text
+
+form show-problem
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+
+form show-problem-fields
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form show-problem-message
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link fields, like list, like dynamic
+  link message, like list, like text
+
+form show-close
+  link verdict, like text
+
+form show-close-next
+  link verdict, like text
+  link next, like text
+
+form show-close-usage
+  link verdict, like text
+  link next, like text
+  link failure, like text
+
+form kink-ask
+  link root, like text
+  link query, like dynamic
+  link json, like boolean
+
+form context-ask
+  link root, like text
+  link query, like dynamic
+  link json, like boolean
+  link budget, like dynamic
+
+# the toolchains each backend calls, the tool and the arguments it is asked its version with
+form tool
+  link backend, like text
+  link name, like text
+  link args, like list, like text
+
+task tool-of
+  take backend, like text
+  take name, like text
+  take flag, like text
+  like tool
+  mark private
+
+  save args, make list
+  args/push(flag)
+  back make(tool, bind(backend, backend), bind(name, name), bind(args, args))
+
+# The toolchains each backend calls. A missing `cargo` or `swiftc` was first seen when a `--target` build called it.
+# Asks each one for its version, so it reports what is on the PATH now, and installs nothing
+task tools
+  like list, like tool
+
+  save out, make list
+  out/push(tool-of(<rust>, <cargo>, <--version>))
+  out/push(tool-of(<rust>, <rustc>, <--version>))
+  out/push(tool-of(<swift>, <swiftc>, <--version>))
+  out/push(tool-of(<kotlin>, <kotlinc>, <-version>))
+  out/push(tool-of(<kotlin>, <java>, <-version>))
+  back out
+
+# the published version of term itself, read at run time from the running install's package.json, the manifest one
+# directory above the bundled host/line.js the original read it beside (decision 006)
+task term-version
+  like text
+
+  save package-file, node-path/join(find-install-root(), <package.json>)
+  back tool-manifest-version(node-fs, package-file)
+
+# one tool's version, or undefined when it is not on the PATH or will not answer. `term make --target` asks the same
+# question before it builds anything
+task tool-version
+  take name, like text
+  like dynamic
+
+  save args, make list
+  args/push(<--version>)
+  walk tools()
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        save args, one/args
+        halt
+  back tool-version-said(tool-ask-version(node-child, name, args))
+
+task show-tools
+  take json, like boolean
+  like void
+  mark private
+
+  save found, make list
+  save width, 0
+  walk tools()
+    take one
+    found/push(tool-found-tool(one/backend, one/name, tool-version(one/name)))
+    fork test, is-above(tool-name-units(one/name), width)
+      hold
+        save width, tool-name-units(one/name)
+  fork test, json
+    hold
+      output/print-data(<{tool-tools-json(found)}\n>)
+      back
+  save lines, make list
+  walk found
+    take one, like dynamic
+    lines/push(tool-tool-line(one, width))
+  output/print-data(lines/join(<>))
+
+# the deck.tree in `from` or the nearest folder above it, or the empty text
+task nearest-manifest
+  take from, like text
+  like text
+  mark private
+
+  save dir, node-path/resolve(from)
+  walk test
+    hook test, true
+    hook hold
+      save file, node-path/join(dir, <deck.tree>)
+      fork test, node-fs/exists-sync(file)
+        hold
+          back file
+      fork test, is-equal(node-path/dirname(dir), dir)
+        hold
+          back <>
+      save dir, node-path/dirname(dir)
+  back <>
+
+task show-mark
+  take root, like text
+  take json, like boolean
+  like void
+  mark async
+  mark private
+
+  save manifest, nearest-manifest(root)
+  fork test, is-equal(manifest, <>)
+    hold
+      output/open-run(make(show-open, bind(verb, <show>), bind(root, root)))
+      save fields, make list
+      fields/push(output/field(<looked>, output/show-path(root)))
+      output/report(make(show-problem-fields, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no deck.tree here or above>), bind(fields, fields)))
+      output/close-run(make(show-close-next, bind(verdict, <No version to show>), bind(next, <term wake, to make a project here>)))
+      back
+
+  save reader, tool-deck-tree()
+  save shown, <>
+  save failed, false
+  save problem, <>
+  fork
+    mark unsafe
+    save read, tool-load-manifest(reader, node-path/dirname(manifest))
+    save shown, tool-show-code(reader, read/mark)
+  halt take
+    take error, like dynamic
+    save failed, true
+    save problem, tool-thrown-message(error)
+  fork test, failed
+    hold
+      output/open-run(make(show-open, bind(verb, <show>), bind(root, root)))
+      save fields, make list
+      fields/push(output/location(output/show-path(manifest)))
+      save message, make list
+      message/push(problem)
+      output/report(make(show-problem-message, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <The deck.tree could not be read>), bind(fields, fields), bind(message, message)))
+      output/close-run(make(show-close, bind(verdict, <No version to show>)))
+      back
+  fork test, json
+    hold
+      output/print-data(<{tool-mark-json(shown)}\n>)
+    miss
+      output/print-data(<{shown}\n>)
+
+task call-show
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  save json, is-equal(input/back, <json>)
+  save what, input/what
+
+  fork test, tool-absent(what)
+    hold
+      fork test, json
+        hold
+          output/print-data(<{tool-platform-json(node-os, input/version)}\n>)
+        miss
+          output/print-data(banner-module/info-text(input/version))
+      back
+
+  fork test, is-equal(what, <tools>)
+    hold
+      show-tools(json)
+      back
+
+  # what a diagnostic means, by the name or code a run printed (kink-showing.tree)
+  fork test, is-equal(what, <kink>)
+    hold
+      show-kink(make(kink-ask, bind(root, root), bind(query, input/name), bind(json, json)))
+      back
+
+  # one name of the project with what a reader needs around it, sized to a budget (work/context/name-context.tree)
+  fork test, is-equal(what, <name>)
+    hold
+      show-context(make(context-ask, bind(root, root), bind(query, input/name), bind(json, json), bind(budget, input/budget)))
+      back
+
+  fork test, and(is-unequal(what, <mark>), is-unequal(what, <code>))
+    hold
+      output/open-run(make(show-open, bind(verb, <show>), bind(root, root)))
+      output/report(make(show-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is nothing named {what} to show>)))
+      output/close-run(make(show-close-usage, bind(verdict, <Nothing shown>), bind(next, <term show, term show mark, term show tools, term show kink or term show name>), bind(failure, <usage>)))
+      back
+
+  show-mark(root, json)

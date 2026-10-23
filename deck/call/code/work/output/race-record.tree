@@ -1,0 +1,344 @@
+# The race log (note/project/term/optimize/learning.md, optimize-0013): every measurement `term race` and `term bake`
+# take, including every loss and every disagreement, one record each, kept so the next bake reads an answer instead of
+# measuring it again (level one, optimize-0028) and so a ranker can learn from all of them (optimize-0029). Ported from
+# call/code/race-log.ts (term-cli-in-term-0050).
+#
+# Stored under the project's `.base/@term/code/race/v1/<shard>/<id>.json.gz`. An id, a region and a rule digest are
+# sha256 digests in the 8x8 tone shape, never hex and never truncated. A record is never rewritten: a new measurement is
+# a new record.
+#
+# A RECORD IS THE CALLER'S JSON VALUE, and stays one: it is written and read back as the original wrote and read it,
+# and `stable-text` walks it by its JavaScript kind (a list, an object, anything else as JSON writes it), so its digest
+# is the original's for any value.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+
+load @term/base/ordering
+  find ordering
+
+load @term/call/work/small/home-folder
+  find project-home
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <node:zlib>, name node-zlib
+  load <@term/deck/code/object/tone>, name tone
+
+bind is-array
+  take value, like dynamic
+  like boolean
+  case node
+    text <Array.isArray($value)>
+
+bind is-object
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean(($value) && typeof ($value) === "object")>
+
+bind items-of
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <($value)>
+
+bind sorted-keys
+  take value, like dynamic
+  like list, like text
+  case node
+    text <Object.keys($value).sort()>
+
+bind member
+  take value, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <(($value)[$key])>
+
+# what `JSON.stringify` writes, `undefined` for a value it does not write
+bind json-text
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+bind sha256-hex
+  take value, like text
+  like text
+  case node
+    text <process.getBuiltinModule("node:crypto").createHash("sha256").update($value).digest("hex")>
+
+# the power of four at or below a size
+bind four-floor
+  take size, like number
+  like number
+  case node
+    text <(4 ** Math.floor(Math.log($size) / Math.log(4)))>
+
+bind tenth-round
+  take ratio, like number
+  like number
+  case node
+    text <(Math.round($ratio * 10) / 10)>
+
+bind with-id
+  take id, like text
+  take record, like dynamic
+  like dynamic
+  case node
+    text <(\{ id: $id, ...($record) \})>
+
+# the first two UTF-16 units of an id, its shard
+bind shard-of
+  take id, like text
+  like text
+  case node
+    text <($id).slice(0, 2)>
+
+bind ends-gz
+  take name, like text
+  like boolean
+  case node
+    text <($name).endsWith(".json.gz")>
+
+bind gzip-json
+  take value, like dynamic
+  like dynamic
+  case node
+    text <process.getBuiltinModule("node:zlib").gzipSync(JSON.stringify($value))>
+
+bind gunzip-json
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <JSON.parse(process.getBuiltinModule("node:zlib").gunzipSync($bytes).toString("utf8"))>
+
+bind record-key
+  take record, like dynamic
+  take key, like text
+  like text
+  case node
+    text <(($record)[$key])>
+
+bind candidate-key
+  take record, like dynamic
+  take key, like text
+  like text
+  case node
+    text <(($record).candidate[$key])>
+
+bind taken-order
+  take a, like dynamic
+  take b, like dynamic
+  like number
+  case node
+    text <($b).taken.localeCompare(($a).taken)>
+
+bind first-or-nothing
+  take records, like list, like dynamic
+  like dynamic
+  case node
+    text <($records)[0]>
+
+bind keep-all
+  like task
+    take record, like dynamic
+    like boolean
+  case node
+    text <(() =\> true)>
+
+# the shape a record is stored in. A change to it is a new version directory, never an edit of old records
+task race-version
+  like text
+
+  back <v1>
+
+# sha256 of a value's stable JSON, in the 8x8 tone shape
+task tone-digest
+  take value, like dynamic
+  like text
+
+  back tone/dash-in-eights(tone/hex-to-tone(sha256-hex(stable-text(value))))
+
+# JSON with object keys sorted, so the same value always hashes the same
+task stable-text
+  take value, like dynamic
+  like text
+
+  fork test, is-array(value)
+    hold
+      save parts, make list
+      walk items-of(value)
+        take one
+        parts/push stable-text(one)
+      back <[{join(parts, <,>)}]>
+
+  fork test, is-object(value)
+    hold
+      save parts, make list
+      walk sorted-keys(value)
+        take key
+        parts/push <{json-text(key)}:{stable-text(member(value, key))}>
+      back <\{{join(parts, <,>)}\}>
+
+  back json-text(value)
+
+# the bucket a size falls in: the power of four at or below it, so runs that differ by noise share a key
+task size-bucket
+  take size, like number
+  like number
+
+  fork test, not(is-above(size, 0))
+    hold
+      back 0
+  back four-floor(size)
+
+task ratio-bucket
+  take ratio, like number
+  like number
+
+  back tenth-round(ratio)
+
+task race-folder
+  take root, like text
+  like text
+
+  save parts, make list
+  parts/push <race>
+  parts/push race-version()
+  back project-home(root, parts)
+
+# store a record, giving it its id. Answers the record as stored
+task write-race
+  take root, like text
+  take record, like dynamic
+  like dynamic
+
+  save id, tone-digest(record)
+  save stored, with-id(id, record)
+  save shard, node-path/join(race-folder(root), shard-of(id))
+
+  node-file/mkdir-sync(shard, make race-folder-ask, recursive(true))
+  node-file/write-file-sync(node-path/join(shard, <{id}.json.gz>), gzip-json(stored))
+
+  back stored
+
+form race-folder-ask
+  link recursive, like boolean
+
+# every record, or those a predicate keeps. An unreadable record is skipped, never trusted
+task read-races
+  take root, like text
+  take keep
+    like task
+      take record, like dynamic
+      like boolean
+    fall keep-all()
+  like list, like dynamic
+
+  save folder, race-folder(root)
+  save out, make list
+
+  fork test, not(node-file/exists-sync(folder))
+    hold
+      back out
+
+  walk node-file/readdir-sync(folder)
+    take shard
+    walk node-file/readdir-sync(node-path/join(folder, shard))
+      take file
+      fork test, ends-gz(file)
+        hold
+          fork
+            mark unsafe
+            save record, gunzip-json(node-file/read-file-sync(node-path/join(folder, shard, file)))
+            fork test, keep(record)
+              hold
+                out/push record
+          halt take
+            take problem
+  back out
+
+form race-ask
+  link region, like text
+  link facts, like dynamic
+  link target, like dynamic
+  link compiler, like text
+  link rules, like text
+  link task, like text
+  link twin, like text
+
+# LEVEL ONE (optimize-0028): the measurement of this candidate on this region, under the same bucketed facts, on the
+# same target, under the same rules and compiler, if there is one: the newest, `undefined` when there is none. A
+# different compiler or rule digest is a miss, and the old record stays as history without being used as an answer
+task lookup-race
+  take root, like text
+  take ask, like dynamic
+  like dynamic
+
+  save facts, stable-text(member(ask, <facts>))
+  save target, stable-text(member(ask, <target>))
+
+  save found
+    read-races
+      root
+      task
+        take record, like dynamic
+        like boolean
+        back is-match(record, ask, facts, target)
+
+  back first-or-nothing(sort(found, by-taken))
+
+task by-taken
+  take a, like dynamic
+  take b, like dynamic
+  like ordering
+
+  save order, taken-order(a, b)
+  fork test, is-below(order, 0)
+    hold
+      back make less
+  fork test, is-above(order, 0)
+    hold
+      back make greater
+  back make equal
+
+task is-match
+  take record, like dynamic
+  take ask, like dynamic
+  take facts, like text
+  take target, like text
+  like boolean
+
+  fork test, is-unequal(record-key(record, <result>), <measured>)
+    hold
+      back false
+  walk list-match-keys()
+    take key
+    fork test, is-unequal(record-key(record, key), record-key(ask, key))
+      hold
+        back false
+  fork test, is-unequal(candidate-key(record, <task>), record-key(ask, <task>))
+    hold
+      back false
+  fork test, is-unequal(candidate-key(record, <twin>), record-key(ask, <twin>))
+    hold
+      back false
+  fork test, is-unequal(stable-text(member(record, <facts>)), facts)
+    hold
+      back false
+  back is-equal(stable-text(member(record, <target>)), target)
+
+task list-match-keys
+  like list, like text
+
+  save keys, make list
+  keys/push <region>
+  keys/push <compiler>
+  keys/push <rules>
+  back keys

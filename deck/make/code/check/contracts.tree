@@ -55,6 +55,8 @@ load ../compile/node
   find expression-type
   find expression-span
   find with-type
+  find form-field
+  find variant-field
 
 load ../parser/diagnostic
   find span

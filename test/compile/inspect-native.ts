@@ -6,13 +6,11 @@
 // inspect-native/values.golden. A caught exception prints as its form and note with its flow; `print` writes to
 // standard error and nothing to standard output; a type parameter is refused as `inspect-generic`.
 //
-// The flow's frames are each platform's own symbol names, so only their presence is compared. Rust, Swift and Kotlin
-// fill no flow at a raise yet (gap 204, held for a decision on its cost): their flow is checked empty, so the day they
-// fill it this test says so.
+// The flow's frames are Term frames (term/hive decision 001), `<task> <file>:<line>`, compared whole: the same on all four.
 // Run: npx tsx test/compile/inspect-native.ts   (INSPECT_ONLY=typescript, rust, swift or kotlin runs one)
 
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -58,27 +56,21 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
   outputs.set(backend, String(ran.stdout))
   ok(`${backend}: every kind prints as the golden says`, ran.status === 0 && ran.stdout === golden, ran.status === 0 ? diff(String(ran.stdout), golden) : String(ran.stderr).slice(0, 600))
 
-  const raised = buildOn({ backend, program: read('raise.tree'), resolve, dir, name: 'raise' })
+  // one path on every backend, since a frame names its file
+  const own = join(dir, backend)
+  mkdirSync(own, { recursive: true })
+  const raised = buildOn({ backend, program: read('raise.tree'), resolve, dir: own, name: 'raise', file: join(own, 'raise.tree') })
 
   if (raised.form !== 'built') {
     ok(`${backend}: the raise program builds`, false, raised.form === 'failed' ? `${raised.stage}: ${raised.reason}` : raised.reason)
     continue
   }
 
+  // the flow is Term frames, the same on every backend (term/hive decision 001): the raise, then the guarded call
   const caught = spawnSync(raised.command[0]!, raised.command.slice(1), { encoding: 'utf8' })
   const out = String(caught.stdout)
-  const shape = /^absence\(note <Not found>, flow list\((.*)\)\)$/.exec(out)
-  ok(`${backend}: a caught exception prints as its form, its note and its flow`, caught.status === 0 && shape !== null, out.slice(0, 300))
-
-  if (shape) {
-    const frames = shape[1] === '' ? 0 : shape[1]!.split('>, <').length
-
-    if (backend === 'typescript') {
-      ok(`${backend}: its flow holds the frames of the raise`, frames > 0, `${frames} frames`)
-    } else {
-      ok(`${backend}: its flow is empty until a raise fills it natively (gap 204)`, frames === 0, `${frames} frames`)
-    }
-  }
+  const want = 'absence(note <Not found>, flow list(<fails raise.tree:15>, <run raise.tree:24>))'
+  ok(`${backend}: a caught exception prints as its form, its note and its Term frames`, caught.status === 0 && out === want, out.slice(0, 300))
 
   ok(
     `${backend}: print writes to standard error alone`,

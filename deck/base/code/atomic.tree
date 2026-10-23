@@ -7,6 +7,7 @@ load @term/base/native/{platform}/atomic
   find atomics-load
   find atomics-store
   find atomics-increase
+  find atomic-handle
 
 # an atomic integer cell
 form atomic

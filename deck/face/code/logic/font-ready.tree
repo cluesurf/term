@@ -29,6 +29,9 @@ load @term/base/list
   find list
   find push
 
+load @term/site/dom/native/{platform}/view
+  find view
+
 # a per-family cell: the shared status signal ('pending' | 'ready' | 'error'), whether the family was already loaded
 # synchronously at the first ask (warm cache -- text renders at full opacity with no fade), and the first-ask perf
 # timestamp (ms). The first ask is the shared time reference every text node of this family measures its snap /

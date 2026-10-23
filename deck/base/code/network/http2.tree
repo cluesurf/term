@@ -20,6 +20,7 @@ load @term/base/native/{platform}/network/http2
   find http2-serve
   find http2-start
   find http2-stop
+  find http2-dock
 
 load @term/base/network/server/request
   find request

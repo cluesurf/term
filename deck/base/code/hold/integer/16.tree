@@ -7,6 +7,7 @@ load @term/base/bit
   find bitwise-or
   find shift-left
   find shift-right
+  find bitwise-exclusive-or
 
 task is-bit-count-odd
   take n, like i8

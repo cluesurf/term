@@ -1,0 +1,78 @@
+# THE HEAP ONE BUILD WORKER MAY HOLD (note/project/term/compiler/decision/005-prover-memory-bounded-by-problem.md).
+# Ported from call/code/worker-heap.ts, term-cli-in-term-0025.
+#
+# A `worker_threads` worker shares the process's address space but not its heap limit: without `resourceLimits` a worker
+# that keeps growing takes the whole process down with it (V8's fatal "heap out of memory", exit 134), and every other
+# unit of the build is lost. With a limit, V8 ends only that worker, the pool sees ERR_WORKER_OUT_OF_MEMORY, and the unit
+# it held is reported as `out-of-memory` while the rest builds.
+#
+# `TERM_WORKER_HEAP_MB` sets the limit outright. Otherwise three quarters of the machine's memory is shared between the
+# workers, never under 2048 MB, so a pool of eight on a 48 GB machine gives each 4.5 GB.
+
+# the limit `TERM_WORKER_HEAP_MB` gives, as JavaScript reads it: a finite number above zero, floored; else -1
+bind heap-given-mb
+  like number
+  case node
+    text <((given) =\> (Number.isFinite(given) && given \> 0 ? Math.floor(given) : -1))(Number(process.env.TERM_WORKER_HEAP_MB))>
+
+# three quarters of the machine's memory shared between the workers, in whole MB, never under the floor
+bind heap-share-mb
+  take workers, like number
+  like number
+  case node
+    text <Math.max(2048, Math.floor((process.getBuiltinModule("node:os").totalmem() * 0.75) / Math.max(1, $workers) / (1024 * 1024)))>
+
+# a worker's death by its heap limit, told apart from any other crash
+bind heap-out-of-memory
+  take error, like dynamic
+  like boolean
+  case node
+    text <(typeof $error === "object" && $error !== null && $error.code === "ERR_WORKER_OUT_OF_MEMORY")>
+
+form heap-place
+  link line, like number
+  link column, like number
+
+form heap-span
+  link start, like heap-place
+  link end, like heap-place
+
+form heap-marker
+  link span, like heap-span
+
+form heap-diagnostic
+  link code, like number
+  link name, like text
+  link message, like text
+  link file, like text
+  link span, like heap-span
+  link markers, like list, like heap-marker
+  link hint, like text
+  link severity, like text
+
+task worker-heap-mb
+  take workers, like number
+  like number
+
+  save given, heap-given-mb()
+  fork test, is-above(given, -1)
+    hold
+      back given
+  back heap-share-mb(workers)
+
+task is-out-of-memory
+  take error, like dynamic
+  like boolean
+
+  back heap-out-of-memory(error)
+
+# the one diagnostic an out-of-memory unit is reported by, framed at the top of its file
+task out-of-memory-diagnostic
+  take file, like text
+  take limit-mb, like number
+  like heap-diagnostic
+
+  save span, make(heap-span, bind(start, make(heap-place, bind(line, 0), bind(column, 0))), bind(end, make(heap-place, bind(line, 0), bind(column, 0))))
+  save markers, make list
+  markers/push(make(heap-marker, bind(span, span)))
+  back make(heap-diagnostic, bind(code, 0), bind(name, <out-of-memory>), bind(message, <the build worker compiling this file ran out of memory at its {limit-mb} MB heap limit>), bind(file, file), bind(span, span), bind(markers, markers), bind(hint, <raise TERM_WORKER_HEAP_MB, or split the file's rules>), bind(severity, <error>))

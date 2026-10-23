@@ -63,7 +63,7 @@ function programSource(input: { root: string; entry: string }): string {
     throw refusal(`the app failed to compile: ${result.diagnostics.slice(0, 3).map(d => d.message).join('; ')}`, '')
   }
 
-  const swift = emitSwift(result.program)
+  const swift = emitSwift(result.program, { wake: result.wake })
   const prelude = nativePrelude(result.program, 'ios', readRuntime, swift)
   // the entry task: `boot`, as every Term program's is, else the older `main`. It throws when anything it reaches can
   // raise, and a raise nothing handles ends the program

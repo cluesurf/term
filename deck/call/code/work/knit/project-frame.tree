@@ -1,0 +1,587 @@
+# What `term knit` reads and writes around the model, ported from call/code/knit.ts (term-cli-in-term-0046, part 1 of
+# 2; the loop and the command are prove-loop.tree): where the package is, the fixed context (the system prompt and the
+# tools), the first message, the project's frame, its rules in words, a round of `term hold` as a child process, the
+# line a problem names, and the TypeScript `term make` emitted (note/project/term/assurance/prove-loop).
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/list
+  find contains
+
+load @term/base/text
+  find ends-with
+
+load @term/call/work/knit/hold-reading
+  find hold-read
+  find hold-problem
+  find read-hold
+
+load @term/call/work/knit/gate
+  find law-sentence
+
+load @term/call/work/knit/law-library
+  find library-law
+  find read-library-mark
+  find how-to-state
+  find mark-line
+
+dock load
+  load <@term/make/code/check/law-english>, name law-reading
+  load <@term/call/code/role-of>, name role-reading
+  load <node:fs>, name host-fs
+  load <node:path>, name host-path
+  load <node:url>, name host-url
+  load <node:child_process>, name host-child
+
+# ---- the host's values ----
+
+bind frame-here
+  like text
+  case node
+    text <import.meta.url>
+
+bind frame-joined
+  take parts, like list, like text
+  take glue, like text
+  like text
+  case node
+    text <$parts.join($glue)>
+
+bind frame-lines
+  take text, like text
+  like list, like text
+  case node
+    text <$text.split(String.fromCharCode(10))>
+
+bind frame-trimmed
+  take text, like text
+  like text
+  case node
+    text <$text.trim()>
+
+bind frame-trimmed-end
+  take text, like text
+  like text
+  case node
+    text <$text.trimEnd()>
+
+bind frame-truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind frame-text
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+# the tools, as the Messages API takes them
+bind knit-tool-list
+  like dynamic
+  case node
+    text <<[{ name: "write_file", description: "Write one whole .tree file under code/ in the project, replacing it if it exists.", input_schema: { type: "object", properties: { path: { type: "string", description: "Relative to the project, such as code/law.tree" }, content: { type: "string", description: "The whole file" } }, required: ["path", "content"], additionalProperties: false } }, { name: "hold", description: "Run term hold --lean on the project: the verdict, and each problem with its place. One round.", input_schema: { type: "object", properties: {}, required: [], additionalProperties: false } }, { name: "laws", description: "Every rule of the project in plain English, rendered from its Term form. What the person will read.", input_schema: { type: "object", properties: {}, required: [], additionalProperties: false } }]>>
+
+# `.tree` names, sorted as `Array.prototype.sort` sorts them
+bind frame-sorted
+  take names, like list, like text
+  like list, like text
+  case node
+    text <[...$names].sort()>
+
+# `lawSentencesOf`'s answer: its laws, or none when the file did not read
+bind sentences-ok
+  take read, like dynamic
+  like boolean
+  case node
+    text <($read.ok === true)>
+
+bind sentences-laws
+  take read, like dynamic
+  like list, like law-sentence
+  case node
+    text <$read.laws>
+
+bind sentences-error
+  take read, like dynamic
+  like text
+  case node
+    text <String($read.error)>
+
+bind law-line
+  take law, like law-sentence
+  like text
+  case node
+    text <<`- ${$law.name} (${$law.kind}): ${$law.text ?? `not rendered, ${$law.refused}`}`>>
+
+# the role a project gives a file, `undefined` for none
+bind role-or-undefined
+  take role, like dynamic
+  like dynamic
+  case node
+    text <($role ?? undefined)>
+
+# `term hold` on a project, as a child: the run's answer as spawnSync gives it
+bind spawn-hold
+  take child, like dynamic
+  take line, like text
+  take project, like text
+  take lean, like boolean
+  like dynamic
+  case node
+    text <<$child.spawnSync(process.execPath, [$line, "hold", "--log", "json", "--json", "--report", ...($lean ? ["--lean"] : [])], { cwd: $project, encoding: "utf8", timeout: 600000, maxBuffer: 64 * 1024 * 1024 })>>
+
+bind spawn-make
+  take child, like dynamic
+  take line, like text
+  take project, like text
+  like void
+  case node
+    text <<$child.spawnSync(process.execPath, [$line, "make"], { cwd: $project, encoding: "utf8", timeout: 600000 })>>
+
+bind run-exit
+  take run, like dynamic
+  like number
+  case node
+    text <($run.status ?? 1)>
+
+bind run-stdout
+  take run, like dynamic
+  like text
+  case node
+    text <($run.stdout ?? "")>
+
+bind run-failed-to-start
+  take run, like dynamic
+  like boolean
+  case node
+    text <Boolean($run.error)>
+
+bind run-error-message
+  take run, like dynamic
+  like text
+  case node
+    text <$run.error.message>
+
+# the last 20 lines of the child's standard error
+bind run-stderr-tail
+  take run, like dynamic
+  like list, like text
+  case node
+    text <($run.stderr ?? "").split(String.fromCharCode(10)).slice(-20)>
+
+bind clock-now
+  like float
+  case node
+    text <Date.now()>
+
+bind seconds-since
+  take started, like float
+  like float
+  case node
+    text <((Date.now() - $started) / 1000)>
+
+# `file:line` or `file:line:column`, the file and the line; none when it is neither
+bind place-parts
+  take at, like text
+  like dynamic
+  case node
+    text <<(/^(.*?):(\d+)(?::\d+)?$/.exec($at))>>
+
+bind place-file
+  take found, like dynamic
+  like text
+  case node
+    text <$found[1]>
+
+bind place-line
+  take found, like dynamic
+  like number
+  case node
+    text <Number($found[2])>
+
+# the line of a text, 1-based, or nothing past its end
+bind text-line-at
+  take text, like text
+  take line, like number
+  like dynamic
+  case node
+    text <$text.split(String.fromCharCode(10))[$line - 1]>
+
+bind frame-is-nothing
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind is-stat-dir
+  take fs, like dynamic
+  take file, like text
+  like boolean
+  case node
+    text <$fs.statSync($file).isDirectory()>
+
+bind make-dirs
+  take fs, like dynamic
+  take dir, like text
+  like void
+  case node
+    text <$fs.mkdirSync($dir, \{ recursive: true \})>
+
+# ---- the shapes ----
+
+form context-file
+  link label, like text
+  link file, like text
+
+# a TypeScript module to port, its path and text
+form port-source
+  link file, like text
+  link text, like text
+
+form first-ask
+  link spec, like text
+  link required, like list, like text
+  link port
+    like maybe, like port-source
+    need false
+  link library
+    like maybe, like list, like library-law
+    need false
+
+form laws-read
+  link laws, like list, like law-sentence
+  link errors, like list, like text
+
+form round-answer
+  link hold, like hold-read
+  link seconds, like float
+
+# ---- where things are ----
+
+# the Term package root: this file is deck/call/code/work/knit/project-frame.tree in the source, emitted under
+# deck/call/host/port/code/work/knit/, and bundled into host/
+task package-root
+  like text
+
+  save here, host-path/dirname(host-url/file-url-to-path(frame-here()))
+  save ups, make list
+  ups/push <..>
+  ups/push <../../..>
+  ups/push <../../../../../../..>
+  walk ups
+    take up
+    save root, host-path/resolve(here, up)
+    fork test, and(host-fs/exists-sync(host-path/join(root, <deck/call/code>)), host-fs/exists-sync(host-path/join(root, <test/assurance>)))
+      hold
+        back root
+  back host-path/resolve(here, <..>)
+
+task line-of
+  take root, like text
+  like text
+
+  back host-path/join(root, <host/line.js>)
+
+# every .tree file directly under a project's code/, sorted
+task tree-files
+  take project, like text
+  like list, like text
+
+  save code, host-path/join(project, <code>)
+  save names, make list
+  fork test, not(host-fs/exists-sync(code))
+    hold
+      back names
+  walk host-fs/readdir-sync(code)
+    take name
+    fork test, ends-with(name, <.tree>)
+      hold
+        names/push name
+  save files, make list
+  walk frame-sorted(names)
+    take name
+    files/push host-path/join(code, name)
+  back files
+
+# the fixed context: the syntax, the proof guide, the demo's traps, and the demo as an example. The same bytes every
+# run, so the API serves them from its cache
+task context-files
+  take root, like text
+  take example, like boolean
+  like list, like context-file
+  mark private
+
+  # the repository: the Term package is deck/term/deck/term in it
+  save repo, host-path/resolve(root, <../../../..>)
+  save files, make list
+  files/push make(context-file, bind(label, <The Term language: syntax, rules and conventions>), bind(file, host-path/join(repo, <deck/term/CLAUDE.md>)))
+  files/push make(context-file, bind(label, <Laws and proofs in Term: claims, theorems, the kernel>), bind(file, host-path/join(repo, <note/project/term/proof/law-and-proof.md>)))
+  files/push make(context-file, bind(label, <Traps found while proving the notes demo>), bind(file, host-path/join(repo, <note/project/term/assurance/demo/traps.md>)))
+  # the demo whole, every file of its code/, as it stands: law.tree loads the others
+  fork test, example
+    hold
+      walk tree-files(host-path/join(root, <test/assurance/notes>))
+        take file
+        files/push make(context-file, bind(label, <EXAMPLE code/{host-path/basename(file)} of a project that holds (the notes demo, which states its laws by hand: yours are fused from the library)>), bind(file, file))
+  back files
+
+task instructions
+  like text
+  mark private
+
+  save mark, read-library-mark()
+  save lines, make list
+  lines/push <You write Term projects whose laws are proven by Term's kernel. Term is a language written in .tree files.>
+  lines/push <>
+  lines/push <A person gives you a short spec in English, and perhaps a TypeScript module to port. You write:>
+  lines/push <- code/model.tree: the forms and the pure tasks of the app (state and events to state, state to what a person is shown)>
+  lines/push <- code/law.tree: the laws the person names, each from the LAW LIBRARY, their proofs, and the lemmas the proofs need>
+  lines/push <More files under code/ are allowed. The project's deck.tree and role.tree are written for you: every file under code/ is>
+  lines/push <LEAN (`back x` returns, `\<x\>` is text, a bare word is a variable, `f(a, b)` is a call).>
+  lines/push <>
+  lines/push <Rules:>
+  lines/push <- Every law the person names is a law of the library: a FIXED Term statement, a template (`tree \<law\>-law`) generic>
+  lines/push <  over the app's forms and its step or view task. Its text follows the spec. State it in code/law.tree with>
+  lines/push <  `fuse \<law\>-law` and a `bind \<hole\>, \<name\>` line under it for every hole, each naming your app's OWN form or task,>
+  lines/push <  defined in code/model.tree (not in the file that states the law). Prove the claim the fuse makes with>
+  lines/push <  `task \<law\>`, whose parameters are the claim's in order.>
+  lines/push <- Never write `rule \<law\>` or the template yourself, and never restate a library law. Before every round the loop>
+  lines/push <  appends the library's template to the end of the file that fuses it, below the line>
+  lines/push <  "{mark}", and then checks that the claim named \<law\> is exactly the library's statement with your fill.>
+  lines/push <  Anything you write below that line is replaced.>
+  lines/push <- A template reads the app's forms in a fixed shape: its comments name every case and field it reads. Write your forms>
+  lines/push <  in that shape. Your app may have more forms and tasks than the laws read.>
+  lines/push <- Every lemma is a CLAIM (a `rule` with no `show`) with a proof the kernel checks as one term. Never `base true` (an>
+  lines/push <  axiom), never `mark open`, never a theorem with `show`: only claims reach the Lean 4 re-check.>
+  lines/push <- Your laws are rendered back into English from their Term form, not from anything you say, and a person approves them.>
+  lines/push <- Load the forms of model.tree into law.tree, never the other way.>
+  lines/push <>
+  lines/push <Tools:>
+  lines/push <- write_file(path, content): write one whole file under code/. Rewrite a file whole to change it.>
+  lines/push <- hold(): run `term hold --lean --report` on the project and read what failed. Each call is one round, and rounds are limited.>
+  lines/push <- laws(): every rule of the project in English, rendered from its Term form.>
+  lines/push <The run ends by itself when `term hold --lean --report` exits 0 (every file compiles and EVERY claim, lemmas included,>
+  lines/push <is re-checked by Lean 4), the project rests on no axiom, and every law the person named is the library's statement>
+  lines/push <filled with the app's own names, a claim that holds. Keep your messages short: write files and call hold.>
+  back frame-joined(lines, <\n>)
+
+task system-of
+  take root, like text
+  take example, like boolean
+  like text
+
+  save parts, make list
+  parts/push instructions()
+  walk context-files(root, example)
+    take one
+    save text, host-fs/read-file-sync(one/file, <utf8>)
+    parts/push <\n\n===== {one/label} ({host-path/basename(one/file)}) =====\n\n{text}>
+  back frame-joined(parts, <>)
+
+# TOOLS
+task knit-tools
+  like dynamic
+
+  back knit-tool-list()
+
+task first-message
+  take input, like first-ask
+  like text
+
+  save out, make list
+  out/push <The spec:\n\n{frame-trimmed(input/spec)}>
+  fork test, is-above(input/required/length, 0)
+    hold
+      out/push <The person requires these laws of the law library: {frame-joined(input/required, <, >)}.>
+  sift input/library
+    case some
+      link laws
+      walk laws
+        take law
+        out/push <===== the library's {law/name} (@term/site/law/{law/name}.tree), appended by the loop to the file that fuses it =====\n\n{frame-trimmed-end(law/text)}\n\nState it in code/law.tree as\n\n{how-to-state(law)}\n\nand prove it with `task {law/name}`.>
+    case none
+      save out, out
+  sift input/port
+    case some
+      link source
+      out/push <The TypeScript module to port ({host-path/basename(source/file)}):\n\n{source/text}>
+    case none
+      save out, out
+  out/push <Write the project now.>
+  back frame-joined(out, <\n\n>)
+
+# ---- the project ----
+
+# the project's frame, written by the loop and never by the model: the manifest, the lean role, and laws.tree, which
+# names the laws the person asked for so `term hold --report` reports each (call/code/hold-report.ts)
+task scaffold
+  take project, like text
+  take name, like text
+  take required, like list, like text
+  like void
+
+  make-dirs(host-fs, host-path/join(project, <code>))
+  host-fs/write-file-sync(host-path/join(project, <deck.tree>), <deck @knit/{name}\n  head \<Written by term knit\>\n  mark \<0.0.0\>\n  lock mit\n>)
+  host-fs/write-file-sync(host-path/join(project, <role.tree>), <# every file here is lean\nrole code\n  mark lean\n  take @/code/*.tree\n>)
+  fork test, is-above(required/length, 0)
+    hold
+      save lines, make list
+      lines/push <list law>
+      walk required
+        take law
+        lines/push <  mesh>
+        lines/push <    host name, \<{law}\>>
+        lines/push <    host rule, \<{law}\>>
+      host-fs/write-file-sync(host-path/join(project, <laws.tree>), <{frame-joined(lines, <\n>)}\n>)
+
+# every rule of the project in words, from its Term form
+task laws-of
+  take project, like text
+  like laws-read
+
+  save role-of, role-reading/project-role-of(project)
+  save lean-of, role-reading/project-lean-of(project)
+  save laws, make list
+  save errors, make list
+  walk tree-files(project)
+    take file
+    save text, host-fs/read-file-sync(file, <utf8>)
+    save read, law-reading/law-sentences-of(make-sentences-ask(file, text, role-or-undefined(call-role(role-of, file)), call-lean(lean-of, file)))
+    fork test, sentences-ok(read)
+      hold
+        walk sentences-laws(read)
+          take law
+          laws/push law
+      miss
+        errors/push <{host-path/relative(project, file)}: {sentences-error(read)}>
+  back make(laws-read, bind(laws, laws), bind(errors, errors))
+
+bind make-sentences-ask
+  take file, like text
+  take text, like text
+  take role, like dynamic
+  take lean, like boolean
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text, role: $role, lean: $lean \})>
+
+bind call-role
+  take reader, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <$reader($file)>
+
+bind call-lean
+  take reader, like dynamic
+  take file, like text
+  like boolean
+  case node
+    text <$reader($file)>
+
+task laws-text
+  take project, like text
+  like text
+
+  save read, laws-of(project)
+  save lines, make list
+  walk read/laws
+    take law
+    lines/push law-line(law)
+  fork test, is-equal(lines/length, 0)
+    hold
+      lines/push <(no rule yet)>
+  walk read/errors
+    take error
+    lines/push <could not read {error}>
+  back frame-joined(lines, <\n>)
+
+# `term hold` on the project, as a child process: its exit decides, its items are read for the model
+task run-hold
+  take line, like text
+  take project, like text
+  take lean, like boolean
+  like round-answer
+
+  save started, clock-now()
+  save run, spawn-hold(host-child, line, project, lean)
+  save exit, run-exit(run)
+  save hold, read-hold(run-stdout(run), exit)
+  save broke, run-failed-to-start(run)
+  fork test, or(broke, and(is-unequal(exit, 0), is-equal(hold/problems/length, 0)))
+    hold
+      save subject, <term hold exited {exit}>
+      fork test, broke
+        hold
+          save subject, <term hold did not run: {run-error-message(run)}>
+      hold/problems/push make(hold-problem, bind(subject, subject), bind(detail, run-stderr-tail(run)))
+  back make(round-answer, bind(hold, hold), bind(seconds, seconds-since(started)))
+
+# the line a problem names (`file:line`), marked when it is the library's text under the marker
+task line-at
+  take project, like text
+  take at, like text
+  like maybe, like text
+
+  save found, place-parts(at)
+  fork test, not(frame-truth(found))
+    hold
+      back make none
+  save number, place-line(found)
+  save text, <>
+  fork
+    mark unsafe
+    save text, host-fs/read-file-sync(host-path/resolve(project, place-file(found)), <utf8>)
+  halt take
+    take problem
+    back make none
+  save line, text-line-at(text, number)
+  fork test, frame-is-nothing(line)
+    hold
+      back make none
+  save shown, frame-text(line)
+  sift mark-line(text)
+    case some
+      link mark
+      fork test, is-above(number, mark)
+        hold
+          save trimmed, frame-trimmed(shown)
+          back make(some, <{trimmed}   (the library's text, appended by the loop: your forms must have the shape it reads)>)
+      back make(some, shown)
+    case none
+      back make(some, shown)
+
+# `term make` on a project that holds, and the TypeScript it emitted
+task emit
+  take line, like text
+  take project, like text
+  like list, like text
+
+  spawn-make(host-child, line, project)
+  save found, make list
+  walk-emitted(project, host-path/join(project, <host>), found)
+  back frame-sorted(found)
+
+task walk-emitted
+  take project, like text
+  take dir, like text
+  take found, like list, like text
+  like void
+  mark private
+
+  fork test, not(host-fs/exists-sync(dir))
+    hold
+      back
+  walk host-fs/readdir-sync(dir)
+    take name
+    save file, host-path/join(dir, name)
+    fork test, is-stat-dir(host-fs, file)
+      hold
+        walk-emitted(project, file, found)
+      miss
+        fork test, and(ends-with(name, <.ts>), not(ends-with(name, <.d.ts>)))
+          hold
+            found/push host-path/relative(project, file)

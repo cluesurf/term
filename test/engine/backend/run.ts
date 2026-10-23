@@ -10,7 +10,7 @@ import { run, callFunction } from '@term/make/code/engine/engine'
 import {
   runCompiled,
   runCompiledFunction,
-} from '@term/make/code/engine/backend/typescript'
+} from './compiled'
 import { display, type Value } from '@term/make/code/engine/value'
 
 const int = (value: number): Expression => ({ form: 'integer', value: { form: 'small', value } })

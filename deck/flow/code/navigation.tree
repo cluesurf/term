@@ -1,0 +1,931 @@
+# NAVIGATION: hover, go to definition, the links a document's paths open, and every reference to a name, in this
+# document and across the packages the open documents are in.
+#
+# A name reaches another file only through `load ... / find` (module scope), so a top-level name's references are its
+# defining file's occurrences plus every file that imports it from that file (package-index.tree `importers-of`). A
+# parameter or local is its task's alone.
+#
+# Ported from server.ts (term-cli-in-term-0102, part 3 of 5): handle's cases `textDocument/hover`, `definition`,
+# `documentLink` and `references`, with definitionOf, locate, docCommentAt, definer, textualDefinition,
+# wordDefinition, roots, occurrences, hoverMarkdown and KEYWORDS. The decisions:
+#   - every task takes language-server.tree's record first; a location is the record `location`, and an answer that
+#     may be absent a maybe. `textualDefinition`'s three answers (a location, null for a path that names nothing,
+#     undefined for a position that is no path) are a maybe of the host's value, null held as the host's null
+#   - `KEYWORDS` is the task `keywords`, which completion (part 5) reads too
+#   - a length the original took with `.length` is the text's UTF-16 units
+#   - a doc comment is read by the ported parser (parse-tolerant) and mill-running's span-of-node; its `#` and one
+#     white space unit are taken off by unit, then the host's `trim`
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+
+load @term/make/fixing
+  find units-of
+
+load @term/make/compile/main-entry
+  find whitespace-code
+
+load @term/make/parser/diagnostic
+  find span
+  find position
+
+load @term/make/parser/token
+  find token-source
+
+load @term/make/parser/tree
+  find parse-tolerant
+  find node
+
+load @term/make/compile/mill-running
+  find span-of-node
+
+load @term/call/context-slice
+  find written-name
+
+load ./geometry
+  find lsp-position
+  find lsp-range
+  find inner-position
+  find outer-range
+
+load ./analysis
+  find to-range
+  find hover-at
+
+load ./symbol-index
+  find named-symbol
+  find symbol-at
+  find occurrences-of
+  find scope-local
+
+load ./mentions
+  find path-mentions
+  find mention-at
+  find word-at
+  find declarations-of
+
+load ./package-index
+  find read-text
+  find index-file
+  find importers-of
+  find outer-span
+
+load ./language-server
+  find language-server
+  find document
+  find document-view
+  find resolve-module
+  find path-for
+  find uri-for
+  find is-file-path
+  find is-given
+
+load ./document-analysis
+  find settled
+
+load ./server-reply
+  find respond
+  find position-of
+  find uri-of
+  find null-value
+
+dock load
+  load <node:fs>, name node-fs
+  load <@term/make/code/resolve>, name resolving-module
+
+# what hover shows of a definition: its name, its kind and its signature
+form shown-definition
+  link name, like text
+  link kind, like text
+  link detail, like text
+
+form location
+  link uri, like text
+  link range, like lsp-range
+
+# where a module a document loads defines a name
+form definer-place
+  link file, like text
+  link line, like number
+  link column, like number
+
+form document-link
+  link range, like lsp-range
+  link target, like text
+  link tooltip, like text
+
+form markdown-content
+  link kind, like text
+  link value, like text
+
+form hover-answer
+  link contents, like markdown-content
+
+# ---- the host ----
+
+bind source-file-of
+  take source, like dynamic
+  like text
+  case node
+    text <$source.file>
+
+bind source-text-of
+  take source, like dynamic
+  like text
+  case node
+    text <$source.text>
+
+bind trimmed
+  take value, like text
+  like text
+  case node
+    text <$value.trim()>
+
+# `params?.context?.includeDeclaration ?? true`, by truth
+bind includes-declaration
+  take params, like dynamic
+  like boolean
+  case node
+    text <Boolean(($params)?.context?.includeDeclaration ?? true)>
+
+bind host-value
+  take value, like dynamic
+  like dynamic
+  case node
+    text <$value>
+
+# ---- the keywords ----
+
+# the keywords offered in completion: the four-letter Term vocabulary as written today. The retired words are not
+# here and must never come back: `wave` (booleans are bare), `bust` and `send kink` (`halt` raises and passes on),
+# `auto` (`seek`). Metadata is `mark`, and `note <metadata>` is the old spelling, so it is never offered. `note` stays
+# a word for a field named note. A bare `back` is a return only in a lean file
+task keywords
+  like list, like text
+
+  save words, make list
+  walk split(<task take send call read save host make bind form case head link slot need fork sift hook walk turn halt wait load find name mark text code like note hold dock mask wear suit fuse tree rule show seek have must down>, < >)
+    take word
+    push(words, word)
+  back words
+
+task is-keyword
+  take word, like text
+  like boolean
+  mark private
+
+  walk keywords()
+    take one
+    fork test, is-equal(one, word)
+      hold
+        back true
+  back or(or(is-equal(word, <back>), is-equal(word, <true>)), or(is-equal(word, <false>), is-equal(word, <void>)))
+
+# ---- hover ----
+
+# The hover popover as markdown. A definition under the cursor renders its full signature (a call shows
+# `greet(name: text) -> text`, a form or mask its head and members); any other expression renders its inferred type.
+# The `tree` fence (the language id this extension registers) lets the editor color the popover.
+task hover-markdown
+  take def, like maybe, like shown-definition
+  take type, like maybe, like text
+  take note, like maybe, like text
+  like maybe, like text
+
+  sift def
+    case some
+      link shown
+      save name, written-name(shown/name)
+      save value, <{name}{shown/detail}>
+      fork test, or(is-equal(shown/kind, <local>), is-equal(shown/kind, <parameter>))
+        hold
+          save value, <{name}: {shown/detail}>
+      save tail, <>
+      sift note
+        case some
+          link prose
+          fork test, is-unequal(prose, <>)
+            hold
+              save tail, <\n\n{prose}>
+        case none
+          save skipped, true
+      back make(some, <```tree\n{value}\n```{tail}>)
+    case none
+      save skipped, true
+  sift type
+    case some
+      link shown-type
+      fork test, is-unequal(shown-type, <>)
+        hold
+          back make(some, <```tree\n{shown-type}\n```>)
+    case none
+      save skipped, true
+  back make none
+
+task local-named
+  take named, like named-symbol
+  like maybe, like scope-local
+  mark private
+
+  sift named/scope
+    case some
+      link scope
+      walk scope/locals
+        take one
+        fork test, is-equal(one/name, named/name)
+          hold
+            back make(some, one)
+    case none
+      save skipped, true
+  back make none
+
+# a definition for hover: a parameter or local of the enclosing task, else a top-level one of this file, else an
+# imported task's signature (span-free, from the closure summary)
+task definition-of
+  take view, like document-view
+  take named, like named-symbol
+  like maybe, like shown-definition
+
+  sift named/scope
+    case some
+      sift local-named(named)
+        case some
+          link local
+          back make(some, make(shown-definition, bind(name, local/name), bind(kind, local/kind), bind(detail, local/detail)))
+        case none
+          back make none
+    case none
+      save skipped, true
+  fork test, view/index/definitions/has(named/name)
+    hold
+      save own, view/index/definitions/get(named/name)
+      back make(some, make(shown-definition, bind(name, own/name), bind(kind, own/kind), bind(detail, own/detail)))
+  fork test, view/summary/signatures/has(named/name)
+    miss
+      back make none
+  save sig, view/summary/signatures/get(named/name)
+  save joined, <>
+  save at, 0
+  walk sig/params
+    take param
+    fork test, is-above(at, 0)
+      hold
+        save joined, <{joined}, >
+    save joined, <{joined}{param/name}: {param/type}>
+    save at, add(at, 1)
+  back make(some, make(shown-definition, bind(name, named/name), bind(kind, <function>), bind(detail, <({joined}) -\> {sig/result}>)))
+
+# Where a name is defined: a local in its task, a top-level definition in this file, or the module a `load` brought
+# it from (its file, at the name)
+task locate
+  take server, like language-server
+  take doc, like document
+  take view, like document-view
+  take named, like named-symbol
+  like maybe, like location
+
+  sift named/scope
+    case some
+      sift local-named(named)
+        case some
+          link local
+          sift local/at
+            case some
+              link written
+              back make(some, make(location, bind(uri, doc/uri), bind(range, outer-range(view/map, to-range(written)))))
+            case none
+              back make none
+        case none
+          back make none
+    case none
+      save skipped, true
+  fork test, view/index/definitions/has(named/name)
+    hold
+      save own, view/index/definitions/get(named/name)
+      save where, own/span
+      sift own/at
+        case some
+          link written
+          save where, written
+        case none
+          save skipped, true
+      back make(some, make(location, bind(uri, doc/uri), bind(range, outer-range(view/map, to-range(where)))))
+  sift definer(server, doc, named/name)
+    case some
+      link place
+      save width, units-of(written-name(named/name))/length
+      save start, make(lsp-position, bind(line, place/line), bind(character, place/column))
+      save end, make(lsp-position, bind(line, place/line), bind(character, add(place/column, width)))
+      back make(some, make(location, bind(uri, uri-for(place/file)), bind(range, make(lsp-range, bind(start, start), bind(end, end)))))
+    case none
+      back make none
+
+# the module a document loads that defines a name at top level, with the name's position in it
+task definer
+  take server, like language-server
+  take doc, like document
+  take name, like text
+  like maybe, like definer-place
+
+  save written, written-name(name)
+  walk path-mentions(doc/file, doc/text)
+    take mention
+    fork test, is-equal(mention/head, <link>)
+      hold
+        turn next
+    sift resolve-module(server, doc, mention/path)
+      case some
+        link source
+        save file, source-file-of(source)
+        walk declarations-of(file, source-text-of(source))
+          take declared
+          fork test, is-equal(declared/name, written)
+            hold
+              back make(some, make(definer-place, bind(file, file), bind(line, declared/span/start/line), bind(column, declared/span/start/column)))
+      case none
+        save skipped, true
+  back make none
+
+# a `#` and one white space unit off the front of a comment, then the host's trim
+task comment-prose
+  take body, like text
+  like text
+  mark private
+
+  save units, units-of(body)
+  save from, 0
+  fork test, and(is-above(units/length, 0), is-equal(get(units, 0), 35))
+    hold
+      save from, 1
+      fork test, and(is-above(units/length, 1), whitespace-code(get(units, 1)))
+        hold
+          save from, 2
+  back trimmed(cut-from(body, from))
+
+bind cut-from
+  take value, like text
+  take from, like number
+  like text
+  case node
+    text <$value.slice($from)>
+
+# The doc comment of the top-level definition on a located line: the `#` lines the parser keeps on its group, each
+# without its `#` and one space, joined as `term look` joins them. The open document's text when the file is open,
+# else the file on disk
+task doc-comment-at
+  take server, like language-server
+  take located, like location
+  like maybe, like text
+
+  save file, path-for(located/uri)
+  save body, <>
+  save known, false
+  fork test, server/documents/has(located/uri)
+    hold
+      save body, server/documents/get(located/uri)/text
+      save known, true
+  fork test, and(is-equal(known, false), is-unequal(file, <>))
+    hold
+      fork
+        mark unsafe
+        save body, node-fs/readFileSync(file, <utf8>)
+        save known, true
+      halt take
+        take problem
+        back make none
+  fork test, known
+    miss
+      back make none
+  save named-file, file
+  fork test, is-equal(file, <>)
+    hold
+      save named-file, located/uri
+  save parsed, parse-tolerant(make(token-source, bind(file, named-file), bind(text, body)))
+  save parts, make list
+  sift parsed/tree
+    case root
+      walk nodes
+        take one
+        sift one
+          case group
+            sift span-of-node(one)
+              case some
+                link where
+                fork test, is-equal(where/start/line, located/range/start/line)
+                  hold
+                    sift comments
+                      case some
+                        link written
+                        walk written
+                          take comment
+                          save prose, comment-prose(comment/text)
+                          fork test, is-unequal(prose, <>)
+                            hold
+                              push(parts, prose)
+                      case none
+                        save skipped, true
+                    halt
+              case none
+                save skipped, true
+          miss
+            save skipped, true
+  save note, <>
+  save at, 0
+  walk parts
+    take part
+    fork test, is-above(at, 0)
+      hold
+        save note, <{note} >
+    save note, <{note}{part}>
+    save at, add(at, 1)
+  fork test, is-equal(note, <>)
+    hold
+      back make none
+  back make(some, note)
+
+# ---- definition ----
+
+# Cmd+click on what is not a reference in the compiled program: a path, a `find`, a type after `like`, a rule in a
+# mill definition. None means this position names no file and no declaration; some null means it names a path or a
+# `find` that resolves to nothing, which answers null rather than falling through to the word under it.
+task textual-definition
+  take server, like language-server
+  take doc, like document
+  take at, like lsp-position
+  like maybe, like dynamic
+
+  save mentions, path-mentions(doc/file, doc/text)
+  save top, make(lsp-range, bind(start, make(lsp-position, bind(line, 0), bind(character, 0))), bind(end, make(lsp-position, bind(line, 0), bind(character, 0))))
+  sift mention-at(mentions, at/line, at/character)
+    case some
+      link hit
+      # a `find` of the empty name is neither of the original's two branches (`find === undefined`, `find` by truth)
+      sift hit/find
+        case some
+          link asked
+          fork test, is-equal(asked, <>)
+            hold
+              back make none
+        case none
+          save skipped, true
+      sift resolve-module(server, doc, hit/mention/path)
+        case some
+          link source
+          save file, source-file-of(source)
+          sift hit/find
+            case some
+              link wanted
+              fork test, is-file-path(file)
+                miss
+                  back make(some, null-value())
+              walk declarations-of(file, source-text-of(source))
+                take declared
+                fork test, is-equal(declared/name, wanted)
+                  hold
+                    save found, host-value(make(location, bind(uri, uri-for(file)), bind(range, to-range(declared/span))))
+                    back make(some, found)
+              back make(some, null-value())
+            case none
+              fork test, is-file-path(file)
+                hold
+                  save found, host-value(make(location, bind(uri, uri-for(file)), bind(range, top)))
+                  back make(some, found)
+              back make(some, null-value())
+        case none
+          back make(some, null-value())
+    case none
+      back make none
+
+# the word under the cursor, declared in this file or in a module it loads
+task word-definition
+  take server, like language-server
+  take doc, like document
+  take at, like lsp-position
+  like maybe, like location
+
+  sift word-at(doc/text, at/line, at/character)
+    case some
+      link word
+      fork test, or(is-equal(word, <>), is-keyword(word))
+        hold
+          back make none
+      walk declarations-of(doc/file, doc/text)
+        take declared
+        fork test, is-equal(declared/name, word)
+          hold
+            back make(some, make(location, bind(uri, doc/uri), bind(range, to-range(declared/span))))
+      sift definer(server, doc, word)
+        case some
+          link place
+          fork test, is-file-path(place/file)
+            miss
+              back make none
+          save width, units-of(word)/length
+          save start, make(lsp-position, bind(line, place/line), bind(character, place/column))
+          save end, make(lsp-position, bind(line, place/line), bind(character, add(place/column, width)))
+          back make(some, make(location, bind(uri, uri-for(place/file)), bind(range, make(lsp-range, bind(start, start), bind(end, end)))))
+        case none
+          back make none
+    case none
+      back make none
+
+# ---- references ----
+
+# the packages a workspace question searches: every open document's (server.ts `roots`, a verb here: a call naming
+# a parameter of the callee it sits in is read as that named argument)
+task search-roots
+  take server, like language-server
+  take extra, like text
+  like list, like text
+
+  save out, make list
+  save seen, make hash
+  walk server/documents/values()
+    take doc
+    fork test, is-unequal(doc/path, <>)
+      hold
+        save root, resolving-module/findProjectRoot(doc/file)
+        fork test, and(is-given(root), is-unequal(root, <>))
+          hold
+            fork test, seen/has(root)
+              miss
+                seen/set(root, true)
+                push(out, root)
+  fork test, is-unequal(extra, <>)
+    hold
+      save more, resolving-module/findProjectRoot(extra)
+      fork test, and(is-given(more), is-unequal(more, <>))
+        hold
+          fork test, seen/has(more)
+            miss
+              seen/set(more, true)
+              push(out, more)
+  back out
+
+# add spans to a uri's list, each place once
+task add-spans
+  take out, like hash, like text, like list, like span
+  take uri, like text
+  take spans, like list, like span
+  like void
+  mark private
+
+  fork test, is-equal(spans/length, 0)
+    hold
+      send back
+  save listed, make list
+  fork test, out/has(uri)
+    hold
+      save listed, out/get(uri)
+  save seen, make hash
+  walk listed
+    take one
+    seen/set(<{one/start/line}:{one/start/column}>, true)
+  walk spans
+    take one
+    save key, <{one/start/line}:{one/start/column}>
+    fork test, seen/has(key)
+      miss
+        seen/set(key, true)
+        push(listed, one)
+  out/set(uri, listed)
+
+# whether a span starts after another (line, then column)
+task starts-after
+  take one, like span
+  take other, like span
+  like boolean
+  mark private
+
+  fork test, is-above(one/start/line, other/start/line)
+    hold
+      back true
+  fork test, is-below(one/start/line, other/start/line)
+    hold
+      back false
+  back is-above(one/start/column, other/start/column)
+
+# a stable sort by start: line, then column
+task sorted-spans
+  take spans, like list, like span
+  like list, like span
+  mark private
+
+  save out, make list
+  walk spans
+    take one
+    push(out, one)
+  save i, 1
+  walk test
+    hook test, is-below(i, out/length)
+    hook hold
+      save held, get(out, i)
+      save j, subtract(i, 1)
+      walk test
+        hook test, and(is-minimum(j, 0), starts-after(get(out, j), held))
+        hook hold
+          out/set(add(j, 1), get(out, j))
+          save j, subtract(j, 1)
+      out/set(add(j, 1), held)
+      save i, add(i, 1)
+  back out
+
+# Every place a name is written, by document uri. A parameter or local is its task's alone. A top-level name is its
+# defining file's occurrences plus, across the packages, every file that imports it from that file. For a rename, an
+# importer that aliases the import (`find x, name y`) has only its `find` token edited.
+task occurrences
+  take server, like language-server
+  take doc, like document
+  take view, like document-view
+  take named, like named-symbol
+  take rename, like boolean
+  like hash, like text, like list, like span
+
+  save out, make hash
+  save here, make list
+  walk occurrences-of(view/index, named)
+    take one
+    push(here, outer-span(view/map, one))
+  sift named/scope
+    case some
+      add-spans(out, doc/uri, here)
+      back out
+    case none
+      save skipped, true
+
+  save name, named/name
+  save own-definition, view/index/definitions/has(name)
+  save definer-file, doc/file
+  save defined, own-definition
+  fork test, own-definition
+    miss
+      sift definer(server, doc, name)
+        case some
+          link place
+          save definer-file, place/file
+          save defined, true
+        case none
+          save defined, false
+  fork test, or(is-equal(defined, false), is-equal(doc/path, <>))
+    hold
+      # a name defined nowhere this server can see, or a document with no file: this document alone
+      add-spans(out, doc/uri, here)
+      back out
+
+  # the defining file's own occurrences: this view when it is this document, else its index
+  fork test, own-definition
+    hold
+      add-spans(out, doc/uri, here)
+    miss
+      sift read-text(server/workspace, definer-file)
+        case some
+          link body
+          sift index-file(server/workspace, definer-file, body)
+            case some
+              link indexed
+              save theirs, make list
+              walk occurrences-of(indexed/index, make(named-symbol, bind(name, written-name(name))))
+                take one
+                push(theirs, outer-span(indexed/map, one))
+              add-spans(out, uri-for(definer-file), theirs)
+            case none
+              save skipped, true
+        case none
+          save skipped, true
+
+  save searched, search-roots(server, definer-file)
+  walk importers-of(server/workspace, searched, written-name(name), definer-file)
+    take importer
+    save uri, uri-for(importer/file)
+    fork test, server/by-file/has(importer/file)
+      hold
+        save uri, server/by-file/get(importer/file)/uri
+    add-spans(out, uri, importer/finds)
+    fork test, or(is-equal(rename, false), is-equal(importer/aliased, false))
+      hold
+        add-spans(out, uri, importer/spans)
+    # an alias's uses refer to the definition, but a rename leaves the alias alone
+    fork test, rename
+      miss
+        add-spans(out, uri, importer/alias-spans)
+
+  # this document, when it imports the name rather than defines it, is one of the importers above; when the
+  # workspace could not see it (outside every package), its own occurrences still count
+  fork test, and(is-equal(own-definition, false), is-equal(out/has(doc/uri), false))
+    hold
+      add-spans(out, doc/uri, here)
+
+  walk out/keys()
+    take uri
+    out/set(uri, sorted-spans(out/get(uri)))
+  back out
+
+# ---- the handlers ----
+
+task hover
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  take outbox, like list, like dynamic
+  like dynamic
+
+  save found, settled(server, params, outbox)
+  save position, position-of(params)
+  sift found
+    case some
+      link doc
+      sift doc/view
+        case some
+          link view
+          save at, inner-position(view/map, position)
+          save named, symbol-at(view/index, at)
+          save def, make none
+          sift named
+            case some
+              link symbol
+              save def, definition-of(view, symbol)
+            case none
+              save skipped, true
+          save type, make none
+          fork test, view/typed
+            hold
+              save type, hover-at(view/program, at)
+          save note, make none
+          sift def
+            case some
+              sift named
+                case some
+                  link symbol
+                  sift symbol/scope
+                    case some
+                      save skipped, true
+                    case none
+                      sift locate(server, doc, view, symbol)
+                        case some
+                          link located
+                          save note, doc-comment-at(server, located)
+                        case none
+                          save skipped, true
+                case none
+                  save skipped, true
+            case none
+              save skipped, true
+          sift hover-markdown(def, type, note)
+            case some
+              link value
+              save answer, make(hover-answer, bind(contents, make(markdown-content, bind(kind, <markdown>), bind(value, value))))
+              back respond(message, answer)
+            case none
+              back respond(message, null-value())
+        case none
+          back respond(message, null-value())
+    case none
+      back respond(message, null-value())
+
+task definition
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  take outbox, like list, like dynamic
+  like dynamic
+
+  save found, settled(server, params, outbox)
+  save position, position-of(params)
+  sift found
+    case some
+      link doc
+      # a path or a `find` first: their words are not references, and a path's last segment is often a word something
+      # else declares
+      sift textual-definition(server, doc, position)
+        case some
+          link textual
+          back respond(message, textual)
+        case none
+          save skipped, true
+      # a name the compiled program refers to, through its scope and its imports; else the word itself (a type after
+      # `like`, a component, a rule in a mill definition, a name in a file that did not compile); last, the reference
+      # whose expression holds the cursor (on `call` of `call f`)
+      sift doc/view
+        case some
+          link view
+          save at, inner-position(view/map, position)
+          sift symbol-at(view/index, at, true)
+            case some
+              link named
+              sift locate(server, doc, view, named)
+                case some
+                  link located
+                  back respond(message, located)
+                case none
+                  save skipped, true
+            case none
+              save skipped, true
+          save loose, symbol-at(view/index, at)
+          sift word-definition(server, doc, position)
+            case some
+              link worded
+              back respond(message, worded)
+            case none
+              save skipped, true
+          sift loose
+            case some
+              link named
+              sift locate(server, doc, view, named)
+                case some
+                  link located
+                  back respond(message, located)
+                case none
+                  back respond(message, null-value())
+            case none
+              back respond(message, null-value())
+        case none
+          sift word-definition(server, doc, position)
+            case some
+              link worded
+              back respond(message, worded)
+            case none
+              back respond(message, null-value())
+    case none
+      back respond(message, null-value())
+
+# every path a document names, underlined, each opening the module the compiler would read. A path that resolves to
+# nothing has no link
+task document-links
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  like dynamic
+
+  save uri, uri-of(params)
+  save links, make list
+  fork test, server/documents/has(uri)
+    miss
+      back respond(message, links)
+  save doc, server/documents/get(uri)
+  walk path-mentions(doc/file, doc/text)
+    take mention
+    sift resolve-module(server, doc, mention/path)
+      case some
+        link source
+        save file, source-file-of(source)
+        fork test, is-file-path(file)
+          hold
+            push(links, make(document-link, bind(range, to-range(mention/span)), bind(target, uri-for(file)), bind(tooltip, file)))
+      case none
+        save skipped, true
+  back respond(message, links)
+
+task references
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  take outbox, like list, like dynamic
+  like dynamic
+
+  save found, settled(server, params, outbox)
+  save position, position-of(params)
+  save locations, make list
+  sift found
+    case some
+      link doc
+      sift doc/view
+        case some
+          link view
+          sift symbol-at(view/index, inner-position(view/map, position))
+            case some
+              link named
+              save include, includes-declaration(params)
+              save out, occurrences(server, doc, view, named, false)
+              walk out/keys()
+                take uri
+                walk out/get(uri)
+                  take one
+                  push(locations, make(location, bind(uri, uri), bind(range, to-range(one))))
+              fork test, include
+                hold
+                  back respond(message, locations)
+              sift locate(server, doc, view, named)
+                case some
+                  link declared
+                  save kept, make list
+                  walk locations
+                    take one
+                    fork test, and(and(is-equal(one/uri, declared/uri), is-equal(one/range/start/line, declared/range/start/line)), is-equal(one/range/start/character, declared/range/start/character))
+                      miss
+                        push(kept, one)
+                  back respond(message, kept)
+                case none
+                  back respond(message, locations)
+            case none
+              back respond(message, locations)
+        case none
+          back respond(message, locations)
+    case none
+      back respond(message, locations)

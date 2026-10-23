@@ -1,32 +1,25 @@
 // The hive told natively (native-exceptions-0006): the compiler emits `wake_hive` / `wakeHive` per backend from
 // the roll, the entry point calls it, and every native raise tells the hive before unwinding — the same funnel
-// the TypeScript constructor hook carries. A program wakes its hive (one static exception entry), raises, catches,
-// and reads `hive-roll`: one deck woken, the static entry present, and the raise appended with its form as the
-// entry name. Built and run on the real toolchains. HV_ONLY=rust (or swift, kotlin) runs one backend.
+// the TypeScript constructor hook carries. A program wakes its hive (its static exception entry), raises, catches,
+// and reads `hive-roll`: the static entry present, and the raise appended with its form as the entry name. Built and
+// run on the real toolchains. HV_ONLY=rust (or swift, kotlin) runs one backend.
+//
+// The wake is the COMPILE'S (term/hive decision 002, seam-0030): the program is a package of its own (`@probe/hive`,
+// with a `tell`), compiled by `compile`, and emitted through `emitTarget` with `wake: result.wake`, the path every
+// native driver takes, so the groups cannot drift from what the roll holds. It was written here by hand.
 // Run: npx tsx test/compile/hive-native.ts
 
 import { runDir } from './run-dir'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parse } from '@term/make/code/parser/tree'
-import { stdlibResolver } from '@term/make/code/resolve'
-import { mill } from '@term/make/code/compile/mill'
-import { resolve as resolveNames } from '@term/make/code/check/resolve'
-import { check } from '@term/make/code/check/infer'
-import { resolveAsync } from '@term/make/code/check/async-resolve'
-import { simplify } from '@term/make/code/ir/simplify'
-import { collectModules } from '@term/make/code/compile/load'
-import type { Source } from '@term/make/code/compile/load'
-import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
-import { expandTemplates } from '@term/make/code/compile/template'
-import { bindModules, stampModule } from '@term/make/code/check/bind-modules'
-import { emitRust } from '@term/make/code/compile/rust'
-import { emitSwift } from '@term/make/code/compile/swift'
-import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
-import type { WakeGroup } from '@term/make/code/compile/rust'
+import { compile } from '@term/make/code/compile/compile'
+import { emitTarget } from '@term/make/code/compile/emit-target'
+import { projectResolver } from '@term/call/code/make'
+import { projectDeckOf } from '@term/call/code/deck-of'
+import type { WakeGroup } from '@term/make/code/compile/wake'
 import type { Program } from '@term/make/code/compile/node'
 
 type Env = 'rust' | 'swift' | 'kotlin'
@@ -62,10 +55,6 @@ function have(tool: string): boolean {
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const TERM = resolvePath(HERE, '..', '..')
-const SEED = join(TERM, 'deck/base')
-
-// the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
-const resolver = stdlibResolver()!
 
 const readRuntime = (path: string): string | undefined => (existsSync(path) ? readFileSync(path, 'utf8') : undefined)
 
@@ -142,10 +131,17 @@ task static-roll
     read all
     hook next
       take site, name entry
-      send back, text <{entry/base/like}: {entry/base/note}>
+      fork test
+        hook test
+          call is-equal
+            read entry/name
+            text <user-absence>
+        hook hold
+          send back, text <{entry/base/like}: {entry/base/note}>
   send back, text <none>
 
-# the static tell the typed wake put in hive-tells: its note and the first field it shows
+# the static tell the typed wake put in hive-tells, named as the roll names a tell (its deck and form): its note and the
+# first field it shows
 task static-tell
   like text
   save all
@@ -154,83 +150,61 @@ task static-tell
     read all
     hook next
       take site, name entry
-      send back, text <{entry/base/note} ({entry/base/link/0})>
+      fork test
+        hook test
+          call is-equal
+            read entry/name
+            text <@probe/hive/user-absence>
+        hook hold
+          send back, text <{entry/base/note} ({entry/base/link/0})>
   send back, text <none>
+
+# what a customer is told of the exception: the static tell the typed wake carries
+tell @probe/hive/user-absence
+  note <Who is that?>
+  link key
 `
-
-// what the roll would carry for this build: one deck, its one exception declaration
-const WAKE: WakeGroup[] = [
-  {
-    deck: '@probe/hive',
-    entries: [
-      { host: '@probe/hive', kind: 'exception', name: 'user-absence', site: 'main.tree', base: { like: 'absence' } },
-    ],
-    // the same declaration as the roll gives it to the typed wake (compile.ts `wakeGroups`)
-    typed: {
-      exceptions: [
-        {
-          host: '@probe/hive',
-          kind: 'exception',
-          name: 'user-absence',
-          site: 'main.tree',
-          base: { kind: 'exception', name: 'user-absence', site: 'main.tree', like: 'absence', chain: ['absence'], note: 'No such user', link: { key: 'text' } },
-        },
-      ],
-      tells: [
-        {
-          host: '@probe/hive',
-          kind: 'tell',
-          name: 'user-absence',
-          site: 'main.tree',
-          base: { kind: 'tell', name: 'user-absence', site: 'main.tree', note: 'Who is that?', link: ['key'] },
-        },
-      ],
-      docks: [],
-    },
-  },
-]
-
-function frontEnd(env: Env): Program {
-  const { sources, scope } = collectModules({ file: 'main.tree', text: PROGRAM }, withNativeEnv(env, resolver))
-  const program: Program = []
-
-  for (const unit of sources) {
-    const parsed = parse(unit)
-
-    if (!parsed.ok) {
-      throw new Error(`parse failed: ${unit.file}: ${parsed.diagnostics.map(d => d.message).join(', ')}`)
-    }
-
-    const built = mill(expandTemplates(parsed.tree), unit.file)
-
-    if (!built.ok) {
-      throw new Error(`mill failed: ${unit.file}: ${built.diagnostics.map(d => d.message).join(', ')}`)
-    }
-
-    stampModule(built.program, unit.file)
-    program.push(...built.program)
-  }
-
-  // module scope and form extension, as `compileProgram` runs them (check/bind-modules.ts)
-  bindModules(program, scope, 'main.tree')
-  resolveNames(program, 'main.tree')
-  const errors = check(program, 'main.tree').filter(d => d.severity !== 'warning')
-
-  if (errors.length) {
-    throw new Error(`check failed: ${errors.slice(0, 5).map(d => d.message).join(' | ')}`)
-  }
-
-  resolveAsync(program)
-
-  // the hive's entry points ride along the way compile.ts keeps them: the wake chain calls them
-  return simplify(program, new Set(['check-hive', 'hive-size-of', 'static-roll', 'static-tell', 'hive-wake', 'hive-wake-typed', 'hive-tell', 'hive-roll']))
-}
 
 const dir = runDir('term-hive-native-')
 const only = process.env.HV_ONLY ?? ''
 
-// one deck woken; the static entry before the raise; the raise appended with the exception's form as its name
-const WANT = 'decks=1 before=1 after=2 last=user-absence'
+// a package of its own, so the roll names a real deck (`@probe/hive`) and its tell, linking the stdlib
+const root = join(dir, 'probe')
+mkdirSync(join(root, 'link/@term'), { recursive: true })
+mkdirSync(join(root, 'code'), { recursive: true })
+symlinkSync(join(TERM, 'deck/base'), join(root, 'link/@term/base'))
+writeFileSync(join(root, 'deck.tree'), 'deck @probe/hive\n  code <0.0.0>\n')
+const entry = join(root, 'code/main.tree')
+writeFileSync(entry, PROGRAM)
+
+// the program as `term make --emit <env>` makes it: compiled for the env, then emitted through `emitTarget` with the
+// compile's own wake, and the groups that wake carried
+function built(env: Env): { source: string; wake: WakeGroup[] } {
+  const result = compile({ file: entry, text: PROGRAM }, { resolve: projectResolver(root, env), deckOf: projectDeckOf(), env })
+
+  if (!result.ok) {
+    throw new Error(`compile failed: ${result.diagnostics.slice(0, 5).map(d => d.message).join(' | ')}`)
+  }
+
+  const source = emitTarget({ program: result.program as Program, typescript: '', target: env, readRuntime, wake: result.wake })
+
+  return { source, wake: result.wake ?? [] }
+}
+
+// the compile's wake names this deck, with its exception and its tell in the typed groups
+function judgeWake(env: Env, wake: WakeGroup[]): void {
+  const own = wake.find(group => group.deck === '@probe/hive')
+  ok(
+    `${env}: the compile's wake holds the deck, its static exception and its tell`,
+    own !== undefined &&
+      own.typed.exceptions.some(one => one.name === 'user-absence') &&
+      own.typed.tells.some(one => one.name === '@probe/hive/user-absence'),
+    JSON.stringify(wake.map(group => ({ deck: group.deck, exceptions: group.typed.exceptions.map(one => one.name), tells: group.typed.tells.map(one => one.name) }))),
+  )
+}
+
+// the deck woken; the static entries before the raise; the raise appended with the exception's form as its name
+const WANT = /^decks=\d+ before=(\d+) after=(\d+) last=user-absence$/
 
 // the backends whose wake writes the typed rolls, and what the static exception reads back as there
 const TYPED: Env[] = ['rust', 'swift', 'kotlin']
@@ -238,9 +212,10 @@ const STATIC = 'absence: No such user'
 const TOLD = 'Who is that? (key)'
 
 function judge(env: Env, run: { status: number | null; stdout: string; stderr: string }): void {
+  const counted = WANT.exec(run.stdout.trim().split('\n')[0] ?? '')
   ok(
     `${env}: the wake chain fills the roll and a native raise tells the hive`,
-    run.status === 0 && run.stdout.trim().split('\n')[0] === WANT,
+    run.status === 0 && counted !== null && Number(counted[1]) >= 1 && Number(counted[2]) === Number(counted[1]) + 1,
     `exit ${run.status}: ${(run.stdout + run.stderr).slice(0, 300)}`,
   )
 
@@ -283,13 +258,14 @@ function runRust(): void {
     return skipped('rust: hive', 'cargo not installed')
   }
 
-  const program = frontEnd('rust')
+  const { source, wake } = built('rust')
+  judgeWake('rust', wake)
   const proj = join(dir, 'rust')
   mkdirSync(join(proj, 'src'), { recursive: true })
   writeFileSync(join(proj, 'Cargo.toml'), CARGO_TOML)
   writeFileSync(
     join(proj, 'src', 'main.rs'),
-    `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(program, { wake: WAKE })}\nfn main() { wake_hive(); println!("{}", check_hive()); println!("{}", static_roll()); println!("{}", static_tell()); }\n`,
+    `${source}\nfn main() { wake_hive(); println!("{}", check_hive()); println!("{}", static_roll()); println!("{}", static_tell()); }\n`,
   )
   const env = { ...process.env, CARGO_TARGET_DIR: join(tmpdir(), 'seed-rust-runtime', 'target') }
 
@@ -310,12 +286,10 @@ function runSwift(): void {
     return skipped('swift: hive', 'swiftc not installed')
   }
 
-  const program = frontEnd('swift')
+  const { source, wake } = built('swift')
+  judgeWake('swift', wake)
   const main = join(dir, 'main.swift')
-  writeFileSync(
-    main,
-    `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(program, { wake: WAKE })}\nwakeHive()\nprint(checkHive())\nprint(staticRoll())\nprint(staticTell())\n`,
-  )
+  writeFileSync(main, `${source}\nwakeHive()\nprint(checkHive())\nprint(staticRoll())\nprint(staticTell())\n`)
 
   try {
     execFileSync('swiftc', ['-o', join(dir, 'swift-main'), main], { stdio: 'pipe' })
@@ -334,14 +308,10 @@ function runKotlin(): void {
     return skipped('kotlin: hive', 'kotlinc/java not installed')
   }
 
-  const program = frontEnd('kotlin')
+  const { source, wake } = built('kotlin')
+  judgeWake('kotlin', wake)
   const file = join(dir, 'main.kt')
-  writeFileSync(
-    file,
-    hoistKotlinImports(
-      `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(program, { wake: WAKE })}\nfun main() { wakeHive(); println(checkHive()); println(staticRoll()); println(staticTell()) }\n`,
-    ),
-  )
+  writeFileSync(file, `${source}\nfun main() { wakeHive(); println(checkHive()); println(staticRoll()); println(staticTell()) }\n`)
   const jar = join(dir, 'main.jar')
 
   try {

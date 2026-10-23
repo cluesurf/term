@@ -1,0 +1,907 @@
+# `term test`: every test file of a Term project compiled and run, or a package's own `test` script. It prints through
+# the terminal output library as the standard's Test run card does: a `test` item per file with its counts, a `case`
+# Problem item per test that did not hold, the compile problems of a file that did not build, and a closing item with
+# the run's totals.
+#
+# What it decides without its file system, a build or the terminal is call/code/test-plan.tree: which files a run
+# collects, a control's verdict, the counts a round closes with and what each refusal says.
+#
+# Ported from deck/call/code/test.ts (term-cli-in-term-0018). `call-test` takes the original's one input record as it
+# came (root, filter, merged, case, env, ride, update), so a TypeScript caller moves to it unchanged. Docked until
+# their integrate: the output library (call/code/output.ts, so the run shares the options the console set: a loaded
+# port carries its own copy of the printer's state), the build session, resolver and watcher (call/code/make.ts, whose
+# session the docked test runner reads), the test runners (test-run.ts, test-native.ts), and the caches and readers
+# they are handed (cache-store.ts, deck-of.ts, role-of.ts, compile/reach.ts).
+
+load @term/base/list
+  find list
+  find join
+
+load @term/call/test-plan
+  find is-control
+  find is-collected
+  find is-refusal
+  find control-count
+  find control-verdict-of
+  find round-totals
+  find totals-counts
+  find round-failed
+  find round-subject
+  find case-subject
+  find failure-fact
+  find env-refusal
+
+load @term/call/draft-mark
+  find declares-draft
+
+load @term/call/snapshot-keep
+  find is-snapshot-file
+
+load @term/call/work/testing/snapshot-store
+  find read-snapshots
+  find write-snapshots
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  # an inherited method (once) is reached only through the global (traps.md)
+  load <global:process>, name host-process
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/test-run>, name run-module
+  load <@term/call/code/test-native>, name native-module
+  load <@term/make/code/compile/reach>, name reach-module
+  load <@term/call/code/cache-store>, name cache-module
+  load <@term/call/code/deck-of>, name deck-module
+  load <@term/call/code/role-of>, name role-module
+  load <@term/call/code/output>, name output
+
+# ---- what the output library is handed ----
+
+form open-ask
+  link verb, like text
+  link root, like text
+  link counts
+    like list, like dynamic
+    need false
+  link facts, like list, like text
+
+form item-ask
+  link glyph, like text
+  link kind
+    like text
+    need false
+  link verb
+    like text
+    need false
+  link subject, like text
+  link duration
+    like dynamic
+    need false
+  link exit
+    like number
+    need false
+  link facts
+    like list, like text
+    need false
+  link counts
+    like list, like dynamic
+    need false
+  link fields
+    like list, like dynamic
+    need false
+  link quote
+    like list, like text
+    need false
+  link message
+    like list, like text
+    need false
+  link place
+    like dynamic
+    need false
+
+form close-ask
+  link verdict, like text
+  link next
+    like text
+    need false
+  link failure
+    like text
+    need false
+  link counts
+    like list, like dynamic
+    need false
+  link message
+    like list, like text
+    need false
+  link uptime
+    like boolean
+    need false
+
+# where a failed case is: `{ path, line, column: 1 }`
+form case-place
+  link path, like text
+  link line, like dynamic
+  link column, like number
+
+# ---- what the test runners are handed ----
+
+form snapshot-ask
+  link stored, like hash, like text, like list, like text
+  link update, like boolean
+
+form plain-tests-ask
+  link plain-wants, like boolean
+  link snapshots, like snapshot-ask
+
+form tests-ask
+  link snapshots, like snapshot-ask
+
+form test-units
+  link root, like text
+  link cache, like dynamic
+  link bundles, like text
+  link deck-of, like dynamic
+  link parsed, like dynamic
+  link units, like dynamic
+  link walked, like dynamic
+
+form run-ask
+  link file, like text
+  link source, like text
+  link resolve, like dynamic
+  link env, like text
+  link read-runtime, like dynamic
+  link role-of, like dynamic
+  link lean-of, like dynamic
+  link units
+    like dynamic
+    need false
+  link snapshots
+    like snapshot-ask
+    need false
+  link select
+    like dynamic
+    need false
+
+form native-ask
+  link root, like text
+  link file, like text
+  link text, like text
+  link source, like text
+  link tests, like list, like dynamic
+  link env, like text
+  link role-of, like dynamic
+  link lean-of, like dynamic
+  link deck-of, like dynamic
+
+# ---- this run's own state ----
+
+# the readers and the session every file of the run is compiled with
+form test-context
+  link root, like text
+  link filter, like text
+  link merged, like boolean
+  # the `--case` phrase, the empty text for none
+  link chosen, like text
+  # the native backend, the empty text for node
+  link native, like text
+  link update, like boolean
+  link role-of, like dynamic
+  link lean-of, like dynamic
+  link deck-of, like dynamic
+  link read-runtime, like dynamic
+  link session, like dynamic
+  link units, like dynamic
+
+# a round's counts, written by every file it runs
+form round-count
+  mark shared
+  link pass, like number
+  link fail, like number
+  # files of laws alone, whose proofs the build checked
+  link proved, like number
+  # files that did not build, which ran no test at all
+  link broken, like number
+  # files holding no test `--case` asked for
+  link skipped, like number
+  # controls refused exactly as their headers expect
+  link controls, like number
+
+# a control's verdict and the diagnostics that were not proof refusals
+form control-outcome
+  link held, like boolean
+  link broken, like boolean
+  link fact, like text
+  link others, like list, like dynamic
+
+# ---- the host values Term has no word for ----
+
+# `undefined`
+bind nothing
+  like dynamic
+  case node
+    text <undefined>
+
+# whether a host value is truthy, as `if (value)` reads it
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# `value ?? ""`
+bind text-or-empty
+  take value, like dynamic
+  like text
+  case node
+    text <($value ?? "")>
+
+# a host value as the text it is
+bind host-text
+  take value, like dynamic
+  like text
+  case node
+    text <$value>
+
+# `value === true`
+bind is-true
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === true)>
+
+# the epoch milliseconds now
+bind now-ms
+  like number
+  case node
+    text <Date.now()>
+
+# `process.exitCode = code`
+bind set-exit-code
+  take code, like dynamic
+  like void
+  case node
+    text <void (process.exitCode = $code)>
+
+# `err instanceof Error ? err.message : String(err)`
+bind message-of
+  take problem, like dynamic
+  like text
+  case node
+    text <($problem instanceof Error ? $problem.message : String($problem))>
+
+# whether a package.json text names a `test` script; a text that does not parse raises
+bind names-test-script
+  take text, like text
+  like boolean
+  case node
+    text <Boolean(JSON.parse($text).scripts?.test)>
+
+# `d.name ?? ""` of a diagnostic
+bind diagnostic-name
+  take diagnostic, like dynamic
+  like text
+  case node
+    text <($diagnostic.name ?? "")>
+
+# `${d.span?.file ?? ""}:${d.span?.start.line ?? ""}`, where a diagnostic is
+bind diagnostic-place
+  take diagnostic, like dynamic
+  like text
+  case node
+    text <(String($diagnostic.span?.file ?? "") + ":" + String($diagnostic.span?.start.line ?? ""))>
+
+# each diagnostic as a build problem, its text the file's own source when it is in the file
+bind problems-of
+  take diagnostics, like dynamic
+  take file, like text
+  take source, like dynamic
+  like dynamic
+  case node
+    text <$diagnostics.map((diagnostic) =\> (\{ diagnostic, text: diagnostic.file === $file ? $source : undefined \}))>
+
+# the file reader the native prelude reads a runtime with: its text, or undefined when there is no file
+bind runtime-reader
+  like dynamic
+  case node
+    text <((p) =\> (process.getBuiltinModule("node:fs").existsSync(p) ? process.getBuiltinModule("node:fs").readFileSync(p, "utf8") : undefined))>
+
+# each walked module's edges, `new Map([...walked].map(([file, one]) => [file, one.edges]))`
+bind walked-edges
+  take walked, like dynamic
+  like dynamic
+  case node
+    text <new Map([...$walked].map(([file, one]) =\> [file, one.edges]))>
+
+# `{ withFileTypes: true }`
+bind with-file-types
+  like dynamic
+  case node
+    text <(\{ withFileTypes: true \})>
+
+# What a run prints to standard output and standard error, line by line, held back from the terminal while `run`
+# runs: `{ value, lines }`
+bind capture-printed
+  take run, like dynamic
+  like dynamic
+  case node
+    text <(await (async () =\> \{ const chunks = []; const out = process.stdout.write.bind(process.stdout); const err = process.stderr.write.bind(process.stderr); const hold = (chunk) =\> \{ chunks.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8")); return true \}; process.stdout.write = hold; process.stderr.write = hold; try \{ const value = await $run(); const lines = chunks.join("").split(String.fromCharCode(10)); if (lines.at(-1) === "") \{ lines.pop() \} return \{ value, lines \} \} finally \{ process.stdout.write = out; process.stderr.write = err \} \})())>
+
+# A package script run for its output, both streams, never rejecting: `{ code, lines }`. `raw` passes it through
+# instead
+bind run-script
+  take args, like list, like text
+  take cwd, like text
+  take raw, like boolean
+  like dynamic
+  case node
+    text <(await new Promise((resolve) =\> \{ const child = process.getBuiltinModule("node:child_process").spawn("pnpm", $args, \{ cwd: $cwd, stdio: $raw ? "inherit" : "pipe", shell: true \}); const chunks = []; child.stdout?.on("data", (chunk) =\> chunks.push(String(chunk))); child.stderr?.on("data", (chunk) =\> chunks.push(String(chunk))); child.on("close", (code, signal) =\> resolve(\{ code: code ?? (signal ? 130 : 1), lines: chunks.join("").split(String.fromCharCode(10)).filter((line) =\> line !== "") \})); child.on("error", (error) =\> resolve(\{ code: 127, lines: [String(error)] \})) \}))>
+
+# ---- the command ----
+
+task call-test
+  take input, like dynamic
+  like void
+  mark async
+
+  fork
+    mark unsafe
+    test-project(input)
+  halt take
+    take problem
+    output/fail-run(problem, input/root)
+
+task test-project
+  take input, like dynamic
+  like void
+  mark async
+  mark private
+
+  fork test, node-file/exists-sync(node-path/join(input/root, <deck.tree>))
+    hold
+      run-seed-tests(input)
+      back
+  save package-file, node-path/join(input/root, <package.json>)
+  save has-test-script, false
+  fork
+    mark unsafe
+    save has-test-script, names-test-script(node-file/read-file-sync(package-file, <utf-8>))
+  halt take
+    take problem
+    # no package.json
+    save has-test-script, false
+  save facts, make list
+  fork test, is-truthy(input/filter)
+    hold
+      facts/push(host-text(input/filter))
+  output/open-run(make(open-ask, bind(verb, <test>), bind(root, input/root), bind(facts, facts)))
+  fork test, not(has-test-script)
+    hold
+      output/report(make(item-ask, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no deck.tree here, and package.json has no test script>)))
+      output/close-run(make(close-ask, bind(verdict, <Nothing to test>), bind(next, <term wake, to make a Term project here>)))
+      back
+  save args, make list
+  args/push(<run>)
+  args/push(<test>)
+  fork test, is-truthy(input/filter)
+    hold
+      args/push(<-->)
+      args/push(host-text(input/filter))
+  # the package's own test script: its output quoted under the `run` item when it failed or under --verbose (section
+  # 15), or passed through untouched under --raw
+  save started, now-ms()
+  save options, output/output-options()
+  save ran, run-script(args, input/root, is-truthy(options/raw))
+  save passed, is-equal(ran/code, 0)
+  save quote, ran/lines
+  save after, output/output-options()
+  fork test, and(passed, not(is-truthy(after/verbose)))
+    hold
+      save quote, make list
+  save glyph, <failed>
+  save verdict, <Test run failed>
+  fork test, passed
+    hold
+      save glyph, <done>
+      save verdict, <Tests passed>
+  output/report(make(item-ask, bind(glyph, glyph), bind(verb, <run>), bind(subject, <pnpm {join(args, < >)}>), bind(duration, subtract(now-ms(), started)), bind(exit, ran/code), bind(quote, quote)))
+  output/close-run(make(close-ask, bind(verdict, verdict)))
+
+# ---- collecting ----
+
+# Every test file under the project: a package keeps tests beside the code (`code/**`) and/or in its own `test` tree,
+# which `deck.tree` declares as `test ./test`. Both are walked, and only when NEITHER exists is the whole root swept.
+task find-test-files
+  take root, like text
+  take filter, like text
+  like list, like text
+  mark private
+
+  save results, make list
+  save walked, false
+  save roots, make list
+  roots/push(node-path/join(root, <code>))
+  roots/push(node-path/join(root, <test>))
+  walk roots
+    take folder
+    fork test, node-file/exists-sync(folder)
+      hold
+        walk walk-folder(folder, filter)
+          take found
+          results/push(found)
+        save walked, true
+  fork test, not(walked)
+    hold
+      walk walk-folder(root, filter)
+        take found
+        results/push(found)
+  back results
+
+# the test files under one folder, in the order its listing gives
+task walk-folder
+  take folder, like text
+  take filter, like text
+  like list, like text
+  mark private
+
+  save results, make list
+  walk node-file/readdir-sync(folder, with-file-types())
+    take entry, like dynamic
+    save name, host-text(entry/name)
+    save full, node-path/join(folder, name)
+    fork test, entry/is-directory()
+      hold
+        # `.base` whole: an entry is one folder name, so the toolchain's folder path under it never matched here. A
+        # shelved module (`draft.tree`) is out of the build, so its tests are out of the run too
+        fork test, and(is-unequal(name, <node_modules>), is-unequal(name, <.base>))
+          hold
+            fork test, not(node-file/exists-sync(node-path/join(full, <draft.tree>)))
+              hold
+                walk walk-folder(full, filter)
+                  take found
+                  results/push(found)
+      miss
+        fork test, and(ends-with-tree(name), not(is-snapshot-file(name)))
+          hold
+            save text, host-text(node-file/read-file-sync(full, <utf-8>))
+            # a shelved file is out (call/code/draft-mark.tree); a file is collected if it carries runnable tests
+            # (`test`) OR proof obligations (`hold` / `rule`), at any indentation
+            fork test, and(not(declares-draft(text)), is-collected(text, full, filter))
+              hold
+                results/push(full)
+  back results
+
+bind ends-with-tree
+  take name, like text
+  like boolean
+  case node
+    text <$name.endsWith(".tree")>
+
+# ---- controls ----
+
+# build one control and say whether it was refused as its header expects (test-plan.tree `control-verdict-of`)
+task run-control
+  take context, like test-context
+  take file, like text
+  take source, like text
+  like control-outcome
+  mark async
+  mark private
+
+  save digits, control-count(source)
+  fork test, is-equal(digits, <>)
+    hold
+      save no-names, make list
+      save no-places, make list
+      save none, control-verdict-of(digits, 0, false, no-names, no-places)
+      back make(control-outcome, bind(held, none/held), bind(broken, none/broken), bind(fact, none/fact), bind(others, make list))
+  save expected, number-of(digits)
+  # ALWAYS MERGED. A control is judged by how many refusals it gets, and the unit-at-a-time build reports fewer of a
+  # file's diagnostics than it refuses (2 for `vibe/group-control.tree`, whose 7 rules it refuses one by one)
+  save ask, make(run-ask, bind(file, file), bind(source, source), bind(resolve, make-module/project-resolver(context/root)), bind(env, <node>), bind(read-runtime, context/read-runtime), bind(role-of, context/role-of), bind(lean-of, context/lean-of))
+  save ran, wait run-module/run-test-file(ask)
+  # a GOAL refused, counted once however many diagnostics say so
+  save diagnostics, make list
+  fork test, is-truthy(ran/failure)
+    hold
+      fork test, is-truthy(ran/diagnostics)
+        hold
+          walk ran/diagnostics
+            take one, like dynamic
+            diagnostics/push(one)
+  save names, make list
+  save places, make list
+  walk diagnostics
+    take one
+    names/push(diagnostic-name(one))
+    places/push(diagnostic-place(one))
+  save verdict, control-verdict-of(digits, expected, is-truthy(ran/failure), names, places)
+  save others, make list
+  fork test, verdict/broken
+    hold
+      walk diagnostics
+        take one
+        fork test, not(is-refusal(diagnostic-name(one)))
+          hold
+            others/push(one)
+  back make(control-outcome, bind(held, verdict/held), bind(broken, verdict/broken), bind(fact, verdict/fact), bind(others, others))
+
+# `Number(digits)`
+bind number-of
+  take digits, like text
+  like number
+  case node
+    text <Number($digits)>
+
+# ---- a round ----
+
+# One round over the files given: every test file compiles and runs, so each `test` block executes and its `want hold`
+# / `want miss` is reported, not merely that the file compiled
+task run-round
+  take context, like test-context
+  take files, like list, like text
+  like round-totals
+  mark async
+  mark private
+
+  # through units the session's resolver, which reads an edited file again; whole, a fresh one each round
+  save resolve, nothing()
+  fork test, is-truthy(context/units)
+    hold
+      save resolve, context/session/resolve
+    miss
+      save resolve, make-module/project-resolver(context/root)
+  save tally, make(round-count, bind(pass, 0), bind(fail, 0), bind(proved, 0), bind(broken, 0), bind(skipped, 0), bind(controls, 0))
+  walk files
+    take file
+    save rel, host-text(node-path/relative(context/root, file))
+    save started, now-ms()
+    fork
+      mark unsafe
+      run-file(context, tally, resolve, file, rel, started)
+    halt take
+      take problem
+      save tally/broken, add(tally/broken, 1)
+      save message, make list
+      message/push(message-of(problem))
+      output/report(make(item-ask, bind(glyph, <failed>), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(message, message)))
+  context/session/close()
+  back make(round-totals, bind(pass, tally/pass), bind(fail, tally/fail), bind(proved, tally/proved), bind(broken, tally/broken), bind(skipped, tally/skipped), bind(controls, tally/controls))
+
+# one test file of a round, its counts added to the round's
+task run-file
+  take context, like test-context
+  take tally, like round-count
+  take resolve, like dynamic
+  take file, like text
+  take rel, like text
+  take started, like number
+  like void
+  mark async
+  mark private
+
+  save source, host-text(node-file/read-file-sync(file, <utf-8>))
+  # A CONTROL (a file under `test/case/`) is laws stated FALSE on purpose. It passes when the build refuses it, and
+  # only for proof reasons, exactly as many times as its header says (`Expected: N`)
+  fork test, is-control(rel)
+    hold
+      fork test, or(is-unequal(context/chosen, <>), is-unequal(context/native, <>))
+        hold
+          save tally/skipped, add(tally/skipped, 1)
+          back
+      save verdict, run-control(context, file, source)
+      fork test, verdict/broken
+        hold
+          save tally/broken, add(tally/broken, 1)
+          output/report-problems(problems-of(verdict/others, file, source), context/root)
+        miss
+          fork test, verdict/held
+            hold
+              save tally/controls, add(tally/controls, 1)
+            miss
+              save tally/fail, add(tally/fail, 1)
+      save glyph, <failed>
+      fork test, verdict/held
+        hold
+          save glyph, <done>
+      save facts, make list
+      facts/push(verdict/fact)
+      output/report(make(item-ask, bind(glyph, glyph), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(facts, facts)))
+      back
+  # the file's snapshots, held to or recorded. A store that cannot be read is the file's failure, never an empty
+  # store, which would fail every snapshot as unwritten
+  save store, read-snapshots(file)
+  save stored, make hash
+  sift store
+    case unreadable
+      link why
+      save tally/broken, add(tally/broken, 1)
+      save facts, make list
+      facts/push(why)
+      output/report(make(item-ask, bind(glyph, <failed>), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(facts, facts)))
+      back
+    case snapshots
+      link kept
+      save stored, kept
+  save snapshots, make(snapshot-ask, bind(stored, stored), bind(update, context/update))
+  save listed, nothing()
+  fork test, is-unequal(context/native, <>)
+    hold
+      save listed, run-module/tests-of(file, source, make(plain-tests-ask, bind(plain-wants, true), bind(snapshots, snapshots)))
+    miss
+      save listed, run-module/tests-of(file, source, make(tests-ask, bind(snapshots, snapshots)))
+  save chosen, make list
+  walk listed/tests
+    take listed-test, like dynamic
+    fork test, or(is-equal(context/chosen, <>), run-module/case-matches(context/chosen, listed-test))
+      hold
+        chosen/push(listed-test)
+  # `--case` runs the tests whose phrase or name holds it, so a file holding none of them is not run at all
+  fork test, and(is-unequal(context/chosen, <>), is-equal(chosen/length, 0))
+    hold
+      save tally/skipped, add(tally/skipped, 1)
+      back
+  # what the file's tests print, quoted under its item
+  save captured, nothing()
+  fork test, and(is-unequal(context/native, <>), is-above(chosen/length, 0))
+    hold
+      save native-run, make(native-ask, bind(root, context/root), bind(file, file), bind(text, listed/text), bind(source, source), bind(tests, chosen), bind(env, context/native), bind(role-of, context/role-of), bind(lean-of, context/lean-of), bind(deck-of, context/deck-of))
+      save native-runner
+        task
+          like dynamic
+          back native-module/run-native-test-file(native-run)
+      save captured, capture-printed(native-runner)
+    miss
+      save ask, make(run-ask, bind(file, file), bind(source, source), bind(resolve, resolve), bind(env, <node>), bind(read-runtime, context/read-runtime), bind(role-of, context/role-of), bind(lean-of, context/lean-of), bind(units, context/units), bind(snapshots, snapshots))
+      fork test, is-unequal(context/chosen, <>)
+        hold
+          save phrase, context/chosen
+          save ask/select
+            task
+              take asked-test, like dynamic
+              like boolean
+              back run-module/case-matches(phrase, asked-test)
+      save node-runner
+        task
+          like dynamic
+          back run-module/run-test-file(ask)
+      save captured, capture-printed(node-runner)
+  save ran, captured/value
+  save printed, captured/lines
+  # under `--update`, the texts each test's `want snapshot`s saw replace the ones it had
+  save recorded, false
+  save written, 0
+  fork test, and(context/update, is-truthy(ran/taken))
+    hold
+      save phrases, make list
+      walk listed/tests
+        take listed-test, like dynamic
+        phrases/push(host-text(listed-test/label))
+      save written, write-snapshots(file, stored, ran/taken, phrases)
+      save recorded, true
+  fork test, is-truthy(ran/failure)
+    hold
+      save tally/broken, add(tally/broken, 1)
+      # the compile diagnostics or the unproven holds, each a Problem item with its frame
+      save diagnostics, ran/diagnostics
+      fork test, not(is-truthy(diagnostics))
+        hold
+          save diagnostics, make list
+      output/report-problems(problems-of(diagnostics, file, ran/text), context/root)
+      save facts, make list
+      facts/push(failure-fact(host-text(ran/failure)))
+      output/report(make(item-ask, bind(glyph, <failed>), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(facts, facts)))
+      back
+  save total, ran/results/length
+  save held, 0
+  walk ran/results
+    take one, like dynamic
+    fork test, is-truthy(one/held)
+      hold
+        save held, add(held, 1)
+  save missed, subtract(total, held)
+  # a proof-only file compiled clean, so its `hold` / `rule` proofs were kernel-checked: counted as such, not as a test
+  fork test, is-equal(total, 0)
+    hold
+      save tally/proved, add(tally/proved, 1)
+      save facts, make list
+      facts/push(<proofs checked>)
+      output/report(make(item-ask, bind(glyph, <done>), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(facts, facts)))
+      back
+  save tally/pass, add(tally/pass, held)
+  save tally/fail, add(tally/fail, missed)
+  save counts, make list
+  counts/push(output/count(total, <tests>, <test>))
+  counts/push(output/count(held, <passed>))
+  fork test, is-above(missed, 0)
+    hold
+      counts/push(output/count(missed, <failed>))
+  fork test, recorded
+    hold
+      counts/push(output/count(written, <snapshots written>, <snapshot written>))
+  save glyph, <done>
+  fork test, is-above(missed, 0)
+    hold
+      save glyph, <failed>
+  save item, make(item-ask, bind(glyph, glyph), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(counts, counts))
+  fork test, is-above(printed/length, 0)
+    hold
+      save item/quote, printed
+  output/report(item)
+  # each test that did not hold is a Problem of its own, under the verb `case` (section 9)
+  walk ran/results
+    take one, like dynamic
+    fork test, not(is-truthy(one/held))
+      hold
+        report-case(one, rel)
+
+# a test that did not hold: where it is, `file:line` of its `test` line as written (section 12), and what it threw
+task report-case
+  take one, like dynamic
+  take rel, like text
+  like void
+  mark private
+
+  save fields, make list
+  save at-line, is-truthy(one/line)
+  fork test, at-line
+    hold
+      fields/push(output/location(<{rel}:{host-text(one/line)}>))
+    miss
+      fields/push(output/field(<in>, rel))
+  fork test, is-truthy(one/error)
+    hold
+      fields/push(output/field(<why>, host-text(one/error)))
+  save case-item, make(item-ask, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <case>), bind(subject, case-subject(host-text(one/label))), bind(duration, one/ms), bind(fields, fields))
+  fork test, at-line
+    hold
+      save case-item/place, make(case-place, bind(path, rel), bind(line, one/line), bind(column, 1))
+  output/report(case-item)
+
+# ---- the run ----
+
+task run-seed-tests
+  take input, like dynamic
+  like void
+  mark async
+  mark private
+
+  save root, host-text(input/root)
+  save filter, text-or-empty(input/filter)
+  save files, find-test-files(root, filter)
+  save native, <>
+  fork test, and(is-truthy(input/env), is-unequal(host-text(input/env), <node>))
+    hold
+      save native, host-text(input/env)
+  save chosen, <>
+  fork test, is-truthy(input/case)
+    hold
+      save chosen, host-text(input/case)
+  save update, is-true(input/update)
+  save ride, is-truthy(input/ride)
+  save facts, make list
+  fork test, is-truthy(input/filter)
+    hold
+      facts/push(filter)
+  fork test, is-truthy(input/case)
+    hold
+      facts/push(<case {chosen}>)
+  fork test, is-unequal(native, <>)
+    hold
+      facts/push(<on {native}>)
+  fork test, ride
+    hold
+      facts/push(<watching>)
+  save counts, make list
+  counts/push(output/count(files/length, <files>, <file>))
+  output/open-run(make(open-ask, bind(verb, <test>), bind(root, root), bind(counts, counts), bind(facts, facts)))
+  # a backend this command does not run on, and one whose toolchain this machine does not have, are said before
+  # anything is built. The toolchain is asked after the backend is known to be one this command runs on
+  save env, text-or-empty(input/env)
+  # NATIVE_TEST_ENVS, written out (a dock read of an UPPER_SNAKE constant loses its underscores)
+  save native-envs, make list
+  native-envs/push(<rust>)
+  native-envs/push(<swift>)
+  native-envs/push(<kotlin>)
+  save refusal, env-refusal(env, native-envs, update, make list)
+  fork test, and(is-equal(refusal/subject, <>), is-unequal(native, <>))
+    hold
+      save refusal, env-refusal(env, native-envs, update, native-module/missing-tools(native))
+  fork test, is-unequal(refusal/subject, <>)
+    hold
+      output/report(make(item-ask, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, refusal/subject)))
+      save closing, make(close-ask, bind(verdict, <Nothing was tested>), bind(failure, refusal/failure))
+      fork test, is-unequal(refusal/next, <>)
+        hold
+          save closing/next, refusal/next
+      set-exit-code(output/close-run(closing))
+      back
+  fork test, and(is-equal(files/length, 0), not(ride))
+    hold
+      # a zero is data (section 6): the run says what it looked for and found none
+      save message, make list
+      message/push(<No file under code/ or test/ holds a test, a hold or a rule.>)
+      output/close-run(make(close-ask, bind(verdict, <No tests to run>), bind(message, message)))
+      back
+  # the same role and lean readers `term make` compiles with, so a lean grammar's tests read it lean
+  save role-of, role-module/project-role-of(root)
+  save lean-of, role-module/project-lean-of(root)
+  save deck-of, deck-module/project-deck-of()
+  save read-runtime, runtime-reader()
+  # one build session for every test file: the units every file reaches, the standard library's above all, are
+  # checked once for the run and read from the cache after that
+  save session, make-module/build-session(root)
+  save merged, is-truthy(input/merged)
+  save units, nothing()
+  fork test, not(merged)
+    hold
+      save units, make(test-units, bind(root, root), bind(cache, cache-module/project-cache(root)), bind(bundles, node-path/join(cache-module/project-cache-dir(root), <test>)), bind(deck-of, deck-of), bind(parsed, session/parsed), bind(units, session/units), bind(walked, session/walked))
+  save context, make(test-context, bind(root, root), bind(filter, filter), bind(merged, merged), bind(chosen, chosen), bind(native, native), bind(update, update), bind(role-of, role-of), bind(lean-of, lean-of), bind(deck-of, deck-of), bind(read-runtime, read-runtime), bind(session, session), bind(units, units))
+  # the session's first round: everything it was handed
+  session/turn(files)
+  save first, run-round(context, files)
+  fork test, not(ride)
+    hold
+      # `--case` that matched no test anywhere ran nothing, which is not a pass
+      fork test, and(is-unequal(chosen, <>), and(is-equal(add(first/pass, first/fail), 0), is-equal(first/broken, 0)))
+        hold
+          save message, make list
+          message/push(<No test's phrase or name holds "{chosen}".>)
+          set-exit-code(output/close-run(make(close-ask, bind(verdict, <No test matched>), bind(failure, <usage>), bind(message, message))))
+          back
+      save verdict, <Tests passed>
+      fork test, round-failed(first)
+        hold
+          save verdict, <Test run failed>
+      output/close-run(make(close-ask, bind(verdict, verdict), bind(counts, totals-counts(first))))
+      back
+  # WATCH (`term test --ride`): after an edit, the test files whose closure holds a file that moved run again, and no
+  # other. A test file added or removed, or a round whose closure the session cannot see (compiled whole, or on a
+  # native backend), runs every file again. The run never closes until ctrl-c
+  output/report(make(item-ask, bind(glyph, round-glyph(first)), bind(verb, <test>), bind(subject, <every file>), bind(counts, totals-counts(first))))
+  host-process/once(<SIGINT>, stop-watching)
+  save on-change
+    task
+      like void
+      mark async
+      watch-round(context)
+  make-module/watch-tree-files(root, on-change)
+
+# a round's glyph: failed when it failed
+task round-glyph
+  take totals, like round-totals
+  like text
+  mark private
+
+  fork test, round-failed(totals)
+    hold
+      back <failed>
+  back <done>
+
+# ctrl-c ends a watch
+task stop-watching
+  like void
+  mark private
+
+  host-process/exit(output/close-run(make(close-ask, bind(verdict, <Stopped>), bind(failure, <interrupted>), bind(uptime, true))))
+
+# after an edit: the files again, which of them the edit reaches, and a round over those
+task watch-round
+  take context, like test-context
+  like void
+  mark async
+  mark private
+
+  # each edit lists the files again; nothing else reads the list
+  save files, find-test-files(context/root, context/filter)
+  save moved, context/session/turn(files)
+  save reached, files
+  fork test, and(is-truthy(moved), and(not(context/merged), is-equal(context/native, <>)))
+    hold
+      save graph, walked-edges(context/session/walked)
+      save reached, reach-module/stale-entries(graph, files, moved)
+  fork test, is-equal(reached/length, 0)
+    hold
+      back
+  save totals, run-round(context, reached)
+  output/report(make(item-ask, bind(glyph, round-glyph(totals)), bind(verb, <test>), bind(subject, round-subject(reached/length, files/length)), bind(counts, totals-counts(totals))))

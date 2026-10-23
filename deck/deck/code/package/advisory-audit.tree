@@ -1,0 +1,175 @@
+# Security audit. Reads the lockfile, asks the registry's advisory service which installed versions have known
+# vulnerabilities (the npm-compatible bulk endpoint), and reports them by severity. If the registry has no advisory
+# service it degrades gracefully (reported as unavailable, never a crash). This is the `npm audit` equivalent. Ported
+# from deck/deck/code/audit.ts (term-cli-in-term-0080): auditDependencies.
+#
+# The decisions:
+#   - the config is a maybe, the default fetch config for none, and the lockfile is read through the mill, so
+#     `audit-dependencies` takes the grammars record last
+#   - the request body and the severity counts are hashes, in the order the original's objects held their keys, and
+#     the body is written as JSON by the host, as the original wrote it
+#   - an advisory's fields are read as the host parsed them, each defaulted as the original defaulted it
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/hash
+  find hash
+
+load ../version
+  find show-code
+
+load ./config-shape
+  find fetch-config
+
+load ./grammar-reading
+  find manifest-grammars
+
+load ./lockfile-reading
+  find load-lockfile
+
+load ./registry-naming
+  find to-registry-name
+
+load ./registry-fetching
+  find make-default-fetch-config
+
+dock load
+  load <global:global>, name host-global
+
+form advisory
+  link name, like text
+  link version, like text
+  link severity, like text
+  link title, like text
+  link url, like text
+  link vulnerable-range, like text
+
+form audit-result
+  link advisories, like list, like advisory
+  link by-severity, like hash, like text, like number
+  link package-count, like number
+  link available, like boolean
+
+bind audit-post-request
+  take body, like hash, like text, like list, like text
+  like dynamic
+  case node
+    text <<{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(Object.fromEntries($body)) }>>
+
+bind audit-entries
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <Object.entries($value)>
+
+bind audit-text-or
+  take value, like dynamic
+  take fallback, like text
+  like text
+  case node
+    text <($value ?? $fallback)>
+
+# the advisory's `vulnerable_versions`, read by its exact key: a path segment's underscore would be lost
+bind audit-range-of
+  take value, like dynamic
+  like dynamic
+  case node
+    text <$value.vulnerable_versions>
+
+bind audit-items
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <$value>
+
+task empty-result
+  take available, like boolean
+  like audit-result
+  mark private
+
+  back make(audit-result, bind(advisories, make list), bind(by-severity, make hash), bind(package-count, 0), bind(available, available))
+
+task audit-dependencies
+  take root, like text
+  take config, like maybe, like fetch-config
+  take grammars, like manifest-grammars
+  like audit-result
+
+  save chosen, make-default-fetch-config()
+  sift config
+    case some
+      link given
+      save chosen, given
+    case none
+      save nothing, 0
+
+  save loaded, load-lockfile(root, grammars)
+  save decks, make list
+  sift loaded
+    case some
+      link lockfile
+      save decks, lockfile/decks
+    case none
+      save nothing, 0
+
+  fork test, is-equal(decks/length, 0)
+    hold
+      back empty-result(true)
+
+  # bulk request body: { registryName: [version, ...] }. The lockfile pins one version per package
+  save body, make hash
+  walk decks
+    take entry
+    save registry-name, to-registry-name(entry/name)
+    save version, show-code(entry/code)
+    fork test, not(body/has(registry-name))
+      hold
+        body/set(registry-name, make list)
+    save versions, body/get(registry-name)
+    versions/push(version)
+
+  save endpoint, <{chosen/registry}/-/npm/v1/security/advisories/bulk>
+  save data, make list
+
+  fork
+    mark unsafe
+    save response, wait host-global/fetch(endpoint, audit-post-request(body))
+    fork test, not(response/ok)
+      hold
+        back empty-result(false)
+    save parsed
+      call response/json
+        wait true
+    save data, audit-entries(parsed)
+  halt take
+    take unread
+    back empty-result(false)
+
+  save advisories, make list
+  save by-severity, make hash
+
+  walk data
+    take pair
+    save registry-name, <{pair/0}>
+    save version, <>
+    fork test, body/has(registry-name)
+      hold
+        save versions, body/get(registry-name)
+        save version, get(versions, 0)
+
+    walk audit-items(pair/1)
+      take found
+      save severity, audit-text-or(found/severity, <unknown>)
+      advisories/push(make(advisory, bind(name, registry-name), bind(version, version), bind(severity, severity), bind(title, audit-text-or(found/title, <>)), bind(url, audit-text-or(found/url, <>)), bind(vulnerable-range, audit-text-or(audit-range-of(found), <>))))
+      save seen, 0
+      fork test, by-severity/has(severity)
+        hold
+          save seen, by-severity/get(severity)
+      by-severity/set(severity, add(seen, 1))
+
+  back make(audit-result, bind(advisories, advisories), bind(by-severity, by-severity), bind(package-count, decks/length), bind(available, true))

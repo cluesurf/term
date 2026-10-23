@@ -83,6 +83,7 @@ load ./backend-shapes
   find inspect-kind-of
 
 load ./backend-names
+  find host-spelled
   find names-in
   find text-append-of
   find ascii-char-append
@@ -411,6 +412,46 @@ task holds-try
   mark private
 
   back is-above(split(text, <try >)/length, 1)
+
+# whether an emitted expression text awaits OUTSIDE every closure in it: an `await ` at brace depth 0, string literals
+# skipped. An `await` inside a closure argument (an async handler) belongs to that closure, not to the call it is
+# passed to (base-v1-0045)
+task awaits-outside-closures
+  take text, like text
+  like boolean
+  mark private
+
+  save size, char-count(text)
+  save depth, 0
+  save quoted, false
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save code, char-code-at(text, at)
+      fork test, quoted
+        hold
+          fork test, is-equal(code, 92)
+            hold
+              save at, add(at, 1)
+          fork test, is-equal(code, 34)
+            hold
+              save quoted, false
+        miss
+          fork test, is-equal(code, 34)
+            hold
+              save quoted, true
+          fork test, is-equal(code, 123)
+            hold
+              save depth, add(depth, 1)
+          fork test, is-equal(code, 125)
+            hold
+              save depth, subtract(depth, 1)
+          fork test, and(is-equal(depth, 0), is-equal(substring(text, at, add(at, 6)), <await >))
+            hold
+              back true
+      save at, add(at, 1)
+  back false
 
 # `/^[a-z]$/`: one lower-case letter, a generic written as a name
 task is-letter
@@ -1556,11 +1597,24 @@ task emit-expr
         hold
           save defined, facts/task-arity/get(variable-name)
           save names, make list
+          # the call inside names each argument by the task's input, as a direct call does (the task is `f(message:)`,
+          # so `f(p0)` is refused: missing argument label)
+          save passed, make list
+          save labels, make list
+          save has-labels, facts/function-labels/has(variable-name)
+          fork test, has-labels
+            hold
+              save labels, facts/function-labels/get(variable-name)
           save at, 0
           walk test
             hook test, is-below(at, defined)
             hook hold
               push(names, <p{at}>)
+              fork test, has-labels
+                hold
+                  push(passed, labeled-argument(name-at(labels, at), <p{at}>))
+                miss
+                  push(passed, <p{at}>)
               save at, add(at, 1)
           save is-async, facts/async-tasks/has(variable-name)
           save async-mark, <>
@@ -1569,7 +1623,7 @@ task emit-expr
             hold
               save async-mark, < async>
               save await-mark, <await >
-          back <\{ ({join-texts(names, <, >)}){async-mark} in try! {await-mark}{vname(variable-name)}({join-texts(names, <, >)}) \}>
+          back <\{ ({join-texts(names, <, >)}){async-mark} in try! {await-mark}{vname(variable-name)}({join-texts(passed, <, >)}) \}>
       back vname(variable-name)
     case hole
       link hole-name
@@ -1753,7 +1807,12 @@ task emit-binary
               fork test, is-equal(op, <!=>)
                 hold
                   save negate, <!>
-              back need(st, <text>, <({negate}{mark}TermText.equal({left-text}, {right-text}))>)
+              # `!try x` is no Swift expression: a negated `try` is parenthesized, `!(try x)`
+              save equal-text, <{mark}TermText.equal({left-text}, {right-text})>
+              fork test, and(is-equal(negate, <!>), is-unequal(mark, <>))
+                hold
+                  save equal-text, <({equal-text})>
+              back need(st, <text>, <({negate}{equal-text})>)
           fork test, or(or(is-equal(op, <\<>), is-equal(op, <\>>)), or(is-equal(op, <\<=>), is-equal(op, <\>=>)))
             hold
               back need(st, <text>, <({mark}TermText.compare({left-text}, {right-text}) {op} 0)>)
@@ -2153,7 +2212,8 @@ task emit-call
       fork test, and(throws, is-unequal(call-site, <>))
         hold
           mark-need(st, <exception>)
-          save waits, or(awaited, facts/async-tasks/has(callee-name))
+          # an argument that awaits (outside a closure it passes) makes the wrapper's closure async too (base-v1-0045)
+          save waits, or(or(awaited, facts/async-tasks/has(callee-name)), awaits-outside-closures(joined))
           save inner, <try {callee-text}({joined})>
           save wrapper, <termCall>
           save outer, <{try-word(st)} >
@@ -2823,6 +2883,10 @@ task emit-member
           fork test, has-text(field-scope/get(target-name), member-name)
             hold
               back camel(member-name)
+      # a dock module's member with no `-` is the host's spelling (backend-names `host-spelled`)
+      fork test, and(and(is-unequal(target-name, <>), facts/aliases/has(target-name)), host-spelled(member-name))
+        hold
+          back <{emit-expr(member-target, field-scope, st, facts)}.{member-name}>
       back <{emit-expr(member-target, field-scope, st, facts)}.{camel(member-name)}>
     miss
       back <>
@@ -4347,7 +4411,9 @@ task body-default-text
     hold
       save effects, < async>
       save prefix, <await >
-  fork test, holds-try(value)
+  # throwing only where a raise can leave HERE: in a task that does not throw, every raising call is `termEnd`, which
+  # holds a `try` inside it and throws nothing out (base-v1-0044)
+  fork test, and(holds-try(value), is-equal(try-word(st), <try>))
     hold
       save effects, <{effects} throws>
       save prefix, <try {prefix}>

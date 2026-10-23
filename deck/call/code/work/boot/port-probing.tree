@@ -1,0 +1,105 @@
+# The ports `term boot` serves on: whether one is free, the first free one of 2400..2499, and whether a started server
+# child takes connections. Ported from call/code/boot.ts (`portIsFree`, `findFreePort`, `listening`), part 1 of that
+# file, term-cli-in-term-0022.
+#
+# The probes are the host's sockets, each a promise the binds below await: a test server bound on all interfaces
+# (dual-stack, as @hono/node-server binds, so a stale IPv6 server is seen), a client connection to 127.0.0.1, and a
+# pause. Every bind is named for this lane: two ports defining a bind of one name collide when loaded together.
+
+dock load
+  load <global:Date>, name host-date
+
+# the default port range: `term boot` scans 2400..2499 for the first free port, so an app always starts on a good port
+# no matter where (or how many) you boot, with no manual `--port`
+task base-port
+  like number
+
+  back 2400
+
+task max-port
+  like number
+
+  back 2499
+
+# whether a test server binds `port` on every interface, the way the real server binds it
+bind boot-port-binds
+  take port, like number
+  like boolean
+  case node
+    text <(await new Promise((resolve) =\> \{ const tester = process.getBuiltinModule("node:net").createServer().once("error", () =\> resolve(false)).once("listening", () =\> \{ tester.close(() =\> resolve(true)) \}).listen($port) \}))>
+
+# whether a connection to 127.0.0.1 on `port` is taken
+bind boot-port-connects
+  take port, like number
+  like boolean
+  case node
+    text <(await new Promise((done) =\> \{ const socket = process.getBuiltinModule("node:net").connect(\{ port: $port, host: "127.0.0.1" \}); socket.once("connect", () =\> \{ socket.destroy(); done(true) \}); socket.once("error", () =\> done(false)) \}))>
+
+# `ms` milliseconds
+bind boot-pause
+  take ms, like number
+  like void
+  case node
+    text <(await new Promise((done) =\> setTimeout(done, $ms)))>
+
+# whether a child process has exited or been stopped by a signal
+bind boot-child-ended
+  take child, like dynamic
+  like boolean
+  case node
+    text <($child.exitCode !== null || $child.signalCode !== null)>
+
+# a plain `Error`, as the original threw
+bind boot-port-error
+  take message, like text
+  like void
+  case node
+    text <(() =\> \{ throw new Error($message) \})()>
+
+# true if a TCP port is free to bind. The test MUST bind the same way the real server does (all interfaces, dual-stack)
+# or a stale IPv6-bound server (`:::2400`) would look free to an IPv4-only probe and the child would then EADDRINUSE
+task port-is-free
+  take port, like number
+  like boolean
+  mark async
+
+  back boot-port-binds(port)
+
+# the first free port from `start` to 2499 (incrementing by 1). Throws if the whole range is taken (loud, not a silent
+# reuse)
+task find-free-port
+  take start, like number
+  like number
+  mark async
+
+  save port, start
+  walk test
+    hook test, is-maximum(port, max-port())
+    hook hold
+      fork test, port-is-free(port)
+        hold
+          back port
+      save port, add(port, 1)
+  boot-port-error(<no free port in {start}..{max-port()} (stop apps with `term halt`)>)
+  back port
+
+# whether the server child is taking connections on `port`: asked every 50 ms for up to 10 s. False only when the child
+# exits first, so a server that is merely slow is still reported started when the time runs out
+task listening
+  take port, like number
+  take child, like dynamic
+  like boolean
+  mark async
+
+  save started, host-date/now()
+  walk test
+    hook test, is-below(subtract(host-date/now(), started), 10000)
+    hook hold
+      fork test, boot-child-ended(child)
+        hold
+          back false
+      fork test, boot-port-connects(port)
+        hold
+          back true
+      boot-pause(50)
+  back not(boot-child-ended(child))

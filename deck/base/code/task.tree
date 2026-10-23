@@ -30,6 +30,7 @@ load @term/base/native/{platform}/job
   find job-rethrow
   find job-cancel
   find job-alive
+  find job-handle
 
 # a running concurrent task whose result is an `r`. The platform job object lives in the opaque `dock` handle.
 form handle

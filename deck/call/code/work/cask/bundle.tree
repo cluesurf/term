@@ -1,0 +1,53 @@
+# The app's layout on disk: the directory a Linux or Windows cask runs from. Part of the port of
+# deck/call/code/cask.ts (cli-in-term-0032): its `assembleRustBundle`.
+
+load ./identity
+  find crate-of
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+
+form bundle-folder
+  link recursive, like boolean
+
+form bundle-remove
+  link recursive, like boolean
+  link force, like boolean
+
+# what a bundle is assembled into, the app's name and the target
+form rust-bundle-ask
+  link out, like text
+  link name, like text
+  link target, like text
+
+# the app's directory, where its executable goes, and its resources
+form app-bundle
+  link app, like text
+  link exe, like text
+  link resources, like text
+
+# the app's directory on Linux (`<Name>/bin/<crate>` beside `<Name>/resources`) and Windows (`<Name>/<Name>.exe` beside
+# `<Name>/resources`), which is what `bundle-path` walks from the executable to find
+task assemble-rust-bundle
+  take ask, like rust-bundle-ask
+  like app-bundle
+
+  save name, ask/name
+  save app, node-path/join(ask/out, name)
+  save resources, node-path/join(app, <resources>)
+  node-fs/rm-sync(app, make(bundle-remove, bind(recursive, true), bind(force, true)))
+  node-fs/mkdir-sync(resources, make(bundle-folder, bind(recursive, true)))
+  fork test, is-equal(ask/target, <windows>)
+    hold
+      back
+        make app-bundle
+          bind app, app
+          bind exe, node-path/join(app, <{name}.exe>)
+          bind resources, resources
+  node-fs/mkdir-sync(node-path/join(app, <bin>), make(bundle-folder, bind(recursive, true)))
+  back
+    make app-bundle
+      bind app, app
+      bind exe, node-path/join(app, <bin>, crate-of(name))
+      bind resources, resources

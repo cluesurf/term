@@ -1,0 +1,1292 @@
+# `term base`: the base record system's verbs over a repository on disk (note/project/base/readme.md). `init` makes one,
+# `log`, `diff`, `show`, `list`, `check` and `status` read it, `commit`, `checkout`, `merge`, `tag` and `export` write,
+# and `project` says what a projection would write into Postgres, writing it only on `--write`.
+#
+# The store is on disk under `.base/` beside the working files, the way `.git` is, so a repository is a directory a
+# person can look at, copy and delete: two JSON files of chunks and refs read into the in-memory stores, and one uuid
+# naming the repository. Records are authored as `.tree` files under `record/`, one per record.
+#
+# Ported from call/code/base.ts (term-cli-in-term-0037). The repository, its stores, the record files and the projector
+# are @cluesurf/save's, docked (decision cli-in-term/002), and every item prints through the output library, docked.
+# What the verbs decide and print (a commit by its prefix, the log's lines, a diff's lines, a record's fields, check
+# and status) is base-words.tree, loaded. Each verb takes the original's input record as it is, so a caller passes
+# what it passed before. The one change of shape: `need` answers the opened repository as a record, and its `save` is
+# the task `save-repository`.
+
+load @term/base/list
+  find list
+  find push
+  find join
+  find sort
+
+load @term/make/check/eliminate
+  find utf16-order
+
+load ./database-engine
+  find open-postgres
+  find postgres-engine
+
+load @term/call/base-words
+  find matching
+  find log-line
+  find diff-line
+  find shown-field
+  find show-lines
+  find cell-of
+  find table-lines
+  find check-lines
+  find missing-message
+  find missing-subject
+  find status-lines
+
+dock load
+  load <@cluesurf/save/repo/repo>, name repo-module
+  load <@cluesurf/save/base/mark>, name mark-module
+  load <@cluesurf/save/store/chunk-store>, name chunk-store-module
+  load <@cluesurf/save/store/ref-store>, name ref-store-module
+  load <@cluesurf/save/project/feed>, name feed-module
+  load <@cluesurf/save/canon/canonicalize>, name canon-module
+  load <@cluesurf/save/canon/format>, name canon-format-module
+  load <@cluesurf/save/api/export>, name export-module
+  load <@cluesurf/save/project/projector>, name projector-module
+  load <@cluesurf/save/project/infer>, name infer-module
+  load <@cluesurf/save/tree/parse>, name tree-parse-module
+  load <@cluesurf/save/tree/format>, name tree-format-module
+  load <@cluesurf/save/diff/change>, name change-module
+  load <@term/call/code/output>, name output
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <global:process>, name host-process
+
+# ---- host values ----
+
+bind repo-is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind repo-is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind repo-text-of
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+bind repo-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind repo-empty-record
+  like dynamic
+  case node
+    text <(\{\})>
+
+bind repo-new-map
+  like dynamic
+  case node
+    text <new Map()>
+
+bind repo-copy-map
+  take map, like dynamic
+  like dynamic
+  case node
+    text <new Map($map)>
+
+# a Map's or a Set's size, an array's length
+bind repo-size-of
+  take value, like dynamic
+  like number
+  case node
+    text <($value.size ?? $value.length)>
+
+bind repo-keys-of
+  take map, like dynamic
+  like list, like dynamic
+  case node
+    text <[...$map.keys()]>
+
+bind repo-entries-of
+  take map, like dynamic
+  like list, like dynamic
+  case node
+    text <[...$map]>
+
+bind repo-values-of
+  take record, like dynamic
+  like list, like dynamic
+  case node
+    text <Object.values($record)>
+
+bind repo-object-entries-of
+  take record, like dynamic
+  like list, like dynamic
+  case node
+    text <Object.entries($record)>
+
+bind repo-map-has
+  take map, like dynamic
+  take key, like dynamic
+  like boolean
+  case node
+    text <$map.has($key)>
+
+bind repo-map-get
+  take map, like dynamic
+  take key, like dynamic
+  like dynamic
+  case node
+    text <$map.get($key)>
+
+bind repo-map-set
+  take map, like dynamic
+  take key, like dynamic
+  take value, like dynamic
+  like void
+  case node
+    text <void $map.set($key, $value)>
+
+# `value && typeof value === 'object' && 'kind' in value`, a base Value
+bind repo-is-valued
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value && typeof $value === "object" && "kind" in $value)>
+
+bind repo-parse-json
+  take text, like text
+  like dynamic
+  case node
+    text <JSON.parse($text)>
+
+bind repo-json-text
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# `JSON.stringify(object, null, indent)` of the object the `[key, value]` pairs make, in their order
+bind repo-pairs-json
+  take pairs, like list, like dynamic
+  take indent, like number
+  like text
+  case node
+    text <JSON.stringify(Object.fromEntries($pairs), null, $indent)>
+
+bind repo-pair
+  take key, like dynamic
+  take value, like dynamic
+  like dynamic
+  case node
+    text <[$key, $value]>
+
+bind repo-joined-lines
+  take lines, like list, like text
+  like text
+  case node
+    text <$lines.join(String.fromCharCode(10))>
+
+bind repo-line-break
+  like text
+  case node
+    text <String.fromCharCode(10)>
+
+bind repo-now
+  like number
+  case node
+    text <Date.now()>
+
+# a time no Date holds is refused by Date, as it always was
+bind repo-hold-time
+  take time, like dynamic
+  like void
+  case node
+    text <void new Date($time).toISOString()>
+
+# a fraction of a millisecond is cut toward zero, as Date cuts it
+bind repo-whole-time
+  take time, like dynamic
+  like number
+  case node
+    text <Math.trunc($time)>
+
+bind repo-is-folder
+  take file, like dynamic
+  like boolean
+  case node
+    text <process.getBuiltinModule("node:fs").statSync($file).isDirectory()>
+
+bind repo-is-record-file
+  take name, like dynamic
+  like boolean
+  case node
+    text <$name.endsWith(".tree")>
+
+bind repo-byte-length
+  take value, like dynamic
+  like number
+  case node
+    text <Buffer.byteLength($value)>
+
+bind repo-trimmed
+  take value, like text
+  like text
+  case node
+    text <$value.trim()>
+
+bind repo-first-units
+  take value, like dynamic
+  take count, like number
+  like text
+  case node
+    text <$value.slice(0, $count)>
+
+# `error instanceof Error ? error.message : String(error)`
+bind repo-message-of
+  take error, like dynamic
+  like text
+  case node
+    text <($error instanceof Error ? $error.message : String($error))>
+
+bind repo-capitalized
+  take value, like text
+  like text
+  case node
+    text <($value.charAt(0).toUpperCase() + $value.slice(1))>
+
+bind repo-is-mixed-field
+  take module, like dynamic
+  take error, like dynamic
+  like boolean
+  case node
+    text <($error instanceof $module.MixedField)>
+
+bind repo-format-ref
+  take module, like dynamic
+  like text
+  case node
+    text <$module.FORMAT_REF>
+
+bind repo-new-repository
+  take module, like dynamic
+  take chunks, like dynamic
+  take refs, like dynamic
+  like dynamic
+  case node
+    text <new $module.Repository($chunks, $refs)>
+
+bind repo-new-chunk-store
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.MemoryChunkStore()>
+
+bind repo-new-ref-store
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.MemoryRefStore()>
+
+bind repo-adopt-ref
+  take refs, like dynamic
+  take name, like dynamic
+  take at, like dynamic
+  like void
+  case node
+    text <void $refs.compareAndSwap($name, undefined, $at)>
+
+bind repo-new-projector
+  take module, like dynamic
+  take engine, like dynamic
+  take repository, like text
+  take mapping, like dynamic
+  like dynamic
+  case node
+    text <new $module.Projector($engine, $repository, $mapping)>
+
+# every entry `walkTree` hands out for a commit, in its order
+bind repo-tree-entries
+  take module, like dynamic
+  take repo, like dynamic
+  take at, like dynamic
+  like list, like dynamic
+  case node
+    text <((out) =\> ($module.walkTree(\{ repo: $repo, commit: $at \}, (entry) =\> \{ out.push(entry) \}), out))([])>
+
+bind repo-awaited
+  take promise, like dynamic
+  like dynamic
+  case node
+    text <(await $promise)>
+
+bind repo-rethrow
+  take error, like dynamic
+  like void
+  case node
+    text <((problem) =\> \{ throw problem \})($error)>
+
+# ---- the records the output library and the repository take ----
+
+form open-plain
+  link verb, like text
+  link root, like dynamic
+
+form open-facts
+  link verb, like text
+  link root, like dynamic
+  link facts, like list, like dynamic
+
+form open-subject
+  link verb, like text
+  link root, like dynamic
+  link subject, like dynamic
+
+form open-subject-facts
+  link verb, like text
+  link root, like dynamic
+  link subject, like dynamic
+  link facts, like list, like dynamic
+
+form close-verdict
+  link verdict, like text
+
+form close-counts
+  link verdict, like text
+  link counts, like list, like dynamic
+
+form close-counts-next
+  link verdict, like text
+  link counts, like list, like dynamic
+  link next, like text
+
+form close-counts-message-next
+  link verdict, like text
+  link counts, like list, like dynamic
+  link message, like list, like text
+  link next, like text
+
+form close-refusal
+  link verdict, like dynamic
+  link next, like dynamic
+  link failure, like dynamic
+
+form refusal-item
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link message, like dynamic
+  link fields, like dynamic
+
+form problem-message-item
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link message, like list, like text
+
+form problem-fields-item
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form change-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+
+form written-item
+  link glyph, like text
+  link verb, like text
+  link subject, like dynamic
+  link bytes, like number
+  link counts, like list, like dynamic
+
+form projected-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link counts, like list, like dynamic
+  link facts, like list, like text
+
+# what a refusal adds, each as the original's call wrote it
+form refusal-next
+  link next, like text
+
+form refusal-message-next
+  link message, like list, like text
+  link next, like text
+
+form refusal-fields
+  link fields, like list, like dynamic
+
+form refusal-fields-next
+  link fields, like list, like dynamic
+  link next, like text
+
+form refusal-message
+  link message, like list, like dynamic
+
+form refusal-message-fields
+  link message, like list, like text
+  link fields, like list, like dynamic
+
+form folder-ask
+  link recursive, like boolean
+
+form commit-meta
+  link author, like dynamic
+  link time, like number
+  link message, like dynamic
+
+form dataset-ask
+  link dataset, like dynamic
+
+form rows-ask
+  link mapping, like dynamic
+  link dataset, like dynamic
+
+form apply-ask
+  link commit, like dynamic
+  link changes, like dynamic
+
+form apply-covering-ask
+  link commit, like dynamic
+  link changes, like dynamic
+  link covers, like dynamic
+
+# a repository read from disk: its stores, the repository over them, and the two files `save-repository` writes
+form opened
+  link repo, like dynamic
+  link refs, like dynamic
+  link chunks, like dynamic
+  link chunk-file, like text
+  link ref-file, like text
+
+# where a repository keeps itself, beside the working files, the way `.git` does
+task base-home
+  like text
+
+  back <.base>
+
+# where a person authors records: `.tree` files beside the repository, one per record
+task record-folder
+  like text
+
+  back <record>
+
+task one-dynamic
+  take value, like dynamic
+  like list, like dynamic
+  mark private
+
+  save out, make list
+  push(out, value)
+  back out
+
+task one-text
+  take value, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, value)
+  back out
+
+# ---- refusing, and printing ----
+
+# A refusal that ends the command at once: a ✗ item, the closing item, and the exit code it gives (section 18). `extra`
+# is the original's record as given: `message`, `fields`, `next`, `verdict` and `failure`, each optional (`failure:
+# usage` for a bad invocation, exit 2, rather than the default exit 1)
+task refuse
+  take subject, like text
+  take extra, like dynamic
+  like void
+
+  fork test, not(output/is-run-open())
+    hold
+      output/open-run(make(open-plain, bind(verb, <base>), bind(root, host-process/cwd())))
+  output/report(make(refusal-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject), bind(message, extra/message), bind(fields, extra/fields)))
+  save verdict, extra/verdict
+  fork test, repo-is-absent(verdict)
+    hold
+      save verdict, <Nothing was done>
+  save code, output/close-run(make(close-refusal, bind(verdict, verdict), bind(next, extra/next), bind(failure, extra/failure)))
+  host-process/exit(code)
+
+task refuse-plainly
+  take subject, like text
+  like void
+  mark private
+
+  refuse(subject, repo-empty-record())
+
+# data lines on stdout, one per line, as they always were
+task print-lines
+  take lines, like list, like text
+  like void
+  mark private
+
+  fork test, is-above(lines/length, 0)
+    hold
+      save joined, repo-joined-lines(lines)
+      save ending, repo-line-break()
+      output/print-data(<{joined}{ending}>)
+
+# a value as base-words reads it: its kind, the value written as text, and a reference's target. Anything that is not
+# a base Value is its text alone, with no kind
+task shown-of
+  take name, like text
+  take value, like dynamic
+  like shown-field
+
+  fork test, repo-is-valued(value)
+    hold
+      back make(shown-field, bind(name, name), bind(kind, value/kind), bind(value, repo-text-of(value/value)), bind(target, repo-text-of(value/target)))
+  back make(shown-field, bind(name, name), bind(kind, <>), bind(value, repo-text-of(value)), bind(target, <>))
+
+# each `[name, value]` of a Map as a shown field
+task shown-fields
+  take map, like dynamic
+  like list, like shown-field
+  mark private
+
+  save out, make list
+  walk repo-entries-of(map)
+    take entry, like dynamic
+    push(out, shown-of(<{entry/0}>, entry/1))
+  back out
+
+# ---- the repository on disk ----
+
+# Load a repository from disk, or nothing when there is none. The stores are the in-memory ones with their contents
+# read from two JSON files, deliberately not the production substrate, so the CLI cannot be the reason a commit is lost
+task open-repository
+  take root, like dynamic
+  like dynamic
+  mark private
+
+  save home, node-path/join(root, base-home())
+  fork test, not(node-fs/exists-sync(home))
+    hold
+      back repo-nothing()
+  save chunks, repo-new-chunk-store(chunk-store-module)
+  save refs, repo-new-ref-store(ref-store-module)
+  save chunk-file, node-path/join(home, <chunk.json>)
+  save ref-file, node-path/join(home, <ref.json>)
+  fork test, node-fs/exists-sync(chunk-file)
+    hold
+      save held, repo-parse-json(node-fs/read-file-sync(chunk-file, <utf8>))
+      # put by BYTES rather than by stored key, so the store re-derives every address and a hand-edited or corrupted
+      # file cannot smuggle content in under the wrong hash
+      walk repo-values-of(held)
+        take bytes, like dynamic
+        chunks/put(bytes)
+  fork test, node-fs/exists-sync(ref-file)
+    hold
+      save named, repo-parse-json(node-fs/read-file-sync(ref-file, <utf8>))
+      walk repo-object-entries-of(named)
+        take entry, like dynamic
+        repo-adopt-ref(refs, entry/0, entry/1)
+  save repo, repo-new-repository(repo-module, chunks, refs)
+  back make(opened, bind(repo, repo), bind(refs, refs), bind(chunks, chunks), bind(chunk-file, chunk-file), bind(ref-file, ref-file))
+
+# write the stores back: every chunk by its hash on one line, every ref by its name
+task save-repository
+  take held, like opened
+  like void
+
+  save chunks, held/chunks
+  save refs, held/refs
+  save chunk-pairs, make list
+  walk repo-keys-of(chunks)
+    take hash, like dynamic
+    push(chunk-pairs, repo-pair(hash, chunks/get(hash)))
+  save chunk-text, repo-pairs-json(chunk-pairs, 0)
+  save ending, repo-line-break()
+  node-fs/write-file-sync(held/chunk-file, <{chunk-text}{ending}>)
+  save ref-pairs, make list
+  walk refs/list()
+    take name, like dynamic
+    push(ref-pairs, repo-pair(name, refs/get(name)))
+  save ref-text, repo-pairs-json(ref-pairs, 2)
+  node-fs/write-file-sync(held/ref-file, <{ref-text}{ending}>)
+
+# the repository at a root, or a refusal that there is none
+task need
+  take root, like dynamic
+  like opened
+
+  save held, open-repository(root)
+  fork test, repo-is-absent(held)
+    hold
+      save looked, node-path/join(root, base-home())
+      refuse(<There is no repository here>, make(refusal-fields-next, bind(fields, one-dynamic(output/field(<looked>, looked))), bind(next, <term base init, in the directory to track>)))
+  back held
+
+# A commit PREFIX expanded to a full hash, the way git does: `log` prints a shortened hash, and without this every hash
+# it prints is one the other verbs refuse. Ambiguity is an error rather than a guess
+task resolve-commit
+  take repo, like dynamic
+  take given, like dynamic
+  like dynamic
+  mark private
+
+  fork test, repo/contains-commit(given)
+    hold
+      back given
+  save hashes, make list
+  walk repo/branches()
+    take branch, like dynamic
+    walk repo/log(branch)
+      take entry, like dynamic
+      push(hashes, <{entry/hash}>)
+  walk repo/tags()
+    take name, like dynamic
+    save at, repo/tag(name)
+    fork test, not(repo-is-absent(at))
+      hold
+        push(hashes, <{at}>)
+  save hit, matching(hashes, <{given}>)
+  fork test, is-equal(hit/length, 1)
+    hold
+      back hit/0
+  fork test, is-above(hit/length, 1)
+    hold
+      save many, hit/length
+      refuse(<{given} matches {many} commits>, make(refusal-message-next, bind(message, hit), bind(next, <give more of the hash>)))
+  refuse(<No commit matches {given}>, make(refusal-next, bind(next, <term base log, for the hashes>)))
+  back given
+
+# ---- the verbs ----
+
+# every branch, and where it points
+task call-base-log
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  save asked, input/branch
+  save facts, make list
+  fork test, repo-is-truthy(asked)
+    hold
+      push(facts, asked)
+  output/open-run(make(open-facts, bind(verb, <log>), bind(root, root), bind(facts, facts)))
+  save repo, need(root)/repo
+  save branches, make list
+  fork test, repo-is-truthy(asked)
+    hold
+      push(branches, asked)
+    miss
+      save branches, repo/branches()
+  fork test, is-equal(branches/length, 0)
+    hold
+      output/close-run(make(close-counts, bind(verdict, <No branches yet>), bind(counts, one-dynamic(output/count(0, <branches>, <branch>)))))
+      back
+  save lines, make list
+  save commits, 0
+  walk branches
+    take branch, like dynamic
+    save head, repo/head(branch)
+    fork test, not(repo-is-truthy(head))
+      hold
+        push(lines, <{branch}: no commits>)
+      miss
+        push(lines, <{branch}>)
+        walk repo/log(branch)
+          take entry, like dynamic
+          save commit, entry/commit
+          repo-hold-time(commit/time)
+          push(lines, log-line(<{entry/hash}>, repo-whole-time(commit/time), <{commit/author}>, <{commit/message}>))
+          save commits, add(commits, 1)
+  print-lines(lines)
+  save counts, make list
+  push(counts, output/count(branches/length, <branches>, <branch>))
+  push(counts, output/count(commits, <commits>, <commit>))
+  output/close-run(make(close-counts, bind(verdict, <Log listed>), bind(counts, counts)))
+
+# what changed between two commits, as field-level changes
+task call-base-diff
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  save asked-from, input/from
+  save asked-to, input/to
+  save fact, <{asked-to}>
+  fork test, not(repo-is-absent(asked-from))
+    hold
+      save fact, <{asked-from} → {asked-to}>
+  output/open-run(make(open-facts, bind(verb, <diff>), bind(root, root), bind(facts, one-text(fact))))
+  save repo, need(root)/repo
+  save to, resolve-commit(repo, asked-to)
+  save from, repo-nothing()
+  fork test, not(repo-is-absent(asked-from))
+    hold
+      save from, resolve-commit(repo, asked-from)
+  save changes, feed-module/commit-changes(repo, from, to)
+  save lines, make list
+  walk changes
+    take change, like dynamic
+    save kind, <{change/type}>
+    save form, <>
+    fork test, is-equal(kind, <record.add>)
+      hold
+        save form, <{change/value/type}>
+    save line, diff-line(kind, <{change/mark}>, form, <{change/field}>)
+    fork test, not(is-equal(line, <>))
+      hold
+        push(lines, line)
+  print-lines(lines)
+  save verdict, <No changes>
+  fork test, is-above(changes/length, 0)
+    hold
+      save verdict, <Changes listed>
+  output/close-run(make(close-counts, bind(verdict, verdict), bind(counts, one-dynamic(output/count(changes/length, <changes>, <change>)))))
+
+# one record as of a commit, in canonical form
+task call-base-show
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  save mark, input/mark
+  output/open-run(make(open-subject-facts, bind(verb, <show>), bind(root, root), bind(subject, mark), bind(facts, one-dynamic(input/commit))))
+  save repo, need(root)/repo
+  save at, resolve-commit(repo, input/commit)
+  save found, repo/record-at(at, mark)
+  fork test, not(repo-is-truthy(found))
+    hold
+      refuse(<There is no record {mark} at {input/commit}>, make(refusal-next, bind(next, <term base list \<commit\>, for the marks>)))
+  # both, and in this order: the readable half teaches the record model, the canonical half is what is HASHED
+  save fields, found/fields
+  print-lines(show-lines(<{mark}>, <{found/type}>, shown-fields(fields), canon-module/canonicalize-record(found)))
+  output/close-run(make(close-counts, bind(verdict, <Record shown>), bind(counts, one-dynamic(output/count(repo-size-of(fields), <fields>, <field>)))))
+
+# whether a repository is coherent, and what it holds
+task call-base-check
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  output/open-run(make(open-plain, bind(verb, <check>), bind(root, root)))
+  save held, need(root)
+  save repo, held/repo
+  save fsck, repo/fsck()
+  # the ref is read DIRECTLY: `repo.head(name)` prepends `branch/`
+  save format, held/refs/get(repo-format-ref(canon-format-module))
+  save versioned, not(repo-is-absent(format))
+  save shown, <>
+  fork test, versioned
+    hold
+      save shown, <{format}>
+  print-lines(check-lines(versioned, shown, repo/branches(), repo/tags()))
+  save missing, fsck/missing
+  fork test, is-above(missing/length, 0)
+    hold
+      # a list shows 10 entries and counts the rest (section 14)
+      output/report(make(problem-message-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, missing-subject(missing/length)), bind(message, missing-message(missing))))
+      output/close-run(make(close-counts, bind(verdict, <The repository is not coherent>), bind(counts, one-dynamic(output/count(missing/length, <missing>)))))
+      back
+  output/close-run(make(close-counts, bind(verdict, <No missing chunks>), bind(counts, one-dynamic(output/count(0, <missing>)))))
+
+# every record at a commit, by mark and form
+task call-base-list
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  output/open-run(make(open-facts, bind(verb, <list>), bind(root, root), bind(facts, one-dynamic(input/commit))))
+  save repo, need(root)/repo
+  save dataset, repo/checkout(resolve-commit(repo, input/commit))
+  save marks, make list
+  walk repo-keys-of(dataset)
+    take mark, like dynamic
+    push(marks, <{mark}>)
+  save lines, make list
+  walk sort(marks, utf16-order)
+    take mark
+    save record, repo-map-get(dataset, mark)
+    push(lines, <{mark}  {record/type}>)
+  print-lines(lines)
+  output/close-run(make(close-counts, bind(verdict, <Records listed>), bind(counts, one-dynamic(output/count(repo-size-of(dataset), <records>, <record>)))))
+
+# This repository's uuid, minting one if it predates the file. Persisted rather than derived from the directory's name,
+# which a rename or a move would change, orphaning a projection's watermark. Written once and never changed
+task repository-name
+  take root, like dynamic
+  like text
+
+  save at, node-path/join(root, base-home(), <repository>)
+  fork test, node-fs/exists-sync(at)
+    hold
+      save held, repo-trimmed(node-fs/read-file-sync(at, <utf8>))
+      fork test, mark-module/is-mark(held)
+        hold
+          back held
+  save minted, <{mark-module/mint-mark()}>
+  save ending, repo-line-break()
+  node-fs/write-file-sync(at, <{minted}{ending}>)
+  back minted
+
+# create a repository here, the one verb nothing else can run without
+task call-base-init
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  output/open-run(make(open-plain, bind(verb, <init>), bind(root, root)))
+  save home, node-path/join(root, base-home())
+  save home-name, base-home()
+  fork test, node-fs/exists-sync(home)
+    hold
+      refuse(<This is already a repository>, make(refusal-fields, bind(fields, one-dynamic(output/field(<found>, <{home-name}/>)))))
+  node-fs/mkdir-sync(home, make(folder-ask, bind(recursive, true)))
+  save ending, repo-line-break()
+  node-fs/write-file-sync(node-path/join(home, <chunk.json>), <\{\}{ending}>)
+  node-fs/write-file-sync(node-path/join(home, <ref.json>), <\{\}{ending}>)
+  save minted, <{mark-module/mint-mark()}>
+  node-fs/write-file-sync(node-path/join(home, <repository>), <{minted}{ending}>)
+  output/report(make(change-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, <{home-name}/>)))
+  output/close-run(make(close-verdict, bind(verdict, <An empty repository was made>)))
+
+# every `.tree` record under one folder, in the order the folder lists them, a folder's records where it stands
+task folder-records
+  take root, like dynamic
+  take at, like dynamic
+  like list, like dynamic
+  mark private
+
+  save records, make list
+  walk node-fs/readdir-sync(at)
+    take name, like dynamic
+    save full, node-path/join(at, name)
+    fork test, repo-is-folder(full)
+      hold
+        walk folder-records(root, full)
+          take inner, like dynamic
+          push(records, inner)
+        turn next
+    fork test, not(repo-is-record-file(name))
+      hold
+        turn next
+    save node, repo-nothing()
+    fork
+      mark unsafe
+      save node, tree-parse-module/parse-tree(node-fs/read-file-sync(full, <utf8>))
+    halt take
+      take error
+      # named, and fatal: a commit that silently skipped a file it could not read would record a DELETION
+      refuse(repo-capitalized(repo-message-of(error)), make(refusal-fields, bind(fields, one-dynamic(output/location(node-path/relative(root, full))))))
+    # checked HERE, where the file's name is still known
+    fork test, repo-is-absent(node/mark)
+      hold
+        refuse(<This record has no mark line, so it has no identity>, make(refusal-fields, bind(fields, one-dynamic(output/location(node-path/relative(root, full))))))
+    push(records, node)
+  back records
+
+# every `.tree` file under `record/`, parsed, as a dataset
+task working-records
+  take root, like dynamic
+  like dynamic
+  mark private
+
+  save dir, node-path/join(root, record-folder())
+  fork test, not(node-fs/exists-sync(dir))
+    hold
+      back repo-new-map()
+  back change-module/dataset-of(folder-records(root, dir))
+
+# what the working files would change, against a branch: the read half of `commit`
+task call-base-status
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  save branch, input/branch
+  output/open-run(make(open-facts, bind(verb, <status>), bind(root, root), bind(facts, one-dynamic(branch))))
+  save repo, need(root)/repo
+  save now, working-records(root)
+  save head, repo/head(branch)
+  save before, repo-new-map()
+  fork test, repo-is-truthy(head)
+    hold
+      save before, repo/checkout(head)
+  save added, make list
+  save changed, make list
+  walk repo-keys-of(now)
+    take mark, like dynamic
+    fork test, not(repo-map-has(before, mark))
+      hold
+        push(added, <{mark}>)
+  save gone, make list
+  walk repo-keys-of(before)
+    take mark, like dynamic
+    fork test, not(repo-map-has(now, mark))
+      hold
+        push(gone, <{mark}>)
+  walk repo-keys-of(now)
+    take mark, like dynamic
+    fork test, repo-map-has(before, mark)
+      hold
+        save mine, canon-module/canonicalize-record(repo-map-get(now, mark))
+        save theirs, canon-module/canonicalize-record(repo-map-get(before, mark))
+        fork test, not(is-equal(<{mine}>, <{theirs}>))
+          hold
+            push(changed, <{mark}>)
+  print-lines(status-lines(added, changed, gone))
+  save size, repo-size-of(now)
+  save plural, <s>
+  fork test, is-equal(size, 1)
+    hold
+      save plural, <>
+  save folder, record-folder()
+  save counts, make list
+  push(counts, output/count(added/length, <new>))
+  push(counts, output/count(changed/length, <changed>))
+  push(counts, output/count(gone/length, <removed>))
+  output/close-run(make(close-counts, bind(verdict, <{size} record{plural} in {folder}/>), bind(counts, counts)))
+
+# each refusal of a commit its own item, the record it is about as its subject
+task report-diagnostics
+  take done, like dynamic
+  like void
+  mark private
+
+  save diagnostics, done/diagnostics
+  fork test, not(repo-is-absent(diagnostics))
+    hold
+      walk diagnostics
+        take one, like dynamic
+        save mark, one/mark
+        fork test, repo-is-absent(mark)
+          hold
+            save mark, <(dataset)>
+        output/report(make(problem-fields-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <{one/message}>), bind(fields, one-dynamic(output/field(<mark>, mark)))))
+
+task report-conflicts
+  take conflicts, like dynamic
+  like void
+  mark private
+
+  fork test, not(repo-is-absent(conflicts))
+    hold
+      walk conflicts
+        take one, like dynamic
+        output/report(make(problem-message-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <A conflict>), bind(message, one-text(repo-json-text(one)))))
+
+# commit the working files onto a branch
+task call-base-commit
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  save branch, input/branch
+  output/open-run(make(open-facts, bind(verb, <commit>), bind(root, root), bind(facts, one-dynamic(branch))))
+  save held, need(root)
+  save repo, held/repo
+  save next, working-records(root)
+  save folder, record-folder()
+  fork test, is-equal(repo-size-of(next), 0)
+    hold
+      refuse(<There are no records in {folder}/>, make(refusal-message-next, bind(message, one-text(<Committing would empty the branch, so this refuses rather than doing it by accident.>)), bind(next, <term base status>)))
+  save meta, make(commit-meta, bind(author, input/author), bind(time, repo-now()), bind(message, input/message))
+  save done, repo/commit(branch, meta, next)
+  fork test, not(repo-is-truthy(done/ok))
+    hold
+      report-diagnostics(done)
+      report-conflicts(done/conflicts)
+      output/close-run(make(close-verdict, bind(verdict, <The commit was refused>)))
+      back
+  save-repository(held)
+  # the hash is what a script captures, so it is data
+  save ending, repo-line-break()
+  output/print-data(<{done/commit}{ending}>)
+  output/close-run(make(close-counts, bind(verdict, <Committed onto {branch}>), bind(counts, one-dynamic(output/count(repo-size-of(next), <records>, <record>)))))
+
+# write a commit's records back out as `.tree` files under `record/`
+task call-base-checkout
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  output/open-run(make(open-facts, bind(verb, <write>), bind(root, root), bind(facts, one-dynamic(input/commit))))
+  save repo, need(root)/repo
+  save at, resolve-commit(repo, input/commit)
+  save dataset, repo/checkout(at)
+  save dir, node-path/join(root, record-folder())
+  node-fs/mkdir-sync(dir, make(folder-ask, bind(recursive, true)))
+  walk repo-entries-of(dataset)
+    take entry, like dynamic
+    save node, entry/1
+    save into, node-path/join(dir, node/type)
+    node-fs/mkdir-sync(into, make(folder-ask, bind(recursive, true)))
+    node-fs/write-file-sync(node-path/join(into, <{entry/0}.tree>), tree-format-module/format-tree(node))
+  save folder, record-folder()
+  output/close-run(make(close-counts, bind(verdict, <Records written into {folder}/>), bind(counts, one-dynamic(output/count(repo-size-of(dataset), <records>, <record>)))))
+
+# merge one branch into another; conflicts are RETURNED, so a person decides
+task call-base-merge
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  save into, input/into
+  save from, input/from
+  output/open-run(make(open-subject, bind(verb, <merge>), bind(root, root), bind(subject, <{from} into {into}>)))
+  save held, need(root)
+  save repo, held/repo
+  save meta, make(commit-meta, bind(author, input/author), bind(time, repo-now()), bind(message, <merge {from} into {into}>))
+  save done, repo/merge(into, from, meta)
+  fork test, not(repo-is-truthy(done/ok))
+    hold
+      save conflicts, done/conflicts
+      report-conflicts(conflicts)
+      output/close-run(make(close-counts, bind(verdict, <The merge stopped on conflicts>), bind(counts, one-dynamic(output/count(conflicts/length, <conflicts>, <conflict>)))))
+      back
+  save-repository(held)
+  fork test, repo-is-truthy(done/already-up-to-date)
+    hold
+      output/close-run(make(close-verdict, bind(verdict, <{into} already has {from}>)))
+      back
+  save ending, repo-line-break()
+  output/print-data(<{done/commit}{ending}>)
+  output/close-run(make(close-verdict, bind(verdict, <Merged {from} into {into}>)))
+
+# name a commit, so it can be cited
+task call-base-tag
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  save name, input/name
+  save branch, input/branch
+  output/open-run(make(open-subject, bind(verb, <tag>), bind(root, root), bind(subject, name)))
+  save held, need(root)
+  save repo, held/repo
+  save at, repo-nothing()
+  fork test, repo-is-truthy(input/commit)
+    hold
+      save at, resolve-commit(repo, input/commit)
+    miss
+      save at, repo/head(branch)
+  fork test, not(repo-is-truthy(at))
+    hold
+      refuse-plainly(<There is nothing to tag: {branch} has no commits>)
+  fork test, not(repo/create-tag(name, at))
+    hold
+      refuse-plainly(<A tag named {name} already exists>)
+  save-repository(held)
+  save ending, repo-line-break()
+  output/print-data(<{name} -\> {at}{ending}>)
+  output/close-run(make(close-verdict, bind(verdict, <Tagged {name}>)))
+
+# a projected cell as a person reads it, the value and not only its kind
+task cell
+  take value, like dynamic
+  like text
+  mark private
+
+  back cell-of(shown-of(<>, value))
+
+# the working tree at a commit as `.tree` files somebody can read without our software, written wherever `out` says
+task call-base-export
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  save out, input/out
+  output/open-run(make(open-facts, bind(verb, <export>), bind(root, root), bind(facts, one-dynamic(input/commit))))
+  save repo, need(root)/repo
+  save at, resolve-commit(repo, input/commit)
+  save files, 0
+  save bytes, 0
+  walk repo-tree-entries(export-module, repo, at)
+    take entry, like dynamic
+    save full, node-path/join(out, entry/path)
+    node-fs/mkdir-sync(node-path/dirname(full), make(folder-ask, bind(recursive, true)))
+    node-fs/write-file-sync(full, entry/bytes)
+    save files, add(files, 1)
+    save bytes, add(bytes, repo-byte-length(entry/bytes))
+  output/report(make(written-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, out), bind(bytes, bytes), bind(counts, one-dynamic(output/count(files, <files>, <file>)))))
+  output/close-run(make(close-verdict, bind(verdict, <Exported to {out}>)))
+
+# the schema a commit's records imply, or a refusal: a form is a table, a field a column
+task inferred-projection
+  take dataset, like dynamic
+  like dynamic
+  mark private
+
+  save inferred, repo-nothing()
+  fork
+    mark unsafe
+    save inferred, infer-module/infer-projection(make(dataset-ask, bind(dataset, dataset)))
+  halt take
+    take error
+    save said, <Could not work out a schema: {repo-message-of(error)}>
+    fork test, repo-is-mixed-field(infer-module, error)
+      hold
+        save said, <{error/message}>
+    refuse-plainly(said)
+  back inferred
+
+# a mapping file's mapping, or a refusal
+task read-mapping
+  take file, like dynamic
+  like dynamic
+  mark private
+
+  fork test, not(node-fs/exists-sync(file))
+    hold
+      refuse-plainly(<There is no mapping file at {file}>)
+  save mapping, repo-nothing()
+  fork
+    mark unsafe
+    save mapping, repo-parse-json(node-fs/read-file-sync(file, <utf8>))
+  halt take
+    take error
+    refuse(<{file} is not readable JSON>, make(refusal-message, bind(message, one-dynamic(repo-message-of(error)))))
+  back mapping
+
+# write the projection through an open pool: from wherever it already is, every commit the span folds recorded
+task apply-projection
+  take pool, like dynamic
+  take repo, like dynamic
+  take repository, like text
+  take mapping, like dynamic
+  take forms, like dynamic
+  take at, like dynamic
+  like void
+  mark private
+  mark async
+
+  save projector, repo-new-projector(projector-module, postgres-engine(pool), repository, mapping)
+  # with an inferred schema the tables are ours to make; with a mapping file only the bookkeeping is installed
+  save install-forms, forms
+  fork test, repo-is-absent(forms)
+    hold
+      save install-forms, make list
+  repo-awaited(projector/install(install-forms))
+  save from, repo-awaited(projector/serving())
+  save changes, feed-module/commit-changes(repo, from, at)
+  save covers, repo/commits-between(from, at)
+  save ask, repo-nothing()
+  fork test, is-above(covers/length, 0)
+    hold
+      save ask, make(apply-covering-ask, bind(commit, at), bind(changes, changes), bind(covers, covers))
+    miss
+      save ask, make(apply-ask, bind(commit, at), bind(changes, changes))
+  save done, repo-awaited(projector/apply(ask))
+  fork test, not(repo-is-truthy(done/applied))
+    hold
+      output/close-run(make(close-verdict, bind(verdict, <Already serving {at}>)))
+      back
+  save counts, make list
+  push(counts, output/count(done/writes, <statements>, <statement>))
+  fork test, not(repo-is-absent(forms))
+    hold
+      push(counts, output/count(forms/length, <tables created>, <table created>))
+  save fact, <from empty>
+  fork test, repo-is-truthy(from)
+    hold
+      save fact, <from {repo-first-units(from, 20)}>
+  output/report(make(projected-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, repository), bind(counts, counts), bind(facts, one-text(fact))))
+  output/close-run(make(close-verdict, bind(verdict, <Serving {at}>)))
+
+# What a projection would write for a commit, and on `--write` write it. With no `--mapping` the schema is INFERRED
+# from the records and writing creates the tables; with one, an existing schema is adopted and nothing is created.
+# Reports by default, since `--into` points at a real database. One row is printed in full, so a column a mapping
+# drops shows as absent
+task call-base-project
+  take input, like dynamic
+  like void
+  mark async
+
+  save root, input/root
+  save mapping-file, input/mapping
+  save how, <inferred>
+  fork test, repo-is-truthy(mapping-file)
+    hold
+      save how, <mapping>
+  save facts, make list
+  push(facts, input/commit)
+  push(facts, how)
+  output/open-run(make(open-facts, bind(verb, <project>), bind(root, root), bind(facts, facts)))
+  save repo, need(root)/repo
+  save at, resolve-commit(repo, input/commit)
+  save dataset, repo/checkout(at)
+  save mapping, repo-nothing()
+  save forms, repo-nothing()
+  fork test, repo-is-absent(mapping-file)
+    hold
+      save inferred, inferred-projection(dataset)
+      save mapping, inferred/mapping
+      save forms, inferred/forms
+    miss
+      save mapping, read-mapping(mapping-file)
+  save rows, projector-module/rows-for(make(rows-ask, bind(mapping, mapping), bind(dataset, dataset)))
+  fork test, is-equal(repo-size-of(rows), 0)
+    hold
+      output/close-run(make(close-counts, bind(verdict, <This mapping produces no rows for that commit>), bind(counts, one-dynamic(output/count(0, <rows>, <row>)))))
+      back
+  save total, 0
+  save lines, make list
+  save tables, make list
+  walk repo-keys-of(rows)
+    take table, like dynamic
+    push(tables, <{table}>)
+  walk sort(tables, utf16-order)
+    take table
+    save held, repo-map-get(rows, table)
+    save total, add(total, held/length)
+    save first, make list
+    fork test, is-above(held/length, 0)
+      hold
+        save first, shown-fields(held/0)
+    walk table-lines(table, held/length, first)
+      take line
+      push(lines, line)
+  print-lines(lines)
+  save tally, make list
+  push(tally, output/count(total, <rows>, <row>))
+  push(tally, output/count(repo-size-of(rows), <tables>, <table>))
+  save into, input/into
+  fork test, repo-is-absent(into)
+    hold
+      output/close-run(make(close-counts-next, bind(verdict, <Nothing was written>), bind(counts, tally), bind(next, <term base project \<commit\> --into \<url\>, to write it into Postgres>)))
+      back
+  fork test, not(repo-is-truthy(input/commit-write))
+    hold
+      save said, <The tables must already exist, because --mapping says the schema is somebody else's.>
+      fork test, not(repo-is-absent(forms))
+        hold
+          save said, <--write creates the tables.>
+      output/close-run(make(close-counts-message-next, bind(verdict, <Nothing was written>), bind(counts, tally), bind(message, one-text(said)), bind(next, <add --write, to write them into the database at --into>)))
+      back
+  save repository, input/repository
+  fork test, repo-is-absent(repository)
+    hold
+      save repository, repository-name(root)
+  fork test, not(mark-module/is-mark(repository))
+    hold
+      refuse(<--repository must be a uuid version 4>, make(refusal-message-fields, bind(message, one-text(<A projection's bookkeeping is keyed by one.>)), bind(fields, one-dynamic(output/field(<gave>, repository)))))
+  save pool, open-postgres(into)
+  save failed, false
+  save problem, repo-nothing()
+  fork
+    mark unsafe
+    apply-projection(pool, repo, <{repository}>, mapping, forms, at)
+  halt take
+    take error
+    save failed, true
+    save problem, error
+  repo-awaited(pool/end())
+  fork test, failed
+    hold
+      repo-rethrow(problem)

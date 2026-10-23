@@ -32,6 +32,10 @@ load ./http
   find request
   find response
 
+load @term/host/code
+  find from-code
+  find to-code
+
 # the media type, as it goes on the wire
 host code-type, text <application/tree+code>
 

@@ -1,0 +1,223 @@
+# A manifest written back as `deck.tree` text, and a hold as the text a manifest writes for it. Ported from
+# writeManifest and writeCodeHold in deck/deck/code/manifest.ts (term-cli-in-term-0074).
+#
+# The fields are written in the original's order, and a field it tested for truth (`if (m.head)`) is written when it
+# is not empty, which is what a plain `need false` field reads as when it is absent. A link's `have` is the one place
+# zero is written: it is a `maybe` (manifest-shape.tree).
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/text
+  find starts-with
+  find substring
+  find char-count
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/hash
+  find hash
+
+load @term/base/pair
+  find pair
+
+load ../version
+  find code-hold
+  find show-code
+
+load ./manifest-shape
+  find deck-manifest
+  find deck-link
+  find deck-mind
+
+load ./manifest-reading
+  find is-default-code-root
+
+task write-code-hold
+  take hold, like code-hold
+  like text
+
+  sift hold
+    case exact
+      link exact-code
+      back show-code(exact-code)
+    case wild
+      link wild-major
+      link wild-minor
+      link wild-patch
+      save minor, <x>
+      fork test, is-minimum(wild-minor, 0)
+        hold
+          save minor, <{wild-minor}>
+      save patch, <x>
+      fork test, is-minimum(wild-patch, 0)
+        hold
+          save patch, <{wild-patch}>
+      back <{wild-major}.{minor}.{patch}>
+    case band
+      link base
+      link head
+      back <{show-code(base)}..{show-code(head)}>
+    case test
+      link members
+      save shown, make list
+      walk members
+        take member
+        shown/push(write-code-hold(member))
+      back join(shown, <|>)
+
+# `@scope` without its `@`, as the original's `replace(/^@/, '')`
+task scope-word
+  take scope, like text
+  like text
+  mark private
+
+  fork test, starts-with(scope, <@>)
+    hold
+      back substring(scope, 1)
+  back scope
+
+# a `mind` or a `cite` line, and its `site` beneath
+task person-lines
+  take head, like text
+  take person, like deck-mind
+  like list, like text
+  mark private
+
+  save out, make list
+  save line, <  {head} \<{person/name}\>>
+  fork test, not(is-equal(person/base, <>))
+    hold
+      save line, <{line}, base \<{person/base}\>>
+  out/push(line)
+  fork test, not(is-equal(person/site, <>))
+    hold
+      out/push(<    site \<{person/site}\>>)
+  back out
+
+task write-manifest
+  take manifest, like deck-manifest
+  like text
+
+  save lines, make list
+  save full-name, manifest/name
+  fork test, not(is-equal(manifest/host, <>))
+    hold
+      save full-name, <@{manifest/host}/{manifest/name}>
+  lines/push(<deck {full-name}>)
+  lines/push(<  mark \<{show-code(manifest/mark)}\>>)
+
+  # the code root, only when it is not the default: almost no manifest writes it
+  save code-root, manifest/code
+  fork test, and(not(is-equal(code-root, <>)), not(is-default-code-root(code-root)))
+    hold
+      lines/push(<  code {code-root}>)
+  fork test, not(is-equal(manifest/head, <>))
+    hold
+      lines/push(<  head \<{manifest/head}\>>)
+  fork test, not(is-equal(manifest/text, <>))
+    hold
+      lines/push(<  text \<{manifest/text}\>>)
+  fork test, manifest/hide
+    hold
+      lines/push(<  hide true>)
+  fork test, not(is-equal(manifest/lock, <>))
+    hold
+      lines/push(<  lock {manifest/lock}>)
+  fork test, not(is-equal(manifest/sort, <>))
+    hold
+      lines/push(<  sort \<{manifest/sort}\>>)
+  fork test, not(is-equal(manifest/site, <>))
+    hold
+      lines/push(<  site \<{manifest/site}\>>)
+  fork test, not(is-equal(manifest/view, <>))
+    hold
+      lines/push(<  view {manifest/view}>)
+  walk manifest/term
+    take each-term
+    lines/push(<  term \<{each-term}\>>)
+  walk manifest/make
+    take each-make
+    lines/push(<  make \<{each-make}\>>)
+  walk manifest/deck
+    take each-deck
+    lines/push(<  deck {each-deck}>)
+  walk manifest/base
+    take each-base
+    lines/push(<  base {scope-word(each-base/scope)}, \<{each-base/registry}\>>)
+  sift manifest/need
+    case some
+      link needed
+      lines/push(<  need {needed/name}, mark \<{write-code-hold(needed/mark)}\>>)
+    case none
+      save nothing, 0
+  walk manifest/link
+    take dep
+    save hold-text, write-code-hold(dep/mark)
+    sift dep/have
+      case some
+        link have-count
+        # a literal opens no level, so under the comma rule `mark <1.x.x>, have 1` would put `have` under `mark`:
+        # parenthesized, `mark` closes first and `have` stays a sibling of it under `link`
+        lines/push(<  link {dep/name}, mark(\<{hold-text}\>), have {have-count}>)
+      case none
+        lines/push(<  link {dep/name}, mark \<{hold-text}\>>)
+  walk manifest/host-link
+    take group
+    lines/push(<  host \<{group/registry}\>>)
+    walk group/link
+      take grouped
+      lines/push(<    link {grouped/name}, mark \<{write-code-hold(grouped/mark)}\>>)
+  fork test, is-above(manifest/dev-link/length, 0)
+    hold
+      lines/push(<  case work>)
+      walk manifest/dev-link
+        take dev
+        lines/push(<    link {dev/name}, mark \<{write-code-hold(dev/mark)}\>>)
+  fork test, not(is-equal(manifest/task, <>))
+    hold
+      lines/push(<  task {manifest/task}>)
+  fork test, not(is-equal(manifest/book, <>))
+    hold
+      lines/push(<  book {manifest/book}>)
+  fork test, not(is-equal(manifest/role, <>))
+    hold
+      lines/push(<  role {manifest/role}>)
+  fork test, not(is-equal(manifest/line, <>))
+    hold
+      lines/push(<  line {manifest/line}>)
+  fork test, not(is-equal(manifest/call, <>))
+    hold
+      lines/push(<  call {manifest/call}>)
+  fork test, not(is-equal(manifest/test, <>))
+    hold
+      lines/push(<  test {manifest/test}>)
+  fork test, not(is-equal(manifest/boot, <>))
+    hold
+      lines/push(<  boot {manifest/boot}>)
+  fork test, not(is-equal(manifest/tool, <>))
+    hold
+      lines/push(<  tool {manifest/tool}>)
+  walk manifest/mind
+    take author
+    walk person-lines(<mind>, author)
+      take mind-line
+      lines/push(mind-line)
+  # `cite` is `mind`'s shape under another head: attribution rather than authorship
+  walk manifest/cite
+    take cited
+    walk person-lines(<cite>, cited)
+      take cite-line
+      lines/push(cite-line)
+  sift manifest/hook
+    case some
+      link hooks
+      walk hooks/entries()
+        take hook-entry
+        lines/push(<  hook {hook-entry/first}, task {hook-entry/second}>)
+    case none
+      save nothing, 0
+
+  back <{join(lines, <\n>)}\n>

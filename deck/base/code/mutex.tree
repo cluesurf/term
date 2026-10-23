@@ -6,6 +6,7 @@ load @term/base/native/{platform}/mutex
   find latch-make
   find latch-lock
   find latch-unlock
+  find mutex-handle
 
 # a mutual-exclusion lock
 form mutex

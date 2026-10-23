@@ -1,0 +1,298 @@
+# The per-file build worker (node, `worker_threads`). Ported from call/code/build-worker.ts, term-cli-in-term-0026.
+#
+# The batch compiler (file-pool.tree) fans the project's .tree files out across a pool of these: each worker compiles
+# one whole file at a time through the ordinary `compile()` path, so routes, env binds and every other whole-program
+# transform are handled exactly as in a sequential build. The project's on-disk cache (`.base/@term/code/cache`) is
+# shared across workers, so the stdlib is parsed and milled once for the whole pool. The worker reads the file itself
+# (the driver sends only the path) and posts back the emitted output.
+#
+# Loading the module starts the listener (decision 003: the emitted port is bundled as its own entry and the pool
+# starts it). Outside a worker there is no parent port and it does nothing. Docked: compile/compile.ts, compile/load.ts
+# (makeParseMemo), compile/native.ts (withNativeEnv), make.ts (buildable, projectResolver), cache-store.ts
+# (projectCache), report.ts (renderDiagnostic), deck-of.ts, role-of.ts and node's worker_threads.
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <node:worker_threads>, name worker-threads
+  load <@term/make/code/compile/compile>, name compiling-module
+  load <@term/make/code/compile/load>, name load-module
+  load <@term/make/code/compile/native>, name native-module
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/cache-store>, name cache-store
+  load <@term/call/code/report>, name report-module
+  load <@term/call/code/deck-of>, name deck-module
+  load <@term/call/code/role-of>, name role-module
+
+# What the worker holds between jobs, built once per project root and env and reused for every file it handles: the
+# resolver (the env selects which per-platform native impls it rewrites to), the shared cache, ONE parse memo for the
+# whole worker (every entry walks the same stdlib closure to work out its cache key), the deck resolver, and the role
+# and lean readers, rebuilt here from the root because a function cannot cross workerData (lean-0035)
+form file-worker-held
+  mark shared
+  link key, like dynamic
+  link resolve, like dynamic
+  link cache, like dynamic
+  link parsed, like dynamic
+  link deck-of, like dynamic
+  link role-of, like dynamic
+  link lean-of, like dynamic
+
+# `undefined`
+bind file-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+host held, make(file-worker-held, bind(key, file-nothing()), bind(resolve, file-nothing()), bind(cache, file-nothing()), bind(parsed, file-nothing()), bind(deck-of, file-nothing()), bind(role-of, file-nothing()), bind(lean-of, file-nothing()))
+
+# the key of a root and env, the two apart by a NUL as the original joined them
+bind file-key
+  take root, like text
+  take env, like dynamic
+  like text
+  case node
+    text <($root + String.fromCharCode(0) + ($env ?? ""))>
+
+# the worker is ready for this key: the same key, a resolver and a cache
+bind file-is-ready
+  take held, like dynamic
+  take key, like text
+  like boolean
+  case node
+    text <Boolean($held.key === $key && $held.resolve && $held.cache)>
+
+# the target a build resolves native modules for when none is given: a public stdlib module imports the ABSTRACT
+# `.../native/<name>`, and without an env every such import fails to resolve
+bind file-env-or-node
+  take env, like dynamic
+  like dynamic
+  case node
+    text <($env ?? "node")>
+
+# The compiler fingerprint, PER CACHE KIND, handed down by the parent. A worker cannot work it out for itself: its
+# module is a bundle in the temp directory, so the walk for the package root finds nothing and it would land in a
+# namespace the parent never reads (cache-store.ts projectCache)
+bind file-version-of
+  take data, like dynamic
+  like dynamic
+  case node
+    text <($data)?.version>
+
+task make-ready
+  take root, like text
+  take env, like dynamic
+  like void
+  mark private
+
+  save key, file-key(root, env)
+  fork test, file-is-ready(held, key)
+    hold
+      back void
+  save held/key, key
+  # wrap the plain project resolver so `.../native/<name>` rewrites to the concrete `.../native/<env>/<name>`
+  save held/resolve, native-module/with-native-env(file-env-or-node(env), make-module/project-resolver(root))
+  save held/cache, cache-store/project-cache(root, file-version-of(worker-threads/worker-data))
+  save held/parsed, load-module/make-parse-memo()
+  save held/deck-of, deck-module/project-deck-of()
+  save held/role-of, role-module/project-role-of(root)
+  save held/lean-of, role-module/project-lean-of(root)
+
+# ---- a job's fields and its compile, read as the original read them ----
+
+bind file-is-job
+  take message, like dynamic
+  like boolean
+  case node
+    text <($message.type === "job")>
+
+bind file-member
+  take value, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$value[$key]>
+
+# `roleOf?.(file)`
+bind file-role-for
+  take role, like dynamic
+  take file, like dynamic
+  like dynamic
+  case node
+    text <$role?.($file)>
+
+bind file-has-faults
+  take unit, like dynamic
+  like boolean
+  case node
+    text <("faults" in $unit)>
+
+bind file-faults-text
+  take unit, like dynamic
+  like text
+  case node
+    text <$unit.faults.join(" ")>
+
+# what compile is handed: the file and the unit's text
+bind file-input
+  take file, like dynamic
+  take unit, like dynamic
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $unit.text \})>
+
+bind file-compile-options
+  take held, like dynamic
+  take env, like dynamic
+  like dynamic
+  case node
+    text <(\{ resolve: $held.resolve, cache: $held.cache, parsed: $held.parsed, env: $env, deckOf: $held.deckOf, roleOf: $held.roleOf, leanOf: $held.leanOf \})>
+
+bind file-is-ok
+  take result, like dynamic
+  like boolean
+  case node
+    text <Boolean($result.ok)>
+
+# the first diagnostic as one line, `compile failed` when there is none
+bind file-first-said
+  take result, like dynamic
+  like text
+  case node
+    text <($result.diagnostics[0] ? $result.diagnostics[0].name + ": " + $result.diagnostics[0].message : "compile failed")>
+
+# every diagnostic, a test file's moved back onto the lines as written
+bind file-placed-problems
+  take result, like dynamic
+  take file, like dynamic
+  take unit, like dynamic
+  like dynamic
+  case node
+    text <$result.diagnostics.map((d) =\> (d.file === $file ? $unit.place(d).diagnostic : d))>
+
+# the source that frames the problems: a generated unit's own text, else the file as written when the unit rewrote it
+bind file-sent-text
+  take unit, like dynamic
+  take source, like dynamic
+  like dynamic
+  case node
+    text <($unit.generated ? $unit.text : $unit.text === $source ? undefined : $source)>
+
+bind file-is-css
+  take result, like dynamic
+  like boolean
+  case node
+    text <(typeof $result.css === "string")>
+
+# the file's own warnings, a test file's moved back onto the lines as written
+bind file-own-warnings
+  take result, like dynamic
+  take file, like dynamic
+  take unit, like dynamic
+  like list, like dynamic
+  case node
+    text <$result.warnings.filter((w) =\> w.file === $file).map((w) =\> $unit.place(w).diagnostic)>
+
+bind file-error-text
+  take error, like dynamic
+  like text
+  case node
+    text <String($error)>
+
+# ---- the replies ----
+
+form faults-reply
+  link id, like dynamic
+  link file, like dynamic
+  link ok, like boolean
+  link error, like text
+
+form failed-reply
+  link id, like dynamic
+  link file, like dynamic
+  link ok, like boolean
+  link error, like text
+  link problems, like dynamic
+  link text, like dynamic
+
+# the reply for a compiled file, written whole as the original wrote it: a form field `is-css` is emitted `isCSS` (an
+# acronym word is upper-cased), while the pool reads `isCss`
+bind file-built-reply
+  take id, like dynamic
+  take file, like dynamic
+  take css, like boolean
+  take result, like dynamic
+  take warnings, like list, like text
+  take own, like list, like dynamic
+  take text, like dynamic
+  like dynamic
+  case node
+    text <(\{ id: $id, file: $file, ok: true, isCss: $css, output: ($css ? $result.css : $result.typescript), style: ($css ? $result.style : undefined), styleDark: ($css ? $result.styleDark : undefined), openClaims: ("openClaims" in $result ? $result.openClaims : undefined), warnings: $warnings, problems: $own, text: $text, obligations: ($result.obligations ? (\{ total: $result.obligations.total, proven: $result.obligations.proven, kinds: $result.obligations.kinds \}) : undefined) \})>
+
+task answer-job
+  take message, like dynamic
+  like void
+  mark private
+
+  fork test, not(file-is-job(message))
+    hold
+      back void
+  save port, worker-threads/parent-port
+  save id, file-member(message, <id>)
+  save root, file-member(message, <root>)
+  save file, file-member(message, <file>)
+  save env, file-member(message, <env>)
+  fork
+    mark unsafe
+    make-ready(root, env)
+    # a file carrying `test <phrase>` blocks is not plain Term until the test preprocessor has rewritten them into
+    # tasks, so a plain build rewrites them too
+    save source, node-file/read-file-sync(file, <utf8>)
+    save unit, make-module/buildable(file, source, file-role-for(held/role-of, file))
+    fork test, file-has-faults(unit)
+      hold
+        port/post-message(make(faults-reply, bind(id, id), bind(file, file), bind(ok, false), bind(error, <{node-path/relative(root, file)}: {file-faults-text(unit)}>)))
+        back void
+    save result, compiling-module/compile(file-input(file, unit), file-compile-options(held, env))
+    fork test, not(file-is-ok(result))
+      hold
+        # every diagnostic travels back whole, so the parent draws each as a Problem item with its frame
+        port/post-message(make(failed-reply, bind(id, id), bind(file, file), bind(ok, false), bind(error, <{node-path/relative(root, file)}: {file-first-said(result)}>), bind(problems, file-placed-problems(result, file, unit)), bind(text, file-sent-text(unit, source))))
+        back void
+    save css, file-is-css(result)
+    save own, file-own-warnings(result, file, unit)
+    # the file's own warnings, rendered, as the sequential build prints them
+    save warnings, make list
+    walk own
+      take warning
+      warnings/push(report-module/render-diagnostic(warning, source))
+    # the claims left open travel back too: the sequential build reports them on the build line
+    save sent-text, file-sent-text(unit, source)
+    port/post-message(file-built-reply(id, file, css, result, warnings, own, sent-text))
+  halt take
+    take error
+    port/post-message(make(faults-reply, bind(id, id), bind(file, file), bind(ok, false), bind(error, <{node-path/relative(root, file)}: {file-error-text(error)}>)))
+
+bind file-has-port
+  take port, like dynamic
+  like boolean
+  case node
+    text <($port != null)>
+
+task listen-for-jobs
+  like boolean
+  mark private
+
+  save port, worker-threads/parent-port
+  fork test, not(file-has-port(port))
+    hold
+      back false
+  port/on
+    <message>
+    task
+      take message, like dynamic
+      like void
+      answer-job(message)
+  back true
+
+host listening, listen-for-jobs()

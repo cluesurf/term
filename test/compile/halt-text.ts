@@ -36,11 +36,12 @@ const out = compile({ file: '/gate/code/halt-text.tree', text })
 ok('it compiles', out.ok, out.ok ? '' : out.diagnostics.map(d => d.message).join(' | '))
 
 if (out.ok) {
-  // the `failure` carrier since 2026-10-03 (note/project/term/guides/research/gaps/plan.md phase 1): an Error named TermException with the
-  // exception's fields, so a handler reads `form` and `note` as it does from any raise
+  // the `failure` carrier since 2026-10-03 (note/project/term/guides/research/gaps/plan.md phase 1), and since 2026-10-23
+  // the TermException every form raise throws, its Term frame first (term/hive decision 001), so a handler reads `form`,
+  // `note` and `flow` as it does from any raise
   ok(
-    'an interpolated halt throws the failure carrier, an Error',
-    /new Error\(note\)/.test(out.typescript) && /name: "TermException"/.test(out.typescript) && /form: "failure"/.test(out.typescript) && /\(`it broke at \$\{n\}`\)/.test(out.typescript),
+    'an interpolated halt throws the failure carrier, a TermException with its frame',
+    /__termRaised\(new TermException\(\{ host: "", form: "failure", note: `it broke at \$\{n\}`/.test(out.typescript) && /"interpolated halt-text\.tree:8"/.test(out.typescript),
     out.typescript.slice(out.typescript.indexOf('function interpolated')),
   )
 

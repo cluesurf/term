@@ -56,6 +56,11 @@ mine hook
           site note
         mine form, like take
           site take
+        # a POSITIONAL, `slot file / like text` (decision term/003 part 1). The SAME site as `take`, so slots and
+        # takes keep their source order, which is the task's argument order. Its own rule and its own node kind
+        # (`hook-slot`), so the lowering tells a positional from a flag
+        mine form, like hook-slot
+          site take
         mine form, like bind
           site bind
         mine form, like base
@@ -76,3 +81,37 @@ mine hook
         # LAST: `mine flow` ends in the value fallback, which takes any headed group
         mine form, like flow
           site flow
+
+# `slot <name>` under a CLI command: a positional (`term make [file]`), decision term/003 part 1. `need true` makes it
+# `<file>`, `like list, like text` the rest of the words (only the last slot may be a list). It carries `like` (on
+# its line or under it), `need`, `bind <default>`, `pick <value>`, its `note` and the `drop` vocabulary, and NOTHING
+# else: no `code` and no `name`, since a positional has no flag to shorten or rename, so either fails this rule.
+#
+# NOT the task rule's `slot` (tree/slot/), which a task's positional parameter still means. A mill rule matches one
+# head word, so the hook's positional is a rule of its own, narrower than `take` on purpose.
+mine hook-slot
+  mine term, term slot
+    mine term
+      site name
+    mine list
+      mine any
+        mine form, like like
+          site like
+        mine term, term need
+          mine any
+            mine term, term true
+              site need
+            mine term, term false
+              site need
+        mine form, like bind
+          site bind
+        mine term, term pick
+          mine any
+            mine text
+              site pick
+            mine term
+              site pick
+        mine form, like note
+          site note
+        mine form, like drop
+          site drop

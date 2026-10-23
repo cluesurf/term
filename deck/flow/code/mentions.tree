@@ -1,0 +1,438 @@
+# Where a document NAMES another file or a definition, read off the parse tree: the path of every `load` / `bear`
+# (at any depth, so a mill's `bind mine, load ./mine` counts), a manifest's `code ./src` and `link @scope/name`, every
+# `find x` under a load, and every top-level declaration with the position of its name. Cmd+click and document links
+# are queries over these. One parser (note/project/term/one-parser.md): nothing here matches lines.
+#
+# This module finds paths and never RESOLVES one. Resolution is the server's `resolveModule`, which asks the resolver
+# the compiler is given, so a path the editor opens is the file the build reads.
+#
+# Ported from paths.ts (term-cli-in-term-0097). The decisions:
+#   - a path's span ends `render-head(target)` UTF-16 units after it starts, as `.length` counted them (self-host
+#     traps.md T001), so an astral character in a path keeps the original's end column
+#   - `mentionAt` and `wordAt` answered `undefined` for nothing found: here they answer a maybe, `mention-at` a
+#     `mention-hit` whose `find` is a maybe with `need false`
+#   - the parse is parser/tree.tree's `parse-tolerant`, the caret span compile/mill-running.tree's `span-of-node`, and
+#     the groups of a root its group nodes, as parser/narrow.ts `groupsOf` filtered them
+
+load @term/base/list
+  find list
+  find get
+
+load @term/make/parser/tree
+  find node
+  find root-node
+  find parse-tolerant
+  find render-head
+
+load @term/make/parser/token
+  find token-source
+
+load @term/make/parser/diagnostic
+  find position
+  find span
+
+load @term/make/compile/mill-running
+  find span-of-node
+
+load @term/make/fixing
+  find units-of
+
+load @term/base/text/unicode
+  find from-runes
+
+# a name a `find` line under a path asks for, with the span of the name
+form found-name
+  link name, like text
+  link span, like span
+
+form path-mention
+  # the path as written, `{platform}` and all
+  link path, like text
+  # the path's own span (what is underlined and clicked)
+  link span, like span
+  # the head that names it: `load`, `bear`, or a manifest's `link` or `code`
+  link head, like text
+  # the names its `find` lines ask for
+  link finds, like list, like found-name
+
+form declaration
+  link name, like text
+  link head, like text
+  link span, like span
+
+# what `mention-at` finds under a position: the mention, and the name of the `find` there when it is one
+form mention-hit
+  link mention, like path-mention
+  link find
+    like maybe, like text
+    need false
+
+# the head of a group, when its first node is a name
+task head-word
+  take nodes, like list, like node
+  like text
+  mark private
+
+  fork test, is-above(nodes/length, 0)
+    hold
+      save first, get(nodes, 0)
+      sift first
+        case name
+          back render-head(first)
+        miss
+          back <>
+  back <>
+
+# the first name of a node: the node itself, or the head of a group
+task first-name
+  take one, like node
+  like maybe, like node
+  mark private
+
+  sift one
+    case name
+      back make(some, one)
+    case group
+      fork test, is-above(nodes/length, 0)
+        hold
+          save head, get(nodes, 0)
+          sift head
+            case name
+              back make(some, head)
+            miss
+              back make none
+    miss
+      back make none
+  back make none
+
+# the first name of the node at `at` of a list, none past its end
+task first-name-at
+  take nodes, like list, like node
+  take at, like number
+  like maybe, like node
+  mark private
+
+  fork test, is-below(at, nodes/length)
+    hold
+      back first-name(get(nodes, at))
+  back make none
+
+# the nodes of a group, none for any other node
+task group-nodes
+  take one, like node
+  like list, like node
+  mark private
+
+  sift one
+    case group
+      back nodes
+    miss
+      back make list
+
+task is-group
+  take one, like node
+  like boolean
+  mark private
+
+  sift one
+    case group
+      back true
+    miss
+      back false
+
+# the groups among a root's nodes
+task root-groups
+  take tree, like root-node
+  like list, like node
+  mark private
+
+  save out, make list
+  sift tree
+    case root
+      walk nodes
+        take one
+        fork test, is-group(one)
+          hold
+            push(out, one)
+  back out
+
+task parse-groups
+  take file, like text
+  take text, like text
+  like list, like node
+  mark private
+
+  save source
+    make token-source
+      bind file, file
+      bind text, text
+  save parsed, parse-tolerant(source)
+  back root-groups(parsed/tree)
+
+# every path a document names. In a manifest (`deck.tree`), `link` and `code` count under the `deck` head
+task path-mentions
+  take file, like text
+  take text, like text
+  like list, like path-mention
+
+  save out, make list
+  walk parse-groups(file, text)
+    take group
+    visit-group(group, false, out)
+  back out
+
+task visit-group
+  take group, like node
+  take under-deck, like boolean
+  take out, like list, like path-mention
+  like void
+  mark private
+
+  save nodes, group-nodes(group)
+  save head, head-word(nodes)
+  save names-path, or(is-equal(head, <load>), is-equal(head, <bear>))
+  # a manifest's `code ./src` names its code root, a folder (its `code <1.4.2>` is the old version spelling, a text
+  # literal and no path, so `first-name` finds nothing there)
+  fork test, and(under-deck, or(is-equal(head, <link>), is-equal(head, <code>)))
+    hold
+      save names-path, true
+  fork test, names-path
+    hold
+      sift first-name-at(nodes, 1)
+        case some
+          link target
+          sift span-of-node(target)
+            case some
+              link start-span
+              mention-of(target, start-span, head, nodes, out)
+            case none
+              save skipped, true
+        case none
+          save skipped, true
+
+  save deck-below, or(under-deck, is-equal(head, <deck>))
+  save at, 1
+  walk test
+    hook test, is-below(at, nodes/length)
+    hook hold
+      save child, get(nodes, at)
+      fork test, is-group(child)
+        hold
+          visit-group(child, deck-below, out)
+      save at, add(at, 1)
+
+# one mention: the WHOLE path as written (the name node's own span stops where an interpolation (`{platform}`)
+# begins, and a path is one line), and the names its `find` lines ask for
+task mention-of
+  take target, like node
+  take start-span, like span
+  take head, like text
+  take nodes, like list, like node
+  take out, like list, like path-mention
+  like void
+  mark private
+
+  save path, render-head(target)
+  save width, units-of(path)/length
+  save end
+    make position
+      bind line, start-span/start/line
+      bind column, add(start-span/start/column, width)
+  save whole
+    make span
+      bind start, start-span/start
+      bind end, end
+
+  save finds, make list
+  save at, 2
+  walk test
+    hook test, is-below(at, nodes/length)
+    hook hold
+      save child, get(nodes, at)
+      fork test, is-group(child)
+        hold
+          save child-nodes, group-nodes(child)
+          fork test, is-equal(head-word(child-nodes), <find>)
+            hold
+              sift first-name-at(child-nodes, 1)
+                case some
+                  link name
+                  sift span-of-node(name)
+                    case some
+                      link name-span
+                      save one
+                        make found-name
+                          bind name, render-head(name)
+                          bind span, name-span
+                      push(finds, one)
+                    case none
+                      save skipped, true
+                case none
+                  save skipped, true
+      save at, add(at, 1)
+
+  save mention
+    make path-mention
+      bind path, path
+      bind span, whole
+      bind head, head
+      bind finds, finds
+  push(out, mention)
+
+# the heads whose second word a file DECLARES at its top level: the code role's definitions, a component, and a
+# mill definition's rules
+task is-declaring
+  take head, like text
+  like boolean
+  mark private
+
+  walk
+    make list, <task>, <form>, <mask>, <bind>, <host>, <view>, <rule>, <tree>, <mine>, <mint>, <mill>
+    take one
+    fork test, is-equal(one, head)
+      hold
+        back true
+  back false
+
+task declarations-of
+  take file, like text
+  take text, like text
+  like list, like declaration
+
+  save out, make list
+  walk parse-groups(file, text)
+    take group
+    save nodes, group-nodes(group)
+    save head, head-word(nodes)
+    fork test, and(is-unequal(head, <>), is-declaring(head))
+      hold
+        sift first-name-at(nodes, 1)
+          case some
+            link name
+            sift span-of-node(name)
+              case some
+                link name-span
+                save one
+                  make declaration
+                    bind name, render-head(name)
+                    bind head, head
+                    bind span, name-span
+                push(out, one)
+              case none
+                save skipped, true
+          case none
+            save skipped, true
+  back out
+
+# whether a span holds a position, its ends included
+task span-holds
+  take where, like span
+  take line, like number
+  take character, like number
+  like boolean
+  mark private
+
+  save after-start, or(is-above(line, where/start/line), and(is-equal(line, where/start/line), is-minimum(character, where/start/column)))
+  save before-end, or(is-below(line, where/end/line), and(is-equal(line, where/end/line), is-maximum(character, where/end/column)))
+  back and(after-start, before-end)
+
+task mention-at
+  take mentions, like list, like path-mention
+  take line, like number
+  take character, like number
+  like maybe, like mention-hit
+
+  walk mentions
+    take mention
+    fork test, span-holds(mention/span, line, character)
+      hold
+        save hit
+          make mention-hit
+            bind mention, mention
+        back make(some, hit)
+    walk mention/finds
+      take one
+      fork test, span-holds(one/span, line, character)
+        hold
+          save hit
+            make mention-hit
+              bind mention, mention
+              bind find, make(some, one/name)
+          back make(some, hit)
+  back make none
+
+# a unit of a kebab-case word: `[A-Za-z0-9-]`
+task is-word-unit
+  take unit, like number
+  like boolean
+  mark private
+
+  fork test, or(and(is-minimum(unit, 65), is-maximum(unit, 90)), and(is-minimum(unit, 97), is-maximum(unit, 122)))
+    hold
+      back true
+  back or(and(is-minimum(unit, 48), is-maximum(unit, 57)), is-equal(unit, 45))
+
+# the line of a text at `line`, as its units: none past the text gives an empty line
+task line-units
+  take units, like list, like number
+  take line, like number
+  like list, like number
+  mark private
+
+  save current, 0
+  save row, make list
+  walk units
+    take unit
+    fork test, is-equal(unit, 10)
+      hold
+        fork test, is-equal(current, line)
+          hold
+            back row
+        save current, add(current, 1)
+      miss
+        fork test, is-equal(current, line)
+          hold
+            push(row, unit)
+  fork test, is-equal(current, line)
+    hold
+      back row
+  back make list
+
+# the kebab-case word under a position, from the text: one that starts with a letter
+task word-at
+  take text, like text
+  take line, like number
+  take character, like number
+  like maybe, like text
+
+  save row, line-units(units-of(text), line)
+  save from, character
+  fork test, is-above(from, row/length)
+    hold
+      save from, row/length
+  save to, from
+  walk test
+    hook test, and(is-above(from, 0), is-word-unit(get(row, subtract(from, 1))))
+    hook hold
+      save from, subtract(from, 1)
+  walk test
+    hook test, and(is-below(to, row/length), is-word-unit(get(row, to)))
+    hook hold
+      save to, add(to, 1)
+  fork test, is-maximum(to, from)
+    hold
+      back make none
+  save first, get(row, from)
+  fork test, or(and(is-minimum(first, 65), is-maximum(first, 90)), and(is-minimum(first, 97), is-maximum(first, 122)))
+    hold
+      # every unit of the word is ASCII, so each is its own code point
+      save runes, make list
+      save at, from
+      walk test
+        hook test, is-below(at, to)
+        hook hold
+          push(runes, get(row, at))
+          save at, add(at, 1)
+      save word, from-runes(runes)
+      back make(some, word)
+  back make none

@@ -31,6 +31,8 @@ dock load
   load <@term/call/code/mold>, name mold-module
   load <@term/call/code/boot>, name boot-module
   load <node:process>, name node-process
+  # the process argument vector `boot` reads the words after `--` from, as line.ts did (traps.md: <global:process>)
+  load <global:process>, name host-process
 
 form view-ask
   link root, like text
@@ -66,6 +68,8 @@ form boot-ask
   link port, like number
   link remote, like text
   link remoteToken, like text
+  link args, like list, like text
+  link out, like text
 
 # `term view [path]`: check a document in the view role and print what it uses
 task view
@@ -158,34 +162,53 @@ task mold
     log-fail format-error error
     node-process/exit code 1
 
+# the words after the first literal `--` of an argument vector, untouched: what line.ts handed a command-line program
+# (`term boot cli.tree -- code save development`)
+task words-after-dashes
+  take words, like list, like text
+  like list, like text
+  save after, make list
+  save seen, false
+  walk words
+    take word
+    fork test, seen
+      hold
+        after/push word
+      miss
+        fork test, is-equal(word, <-->)
+          hold
+            save seen, true
+  back after
+
 # `term boot [mode] [entry]`: compile and run the app, in development (`moon`, `dev`, `development`, the default) or
-# production (`star`, `prod`, `production`)
+# production (`star`, `prod`, `production`). line.ts's mapping: the program's arguments are every word after a
+# literal `--` in the process argument vector, and `callBoot` reads the mode and the entry itself (`bootMode`). The
+# bare extras line.ts also passed (`term boot dev cli.tree show`) never reach here: the dispatcher refuses a word no
+# take holds. No tint, catch or exit of its own: a throw reaches dispatch.tree `fail-line` (decision 005 of
+# cli-in-term)
 task boot
   mark async
   take mode, like text
   take entry, like text
-  take env, like text
   take port, like number
+  take env, like text
   take remote, like text
   take remote-token, like text
+  take out, like text
 
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  fork
-    mark unsafe
-    call boot-module/callBoot
-      make boot-ask
-        bind root, read root
-        bind mode, read mode
-        bind entry, read entry
-        bind env, read env
-        bind port, read port
-        bind remote, read remote
-        bind remoteToken, read remote-token
-      wait true
-  halt take
-    take error
-    log-fail format-error error
-    node-process/exit code 1
+  call boot-module/callBoot
+    make boot-ask
+      bind root, read root
+      bind mode, read mode
+      bind entry, read entry
+      bind env, read env
+      bind port, read port
+      bind remote, read remote
+      bind remoteToken, read remote-token
+      bind args, words-after-dashes(host-process/argv)
+      bind out, read out
+    wait true

@@ -1,0 +1,394 @@
+# CODE ACTIONS: the quick fixes for the diagnostics the editor sends back, an import for an unknown name a module
+# exports, the lint fixes in range, and every lint fix at once as `source.fixAll`.
+#
+# A diagnostic carries the fixes `term scan` reports (fixing.tree), placed when the diagnostic was: a sure one is the
+# preferred action, which an editor applies on its own key, and a guess is offered beside it. A client that keeps a
+# diagnostic's name and drops the rest still gets what the text alone can answer. The import search reads every
+# reachable module, so it runs only for an unknown name, and its answer per package and name is kept until a `.tree`
+# file changes on disk (the server's `exporting`).
+#
+# Ported from server.ts (term-cli-in-term-0104, part 5 of 5): codeActions and handle's case `textDocument/codeAction`.
+# The decisions:
+#   - what the client sends back (its diagnostics, their `data`, a range, `only`) is the host's JSON value, read by host
+#     expressions as the original read it, and an action carrying the client's own edits hands them back as they came
+#   - an action is the host's object, its `changes` keyed by the document's uri, `isPreferred` there only for a sure fix
+#   - the fixes are fixing.tree's `text-fixes`, `name-in` and `import-fixes`, where server.ts reached them through
+#     make/code/fix.ts; the import lookup is resolve.ts's `findModulesExporting`, docked
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/make/parser/diagnostic
+  find span
+  find position
+  find entry-of
+
+load @term/make/fixing
+  find text-fixes
+  find import-fixes
+  find name-in
+
+load ./analysis
+  find to-range
+
+load ./language-server
+  find language-server
+  find document
+  find is-given
+
+load ./document-analysis
+  find settled
+  find quick-fix
+  find text-edit
+
+load ./server-reply
+  find respond
+
+dock load
+  load <@term/make/code/resolve>, name resolving-module
+
+# ---- the host ----
+
+bind request-range
+  take params, like dynamic
+  like dynamic
+  case node
+    text <($params)?.range>
+
+bind request-only
+  take params, like dynamic
+  like dynamic
+  case node
+    text <($params)?.context?.only>
+
+# `!only?.length || only.some(kind => kind === 'quickfix' || kind.startsWith('quickfix.'))`
+bind wants-quickfix
+  take only, like dynamic
+  like boolean
+  case node
+    text <(!$only?.length || $only.some((kind) =\> kind === "quickfix" || kind.startsWith("quickfix.")))>
+
+# `params?.context?.diagnostics ?? []`
+bind sent-diagnostics
+  take params, like dynamic
+  like list, like dynamic
+  case node
+    text <(($params)?.context?.diagnostics ?? [])>
+
+bind carried-fixes
+  take diag, like dynamic
+  like dynamic
+  case node
+    text <$diag.data?.fixes>
+
+bind carried-name
+  take diag, like dynamic
+  like dynamic
+  case node
+    text <$diag.data?.name>
+
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind as-list
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <$value>
+
+bind host-value
+  take value, like dynamic
+  like dynamic
+  case node
+    text <$value>
+
+# `{ title, kind: 'quickfix', ...(sure ? { isPreferred: true } : {}), edit: { changes: { [uri]: edits } } }`
+bind fix-action
+  take fix, like dynamic
+  take uri, like text
+  like dynamic
+  case node
+    text <(\{ title: $fix.title, kind: "quickfix", ...($fix.sure ? \{ isPreferred: true \} : \{\}), edit: \{ changes: \{ [$uri]: $fix.edits \} \} \})>
+
+bind import-action
+  take title, like text
+  take uri, like text
+  take edits, like list, like text-edit
+  like dynamic
+  case node
+    text <(\{ title: $title, kind: "quickfix", edit: \{ changes: \{ [$uri]: $edits \} \} \})>
+
+# the diagnostic's name as the server placed it, else its code as a client may send it bare: the compiler's number for
+# an unknown name, or the name itself
+bind named-as
+  take diag, like dynamic
+  take code, like dynamic
+  like dynamic
+  case node
+    text <($diag.data?.name ?? ($diag.code === undefined ? undefined : $diag.code === $code || $diag.code === "unknown-name" ? "unknown-name" : String($diag.code)))>
+
+# `!root || (named !== undefined && named !== 'unknown-name')`: no import to search for
+bind is-not-searched
+  take root, like dynamic
+  take named, like dynamic
+  like boolean
+  case node
+    text <(!$root || ($named !== undefined && $named !== "unknown-name"))>
+
+bind range-line
+  take range, like dynamic
+  take edge, like text
+  like number
+  case node
+    text <$range[$edge].line>
+
+bind range-character
+  take range, like dynamic
+  take edge, like text
+  like number
+  case node
+    text <$range[$edge].character>
+
+# `${root}\0${name}`
+bind export-key
+  take root, like text
+  take name, like text
+  like text
+  case node
+    text <($root + "\\u0000" + $name)>
+
+bind import-paths
+  take found, like dynamic
+  like list, like text
+  case node
+    text <$found.map((one) =\> one.importPath)>
+
+bind fixable-findings
+  take findings, like list, like dynamic
+  like list, like dynamic
+  case node
+    text <$findings.filter((finding) =\> finding.fix)>
+
+# the finding's span overlaps the asked range, or no range was asked
+bind overlaps
+  take range, like dynamic
+  take where, like dynamic
+  like boolean
+  case node
+    text <(!$range || !($where.end.line \< $range.start.line || ($where.end.line === $range.start.line && $where.end.column \< $range.start.character) || $where.start.line \> $range.end.line || ($where.start.line === $range.end.line && $where.start.column \> $range.end.character)))>
+
+bind lint-title
+  take finding, like dynamic
+  like text
+  case node
+    text <`$\{$finding.message\} ($\{$finding.code\})`>
+
+# the diagnostic shown for a finding: its code, at its start
+bind is-shown-for
+  take diagnostic, like dynamic
+  take finding, like dynamic
+  like boolean
+  case node
+    text <($diagnostic.code === $finding.code && $diagnostic.range.start.line === $finding.span.start.line && $diagnostic.range.start.character === $finding.span.start.column)>
+
+bind finding-fix-span
+  take finding, like dynamic
+  like span
+  case node
+    text <$finding.fix.span>
+
+bind finding-fix-text
+  take finding, like dynamic
+  like text
+  case node
+    text <$finding.fix.text>
+
+bind lint-action
+  take title, like text
+  take shown, like list, like dynamic
+  take uri, like text
+  take edits, like list, like text-edit
+  like dynamic
+  case node
+    text <(\{ title: $title, kind: "quickfix", diagnostics: $shown, edit: \{ changes: \{ [$uri]: $edits \} \} \})>
+
+bind fix-all-action
+  take count, like number
+  take uri, like text
+  take edits, like list, like text-edit
+  like dynamic
+  case node
+    text <(\{ title: `Fix all $\{$count\} lint findings`, kind: "source.fixAll", edit: \{ changes: \{ [$uri]: $edits \} \} \})>
+
+# the actions of the kinds asked for: `String(kind).startsWith(asked)` for one of them
+bind of-kinds
+  take actions, like list, like dynamic
+  take only, like dynamic
+  like list, like dynamic
+  case node
+    text <$actions.filter((a) =\> $only.some((kind) =\> String(a.kind).startsWith(kind)))>
+
+# ---- the actions ----
+
+# an LSP range as the compiler's span: the same zero-based coordinates under the compiler's names
+task to-span
+  take range, like dynamic
+  like span
+
+  back
+    make span
+      bind start, make(position, bind(line, range-line(range, <start>)), bind(column, range-character(range, <start>)))
+      bind end, make(position, bind(line, range-line(range, <end>)), bind(column, range-character(range, <end>)))
+
+task code-actions
+  take server, like language-server
+  take params, like dynamic
+  take outbox, like list, like dynamic
+  like list, like dynamic
+
+  save actions, make list
+  sift settled(server, params, outbox)
+    case some
+      link doc
+      sift doc/view
+        case some
+          link view
+          save range, request-range(params)
+          save root, host-value(null-root())
+          fork test, is-unequal(doc/path, <>)
+            hold
+              save root, resolving-module/findProjectRoot(doc/path)
+          # the kinds the editor asked for. A save asks for `source.fixAll` alone, and a quick fix is never one of
+          # those, so none is computed for it
+          save only, request-only(params)
+          save seen, make hash
+          fork test, wants-quickfix(only)
+            hold
+              walk sent-diagnostics(params)
+                take diag
+                save carried, carried-fixes(diag)
+                fork test, is-given(carried)
+                  hold
+                    walk as-list(carried)
+                      take fix
+                      push(actions, fix-action(fix, doc/uri))
+                  miss
+                    save asked-name, carried-name(diag)
+                    fork test, is-truthy(asked-name)
+                      hold
+                        walk text-fixes(asked-name, to-span(diag/range), doc/text)
+                          take fix
+                          save edits, make list
+                          walk fix/edits
+                            take one
+                            push(edits, make(text-edit, bind(range, to-range(one/span)), bind(new-text, one/text)))
+                          push(actions, fix-action(host-value(make(quick-fix, bind(title, fix/title), bind(sure, fix/sure), bind(edits, edits))), doc/uri))
+                # auto-import: an unknown name modules export is offered as a `load` / `find`, one action per module
+                save unknown-kind, make unknown-name
+                save named, named-as(diag, entry-of(unknown-kind)/code)
+                fork test, is-not-searched(root, named)
+                  hold
+                    turn next
+                save span-at, to-span(diag/range)
+                save wanted, <>
+                sift name-in(doc/text, span-at)
+                  case some
+                    link given
+                    save wanted, given
+                  case none
+                    save wanted, <>
+                fork test, or(is-equal(wanted, <>), seen/has(wanted))
+                  hold
+                    turn next
+                seen/set(wanted, true)
+                save key, export-key(root, wanted)
+                fork test, server/exporting/has(key)
+                  miss
+                    save exporting, host-value(empty-found())
+                    fork
+                      mark unsafe
+                      save exporting, resolving-module/findModulesExporting(root, wanted)
+                    halt take
+                      take problem
+                      save exporting, host-value(empty-found())
+                    server/exporting/set(key, exporting)
+                save known, server/exporting/get(key)
+                save paths, import-paths(known)
+                save lookup
+                  task
+                    take name, like text
+                    like list, like text
+                    back paths
+                walk import-fixes(doc/text, span-at, lookup)
+                  take fix
+                  save edits, make list
+                  walk fix/edits
+                    take one
+                    push(edits, make(text-edit, bind(range, to-range(one/span)), bind(new-text, one/text)))
+                  push(actions, import-action(fix/title, doc/uri, edits))
+
+          # lint fixes: the findings of the last analysis (the same ones shown as diagnostics), each fixable one in
+          # range as a quick fix, and every fixable one at once as `source.fixAll`
+          save fixable, fixable-findings(view/findings)
+          walk fixable
+            take finding
+            fork test, overlaps(range, finding/span)
+              miss
+                turn next
+            save shown, make list
+            walk view/diagnostics
+              take diagnostic
+              fork test, is-shown-for(diagnostic, finding)
+                hold
+                  push(shown, diagnostic)
+                  halt
+            save edits, make list
+            push(edits, make(text-edit, bind(range, to-range(finding-fix-span(finding))), bind(new-text, finding-fix-text(finding))))
+            push(actions, lint-action(lint-title(finding), shown, doc/uri, edits))
+          fork test, is-above(fixable/length, 1)
+            hold
+              save edits, make list
+              walk fixable
+                take finding
+                push(edits, make(text-edit, bind(range, to-range(finding-fix-span(finding))), bind(new-text, finding-fix-text(finding))))
+              push(actions, fix-all-action(fixable/length, doc/uri, edits))
+          fork test, has-length(only)
+            hold
+              back of-kinds(actions, only)
+          back actions
+        case none
+          back actions
+    case none
+      back actions
+
+bind null-root
+  like dynamic
+  case node
+    text <undefined>
+
+bind empty-found
+  like dynamic
+  case node
+    text <[]>
+
+bind has-length
+  take only, like dynamic
+  like boolean
+  case node
+    text <Boolean($only?.length)>
+
+task code-action-request
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  take outbox, like list, like dynamic
+  like dynamic
+
+  back respond(message, code-actions(server, params, outbox))

@@ -34,6 +34,7 @@ load ./node
   find form-field
   find variant-field
   find function-param
+  find bind-target
 
 load ./route-lower
   find lower-routes
@@ -749,11 +750,13 @@ task assemble-type-script
         hold
           save prelude, with-first(prelude, class-prelude)
 
-  # a coverage probe (ir/cover.tree) calls the set's writer, which rides in when one is written
+  # a coverage probe (ir/cover.tree) calls the set's writer, which rides in when one is written. A probe is always
+  # `__termCoverHit("<key>")` (ts-emit.tree): the bare name with `(` also matched the compiler's own ports, whose
+  # strings hold it, and gave each a `__termCover ??=` it never uses (count-defaulting-writes)
   save probes, false
   walk lines
     take line
-    fork test, contains(line, <__termCoverHit(>)
+    fork test, contains(line, <__termCoverHit(">)
       hold
         save probes, true
   fork test, probes

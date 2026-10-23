@@ -8,7 +8,7 @@
 
 import { readFileSync } from 'node:fs'
 
-const bundles = ['host/line.js', 'host/dock.mjs', 'host/need.mjs', 'host/need-hand.mjs']
+const bundles = ['host/line.js', 'host/term-line.js', 'host/dock.mjs', 'host/need.mjs', 'host/need-hand.mjs']
 const found: string[] = []
 
 for (const bundle of bundles) {

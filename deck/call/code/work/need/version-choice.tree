@@ -1,0 +1,854 @@
+# Which `term` runs here, and why (note/project/term/term-versions.md, "Resolution"). Ported from call/code/need.ts
+# (term-cli-in-term-0041), whole: the disk reads and the shapes its callers know. The decisions themselves were already
+# Term, call/code/need-choose.tree, and stay there.
+#
+# Every command asks this first, from `host/need.mjs` before the CLI loads, so it reads only small files and reaches only
+# the parser: no registry, no network. Its answer is one of three things: RUN a version that is here, LOAD one first (a
+# pin or a range nothing installed satisfies), or REFUSE, naming why.
+#
+# THE ORDER, first match wins:
+#
+#   1  `+<range>`, the first argument               this command alone
+#   2  TERM_VERSION                                 every command that sees it
+#   3  the nearest deck.tree holding a `need`       its lock.tree's pin while the pin still satisfies it
+#   4  ~/.base/@term/code/need.tree                 the user's default, from `term self pick`
+#   5  the front, call/term                         else the newest version installed under code/
+#   6  the running term itself                      a Homebrew or source copy, with nothing installed
+#
+# THE SHAPES ARE THE ORIGINAL'S. A request's `hold` and its pin's `code` are @term/deck's own (code.ts, docked, which
+# parses them), because `term self` hands them on to that package. They are turned into version.tree's shapes only to
+# ask need-choose.tree. An optional field is a need-false maybe, so it is left out where the original left it out.
+#
+# THE PARSER READS EVERY FILE, through deck/deck/code/package/tree-reading.tree. A cheap test on the text decides only
+# whether to parse at all: a file with no line starting `need` cannot hold one. That test and the line it reports are
+# the original's pattern `^[ \t]*need[ \t]` (multiline), written out by character.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+
+load @term/deck/version
+  find code
+  find code-hold
+
+load @term/deck/package/tree-reading
+  find tree-form
+  find read-tree
+  find form-of
+  find value-of
+
+load @term/call/need-choose
+  find toolchain
+  find need-pin
+  find flag-of
+  find is-version
+  find newest-first
+  find pin-holds
+  find choose-for
+
+dock load
+  # call/code/home.ts, docked: its port work/small/home-folder.tree docks <node:process>, whose namespace costs about
+  # 3 ms to build at load, a 15 percent slower start on this path (traps.md)
+  load <@term/call/code/home>, name home-module
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <global:process>, name host-process
+  load <global:Date>, name host-date
+  load <@term/deck/code/code>, name deck-code
+
+# ---- the host's values, read as the original read them ----
+
+# `Boolean(value)`
+bind host-truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# a host text, or the empty text for anything else: `value ?? ''` over an optional text
+bind text-or-empty
+  take value, like dynamic
+  like text
+  case node
+    text <(typeof $value === "string" ? $value : "")>
+
+# `value ?? fallback` over an optional number
+bind number-or
+  take value, like dynamic
+  take fallback, like number
+  like number
+  case node
+    text <($value ?? $fallback)>
+
+# an environment variable trimmed, the empty text when it is unset: `env[name]?.trim()`, whose answer is tested by truth
+bind trimmed-variable
+  take env, like dynamic
+  take name, like text
+  like text
+  case node
+    text <(($env[$name] ?? "").trim())>
+
+# `new Date().toISOString()`
+bind iso-now
+  like text
+  case node
+    text <new Date().toISOString()>
+
+# ---- the shapes ----
+
+# currentWorld's input
+form world-ask
+  link argv, like list, like text
+  link running, like text
+
+# what resolution reads, gathered so a test can hand in its own
+form need-world
+  link argv, like list, like text
+  link env, like dynamic
+  link cwd, like text
+  # ~/.base/@term/code
+  link home, like text
+  # the running term's version
+  link running, like text
+
+# the `+<range>` argument split off, and the arguments that stay
+form flag-split
+  link text
+    like maybe, like text
+    need false
+  link argv, like list, like text
+
+# a lock.tree's pin: the toolchain's name, its code (@term/deck's shape), and the index digest
+form lock-pin
+  link name, like text
+  link code, like dynamic
+  link hash, like text
+
+# A request for a version: where it came from (flag, env, project, default), the range as written, its hold
+# (@term/deck's shape), the file and line it was read from, and the project's lock.tree pin beside it
+form need-request
+  link source, like text
+  link text, like text
+  link hold, like dynamic
+  link file
+    like maybe, like text
+    need false
+  link line
+    like maybe, like number
+    need false
+  link pin
+    like maybe, like lock-pin
+    need false
+  link pin-file
+    like maybe, like text
+    need false
+
+# readRequest's answer
+form request-read
+  link request
+    like maybe, like need-request
+    need false
+  link argv, like list, like text
+  link refuse
+    like maybe, like text
+    need false
+
+# a request found in one place, or why it cannot be read
+form request-found
+  link request
+    like maybe, like need-request
+    need false
+  link refuse
+    like maybe, like text
+    need false
+
+# What to do. `by` is how the version was chosen within the request (pin, installed, running); `launcher` the
+# installed payload's launcher, left out when the running copy is the answer. A load's `version` is left out for a range
+# the releases resolve, and `expect` is the pin's index digest
+form need-answer
+  case run
+    link version, like text
+    link by, like text
+    link request
+      like maybe, like need-request
+      need false
+    link launcher
+      like maybe, like text
+      need false
+  case load
+    link version
+      like maybe, like text
+      need false
+    link hold, like dynamic
+    link expect
+      like maybe, like text
+      need false
+    link request, like need-request
+  case refuse
+    link reason, like text
+    link request
+      like maybe, like need-request
+      need false
+
+# chooseVersion's answer
+form version-chosen
+  link choice, like need-answer
+  link argv, like list, like text
+
+# chooseFor's input
+form choose-ask
+  link request
+    like maybe, like need-request
+    need false
+  link home, like text
+  link running, like text
+
+# markUsed's and launcherOf's input
+form version-ask
+  link home, like text
+  link version, like text
+
+# a `need` read from one file: none there, one that cannot be used (and why), or the range it writes
+form need-written
+  case need-absent
+  case need-refused
+    link reason, like text
+  case need-found
+    link range, like text
+    link range-hold, like dynamic
+    link from-file, like text
+    link at-line, like number
+
+# ---- @term/deck's shapes, as version.tree's ----
+
+task code-in-term
+  take given, like dynamic
+  like code
+  mark private
+
+  back make(code, bind(major, given/major), bind(minor, given/minor), bind(patch, given/patch), bind(prerelease, text-or-empty(given/prerelease)), bind(build, text-or-empty(given/build)))
+
+task hold-in-term
+  take given, like dynamic
+  like code-hold
+  mark private
+
+  save kind, text-or-empty(given/form)
+  fork test, is-equal(kind, <exact>)
+    hold
+      back
+        make exact
+          bind code, code-in-term(given/code)
+  fork test, is-equal(kind, <wild>)
+    hold
+      back
+        make wild
+          bind major, given/major
+          bind minor, number-or(given/minor, -1)
+          bind patch, number-or(given/patch, -1)
+  fork test, is-equal(kind, <band>)
+    hold
+      back
+        make band
+          bind base, code-in-term(given/base)
+          bind head, code-in-term(given/head)
+  save members, make list
+  walk given/list
+    take member
+    members/push(hold-in-term(member))
+  back
+    make test
+      bind list, members
+
+task pin-in-term
+  take given
+    like maybe, like lock-pin
+  like maybe, like need-pin
+  mark private
+
+  sift given
+    case some
+      link found
+      back make(some, make(need-pin, bind(name, found/name), bind(code, code-in-term(found/code)), bind(hash, found/hash)))
+    case none
+      back make none
+
+# ---- the pattern `^[ \t]*need[ \t]` (multiline), by character ----
+
+task is-blank-point
+  take point, like text
+  like boolean
+  mark private
+
+  back or(is-equal(point, < >), is-equal(point, <\t>))
+
+# a line terminator as a multiline `^` reads one: \n, \r, U+2028, U+2029
+task is-line-end
+  take point, like text
+  like boolean
+  mark private
+
+  save value, point/char-code-at(0)
+  back or(or(is-equal(value, 10), is-equal(value, 13)), or(is-equal(value, 8232), is-equal(value, 8233)))
+
+# does a `need` line start at this point (a line's start)?
+task need-starts-at
+  take points, like list, like text
+  take start, like number
+  like boolean
+  mark private
+
+  save at, start
+  walk test
+    hook test, and(is-below(at, points/length), is-blank-point(get(points, at)))
+    hook hold
+      save at, add(at, 1)
+  fork test, is-above(add(at, 5), points/length)
+    hold
+      back false
+  fork test, not(and(and(is-equal(get(points, at), <n>), is-equal(get(points, add(at, 1)), <e>)), and(is-equal(get(points, add(at, 2)), <e>), is-equal(get(points, add(at, 3)), <d>))))
+    hold
+      back false
+  back is-blank-point(get(points, add(at, 4)))
+
+# The line (from 1) of the first `need` line, or 0 when the text holds none. The line is counted by \n alone, as the
+# original's `slice(0, at).split('\n')` counted it, though a line may start after any of the four terminators
+task need-line-of
+  take body, like text
+  like number
+  mark private
+
+  save points, split(body, <>)
+  save line, 1
+  save at, 0
+  save start, true
+  walk test
+    hook test, is-maximum(at, points/length)
+    hook hold
+      fork test, and(start, need-starts-at(points, at))
+        hold
+          back line
+      fork test, is-equal(at, points/length)
+        hold
+          back 0
+      save point, get(points, at)
+      save start, is-line-end(point)
+      fork test, is-equal(point, <\n>)
+        hold
+          save line, add(line, 1)
+      save at, add(at, 1)
+  back 0
+
+# ---- reading the disk ----
+
+# The `+<range>` argument, split off. `term +2.6.x make` is a request for `2.6.x` and the arguments `make`. A first
+# argument that is not a `+` followed by a version is an ordinary argument and stays
+task split-flag
+  take argv, like list, like text
+  like flag-split
+
+  save flag, flag-of(argv)
+  fork test, is-unequal(flag, <>)
+    hold
+      back make(flag-split, bind(text, make(some, flag)), bind(argv, argv/slice(1, argv/length)))
+  back make(flag-split, bind(argv, argv))
+
+# the world as this process sees it
+task current-world
+  take input, like world-ask
+  like need-world
+
+  save env, host-process/env
+  save cwd, host-process/cwd()
+  save home, home-module/user-home()
+  back make(need-world, bind(argv, input/argv), bind(env, env), bind(cwd, cwd), bind(home, home), bind(running, input/running))
+
+# every installed version, newest first: the directories under code/ that hold an install.tree
+task installed-versions
+  take home, like text
+  like list, like text
+
+  save folder, node-path/join(home, <code>)
+  fork test, not(node-file/exists-sync(folder))
+    hold
+      back make list
+  save names, make list
+  walk node-file/readdir-sync(folder)
+    take name
+    fork test, and(is-version(name), node-file/exists-sync(node-path/join(folder, name, <install.tree>)))
+      hold
+        names/push(name)
+  back newest-first(names)
+
+task is-digit-point
+  take point, like text
+  like boolean
+  mark private
+
+  save value, point/char-code-at(0)
+  back and(is-minimum(value, 48), is-maximum(value, 57))
+
+task is-separator-point
+  take point, like text
+  like boolean
+  mark private
+
+  back or(is-equal(point, </>), is-equal(point, <\\>))
+
+# where a run of digits from `at` ends, `at` itself when there is none
+task digits-end
+  take points, like list, like text
+  take at, like number
+  like number
+  mark private
+
+  save end, at
+  walk test
+    hook test, and(is-below(end, points/length), is-digit-point(get(points, end)))
+    hook hold
+      save end, add(end, 1)
+  back end
+
+# the version a front's link or shim names: the first `code` + separator + digits.digits.digits + separator, the
+# original's /code[\\/](\d+\.\d+\.\d+)[\\/]/, or the empty text
+task front-version-in
+  take shown, like text
+  like text
+  mark private
+
+  save points, split(shown, <>)
+  save at, 0
+  walk test
+    hook test, is-maximum(add(at, 5), points/length)
+    hook hold
+      save here, at
+      save at, add(at, 1)
+      fork test, not(and(and(is-equal(get(points, here), <c>), is-equal(get(points, add(here, 1)), <o>)), and(is-equal(get(points, add(here, 2)), <d>), is-equal(get(points, add(here, 3)), <e>))))
+        hold
+          turn next
+      fork test, not(is-separator-point(get(points, add(here, 4))))
+        hold
+          turn next
+      save first, add(here, 5)
+      save first-end, digits-end(points, first)
+      fork test, or(is-equal(first-end, first), is-maximum(points/length, first-end))
+        hold
+          turn next
+      fork test, is-unequal(get(points, first-end), <.>)
+        hold
+          turn next
+      save second-end, digits-end(points, add(first-end, 1))
+      fork test, or(is-equal(second-end, add(first-end, 1)), is-maximum(points/length, second-end))
+        hold
+          turn next
+      fork test, is-unequal(get(points, second-end), <.>)
+        hold
+          turn next
+      save third-end, digits-end(points, add(second-end, 1))
+      fork test, or(is-equal(third-end, add(second-end, 1)), is-maximum(points/length, third-end))
+        hold
+          turn next
+      fork test, not(is-separator-point(get(points, third-end)))
+        hold
+          turn next
+      save found, points/slice(first, third-end)
+      back join(found, <>)
+  back <>
+
+# The version the front (call/term) points at, or none when there is no front under this home. A symlink read with
+# `readlink`, or on Windows the one-line `call\term.cmd` shim, which names its version's folder. The folder is `bin/`
+# where it has not been renamed yet (home.ts `frontDir`)
+task front-of
+  take home, like text
+  like maybe, like text
+
+  save shown, <>
+  fork
+    mark unsafe
+    fork test, is-equal(host-process/platform, <win32>)
+      hold
+        save shown, node-file/read-file-sync(node-path/join(home-module/front-dir(home), <term.cmd>), <utf8>)
+      miss
+        save shown, node-file/readlink-sync(node-path/join(home-module/front-dir(home), <term>))
+  halt take
+    take problem
+    back make none
+  save version, front-version-in(shown)
+  fork test, is-equal(version, <>)
+    hold
+      back make none
+  back make(some, version)
+
+# the launcher inside an installed version's payload: `term/bin/term`, or `term\bin\term.cmd` on Windows
+task launcher-of
+  take input, like version-ask
+  like text
+
+  save launcher, <term>
+  fork test, is-equal(host-process/platform, <win32>)
+    hold
+      save launcher, <term.cmd>
+  back node-path/join(input/home, <code>, input/version, <term>, <bin>, launcher)
+
+# a request from text: a range in the constraint syntax a `link` uses
+task hold-of
+  take source, like text
+  take range, like text
+  take argv, like list, like text
+  like request-read
+  mark private
+
+  save parsed, <>
+  fork
+    mark unsafe
+    save parsed, deck-code/parse-code-hold(range)
+  halt take
+    take problem
+    save where, <TERM_VERSION={range}>
+    fork test, is-equal(source, <flag>)
+      hold
+        save where, <+{range}>
+    back make(request-read, bind(argv, argv), bind(refuse, make(some, <{where} is not a version or a range: write 2.8.0, 2.8.x or 2.x.x>)))
+  save request, make(need-request, bind(source, source), bind(text, range), bind(hold, parsed))
+  back make(request-read, bind(request, make(some, request)), bind(argv, argv))
+
+# a text value present and not empty, as the original's `!value` tested it
+task filled
+  take value
+    like maybe, like text
+  like text
+  mark private
+
+  sift value
+    case some
+      link inner
+      back inner
+    case none
+      back <>
+
+# The `need` pin in a lock.tree, read with the parser
+task pin-in-lock
+  take file, like text
+  like maybe, like lock-pin
+  mark private
+
+  save body, <>
+  fork
+    mark unsafe
+    save body, node-file/read-file-sync(file, <utf8>)
+  halt take
+    take problem
+    back make none
+  fork test, is-equal(need-line-of(body), 0)
+    hold
+      back make none
+  save read, read-tree(file, body)
+  fork test, not(read/ok)
+    hold
+      back make none
+  walk read/forms
+    take form
+    fork test, is-equal(form/head, <need>)
+      hold
+        save name, <>
+        fork test, is-above(form/terms/length, 0)
+          hold
+            save name, get(form/terms, 0)
+        save pinned, filled(value-of(form, <code>))
+        save hash, filled(value-of(form, <hash>))
+        fork test, or(or(is-equal(name, <>), is-equal(pinned, <>)), or(is-equal(hash, <>), not(is-version(pinned))))
+          hold
+            back make none
+        back make(some, make(lock-pin, bind(name, name), bind(code, deck-code/parse-code(pinned)), bind(hash, hash)))
+  back make none
+
+# the first top-level form with this head
+task top-form
+  take forms, like list, like tree-form
+  take head, like text
+  like maybe, like tree-form
+  mark private
+
+  walk forms
+    take form
+    fork test, is-equal(form/head, head)
+      hold
+        back make(some, form)
+  back make none
+
+# `need @term/code, mark <2.6.x>` in a file: under the `deck` form of a manifest (`under` deck), or at the top of the
+# default file (`under` root)
+task need-in-file
+  take file, like text
+  take under, like text
+  like need-written
+  mark private
+
+  save body, <>
+  fork
+    mark unsafe
+    save body, node-file/read-file-sync(file, <utf8>)
+  halt take
+    take problem
+    back make need-absent
+  save line, need-line-of(body)
+  fork test, is-equal(line, 0)
+    hold
+      back make need-absent
+  save read, read-tree(file, body)
+  fork test, not(read/ok)
+    hold
+      save said, <a syntax error>
+      fork test, is-above(read/diagnostics/length, 0)
+        hold
+          save first-problem, get(read/diagnostics, 0)
+          save said, first-problem/message
+      back make(need-refused, bind(reason, <{file} does not parse: {said}>))
+
+  save holder, make none
+  fork test, is-equal(under, <deck>)
+    hold
+      save holder, top-form(read/forms, <deck>)
+  save need, make none
+  sift holder
+    case some
+      link deck-form
+      save need, form-of(deck-form, <need>)
+    case none
+      save need, top-form(read/forms, <need>)
+
+  sift need
+    case some
+      link need-form
+      save name, <nothing>
+      save named, false
+      fork test, is-above(need-form/terms/length, 0)
+        hold
+          save name, get(need-form/terms, 0)
+          save named, true
+      save range, filled(value-of(need-form, <mark>))
+      save chain, toolchain()
+      fork test, not(and(named, is-equal(name, chain)))
+        hold
+          back make(need-refused, bind(reason, <{file}:{line}: need names {name}, and only {chain} can be needed>))
+      fork test, is-equal(range, <>)
+        hold
+          back make(need-refused, bind(reason, <{file}:{line}: need {chain} names no version: write need {chain}, mark \<2.6.x\>>))
+      save parsed, <>
+      fork
+        mark unsafe
+        save parsed, deck-code/parse-code-hold(range)
+      halt take
+        take problem
+        back make(need-refused, bind(reason, <{file}:{line}: mark \<{range}\> is not a version or a range>))
+      back make(need-found, bind(range, range), bind(range-hold, parsed), bind(from-file, file), bind(at-line, line))
+    case none
+      back make need-absent
+
+# the request a found `need` makes, from its source
+task request-of
+  take source, like text
+  take written, like need-written
+  like need-request
+  mark private
+
+  sift written
+    case need-found
+      link range
+      link range-hold
+      link from-file
+      link at-line
+      back make(need-request, bind(source, source), bind(text, range), bind(hold, range-hold), bind(file, make(some, from-file)), bind(line, make(some, at-line)))
+    miss
+      halt <request-of needs a need that was found>
+
+# The user's default, `need.tree` under the home, written by `term self pick`
+task default-request
+  take home, like text
+  like request-found
+
+  save written, need-in-file(node-path/join(home, <need.tree>), <root>)
+  sift written
+    case need-absent
+      back make request-found
+    case need-refused
+      link why
+      back make(request-found, bind(refuse, make(some, why)))
+    case need-found
+      save request, request-of(<default>, written)
+      back make(request-found, bind(request, make(some, request)))
+
+# The nearest deck.tree, walking up, whose `need` is set, with its directory's lock.tree pin. None when no deck.tree
+# up to the root holds one
+task project-request
+  take cwd, like text
+  like maybe, like request-found
+
+  save dir, node-path/resolve(cwd)
+  walk test
+    hook test, true
+    hook hold
+      save manifest, node-path/join(dir, <deck.tree>)
+      save written, make need-absent
+      fork test, node-file/exists-sync(manifest)
+        hold
+          save written, need-in-file(manifest, <deck>)
+      sift written
+        case need-refused
+          link why
+          back make(some, make(request-found, bind(refuse, make(some, why))))
+        case need-found
+          link range
+          link range-hold
+          link from-file
+          link at-line
+          save lock-file, node-path/join(dir, <lock.tree>)
+          save lock, make none
+          save lock-at, make none
+          fork test, node-file/exists-sync(lock-file)
+            hold
+              save lock, pin-in-lock(lock-file)
+              sift lock
+                case some
+                  save lock-at, make(some, lock-file)
+                case none
+                  save nothing, 0
+          save request, make(need-request, bind(source, <project>), bind(text, range), bind(hold, range-hold), bind(file, make(some, from-file)), bind(line, make(some, at-line)), bind(pin, lock), bind(pin-file, lock-at))
+          back make(some, make(request-found, bind(request, make(some, request))))
+        case need-absent
+          save nothing, 0
+      save parent, node-path/dirname(dir)
+      fork test, is-equal(parent, dir)
+        hold
+          back make none
+      save dir, parent
+  back make none
+
+# The request in force, by the order above, or none when none is written anywhere (rules 5 and 6 then decide). Throws
+# nothing: a request that does not parse becomes a refusal the caller prints
+task read-request
+  take world, like need-world
+  like request-read
+
+  save flag, split-flag(world/argv)
+  sift flag/text
+    case some
+      link flag-text
+      back hold-of(<flag>, flag-text, flag/argv)
+    case none
+      save nothing, 0
+
+  save env-range, trimmed-variable(world/env, <TERM_VERSION>)
+  fork test, is-unequal(env-range, <>)
+    hold
+      back hold-of(<env>, env-range, flag/argv)
+
+  save project, project-request(world/cwd)
+  sift project
+    case some
+      link found
+      back make(request-read, bind(request, found/request), bind(argv, flag/argv), bind(refuse, found/refuse))
+    case none
+      save nothing, 0
+
+  save fallback, default-request(world/home)
+  back make(request-read, bind(request, fallback/request), bind(argv, flag/argv), bind(refuse, fallback/refuse))
+
+# What one request runs, given what is here: rules 3 to 6 once the request is known. `term self list` and `wash` ask it
+# of the default, and `show` of every rule, so they can never disagree with dispatch
+task choose-request
+  take input, like choose-ask
+  like need-answer
+
+  save installed, installed-versions(input/home)
+  save asked, false
+  save asked-hold, make(wild, bind(major, 0), bind(minor, -1), bind(patch, -1))
+  save asked-pin, make none
+  save front, <>
+  sift input/request
+    case some
+      link given
+      save asked, true
+      save asked-hold, hold-in-term(given/hold)
+      save asked-pin, pin-in-term(given/pin)
+    case none
+      # rule 5 reads the front only when nothing asked: a home without one costs no read
+      save front, filled(front-of(input/home))
+  save choice, choose-for(asked, asked-hold, asked-pin, installed, front, input/running)
+
+  sift choice
+    case run
+      link version
+      link by
+      link launched
+      save launcher, make none
+      fork test, launched
+        hold
+          save path, launcher-of(make(version-ask, bind(home, input/home), bind(version, version)))
+          save launcher, make(some, path)
+      back make(run, bind(version, version), bind(by, by), bind(request, input/request), bind(launcher, launcher))
+    case load
+      link load-version
+      link expect
+      # a load is only ever for a request
+      sift input/request
+        case some
+          link given
+          fork test, is-unequal(load-version, <>)
+            hold
+              back make(load, bind(version, make(some, load-version)), bind(hold, given/hold), bind(expect, make(some, expect)), bind(request, given))
+          back make(load, bind(hold, given/hold), bind(request, given))
+        case none
+          halt <a load is only ever for a request>
+
+# Decide, from the request and what is installed. No network: a version that is not here is a `load`
+task choose-version
+  take world, like need-world
+  like version-chosen
+
+  save read, read-request(world)
+  sift read/refuse
+    case some
+      link why
+      back make(version-chosen, bind(choice, make(refuse, bind(reason, why))), bind(argv, read/argv))
+    case none
+      save nothing, 0
+  save choice, choose-request(make(choose-ask, bind(request, read/request), bind(home, world/home), bind(running, world/running)))
+  back make(version-chosen, bind(choice, choice), bind(argv, read/argv))
+
+# Does the request's lock.tree pin still satisfy it? A pin outside the range is stale, and `term load` re-pins it
+task request-pin-holds
+  take request, like need-request
+  like boolean
+
+  back pin-holds(pin-in-term(request/pin), hold-in-term(request/hold))
+
+# Record that a command ran on a version today, so `term self wash` keeps it. At most one write a day, never a failure:
+# a read-only home must never stop a command
+task mark-used
+  take input, like version-ask
+  like void
+
+  save file, node-path/join(input/home, <code>, input/version, <used>)
+  fork
+    mark unsafe
+    fork test, node-file/exists-sync(node-path/join(input/home, <code>, input/version, <install.tree>))
+      hold
+        save fresh, false
+        fork test, node-file/exists-sync(file)
+          hold
+            # a version's `used` stamp is rewritten at most once a day (86,400,000 ms)
+            save fresh, is-below(subtract(host-date/now(), node-file/stat-sync(file)/mtime-ms), 86400000)
+        fork test, not(fresh)
+          hold
+            node-file/write-file-sync(file, <{iso-now()}\n>)
+  halt take
+    take problem
+    save nothing, 0

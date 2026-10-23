@@ -1,0 +1,572 @@
+# What the cask bridge carries for one module: every public task, read from the module's program, as a signature the
+# bridge carries, a task it refuses with the reason, or a device watcher. Part 1 of the port of
+# deck/call/code/cask-generate.ts (cli-in-term-0029).
+#
+# A module's signatures come from the PUBLIC module when that declares tasks that forward to the native, and from the
+# ABSTRACT module beside the env directories when the public module only `bear`s it. The program is the compiler's
+# own, read through the docked parser and mill, so its nodes are host values: `dynamic` here, which is what a value
+# that crossed a native boundary is.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load @term/base/json
+  find get-item
+  find array-size
+  find is-null
+  find field-text
+  find field-boolean
+
+load @term/base/text
+  find substring
+  find char-count
+
+load ./kinds
+  find bridge-kind
+  find bridge-kind-answer
+  find bridge-param
+  find bridge-name
+  find bridge-signature
+  find bridge-refused
+  find bridge-watcher
+  find bridge-reading
+  find bridge-module
+  find plain-kind
+  find carried-kind
+  find refused-kind
+  find crosses-by-value
+  find record-forms
+
+load ./paths
+  find real-of
+  find import-path-of
+
+dock load
+  load <@term/make/code/parser/tree>, name parser
+  load <@term/make/code/compile/mill>, name mill-module
+  load <@term/make/code/compile/template>, name template-module
+  load <@term/make/code/compile/load>, name load-module
+  load <@term/call/code/make>, name make-module
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <global:Array>, name host-array
+
+# what the parser and the module walk take: a file and its text
+form bridge-source
+  link file, like text
+  link text, like text
+
+# a name a module `find`s, with the files it resolves to
+form bridge-import
+  link name, like text
+  link files, like list, like text
+
+# a host array as a list of its items
+task items-of
+  take value, like dynamic
+  like list, like dynamic
+
+  back value
+
+# an empty list of host values, typed so, which a bare `make list` local is not until something is pushed
+task no-items
+  like list, like dynamic
+
+  back make list
+
+# an empty table of the forms a module can name, by name
+task no-forms
+  like hash, like text, like dynamic
+
+  back make hash
+
+task source-of
+  take file, like text
+  like bridge-source
+
+  save text, node-fs/readFileSync(file, <utf8>)
+  back
+    make bridge-source
+      bind file, file
+      bind text, text
+
+# the message of the first diagnostic, written as the original's template wrote a missing one
+task first-message
+  take diagnostics, like dynamic
+  like text
+
+  fork test, is-above(array-size(diagnostics), 0)
+    hold
+      back field-text(get-item(diagnostics, 0), <message>)
+  back <undefined>
+
+# ---- reading the program ----
+
+# a file's program: parsed, its templates expanded, and milled. A file that does not parse or mill raises, naming it
+task program-of
+  take file, like text
+  take term, like text
+  like list, like dynamic
+
+  save source, source-of(file)
+  save parsed, parser/parse(source)
+  fork test, not(parsed/ok)
+    hold
+      save shown, node-path/relative(term, file)
+      save message, first-message(parsed/diagnostics)
+      halt <{shown} does not parse: {message}>
+  save expanded, template-module/expandTemplates(parsed/tree)
+  save built, mill-module/mill(expanded, file)
+  fork test, not(built/ok)
+    hold
+      save shown, node-path/relative(term, file)
+      save message, first-message(built/diagnostics)
+      halt <{shown} does not mill: {message}>
+  back items-of(built/program)
+
+# every name a module `find`s, with the files it resolves to, as the build resolves them for node. The module's own
+# entry of the walk's scope, by its path, else by its real path
+task imported-names
+  take file, like text
+  take term, like text
+  like list, like bridge-import
+
+  save found, make list
+  save collected, load-module/collectModules(source-of(file), make-module/projectResolver(term, <node>))
+  save scope, collected/scope
+  fork test, is-null(scope)
+    hold
+      back found
+  save own, scope/get(file)
+  fork test, is-null(own)
+    hold
+      save entries, items-of(host-array/from(scope/entries()))
+      save wanted, real-of(file)
+      walk entries
+        take site, name entry
+        fork test, is-equal(real-of(field-text-at(entry, 0)), wanted)
+          hold
+            save own, get-item(entry, 1)
+            halt
+  fork test, is-null(own)
+    hold
+      back found
+  save finds, own/finds
+  fork test, is-null(finds)
+    hold
+      back found
+  walk items-of(host-array/from(finds/entries()))
+    take site, name entry
+    save files, make list
+    walk items-of(get-item(entry, 1))
+      take site, name one
+      files/push field-text-of(one)
+    found/push
+      make bridge-import
+        bind name, field-text-at(entry, 0)
+        bind files, files
+  back found
+
+# a text held at one index of a host array
+task field-text-at
+  take value, like dynamic
+  take index, like number
+  like text
+
+  back field-text-of(get-item(value, index))
+
+# a host value that is a text, as a text
+task field-text-of
+  take value, like dynamic
+  like text
+
+  back value
+
+# a form whose one field is a private `handle` is an opaque handle: the value stays in the cask, the page holds an id
+task is-handle-form
+  take form, like dynamic
+  like boolean
+
+  save fields, form/fields
+  fork test, is-unequal(array-size(fields), 1)
+    hold
+      back false
+  fork test, is-unequal(field-text(get-item(fields, 0), <name>), <handle>)
+    hold
+      back false
+  back is-equal(array-size(form/variants), 0)
+
+# the shape a watcher has: one parameter, a task of one text answering nothing, and a task of nothing as the answer
+task is-watcher-shape
+  take params, like dynamic
+  take result, like dynamic
+  like boolean
+
+  fork test, is-unequal(array-size(params), 1)
+    hold
+      back false
+  save handler, get-item(params, 0)/type
+  fork test, is-null(handler)
+    hold
+      back false
+  fork test, is-unequal(field-text(handler, <kind>), <function>)
+    hold
+      back false
+  save inner, handler/params
+  fork test, is-unequal(array-size(inner), 1)
+    hold
+      back false
+  fork test, is-unequal(field-text(get-item(inner, 0), <kind>), <string>)
+    hold
+      back false
+  fork test, is-null(result)
+    hold
+      back false
+  fork test, is-unequal(field-text(result, <kind>), <function>)
+    hold
+      back false
+  back is-equal(array-size(result/params), 0)
+
+# the kind a type crosses as, or why it cannot. `declared` holds the forms the module can name, `from` the load path
+# of each IMPORTED one, `seen` the records being read, so a record holding itself is refused
+task kind-of
+  take type, like dynamic
+  take declared, like hash, like text, like dynamic
+  take from, like hash, like text, like text
+  take seen, like list, like text
+  like bridge-kind-answer
+
+  fork test, is-null(type)
+    hold
+      back carried-kind(plain-kind(<void>))
+  save name, field-text(type, <kind>)
+  fork test, is-equal(name, <string>)
+    hold
+      back carried-kind(plain-kind(<text>))
+  fork test, is-equal(name, <boolean>)
+    hold
+      back carried-kind(plain-kind(<boolean>))
+  fork test, is-equal(name, <number>)
+    hold
+      back carried-kind(plain-kind(<number>))
+  fork test, is-equal(name, <float>)
+    hold
+      back carried-kind(plain-kind(<decimal>))
+  fork test, is-equal(name, <unit>)
+    hold
+      back carried-kind(plain-kind(<void>))
+  fork test, is-equal(name, <array>)
+    hold
+      back list-kind-of(type/element, declared, from, seen)
+  fork test, is-equal(name, <named>)
+    hold
+      back named-kind-of(type, declared, from, seen)
+  fork test, or(is-equal(name, <unknown>), is-equal(name, <dynamic>))
+    hold
+      back carried-kind(plain-kind(<dynamic>))
+  fork test, is-equal(name, <bytes>)
+    hold
+      back carried-kind(plain-kind(<bytes>))
+  fork test, is-equal(name, <variable>)
+    hold
+      back refused-kind(<an element left to inference, so write its type>)
+  back refused-kind(name)
+
+# a list: refused when its element is, or is nothing
+task list-kind-of
+  take element, like dynamic
+  take declared, like hash, like text, like dynamic
+  take from, like hash, like text, like text
+  take seen, like list, like text
+  like bridge-kind-answer
+
+  save item, kind-of(element, declared, from, seen)
+  fork test, is-unequal(item/refuse, <>)
+    hold
+      save refuse, item/refuse
+      back refused-kind(<a list of {refuse}>)
+  fork test, is-equal(item/kind/kind, <void>)
+    hold
+      back refused-kind(<a list of nothing>)
+  back
+    carried-kind
+      make bridge-kind
+        bind kind, <list>
+        bind item, item/kind
+
+# a named type: an opaque handle, or a record by value when it is declared in a module of its own, has no variants and
+# no type parameters, does not hold itself, and every field crosses by value
+task named-kind-of
+  take type, like dynamic
+  take declared, like hash, like text, like dynamic
+  take from, like hash, like text, like text
+  take seen, like list, like text
+  like bridge-kind-answer
+
+  save name, field-text(type, <name>)
+  save known, declared/has(name)
+  fork test, known
+    hold
+      fork test, is-handle-form(declared/get(name))
+        hold
+          back
+            carried-kind
+              make bridge-kind
+                bind kind, <handle>
+                bind form, name
+  fork test, not(known)
+    hold
+      back refused-kind(<type {name}>)
+  fork test, not(from/has(name))
+    hold
+      back refused-kind(<record {name}, declared in the module itself: declare it in a module of its own, which both sides load>)
+  save path, from/get(name)
+  save form, declared/get(name)
+  save args, type/args
+  save arity, 0
+  fork test, not(is-null(args))
+    hold
+      save arity, array-size(args)
+  fork test
+    or
+      or(is-above(array-size(form/variants), 0), is-above(array-size(form/params), 0))
+      is-above(arity, 0)
+    hold
+      back refused-kind(<record {name}, which has variants or type parameters>)
+  fork test, seen/contains(name)
+    hold
+      back refused-kind(<record {name}, which holds itself>)
+  save within, seen/copy()
+  within/push name
+  walk items-of(form/fields)
+    take site, name field
+    save field-name, field-text(field, <name>)
+    save inner, kind-of(field/type, declared, from, within)
+    fork test, is-unequal(inner/refuse, <>)
+      hold
+        save refuse, inner/refuse
+        back refused-kind(<record {name}, whose field {field-name} is {refuse}>)
+    fork test, not(crosses-by-value(inner/kind))
+      hold
+        save inner-kind, inner/kind/kind
+        back refused-kind(<record {name}, whose field {field-name} is a {inner-kind}, which a record cannot carry>)
+  back
+    carried-kind
+      make bridge-kind
+        bind kind, <record>
+        bind form, name
+        bind from, path
+
+# the first call in a body, which in a public module is the forward to the native task. The empty text when none
+task forwarded-to
+  take body, like dynamic
+  like text
+
+  walk items-of(body)
+    take site, name statement
+    save found, call-in(statement)
+    fork test, is-unequal(found, <>)
+      hold
+        back found
+  back <>
+
+# the callee a statement calls by name: a call, or one returned or saved
+task call-in
+  take node, like dynamic
+  like text
+
+  save shape, field-text(node, <form>)
+  fork test, is-equal(shape, <call>)
+    hold
+      save callee, node/callee
+      fork test, is-equal(field-text(callee, <form>), <variable>)
+        hold
+          back field-text(callee, <name>)
+      back <>
+  fork test, or(is-equal(shape, <return>), is-equal(shape, <let>))
+    hold
+      save value, node/value
+      fork test, not(is-null(value))
+        hold
+          back call-in(value)
+  back <>
+
+# the public tasks of a program
+task public-tasks
+  take program, like list, like dynamic
+  like list, like dynamic
+
+  save found, no-items()
+  walk program
+    take site, name statement
+    fork test, and(is-equal(field-text(statement, <form>), <function>), not(field-boolean(statement, <private>)))
+      hold
+        found/push statement
+  back found
+
+# every task the bridge carries for a module, split from what it refuses. The public module's tasks when it has
+# them, else the abstract module's, whose task names are the native names too
+task signatures-of
+  take docked, like bridge-module
+  take term, like text
+  like bridge-reading
+
+  save public-program, program-of(docked/public-file, term)
+  save abstract-program, no-items()
+  fork test, is-unequal(docked/abstract-file, <>)
+    hold
+      save abstract-program, program-of(docked/abstract-file, term)
+  save declared, no-forms()
+  save from, make hash
+  save both, no-items()
+  walk public-program
+    take site, name statement
+    both/push statement
+  walk abstract-program
+    take site, name statement
+    both/push statement
+  walk both
+    take site, name statement
+    fork test, is-equal(field-text(statement, <form>), <record-type>)
+      hold
+        save key, field-text(statement, <name>)
+        save declared/{key}, statement
+  # the forms the public module imports by name, each read from the file that declares it (native-dom-0019)
+  walk imported-names(docked/public-file, term)
+    take site, name imported
+    save wanted, imported/name
+    walk imported/files
+      take site, name file
+      save program, program-of(file, term)
+      save hit, false
+      save shape, get-item(program, 0)
+      walk program
+        take site, name statement
+        fork test, and(is-equal(field-text(statement, <form>), <record-type>), is-equal(field-text(statement, <name>), wanted))
+          hold
+            save hit, true
+            save shape, statement
+            halt
+      save path, import-path-of(file)
+      fork test, and(and(hit, is-unequal(path, <>)), not(declared/has(wanted)))
+        hold
+          save declared/{wanted}, shape
+          save from/{wanted}, path
+  save publics, public-tasks(public-program)
+  save forwards, is-above(publics/length, 0)
+  save source, publics
+  fork test, not(forwards)
+    hold
+      save source, public-tasks(abstract-program)
+  save carried, make list
+  save refused, make list
+  save watched, make list
+  walk source
+    take site, name statement
+    save task-name, field-text(statement, <name>)
+    save native, task-name
+    fork test, forwards
+      hold
+        save native, forwarded-to(statement/body)
+    fork test, is-equal(native, <>)
+      hold
+        turn next
+    # a device module's watcher crosses as a watch: the handler stays in the page
+    fork test, and(and(is-unequal(docked/page-env, <>), forwards), is-watcher-shape(statement/params, statement/result))
+      hold
+        watched/push
+          make bridge-watcher
+            bind module, docked/name
+            bind task, task-name
+            bind native, native
+        turn next
+    save params, make list
+    save reason, <>
+    walk items-of(statement/params)
+      take site, name param
+      save param-name, field-text(param, <name>)
+      save answer, kind-of(param/type, declared, from, make list)
+      fork test, is-unequal(answer/refuse, <>)
+        hold
+          save refuse, answer/refuse
+          save reason, <parameter {param-name} is {refuse}>
+          halt
+      fork test, is-equal(answer/kind/kind, <void>)
+        hold
+          save reason, <parameter {param-name} is nothing>
+          halt
+      params/push
+        make bridge-param
+          bind name, param-name
+          bind kind, answer/kind
+    save result, kind-of(statement/result, declared, from, make list)
+    save result-refused, is-unequal(result/refuse, <>)
+    fork test, and(is-equal(reason, <>), result-refused)
+      hold
+        save refuse, result/refuse
+        save reason, <result is {refuse}>
+    # the dispatcher names each task `<module>-<task>`, and names are package-global: a record form of the same
+    # name would be shadowed by the alias in the one program that needs both
+    fork test, and(is-equal(reason, <>), not(result-refused))
+      hold
+        save trial, make list
+        trial/push
+          make bridge-signature
+            bind module, docked/name
+            bind task, task-name
+            bind native, native
+            bind params, params
+            bind result, result/kind
+            bind async, false
+        walk record-forms(trial)
+          take site, name record
+          save clash, false
+          walk source
+            take site, name other
+            save other-name, field-text(other, <name>)
+            fork test, is-equal(<{docked/name}-{other-name}>, record/form)
+              hold
+                save clash, true
+                halt
+          fork test, clash
+            hold
+              save clashing, record/form
+              save rest, substring(clashing, add(char-count(docked/name), 1), char-count(clashing))
+              save reason, <record {clashing} has the name the dispatcher gives the task {rest}: rename the form>
+              halt
+    fork test, or(is-unequal(reason, <>), result-refused)
+      hold
+        save names, make list
+        walk items-of(statement/params)
+          take site, name param
+          names/push
+            make bridge-name
+              bind name, field-text(param, <name>)
+        save told, reason
+        fork test, is-equal(told, <>)
+          hold
+            save told, <unknown>
+        refused/push
+          make bridge-refused
+            bind module, docked/name
+            bind task, task-name
+            bind native, native
+            bind params, names
+            bind reason, told
+        turn next
+    carried/push
+      make bridge-signature
+        bind module, docked/name
+        bind task, task-name
+        bind native, native
+        bind params, params
+        bind result, result/kind
+        bind async, field-boolean(statement, <async>)
+  back
+    make bridge-reading
+      bind carried, carried
+      bind refused, refused
+      bind watched, watched

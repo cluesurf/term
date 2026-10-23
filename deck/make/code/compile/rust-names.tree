@@ -44,6 +44,7 @@ load ./node
   find declared-param
   find closure-param
   find function-param
+  find field-value
 
 load ./node-children
   find node-handle
@@ -2874,7 +2875,7 @@ task rust-inspect-of
       back <__inspect_{snake(kind/key)}({value})>
     # a caught exception: its form and its note, and its flow
     case raised
-      back <format!("\{\}(note \{\}, flow list(\{\}))", ({value}).form, show_text(({value}).note.clone()), ({value}).flow.iter().map(|frame| show_text(frame.to_string())).collect::\<Vec\<String\>\>().join(", "))>
+      back <format!("\{\}(note \{\}, flow list(\{\}))", ({value}).form, show_text(({value}).note.clone()), ({value}).frames().iter().map(|frame| show_text(frame.to_string())).collect::\<Vec\<String\>\>().join(", "))>
     case opaque
       back <"opaque({kind/name})".to_string()>
 

@@ -86,6 +86,9 @@ load ./annotate
 load ./format
   find format-zone
 
+load @term/base/native/{platform}/environment
+  find current-directory
+
 # Every bind here has a case for each backend (check/binds.ts refuses one that
 # leaves a backend out). A page has no
 # terminal and no stderr, so the browser's cases write to the console and answer

@@ -1,0 +1,220 @@
+# THE LANGUAGE SERVER'S WIRE CODEC: Content-Length framed JSON-RPC 2.0, the transport every LSP client speaks. This
+# layer is transport-agnostic (no stdin or stdout here): `encode` makes a framed text to write, and a `message-reader`
+# gathers incoming chunks and hands back whole messages. The node entry (pump.tree) pumps the real streams.
+#
+# Ported from protocol.ts (term-cli-in-term-0097). The decisions:
+#   - a message is the host's JSON value (`like dynamic`), parsed and written by the host's own `JSON`, so a message
+#     reads and prints exactly as it did, key order and all
+#   - `MessageReader` is the record `message-reader` (made by `make-reader`), and its `append` is two tasks, one per
+#     kind of chunk it took: `append-text` (a text is encoded to UTF-8 first, as the tests frame with `encode`) and
+#     `append-bytes`
+#   - THE BUFFER IS BYTES. The header's Content-Length counts the body in UTF-8 bytes, and a Term document holds Greek,
+#     CJK and emoji, so a body is routinely longer in bytes than in characters
+#   - the header pattern `/Content-Length:\s*(\d+)/i` is written out by character: its LEFTMOST match, the name in
+#     ASCII letters of either case (the `i` flag without `u` folds only ASCII), JavaScript's `\s` (`whitespace-code`),
+#     then one or more ASCII digits
+#   - a header with no length is dropped and the reader resyncs past the separator; a body that is not JSON, or is
+#     JSON but not an object (a number, a text, null, a list), is skipped
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/bytes
+  find from-text, name bytes-of-text
+  find to-text, name text-of-bytes
+  find length, name byte-count
+  find concat, name join-bytes
+  find slice, name cut-bytes
+  find to-byte-list
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load @term/make/compile/main-entry
+  find whitespace-code
+
+dock load
+  load <global:JSON>, name json-global
+
+# whether a parsed body is a message: a JSON object, and not a list or null. A host test, as the original's
+# `parsed && typeof parsed === 'object' && !Array.isArray(parsed)`: @term/base/json's `is-object` would say the same,
+# but loading it beside main-entry writes its runtime shim into the port twice ("json" declared twice)
+bind is-object
+  take value, like dynamic
+  like boolean
+  case node
+    text <(Boolean($value) && typeof $value === "object" && !Array.isArray($value))>
+
+# what the reader holds between chunks: the bytes of a message not yet whole
+form message-reader
+  mark shared
+  link buffer, like bytes
+
+task make-reader
+  like message-reader
+
+  back
+    make message-reader
+      bind buffer, bytes-of-text(<>)
+
+# frame a message for the wire
+task encode
+  take message, like dynamic
+  like text
+
+  save body, json-global/stringify(message)
+  save size, byte-count(bytes-of-text(body))
+  back <Content-Length: {size}\r\n\r\n{body}>
+
+# where the header/body separator `\r\n\r\n` begins at or after `from`, or -1
+task separator-at
+  take codes, like list, like number
+  take from, like number
+  like number
+  mark private
+
+  save at, from
+  walk test
+    hook test, is-below(add(at, 3), codes/length)
+    hook hold
+      fork test, and(and(is-equal(get(codes, at), 13), is-equal(get(codes, add(at, 1)), 10)), and(is-equal(get(codes, add(at, 2)), 13), is-equal(get(codes, add(at, 3)), 10)))
+        hold
+          back at
+      save at, add(at, 1)
+  back -1
+
+# a code point folded to ASCII lower case, as a regular expression's `i` flag without `u` folds it
+task fold-code
+  take code, like number
+  like number
+  mark private
+
+  fork test, and(is-minimum(code, 65), is-maximum(code, 90))
+    hold
+      back add(code, 32)
+  back code
+
+# whether `content-length:` stands at `at`, in letters of either case
+task name-at
+  take runes, like list, like number
+  take at, like number
+  like boolean
+  mark private
+
+  save name, to-runes(<content-length:>)
+  fork test, is-above(add(at, name/length), runes/length)
+    hold
+      back false
+  save index, 0
+  walk test
+    hook test, is-below(index, name/length)
+    hook hold
+      fork test, is-unequal(fold-code(get(runes, add(at, index))), get(name, index))
+        hold
+          back false
+      save index, add(index, 1)
+  back true
+
+# the length a header names: the digits of `/Content-Length:\s*(\d+)/i`'s leftmost match, or -1 when nothing matches
+task content-length
+  take header, like text
+  like number
+  mark private
+
+  save runes, to-runes(header)
+  save start, 0
+  walk test
+    hook test, is-below(start, runes/length)
+    hook hold
+      fork test, name-at(runes, start)
+        hold
+          save at, add(start, 15)
+          walk test
+            hook test, and(is-below(at, runes/length), whitespace-code(get(runes, at)))
+            hook hold
+              save at, add(at, 1)
+          save digits, 0
+          save value, 0
+          walk test
+            hook test, and(is-below(at, runes/length), and(is-minimum(get(runes, at), 48), is-maximum(get(runes, at), 57)))
+            hook hold
+              # a length past 2^53 is more than any buffer holds, so it waits as `Number` of the digits waited: held
+              # at the largest exact integer, where Term's arithmetic stops
+              fork test, is-above(value, 900719925474098)
+                hold
+                  save value, 9007199254740991
+                miss
+                  save value, add(multiply(value, 10), subtract(get(runes, at), 48))
+              save digits, add(digits, 1)
+              save at, add(at, 1)
+          fork test, is-above(digits, 0)
+            hold
+              back value
+      save start, add(start, 1)
+  back -1
+
+# a text chunk, encoded to UTF-8 and appended
+task append-text
+  take reader, like message-reader
+  take chunk, like text
+  like list, like dynamic
+
+  back append-bytes(reader, bytes-of-text(chunk))
+
+# Accumulate a raw chunk and hand back every message it completes, in order
+task append-bytes
+  take reader, like message-reader
+  take chunk, like bytes
+  like list, like dynamic
+
+  save joined, join-bytes(reader/buffer, chunk)
+  save codes, to-byte-list(joined)
+  save out, make list
+  save start, 0
+  save going, true
+  walk test
+    hook test, going
+    hook hold
+      save header-end, separator-at(codes, start)
+      fork test, is-below(header-end, 0)
+        hold
+          save going, false
+        miss
+          save header, text-of-bytes(cut-bytes(joined, start, header-end))
+          save length, content-length(header)
+          save body-start, add(header-end, 4)
+          fork test, is-below(length, 0)
+            # malformed header: drop it and resync past the separator
+            hold
+              save start, body-start
+            miss
+              fork test, is-below(subtract(codes/length, body-start), length)
+                # the body has not fully arrived yet
+                hold
+                  save going, false
+                miss
+                  save body, text-of-bytes(cut-bytes(joined, body-start, add(body-start, length)))
+                  save start, add(body-start, length)
+                  take-message(out, body)
+  save reader/buffer, cut-bytes(joined, start, codes/length)
+  back out
+
+# one body parsed onto the messages, when it is a JSON object
+task take-message
+  take out, like list, like dynamic
+  take body, like text
+  like void
+  mark private
+
+  fork
+    mark unsafe
+    save parsed, json-global/parse(body)
+    fork test, is-object(parsed)
+      hold
+        push(out, parsed)
+  halt take
+    take problem
+    # an unparseable body is ignored, and reading goes on
+    save ignored, true

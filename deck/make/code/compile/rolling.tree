@@ -51,6 +51,7 @@ load ./node
   find dock-call
   find dock-argument
   find field-value
+  find type
 
 load ./route-lower
   find handler-name

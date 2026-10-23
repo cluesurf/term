@@ -1,0 +1,460 @@
+# The manifest's old spellings, found and rewritten. Ported from manifestSpellings and rewriteManifestSpellings in
+# deck/deck/code/manifest.ts (term-cli-in-term-0074).
+#
+# The manifest's version was `code <1.4.2>` and is `mark <1.4.2>`, because `code` names the code root folder now; a
+# dependency's constraint follows it, and `bear ./code` is the code root's old spelling. They are told apart by FORM,
+# never by guessing: `code <1.4.2>` carries a text literal and `code ./code` a path. `term lint` reports each one and
+# `term lint --fix` rewrites it with the edits below, which touch only the one word or the one line.
+#
+# The decisions:
+#   - the parse is parser/tree.tree's `parse`, a word's span compile/mill-running.tree's `span-of-node`, and the groups
+#     of a list its group nodes, as parser/narrow.ts `groupsOf` filtered them
+#   - a column counts UTF-16 units (self-host traps T001), so a line is cut through `units-of` / `units-text`
+#   - `wholeLine` is a plain `need false` flag, set only on the one change that removes its line, so on TypeScript the
+#     others carry no such key, as the original's did not
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/text
+  find split
+
+load @term/base/hash
+  find hash
+
+load @term/base/maybe
+  find maybe
+
+load @term/make/parser/tree
+  find node
+  find root-node
+  find parse
+  find render-head
+
+load @term/make/parser/token
+  find token-source
+
+load @term/make/parser/diagnostic
+  find span
+
+load @term/make/compile/mill-running
+  find span-of-node
+
+load @term/make/fixing
+  find units-of
+  find units-text
+
+load ./manifest-reading
+  find is-default-code-root
+
+form manifest-spelling
+  # `manifest-code-version` or `manifest-bear`
+  link rule, like text
+  link message, like text
+  # zero-based, as the parser's spans are
+  link line, like number
+  link column, like number
+  link end, like number
+  # the replacement for [column, end) on `line`
+  link text, like text
+  # the change removes its whole line: a `bear ./code`, the default, which nothing replaces
+  link whole-line
+    like boolean
+    need false
+
+form spelling-rewrite
+  link text, like text
+  link changes, like list, like manifest-spelling
+
+# where a word stands: its line, and its first and last column
+form word-place
+  link line, like number
+  link column, like number
+  link end, like number
+
+# the head word of a group, when its first node is a name
+task head-of
+  take one, like node
+  like maybe, like text
+  mark private
+
+  sift one
+    case group
+      link members
+      fork test, is-above(members/length, 0)
+        hold
+          save first, get(members, 0)
+          sift first
+            case name
+              save rendered, render-head(first)
+              back make(some, rendered)
+            miss
+              back make none
+      back make none
+    miss
+      back make none
+
+# the head word of the node at `at` of a list, none past its end
+task head-at
+  take nodes, like list, like node
+  take at, like number
+  like maybe, like text
+  mark private
+
+  fork test, is-below(at, nodes/length)
+    hold
+      save one, get(nodes, at)
+      back head-of(one)
+  back make none
+
+task is-head
+  take one, like node
+  take wanted, like text
+  like boolean
+  mark private
+
+  sift head-of(one)
+    case some
+      link found
+      back is-equal(found, wanted)
+    case none
+      back false
+
+# the nodes of a group, an empty list for any other node
+task members-of
+  take one, like node
+  like list, like node
+  mark private
+
+  sift one
+    case group
+      link members
+      back members
+    miss
+      back make list
+
+# the node at `at` of a list is a text literal
+task is-text-at
+  take nodes, like list, like node
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, is-below(at, nodes/length)
+    hold
+      save one, get(nodes, at)
+      sift one
+        case text
+          back true
+        miss
+          back false
+  back false
+
+# the groups among some nodes, in order
+task groups-among
+  take nodes, like list, like node
+  like list, like node
+  mark private
+
+  save out, make list
+  walk nodes
+    take one
+    sift one
+      case group
+        out/push(one)
+      miss
+        save nothing, 0
+  back out
+
+# the word itself: the head of `group`, its span in the source
+task word-at
+  take group, like node
+  like maybe, like word-place
+  mark private
+
+  save members, members-of(group)
+  fork test, is-above(members/length, 0)
+    hold
+      save first, get(members, 0)
+      save found, span-of-node(first)
+      sift found
+        case some
+          link word-span
+          save place, make(word-place, bind(line, word-span/start/line), bind(column, word-span/start/column), bind(end, word-span/end/column))
+          back make(some, place)
+        case none
+          back make none
+  back make none
+
+task spelling-at
+  take place, like word-place
+  take rule, like text
+  take message, like text
+  take text, like text
+  like manifest-spelling
+  mark private
+
+  back
+    make manifest-spelling
+      bind rule, rule
+      bind message, message
+      bind line, place/line
+      bind column, place/column
+      bind end, place/end
+      bind text, text
+
+# `code <...>` with a TEXT argument: the old version spelling, under `deck` (`version`) or under a `link`
+task old-code
+  take out, like list, like manifest-spelling
+  take group, like node
+  take is-version, like boolean
+  like list, like manifest-spelling
+  mark private
+
+  fork test, not(is-head(group, <code>))
+    hold
+      back out
+  fork test, not(is-text-at(members-of(group), 1))
+    hold
+      back out
+  save message, <`link ..., code \<range\>` is the old spelling of a dependency's versions: write `mark \<range\>`>
+  fork test, is-version
+    hold
+      save message, <`code \<version\>` is the old spelling of the version: write `mark \<version\>`. `code` names the code root folder now>
+  sift word-at(group)
+    case some
+      link place
+      out/push(spelling-at(place, <manifest-code-version>, message, <mark>))
+    case none
+      save nothing, 0
+  back out
+
+# every group a `link` carries its constraint in: the comma makes `code <...>` a child of the path, and a stacked one
+# is a child of the `link` itself
+task visit-link
+  take out, like list, like manifest-spelling
+  take group, like node
+  like list, like manifest-spelling
+  mark private
+
+  save found, out
+  save at, 0
+  walk members-of(group)
+    take child
+    fork test, is-above(at, 0)
+      hold
+        sift child
+          case group
+            save found, old-code(found, child, false)
+            save found, visit-link(found, child)
+          miss
+            save nothing, 0
+    save at, add(at, 1)
+  back found
+
+task visit-fields
+  take out, like list, like manifest-spelling
+  take group, like node
+  like list, like manifest-spelling
+  mark private
+
+  save found, out
+  save at, 0
+  walk members-of(group)
+    take child
+    fork test, is-above(at, 0)
+      hold
+        sift child
+          case group
+            link child-members
+            save head, <>
+            sift head-of(child)
+              case some
+                link child-head
+                save head, child-head
+              case none
+                save nothing, 0
+            fork test, is-equal(head, <code>)
+              hold
+                save found, old-code(found, child, true)
+            fork test, is-equal(head, <link>)
+              hold
+                save found, visit-link(found, child)
+            fork test, or(is-equal(head, <host>), is-equal(head, <case>))
+              hold
+                save found, visit-fields(found, child)
+            fork test, is-equal(head, <bear>)
+              hold
+                sift head-at(child-members, 1)
+                  case some
+                    link value
+                    sift word-at(child)
+                      case some
+                        link place
+                        fork test, is-default-code-root(value)
+                          hold
+                            save removed, spelling-at(place, <manifest-bear>, <`bear ./code` is the old spelling of `code ./code`, which is the default: the line can go>, <>)
+                            save removed/whole-line, true
+                            found/push(removed)
+                          miss
+                            found/push(spelling-at(place, <manifest-bear>, <`bear {value}` is the old spelling of the code root: write `code {value}`>, <code>))
+                      case none
+                        save nothing, 0
+                  case none
+                    save nothing, 0
+          miss
+            save nothing, 0
+    save at, add(at, 1)
+  back found
+
+task manifest-spellings
+  take text, like text
+  take file, like(text), fall <deck.tree>
+  like list, like manifest-spelling
+
+  save parsed, parse(make(token-source, bind(file, file), bind(text, text)))
+  fork test, not(parsed/ok)
+    hold
+      back make list
+  save top, make list
+  sift parsed/tree
+    case root
+      link root-nodes
+      save top, groups-among(root-nodes)
+
+  # a LOCKFILE is not a manifest: its `deck` entries carry `code <version>` as their own format, which is the package
+  # manager's to change and not this rule's
+  walk top
+    take statement
+    fork test, and(is-head(statement, <lock>), is-text-at(members-of(statement), 1))
+      hold
+        back make list
+
+  save out, make list
+  walk top
+    take statement
+    fork test, is-head(statement, <deck>)
+      hold
+        save out, visit-fields(out, statement)
+      miss
+        # an app manifest's top-level `load @term/site` with its constraint under it (deck/site/test/site/deck.tree)
+        fork test, is-head(statement, <load>)
+          hold
+            save out, visit-link(out, statement)
+  back out
+
+# `b` comes before `a` in the edit order: later lines first, and right to left within a line
+task edits-before
+  take a, like manifest-spelling
+  take b, like manifest-spelling
+  like boolean
+  mark private
+
+  fork test, not(is-equal(a/line, b/line))
+    hold
+      back is-above(b/line, a/line)
+  back is-above(b/column, a/column)
+
+# the changes in edit order, equal ones as they came (the original's stable sort)
+task edit-order
+  take changes, like list, like manifest-spelling
+  like list, like manifest-spelling
+  mark private
+
+  save ordered, make list
+  walk changes
+    take change
+    save next, make list
+    save placed, false
+    walk ordered
+      take earlier
+      fork test, and(not(placed), edits-before(earlier, change))
+        hold
+          next/push(change)
+          save placed, true
+      next/push(earlier)
+    fork test, not(placed)
+      hold
+        next/push(change)
+    save ordered, next
+  back ordered
+
+# the units of a line from `start` to `stop`, each clamped to the line as a JavaScript slice clamps it
+task slice-units
+  take units, like list, like number
+  take start, like number
+  take stop, like number
+  like text
+  mark private
+
+  save from, start
+  fork test, is-above(from, units/length)
+    hold
+      save from, units/length
+  save to, stop
+  fork test, is-above(to, units/length)
+    hold
+      save to, units/length
+  fork test, is-below(to, from)
+    hold
+      back <>
+  back units-text(units, from, to)
+
+# the manifest text with every old spelling rewritten. Pure: the caller decides whether to write it
+task rewrite-manifest-spellings
+  take text, like text
+  take file, like(text), fall <deck.tree>
+  like spelling-rewrite
+
+  save changes, manifest-spellings(text, file)
+  fork test, is-equal(changes/length, 0)
+    hold
+      back make(spelling-rewrite, bind(text, text), bind(changes, changes))
+
+  save lines, split(text, <\n>)
+  save drop, make hash
+  walk edit-order(changes)
+    take change
+    fork test, change/whole-line
+      hold
+        drop/set(change/line, true)
+      miss
+        save row, <>
+        fork test, is-below(change/line, lines/length)
+          hold
+            save row, get(lines, change/line)
+        save units, units-of(row)
+        save rewritten, <{slice-units(units, 0, change/column)}{change/text}{slice-units(units, change/end, units/length)}>
+        save lines, set-line(lines, change/line, rewritten)
+
+  save kept, make list
+  save at, 0
+  walk lines
+    take kept-line
+    fork test, not(drop/has(at))
+      hold
+        kept/push(kept-line)
+    save at, add(at, 1)
+  back make(spelling-rewrite, bind(text, join(kept, <\n>)), bind(changes, changes))
+
+# the lines with the one at `at` replaced
+task set-line
+  take lines, like list, like text
+  take at, like number
+  take value, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  save index, 0
+  walk lines
+    take each
+    fork test, is-equal(index, at)
+      hold
+        out/push(value)
+      miss
+        out/push(each)
+    save index, add(index, 1)
+  back out

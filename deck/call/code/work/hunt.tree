@@ -1,88 +1,72 @@
 load @term/call/work/home
   find root, name project-root
 
-load @term/call/work/tint
-  find log-good
-  find log-fail
-  find log-step
-  find log-warn
-  find fade
-  find name, name tint-name
-  find bold
-  find mark
-  find format-error
-
 # `term hunt` -- the automated bug hunt.
 #
-# Points the verification package's multi-oracle engine at the compiler, or at any directory of `.tree` files:
-# metamorphic oracles (a parse round trip is a fixpoint), differential oracles (recompile determinism, cross-backend
-# totality), the editor-robustness oracle (the tolerant parser never throws), a performance budget, and hang-safe
-# structure-aware fuzzing with a child-process watchdog for non-terminating inputs. It exits non-zero on any
-# finding, so it can gate a build.
+# Points the verification package's multi-oracle engine at this project's `.tree` files, or at a directory of them:
+# metamorphic oracles (a parse round trip is a fixpoint), recompile determinism, backend emit, the editor-robustness
+# oracle (the tolerant parser never throws), a performance budget, and hang-safe structure-aware fuzzing with a
+# child-process watchdog. It exits non-zero on any finding and whenever a check did not run, so it can gate a build.
 #
-# The engine is `@term/test`; this verb owns the project resolver and the process glue and delegates, which is the
-# same discipline `term hold` follows.
-#
-# Ported from deck/call/code/hunt.ts (cli-in-term-0004).
+# The verb is line.ts's `hunt` command: the hook's takes, line.ts's argument mapping, then the docked `callHunt`
+# (deck/call/code/hunt.ts), which owns the file walk, the role-aware read, the fuzz child's command line (this same
+# CLI with `__hunt-fuzz-campaign`, which dispatch.tree `start-line` answers) and the run's output and exit. No print,
+# catch or exit of its own: a throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term).
 
 dock load
-  load <@term/call/code/make>, name make-module
-  load <@term/test/code/seed-hunt>, name hunt-module
-  load <node:process>, name node-process
-  load <global:console>, name console
-  # `json-global`, as roll and scan name it: a plain `json` is the stdlib's json module, whose runtime shim is
-  # prepended as `const json`, and the console bundle then declares the name twice
-  load <global:JSON>, name json-global
+  load <@term/call/code/hunt>, name hunt-module
+  load <global:JSON>, name host-json
 
-form hunt-ask
-  link root, like text
-  link resolve, like unknown
-  link glob, like text
-  link runs, like number
-  link seeds, like number
-  link fuzzTimeoutSec, like number
-  link perfBudgetMs, like number
-
+# line.ts passed yargs's answer, where a flag left out is absent; the hook hands a left-out number over as 0 and a
+# left-out text as the empty text, and `callHunt` reads `runs`, `seeds`, `fuzzTimeout` and `budget` as "use the
+# default" only when absent. So the ask is built as JSON, without the ones that were not given
 task hunt
+  mark async
   take glob, like text
   take runs, like number
   take seeds, like number
   take fuzz-timeout, like number
   take budget, like number
-  take json-out, like boolean
+  take json, like boolean
 
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  save result
-    call hunt-module/huntSeedCompiler
-      make hunt-ask
-        bind root, root
-        bind resolve
-          call make-module/projectResolver, root, <node>, root
-        bind glob, glob
-        bind runs, runs
-        bind seeds, seeds
-        bind fuzzTimeoutSec, fuzz-timeout
-        bind perfBudgetMs, budget
-  fork test
-    json-out
+  save entries, make list
+  entries/push <"root":{quoted(root)}>
+  fork test, is-unequal(glob, <>)
     hold
-      console/log
-        json-global/stringify result, make(void), code 2
-    miss
-      console/log call hunt-module/renderHunt, result
-      # `ok`, never `findings` alone: a check that did not run (no files read, a fuzz child that wrote no report)
-      # is in `result/unrun` and is not a pass
-      fork test
-        read result/ok
-        hold
-          log-good <No issues found, every check ran>
-        miss
-          log-fail <Not clean: {{result/findings}} issue(s), and see what did not run above>
-  fork test
-    read result/ok
+      entries/push <"glob":{quoted(glob)}>
+  number-entry(entries, <runs>, runs)
+  number-entry(entries, <seeds>, seeds)
+  number-entry(entries, <fuzzTimeout>, fuzz-timeout)
+  number-entry(entries, <budget>, budget)
+  entries/push <"json":{json}>
+  save text, <>
+  walk entries
+    take entry
+    fork test, is-equal(text, <>)
+      hold
+        save text, entry
+      miss
+        save text, <{text},{entry}>
+  wait hunt-module/callHunt(host-json/parse(<\{{text}\}>))
+
+# a text as a JSON string
+task quoted
+  mark private
+  take value, like text
+  like text
+  back host-json/stringify(value)
+
+# an entry of the ask for a number that was given: the hook's 0 is a flag left out
+task number-entry
+  mark private
+  take entries, like list, like text
+  take name, like text
+  take value, like number
+  like void
+  fork test, is-unequal(value, 0)
     hold
-      node-process/exit code 0
-  node-process/exit code 1
+      entries/push <"{name}":{value}>

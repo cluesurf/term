@@ -91,7 +91,8 @@ export async function runNativeTestFile(input: {
     return failed(`did not compile for ${env}`, own.length > 0 ? own : result.diagnostics)
   }
 
-  const emitted = env === 'rust' ? emitRust(result.program) : env === 'swift' ? emitSwift(result.program) : emitKotlin(result.program)
+  const wake = { wake: result.wake }
+  const emitted = env === 'rust' ? emitRust(result.program, wake) : env === 'swift' ? emitSwift(result.program, wake) : emitKotlin(result.program, wake)
   const readRuntime = (p: string): string | undefined => (existsSync(p) ? readFileSync(p, 'utf8') : undefined)
   const prelude = nativePrelude(result.program, env, readRuntime, emitted)
 

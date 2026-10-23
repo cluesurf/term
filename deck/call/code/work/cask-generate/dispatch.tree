@@ -1,0 +1,402 @@
+# The cask side of the bridge the generator writes for one app: the allowlist (`is-allowed`), `run-command` calling the
+# public task for each command, the scope gate (`out-of-scope`), and `dispatch` / `serve` turning one message into one
+# reply. Part 3 of the port of deck/call/code/cask-generate.ts (cli-in-term-0031): its `releaseLines`, `dropLines`,
+# `dispatchText`, `scopedCommands` and `scopeText`.
+#
+# The app's scope and the capability table are deck/call/code/scope.ts, docked until that file is ported: the scope is
+# its `Scope`, a host map from each capability to its access lists, and `CAPABILITIES` the host table.
+
+load @term/base/list
+  find list
+
+load @term/base/json
+  find get-item
+  find array-size
+  find is-null
+  find field-text
+
+load @term/base/text
+  find replace-all
+  find starts-with
+  find split
+
+load ./kinds
+  find bridge-module
+  find bridge-signature
+  find bridge-watcher
+  find record-forms
+  find watch-command-of
+  find watch-starter-of
+
+load ./seam
+  find bridge-counter
+  find fresh-counter
+  find command-of
+  find table-of
+  find bytes-loads
+  find cask-from-json
+  find cask-to-json
+  find record-loads
+  find items-of-text
+  find handle-forms
+  find list-json-finds
+  find is-release
+
+load ./signatures
+  find items-of
+
+load ./shim
+  find with-lines
+
+dock load
+  load <@term/call/code/scope>, name scope-module
+  load <node:path>, name node-path
+
+# one argument a scoped task names, and the access it needs
+form bridge-check
+  link argument, like text
+  link access, like text
+
+# a command the page may send whose capability is scoped, with the access each argument needs. `mapped` is false for
+# a task the capability's table does not map, which the gate refuses: a task added to a module later is out of scope
+# until somebody decides what it touches
+form bridge-scoped
+  link command, like text
+  link capability, like text
+  link mapped, like boolean
+  link checks, like list, like bridge-check
+
+# `cask_release`: drop the value under `handle` from the table of `form`. A released id is then one the cask never
+# gave out, so a page that uses it after letting it go is refused by `unwrap`, the same as a forged one
+task release-lines
+  take forms, like list, like text
+  like list, like text
+
+  save out, make list
+  out/push <    hook test>
+  out/push <      call is-equal>
+  out/push <        read command>
+  out/push <        text \<cask_release\>>
+  out/push <    hook hold>
+  fork test, is-above(forms/length, 0)
+    hold
+      # the id under this window's key: a page can let go only of what its own window holds (native-dom-0030)
+      out/push <      save released>
+      out/push <        call field-text>
+      out/push <          read arguments>
+      out/push <          text \<handle\>>
+      out/push <      fork test>
+      walk forms
+        take site, name form-name
+        save table, table-of(form-name)
+        out/push <        hook test>
+        out/push <          call is-equal>
+        out/push <            call field-text>
+        out/push <              read arguments>
+        out/push <              text \<form\>>
+        out/push <            text \<{form-name}\>>
+        out/push <        hook hold>
+        # the map primitive on the table, the one every backend lowers
+        out/push <          call {table}/delete>
+        out/push <            text \<\{\{owner\}\}/\{\{released\}\}\>>
+      out/push <        hook miss>
+      out/push <          save skip, code 0>
+  out/push <      send back>
+  out/push <        call make-null>
+  back out
+
+# `drop-window`'s body: every handle in every table kept under the window's key, deleted, and with watchers every
+# watch the window's page held ended. The keys are listed first, so the deletes do not change what is being walked
+task drop-lines
+  take forms, like list, like text
+  take watching, like boolean
+  like list, like text
+
+  save out, make list
+  fork test, and(is-equal(forms/length, 0), not(watching))
+    hold
+      out/push <  save skip, code 0>
+      back out
+  out/push <  save prefix, text \<\{\{owner\}\}/\>>
+  fork test, watching
+    hold
+      out/push <  save watch-keys>
+      out/push <    like list>
+      out/push <      like text>
+      out/push <    call watch-drops/keys>
+      out/push <  walk list>
+      out/push <    read watch-keys>
+      out/push <    hook next>
+      out/push <      take site, name held>
+      out/push <      fork test>
+      out/push <        hook test>
+      out/push <          call starts-with>
+      out/push <            read held>
+      out/push <            read prefix>
+      out/push <        hook hold>
+      out/push <          call stop-watch>
+      out/push <            read held>
+      out/push <  call cask-windows/delete>
+      out/push <    read owner>
+  walk forms
+    take site, name form-name
+    # the keys into a local first: a walk straight over the call's result is not a list Swift can iterate
+    save table, table-of(form-name)
+    out/push <  save {form-name}-keys>
+    out/push <    like list>
+    out/push <      like text>
+    out/push <    call {table}/keys>
+    out/push <  walk list>
+    out/push <    read {form-name}-keys>
+    out/push <    hook next>
+    out/push <      take site, name held>
+    out/push <      fork test>
+    out/push <        hook test>
+    out/push <          call starts-with>
+    out/push <            read held>
+    out/push <            read prefix>
+    out/push <        hook hold>
+    out/push <          call {table}/delete>
+    out/push <            read held>
+  back out
+
+# the capability a module's public file defines, or the empty text
+task capability-of
+  take file, like text
+  like text
+
+  save found, scope-module/capabilityOf(file)
+  fork test, is-null(found)
+    hold
+      back <>
+  back found
+
+# the commands the page may send whose capability is scoped
+task scoped-commands
+  take signatures, like list, like bridge-signature
+  take modules, like list, like bridge-module
+  like list, like bridge-scoped
+
+  save out, make list
+  walk signatures
+    take site, name signature
+    # the capability of the LAST module of the signature's name, as the original's map from name to capability kept
+    save capability, <>
+    walk modules
+      take site, name one
+      fork test, is-equal(one/name, signature/module)
+        hold
+          save capability, capability-of(one/public-file)
+    fork test, is-equal(capability, <>)
+      hold
+        turn next
+    save tasks, scope-module/CAPABILITIES/{capability}/tasks
+    fork test, is-null(tasks)
+      hold
+        turn next
+    save listed, tasks/{signature/task}
+    save checks, make list
+    save mapped, not(is-null(listed))
+    fork test, mapped
+      hold
+        walk items-of(listed)
+          take site, name pair
+          checks/push
+            make bridge-check
+              bind argument, field-text-of-item(pair, 0)
+              bind access, field-text-of-item(pair, 1)
+    out/push
+      make bridge-scoped
+        bind command, command-of(signature)
+        bind capability, capability
+        bind mapped, mapped
+        bind checks, checks
+  back out
+
+# a text at one index of a host array
+task field-text-of-item
+  take value, like dynamic
+  take index, like number
+  like text
+
+  back get-item(value, index)
+
+# the constant one capability's access is compiled into
+task scope-host
+  take capability, like text
+  take access, like text
+  like text
+
+  back <scope-{capability}-{access}>
+
+# the patterns a scope lists for one capability and access, or none
+task patterns-of
+  take scope, like dynamic
+  take capability, like text
+  take access, like text
+  like list, like text
+
+  save lists, scope/get(capability)
+  fork test, is-null(lists)
+    hold
+      back make list
+  save listed, lists/{access}
+  fork test, is-null(listed)
+    hold
+      back make list
+  save out, make list
+  walk items-of(listed)
+    take site, name one
+    out/push one
+  back out
+
+# `out-of-scope`, and the patterns it reads: what the gate in `answer` asks before a command runs. It answers the
+# argument it refused, or empty text. `name` is the app's, which its `$data` is the data directory of
+task scope-text
+  take scoped, like list, like bridge-scoped
+  take scope, like dynamic
+  take name, like text
+  like list, like text
+
+  save head, make list
+  head/push <# the app's scope (scope.tree, deck/call/code/scope.ts): every scoped argument of a command checked against the>
+  head/push <# patterns its access lists, before the command runs. Answers the argument refused, or empty text when it may run>
+  head/push <task out-of-scope>
+  save out, make list
+  fork test, is-equal(scoped/length, 0)
+    hold
+      save out, with-lines(out, head, <>)
+      out/push <  take command, like text>
+      out/push <  take arguments, like dynamic>
+      out/push <  like text>
+      out/push <  send back, text \<\>>
+      out/push <>
+      back out
+
+  # each capability and access a check names, once, in the order first named
+  save pairs, make list
+  walk scoped
+    take site, name one
+    walk one/checks
+      take site, name check
+      save key, <{one/capability}|{check/access}>
+      fork test, not(pairs/contains(key))
+        hold
+          pairs/push key
+  walk pairs
+    take site, name key
+    save parts, split(key, <|>)
+    save capability, parts/0
+    save access, parts/1
+    save escaped, make list
+    walk patterns-of(scope, capability, access)
+      take site, name pattern
+      escaped/push replace-all(pattern, <\\>, <\\\\>)
+    save joined, escaped/join(<\\n>)
+    save host, scope-host(capability, access)
+    out/push <# what the scope lets the page {access} through `{capability}`>
+    out/push <host {host}>
+    out/push <  text \<{joined}\>>
+    out/push <>
+
+  save out, with-lines(out, head, <>)
+  out/push <  mark async>
+  out/push <  take command, like text>
+  out/push <  take arguments, like dynamic>
+  out/push <  like text>
+  out/push <  fork test>
+  walk scoped
+    take site, name one
+    save command, one/command
+    out/push <    hook test>
+    out/push <      call is-equal>
+    out/push <        read command>
+    out/push <        text \<{command}\>>
+    out/push <    hook hold>
+    fork test, not(one/mapped)
+      hold
+        out/push <      send back, text \<{command} is not in the scope table\>>
+        turn next
+    fork test, is-equal(one/checks/length, 0)
+      hold
+        out/push <      send back, text \<\>>
+        turn next
+    # the directories a pattern's `$data`, `$bundle` and `$home` stand for, asked of the cask itself, and only those
+    # a pattern of this command names: `data-path` makes the folder it answers, which a check must never do for a
+    # scope that does not mention it. One no pattern names is empty, which matches nothing
+    out/push <      save data>
+    fork test, is-named(one, scope, <$data>)
+      hold
+        out/push <        call data-path>
+        out/push <          text \<{name}\>>
+      miss
+        out/push <        text \<\>>
+    out/push <      save bundle>
+    fork test, is-named(one, scope, <$bundle>)
+      hold
+        out/push <        call bundle-path>
+      miss
+        out/push <        text \<\>>
+    out/push <      save home>
+    fork test, is-named(one, scope, <$home>)
+      hold
+        out/push <        call home-path>
+      miss
+        out/push <        text \<\>>
+    save index, 0
+    walk one/checks
+      take site, name check
+      save value, <scoped-{index}>
+      save argument, check/argument
+      save host, scope-host(one/capability, check/access)
+      save kind, capability-kind(one/capability)
+      out/push <      save {value}>
+      fork test, is-equal(argument, <*>)
+        hold
+          out/push <        text \<*\>>
+        miss
+          out/push <        call as-text>
+          out/push <          call get-field>
+          out/push <            read arguments>
+          out/push <            text \<{argument}\>>
+      out/push <      fork test>
+      out/push <        hook test>
+      out/push <          call is-equal>
+      out/push <            call in-scope>
+      out/push <              read {value}>
+      out/push <              read {host}>
+      out/push <              text \<{kind}\>>
+      out/push <              read data>
+      out/push <              read bundle>
+      out/push <              read home>
+      out/push <            false>
+      out/push <        hook hold>
+      out/push <          send back, read {value}>
+      save index, add(index, 1)
+    out/push <      send back, text \<\>>
+  out/push <  send back, text \<\>>
+  out/push <>
+  back out
+
+# how a scoped capability's arguments are matched, `path` or `name`, as the capability table says
+task capability-kind
+  take capability, like text
+  like text
+
+  back scope-module/CAPABILITIES/{capability}/kind
+
+# whether a pattern of any access this command checks starts with `variable`
+task is-named
+  take one, like bridge-scoped
+  take scope, like dynamic
+  take variable, like text
+  like boolean
+
+  walk one/checks
+    take site, name check
+    walk patterns-of(scope, one/capability, check/access)
+      take site, name pattern
+      fork test, starts-with(pattern, variable)
+        hold
+          back true
+  back false

@@ -1,0 +1,537 @@
+# The gate a `term knit` run must pass, which files the model may write, and what the model is told after a round:
+# ported from call/code/knit-plan.ts `gateOf`, `codePath` and `feedbackOf` (term-cli-in-term-0044). The summary
+# `term hold --json` printed is a host value, read key by key as the original read it.
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/list
+  find contains
+
+load @term/base/text
+  find trim
+  find starts-with
+  find ends-with
+
+load @term/call/work/knit/hold-reading
+  find hold-read
+  find hold-problem
+
+dock load
+  load <node:path>, name host-path
+
+# ---- the summary's parts ----
+
+# `summary?.report?.laws ?? []`
+bind report-rows
+  take summary, like dynamic
+  like list, like dynamic
+  case node
+    text <($summary?.report?.laws ?? [])>
+
+bind row-name
+  take row, like dynamic
+  like text
+  case node
+    text <$row.name>
+
+bind row-holds
+  take row, like dynamic
+  like boolean
+  case node
+    text <Boolean($row.holds)>
+
+bind row-why
+  take row, like dynamic
+  like dynamic
+  case node
+    text <$row.why>
+
+bind ledger-axioms
+  take summary, like dynamic
+  like list, like text
+  case node
+    text <$summary.ledger.axioms>
+
+# `summary?.lean`, falsy when there is no summary or no lean
+bind summary-lean
+  take summary, like dynamic
+  like dynamic
+  case node
+    text <$summary?.lean>
+
+bind lean-missing
+  take lean, like dynamic
+  like boolean
+  case node
+    text <Boolean($lean.missing)>
+
+bind lean-claims
+  take lean, like dynamic
+  like list, like dynamic
+  case node
+    text <$lean.claims>
+
+bind claim-name
+  take claim, like dynamic
+  like text
+  case node
+    text <$claim.name>
+
+bind claim-verdict
+  take claim, like dynamic
+  like text
+  case node
+    text <$claim.verdict>
+
+bind claim-axiom-count
+  take claim, like dynamic
+  like number
+  case node
+    text <$claim.axioms.length>
+
+bind claim-reason
+  take claim, like dynamic
+  like dynamic
+  case node
+    text <$claim.reason>
+
+bind gate-truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind gate-text
+  take value, like dynamic
+  like text
+  case node
+    text <String($value)>
+
+# `typeof value === "string" && value.trim() !== ""`
+bind is-filled-text
+  take value, like dynamic
+  like boolean
+  case node
+    text <(typeof $value === "string" && $value.trim() !== "")>
+
+# `value.length === 1`
+bind is-one
+  take count, like number
+  like boolean
+  case node
+    text <($count === 1)>
+
+# ---- the shapes ----
+
+# one rule of the program in words (check/law-english.ts `LawSentence`)
+form law-sentence
+  link name, like text
+  link kind, like text
+  link text
+    like maybe, like text
+    need false
+  link refused
+    like maybe, like text
+    need false
+  link words, like list, like text
+
+# one named law against the law library (knit-law `checkInstances`): whether the project's claim is the library's
+# statement with the project's fill, the fill (hole to name, a host record), and why not
+form law-instance
+  link law, like text
+  link ok, like boolean
+  link file
+    like maybe, like text
+    need false
+  link fill
+    like maybe, like dynamic
+    need false
+  link problem
+    like maybe, like text
+    need false
+  link english
+    like maybe, like text
+    need false
+
+# `notes`: what a person should read and the gate does not fail on (a lemma Lean declined). `lean` is checked,
+# failed, unavailable or off
+form gate
+  link ok, like boolean
+  link reasons, like list, like text
+  link notes, like list, like text
+  link lean, like text
+
+form gate-ask
+  link hold, like hold-read
+  link laws, like list, like law-sentence
+  link required, like list, like text
+  link lean, like boolean
+  link instances
+    like maybe, like list, like law-instance
+    need false
+
+form code-path-answer
+  link ok, like boolean
+  link file
+    like maybe, like text
+    need false
+  link reason
+    like maybe, like text
+    need false
+
+form feedback-ask
+  # one line of a project file, by its `file:line`
+  link line-at
+    like task
+      take at, like text
+      like maybe, like text
+  link cap
+    like maybe, like number
+    need false
+  link gate
+    like maybe, like gate
+    need false
+
+# ---- the gate ----
+
+# the problem a law instance names, `refused` when it names none
+task instance-problem
+  take instance, like law-instance
+  like text
+  mark private
+
+  sift instance/problem
+    case some
+      back value
+    case none
+      back <refused>
+
+# the claims Lean did not check, each with its verdict and reason, or `(not exported)`
+task unchecked-text
+  take names, like list, like text
+  take claims, like list, like dynamic
+  like text
+  mark private
+
+  save parts, make list
+  walk names
+    take name
+    save found, make none
+    walk claims
+      take claim
+      fork test, is-equal(claim-name(claim), name)
+        hold
+          save found, make(some, claim)
+          halt
+    sift found
+      case some
+        save why, <>
+        save reason, claim-reason(value)
+        fork test, gate-truth(reason)
+          hold
+            save why, <: {gate-text(reason)}>
+        parts/push <{name} ({claim-verdict(value)}{why})>
+      case none
+        parts/push <{name} (not exported)>
+  back parts/join(<, >)
+
+# THE GATE: `term hold --lean --report` exits 0 on the project (every file compiles, no claim open, every tier-0
+# obligation proven, and under --lean every claim re-checked by Lean with no axiom), it rests on no axiom, every law
+# the person named is a claim of the program, Lean checked each of them, and the report's row for each holds. And,
+# given `instances`, each named law is the law library's statement filled with the app's own names (the instance
+# check). `laws` are the program's rules in words
+task gate-of
+  take input, like gate-ask
+  like gate
+
+  save reasons, make list
+  save notes, make list
+  save hold, input/hold
+  save required, input/required
+
+  sift input/instances
+    case some
+      walk value
+        take instance
+        fork test, not(instance/ok)
+          hold
+            reasons/push <{instance/law} is not the law library's {instance/law}: {instance-problem(instance)}>
+    case none
+      save notes, notes
+
+  fork test, not(hold/holds)
+    hold
+      save flag, <>
+      fork test, input/lean
+        hold
+          save flag, < --lean>
+      reasons/push <term hold{flag} --report does not exit 0>
+
+  # the summary when it is there and truthy, as the original's `!hold.summary`
+  save summary, make none
+  sift hold/summary
+    case some
+      fork test, gate-truth(value)
+        hold
+          save summary, make(some, value)
+    case none
+      save summary, make none
+
+  sift summary
+    case some
+      walk report-rows(value)
+        take row
+        fork test, and(contains(required, row-name(row)), not(row-holds(row)))
+          hold
+            save why, <>
+            save said, row-why(row)
+            fork test, gate-truth(said)
+              hold
+                save why, <: {gate-text(said)}>
+            reasons/push <the report says {row-name(row)} does not hold{why}>
+    case none
+      save notes, notes
+
+  sift summary
+    case some
+      save axioms, ledger-axioms(value)
+      fork test, is-above(axioms/length, 0)
+        hold
+          reasons/push <it rests on axioms: {axioms/join(<, >)}>
+    case none
+      reasons/push <term hold printed no summary>
+
+  walk required
+    take name
+    save law, make none
+    walk input/laws
+      take one
+      fork test, is-equal(one/name, name)
+        hold
+          save law, make(some, one)
+          halt
+    sift law
+      case some
+        fork test, is-unequal(value/kind, <claim>)
+          hold
+            reasons/push <{name} is a {value/kind}, not a claim with a proof the kernel keeps>
+      case none
+        reasons/push <there is no law named {name}>
+
+  save lean, <off>
+  fork test, input/lean
+    hold
+      save result, make none
+      sift summary
+        case some
+          save found, summary-lean(value)
+          fork test, gate-truth(found)
+            hold
+              save result, make(some, found)
+        case none
+          save result, make none
+      sift result
+        case none
+          save lean, <unavailable>
+        case some
+          fork test, lean-missing(value)
+            hold
+              save lean, <unavailable>
+              reasons/push <Lean is not installed, so no law was re-checked>
+            miss
+              save claims, lean-claims(value)
+              save unchecked, make list
+              walk required
+                take name
+                save checked, false
+                walk claims
+                  take claim
+                  fork test, is-equal(claim-name(claim), name)
+                    hold
+                      save checked, and(is-equal(claim-verdict(claim), <checked>), is-equal(claim-axiom-count(claim), 0))
+                      halt
+                fork test, not(checked)
+                  hold
+                    unchecked/push name
+              save lean, <checked>
+              fork test, is-above(unchecked/length, 0)
+                hold
+                  save lean, <failed>
+                  reasons/push <Lean did not check {unchecked-text(unchecked, claims)}>
+              # the exit already fails on these: named here so the person sees which
+              save others, make list
+              walk claims
+                take claim
+                fork test, and(not(contains(required, claim-name(claim))),is-unequal(claim-verdict(claim), <checked>))
+                  hold
+                    others/push <{claim-name(claim)} ({claim-verdict(claim)})>
+              fork test, is-above(others/length, 0)
+                hold
+                  save plural, <s>
+                  fork test, is-one(others/length)
+                    hold
+                      save plural, <>
+                  notes/push <Lean did not check {others/length} other claim{plural}: {others/join(<, >)}>
+
+  back make(gate, bind(ok, is-equal(reasons/length, 0)), bind(reasons, reasons), bind(notes, notes), bind(lean, lean))
+
+# ---- what the model may write ----
+
+task path-refused
+  take reason, like text
+  like code-path-answer
+  mark private
+
+  back make(code-path-answer, bind(ok, false), bind(reason, make(some, reason)))
+
+# a path the model asked to write, inside the project's code/ folder and ending .tree, or the reason it may not
+task code-path
+  take root, like text
+  take asked, like dynamic
+  like code-path-answer
+
+  fork test, not(is-filled-text(asked))
+    hold
+      back path-refused(<the path is empty>)
+  save wanted, gate-text(asked)
+  fork test, host-path/is-absolute(wanted)
+    hold
+      back path-refused(<the path must be relative to the project, such as code/model.tree>)
+  save file, host-path/resolve(root, wanted)
+  save code, <{host-path/join(root, <code>)}{host-path/sep}>
+  fork test, not(starts-with(file, code))
+    hold
+      back path-refused(<only files under code/ may be written>)
+  fork test, not(ends-with(file, <.tree>))
+    hold
+      back path-refused(<only .tree files may be written>)
+  back make(code-path-answer, bind(ok, true), bind(file, make(some, file)))
+
+# ---- what the model is told after a round ----
+
+# the round's result as the model reads it: the verdict, then each problem with the source line it names, at most
+# `cap` of them (12 when not given)
+task feedback-of
+  take hold, like hold-read
+  take input, like feedback-ask
+  like text
+
+  save cap, 12
+  sift input/cap
+    case some
+      save cap, value
+    case none
+      save cap, cap
+  save out, make list
+  save count, hold/problems/length
+  save noun, <problems>
+  fork test, is-one(count)
+    hold
+      save noun, <problem>
+  fork test, hold/holds
+    hold
+      out/push <term hold: HOLDS.>
+    miss
+      out/push <term hold: DOES NOT HOLD. {count} {noun}.>
+
+  save shown, 0
+  walk hold/problems
+    take problem
+    fork test, not(is-below(shown, cap))
+      hold
+        halt
+    save shown, add(shown, 1)
+    out/push <>
+    save code, <>
+    sift problem/code
+      case some
+        save code, < [{value}]>
+      case none
+        save code, code
+    out/push <- {problem/subject}{code}>
+    sift problem/at
+      case some
+        save at, value
+        save line, <>
+        sift input/line-at(at)
+          case some
+            link source-line
+            save line, <: {trim(source-line)}>
+          case none
+            save line, line
+        out/push <  at {at}{line}>
+      case none
+        save shown, shown
+    walk problem/detail
+      take detail
+      out/push <  {detail}>
+
+  fork test, is-above(count, cap)
+    hold
+      out/push <>
+      out/push <({subtract(count, cap)} more problems not shown: fix these first)>
+
+  sift hold/summary
+    case some
+      save failed, ledger-failed(value)
+      save open, ledger-open(value)
+      save axioms, ledger-axioms(value)
+      out/push <>
+      out/push <files: {summary-files(value)}, failed: {or-none(failed)}, open claims: {or-none(open)}, axioms: {or-none(axioms)}>
+    case none
+      save count, count
+
+  sift input/gate
+    case some
+      fork test, not(value/ok)
+        hold
+          out/push <>
+          out/push <The run is not done yet:>
+          walk value/reasons
+            take reason
+            out/push <- {reason}>
+    case none
+      save count, count
+
+  back knit-gate-lines(out)
+
+# `list.join(", ") || "none"`
+task or-none
+  take names, like list, like text
+  like text
+  mark private
+
+  fork test, is-equal(names/length, 0)
+    hold
+      back <none>
+  save joined, names/join(<, >)
+  fork test, is-equal(joined, <>)
+    hold
+      back <none>
+  back joined
+
+bind ledger-failed
+  take summary, like dynamic
+  like list, like text
+  case node
+    text <$summary.failed>
+
+bind ledger-open
+  take summary, like dynamic
+  like list, like text
+  case node
+    text <$summary.open>
+
+bind summary-files
+  take summary, like dynamic
+  like text
+  case node
+    text <String($summary.files)>
+
+# `lines.join("\n")`
+bind knit-gate-lines
+  take lines, like list, like text
+  like text
+  case node
+    text <$lines.join(String.fromCharCode(10))>

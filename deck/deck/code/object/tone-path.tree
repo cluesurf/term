@@ -1,0 +1,86 @@
+# Tone-coded, dash-grouped storage keys for object ids: an id's hex re-lettered through the 16-consonant tone alphabet
+# and grouped in eights (`mndbtkhs-fvzxcwlr-...`), easier to scan and dictate than a hex run. Only the STORAGE key is
+# tone-coded; the id on the wire stays `sha256:<hex>`. Ported from deck/deck/code/object/tone.ts
+# (term-cli-in-term-0081): hexToTone, dashInEights, toneOfId, objectKey, tonePath.
+#
+# The decisions:
+#   - the alphabet is written here, as the original wrote it: it must match `CODE` in the platform's tone-code encoder
+#     (belt's `hexToTone`), which this published package cannot import
+#   - `hex-to-tone` reads its text by code points, as the original's `for...of` did, and refuses the first that is not
+#     a lowercase hex digit with the original's message
+#   - `dash-in-eights` groups as the original's `/.{1,8}/g` did, a host bind of that expression: by UTF-16 units, a
+#     line end never in a group
+#   - an extension is made canonical by @cluesurf/save's own `canonicalExtension`, docked
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find char-at
+  find index-of
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load ./object-address
+  find id-hex
+
+dock load
+  load <@cluesurf/save/canon/mark>, name save-mark
+
+bind dashed-groups
+  take flat, like text
+  like text
+  case node
+    text <(function (groups) \{ return groups ? groups.join("-") : $flat \})($flat.match(/.\{1,8\}/g))>
+
+# re-letter a hex text through the tone alphabet, its length kept
+task hex-to-tone
+  take hex, like text
+  like text
+
+  save out, <>
+  walk to-runes(hex)
+    take rune
+    save one, make list
+    one/push(rune)
+    save character, from-runes(one)
+    save digit, index-of(<0123456789abcdef>, character)
+    fork test, is-below(digit, 0)
+      hold
+        halt <hexToTone: invalid hex character '{character}'>
+    save out, <{out}{char-at(<mndbtkhsfvzxcwlr>, digit)}>
+  back out
+
+# a text in dash-separated runs of EIGHT: a tone mark's 32 hex characters are four groups, an object id's 64 eight
+task dash-in-eights
+  take flat, like text
+  like text
+
+  back dashed-groups(flat)
+
+# the dashed tone form of an object id: eight groups of eight
+task tone-of-id
+  take id, like text
+  like text
+
+  back dash-in-eights(hex-to-tone(id-hex(id)))
+
+# the object store's KEY, `<8>-<8>-<8>-<8>-<8>-<8>-<8>-<8>.<ext>`: one flat namespace, no folders, no package name, and
+# an extension so a fetch is typed without a lookup
+task object-key
+  take id, like text
+  take extension, like text
+  like text
+
+  save tone, tone-of-id(id)
+  save canonical, save-mark/canonical-extension(extension)
+  back <{tone}.{canonical}>
+
+# the LOCAL path of an object, the same as its remote key without the extension
+task tone-path
+  take id, like text
+  like text
+
+  back dash-in-eights(hex-to-tone(id-hex(id)))

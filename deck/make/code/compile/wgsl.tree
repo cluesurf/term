@@ -28,6 +28,7 @@ load ./node
   find to-text, name op-text
   find type
   find value-branch
+  find unary-op
 
 load ../ir/monomorphize
   find monomorphize

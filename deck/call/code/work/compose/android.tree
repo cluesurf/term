@@ -1,0 +1,1000 @@
+# The Android build: a Term program compiled for the `compose-android` env (Jetpack Compose), which reaches the toolkit
+# dom (deck/site/code/dom/native/toolkit/dom.tree), made into a signed APK with no Android Gradle plugin: each `.aar`
+# unpacked, its resources linked by aapt2 into one base APK with an R class per library, the program and the libraries
+# dexed by d8, then aligned and signed with the debug key, as the cask's APKs are. Part of the port of
+# deck/call/code/compose.ts (term-cli-in-term-0036): its `buildComposeAndroid`, `dexFiles`, `ANDROID_CACHE`, `whole`,
+# `kept`, `keyOf`, `prepareAndroidLibraries`, `linkAndroidApp`, `failure`, `errorsOf`, `run` and `filesUnder`.
+#
+# EVERYTHING BEFORE THE PROGRAM IS KEPT, by what it is made from (live-reload): the libraries unpacked and their
+# resources compiled, the link, and the libraries' dex. The original handed `kept` a closure that made the folder; here
+# the stage is a `kept-stage` record and `make-kept-stage` makes it.
+
+load @term/base/list
+  find list
+  find contains
+
+load @term/base/environment
+  find variable
+  find has-variable
+
+load @term/call/compose-plan
+  find failure-reason
+  find minimum-sdk
+  find error-lines
+  find dex-sorted
+  find android-manifest
+
+load ../cask/host-value
+  find is-truthy
+  find value-or
+  find now-ms
+  find raise-again
+  find entries-of
+
+load ../cask/toolchain
+  find read-runtime
+  find android-tools
+  find android-tool-set
+
+load ./toolchain
+  find runtime-cache
+  find toolchain-script
+  find start-task
+  find entry-file
+  find refused-scope
+  find compile-kotlin
+  find kotlin-ask
+  find split-on
+  find join-on
+  find head-units
+  find tail-units
+  find stage-entry
+  find nul-text
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <node:crypto>, name node-crypto
+  load <node:child_process>, name node-child
+  load <global:process>, name node-process
+  load <@term/make/code/compile/compile>, name compile-module
+  load <@term/make/code/compile/native>, name native-module
+  load <@term/make/code/compile/kotlin>, name kotlin-module
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/kotlin-worker>, name kotlin-worker
+
+form android-source
+  link file, like text
+  link text, like text
+
+form android-options
+  link resolve, like dynamic
+  link env, like text
+  link cache, like dynamic
+
+form android-emit-options
+  link wake, like dynamic
+
+form android-run-options
+  link stdio, like text
+  link max-buffer, like number
+
+form android-utf8
+  link encoding, like text
+
+form android-make-folder
+  link recursive, like boolean
+
+form android-remove-folder
+  link recursive, like boolean
+  link force, like boolean
+
+# what an Android build is asked: as compose-ask (desktop.tree), and the app's package, `identifier`, and `assets`, the
+# files the APK carries, by name, which the program reads as `asset:<name>` (an emulator cannot read the build
+# machine's paths)
+form compose-android-ask
+  link root, like text
+  link dir, like text
+  link name, like text
+  link text, like text
+  link identifier, like text
+  link assets
+    like dynamic
+    need false
+  link file
+    like dynamic
+    need false
+  link compiler
+    like dynamic
+    need false
+  link cache
+    like dynamic
+    need false
+  link scope
+    like dynamic
+    need false
+
+# what an Android build answers: skipped is a toolchain this machine lacks, a failed stage is a problem, and a built
+# program is its APK and how long each stage took
+form compose-android-built
+  case skipped
+    link reason, like text
+  case failed
+    link stage, like text
+    link reason, like text
+  case built
+    link apk, like text
+    link stages, like list, like dynamic
+
+# the libraries unpacked: every jar on the classpath, every library's compiled resources, every library package, and
+# the key of the library set they were made from
+form android-libraries
+  link key, like text
+  link jars, like list, like text
+  link flats, like list, like text
+  link packages, like list, like text
+
+# the link: the base APK, the R classes' jar and their dex
+form android-linked
+  link base, like text
+  link r-jar, like text
+  link r-dex, like text
+
+# what a kept folder is made by: the original's closure handed to `kept`, as a record
+form kept-stage
+  case library-set
+    link library-files, like list, like text
+    link library-tools, like android-tool-set
+  case app-link
+    link link-libraries, like android-libraries
+    link link-tools, like android-tool-set
+    link manifest-text, like text
+    link link-assets, like dynamic
+  case library-dex
+    link dex-tools, like android-tool-set
+    link dex-jars, like list, like text
+  case runtime-dex
+    link runtime-tools, like android-tool-set
+    link runtime-jar, like text
+    link runtime-against, like list, like text
+
+# ---- the host values Term has no word for ----
+
+# what a failed command said: its standard output and error, else the failure itself
+bind command-said
+  take problem, like dynamic
+  like text
+  case node
+    text <((String($problem.stdout ?? "") + String($problem.stderr ?? "")) || String($problem))>
+
+# a record's keys in the order `sort()` puts them, by UTF-16 unit
+bind sorted-keys-of
+  take record, like dynamic
+  like list, like text
+  case node
+    text <Object.keys($record).sort()>
+
+# a record's member by key
+bind member-of
+  take record, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$record[$key]>
+
+# the empty record, the assets an app hands nothing for
+bind empty-record
+  like dynamic
+  case node
+    text <(\{\})>
+
+# `value.slice(start)`, by UTF-16 code unit
+bind units-from
+  take value, like text
+  take start, like number
+  like text
+  case node
+    text <$value.slice($start)>
+
+# a text's length in UTF-16 code units
+bind unit-length
+  take value, like text
+  like number
+  case node
+    text <$value.length>
+
+# whether a text starts with another, by UTF-16 unit
+bind starts-with-units
+  take value, like text
+  take start, like text
+  like boolean
+  case node
+    text <$value.startsWith($start)>
+
+# the package a library's manifest names, `/package="([^"]+)"/`, or the empty text
+bind manifest-package
+  take text, like text
+  like text
+  case node
+    text <((/package="([^"]+)"/.exec($text) ?? [])[1] ?? "")>
+
+# what the libraries' folder lists: `JSON.stringify({ jars, flats, packages })`
+bind libraries-json
+  take jars, like list, like text
+  take flats, like list, like text
+  take packages, like list, like text
+  like text
+  case node
+    text <JSON.stringify(\{ jars: $jars, flats: $flats, packages: $packages \})>
+
+# the libraries' folder list read back
+bind libraries-listed
+  take text, like text
+  like dynamic
+  case node
+    text <JSON.parse($text)>
+
+# ---- the commands ----
+
+# a command run with its output kept, for its failure to name
+task run-step
+  take command, like text
+  take args, like list, like text
+  like void
+
+  node-child/exec-file-sync(command, args, make(android-run-options, bind(stdio, <pipe>), bind(max-buffer, 67108864)))
+
+# what a tool said, cut to its errors
+task errors-of
+  take text, like text
+  like text
+
+  # the lines are chosen by the plan; what is cut here counts UTF-16 units, as the original cut them
+  save errors, error-lines(text)
+  save said, errors
+  fork test, is-equal(errors, <>)
+    hold
+      save said, tail-units(text, 1200)
+  back head-units(said, 2400)
+
+# a command's failure as its errors, not the warnings around them
+task failure-of
+  take problem, like dynamic
+  like text
+
+  back errors-of(command-said(problem))
+
+# every file under `dir` whose name ends with `suffix`
+task files-under
+  take dir, like text
+  take suffix, like text
+  like list, like text
+
+  save found, make list
+  fork test, not(node-fs/exists-sync(dir))
+    hold
+      back found
+  walk node-fs/readdir-sync(dir)
+    take name, like text
+    save full, node-path/join(dir, name)
+    save stat, node-fs/stat-sync(full)
+    fork test, stat/is-directory()
+      hold
+        walk files-under(full, suffix)
+          take one, like text
+          found/push(one)
+      miss
+        fork test, ends-with-units(name, suffix)
+          hold
+            found/push(full)
+  back found
+
+# the dex files d8 wrote into a folder, in its own order: classes.dex, then classes2.dex, classes3.dex, ...
+task dex-files
+  take dir, like text
+  like list, like text
+
+  back dex-sorted(files-under(dir, <.dex>))
+
+# where the Android stages that do not change between edits are kept: beside the Compose runtimes
+task android-cache
+  like text
+
+  back node-path/join(runtime-cache(), <..>, <compose-android>)
+
+# d8 over one jar, against everything it calls, so d8 can desugar across the boundary as one dexing of the whole did
+task run-d8
+  take tools, like android-tool-set
+  take out, like text
+  take jar, like text
+  take against, like list, like text
+  like void
+
+  save args, make list
+  args/push(<--release>)
+  args/push(<--lib>)
+  args/push(tools/platform)
+  args/push(<--min-api>)
+  args/push(<{minimum-sdk()}>)
+  walk against
+    take one, like text
+    args/push(<--classpath>)
+    args/push(one)
+  args/push(<--output>)
+  args/push(out)
+  args/push(jar)
+  run-step(node-path/join(tools/build-tools, <d8>), args)
+
+# ---- the kept folders ----
+
+# the list of every file a kept folder was made with, written into it
+task kept-list-name
+  like text
+
+  back <.kept>
+
+# whether a kept folder still holds every file it was made with. The cache is under $TMPDIR, which macOS purges FILE
+# BY FILE, so a folder can survive with a file gone, and is then made again rather than trusted
+task kept-whole
+  take dir, like text
+  like boolean
+
+  save list, node-path/join(dir, kept-list-name())
+  fork test, not(node-fs/exists-sync(list))
+    hold
+      back false
+  walk split-on(node-fs/read-file-sync(list, <utf8>), <\n>)
+    take one, like text
+    fork test, not(is-equal(one, <>))
+      hold
+        fork test, not(node-fs/exists-sync(node-path/join(dir, one)))
+          hold
+            back false
+  back true
+
+# a folder made once per `key` and kept under `root`: made under a name of its own and renamed into place, so a build
+# running beside this one never reads half of it, a stage that failed leaves nothing behind, and one that lost a file
+# since is made again (`kept-whole`). Answers its path
+task kept
+  take root, like text
+  take key, like text
+  take stage, like kept-stage
+  like text
+
+  save done, node-path/join(root, key)
+  fork test, and(node-fs/exists-sync(done), kept-whole(done))
+    hold
+      back done
+
+  node-fs/rm-sync(done, make(android-remove-folder, bind(recursive, true), bind(force, true)))
+  save fresh, node-path/join(root, <{key}.{node-process/pid}.{now-ms()}>)
+  node-fs/mkdir-sync(fresh, make(android-make-folder, bind(recursive, true)))
+
+  fork
+    mark unsafe
+    make-kept-stage(stage, fresh)
+  halt take
+    take problem
+    node-fs/rm-sync(fresh, make(android-remove-folder, bind(recursive, true), bind(force, true)))
+    raise-again(problem)
+
+  # every file the stage made, by its path inside the folder, for `kept-whole` to find again
+  save inside, make list
+  save cut, add(unit-length(fresh), 1)
+  walk files-under(fresh, <>)
+    take one, like text
+    inside/push(units-from(one, cut))
+  node-fs/write-file-sync(node-path/join(fresh, kept-list-name()), <{join-on(inside, <\n>)}\n>)
+
+  fork
+    mark unsafe
+    node-fs/rename-sync(fresh, done)
+  halt take
+    take problem
+    # another build finished the same stage first: its folder is the same, and this one goes
+    node-fs/rm-sync(fresh, make(android-remove-folder, bind(recursive, true), bind(force, true)))
+  back done
+
+# make one kept folder's content into `into`
+task make-kept-stage
+  take stage, like kept-stage
+  take into, like text
+  like void
+
+  sift stage
+    case library-set
+      unpack-libraries(library-files, library-tools, into)
+    case app-link
+      link-into(link-libraries, link-tools, manifest-text, link-assets, into)
+    case library-dex
+      save args, make list
+      args/push(<--release>)
+      args/push(<--lib>)
+      args/push(dex-tools/platform)
+      args/push(<--min-api>)
+      args/push(<{minimum-sdk()}>)
+      args/push(<--output>)
+      args/push(into)
+      walk dex-jars
+        take jar, like text
+        args/push(jar)
+      run-step(node-path/join(dex-tools/build-tools, <d8>), args)
+    case runtime-dex
+      run-d8(runtime-tools, into, runtime-jar, runtime-against)
+
+# a key for what a stage is made from: its parts, and each FILE's size and time, so a library the toolchain replaced
+# is a new key
+task key-of
+  take parts, like list, like text
+  take files, like list, like text
+  like text
+
+  save all, make list
+  walk parts
+    take part, like text
+    all/push(part)
+  walk files
+    take one, like text
+    save stat, node-fs/stat-sync(one)
+    all/push(<{one}:{stat/size}:{stat/mtime-ms}>)
+  save hash, node-crypto/create-hash(<sha256>)
+  save hashed, hash/update(join-on(all, nul-text()))
+  back head-units(hashed/digest(<hex>), 32)
+
+# ---- the libraries and the link ----
+
+# 2. the libraries unpacked into `into`: each `.aar`'s classes and bundled jars onto the classpath, its resources
+# compiled by aapt2 and its package kept
+task unpack-libraries
+  take files, like list, like text
+  take tools, like android-tool-set
+  take into, like text
+  like void
+
+  save jars, make list
+  walk files
+    take one, like text
+    fork test, ends-with-units(one, <.jar>)
+      hold
+        jars/push(one)
+  save flats, make list
+  save packages, make list
+  save index, 0
+  walk files
+    take aar, like text
+    fork test, ends-with-units(aar, <.aar>)
+      hold
+        save unpacked, node-path/join(into, <aar>, <{index}>)
+        node-fs/mkdir-sync(unpacked, make(android-make-folder, bind(recursive, true)))
+        save unzip, make list
+        unzip/push(<-q>)
+        unzip/push(<-o>)
+        unzip/push(aar)
+        unzip/push(<-d>)
+        unzip/push(unpacked)
+        run-step(<unzip>, unzip)
+        save classes, node-path/join(unpacked, <classes.jar>)
+        fork test, node-fs/exists-sync(classes)
+          hold
+            jars/push(classes)
+        walk files-under(node-path/join(unpacked, <libs>), <.jar>)
+          take bundled, like text
+          jars/push(bundled)
+        save manifest, node-path/join(unpacked, <AndroidManifest.xml>)
+        fork test, node-fs/exists-sync(manifest)
+          hold
+            save found, manifest-package(node-fs/read-file-sync(manifest, <utf8>))
+            fork test, and(not(is-equal(found, <>)), not(contains(packages, found)))
+              hold
+                packages/push(found)
+
+        # its resources compiled, when it has any
+        save res, node-path/join(unpacked, <res>)
+        save resources, files-under(res, <>)
+        fork test, is-above(resources/length, 0)
+          hold
+            save flat, node-path/join(into, <flat>, <{index}.zip>)
+            node-fs/mkdir-sync(node-path/join(into, <flat>), make(android-make-folder, bind(recursive, true)))
+            save compile, make list
+            compile/push(<compile>)
+            compile/push(<--dir>)
+            compile/push(res)
+            compile/push(<-o>)
+            compile/push(flat)
+            run-step(node-path/join(tools/build-tools, <aapt2>), compile)
+            flats/push(flat)
+        save index, add(index, 1)
+
+  # the paths are written relative to the kept folder, which is renamed into place after this
+  save cut, add(unit-length(into), 1)
+  save inside-jars, make list
+  walk jars
+    take one, like text
+    inside-jars/push(inside-of(one, into, cut))
+  save inside-flats, make list
+  walk flats
+    take one, like text
+    inside-flats/push(inside-of(one, into, cut))
+  node-fs/write-file-sync(node-path/join(into, <libraries.json>), libraries-json(inside-jars, inside-flats, packages))
+
+# a path inside the kept folder written relative to it, any other as it is
+task inside-of
+  take one, like text
+  take into, like text
+  take cut, like number
+  like text
+
+  fork test, starts-with-units(one, into)
+    hold
+      back units-from(one, cut)
+  back one
+
+# a path the libraries' folder lists, absolute again
+task listed-at
+  take one, like text
+  take dir, like text
+  like text
+
+  fork test, starts-with-units(one, </>)
+    hold
+      back one
+  back node-path/join(dir, one)
+
+# 2. the libraries unpacked, made once per library set
+task prepare-android-libraries
+  take files, like list, like text
+  take tools, like android-tool-set
+  like android-libraries
+
+  save parts, make list
+  parts/push(<libraries>)
+  parts/push(tools/build-tools)
+  save key, key-of(parts, files)
+  save stage, make(library-set, bind(library-files, files), bind(library-tools, tools))
+  save dir, kept(node-path/join(android-cache(), <libraries>), key, stage)
+  save listed, libraries-listed(node-fs/read-file-sync(node-path/join(dir, <libraries.json>), <utf8>))
+  save jars, make list
+  walk listed/jars
+    take one, like text
+    jars/push(listed-at(one, dir))
+  save flats, make list
+  walk listed/flats
+    take one, like text
+    flats/push(listed-at(one, dir))
+  save packages, make list
+  walk listed/packages
+    take one, like text
+    packages/push(one)
+  back make(android-libraries, bind(key, key), bind(jars, jars), bind(flats, flats), bind(packages, packages))
+
+# 3. one link into `into`: the app's manifest and every library's resources, an R class for the app and each library
+# package, the R classes compiled and dexed
+task link-into
+  take libraries, like android-libraries
+  take tools, like android-tool-set
+  take manifest-text, like text
+  take assets, like dynamic
+  take into, like text
+  like void
+
+  save manifest, node-path/join(into, <AndroidManifest.xml>)
+  node-fs/write-file-sync(manifest, manifest-text)
+
+  # the files the APK carries, in one folder aapt2 adds as the APK's assets
+  save asset-dir, node-path/join(into, <assets>)
+  node-fs/mkdir-sync(asset-dir, make(android-make-folder, bind(recursive, true)))
+  walk entries-of(assets)
+    take entry, like list, like dynamic
+    node-fs/copy-file-sync(<{entry/1}>, node-path/join(asset-dir, <{entry/0}>))
+
+  save generated, node-path/join(into, <gen>)
+  save args, make list
+  args/push(<link>)
+  args/push(<-o>)
+  args/push(node-path/join(into, <base.apk>))
+  args/push(<-I>)
+  args/push(tools/platform)
+  args/push(<--manifest>)
+  args/push(manifest)
+  args/push(<-A>)
+  args/push(asset-dir)
+  args/push(<--java>)
+  args/push(generated)
+  args/push(<--auto-add-overlay>)
+  fork test, is-above(libraries/packages/length, 0)
+    hold
+      args/push(<--extra-packages>)
+      args/push(join-on(libraries/packages, <:>))
+  walk libraries/flats
+    take flat, like text
+    args/push(<-R>)
+    args/push(flat)
+  run-step(node-path/join(tools/build-tools, <aapt2>), args)
+
+  # the R classes, compiled and dexed
+  save r-classes, node-path/join(into, <r>)
+  node-fs/mkdir-sync(r-classes, make(android-make-folder, bind(recursive, true)))
+  save javac, make list
+  javac/push(<--release>)
+  javac/push(<17>)
+  javac/push(<-nowarn>)
+  javac/push(<-d>)
+  javac/push(r-classes)
+  walk files-under(generated, <.java>)
+    take source, like text
+    javac/push(source)
+  run-step(<javac>, javac)
+  save jar, make list
+  jar/push(<cf>)
+  jar/push(node-path/join(into, <r.jar>))
+  jar/push(<-C>)
+  jar/push(r-classes)
+  jar/push(<.>)
+  run-step(<jar>, jar)
+  node-fs/mkdir-sync(node-path/join(into, <r-dex>), make(android-make-folder, bind(recursive, true)))
+  save dex, make list
+  dex/push(<--release>)
+  dex/push(<--lib>)
+  dex/push(tools/platform)
+  dex/push(<--min-api>)
+  dex/push(<{minimum-sdk()}>)
+  dex/push(<--output>)
+  dex/push(node-path/join(into, <r-dex>))
+  dex/push(node-path/join(into, <r.jar>))
+  run-step(node-path/join(tools/build-tools, <d8>), dex)
+
+# 3. the link, made once per library set, package, label and assets. `native` is the program's native half, whose
+# device capabilities decide the permissions declared (device-declare.ts): part of the manifest's text, so of the
+# link's key, and a capability added or removed re-links
+task link-android-app
+  take libraries, like android-libraries
+  take tools, like android-tool-set
+  take identifier, like text
+  take name, like text
+  take assets, like dynamic
+  take native, like text
+  like android-linked
+
+  save manifest-text, android-manifest(identifier, name, native)
+  save names, sorted-keys-of(assets)
+  save parts, make list
+  parts/push(<link>)
+  parts/push(libraries/key)
+  parts/push(manifest-text)
+  save files, make list
+  walk names
+    take one, like text
+    parts/push(one)
+    files/push(<{member-of(assets, one)}>)
+  save key, key-of(parts, files)
+  save stage, make(app-link, bind(link-libraries, libraries), bind(link-tools, tools), bind(manifest-text, manifest-text), bind(link-assets, assets))
+  save dir, kept(node-path/join(android-cache(), <link>), key, stage)
+  back make(android-linked, bind(base, node-path/join(dir, <base.apk>)), bind(r-jar, node-path/join(dir, <r.jar>)), bind(r-dex, node-path/join(dir, <r-dex>)))
+
+# ---- the build ----
+
+# compile `text` for Jetpack Compose and make a signed APK of it, `identifier` its package
+task build-compose-android
+  take ask, like compose-android-ask
+  like compose-android-built
+
+  save tools, make(android-tool-set, bind(sdk, <>), bind(platform, <>), bind(build-tools, <>), bind(stdlib, <>), bind(adb, <>))
+  fork
+    mark unsafe
+    save tools, android-tools()
+  halt take
+    take problem
+    back make(skipped, bind(reason, skip-reason(problem)))
+
+  save name, ask/name
+  save text, ask/text
+  save identifier, ask/identifier
+  save assets, value-or(ask/assets, empty-record())
+  save work, node-path/join(ask/dir, <{name}-android>)
+  node-fs/rm-sync(work, make(android-remove-folder, bind(recursive, true), bind(force, true)))
+  node-fs/mkdir-sync(work, make(android-make-folder, bind(recursive, true)))
+
+  # the `compose-android` env: Android's natives, the toolkit dom, and the runtime the prelude finds for it,
+  # deck/site/code/dom/native/toolkit/runtime/compose-android/native-view.kt (the shared Compose runtime and the
+  # Android host)
+  save entry, entry-file(ask/file, work, name, text)
+  save resolve, make-module/project-resolver(ask/root, <compose-android>)
+  save stages, make list
+  save term-started, now-ms()
+  save result, compile-module/compile(make(android-source, bind(file, entry), bind(text, text)), make(android-options, bind(resolve, resolve), bind(env, <compose-android>), bind(cache, ask/cache)))
+  stages/push(stage-entry(<term>, subtract(now-ms(), term-started)))
+
+  fork test, not(result/ok)
+    hold
+      save messages, make list
+      walk result/diagnostics
+        take one, like dynamic
+        messages/push(<{one/message}>)
+      back make(failed, bind(stage, <compile>), bind(reason, failure-reason(messages)))
+
+  save scope-started, now-ms()
+  save refused, refused-scope(ask/scope, entry, text, resolve)
+  stages/push(stage-entry(<scope>, subtract(now-ms(), scope-started)))
+  fork test, is-truthy(refused)
+    hold
+      back make(failed, bind(stage, <scope>), bind(reason, <{refused}>))
+
+  save kotlin, kotlin-module/emit-kotlin(result/program, make(android-emit-options, bind(wake, result/wake)))
+  save prelude, native-module/native-prelude(result/program, <compose-android>, read-runtime, kotlin)
+  save driver-lines, make list
+  driver-lines/push(<class TermActivity : TermComposeActivity() \{>)
+  driver-lines/push(<  override fun program() \{ {start-task(result/program, entry, kotlin)}() \}>)
+  driver-lines/push(<\}>)
+  save driver, join-on(driver-lines, <\n>)
+
+  # 1. the libraries and the compiler plugin
+  save script, compose-toolchain-script()
+  save files, make list
+  save plugin, <>
+  fork
+    mark unsafe
+    save listed-args, make list
+    listed-args/push(script)
+    listed-args/push(<compose-android-files>)
+    save listed, node-child/exec-file-sync(<bash>, listed-args, make(android-utf8, bind(encoding, <utf8>)))
+    walk split-on(listed/trim(), <\n>)
+      take one, like text
+      fork test, not(is-equal(one, <>))
+        hold
+          files/push(one)
+    save flag-args, make list
+    flag-args/push(script)
+    flag-args/push(<compose-flags>)
+    save flags-out, node-child/exec-file-sync(<bash>, flag-args, make(android-utf8, bind(encoding, <utf8>)))
+    save flag-lines, split-on(flags-out/trim(), <\n>)
+    fork test, is-above(flag-lines/length, 1)
+      hold
+        save plugin, flag-lines/1
+  halt take
+    take problem
+    back make(failed, bind(stage, <libraries>), bind(reason, failure-of(problem)))
+
+  # EVERYTHING BEFORE THE PROGRAM IS KEPT, by what it is made from: an edit changes none of it, so it pays for the
+  # program alone: its Kotlin, its dex, and the zip and signature
+  save libraries, make(android-libraries, bind(key, <>), bind(jars, make list), bind(flats, make list), bind(packages, make list))
+  fork
+    mark unsafe
+    save unpack-started, now-ms()
+    save libraries, prepare-android-libraries(files, tools)
+    stages/push(stage-entry(<unpack>, subtract(now-ms(), unpack-started)))
+  halt take
+    take problem
+    back make(failed, bind(stage, <unpack>), bind(reason, failure-of(problem)))
+
+  save linked, make(android-linked, bind(base, <>), bind(r-jar, <>), bind(r-dex, <>))
+  fork
+    mark unsafe
+    save link-started, now-ms()
+    save linked, link-android-app(libraries, tools, identifier, name, assets, prelude)
+    stages/push(stage-entry(<link>, subtract(now-ms(), link-started)))
+  halt take
+    take problem
+    back make(failed, bind(stage, <resources>), bind(reason, failure-of(problem)))
+
+  save library-dex, <>
+  fork
+    mark unsafe
+    save dex-started, now-ms()
+    save library-dex, kept(node-path/join(android-cache(), <dex>), libraries/key, make(library-dex, bind(dex-tools, tools), bind(dex-jars, libraries/jars)))
+    stages/push(stage-entry(<library dex>, subtract(now-ms(), dex-started)))
+  halt take
+    take problem
+    back make(failed, bind(stage, <d8>), bind(reason, failure-of(problem)))
+
+  # 4. the program, with the Compose plugin, against android.jar, the libraries and the R classes, its runtime kept
+  save app-jar, node-path/join(work, <app.jar>)
+  save program-parts, make list
+  program-parts/push(kotlin)
+  program-parts/push(driver)
+  save classpath, make list
+  classpath/push(tools/platform)
+  classpath/push(linked/r-jar)
+  walk libraries/jars
+    take one, like text
+    classpath/push(one)
+  save flags, make list
+  flags/push(<-Xplugin={plugin}>)
+  flags/push(<-jvm-target>)
+  flags/push(<17>)
+  flags/push(<-nowarn>)
+  flags/push(<-Xno-param-assertions>)
+  flags/push(<-Xno-call-assertions>)
+  flags/push(<-Xno-receiver-assertions>)
+  save compiled
+    compile-kotlin
+      make kotlin-ask
+        bind compiler, value-or(ask/compiler, read(kotlin-worker/kotlinc))
+        bind stages, stages
+        bind dir, work
+        bind name, <app>
+        bind header, <package {identifier}\n\n>
+        bind runtime, prelude
+        bind program, join-on(program-parts, <\n>)
+        bind classpath, classpath
+        bind flags, flags
+        bind out, app-jar
+
+  fork test, not(is-equal(compiled/status, 0))
+    hold
+      back make(failed, bind(stage, <kotlinc>), bind(reason, errors-of(compiled/output)))
+
+  # 5. the program dexed, and its runtime's dex, kept beside that runtime's jar. Each against everything it calls, so
+  # d8 can desugar across the boundary as one dexing of the whole did
+  save program-dex, node-path/join(work, <dex>)
+  fork
+    mark unsafe
+    node-fs/mkdir-sync(program-dex, make(android-make-folder, bind(recursive, true)))
+    save program-against, make list
+    walk compiled/runtime-jars
+      take one, like text
+      program-against/push(one)
+    program-against/push(linked/r-jar)
+    walk libraries/jars
+      take one, like text
+      program-against/push(one)
+    save program-dex-started, now-ms()
+    run-d8(tools, program-dex, app-jar, program-against)
+    stages/push(stage-entry(<dex>, subtract(now-ms(), program-dex-started)))
+  halt take
+    take problem
+    back make(failed, bind(stage, <d8>), bind(reason, failure-of(problem)))
+
+  save runtime-dexes, make list
+  fork
+    mark unsafe
+    save runtime-dex-started, now-ms()
+    save runtime-against, make list
+    runtime-against/push(linked/r-jar)
+    walk libraries/jars
+      take one, like text
+      runtime-against/push(one)
+    walk compiled/runtime-jars
+      take jar, like text
+      save jar-name, node-path/basename(jar, <.jar>)
+      save stage, make(runtime-dex, bind(runtime-tools, tools), bind(runtime-jar, jar), bind(runtime-against, runtime-against))
+      runtime-dexes/push(kept(node-path/join(android-cache(), <runtime-dex>), <{jar-name}-{libraries/key}>, stage))
+    stages/push(stage-entry(<runtime dex>, subtract(now-ms(), runtime-dex-started)))
+  halt take
+    take problem
+    back make(failed, bind(stage, <d8>), bind(reason, failure-of(problem)))
+
+  # 6. every dex into a copy of the base APK, numbered as Android loads them (classes.dex, classes2.dex, ...), aligned
+  # and signed with the debug key, as the cask signs its own
+  save staged, node-path/join(work, <staged>)
+  save base, node-path/join(work, <{name}-base.apk>)
+  save aligned, node-path/join(work, <{name}-aligned.apk>)
+  save apk, node-path/join(work, <{name}.apk>)
+  save home, <>
+  fork test, has-variable(<HOME>)
+    hold
+      save home, variable(<HOME>)
+  save keystore, node-path/join(home, <.android>, <debug.keystore>)
+
+  fork
+    mark unsafe
+    save package-started, now-ms()
+    package-apk(tools, staged, program-dex, runtime-dexes, linked, library-dex, base, aligned, apk, keystore)
+    stages/push(stage-entry(<package>, subtract(now-ms(), package-started)))
+  halt take
+    take problem
+    back make(failed, bind(stage, <package>), bind(reason, failure-of(problem)))
+
+  back make(built, bind(apk, apk), bind(stages, stages))
+
+# 6. the package step: every dex numbered into a copy of the base APK, aligned, and signed with the debug key, made on
+# first use
+task package-apk
+  take tools, like android-tool-set
+  take staged, like text
+  take program-dex, like text
+  take runtime-dexes, like list, like text
+  take linked, like android-linked
+  take library-dex, like text
+  take base, like text
+  take aligned, like text
+  take apk, like text
+  take keystore, like text
+  like void
+
+  node-fs/mkdir-sync(staged, make(android-make-folder, bind(recursive, true)))
+  save folders, make list
+  folders/push(program-dex)
+  walk runtime-dexes
+    take one, like text
+    folders/push(one)
+  folders/push(linked/r-dex)
+  folders/push(library-dex)
+  save numbered, make list
+  save index, 0
+  walk folders
+    take folder, like text
+    walk dex-files(folder)
+      take dex, like text
+      save to, node-path/join(staged, <classes.dex>)
+      fork test, is-above(index, 0)
+        hold
+          save to, node-path/join(staged, <classes{add(index, 1)}.dex>)
+      node-fs/copy-file-sync(dex, to)
+      numbered/push(to)
+      save index, add(index, 1)
+  node-fs/copy-file-sync(linked/base, base)
+  save zip, make list
+  zip/push(<-q>)
+  zip/push(<-j>)
+  zip/push(base)
+  walk numbered
+    take one, like text
+    zip/push(one)
+  run-step(<zip>, zip)
+  save align, make list
+  align/push(<-f>)
+  align/push(<-p>)
+  align/push(<4>)
+  align/push(base)
+  align/push(aligned)
+  run-step(node-path/join(tools/build-tools, <zipalign>), align)
+
+  fork test, not(node-fs/exists-sync(keystore))
+    hold
+      node-fs/mkdir-sync(node-path/join(keystore, <..>), make(android-make-folder, bind(recursive, true)))
+      save key, make list
+      key/push(<-genkeypair>)
+      key/push(<-keystore>)
+      key/push(keystore)
+      key/push(<-storepass>)
+      key/push(<android>)
+      key/push(<-alias>)
+      key/push(<androiddebugkey>)
+      key/push(<-keypass>)
+      key/push(<android>)
+      key/push(<-keyalg>)
+      key/push(<RSA>)
+      key/push(<-keysize>)
+      key/push(<2048>)
+      key/push(<-validity>)
+      key/push(<10000>)
+      key/push(<-dname>)
+      key/push(<CN=Android Debug,O=Android,C=US>)
+      run-step(<keytool>, key)
+
+  save sign, make list
+  sign/push(<sign>)
+  sign/push(<--ks>)
+  sign/push(keystore)
+  sign/push(<--ks-pass>)
+  sign/push(<pass:android>)
+  sign/push(<--ks-key-alias>)
+  sign/push(<androiddebugkey>)
+  sign/push(<--key-pass>)
+  sign/push(<pass:android>)
+  sign/push(<--out>)
+  sign/push(apk)
+  sign/push(aligned)
+  run-step(node-path/join(tools/build-tools, <apksigner>), sign)
+
+# the toolchain script (toolchain.tree), read here before the libraries are listed, as the original read it outside
+# that step's guard: a missing script is thrown, not reported
+task compose-toolchain-script
+  like text
+
+  back toolchain-script()
+
+# why the build is skipped: the refusal's message, else the failure itself
+bind skip-reason
+  take problem, like dynamic
+  like text
+  case node
+    text <String($problem?.message ?? $problem)>
+
+# whether a text ends with another, by UTF-16 unit
+bind ends-with-units
+  take value, like text
+  take end, like text
+  like boolean
+  case node
+    text <$value.endsWith($end)>

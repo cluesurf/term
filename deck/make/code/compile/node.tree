@@ -1326,6 +1326,11 @@ form dock-take
   link short
     like text
     need false
+  # the long names beside `name`, in source order: `take ride, name watch` and each `name <word>` line under a take
+  # (decision term/003 part 2)
+  link aliases
+    like list, like text
+    need false
   link masked
     like boolean
     need false
@@ -1336,6 +1341,10 @@ form dock-take
     like maybe, like dock-literal
     need false
   link variadic
+    like boolean
+    need false
+  # a `slot` under a hook: bound by position, never a flag (decision term/003 part 1)
+  link positional
     like boolean
     need false
   link choices

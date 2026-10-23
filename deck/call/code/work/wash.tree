@@ -1,108 +1,28 @@
 load @term/call/work/home
   find root, name project-root
 
-load @term/call/work/tint
-  find log-good
-  find log-fail
-  find log-step
-  find log-warn
-  find fade
-  find name, name tint-name
-  find bold
-  find mark
-  find format-error
-
-# `term wash` -- remove a project's build artifacts.
+# `term wash [target]` -- remove a project's build artifacts: `deck`, the build output (the default); `tail`, the
+# logs; `boot`, what boot and cast write; `base`, the machine-wide module cache.
 #
-# EVERY NAME THE FOLDER HAS HAD, kept here on purpose. `.base/term/` became `.base/@cluesurf/term/` on 2026-08-30
-# and `.base/@term/code/` on 2026-10-05 (home.ts). The first rename left the old cache behind whole, and nothing ever
-# looked at it again: 13 GB of it in `deck/bind` alone by 2026-09-01. The second moves the folder and leaves a link,
-# but a move Windows refused leaves the old folder the live one, so a clean names all three.
-#
-# THE FIRST COMPILER-COUPLED CLI MODULE IN TERM, and the point it proves. `wash.ts` imports its colours from
-# `@term/make/code/tint`, a TypeScript module, and that looked like a reason it could not be ported. It is not: a
-# `dock load` takes a PACKAGE PATH as readily as a `<node:fs>`, which `@term/base/word` in the stdlib already
-# relies on. So a Term module can reach the existing toolchain on the TypeScript target and lose nothing.
-#
-# WHAT THAT DOES AND DOES NOT BUY. On TypeScript this is complete. On Rust the dock resolves to a module that does
-# not exist, so the verb is not native until whatever it docks is Term too. That is the honest shape of the
-# conversion: the source becomes `.tree` first, and each dock is then a named thing to replace, in one place, rather
-# than a TypeScript file nobody is looking at. See note/project/term/cli-in-term/readme.md.
+# The verb takes its hook's argument and hands it to the shipped handler (deck/call/code/wash.ts `callWash`), which
+# removes what is there and prints through the output library. It prints nothing of its own, catches nothing and
+# never exits: a throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term, part 2).
 
-load @term/base/path
-  find join
+# line.ts passed `target: argv.target`, absent when no target was named, and callWash tells absent from any word
+# (an unknown word is refused): so an absent target, which the hook hands over as the empty text, is left out of
+# the ask rather than passed as `""`
+form wash-ask
+  link root, like text
+  link target, like text
 
-load @term/base/file/directory
-  find remove, name remove-directory
-  find exists, name directory-exists
+form root-ask
+  link root, like text
 
-# The directories a build writes and a clean removes. Every cache path, for the reason above.
-task build-directories
-  like list, like text
+dock load
+  load <@term/call/code/wash>, name wash-module
 
-  back
-    make list
-      <host>
-      <make>
-      <hold>
-      <.base/@term/code/cache>
-      <.base/@cluesurf/term/cache>
-      <.base/term/cache>
-
-# `term wash tail` clears the logs and nothing else
-task wash-logs
-  mark async
-  take root, like text
-
-  like void
-
-  log-step <Clearing logs...>
-
-  save log-directory
-    join join(root, <.base/@term/code>), <log>
-  fork test
-    directory-exists log-directory
-    hold
-      remove-directory log-directory
-  log-good <Logs cleared>
-
-# `term wash` with no target removes every build directory that is there
-task wash-build
-  mark async
-  take root, like text
-
-  like void
-
-  log-step <Cleaning build artifacts...>
-  save cleaned, code 0
-
-  walk
-    call build-directories
-    take site, name directory
-    save full, join root, directory
-    fork test
-      directory-exists full
-      hold
-        remove-directory full
-        show-removed directory
-        save cleaned, add cleaned, code 1
-  fork test
-    is-above cleaned, code 0
-    hold
-      log-good <Cleaned {{cleaned}} directories>
-      send back
-  log-good <Nothing to clean>
-
-# one removed directory, in the faded colour the rest of the CLI uses for detail
-task show-removed
-  take directory, like text
-
-  like void
-
-  log-step fade <    removed {{directory}}/>
-
-# `term wash [target]`: the verb the command tree binds. `tail` clears the logs; anything else cleans the build.
 task wash
+  mark async
   take target, like text
 
   like void
@@ -110,8 +30,15 @@ task wash
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
   fork test
-    is-equal target, <tail>
+    is-equal target, <>
     hold
-      wash-logs root
+      call wash-module/callWash
+        make root-ask
+          bind root, read root
+        wait true
       send back
-  wash-build root
+  call wash-module/callWash
+    make wash-ask
+      bind root, read root
+      bind target, read target
+    wait true

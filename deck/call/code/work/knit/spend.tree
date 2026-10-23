@@ -1,0 +1,332 @@
+# `term knit`'s money and its limits, ported from call/code/knit-plan.ts (term-cli-in-term-0044): the price of a
+# request from the usage the API reported, the HARD spend cap, and the round control. Every task is a plain function
+# of its input (note/project/term/assurance/prove-loop).
+#
+# A usage is the API's own record (`input_tokens`, `cache_creation`, ...), read as a host value: each field may be
+# absent or null, and reads as 0 then, as the original's `?? 0`.
+
+load @term/base/maybe
+  find maybe
+
+# ---- reading the API's usage ----
+
+# `value ?? 0`
+bind knit-count
+  take value, like dynamic
+  like float
+  case node
+    text <($value ?? 0)>
+
+bind usage-input-tokens
+  take usage, like dynamic
+  like dynamic
+  case node
+    text <$usage.input_tokens>
+
+bind usage-output-tokens
+  take usage, like dynamic
+  like dynamic
+  case node
+    text <$usage.output_tokens>
+
+bind usage-cache-read-tokens
+  take usage, like dynamic
+  like dynamic
+  case node
+    text <$usage.cache_read_input_tokens>
+
+bind usage-cache-write-tokens
+  take usage, like dynamic
+  like dynamic
+  case node
+    text <$usage.cache_creation_input_tokens>
+
+# the write split by TTL, or a falsy value when the API did not split it
+bind usage-write-split
+  take usage, like dynamic
+  like dynamic
+  case node
+    text <$usage.cache_creation>
+
+bind split-5m-tokens
+  take split, like dynamic
+  like dynamic
+  case node
+    text <$split.ephemeral_5m_input_tokens>
+
+bind split-1h-tokens
+  take split, like dynamic
+  like dynamic
+  case node
+    text <$split.ephemeral_1h_input_tokens>
+
+# `Boolean(value)`
+bind knit-truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# ---- the arithmetic, as the original wrote it ----
+
+# `Math.max(a, b)`
+bind knit-larger
+  take a, like float
+  take b, like float
+  like float
+  case node
+    text <Math.max($a, $b)>
+
+# `value / 1_000_000`, a float divide
+bind per-million
+  take value, like float
+  like float
+  case node
+    text <($value / 1000000)>
+
+# `$` and the amount, four places under a dollar and two from one
+bind dollar-text
+  take amount, like float
+  like text
+  case node
+    text <<(String.fromCharCode(36) + $amount.toFixed($amount < 1 ? 4 : 2))>>
+
+# ---- the price ----
+
+# dollars per million tokens. A 5-minute cache write is 1.25 times input, a 1-hour write 2 times, a read the model's
+# own rate (claude-api skill, cached 2026-10-06; shared/prompt-caching.md "Economics")
+form price
+  link input, like float
+  link output, like float
+  link cache-read, like float
+  link write5m, like float
+  link write1h, like float
+
+form priced-model
+  link model, like text
+  link price, like price
+
+# PRICES, in the original's order
+task list-prices
+  like list, like priced-model
+
+  save prices, make list
+  prices/push make(priced-model, bind(model, <claude-opus-5-5>), bind(price, make(price, bind(input, 4), bind(output, 20), bind(cache-read, 0.2), bind(write5m, 5), bind(write1h, 8))))
+  prices/push make(priced-model, bind(model, <claude-opus-5>), bind(price, make(price, bind(input, 5), bind(output, 25), bind(cache-read, 0.5), bind(write5m, 6.25), bind(write1h, 10))))
+  prices/push make(priced-model, bind(model, <claude-opus-4-8>), bind(price, make(price, bind(input, 5), bind(output, 25), bind(cache-read, 0.5), bind(write5m, 6.25), bind(write1h, 10))))
+  prices/push make(priced-model, bind(model, <claude-sonnet-5-5>), bind(price, make(price, bind(input, 2), bind(output, 10), bind(cache-read, 0.2), bind(write5m, 2.5), bind(write1h, 4))))
+  prices/push make(priced-model, bind(model, <claude-fable-5-1>), bind(price, make(price, bind(input, 10), bind(output, 50), bind(cache-read, 0.25), bind(write5m, 12.5), bind(write1h, 20))))
+  back prices
+
+# the price of a listed model, none for any other
+task listed-price
+  take model, like text
+  like maybe, like price
+
+  walk list-prices()
+    take one
+    fork test, is-equal(one/model, model)
+      hold
+        back make(some, one/price)
+  back make none
+
+# whether the model is listed (the original's `model in PRICES`)
+task is-priced
+  take model, like text
+  like boolean
+
+  sift listed-price(model)
+    case some
+      back true
+    case none
+      back false
+
+# CEILING: the most any listed model charges for each kind of token, what an unlisted model, or a request a fallback
+# model served, is priced at, so the cap can only be reached early, never late
+task ceiling-price
+  like price
+
+  save top, make(price, bind(input, 0), bind(output, 0), bind(cache-read, 0), bind(write5m, 0), bind(write1h, 0))
+  walk list-prices()
+    take one
+    save top, make(price, bind(input, knit-larger(top/input, one/price/input)), bind(output, knit-larger(top/output, one/price/output)), bind(cache-read, knit-larger(top/cache-read, one/price/cache-read)), bind(write5m, knit-larger(top/write5m, one/price/write5m)), bind(write1h, knit-larger(top/write1h, one/price/write1h)))
+  back top
+
+task price-of
+  take model, like text
+  like price
+
+  sift listed-price(model)
+    case some
+      back value
+    case none
+      back ceiling-price()
+
+# what one request cost. A cache write the API did not split by TTL is priced as the dearer 1-hour write
+task cost-of
+  take usage, like dynamic
+  take price, like price
+  like float
+
+  save written, knit-count(usage-cache-write-tokens(usage))
+  save split, usage-write-split(usage)
+  save write5m, 0.0
+  save write1h, written
+  fork test, knit-truth(split)
+    hold
+      save write5m, knit-count(split-5m-tokens(split))
+      save write1h, knit-count(split-1h-tokens(split))
+  save unsplit, knit-larger(0, subtract(subtract(written, write5m), write1h))
+  save sum, multiply(knit-count(usage-input-tokens(usage)), price/input)
+  save sum, add(sum, multiply(knit-count(usage-output-tokens(usage)), price/output))
+  save sum, add(sum, multiply(knit-count(usage-cache-read-tokens(usage)), price/cache-read))
+  save sum, add(sum, multiply(write5m, price/write5m))
+  save sum, add(sum, multiply(add(write1h, unsplit), price/write1h))
+  back per-million(sum)
+
+# the input a request sent, every kind together
+task input-of
+  take usage, like dynamic
+  like float
+
+  save sent, add(knit-count(usage-input-tokens(usage)), knit-count(usage-cache-read-tokens(usage)))
+  back add(sent, knit-count(usage-cache-write-tokens(usage)))
+
+# ---- the cap ----
+
+# what a run has spent, and the last request's input and output: the next request sends both again, as history
+form spend-total
+  link dollars, like float
+  link requests, like float
+  link input, like float
+  link output, like float
+  link cache-read, like float
+  link cache-write, like float
+  link last-input, like float
+  link last-output, like float
+
+task no-spend
+  like spend-total
+
+  back make(spend-total, bind(dollars, 0), bind(requests, 0), bind(input, 0), bind(output, 0), bind(cache-read, 0), bind(cache-write, 0), bind(last-input, 0), bind(last-output, 0))
+
+task spend
+  take total, like spend-total
+  take usage, like dynamic
+  take price, like price
+  like spend-total
+
+  save dollars, add(total/dollars, cost-of(usage, price))
+  save requests, add(total/requests, 1)
+  save input, add(total/input, knit-count(usage-input-tokens(usage)))
+  save output, add(total/output, knit-count(usage-output-tokens(usage)))
+  save cache-read, add(total/cache-read, knit-count(usage-cache-read-tokens(usage)))
+  save cache-write, add(total/cache-write, knit-count(usage-cache-write-tokens(usage)))
+  save last-input, input-of(usage)
+  save last-output, knit-count(usage-output-tokens(usage))
+  back make(spend-total, bind(dollars, dollars), bind(requests, requests), bind(input, input), bind(output, output), bind(cache-read, cache-read), bind(cache-write, cache-write), bind(last-input, last-input), bind(last-output, last-output))
+
+form worst-ask
+  link price, like price
+  link max-tokens, like float
+  link first-input, like float
+  link grow, like float
+
+# the most the NEXT request can cost: every token of its input unread from the cache and written to it at the 1-hour
+# rate (the dearest way in), and every token of `maxTokens` written out. Its input is the last request's, the last
+# answer (now history) and `grow`, the tokens the loop added since (tool results, a nudge); the first is `firstInput`
+task worst-next
+  take total, like spend-total
+  take input, like worst-ask
+  like float
+
+  save sent, input/first-input
+  fork test, is-unequal(total/requests, 0)
+    hold
+      save sent, add(total/last-input, total/last-output)
+  save sent, add(sent, input/grow)
+  save rate, knit-larger(input/price/input, input/price/write1h)
+  back per-million(add(multiply(sent, rate), multiply(input/max-tokens, input/price/output)))
+
+# THE HARD CAP: a request is sent only when what was spent plus the worst the request can cost stays within the cap,
+# so a run never spends past it, whatever the model writes
+task may-ask
+  take total, like spend-total
+  take cap, like float
+  take worst, like float
+  like boolean
+
+  back not(is-above(add(total/dollars, worst), cap))
+
+task dollars
+  take amount, like float
+  like text
+
+  back dollar-text(amount)
+
+# ---- the rounds ----
+
+# a ROUND is one `term hold` the loop runs. A TURN is one request to the model. A run stops at whichever limit comes
+# first, and says which
+form limits
+  link rounds, like number
+  link turns, like number
+  link minutes, like number
+  link cap, like float
+
+form progress
+  link rounds, like number
+  link turns, like number
+  link started, like number
+  link now, like number
+  link spend, like spend-total
+  link holds, like boolean
+  link finished, like boolean
+
+# `{ stop: false }`, or `{ stop: true, reason, message }`
+form stop-answer
+  link stop, like boolean
+  link reason
+    like maybe, like text
+    need false
+  link message
+    like maybe, like text
+    need false
+
+task go-on
+  like stop-answer
+
+  back make(stop-answer, bind(stop, false))
+
+task stop-with
+  take reason, like text
+  take message, like text
+  like stop-answer
+
+  back make(stop-answer, bind(stop, true), bind(reason, make(some, reason)), bind(message, make(some, message)))
+
+task stop-of
+  take progress, like progress
+  take limits, like limits
+  take worst, like float
+  like stop-answer
+
+  fork test, and(progress/finished, progress/holds)
+    hold
+      back stop-with(<holds>, <The project holds>)
+  fork test, not(is-below(progress/rounds, limits/rounds))
+    hold
+      back stop-with(<rounds>, <Stopped after {progress/rounds} rounds of term hold, the limit (--rounds)>)
+  fork test, not(is-below(progress/turns, limits/turns))
+    hold
+      back stop-with(<turns>, <Stopped after {progress/turns} requests to the model, the limit (--turns)>)
+  fork test, not(is-below(subtract(progress/now, progress/started), multiply(limits/minutes, 60000)))
+    hold
+      back stop-with(<time>, <Stopped after {limits/minutes} minutes, the limit (--minutes)>)
+  fork test, not(may-ask(progress/spend, limits/cap, worst))
+    hold
+      save spent, dollars(progress/spend/dollars)
+      save most, dollars(worst)
+      save cap, dollars(limits/cap)
+      back stop-with(<cap>, <Stopped at the spend cap: {spent} spent, and the next request could cost up to {most}, past the cap of {cap} (--cap)>)
+  back go-on()

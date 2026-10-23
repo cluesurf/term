@@ -15,6 +15,9 @@
 // module's compile read. Each module is therefore keyed by EVERY observation the process made up to the end of its own
 // compile, never only its own. A read the trace cannot describe (a file descriptor, `openSync`, a stream) marks the
 // process UNTRACKABLE from that point on, and an untrackable module is never skipped.
+//
+// It also keeps, per compile, the `.tree` sources that compile read (openWindow / closeWindow), which port-build
+// checks again just before it writes the port, so a run never writes output of a source that has since changed.
 
 import fs from 'node:fs'
 import { createHash } from 'node:crypto'
@@ -140,6 +143,22 @@ function note(op: string, path: unknown): void {
   }
 }
 
+// THE SOURCES OF ONE COMPILE (term-cli-in-term-0151), for port-build's check at write time. While a window is open,
+// every `.tree` file read is written down with the hash of what it held then, the first read of each, whether or not
+// the trace saw it before (the trace keeps only a file's FIRST observation in the process). A port is emitted whole,
+// with every module it loads, so its output is stale once any of these has changed
+let window: Map<string, string> | undefined
+
+export function openWindow(): void {
+  window = new Map()
+}
+
+export function closeWindow(): Map<string, string> {
+  const read = window ?? new Map<string, string>()
+  window = undefined
+  return read
+}
+
 // a wrapper that records the observation, then calls through. Calls the original makes into `fs` itself (Node's
 // `readFileSync` opens, stats and reads through the module object) are inside it and not observed again
 function wrap<F extends (...args: any[]) => any>(original: F, op: string | null): F {
@@ -150,6 +169,14 @@ function wrap<F extends (...args: any[]) => any>(original: F, op: string | null)
       }
     } else {
       note(op, args[0])
+
+      if (op === 'read' && window && depth === 0) {
+        const at = absolute(args[0])
+
+        if (at?.endsWith('.tree') && !window.has(at)) {
+          window.set(at, observe('read', at))
+        }
+      }
     }
 
     depth++

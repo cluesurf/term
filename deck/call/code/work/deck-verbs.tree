@@ -1,47 +1,19 @@
 load @term/call/work/home
   find root, name project-root
 
-load @term/call/work/tint
-  find log-good
-  find log-fail
-  find log-step
-  find log-warn
-  find fade
-  find name, name tint-name
-  find bold
-  find mark
-  find format-error
+load @term/call/work/small/dependency-load
+  find call-load
+
+load @term/call/work/small/dependency-edit
+  find call-save
+  find call-toss
 
 # The package verbs: `term load`, `term save`, `term toss`.
 #
-# Each is the same three steps -- say what is starting, do it, say whether it held -- so they sit together rather
-# than in three files of thirty lines that differ by one call.
-#
-# THEY DOCK TWO TYPESCRIPT MODULES. `@cluesurf/deck.tree` is the package manager and `@term/make/code/tint` is the
-# CLI's colour, and neither is Term yet. A `dock load` takes a package path as readily as a `<node:fs>`, so a Term
-# module reaches both and loses nothing on the TypeScript target. On a native target the docks resolve to modules
-# that are not there, which is the honest state of the conversion: the source is `.tree` first, and each dock is
-# then one named thing to replace rather than a TypeScript file nobody is looking at.
-#
-# Ported from deck/call/code/{load,save,toss}.ts (cli-in-term-0004).
-
-# THE ARGUMENT IS AN OBJECT, and it has to be built as one. A `bind <name>, <value>` under a `call` is a NAMED
-# argument that the checker places by the callee's declared position -- and a DOCKED function has no declared
-# positions, so the binds emit positionally: `install(root, clean, offline)` where the TypeScript expects
-# `install({ root, clean, offline })`. That compiles, runs, and passes the wrong thing. A `form` gives the object
-# a shape and `make` builds a real object literal.
-form install-ask
-  link root, like text
-  link clean, like boolean
-  link offline, like boolean
-
-form deck-ask
-  link root, like text
-  link name, like text
-
-dock load
-  load <@cluesurf/deck.tree>, name deck-tree
-  load <node:process>, name node-process
+# Each takes its hook's arguments, maps them as line.ts's command does, and hands them to the handler: the small
+# lane's ports of deck/call/code/{load,save,toss}.ts (work/small/dependency-load.tree and dependency-edit.tree),
+# which open the run, print through the output library and close it. A verb here prints nothing of its own, catches
+# nothing and never exits: a throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term, part 2).
 
 # `term load`: install every dependency the manifest names
 task load
@@ -53,72 +25,27 @@ task load
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  log-step <Installing dependencies...>
+  call-load(root, clean, offline)
 
-  fork
-    mark unsafe
-    call deck-tree/install
-      make install-ask
-        bind root, read root
-        bind clean, read clean
-        bind offline, read offline
-      wait true
-    call log-good, text <Dependencies installed>
-  halt take
-    take error
-    log-fail format-error error
-    node-process/exit code 1
-
-# `term save <deck>`: add a dependency
+# `term save [deck] [mark]`: add a dependency, accepting the versions `mark` names (line.ts passes it as
+# `constraint`)
 task save
   mark async
   take deck, like text
+  # the hook's `mark`, by position: `mark` is a metadata word, so the parameter is named for what it holds
+  take constraint, like text
 
   like void
 
-  # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  fork test
-    is-equal read(deck), <>
-    hold
-      log-fail <Missing deck name. Usage: term save <deck>>
-      node-process/exit code 1
-  log-step <Adding {{deck}}...>
+  call-save(root, deck, constraint)
 
-  fork
-    mark unsafe
-    call deck-tree/addDependency
-      make deck-ask, bind(root, read root), bind name, read deck
-      wait true
-    call log-good, text <Added {{deck}}>
-  halt take
-    take error
-    log-fail format-error error
-    node-process/exit code 1
-
-# `term toss <deck>`: remove a dependency
+# `term toss [deck]`: remove a dependency
 task toss
   mark async
   take deck, like text
 
   like void
 
-  # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  fork test
-    is-equal read(deck), <>
-    hold
-      log-fail <Missing deck name. Usage: term toss <deck>>
-      node-process/exit code 1
-  log-step <Removing {{deck}}...>
-
-  fork
-    mark unsafe
-    call deck-tree/removeDependency
-      make deck-ask, bind(root, read root), bind name, read deck
-      wait true
-    call log-good, text <Removed {{deck}}>
-  halt take
-    take error
-    log-fail format-error error
-    node-process/exit code 1
+  call-toss(root, deck)

@@ -1,0 +1,118 @@
+# Where `term boot` finds what it builds: the project root holding the `link/` package links, the entry module's file,
+# and the app's package directory. Ported from call/code/boot.ts (`findProjectRoot`, `resolveEntry`, `findEntry`,
+# `findAppDir`), part 1 of that file, term-cli-in-term-0022.
+#
+# `find-entry` and `find-app-dir` answer the path or undefined, as the original did, so the ports that dock boot.ts
+# today (`value-or(boot-module/find-entry(...))`) read the same answer from these. The entry a caller gives may be
+# undefined, the empty text or a path, read by its truth as `if (entry)` read it.
+
+load ../build/tree-finding
+  find resolve-tree-file
+
+load @term/call/boot-plan
+  find boot-path-of
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+
+# `undefined`, the original's answer for nothing found
+bind boot-no-path
+  like dynamic
+  case node
+    text <undefined>
+
+# a given entry as a text: the empty text for undefined or anything that is not a text
+task given-text
+  take value, like unknown
+  like text
+  mark private
+
+  sift value
+    case text
+      back value
+    miss
+      back <>
+
+# the directory (cwd or an ancestor) that holds the `link/` package links a build resolves through; falls back to cwd
+task find-project-root
+  take start, like text
+  like text
+
+  save dir, start
+  walk test
+    hook test, true
+    hook hold
+      fork test, node-file/exists-sync(node-path/join(dir, <link>))
+        hold
+          back dir
+      save up, node-path/dirname(dir)
+      fork test, is-equal(up, dir)
+        hold
+          back start
+      save dir, up
+  back start
+
+# a bare entry path resolved to its on-disk `.tree` file. A `boot ./hook/blog` directive names the module, not the file,
+# so Term's candidate order applies (`hook/blog.tree`, `hook/blog/base.tree`, ...). An already-exact path is taken as-is
+task resolve-entry
+  take base, like text
+  like dynamic
+  mark private
+
+  save found, resolve-tree-file(base)
+  fork test, is-unequal(found, <>)
+    hold
+      back found
+  fork test, node-file/exists-sync(base)
+    hold
+      back base
+  back boot-no-path()
+
+# the entry module's file: an explicit argument, or the `boot <path>` directive in the nearest `deck.tree` manifest
+task find-entry
+  take cwd, like text
+  take entry, like dynamic
+  like dynamic
+
+  save named, given-text(entry)
+  fork test, is-unequal(named, <>)
+    hold
+      back resolve-entry(node-path/resolve(cwd, named))
+  save dir, cwd
+  walk test
+    hook test, true
+    hook hold
+      save manifest, node-path/join(dir, <deck.tree>)
+      fork test, node-file/exists-sync(manifest)
+        hold
+          save line, boot-path-of(node-file/read-file-sync(manifest, <utf8>))
+          fork test, is-unequal(line, <>)
+            hold
+              back resolve-entry(node-path/resolve(dir, line))
+          back boot-no-path()
+      save up, node-path/dirname(dir)
+      fork test, is-equal(up, dir)
+        hold
+          back boot-no-path()
+      save dir, up
+  back boot-no-path()
+
+# the app package directory: the nearest ancestor (of the entry, else cwd) holding a `deck.tree` manifest
+task find-app-dir
+  take start, like text
+  like dynamic
+
+  save dir, start
+  walk test
+    hook test, true
+    hook hold
+      fork test, node-file/exists-sync(node-path/join(dir, <deck.tree>))
+        hold
+          back dir
+      save up, node-path/dirname(dir)
+      fork test, is-equal(up, dir)
+        hold
+          back boot-no-path()
+      save dir, up
+  back boot-no-path()

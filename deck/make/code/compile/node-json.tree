@@ -3168,6 +3168,13 @@ task json-of-dock-take
   fork test, and(enters(skip-keys, <short>), is-unequal(subject/short, <>))
     hold
       push(members, <"short":{json-quote(subject/short)}>)
+  fork test, and(enters(skip-keys, <aliases>), is-above(subject/aliases/length, 0))
+    hold
+      save parts-94, make list
+      walk subject/aliases
+        take one
+        push(parts-94, json-quote(one))
+      push(members, <"aliases":[{join(parts-94, <,>)}]>)
   fork test, and(enters(skip-keys, <masked>), subject/masked)
     hold
       push(members, <"masked":{flag-json(subject/masked)}>)
@@ -3176,8 +3183,8 @@ task json-of-dock-take
       push(members, <"note":{json-quote(subject/note)}>)
   fork test, enters(skip-keys, <fallback>)
     hold
-      save held-94, subject/fallback
-      sift held-94
+      save held-95, subject/fallback
+      sift held-95
         case some
           link inner
           push(members, <"fallback":{json-of-dock-literal(skip-keys, inner)}>)
@@ -3186,13 +3193,16 @@ task json-of-dock-take
   fork test, and(enters(skip-keys, <variadic>), subject/variadic)
     hold
       push(members, <"variadic":{flag-json(subject/variadic)}>)
+  fork test, and(enters(skip-keys, <positional>), subject/positional)
+    hold
+      push(members, <"positional":{flag-json(subject/positional)}>)
   fork test, and(enters(skip-keys, <choices>), is-above(subject/choices/length, 0))
     hold
-      save parts-95, make list
+      save parts-96, make list
       walk subject/choices
         take one
-        push(parts-95, json-quote(one))
-      push(members, <"choices":[{join(parts-95, <,>)}]>)
+        push(parts-96, json-quote(one))
+      push(members, <"choices":[{join(parts-96, <,>)}]>)
   fork test, enters(skip-keys, <span>)
     hold
       push(members, <"span":{json-of-span(skip-keys, subject/span)}>)
@@ -3271,11 +3281,11 @@ task json-of-dock-call
       push(members, <"args":{json-of-dock-argument-list(skip-keys, subject/args)}>)
   fork test, and(enters(skip-keys, <params>), is-above(subject/params/length, 0))
     hold
-      save parts-96, make list
+      save parts-97, make list
       walk subject/params
         take one
-        push(parts-96, json-quote(one))
-      push(members, <"params":[{join(parts-96, <,>)}]>)
+        push(parts-97, json-quote(one))
+      push(members, <"params":[{join(parts-97, <,>)}]>)
   fork test, enters(skip-keys, <span>)
     hold
       push(members, <"span":{json-of-span(skip-keys, subject/span)}>)
@@ -3308,8 +3318,8 @@ task json-of-dock-send
       push(members, <"name":{json-quote(subject/name)}>)
   fork test, enters(skip-keys, <value>)
     hold
-      save held-97, subject/value
-      sift held-97
+      save held-98, subject/value
+      sift held-98
         case some
           link inner
           push(members, <"value":{json-of-expression(skip-keys, inner)}>)

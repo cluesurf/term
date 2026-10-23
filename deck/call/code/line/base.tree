@@ -31,6 +31,13 @@
 # from argv. Every verb used to take one as its first parameter, so binding them all at once failed on
 # `hook form` handing its variadic `paths` to a `root: text`. A verb reads the root now (`work/home`'s
 # `root`, over `environment/directory`) instead of being handed it.
+#
+# FOUR VERBS ARE REACHED THROUGH A TASK OF THIS FILE. A hook's `task <name>` is no reference the build binds or keeps:
+# the route carries the name as text, and a found task nothing calls is left out of the program. For most verbs the
+# name still meets the task, but `make`, `test`, `walk` and `mark` were not in the emitted console at all (it holds
+# a `testIn00` and a `walkIn00`, other tasks of the closure renamed apart from these), so the console bundled
+# as host/term-line.js had no `make` to run (term-cli-in-term-0012). Each is found under a name of its own and called
+# by a task here (at the end of the file), whose name the hook binds.
 
 load @term/call/work/app-verbs
   find bind
@@ -49,8 +56,8 @@ load @term/call/work/app-verbs
   find fill
   find host
   find show
-  find test
-  find walk
+  find test, name test-verb
+  find walk, name walk-verb
 
 load @term/call/work/base-verbs
   find base-check
@@ -65,6 +72,10 @@ load @term/call/work/base-verbs
   find base-show
   find base-status
   find base-tag
+
+# `base project`, which no verb file binds yet (work/dispatch.tree says why it is there)
+load @term/call/work/dispatch
+  find base-project
 
 load @term/call/work/deck-verbs
   find load
@@ -102,7 +113,7 @@ load @term/call/work/machine
   find base-import
 
 load @term/call/work/make
-  find make
+  find make, name make-verb
 
 load @term/call/work/mind
   find mind
@@ -126,7 +137,7 @@ load @term/call/work/tool-verbs
   find hold
   find time
   find zone
-  find mark
+  find mark, name mark-verb
 
 load @term/call/work/wake
   find wake
@@ -501,7 +512,7 @@ hook make
   # With --build or --run: the task the program starts at (default run, else boot, else main)
   take main
     like text
-  task make
+  task make-project
 
 # Type-check a file and report diagnostics (the verifier)
 hook scan
@@ -557,7 +568,7 @@ hook test
   # Write what each `want snapshot` sees into the test file's snapshot file, instead of comparing against it
   take update
     like boolean
-  task test
+  task test-project
 
 # Run benchmarks, or profile a file with --cpu / --memory
 hook time
@@ -599,9 +610,9 @@ hook time
 # Compare emitted code with hand-written code per target (time: time-* tasks)
 hook mark
   # a filter on <family>/<program>, or `list`; then --target, --runs, --quick, --check, --size, --export, --markdown, --purpose, --label
-  take rest
+  slot rest
     like list, like text
-  task mark
+  task mark-bench
 
 # Compile and run an app, in development (the default) or production
 hook boot
@@ -691,7 +702,7 @@ hook wash
 
 # Start REPL
 hook walk
-  task walk
+  task walk-project
 
 # Version management
 hook move
@@ -713,7 +724,7 @@ hook note
 # Format .tree files into canonical layout
 hook form
   # Files or directories to format (default: current directory)
-  take paths
+  slot paths
     like list, like text
   # Report which files would change without writing (for CI)
   take check
@@ -817,7 +828,7 @@ hook view
 # Lint .tree files for style and correctness
 hook lint
   # Files or directories to lint (default: current directory)
-  take paths
+  slot paths
     like list, like text
   # Apply autofixes in place
   take fix
@@ -828,7 +839,7 @@ hook lint
 # non-zero exit
 hook hold
   # Files or directories to verify (default: current directory)
-  take paths
+  slot paths
     like list, like text
   # Also run the cross-backend differential
   take cross
@@ -896,7 +907,7 @@ hook show
 # Secrets and environment: run a command with a zone's values, and manage them
 hook zone
   # The zone verb and its arguments
-  take rest
+  slot rest
     like list, like text
   task zone
 
@@ -904,3 +915,44 @@ hook zone
 # Print the shell completion script (add to your shell rc file)
 hook fill
   task fill
+
+# The four verbs a hook cannot bind by their own name (see the top of the file): each task takes its hook's takes by
+# name and calls the verb.
+task make-project
+  take ride, like boolean
+  take separate, like boolean
+  take merged, like boolean
+  take explain, like boolean
+  take trees, like boolean
+  like void
+  call make-verb
+    read ride
+    read separate
+    read merged
+    read explain
+    read trees
+
+task test-project
+  take filter, like text
+  take merged, like boolean
+  take case, like text
+  take env, like text
+  take ride, like boolean
+  like void
+  call test-verb
+    read filter
+    read merged
+    read case
+    read env
+    read ride
+
+task walk-project
+  like void
+  call walk-verb
+
+task mark-bench
+  take rest
+    like list, like text
+  like void
+  call mark-verb
+    read rest

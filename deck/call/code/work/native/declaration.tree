@@ -1,0 +1,34 @@
+# The declarations a platform requires before it grants a device capability, derived from the capability runtimes a
+# program's native half holds, in the shapes device-declare.ts gave its callers: the usage strings as a record by key.
+# The table and every decision on it are call/code/device-grant.tree. Port of deck/call/code/device-declare.ts
+# (cli-in-term-0034).
+
+load @term/call/device-grant
+  find android-permissions, name grant-android-permissions
+  find apple-usage, name grant-apple-usage
+  find permission-lines, name grant-permission-lines
+
+load ./native-value
+  find usage-record
+
+# the Android permissions a program's native half needs, each once, in a stable order
+task android-permissions
+  take native, like text
+  like list, like text
+
+  back grant-android-permissions(native)
+
+# the Info.plist usage strings a program's native half needs, by key. Two runtimes sharing a key (the camera and its
+# light) keep the first one's text
+task apple-usage
+  take native, like text
+  like dynamic
+
+  back usage-record(grant-apple-usage(native))
+
+# the manifest lines for those permissions
+task permission-lines
+  take native, like text
+  like list, like text
+
+  back grant-permission-lines(native)

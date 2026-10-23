@@ -1,0 +1,228 @@
+# The editor-facing analysis: run the compiler on a document and turn its output into the shapes an LSP client wants.
+# `analyze` produces diagnostics (errors and warnings, with ranges) plus the typed program; `hover-at` answers a hover
+# request by finding the narrowest typed expression under the cursor. Pure: no streams, no document store.
+#
+# Ported from analyze.ts (term-cli-in-term-0099). The decisions:
+#   - the compiler is still compile/compile.ts, reached by `dock load`; `{ ...options, optimize: false }` is a host
+#     expression, so every option a caller hands in (resolve, cache, roleOf, role, lean) reaches it as it did. The
+#     options are required: a caller with none passes an empty record
+#   - `hoverAt` answers a maybe, not undefined
+#   - `forEachExpression(program, visit)` is symbol-index.tree's `expressions-of(program)`, the same walk in the same
+#     order (call/code/reach-graph.tree `statements-in`); hover reads that walk here directly, since symbol-index
+#     docks this module's original for `within` until the flow integrate
+#   - `SEVERITY` is written out in `severity-number`; `code` is unknown, so a lint finding's `L003` fits as it did
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/make/parser/diagnostic
+  find position
+  find span
+  find diagnostic
+  find severity
+
+load @term/make/compile/node
+  find expression
+  find statement
+  find expression-type
+  find expression-span
+
+load @term/make/compile/type-text
+  find show-type
+
+load @term/call/reach-graph
+  find statements-in
+
+load ./geometry
+  find lsp-position
+  find lsp-range
+
+dock load
+  load <@term/make/code/compile/compile>, name compile-module
+
+form related-location
+  link uri, like text
+  link range, like lsp-range
+
+# the place in ANOTHER file a diagnostic is about (an error inside an imported module)
+form related-information
+  link location, like related-location
+  link message, like text
+
+form lsp-diagnostic
+  link range, like lsp-range
+  link severity, like number
+  # the compiler's permanent numeric code, or a lint rule's `L003`
+  link code, like unknown
+  link source, like text
+  link message, like text
+  link related-information
+    like maybe, like list, like related-information
+    need false
+  # a lint finding's fix, carried so a code action can apply it without re-linting
+  link data
+    like maybe, like unknown
+    need false
+
+# the document the compiler reads
+form source-document
+  link file, like text
+  link text, like text
+
+form analysis
+  link diagnostics, like list, like lsp-diagnostic
+  link program
+    like maybe, like list, like statement
+    need false
+
+# `{ ...options, optimize: false }`: the editor needs the un-optimized program (every call site intact for navigation
+# and find-references), not the inlined, specialized shape the build emits
+bind unoptimized
+  take options, like dynamic
+  like dynamic
+  case node
+    text <(\{ ...$options, optimize: false \})>
+
+# LSP geometry is 0-based line and character, exactly the compiler's own coordinates, so a span maps across unchanged
+task to-range
+  take where, like span
+  like lsp-range
+
+  back
+    make lsp-range
+      bind start, make(lsp-position, bind(line, where/start/line), bind(character, where/start/column))
+      bind end, make(lsp-position, bind(line, where/end/line), bind(character, where/end/column))
+
+task severity-number
+  take level, like severity
+  like number
+  mark private
+
+  save given, level
+  save number, 3
+  sift given
+    case error
+      save number, 1
+    case warning
+      save number, 2
+    case info
+      save number, 3
+  back number
+
+# a hint that is a non-empty text, as a maybe: an absent hint and an empty one read alike, as `d.hint ?` read them
+task present-text
+  take value, like unknown
+  like maybe, like text
+  mark private
+
+  sift value
+    case text
+      fork test, is-unequal(value, <>)
+        hold
+          back make(some, value)
+    miss
+      back make none
+  back make none
+
+# one compiler diagnostic to the LSP shape (shared by the whole-program and incremental analyzers)
+task to-lsp-diagnostic
+  take found, like diagnostic
+  like lsp-diagnostic
+
+  save message, found/message
+  save hint, present-text(found/hint)
+  sift hint
+    case some
+      link given
+      save message, <{found/message} ({given})>
+    case none
+      save skipped, true
+  back
+    make lsp-diagnostic
+      bind range, to-range(found/span)
+      bind severity, severity-number(found/severity)
+      bind code, found/code
+      bind source, <term>
+      bind message, message
+
+task lsp-diagnostics-of
+  take found, like list, like diagnostic
+  like list, like lsp-diagnostic
+  mark private
+
+  save out, make list
+  walk found
+    take one
+    push(out, to-lsp-diagnostic(one))
+  back out
+
+task analyze
+  take document, like source-document
+  take options, like dynamic
+  like analysis
+
+  save result, compile-module/compile(document, unoptimized(options))
+  fork test, result/ok
+    miss
+      back make(analysis, bind(diagnostics, lsp-diagnostics-of(result/diagnostics)))
+  save program, result/program
+  back
+    make analysis
+      bind program, make(some, program)
+      bind diagnostics, lsp-diagnostics-of(result/warnings)
+
+# position `at` is within the span (inclusive), comparing line then column
+task within
+  take where, like span
+  take at, like lsp-position
+  like boolean
+
+  save after, or(is-above(at/line, where/start/line), and(is-equal(at/line, where/start/line), is-minimum(at/character, where/start/column)))
+  fork test, after
+    miss
+      back false
+  back or(is-below(at/line, where/end/line), and(is-equal(at/line, where/end/line), is-maximum(at/character, where/end/column)))
+
+# the size of a span, for picking the narrowest match (a small column delta on one line beats a multi-line span)
+task span-size
+  take where, like span
+  like number
+  mark private
+
+  back add(multiply(subtract(where/end/line, where/start/line), 100000), subtract(where/end/column, where/start/column))
+
+# the inferred type of the narrowest typed expression under the cursor, as a text
+task hover-at
+  take program, like list, like statement
+  take position, like lsp-position
+  like maybe, like text
+
+  save nodes, make list
+  statements-in(program, nodes)
+  save found, false
+  save best-size, 0
+  save best-text, <>
+  walk nodes
+    take node
+    save typed, expression-type(node)
+    sift typed
+      case some
+        link given
+        save where, expression-span(node)
+        fork test, within(where, position)
+          hold
+            save size, span-size(where)
+            fork test, or(is-equal(found, false), is-below(size, best-size))
+              hold
+                save found, true
+                save best-size, size
+                save best-text, show-type(given)
+      case none
+        save skipped, true
+  fork test, found
+    hold
+      back make(some, best-text)
+  back make none

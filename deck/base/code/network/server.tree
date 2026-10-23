@@ -9,6 +9,7 @@ load @term/base/native/{platform}/network/server
   find server-start
   find server-stop
   find server-serve
+  find server-dock
 
 load @term/base/network/server/request
   find request

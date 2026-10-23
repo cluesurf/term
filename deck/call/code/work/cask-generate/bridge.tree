@@ -1,0 +1,176 @@
+# The cask bridge for one page: from the public signatures of every native-backed module the page docks, the
+# `webview` shim for each module and the app's dispatcher with its allowlist, so nobody writes the seam twice. `term
+# make --target <platform>` runs it before every build. It reports by default; `commit` writes what differs, and the
+# caller acts on the drift. Part 3 of the port of deck/call/code/cask-generate.ts (cli-in-term-0031), its
+# `generateBridge`, the export cask.ts calls. Design: note/project/term/cask/readme.md.
+#
+# The generator never deletes a file: a shim for a module that no longer crosses is rewritten to forward, and named
+# in the report's `orphans` for removal by hand.
+
+load @term/base/list
+  find list
+
+load @term/base/json
+  find is-null
+
+load ./kinds
+  find bridge-signature
+  find bridge-watcher
+
+load ./docks
+  find docked-modules
+  find orphan-text
+
+load ./signatures
+  find signatures-of
+
+load ./shim
+  find shim-text
+
+load ./dispatcher
+  find dispatch-text
+
+dock load
+  load <@term/make/code/resolve>, name resolve-module
+  load <@term/call/code/scope>, name scope-module
+  load <@term/call/code/cask>, name cask-module
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+
+# what one run is asked: the page, where dispatch.tree goes (the cask entry's directory), whether to write, and the
+# app's root, whose scope.tree and manifest the gate is generated from (`out` when not given)
+form bridge-ask
+  link page, like text
+  link out, like text
+  link commit, like boolean
+  link root
+    like text
+    need false
+
+form bridge-refusal
+  link module, like text
+  link task, like text
+  link reason, like text
+
+# a file that differs from disk, and whether it was written
+form bridge-drift
+  link file, like text
+  link written, like boolean
+
+form bridge-output
+  link file, like text
+  link text, like text
+
+form bridge-report
+  link modules, like list, like text
+  # generated shims for modules that no longer cross, rewritten to forward and waiting to be deleted by hand
+  link orphans, like list, like text
+  link carried, like number
+  link refused, like list, like bridge-refusal
+  link drift, like list, like bridge-drift
+  link written, like number
+
+form bridge-folder-options
+  link recursive, like boolean
+
+# generate for one page
+task generate-bridge
+  take ask, like bridge-ask
+  like bridge-report
+
+  save base, resolve-module/stdlibBase()
+  fork test, or(is-null(base), is-equal(base, <>))
+    hold
+      halt <the stdlib was not found, so there is nothing to generate the bridge from. Set TERM_STDLIB>
+  save page, ask/page
+  save out, ask/out
+  save app, ask/root
+  fork test, is-equal(app, <>)
+    hold
+      save app, out
+  save term, node-path/dirname(node-path/dirname(base))
+  save root, node-path/dirname(page)
+  save docks, docked-modules(page, root)
+
+  save outputs, make list
+  walk docks/orphans
+    take site, name orphan
+    outputs/push
+      make bridge-output
+        bind file, orphan/shim-file
+        bind text, orphan-text(orphan)
+  save all, make list
+  save refused-all, make list
+  save watched-all, make list
+  walk docks/modules
+    take site, name docked
+    save reading, signatures-of(docked, term)
+    fork test
+      and
+        and(is-equal(reading/carried/length, 0), is-equal(reading/refused/length, 0))
+        is-equal(reading/watched/length, 0)
+      hold
+        turn next
+    walk reading/carried
+      take site, name one
+      all/push one
+    walk reading/watched
+      take site, name one
+      watched-all/push one
+    walk reading/refused
+      take site, name one
+      refused-all/push
+        make bridge-refusal
+          bind module, docked/name
+          bind task, one/task
+          bind reason, one/reason
+    outputs/push
+      make bridge-output
+        bind file, docked/shim-file
+        bind text, shim-text(docked, reading/carried, reading/refused, reading/watched, term)
+
+  save scope, scope-module/readScope(app)/scope
+  save identity, cask-module/appIdentity(app)
+  save name, identity/name
+  outputs/push
+    make bridge-output
+      bind file, node-path/join(out, <dispatch.tree>)
+      bind text, dispatch-text(page, docks/modules, all, watched-all, term, scope, name)
+
+  save drift, make list
+  save written, 0
+  walk outputs
+    take site, name output
+    save file, output/file
+    fork test, node-fs/existsSync(file)
+      hold
+        save before, node-fs/readFileSync(file, <utf8>)
+        fork test, is-equal(before, output/text)
+          hold
+            turn next
+    fork test, ask/commit
+      hold
+        node-fs/mkdirSync(node-path/dirname(file), make(bridge-folder-options, bind(recursive, true)))
+        node-fs/writeFileSync(file, output/text)
+        save written, add(written, 1)
+    drift/push
+      make bridge-drift
+        bind file, file
+        bind written, ask/commit
+
+  save module-paths, make list
+  walk docks/modules
+    take site, name docked
+    module-paths/push docked/import-path
+  save orphan-files, make list
+  walk docks/orphans
+    take site, name orphan
+    orphan-files/push orphan/shim-file
+  back
+    make bridge-report
+      bind modules, module-paths
+      bind orphans, orphan-files
+      bind carried, all/length
+      bind refused, refused-all
+      bind drift, drift
+      bind written, written

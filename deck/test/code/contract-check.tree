@@ -12,9 +12,11 @@ load @term/base/list
 
 load ./contract-form
   find contract
+  find meets-contract
 
 load ./expression-grammar
   find expression
+  find eval-expr
 
 load ./bounded-proof
   find prove-result
@@ -45,6 +47,17 @@ task contract-gap
       bind spec, spec
       bind counterexamples, none
       bind bound, bound
+
+# the verification condition of a body at one input: met when the contract does not admit the input, else the
+# postcondition at the body's own output. contract.ts's `conditionFor` (cli-in-term-0105) returned it as a closure over
+# the contract and the body, whose output argument it ignored
+task condition-holds
+  take terms, like contract
+  take body, like expression
+  take inputs, like list, like number
+  like boolean
+
+  back meets-contract(terms, inputs, eval-expr(body, inputs))
 
 # the body proved against the contract over [-bound, bound] on every parameter, or the admitted input that breaks it
 task verify-contract

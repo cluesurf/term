@@ -1,0 +1,1563 @@
+# The CLI's side of the terminal output library (code/work/item/, note/project/term/output/readme.md): the one run a
+# command prints through, the global flags of sections 18 and 20, and the progress of section 10. Ported from
+# call/code/output.ts, whole: term-cli-in-term-0049 (part 1: the flags, the events, the run and its progress) and
+# term-cli-in-term-0050 (part 2: data, bytes and profile lines, a toolchain step, a child's output, problems and the
+# failure nobody caught).
+#
+# ONE MODULE, because the run is one: a port is emitted whole, with its own copy of every module it loads, so a second
+# module reaching this one's state would hold a second state of its own.
+#
+# A COMMAND NEVER WRITES TO STDOUT OR STDERR. It calls `open-run` once, `report` per event and `close-run` at the
+# end, which sets the exit code. Every line comes from the `.tree` library; this module holds the run for the process
+# and builds events.
+#
+# THE RUN IS THE PROCESS'S, as the original's module variables were: one `output-state` record this module holds for
+# the life of the process (`state`), `mark shared` so every task writes the one record. The runner the original held
+# as `Runner | undefined` is a list of none or one (`runners`).
+#
+# THE INPUTS ARE THE CALLER'S OBJECTS. `set-output` takes yargs' argv, and `make-item`, `open-run`, `report`,
+# `progress` and `close-run` take the original's object shapes, reading each key as the original did: `x ?? d` where
+# it wrote `??`, `x !== undefined` where it tested that, and the truth of `x` where it tested `if (x)`. So a caller
+# that leaves a key out, or passes `null`, is answered as the original answered it.
+
+load @term/base/time
+  find now
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/hash
+  find hash
+
+load @term/base/text
+  find split
+
+load @term/base/environment
+  find current-directory
+
+load @term/make/parser/diagnostic
+  find diagnostic
+
+load @term/call/output-plan
+  find tool-failure-of
+  find trimmed
+  find frame-of
+  find problem-words-of
+  find unique-problems
+
+load @term/call/work/item/emit
+  find runner
+  find begin-run
+  find end-run
+  find report, name report-out
+  find print-raw-error
+  find print-data, name print-data-out
+  find print-data-under
+
+load @term/call/work/item/adapt
+  find adapt-line
+
+load @term/call/work/item/run
+  find run-options
+  find make-options
+  find make-opening
+  find arrange-problems
+  find make-crash
+
+load @term/call/work/item/event
+  find event
+  find tally
+  find item-field
+  find frame
+  find status
+  find blank-event
+  find plain-field
+  find plain-subject
+
+load @term/call/work/item/standard
+  find standard
+  find make-standard
+
+load @term/call/work/item/format
+  find format-path
+
+load @term/call/work/item/live
+  find region
+  find frame-plan
+  find is-progress-due
+  find is-running
+  find make-progress-item
+  find place-item
+  find plan-frame
+  find write-frame
+
+dock load
+  load <node:os>, name node-os
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+
+# ---- the caller's objects, read as the original read them ----
+
+# `value[key] !== undefined`
+bind has-entry
+  take value, like dynamic
+  take key, like text
+  like boolean
+  case node
+    text <(($value)[$key] !== undefined)>
+
+# `value[key] != null`: whether `value[key] ?? fallback` takes the value
+bind has-value
+  take value, like dynamic
+  take key, like text
+  like boolean
+  case node
+    text <(($value)[$key] != null)>
+
+# the truth of `value[key]`, as `if (value[key])` reads it
+bind is-truthy
+  take value, like dynamic
+  take key, like text
+  like boolean
+  case node
+    text <Boolean(($value)[$key])>
+
+bind entry
+  take value, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <(($value)[$key])>
+
+# `value[key] ?? fallback`, for a fallback that costs nothing to make
+bind entry-or
+  take value, like dynamic
+  take key, like text
+  take fallback, like dynamic
+  like dynamic
+  case node
+    text <(($value)[$key] ?? $fallback)>
+
+# whether an input is an event already: `'tallies' in input`
+bind is-event
+  take value, like dynamic
+  like boolean
+  case node
+    text <('tallies' in ($value))>
+
+bind as-event
+  take value, like dynamic
+  like event
+  case node
+    text <($value)>
+
+# yargs' first positional, the command's verb: `String(flags._[0])` when there is one
+bind first-word
+  take flags, like dynamic
+  like text
+  case node
+    text <((($flags)._ && ($flags)._.length \> 0) ? String(($flags)._[0]) : "")>
+
+# ---- the process ----
+
+bind is-error-terminal
+  like boolean
+  case node
+    text <(process.stderr.isTTY === true)>
+
+# how deep in other runs this process's run is (section 15)
+bind read-depth
+  take name, like text
+  like number
+  case node
+    text <Math.max(0, Number(process.env[$name] ?? 0) || 0)>
+
+# the variable as it is, `undefined` when it is not set
+bind raw-variable
+  take name, like text
+  like dynamic
+  case node
+    text <process.env[$name]>
+
+bind set-variable
+  take name, like text
+  take value, like text
+  like void
+  case node
+    text <void (process.env[$name] = $value)>
+
+# the variable put back as it was: deleted when it was not set
+bind restore-variable
+  take name, like text
+  take value, like dynamic
+  like void
+  case node
+    text <void ($value === undefined ? delete process.env[$name] : (process.env[$name] = $value))>
+
+bind set-exit-code
+  take code, like number
+  like void
+  case node
+    text <void (process.exitCode = $code)>
+
+# the separator of a step's key, a NUL, which no verb, subject or source holds
+bind key-gap
+  like text
+  case node
+    text <<"\u0000">>
+
+# `undefined`, what a variable that is not set reads as
+bind no-value
+  like dynamic
+  case node
+    text <undefined>
+
+# a timer that calls `tick` every `ms`, unref'd: a run that is done never waits on it
+bind start-ticker
+  take tick
+    like task
+  take ms, like number
+  like dynamic
+  case node
+    text <((timer) =\> (timer.unref(), timer))(setInterval($tick, $ms))>
+
+bind stop-ticker-timer
+  take ticker, like dynamic
+  like void
+  case node
+    text <clearInterval($ticker)>
+
+# ---- the state of the run ----
+
+# when a step began and when its progress item was last reported, for the view without a terminal
+form step-time
+  mark shared
+  link started, like number
+  link reported, like number
+
+form output-state
+  mark shared
+  link options, like run-options
+  # `--all`: no cap on problems
+  link show-all, like boolean
+  link version, like text
+  # none or one: the open run
+  link runners, like list, like runner
+  link started, like number
+  link verb, like text
+  # TERM_DEPTH before the run opened, `undefined` when it was not set
+  link outer-depth, like dynamic
+  link live, like region
+  link ticker, like dynamic
+  link ticking, like boolean
+  link steps, like hash, like text, like step-time
+
+host state
+  make output-state
+    options(make-options())
+    show-all(false)
+    version(<>)
+    runners(make list)
+    started(0)
+    verb(<>)
+    outer-depth(no-value())
+    live(make region)
+    ticker(0)
+    ticking(false)
+    steps(make hash)
+
+host rules, make-standard()
+
+host depth-variable, <TERM_DEPTH>
+
+task is-run-open
+  like boolean
+
+  back is-above(state/runners/length, 0)
+
+# the open run's runner
+task held-runner
+  like runner
+
+  back get(state/runners, 0)
+
+# the run's verb: the command's own, or the last run's, empty before either
+task run-verb
+  like text
+
+  back state/verb
+
+task hold-runner
+  take one, like runner
+  like void
+
+  save held, make list
+  held/push one
+  save state/runners, held
+
+task drop-runner
+  like void
+
+  save state/runners, make list
+
+# a run opened for a command that reports before opening one
+task open-default
+  take root, like text
+  like void
+
+  save verb, state/verb
+  fork test, is-equal(verb, <>)
+    hold
+      save verb, <term>
+  open-run(make run-opening, verb(verb), root(root))
+
+form run-opening
+  link verb, like text
+  link root, like text
+
+# ---- the flags ----
+
+# the flags, read once before any command runs (a yargs middleware), the tool's version for the opening item, and the
+# command's own verb (`argv._[0]`), so a failure before the command opens its run is still under its verb
+task set-output
+  take flags, like dynamic
+  take tool-version, like text
+  like void
+
+  save state/version, tool-version
+  save state/show-all, entry-or(flags, <all>, false)
+
+  fork test, is-equal(state/verb, <>)
+    hold
+      save state/verb, first-word(flags)
+
+  save color, entry(flags, <color>)
+  save chosen, <auto>
+  fork test, or(is-equal(color, <always>), is-equal(color, <never>))
+    hold
+      save chosen, color
+
+  save state/options
+    make run-options
+      quiet(entry-or(flags, <quiet>, false))
+      verbose(entry-or(flags, <verbose>, false))
+      trace(entry-or(flags, <trace>, false))
+      json(is-equal(entry(flags, <log>), <json>))
+      color(chosen)
+      utc(entry-or(flags, <utc>, false))
+      plain(entry-or(flags, <plain>, false))
+      strict(entry-or(flags, <strict>, false))
+      # yargs reads `--no-motion` as `motion: false`
+      motion(entry-or(flags, <motion>, true))
+      yes(entry-or(flags, <yes>, false))
+      raw(entry-or(flags, <raw>, false))
+      source(entry-or(flags, <source>, <>))
+
+task output-options
+  like run-options
+
+  back state/options
+
+# whether problems are shown without the cap (`--all`), for part 2's batch of problems
+task is-showing-all
+  like boolean
+
+  back state/show-all
+
+task output-standard
+  like standard
+
+  back rules
+
+# ---- events ----
+
+# an event from what a command has. Every quantity stays a number: the library formats it
+task make-item
+  take input, like dynamic
+  like event
+
+  save one, blank-event()
+  save one/glyph, entry-or(input, <glyph>, <info>)
+  fork test, has-value(input, <clock>)
+    hold
+      save one/clock, entry(input, <clock>)
+    miss
+      save one/clock, now()
+
+  fork test, has-entry(input, <kind>)
+    hold
+      save one/kind, entry(input, <kind>)
+  fork test, has-entry(input, <verb>)
+    hold
+      save one/verb, entry(input, <verb>)
+  fork test, has-entry(input, <subject>)
+    hold
+      save one/subject, plain-subject(entry(input, <subject>))
+  fork test, has-entry(input, <source>)
+    hold
+      save one/source, entry(input, <source>)
+  fork test, has-entry(input, <code>)
+    hold
+      save one/code, entry(input, <code>)
+  fork test, has-entry(input, <duration>)
+    hold
+      save one/duration, entry(input, <duration>)
+  fork test, has-entry(input, <budget>)
+    hold
+      save one/budget, entry(input, <budget>)
+  fork test, has-entry(input, <http>)
+    hold
+      save one/status, make status, kind(<http>), value(entry(input, <http>)), name(<>)
+  fork test, has-entry(input, <exit>)
+    hold
+      save one/status, make status, kind(<exit>), value(entry(input, <exit>)), name(<>)
+  fork test, has-entry(input, <bytes>)
+    hold
+      save one/bytes, entry(input, <bytes>)
+  fork test, has-entry(input, <counts>)
+    hold
+      save one/tallies, entry(input, <counts>)
+  fork test, has-entry(input, <facts>)
+    hold
+      save one/facts, entry(input, <facts>)
+  fork test, has-entry(input, <message>)
+    hold
+      save one/message, entry(input, <message>)
+  fork test, has-entry(input, <fields>)
+    hold
+      save one/fields, entry(input, <fields>)
+  fork test, has-entry(input, <frames>)
+    hold
+      save one/frames, entry(input, <frames>)
+  fork test, has-entry(input, <quote>)
+    hold
+      save one/quote, entry(input, <quote>)
+  fork test, has-entry(input, <done>)
+    hold
+      save one/done, entry(input, <done>)
+  fork test, has-entry(input, <total>)
+    hold
+      save one/total, entry(input, <total>)
+  fork test, has-entry(input, <level>)
+    hold
+      save one/level, entry(input, <level>)
+  fork test, has-entry(input, <place>)
+    hold
+      save one/place, entry(input, <place>)
+  back one
+
+# a count: number then noun (`42 files`), or part of a total (`31/46 files`). `one` is the singular beside 1
+task count
+  take amount, like number
+  take noun, like text
+  take one, like text, fall <>
+  take total, like number, fall -1
+  like tally
+
+  back make tally, amount(amount), noun(noun), one(one), total(total)
+
+# a field of section 7
+task field
+  take key, like text
+  take value, like text
+  like item-field
+
+  back plain-field(key, value)
+
+# a location field, `at`, which breaks only after `/` and links to its file
+task location
+  take where, like text
+  like item-field
+
+  save one, plain-field(rules/fields/location-key, where)
+  save one/location, true
+  back one
+
+# ---- the run ----
+
+# a path as the human view prints it: relative to the root, `~` for home (section 6)
+task show-path
+  take where, like text
+  take root, like text, fall <>
+  like text
+
+  back format-path(where, root, node-os/homedir())
+
+# the opening item: the command's verb, the working directory or project root, the tool and version, and up to three
+# context counts (section 3). `started`: when the work began, for a run that opens its item only after it
+task open-run
+  take input, like dynamic
+  like void
+
+  save state/verb, entry(input, <verb>)
+  fork test, has-value(input, <started>)
+    hold
+      save state/started, entry(input, <started>)
+    miss
+      save state/started, now()
+
+  # section 15: a run started by a command of another Term run is drawn under that run's elbow. The depth comes in
+  # through the environment, and every child this run starts while it is open is one level deeper
+  save depth, read-depth(depth-variable)
+  save state/outer-depth, raw-variable(depth-variable)
+  save state/options, options-at(state/options, depth)
+  set-variable(depth-variable, <{add(depth, 1)}>)
+
+  save subject, <>
+  fork test, has-value(input, <subject>)
+    hold
+      save subject, entry(input, <subject>)
+    miss
+      save subject, show-path(entry(input, <root>))
+
+  save tool, <term>
+  fork test, has-value(input, <tool>)
+    hold
+      save tool, entry(input, <tool>)
+    miss
+      fork test, is-unequal(state/version, <>)
+        hold
+          save tool, <term {state/version}>
+
+  save opening, make-opening(state/verb, subject, state/started, tool)
+  save opening/tallies, entry-or(input, <counts>, make list)
+  save opening/facts, entry-or(input, <facts>, make list)
+  hold-runner(begin-run(state/verb, opening, state/options, rules))
+
+# new options, the run's own: an earlier run's runner keeps the options it was opened with
+task options-at
+  take one, like run-options
+  take depth, like number
+  like run-options
+
+  save made
+    make run-options
+      quiet(one/quiet)
+      verbose(one/verbose)
+      trace(one/trace)
+      strict(one/strict)
+      utc(one/utc)
+      plain(one/plain)
+      json(one/json)
+      motion(one/motion)
+      yes(one/yes)
+      raw(one/raw)
+      source(one/source)
+      color(one/color)
+      depth(depth)
+  back made
+
+# a new region, never a write into the one the state holds
+task region-of
+  take items, like list, like event
+  take height, like number
+  take drawn-at, like number
+  take spin, like number
+  like region
+
+  # `turn` is the reserved statement head (continue), so its field is a `bind`, never `turn(...)`
+  save made
+    make region
+      items(items)
+      height(height)
+      drawn-at(drawn-at)
+      bind turn, spin
+  back made
+
+# the key of a running step: its verb, subject and source
+task step-key
+  take one, like event
+  like text
+
+  save words, <>
+  walk one/subject
+    take span
+    save words, <{words}{span/value}>
+  back <{one/verb}{key-gap()}{words}{key-gap()}{one/source}>
+
+# one event, printed as the flags say. A command that reports before opening a run gets one opened for it
+task report
+  take input, like dynamic
+  like void
+
+  fork test, not(is-run-open())
+    hold
+      open-default(current-directory())
+
+  save made, blank-event()
+  fork test, is-event(input)
+    hold
+      save made, as-event(input)
+    miss
+      save made, make-item(input)
+
+  save event, made
+  fork test, is-equal(made/verb, <>)
+    hold
+      save event/verb, state/verb
+
+  state/steps/remove(step-key(event))
+
+  fork test, is-above(state/live/items/length, 0)
+    hold
+      report-live(event)
+      back
+
+  hold-runner(report-out(held-runner(), event))
+
+# ---- progress (section 10) ----
+#
+# A RUNNING STEP is an item with the ◐ glyph, placed by `progress` and finished by the `report` of an item with the
+# same verb, subject and source. ON A TERMINAL the running items are the live region at the bottom of the output,
+# drawn by work/item/live.tree. A finished item at the top of the region leaves it through the run's own `report`, so
+# the session counts it and the final output is what it would be with no region at all. WITHOUT ONE (a pipe,
+# `--plain`) nothing redraws: a step longer than `quiet-progress-ms` reports a `●` progress item once per interval.
+# `--log json` and `--quiet` carry no progress at all
+
+# how progress shows under the flags: <live>, <interval> or <none>
+task progress-view
+  like text
+
+  fork test, or(not(is-run-open()), or(state/options/json, state/options/quiet))
+    hold
+      back <none>
+  fork test, or(state/options/plain, or(is-above(state/options/depth, 0), not(is-error-terminal())))
+    hold
+      back <interval>
+  back <live>
+
+# a step under way: `done` of `total` (a total below 0 is unknown, and draws no bar), counted in `noun`
+task progress
+  take input, like dynamic
+  like void
+
+  fork test, not(is-run-open())
+    hold
+      open-default(current-directory())
+
+  save moment, now()
+  save done, entry-or(input, <done>, -1)
+  save total, entry-or(input, <total>, -1)
+
+  save step, blank-event()
+  save step/glyph, <running>
+  save step/clock, moment
+  save step/kind, <progress>
+  fork test, has-entry(input, <verb>)
+    hold
+      save step/verb, entry(input, <verb>)
+  fork test, has-entry(input, <subject>)
+    hold
+      save step/subject, plain-subject(entry(input, <subject>))
+  fork test, has-entry(input, <source>)
+    hold
+      save step/source, entry(input, <source>)
+  fork test, and(has-entry(input, <noun>), not(is-below(done, 0)))
+    hold
+      save counts, make list
+      counts/push count(done, entry(input, <noun>), entry-or(input, <one>, <>), total)
+      save step/tallies, counts
+  save step/done, done
+  save step/total, total
+
+  save key, step-key(step)
+  save known, make step-time, started(moment), reported(-1)
+  fork test, state/steps/has(key)
+    hold
+      save known, state/steps/get(key)
+  save state/steps/{key}, known
+
+  # the clock and the time so far are the step's, from when it began
+  save step/clock, known/started
+  save step/duration, subtract(moment, known/started)
+
+  save view, progress-view()
+
+  fork test, is-equal(view, <live>)
+    hold
+      save state/live, place-item(state/live, step)
+      draw-live(false)
+      fork test, and(not(state/ticking), state/options/motion)
+        hold
+          # the spinner and the elapsed time move while the step works, between its own updates
+          save state/ticker, start-ticker(tick-live, rules/lives/redraw-ms)
+          save state/ticking, true
+      back
+
+  fork test, and(is-equal(view, <interval>), is-progress-due(known/started, known/reported, moment, rules))
+    hold
+      save known/reported, moment
+      hold-runner(report-out(held-runner(), make-progress-item(step, known/started, moment)))
+
+task tick-live
+  like void
+
+  draw-live(false)
+
+# the region redrawn: every running item's time brought up to now, then a frame if the redraw limit allows one
+task draw-live
+  take force, like boolean
+  like void
+
+  fork test, or(not(is-run-open()), is-equal(state/live/items/length, 0))
+    hold
+      back
+
+  save moment, now()
+  save one, held-runner()
+  save room, one/output/room
+  save items, make list
+  walk state/live/items
+    take each
+    fork test, is-running(each)
+      hold
+        save timed, each
+        save timed/duration, subtract(moment, each/clock)
+        items/push timed
+      miss
+        items/push each
+  save region, region-of(items, state/live/height, state/live/drawn-at, state/live/turn)
+  save state/live, region
+
+  save footer, make list
+  save plan
+    plan-frame(region, footer, moment, force, state/options/motion, room, is-equal(state/options/source, <>))
+
+  fork test, plan/draw
+    hold
+      print-raw-error(write-frame(plan, region/height, one/output/palette, room/standard))
+      save state/live, plan/region
+
+# the region taken off the screen: up over its lines and cleared, so the next line printed is where it began
+task erase-live
+  like void
+
+  fork test, and(is-run-open(), is-above(state/live/height, 0))
+    hold
+      save one, held-runner()
+      save blank, make frame-plan, region(state/live), committed(make list), lines(make list), draw(true)
+      print-raw-error(write-frame(blank, state/live/height, one/output/palette, one/output/room/standard))
+
+  save state/live, region-of(state/live/items, 0, -1, state/live/turn)
+
+# an item reported while the region is on screen: put in its place (finishing the running step it names), the
+# finished items at the top printed for good through the run, and what is still running drawn again under them
+task report-live
+  take event, like event
+  like void
+
+  save state/live, place-item(state/live, event)
+  erase-live()
+
+  walk test
+    hook test, and(is-above(state/live/items/length, 0), not(is-running(get(state/live/items, 0))))
+    hook hold
+      save first, get(state/live/items, 0)
+      save rest, make list
+      save at, 0
+      walk state/live/items
+        take each
+        fork test, is-above(at, 0)
+          hold
+            rest/push each
+        save at, add(at, 1)
+      save state/live, region-of(rest, state/live/height, state/live/drawn-at, state/live/turn)
+      hold-runner(report-out(held-runner(), first))
+
+  fork test, is-equal(state/live/items/length, 0)
+    hold
+      stop-ticker()
+      back
+
+  draw-live(true)
+
+task stop-ticker
+  like void
+
+  fork test, state/ticking
+    hold
+      stop-ticker-timer(state/ticker)
+      save state/ticker, 0
+      save state/ticking, false
+
+# the region settled before the run closes: finished items printed in their order, a step still running dropped (the
+# closing item says how the run ended)
+task settle-live
+  like void
+
+  stop-ticker()
+  state/steps/clear()
+
+  fork test, is-equal(state/live/items/length, 0)
+    hold
+      back
+
+  erase-live()
+  save items, state/live/items
+  save state/live, make region
+
+  walk items
+    take one
+    fork test, not(is-running(one))
+      hold
+        hold-runner(report-out(held-runner(), one))
+
+# the closing item: the verdict, the total time and the counts, a `next` field when there is one. The glyph is the
+# worst of the run, and the exit code follows it (section 18). `failure` is <usage>, <environment>, <bug> or
+# <interrupted> when the run ends for that reason. Sets the process's exit code, and answers it. `done`: the run did
+# its work through change items, which rank below ✓, so the closing is ✓ unless something worse happened
+task close-run
+  take input, like dynamic
+  like number
+
+  fork test, not(is-run-open())
+    hold
+      open-default(current-directory())
+
+  settle-live()
+
+  save moment, now()
+
+  # under --strict a run whose worst item is a warning closes ✗ and exits 1 (section 18), whatever its verdict says:
+  # the closing says why, so the glyph and the verdict do not seem to disagree
+  save message, make list
+  fork test, has-value(input, <message>)
+    hold
+      walk entry(input, <message>)
+        take line
+        message/push line
+  save open, held-runner()
+  fork test, and(state/options/strict, and(not(is-truthy(input, <failure>)), is-equal(open/session/worst-glyph, <warning>)))
+    hold
+      message/push <Warnings fail the run under --strict.>
+
+  save closing, blank-event()
+  save closing/glyph, <info>
+  save closing/clock, moment
+  save closing/verb, state/verb
+  fork test, has-entry(input, <verdict>)
+    hold
+      save closing/subject, plain-subject(entry(input, <verdict>))
+  save closing/duration, subtract(moment, state/started)
+  fork test, has-entry(input, <counts>)
+    hold
+      save closing/tallies, entry(input, <counts>)
+  fork test, has-entry(input, <facts>)
+    hold
+      save closing/facts, entry(input, <facts>)
+  save closing/message, message
+  save closing/uptime, entry-or(input, <uptime>, false)
+
+  fork test, is-truthy(input, <next>)
+    hold
+      save fields, make list
+      fields/push field(rules/fields/next-key, entry(input, <next>))
+      save closing/fields, fields
+
+  save one, open
+  save done-rank, 0
+  walk rules/glyphs
+    take glyph
+    fork test, is-equal(glyph/name, <done>)
+      hold
+        save done-rank, glyph/rank
+        halt
+
+  fork test, and(is-truthy(input, <done>), is-below(one/session/worst, done-rank))
+    hold
+      save one/session/worst, done-rank
+      save one/session/worst-glyph, <done>
+
+  fork test, is-truthy(input, <failure>)
+    hold
+      save one/session/failure, entry(input, <failure>)
+
+  save code, end-run(one, closing)
+  drop-runner()
+  set-exit-code(code)
+
+  # what starts after the run is closed is not inside it: `term boot` runs its program once its own run is over
+  restore-variable(depth-variable, state/outer-depth)
+
+  back code
+bind is-data-terminal
+  like boolean
+  case node
+    text <Boolean(process.stdout.isTTY)>
+
+bind is-error-terminal-set
+  like boolean
+  case node
+    text <Boolean(process.stderr.isTTY)>
+
+bind write-error-stream
+  take value, like text
+  like void
+  case node
+    text <void process.stderr.write($value)>
+
+bind write-data-bytes
+  take bytes, like dynamic
+  like void
+  case node
+    text <void process.stdout.write($bytes)>
+
+# ---- a toolchain step ----
+
+bind exec-inherit
+  take command, like text
+  take arguments, like list, like text
+  take setting, like dynamic
+  like void
+  case node
+    text <void process.getBuiltinModule("node:child_process").execFileSync($command, $arguments, \{ ...($setting), stdio: "inherit" \})>
+
+# the step run with its output piped: `\{ ok, out \}`, or `\{ ok: false, error \}` with what it threw
+bind exec-captured
+  take command, like text
+  take arguments, like list, like text
+  take setting, like dynamic
+  like dynamic
+  case node
+    text <(() =\> \{ try \{ return \{ ok: true, out: process.getBuiltinModule("node:child_process").execFileSync($command, $arguments, \{ ...($setting), stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", maxBuffer: 256 * 1024 * 1024 \}) \} \} catch (error) \{ return \{ ok: false, error \} \} \})()>
+
+bind ran-ok
+  take ran, like dynamic
+  like boolean
+  case node
+    text <($ran.ok === true)>
+
+bind ran-out
+  take ran, like dynamic
+  like text
+  case node
+    text <($ran.out)>
+
+bind is-missing
+  take ran, like dynamic
+  like boolean
+  case node
+    text <($ran.error?.code === "ENOENT")>
+
+bind signal-of
+  take ran, like dynamic
+  like text
+  case node
+    text <($ran.error?.signal || "")>
+
+bind status-of
+  take ran, like dynamic
+  like number
+  case node
+    text <($ran.error?.status ?? 1)>
+
+bind written-of
+  take ran, like dynamic
+  like text
+  case node
+    text <`$\{$ran.error?.stdout ?? ""\}$\{$ran.error?.stderr ?? ""\}`>
+
+bind raise-tool-failure
+  take message, like text
+  take quote, like list, like text
+  take missing, like boolean
+  like void
+  case node
+    text <(() =\> \{ throw Object.assign(new Error($message), \{ expected: true, quote: $quote, failure: $missing ? "environment" : undefined \}) \})()>
+
+bind no-setting
+  like dynamic
+  case node
+    text <(\{\})>
+
+# ---- a child's streams ----
+
+bind on-event
+  take target, like dynamic
+  take name, like text
+  take handler
+    like task
+      take value, like dynamic
+      like void
+  like void
+  case node
+    text <void ($target)?.on($name, $handler)>
+
+bind chunk-text
+  take chunk, like dynamic
+  like text
+  case node
+    text <($chunk).toString("utf8")>
+
+# a line without the carriage return a CRLF stream leaves at its end
+bind without-return
+  take line, like text
+  like text
+  case node
+    text <(($line).endsWith(String.fromCharCode(13)) ? ($line).slice(0, -1) : ($line))>
+
+bind start-timeout
+  take handler
+    like task
+      like void
+  take ms, like number
+  like dynamic
+  case node
+    text <setTimeout($handler, $ms)>
+
+bind stop-timeout
+  take timer, like dynamic
+  like void
+  case node
+    text <clearTimeout($timer)>
+
+bind no-timer
+  like dynamic
+  case node
+    text <undefined>
+
+# ---- data ----
+
+# data the user asked for, on stdout, as it is
+task print-data
+  take value, like text
+  like void
+
+  # the blank line after the opening is owed to the first thing under it, and data on the same terminal is that
+  # thing. Paid on stderr, and only when both streams are the terminal, so a pipe never gets a line it did not ask for
+  fork test, is-run-open()
+    hold
+      save one, held-runner()
+      fork test, and(one/session/owed, and(is-data-terminal(), is-error-terminal-set()))
+        hold
+          # a standard that spaces its runs (v2); v3 draws no blank lines, and the data follows the opening directly
+          fork test, output-standard()/layout/spacing
+            hold
+              write-error-stream(<\n>)
+          save one/session/owed, false
+          hold-runner(one)
+
+  # section 15: after an item, on the terminal the run is on, data hangs under that item's elbow so the run keeps its
+  # left edge. A pipe, `--log json` and `--plain` get it as it is
+  fork test, is-run-open()
+    hold
+      save one, held-runner()
+      save options, output-options()
+      fork test, and(is-above(one/session/printed, 0), and(is-data-terminal(), and(is-error-terminal-set(), and(not(options/json), not(options/plain)))))
+        hold
+          print-data-under(one, value)
+          back
+
+  print-data-out(value)
+
+# bytes the user asked for (`term mold --code`), on stdout exactly as they are: binary, so no elbow and no layout
+task print-bytes
+  take bytes, like dynamic
+  like void
+
+  write-data-bytes(bytes)
+
+# a timing line a person switched on for one command (`TERM_ROLL_PROFILE=1`), on stderr as it is, so it never mixes
+# with the data on stdout
+task print-profile
+  take line, like text
+  like void
+
+  print-raw-error(<{line}\n>)
+
+# ---- a child process ----
+
+# a toolchain step run for its result (a compiler, a linker, a signer, a device bridge): its output is the TOOL's, so
+# it is never mixed into the run's own lines (section 15). On success its stdout is handed back. On failure the step
+# throws an error that names the tool and its exit, carrying the output as `quote`. A tool that is not installed is
+# `environment`, exit 3. Under `--raw` the tool writes to the terminal as it runs
+task run-tool
+  take command, like text
+  take arguments, like list, like text
+  take setting, like dynamic, fall no-setting()
+  like text
+
+  fork test, output-options()/raw
+    hold
+      exec-inherit(command, arguments, setting)
+      back <>
+
+  save ran, exec-captured(command, arguments, setting)
+  fork test, ran-ok(ran)
+    hold
+      back ran-out(ran)
+
+  save missing, is-missing(ran)
+  save said, tool-failure-of(node-path/basename(command), missing, signal-of(ran), status-of(ran), written-of(ran))
+  raise-tool-failure(said/message, said/quote, missing)
+  back <>
+
+# what one followed child holds between its events: the plain lines of the burst not yet quoted, the timer that
+# closes the burst, and each stream's unfinished last line
+form follow-state
+  mark shared
+  link source, like text
+  link pending, like list, like text
+  link timer, like dynamic
+  link timing, like boolean
+  link partial-out, like text
+  link partial-error, like text
+
+form quote-input
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link quote, like list, like text
+
+# a running child's output, line by line, as section 15 says: a JSON line or a logfmt line is ADAPTED into an item,
+# and PLAIN text is QUOTED under one `log` item tagged with the child's source: a burst of plain lines is one quote,
+# closed when the child pauses for the standard's quiet moment (50 ms), when an adapted line arrives, or when the
+# stream ends. Under `--raw` every line passes through untouched, stdout to stdout, stderr to stderr. The child is
+# spawned with stdout and stderr PIPED
+task follow-child
+  take child, like dynamic
+  take source, like text
+  like void
+
+  save follow
+    make follow-state
+      source(source)
+      pending(make list)
+      timer(no-timer())
+      timing(false)
+      partial-out(<>)
+      partial-error(<>)
+
+  on-event
+    child
+    <close>
+    task
+      take value, like dynamic
+      like void
+      flush-quote(follow)
+
+  follow-stream(follow, child/stdout, false)
+  follow-stream(follow, child/stderr, true)
+
+task flush-quote
+  take follow, like follow-state
+  like void
+
+  fork test, follow/timing
+    hold
+      stop-timeout(follow/timer)
+      save follow/timer, no-timer()
+      save follow/timing, false
+
+  fork test, is-equal(follow/pending/length, 0)
+    hold
+      back
+
+  save quote, follow/pending
+  save follow/pending, make list
+  report(make quote-input, glyph(<info>), verb(output-standard()/children/default-verb), subject(follow/source), quote(quote))
+
+task take-line
+  take follow, like follow-state
+  take line, like text
+  take from-error, like boolean
+  like void
+
+  fork test, output-options()/raw
+    hold
+      fork test, from-error
+        hold
+          print-raw-error(<{line}\n>)
+        miss
+          print-data-out(<{line}\n>)
+      back
+
+  fork test, is-equal(trimmed(line), <>)
+    hold
+      back
+
+  fork test, not(is-run-open())
+    hold
+      open-default(current-directory())
+
+  save room, held-runner()/output/room
+  save adapted, adapt-line(line, now(), room/offset, false, room)
+
+  fork test, is-equal(adapted/kind, <item>)
+    hold
+      flush-quote(follow)
+      save event, adapted/event
+      save event/source, follow/source
+      report(event)
+      back
+
+  follow/pending/push line
+
+  fork test, follow/timing
+    hold
+      stop-timeout(follow/timer)
+
+  save follow/timer
+    start-timeout
+      task
+        like void
+        flush-quote(follow)
+      50
+  save follow/timing, true
+
+# the unfinished last line a stream holds
+task partial-of
+  take follow, like follow-state
+  take from-error, like boolean
+  like text
+
+  fork test, from-error
+    hold
+      back follow/partial-error
+  back follow/partial-out
+
+task keep-partial
+  take follow, like follow-state
+  take from-error, like boolean
+  take value, like text
+  like void
+
+  fork test, from-error
+    hold
+      save follow/partial-error, value
+      back
+  save follow/partial-out, value
+
+task follow-stream
+  take follow, like follow-state
+  take stream, like dynamic
+  take from-error, like boolean
+  like void
+
+  on-event
+    stream
+    <data>
+    task
+      take chunk, like dynamic
+      like void
+      save lines, split(<{partial-of(follow, from-error)}{chunk-text(chunk)}>, <\n>)
+      save last, lines/length
+      save kept, <>
+      fork test, is-above(last, 0)
+        hold
+          save kept, get(lines, subtract(last, 1))
+      keep-partial(follow, from-error, kept)
+      save at, 0
+      walk lines
+        take line
+        fork test, is-below(at, subtract(last, 1))
+          hold
+            take-line(follow, without-return(line), from-error)
+        save at, add(at, 1)
+
+  on-event
+    stream
+    <end>
+    task
+      take value, like dynamic
+      like void
+      save rest, partial-of(follow, from-error)
+      fork test, is-unequal(rest, <>)
+        hold
+          take-line(follow, rest, from-error)
+          keep-partial(follow, from-error, <>)
+bind is-text-given
+  take text, like dynamic
+  like boolean
+  case node
+    text <($text !== undefined)>
+
+bind given-text
+  take text, like dynamic
+  like text
+  case node
+    text <($text)>
+
+bind has-hint
+  take found, like dynamic
+  like boolean
+  case node
+    text <Boolean(($found).hint)>
+
+bind hint-of
+  take found, like dynamic
+  like text
+  case node
+    text <(($found).hint)>
+
+# the standard with no cap on problems, for `--all`
+bind without-problem-cap
+  take one, like standard
+  like standard
+  case node
+    text <(\{ ...($one), caps: \{ ...($one).caps, problems: 0 \} \})>
+
+# ---- a thrown error, read as the original read it ----
+
+bind is-error
+  take problem, like dynamic
+  like boolean
+  case node
+    text <($problem instanceof Error)>
+
+# `error.message` of an Error, `String(error)` of anything else
+bind message-of
+  take problem, like dynamic
+  like text
+  case node
+    text <($problem instanceof Error ? $problem.message : String($problem))>
+
+# the failure an Error names for itself, when it is one of section 18's: <usage>, <environment>, <bug>,
+# <interrupted>. Empty otherwise
+bind failure-of
+  take problem, like dynamic
+  like text
+  case node
+    text <(($problem instanceof Error && ["usage", "environment", "bug", "interrupted"].includes($problem.failure) && $problem.failure) || "")>
+
+# a BUG in the tool is JavaScript's own kind of error, which no input should be able to cause, unless the thrower said
+# it expected it
+bind is-bug-kind
+  take problem, like dynamic
+  like boolean
+  case node
+    text <(($problem)?.expected !== true && [TypeError, ReferenceError, RangeError, SyntaxError, EvalError, URIError].some(kind =\> $problem instanceof kind))>
+
+bind quote-of
+  take problem, like dynamic
+  like list, like text
+  case node
+    text <(($problem)?.quote ?? [])>
+
+bind stack-of
+  take problem, like dynamic
+  like text
+  case node
+    text <($problem.stack ?? $problem.message)>
+
+# the moment as a file name can hold it: the ISO time with `:` and `.` as `-`
+bind crash-stamp
+  like text
+  case node
+    text <new Date().toISOString().replace(/[:.]/g, "-")>
+
+# ---- problems ----
+
+form problem-input
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+  link code, like text
+  link fields, like list, like item-field
+  link frames, like list, like frame
+  link place, like problem-place
+
+form problem-place
+  link path, like text
+  link line, like number
+  link column, like number
+
+form fault-input
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+
+form failed-input
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link quote, like list, like text
+
+form failed-closing
+  link verdict, like text
+  link failure, like text
+
+form problem-entry
+  link diagnostic, like diagnostic
+  link text, like dynamic
+
+# the source a diagnostic points into: the text given, else the file read, else nothing
+task source-lines
+  take file, like text
+  take text, like dynamic
+  like list, like text
+
+  fork test, is-text-given(text)
+    hold
+      back split(given-text(text), <\n>)
+
+  fork
+    mark unsafe
+    save read, node-file/read-file-sync(file, <utf8>)
+    back split(read, <\n>)
+  halt take
+    take problem
+    back make list
+  back make list
+
+# a diagnostic as a Problem item (section 12): the message is the subject, the location an `at` field, the source a
+# code frame, the hint a `next` field. A proof obligation's verb is `prove`, everything else `check`
+task problem-of
+  take found, like diagnostic
+  take root, like text
+  take text, like dynamic
+  like event
+
+  save line, add(found/span/start/line, 1)
+  save column, add(found/span/start/column, 1)
+  save shown, show-path(found/file, root)
+
+  save fields, make list
+  fields/push location(<{shown}:{line}:{column}>)
+  fork test, has-hint(found)
+    hold
+      fields/push field(output-standard()/fields/next-key, hint-of(found))
+
+  save frames, make list
+  save made, frame-of(found, source-lines(found/file, text), output-standard()/frames/tab-width)
+  sift made
+    case some
+      link built
+      frames/push built
+    case none
+
+  # the glyph, the verb, the subject a sentence, the message's other lines, and the name with a lint rule's code
+  save words, problem-words-of(found)
+
+  save place, make problem-place, path(show-path(found/file, root)), line(line), column(column)
+  save input
+    make problem-input
+      glyph(words/glyph)
+      kind(<problem>)
+      verb(words/verb)
+      subject(words/subject)
+      message(words/message)
+      code(words/code)
+      fields(fields)
+      frames(frames)
+      place(place)
+  back make-item(input)
+
+task report-problem
+  take found, like diagnostic
+  take root, like text
+  take text, like dynamic
+  like void
+
+  report(problem-of(found, root, text))
+
+# a batch of diagnostics as section 12 prints them: sorted by path, line and column, one caused by an earlier one
+# hidden, and past the standard's cap one `… n more problems` item. A line with no diagnostic behind it (`faults`) is
+# a problem item of its own, after them
+task report-problems
+  take entries, like list, like problem-entry
+  take root, like text
+  take faults
+    like list, like text
+    fall make list
+  like void
+
+  fork test, not(is-run-open())
+    hold
+      save verb, run-verb()
+      fork test, is-equal(verb, <>)
+        hold
+          save verb, <term>
+      open-run(make run-opening, verb(verb), root(root))
+
+  # ONE item per problem: a diagnostic in a module several entries load comes back once per entry. The same file,
+  # place, name and message is the same problem
+  save found, make list
+  walk entries
+    take each
+    found/push each/diagnostic
+  save kept, unique-problems(found)
+
+  save problems, make list
+  save at, 0
+  walk entries
+    take each
+    fork test, get(kept, at)
+      hold
+        problems/push problem-of(each/diagnostic, root, each/text)
+    save at, add(at, 1)
+
+  save chosen, output-standard()
+  fork test, is-showing-all()
+    hold
+      save chosen, without-problem-cap(chosen)
+
+  walk arrange-problems(problems, chosen, held-runner()/output/room)
+    take one
+    report(one)
+
+  walk faults
+    take fault
+    report(make fault-input, glyph(<failed>), kind(<problem>), verb(<check>), subject(fault))
+
+# ---- a failure nobody caught ----
+
+# a thrown error ends the run: its message as a ✗ item and the closing item. An error a command or the filesystem
+# raises exits 1. A BUG in the tool, a TypeError, a ReferenceError, a RangeError and the like, says so, writes the
+# stack to a crash log instead of the human view, and exits 70 (section 12)
+task fail-run
+  take problem, like dynamic
+  take root, like text
+  like number
+
+  fork test, is-run-open()
+    hold
+      settle-live()
+
+  save message, message-of(problem)
+  save failure, failure-of(problem)
+  save bug, or(is-equal(failure, <bug>), and(is-equal(failure, <>), is-bug-kind(problem)))
+
+  fork test, or(not(bug), not(is-error(problem)))
+    hold
+      # written as thrown: a thrown message often opens with a name, and a capital would change it
+      report(make failed-input, glyph(<failed>), kind(<problem>), subject(message), quote(quote-of(problem)))
+      back close-run(make failed-closing, verdict(<Failed>), failure(failure))
+
+  save log, write-crash-log(problem, root)
+  save shown, <>
+  fork test, is-unequal(log, <>)
+    hold
+      save shown, show-path(log, root)
+  save verb, run-verb()
+  fork test, is-equal(verb, <>)
+    hold
+      save verb, <term>
+  save crash, make-crash(verb, <Term stopped on an internal error: {message}>, <>, shown, now(), output-standard())
+  crash/fields/push field(output-standard()/fields/next-key, <this is a bug in Term and your code may be fine; term report files it>)
+  report(crash)
+
+  back close-run(make failed-closing, verdict(<Stopped by an internal error>), failure(<bug>))
+
+task write-crash-log
+  take problem, like dynamic
+  take root, like text
+  like text
+
+  fork
+    mark unsafe
+    save where, node-path/join(root, <.term>, <crash-{crash-stamp()}.log>)
+    node-file/mkdir-sync(node-path/dirname(where), make crash-folder, recursive(true))
+    node-file/write-file-sync(where, <{stack-of(problem)}\n>)
+    back where
+  halt take
+    take failed
+    back <>
+  back <>
+
+form crash-folder
+  link recursive, like boolean

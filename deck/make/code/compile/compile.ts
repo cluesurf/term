@@ -19,6 +19,7 @@ import { mill } from '@term/make/code/compile/mill'
 import { checkView, lowerView } from '@term/make/code/compile/view'
 import { checkMillDefinition, millLoadTargets } from '@term/make/code/compile/mill-check'
 import type { MillLoad } from '@term/make/code/compile/mill-check'
+import type { WakeGroup } from '@term/make/code/compile/wake'
 import { resolve } from '@term/make/code/check/resolve'
 import { citedRules } from '@term/make/code/check/cite-roots'
 import { check } from '@term/make/code/check/infer'
@@ -299,6 +300,41 @@ function deckNames(
   return out
 }
 
+// every task a `hook` route names or calls: its own `task` and `call` lines, its methods', its nested hooks' and its
+// children's, as the import binding left the names
+function routeTaskNames(program: Program): Set<string> {
+  const names = new Set<string>()
+  const visit = (route: DockRoute): void => {
+    for (const call of route.calls) {
+      names.add(call.name)
+    }
+
+    for (const method of route.methods ?? []) {
+      for (const call of method.calls) {
+        names.add(call.name)
+      }
+    }
+
+    for (const hook of route.hooks ?? []) {
+      for (const call of hook.calls) {
+        names.add(call.name)
+      }
+    }
+
+    for (const child of route.children ?? []) {
+      visit(child)
+    }
+  }
+
+  for (const statement of program) {
+    if (statement.form === 'dock') {
+      visit(statement.route)
+    }
+  }
+
+  return names
+}
+
 // the terminating tasks, or none when the analysis fails: a crash there must cost proofs, never pass one
 function safeTerminating(program: Program): Set<string> {
   try {
@@ -358,6 +394,7 @@ import { hashText } from '@term/make/code/term/hash'
 import type { CompileCache } from '@term/make/code/compile/cache'
 import { contentHash } from '@term/make/code/compile/cache'
 import type {
+  DockRoute,
   Program,
   Statement,
   Twin,
@@ -427,6 +464,9 @@ export type CompileResult =
       uncertified?: number
       // present when `options.roll` was set: the roll of this entry's closure (compile/roll.ts)
       roll?: Roll
+      // what wakes the hive, when the program holds `hive-wake`: every emitter's wake chain reads it, so a native
+      // driver passes it as `{ wake: result.wake }` (term/hive decision 002, compile/wake.ts)
+      wake?: WakeGroup[]
       // the `twin` declarations of the closure, checked (check/twin.ts). Beside the program, never in it: nothing
       // here emits one yet, so every build runs the reference (note/project/term/optimize/archive/optimize-readme.md)
       twins?: Twin[]
@@ -1171,6 +1211,15 @@ export function compileProgram(
     return { ok: false, diagnostics: ambiguities }
   }
 
+  // the tasks a `hook` route names or calls (`task make` under a console's `hook build`), as the binding above bound
+  // them: the run looks each up among the module's exports by that name, and no call in the program reaches it, so
+  // the shake and the simplifier left it out and the command had no task (term-compiler-0034)
+  if (roots) {
+    for (const name of routeTaskNames(program)) {
+      roots.add(name)
+    }
+  }
+
   // the render runtime names as the build bound them (a name two files define is split by file, D020): the view
   // lowering, the prune's pins and the checker's lowered copy all use these
   const runtimeNames = [...runtimeBound].map(([name, bound]) => ({ name, bound }))
@@ -1747,6 +1796,9 @@ export function compileProgram(
     kernel,
     uncertified: uncertifiedCount() - uncertifiedBefore,
     ...(roll ? { roll } : {}),
+    // what wakes the hive, computed once above: the TypeScript getter below and every native driver
+    // (`emitRust(result.program, { wake: result.wake })`) read this one value (term/hive decision 002)
+    wake,
   }
 
   // THE TYPESCRIPT IS BUILT WHEN IT IS FIRST READ. A Rust, Swift or Kotlin build emits from `program` and never reads
@@ -1762,14 +1814,6 @@ export function compileProgram(
   })
 
   return result as typeof result & { typescript: string }
-}
-
-type WakeEntry = Record<string, unknown>
-
-type WakeGroup = {
-  deck: string
-  entries: WakeEntry[]
-  typed: { exceptions: WakeEntry[]; tells: WakeEntry[]; docks: WakeEntry[] }
 }
 
 // the roll grouped by deck, in the shape `hiveWake` takes: exceptions and tells only, so the wake chain stays small.

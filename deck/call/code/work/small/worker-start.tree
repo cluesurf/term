@@ -1,0 +1,128 @@
+# `term work`: run the long-lived compiler daemon (the background worker). It hosts the warm incremental analyzer over
+# HTTP, so the language server, `term feed` and the CLI share one warm compiler instead of each starting cold. It stays
+# alive until interrupted. Prints as a service (section 11 of note/project/term/output/standard.md): a `start` item
+# with its address, then a `Stopped` closing item with its uptime on ctrl-c. Ported from call/code/work.ts
+# (term-cli-in-term-0061). The daemon is call/code/dev/daemon.ts, docked until its own port (lane serve) lands.
+#
+# THE DAEMON IS HELD BY THE MODULE for the ctrl-c handler, which the original closed over: a task handed to the host
+# as a callback cannot close over a local, so the handler reads the daemon the last `call-work` started.
+
+load @term/base/maybe
+  find maybe
+
+dock load
+  load <@term/call/code/dev/daemon>, name daemon-module
+  load <@term/call/code/output>, name output
+  # the global, not node:process: `on` is inherited from EventEmitter, and a builtin's namespace holds own fields only
+  load <global:process>, name host-process
+  load <global:Error>, name host-error
+  load <global:String>, name host-string
+  load <global:Date>, name host-date
+
+form work-open
+  link verb, like text
+  link root, like text
+  link facts, like list, like text
+
+form daemon-ask
+  link root, like text
+  link port, like number
+  link env, like text
+
+form start-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link fields, like list, like dynamic
+
+form failed-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+
+form plain-close
+  link verdict, like text
+
+form stopped-close
+  link verdict, like text
+  link failure, like text
+  link uptime, like boolean
+
+# the daemon running in this process, for the ctrl-c handler
+host running, make hash
+
+# the message of a failure the host raised, as the original printed it: an Error's message, else the value as text
+task message-of
+  take error, like dynamic
+  like text
+  mark private
+
+  # `error instanceof Error`
+  fork test, host-error/prototype/is-prototype-of(error)
+    hold
+      back error/message
+  back host-string/call(<>, error)
+
+# Ctrl-C: ○ and exit 130 (section 18), as `term boot` and `term feed` end
+task stop-on-interrupt
+  like void
+  mark private
+
+  fork test, running/has(<daemon>)
+    hold
+      save daemon, running/get(<daemon>)
+      daemon/close()
+  host-process/exit(output/close-run(make(stopped-close, bind(verdict, <Stopped>), bind(failure, <interrupted>), bind(uptime, true))))
+
+task start-worker
+  take root, like text
+  take port, like number
+  take env, like text
+  take started, like number
+  like void
+  mark private
+
+  save daemon, daemon-module/start-daemon(make(daemon-ask, bind(root, root), bind(port, port), bind(env, env)))
+  save slot, <daemon>
+  save running/{slot}, daemon
+  save fields, make list
+  fields/push(output/field(<route>, <POST /analyze \{file, text\}, answers diagnostics>))
+  save took, subtract(host-date/now(), started)
+  output/report(make(start-item, bind(glyph, <done>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, <http://localhost:{port}>), bind(duration, took), bind(fields, fields)))
+  host-process/on(<SIGINT>, stop-on-interrupt)
+
+# `port` left out is 5179, `env` left out (the empty text) is node
+task call-work
+  take root, like text
+  take port, like maybe, like number
+  take env, like text
+  like void
+
+  save target, env
+  fork test, is-equal(env, <>)
+    hold
+      save target, <node>
+  save facts, make list
+  facts/push(target)
+  output/open-run(make(work-open, bind(verb, <work>), bind(root, root), bind(facts, facts)))
+  save started, host-date/now()
+  save chosen, 5179
+  sift port
+    case some
+      link given
+      save chosen, given
+    case none
+      save chosen, 5179
+  fork
+    mark unsafe
+    start-worker(root, chosen, target, started)
+  halt take
+    take error
+    save said, make list
+    said/push(message-of(error))
+    output/report(make(failed-item, bind(glyph, <failed>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, <The compiler worker did not start>), bind(message, said)))
+    output/close-run(make(plain-close, bind(verdict, <Not started>)))

@@ -1,0 +1,143 @@
+# A package's manifest as Term holds it: the shape of deck/deck/code/form.ts's `DeckManifest` and of the records it
+# carries, written for the port of deck/deck/code/manifest.ts (term-cli-in-term-0074) and read by every port of the
+# package lane after it.
+#
+# The decisions:
+#   - the version and every hold are version.tree's `code` and `code-hold`, so a field the TypeScript left out is
+#     written as nothing there: `<>` for no prerelease or build, `-1` for a wildcard's open part. code/code.ts is the
+#     face that turns those back
+#   - an optional text, flag, list or hash is a plain `need false` field (stdlib-parity decision 001): left out of a
+#     `make` it reads as its empty value, which is all the writer asks of it, and on TypeScript it stays absent, so a
+#     reader that binds it only when the original had it answers the original's object
+#   - a link's `have` and the `need` line are `like maybe` with `need false`, because there the writer tells absent
+#     from empty: `have 0` is written, a missing `have` is not. So is `hook`, so a read of it writes nothing back
+#   - a `like maybe` field with `need false` is stored bare on TypeScript (self-host traps T002), so every field has
+#     the TypeScript shape's name and value; `hook` is a Map where the original held an object
+
+load @term/base/maybe
+  find maybe
+
+load ../version
+  find code
+  find code-hold
+
+# `mind <Name>, base <email>, site <url>`, and `cite`, which has the same shape
+form deck-mind
+  link name, like text
+  link base
+    like text
+    need false
+  link site
+    like text
+    need false
+
+# `link @scope/name, mark <hold>, have <n>`
+form deck-link
+  link name, like text
+  link mark, like code-hold
+  link have
+    like maybe, like number
+    need false
+
+# `host <registry>` with `link` children: dependencies pinned to one registry
+form deck-host-group
+  link registry, like text
+  link link, like list, like deck-link
+
+# `base alice, <ghcr.io/alice-gh/term>`: the scope with its `@`, and where its packages come from
+form deck-base
+  link scope, like text
+  link registry, like text
+
+# `need @term/code, mark <2.6.x>`: the toolchain the project builds with
+form deck-need
+  link name, like text
+  link mark, like code-hold
+
+form deck-manifest
+  link host, like text
+  link name, like text
+  link mark, like code
+  link code
+    like text
+    need false
+  link head
+    like text
+    need false
+  link mind
+    like list, like deck-mind
+    need false
+  link lock
+    like text
+    need false
+  link sort
+    like text
+    need false
+  link term
+    like list, like text
+    need false
+  link link, like list, like deck-link
+  # a maybe so that reading it writes nothing back: a plain `need false` hash read on TypeScript is `??=`, which would
+  # put an empty hash into the manifest it reads (self-host traps T003)
+  link hook
+    like maybe
+      like hash, like text
+        like text
+    need false
+  link role
+    like text
+    need false
+  link test
+    like text
+    need false
+  link book
+    like text
+    need false
+  link line
+    like text
+    need false
+  link call
+    like text
+    need false
+  link task
+    like text
+    need false
+  link hide
+    like boolean
+    need false
+  link site
+    like text
+    need false
+  link view
+    like text
+    need false
+  link deck
+    like list, like text
+    need false
+  link dev-link
+    like list, like deck-link
+    need false
+  link host-link
+    like list, like deck-host-group
+    need false
+  link base
+    like list, like deck-base
+    need false
+  link boot
+    like text
+    need false
+  link tool
+    like text
+    need false
+  link text
+    like text
+    need false
+  link make
+    like list, like text
+    need false
+  link cite
+    like list, like deck-mind
+    need false
+  link need
+    like maybe, like deck-need
+    need false

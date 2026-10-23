@@ -80,6 +80,9 @@ load ./catalog-read
 load ../check/eliminate
   find utf16-order
 
+load @term/base/float
+  find to-decimal
+
 # ---- the forms ----
 
 form road

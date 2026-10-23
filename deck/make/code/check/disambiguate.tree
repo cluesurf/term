@@ -278,8 +278,10 @@ form walk-state
   link natives, like list, like native-apart
   link task-names, like list, like text
   link task-files, like list, like list, like text
-  # every field name of every form and variant
+  # every field name of every form and variant, and how many match arms the walk is inside: only in an arm is a field a
+  # local by its own name
   link fields, like list, like text
+  link arm-depth, like number
   # bound by import, and the top-level values that are neither tasks nor components
   link groups, like list, like task-group
   link values, like list, like text
@@ -320,6 +322,7 @@ task new-walk-state
       bind task-names, make list
       bind task-files, make list
       bind fields, make list
+      bind arm-depth, 0
       bind groups, make list
       bind values, make list
       bind diagnostics, make list
@@ -633,7 +636,9 @@ task walk-statement
       save cases-out, make list
       walk cases
         take arm
+        save state/arm-depth, add(state/arm-depth, 1)
         save arm/body, walk-block(state, arm/body)
+        save state/arm-depth, subtract(state/arm-depth, 1)
         push(cases-out, arm)
       save node/cases, cases-out
       sift otherwise
@@ -869,6 +874,19 @@ task walk-calls
   save out, make list
   walk calls
     take one-call
+    # the task a hook names (`task make`, args none) or calls is bound by what the file imported, as a call is: the name
+    # was text the binding never saw, so a name split by file reached neither definition and the command had no task
+    # (term-compiler-0034). With no arguments it is the task as a value (`-1`), which binds to the import at any arity
+    fork test, is-equal(state/mode, <imports>)
+      hold
+        save arity, -1
+        fork test, is-above(one-call/args/length, 0)
+          hold
+            save arity, one-call/args/length
+        save renamed, import-bound(state, one-call/name, arity, <>, one-call/span)
+        fork test, is-unequal(renamed, <>)
+          hold
+            save one-call/name, renamed
     save one-call/args, walk-arguments(state, one-call/args)
     push(out, one-call)
   back out
@@ -1143,6 +1161,14 @@ task required-count
       back count
     case view
       back params/length
+    case bind
+      save count, 0
+      walk params
+        take param
+        fork test, not(param/optional)
+          hold
+            save count, add(count, 1)
+      back count
     miss
       back 0
 
@@ -1155,6 +1181,8 @@ task most-count
     case function
       back params/length
     case view
+      back params/length
+    case bind
       back params/length
     miss
       back 0
@@ -1230,6 +1258,17 @@ task is-view
 
   sift one
     case view
+      back true
+    miss
+      back false
+
+task is-bind
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case bind
       back true
     miss
       back false
@@ -2058,6 +2097,9 @@ task bind-by-import
         save bindable, add-text(bindable, name)
       case view
         save bindable, add-text(bindable, name)
+      # a host bind is scoped to its module as a task is (term-compiler-0039)
+      case bind
+        save bindable, add-text(bindable, name)
       miss
         save nothing, 0
     fork test, is-equal(file, <>)
@@ -2080,10 +2122,11 @@ task bind-by-import
     take name
     save by-files, make list
     save by-places, make list
+    save has-bind, false
     walk state/program
       take one
       take at
-      fork test, not(or(is-function(one), is-view(one)))
+      fork test, not(or(or(is-function(one), is-view(one)), is-bind(one)))
         hold
           turn next
       fork test, is-unequal(name-of(one), name)
@@ -2093,9 +2136,12 @@ task bind-by-import
       fork test, is-equal(file, <>)
         hold
           turn next
-      fork test, not(or(is-view(one), defines(one)))
+      fork test, not(or(or(is-view(one), is-bind(one)), defines(one)))
         hold
           turn next
+      fork test, is-bind(one)
+        hold
+          save has-bind, true
       save found, first-index-of-text(by-files, file)
       fork test, is-below(found, 0)
         hold
@@ -2108,7 +2154,9 @@ task bind-by-import
           push(these, at)
           set(by-places, found, these)
     save elsewhere, false
-    fork test, is-equal(by-files/length, 1)
+    # a bind in one file beside a signature of its name elsewhere is what fills that signature (an env module's
+    # binding), never a second meaning to keep apart: binds split only when two files bind the name
+    fork test, and(is-equal(by-files/length, 1), not(has-bind))
       hold
         save defined-at, first-index-of-text(defined-names, name)
         save definers, make list
@@ -2325,7 +2373,10 @@ task import-bound
   fork test, has-text(state/local, alias-or-name(alias, name))
     hold
       back <>
-  fork test, and(is-below(arity, 0), or(has-text(state/values, name), has-text(state/fields, name)))
+  # a value reference is bound as a call is. It is left only where it names a top-level value, or a field inside a
+  # match arm, where the variant's fields are locals by their own names (term-compiler-0038: a field of the name in
+  # any form left a task passed as a value unbound, an unknown name once the task was split by file)
+  fork test, and(is-below(arity, 0), or(has-text(state/values, name), and(is-above(state/arm-depth, 0), has-text(state/fields, name))))
     hold
       back <>
   save group, get(state/groups, place)

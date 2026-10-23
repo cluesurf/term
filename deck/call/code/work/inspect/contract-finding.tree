@@ -1,0 +1,191 @@
+# The face component contract (native-dom-0009, 0011, 0025). A component the author writes once has a GENERIC
+# implementation (`face/code/component/native/<name>.tree`, the abstract fallback) and may have one per platform rung
+# (`native/toolkit/<name>.tree`, ...). The contract is the generic one's props: every platform implementation must take
+# exactly the same names, in the same order, at the same types, so an author's `view <name> / bind ...` means the same
+# thing on every platform. An APP may shadow one at the same relative path in its own package (projectResolver), and
+# is held to the same contract. Read through the compiler's own parser and mill, never a second reader of `.tree`.
+#
+# Ported from call/code/face-contract.ts (term-cli-in-term-0056). The parser, the template expander and the mill are
+# docked until their own ports land; the program they answer is host values, `dynamic` here.
+
+dock load
+  load <@term/make/code/parser/tree>, name contract-parser
+  load <@term/make/code/compile/mill>, name contract-mill
+  load <@term/make/code/compile/template>, name contract-template
+  load <node:fs>, name contract-fs
+  load <node:path>, name contract-path
+
+# where face's implementations live, relative to a package root; an app's shadows live at the same path in the app
+# (the original's FACE_NATIVE_PATH constant, a task so a caller can reach it: a top-level host is not exported)
+task face-native-path
+  like text
+
+  back <code/component/native>
+
+# ---- the host values Term has no word for ----
+
+bind contract-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind contract-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# a field of a host value by its name, for the names that are words of Term (`type`, `form`)
+bind contract-member
+  take value, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$value[$key]>
+
+# a type as one comparable string: its JSON with every span left out
+bind contract-type-text
+  take type, like dynamic
+  like text
+  case node
+    text <<($type === undefined ? "(inferred)" : JSON.stringify($type, (key, value) => (key === "span" ? undefined : value)))>>
+
+# the folders under a folder, in the order the disk lists them
+bind contract-rungs
+  take fs, like dynamic
+  take dir, like text
+  like list, like text
+  case node
+    text <<$fs.readdirSync($dir, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => entry.name)>>
+
+# the `.tree` files in a folder, in the order the disk lists them
+bind contract-tree-files
+  take fs, like dynamic
+  take dir, like text
+  like list, like text
+  case node
+    text <<$fs.readdirSync($dir).filter(name => name.endsWith(".tree"))>>
+
+# `JSON.stringify(value ?? null)`
+bind contract-json
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value ?? null)>
+
+# `!props?.length`: no props at all, or none declared
+bind contract-no-props
+  take props, like dynamic
+  like boolean
+  case node
+    text <!$props?.length>
+
+bind contract-ends-inferred
+  take prop, like text
+  like boolean
+  case node
+    text <$prop.endsWith("(inferred)")>
+
+# a component's name: its file's name without `.tree`
+bind contract-component
+  take file, like text
+  like text
+  case node
+    text <<$file.replace(/\.tree$/, "")>>
+
+bind contract-or
+  take value, like dynamic
+  take fallback, like dynamic
+  like dynamic
+  case node
+    text <($value ?? $fallback)>
+
+# ---- the contract ----
+
+form contract-source
+  link file, like text
+  link text, like text
+
+form contract-finding
+  link component, like text
+  link rung, like text
+  link file, like text
+  link problem, like text
+
+# the props of `view <name>` in a file, as `name: type`, in order, or undefined when the file declares no such view
+task props-of
+  take file, like text
+  take text, like text
+  take name, like text
+  like dynamic
+
+  save parsed, contract-parser/parse(make(contract-source, bind(file, file), bind(text, text)))
+  fork test, not(contract-truthy(parsed/ok))
+    hold
+      back contract-nothing()
+  save built, contract-mill/mill(contract-template/expandTemplates(parsed/tree), file)
+  fork test, not(contract-truthy(built/ok))
+    hold
+      back contract-nothing()
+  walk built/program
+    take one, like dynamic
+    fork test, and(is-equal(contract-member(one, <form>), <view>), is-equal(one/name, name))
+      hold
+        save props, make list
+        walk one/params
+          take param, like dynamic
+          props/push(<{param/name}: {contract-type-text(contract-member(param, <type>))}>)
+        back props
+  back contract-nothing()
+
+# every platform implementation under `native-dir` (a package's `code/component/native`) against the generic
+# implementation of the same component in `face-native-dir`. For face itself the two are the same directory; for an
+# app they are the app's shadows against face's generics. An app shadow of a component face has no generic for is a
+# finding too: there is no contract to hold it to, so it shadows nothing.
+task contract-findings
+  take face-native-dir, like text
+  take native-dir, like dynamic, fall contract-nothing()
+  like list, like contract-finding
+
+  save findings, make list
+  save native, contract-or(native-dir, face-native-dir)
+  fork test, not(contract-fs/existsSync(native))
+    hold
+      back findings
+  save rungs, contract-rungs(contract-fs, native)
+  walk rungs
+    take rung
+    save rung-dir, contract-path/join(native, rung)
+    save files, contract-tree-files(contract-fs, rung-dir)
+    walk files
+      take file
+      save component, contract-component(file)
+      save path, contract-path/join(native, rung, file)
+      save generic-file, contract-path/join(face-native-dir, <{component}.tree>)
+      fork test, not(contract-fs/existsSync(generic-file))
+        hold
+          findings/push(make(contract-finding, bind(component, component), bind(rung, rung), bind(file, path), bind(problem, <face has no generic {component} to take its contract from>)))
+          turn next
+      save contract, props-of(generic-file, contract-fs/readFileSync(generic-file, <utf8>), component)
+      fork test, contract-no-props(contract)
+        hold
+          findings/push(make(contract-finding, bind(component, component), bind(rung, rung), bind(file, generic-file), bind(problem, <the generic {component} declares no props>)))
+          turn next
+      save props, props-of(path, contract-fs/readFileSync(path, <utf8>), component)
+      save shown-props, contract-json(props)
+      save shown-contract, contract-json(contract)
+      fork test, is-unequal(shown-props, shown-contract)
+        hold
+          findings/push(make(contract-finding, bind(component, component), bind(rung, rung), bind(file, path), bind(problem, <takes {shown-props}, the contract is {shown-contract}>)))
+          turn next
+      # an untyped prop reaches Swift and Kotlin as whatever inference guesses, which was `Void`
+      save untyped, make list
+      walk props
+        take prop, like text
+        fork test, contract-ends-inferred(prop)
+          hold
+            untyped/push(prop)
+      fork test, is-above(untyped/length, 0)
+        hold
+          findings/push(make(contract-finding, bind(component, component), bind(rung, rung), bind(file, path), bind(problem, <untyped props {untyped/join(<, >)}>)))
+  back findings

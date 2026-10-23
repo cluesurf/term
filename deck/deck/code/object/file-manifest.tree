@@ -1,0 +1,545 @@
+# The registry manifest: a published deck's flat file listing with its placement, written and read as `.tree`
+# (note/term/registry/14 and 17). Ported from deck/deck/code/object/manifest.ts (term-cli-in-term-0082):
+# manifestEntries, emitManifest, emitShardIndex, shardManifest, parseManifest.
+#
+# Head `deck @scope/name`; `code` pins the ref with its commit `hash` nested. Each file is a `link <path>` naming its
+# content `hash` and `size`; its placement is a `base` child (the pack it is grouped in, `site` the byte offset) or,
+# by default, none: a loose object. A large package's manifest is sharded: the root lists `base <shard-hash>` entries
+# (a content-defined sitemap index), each a sub-manifest covering a path range.
+#
+# This is the running implementation; the self-hosted mill grammar in @term/mill/tree/base is the formal spec of the
+# same format.
+#
+# The decisions:
+#   - an entry is a host record, as the original's ManifestEntry: `mime`, `pack` and `site` are present only when set,
+#     and an emit tests `mime` as truthy and `pack` as defined, as the original did (an empty pack still writes `base`)
+#   - the placement is the caller's host Map from blob id to `{ kind, pack, site }`
+#   - a shard boundary is object-shape's own node boundary over the path's `tree` address (the same mask the
+#     original's isShardBoundary computed), and `run.length >= avg / 4` is `4 * run.length >= avg`, exact without a
+#     division (a Term divide of integers truncates)
+#   - the parse reads lines as the original did, a tag's value cut by its ASCII tag, so cutting by runes is cutting by
+#     units; `size` and `site` are the host's Number of the text, NaN and all
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find trim
+  find trim-start
+  find starts-with
+  find ends-with
+  find substring
+  find char-count
+  find to-lower-case
+
+load ./object-address
+  find hash-object-text
+
+load ./object-shape
+  find is-node-boundary
+
+form manifest-shard
+  link hash, like text
+  link foot, like text
+  link head, like text
+  link size, like number
+  link text, like text
+
+form hold-manifest
+  link package, like text
+  link ref, like text
+  link hash, like text
+  link files, like list, like dynamic
+
+form sharded-manifest
+  link package, like text
+  link ref, like text
+  link hash, like text
+  link shards, like list, like manifest-shard
+
+# a parsed shard index: its shards carry no text
+form shard-index
+  link package, like text
+  link ref, like text
+  link hash, like text
+  link shards, like list, like dynamic
+
+# the text after the last `sign`, the whole text when there is none
+bind units-after-last
+  take value, like text
+  take sign, like text
+  like text
+  case node
+    text <$value.slice($value.lastIndexOf($sign) + 1)>
+
+bind last-unit-index
+  take value, like text
+  take sign, like text
+  like number
+  case node
+    text <$value.lastIndexOf($sign)>
+
+bind placement-of
+  take placement, like dynamic
+  take blob, like text
+  like dynamic
+  case node
+    text <$placement.get($blob)>
+
+bind is-pack-placement
+  take where, like dynamic
+  like boolean
+  case node
+    text <Boolean($where && $where.kind === "pack")>
+
+bind manifest-entry-of
+  take path, like text
+  take hash, like text
+  take size, like dynamic
+  like dynamic
+  case node
+    text <<({ path: $path, hash: $hash, size: $size })>>
+
+bind field-set
+  take target, like dynamic
+  take field, like text
+  take value, like dynamic
+  like void
+  case node
+    text <($target[$field] = $value)>
+
+bind is-truthy-field
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind is-defined-field
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value !== undefined)>
+
+bind host-number
+  take value, like text
+  like number
+  case node
+    text <Number($value)>
+
+bind lines-of
+  take value, like text
+  like list, like text
+  case node
+    text <$value.split(String.fromCharCode(10))>
+
+# content type by extension, written as `mime` on a loose entry so a UI or the CDN serves it right: only what the
+# registry serves
+task make-mime-table
+  like hash, like text, like text
+  mark private
+
+  save table, make hash
+  table/set(<png>, <image/png>)
+  table/set(<jpg>, <image/jpeg>)
+  table/set(<jpeg>, <image/jpeg>)
+  table/set(<gif>, <image/gif>)
+  table/set(<webp>, <image/webp>)
+  table/set(<ico>, <image/x-icon>)
+  table/set(<avif>, <image/avif>)
+  table/set(<svg>, <image/svg+xml>)
+  table/set(<woff>, <font/woff>)
+  table/set(<woff2>, <font/woff2>)
+  table/set(<ttf>, <font/ttf>)
+  table/set(<otf>, <font/otf>)
+  table/set(<mp3>, <audio/mpeg>)
+  table/set(<wav>, <audio/wav>)
+  table/set(<ogg>, <audio/ogg>)
+  table/set(<mp4>, <video/mp4>)
+  table/set(<webm>, <video/webm>)
+  table/set(<mov>, <video/quicktime>)
+  table/set(<pdf>, <application/pdf>)
+  table/set(<wasm>, <application/wasm>)
+  table/set(<json>, <application/json>)
+  table/set(<css>, <text/css>)
+  table/set(<js>, <text/javascript>)
+  table/set(<html>, <text/html>)
+  back table
+
+host mime-table, make-mime-table()
+
+task mime-of
+  take path, like text
+  like maybe, like text
+  mark private
+
+  fork test, is-maximum(last-unit-index(path, <.>), 0)
+    hold
+      back make none
+  save extension, to-lower-case(units-after-last(path, <.>))
+  fork test, mime-table/has(extension)
+    hold
+      back make(some, mime-table/get(extension))
+  back make none
+
+# a commit's flat file list as manifest entries, each placed by the blob placement: a packed blob names its pack and
+# offset, a loose one its content type
+task manifest-entries
+  take files, like list, like dynamic
+  take placement, like dynamic
+  like list, like dynamic
+
+  save out, make list
+  walk files
+    take file
+    save blob, file/blob
+    save where, placement-of(placement, blob)
+    save entry, manifest-entry-of(file/path, blob, file/size)
+    fork test, is-pack-placement(where)
+      hold
+        field-set(entry, <pack>, where/pack)
+        field-set(entry, <site>, where/site)
+      miss
+        save path, file/path
+        save mime, mime-of(path)
+        sift mime
+          case some
+            link value
+            field-set(entry, <mime>, value)
+          case none
+            save loose, true
+    out/push(entry)
+  back out
+
+task join-with
+  take parts, like list, like text
+  take separator, like text
+  like text
+  mark private
+
+  save out, <>
+  save first, true
+  walk parts
+    take part
+    fork test, first
+      hold
+        save out, part
+        save first, false
+      miss
+        save out, <{out}{separator}{part}>
+  back out
+
+# one `link` entry block
+task emit-entry
+  take entry, like dynamic
+  like text
+  mark private
+
+  save lines, make list
+  lines/push(<link {entry/path}>)
+  lines/push(<  hash \<{entry/hash}\>>)
+  lines/push(<  size {entry/size}>)
+  fork test, is-truthy-field(entry/mime)
+    hold
+      lines/push(<  mime \<{entry/mime}\>>)
+  fork test, is-defined-field(entry/pack)
+    hold
+      lines/push(<  base \<{entry/pack}\>>)
+      lines/push(<    site {entry/site}>)
+  back join-with(lines, <\n>)
+
+task emit-head
+  take manifest, like dynamic
+  like text
+  mark private
+
+  back <deck {manifest/package}\n\ncode \<{manifest/ref}\>\n  hash \<{manifest/hash}\>\n>
+
+# a leaf manifest as `.tree` text
+task emit-manifest
+  take manifest, like dynamic
+  like text
+
+  save body, make list
+  walk manifest/files
+    take entry
+    body/push(emit-entry(entry))
+  back <{emit-head(manifest)}\n{join-with(body, <\n\n>)}\n>
+
+# a shard-index manifest as `.tree` text, a `base <shard-hash>` per shard
+task emit-shard-index
+  take manifest, like dynamic
+  like text
+
+  save body, make list
+  walk manifest/shards
+    take shard
+    body/push(<base \<{shard/hash}\>\n  foot \<{shard/foot}\>\n  head \<{shard/head}\>\n  size {shard/size}>)
+  back <{emit-head(manifest)}\n{join-with(body, <\n\n>)}\n>
+
+# a path is a content-defined shard boundary at the given average count
+task is-shard-boundary
+  take path, like text
+  take avg, like number
+  like boolean
+  mark private
+
+  back is-node-boundary(hash-object-text(<tree>, path), avg)
+
+# a full entry list cut into content-defined shards, the entries sorted by path: a change to one file re-cuts one shard
+# and the rest keep their hash. At `min-shard-files` or fewer the manifest is one leaf
+task shard-manifest
+  take deck-name, like text
+  take ref, like text
+  take hash, like text
+  take entries, like list, like dynamic
+  take min-shard-files, like number, fall 4096
+  take avg-shard-files, like number, fall 2048
+  like dynamic
+
+  fork test, is-maximum(entries/length, min-shard-files)
+    hold
+      back make(hold-manifest, bind(package, deck-name), bind(ref, ref), bind(hash, hash), bind(files, entries))
+
+  save shards, make list
+  save run, make list
+
+  walk entries
+    take entry
+    run/push(entry)
+    fork test, and(is-minimum(multiply(run/length, 4), avg-shard-files), is-shard-boundary(entry/path, avg-shard-files))
+      hold
+        shards/push(cut-shard(deck-name, ref, hash, run))
+        save run, make list
+
+  fork test, is-above(run/length, 0)
+    hold
+      shards/push(cut-shard(deck-name, ref, hash, run))
+
+  back make(sharded-manifest, bind(package, deck-name), bind(ref, ref), bind(hash, hash), bind(shards, shards))
+
+task cut-shard
+  take deck-name, like text
+  take ref, like text
+  take hash, like text
+  take run, like list, like dynamic
+  like manifest-shard
+  mark private
+
+  save text, emit-manifest(make(hold-manifest, bind(package, deck-name), bind(ref, ref), bind(hash, hash), bind(files, run)))
+  save foot, get(run, 0)/path
+  save head, get(run, subtract(run/length, 1))/path
+  back make(manifest-shard, bind(hash, hash-object-text(<tree>, text)), bind(foot, foot), bind(head, head), bind(size, run/length), bind(text, text))
+
+# a tag's value on a line: the empty text for the bare tag, the rest after `tag ` with one `<...>` taken off, else none
+task tag-value
+  take line, like text
+  take tag, like text
+  like maybe, like text
+  mark private
+
+  save t, trim(line)
+  fork test, is-equal(t, tag)
+    hold
+      back make(some, <>)
+  fork test, not(starts-with(t, <{tag} >))
+    hold
+      back make none
+  save rest, trim(substring(t, add(char-count(tag), 1), char-count(t)))
+  fork test, and(starts-with(rest, <\<>), ends-with(rest, <\>>))
+    hold
+      save inner, substring(rest, 1, subtract(char-count(rest), 1))
+      back make(some, inner)
+  back make(some, rest)
+
+# a manifest `.tree` read back: a leaf manifest (files) or a shard index (shards, no text), told apart by whether
+# its entries are `link` or `base`
+task parse-manifest
+  take text, like text
+  like dynamic
+
+  save deck-name, <>
+  save ref, <>
+  save hash, <>
+  save files, make list
+  save shards, make list
+  save in-entry, false
+  save in-shard, false
+  save entry, manifest-entry-of(<>, <>, 0)
+  save shard, manifest-entry-of(<>, <>, 0)
+
+  walk lines-of(text)
+    take line
+    fork test, is-equal(trim(line), <>)
+      hold
+        turn next
+
+    save top, is-equal(trim-start(line), line)
+
+    save deck-tag, tag-value(line, <deck>)
+    sift deck-tag
+      case some
+        link value
+        fork test, top
+          hold
+            save deck-name, value
+            turn next
+      case none
+        save no-deck, true
+
+    save link-tag, tag-value(line, <link>)
+    sift link-tag
+      case some
+        link value
+        fork test, top
+          hold
+            close-open(files, shards, in-entry, entry, in-shard, shard)
+            save in-shard, false
+            save entry, manifest-entry-of(value, <>, 0)
+            save in-entry, true
+            turn next
+      case none
+        save no-link, true
+
+    # a top-level `code` is the ref, a top-level `base` starts a shard
+    fork test, top
+      hold
+        save code-tag, tag-value(line, <code>)
+        sift code-tag
+          case some
+            link value
+            close-open(files, shards, in-entry, entry, in-shard, shard)
+            save in-entry, false
+            save in-shard, false
+            save ref, value
+            turn next
+          case none
+            save no-code, true
+        save base-tag, tag-value(line, <base>)
+        sift base-tag
+          case some
+            link value
+            close-open(files, shards, in-entry, entry, in-shard, shard)
+            save in-entry, false
+            save shard, shard-of(value)
+            save in-shard, true
+            turn next
+          case none
+            save no-base, true
+
+    # the nested fields
+    save hash-tag, tag-value(line, <hash>)
+    sift hash-tag
+      case some
+        link value
+        fork test, in-entry
+          hold
+            field-set(entry, <hash>, value)
+          miss
+            save hash, value
+        turn next
+      case none
+        save no-hash, true
+
+    save size-tag, tag-value(line, <size>)
+    sift size-tag
+      case some
+        link value
+        fork test, in-entry
+          hold
+            field-set(entry, <size>, host-number(value))
+          miss
+            fork test, in-shard
+              hold
+                field-set(shard, <size>, host-number(value))
+        turn next
+      case none
+        save no-size, true
+
+    fork test, in-entry
+      hold
+        save mime-tag, tag-value(line, <mime>)
+        sift mime-tag
+          case some
+            link value
+            field-set(entry, <mime>, value)
+            turn next
+          case none
+            save no-mime, true
+        save pack-tag, tag-value(line, <base>)
+        sift pack-tag
+          case some
+            link value
+            field-set(entry, <pack>, value)
+            turn next
+          case none
+            save no-pack, true
+        save site-tag, tag-value(line, <site>)
+        sift site-tag
+          case some
+            link value
+            field-set(entry, <site>, host-number(value))
+            turn next
+          case none
+            save no-site, true
+
+    fork test, in-shard
+      hold
+        save foot-tag, tag-value(line, <foot>)
+        sift foot-tag
+          case some
+            link value
+            field-set(shard, <foot>, value)
+            turn next
+          case none
+            save no-foot, true
+        save head-tag, tag-value(line, <head>)
+        sift head-tag
+          case some
+            link value
+            field-set(shard, <head>, value)
+            turn next
+          case none
+            save no-head, true
+
+  close-open(files, shards, in-entry, entry, in-shard, shard)
+
+  fork test, is-above(shards/length, 0)
+    hold
+      back make(shard-index, bind(package, deck-name), bind(ref, ref), bind(hash, hash), bind(shards, shards))
+  back make(hold-manifest, bind(package, deck-name), bind(ref, ref), bind(hash, hash), bind(files, files))
+
+bind shard-record-of
+  take hash, like text
+  like dynamic
+  case node
+    text <<({ hash: $hash, foot: "", head: "", size: 0 })>>
+
+task shard-of
+  take hash, like text
+  like dynamic
+  mark private
+
+  back shard-record-of(hash)
+
+# the open entry and the open shard, each kept where it belongs
+task close-open
+  take files, like list, like dynamic
+  take shards, like list, like dynamic
+  take in-entry, like boolean
+  take entry, like dynamic
+  take in-shard, like boolean
+  take shard, like dynamic
+  like void
+  mark private
+
+  fork test, in-entry
+    hold
+      files/push(entry)
+  fork test, in-shard
+    hold
+      shards/push(shard)

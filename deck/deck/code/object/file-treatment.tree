@@ -1,0 +1,118 @@
+# Which of the three treatments a file gets. Ported from deck/deck/code/object/classify.ts (term-cli-in-term-0082):
+# extensionOf, looksTextual, classify.
+#
+# A repository holds three kinds of file and what makes a change small differs for each
+# (note/project/base/design/content-types.md):
+#
+#   binary  content-defined chunks over the bytes; a small edit costs the chunks that moved
+#   text    chunks, plus a hunk delta against a base the receiver holds
+#   tree    parsed into RECORDS, so a small edit costs the changed FIELDS
+#
+# Classification is a total function of the name and the bytes, decided once at publish time, so the same file always
+# takes the same path.
+#
+# The decisions:
+#   - the treatment is its text, `binary`, `text` or `tree`, as the original's ContentType union
+#   - a name is cut by UTF-16 units, as the original's `lastIndexOf` and `slice` cut it, in binds
+#   - the bytes are the caller's host Buffer; UTF-8 validity is the original's own fatal TextDecoder
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find split
+  find to-lower-case
+
+# the text after the last `sign`, the whole text when there is none
+bind units-after-last
+  take value, like text
+  take sign, like text
+  like text
+  case node
+    text <$value.slice($value.lastIndexOf($sign) + 1)>
+
+bind last-unit-index
+  take value, like text
+  take sign, like text
+  like number
+  case node
+    text <$value.lastIndexOf($sign)>
+
+bind has-zero-byte
+  take bytes, like dynamic
+  like boolean
+  case node
+    text <$bytes.includes(0)>
+
+# throws on a malformed sequence
+bind strict-utf8-decode
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<new TextDecoder("utf-8", { fatal: true }).decode($bytes)>>
+
+# extensions that are binary regardless of what the bytes look like: a file may be valid UTF-8 by accident and still
+# be binary in intent
+task binary-extensions
+  like list, like text
+
+  back split(<png jpg gif webp avif ico bmp tiff mp3 wav ogg flac mp4 webm mov woff woff2 ttf otf eot pdf zip gz tgz br zst wasm so dylib dll exe bin db sqlite>, < >)
+
+task is-binary-extension
+  take extension, like text
+  like boolean
+  mark private
+
+  walk binary-extensions()
+    take one
+    fork test, is-equal(one, extension)
+      hold
+        back true
+  back false
+
+# the extension, lowercased, without its dot; empty when the name has none (a leading dot is no extension)
+task extension-of
+  take path, like text
+  like text
+
+  save base, units-after-last(path, </>)
+  fork test, is-maximum(last-unit-index(base, <.>), 0)
+    hold
+      back <>
+  back to-lower-case(units-after-last(base, <.>))
+
+# valid UTF-8 with no NUL: a NUL byte is the oldest binary signal, and a fatal decoder rejects malformed sequences
+task looks-textual
+  take bytes, like dynamic
+  like boolean
+
+  fork test, has-zero-byte(bytes)
+    hold
+      back false
+
+  fork
+    mark unsafe
+    strict-utf8-decode(bytes)
+    back true
+  halt take
+    take malformed
+    back false
+
+# `.tree` first and by name alone: it is the format the substrate exists for, and a `.tree` that fails to parse is an
+# error worth surfacing rather than a reason to store it as bytes
+task classify
+  take path, like text
+  take bytes, like dynamic
+  like text
+
+  save extension, extension-of(path)
+  fork test, is-equal(extension, <tree>)
+    hold
+      back <tree>
+  fork test, is-binary-extension(extension)
+    hold
+      back <binary>
+  fork test, looks-textual(bytes)
+    hold
+      back <text>
+  back <binary>

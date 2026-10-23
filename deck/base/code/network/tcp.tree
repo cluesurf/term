@@ -5,6 +5,8 @@ mark stable
 load @term/base/native/{platform}/network/tcp
   find tcp-connect
   find tcp-listen
+  find tcp-server
+  find tcp-stream
 
 load @term/base/native/{platform}/network/tcp/connection
   find wire-read

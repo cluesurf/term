@@ -113,10 +113,11 @@ const moveTop = towersRust.slice(towersRust.indexOf('fn move_top('), towersRust.
 const buildTower = towersRust.slice(towersRust.indexOf('fn build_tower('), towersRust.indexOf('\n}\n', towersRust.indexOf('fn build_tower(')))
 ok(
   'a raise in the task holding a spare hands it to `term_fail_with`',
-  (moveTop.match(/Err\(term_fail_with\(__spare_stack, "/g) ?? []).length === 2 && !/Err\(term_fail\(/.test(moveTop),
+  // a raise may be wrapped for its frame, `Err((term_fail(..)).at(..))` (term/hive decision 001)
+  (moveTop.match(/Err\(\(?term_fail_with\(__spare_stack, "/g) ?? []).length === 2 && !/Err\(\(?term_fail\(/.test(moveTop),
   moveTop.split('\n').filter(l => /term_fail/.test(l)).join(' | '),
 )
-ok('a raise in a task with no spare is `term_fail`', /Err\(term_fail\("/.test(buildTower) && !/term_fail_with/.test(buildTower))
+ok('a raise in a task with no spare is `term_fail`', /Err\(\(?term_fail\("/.test(buildTower) && !/term_fail_with/.test(buildTower))
 ok('`term_fail_with` is cold and out of line', /#\[cold\]\n#\[inline\(never\)\]\nfn term_fail_with<T>/.test(towersRust))
 
 // 6. THE LIMIT, held so a change to it is noticed: Towers with its push raising a RECORD boxes nothing, because the

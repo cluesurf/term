@@ -33,6 +33,7 @@ load ../compile/node
   find statement
   find type
   find value-part
+  find expression-span
 
 task has-text
   take values, like list, like text

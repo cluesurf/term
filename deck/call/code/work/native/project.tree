@@ -1,0 +1,332 @@
+# `term make --env <rust|swift|kotlin|node>`: every program of the project, each one file for that backend under
+# host/<env>/ (note/project/term/backends-complete.md, step 2).
+#
+# A PROGRAM is a file that defines an entry: a top-level `task run`, `boot` or `main` that takes nothing, the entries
+# `--emit --build` starts at (compile/main-entry.tree `entry-names`). Read with the package manager's own parse
+# (deck/read.ts), never a pattern. A file with none is a library, and reaches the build through the programs that load
+# it.
+#
+# Each program is emitted as `--emit` emits it (work/context/emission.tree `emit-program`: its whole import closure,
+# the runtime it docks, a check error refusing), to host/<env>/<its path under the project>.<rs|swift|kt|ts>. One that
+# does not build is reported with its problems and the rest are written, and the run fails. `--build` also builds each,
+# with its main, by its toolchain (building.tree), beside its source.
+#
+# Port of deck/call/code/make-native.ts (cli-in-term-0034). `PROJECT_ENVS` is the task `project-envs()`.
+
+load @term/base/list
+  find list
+  find join
+  find sort
+  find contains
+
+load @term/make/check/eliminate
+  find utf16-order
+
+load @term/make/compile/main-entry
+  find entry-names
+
+load ../build/tree-finding
+  find find-tree-files
+
+load ../cask/host-value
+  find is-truthy
+  find value-or
+  find now-ms
+
+load ./building
+  find build-native
+
+load ./native-value
+  find capital-first
+  find without-tree
+  find byte-length
+  find first-lines
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <global:process>, name node-process
+  load <@term/deck/code/read>, name read-module
+  # emit.ts, whose port is work/context/emission.tree, DOCKED: a load of it puts its task `read-runtime` beside
+  # work/cask/toolchain.tree's (reached through building.tree), and a value reference to a task two files define
+  # (`bind read-runtime, read-runtime`) is then an unknown name (traps.md, cli-in-term-0034)
+  load <@term/call/code/emit>, name emit-module
+  load <@term/call/code/output>, name output
+
+form tree-source
+  link file, like text
+  link text, like text
+
+form native-folder
+  link recursive, like boolean
+
+form native-open
+  link verb, like text
+  link root, like dynamic
+  link facts, like list, like dynamic
+
+form native-problem
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+
+form native-problem-fields
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form native-check
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+
+form native-step
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+
+form native-emitted
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link bytes, like number
+  link fields, like list, like dynamic
+
+form native-placed
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link fields, like list, like dynamic
+
+form native-said
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link message, like list, like text
+
+form native-close
+  link verdict, like text
+  link failure, like text
+
+form native-close-next
+  link verdict, like text
+  link next, like text
+  link failure, like text
+
+form native-close-counts
+  link verdict, like text
+  link counts, like list, like dynamic
+
+form native-close-failed
+  link verdict, like text
+  link counts, like list, like dynamic
+  link failure, like text
+
+form program-emit
+  link root, like dynamic
+  link file, like text
+  link target, like text
+
+form program-build
+  link source, like dynamic
+  link target, like text
+  link folder, like text
+  link name, like text
+
+# the backends a whole project builds for
+task project-envs
+  like list, like text
+
+  save envs, make list
+  envs/push(<rust>)
+  envs/push(<swift>)
+  envs/push(<kotlin>)
+  envs/push(<node>)
+  back envs
+
+task extension-of
+  take env, like text
+  like text
+  mark private
+
+  fork test, is-equal(env, <rust>)
+    hold
+      back <rs>
+  fork test, is-equal(env, <swift>)
+    hold
+      back <swift>
+  fork test, is-equal(env, <kotlin>)
+    hold
+      back <kt>
+  back <ts>
+
+# a file defines an entry when one of its top-level tasks is named for one and takes nothing
+task defines-entry
+  take file, like text
+  like boolean
+
+  save read, read-module/read-tree(make(tree-source, bind(file, file), bind(text, node-fs/read-file-sync(file, <utf8>))))
+  fork test, not(is-truthy(read/ok))
+    hold
+      back false
+  save names, entry-names()
+  walk read/forms
+    take form, like dynamic
+    fork test, is-unequal(<{form/head}>, <task>)
+      hold
+        turn next
+    save terms, form/terms
+    save first, value-or(terms/0, <>)
+    fork test, not(contains(names, <{first}>))
+      hold
+        turn next
+    fork test, is-unequal(terms/length, 1)
+      hold
+        turn next
+    save takes, false
+    walk form/forms
+      take one, like dynamic
+      fork test, is-equal(<{one/head}>, <take>)
+        hold
+          save takes, true
+    fork test, not(takes)
+      hold
+        back true
+  back false
+
+# the project's programs, in walk order, with the platform's native trees only
+task project-programs
+  take root, like text
+  take env, like text
+  like list, like text
+
+  save programs, make list
+  walk find-tree-files(root, env, root)
+    take file, like text
+    fork test, defines-entry(file)
+      hold
+        programs/push(file)
+  back sort(programs, utf16-order)
+
+task call-make-native
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  save facts, make list
+  facts/push(<--env>)
+  facts/push(input/env)
+  fork test, is-truthy(input/build)
+    hold
+      facts/push(<--build>)
+  output/open-run(make(native-open, bind(verb, <make>), bind(root, root), bind(facts, facts)))
+
+  save envs, project-envs()
+  fork test, not(contains(envs, <{input/env}>))
+    hold
+      save fields, make list
+      fields/push(output/field(<backends>, join(envs, <, >)))
+      output/report(make(native-problem-fields, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no backend named {input/env}>), bind(fields, fields)))
+      node-process/exit(output/close-run(make(native-close, bind(verdict, <Nothing built>), bind(failure, <usage>))))
+
+  save env, <{input/env}>
+  save programs, project-programs(root, env)
+  save count, programs/length
+
+  fork test, is-equal(count, 0)
+    hold
+      save named, join(entry-names(), <`, `>)
+      output/report(make(native-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <No file of the project defines `{named}` taking nothing, so there is no program to build>)))
+      node-process/exit(output/close-run(make(native-close-next, bind(verdict, <Nothing built>), bind(next, <term make --emit {env} \<file.tree\> --main \<task\>>), bind(failure, <failure>))))
+
+  save host, node-path/join(root, <host>, env)
+  save written, 0
+  save failed, 0
+  save build, is-truthy(input/build)
+
+  walk programs
+    take file, like text
+    save started, now-ms()
+    save relative, <{node-path/relative(root, file)}>
+    save emitted, emit-module/emit-program(make(program-emit, bind(root, root), bind(file, file), bind(target, env)))
+
+    fork test, not(is-truthy(emitted/ok))
+      hold
+        save failed, add(failed, 1)
+        fork test, is-truthy(emitted/problems)
+          hold
+            output/report-problems(emitted/problems, root)
+          miss
+            walk emitted/errors
+              take error, like text
+              output/report(make(native-check, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <check>), bind(subject, capital-first(error))))
+        output/report(make(native-step, bind(glyph, <failed>), bind(verb, <emit>), bind(subject, relative), bind(duration, subtract(now-ms(), started))))
+        turn next
+
+    save stem, node-path/join(host, without-tree(relative))
+    save out, <{stem}.{extension-of(env)}>
+    save source, <{emitted/source}>
+    fork test, not(source/ends-with(<\n>))
+      hold
+        save source, <{source}\n>
+    node-fs/mkdir-sync(node-path/dirname(out), make(native-folder, bind(recursive, true)))
+    # unchanged source is left as it is, so a toolchain watching the folder sees only what changed
+    fork test, or(not(node-fs/exists-sync(out)), is-unequal(<{node-fs/read-file-sync(out, <utf8>)}>, source))
+      hold
+        node-fs/write-file-sync(out, source)
+    save written, add(written, 1)
+
+    fork test, not(build)
+      hold
+        save fields, make list
+        fields/push(output/location(output/show-path(out, root)))
+        output/report(make(native-emitted, bind(glyph, <done>), bind(verb, <emit>), bind(subject, relative), bind(duration, subtract(now-ms(), started)), bind(bytes, byte-length(source)), bind(fields, fields)))
+        turn next
+
+    save asked
+      make program-build
+        bind source, emitted/source
+        bind target, env
+        bind folder, node-path/join(node-path/dirname(stem), <build>)
+        bind name, <{node-path/basename(stem)}>
+    save built, build-native(asked)
+
+    fork test, not(built/ok)
+      hold
+        save failed, add(failed, 1)
+        save reason, <{built/reason}>
+        output/report(make(native-said, bind(glyph, <failed>), bind(verb, <build>), bind(subject, relative), bind(duration, subtract(now-ms(), started)), bind(message, first-lines(reason, 20))))
+        turn next
+
+    save placed, make list
+    save artifact, <{built/artifact}>
+    placed/push(output/location(output/show-path(artifact, root)))
+    output/report(make(native-placed, bind(glyph, <done>), bind(verb, <build>), bind(subject, relative), bind(duration, subtract(now-ms(), started)), bind(fields, placed)))
+
+  save counts, make list
+  counts/push(output/count(written, <written>))
+  fork test, is-above(failed, 0)
+    hold
+      counts/push(output/count(failed, <failed>))
+  save done-word, <Emitted>
+  fork test, build
+    hold
+      save done-word, <Built>
+  save noun, <programs>
+  fork test, is-equal(count, 1)
+    hold
+      save noun, <program>
+  save made, subtract(count, failed)
+  save verdict, <{done-word} {made} of {count} {noun} for {env}>
+
+  fork test, is-above(failed, 0)
+    hold
+      node-process/exit(output/close-run(make(native-close-failed, bind(verdict, verdict), bind(counts, counts), bind(failure, <failure>))))
+
+  output/close-run(make(native-close-counts, bind(verdict, verdict), bind(counts, counts)))

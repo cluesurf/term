@@ -1,0 +1,989 @@
+# The manifest, a role file and the lockfile, read THROUGH THE MILL (mill-self-hosting-0005): the deck grammar in
+# `deck/mill/code/tree/deck`, inlined at build time into deck/deck/code/grammar.ts, run by the mill executor
+# (compile/mill-running.tree) over the parsed file, and the record built from the captures. No hand-rolled extraction:
+# when a reader and the mill disagree, the mill is right. Every refusal names the line it is about.
+#
+# Ported from deck/deck/code/mill.ts (term-cli-in-term-0075). The decisions:
+#   - the two grammars were read once per process into module variables. Here they are a `manifest-grammars` record,
+#     `mark shared`, that the caller makes once with `make-grammars()` and hands to every read, which fills each grammar
+#     the first time it is asked for (self-host spec 4.8: module state is a record the driver threads)
+#   - the grammar texts are still deck/deck/code/grammar.ts's constants, docked, until its port (term-cli-in-term-0080)
+#   - a role file's `expand` is a task handed in, as the original's was a function (spec 4.9)
+#   - a match is the executor's `hash` of captures; a site it never filled reads as no captures, as the original's
+#     `fields.get(site) ?? []` did
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/text
+  find starts-with
+  find substring
+  find index-of
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/hash
+  find hash
+
+load @term/make/parser/tree
+  find node
+  find root-node
+  find parse
+
+load @term/make/parser/token
+  find token-source
+
+load @term/make/compile/mill-running
+  find mill-capture
+  find mine-rule
+  find mine-run
+  find read-mine-grammar
+  find run-mine
+  find head-word
+  find word-of
+  find span-of-node
+
+load ../version
+  find code
+  find code-hold
+  find parse-code
+  find parse-code-hold
+
+load ./manifest-shape
+  find deck-manifest
+  find deck-link
+  find deck-mind
+  find deck-host-group
+  find deck-base
+  find deck-need
+
+load ./role-shape
+  find role-take
+  find role-rule
+  find role-config
+
+load ./lockfile-shape
+  find lock-link
+  find lock-entry
+  find lock-need
+  find lockfile
+
+dock load
+  load <@term/deck/code/grammar>, name deck-grammar-text
+  load <@term/deck/code/name>, name deck-name
+  load <global:Number>, name host-number
+
+# the deck and lockfile grammars, each read the first time it is asked for
+form manifest-grammars
+  mark shared
+  link deck
+    like maybe
+      like hash, like text
+        like list, like mine-rule
+    need false
+  link lock
+    like maybe
+      like hash, like text
+        like list, like mine-rule
+    need false
+
+task make-grammars
+  like manifest-grammars
+
+  back make(manifest-grammars, bind(deck, make none), bind(lock, make none))
+
+# a grammar text read into its rules
+task grammar-of
+  take text, like text
+  like hash, like text, like list, like mine-rule
+  mark private
+
+  save parsed, parse(make(token-source, bind(file, <grammar.tree>), bind(text, text)))
+  fork test, not(parsed/ok)
+    hold
+      halt <the inlined deck grammar does not parse; rerun `pnpm run make:grammar`>
+  back read-mine-grammar(parsed/tree)
+
+# the generated module's constant, by its name
+task grammar-text
+  take name, like text
+  like text
+  mark private
+
+  back deck-grammar-text/{name}
+
+task deck-grammar
+  take grammars, like manifest-grammars
+  like hash, like text, like list, like mine-rule
+  mark private
+
+  sift grammars/deck
+    case some
+      link known
+      back known
+    case none
+      save read, grammar-of(grammar-text(<DECK_GRAMMAR>))
+      save grammars/deck, make(some, read)
+      back read
+
+task lock-grammar
+  take grammars, like manifest-grammars
+  like hash, like text, like list, like mine-rule
+  mark private
+
+  sift grammars/lock
+    case some
+      link known
+      back known
+    case none
+      save read, grammar-of(grammar-text(<LOCK_GRAMMAR>))
+      save grammars/lock, make(some, read)
+      back read
+
+# ---- capture helpers ----
+
+# the captures at a site, none when the site was never filled
+task captures-at
+  take match, like hash, like text, like list, like mill-capture
+  take site, like text
+  like list, like mill-capture
+  mark private
+
+  fork test, match/has(site)
+    hold
+      back match/get(site)
+  back make list
+
+task first-capture
+  take captures, like list, like mill-capture
+  like maybe, like mill-capture
+  mark private
+
+  fork test, is-above(captures/length, 0)
+    hold
+      save found, get(captures, 0)
+      back make(some, found)
+  back make none
+
+# a word or a literal's text, a number as its text, none for a nested match
+task word-in
+  take capture, like maybe, like mill-capture
+  like maybe, like text
+  mark private
+
+  sift capture
+    case some
+      link held
+      sift held
+        case word
+          link word-value
+          back make(some, word-value)
+        case text
+          link text-value
+          back make(some, text-value)
+        case number
+          link number-value
+          save shown, <{number-value}>
+          back make(some, shown)
+        miss
+          back make none
+    case none
+      back make none
+
+# the word of the first capture at a site
+task word-at-site
+  take match, like hash, like text, like list, like mill-capture
+  take site, like text
+  like maybe, like text
+  mark private
+
+  back word-in(first-capture(captures-at(match, site)))
+
+# the single text or word a nested match captured at `site`
+task site-word
+  take capture, like maybe, like mill-capture
+  take site, like text
+  like maybe, like text
+  mark private
+
+  sift capture
+    case some
+      link held
+      sift held
+        case match
+          # renamed in declaration order: the rule, then the match
+          link inner-rule
+          link inner
+          back word-at-site(inner, site)
+        miss
+          back make none
+    case none
+      back make none
+
+# the nested matches among some captures
+task matches-of
+  take captures, like list, like mill-capture
+  like list, like hash, like text, like list, like mill-capture
+  mark private
+
+  save out, make list
+  walk captures
+    take each
+    sift each
+      case match
+        link inner-rule
+        link inner
+        out/push(inner)
+      miss
+        save nothing, 0
+  back out
+
+task matches-at
+  take match, like hash, like text, like list, like mill-capture
+  take site, like text
+  like list, like hash, like text, like list, like mill-capture
+  mark private
+
+  back matches-of(captures-at(match, site))
+
+task either
+  take first, like maybe, like text
+  take second, like maybe, like text
+  like maybe, like text
+  mark private
+
+  sift first
+    case some
+      back first
+    case none
+      back second
+
+# a maybe holding a text that is not empty: the original's truth test on a `string | undefined`
+task is-filled
+  take value, like maybe, like text
+  like boolean
+  mark private
+
+  sift value
+    case some
+      link filled
+      back not(is-equal(filled, <>))
+    case none
+      back false
+
+task text-or-empty
+  take value, like maybe, like text
+  like text
+  mark private
+
+  sift value
+    case some
+      link known
+      back known
+    case none
+      back <>
+
+# ` at line <n>`, one-based, or nothing when the node has no span
+task line-of
+  take one, like maybe, like node
+  like text
+  mark private
+
+  sift one
+    case some
+      link known
+      sift span-of-node(known)
+        case some
+          link at
+          back < at line {add(at/start/line, 1)}>
+        case none
+          back <>
+    case none
+      back <>
+
+# ` (line <n>)`, zero-based as the original printed it, or nothing
+task line-note
+  take one, like maybe, like node
+  like text
+  mark private
+
+  sift one
+    case some
+      link known
+      sift span-of-node(known)
+        case some
+          link at
+          back < (line {at/start/line})>
+        case none
+          back <>
+    case none
+      back <>
+
+task root-of
+  take one, like node
+  like root-node
+  mark private
+
+  save nodes, make list
+  nodes/push(one)
+  back make(root, bind(nodes, nodes))
+
+# ---- the manifest ----
+
+# A LINE THE GRAMMAR DOES NOT READ IS REFUSED. The deck grammar's last alternative, at the top and under `deck`, takes
+# any node, so a misspelled field (`lnik @term/base`) was dropped without a word. Each top-level group must be a
+# `deck`, `role` or `load`, and each line under `deck` must fit one of the grammar's `deck-*` field rules, mined alone
+task refuse-unread-lines
+  take grammar, like hash, like text, like list, like mine-rule
+  take nodes, like list, like node
+  like void
+  mark private
+
+  save field-rules, make list
+  walk grammar/keys()
+    take rule-name
+    fork test, and(starts-with(rule-name, <deck->), not(is-equal(rule-name, <deck-def>)))
+      hold
+        field-rules/push(rule-name)
+  save reads, <a manifest reads `head`, `mark`, `code`, `lock`, `link`, `host`, `base`, `case`, `mind`, `hook`, `boot`, `tool`, `test`, `line`, `book`, `call`, `task`, `role`, `deck`, `hide`, `site`, `view`, `make`, `term`, `text`, `cite`, `sort` and `need` under `deck`>
+
+  walk nodes
+    take one
+    save here, make(some, one)
+    sift one
+      case group
+        link members
+        save head, head-word(one)
+        save head-text, text-or-empty(head)
+        fork test, or(is-equal(head-text, <role>), is-equal(head-text, <load>))
+          hold
+            turn next
+        fork test, or(not(is-filled(head)), not(is-equal(head-text, <deck>)))
+          hold
+            halt <`{head-text}`{line-of(here)} in deck.tree is not a `deck`, `role` or `load`, so it would not be read>
+        # the head and the package's name, then the fields
+        save at, 0
+        walk members
+          take field
+          fork test, is-above(at, 1)
+            hold
+              save fits, false
+              sift field
+                case group
+                  walk field-rules
+                    take rule
+                    fork test, not(fits)
+                      hold
+                        save tried, run-mine(grammar, rule, root-of(field))
+                        fork test, tried/ok
+                          hold
+                            save fits, true
+                miss
+                  save nothing, 0
+              fork test, not(fits)
+                hold
+                  save said, make none
+                  sift field
+                    case group
+                      save said, head-word(field)
+                    miss
+                      save said, word-of(field)
+                  save field-here, make(some, field)
+                  halt <`{text-or-empty(said)}`{line-of(field-here)} in deck.tree does not fit the manifest grammar, so it would not be read: {reads}, each in the shape its guide gives>
+          save at, add(at, 1)
+      miss
+        halt <deck.tree has a line{line-of(here)} that is not a `deck`, `role` or `load`, so it would not be read>
+
+# a `have` count as the original's `Number.parseInt(have, 10)`, when that is finite
+task have-of
+  take have-text, like maybe, like text
+  like maybe, like number
+  mark private
+
+  sift have-text
+    case some
+      link written
+      save parsed, host-number/parse-int(written, 10)
+      fork test, host-number/is-finite(parsed)
+        hold
+          save count, 0
+          save count, parsed
+          back make(some, count)
+      back make none
+    case none
+      back make none
+
+# `link @scope/name, mark <hold>, have <n>`, or the old `code <hold>`; none when it names nothing
+task link-of
+  take match, like hash, like text, like list, like mill-capture
+  like maybe, like deck-link
+  mark private
+
+  save link-name, word-at-site(match, <name>)
+  fork test, not(is-filled(link-name))
+    hold
+      back make none
+  save hold-text, either(word-at-site(match, <mark>), word-at-site(match, <code>))
+  save have-found, have-of(word-at-site(match, <have>))
+  save hold, make(wild, bind(major, 0), bind(minor, -1), bind(patch, -1))
+  fork test, is-filled(hold-text)
+    hold
+      save hold, parse-code-hold(text-or-empty(hold-text))
+  save found, make(deck-link, bind(name, text-or-empty(link-name)), bind(mark, hold))
+  sift have-found
+    case some
+      save found/have, have-found
+    case none
+      save nothing, 0
+  back make(some, found)
+
+task links-of
+  take matches, like list, like hash, like text, like list, like mill-capture
+  like list, like deck-link
+  mark private
+
+  save out, make list
+  walk matches
+    take each
+    save found, link-of(each)
+    sift found
+      case some
+        link found-link
+        out/push(found-link)
+      case none
+        save nothing, 0
+  back out
+
+task host-group-of
+  take match, like hash, like text, like list, like mill-capture
+  like deck-host-group
+  mark private
+
+  back make(deck-host-group, bind(registry, text-or-empty(word-at-site(match, <registry>))), bind(link, links-of(matches-at(match, <link>))))
+
+# `mind <Name>, base <email>` with an optional `site`, and `cite` with no `site`
+task person-of
+  take match, like hash, like text, like list, like mill-capture
+  take with-site, like boolean
+  like deck-mind
+  mark private
+
+  save entry, make(deck-mind, bind(name, text-or-empty(word-at-site(match, <name>))))
+  sift word-at-site(match, <base>)
+    case some
+      link base-text
+      save entry/base, base-text
+    case none
+      save nothing, 0
+  fork test, with-site
+    hold
+      sift word-at-site(match, <site>)
+        case some
+          link site-text
+          save entry/site, site-text
+        case none
+          save nothing, 0
+  back entry
+
+# the words a repeatable field captured at `site`, the empty ones left out
+task filled-words
+  take matches, like list, like hash, like text, like list, like mill-capture
+  take site, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk matches
+    take each
+    save found, text-or-empty(word-at-site(each, site))
+    fork test, not(is-equal(found, <>))
+      hold
+        out/push(found)
+  back out
+
+# the first of some captures' site words that is there
+task first-site-word
+  take captures, like list, like mill-capture
+  take site, like text
+  like maybe, like text
+  mark private
+
+  walk captures
+    take each
+    save found, site-word(make(some, each), site)
+    sift found
+      case some
+        back found
+      case none
+        save nothing, 0
+  back make none
+
+task parse-manifest-mill
+  take text, like text
+  take grammars, like manifest-grammars
+  like deck-manifest
+
+  save grammar, deck-grammar(grammars)
+  save parsed, parse(make(token-source, bind(file, <deck.tree>), bind(text, text)))
+  fork test, not(parsed/ok)
+    hold
+      save said, <>
+      fork test, is-above(parsed/diagnostics/length, 0)
+        hold
+          save first-diagnostic, get(parsed/diagnostics, 0)
+          save said, <: {first-diagnostic/message} (line {first-diagnostic/span/start/line})>
+      halt <deck.tree could not be parsed{said}>
+
+  save mined, run-mine(grammar, <deck>, parsed/tree)
+  fork test, not(mined/ok)
+    hold
+      halt <deck.tree does not fit the manifest grammar{line-note(mined/at)}>
+
+  save top, make list
+  sift parsed/tree
+    case root
+      link root-nodes
+      save top, root-nodes
+  refuse-unread-lines(grammar, top)
+
+  save deck-capture, first-capture(captures-at(mined/match, <deck>))
+  save fields, make hash
+  save found-deck, false
+  sift deck-capture
+    case some
+      link held
+      sift held
+        case match
+          link inner-rule
+          link inner
+          save fields, inner
+          save found-deck, true
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  fork test, not(found-deck)
+    hold
+      halt <deck.tree has no `deck` declaration>
+
+  # `deck @scope/name`, or a bare `deck name` for an unscoped package
+  save host, <>
+  save name, text-or-empty(word-at-site(fields, <name>))
+  save slash, index-of(name, </>)
+  fork test, and(starts-with(name, <@>), not(is-equal(slash, -1)))
+    hold
+      save host, substring(name, 1, slash)
+      save name, substring(name, add(slash, 1))
+
+  # `mark <1.4.2>` is the version, `code <1.4.2>` its old spelling; `code ./src` is the code root, `bear ./src` its
+  # old spelling
+  save code-captures, captures-at(fields, <code>)
+  save version-text, either(site-word(first-capture(captures-at(fields, <mark>)), <text>), first-site-word(code-captures, <text>))
+  save mark, parse-code(<0.0.0>)
+  sift version-text
+    case some
+      link written-version
+      save mark, parse-code(written-version)
+    case none
+      save mark, parse-code(<0.0.0>)
+  save code-root, either(first-site-word(code-captures, <path>), site-word(first-capture(captures-at(fields, <bear>)), <path>))
+  save head, site-word(first-capture(captures-at(fields, <head>)), <text>)
+
+  save minds, make list
+  walk matches-at(fields, <mind>)
+    take each-mind
+    minds/push(person-of(each-mind, true))
+
+  save lock-capture, first-capture(captures-at(fields, <lock>))
+  save lock, either(site-word(lock-capture, <term>), site-word(lock-capture, <text>))
+  save sort-capture, first-capture(captures-at(fields, <sort>))
+  save sort, either(site-word(sort-capture, <term>), site-word(sort-capture, <text>))
+
+  save terms, filled-words(matches-at(fields, <term>), <text>)
+  save decks, filled-words(matches-at(fields, <deck>), <path>)
+  save links, links-of(matches-at(fields, <link>))
+
+  # `case work` holds the dev dependencies, as `link` forms and `host` groups
+  save work, make none
+  walk matches-at(fields, <case>)
+    take each-case
+    fork test, is-equal(text-or-empty(word-at-site(each-case, <name>)), <work>)
+      hold
+        save work, make(some, each-case)
+        halt
+  save dev-links, make list
+  sift work
+    case some
+      link work-match
+      save dev-links, links-of(matches-at(work-match, <link>))
+    case none
+      save nothing, 0
+  save host-links, make list
+  walk matches-at(fields, <host>)
+    take each-host
+    host-links/push(host-group-of(each-host))
+  sift work
+    case some
+      link work-hosts
+      walk matches-at(work-hosts, <host>)
+        take each-work-host
+        host-links/push(host-group-of(each-work-host))
+    case none
+      save nothing, 0
+
+  save bases, make list
+  walk matches-at(fields, <base>)
+    take each-base
+    save scope-text, text-or-empty(word-at-site(each-base, <scope>))
+    bases/push(make(deck-base, bind(scope, deck-name/scope-name(scope-text)), bind(registry, text-or-empty(word-at-site(each-base, <registry>)))))
+
+  save hooks, make hash
+  walk matches-at(fields, <hook>)
+    take each-hook
+    save hook-name, word-at-site(each-hook, <name>)
+    save hook-task, word-at-site(each-hook, <path>)
+    fork test, and(is-filled(hook-name), is-filled(hook-task))
+      hold
+        hooks/set(text-or-empty(hook-name), text-or-empty(hook-task))
+
+  # `make <security>` is repeatable, and `cite` is `mind`'s shape under another head
+  save makes, filled-words(matches-at(fields, <make>), <text>)
+  save cites, make list
+  walk matches-at(fields, <cite>)
+    take each-cite
+    cites/push(person-of(each-cite, false))
+
+  save hide-capture, first-capture(captures-at(fields, <hide>))
+  save site-capture, first-capture(captures-at(fields, <site>))
+  save view-capture, first-capture(captures-at(fields, <view>))
+
+  # `need @term/code, mark <2.6.x>`: the toolchain, at most one
+  save need-found, make none
+  save need-matches, matches-at(fields, <need>)
+  fork test, is-above(need-matches/length, 0)
+    hold
+      save need-match, get(need-matches, 0)
+      save need-name, word-at-site(need-match, <name>)
+      save need-mark, word-at-site(need-match, <mark>)
+      fork test, and(is-filled(need-name), is-filled(need-mark))
+        hold
+          save need-hold, parse-code-hold(text-or-empty(need-mark))
+          save need-record, make(deck-need, bind(name, text-or-empty(need-name)), bind(mark, need-hold))
+          save need-found, make(some, need-record)
+
+  save manifest, make(deck-manifest, bind(host, host), bind(name, name), bind(mark, mark), bind(link, links))
+  sift code-root
+    case some
+      link code-text
+      save manifest/code, code-text
+    case none
+      save nothing, 0
+  sift head
+    case some
+      link head-text
+      save manifest/head, head-text
+    case none
+      save nothing, 0
+  fork test, is-above(minds/length, 0)
+    hold
+      save manifest/mind, minds
+  sift lock
+    case some
+      link lock-text
+      save manifest/lock, lock-text
+    case none
+      save nothing, 0
+  sift sort
+    case some
+      link sort-text
+      save manifest/sort, sort-text
+    case none
+      save nothing, 0
+  fork test, is-above(terms/length, 0)
+    hold
+      save manifest/term, terms
+  fork test, is-above(hooks/length(), 0)
+    hold
+      save manifest/hook, make(some, hooks)
+  sift dir-of(fields, <role>)
+    case some
+      link role-dir
+      save manifest/role, role-dir
+    case none
+      save nothing, 0
+  sift dir-of(fields, <test>)
+    case some
+      link test-dir
+      save manifest/test, test-dir
+    case none
+      save nothing, 0
+  sift dir-of(fields, <book>)
+    case some
+      link book-dir
+      save manifest/book, book-dir
+    case none
+      save nothing, 0
+  sift dir-of(fields, <line>)
+    case some
+      link line-dir
+      save manifest/line, line-dir
+    case none
+      save nothing, 0
+  sift dir-of(fields, <call>)
+    case some
+      link call-dir
+      save manifest/call, call-dir
+    case none
+      save nothing, 0
+  sift dir-of(fields, <task>)
+    case some
+      link task-dir
+      save manifest/task, task-dir
+    case none
+      save nothing, 0
+  sift hide-capture
+    case some
+      save manifest/hide, is-equal(text-or-empty(site-word(hide-capture, <flag>)), <true>)
+    case none
+      save nothing, 0
+  sift site-word(site-capture, <text>)
+    case some
+      link site-text
+      save manifest/site, site-text
+    case none
+      save nothing, 0
+  sift site-word(view-capture, <text>)
+    case some
+      link view-text
+      save manifest/view, view-text
+    case none
+      save nothing, 0
+  fork test, is-above(decks/length, 0)
+    hold
+      save manifest/deck, decks
+  fork test, is-above(dev-links/length, 0)
+    hold
+      save manifest/dev-link, dev-links
+  fork test, is-above(host-links/length, 0)
+    hold
+      save manifest/host-link, host-links
+  fork test, is-above(bases/length, 0)
+    hold
+      save manifest/base, bases
+  sift dir-of(fields, <boot>)
+    case some
+      link boot-dir
+      save manifest/boot, boot-dir
+    case none
+      save nothing, 0
+  sift dir-of(fields, <tool>)
+    case some
+      link tool-dir
+      save manifest/tool, tool-dir
+    case none
+      save nothing, 0
+  sift site-word(first-capture(captures-at(fields, <text>)), <text>)
+    case some
+      link long-title
+      save manifest/text, long-title
+    case none
+      save nothing, 0
+  fork test, is-above(makes/length, 0)
+    hold
+      save manifest/make, makes
+  fork test, is-above(cites/length, 0)
+    hold
+      save manifest/cite, cites
+  sift need-found
+    case some
+      save manifest/need, need-found
+    case none
+      save nothing, 0
+
+  back manifest
+
+# a folder field's path: `role ./roles`
+task dir-of
+  take fields, like hash, like text, like list, like mill-capture
+  take site, like text
+  like maybe, like text
+  mark private
+
+  back site-word(first-capture(captures-at(fields, site)), <path>)
+
+# ---- the role file ----
+
+# A GLOB'S ESCAPED BRACES COME BACK ESCAPED: a role file writes `\\\{code,view\\\}` because a bare brace is an
+# interpolation to the parser, and the glob matcher must see the braces alone. The original's
+# `replace(/\\([{}])/g, '$1')`, left to right
+task glob-of
+  take raw, like text
+  like text
+  mark private
+
+  save runes, to-runes(raw)
+  save out, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, runes/length)
+    hook hold
+      save rune, get(runes, at)
+      save next-rune, -1
+      fork test, is-below(add(at, 1), runes/length)
+        hold
+          save next-rune, get(runes, add(at, 1))
+      fork test, and(is-equal(rune, 92), or(is-equal(next-rune, 123), is-equal(next-rune, 125)))
+        hold
+          out/push(next-rune)
+          save at, add(at, 2)
+        miss
+          out/push(rune)
+          save at, add(at, 1)
+  back from-runes(out)
+
+task parse-role-mill
+  take text, like text
+  take root, like text
+  take expand
+    like task
+      take pattern, like text
+      take root, like text
+      like text
+  take grammars, like manifest-grammars
+  like role-config
+
+  save grammar, deck-grammar(grammars)
+  save parsed, parse(make(token-source, bind(file, <role.tree>), bind(text, text)))
+  fork test, not(parsed/ok)
+    hold
+      save said, <>
+      fork test, is-above(parsed/diagnostics/length, 0)
+        hold
+          save first-diagnostic, get(parsed/diagnostics, 0)
+          save said, <: {first-diagnostic/message}>
+      halt <role file could not be parsed{said}>
+
+  save mined, run-mine(grammar, <deck>, parsed/tree)
+  fork test, not(mined/ok)
+    hold
+      halt <role file does not fit the role grammar{line-note(mined/at)}>
+
+  # A ROLE THAT DOES NOT FIT IS NOT A ROLE TO THE DECK GRAMMAR, whose last alternative takes any node: each `role`
+  # group is mined alone against the `role` rule, and one that does not fit refuses the file at its line
+  save top, make list
+  sift parsed/tree
+    case root
+      link root-nodes
+      save top, root-nodes
+  walk top
+    take one
+    sift one
+      case group
+        link members
+        fork test, not(is-equal(text-or-empty(head-word(one)), <role>))
+          hold
+            turn next
+        save tried, run-mine(grammar, <role>, root-of(one))
+        fork test, not(tried/ok)
+          hold
+            save role-word, make none
+            fork test, is-above(members/length, 1)
+              hold
+                save role-word, word-of(get(members, 1))
+            save role-here, make(some, one)
+            halt <`role {text-or-empty(role-word)}`{line-of(role-here)} does not fit the role grammar, so none of it would be read: under a `role` only `take` and `mark` are read, and under a `take` only `miss`>
+      miss
+        save nothing, 0
+
+  save rules, make list
+  walk matches-at(mined/match, <role>)
+    take each-role
+    save takes, make list
+    walk matches-at(each-role, <take>)
+      take each-take
+      save pattern, expand(glob-of(text-or-empty(word-at-site(each-take, <glob>))), root)
+      save misses, make list
+      walk matches-at(each-take, <miss>)
+        take each-miss
+        misses/push(expand(glob-of(text-or-empty(word-at-site(each-miss, <glob>))), root))
+      takes/push(make(role-take, bind(pattern, pattern), bind(miss, misses)))
+    save rule, make(role-rule, bind(name, text-or-empty(word-at-site(each-role, <name>))), bind(mark, filled-words(matches-at(each-role, <mark>), <name>)), bind(take, takes))
+    rules/push(rule)
+
+  back make(role-config, bind(rules, rules))
+
+# ---- the lockfile ----
+
+task parse-lockfile-mill
+  take text, like text
+  take grammars, like manifest-grammars
+  like lockfile
+
+  save grammar, lock-grammar(grammars)
+  save parsed, parse(make(token-source, bind(file, <lock.tree>), bind(text, text)))
+  fork test, not(parsed/ok)
+    hold
+      save said, <>
+      fork test, is-above(parsed/diagnostics/length, 0)
+        hold
+          save first-diagnostic, get(parsed/diagnostics, 0)
+          save said, <: {first-diagnostic/message} (line {first-diagnostic/span/start/line})>
+      halt <lock.tree could not be parsed{said}>
+
+  save mined, run-mine(grammar, <lock-file>, parsed/tree)
+  fork test, not(mined/ok)
+    hold
+      halt <lock.tree does not fit the lockfile grammar{line-note(mined/at)}>
+
+  save version-text, site-word(first-capture(captures-at(mined/match, <head>)), <version>)
+  save stated, host-number/parse-int(text-or-empty(version-text), 10)
+  save version, 1
+  fork test, host-number/is-finite(stated)
+    hold
+      save version, stated
+
+  save decks, make list
+  walk matches-at(mined/match, <deck>)
+    take each-deck
+    save key, site-word(first-capture(captures-at(each-deck, <key>)), <text>)
+    save entry-name, text-or-empty(word-at-site(each-deck, <name>))
+    save code-text, <0.0.0>
+    sift site-word(first-capture(captures-at(each-deck, <code>)), <text>)
+      case some
+        link written-code
+        save code-text, written-code
+      case none
+        save nothing, 0
+    save entry-code, parse-code(code-text)
+    save links, make list
+    walk matches-at(each-deck, <link>)
+      take each-link
+      links/push(make(lock-link, bind(name, text-or-empty(word-at-site(each-link, <name>))), bind(code, text-or-empty(word-at-site(each-link, <code>)))))
+    save entry, make(lock-entry, bind(name, entry-name), bind(code, entry-code), bind(hash, text-or-empty(site-word(first-capture(captures-at(each-deck, <hash>)), <text>))), bind(site, text-or-empty(site-word(first-capture(captures-at(each-deck, <site>)), <text>))), bind(link, links))
+    fork test, is-filled(key)
+      hold
+        save entry/key, text-or-empty(key)
+    decks/push(entry)
+
+  # `need @term/code` / `code <2.6.4>` / `hash <sha256:...>`: the toolchain release the manifest's `need` resolved to
+  save result, make(lockfile, bind(version, version), bind(decks, decks))
+  save need-matches, matches-at(mined/match, <need>)
+  fork test, is-above(need-matches/length, 0)
+    hold
+      save need-match, get(need-matches, 0)
+      save need-name, word-at-site(need-match, <name>)
+      save need-code, site-word(first-capture(captures-at(need-match, <code>)), <text>)
+      save need-hash, site-word(first-capture(captures-at(need-match, <hash>)), <text>)
+      fork test, and(is-filled(need-name), and(is-filled(need-code), is-filled(need-hash)))
+        hold
+          save need-version, parse-code(text-or-empty(need-code))
+          save need-record, make(lock-need, bind(name, text-or-empty(need-name)), bind(code, need-version), bind(hash, text-or-empty(need-hash)))
+          save result/need, make(some, need-record)
+
+  back result

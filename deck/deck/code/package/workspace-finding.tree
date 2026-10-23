@@ -1,0 +1,281 @@
+# The decks a project resolves from the folder it is in, rather than from a registry: the WORKSPACE, the project root a
+# folder is in, and the order a workspace's decks build in. Ported from deck/deck/code/workspace.ts
+# (term-cli-in-term-0079): findWorkspaces, findProjectRoot, topologicalSort.
+#
+# A workspace is a folder holding a `deck.tree` and a `deck/` folder of member decks, each with its own `deck.tree`:
+# the Term repository is one, `deck/term/deck/term/` with `deck/base`, `deck/make` and the rest. Two places count:
+#
+#   1  the project's own `deck/` folder, when it is a workspace root (`term load` run at the top)
+#   2  the nearest workspace the project is a MEMBER of, found walking up (`term load` run inside `deck/face`), so a
+#      member's `link` to a sibling installs the sibling's source, as it builds, and never fetches a version of it
+#      the registry may not even hold yet
+#
+# The project's own decks win over the enclosing workspace's on a name both hold. A member found here is still
+# resolved only when its `mark` satisfies the `link` (resolution.tree), so a sibling at the wrong version is fetched.
+#
+# The decisions:
+#   - a workspace is resolution.tree's `workspace-deck`, its manifest and the folder it lives in, where the original
+#     answered the manifest with a `dir` field spread over it
+#   - every mill read takes the grammars record last, so `find-workspaces` takes it
+#   - `find-project-root` answers a maybe where the original answered undefined
+#   - `topological-sort` takes the manifests by name and warns on a cycle through the host's console, as the original
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/hash
+  find hash
+
+load ./manifest-shape
+  find deck-manifest
+
+load ./grammar-reading
+  find manifest-grammars
+
+load ./manifest-reading
+  find load-manifest
+
+load ./resolution
+  find workspace-deck
+
+dock load
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <node:path>, name node-path
+  load <global:console>, name host-console
+
+form listing-ask
+  link with-file-types, like boolean
+
+bind is-folder-entry
+  take entry, like dynamic
+  like boolean
+  case node
+    text <$entry.isDirectory()>
+
+bind entry-name
+  take entry, like dynamic
+  like text
+  case node
+    text <$entry.name>
+
+# the host's items as a list, so they can be walked
+task host-items
+  take items, like list, like dynamic
+  like list, like dynamic
+  mark private
+
+  back items
+
+task find-workspaces
+  take root, like text
+  take grammars, like manifest-grammars
+  like hash, like text, like workspace-deck
+
+  save workspaces, make hash
+  save enclosing, enclosing-workspace(root)
+
+  sift enclosing
+    case some
+      link parent
+      scan-for-decks(node-path/join(parent, <deck>), workspaces, grammars)
+    case none
+      save nothing, 0
+
+  save own, node-path/join(root, <deck>)
+
+  fork
+    mark unsafe
+    fs-promise/access(own)
+    scan-for-decks(own, workspaces, grammars)
+  halt take
+    # no `deck/` folder of its own
+    take unread
+    save nothing, 0
+
+  back workspaces
+
+# The nearest folder above `root` that holds a `deck.tree` and whose `deck/` folder contains `root`
+task enclosing-workspace
+  take root, like text
+  like maybe, like text
+  mark private
+
+  save current, node-path/resolve(root)
+
+  walk test
+    hook test, true
+    hook hold
+      save parent, node-path/dirname(current)
+
+      fork test, is-equal(parent, current)
+        hold
+          back make none
+
+      fork test, is-equal(node-path/basename(current), <deck>)
+        hold
+          # a `deck/` folder of something that is not a workspace: keep walking
+          fork test, can-reach(node-path/join(parent, <deck.tree>))
+            hold
+              back make(some, parent)
+
+      save current, parent
+
+  back make none
+
+# whether a place can be reached, as the original's `fs.access` in a try read it
+task can-reach
+  take place, like text
+  like boolean
+  mark private
+
+  fork
+    mark unsafe
+    fs-promise/access(place)
+    back true
+  halt take
+    take unread
+    back false
+
+task scan-for-decks
+  take dir, like text
+  take workspaces, like hash, like text, like workspace-deck
+  take grammars, like manifest-grammars
+  like void
+  mark private
+
+  save entries, fs-promise/readdir(dir, make(listing-ask, bind(with-file-types, true)))
+
+  walk host-items(entries)
+    take entry
+
+    fork test, not(is-folder-entry(entry))
+      hold
+        turn next
+
+    save entry-text, entry-name(entry)
+
+    fork test, or(is-equal(entry-text, <node_modules>), is-equal(entry-text, <link>))
+      hold
+        turn next
+
+    fork test, starts-workspace-dot(entry-text)
+      hold
+        turn next
+
+    save sub-dir, node-path/join(dir, entry-text)
+    save deck-file, node-path/join(sub-dir, <deck.tree>)
+
+    fork
+      mark unsafe
+      fs-promise/access(deck-file)
+      save manifest, load-manifest(sub-dir, grammars)
+      save full-name, full-name-of(manifest)
+      workspaces/set(full-name, make(workspace-deck, bind(manifest, manifest), bind(dir, make(some, sub-dir))))
+    halt take
+      # no deck.tree, scan deeper
+      take unread
+      scan-for-decks(sub-dir, workspaces, grammars)
+
+bind starts-workspace-dot
+  take name, like text
+  like boolean
+  case node
+    text <$name.startsWith(".")>
+
+# a deck's full name: `@host/name`, or the bare name when it has no host
+task full-name-of
+  take manifest, like deck-manifest
+  like text
+  mark private
+
+  fork test, not(is-equal(manifest/host, <>))
+    hold
+      back <@{manifest/host}/{manifest/name}>
+  back manifest/name
+
+task find-project-root
+  take dir, like text
+  like maybe, like text
+
+  save current, dir
+
+  walk test
+    hook test, true
+    hook hold
+      save deck-file, node-path/join(current, <deck.tree>)
+
+      fork test, can-reach(deck-file)
+        hold
+          back make(some, current)
+
+      save parent, node-path/dirname(current)
+
+      fork test, is-equal(parent, current)
+        hold
+          back make none
+
+      save current, parent
+
+  back make none
+
+task topological-sort
+  take workspaces, like hash, like text, like deck-manifest
+  like list, like text
+
+  save graph, make hash
+
+  walk workspaces/keys()
+    take name
+    save manifest, workspaces/get(name)
+    save deps, make list
+    walk manifest/link
+      take one
+      fork test, and(workspaces/has(one/name), not(deps/contains(one/name)))
+        hold
+          deps/push(one/name)
+    graph/set(name, deps)
+
+  save sorted, make list
+  save visited, make hash
+  save visiting, make hash
+
+  walk workspaces/keys()
+    take name
+    visit(name, graph, sorted, visited, visiting)
+
+  back sorted
+
+task visit
+  take name, like text
+  take graph, like hash, like text, like list, like text
+  take sorted, like list, like text
+  take visited, like hash, like text, like boolean
+  take visiting, like hash, like text, like boolean
+  like void
+  mark private
+
+  fork test, visited/has(name)
+    hold
+      back
+
+  fork test, visiting/has(name)
+    hold
+      host-console/warn(<Circular dependency detected: {name}>)
+      back
+
+  visiting/set(name, true)
+
+  fork test, graph/has(name)
+    hold
+      save deps, graph/get(name)
+      walk deps
+        take dep
+        visit(dep, graph, sorted, visited, visiting)
+
+  visiting/remove(name)
+  visited/set(name, true)
+  sorted/push(name)

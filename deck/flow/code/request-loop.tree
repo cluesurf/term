@@ -1,0 +1,486 @@
+# THE LANGUAGE SERVER'S DISPATCHER over the LSP protocol: `dispatch` takes one incoming message and answers the
+# outgoing messages (responses and notifications) to write back, so it is testable without any streams. The node
+# entry (pump.tree) pumps stdin and stdout into it.
+#
+# A request a handler cannot answer is answered with an error rather than taking the process down: InvalidParams for
+# a request missing what it must carry, InternalError for anything else, and a notification's failure goes to the
+# client's log, since a notification has no one to answer.
+#
+# Ported from server.ts (term-cli-in-term-0100, part 1 of 5): `dispatch`, and of `handle` the lifecycle
+# (`initialize`, `initialized`, `shutdown`, `exit`) and an unknown method. Parts 2 to 5 add the other methods'
+# cases to `handle`, each calling into the module that ports it. The decisions:
+#   - the methods of `LanguageServer` are tasks over language-server.tree's record, taking it first
+#   - `dispatch` is async, as the original was (a caller awaits it)
+#   - the capabilities `initialize` answers are records, so the reply is the original's JSON; a capability the
+#     original spread in only when it applied (`positionEncoding`, `diagnosticProvider`) is a field left out until
+#     it does
+
+load @term/base/list
+  find list
+
+load ./language-server
+  find language-server
+  find cancel
+  find close-document
+  find is-given
+  find set-has
+  find set-delete
+
+load ./document-sync
+  find did-open
+  find did-change
+  find did-close
+  find did-change-watched-files
+  find pull-diagnostics
+
+load ./navigation
+  find hover
+  find definition
+  find document-links
+  find references
+
+load ./symbol-requests
+  find prepare-rename
+  find rename
+  find document-highlight
+  find document-symbols
+  find workspace-symbols
+  find folding-range-request
+  find selection-range-request
+  find signature-help
+  find code-lenses
+  find implementation
+
+load ./semantic-coloring
+  find semantic-tokens-full
+  find semantic-tokens-delta
+
+load ./inlay-hinting
+  find inlay-hint-request
+
+load ./call-hierarchy
+  find prepare-call-hierarchy
+  find incoming-calls-request
+  find outgoing-calls-request
+
+load ./completion
+  find completion-request
+
+load ./code-actions
+  find code-action-request
+
+load ./server-reply
+  find respond
+  find error-reply
+  find log-message
+  find null-value
+  find is-params-error
+  find invalid-params-code
+  find internal-error-code
+  find request-cancelled-code
+  find method-not-found-code
+
+# ---- the capabilities ----
+
+form save-options
+  link include-text, like boolean
+
+form text-document-sync
+  link open-close, like boolean
+  link change, like number
+  link save, like save-options
+
+form rename-options
+  link prepare-provider, like boolean
+
+form resolve-options
+  link resolve-provider, like boolean
+
+form trigger-options
+  link trigger-characters, like list, like text
+
+form code-action-options
+  link code-action-kinds, like list, like text
+
+form token-legend
+  link token-types, like list, like text
+  link token-modifiers, like list, like text
+
+form delta-options
+  link delta, like boolean
+
+form semantic-token-options
+  link legend, like token-legend
+  link full, like delta-options
+
+form diagnostic-options
+  link inter-file-dependencies, like boolean
+  link workspace-diagnostics, like boolean
+
+form server-capabilities
+  # every column is a UTF-16 code unit (geometry.tree), which is the protocol's default and the only encoding this
+  # server speaks; said explicitly to a client that offered a choice
+  link position-encoding
+    like text
+    need false
+  link text-document-sync, like text-document-sync
+  link hover-provider, like boolean
+  link definition-provider, like boolean
+  link implementation-provider, like boolean
+  link references-provider, like boolean
+  link rename-provider, like rename-options
+  link document-symbol-provider, like boolean
+  link document-link-provider, like resolve-options
+  link workspace-symbol-provider, like boolean
+  link document-highlight-provider, like boolean
+  link folding-range-provider, like boolean
+  link selection-range-provider, like boolean
+  link call-hierarchy-provider, like boolean
+  link completion-provider, like trigger-options
+  link signature-help-provider, like trigger-options
+  link code-action-provider, like code-action-options
+  link code-lens-provider, like resolve-options
+  link inlay-hint-provider, like boolean
+  link semantic-tokens-provider, like semantic-token-options
+  link diagnostic-provider
+    like diagnostic-options
+    need false
+
+form server-info
+  link name, like text
+
+form initialize-result
+  link capabilities, like server-capabilities
+  link server-info, like server-info
+
+# the semantic token legend: its order is fixed, and `tokenModifiers` has only `declaration`
+task semantic-token-types
+  like list, like text
+
+  save types, make list
+  push(types, <function>)
+  push(types, <type>)
+  push(types, <interface>)
+  push(types, <parameter>)
+  push(types, <variable>)
+  back types
+
+task texts-of
+  take first, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, first)
+  back out
+
+# ---- the message ----
+
+bind is-method
+  take message, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <($message.method === $name)>
+
+bind has-no-method
+  take message, like dynamic
+  like boolean
+  case node
+    text <($message.method === undefined)>
+
+bind message-id
+  take message, like dynamic
+  like dynamic
+  case node
+    text <$message.id>
+
+bind message-params
+  take message, like dynamic
+  like dynamic
+  case node
+    text <$message.params>
+
+# `(message.params as { id? } | null)?.id`
+bind cancel-id
+  take message, like dynamic
+  like dynamic
+  case node
+    text <($message.params)?.id>
+
+# `${message.method}`
+bind method-text
+  take message, like dynamic
+  like text
+  case node
+    text <String($message.method)>
+
+# `String(error?.message ?? error)`
+bind error-text
+  take problem, like dynamic
+  like text
+  case node
+    text <String(($problem)?.message ?? $problem)>
+
+# `textDocument.diagnostic !== undefined`, read through `params?.capabilities ?? {}` and `caps.textDocument ?? {}`
+bind wants-pull
+  take params, like dynamic
+  like boolean
+  case node
+    text <((((($params)?.capabilities ?? \{\}).textDocument ?? \{\}).diagnostic) !== undefined)>
+
+# `general.positionEncodings`, by truth, read through `caps.general ?? {}`
+bind offers-encodings
+  take params, like dynamic
+  like boolean
+  case node
+    text <Boolean(((($params)?.capabilities ?? \{\}).general ?? \{\}).positionEncodings)>
+
+task just
+  take reply, like dynamic
+  like list, like dynamic
+  mark private
+
+  save out, make list
+  push(out, reply)
+  back out
+
+# ---- the lifecycle ----
+
+task initialize
+  take server, like language-server
+  take message, like dynamic
+  like dynamic
+
+  save params, message-params(message)
+  save encodings, offers-encodings(params)
+  save server/pull, wants-pull(params)
+  save triggers, make list
+  push(triggers, < >)
+  push(triggers, </>)
+  save signature-triggers, make list
+  push(signature-triggers, < >)
+  push(signature-triggers, <(>)
+  push(signature-triggers, <,>)
+  save action-kinds, make list
+  push(action-kinds, <quickfix>)
+  push(action-kinds, <source.fixAll>)
+  save capabilities
+    make server-capabilities
+      bind text-document-sync, make(text-document-sync, bind(open-close, true), bind(change, 2), bind(save, make(save-options, bind(include-text, false))))
+      bind hover-provider, true
+      bind definition-provider, true
+      bind implementation-provider, true
+      bind references-provider, true
+      bind rename-provider, make(rename-options, bind(prepare-provider, true))
+      bind document-symbol-provider, true
+      bind document-link-provider, make(resolve-options, bind(resolve-provider, false))
+      bind workspace-symbol-provider, true
+      bind document-highlight-provider, true
+      bind folding-range-provider, true
+      bind selection-range-provider, true
+      bind call-hierarchy-provider, true
+      bind completion-provider, make(trigger-options, bind(trigger-characters, triggers))
+      bind signature-help-provider, make(trigger-options, bind(trigger-characters, signature-triggers))
+      bind code-action-provider, make(code-action-options, bind(code-action-kinds, action-kinds))
+      bind code-lens-provider, make(resolve-options, bind(resolve-provider, false))
+      bind inlay-hint-provider, true
+      bind semantic-tokens-provider
+        make semantic-token-options
+          bind legend, make(token-legend, bind(token-types, semantic-token-types()), bind(token-modifiers, texts-of(<declaration>)))
+          bind full, make(delta-options, bind(delta, true))
+  fork test, encodings
+    hold
+      save capabilities/position-encoding, <utf-16>
+  fork test, server/pull
+    hold
+      save capabilities/diagnostic-provider, make(diagnostic-options, bind(inter-file-dependencies, true), bind(workspace-diagnostics, false))
+  back respond(message, make(initialize-result, bind(capabilities, capabilities), bind(server-info, make(server-info, bind(name, <term-flow>)))))
+
+task shut-down
+  take server, like language-server
+  take message, like dynamic
+  like dynamic
+
+  save server/shutting-down, true
+  save uris, make list
+  walk server/documents/keys()
+    take uri
+    push(uris, uri)
+  walk uris
+    take uri
+    close-document(server, uri)
+  back respond(message, null-value())
+
+# an unknown request still needs a response; an unknown notification is ignored
+task unhandled
+  take message, like dynamic
+  like list, like dynamic
+
+  save id, message-id(message)
+  fork test, is-given(id)
+    hold
+      back just(error-reply(id, method-not-found-code(), <unhandled method {method-text(message)}>))
+  back make list
+
+# one message to its handler. A handler reads `outbox` for what settling a document published first
+task handle
+  take server, like language-server
+  take message, like dynamic
+  take outbox, like list, like dynamic
+  like list, like dynamic
+
+  fork test, is-method(message, <initialize>)
+    hold
+      back just(initialize(server, message))
+  fork test, is-method(message, <initialized>)
+    hold
+      back make list
+  fork test, is-method(message, <shutdown>)
+    hold
+      back just(shut-down(server, message))
+  fork test, is-method(message, <exit>)
+    hold
+      back make list
+  # part 2: the documents (document-sync.tree)
+  fork test, is-method(message, <textDocument/didOpen>)
+    hold
+      back did-open(server, message-params(message))
+  fork test, is-method(message, <textDocument/didChange>)
+    hold
+      back did-change(server, message-params(message))
+  fork test, is-method(message, <textDocument/didSave>)
+    hold
+      back make list
+  fork test, is-method(message, <textDocument/didClose>)
+    hold
+      back did-close(server, message-params(message))
+  fork test, is-method(message, <workspace/didChangeWatchedFiles>)
+    hold
+      back did-change-watched-files(server, message-params(message))
+  fork test, is-method(message, <textDocument/diagnostic>)
+    hold
+      back just(pull-diagnostics(server, message, message-params(message), outbox))
+  # part 3: navigation (navigation.tree)
+  fork test, is-method(message, <textDocument/hover>)
+    hold
+      back just(hover(server, message, message-params(message), outbox))
+  fork test, is-method(message, <textDocument/definition>)
+    hold
+      back just(definition(server, message, message-params(message), outbox))
+  fork test, is-method(message, <textDocument/documentLink>)
+    hold
+      back just(document-links(server, message, message-params(message)))
+  fork test, is-method(message, <textDocument/references>)
+    hold
+      back just(references(server, message, message-params(message), outbox))
+  # part 4: rename, symbols, tokens, hints, lenses, implementations, the call hierarchy
+  fork test, is-method(message, <textDocument/prepareRename>)
+    hold
+      back just(prepare-rename(server, message, message-params(message), outbox))
+  fork test, is-method(message, <textDocument/rename>)
+    hold
+      back just(rename(server, message, message-params(message), outbox))
+  fork test, is-method(message, <textDocument/documentHighlight>)
+    hold
+      back just(document-highlight(server, message, message-params(message), outbox))
+  fork test, is-method(message, <textDocument/documentSymbol>)
+    hold
+      back just(document-symbols(server, message, message-params(message), outbox))
+  fork test, is-method(message, <workspace/symbol>)
+    hold
+      back just(workspace-symbols(server, message, message-params(message)))
+  fork test, is-method(message, <textDocument/foldingRange>)
+    hold
+      back just(folding-range-request(server, message, message-params(message)))
+  fork test, is-method(message, <textDocument/selectionRange>)
+    hold
+      back just(selection-range-request(server, message, message-params(message)))
+  fork test, is-method(message, <textDocument/signatureHelp>)
+    hold
+      back just(signature-help(server, message, message-params(message), outbox))
+  fork test, is-method(message, <textDocument/semanticTokens/full>)
+    hold
+      back just(semantic-tokens-full(server, message, message-params(message), outbox))
+  fork test, is-method(message, <textDocument/semanticTokens/full/delta>)
+    hold
+      back just(semantic-tokens-delta(server, message, message-params(message), outbox))
+  fork test, is-method(message, <textDocument/inlayHint>)
+    hold
+      back just(inlay-hint-request(server, message, message-params(message), outbox))
+  fork test, is-method(message, <textDocument/codeLens>)
+    hold
+      back just(code-lenses(server, message, message-params(message), outbox))
+  fork test, is-method(message, <textDocument/implementation>)
+    hold
+      back just(implementation(server, message, message-params(message), outbox))
+  fork test, is-method(message, <textDocument/prepareCallHierarchy>)
+    hold
+      back just(prepare-call-hierarchy(server, message, message-params(message), outbox))
+  fork test, is-method(message, <callHierarchy/incomingCalls>)
+    hold
+      back just(incoming-calls-request(server, message, message-params(message)))
+  fork test, is-method(message, <callHierarchy/outgoingCalls>)
+    hold
+      back just(outgoing-calls-request(server, message, message-params(message)))
+  # part 5: completion and code actions
+  fork test, is-method(message, <textDocument/completion>)
+    hold
+      back just(completion-request(server, message, message-params(message), outbox))
+  fork test, is-method(message, <textDocument/codeAction>)
+    hold
+      back just(code-action-request(server, message, message-params(message), outbox))
+  back unhandled(message)
+
+# ---- the dispatcher ----
+
+task dispatch
+  mark async
+  take server, like language-server
+  take message, like dynamic
+  like list, like dynamic
+
+  fork test, is-method(message, <$/cancelRequest>)
+    hold
+      cancel(server, cancel-id(message))
+      back make list
+  save id, message-id(message)
+  fork test, is-given(id)
+    hold
+      fork test, set-has(server/cancelled, id)
+        hold
+          set-delete(server/cancelled, id)
+          back just(error-reply(id, request-cancelled-code(), <cancelled>))
+  # a response from the client (to a request this server never sends) has no method: nothing to do
+  fork test, has-no-method(message)
+    hold
+      back make list
+  save outbox, make list
+  save out, make list
+  fork
+    mark unsafe
+    save answer, handle(server, message, outbox)
+    walk outbox
+      take sent
+      push(out, sent)
+    walk answer
+      take reply
+      push(out, reply)
+  halt take
+    take problem
+    save body, <{method-text(message)}: {error-text(problem)}>
+    save out, make list
+    walk outbox
+      take sent
+      push(out, sent)
+    fork test, is-given(message-id(message))
+      hold
+        save code, internal-error-code()
+        fork test, is-params-error(problem)
+          hold
+            save code, invalid-params-code()
+        push(out, error-reply(message-id(message), code, body))
+      miss
+        # a notification has no one to answer, so the client's log hears about it
+        push(out, log-message(body))
+  back out

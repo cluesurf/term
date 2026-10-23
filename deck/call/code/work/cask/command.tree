@@ -1,0 +1,900 @@
+# `term make --target <platform>`: a Term app into a native app cask, and `term work --target <platform>`, the same app
+# loading the dev server's page with hot swaps. Four steps, each its own module here:
+#
+#   1. generate    the bridge from the page's docks (cask-generate)
+#   2. page        the page compiled in the `webview` env, bundled by esbuild (page.tree)
+#   3. program     the cask program compiled for the target's backend and built by its compiler (program.tree)
+#   4. bundle      the app's layout, signed, and a `.dmg` when asked (bundle.tree, apple.tree, android.tree)
+#
+# An app is a directory with a `deck.tree` naming it, a page entry (`face/base.tree`, a module exporting a `boot` task
+# that mounts the page) and a cask entry (`cask.tree`, exporting `boot(bundle)`). Output goes under `host/<target>/`.
+# Design: note/project/term/cask/readme.md. Part of the port of deck/call/code/cask.ts (cli-in-term-0033): its
+# `makeCask`, `makeRustCask`, `makeAndroidCask`, `workCask`, `checkCaskScope` and the items the build prints.
+
+load @term/base/list
+  find list
+  find contains
+  find join
+
+load @term/call/cask-plan
+  find cask-tools
+  find missing-tools-message
+
+load ./host-value
+  find is-truthy
+  find value-or
+  find json-text
+  find has-key
+  find is-absent
+  find text-or-empty
+  find raise-again
+  find now-ms
+  find refuse
+
+load ./identity
+  find cask-targets
+  find app-identity
+  find crate-of
+
+load ./page
+  find build-page
+  find page-ask
+
+load ./program
+  find build-program
+  find build-rust-program
+  find build-android-program
+  find cask-android-driver
+  find swift-ask
+  find rust-ask
+  find android-ask
+
+load ./bundle
+  find assemble-rust-bundle
+  find rust-bundle-ask
+  find app-bundle
+
+load ./apple
+  find assemble-ios-bundle
+  find assemble-bundle
+  find declare-usage
+  find simulator
+  find launch-on-simulator
+  find sign-bundle
+  find make-dmg
+  find ios-bundle-ask
+  find mac-bundle-ask
+  find usage-ask
+  find simulator-ask
+  find sign-ask
+  find dmg-ask
+
+load ./android
+  find assemble-apk
+  find android-device
+  find launch-on-android
+  find apk-ask
+  find android-launch-ask
+
+load ./release
+  find stamp-runtime-version
+  find publish-built
+  find stamp-ask
+  find publish-ask
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <global:process>, name node-process
+  load <@term/make/code/compile/load>, name load-module
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/scope>, name scope-module
+  load <@term/call/code/cask-generate>, name generate-module
+  load <@term/call/code/show>, name show-module
+  load <@term/call/code/update>, name update-module
+  load <@term/call/code/output>, name output
+
+# whether makeCask opened the run it prints into, so it closes only its own: the original's module variable `owned`,
+# kept for the life of the process
+host cask-run, make hash
+
+# what `term make --target` is asked. Every field but the root and the target may be left out: the page entry
+# (face/base.tree), the cask entry (cask.tree), the dev URL to load instead of the bundled page, a Developer ID
+# identity for codesign (ad hoc), a `.dmg`, the version (0.0.2), and the directory and channel (`main`) to publish the
+# page just built into, as an over-the-air update for the runtime version just stamped
+form cask-ask
+  link root, like text
+  link target, like text
+  link page
+    like dynamic
+    need false
+  link entry
+    like dynamic
+    need false
+  link url
+    like dynamic
+    need false
+  link sign
+    like dynamic
+    need false
+  link dmg
+    like dynamic
+    need false
+  link version
+    like dynamic
+    need false
+  link publish
+    like dynamic
+    need false
+  link channel
+    like dynamic
+    need false
+
+form cask-made
+  link app, like text
+
+# what the Linux, Windows and Android builds share once makeCask has resolved it
+form target-ask
+  link root, like text
+  link page, like text
+  link entry, like text
+  link name, like text
+  link identifier, like text
+  link out, like text
+  link work, like text
+  link version, like text
+  link target, like text
+  link url, like dynamic
+  link publish, like dynamic
+  link channel, like dynamic
+
+form work-ask
+  link root, like text
+  link target, like text
+  link page
+    like dynamic
+    need false
+  link entry
+    like dynamic
+    need false
+  link port
+    like dynamic
+    need false
+
+form run-open
+  link verb, like text
+  link root, like text
+  link facts, like list, like text
+
+form run-close
+  link verdict, like text
+
+form run-stopped
+  link verdict, like text
+  link uptime, like boolean
+
+form run-interrupted
+  link verdict, like text
+  link failure, like text
+  link uptime, like boolean
+
+form source-ask
+  link file, like text
+  link text, like text
+
+form scope-ask
+  link root, like text
+  link files, like list, like text
+
+form bridge-ask
+  link page, like text
+  link out, like text
+  link commit, like boolean
+  link root, like text
+
+form key-ask
+  link identifier, like text
+  link into, like text
+
+form cask-folder
+  link recursive, like boolean
+
+form cask-remove
+  link recursive, like boolean
+  link force, like boolean
+
+form counted-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link counts, like list, like dynamic
+
+form timed-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link facts, like list, like text
+
+form sized-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link bytes, like number
+
+form fielded-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form skipped-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link facts, like list, like text
+  link fields, like list, like dynamic
+
+form launched-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+
+form signed-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link facts, like list, like text
+
+form lifecycle-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link fields, like list, like dynamic
+
+form said-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+
+form dev-ask
+  link root, like text
+  link entry, like text
+  link port, like dynamic
+  link env, like text
+  link boot, like boolean
+
+form watch-ask
+  link recursive, like boolean
+
+form child-ask
+  link stdio, like list, like text
+
+# esbuild-free: the dev server, loaded when `term work --target` runs and not before
+bind load-dev-server
+  like dynamic
+  case node
+    text <(await import("@term/call/code/dev/server"))>
+
+# until the child process closes
+bind child-closed
+  take child, like dynamic
+  like void
+  case node
+    text <(await new Promise((done) =\> $child.on("close", () =\> done(undefined))))>
+
+# never: the server lives as long as this process
+bind wait-forever
+  like void
+  case node
+    text <(await new Promise(() =\> \{\}))>
+
+# the default page and cask entries of an app, when the command is not told otherwise
+task default-page
+  like text
+
+  back <face/base.tree>
+
+task default-entry
+  like text
+
+  back <cask.tree>
+
+task owns-run
+  like boolean
+  mark private
+
+  fork test, cask-run/has(<owned>)
+    hold
+      back cask-run/get(<owned>)
+  back false
+
+task set-owned
+  take value, like boolean
+  like void
+  mark private
+
+  save key, <owned>
+  save cask-run/{key}, value
+
+# the env each target's cask program is compiled for, which decides how its `{platform}` loads resolve
+task cask-program-env
+  take target, like text
+  like text
+
+  fork test, or(is-equal(target, <windows>), is-equal(target, <linux>))
+    hold
+      back <rust>
+  back target
+
+# every file the module at `file` reaches in `env`
+task closure-of
+  take root, like text
+  take file, like text
+  take env, like text
+  take files, like list, like text
+  like void
+  mark private
+
+  save source, make(source-ask, bind(file, file), bind(text, node-fs/read-file-sync(file, <utf8>)))
+  save collected, load-module/collect-modules(source, make-module/project-resolver(root, env))
+  walk collected/sources
+    take one, like dynamic
+    files/push(<{one/file}>)
+
+# the app's scope (deck/call/code/scope.ts): what its page reaches (and so what crosses the bridge) and what its cask
+# program reaches natively, each capability of it named in the app's scope.tree, or the build is refused
+task check-cask-scope
+  take root, like text
+  take page, like text
+  take entry, like text
+  take target, like text
+  like void
+
+  save files, make list
+  closure-of(root, page, <webview>, files)
+  closure-of(root, entry, cask-program-env(target), files)
+  scope-module/check-scope(make(scope-ask, bind(root, root), bind(files, files)))
+
+# the bridge generated for the page, its dispatcher beside the cask entry, and its item
+task generate-and-report
+  take root, like text
+  take page, like text
+  take entry, like text
+  like void
+  mark private
+
+  save asked
+    make bridge-ask
+      bind page, page
+      bind out, node-path/dirname(entry)
+      bind commit, true
+      bind root, root
+  report-bridge(generate-module/generate-bridge(asked))
+
+task report-bridge
+  take generated, like dynamic
+  like void
+
+  save refused, generated/refused/length
+  save glyph, <done>
+  fork test, is-above(refused, 0)
+    hold
+      save glyph, <warning>
+  save counts, make list
+  counts/push(output/count(generated/carried, <commands>, <command>))
+  fork test, is-above(refused, 0)
+    hold
+      counts/push(output/count(refused, <refused>))
+  counts/push(output/count(generated/written, <written>))
+  output/report(make(counted-item, bind(glyph, glyph), bind(verb, <build>), bind(subject, <bridge>), bind(counts, counts)))
+
+task report-page
+  take bytes, like number
+  take started, like number
+  like void
+
+  output/report(make(sized-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <page>), bind(duration, subtract(now-ms(), started)), bind(bytes, bytes)))
+
+task report-program
+  take started, like number
+  take target, like text
+  like void
+  mark private
+
+  save facts, make list
+  facts/push(target)
+  output/report(make(timed-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <program>), bind(duration, subtract(now-ms(), started)), bind(facts, facts)))
+
+# a launch on a device or simulator when one is there, or a skipped `launch` item saying why not
+task launch-on
+  take found, like dynamic
+  take launch
+    like task
+      take found, like dynamic
+      like void
+  take where, like text
+  like void
+
+  fork test, has-key(found, <missing>)
+    hold
+      save fields, make list
+      fields/push(output/field(<reason>, found/missing))
+      output/report(make(fielded-item, bind(glyph, <skipped>), bind(verb, <launch>), bind(subject, where), bind(fields, fields)))
+      send back
+  save started, now-ms()
+  launch(found)
+  output/report(make(launched-item, bind(glyph, <done>), bind(verb, <launch>), bind(subject, where), bind(duration, subtract(now-ms(), started))))
+
+# the app's place as the build's last item, and the run closed when makeCask opened it
+task finish-cask
+  take root, like text
+  take app, like text
+  take verdict, like text
+  like void
+
+  save fields, make list
+  fields/push(output/location(output/show-path(app, root)))
+  output/report(make(fielded-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, <app>), bind(fields, fields)))
+  fork test, owns-run()
+    hold
+      set-owned(false)
+      output/close-run(make(run-close, bind(verdict, verdict)))
+
+task make-cask
+  take input, like cask-ask
+  like cask-made
+  mark async
+
+  save target, input/target
+  # a run of its own, unless one is open: `term work --target` holds the run and builds the cask inside it
+  set-owned(not(output/is-run-open()))
+  fork test, owns-run()
+    hold
+      save facts, make list
+      facts/push(<--target {target}>)
+      output/open-run(make(run-open, bind(verb, <make>), bind(root, input/root), bind(facts, facts)))
+
+  save targets, cask-targets()
+  fork test, not(contains(targets, target))
+    hold
+      refuse(<target {target} is not built yet. Today: {join(targets, <, >)}>, <usage>)
+  fork test, and(or(is-equal(target, <macos>), is-equal(target, <ios>)), is-unequal(node-process/platform, <darwin>))
+    hold
+      refuse(<an Apple cask builds on macOS, where swiftc, codesign and the simulator are>, <environment>)
+
+  # the toolchain, before anything is built: a missing `cargo` or `swiftc` was found where the build first called it,
+  # after the bridge and the program had been made (guides: basics/install, 2026-10-04)
+  save missing, make list
+  walk cask-tools(target, node-process/platform)
+    take tool, like text
+    fork test, is-absent(show-module/tool-version(tool))
+      hold
+        missing/push(tool)
+  fork test, is-above(missing/length, 0)
+    hold
+      refuse(missing-tools-message(target, missing), <environment>)
+
+  save root, node-path/resolve(input/root)
+  save page, node-path/resolve(root, value-or(input/page, default-page()))
+  save entry, node-path/resolve(root, value-or(input/entry, default-entry()))
+  fork test, not(node-fs/exists-sync(page))
+    hold
+      refuse(<no page at {page}>, <usage>)
+  fork test, not(node-fs/exists-sync(entry))
+    hold
+      refuse(<no cask entry at {entry}>, <usage>)
+
+  save identity, app-identity(root)
+  save name, identity/name
+  save identifier, identity/identifier
+  save out, node-path/join(root, <host>, target)
+  save work, node-path/join(out, <work>)
+  save version, <{value-or(input/version, <0.0.2>)}>
+
+  # 0. the app's scope (app-scope): every capability its page or its cask program reaches is one its scope.tree names
+  check-cask-scope(root, page, entry, target)
+
+  # 1. the bridge, from the page's docks, its gate from the app's scope
+  generate-and-report(root, page, entry)
+
+  save shared
+    make target-ask
+      bind root, root
+      bind page, page
+      bind entry, entry
+      bind name, name
+      bind identifier, identifier
+      bind out, out
+      bind work, work
+      bind version, version
+      bind target, target
+      bind url, input/url
+      bind publish, input/publish
+      bind channel, input/channel
+  fork test, is-equal(target, <android>)
+    hold
+      back make-android-cask(shared)
+  fork test, or(is-equal(target, <linux>), is-equal(target, <windows>))
+    hold
+      back make-rust-cask(shared)
+
+  # 4 first, because the page and the program land inside the bundle
+  save bundle, assemble-apple(target, out, name, identifier, version)
+  save plist, node-path/join(bundle/app, <Contents>, <Info.plist>)
+  fork test, is-equal(target, <ios>)
+    hold
+      save plist, node-path/join(bundle/app, <Info.plist>)
+  save page-dir, node-path/join(bundle/resources, <webview>)
+
+  # 2. the page
+  save page-started, now-ms()
+  save built
+    build-page
+      make page-ask
+        bind root, root
+        bind page, page
+        bind entry, <import \{ boot \} from './app'\nboot()\n>
+        bind into, page-dir
+        bind title, name
+        bind work, node-path/join(work, <page>)
+  report-page(built/bytes, page-started)
+
+  # 3. the program. `boot` gets the page directory, or the dev URL when asked. On iOS the page directory is found at
+  # run time from the bundle, since the app is installed elsewhere
+  save program-started, now-ms()
+  save url, input/url
+  save driver, <boot({json-text(<{value-or(url, page-dir)}>)}, false)>
+  fork test, is-truthy(url)
+    hold
+      save driver, <boot({json-text(<{value-or(url, page-dir)}>)}, true)>
+  fork test, and(is-equal(target, <ios>), not(is-truthy(url)))
+    hold
+      save driver, <boot(cask.bundlePath() + "/webview", false)>
+  save program
+    build-program
+      make swift-ask
+        bind root, root
+        bind entry, entry
+        bind driver, driver
+        bind exe, bundle/exe
+        bind work, work
+        bind target, target
+        bind identifier, identifier
+  report-program(program-started, target)
+  # the usage strings its device capabilities need, now that the program is known, before the bundle is signed
+  declare-usage(make(usage-ask, bind(plist, plist), bind(native, program/native)))
+  save stamped, stamp-runtime-version(make(stamp-ask, bind(target, target), bind(native, program/native), bind(into, bundle/resources)))
+  update-module/stamp-update-key(make(key-ask, bind(identifier, identifier), bind(into, bundle/resources)))
+  publish-built
+    make publish-ask
+      bind publish, input/publish
+      bind channel, input/channel
+      bind page, page-dir
+      bind identifier, identifier
+      bind platform, target
+      bind runtime-version, stamped/hex
+
+  fork test, is-equal(target, <ios>)
+    hold
+      # a simulator build runs unsigned. A device build is signed with the identity and profile the next item brings
+      save app, bundle/app
+      launch-on
+        simulator()
+        task
+          take found, like dynamic
+          like void
+          launch-on-simulator(make(simulator-ask, bind(udid, found/udid), bind(app, app), bind(identifier, identifier)))
+        <simulator>
+      finish-cask(root, bundle/app, <{name} built for the iOS simulator, unsigned>)
+      back make(cask-made, bind(app, bundle/app))
+
+  sign-bundle(make(sign-ask, bind(app, bundle/app), bind(identity, input/sign)))
+  save signed-facts, make list
+  signed-facts/push(<{value-or(input/sign, <ad hoc>)}>)
+  output/report(make(signed-item, bind(glyph, <done>), bind(verb, <sign>), bind(subject, name), bind(facts, signed-facts)))
+
+  fork test, is-truthy(input/dmg)
+    hold
+      save dmg, make-dmg(make(dmg-ask, bind(app, bundle/app), bind(name, name), bind(out, out)))
+      save dmg-fields, make list
+      dmg-fields/push(output/location(output/show-path(dmg, root)))
+      output/report(make(fielded-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <disk image>), bind(fields, dmg-fields)))
+
+  finish-cask(root, bundle/app, <{name} built for {target}>)
+  back make(cask-made, bind(app, bundle/app))
+
+# the flat iOS `.app`, or the macOS one
+task assemble-apple
+  take target, like text
+  take out, like text
+  take name, like text
+  take identifier, like text
+  take version, like text
+  like app-bundle
+  mark private
+
+  fork test, is-equal(target, <ios>)
+    hold
+      back assemble-ios-bundle(make(ios-bundle-ask, bind(out, out), bind(name, name), bind(identifier, identifier), bind(version, version)))
+  back assemble-bundle(make(mac-bundle-ask, bind(out, out), bind(name, name), bind(identifier, identifier), bind(version, version)))
+
+# linux and windows: the page and the Rust cask program in the app's directory, the executable built when this machine
+# is the target's own platform
+task make-rust-cask
+  take ask, like target-ask
+  like cask-made
+  mark async
+
+  save root, ask/root
+  save name, ask/name
+  save target, ask/target
+  save bundle, assemble-rust-bundle(make(rust-bundle-ask, bind(out, ask/out), bind(name, name), bind(target, target)))
+  save page-dir, node-path/join(bundle/resources, <webview>)
+
+  save page-started, now-ms()
+  save built
+    build-page
+      make page-ask
+        bind root, root
+        bind page, ask/page
+        bind entry, <import \{ boot \} from './app'\nboot()\n>
+        bind into, page-dir
+        bind title, name
+        bind work, node-path/join(ask/work, <page>)
+  report-page(built/bytes, page-started)
+  save program-started, now-ms()
+
+  # the page directory is found at run time from the executable, so the same binary runs wherever the app lands
+  save url, ask/url
+  save driver, <boot(format!("\{\}/webview", cask::bundle_path()), false);>
+  fork test, is-truthy(url)
+    hold
+      save driver, <boot(String::from({json-text(<{url}>)}), true);>
+  save program
+    build-rust-program
+      make rust-ask
+        bind root, root
+        bind entry, ask/entry
+        bind driver, driver
+        bind work, ask/work
+        bind crate, crate-of(name)
+        bind target, target
+  save stamped, stamp-runtime-version(make(stamp-ask, bind(target, target), bind(native, program/native), bind(into, bundle/resources)))
+  update-module/stamp-update-key(make(key-ask, bind(identifier, app-identity(root)/identifier), bind(into, bundle/resources)))
+  publish-built
+    make publish-ask
+      bind publish, ask/publish
+      bind channel, ask/channel
+      bind page, node-path/join(bundle/resources, <webview>)
+      bind identifier, app-identity(root)/identifier
+      bind platform, target
+      bind runtime-version, stamped/hex
+
+  save exe, program/exe
+  fork test, is-truthy(exe)
+    hold
+      node-fs/copy-file-sync(exe, bundle/exe)
+      fork test, is-equal(target, <windows>)
+        hold
+          # the WebView2 loader is a DLL the executable links dynamically; cargo leaves it in the build directory and
+          # Windows refuses to start the app without it beside the executable, silently
+          save arch, <x64>
+          fork test, is-equal(node-process/arch, <arm64>)
+            hold
+              save arch, <arm64>
+          save build, node-path/join(program/project, <target/release/build>)
+          save loader, <>
+          fork test, node-fs/exists-sync(build)
+            hold
+              walk node-fs/readdir-sync(build)
+                take entry-name, like text
+                fork test, entry-name/starts-with(<webview2-com-sys->)
+                  hold
+                    save candidate, node-path/join(build, entry-name, <out>, arch, <WebView2Loader.dll>)
+                    fork test, node-fs/exists-sync(candidate)
+                      hold
+                        save loader, candidate
+                        halt
+          fork test, is-unequal(loader, <>)
+            hold
+              node-fs/copy-file-sync(loader, node-path/join(bundle/app, <WebView2Loader.dll>))
+      report-program(program-started, target)
+    miss
+      # the page and the cargo project are written; the executable is built on the target's own box
+      save facts, make list
+      facts/push(target)
+      save fields, make list
+      fields/push(output/field(<reason>, <This is not a {target} box, so the executable is built there.>))
+      fields/push(output/location(output/show-path(program/project, root)))
+      output/report
+        make skipped-item
+          bind glyph, <skipped>
+          bind verb, <build>
+          bind subject, <program>
+          bind duration, subtract(now-ms(), program-started)
+          bind facts, facts
+          bind fields, fields
+
+  finish-cask(root, bundle/app, <{name} built for {target}>)
+  back make(cask-made, bind(app, bundle/app))
+
+# the Android build: the page and the app's files as assets, the program as a dex, one signed APK, installed and
+# launched when a device is online
+task make-android-cask
+  take ask, like target-ask
+  like cask-made
+  mark async
+
+  save root, ask/root
+  save name, ask/name
+  save identifier, ask/identifier
+  save work, ask/work
+  generate-and-report(root, ask/page, ask/entry)
+
+  save assets, node-path/join(work, <assets>)
+  node-fs/rm-sync(assets, make(cask-remove, bind(recursive, true), bind(force, true)))
+  node-fs/mkdir-sync(assets, make(cask-folder, bind(recursive, true)))
+  save page-started, now-ms()
+  save built
+    build-page
+      make page-ask
+        bind root, root
+        bind page, ask/page
+        bind entry, <import \{ boot \} from './app'\nboot()\n>
+        bind into, node-path/join(assets, <webview>)
+        bind title, name
+        bind work, node-path/join(work, <page>)
+  report-page(built/bytes, page-started)
+
+  save program-started, now-ms()
+  # the Activity the system starts: it runs the program's `boot`, which opens the window the Activity then shows
+  save url, ask/url
+  save start, <boot({json-text(<{value-or(url, <webview>)}>)}, false)>
+  fork test, is-truthy(url)
+    hold
+      save start, <boot({json-text(<{value-or(url, <webview>)}>)}, true)>
+  save program
+    build-android-program
+      make android-ask
+        bind root, root
+        bind entry, ask/entry
+        bind identifier, identifier
+        bind driver, cask-android-driver(start)
+        bind work, work
+  report-program(program-started, <android>)
+
+  # into the assets before they are packaged, so the app reads it from its own APK
+  save stamped, stamp-runtime-version(make(stamp-ask, bind(target, <android>), bind(native, program/native), bind(into, assets)))
+  update-module/stamp-update-key(make(key-ask, bind(identifier, identifier), bind(into, assets)))
+  publish-built
+    make publish-ask
+      bind publish, ask/publish
+      bind channel, ask/channel
+      bind page, node-path/join(assets, <webview>)
+      bind identifier, identifier
+      bind platform, <android>
+      bind runtime-version, stamped/hex
+  save apk
+    assemble-apk
+      make apk-ask
+        bind out, ask/out
+        bind name, name
+        bind identifier, identifier
+        bind version, ask/version
+        bind dex, program/dex
+        bind assets, assets
+        bind work, work
+        bind native, program/native
+  launch-on
+    android-device()
+    task
+      take found, like dynamic
+      like void
+      launch-on-android(make(android-launch-ask, bind(serial, found/serial), bind(apk, apk), bind(identifier, identifier)))
+    <device>
+  finish-cask(root, apk, <{name} built for android, debug signed>)
+  back make(cask-made, bind(app, apk))
+
+# `term work --target <platform>`: the page served by the dev server with hot swaps, the cask built once with
+# `load-url` at it and launched, so a view edit lands inside the WebView with its signals kept. Returns when the app is
+# closed; the server lives as long as this process
+task work-cask
+  take input, like work-ask
+  like void
+  mark async
+
+  save root, node-path/resolve(input/root)
+  save target, input/target
+  save page, node-path/resolve(root, value-or(input/page, default-page()))
+  save port, value-or(input/port, 5179)
+  save dev, load-dev-server()
+  save started, now-ms()
+  save server, dev/start-dev-server(make(dev-ask, bind(root, root), bind(entry, page), bind(port, port), bind(env, <webview>), bind(boot, true)))
+  save url, <http://localhost:{server/port}/>
+  # a service (section 11): the dev server's `start` item, the cask built inside this run, `Stopped` at the end
+  save open-facts, make list
+  open-facts/push(<--target {target}>)
+  output/open-run(make(run-open, bind(verb, <work>), bind(root, root), bind(facts, open-facts)))
+  save start-fields, make list
+  start-fields/push(output/field(<page>, output/show-path(page, root)))
+  output/report
+    make lifecycle-item
+      bind glyph, <done>
+      bind kind, <lifecycle>
+      bind verb, <start>
+      bind subject, url
+      bind duration, subtract(now-ms(), started)
+      bind fields, start-fields
+
+  save watch
+    node-fs/watch
+      root
+      make(watch-ask, bind(recursive, true))
+      task
+        take event, like dynamic
+        take changed, like dynamic
+        like void
+        save file, text-or-empty(changed)
+        fork test, and(file/ends-with(<.tree>), not(file/includes(</host/>)))
+          hold
+            server/update(node-path/join(root, file))
+
+  fork
+    mark unsafe
+    save made
+      make-cask
+        make cask-ask
+          bind root, root
+          bind target, target
+          bind page, input/page
+          bind entry, input/entry
+          bind url, url
+    fork test, is-equal(target, <macos>)
+      hold
+        save name, app-identity(root)/name
+        save said, make list
+        said/push(<Edit a .tree file and the page swaps in place. Close the window to stop.>)
+        output/report(make(said-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, name), bind(message, said)))
+        # spawned, not run synchronously: the dev server lives in this process and a blocking wait would starve it.
+        # The app's lines are ADAPTED (section 15), each an item tagged with the app's name, or passed through under --raw
+        save stdio, make list
+        stdio/push(<ignore>)
+        stdio/push(<pipe>)
+        stdio/push(<pipe>)
+        save child, spawn-app(node-path/join(made/app, <Contents/MacOS>, name), stdio)
+        output/follow-child(child, name)
+        child-closed(child)
+        output/close-run(make(run-stopped, bind(verdict, <Stopped>), bind(uptime, true)))
+      miss
+        save said, make list
+        said/push(<The app is loading the dev server. Ctrl-C stops the server.>)
+        output/report(make(said-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, <device>), bind(message, said)))
+        node-process/once
+          <SIGINT>
+          task
+            like void
+            node-process/exit(output/close-run(make(run-interrupted, bind(verdict, <Stopped>), bind(failure, <interrupted>), bind(uptime, true))))
+        wait-forever()
+  halt take
+    take problem
+    watch/close()
+    server/close()
+    raise-again(problem)
+  watch/close()
+  server/close()
+
+# the app's executable started with no arguments, its output piped
+bind spawn-app
+  take file, like text
+  take stdio, like list, like text
+  like dynamic
+  case node
+    text <process.getBuiltinModule("node:child_process").spawn($file, [], \{ stdio: $stdio \})>

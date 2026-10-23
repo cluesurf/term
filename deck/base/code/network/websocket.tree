@@ -4,6 +4,7 @@ mark stable
 
 load @term/base/native/{platform}/network/websocket
   find websocket-connect
+  find websocket-handle
 
 load @term/base/native/{platform}/network/websocket/socket
   find websocket-socket-send

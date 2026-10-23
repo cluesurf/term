@@ -1,0 +1,214 @@
+# A package's metadata and tarball from an npm-style registry, and the versions and links the metadata names. Ported
+# from deck/deck/code/fetch.ts (term-cli-in-term-0080): makeDefaultFetchConfig, fetchPackageMeta, fetchTarball,
+# getVersionList, getVersionMeta, clearMetaCache.
+#
+# The decisions:
+#   - the config is config-shape.tree's `fetch-config`, its scope routes a hash, read through a bind so that reading
+#     an absent one writes nothing back (self-host traps T003)
+#   - the metadata is the registry's JSON as the host parsed it, passed through as the host value it is: its keys are
+#     the registry's (`dist-tags`), never a form's
+#   - `get-version-meta` answers a maybe of `version-meta`, its links a hash, where the original answered undefined or
+#     an object
+#   - the metadata cache is this module's own top-level hash, so everything that reads or writes it lives here (self-host
+#     traps on stateful ports): `clear-meta-cache` empties it
+#   - every request goes through the host's global `fetch`, read at the call, so a caller that swaps it is heard
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/hash
+  find hash
+
+load ../version
+  find code
+  find parse-code
+
+load ./config-shape
+  find fetch-config
+
+load ./registry-naming
+  find resolve-registry
+  find default-scope-registries
+
+dock load
+  load <global:global>, name host-global
+  load <global:Date>, name host-date
+  load <global:Object>, name host-object
+  load <global:Buffer>, name host-buffer
+
+# what a registry says of one version: where its tarball is, its checksums, and its links
+form version-meta
+  link tarball, like text
+  link integrity, like text
+  link shasum, like text
+  link dependencies, like hash, like text, like text
+
+# one cached answer and when it was fetched
+form cached-meta
+  link data, like dynamic
+  link time, like number
+
+host default-registry, <https://registry.npmjs.org>
+
+host cache-ttl-ms, 300000
+
+host meta-cache, make hash
+
+bind fetching-routes-of
+  take config, like fetch-config
+  like hash, like text, like text
+  case node
+    text <($config.scopeRegistries ?? new Map())>
+
+bind fetching-json-request
+  like dynamic
+  case node
+    text <<{ headers: { Accept: "application/json" } }>>
+
+bind fetching-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind fetching-head-of
+  take value, like text
+  like text
+  case node
+    text <$value.slice(0, 1000)>
+
+bind fetching-keys
+  take value, like dynamic
+  like list, like text
+  case node
+    text <Object.keys($value)>
+
+bind fetching-member
+  take value, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$value[$key]>
+
+bind fetching-entries
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <Object.entries($value ?? \{\})>
+
+task make-default-fetch-config
+  like fetch-config
+
+  back make(fetch-config, bind(registry, default-registry), bind(scope-registries, default-scope-registries()), bind(concurrency, 16), bind(offline, false))
+
+task fetch-package-meta
+  take name, like text
+  take config, like fetch-config
+  like dynamic
+
+  fork test, config/offline
+    hold
+      halt <Cannot fetch {name} in offline mode>
+
+  fork test, meta-cache/has(name)
+    hold
+      save cached, meta-cache/get(name)
+      fork test, is-below(subtract(host-date/now(), cached/time), cache-ttl-ms)
+        hold
+          back cached/data
+
+  save registry, resolve-registry(name, config/registry, fetching-routes-of(config))
+  # native scoped name, no `.tree` suffix: `{registry}/@term/base`
+  save url, <{registry}/{name}>
+  save response, wait host-global/fetch(url, fetching-json-request())
+
+  fork test, not(response/ok)
+    hold
+      save body, read-error-body(response)
+      halt <Failed to fetch {name}: {response/status} {response/status-text}\n  GET {url}{body}>
+
+  save data
+    call response/json
+      wait true
+
+  meta-cache/set(name, make(cached-meta, bind(data, data), bind(time, host-date/now())))
+
+  back data
+
+task fetch-tarball
+  take url, like text
+  take config, like fetch-config
+  like dynamic
+
+  fork test, config/offline
+    hold
+      halt <Cannot fetch tarball in offline mode: {url}>
+
+  save response, wait host-global/fetch(url)
+
+  fork test, not(response/ok)
+    hold
+      save body, read-error-body(response)
+      halt <Failed to fetch tarball: {response/status} {response/status-text}\n  GET {url}{body}>
+
+  save bytes
+    call response/array-buffer
+      wait true
+
+  back host-buffer/from(bytes)
+
+# Read a failed response's body (cut to 1000) so network errors carry the server's explanation, not just the status
+# line. Never raises
+task read-error-body
+  take response, like dynamic
+  like text
+  mark private
+
+  fork
+    mark unsafe
+    save body
+      call response/text
+        wait true
+    fork test, fetching-truthy(body)
+      hold
+        back <\n  response: {fetching-head-of(body)}>
+    back <>
+  halt take
+    take unread
+    back <>
+
+task get-version-list
+  take meta, like dynamic
+  like list, like code
+
+  save out, make list
+  walk fetching-keys(meta/versions)
+    take version
+    out/push(parse-code(version))
+  back out
+
+task get-version-meta
+  take meta, like dynamic
+  take code, like text
+  like maybe, like version-meta
+
+  save entry, fetching-member(meta/versions, code)
+
+  fork test, not(fetching-truthy(entry))
+    hold
+      back make none
+
+  save links, make hash
+  walk fetching-entries(entry/dependencies)
+    take pair
+    links/set(<{pair/0}>, <{pair/1}>)
+
+  back make(some, make(version-meta, bind(tarball, entry/dist/tarball), bind(integrity, entry/dist/integrity), bind(shasum, entry/dist/shasum), bind(dependencies, links)))
+
+task clear-meta-cache
+  like void
+
+  meta-cache/clear()

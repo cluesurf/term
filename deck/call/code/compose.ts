@@ -256,7 +256,7 @@ export function buildCompose({
   }
 
   // the JVM's own start, which calls the program's entry
-  const emitted = emitKotlin(result.program)
+  const emitted = emitKotlin(result.program, { wake: result.wake })
   const kotlin = `${emitted}\nfun main() { ${startTask(result.program, entry, emitted)}() }\n`
   const prelude = nativePrelude(result.program, 'compose', readRuntime, kotlin)
 
@@ -368,7 +368,7 @@ export function buildComposeAndroid({
     return { form: 'failed', stage: 'scope', reason: refused }
   }
 
-  const kotlin = emitKotlin(result.program)
+  const kotlin = emitKotlin(result.program, { wake: result.wake })
   const prelude = nativePrelude(result.program, 'compose-android', readRuntime, kotlin)
   const driver = ['class TermActivity : TermComposeActivity() {', `  override fun program() { ${startTask(result.program, entry, kotlin)}() }`, '}'].join('\n')
 

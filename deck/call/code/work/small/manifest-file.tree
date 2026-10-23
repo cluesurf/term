@@ -1,0 +1,84 @@
+# A manifest's declarations read from its FILE: the package name a `deck.tree` declares, any `<head>` value under its
+# `deck` statement, and whether a file is a lockfile or a role file. Ported from call/code/manifest-name.ts
+# (term-cli-in-term-0062), which was already a face: every reading of a parsed file is call/code/manifest-read.tree,
+# with the reasons each rule is what it is. What is left is reading the file, where a file that cannot be read answers
+# as a missing manifest does: nothing, or false.
+#
+# There is ONE parser for `.tree` in this codebase (note/project/term/one-parser.md), and manifest-read.tree reads the
+# file through it, never a pattern.
+
+load @term/call/manifest-read
+  find manifest-value
+  find manifest-name
+  find is-lockfile-text
+  find is-role-file-text
+
+load @term/base/maybe
+  find maybe
+
+dock load
+  load <node:fs>, name node-file
+
+# a file's text, or nothing when it cannot be read
+task text-of
+  take file, like text
+  like maybe, like text
+  mark private
+
+  fork
+    mark unsafe
+    save text, node-file/read-file-sync(file, <utf8>)
+    back make(some, text)
+  halt take
+    take error
+    back make none
+
+# the first argument of the manifest's `<head>` statement in this file (`deck @term/site` -> `@term/site`, `role
+# ./roles` -> `./roles`), or nothing. Unreadable or unparseable is nothing, the way a missing manifest is
+task manifest-value-of
+  take file, like text
+  take head, like text
+  like maybe, like text
+
+  sift text-of(file)
+    case some
+      link text
+      back manifest-value(text, file, head)
+    case none
+      back make none
+
+# the name this file declares as a manifest, `@scope/name` or a bare `name`, or nothing
+task manifest-name-of
+  take file, like text
+  like maybe, like text
+
+  sift text-of(file)
+    case some
+      link text
+      back manifest-name(text, file)
+    case none
+      back make none
+
+# whether this file is a role file (`role <name>` with `take` globs), by content, never by name
+task is-role-file-at
+  take file, like text
+  like boolean
+
+  sift text-of(file)
+    case some
+      link text
+      back is-role-file-text(text, file)
+    case none
+      back false
+
+# whether this file is a lockfile (`lock <1>` and one `deck` entry per resolved package), by content, never by name
+task is-lockfile-at
+  take file, like text
+  like boolean
+
+  sift text-of(file)
+    case some
+      link text
+      back is-lockfile-text(text, file)
+    case none
+      back false

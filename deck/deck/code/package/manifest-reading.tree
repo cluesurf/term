@@ -1,0 +1,657 @@
+# A project's manifest read from its `deck.tree`, and the small rules about one. Ported from deck/deck/code/manifest.ts
+# (term-cli-in-term-0074): loadManifest, parseManifest, parseManifestByHand, validateManifest, isDefaultCodeRoot,
+# DEFAULT_BOOK_ROOT and bookRoot. writeManifest is manifest-text.tree, the old spellings spelling.tree.
+#
+# The decisions:
+#   - `parse-manifest` reads THROUGH THE MILL, as the original does: grammar-reading.tree's `parse-manifest-mill`, with
+#     the `manifest-grammars` record the caller made once (term-cli-in-term-0075), and `load-manifest` with it
+#   - `parse-manifest-by-hand`, the retired reader the mill is held against, reads the flattened forms of
+#     tree-reading.tree (term-cli-in-term-0076) and answers a `deck-manifest` (manifest-shape.tree): a field the
+#     original left undefined is left out, so on TypeScript the object has the original's keys
+#   - a refusal is a `failure` with the original's message; a read that fails for any reason but a missing file is
+#     passed on as the very error the file system raised
+#   - `DEFAULT_BOOK_ROOT` is `default-book-root`, a task, since a top-level `host` is private to its module (self-host
+#     traps T022)
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/text
+  find starts-with
+  find ends-with
+  find substring
+  find char-count
+  find index-of
+
+load @term/base/list
+  find join
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/hash
+  find hash
+
+load ../version
+  find code
+  find code-hold
+  find parse-code
+  find parse-code-hold
+
+load ./grammar-reading
+  find manifest-grammars
+  find parse-manifest-mill
+
+load ./tree-reading
+  find tree-form
+  find read-tree
+  find form-of
+  find forms-with
+  find value-of
+  find term-of
+  find deep-value-of
+  find phrase-of
+
+load ./manifest-shape
+  find deck-manifest
+  find deck-link
+  find deck-mind
+  find deck-host-group
+  find deck-base
+  find deck-need
+
+dock load
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <node:path>, name node-path
+  load <global:Promise>, name host-promise
+  load <global:Number>, name host-number
+  load <@term/deck/code/name>, name deck-name
+
+# the first bare word, as `terms[0]`
+task first-term
+  take form, like tree-form
+  like maybe, like text
+  mark private
+
+  fork test, is-above(form/terms/length, 0)
+    hold
+      save first, get(form/terms, 0)
+      back make(some, first)
+  back make none
+
+# `value ?? terms[0] ?? ''`
+task value-or-term
+  take form, like tree-form
+  like text
+  mark private
+
+  sift form/value
+    case some
+      link found-value
+      back found-value
+    case none
+      sift first-term(form)
+        case some
+          link found-term
+          back found-term
+        case none
+          back <>
+
+# the first maybe that holds something, else the second
+task either
+  take first, like maybe, like text
+  take second, like maybe, like text
+  like maybe, like text
+  mark private
+
+  sift first
+    case some
+      back first
+    case none
+      back second
+
+# a maybe that holds a text that is not empty
+task is-filled
+  take value, like maybe, like text
+  like boolean
+  mark private
+
+  sift value
+    case some
+      link filled
+      back not(is-equal(filled, <>))
+    case none
+      back false
+
+# `mind <Name>, base <email>, site <url>`, the same fields also accepted as indented children
+task mind-of
+  take form, like tree-form
+  like deck-mind
+  mark private
+
+  save entry, make(deck-mind, bind(name, value-or-term(form)))
+  sift value-of(form, <base>)
+    case some
+      link base-text
+      save entry/base, base-text
+    case none
+      save nothing, 0
+  sift value-of(form, <site>)
+    case some
+      link site-text
+      save entry/site, site-text
+    case none
+      save nothing, 0
+  back entry
+
+# a `have` count as the original's `Number.parseInt(have, 10)`, when that is finite
+task have-of
+  take form, like tree-form
+  like maybe, like number
+  mark private
+
+  sift deep-value-of(form, <have>)
+    case some
+      link have-text
+      save parsed, host-number/parse-int(have-text, 10)
+      fork test, host-number/is-finite(parsed)
+        hold
+          save count, 0
+          save count, parsed
+          back make(some, count)
+      back make none
+    case none
+      back make none
+
+# `link @scope/name, mark <hold>, have <n>`, or the old `code <hold>`; none when it names nothing
+task link-of
+  take form, like tree-form
+  like maybe, like deck-link
+  mark private
+
+  save link-name, <>
+  sift first-term(form)
+    case some
+      link written-name
+      save link-name, written-name
+    case none
+      save nothing, 0
+  fork test, is-equal(link-name, <>)
+    hold
+      back make none
+  save hold-text, either(value-of(form, <mark>), value-of(form, <code>))
+  save have-found, have-of(form)
+  save hold, make(wild, bind(major, 0), bind(minor, -1), bind(patch, -1))
+  sift hold-text
+    case some
+      link written-hold
+      fork test, not(is-equal(written-hold, <>))
+        hold
+          save hold, parse-code-hold(written-hold)
+    case none
+      save nothing, 0
+  save found
+    make deck-link
+      bind name, link-name
+      bind mark, hold
+  sift have-found
+    case some
+      save found/have, have-found
+    case none
+      save nothing, 0
+  back make(some, found)
+
+# every `link` under a form that names something
+task links-of
+  take form, like tree-form
+  like list, like deck-link
+  mark private
+
+  save out, make list
+  walk forms-with(form, <link>)
+    take each
+    save found, link-of(each)
+    sift found
+      case some
+        link found-link
+        out/push(found-link)
+      case none
+        save nothing, 0
+  back out
+
+# `host <registry>` with `link` children
+task host-group-of
+  take form, like tree-form
+  like deck-host-group
+  mark private
+
+  back
+    make deck-host-group
+      bind registry, value-or-term(form)
+      bind link, links-of(form)
+
+task parse-manifest-by-hand
+  take text, like text
+  like deck-manifest
+
+  save result, read-tree(<deck.tree>, text)
+  fork test, not(result/ok)
+    hold
+      save said, <>
+      fork test, is-above(result/diagnostics/length, 0)
+        hold
+          save first-diagnostic, get(result/diagnostics, 0)
+          save said, <: {first-diagnostic/message}>
+      halt <deck.tree could not be parsed{said}>
+
+  # the whole manifest is one `deck` form; every declaration hangs off it
+  save top, make(tree-form, bind(head, <>), bind(terms, make list), bind(values, make list), bind(forms, result/forms))
+  save found-deck, form-of(top, <deck>)
+  save root, top
+  sift found-deck
+    case some
+      link deck-form
+      save root, deck-form
+    case none
+      halt <deck.tree has no `deck` declaration>
+
+  # `deck @scope/name`, or a bare `deck name` for an unscoped package
+  save host, <>
+  save name, <>
+  sift first-term(root)
+    case some
+      link written-name
+      save name, written-name
+    case none
+      save nothing, 0
+  save slash, index-of(name, </>)
+  fork test, and(starts-with(name, <@>), not(is-equal(slash, -1)))
+    hold
+      save host, substring(name, 1, slash)
+      save name, substring(name, add(slash, 1))
+
+  # `mark <1.4.2>` is the version, `code <1.4.2>` its old spelling
+  save mark-text, <0.0.0>
+  sift either(value-of(root, <mark>), value-of(root, <code>))
+    case some
+      link written-mark
+      save mark-text, written-mark
+    case none
+      save nothing, 0
+  save mark, parse-code(mark-text)
+  save head, value-of(root, <head>)
+
+  save minds, make list
+  walk forms-with(root, <mind>)
+    take each-mind
+    minds/push(mind-of(each-mind))
+
+  # `lock mit` and `sort tool` carry a bare word, but tolerate `<...>` too
+  save lock, either(term-of(root, <lock>), value-of(root, <lock>))
+  save sort, either(term-of(root, <sort>), value-of(root, <sort>))
+
+  save terms, make list
+  walk forms-with(root, <term>)
+    take each-term
+    terms/push(value-or-term(each-term))
+
+  # a nested `deck ./path` is a member package
+  save decks, make list
+  walk forms-with(root, <deck>)
+    take each-deck
+    save member, first-term(each-deck)
+    sift member
+      case some
+        link member-path
+        fork test, not(is-equal(member-path, <>))
+          hold
+            decks/push(member-path)
+      case none
+        save nothing, 0
+
+  save links, links-of(root)
+
+  # `case work` holds the dev dependencies, as `link` forms and `host` groups
+  save work, form-of(root, <case>)
+  save dev-links, make list
+  sift work
+    case some
+      link work-form
+      save dev-links, links-of(work-form)
+    case none
+      save nothing, 0
+
+  save host-links, make list
+  walk forms-with(root, <host>)
+    take each-host
+    host-links/push(host-group-of(each-host))
+  sift work
+    case some
+      link work-hosts
+      walk forms-with(work-hosts, <host>)
+        take each-work-host
+        host-links/push(host-group-of(each-work-host))
+    case none
+      save nothing, 0
+
+  # `base alice, <ghcr.io/alice-gh/term>`
+  save bases, make list
+  walk forms-with(root, <base>)
+    take each-base
+    save scope-word, <>
+    sift first-term(each-base)
+      case some
+        link written-scope
+        save scope-word, written-scope
+      case none
+        save nothing, 0
+    save registry, <>
+    sift each-base/value
+      case some
+        link written-registry
+        save registry, written-registry
+      case none
+        save nothing, 0
+    bases/push(make(deck-base, bind(scope, deck-name/scope-name(scope-word)), bind(registry, registry)))
+
+  # `hook <name>, task <task>`
+  save hooks, make hash
+  walk forms-with(root, <hook>)
+    take each-hook
+    save hook-name, first-term(each-hook)
+    save hook-task, make none
+    sift form-of(each-hook, <task>)
+      case some
+        link task-form
+        save phrase, phrase-of(task-form)
+        save hook-task, make(some, phrase)
+      case none
+        fork test, is-above(each-hook/terms/length, 1)
+          hold
+            save second, get(each-hook/terms, 1)
+            save hook-task, make(some, second)
+    sift hook-name
+      case some
+        link named
+        sift hook-task
+          case some
+            link tasked
+            fork test, and(not(is-equal(named, <>)), not(is-equal(tasked, <>)))
+              hold
+                hooks/set(named, tasked)
+          case none
+            save nothing, 0
+      case none
+        save nothing, 0
+
+  # `make <security>` is repeatable, and `cite` has the same shape as `mind`
+  save makes, make list
+  walk forms-with(root, <make>)
+    take each-make
+    save keyword, value-or-term(each-make)
+    fork test, not(is-equal(keyword, <>))
+      hold
+        makes/push(keyword)
+  save cites, make list
+  walk forms-with(root, <cite>)
+    take each-cite
+    cites/push(mind-of(each-cite))
+
+  # `need @term/code, mark <2.6.x>`: the toolchain, at most one
+  save need-found, make none
+  sift form-of(root, <need>)
+    case some
+      link need-form
+      save need-name, first-term(need-form)
+      save need-mark, value-of(need-form, <mark>)
+      fork test, and(is-filled(need-name), is-filled(need-mark))
+        hold
+          sift need-name
+            case some
+              link needed-name
+              sift need-mark
+                case some
+                  link needed-mark
+                  save need-hold, parse-code-hold(needed-mark)
+                  save need-record, make(deck-need, bind(name, needed-name), bind(mark, need-hold))
+                  save need-found, make(some, need-record)
+                case none
+                  save nothing, 0
+            case none
+              save nothing, 0
+    case none
+      save nothing, 0
+
+  save manifest
+    make deck-manifest
+      bind host, host
+      bind name, name
+      bind mark, mark
+      bind link, links
+  sift either(term-of(root, <code>), term-of(root, <bear>))
+    case some
+      link code-root
+      save manifest/code, code-root
+    case none
+      save nothing, 0
+  sift head
+    case some
+      link head-text
+      save manifest/head, head-text
+    case none
+      save nothing, 0
+  fork test, is-above(minds/length, 0)
+    hold
+      save manifest/mind, minds
+  sift lock
+    case some
+      link lock-text
+      save manifest/lock, lock-text
+    case none
+      save nothing, 0
+  sift sort
+    case some
+      link sort-text
+      save manifest/sort, sort-text
+    case none
+      save nothing, 0
+  fork test, is-above(terms/length, 0)
+    hold
+      save manifest/term, terms
+  fork test, is-above(hooks/length(), 0)
+    hold
+      save manifest/hook, make(some, hooks)
+  sift term-of(root, <role>)
+    case some
+      link role-dir
+      save manifest/role, role-dir
+    case none
+      save nothing, 0
+  sift term-of(root, <test>)
+    case some
+      link test-dir
+      save manifest/test, test-dir
+    case none
+      save nothing, 0
+  sift term-of(root, <book>)
+    case some
+      link book-dir
+      save manifest/book, book-dir
+    case none
+      save nothing, 0
+  sift term-of(root, <line>)
+    case some
+      link line-dir
+      save manifest/line, line-dir
+    case none
+      save nothing, 0
+  sift term-of(root, <call>)
+    case some
+      link call-dir
+      save manifest/call, call-dir
+    case none
+      save nothing, 0
+  sift term-of(root, <task>)
+    case some
+      link task-dir
+      save manifest/task, task-dir
+    case none
+      save nothing, 0
+  sift form-of(root, <hide>)
+    case some
+      save hidden, false
+      sift term-of(root, <hide>)
+        case some
+          link hide-word
+          save hidden, is-equal(hide-word, <true>)
+        case none
+          save nothing, 0
+      save manifest/hide, hidden
+    case none
+      save nothing, 0
+  sift either(value-of(root, <site>), term-of(root, <site>))
+    case some
+      link site-text
+      save manifest/site, site-text
+    case none
+      save nothing, 0
+  sift either(term-of(root, <view>), value-of(root, <view>))
+    case some
+      link view-text
+      save manifest/view, view-text
+    case none
+      save nothing, 0
+  fork test, is-above(decks/length, 0)
+    hold
+      save manifest/deck, decks
+  fork test, is-above(dev-links/length, 0)
+    hold
+      save manifest/dev-link, dev-links
+  fork test, is-above(host-links/length, 0)
+    hold
+      save manifest/host-link, host-links
+  fork test, is-above(bases/length, 0)
+    hold
+      save manifest/base, bases
+  sift term-of(root, <boot>)
+    case some
+      link boot-dir
+      save manifest/boot, boot-dir
+    case none
+      save nothing, 0
+  sift term-of(root, <tool>)
+    case some
+      link tool-dir
+      save manifest/tool, tool-dir
+    case none
+      save nothing, 0
+  sift value-of(root, <text>)
+    case some
+      link long-title
+      save manifest/text, long-title
+    case none
+      save nothing, 0
+  fork test, is-above(makes/length, 0)
+    hold
+      save manifest/make, makes
+  fork test, is-above(cites/length, 0)
+    hold
+      save manifest/cite, cites
+  sift need-found
+    case some
+      save manifest/need, need-found
+    case none
+      save nothing, 0
+
+  back manifest
+
+# the manifest, read through the mill
+task parse-manifest
+  take text, like text
+  take grammars, like manifest-grammars
+  like deck-manifest
+
+  back parse-manifest-mill(text, grammars)
+
+# The manifest of the project in `dir`. A missing one is the ORDINARY case of running a package command outside a
+# project, so it is answered with a sentence rather than by letting the file system's ENOENT out, which named an
+# absolute path on the machine it ran on and read as a crash (term-cli-0005)
+task load-manifest
+  take dir, like text
+  take grammars, like manifest-grammars
+  like deck-manifest
+
+  save file, node-path/join(dir, <deck.tree>)
+  save text, <>
+  fork
+    mark unsafe
+    save text, fs-promise/read-file(file, <utf-8>)
+  halt take
+    take error
+    fork test, is-equal(error/code, <ENOENT>)
+      hold
+        halt <no deck.tree here, so this is not a Term project. Run `term wake \<name\>` to start one, or change to a directory that has one.>
+    # any other failure passes on as the very error it was
+    wait host-promise/reject(error)
+
+  back parse-manifest(text, grammars)
+
+# Publish rules: a name, and a version that is not 0.0.0
+task validate-manifest
+  take manifest, like deck-manifest
+  like list, like text
+
+  save errors, make list
+  fork test, is-equal(manifest/name, <>)
+    hold
+      errors/push(<Missing package name>)
+  fork test, and(is-equal(manifest/mark/major, 0), and(is-equal(manifest/mark/minor, 0), is-equal(manifest/mark/patch, 0)))
+    hold
+      errors/push(<Version must be set (not 0.0.0)>)
+  back errors
+
+# `code ./code` is the default, written or not: one leading `./` and any trailing `/` set aside
+task is-default-code-root
+  take code-root, like text
+  like boolean
+
+  save rest, code-root
+  fork test, starts-with(rest, <./>)
+    hold
+      save rest, substring(rest, 2)
+  # by code point, so a cut never splits a character past U+FFFF
+  save runes, to-runes(rest)
+  save stop, runes/length
+  walk test
+    hook test, and(is-above(stop, 0), is-equal(get(runes, subtract(stop, 1)), 47))
+    hook hold
+      save stop, subtract(stop, 1)
+  save kept, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, stop)
+    hook hold
+      kept/push(get(runes, at))
+      save at, add(at, 1)
+  back is-equal(from-runes(kept), <code>)
+
+# The folder a package's book is read from: what `book ./guides` names, `./book` when the manifest names none
+task default-book-root
+  like text
+
+  back <./book>
+
+task book-root
+  take manifest, like deck-manifest
+  like text
+
+  fork test, is-equal(manifest/book, <>)
+    hold
+      back default-book-root()
+  back manifest/book

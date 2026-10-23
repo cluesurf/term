@@ -30,20 +30,49 @@
 //   npx tsx task/port-build.ts --progress        also `progress <done> <total>` on stderr per module (task/release.ts)
 //   npx tsx task/port-build.ts --full     compile every module, skipping none (the skip's own proof compares against it)
 //   npx tsx task/port-build.ts --explain  also `  skip  <path>` for each module skipped
+//   npx tsx task/port-build.ts --verify flow/code/   write nothing, take no lock: exit 1 unless every port whose path
+//                                         holds the text is the output the last build wrote from its source AS IT IS NOW
 //
 // The skip's proof: test/call/port-build-skip.ts (a copy of the tree, edits to a port, a stdlib file and the compiler,
 // each skip run byte-identical to a --full run).
+//
+// NEVER OLDER OUTPUT OVER NEWER (term-cli-in-term-0151). A full run takes minutes, and it read each module's text when
+// it planned, then compiled and wrote it with no second look. A second run overlapping it (another session's make:line
+// beside a port-one) wrote the port of the NEW text, said `built`, and the first run then wrote the OLD text's port over
+// it, with no error anywhere (cli-in-term traps.md, items 0075, 0101, 0077). So a module's text is read at its own turn,
+// every `.tree` its compile read is written down (port-trace.ts openWindow), and just before the write each is read
+// again: one that changed compiles the module again from the new text, and after ATTEMPTS the module is not written
+// and is reported `MOVED` (exit 1). test/call/port-race.ts holds it.
 
 // FIRST, before the compiler loads: the trace must see every read a compiler module makes, including while it loads
-import { observations, observationCount, observe, real, setRecording, sha, untraced, UNTRACKABLE } from './port-trace'
+import { closeWindow, observations, observationCount, observe, openWindow, real, setRecording, sha, untraced, UNTRACKABLE } from './port-trace'
 import traced, { writeSync } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { dirname, join, relative } from 'node:path'
+import { basename, dirname, join, relative, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { compile } from '@term/make/code/compile/compile'
 import { nativePrelude } from '@term/make/code/compile/native'
 import { projectResolver } from '@term/call/code/make'
 import { projectLeanOf } from '@term/call/code/role-of'
 import { projectHome } from '@term/call/code/home'
+import { commandRoutes, toCamel } from '@term/call/code/hook-dispatch'
+// THE LINE LOCK (note/project/term/decision/002-make-line-lock.md): one port-build or make:line at a time, since this
+// compiles with whatever compiler is half edited in the working tree. Under make:line the token it passes down says
+// the lock is ours already. Loaded by its path from this file, and skipped where it is absent: test/call/port-build-skip.ts
+// runs a copy of this script in a temporary tree of its own, which no other build shares
+const LINE_LOCK = new URL('../../../../task/term/line-lock.ts', import.meta.url)
+
+async function holdLineLock(by: string): Promise<void> {
+  if (!untraced(() => existsSync(LINE_LOCK))) {
+    return
+  }
+
+  // a CommonJS module (it says why): its exports are the default, and named too where node's lexer finds them
+  type Lock = { holdForProcess: (term: string, by: string) => unknown }
+  const loaded = (await import(LINE_LOCK.href)) as Partial<Lock> & { default?: Lock }
+  const lock = loaded.holdForProcess ? (loaded as Lock) : loaded.default!
+  lock.holdForProcess(TERM, by)
+}
 
 const { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } = real
 
@@ -51,16 +80,108 @@ const { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSy
 const TERM = process.cwd()
 
 // the toolchain LIBRARIES whose ports TypeScript imports, each with the code subtrees it ports. Of `@term/call`,
-// `code/browser` is the browser compiler's in-memory disk, and `code/work/item` is a library, the terminal output standard every command prints through (note/project/term/output/): the
-// rest of its .tree is the console (`line/base.tree`) and its verbs, which `term boot` builds as a program and
-// nothing imports as a library.
+// `code/browser` is the browser compiler's in-memory disk, and `code/work/item` is a library, the terminal output
+// standard every command prints through (note/project/term/output/). `code/line` is the console, `line/base.tree`, and
+// the top-level `code/work/*.tree` its verbs and its dispatcher: built here since term-cli-in-term-0012, so make:line
+// can bundle the console as `host/term-line.js` (see THE RUN ENTRY below)
 const DECKS: Record<string, string[]> = {
   make: ['code'],
   deck: ['code'],
   flow: ['code'],
   scan: ['code'],
   test: ['code'],
-  call: ['code/work/item', 'code/browser', 'code/*'],
+  // `code/work/*/**`: every FOLDER under code/work (a lane's ports, decision cli-in-term/001), and `code/work/*` the
+  // verb files directly in it
+  call: ['code/work/*/**', 'code/work/*', 'code/line', 'code/browser', 'code/*'],
+}
+
+// THE RUN ENTRY (term-cli-in-term-0012). A module whose top level declares `hook` commands is a console, and its port
+// alone runs nothing: no Term program can read its own hooks, so the route tree is known only here, from the compile.
+// Beside such a port goes `<name>-run.ts`, which `make:line` bundles: the routes as data, each command's task as the
+// port's export, and the start of the run handed to `work/dispatch.tree`'s `start-line` and `fail-line`, the way
+// `term boot` writes a console's `run.mjs` (boot-plan.tree `cli-run-text`). The parsing of a command's own flags and
+// the call of its task are still hook-dispatch.ts's `runCommandLine`, until the switch (term-cli-in-term-0013).
+// Undefined when the module declares no hook; a task some route names that the port does not export is an error
+function runEntry(name: string, content: string, program: Parameters<typeof commandRoutes>[0]): { text: string } | { missing: string[] } | undefined {
+  const routes = commandRoutes(program)
+
+  if (routes.length === 0) {
+    return undefined
+  }
+
+  const tasks = new Map<string, string>()
+  const walk = (list: typeof routes): void => {
+    for (const route of list) {
+      const task = route.calls[0]?.name
+
+      if (task) {
+        tasks.set(task, toCamel(task))
+      }
+
+      walk(route.children)
+    }
+  }
+
+  walk(routes)
+
+  const missing = [...tasks].filter(([, camel]) => !new RegExp(`^export (async )?function ${camel}\\(`, 'm').test(content)).map(([task]) => task)
+
+  if (missing.length > 0) {
+    return { missing }
+  }
+
+  const data = JSON.stringify(routes, (key, value) => (key === 'span' ? undefined : (value as unknown)))
+  const entries = [...tasks].sort(([a], [b]) => a.localeCompare(b)).map(([task, camel]) => `  ${JSON.stringify(task)}: line.${camel},`)
+
+  return {
+    text: [
+      `// THE RUN ENTRY of the Term console ${name}, written by task/port-build.ts beside its port (term-cli-in-term-0012).`,
+      '// Generated: edit the console or port-build, never this file.',
+      `import * as line from './${name.split('/').pop()!.replace(/\.tree$/, '')}'`,
+      "import { failLine, startLine } from '@term/call/code/work/dispatch'",
+      "import { runCommandLine } from '@term/call/code/hook-dispatch'",
+      '',
+      `const routes = ${data}`,
+      '',
+      'const tasks: Record<string, unknown> = {',
+      ...entries,
+      '}',
+      '',
+      'const start = startLine(routes, process.argv.slice(2))',
+      '',
+      'if (start.done) {',
+      '  if (start.exit !== 0) {',
+      '    process.exit(start.exit)',
+      '  }',
+      '} else {',
+      '  try {',
+      "    const code = await runCommandLine({ name: 'term', routes, argv: start.words, resolve: task => tasks[task] as ((...values: unknown[]) => unknown) | undefined })",
+      '',
+      '    if (code !== 0) {',
+      '      process.exit(code)',
+      '    }',
+      '  } catch (error) {',
+      '    process.exit(failLine(error))',
+      '  }',
+      '}',
+      '',
+    ].join('\n'),
+  }
+}
+
+// a subtree written `<dir>/*/**` takes every directory directly in `<dir>`, each whole, and no file of `<dir>` itself
+function folders(dir: string, out: string[]): void {
+  if (!existsSync(dir) || existsSync(join(dir, 'draft.tree'))) {
+    return
+  }
+
+  for (const name of readdirSync(dir).sort()) {
+    const full = join(dir, name)
+
+    if (!SKIP.has(name) && !name.endsWith('-cache') && lstatSync(full).isDirectory()) {
+      trees(full, out)
+    }
+  }
 }
 
 // a subtree written `<dir>/*` takes the .tree files directly in that directory and none below it: `@term/call`'s own
@@ -80,8 +201,16 @@ function shallow(dir: string, out: string[]): void {
 }
 
 const check = process.argv.includes('--check')
+// `--verify [<path text>]` takes its own filter, the way `--only` does
+const verifyAt = process.argv.indexOf('--verify')
+const verify = verifyAt >= 0
+const verifyText = verify && process.argv[verifyAt + 1] && !process.argv[verifyAt + 1]!.startsWith('--') ? process.argv[verifyAt + 1] : undefined
 const onlyAt = process.argv.indexOf('--only')
-const only = onlyAt >= 0 ? process.argv[onlyAt + 1] : undefined
+const only = onlyAt >= 0 ? process.argv[onlyAt + 1] : verifyText
+
+// THE WRITE-TIME CHECK: how many times a module whose sources keep changing under it is compiled before it is left
+// unwritten as MOVED
+const ATTEMPTS = 3
 
 const SKIP = new Set(['node_modules', 'host', '.base', 'tmp', 'link', 'target', '.build'])
 
@@ -124,7 +253,8 @@ const SCHEMA = 1
 
 // one module's last good build. `reads` are ranges [from, to) of rows of the manifest's `table`, each row an
 // observation `[op\0path, what it saw]`: every observation the building process had made by the end of this compile
-type Entry = { text: string; fingerprint: string; out: string; reads: [number, number][] }
+// `run`: the hash of the console's run entry written beside it, for a module that declares hooks (THE RUN ENTRY)
+type Entry = { text: string; fingerprint: string; out: string; reads: [number, number][]; run?: string }
 type Manifest = { schema: number; table: [string, string][]; modules: Record<string, Entry> }
 
 function readManifest(path: string): Manifest | undefined {
@@ -217,16 +347,152 @@ function ranges(indexes: number[]): [number, number][] {
   return out
 }
 
+// THE PORT'S TEXT: the native prelude, then the emitted module. Each runtime shim goes in ONCE (term-cli-in-term-0127).
+// The prelude looks a dock's shim up by the dock's NAME and dedupes by the path it tried. A `<global:JSON>` dock looks
+// for `runtime/JSON.ts`, and on a case-insensitive disk (macOS, APFS) that path opens `runtime/json.ts`, the shim
+// @term/base/json's own dock already brought in: one file under two spellings, written twice, `const json` declared
+// twice, which esbuild refuses while `term make` (which writes no prelude) passes. So a shim is keyed by the FILE it
+// opens (device and inode), and a second path to a file already given reads as empty
+export function portContent(program: Parameters<typeof nativePrelude>[0], typescript: string): string {
+  const given = new Set<string>()
+  // through the TRACED `fs`: what the prelude reads is an input of the output like any file the compile read
+  const prelude = nativePrelude(program, 'node', path => {
+    if (!traced.existsSync(path)) {
+      return undefined
+    }
+
+    const stat = untraced(() => traced.statSync(path))
+    const file = `${stat.dev}:${stat.ino}`
+
+    if (given.has(file)) {
+      return ''
+    }
+
+    given.add(file)
+    return traced.readFileSync(path, 'utf8')
+  })
+  // the emitted module declares each native global it calls (`declare const bit: any`) so it typechecks WITHOUT the
+  // prelude, and the prelude defines it (`const bit = {...}`). Both in one file is TS2451 "Cannot redeclare", which
+  // `tsc` reported on every port that docks a native until 2026-10-04, so the declaration of a name the prelude
+  // defines is dropped
+  const defined = new Set([...(prelude ?? '').matchAll(/^const ([A-Za-z_$][\w$]*) =/gm)].map(match => match[1]!))
+  const body = typescript
+    .split('\n')
+    .filter(line => {
+      const declared = /^declare const ([A-Za-z_$][\w$]*)\s*:/.exec(line)
+
+      return !declared || !defined.has(declared[1]!)
+    })
+    .join('\n')
+
+  return `${prelude ? `${prelude}\n` : ''}${body}`
+}
+
+// a module's port: under `host/port/`, never `host/` itself: `term make` writes `host/<path>.ts` WITHOUT the prelude,
+// and two writers on one path left whichever ran last (found the same hour: the port worked, then a `term make` of the
+// compiler package overwrote it and the next import threw `bit is not defined`)
+function portPath(root: string, file: string): string {
+  return join(root, 'host', 'port', relative(root, file).replace(/\.tree$/, '.ts'))
+}
+
+// a module's text as it is on disk now, or undefined when it is gone or shelved (`mark draft`, or the old `note draft`)
+function sourceOf(file: string): string | undefined {
+  const text = untraced(() => {
+    try {
+      return readFileSync(file, 'utf8')
+    } catch {
+      return undefined
+    }
+  })
+
+  return text === undefined || /^(mark|note) draft\s*$/m.test(text.slice(0, 2000)) ? undefined : text
+}
+
+// test/call/port-race.ts only: with TERM_PORT_BUILD_HOLD=<dir>, the first compile of the run writes `<dir>/held` (the
+// module's path) and waits for `<dir>/go` before its write-time check, so the test can edit the source and run a
+// second build inside that gap, the race this check closes. A test's hook and nothing else: absent, it does nothing
+let held = false
+
+function holdForTest(name: string): void {
+  const dir = process.env.TERM_PORT_BUILD_HOLD
+
+  if (!dir || held) {
+    return
+  }
+
+  held = true
+  untraced(() => writeFileSync(join(dir, 'held'), name))
+
+  const until = Date.now() + 600_000
+
+  while (!untraced(() => existsSync(join(dir, 'go'))) && Date.now() < until) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100)
+  }
+}
+
+// `--verify`: each chosen module's port held against the manifest entry the build that wrote it left, the hash of the
+// text it compiled and of the port it wrote. The module's text now must be that text, and its port that port. It
+// reads the module's OWN source only: a port is emitted with every module it loads, and a change to one of those is
+// the skip's business (the next port-build compiles it again), not this check's. Exit 1 on any module that fails
+function verifyPorts(plan: { root: string; files: { file: string; text: string }[] }[], manifest: Manifest | undefined): void {
+  let good = 0
+  let bad = 0
+
+  for (const { root, files } of plan) {
+    for (const { file, text } of files) {
+      const name = relative(TERM, file)
+      const outPath = portPath(root, file)
+      const runPath = outPath.replace(/\.ts$/, '-run.ts')
+      const entry = manifest?.modules[name]
+      const hashOf = (path: string): string | undefined => untraced(() => (existsSync(path) ? sha(readFileSync(path)) : undefined))
+      const out = hashOf(outPath)
+      const problem =
+        entry === undefined
+          ? 'no build has recorded it: run port-build'
+          : out === undefined
+            ? 'its port is missing'
+            : entry.text !== sha(text)
+              ? 'its source changed after its port was built'
+              : entry.out !== out
+                ? 'its port is not the one the last build wrote'
+                : entry.run !== undefined && hashOf(runPath) !== entry.run
+                  ? 'its run entry is not the one the last build wrote'
+                  : undefined
+
+      if (problem === undefined) {
+        good++
+      } else {
+        bad++
+        console.log(`  STALE ${name}  (${problem})`)
+      }
+    }
+  }
+
+  console.log(`term port-build --verify: ${good} current, ${bad} stale`)
+
+  if (bad > 0 || good === 0) {
+    process.exitCode = 1
+  }
+}
+
 async function main(): Promise<void> {
   let built = 0
   let unchanged = 0
   let stale = 0
   let failed = 0
+  // modules left unwritten because their sources kept changing while they compiled (THE WRITE-TIME CHECK)
+  let moved = 0
 
   // port-build's own bookkeeping is no part of any module's trace. `settle` in home.ts reaches `fs` itself
   setRecording(false)
+
+  // `--verify` writes nothing, so it waits for no one
+  if (!verify) {
+    await holdLineLock(`port-build${only === undefined ? '' : ` --only ${only}`}`)
+  }
+
   const manifestPath = projectHome(TERM, 'port-build.json')
-  const print = await fingerprint()
+  const print = verify ? undefined : await fingerprint()
   const old = full || print === undefined ? undefined : readManifest(manifestPath)
   setRecording(true)
 
@@ -265,7 +531,9 @@ async function main(): Promise<void> {
     const files: string[] = []
 
     for (const subtree of subtrees) {
-      if (subtree.endsWith('/*')) {
+      if (subtree.endsWith('/*/**')) {
+        folders(join(root, subtree.slice(0, -5)), files)
+      } else if (subtree.endsWith('/*')) {
         shallow(join(root, subtree.slice(0, -2)), files)
       } else {
         trees(join(root, subtree), files)
@@ -295,6 +563,12 @@ async function main(): Promise<void> {
     }
   }
 
+  if (verify) {
+    setRecording(false)
+    verifyPorts(plan, readManifest(manifestPath))
+    return
+  }
+
   const total = plan.reduce((sum, one) => sum + one.files.length, 0)
   let done = 0
   // written at once with writeSync: the loop below is synchronous, and a `process.stderr.write` to a pipe may wait in
@@ -322,17 +596,24 @@ async function main(): Promise<void> {
     const resolve = projectResolver(root)
     const leanOf = projectLeanOf(root)
 
-    for (const { file, text } of files) {
+    for (const { file } of files) {
       // the modules finished before this one, told as it starts: every way out of the turn below is a `continue`
       tell()
       done++
 
       const name = relative(TERM, file)
-      const textHash = sha(text)
-      // under `host/port/`, never `host/` itself: `term make` writes `host/<path>.ts` WITHOUT the prelude, and two
-      // writers on one path left whichever ran last (found the same hour: the port worked, then a `term make` of
-      // the compiler package overwrote it and the next import threw `bit is not defined`)
-      const outPath = join(root, 'host', 'port', relative(root, file).replace(/\.tree$/, '.ts'))
+      // the text NOW, not as the plan read it: a full run reaches its last module minutes after it planned
+      let text = sourceOf(file)
+
+      if (text === undefined) {
+        moved++
+        console.log(`  MOVED ${name}  (removed or shelved since this run began: run port-build again)`)
+        continue
+      }
+
+      let textHash = sha(text)
+      const outPath = portPath(root, file)
+      const runPath = outPath.replace(/\.ts$/, '-run.ts')
 
       // THE SKIP: the same compiler, the same text, every observation the compile that wrote it made still seeing
       // the same thing, and that output on disk now
@@ -351,7 +632,8 @@ async function main(): Promise<void> {
 
           return true
         }) &&
-        untraced(() => existsSync(outPath) && sha(readFileSync(outPath)) === last.out)
+        untraced(() => existsSync(outPath) && sha(readFileSync(outPath)) === last.out) &&
+        (last.run === undefined || untraced(() => existsSync(runPath) && sha(readFileSync(runPath)) === last.run))
       ) {
         carried[name] = last
         unchanged++
@@ -363,8 +645,43 @@ async function main(): Promise<void> {
         continue
       }
 
-      // a port is a LIBRARY its TypeScript callers build values for: no case is tested by identity
-      const result = compile({ file, text }, { resolve, leanOf, library: true })
+      // a port is a LIBRARY its TypeScript callers build values for: no case is tested by identity. THE WRITE-TIME
+      // CHECK: every `.tree` this compile read, its own text first, is read again once it is done, and a change
+      // compiles it again from the text as it now is
+      let result: ReturnType<typeof compile> | undefined
+      let changed: string | undefined
+
+      for (let attempt = 1; ; attempt++) {
+        openWindow()
+        result = compile({ file, text }, { resolve, leanOf, library: true })
+
+        const read = closeWindow()
+
+        holdForTest(name)
+        // its own text as a text, the way it was compiled; the others by their bytes, the way the trace hashes them
+        changed = sourceOf(file) === text ? [...read].find(([path, hash]) => path !== file && observe('read', path) !== hash)?.[0] : file
+
+        if (changed === undefined || attempt === ATTEMPTS) {
+          break
+        }
+
+        console.log(`  again ${name}  (${relative(TERM, changed)} changed while it compiled)`)
+
+        const now = sourceOf(file)
+
+        if (now === undefined) {
+          break
+        }
+
+        text = now
+        textHash = sha(text)
+      }
+
+      if (changed !== undefined) {
+        moved++
+        console.log(`  MOVED ${name}  (${relative(TERM, changed)} changed while it compiled, ${ATTEMPTS} times: its port is left as it was, run port-build again)`)
+        continue
+      }
 
       if (!result.ok) {
         failed++
@@ -377,33 +694,28 @@ async function main(): Promise<void> {
         continue
       }
 
-      // through the TRACED `fs`: what the prelude reads is an input of the output like any file the compile read
-      const prelude = nativePrelude(result.program, 'node', path =>
-        traced.existsSync(path) ? traced.readFileSync(path, 'utf8') : undefined,
-      )
-      // the emitted module declares each native global it calls (`declare const bit: any`) so it typechecks WITHOUT the
-      // prelude, and the prelude defines it (`const bit = {...}`). Both in one file is TS2451 "Cannot redeclare", which
-      // `tsc` reported on every port that docks a native until 2026-10-04, so the declaration of a name the prelude
-      // defines is dropped
-      const defined = new Set([...(prelude ?? '').matchAll(/^const ([A-Za-z_$][\w$]*) =/gm)].map(match => match[1]!))
-      const body = result.typescript
-        .split('\n')
-        .filter(line => {
-          const declared = /^declare const ([A-Za-z_$][\w$]*)\s*:/.exec(line)
+      const content = portContent(result.program, result.typescript)
+      // only the CLI's own consoles get a run entry: a hook module elsewhere (deck/test/code/fixture/hunt-cli.tree, a
+      // test fixture whose hooks name tasks it never defines) is a library like any other port
+      const run = basename(root) === 'call' ? runEntry(name, content, result.program) : undefined
 
-          return !declared || !defined.has(declared[1]!)
-        })
-        .join('\n')
-      const content = `${prelude ? `${prelude}\n` : ''}${body}`
+      if (run && 'missing' in run) {
+        failed++
+        console.log(`  FAIL  ${name}`)
+        console.log(`        run-entry: the port exports no task for ${run.missing.join(', ')}, which a hook names`)
+        continue
+      }
+
       // the key of this output: every observation this process has made so far, since a compiler may cache across
       // the modules of one run, so this output can rest on a file an earlier module's compile read
       const entry: Entry | undefined =
         print === undefined
           ? undefined
-          : { text: textHash, fingerprint: print, out: sha(content), reads: [[0, observationCount()]] }
+          : { text: textHash, fingerprint: print, out: sha(content), reads: [[0, observationCount()]], ...(run ? { run: sha(run.text) } : {}) }
       const existing = untraced(() => (existsSync(outPath) ? readFileSync(outPath, 'utf8') : undefined))
+      const existingRun = run ? untraced(() => (existsSync(runPath) ? readFileSync(runPath, 'utf8') : undefined)) : undefined
 
-      if (existing === content) {
+      if (existing === content && existingRun === run?.text) {
         if (entry) {
           fresh[name] = entry
         }
@@ -421,6 +733,10 @@ async function main(): Promise<void> {
       untraced(() => {
         mkdirSync(join(outPath, '..'), { recursive: true })
         writeFileSync(outPath, content)
+
+        if (run) {
+          writeFileSync(runPath, run.text)
+        }
       })
 
       if (entry) {
@@ -499,12 +815,15 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    `term port-build: ${built} built, ${unchanged} unchanged${check ? `, ${stale} stale` : ''}, ${failed} failed`,
+    `term port-build: ${built} built, ${unchanged} unchanged${check ? `, ${stale} stale` : ''}, ${failed} failed${moved > 0 ? `, ${moved} moved` : ''}`,
   )
 
-  if (failed > 0 || stale > 0) {
+  if (failed > 0 || stale > 0 || moved > 0) {
     process.exitCode = 1
   }
 }
 
-await main()
+// run as a script; imported (test/call/port-prelude-once.ts reads `portContent`) it builds nothing
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main()
+}

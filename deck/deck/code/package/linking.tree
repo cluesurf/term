@@ -1,0 +1,709 @@
+# A project's `link/` folder: every resolved deck installed to the shared store and linked in, a deck in development
+# linked by hand, and the global link registry under the home. Ported from deck/deck/code/link.ts
+# (term-cli-in-term-0077): linkPackages, cleanLinks, devLink, devUnlink, registerGlobalLink, unregisterGlobalLink,
+# listGlobalLinks, consumeGlobalLink.
+#
+# The decisions:
+#   - the toolchain's folder under `.base` is spelled out here, `.base/@term/code`, and not loaded from the CLI's
+#     call/code/home.ts: @term/deck is PUBLISHED and consumed as an installed package, so it must not reach back into
+#     the CLI's source. home.ts is the source of truth; keep the two in step
+#   - the installs of one chunk (as many decks as the fetch config's `concurrency`) are started with `tick`, each
+#     settles to what it raised and when, and the first failure IN TIME is raised, as the original's `Promise.all`
+#     raised it. It is raised once the whole chunk has settled, where the original raised at once and left the rest of
+#     the chunk running: the files written are the same
+#   - the store, hash, fetch and OCI readers (store.ts, hash.ts, fetch.ts, oci/client.ts, oci/install.ts,
+#     oci/reference.ts) are docked until their lanes port them, and the fetch config passes through them as the host
+#     value it is
+#   - a digest, a directory entry's kind and the `tar` run are host binds, each the original's own expression
+#   - every mill read takes the grammars record last: `dev-link` and `register-global-link` read the deck's manifest
+#     through manifest-reading.tree's `load-manifest`
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/text
+  find split
+  find starts-with
+  find substring
+  find char-count
+  find index-of
+  find trim
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/hash
+  find hash
+
+load @term/base/task
+  find handle
+
+load ../version
+  find show-code
+
+load ./resolution
+  find resolved-deck
+  find resolution
+
+load ./grammar-reading
+  find manifest-grammars
+
+load ./manifest-reading
+  find load-manifest
+
+dock load
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <node:path>, name node-path
+  load <@term/deck/code/store>, name deck-store
+  load <@term/deck/code/hash>, name deck-hash
+  load <@term/deck/code/fetch>, name deck-fetch
+  load <@term/deck/code/oci/client>, name oci-client
+  load <@term/deck/code/oci/install>, name oci-install
+  load <@term/deck/code/oci/reference>, name oci-reference
+  load <global:Promise>, name host-promise
+  load <global:String>, name host-string
+  load <global:console>, name host-console
+
+form folder-ask
+  link recursive, like boolean
+
+form removal-ask
+  link recursive, like boolean
+  link force, like boolean
+
+form force-ask
+  link force, like boolean
+
+form listing-ask
+  link with-file-types, like boolean
+
+form tarball-ask
+  link url, like text
+  link config, like dynamic
+
+form hash-ask
+  link data, like dynamic
+
+form store-path-ask
+  link hash, like text
+
+form route-ask
+  link name, like text
+  link config, like dynamic
+
+form transport-ask
+  link host, like text
+  link offline, like boolean
+
+form expect-pin
+  link digest, like text
+  link key
+    like text
+    need false
+  link version, like text
+
+form oci-version-ask
+  link transport, like dynamic
+  link repository, like text
+  link package, like text
+  link reference, like text
+  link scope, like text
+  link keys-repository, like text
+  link host, like text
+  link trust-dir, like text
+  link expect, like expect-pin
+  link warn
+    like task
+      take message, like text
+      like void
+
+form oci-install-ask
+  link transport, like dynamic
+  link repository, like text
+  link version, like dynamic
+  link dest, like text
+  link local, like dynamic
+  link cache
+    like dynamic
+    need false
+
+# an install settled: whether it went through, what it raised, and when (the host's clock in nanoseconds)
+form settled-install
+  link ok, like boolean
+  link error, like unknown
+  link at, like number
+
+bind now-ns
+  like number
+  case node
+    text <Number(process.hrtime.bigint())>
+
+# what a digest of the bytes is in one encoding, as node's crypto writes it
+bind digest-text
+  take algorithm, like text
+  take data, like dynamic
+  take encoding, like text
+  like text
+  case node
+    text <process.getBuiltinModule("node:crypto").createHash($algorithm).update($data).digest($encoding)>
+
+# `tar xzf <archive> -C <folder> --strip-components=1`, as the original ran it: a promise of the run
+bind tar-extract
+  take archive, like text
+  take folder, like text
+  like dynamic
+  case node
+    text <process.getBuiltinModule("node:util").promisify(process.getBuiltinModule("node:child_process").execFile)("tar", ["xzf", $archive, "-C", $folder, "--strip-components=1"])>
+
+# whether a host value is truthy, as the original's `if (x)` read it
+bind is-present
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind is-folder-entry
+  take entry, like dynamic
+  like boolean
+  case node
+    text <$entry.isDirectory()>
+
+bind is-file-entry
+  take entry, like dynamic
+  like boolean
+  case node
+    text <$entry.isFile()>
+
+bind entry-name
+  take entry, like dynamic
+  like text
+  case node
+    text <$entry.name>
+
+# the host's items as a list, so they can be walked
+task host-items
+  take items, like list, like dynamic
+  like list, like dynamic
+  mark private
+
+  back items
+
+# the project's `link/` folder
+task link-folder
+  take root, like text
+  like text
+  mark private
+
+  back node-path/join(root, <link>)
+
+# the toolchain's folder under `.base`, the toolchain package's own name (see the decisions above)
+task term-folder
+  like text
+  mark private
+
+  back node-path/join(<.base>, <@term>, <code>)
+
+# whether a path is there to reach
+task can-reach
+  take place, like text
+  like boolean
+  mark private
+
+  fork
+    mark unsafe
+    fs-promise/access(place)
+    back true
+  halt take
+    take missing
+    back false
+
+# remove a file, saying nothing when it cannot
+task unlink-quietly
+  take place, like text
+  like void
+  mark private
+
+  fork
+    mark unsafe
+    fs-promise/unlink(place)
+  halt take
+    take missing
+    save nothing, 0
+
+# where a deck is installed in the store
+task deck-folder
+  take seed-dir, like text
+  take name, like text
+  take code-text, like text
+  like text
+  mark private
+
+  back node-path/join(seed-dir, <{name}@{code-text}>)
+
+# the link for a deck's name inside a `link/` folder: `@scope/name` under its scope's folder, made first, and anything
+# else as the whole name
+task link-target
+  take link-dir, like text
+  take name, like text
+  like text
+  mark private
+
+  save parts, split(name, </>)
+  fork test, is-equal(parts/length, 2)
+    hold
+      save scope-dir, node-path/join(link-dir, get(parts, 0))
+      fs-promise/mkdir(scope-dir, make(folder-ask, bind(recursive, true)))
+      back node-path/join(scope-dir, get(parts, 1))
+  back node-path/join(link-dir, name)
+
+# the algorithm an integrity declares (`sha256-…` or `sha512-…`), and the digest after it, as the original's
+# `/^(sha256|sha512)-(.+)$/` reads it: a digest of at least one character and no line end. Anything else is a bare
+# sha512 digest
+task integrity-parts
+  take hash, like text
+  like list, like text
+  mark private
+
+  save prefixed, or(starts-with(hash, <sha256->), starts-with(hash, <sha512->))
+  fork test, prefixed
+    hold
+      save rest, substring(hash, 7)
+      save ended, false
+      save line-ends, make list
+      line-ends/push(host-string/from-char-code(10))
+      line-ends/push(host-string/from-char-code(13))
+      line-ends/push(host-string/from-char-code(8232))
+      line-ends/push(host-string/from-char-code(8233))
+      walk line-ends
+        take line-end
+        fork test, is-above(index-of(rest, line-end), -1)
+          hold
+            save ended, true
+      fork test, and(is-above(char-count(rest), 0), not(ended))
+        hold
+          back make list(substring(hash, 0, 6), rest)
+  back make list(<sha512>, hash)
+
+# Install a package pinned to an OCI digest. The digest is fetched from the registry the package's scope is routed to
+# NOW, not the host the lockfile was written against, because a digest names the same bytes on any registry. The
+# install is skipped only when the directory holds exactly the pinned digest, recorded beside it
+task install-oci
+  take resolved, like resolved-deck
+  take seed-dir, like text
+  take deck-dir, like text
+  take config, like dynamic
+  like void
+  mark private
+
+  save code-text, show-code(resolved/code)
+  save pinned-reference, oci-reference/parse-pinned-reference(resolved/site)
+  save digest, pinned-reference/digest
+
+  fork test, and(not(is-equal(resolved/hash, <>)), not(is-equal(resolved/hash, digest)))
+    hold
+      halt <lock.tree disagrees with itself for {resolved/name}@{code-text}: hash {resolved/hash}, site {resolved/site}>
+
+  save marker, node-path/join(seed-dir, <.digest>, <{resolved/name}@{code-text}>)
+  save pinned, false
+  fork
+    mark unsafe
+    save installed, fs-promise/read-file(marker, <utf8>)
+    save pinned, is-equal(trim(installed), digest)
+  halt take
+    take unread
+    save nothing, 0
+
+  save done, false
+  fork test, pinned
+    hold
+      # the marker outlived its directory when the folder is gone: install again
+      save done, can-reach(deck-dir)
+
+  fork test, not(done)
+    hold
+      save route, oci-client/oci-route-of(make(route-ask, bind(name, resolved/name), bind(config, config)))
+      fork test, not(is-present(route))
+        hold
+          halt <lock.tree pins {resolved/name} to {resolved/site}, but its scope is not routed to an oci:// registry>
+
+      save host, route/registry/host
+      save transport, oci-client/transport-for(make(transport-ask, bind(host, host), bind(offline, config/offline)))
+      save expect, make(expect-pin, bind(digest, digest), bind(version, code-text))
+      fork test, not(is-equal(resolved/key, <>))
+        hold
+          save expect/key, resolved/key
+      save asked
+        make oci-version-ask
+          bind transport, transport
+          bind repository, route/repository/name
+          bind package, resolved/name
+          bind reference, digest
+          bind scope, route/scope
+          bind keys-repository, route/keys-repository
+          bind host, host
+          bind trust-dir, oci-client/trust-dir()
+          bind expect, expect
+          bind warn, warn-indented
+      save version, wait oci-install/read-oci-version(asked)
+
+      save install, make(oci-install-ask, bind(transport, transport), bind(repository, route/repository/name), bind(version, version), bind(dest, deck-dir), bind(local, oci-client/local-store()))
+      fork test, not(is-present(config/offline))
+        hold
+          save install/cache, oci-client/store-transport(host)
+      wait oci-install/install-oci-version(install)
+
+      fs-promise/mkdir(node-path/dirname(marker), make(folder-ask, bind(recursive, true)))
+      fs-promise/write-file(marker, <{digest}\n>)
+
+task warn-indented
+  take message, like text
+  like void
+  mark private
+
+  host-console/warn(<  {message}>)
+
+# every file under a folder moved into the content-addressed store and hard-linked back where it was
+task link-to-store
+  take dir, like text
+  like void
+  mark private
+
+  walk host-items(fs-promise/readdir(dir, make(listing-ask, bind(with-file-types, true))))
+    take entry
+    save full-path, node-path/join(dir, entry-name(entry))
+    fork test, is-folder-entry(entry)
+      hold
+        link-to-store(full-path)
+      miss
+        fork test, is-file-entry(entry)
+          hold
+            save data, fs-promise/read-file(full-path)
+            save hash-text, wait deck-hash/hash-buffer(make(hash-ask, bind(data, data)))
+            save store-path, deck-store/get-file-path(make(store-path-ask, bind(hash, hash-text)))
+            fs-promise/mkdir(node-path/dirname(store-path), make(folder-ask, bind(recursive, true)))
+            fork test, not(can-reach(store-path))
+              hold
+                # not in the store yet: put it there
+                fs-promise/write-file(store-path, data)
+            # the original replaced by a hard link
+            fs-promise/unlink(full-path)
+            fs-promise/link(store-path, full-path)
+
+# a tarball unpacked into its folder (the archive written beside it and removed after, whatever the run did), then
+# every file in it linked to the store
+task extract-and-link
+  take tarball, like dynamic
+  take deck-dir, like text
+  like void
+  mark private
+
+  fs-promise/mkdir(deck-dir, make(folder-ask, bind(recursive, true)))
+  save archive, <{deck-dir}.tgz>
+  fs-promise/write-file(archive, tarball)
+  fork
+    mark unsafe
+    wait host-promise/resolve(tar-extract(archive, deck-dir))
+  halt take
+    take refused
+    unlink-quietly(archive)
+    wait host-promise/reject(refused)
+  unlink-quietly(archive)
+  link-to-store(deck-dir)
+
+task install-resolved
+  take resolved, like resolved-deck
+  take seed-dir, like text
+  take config, like dynamic
+  like void
+  mark private
+
+  save code-text, show-code(resolved/code)
+  save deck-dir, deck-folder(seed-dir, resolved/name, code-text)
+
+  fork test, oci-reference/is-oci-registry(resolved/site)
+    hold
+      install-oci(resolved, seed-dir, deck-dir, config)
+    miss
+      # skipped when installed already, and for a workspace deck (no tarball)
+      fork test, and(not(can-reach(deck-dir)), not(is-equal(resolved/site, <>)))
+        hold
+          save tarball, wait deck-fetch/fetch-tarball(make(tarball-ask, bind(url, resolved/site), bind(config, config)))
+          # The registry declares the digest algorithm in the integrity prefix (`sha256-…` or `sha512-…`), so it is
+          # verified with THAT algorithm, in hex or base64 (npm writes base64, the base.surf registry hex)
+          fork test, not(is-equal(resolved/hash, <>))
+            hold
+              save parts, integrity-parts(resolved/hash)
+              save algorithm, get(parts, 0)
+              save expected, get(parts, 1)
+              save actual-hex, digest-text(algorithm, tarball, <hex>)
+              save actual-base64, digest-text(algorithm, tarball, <base64>)
+              fork test, and(not(is-equal(actual-hex, expected)), not(is-equal(actual-base64, expected)))
+                hold
+                  halt <Integrity check failed for {resolved/name}@{code-text}. Expected {resolved/hash}, got {algorithm}-{actual-hex}>
+          extract-and-link(tarball, deck-dir)
+
+# one install settled: whether it went through, and what it raised and when
+task install-settled
+  take resolved, like resolved-deck
+  take seed-dir, like text
+  take config, like dynamic
+  like settled-install
+  mark private
+  mark async
+
+  fork
+    mark unsafe
+    install-resolved(resolved, seed-dir, config)
+    back make(settled-install, bind(ok, true), bind(error, 0), bind(at, 0))
+  halt take
+    take problem
+    back make(settled-install, bind(ok, false), bind(error, problem), bind(at, now-ns()))
+
+# a deck from the project's own `deck/` folder is linked to that folder; any other to its folder in the store
+task linked-folder
+  take seed-dir, like text
+  take deck, like resolved-deck
+  like text
+  mark private
+
+  fork test, not(is-equal(deck/local, <>))
+    hold
+      back deck/local
+  back deck-folder(seed-dir, deck/name, show-code(deck/code))
+
+# a relative symlink to a deck's folder, at its name in a `link/` folder
+task link-deck
+  take link-dir, like text
+  take name, like text
+  take folder, like text
+  like void
+  mark private
+
+  save target, link-target(link-dir, name)
+  fs-promise/rm(target, make(force-ask, bind(force, true)))
+  fs-promise/symlink(node-path/relative(node-path/dirname(target), folder), target)
+
+# the resolved deck of a name, the first the resolution holds
+task find-resolved-deck
+  take name, like text
+  take resolved, like resolution
+  like maybe, like resolved-deck
+  mark private
+
+  walk resolved/decks/values()
+    take deck
+    fork test, is-equal(deck/name, name)
+      hold
+        back make(some, deck)
+  back make none
+
+# a deck's own links, inside its folder, the way `term load` run there would link them
+task link-dependencies
+  take seed-dir, like text
+  take deck, like resolved-deck
+  take resolved, like resolution
+  like void
+  mark private
+
+  fork test, is-above(deck/link/length(), 0)
+    hold
+      save deps-link-dir, node-path/join(linked-folder(seed-dir, deck), <link>)
+      fs-promise/mkdir(deps-link-dir, make(folder-ask, bind(recursive, true)))
+      walk deck/link/keys()
+        take dep-name
+        sift find-resolved-deck(dep-name, resolved)
+          case some
+            link dep
+            link-deck(deps-link-dir, dep-name, linked-folder(seed-dir, dep))
+          case none
+            save nothing, 0
+
+task link-packages
+  take root, like text
+  take resolved, like resolution
+  take config, like dynamic
+  like void
+
+  save link-dir, link-folder(root)
+  save seed-dir, node-path/join(link-dir, term-folder())
+
+  fs-promise/mkdir(link-dir, make(folder-ask, bind(recursive, true)))
+  fs-promise/mkdir(seed-dir, make(folder-ask, bind(recursive, true)))
+  wait deck-store/init-store()
+
+  # install each resolved deck to the store, `concurrency` at a time
+  save decks, make list
+  walk resolved/decks/values()
+    take deck
+    decks/push(deck)
+  save size, config/concurrency
+  save start, 0
+  walk test
+    hook test, is-below(start, decks/length)
+    hook hold
+      save works, make list
+      save at, start
+      walk test
+        hook test, and(is-below(at, add(start, size)), is-below(at, decks/length))
+        hook hold
+          # read before the tick: its arguments are read when the job starts, after `at` has moved on
+          save one, get(decks, at)
+          works/push(tick install-settled(one, seed-dir, config))
+          save at, add(at, 1)
+      # the failure that came first in time, as `Promise.all` raised it, once the chunk has settled
+      save first, make none
+      walk works
+        take work
+        save done, work/wait()
+        fork test, not(done/ok)
+          hold
+            sift first
+              case some
+                link earlier
+                fork test, is-below(done/at, earlier/at)
+                  hold
+                    save first, make(some, done)
+              case none
+                save first, make(some, done)
+      sift first
+        case some
+          link failed
+          wait host-promise/reject(failed/error)
+        case none
+          save nothing, 0
+      save start, add(start, size)
+
+  # the top-level links of the project
+  walk decks
+    take deck
+    link-deck(link-dir, deck/name, linked-folder(seed-dir, deck))
+
+  # each deck's own links
+  walk decks
+    take deck
+    link-dependencies(seed-dir, deck, resolved)
+
+task clean-links
+  take root, like text
+  like void
+
+  fs-promise/rm(link-folder(root), make(removal-ask, bind(recursive, true), bind(force, true)))
+
+# a deck's full name from its manifest: `@host/name`, or the bare name when it has no host
+task full-name-of
+  take package-dir, like text
+  take grammars, like manifest-grammars
+  like text
+  mark private
+
+  save manifest, load-manifest(package-dir, grammars)
+  fork test, not(is-equal(manifest/host, <>))
+    hold
+      back <@{manifest/host}/{manifest/name}>
+  back manifest/name
+
+task dev-link
+  take root, like text
+  take package-dir, like text
+  take grammars, like manifest-grammars
+  like void
+
+  save full-name, full-name-of(package-dir, grammars)
+  save link-dir, link-folder(root)
+  save parts, split(full-name, </>)
+  fork test, not(is-equal(parts/length, 2))
+    hold
+      fs-promise/mkdir(link-dir, make(folder-ask, bind(recursive, true)))
+  save target, link-target(link-dir, full-name)
+  fs-promise/rm(target, make(force-ask, bind(force, true)))
+  fs-promise/symlink(node-path/resolve(package-dir), target)
+
+task dev-unlink
+  take root, like text
+  take name, like text
+  like void
+
+  save link-dir, link-folder(root)
+  save parts, split(name, </>)
+  save target, node-path/join(link-dir, name)
+  fork test, is-equal(parts/length, 2)
+    hold
+      save target, node-path/join(link-dir, get(parts, 0), get(parts, 1))
+  fs-promise/rm(target, make(force-ask, bind(force, true)))
+
+# The global link registry lives at ~/.base/@term/code/link/<name>, a symlink to a package's working directory.
+# `term link` (no argument) registers the current package there; `term link <name>` symlinks a registered package into
+# a project: register once globally, consume from any project. The original joined the name's parts, which
+# `path.join` writes as it writes the whole name
+task global-link-path
+  take full-name, like text
+  like text
+  mark private
+
+  back node-path/join(deck-store/get-store-root(), <link>, full-name)
+
+# register the package at `package-dir` in the global link registry, keyed by its manifest name. Answers the full name
+task register-global-link
+  take package-dir, like text
+  take grammars, like manifest-grammars
+  like text
+
+  save full-name, full-name-of(package-dir, grammars)
+  save target, global-link-path(full-name)
+  fs-promise/mkdir(node-path/dirname(target), make(folder-ask, bind(recursive, true)))
+  fs-promise/rm(target, make(force-ask, bind(force, true)))
+  fs-promise/symlink(node-path/resolve(package-dir), target)
+  back full-name
+
+task unregister-global-link
+  take name, like text
+  like void
+
+  fs-promise/rm(global-link-path(name), make(force-ask, bind(force, true)))
+
+# the package names in the global link registry. A registry not made yet has none, and one that cannot be read past
+# some entry answers the names read before it
+task list-global-links
+  like list, like text
+
+  save root, node-path/join(deck-store/get-store-root(), <link>)
+  save names, make list
+  fork
+    mark unsafe
+    walk host-items(fs-promise/readdir(root, make(listing-ask, bind(with-file-types, true))))
+      take entry
+      save entry-text, entry-name(entry)
+      fork test, starts-with(entry-text, <@>)
+        hold
+          walk host-items(fs-promise/readdir(node-path/join(root, entry-text)))
+            take child
+            names/push(<{entry-text}/{child}>)
+        miss
+          names/push(entry-text)
+  halt take
+    take unread
+    save nothing, 0
+  back names
+
+# symlink a globally registered package into a project's `link/` folder. Answers false when the name is not registered
+task consume-global-link
+  take root, like text
+  take name, like text
+  like boolean
+
+  save source, global-link-path(name)
+  fork test, not(can-reach(source))
+    hold
+      back false
+  save real, fs-promise/realpath(source)
+  save link-dir, link-folder(root)
+  save parts, split(name, </>)
+  fork test, not(is-equal(parts/length, 2))
+    hold
+      fs-promise/mkdir(link-dir, make(folder-ask, bind(recursive, true)))
+  save target, link-target(link-dir, name)
+  fs-promise/rm(target, make(force-ask, bind(force, true)))
+  fs-promise/symlink(real, target)
+  back true

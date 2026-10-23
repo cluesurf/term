@@ -1,0 +1,136 @@
+# Where the cask build's toolchains are on this machine: the swift flags the stdlib's standard stack needs, the
+# Android SDK and the Kotlin standard library, and the reader the native prelude gets its runtime shims through. Part
+# of the port of deck/call/code/cask.ts (cli-in-term-0032): its `swiftFlags`, `androidTools` and `readRuntime`.
+
+load @term/base/list
+  find list
+
+load @term/base/environment
+  find variable
+  find has-variable
+
+load ./host-value
+  find nothing
+  find unit-above
+  find refuse
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:os>, name node-os
+  load <node:path>, name node-path
+  load <node:child_process>, name node-child
+
+form text-read
+  link encoding, like text
+
+# the Android SDK's tools a cask build runs, by path
+form android-tool-set
+  link sdk, like text
+  link platform, like text
+  link build-tools, like text
+  link stdlib, like text
+  link adb, like text
+
+# the Android platform the cask is built against (cask-plan.tree `android-manifest` holds the same number)
+task android-platform
+  like number
+
+  back 36
+
+# `process.env[name] ?? fallback`: the variable when it is set, the empty text included
+task variable-or
+  take name, like text
+  take fallback, like text
+  like text
+  mark private
+
+  fork test, has-variable(name)
+    hold
+      back variable(name)
+  back fallback
+
+# a file's text, or `undefined` when there is no file: what the native prelude reads a runtime shim through
+task read-runtime
+  take file, like text
+  like dynamic
+
+  fork test, node-fs/exists-sync(file)
+    hold
+      back node-fs/read-file-sync(file, <utf8>)
+  back nothing()
+
+# The swift flags the stdlib's standard stack needs (swift-nio, Hummingbird), written by task/term/native/swift.sh
+# into the native cache. Read when present; an app whose closure never reaches the asynchronous file or server modules
+# builds without them. The path is the script's own convention, so the two cannot disagree.
+task swift-flags
+  like list, like text
+
+  save cache, variable-or(<TERM_NATIVE_CACHE>, node-path/join(variable-or(<TMPDIR>, node-os/tmpdir()), <term-native>))
+  save file, node-path/join(cache, <swift>, <flags.txt>)
+  save flags, make list
+  fork test, not(node-fs/exists-sync(file))
+    hold
+      back flags
+  save text, node-fs/read-file-sync(file, <utf8>)
+  walk text/split(<\n>)
+    take line, like text
+    fork test, is-above(line/length, 0)
+      hold
+        flags/push(line)
+  back flags
+
+# where the Android SDK and the Kotlin standard library are on this machine, or why the build cannot go on
+task android-tools
+  like android-tool-set
+
+  save home, variable-or(<HOME>, <>)
+  save sdk, variable-or(<ANDROID_HOME>, variable-or(<ANDROID_SDK_ROOT>, node-path/join(home, <Library/Android/sdk>)))
+  save platform, node-path/join(sdk, <platforms>, <android-{android-platform()}>, <android.jar>)
+  fork test, not(node-fs/exists-sync(platform))
+    hold
+      refuse(<no Android platform {android-platform()} at {platform}. Run task/android/install-android-cli.sh>, <environment>)
+
+  # the newest build tools that carry aapt2: the last of them sorted, which is the greatest by UTF-16 unit
+  save tools-root, node-path/join(sdk, <build-tools>)
+  save newest, <>
+  save found, false
+  fork test, node-fs/exists-sync(tools-root)
+    hold
+      walk node-fs/readdir-sync(tools-root)
+        take name, like text
+        fork test, node-fs/exists-sync(node-path/join(tools-root, name, <aapt2>))
+          hold
+            fork test, or(not(found), unit-above(name, newest))
+              hold
+                save newest, name
+                save found, true
+  fork test, not(found)
+    hold
+      refuse(<no Android build tools with aapt2 under {tools-root}. The SDK install may still be running>, <environment>)
+
+  save which-args, make list
+  which-args/push(<kotlinc>)
+  save which-out, node-child/exec-file-sync(<which>, which-args, make(text-read, bind(encoding, <utf8>)))
+  save kotlinc, which-out/trim()
+  save kotlin-home, node-path/dirname(node-fs/realpath-sync(kotlinc))
+  save stdlib, <>
+  save candidates, make list
+  candidates/push(node-path/join(kotlin-home, <..>, <lib>, <kotlin-stdlib.jar>))
+  candidates/push(node-path/join(kotlin-home, <..>, <libexec>, <lib>, <kotlin-stdlib.jar>))
+  walk candidates
+    take candidate, like text
+    fork test, node-fs/exists-sync(candidate)
+      hold
+        save stdlib, candidate
+        halt
+  fork test, is-equal(stdlib, <>)
+    hold
+      refuse(<kotlin-stdlib.jar was not found beside kotlinc>, <environment>)
+
+  back
+    make android-tool-set
+      bind sdk, sdk
+      bind platform, platform
+      bind build-tools, node-path/join(tools-root, newest)
+      bind stdlib, stdlib
+      bind adb, node-path/join(sdk, <platform-tools>, <adb>)

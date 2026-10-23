@@ -1,103 +1,32 @@
 load @term/call/work/home
   find root, name project-root
 
-load @term/call/work/tint
-  find log-good
-  find log-fail
-  find log-step
-  find log-warn
-  find fade
-  find name, name tint-name
-  find bold
-  find mark
-  find format-error
-
-# `term lint` -- lint `.tree` files. Findings are reported; `--fix` applies the autofixes in place. It exits
-# non-zero when any error-severity finding remains, so it can gate a build.
+# `term lint [paths..]` -- lint `.tree` files for style and correctness. `--fix` applies the autofixes in place.
 #
-# THE FIX PATH IS NOT PORTED YET and says so rather than pretending. Applying edits means splicing text by byte
-# offset right to left, and the stdlib has no offset-based splice; doing it with `substring` would be a second,
-# worse implementation of something the TypeScript already does correctly. `--fix` delegates to it until the
-# stdlib grows the operation.
-#
-# Ported from deck/call/code/lint.ts (cli-in-term-0004).
-
-load @term/call/work/files
-  find walk-trees
-
-load @term/base/file
-  find read, name read-file
-
-dock load
-  load <@term/make/code/analyze>, name analyze-module
-  load <@term/call/code/lint>, name lint-module
-  load <node:path>, name node-path
-  load <node:process>, name node-process
-  load <global:console>, name console
-
-form analyze-ask
-  link file, like text
-  link text, like text
+# The verb takes its hook's arguments and hands them to the shipped handler (deck/call/code/lint.ts `callLint`),
+# which lints the files and prints through the output library. It prints nothing of its own, catches nothing and
+# never exits: a throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term, part 2).
 
 form lint-ask
   link root, like text
-  link paths
-    like list
-      like text
+  link paths, like list, like text
   link fix, like boolean
+
+dock load
+  load <@term/call/code/lint>, name lint-module
 
 task lint
   mark async
+  take paths, like list, like text
   take fix, like boolean
 
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  # the fix path splices by byte offset, which the stdlib cannot do yet: hand the whole verb over rather than
-  # half-implement it
-  fork test
-    fix
-    hold
-      call lint-module/callLint
-        make lint-ask, bind(root, root), bind(paths, make list), bind fix, true
-        wait true
-      send back
-  save files, walk-trees root
-
-  fork test
-    is-equal read(files/length), code 0
-    hold
-      log-fail <No .tree files found>
-      node-process/exit code 1
-  log-step <Linting...>
-  save findings, code 0
-  save errors, code 0
-
-  walk files
-    take site, name file
-    save text, read-file file
-    save shown, node-path/relative root, file
-    save found
-      analyze-module/analyze
-        make analyze-ask, bind(file, shown), bind text, read text
-    save each, call found/lint
-    walk each
-      take site, name one
-      save findings, add findings, code 1
-      fork test
-        is-equal read(one/severity), <error>
-        hold
-          save errors, add errors, code 1
-      console/log fade <  {{shown}}: {{one/message}}>
-  fork test
-    is-equal findings, code 0
-    hold
-      log-good <No lint findings>
-      send back
-  log-fail <{{findings}} finding(s), {{errors}} error(s)>
-
-  fork test
-    is-above errors, code 0
-    hold
-      node-process/exit code 1
+  call lint-module/callLint
+    make lint-ask
+      bind root, read root
+      bind paths, read paths
+      bind fix, read fix
+    wait true

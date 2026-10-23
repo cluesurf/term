@@ -1,0 +1,249 @@
+# The machine's shared store under the home: its folders, its files by hash, a fetched deck's manifest, and the prune
+# of every file no project uses. Ported from deck/deck/code/store.ts (term-cli-in-term-0079): getStoreRoot,
+# getBaseDir, getTreeDir, getDeckDir, getFilePath, initStore, hasFile, storeFile, storeDeckMeta, loadDeckMeta,
+# pruneStore.
+#
+# The toolchain's directory under `.base` is the toolchain package's own name, spelled out here rather than loaded
+# from deck/call/code/home.ts on purpose: @term/deck is PUBLISHED and consumed as an installed package, so it must not
+# reach back into the CLI's source. Keep the two in step; home.ts is the source of truth.
+#
+# Every name it has had, newest first: `@term/code` since 2026-10-05, `@cluesurf/term` before that, `term` before
+# 2026-08-30. The CLI MOVES the second to the first (home.ts `settle`); this package only reads, so it never races
+# the CLI's move, and until that move has happened it uses the folder that exists, whole.
+#
+# The decisions:
+#   - `load-deck-meta` answers a maybe where the original answered undefined
+#   - `prune-store` takes the hashes in use as a list (the original took a Set) and answers a `prune-count`
+#   - a file's bytes pass through as the host value they are
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/hash
+  find hash
+
+dock load
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <node:os>, name node-os
+
+form folder-ask
+  link recursive, like boolean
+
+# what `prune-store` answers: how many files it removed, and their bytes
+form prune-count
+  link removed, like number
+  link bytes, like number
+
+bind is-folder-stat
+  take stat, like dynamic
+  like boolean
+  case node
+    text <$stat.isDirectory()>
+
+# a hash's first two UTF-16 units, as the original's `slice(0, 2)` cut it: the stdlib's substring counts runes, so an
+# astral first character would take one more
+bind hash-prefix
+  take hash, like text
+  like text
+  case node
+    text <$hash.slice(0, 2)>
+
+bind stat-size
+  take stat, like dynamic
+  like number
+  case node
+    text <$stat.size>
+
+# the host's items as a list, so they can be walked
+task host-items
+  take items, like list, like dynamic
+  like list, like dynamic
+  mark private
+
+  back items
+
+# every place the toolchain's folder has been, newest first
+task store-homes
+  like list, like text
+  mark private
+
+  save home, node-os/homedir()
+  save all, make list
+  all/push(node-path/join(home, <.base>, node-path/join(<@term>, <code>)))
+  all/push(node-path/join(home, <.base>, node-path/join(<@cluesurf>, <term>)))
+  all/push(node-path/join(home, <.base>, <term>))
+  back all
+
+task get-store-root
+  like text
+
+  save all, store-homes()
+
+  walk all
+    take dir
+    fork test, node-fs/exists-sync(dir)
+      hold
+        back dir
+
+  back all/0
+
+# `~/.base/@term/code/base/`: the machine's shared store. The installed decks as an OCI image layout (`blobs/`,
+# `index.json`), which an offline install reads, and in `mill/` the parsed modules every project shares.
+#
+# It was `store/` until 2026-10-04. The installed decks are not a cache, so the old folder is MOVED, whole, by one
+# rename the first time anything asks: a rename is atomic, so it cannot half-migrate, and afterwards there is one
+# folder rather than a fallback read forever. A rename that fails (another filesystem, a permission) leaves the old
+# folder in use whole, the way `keptAt` does.
+task get-base-dir
+  like text
+
+  save root, get-store-root()
+  save current, node-path/join(root, <base>)
+  save legacy, node-path/join(root, <store>)
+
+  fork test, and(not(node-fs/exists-sync(current)), node-fs/exists-sync(legacy))
+    hold
+      fork
+        mark unsafe
+        node-fs/rename-sync(legacy, current)
+      halt take
+        take refused
+        fork test, node-fs/exists-sync(current)
+          hold
+            back current
+        back legacy
+
+  back current
+
+task get-tree-dir
+  like text
+
+  back node-path/join(get-store-root(), <tree>)
+
+task get-deck-dir
+  like text
+
+  back node-path/join(get-store-root(), <deck>)
+
+task get-file-path
+  take hash, like text
+  like text
+
+  save prefix, hash-prefix(hash)
+
+  back node-path/join(get-tree-dir(), prefix, hash)
+
+task init-store
+  like void
+
+  fs-promise/mkdir(get-tree-dir(), make(folder-ask, bind(recursive, true)))
+  fs-promise/mkdir(get-deck-dir(), make(folder-ask, bind(recursive, true)))
+
+task has-file
+  take hash, like text
+  like boolean
+
+  save file-path, get-file-path(hash)
+
+  fork
+    mark unsafe
+    fs-promise/access(file-path)
+    back true
+  halt take
+    take unread
+    back false
+
+task store-file
+  take data, like dynamic
+  take hash, like text
+  like text
+
+  save file-path, get-file-path(hash)
+  save dir, node-path/dirname(file-path)
+  fs-promise/mkdir(dir, make(folder-ask, bind(recursive, true)))
+
+  save exists, has-file(hash)
+
+  fork test, not(exists)
+    hold
+      fs-promise/write-file(file-path, data)
+
+  back file-path
+
+task store-deck-meta
+  take registry, like text
+  take name, like text
+  take code, like text
+  take data, like text
+  like void
+
+  save dir, node-path/join(get-deck-dir(), <link>, registry, name, code)
+
+  fs-promise/mkdir(dir, make(folder-ask, bind(recursive, true)))
+  fs-promise/write-file(node-path/join(dir, <deck.tree>), data, <utf-8>)
+
+task load-deck-meta
+  take registry, like text
+  take name, like text
+  take code, like text
+  like maybe, like text
+
+  save file, node-path/join(get-deck-dir(), <link>, registry, name, code, <deck.tree>)
+
+  fork
+    mark unsafe
+    save content, fs-promise/read-file(file, <utf-8>)
+    back make(some, content)
+  halt take
+    take unread
+    back make none
+
+task prune-store
+  take used-hashes, like list, like text
+  like prune-count
+
+  save used, make hash
+  walk used-hashes
+    take one
+    used/set(one, true)
+
+  save tree-dir, get-tree-dir()
+  save removed, 0
+  save bytes, 0
+
+  fork
+    mark unsafe
+    save prefixes, fs-promise/readdir(tree-dir)
+
+    walk host-items(prefixes)
+      take prefix
+      save prefix-dir, node-path/join(tree-dir, prefix)
+      save stat, fs-promise/stat(prefix-dir)
+
+      fork test, not(is-folder-stat(stat))
+        hold
+          turn next
+
+      save files, fs-promise/readdir(prefix-dir)
+
+      walk host-items(files)
+        take file
+        fork test, not(used/has(file))
+          hold
+            save file-path, node-path/join(prefix-dir, file)
+            save file-stat, fs-promise/stat(file-path)
+            save bytes, add(bytes, stat-size(file-stat))
+            fs-promise/unlink(file-path)
+            save removed, add(removed, 1)
+  halt take
+    # store may not exist yet
+    take unread
+    save nothing, 0
+
+  back make(prune-count, bind(removed, removed), bind(bytes, bytes))

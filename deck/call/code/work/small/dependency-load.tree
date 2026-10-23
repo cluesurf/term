@@ -1,0 +1,142 @@
+# `term load`: install the project's dependencies, and pin the toolchain the manifest's `need` asks for in lock.tree
+# beside them (note/project/term/term-versions.md). Ported from call/code/load.ts (term-cli-in-term-0061). The install
+# is @cluesurf/deck.tree's, docked (decision cli-in-term/002), and the items print through the output library, docked.
+#
+# What the install answers is a host object read by its fields, each tested by the host's truth (`Boolean`), as the
+# original's `need?.pin` and `need.kept` tested them.
+
+dock load
+  load <@cluesurf/deck.tree>, name deck-tree-module
+    mark async
+  load <@term/call/code/output>, name output
+  load <global:Error>, name host-error
+  load <global:String>, name host-string
+  load <global:Boolean>, name host-boolean
+  load <global:Date>, name host-date
+
+form load-open
+  link verb, like text
+  link root, like text
+  link facts, like list, like text
+
+form install-ask
+  link root, like text
+  link clean, like boolean
+  link offline, like boolean
+
+form installed-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link counts, like list, like dynamic
+
+form pin-kept-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link facts, like list, like text
+  link fields, like list, like dynamic
+
+form pin-changed-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link facts, like list, like text
+  link fields, like list, like dynamic
+
+form warning-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+
+form failed-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link message, like list, like text
+
+form plain-close
+  link verdict, like text
+
+# the message of a failure the host raised, as the original printed it: an Error's message, else the value as text
+task message-of
+  take error, like dynamic
+  like text
+  mark private
+
+  # `error instanceof Error`
+  fork test, host-error/prototype/is-prototype-of(error)
+    hold
+      back error/message
+  back host-string/call(<>, error)
+
+# the host's truth of a value
+task holds
+  take value, like dynamic
+  like boolean
+  mark private
+
+  back host-boolean/call(<>, value)
+
+task install-dependencies
+  take root, like text
+  take clean, like boolean
+  take offline, like boolean
+  take started, like number
+  like void
+  mark private
+
+  save installed, deck-tree-module/install(make(install-ask, bind(root, root), bind(clean, clean), bind(offline, offline)))
+  save counts, make list
+  counts/push(output/count(installed/decks, <decks>, <deck>))
+  save took, subtract(host-date/now(), started)
+  output/report(make(installed-item, bind(glyph, <done>), bind(verb, <install>), bind(subject, <Dependencies>), bind(duration, took), bind(counts, counts)))
+  # the toolchain the manifest's `need` asks for, pinned in lock.tree beside the decks
+  save need, installed/need
+  fork test, and(holds(need), holds(need/pin))
+    hold
+      save shown, deck-tree-module/show-code(need/pin/code)
+      save fields, make list
+      fields/push(output/field(<hash>, need/pin/hash))
+      save facts, make list
+      fork test, holds(need/kept)
+        hold
+          facts/push(<kept>)
+          output/report(make(pin-kept-item, bind(glyph, <skipped>), bind(verb, <pin>), bind(subject, <term {shown}>), bind(facts, facts), bind(fields, fields)))
+        miss
+          output/report(make(pin-changed-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <pin>), bind(subject, <term {shown}>), bind(facts, facts), bind(fields, fields)))
+    miss
+      fork test, and(holds(need), holds(need/reason))
+        hold
+          output/report(make(warning-item, bind(glyph, <warning>), bind(verb, <pin>), bind(subject, need/reason)))
+  output/close-run(make(plain-close, bind(verdict, <Dependencies installed>)))
+
+task call-load
+  take root, like text
+  take clean, like boolean
+  take offline, like boolean
+  like void
+
+  save facts, make list
+  fork test, clean
+    hold
+      facts/push(<--clean>)
+  fork test, offline
+    hold
+      facts/push(<--offline>)
+  output/open-run(make(load-open, bind(verb, <load>), bind(root, root), bind(facts, facts)))
+  save started, host-date/now()
+  fork
+    mark unsafe
+    install-dependencies(root, clean, offline, started)
+  halt take
+    # an install that fails (a registry, a constraint, the network) is the user's environment, exit 1, not a bug
+    take error
+    save said, make list
+    said/push(message-of(error))
+    save took, subtract(host-date/now(), started)
+    output/report(make(failed-item, bind(glyph, <failed>), bind(verb, <install>), bind(subject, <Dependencies>), bind(duration, took), bind(message, said)))
+    output/close-run(make(plain-close, bind(verdict, <Dependencies not installed>)))

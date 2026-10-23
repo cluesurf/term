@@ -4724,6 +4724,19 @@ function routeOf(
   )
   const takes = takeList.map(take => {
     const type = typeOf(bridge, firstAt(take, 'like'))
+    // `slot <name>` under a hook mints as a `hook-slot` form INTO THE TAKE SITE, so slots and takes keep their source
+    // order, which is the task's argument order (decision term/003 part 1, cli-in-term-0010)
+    const positional = take.form === 'hook-slot'
+
+    // A LIST TAKE UNDER A COMMAND IS REFUSED. It silently meant the rest of the words until decision term/003, and a
+    // list option (`--port 1 --port 2`) is not a feature: the rest of the words is a `slot`
+    if (!isRoute && !positional && isListType(type)) {
+      refuse(
+        bridge,
+        take,
+        `a list-typed \`take\` under a command is not a flag: write the rest of the words as \`slot ${wordAt(take, 'name') ?? 'x'}, like list, like text\``,
+      )
+    }
 
     if (at(take, 'many').length > 0) {
       refuse(
@@ -4734,6 +4747,11 @@ function routeOf(
     }
     const note = leadingNote(take) ?? wordAt(firstAt(take, 'note'), 'text')
     const short = wordAt(take, 'code')
+    // every long alias in source order: `take ride, name watch` first, then each `name <word>` line (decision term/003
+    // part 2). The alias site holds forms of kind `name`
+    const aliases = formsAt(take, 'alias')
+      .map(alias => wordAt(alias, 'name'))
+      .filter((word): word is string => word !== undefined)
     // `take code / wait rise` reads a secret without echoing it back
     const masked = formsAt(take, 'wait').some(
       wait => wordAt(wait, 'seed') === 'rise',
@@ -4764,6 +4782,7 @@ function routeOf(
       ...(type ? { type } : {}),
       required: needWord(take) === 'true',
       ...(short !== undefined ? { short } : {}),
+      ...(aliases.length > 0 ? { aliases } : {}),
       ...(masked ? { masked: true } : {}),
       ...(note !== undefined ? { note } : {}),
       ...(fallback !== undefined ? { fallback } : {}),
@@ -4772,10 +4791,33 @@ function routeOf(
       // beside a `like text` until 2026-10-05, a marker that said the same thing as the type and could disagree
       // with it (a `many` on a `like text` handed a list to a task that declared text)
       ...(isListType(type) ? { variadic: true } : {}),
+      ...(positional ? { positional: true } : {}),
       ...(choices.length > 0 ? { choices } : {}),
       span: spanOf(take),
     }
   })
+
+  // A LINE UNDER A COMMAND THAT NO RULE READ falls to the hook's flow (the flow rule takes any headed group), and only
+  // its `call`s are kept, so it was dropped in silence: a `slot` with a `code` or a `name` (a positional has no flag
+  // to shorten or rename), or a `take` with a child the take rule does not know. Refused here, since the grammar has
+  // no negative rule (cli-in-term-0010's probe b, decision term/003 part 1)
+  if (!isRoute) {
+    for (const step of at(value, 'flow').filter(isForm)) {
+      if (step.form === 'call') {
+        continue
+      }
+
+      const head = wordAt(step, 'name')
+
+      refuse(
+        bridge,
+        step,
+        head === 'slot'
+          ? 'a `slot` under a hook carries `like`, `need`, `bind`, `pick` and its note, nothing else: a positional has no flag to shorten or rename, so no `code` and no `name`'
+          : `this \`${head ?? step.form}\` line under a command is not read, so it would be dropped`,
+      )
+    }
+  }
 
   // AN EXPLICIT `note` WINS over the `#` comment above the hook. It reads the other way round at first glance,
   // since the comment is the ordinary way to write help text, but a comment is INFERRED and a `note` is stated,
@@ -5503,6 +5545,99 @@ function topLevelInOrder(
     .map(entry => entry.capture)
 }
 
+// A LOCAL NAMED LIKE AN ALIAS'S TARGET TAKES A FRESH NAME. `applyAliases` below renames every aliased reference to the
+// imported name, so after it `find root, name project-root` then `save root, call project-root` reads `root` inside the
+// scope of a local `root`: the TypeScript was `const root = root()`, and with the local saved first a later
+// `call project-root` was checked against the local (term-compiler-0032). Here, before that rename, a `save`, a walk's
+// item or index, or a closure's parameter named like a target is renamed `<name>__<n>` with its own uses wherever its
+// scope reads an alias of that target, as a `save` that reads its own name is (statementOf, `save`). A task's parameter
+// is not renamed: its name is a named argument callers write.
+function freeAliasTargets(bridge: Bridge, program: Program): void {
+  const targets = new Set(bridge.aliases.values())
+
+  if (targets.size === 0) {
+    return
+  }
+
+  const readsAlias = (value: unknown, target: string): boolean => {
+    if (value === null || typeof value !== 'object') {
+      return false
+    }
+
+    if (Array.isArray(value)) {
+      return value.some(one => readsAlias(one, target))
+    }
+
+    const node = value as Record<string, unknown>
+
+    if (node.form === 'variable' && typeof node.name === 'string' && bridge.aliases.get(node.name) === target) {
+      return true
+    }
+
+    return Object.entries(node).some(([key, child]) => key !== 'span' && key !== 'type' && readsAlias(child, target))
+  }
+
+  const fresh = (name: string): string => `${name}__${(bridge.shadows = (bridge.shadows ?? 0) + 1)}`
+
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (let at = 0; at < node.length; at++) {
+        const one = node[at] as Record<string, unknown> | null
+
+        if (one && typeof one === 'object' && one.form === 'let' && typeof one.name === 'string' && targets.has(one.name)) {
+          const rest = node.slice(at + 1)
+
+          if (readsAlias(one.init, one.name) || readsAlias(rest, one.name)) {
+            const to = fresh(one.name)
+            node.splice(at + 1, rest.length, ...renameLocal(rest, one.name, to))
+            node[at] = { ...one, name: to }
+          }
+        }
+
+        walk(node[at])
+      }
+
+      return
+    }
+
+    if (!node || typeof node !== 'object') {
+      return
+    }
+
+    const record = node as Record<string, unknown>
+
+    if (record.form === 'closure' && Array.isArray(record.params)) {
+      for (const param of record.params as { name: string }[]) {
+        if (targets.has(param.name) && readsAlias(record.body, param.name)) {
+          const to = fresh(param.name)
+          record.body = renameLocal(record.body, param.name, to)
+          param.name = to
+        }
+      }
+    }
+
+    if (record.form === 'for-each') {
+      for (const key of ['item', 'index'] as const) {
+        const name = record[key]
+
+        if (typeof name === 'string' && targets.has(name) && readsAlias(record.body, name)) {
+          const to = fresh(name)
+          record.body = renameLocal(record.body, name, to)
+          record[key] = to
+        }
+      }
+    }
+
+    for (const key in record) {
+      if (key !== 'span' && key !== 'type') {
+        walk(record[key])
+      }
+    }
+  }
+
+  walk(program)
+}
+
 // A reference is a `variable` expression (a read or a call), a `record` construction, or a `named` type. A
 // definition's own name is none of those, and an alias names something imported rather than defined here, so
 // every match is a genuine reference.
@@ -5713,6 +5848,7 @@ export function millByGrammar(
     return { ok: false, diagnostics: bridge.diagnostics }
   }
 
+  freeAliasTargets(bridge, program)
   applyAliases(bridge.aliases, program)
 
   return bridge.twins.length > 0 ? { ok: true, program, twins: bridge.twins } : { ok: true, program }

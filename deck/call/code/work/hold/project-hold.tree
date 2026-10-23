@@ -1,0 +1,510 @@
+# `term hold`'s proof of a project, ported from call/code/hold.ts `holdProject` (term-cli-in-term-0047): every file
+# compiled the way `term make` compiles it, and what the compile says of it gathered into the summary `--json` prints:
+# the files that failed, the open claims, the tier-0 obligations against the baseline (`hold.json`), the TRUST LEDGER
+# (what the proofs rest on that nothing here proves) and what the kernel did with the tasks. It prints nothing.
+#
+# What the gate decides without a build is hold-plan.tree, loaded. The compiler, the build's reading of a file and the
+# project's resolver, cache, decks and roles are docked; a compile's answer is a host value, read as the original read
+# it. `found` is the caller's host record { compile, obligations }, or nothing.
+
+load @term/call/hold-plan
+  find obligation-key
+  find ledger-name
+  find sorted
+  find baseline-split-of
+  find reason-kind
+  find reasons-of
+  find reason-count
+
+dock load
+  load <@term/make/code/compile/compile>, name compiling
+  load <@term/make/code/compile/native>, name native-env
+  load <@term/make/code/check/facts>, name fact-finding
+  load <@term/call/code/make>, name building
+  load <@term/call/code/cache-store>, name cache-storing
+  load <@term/call/code/deck-of>, name deck-finding
+  load <@term/call/code/role-of>, name role-finding
+  load <@term/call/code/report>, name diagnostic-rendering
+  load <node:fs>, name host-fs
+  load <node:path>, name host-path
+  load <global:JSON>, name host-json
+
+# ---- the host's values ----
+
+bind hold-has-faults
+  take unit, like dynamic
+  like boolean
+  case node
+    text <("faults" in $unit)>
+
+bind unit-text
+  take unit, like dynamic
+  like text
+  case node
+    text <$unit.text>
+
+# a problem framed against the lines as written: in this file the unit places it, elsewhere it has no text
+bind framed-problem
+  take unit, like dynamic
+  take diagnostic, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <($diagnostic.file === $file ? $unit.place($diagnostic) : \{ diagnostic: $diagnostic, text: undefined \})>
+
+bind placed-render
+  take unit, like dynamic
+  take renderer, like dynamic
+  take diagnostic, like dynamic
+  like text
+  case node
+    text <<((at) => $renderer.renderDiagnostic(at.diagnostic, at.text))($unit.place($diagnostic))>>
+
+bind hold-compile-options
+  take resolve, like dynamic
+  take cache, like dynamic
+  take decks, like dynamic
+  take roles, like dynamic
+  take leans, like dynamic
+  like dynamic
+  case node
+    text <(\{ resolve: $resolve, cache: $cache, deckOf: $decks, roleOf: $roles, leanOf: $leans \})>
+
+bind compile-input
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+bind hold-role-at
+  take reader, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <$reader($file)>
+
+bind result-ok
+  take result, like dynamic
+  like boolean
+  case node
+    text <($result.ok === true)>
+
+bind result-diagnostics
+  take result, like dynamic
+  like list, like dynamic
+  case node
+    text <$result.diagnostics>
+
+bind result-open-claims
+  take result, like dynamic
+  like list, like text
+  case node
+    text <($result.openClaims ?? [])>
+
+bind result-uncertified
+  take result, like dynamic
+  like number
+  case node
+    text <($result.uncertified ?? 0)>
+
+bind result-kernel
+  take result, like dynamic
+  like dynamic
+  case node
+    text <$result.kernel>
+
+bind kernel-proven
+  take kernel, like dynamic
+  like number
+  case node
+    text <$kernel.proven>
+
+bind kernel-commands
+  take kernel, like dynamic
+  like number
+  case node
+    text <$kernel.commands>
+
+bind kernel-declined
+  take kernel, like dynamic
+  like list, like dynamic
+  case node
+    text <$kernel.declined>
+
+bind kernel-statementwise
+  take kernel, like dynamic
+  like list, like dynamic
+  case node
+    text <($kernel.statementwise ?? [])>
+
+bind reason-of
+  take one, like dynamic
+  like text
+  case node
+    text <$one.reason>
+
+bind result-tally
+  take result, like dynamic
+  like dynamic
+  case node
+    text <$result.obligations>
+
+bind tally-total
+  take tally, like dynamic
+  like number
+  case node
+    text <$tally.total>
+
+bind tally-proven
+  take tally, like dynamic
+  like number
+  case node
+    text <$tally.proven>
+
+bind tally-failed
+  take tally, like dynamic
+  like list, like dynamic
+  case node
+    text <$tally.failed>
+
+bind failure-task
+  take failure, like dynamic
+  like text
+  case node
+    text <$failure.task>
+
+bind failure-origin
+  take failure, like dynamic
+  like text
+  case node
+    text <$failure.origin>
+
+bind failure-ordinal
+  take failure, like dynamic
+  like number
+  case node
+    text <$failure.ordinal>
+
+bind failure-diagnostic
+  take failure, like dynamic
+  like dynamic
+  case node
+    text <$failure.diagnostic>
+
+bind diagnostic-message
+  take diagnostic, like dynamic
+  like text
+  case node
+    text <$diagnostic.message>
+
+bind found-compile-push
+  take found, like dynamic
+  take problem, like dynamic
+  like void
+  case node
+    text <$found?.compile.push($problem)>
+
+bind found-obligation-set
+  take found, like dynamic
+  take key, like text
+  take problem, like dynamic
+  like void
+  case node
+    text <$found?.obligations.set($key, $problem)>
+
+# the program a compile kept, nothing when it kept none
+bind result-program
+  take result, like dynamic
+  like dynamic
+  case node
+    text <("program" in $result && $result.program ? $result.program : undefined)>
+
+bind proof-truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# the tasks a compiled file owns: every merged top-level node is stamped with its unit's file, and a task with no file
+# was made by a pass, so it belongs to no file and is counted nowhere
+bind own-tasks
+  take program, like dynamic
+  take file, like text
+  like list, like dynamic
+  case node
+    text <<$program.filter(s => s.form === "function" && !s.claim && !s.stub && s.span.file === $file)>>
+
+bind is-pure
+  take pure, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$pure.has($name)>
+
+bind task-name
+  take task, like dynamic
+  like text
+  case node
+    text <$task.name>
+
+bind task-method-form
+  take task, like dynamic
+  like text
+  case node
+    text <($task.method?.form ?? "")>
+
+bind task-method-name
+  take task, like dynamic
+  like text
+  case node
+    text <($task.method?.name ?? "")>
+
+bind task-roams
+  take task, like dynamic
+  like boolean
+  case node
+    text <Boolean($task.roam)>
+
+bind task-axiom
+  take task, like dynamic
+  like boolean
+  case node
+    text <Boolean($task.axiom)>
+
+bind result-warnings
+  take result, like dynamic
+  like list, like dynamic
+  case node
+    text <$result.warnings>
+
+# a `non-terminating` warning of this file (or of no file), as `rel:line`; the empty text for any other
+bind unending-at
+  take warning, like dynamic
+  take file, like text
+  take rel, like text
+  like text
+  case node
+    text <<($warning.name === "non-terminating" && ($warning.file === $file || $warning.file === undefined) ? `${$rel}:${$warning.span.start.line + 1}` : "")>>
+
+bind baseline-obligations
+  take parsed, like dynamic
+  like list, like text
+  case node
+    text <($parsed.obligations ?? [])>
+
+# `[reason, count]` pairs, as the summary prints them
+bind reason-pairs
+  take reasons, like list, like reason-count
+  like dynamic
+  case node
+    text <<$reasons.map(one => [one.reason, one.count])>>
+
+# ---- the shapes ----
+
+form hold-failure
+  link key, like text
+  link message, like text
+  link render, like text
+
+form ledger
+  link native, like list, like text
+  link axioms, like list, like text
+  link unending, like list, like text
+  # tasks marked `mark roam`: meant to run forever, so their walks owe no termination
+  link roaming, like list, like text
+
+# what the kernel did with the project's tasks: proved each as one term, checked it statement by statement, or
+# declined it, and the reasons it declined, most common first; and why each task checked statement by statement was
+# not lowered to one term ([reason, count] pairs, host values)
+form kernel-work
+  link proven, like number
+  link commands, like number
+  link declined, like number
+  link reasons, like dynamic
+  link statementwise, like dynamic
+
+form hold-summary
+  link files, like number
+  link failed, like list, like text
+  link open, like list, like text
+  link total, like number
+  link proven, like number
+  link baselined, like number
+  link fresh, like list, like hold-failure
+  link gone, like list, like text
+  link ledger, like ledger
+  link kernel, like kernel-work
+  # linear refutations found by the search and refused by the certificate checker, summed over every compile
+  link uncertified, like number
+
+# ---- the baseline ----
+
+# the tier-0 obligations that were unproven when the gate went up, one key per obligation; none when there is no
+# hold.json, and none listed when it does not read
+task read-baseline
+  take root, like text
+  like maybe, like list, like text
+
+  save file, host-path/join(root, <hold.json>)
+  fork test, not(host-fs/exists-sync(file))
+    hold
+      back make none
+  save keys, make list
+  fork
+    mark unsafe
+    save parsed, host-json/parse(host-fs/read-file-sync(file, <utf8>))
+    save keys, baseline-obligations(parsed)
+  halt take
+    take problem
+    save keys, make list
+  back make(some, keys)
+
+task baseline-keys
+  take root, like text
+  like list, like text
+
+  sift read-baseline(root)
+    case some
+      link keys
+      back keys
+    case none
+      back make list
+
+# ---- the proof of a project ----
+
+task hold-project
+  take root, like text
+  take files, like list, like text
+  take found, like dynamic
+  like hold-summary
+
+  save resolve, native-env/with-native-env(<node>, building/project-resolver(root))
+  save cache, cache-storing/project-cache(root)
+  save deck-of, deck-finding/project-deck-of()
+  save role-of, role-finding/project-role-of(root)
+  save lean-of, role-finding/project-lean-of(root)
+  save options, hold-compile-options(resolve, cache, deck-of, role-of, lean-of)
+
+  save failed, make list
+  save open, make list
+  save failures, make list
+  save native, make list
+  save axioms, make list
+  save unending, make list
+  save roaming, make list
+  save total, 0
+  save proven, 0
+  save kernel-proven-count, 0
+  save kernel-commands-count, 0
+  save kernel-declined-count, 0
+  # every declined task's reason, by its kind, in the order met; and every task checked statement by statement, by
+  # why it was not lowered
+  save kinds, make list
+  save lowering, make list
+  save uncertified, 0
+
+  walk files
+    take file
+    save rel, host-path/relative(root, file)
+    save unit, building/buildable(file, host-fs/read-file-sync(file, <utf8>), hold-role-at(role-of, file))
+    fork test, hold-has-faults(unit)
+      hold
+        failed/push rel
+        turn next
+
+    save result, compiling/compile(compile-input(file, unit-text(unit)), options)
+    fork test, not(result-ok(result))
+      hold
+        failed/push rel
+        walk result-diagnostics(result)
+          take diagnostic
+          found-compile-push(found, framed-problem(unit, diagnostic, file))
+        turn next
+
+    walk result-open-claims(result)
+      take claim
+      fork test, not(contains-text(open, claim))
+        hold
+          open/push claim
+
+    save uncertified, add(uncertified, result-uncertified(result))
+
+    save kernel, result-kernel(result)
+    fork test, proof-truth(kernel)
+      hold
+        save kernel-proven-count, add(kernel-proven-count, kernel-proven(kernel))
+        save kernel-commands-count, add(kernel-commands-count, kernel-commands(kernel))
+        save declined, kernel-declined(kernel)
+        save kernel-declined-count, add(kernel-declined-count, declined/length)
+        walk declined
+          take one
+          kinds/push reason-kind(reason-of(one))
+        walk kernel-statementwise(kernel)
+          take one
+          lowering/push reason-of(one)
+
+    save tally, result-tally(result)
+    fork test, proof-truth(tally)
+      hold
+        save total, add(total, tally-total(tally))
+        save proven, add(proven, tally-proven(tally))
+        walk tally-failed(tally)
+          take failure
+          save diagnostic, failure-diagnostic(failure)
+          save key, obligation-key(rel, failure-task(failure), failure-origin(failure), failure-ordinal(failure))
+          failures/push make(hold-failure, bind(key, key), bind(message, diagnostic-message(diagnostic)), bind(render, placed-render(unit, diagnostic-rendering, diagnostic)))
+          found-obligation-set(found, key, framed-problem(unit, diagnostic, file))
+
+    # the trust ledger, from what this file owns
+    save program, result-program(result)
+    fork test, proof-truth(program)
+      hold
+        save pure, fact-finding/pure-functions(program)
+        walk own-tasks(program, file)
+          take task
+          save name, ledger-name(rel, task-method-form(task), task-method-name(task), task-name(task))
+          fork test, task-roams(task)
+            hold
+              roaming/push name
+          # a `mark roam` task is counted once, as roaming: the prover reads it as no function (it may never
+          # return), and it reaches no native code
+          fork test, task-axiom(task)
+            hold
+              axioms/push name
+            miss
+              fork test, and(not(task-roams(task)), not(is-pure(pure, task-name(task))))
+                hold
+                  native/push name
+        walk result-warnings(result)
+          take warning
+          save at, unending-at(warning, file, rel)
+          fork test, is-unequal(at, <>)
+            hold
+              unending/push at
+
+  save keys, make list
+  walk failures
+    take failure
+    keys/push failure/key
+  save split, baseline-split-of(baseline-keys(root), keys)
+  save fresh, make list
+  save index, 0
+  walk failures
+    take failure
+    fork test, split/fresh/{index}
+      hold
+        fresh/push failure
+    save index, add(index, 1)
+
+  save ledger, make(ledger, bind(native, native), bind(axioms, axioms), bind(unending, unending), bind(roaming, roaming))
+  save work, make(kernel-work, bind(proven, kernel-proven-count), bind(commands, kernel-commands-count), bind(declined, kernel-declined-count), bind(reasons, reason-pairs(reasons-of(kinds))), bind(statementwise, reason-pairs(reasons-of(lowering))))
+  back make(hold-summary, bind(files, files/length), bind(failed, failed), bind(open, sorted(open)), bind(total, total), bind(proven, proven), bind(baselined, split/baselined), bind(fresh, fresh), bind(gone, split/gone), bind(ledger, ledger), bind(kernel, work), bind(uncertified, uncertified))
+
+# whether a list of texts holds one, as a Set's `has`
+bind contains-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  case node
+    text <$values.includes($value)>

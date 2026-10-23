@@ -1,0 +1,354 @@
+# `term zone ...` and `term mark ...`: two verbs that boot another Term program and hand it everything that followed
+# the verb, untouched. Ported from call/code/zone.ts and call/code/mark.ts (term-cli-in-term-0061).
+#
+#   term zone load -- pnpm boot   is   zone load -- pnpm boot   (zone is its own command now; this forwards)
+#   term mark [filter] [list]     the benchmark runner, deck/mark/code/line.tree in the Term repository
+#
+# UNTOUCHED MATTERS. A zone invocation carries a `--` separating the zone path from the command to run, plus flags that
+# mean something to the zone console and nothing here, so the argument vector is sliced at the verb and handed over
+# whole. The child's exit code passes through: a command run under `zone load` that failed must fail here too.
+#
+# WHERE THE CLI IS. Both find their program beside the running CLI and boot it with that same file, which the
+# TypeScript read from its own module address (`import.meta.url`: host/line.js in the bundle). Here the folder is
+# `<install root>/host` and the file `find-running-cli()`, both from work/need/running-install.tree (decision 006 of
+# term-cli-in-term), so every candidate below resolves to the file the bundled original resolved.
+
+load @term/base/text
+  find split
+  find char-code-at
+
+load @term/base/list
+  find index-of
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/call/work/need/running-install
+  find find-install-root
+  find find-running-cli
+
+dock load
+  load <node:child_process>, name child-process
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <node:process>, name node-process
+  load <node:events>, name node-events
+    mark async
+  load <@term/call/code/output>, name output
+  load <global:Object>, name host-object
+
+form plain-open
+  link verb, like text
+  link root, like text
+
+form missing-item
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link message, like list, like text
+  link fields, like list, like dynamic
+
+form forward-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+
+form failure-close
+  link verdict, like text
+  link failure, like text
+
+form inherit-ask
+  link stdio, like text
+  link env, like dynamic
+
+form suite-ask
+  link cwd, like text
+  link stdio, like text
+  link env, like dynamic
+
+# the process's environment with one more name, as `{ ...process.env, [name]: value }` makes it
+task env-with
+  take name, like text
+  take value, like text
+  like dynamic
+  mark private
+
+  save entries, host-object/entries(node-process/env)
+  save added, make list
+  added/push(name)
+  added/push(value)
+  entries/push(added)
+  back host-object/from-entries(entries)
+
+# the first that exists of the places the zone console may be: this repository (zone at deck/zone beside deck/term,
+# reached from the bundle or from the source, two different depths), a project that linked it, and a published
+# `@cluesurf/term` from before the move, which carries zone in its own deck/zone. The empty text when none is there
+task find-console
+  take root, like text
+  like text
+
+  save here, node-path/join(find-install-root(), <host>)
+  save candidates, make list
+  candidates/push(node-path/resolve(here, <../../../../zone/code/line/base.tree>))
+  candidates/push(node-path/resolve(here, <../../../../../../zone/code/line/base.tree>))
+  candidates/push(node-path/join(root, <link/@term/zone/code/line/base.tree>))
+  candidates/push(node-path/resolve(here, <../deck/zone/code/line/base.tree>))
+  walk candidates
+    take one
+    fork test, node-file/exists-sync(one)
+      hold
+        back one
+  back <>
+
+# everything after the verb, exactly as typed: nothing when the verb is not there, or `whole` (the vector itself)
+task after-verb
+  take argv, like list, like text
+  take verb, like text
+  take whole, like boolean
+  like list, like text
+  mark private
+
+  save at, index-of(argv, verb)
+  save rest, make list
+  fork test, is-equal(at, -1)
+    hold
+      fork test, whole
+        hold
+          walk argv
+            take one
+            rest/push(one)
+      back rest
+  save next, add(at, 1)
+  walk test
+    hook test, is-below(next, argv/length)
+    hook hold
+      rest/push(get(argv, next))
+      save next, add(next, 1)
+  back rest
+
+# a missing piece of the toolchain is the environment: exit 3 (section 18)
+task exit-missing
+  take subject, like text
+  take said, like text
+  take next, like text
+  take verdict, like text
+  like void
+  mark private
+
+  save message, make list
+  message/push(said)
+  save fields, make list
+  fields/push(output/field(<next>, next))
+  output/report(make(missing-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject), bind(message, message), bind(fields, fields)))
+  node-process/exit(output/close-run(make(failure-close, bind(verdict, verdict), bind(failure, <environment>))))
+
+# the child's ending is this process's: its signal raised here, else its exit code (0 when it has none)
+task follow-child
+  take child, like dynamic
+  like void
+  mark private
+
+  save ended, node-events/once(child, <exit>)
+  save signal, ended/1
+  sift signal-of(signal)
+    case some
+      link name
+      node-process/kill(node-process/pid, name)
+    case none
+      save quiet, true
+  save code, ended/0
+  sift code-of(code)
+    case some
+      link number
+      node-process/exit(number)
+    case none
+      node-process/exit(0)
+
+# a signal's name, or nothing (the host's null). Narrowed through `like unknown`, the gradual seam (D1)
+task signal-of
+  take value, like unknown
+  like maybe, like text
+  mark private
+
+  sift value
+    case text
+      back make(some, value)
+    miss
+      back make none
+
+# an exit code, or nothing (the host's null)
+task code-of
+  take value, like unknown
+  like maybe, like number
+  mark private
+
+  sift value
+    case number
+      back make(some, value)
+    miss
+      back make none
+
+task call-zone
+  take root, like text
+  take argv, like list, like text
+  like void
+
+  save entry, find-console(root)
+  output/open-run(make(plain-open, bind(verb, <zone>), bind(root, root)))
+  fork test, is-equal(entry, <>)
+    hold
+      exit-missing(<There is no zone console here>, <Zone is its own package, @term/zone, and its command is zone. It is not beside this CLI and not linked into this project.>, <term link @term/zone, or run bin/zone from a checkout>, <Nothing forwarded>)
+  # one item naming the replacement, on stderr with the rest of the human view, so a script's stdout is untouched. The
+  # run closes when the console exits, with its exit code, which is the console's own
+  save message, make list
+  message/push(<This forwards for the callers that have not moved.>)
+  output/report(make(forward-item, bind(glyph, <warning>), bind(verb, <zone>), bind(subject, <The command is zone now>), bind(message, message)))
+  save rest, after-verb(argv, <zone>, false)
+  save args, make list
+  args/push(find-running-cli())
+  args/push(<boot>)
+  args/push(entry)
+  args/push(<-->)
+  walk rest
+    take one
+    args/push(one)
+  # the console's usage lines name the command people should type, so they say `zone read`, never `term zone read`
+  save child, child-process/spawn(node-process/exec-path, args, make(inherit-ask, bind(stdio, <inherit>), bind(env, env-with(<TERM_LINE_NAME>, <zone>))))
+  follow-child(child)
+
+# whether a line of the text is exactly `deck @term/mark`: the original's `/^deck @term\/mark$/m`, whose `^` and `$`
+# stand at the text's ends and at each of the four line ends
+task names-mark-deck
+  take text, like text
+  like boolean
+
+  save line, make list
+  walk split(text, <>)
+    take point
+    save code, char-code-at(point, 0)
+    fork test, or(or(is-equal(code, 10), is-equal(code, 13)), or(is-equal(code, 8232), is-equal(code, 8233)))
+      hold
+        fork test, is-equal(join(line, <>), <deck @term/mark>)
+          hold
+            back true
+        save line, make list
+        turn next
+    line/push(point)
+  back is-equal(join(line, <>), <deck @term/mark>)
+
+# a directory holding the suite: `deck/mark/deck.tree` declaring `deck @term/mark`. The repository's `mark/` beside it
+# holds the benchmark programs, and has no manifest
+task is-suite
+  take dir, like text
+  like boolean
+
+  save manifest, node-path/join(dir, <deck.tree>)
+  fork test, not(node-file/exists-sync(manifest))
+    hold
+      back false
+  back names-mark-deck(node-file/read-file-sync(manifest, <utf8>))
+
+# Where the suite is: the folder and every folder above it, as the suite itself or as a Term repository holding it in
+# `deck/mark/`, then beside the running CLI (`<install root>/host`). The empty text when it is nowhere
+task find-suite
+  take root, like text
+  like text
+
+  save at, node-path/resolve(root)
+  walk test
+    hook test, true
+    hook hold
+      fork test, is-suite(at)
+        hold
+          back at
+      save inner, node-path/join(at, <deck>, <mark>)
+      fork test, is-suite(inner)
+        hold
+          back inner
+      save up, node-path/dirname(at)
+      fork test, is-equal(up, at)
+        hold
+          halt
+      save at, up
+  save here, node-path/join(find-install-root(), <host>)
+  save beside, node-path/resolve(here, <../deck/mark>)
+  fork test, is-suite(beside)
+    hold
+      back beside
+  save above, node-path/resolve(here, <../../mark>)
+  fork test, is-suite(above)
+    hold
+      back above
+  back <>
+
+# The runner's own command line from what followed `term mark`. `list` (or `--list`) lists the programs, anything else
+# runs them. A bare word is the filter either way: it binds to the runner's first take, `only`
+task mark-arguments
+  take rest, like list, like text
+  like list, like text
+
+  save out, make list
+  save listing, false
+  fork test, is-above(rest/length, 0)
+    hold
+      fork test, is-equal(get(rest, 0), <list>)
+        hold
+          save listing, true
+  walk rest
+    take one
+    fork test, is-equal(one, <--list>)
+      hold
+        save listing, true
+  fork test, listing
+    hold
+      out/push(<list>)
+      save at, 0
+      walk rest
+        take one
+        fork test, and(is-unequal(one, <--list>), not(and(is-equal(at, 0), is-equal(one, <list>))))
+          hold
+            out/push(one)
+        save at, add(at, 1)
+      back out
+  out/push(<run>)
+  save skip, false
+  fork test, is-above(rest/length, 0)
+    hold
+      save skip, is-equal(get(rest, 0), <run>)
+  save at, 0
+  walk rest
+    take one
+    fork test, not(and(skip, is-equal(at, 0)))
+      hold
+        out/push(one)
+    save at, add(at, 1)
+  back out
+
+task call-mark
+  take root, like text
+  take argv, like list, like text
+  like void
+
+  save suite, find-suite(root)
+  fork test, is-equal(suite, <>)
+    hold
+      output/open-run(make(plain-open, bind(verb, <mark>), bind(root, root)))
+      exit-missing(<There is no benchmark suite here>, <It is the deck/mark/ directory of the Term repository (deck/term/deck/term/deck/mark in the cluesurf checkout), and this CLI was not started from inside one or installed from one.>, <node \<checkout\>/deck/term/deck/term/host/line.js mark>, <Nothing benchmarked>)
+  # the whole process argument vector, sliced after `mark`; the ported console hands over only what followed the verb,
+  # which has no `mark` in it, and then it is the vector itself
+  save rest, after-verb(argv, <mark>, true)
+  save args, make list
+  args/push(find-running-cli())
+  args/push(<boot>)
+  args/push(<code/line.tree>)
+  args/push(<-->)
+  walk mark-arguments(rest)
+    take one
+    args/push(one)
+  # booted in the suite's directory: `term boot` runs a command-line program in its own cwd, and the runner finds its
+  # programs, the compiler and the session directory from there
+  save child, child-process/spawn(node-process/exec-path, args, make(suite-ask, bind(cwd, suite), bind(stdio, <inherit>), bind(env, env-with(<TERM_LINE_NAME>, <term mark>))))
+  follow-child(child)

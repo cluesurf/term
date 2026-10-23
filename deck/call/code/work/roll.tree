@@ -1,85 +1,47 @@
 load @term/call/work/home
   find root, name project-root
 
-load @term/call/work/tint
-  find log-good
-  find log-fail
-  find log-step
-  find log-warn
-  find fade
-  find name, name tint-name
-  find bold
-  find mark
-  find format-error
+load @term/base/text
+  find starts-with
+  find substring
 
 # `term roll [kind]` -- the roll of this project: every deck in the build, every exception with who can raise it,
 # every public task with what it raises, every route, every tell.
 #
 # RECOMPUTED FROM SOURCE, so it is never stale. It prints as a tree; `--json` prints the same shape `term make`
-# writes to host/roll.json.
+# writes to host/roll.json, and `--diff <before>` what changed since a roll file or a git ref.
 #
-# The roll is BUILT by the compiler, which is TypeScript, so this verb docks `projectRoll` rather than rebuilding
-# the walk in Term: the walk is the compiler's own and a second one would drift from it. What is Term here is the
-# verb -- the filtering, the cross-referencing of tells to exceptions, and the output.
-#
-# Ported from deck/call/code/roll.ts (cli-in-term-0004).
-
-load @term/base/text
-  find contains
+# The verb is line.ts's `roll` command: the hook's takes, line.ts's argument mapping, then the docked `callRoll`
+# (deck/call/code/roll.ts), which opens and closes its own run. No print, catch or exit of its own: a throw reaches
+# dispatch.tree `fail-line` (decision 005 of cli-in-term).
 
 dock load
   load <@term/call/code/roll>, name roll-module
-  load <@term/make/code/compile/roll>, name roll-show
-  load <node:process>, name node-process
-  load <global:console>, name console
-  load <global:JSON>, name json-global
+  load <global:process>, name host-process
 
-# NOT `show-ask`, which is what this was called until 2026-09-13: `base-verbs.tree` declares a different
-# `show-ask` (root, commit, mark) and Term names are PACKAGE-GLOBAL, so the two collided and whichever module
-# was read second decided what the name meant. The collision was silent until the checker learned to refuse a
-# field the form does not declare, and then it surfaced in the OTHER file, as this hazard always does.
-form roll-show-ask
+# what `callRoll` takes without `--diff`. NOT `roll-ask` or `show-ask`: Term names are package-global, and
+# base-verbs.tree declares a `show-ask` of its own
+form roll-whole-ask
+  link root, like text
+  link kind, like text
+  link json, like boolean
+  link private, like boolean
+  link host, like text
   link path, like boolean
 
-# what `callRoll` takes for `--diff`. NOT `roll-ask`, for the same package-global reason as above
+# what `callRoll` takes with `--diff`: callRoll tests `diff !== undefined`, so the field is only there when given
 form roll-diff-ask
   link root, like text
+  link kind, like text
   link json, like boolean
+  link private, like boolean
+  link host, like text
+  link path, like boolean
   link diff, like text
 
-# the kinds a roll always has, before any a deck declares with `roll <name>`
-task built-in-kinds
-  like list, like text
-
-  back
-    make list, <deck>, <exception>, <task>, <dock>, <tell>, <kind>
-
-task is-known-kind
-  take kind, like text
-  take declared
-    like list
-      like unknown
-
-  like boolean
-
-  walk
-    call built-in-kinds
-    take site, name one
-    fork test
-      is-equal one, kind
-      hold
-        back true
-  walk declared
-    take site, name one
-    fork test
-      is-equal read(one/name), kind
-      hold
-        back true
-  back false
-
 # The hook passes a take to the parameter of its own name, else to the one at its position, so these stand in the
-# hook's order (kind, json, private, host, path, diff): `json-out` and `show-path` are named apart from `json` and
-# `path` and so are filled by position. `--private` and `--host` are taken and not yet applied here.
+# hook's order (kind, json, private, host, path, diff): `json-out`, `only-private`, `only-host` and `show-path` are
+# filled by position.
 task roll
   mark async
   take kind, like text
@@ -93,95 +55,63 @@ task roll
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  # `--diff` compares this roll with an earlier one, through roll-diff.ts and its reach analysis: the compiler's
-  # machinery, so the verb hands it to `callRoll` whole, as it does the roll itself to `projectRoll`
-  fork test
-    is-unequal diff, <>
+  # `--back json` too, the spelling every agent-facing verb takes (line.ts: `argv.json || argv.back === 'json'`)
+  save json, json-out
+  fork test, back-is-json(host-process/argv)
     hold
-      roll-diff(root, json-out, diff)
-      send back
-  fork test
-    json-out
+      save json, true
+  fork test, is-equal(diff, <>)
+    hold
+      call roll-module/callRoll
+        make roll-whole-ask
+          bind root, read root
+          bind kind, read kind
+          bind json, read json
+          bind private, read only-private
+          bind host, read only-host
+          bind path, read show-path
+        wait true
     miss
-      log-step <Rolling...>
-  save answer, call roll-module/projectRoll, root
-  save roll, read answer/roll
-  save failed, read answer/failed
+      call roll-module/callRoll
+        make roll-diff-ask
+          bind root, read root
+          bind kind, read kind
+          bind json, read json
+          bind private, read only-private
+          bind host, read only-host
+          bind path, read show-path
+          bind diff, read diff
+        wait true
 
-  fork test
-    is-unequal kind, <>
-    hold
-      fork test
-        is-known-kind kind, read roll/kind
-        miss
-          log-fail <Unknown kind "{{kind}}">
-          node-process/exit code 1
-  # which tell covers each exception, so a reader sees what a customer would be told
-  walk
-    read roll/exception
-    take site, name one
-    save full, <{{one/host}}/{{one/name}}>
-    save note
-      tell-for read(roll/tell), full
-    save one/tell, read note
-  fork test
-    json-out
-    hold
-      console/log
-        json-global/stringify read(roll), make(void), code 2
-      send back
-  console/log <>
+# whether the command line gives the global `--back` the value `json`, as yargs read it: `--back json`,
+# `--back=json`, `-b json` or `-b=json`, the last one given winning, and nothing after a bare `--`. `back` is a global
+# flag, not one of roll's takes, so the hook never hands it over
+task back-is-json
+  take words, like list, like text
 
-  console/log
-    call roll-show/showRoll
-      read roll
-      kind
-      make roll-show-ask, bind path, show-path
-  console/log <>
+  like boolean
 
-  fork test
-    is-above read(failed/length), code 0
-    hold
-      console/log
-        fade <  {{failed}} file(s) did not compile and are not on the roll>
-
-# `term roll --diff <before>`: what changed in what each task can reach and raise since a roll file or a git ref
-task roll-diff
-  mark async
-  mark private
-  take root, like text
-  take json-out, like boolean
-  take diff, like text
-
-  like void
-
-  fork
-    mark unsafe
-    call roll-module/callRoll
-      make roll-diff-ask
-        bind root, read root
-        bind json, read json-out
-        bind diff, read diff
-      wait true
-  halt take
-    take error
-    log-fail format-error error
-    node-process/exit code 1
-
-# the note of the tell that covers one exception, or `private` when none does
-task tell-for
-  # the roll's tells, as the docked `roll-module` answered them: host values (D1)
-  take tells
-    like list
-      like dynamic
-  take full, like text
-
-  like text
-
-  walk tells
-    take site, name one
-    fork test
-      is-equal read(one/name), full
-      hold
-        back read one/note
-  back <private>
+  save value, <>
+  save at, 0
+  save count, words/length
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save word, words/{at}
+      save at, add(at, 1)
+      fork test, is-equal(word, <-->)
+        hold
+          halt
+      fork test, or(is-equal(word, <--back>), is-equal(word, <-b>))
+        hold
+          fork test, is-below(at, count)
+            hold
+              save value, words/{at}
+              save at, add(at, 1)
+      fork test, starts-with(word, <--back=>)
+        hold
+          save value, substring(word, 7)
+      fork test, starts-with(word, <-b=>)
+        hold
+          save value, substring(word, 3)
+  back is-equal(value, <json>)

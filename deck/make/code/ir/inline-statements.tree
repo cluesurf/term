@@ -36,6 +36,7 @@ load @term/base/text
 
 load ../parser/diagnostic
   find span
+  find position
 
 load ../compile/node
   find assign-op

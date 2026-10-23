@@ -37,6 +37,7 @@ load ./node
   find statement-branch
   find type
   find view-node
+  find catch-clause
 
 load ./node-rewrite
   find copy-expression

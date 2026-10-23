@@ -1,0 +1,534 @@
+# An app's SCOPE (app-scope): what it may reach outside its own process, and over what. Deny by default, declared in
+# ONE dialect, the app's `scope.tree`, a Term data file, so there is nothing new to parse and `term lint` already reads
+# it:
+#
+#   host file
+#     list read, <$data/**>, <~/Documents/notes/**>
+#     list write, <$data/**>
+#   host environment
+#     list read, <HOME>, <LANG>
+#   host db
+#
+# Two checks read it, and this module is the one place both learn what a capability is: at BUILD time a program that
+# reaches a capability its scope does not name is refused, naming the capability and the module it came through, and
+# at RUN time the cask's dispatcher checks each scoped argument of each call from the WebView page against the scope.
+# A capability with no access lists (`host db`) is all or nothing.
+#
+# Ported from deck/call/code/scope.ts (term-cli-in-term-0052). The capability table and a scope are the original's host
+# values (a record of capabilities, each module a pattern; a scope a hash of plain records), so the dispatcher and the
+# cask build read them unchanged. `CAPABILITIES` is the task `capabilities()`.
+
+load @term/base/list
+  find list
+  find join
+  find contains
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <@term/make/code/compile/host>, name host-module
+
+# ---- the host values Term has no word for ----
+
+bind nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind is-null
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === null)>
+
+# a pattern a module path is tested by
+bind pattern
+  take source, like text
+  like dynamic
+  case node
+    text <new RegExp($source)>
+
+bind pattern-holds
+  take pattern, like dynamic
+  take value, like text
+  like boolean
+  case node
+    text <$pattern.test($value)>
+
+# compile/host.ts `toJsonValue(data)`, called on the docked module by its exact name
+bind json-value-of
+  take module, like dynamic
+  take data, like dynamic
+  like dynamic
+  case node
+    text <$module.toJsonValue($data)>
+
+# a key and its value, as one entry of a host record
+bind pair-of
+  take key, like text
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <[$key, $value]>
+
+# a host record of its entries, each a key and a value
+bind record-of
+  take entries, like list, like dynamic
+  like dynamic
+  case node
+    text <Object.fromEntries($entries)>
+
+bind empty-record
+  like dynamic
+  case node
+    text <(\{\})>
+
+bind set-member
+  take record, like dynamic
+  take key, like text
+  take value, like dynamic
+  like void
+  case node
+    text <(($record)[$key] = $value, undefined)>
+
+bind member
+  take record, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <($record)[$key]>
+
+# each key and value of a host record as a two-element list, in its key order
+bind entries-of
+  take record, like dynamic
+  like list, like dynamic
+  case node
+    text <Object.entries($record)>
+
+bind keys-of
+  take record, like dynamic
+  like list, like text
+  case node
+    text <Object.keys($record)>
+
+bind values-of
+  take record, like dynamic
+  like list, like dynamic
+  case node
+    text <Object.values($record)>
+
+# a record as a scope reads it: an object that is not a list
+bind is-record
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value !== null && typeof $value === "object" && !Array.isArray($value))>
+
+# what a value is, as the refusal names it: `list`, or its `typeof`
+bind kind-name
+  take value, like dynamic
+  like text
+  case node
+    text <(Array.isArray($value) ? "list" : typeof $value)>
+
+# a list each of whose items is a text
+bind is-text-list
+  take value, like dynamic
+  like boolean
+  case node
+    text <(Array.isArray($value) && !$value.some((item) =\> typeof item !== "string"))>
+
+# a pattern the dispatcher could not hold as text: empty, or with `<`, `>`, `{`, `}` or a line feed
+bind is-odd-pattern
+  take value, like text
+  like boolean
+  case node
+    text <(/[\<\>\{\}]/.test($value) || $value.includes(String.fromCharCode(10)) || $value.length === 0)>
+
+# `name.replace(/_/g, "-")`
+bind dashed
+  take value, like text
+  like text
+  case node
+    text <$value.replace(/_/g, "-")>
+
+# AN ERROR A PERSON CAN ACT ON: `expected` keeps failRun from reporting it as a crash, and `usage` is its exit
+bind refuse
+  take message, like text
+  like void
+  case node
+    text <(() =\> \{ throw Object.assign(new Error($message), \{ expected: true, failure: "usage" \}) \})()>
+
+# ---- the capabilities ----
+
+form capability
+  link what, like text
+  link module, like dynamic
+  link kind
+    like text
+    need false
+  link tasks
+    like dynamic
+    need false
+
+# one task of a scoped capability: the access each argument needs
+task task-entry
+  take name, like text
+  take pairs, like list, like list, like text
+  like list, like dynamic
+  mark private
+
+  back pair-of(name, pairs)
+
+task access-pair
+  take argument, like text
+  take access, like text
+  like list, like text
+  mark private
+
+  save pair, make list
+  push(pair, argument)
+  push(pair, access)
+  back pair
+
+task one-pair
+  take argument, like text
+  take access, like text
+  like list, like list, like text
+  mark private
+
+  save pairs, make list
+  push(pairs, access-pair(argument, access))
+  back pairs
+
+task no-pairs
+  like list, like list, like text
+  mark private
+
+  back make list
+
+task file-tasks
+  like dynamic
+  mark private
+
+  save entries, make list
+  push(entries, task-entry(<read>, one-pair(<path>, <read>)))
+  push(entries, task-entry(<read-bytes>, one-pair(<path>, <read>)))
+  push(entries, task-entry(<test>, one-pair(<path>, <read>)))
+  push(entries, task-entry(<stat>, one-pair(<path>, <read>)))
+  push(entries, task-entry(<write>, one-pair(<path>, <write>)))
+  push(entries, task-entry(<write-bytes>, one-pair(<path>, <write>)))
+  push(entries, task-entry(<append>, one-pair(<path>, <write>)))
+  push(entries, task-entry(<remove>, one-pair(<path>, <write>)))
+  save copy, make list
+  push(copy, access-pair(<from>, <read>))
+  push(copy, access-pair(<to>, <write>))
+  push(entries, task-entry(<copy>, copy))
+  save move, make list
+  push(move, access-pair(<from>, <write>))
+  push(move, access-pair(<to>, <write>))
+  push(entries, task-entry(<move>, move))
+  back record-of(entries)
+
+task environment-tasks
+  like dynamic
+  mark private
+
+  save entries, make list
+  push(entries, task-entry(<variable>, one-pair(<name>, <read>)))
+  push(entries, task-entry(<has-variable>, one-pair(<name>, <read>)))
+  push(entries, task-entry(<variables>, one-pair(<*>, <read>)))
+  push(entries, task-entry(<set-variable>, one-pair(<name>, <write>)))
+  push(entries, task-entry(<remove-variable>, one-pair(<name>, <write>)))
+  push(entries, task-entry(<directory>, no-pairs()))
+  push(entries, task-entry(<change-directory>, one-pair(<*>, <write>)))
+  push(entries, task-entry(<locale>, no-pairs()))
+  push(entries, task-entry(<locales>, no-pairs()))
+  back record-of(entries)
+
+task capability-entry
+  take name, like text
+  take one, like capability
+  like list, like dynamic
+  mark private
+
+  back pair-of(name, one)
+
+# what each capability is, how a build finds it in a program (the module it is defined in, after symlinks), and, for a
+# scoped one, the access each of its tasks needs over which argument. `*` as the argument is the capability's whole
+# space. A task of a scoped capability that is not listed is REFUSED at the boundary. `kind` is how its arguments are
+# matched: as a `path`, with folders and wildcards, or as a `name`, whole
+task capabilities
+  like dynamic
+
+  save entries, make list
+  save file
+    make capability
+      bind what, <files and folders, by path>
+      bind module, pattern(<<\/deck\/base\/code\/file(\.tree|\/)>>)
+      bind kind, <path>
+      bind tasks, file-tasks()
+  push(entries, capability-entry(<file>, file))
+  save environment
+    make capability
+      bind what, <environment variables, by name, and the working directory>
+      bind module, pattern(<<\/deck\/base\/code\/environment(\.tree|\/)>>)
+      bind kind, <name>
+      bind tasks, environment-tasks()
+  push(entries, capability-entry(<environment>, environment))
+  save process
+    make capability
+      bind what, <other programs>
+      bind module, pattern(<<\/deck\/base\/code\/process(\.tree|\/)>>)
+  push(entries, capability-entry(<process>, process))
+  save network
+    make capability
+      bind what, <the network>
+      bind module, pattern(<<\/deck\/base\/code\/network(\.tree|\/)>>)
+  push(entries, capability-entry(<network>, network))
+  save db
+    make capability
+      bind what, <a database>
+      bind module, pattern(<<\/deck\/site\/code\/base\/db\.tree$>>)
+  push(entries, capability-entry(<db>, db))
+  back record-of(entries)
+
+# ---- reading a scope ----
+
+form scope-read
+  link scope, like hash, like text, like dynamic
+  link file, like text
+
+form data-source
+  link file, like text
+  link text, like text
+
+# the messages of a list of diagnostics, joined by `; `
+task messages-of
+  take diagnostics, like dynamic
+  like text
+  mark private
+
+  save said, make list
+  walk diagnostics
+    take one
+    push(said, one/message)
+  back join(said, <; >)
+
+# each name with backticks, joined
+task ticked
+  take names, like list, like text
+  take between, like text
+  like text
+  mark private
+
+  save out, make list
+  walk names
+    take one
+    push(out, <`{one}`>)
+  back join(out, between)
+
+# the accesses a capability's tasks need, each once in the order met
+task accesses-of
+  take capability, like dynamic
+  like list, like text
+  mark private
+
+  save out, make list
+  save tasks, capability/tasks
+  fork test, is-absent(tasks)
+    hold
+      back out
+  walk values-of(tasks)
+    take pairs
+    walk pairs
+      take pair
+      save access, pair/1
+      fork test, not(contains(out, access))
+        hold
+          push(out, access)
+  back out
+
+# the access lists of one capability, checked, as a record of the accesses given
+task access-lists
+  take file, like text
+  take name, like text
+  take capability, like dynamic
+  take lists, like dynamic
+  like dynamic
+  mark private
+
+  save given, empty-record()
+  fork test, is-record(lists)
+    hold
+      walk entries-of(lists)
+        take entry
+        save access, entry/0
+        save items, entry/1
+        save allowed, accesses-of(capability)
+        fork test, not(contains(allowed, access))
+          hold
+            save has, <It is all or nothing: `host {name}` alone>
+            fork test, is-above(allowed/length, 0)
+              hold
+                save has, <It has {ticked(allowed, < and >)}>
+            refuse(<{file}: `{name}` has no `{access}` list. {has}>)
+        fork test, not(is-text-list(items))
+          hold
+            refuse(<{file}: `{name}` `{access}` is a list of text, each a pattern>)
+        # a pattern is compiled into the dispatcher as text, where these mean something else, and no path or name
+        # needs them
+        walk items
+          take item
+          fork test, is-odd-pattern(item)
+            hold
+              save held, <`{item}`>
+              fork test, is-equal(item, <>)
+                hold
+                  save held, <an empty pattern>
+              refuse(<{file}: `{name}` `{access}` holds {held}, and a pattern is not empty and holds no `\<`, `\>`, `\{`, `\}` or line break>)
+        set-member(given, access, items)
+    miss
+      fork test, and(not(is-null(lists)), not(is-absent(lists)))
+        hold
+          refuse(<{file}: `{name}` is `host {name}` with its access lists beneath, not a value>)
+  back given
+
+# the app's scope.tree read, or an empty scope (which denies every capability) when it has none. A file that is not
+# data, names a capability that does not exist, or gives one an access it does not have is refused naming it
+task read-scope
+  take root, like text
+  like scope-read
+
+  save file, node-path/join(root, <scope.tree>)
+  save scope, make hash
+  fork test, not(node-fs/exists-sync(file))
+    hold
+      back
+        make scope-read
+          bind scope, scope
+          bind file, file
+
+  save source
+    make data-source
+      bind file, file
+      bind text, node-fs/read-file-sync(file, <utf8>)
+  save read, host-module/read-data-text(source)
+  fork test, not(read/ok)
+    hold
+      refuse(<{file} is not a data file: {messages-of(read/diagnostics)}>)
+
+  save expanded, host-module/expand-data(read/data, file)
+  fork test, not(expanded/ok)
+    hold
+      refuse(<{file}: {messages-of(expanded/diagnostics)}>)
+
+  # the dock call `host-module/to-json-value` is emitted as `toJSONValue`, which the module does not export
+  save value, json-value-of(host-module, expanded/data)
+  fork test, not(is-record(value))
+    hold
+      refuse(<{file} holds a {kind-name(value)}; a scope is `host` entries, one per capability>)
+
+  save known, capabilities()
+  walk entries-of(value)
+    take entry
+    save name, entry/0
+    save lists, entry/1
+    save capability, member(known, dashed(name))
+    fork test, not(is-truthy(capability))
+      hold
+        refuse(<{file} names `{name}`, which is not a capability. There are {ticked(keys-of(known), <, >)}>)
+    save given, access-lists(file, name, capability, lists)
+    save scope/{name}, given
+
+  back
+    make scope-read
+      bind scope, scope
+      bind file, file
+
+# ---- what a program reaches ----
+
+# a file after symlinks, when it is there
+task real-file
+  take file, like text
+  like text
+  mark private
+
+  fork test, node-fs/exists-sync(file)
+    hold
+      back node-fs/realpath-sync(file)
+  back file
+
+# the capability a module file defines, or `undefined`
+task capability-of
+  take file, like text
+  like dynamic
+
+  save real, real-file(file)
+  walk entries-of(capabilities())
+    take entry
+    fork test, pattern-holds(entry/1/module, real)
+      hold
+        back entry/0
+  back nothing()
+
+# the capabilities a program reaches, each with the first module that defines it, from the files its build loaded
+task capabilities-of
+  take files, like list, like text
+  like hash, like text, like text
+
+  save found, make hash
+  walk files
+    take one
+    save name, capability-of(one)
+    fork test, is-truthy(name)
+      hold
+        fork test, not(found/has(name))
+          hold
+            save found/{name}, real-file(one)
+  back found
+
+# refuse a build that reaches a capability its scope does not name. One message per capability, each naming what it
+# is, the module it came through, and the line that would grant it
+task check-scope
+  take input, like dynamic
+  like void
+
+  save read, read-scope(input/root)
+  save reached, capabilities-of(input/files)
+  save known, capabilities()
+  save lines, make list
+  save grants, make list
+  walk reached/keys()
+    take name
+    fork test, not(read/scope/has(name))
+      hold
+        save held, member(known, name)
+        save what, held/what
+        push(lines, <`{name}` ({what}), reached through {reached/get(name)}>)
+        push(grants, <host {name}>)
+  fork test, is-equal(lines/length, 0)
+    hold
+      back
+
+  save them, <them>
+  fork test, is-equal(lines/length, 1)
+    hold
+      save them, <it>
+  save missing, <it has no scope.tree>
+  fork test, node-fs/exists-sync(read/file)
+    hold
+      save missing, <its scope.tree does not name {them}>
+  refuse(<This app reaches {join(lines, <; >)}, and {missing}. An app may reach only what its scope names: add {join(grants, <, >)} to {read/file}, with the access lists the capability takes>)

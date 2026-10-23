@@ -1,0 +1,310 @@
+# Walking the object DAG: a commit's full object closure (for the publish handshake) and a tree flattened into the
+# flat file manifest (for resolve and UIs). Ported from deck/deck/code/object/graph.ts (term-cli-in-term-0083):
+# treeClosure, commitClosure, flattenTree, buildManifest.
+#
+# The closure is every object a commit reaches: the commit, its tree and subtrees, every blob, every chunk. The publish
+# negotiation sends this id set so the server answers the missing part (note/term/registry/04). The manifest is the
+# flat file listing a UI reads (note/term/registry/14).
+#
+# The decisions:
+#   - an id set is the caller's host Set, written in place, as the original's; tree-closure takes it always (a new
+#     one where the original made one)
+#   - the store is the caller's host object (its `get`, awaited), an object read back the host value JSON.parse makes
+#   - subtrees are collected at the same time and the blob sizes read in batches of 100 at the same time, through
+#     @term/base/task's gather, the original's Promise.all: results in source order, the first failure raised (gather
+#     also cancels the rest, which Promise.all left running)
+#   - release.ts's reachableFromCommit and dataset.ts's filesOfDataset (not yet ported) and save's readDataset and
+#     MemoryChunkStore are docked
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/task
+  find gather
+
+load ./directory-node
+  find read-dir-entries
+  find dir-node-ids
+
+load ./object-shape
+  find validate-entries
+
+dock load
+  load <@term/deck/code/object/release>, name release-module
+  load <@term/deck/code/object/dataset>, name dataset-module
+  load <@cluesurf/save/store/tree>, name save-tree
+  load <@cluesurf/save/store/chunk-store>, name save-chunk-store
+
+# one file in the flat manifest
+form manifest-file
+  link path, like text
+  link blob, like text
+  link size, like number
+  link mode, like text
+
+# the flat manifest: every file of a commit, its path to its blob id and size
+form manifest-listing
+  link package, like text
+  link ref, like text
+  link files, like list, like manifest-file
+
+# one file's identity before its size is read
+form file-ref
+  link path, like text
+  link blob, like text
+  link mode, like text
+
+form reach-ask
+  link commit-id, like text
+  link store, like dynamic
+
+bind closure-store-get
+  take shelf, like dynamic
+  take id, like text
+  like dynamic
+  case node
+    text <$shelf.get($id)>
+
+bind closure-json-of
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <JSON.parse($bytes.toString("utf8"))>
+
+bind closure-has
+  take ids, like dynamic
+  take id, like text
+  like boolean
+  case node
+    text <$ids.has($id)>
+
+bind closure-add
+  take ids, like dynamic
+  take id, like text
+  like void
+  case node
+    text <$ids.add($id)>
+
+bind closure-set-of
+  take id, like text
+  like dynamic
+  case node
+    text <new Set([$id])>
+
+bind closure-members
+  take ids, like dynamic
+  like list, like text
+  case node
+    text <[...$ids]>
+
+bind closure-chunks
+  take blob, like dynamic
+  like list, like text
+  case node
+    text <$blob.chunks>
+
+bind closure-first-chunk
+  take chunks, like list, like text
+  like text
+  case node
+    text <($chunks[0] ?? "")>
+
+bind closure-chunk-store
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.MemoryChunkStore()>
+
+bind closure-chunk-put
+  take chunks, like dynamic
+  take text, like text
+  like void
+  case node
+    text <$chunks.put($text)>
+
+bind closure-utf8-text
+  take bytes, like dynamic
+  like text
+  case node
+    text <$bytes.toString("utf8")>
+
+task read-json
+  take store, like dynamic
+  take id, like text
+  like dynamic
+  mark private
+
+  save bytes, wait closure-store-get(store, id)
+  back closure-json-of(bytes)
+
+# every object id a directory tree reaches, written into `into`: all its prolly nodes, inner and leaf, its child trees,
+# its blobs and their chunks
+task tree-closure
+  take tree-id, like text
+  take store, like dynamic
+  take into, like dynamic
+  like dynamic
+
+  fork test, closure-has(into, tree-id)
+    hold
+      back into
+
+  dir-node-ids(tree-id, store, into)
+  walk read-dir-entries(tree-id, store)
+    take entry
+    save id, entry/id
+    fork test, is-equal(entry/kind, <tree>)
+      hold
+        tree-closure(id, store, into)
+      miss
+        closure-add(into, id)
+        save blob, read-json(store, id)
+        walk closure-chunks(blob)
+          take chunk
+          closure-add(into, chunk)
+  back into
+
+# every object id a commit reaches: the commit, its manifest blob and its chunks, and its tree's closure
+task commit-closure
+  take commit-id, like text
+  take store, like dynamic
+  like dynamic
+
+  save ids, closure-set-of(commit-id)
+  save commit, read-json(store, commit-id)
+  save manifest, commit/manifest
+  closure-add(ids, manifest)
+  save blob, read-json(store, manifest)
+  walk closure-chunks(blob)
+    take chunk
+    closure-add(ids, chunk)
+  tree-closure(commit/tree, store, ids)
+  back ids
+
+# every file's path, blob id and mode under a tree, WITHOUT reading a blob: subtrees walked at the same time, the list
+# kept in depth-first order
+task collect-files
+  take tree-id, like text
+  take store, like dynamic
+  take prefix, like text
+  like list, like file-ref
+  mark private
+
+  save entries, read-dir-entries(tree-id, store)
+  save problem, validate-entries(entries)
+  sift problem
+    case some
+      link reason
+      halt <invalid tree {tree-id}: {reason}>
+    case none
+      save valid, true
+
+  save parts, make list
+  walk entries
+    take entry
+    save name, entry/name
+    save child-path, name
+    fork test, not(is-equal(prefix, <>))
+      hold
+        save child-path, <{prefix}/{name}>
+    save id, entry/id
+    fork test, is-equal(entry/kind, <tree>)
+      hold
+        save subtree
+          task
+            like list, like file-ref
+            mark async
+            back collect-files(id, store, child-path)
+        parts/push(subtree)
+      miss
+        save mode, <file>
+        fork test, is-equal(entry/mode, <exec>)
+          hold
+            save mode, <exec>
+        save one
+          task
+            like list, like file-ref
+            mark async
+            save single, make list
+            single/push(make(file-ref, bind(path, child-path), bind(blob, id), bind(mode, mode)))
+            back single
+        parts/push(one)
+
+  save out, make list
+  walk gather(parts)
+    take part
+    walk part
+      take file
+      out/push(file)
+  back out
+
+# a tree flattened into its file list: the tree walked for file refs, then the blob sizes read 100 at a time, at the
+# same time, so ninety thousand serial reads (which time out) are one fast pass
+task flatten-tree
+  take tree-id, like text
+  take store, like dynamic
+  take prefix, like text
+  like list, like manifest-file
+
+  save refs, collect-files(tree-id, store, prefix)
+  save files, make list
+  save start, 0
+  walk test
+    hook test, is-below(start, refs/length)
+    hook hold
+      save batch, make list
+      save at, start
+      walk test
+        hook test, and(is-below(at, add(start, 100)), is-below(at, refs/length))
+        hook hold
+          save ref, refs/{at}
+          save blob-id, ref/blob
+          save read-size
+            task
+              like dynamic
+              mark async
+              save blob, read-json(store, blob-id)
+              back blob/size
+          batch/push(read-size)
+          save at, add(at, 1)
+      save sizes, gather(batch)
+      save k, 0
+      walk sizes
+        take size
+        save ref, refs/{add(start, k)}
+        files/push(make(manifest-file, bind(path, ref/path), bind(blob, ref/blob), bind(size, size), bind(mode, ref/mode)))
+        save k, add(k, 1)
+      save start, add(start, 100)
+  back files
+
+# the flat manifest of a commit under a ref label. A version is a @cluesurf/save dataset, so the manifest is read out
+# of its prolly tree; every chunk the commit reaches is in this store already, so the read is local
+task build-manifest
+  take commit-id, like text
+  take ref, like text
+  take package-name, like text
+  take store, like dynamic
+  like manifest-listing
+
+  save reachable, wait release-module/reachable-from-commit(make(reach-ask, bind(commit-id, commit-id), bind(store, store)))
+  save chunks, closure-chunk-store(save-chunk-store)
+  walk closure-members(reachable)
+    take id
+    save bytes, wait closure-store-get(store, id)
+    closure-chunk-put(chunks, closure-utf8-text(bytes))
+
+  save commit, read-json(store, commit-id)
+  save files, make list
+  walk dataset-module/files-of-dataset(save-tree/read-dataset(commit/root, chunks))
+    take file
+    save mode, <file>
+    fork test, is-equal(file/mode, <exec>)
+      hold
+        save mode, <exec>
+    # a file is named by its ordered chunk list; the first names it for a manifest
+    files/push(make(manifest-file, bind(path, file/path), bind(blob, closure-first-chunk(file/chunks)), bind(size, file/size), bind(mode, mode)))
+
+  back make(manifest-listing, bind(package, package-name), bind(ref, ref), bind(files, files))

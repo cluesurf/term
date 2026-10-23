@@ -1,0 +1,270 @@
+# Content-defined chunking (FastCDC) for the object registry: a file of any size split at cut points its own bytes
+# choose, so a small edit to a large file changes only the chunk holding it and every other chunk keeps its identity
+# (note/term/registry/11 and 02). Ported from deck/deck/code/object/chunk.ts (term-cli-in-term-0081): chunkBuffer,
+# DEFAULT_CHUNK_PARAMS, and the shape ChunkParams.
+#
+# The algorithm: a rolling gear hash, normalized chunking (a stricter mask before the average size, a looser one after,
+# to tighten the size distribution) and cut-point skipping (no boundary is tested before the minimum size). The gear
+# table and the masks come from fixed seeds through splitmix32, so the same bytes always chunk the same way. The
+# parameters are an internal tuning knob, never user-facing.
+#
+# The decisions:
+#   - the 32-bit arithmetic is @term/base/bit's (its answers on values under 2^32 are the original's `>>> 0` ones, and
+#     `multiply-32` is Math.imul); `>>> 0` of a sum under 2^34 is its remainder by 2^32
+#   - the bit count of a size is a host bind of the original's expression (`Math.round(Math.log2(avg))`, with its NaN)
+#   - the inner loop's roll and cut test are host binds of the original's expressions, for its speed
+#   - the gear table is the module's own, made once when it loads, as the original's was
+#   - `chunk-buffer` takes its parameters positionally; DEFAULT_CHUNK_PARAMS is the task `default-chunk-params()`
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/math
+  find minimum
+
+load @term/base/bit
+  find bitwise-or
+  find bitwise-exclusive-or
+  find shift-left
+  find unsigned-shift-right
+  find multiply-32
+
+form chunk-params
+  link min, like number
+  link avg, like number
+  link max, like number
+
+# one chunk's place in the data: from `start` up to, not including, `end`
+form chunk-range
+  link start, like number
+  link end, like number
+
+form chunk-masks
+  link strict, like number
+  link loose, like number
+
+bind size-bits
+  take avg, like number
+  like number
+  case node
+    text <Math.max(1, Math.round(Math.log2($avg)))>
+
+bind strict-bits
+  take bits, like number
+  like number
+  case node
+    text <Math.min(24, $bits + 2)>
+
+bind loose-bits
+  take bits, like number
+  like number
+  case node
+    text <Math.max(1, $bits - 2)>
+
+bind data-length
+  take data, like dynamic
+  like number
+  case node
+    text <$data.length>
+
+bind byte-at
+  take data, like dynamic
+  take at, like number
+  like number
+  case node
+    text <$data[$at]>
+
+# a number read as the unsigned 32-bit one, as `>>> 0` reads a 32-bit answer
+task unsigned-32
+  take value, like number
+  like number
+  mark private
+
+  fork test, is-below(value, 0)
+    hold
+      back add(value, 4294967296)
+  back modulo(value, 4294967296)
+
+# splitmix32's output for one state
+task mix-of
+  take state, like number
+  like number
+  mark private
+
+  save z, state
+  save z, unsigned-32(multiply-32(bitwise-exclusive-or(z, unsigned-shift-right(z, 16)), 0x21f0aaad))
+  save z, unsigned-32(multiply-32(bitwise-exclusive-or(z, unsigned-shift-right(z, 15)), 0x735a2d97))
+  back unsigned-32(bitwise-exclusive-or(z, unsigned-shift-right(z, 15)))
+
+# the next splitmix32 state
+task mix-step
+  take state, like number
+  like number
+  mark private
+
+  back unsigned-32(add(state, 0x9e3779b9))
+
+# `count` numbers from splitmix32 seeded with `seed`
+task mix-run
+  take seed, like number
+  take count, like number
+  like list, like number
+  mark private
+
+  save out, make list
+  save state, unsigned-32(seed)
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save state, mix-step(state)
+      out/push(mix-of(state))
+      save at, add(at, 1)
+  back out
+
+# the 256-entry gear table, one 32-bit value per byte value
+task make-gear-table
+  like list, like number
+  mark private
+
+  back mix-run(0x1a2b3c4d, 256)
+
+host gear-table, make-gear-table()
+
+# a 32-bit mask with `bits` one-bits in the well-mixed high positions (8 to 31): more one-bits, a rarer cut, since a
+# boundary is `(fp & mask) === 0`
+task build-mask
+  take bits, like number
+  take seed, like number
+  like number
+  mark private
+
+  save positions, make list
+  save place, 8
+  walk test
+    hook test, is-maximum(place, 31)
+    hook hold
+      positions/push(place)
+      save place, add(place, 1)
+
+  # a fixed partial shuffle, then the first `bits` positions; the shuffle draws one number for each of 23 swaps
+  save draws, mix-run(seed, subtract(positions/length, 1))
+  save at, subtract(positions/length, 1)
+  save drawn, 0
+  walk test
+    hook test, is-above(at, 0)
+    hook hold
+      save swap, modulo(get(draws, drawn), add(at, 1))
+      save held, get(positions, at)
+      positions/set(at, get(positions, swap))
+      positions/set(swap, held)
+      save drawn, add(drawn, 1)
+      save at, subtract(at, 1)
+
+  save mask, 0
+  save at, 0
+  walk test
+    hook test, and(is-below(at, bits), is-below(at, positions/length))
+    hook hold
+      save mask, unsigned-32(bitwise-or(mask, shift-left(1, get(positions, at))))
+      save at, add(at, 1)
+  back mask
+
+# normalization level 2: the stricter mask has two one-bits more than the size's bit count, the looser two fewer
+task masks-for
+  take avg, like number
+  like chunk-masks
+  mark private
+
+  save bits, size-bits(avg)
+  save strict, build-mask(strict-bits(bits), 0x51ed270b)
+  save loose, build-mask(loose-bits(bits), 0x27220a95)
+  back make(chunk-masks, bind(strict, strict), bind(loose, loose))
+
+# the gear hash rolled over one byte, the original's own expression: the inner loop runs once a byte, and through the
+# stdlib's 64-bit ops it took 4.2 times the original's time over 12 MiB
+bind gear-roll
+  take fingerprint, like number
+  take gear, like list, like number
+  take byte, like number
+  like number
+  case node
+    text <((($fingerprint \<\< 1) + $gear[$byte]) \>\>\> 0)>
+
+bind is-cut
+  take fingerprint, like number
+  take mask, like number
+  like boolean
+  case node
+    text <(($fingerprint & $mask) === 0)>
+
+# where the chunk starting at `start` ends
+task next-cut
+  take data, like dynamic
+  take start, like number
+  take params, like chunk-params
+  take masks, like chunk-masks
+  like number
+  mark private
+
+  save total, data-length(data)
+  save remaining, subtract(total, start)
+
+  fork test, is-maximum(remaining, params/min)
+    hold
+      back total
+
+  save hard-end, minimum(add(start, params/max), total)
+  save normal-end, minimum(add(start, params/avg), hard-end)
+  save fingerprint, 0
+  # cut-point skipping: no boundary is tested before the minimum size
+  save at, add(start, params/min)
+
+  # phase 1: [min, avg) with the stricter mask, fewer cuts
+  walk test
+    hook test, is-below(at, normal-end)
+    hook hold
+      save fingerprint, gear-roll(fingerprint, gear-table, byte-at(data, at))
+      fork test, is-cut(fingerprint, masks/strict)
+        hold
+          back add(at, 1)
+      save at, add(at, 1)
+
+  # phase 2: [avg, max) with the looser mask, more cuts
+  walk test
+    hook test, is-below(at, hard-end)
+    hook hold
+      save fingerprint, gear-roll(fingerprint, gear-table, byte-at(data, at))
+      fork test, is-cut(fingerprint, masks/loose)
+        hold
+          back add(at, 1)
+      save at, add(at, 1)
+
+  back hard-end
+
+# chunks of about 1 MiB, never under 256 KiB or over 4 MiB; a test may shrink them
+task default-chunk-params
+  like chunk-params
+
+  back make(chunk-params, bind(min, 262144), bind(avg, 1048576), bind(max, 4194304))
+
+# the data's content-defined chunks, each its [start, end) in order: the slices joined give the data back exactly
+task chunk-buffer
+  take data, like dynamic
+  take params, like chunk-params
+  like list, like chunk-range
+
+  save masks, masks-for(params/avg)
+  save total, data-length(data)
+  save cuts, make list
+  save offset, 0
+
+  walk test
+    hook test, is-below(offset, total)
+    hook hold
+      save end, next-cut(data, offset, params, masks)
+      cuts/push(make(chunk-range, bind(start, offset), bind(end, end)))
+      save offset, end
+
+  back cuts

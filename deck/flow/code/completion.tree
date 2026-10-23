@@ -1,0 +1,757 @@
+# COMPLETION: what the editor offers at the cursor. In order of what is asked:
+#   after `load @scope/pkg/...`   the modules under that prefix
+#   after `find <partial>`        the top-level definitions of the module the enclosing `load` names
+#   after `<receiver>/`           the fields and methods of the receiver's type
+#   anywhere else                 the names in scope (a value of the type the current argument expects first), the
+#                                 closure's imported callables, then the keywords and their snippets
+#
+# Ported from server.ts (term-cli-in-term-0104, part 5 of 5): complete, keywordItems, the KEYWORDS (navigation.tree's
+# `keywords`), SNIPPETS, LEAN_SNIPPETS, PHRASES and RETIRED tables, memberReceiver, leadingName, enclosingLoad, and
+# handle's case `textDocument/completion`. The decisions:
+#   - an item is the record `completion-item`, a key the original left out a field left out
+#   - the snippet tables are tasks over the same texts (their braces escaped); RETIRED, a guard against a retired word
+#     coming back through an edit of the tables, is written out by word (`\b` over `[A-Za-z0-9_]`)
+#   - every line pattern is written out by unit, and a column is a UTF-16 unit
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+
+load @term/make/fixing
+  find units-of
+
+load @term/make/compile/main-entry
+  find whitespace-code
+
+load @term/make/package-paths
+  find scan-defs
+
+load @term/call/context-slice
+  find written-name
+
+load ./geometry
+  find lsp-position
+  find inner-position
+
+load ./symbol-index
+  find scope-at
+  find call-at
+
+load ./language-server
+  find language-server
+  find resolve-module
+  find is-given
+
+load ./document-analysis
+  find settled
+
+load ./navigation
+  find keywords
+
+load ./server-reply
+  find respond
+  find position-of
+
+dock load
+  load <@term/make/code/resolve>, name resolving-module
+
+form completion-item
+  link label, like text
+  link kind
+    like number
+    need false
+  link detail
+    like text
+    need false
+  link insert-text
+    like text
+    need false
+  link insert-text-format
+    like number
+    need false
+  link sort-text
+    like text
+    need false
+
+form completion-list
+  link is-incomplete, like boolean
+  link items, like list, like completion-item
+
+form phrase
+  link label, like text
+  link insert, like text
+  # `lean`, `longhand`, or `both`
+  link lean, like text
+  link detail, like text
+
+# ---- the host ----
+
+bind cut-units
+  take value, like text
+  take stop, like number
+  like text
+  case node
+    text <$value.slice(0, $stop)>
+
+bind source-text-of
+  take source, like dynamic
+  like text
+  case node
+    text <$source.text>
+
+bind module-name
+  take found, like dynamic
+  like text
+  case node
+    text <$found.name>
+
+bind module-is-folder
+  take found, like dynamic
+  like boolean
+  case node
+    text <Boolean($found.isDir)>
+
+# ---- the tables ----
+
+# statement-starting keywords scaffold their construct when accepted (LSP snippet syntax, insertTextFormat 2). Each is
+# the shape the stdlib writes today
+task snippet-of
+  take label, like text
+  like maybe, like text
+
+  fork test, is-equal(label, <task>)
+    hold
+      back make(some, <task $\{1:name\}\n  take $\{2:arg\}, like $\{3:type\}\n  like $\{4:type\}\n  send back\n    $0>)
+  fork test, is-equal(label, <form>)
+    hold
+      back make(some, <form $\{1:name\}\n  link $\{2:field\}, like $\{3:type\}>)
+  fork test, is-equal(label, <mask>)
+    hold
+      back make(some, <mask $\{1:name\}\n  task $\{2:method\}\n    take self\n    like $\{3:type\}>)
+  fork test, is-equal(label, <fork>)
+    hold
+      back make(some, <fork test\n  hook test\n    $1\n  hook hold\n    $2\n  hook miss\n    $0>)
+  fork test, is-equal(label, <walk>)
+    hold
+      back make(some, <walk list, read $\{1:items\}\n  hook next\n    take site, name $\{2:item\}\n    $0>)
+  # `sift <value>` is the match, `fork case, <value>` written short
+  fork test, is-equal(label, <sift>)
+    hold
+      back make(some, <sift read $\{1:value\}\n  case $\{2:variant\}\n    $0>)
+  fork test, is-equal(label, <wait>)
+    hold
+      back make(some, <wait true>)
+  fork test, is-equal(label, <mark>)
+    hold
+      back make(some, <mark $\{1|async,unsafe,deprecated,stable,unstable,keep,draft,roam,open,private|\}>)
+  fork test, is-equal(label, <have>)
+    hold
+      back make(some, <have\n  $0>)
+  fork test, is-equal(label, <must>)
+    hold
+      back make(some, <must\n  $0>)
+  fork test, is-equal(label, <down>)
+    hold
+      back make(some, <down\n  $0>)
+  back make none
+
+# the lean spelling of the same constructs: `back` returns, a fork's arms are `hold` / `miss` with no `hook`, and
+# `walk <list>` / `take` iterates
+task lean-snippet-of
+  take label, like text
+  like maybe, like text
+
+  fork test, is-equal(label, <task>)
+    hold
+      back make(some, <task $\{1:name\}\n  take $\{2:arg\}, like $\{3:type\}\n\n  like $\{4:type\}\n\n  back $0>)
+  fork test, is-equal(label, <fork>)
+    hold
+      back make(some, <fork test\n  $1\n  hold\n    $2\n  miss\n    $0>)
+  fork test, is-equal(label, <walk>)
+    hold
+      back make(some, <walk $\{1:items\}\n  take site, name $\{2:item\}\n  $0>)
+  fork test, is-equal(label, <sift>)
+    hold
+      back make(some, <sift $\{1:value\}\n  case $\{2:variant\}\n    $0>)
+  back make none
+
+# phrases offered beside the single words, each a whole construct
+task phrases
+  like list, like phrase
+
+  save out, make list
+  push(out, make(phrase, bind(label, <send back>), bind(insert, <send back, $0>), bind(lean, <longhand>), bind(detail, <return a value>)))
+  push(out, make(phrase, bind(label, <back>), bind(insert, <back $0>), bind(lean, <lean>), bind(detail, <return a value (lean)>)))
+  push(out, make(phrase, bind(label, <mark async>), bind(insert, <mark async>), bind(lean, <both>), bind(detail, <this task is asynchronous>)))
+  push(out, make(phrase, bind(label, <tick>), bind(insert, <tick $\{1:task\}($\{2\})>), bind(lean, <both>), bind(detail, <starts an async task and does not wait for it>)))
+  push(out, make(phrase, bind(label, <halt kink>), bind(insert, <halt kink>), bind(lean, <both>), bind(detail, <pass the callee's exception on>)))
+  # a guarded block is a `fork` with `mark unsafe` as its first line, offered under either word
+  push(out, make(phrase, bind(label, <fork / mark unsafe>), bind(insert, <fork\n  mark unsafe\n  $1\nhalt take\n  take $\{2:error\}\n  $0>), bind(lean, <both>), bind(detail, <a guarded block and its handler>)))
+  push(out, make(phrase, bind(label, <mark unsafe>), bind(insert, <fork\n  mark unsafe\n  $1\nhalt take\n  take $\{2:error\}\n  $0>), bind(lean, <both>), bind(detail, <a guarded block and its handler: a fork marked unsafe>)))
+  push(out, make(phrase, bind(label, <mark private>), bind(insert, <mark private>), bind(lean, <both>), bind(detail, <visible only in this file>)))
+  back out
+
+# ---- RETIRED ----
+
+task is-word-unit
+  take unit, like number
+  like boolean
+  mark private
+
+  fork test, or(and(is-minimum(unit, 65), is-maximum(unit, 90)), and(is-minimum(unit, 97), is-maximum(unit, 122)))
+    hold
+      back true
+  back or(and(is-minimum(unit, 48), is-maximum(unit, 57)), is-equal(unit, 95))
+
+task spells-at
+  take units, like list, like number
+  take at, like number
+  take word, like text
+  like boolean
+  mark private
+
+  save wanted, units-of(word)
+  fork test, or(is-below(at, 0), is-above(add(at, wanted/length), units/length))
+    hold
+      back false
+  save k, 0
+  walk test
+    hook test, is-below(k, wanted/length)
+    hook hold
+      fork test, is-unequal(get(units, add(at, k)), get(wanted, k))
+        hold
+          back false
+      save k, add(k, 1)
+  back true
+
+# a word at a place with a word boundary on both sides
+task is-bounded-at
+  take units, like list, like number
+  take at, like number
+  take word, like text
+  like boolean
+  mark private
+
+  fork test, spells-at(units, at, word)
+    miss
+      back false
+  fork test, is-above(at, 0)
+    hold
+      fork test, is-word-unit(get(units, subtract(at, 1)))
+        hold
+          back false
+  save past, add(at, units-of(word)/length)
+  fork test, is-below(past, units/length)
+    hold
+      back is-equal(is-word-unit(get(units, past)), false)
+  back true
+
+# `/\bwave\b|\bbust\b|send kink|\bauto\b|\bnote (private|async|...)\b/`
+task is-retired
+  take value, like text
+  like boolean
+  mark private
+
+  save units, units-of(value)
+  save notes, split(<private async native unsafe stable unstable deprecated keep draft roam open feature platform>, < >)
+  save at, 0
+  walk test
+    hook test, is-maximum(at, units/length)
+    hook hold
+      fork test, or(or(is-bounded-at(units, at, <wave>), is-bounded-at(units, at, <bust>)), is-bounded-at(units, at, <auto>))
+        hold
+          back true
+      fork test, spells-at(units, at, <send kink>)
+        hold
+          back true
+      fork test, and(spells-at(units, at, <note >), or(is-equal(at, 0), is-equal(is-word-unit(get(units, subtract(at, 1))), false)))
+        hold
+          walk notes
+            take word
+            fork test, is-bounded-at(units, add(at, 5), word)
+              hold
+                back true
+      save at, add(at, 1)
+  back false
+
+task keyword-items
+  take lean, like boolean
+  like list, like completion-item
+
+  save items, make list
+  walk keywords()
+    take label
+    save snippet, make none
+    fork test, lean
+      hold
+        save snippet, lean-snippet-of(label)
+    sift snippet
+      case none
+        save snippet, snippet-of(label)
+      case some
+        save skipped, true
+    # keywords sort last (prefix `3`), after scope symbols and imported names
+    sift snippet
+      case some
+        link body
+        push(items, make(completion-item, bind(label, label), bind(kind, 14), bind(insert-text, body), bind(insert-text-format, 2), bind(sort-text, <3{label}>)))
+      case none
+        push(items, make(completion-item, bind(label, label), bind(kind, 14), bind(sort-text, <3{label}>)))
+  walk phrases()
+    take one
+    fork test, or(and(is-equal(one/lean, <lean>), is-equal(lean, false)), and(is-equal(one/lean, <longhand>), lean))
+      hold
+        turn next
+    save kind, 14
+    fork test, has-dollar(one/insert)
+      hold
+        save kind, 15
+    push(items, make(completion-item, bind(label, one/label), bind(kind, kind), bind(detail, one/detail), bind(insert-text, one/insert), bind(insert-text-format, 2), bind(sort-text, <3{one/label}>)))
+  # a guard against a retired word coming back through an edit to the tables above
+  save kept, make list
+  walk items
+    take item
+    save inserted, <>
+    sift item/insert-text
+      case some
+        link body
+        save inserted, body
+      case none
+        save skipped, true
+    fork test, is-retired(<{item/label} {inserted}>)
+      miss
+        push(kept, item)
+  back kept
+
+task has-dollar
+  take value, like text
+  like boolean
+  mark private
+
+  walk units-of(value)
+    take unit
+    fork test, is-equal(unit, 36)
+      hold
+        back true
+  back false
+
+# ---- the line ----
+
+task is-name-unit
+  take unit, like number
+  like boolean
+  mark private
+
+  fork test, or(and(is-minimum(unit, 65), is-maximum(unit, 90)), and(is-minimum(unit, 97), is-maximum(unit, 122)))
+    hold
+      back true
+  back or(and(is-minimum(unit, 48), is-maximum(unit, 57)), is-equal(unit, 45))
+
+task is-letter
+  take unit, like number
+  like boolean
+  mark private
+
+  back or(and(is-minimum(unit, 65), is-maximum(unit, 90)), and(is-minimum(unit, 97), is-maximum(unit, 122)))
+
+bind slice-from
+  take value, like text
+  take start, like number
+  take stop, like number
+  like text
+  case node
+    text <$value.slice($start, $stop)>
+
+task skip-space
+  take units, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  save k, at
+  walk test
+    hook test, and(is-below(k, units/length), whitespace-code(get(units, k)))
+    hook hold
+      save k, add(k, 1)
+  back k
+
+# `/^\s*(?:load|bear)\s+(@\S*)$/`: the package path being written after a `load`, or none
+task load-path-at
+  take line, like text
+  like maybe, like text
+  mark private
+
+  save units, units-of(line)
+  save at, skip-space(units, 0)
+  fork test, or(spells-at(units, at, <load>), spells-at(units, at, <bear>))
+    miss
+      back make none
+  save start, skip-space(units, add(at, 4))
+  fork test, is-equal(start, add(at, 4))
+    hold
+      back make none
+  fork test, and(is-below(start, units/length), is-equal(get(units, start), 64))
+    miss
+      back make none
+  save k, start
+  walk test
+    hook test, is-below(k, units/length)
+    hook hold
+      fork test, whitespace-code(get(units, k))
+        hold
+          back make none
+      save k, add(k, 1)
+  save path, slice-from(line, start, units/length)
+  back make(some, path)
+
+# `/^\s*find\s+[A-Za-z0-9-]*$/`
+task is-find-line
+  take line, like text
+  like boolean
+  mark private
+
+  save units, units-of(line)
+  save at, skip-space(units, 0)
+  fork test, spells-at(units, at, <find>)
+    miss
+      back false
+  save start, skip-space(units, add(at, 4))
+  fork test, is-equal(start, add(at, 4))
+    hold
+      back false
+  save k, start
+  walk test
+    hook test, is-below(k, units/length)
+    hook hold
+      fork test, is-name-unit(get(units, k))
+        miss
+          back false
+      save k, add(k, 1)
+  back true
+
+# the `load @scope/pkg/...` whose block contains the given line (a `find` is indented under its `load`), or none:
+# `/^(?:load|bear)\s+(\S+)/` on a line above, a non-empty unindented line ending the block
+task enclosing-load
+  take body, like text
+  take number, like number
+  like maybe, like text
+
+  save lines, split(body, <\n>)
+  save i, subtract(number, 1)
+  walk test
+    hook test, is-minimum(i, 0)
+    hook hold
+      save line, <>
+      fork test, is-below(i, lines/length)
+        hold
+          save line, get(lines, i)
+      save units, units-of(line)
+      fork test, or(spells-at(units, 0, <load>), spells-at(units, 0, <bear>))
+        hold
+          save start, skip-space(units, 4)
+          fork test, and(is-above(start, 4), is-below(start, units/length))
+            hold
+              save k, start
+              walk test
+                hook test, and(is-below(k, units/length), is-equal(whitespace-code(get(units, k)), false))
+                hook hold
+                  save k, add(k, 1)
+              save path, slice-from(line, start, k)
+              back make(some, path)
+      # a non-empty column-0 line that is not the `load` ends the block
+      fork test, and(is-above(units/length, 0), is-equal(whitespace-code(get(units, 0)), false))
+        hold
+          back make none
+      save i, subtract(i, 1)
+  back make none
+
+# the receiver name in a `<receiver>/<partial>` member access ending at the cursor, or none:
+# `/([A-Za-z][A-Za-z0-9-]*)\/[A-Za-z0-9-]*$/`
+task member-receiver
+  take line, like text
+  like maybe, like text
+
+  save units, units-of(line)
+  save k, units/length
+  walk test
+    hook test, and(is-above(k, 0), is-name-unit(get(units, subtract(k, 1))))
+    hook hold
+      save k, subtract(k, 1)
+  fork test, and(is-above(k, 0), is-equal(get(units, subtract(k, 1)), 47))
+    miss
+      back make none
+  save slash, subtract(k, 1)
+  save start, slash
+  walk test
+    hook test, and(is-above(start, 0), is-name-unit(get(units, subtract(start, 1))))
+    hook hold
+      save start, subtract(start, 1)
+  # the match starts at the first letter of the run before the slash
+  walk test
+    hook test, and(is-below(start, slash), is-equal(is-letter(get(units, start)), false))
+    hook hold
+      save start, add(start, 1)
+  fork test, is-below(start, slash)
+    miss
+      back make none
+  save receiver, slice-from(line, start, slash)
+  back make(some, receiver)
+
+# the leading type name of a detail (`point` from `point`, `list` from `list<number>`): `/^[A-Za-z][A-Za-z0-9-]*/`
+task leading-name
+  take detail, like text
+  like maybe, like text
+
+  save units, units-of(detail)
+  fork test, and(is-above(units/length, 0), is-letter(get(units, 0)))
+    miss
+      back make none
+  save k, 1
+  walk test
+    hook test, and(is-below(k, units/length), is-name-unit(get(units, k)))
+    hook hold
+      save k, add(k, 1)
+  save name, slice-from(detail, 0, k)
+  back make(some, name)
+
+# ---- completion ----
+
+task completion-kind
+  take kind, like text
+  like number
+  mark private
+
+  fork test, is-equal(kind, <function>)
+    hold
+      back 3
+  fork test, is-equal(kind, <type>)
+    hold
+      back 7
+  fork test, is-equal(kind, <variant>)
+    hold
+      back 20
+  fork test, is-equal(kind, <trait>)
+    hold
+      back 8
+  back 6
+
+task export-kind
+  take kind, like text
+  like number
+  mark private
+
+  fork test, or(is-equal(kind, <task>), is-equal(kind, <bind>))
+    hold
+      back 3
+  fork test, is-equal(kind, <form>)
+    hold
+      back 22
+  fork test, is-equal(kind, <mask>)
+    hold
+      back 8
+  back 9
+
+task answer
+  take items, like list, like completion-item
+  like completion-list
+  mark private
+
+  back make(completion-list, bind(is-incomplete, false), bind(items, items))
+
+task complete
+  take server, like language-server
+  take params, like dynamic
+  take outbox, like list, like dynamic
+  like completion-list
+
+  save found, settled(server, params, outbox)
+  save position, position-of(params)
+  sift found
+    case some
+      link doc
+      back complete-document(server, doc, position)
+    case none
+      back answer(make list)
+
+bind module-completions
+  take module, like dynamic
+  take root, like text
+  take prefix, like text
+  like list, like dynamic
+  case node
+    text <$module.moduleCompletions($root, $prefix)>
+
+task complete-document
+  take server, like language-server
+  take doc, like document
+  take position, like lsp-position
+  like completion-list
+  mark private
+
+  save lean, false
+  save inner, position
+  save scope, make list
+  sift doc/view
+    case some
+      link view
+      save lean, view/lean
+      save inner, inner-position(view/map, position)
+      save scope, scope-at(view/index, inner)
+    case none
+      save skipped, true
+  save lines, split(doc/text, <\n>)
+  save line, <>
+  fork test, and(is-minimum(position/line, 0), is-below(position/line, lines/length))
+    hold
+      save line, cut-units(get(lines, position/line), position/character)
+
+  # import-path completion: `load @scope/pkg/...` offers the modules available under that prefix
+  sift load-path-at(line)
+    case some
+      link prefix
+      fork test, is-unequal(doc/path, <>)
+        hold
+          save root, resolving-module/findProjectRoot(doc/path)
+          save items, make list
+          fork test, and(is-given(root), is-unequal(root, <>))
+            hold
+              walk module-completions(resolving-module, root, prefix)
+                take found
+                save kind, 9
+                fork test, module-is-folder(found)
+                  hold
+                    save kind, 19
+                push(items, make(completion-item, bind(label, module-name(found)), bind(kind, kind)))
+          fork test, is-above(items/length, 0)
+            hold
+              back answer(items)
+    case none
+      save skipped, true
+
+  # export completion: `find <partial>` inside a `load` block offers that module's top-level definitions
+  fork test, is-find-line(line)
+    hold
+      save items, make list
+      sift enclosing-load(doc/text, position/line)
+        case some
+          link import-path
+          sift resolve-module(server, doc, import-path)
+            case some
+              link source
+              walk scan-defs(source-text-of(source))
+                take def
+                push(items, make(completion-item, bind(label, def/name), bind(kind, export-kind(def/kind)), bind(detail, def/kind)))
+            case none
+              save skipped, true
+        case none
+          save skipped, true
+      fork test, is-above(items/length, 0)
+        hold
+          back answer(items)
+
+  # member completion: after `<receiver>/`, the receiver's type's fields and methods
+  sift doc/view
+    case some
+      link view
+      sift member-receiver(line)
+        case some
+          link receiver
+          save detail, <>
+          walk scope
+            take def
+            fork test, is-equal(def/name, receiver)
+              hold
+                save detail, def/detail
+                halt
+          sift leading-name(detail)
+            case some
+              link type-name
+              save items, make list
+              fork test, view/summary/fields/has(type-name)
+                hold
+                  walk view/summary/fields/get(type-name)
+                    take field
+                    push(items, make(completion-item, bind(label, field/name), bind(kind, 5), bind(detail, field/type), bind(sort-text, <0{field/name}>)))
+              fork test, view/summary/methods/has(type-name)
+                hold
+                  walk view/summary/methods/get(type-name)
+                    take method
+                    push(items, make(completion-item, bind(label, method/name), bind(kind, 2), bind(detail, method/detail), bind(sort-text, <1{method/name}>)))
+              fork test, is-above(items/length, 0)
+                hold
+                  back answer(items)
+            case none
+              save skipped, true
+        case none
+          save skipped, true
+    case none
+      save skipped, true
+
+  # argument-type ranking: inside a call, the type the current argument expects. A scope value of that exact type
+  # ranks to the very top
+  save expected, <>
+  sift doc/view
+    case some
+      link view
+      sift call-at(view/program, inner)
+        case some
+          link site
+          fork test, view/index/signatures/has(site/name)
+            hold
+              save sig, view/index/signatures/get(site/name)
+              fork test, and(is-minimum(site/active-param, 0), is-below(site/active-param, sig/params/length))
+                hold
+                  save expected, get(sig/params, site/active-param)/type
+        case none
+          save skipped, true
+    case none
+      save skipped, true
+
+  # in-scope symbols first (a type match floats up), then imported callables (from the closure summary, which the
+  # document-scoped index does not carry), then keyword snippets
+  save seen, make hash
+  save items, make list
+  walk scope
+    take def
+    save label, written-name(def/name)
+    fork test, seen/has(label)
+      hold
+        turn next
+    seen/set(label, true)
+    save sort, <1{label}>
+    fork test, and(is-unequal(expected, <>), is-equal(def/detail, expected))
+      hold
+        save sort, <0{label}>
+    push(items, make(completion-item, bind(label, label), bind(kind, completion-kind(def/kind)), bind(detail, def/detail), bind(sort-text, sort)))
+  sift doc/view
+    case some
+      link view
+      walk view/summary/top-level
+        take entry
+        save label, written-name(entry/name)
+        fork test, seen/has(label)
+          hold
+            turn next
+        seen/set(label, true)
+        push(items, make(completion-item, bind(label, label), bind(kind, entry/kind), bind(detail, entry/detail), bind(sort-text, <2{label}>)))
+    case none
+      save skipped, true
+  walk keyword-items(lean)
+    take item
+    push(items, item)
+  back answer(items)
+
+task completion-request
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  take outbox, like list, like dynamic
+  like dynamic
+
+  back respond(message, complete(server, params, outbox))

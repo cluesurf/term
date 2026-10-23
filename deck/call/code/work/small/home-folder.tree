@@ -1,0 +1,420 @@
+# The ONE place the toolchain's folder and environment names are written, and the move of an old folder to the new
+# one. Ported from call/code/home.ts (term-cli-in-term-0060), whole: work/home.tree was an earlier conversion that
+# never moved a folder, linked the old name or settled the front.
+#
+# Everything Term keeps on disk lives under `.base/@term/code/`: a project's build cache, its memory, its boot markers
+# and logs, and the user-level installs, auth token, link registry and shared caches under `~`.
+#
+# THE RENAMES, AND HOW EACH IS SURVIVED:
+#
+#   .base/term/              until 2026-08-30. Still read, through `kept-at`, for what cannot be rebuilt
+#   .base/@cluesurf/term/    until 2026-10-05. MOVED, whole, the first time this version touches it (`settle`), and a
+#                            link left in its place, so a shell profile's PATH line, an absolute `bin/term` link and an
+#                            older `term` (2.6.x writes the old path) all keep reaching the same files
+#   .base/@term/code/        now
+#
+# A MOVE THAT FAILS IS NOT FATAL. Windows refuses to rename a folder another process holds a file in. Then the old
+# folder is used, whole, for the rest of that run, and the next run tries again: nothing is ever split across the two.
+#
+# ONCE PER PROCESS. `settle` and `settle-front` remember the folders they answered for, in two hashes this module
+# holds for the life of the process, exactly as the TypeScript held two module-level collections.
+#
+# A variadic path (`projectHome(root, ...parts)`) is a list of parts here, joined one at a time, which is what one
+# `join` of them all answers.
+
+load @term/call/home-ignore
+  find renamed-ignore
+
+load @term/base/environment
+  find variable
+  find has-variable
+
+load @term/base/maybe
+  find maybe
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <node:os>, name node-os
+  load <node:process>, name node-process
+
+form folder-ask
+  link recursive, like boolean
+
+# the folders already settled in this process, each with the home it answered
+host settled, make hash
+
+# the homes whose front has been settled in this process
+host front-settled, make hash
+
+# the directory under `.base`, the toolchain package's own name
+task home-folder
+  like text
+
+  back node-path/join(<@term>, <code>)
+
+# the same, as a path inside a `.base` written with forward slashes, for matching against a path or a command line
+task home-posix
+  like text
+
+  back <.base/@term/code>
+
+# the folder it was until 2026-10-05, moved by `settle` and left as a link
+task previous-home
+  like text
+
+  back node-path/join(<@cluesurf>, <term>)
+
+# the folder before that, until 2026-08-30, still read for data that cannot be rebuilt
+task legacy-home
+  like text
+
+  back <term>
+
+# Whether a path holds either name the folder has had, for a reader looking for a marker in a command line or a file
+# list (a boot server an older `term` started runs from the old one). Both separators are read as one: the original's
+# pattern took `/` or `\` at each of its separator places, and a backslash is nowhere else in it
+task names-any-home
+  take value, like text
+  like boolean
+
+  save forward, value/replace-all(<<\>>, </>)
+  fork test, forward/includes(</.base/@term/code/>)
+    hold
+      back true
+  back forward/includes(</.base/@cluesurf/term/>)
+
+# `base` with every part joined on, as one `join` of them all
+task join-all
+  take base, like text
+  take parts, like list, like text
+  like text
+  mark private
+
+  # one `join` per part, the first with the base: it is on every command's start (user-home, project-home)
+  fork test, is-equal(parts/length, 0)
+    hold
+      back node-path/join(base)
+  save at, base
+  walk parts
+    take part
+    save at, node-path/join(at, part)
+  back at
+
+# `<root>/.base/@term/code/<...parts>`
+task project-home
+  take root, like text
+  take parts, like list, like text
+  like text
+
+  back join-all(settle(node-path/join(root, <.base>), root), parts)
+
+# the same path as it was before 2026-08-30, for a fallback read
+task legacy-project-home
+  take root, like text
+  take parts, like list, like text
+  like text
+
+  back join-all(node-path/join(root, <.base>, legacy-home()), parts)
+
+# `~/.base/@term/code/<...parts>`: the installs, the auth token, the link registry and the shared caches
+task user-home
+  take parts, like list, like text
+  like text
+
+  save home, settle(node-path/join(node-os/homedir(), <.base>), <>)
+  settle-front(home)
+  back join-all(home, parts)
+
+# THE FRONT'S FOLDER, `call/`: the one thing on PATH, holding `term` (`term.cmd` on Windows), a link to the version
+# that dispatches. It was `bin/` until 2026-10-05, renamed by `settle-front` the way `settle` renames the home
+task front
+  like text
+
+  back <call>
+
+# the front's folder before 2026-10-05
+task previous-front
+  like text
+
+  back <bin>
+
+# The front's folder under `home`: `call/`, unless only `bin/` is there, which is the case on Windows while the
+# `term.cmd` running the command holds it open and refuses the rename
+task front-dir
+  take home, like text
+  like text
+
+  save call-folder, node-path/join(home, front())
+  save bin-folder, node-path/join(home, previous-front())
+  fork test, and(not(node-file/exists-sync(call-folder)), is-folder(bin-folder))
+    hold
+      back bin-folder
+  back call-folder
+
+# the same under the user's own home, which the original's default argument was. Its own name: two tasks named
+# `front-dir` apart only by arity were both left out of the emitted module
+task user-front-dir
+  like text
+
+  back front-dir(user-home(make list))
+
+# `bin/` to `call/`, once, under one home: a rename and a link back, or nothing at all when the rename is refused
+task settle-front
+  take home, like text
+  like void
+
+  fork test, not(front-settled/has(home))
+    hold
+      save front-settled/{home}, true
+      save bin-folder, node-path/join(home, previous-front())
+      save call-folder, node-path/join(home, front())
+      fork test, and(is-folder(bin-folder), not(node-file/exists-sync(call-folder)))
+        hold
+          fork test, try-rename(bin-folder, call-folder)
+            hold
+              link-back(bin-folder, call-folder)
+
+# the same, before 2026-08-30
+task legacy-user-home
+  take parts, like list, like text
+  like text
+
+  back join-all(node-path/join(node-os/homedir(), <.base>, legacy-home()), parts)
+
+# The home under `base` (a `.base` folder), after moving `@cluesurf/term` to `@term/code` if this is the first time a
+# version that knows the new name has looked. `project` is the project root when `base` is a project's, whose
+# `.gitignore` is brought along, or the empty text. Asked once per folder per process.
+task settle
+  take base, like text
+  take project, like text
+  like text
+
+  fork test, settled/has(base)
+    hold
+      back settled/get(base)
+  save current, node-path/join(base, home-folder())
+  save previous, node-path/join(base, previous-home())
+  save home, current
+  fork test, is-folder(previous)
+    hold
+      # the usual case, nothing new yet: one rename. Both there means something wrote the new folder before this
+      # ran, and the old one is merged into it entry by entry
+      save moved, false
+      fork test, node-file/exists-sync(current)
+        hold
+          save moved, merge-home(previous, current)
+        miss
+          save moved, move-home(previous, current)
+      fork test, or(moved, node-file/exists-sync(current))
+        hold
+          save home, current
+        miss
+          save home, previous
+      # whenever the new folder is the one in use, a merge that left something behind included: the memory may be
+      # in it already
+      fork test, and(is-equal(home, current), is-unequal(project, <>))
+        hold
+          rename-ignore-rules(node-path/join(project, <.gitignore>))
+  save settled/{base}, home
+  back home
+
+# Every entry of `from` that `to` lacks is renamed into it, folders merged the same way one level down at a time. An
+# entry both hold keeps `to`'s. When `from` is left empty it is replaced by the link, and the answer is true
+task merge-home
+  take from, like text
+  take to, like text
+  like boolean
+  mark private
+
+  fork test, not(merge-into(from, to))
+    hold
+      back false
+  fork test, not(try-remove-folder(from))
+    hold
+      back false
+  back link-back(from, to)
+
+# true when `from` ended empty
+task merge-into
+  take from, like text
+  take to, like text
+  like boolean
+  mark private
+
+  save empty, true
+  walk node-file/readdir-sync(from)
+    take name
+    save source, node-path/join(from, name)
+    save target, node-path/join(to, name)
+    fork test, not(node-file/exists-sync(target))
+      hold
+        fork test, not(try-rename(source, target))
+          hold
+            save empty, false
+        turn next
+    save merged, false
+    fork test, and(is-folder(source), and(is-folder(target), merge-into(source, target)))
+      hold
+        save merged, try-remove-folder(source)
+    fork test, not(merged)
+      hold
+        save empty, false
+  back empty
+
+# A real folder, not the link a move leaves behind
+task is-folder
+  take file, like text
+  like boolean
+  mark private
+
+  fork
+    mark unsafe
+    save stat, node-file/lstat-sync(file)
+    back stat/is-directory()
+  halt take
+    take error
+    back false
+
+# one rename, answering whether it was made
+task try-rename
+  take from, like text
+  take to, like text
+  like boolean
+  mark private
+
+  fork
+    mark unsafe
+    node-file/rename-sync(from, to)
+    back true
+  halt take
+    take error
+    back false
+
+# one empty folder removed, answering whether it was
+task try-remove-folder
+  take folder, like text
+  like boolean
+  mark private
+
+  fork
+    mark unsafe
+    node-file/rmdir-sync(folder)
+    back true
+  halt take
+    take error
+    back false
+
+# One rename, which is atomic on one filesystem, then a link at the old path. A rename another process blocks
+# (EPERM, EBUSY on Windows) answers false and moves nothing
+task move-home
+  take from, like text
+  take to, like text
+  like boolean
+  mark private
+
+  fork test, not(try-move(from, to))
+    hold
+      back false
+  back link-back(from, to)
+
+task try-move
+  take from, like text
+  take to, like text
+  like boolean
+  mark private
+
+  fork
+    mark unsafe
+    node-file/mkdir-sync(node-path/dirname(to), make(folder-ask, bind(recursive, true)))
+    node-file/rename-sync(from, to)
+    back true
+  halt take
+    take error
+    back false
+
+# the link at the old name, to the new folder. A link that cannot be made (a Windows account that may not make one) is
+# skipped: the move stands, and only an older `term` loses its way to the new folder
+task link-back
+  take from, like text
+  take to, like text
+  like boolean
+  mark private
+
+  fork
+    mark unsafe
+    # a junction on Windows needs no privilege and takes an absolute target; elsewhere a relative link survives the
+    # home folder itself being moved
+    fork test, is-equal(node-process/platform, <win32>)
+      hold
+        node-file/symlink-sync(to, from, <junction>)
+      miss
+        node-file/symlink-sync(node-path/relative(node-path/dirname(from), to), from)
+    back true
+  halt take
+    take error
+    back true
+
+# The rules `term wake` writes, renamed for the moved folder: only the block `term wake` wrote, whole, and nothing else
+# in the file. Which lines, and when, is call/code/home-ignore.tree
+task rename-ignore-rules
+  take file, like text
+  like void
+
+  save text, read-or-nothing(file)
+  sift text
+    case some
+      link body
+      save renamed, renamed-ignore(body)
+      fork test, is-unequal(renamed, <>)
+        hold
+          node-file/write-file-sync(file, renamed)
+    case none
+      save nothing, 0
+
+# a file's text, or nothing when it cannot be read
+task read-or-nothing
+  take file, like text
+  like maybe, like text
+  mark private
+
+  fork
+    mark unsafe
+    save body, node-file/read-file-sync(file, <utf8>)
+    back make(some, body)
+  halt take
+    take error
+    back make none
+
+# The path to use for something that CANNOT BE REBUILT: a remembered fact, an auth token, a signing key, the link
+# registry. If the new location does not exist yet and the old one does, the old one is used, whole.
+#
+# A cache does NOT go through this. It is regenerated by the next build
+task kept-at
+  take current, like text
+  take legacy, like text
+  like text
+
+  fork test, and(not(node-file/exists-sync(current)), node-file/exists-sync(legacy))
+    hold
+      back legacy
+  back current
+
+# The environment variables the toolchain reads, `TERM_` and then the `SEED_` spelling a shell profile may still set,
+# or nothing when neither is set. Never bare `TERM`, which is the terminal type every POSIX shell already sets.
+task read-env
+  take name, like text
+  like maybe, like text
+
+  save term-name, <TERM_{name}>
+  fork test, has-variable(term-name)
+    hold
+      # a call inside a positional `make` misparses (self-host traps T013), so the value is saved first
+      save term-value, variable(term-name)
+      back make(some, term-value)
+  save seed-name, <SEED_{name}>
+  fork test, has-variable(seed-name)
+    hold
+      save seed-value, variable(seed-name)
+      back make(some, seed-value)
+  back make none

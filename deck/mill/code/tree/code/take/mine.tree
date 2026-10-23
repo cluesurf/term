@@ -69,9 +69,10 @@ mine take
       mine term, term flex
         mine term
           site flex
-    # a CLI parameter's short flag (`take title / code t` makes `--title` also `-t`). A parameter that collects the
-    # remaining positionals says so by its type, `like list`, and needs no marker of its own (`many` until
-    # 2026-10-05; see mint-bridge.ts `isListType`)
+    # a CLI parameter's short flag (`take title / code t` makes `--title` also `-t`), the ONE short flag; long
+    # aliases are `name` lines (below). A parameter that collects the remaining positionals is a `slot` under the
+    # hook, `slot paths, like list, like text` (decision term/003 part 1, hook/mine.tree `hook-slot`); a take is
+    # only ever a flag (`many` until 2026-10-05; see mint-bridge.ts `isListType`)
     mine maybe
       mine term, term code
         mine term
@@ -93,6 +94,17 @@ mine take
         # a CLI parameter's default is written `bind <value>` under it
         mine form, like bind
           site bind
+        # a CLI flag's LONG ALIASES (decision term/003 part 2): `take ride, name watch` is the one-alias spelling,
+        # read by the leading `maybe` above, and each `name <word>` line under the take adds one more, in source
+        # order, into the same `alias` site. `code <letter>` stays the ONE short flag: a one-letter alias is a
+        # `code`, a longer one a `name`. A positional (`slot` under a hook, hook/mine.tree `hook-slot`) has neither.
+        mine form, like name
+          site alias
+        # the short flag written after the type or an alias (`take hint / name help / like boolean / code h`, the
+        # order decision term/003 writes it in): the leading `maybe` above has gone past by then. Same site
+        mine term, term code
+          mine term
+            site code
         mine form, like take
           site take
         mine form, like take-value

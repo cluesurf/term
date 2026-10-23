@@ -1,0 +1,310 @@
+# The unit build worker (node, `worker_threads`), for the parallel separate build (unit-pool.tree). Ported from
+# call/code/separate-worker.ts, term-cli-in-term-0026.
+#
+# Each job is one module compiled as its own entry through `compileSeparate`, which is exactly the answer every other
+# entry reaching that module looks up: a one-file unit is checked as itself whichever entry reached it. The driver sends
+# a module only once every unit it depends on is built, so its dependencies are answered from the cache the pool shares
+# on disk, and its own answer is there for the modules after it. A project file's answer travels back whole, so the
+# parent writes it without compiling it again; a module from outside the project is built for the cache alone.
+#
+# Loading the module starts the listener (decision 003). Outside a worker there is no parent port and it does nothing.
+# Docked: compile/separate.ts (compileSeparate), make.ts (buildable, buildSession, entryShim, isWholeFile, unitSlug),
+# cache-store.ts (projectCache), deck-of.ts, role-of.ts and node's worker_threads.
+
+dock load
+  load <node:fs>, name node-file
+  load <node:worker_threads>, name worker-threads
+  load <global:Date>, name host-date
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/cache-store>, name cache-store
+  load <@term/call/code/deck-of>, name deck-module
+  load <@term/call/code/role-of>, name role-module
+
+# What one worker holds in memory: milled modules, and unit answers. Enough for @term/bind's whole closure, about 3,700
+# modules: at 512 every job read the standard library's mills back from disk, and eight workers spent 2,500 s of CPU on
+# what one thread built in 400 (WORKER_MILLS, WORKER_UNITS)
+host worker-mills, 4096
+host worker-units, 8000
+
+# the project this worker is ready for, its session, cache and readers, and the modules whose code and the units whose
+# roll it has sent the parent already
+form unit-worker-held
+  mark shared
+  link root, like dynamic
+  link session, like dynamic
+  link cache, like dynamic
+  link deck-of, like dynamic
+  link role-of, like dynamic
+  link lean-of, like dynamic
+  link sent, like dynamic
+  link sent-rolls, like dynamic
+
+# `undefined`
+bind unit-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind unit-new-set
+  like dynamic
+  case node
+    text <new Set()>
+
+host held, make(unit-worker-held, bind(root, unit-nothing()), bind(session, unit-nothing()), bind(cache, unit-nothing()), bind(deck-of, unit-nothing()), bind(role-of, unit-nothing()), bind(lean-of, unit-nothing()), bind(sent, unit-new-set()), bind(sent-rolls, unit-new-set()))
+
+bind unit-is-root
+  take held, like dynamic
+  take root, like dynamic
+  like boolean
+  case node
+    text <($held.root === $root)>
+
+# the compiler fingerprint per cache kind, handed down by the parent: a bundle in the temp directory cannot find the
+# package root to work it out (file-worker.tree)
+bind unit-version-of
+  take data, like dynamic
+  like dynamic
+  case node
+    text <($data)?.version>
+
+task make-ready
+  take root, like dynamic
+  like void
+  mark private
+
+  fork test, unit-is-root(held, root)
+    hold
+      back void
+  save held/root, root
+  save held/sent, unit-new-set()
+  save held/sent-rolls, unit-new-set()
+  save held/session, make-module/build-session(root)
+  # a few thousand milled modules in memory, not the default: every worker of the pool holds its own
+  save held/cache, cache-store/project-cache(root, unit-version-of(worker-threads/worker-data), worker-mills)
+  save held/deck-of, deck-module/project-deck-of()
+  save held/role-of, role-module/project-role-of(root)
+  save held/lean-of, role-module/project-lean-of(root)
+
+# ---- a job, read as the original read it ----
+
+bind unit-is-job
+  take job, like dynamic
+  like boolean
+  case node
+    text <($job.type === "job")>
+
+bind unit-member
+  take value, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$value[$key]>
+
+bind unit-is-true
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# the unit answers this worker has read, bounded like its mills: past the cap they are read from the cache again
+bind unit-bound-answers
+  take session, like dynamic
+  take cap, like number
+  like void
+  case node
+    text <(($session.units.size \> $cap) ? $session.units.clear() : undefined)>
+
+# a function value called on one value
+bind unit-apply
+  take function, like dynamic
+  take value, like dynamic
+  like dynamic
+  case node
+    text <$function($value)>
+
+bind unit-has-faults
+  take unit, like dynamic
+  like boolean
+  case node
+    text <("faults" in $unit)>
+
+# what compileSeparate is handed: the session's resolver, memo, answers and walk, the cache, the readers, and the name
+# each module's code is written under
+bind unit-separate-options
+  take held, like dynamic
+  take modules, like dynamic
+  like dynamic
+  case node
+    text <(\{ resolve: $held.session.resolve, cache: $held.cache, modules: $modules, roleOf: $held.roleOf, leanOf: $held.leanOf, deckOf: $held.deckOf, parsed: $held.session.parsed, units: $held.session.units, walked: $held.session.walked \})>
+
+bind unit-input
+  take file, like dynamic
+  take text, like dynamic
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+bind unit-built-count
+  take result, like dynamic
+  like number
+  case node
+    text <($result.ok ? $result.built.length : 0)>
+
+# each module's code once per worker: an entry's answer carries every module of its closure, and on @term/bind 3,091
+# answers each holding the standard library's 600 modules was more than the parent could hold
+bind unit-fresh-modules
+  take result, like dynamic
+  take sent, like dynamic
+  like dynamic
+  case node
+    text <new Map([...$result.modules].filter(([file]) =\> !$sent.has(file)))>
+
+bind unit-mark-modules
+  take fresh, like dynamic
+  take sent, like dynamic
+  like void
+  case node
+    text <$fresh.forEach((_, file) =\> $sent.add(file))>
+
+# and each unit's roll once, as each module's code is
+bind unit-fresh-rolls
+  take result, like dynamic
+  take sent, like dynamic
+  like dynamic
+  case node
+    text <$result.rolls.filter(([label]) =\> !$sent.has(label))>
+
+bind unit-mark-rolls
+  take rolls, like dynamic
+  take sent, like dynamic
+  like void
+  case node
+    text <$rolls.forEach(([label]) =\> $sent.add(label))>
+
+# the entry's answer as the parent takes it: the fresh modules and rolls, no exports, and the entry's shim as the text
+# it is, in place of every public name of its closure it is made from
+bind unit-entry-answer
+  take result, like dynamic
+  take fresh, like dynamic
+  take rolls, like dynamic
+  take shim, like dynamic
+  like dynamic
+  case node
+    text <(\{ ...$result, modules: $fresh, rolls: $rolls, exports: [], shim: $shim \})>
+
+bind unit-error-stack
+  take error, like dynamic
+  like text
+  case node
+    text <String(($error)?.stack ?? $error)>
+
+# ---- the replies ----
+
+form spent-time
+  link building, like number
+  link rolling, like number
+
+form whole-reply
+  link file, like dynamic
+
+form unit-reply
+  link file, like dynamic
+  link result, like dynamic
+  link built, like number
+  link spent, like spent-time
+
+form unit-fault
+  link file, like dynamic
+  link error, like text
+
+task answer-unit
+  take job, like dynamic
+  like void
+  mark private
+
+  fork test, not(unit-is-job(job))
+    hold
+      back void
+  save port, worker-threads/parent-port
+  save root, unit-member(job, <root>)
+  save file, unit-member(job, <file>)
+  save entry, unit-is-true(unit-member(job, <entry>))
+  fork
+    mark unsafe
+    make-ready(root)
+    unit-bound-answers(held/session, worker-units)
+    save text, node-file/read-file-sync(file, <utf8>)
+    # a project file is read as compileProjectSeparate reads it: a file of tests rewritten, a grammar generated, and a
+    # file that is not a program left to the parent, which compiles it whole
+    fork test, entry
+      hold
+        save unit, make-module/buildable(file, text, unit-apply(held/role-of, file))
+        fork test, unit-has-faults(unit)
+          hold
+            port/post-message(make(whole-reply, bind(file, file)))
+            back void
+        save unit-text, unit-member(unit, <text>)
+        fork test, make-module/is-whole-file(file, unit-text, unit-apply(held/role-of, file))
+          hold
+            port/post-message(make(whole-reply, bind(file, file)))
+            back void
+        save text, unit-text
+    # what this job spent building units and computing the roll, which the pool's line reports summed
+    save built-at, host-date/now()
+    save modules
+      task
+        take module, like dynamic
+        like text
+        back <./{make-module/unit-slug(root, module, held/deck-of)}>
+    save result, separate-module/compile-separate(unit-input(file, text), unit-separate-options(held, modules))
+    save building, subtract(host-date/now(), built-at)
+    save rolled-at, host-date/now()
+    # no roll here: the project's roll is assembled from each unit's own roll and reach, which came back with the answer
+    save spent, make(spent-time, bind(building, building), bind(rolling, subtract(host-date/now(), rolled-at)))
+    fork test, and(entry, unit-is-true(unit-member(result, <ok>)))
+      hold
+        save fresh, unit-fresh-modules(result, held/sent)
+        unit-mark-modules(fresh, held/sent)
+        save rolls, unit-fresh-rolls(result, held/sent-rolls)
+        unit-mark-rolls(rolls, held/sent-rolls)
+        save slug
+          task
+            take module, like dynamic
+            like text
+            back make-module/unit-slug(root, module, held/deck-of)
+        save shim, make-module/entry-shim(root, file, unit-member(result, <exports>), slug)
+        port/post-message(make(unit-reply, bind(file, file), bind(result, unit-entry-answer(result, fresh, rolls, shim)), bind(built, unit-member(unit-member(result, <built>), <length>)), bind(spent, spent)))
+        back void
+    save answer, unit-nothing()
+    fork test, entry
+      hold
+        save answer, result
+    port/post-message(make(unit-reply, bind(file, file), bind(result, answer), bind(built, unit-built-count(result)), bind(spent, spent)))
+  halt take
+    take error
+    port/post-message(make(unit-fault, bind(file, file), bind(error, unit-error-stack(error))))
+
+bind unit-has-port
+  take port, like dynamic
+  like boolean
+  case node
+    text <($port != null)>
+
+task listen-for-units
+  like boolean
+  mark private
+
+  save port, worker-threads/parent-port
+  fork test, not(unit-has-port(port))
+    hold
+      back false
+  port/on
+    <message>
+    task
+      take job, like dynamic
+      like void
+      answer-unit(job)
+  back true
+
+host listening, listen-for-units()

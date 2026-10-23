@@ -1,0 +1,259 @@
+# The cask's page: compiled in the `webview` env so every native goes over the bridge, bundled by esbuild, started by
+# its entry line, and written beside an index.html. Part of the port of deck/call/code/cask.ts (cli-in-term-0032): its
+# `buildPage` and the esbuild plugin `stubMissingPackages`.
+
+load @term/base/list
+  find list
+  find join
+
+load @term/call/cask-plan
+  find page-html
+
+load ./host-value
+  find nothing
+  find is-truthy
+  find json-text
+  find refuse
+  find raise-error
+
+load ./toolchain
+  find read-runtime
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <@term/make/code/compile/compile>, name compile-module
+  load <@term/make/code/compile/native>, name native-module
+  load <@term/call/code/make>, name make-module
+
+# what `buildPage` is asked: the app's root, the page entry, the line of TypeScript that calls what the page exports,
+# the directory the page lands in, its title, and where the intermediate TypeScript goes
+form page-ask
+  link root, like text
+  link page, like text
+  link entry, like text
+  link into, like text
+  link title, like text
+  link work, like text
+
+form page-built
+  link bytes, like number
+
+form compile-source
+  link file, like text
+  link text, like text
+
+form compile-options
+  link resolve, like dynamic
+  link env, like text
+
+form folder-options
+  link recursive, like boolean
+
+form remove-options
+  link recursive, like boolean
+  link force, like boolean
+
+form bundle-options
+  link entry-points, like list, like text
+  link bundle, like boolean
+  link format, like text
+  link platform, like text
+  link write, like boolean
+  link plugins, like list, like dynamic
+
+form resolve-filter
+  link filter, like dynamic
+
+form resolve-ask
+  link kind, like dynamic
+  link resolve-dir, like dynamic
+  link plugin-data, like dynamic
+
+form stub-data
+  link stubbing, like boolean
+
+form resolved-path
+  link path, like dynamic
+
+form stubbed-path
+  link path, like dynamic
+  link namespace, like text
+
+form loaded-stub
+  link contents, like text
+  link loader, like text
+
+form esbuild-plugin
+  link name, like text
+  link setup
+    like task
+      take api, like dynamic
+      like void
+
+# esbuild, loaded when a page is built and not before, so `term make` without a target never pays for it
+bind load-esbuild
+  like dynamic
+  case node
+    text <(await import("esbuild"))>
+
+# the one package the stub stands in for
+bind floating-pattern
+  like dynamic
+  case node
+    text <new RegExp("^@floating-ui/dom$")>
+
+# every path, in the stub's own namespace
+bind any-pattern
+  like dynamic
+  case node
+    text <new RegExp(".*")>
+
+# whether a resolve is the stub's own, asked again to see whether esbuild finds the package itself
+bind is-stubbing
+  take args, like dynamic
+  like boolean
+  case node
+    text <Boolean($args.pluginData?.stubbing)>
+
+# `await api.resolve(path, ask)`
+bind resolve-again
+  take api, like dynamic
+  take path, like dynamic
+  take ask, like resolve-ask
+  like dynamic
+  case node
+    text <(await $api.resolve($path, $ask))>
+
+# The browser DOM runtime's anchor shim imports @floating-ui/dom, and a page that never anchors a panel still carries
+# that import because the prelude keeps a shim whose name appears anywhere in the emitted code. When the package is not
+# installed beside the page, the bundle gets a stub whose members raise on first use, so the app loads and a page that
+# does anchor fails at the call rather than at module load. A page that has the package installed resolves it as
+# usual: the stub only steps in when esbuild's own resolution finds nothing.
+task stub-missing-packages
+  like esbuild-plugin
+
+  back
+    make esbuild-plugin
+      bind name, <stub-missing-packages>
+      bind setup
+        task
+          take api, like dynamic
+          like void
+          api/on-resolve
+            make(resolve-filter, bind(filter, floating-pattern()))
+            task
+              take args, like dynamic
+              like dynamic
+              mark async
+              fork test, is-stubbing(args)
+                hold
+                  back nothing()
+              save asked
+                make resolve-ask
+                  bind kind, args/kind
+                  bind resolve-dir, args/resolve-dir
+                  bind plugin-data, make(stub-data, bind(stubbing, true))
+              save found, resolve-again(api, args/path, asked)
+              fork test, and(is-equal(found/errors/length, 0), is-truthy(found/path))
+                hold
+                  back make(resolved-path, bind(path, found/path))
+              back
+                make stubbed-path
+                  bind path, args/path
+                  bind namespace, <stub>
+          api/on-load
+            make(stub-filter, bind(filter, any-pattern()), bind(namespace, <stub>))
+            task
+              take args, like dynamic
+              like loaded-stub
+              save lines, make list
+              save said, json-text(<{args/path} is not in this bundle>)
+              lines/push(<const missing = () =\> \{ throw new Error({said}) \}>)
+              lines/push(<export const computePosition = missing>)
+              lines/push(<export const offset = missing>)
+              lines/push(<export const flip = missing>)
+              lines/push(<export const shift = missing>)
+              lines/push(<export const autoUpdate = missing>)
+              back
+                make loaded-stub
+                  bind contents, join(lines, <\n>)
+                  bind loader, <js>
+
+form stub-filter
+  link filter, like dynamic
+  link namespace, like text
+
+# the first three diagnostics' messages, as the refusal names them
+task diagnostics-said
+  take diagnostics, like dynamic
+  like text
+
+  save said, make list
+  save at, 0
+  walk test
+    hook test, and(is-below(at, 3), is-below(at, diagnostics/length))
+    hook hold
+      save one, diagnostics/{at}
+      said/push(<{one/message}>)
+      save at, add(at, 1)
+  back join(said, <; >)
+
+# the page compiled in the `webview` env so every native goes over the bridge, bundled, started by `entry`: the line of
+# TypeScript that calls what the page exports
+task build-page
+  take ask, like page-ask
+  like page-built
+  mark async
+
+  save page, ask/page
+  save work, ask/work
+  save into, ask/into
+  save source
+    make compile-source
+      bind file, page
+      bind text, node-fs/read-file-sync(page, <utf8>)
+  save options
+    make compile-options
+      bind resolve, make-module/project-resolver(ask/root, <webview>)
+      bind env, <webview>
+  save result, compile-module/compile(source, options)
+  fork test, not(result/ok)
+    hold
+      refuse(<the page failed to compile: {diagnostics-said(result/diagnostics)}>, <>)
+
+  save prelude, native-module/native-prelude(result/program, <webview>, read-runtime, result/typescript)
+  node-fs/rm-sync(work, make(remove-options, bind(recursive, true), bind(force, true)))
+  node-fs/mkdir-sync(work, make(folder-options, bind(recursive, true)))
+  node-fs/write-file-sync(node-path/join(work, <app.ts>), <{prelude}\n{result/typescript}>)
+  node-fs/write-file-sync(node-path/join(work, <entry.ts>), ask/entry)
+
+  save esbuild, load-esbuild()
+  save entries, make list
+  entries/push(node-path/join(work, <entry.ts>))
+  save plugins, make list
+  plugins/push(stub-missing-packages())
+  save bundling
+    make bundle-options
+      bind entry-points, entries
+      bind bundle, true
+      bind format, <esm>
+      bind platform, <browser>
+      bind write, false
+      bind plugins, plugins
+  save bundled, wait esbuild/build(bundling)
+
+  # `write: false` answers the bundle in memory, one file for one entry
+  save outputs, bundled/output-files
+  fork test, is-equal(outputs/length, 0)
+    hold
+      raise-error(<esbuild answered no bundle for the page>)
+  save script, outputs/0
+  fork test, not(is-truthy(script))
+    hold
+      raise-error(<esbuild answered no bundle for the page>)
+
+  node-fs/mkdir-sync(into, make(folder-options, bind(recursive, true)))
+  node-fs/write-file-sync(node-path/join(into, <app.js>), script/text)
+  node-fs/write-file-sync(node-path/join(into, <index.html>), page-html(ask/title))
+  back make(page-built, bind(bytes, script/text/length))

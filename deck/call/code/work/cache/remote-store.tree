@@ -1,0 +1,391 @@
+# The remote compile cache (Tier 5). Ported from call/code/remote-cache.ts (term-cli-in-term-0028). The local cache is
+# content-addressed, so it shares across machines and CI with a trivial protocol: GET an index, GET or PUT an artifact
+# by `<kind>/<version>/<key>`. The in-process store is synchronous and HTTP is not, so the remote cache is a warm-before
+# and push-after step around the build: `pull-remote-cache` downloads what the local dir lacks before compiling,
+# `push-remote-cache` uploads new local artifacts after. Content addressing makes both safe: a key's bytes never change.
+# See note/project/term/research/repo/turborepo/04-remote-cache.md.
+#
+# THE VERSION IS PART OF THE ADDRESS because it is part of the local layout, and this module has no opinion of its own
+# about that layout: paths come from `entry-path-by-slug` and the index from `stored-entries`, both entry-layout.tree.
+# It once listed `<kind>/*.json` and pushed and pulled ZERO artifacts, silently, the day the store changed shape.
+#
+# The bytes moved are the STORED bytes, gzip and all. The server is hono on node, docked (cli-in-term decision 002).
+
+load @term/base/list
+  find list
+  find push
+
+load ./entry-layout
+  find stored-entry
+  find stored-entries
+  find entry-path-by-slug
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <global:global>, name host-global
+  load <hono>, name hono-module
+  load <@hono/node-server>, name hono-node
+
+form folder-ask
+  link recursive, like boolean
+
+# what the remote server answers its caller: the port it listens on, and how to stop it
+form remote-server
+  link port, like number
+  link close, like dynamic
+
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# the request's headers: a bearer token when there is one
+bind auth-headers
+  take token, like text
+  like dynamic
+  case node
+    text <(($token) ? \{ authorization: "Bearer " + ($token) \} : \{\})>
+
+bind get-request
+  take headers, like dynamic
+  like dynamic
+  case node
+    text <(\{ headers: $headers \})>
+
+bind put-request
+  take headers, like dynamic
+  take body, like dynamic
+  like dynamic
+  case node
+    text <(\{ method: "PUT", headers: \{ "content-type": "application/octet-stream", ...($headers) \}, body: $body \})>
+
+bind parse-json
+  take text, like text
+  like dynamic
+  case node
+    text <JSON.parse($text)>
+
+bind items-of
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <($value)>
+
+bind member
+  take value, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <(($value)[$key])>
+
+bind as-text
+  take value, like dynamic
+  like text
+  case node
+    text <($value)>
+
+bind bytes-of
+  take buffer, like dynamic
+  like dynamic
+  case node
+    text <Buffer.from($buffer)>
+
+bind entries-json
+  take entries, like list, like stored-entry
+  like dynamic
+  case node
+    text <($entries).map((__termEntry) =\> (\{ kind: __termEntry.kind, version: __termEntry.version, key: __termEntry.key \}))>
+
+bind new-hono
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new (($module).Hono)()>
+
+bind route-get
+  take app, like dynamic
+  take route, like text
+  take handler, like dynamic
+  like void
+  case node
+    text <void ($app).get($route, $handler)>
+
+bind route-put
+  take app, like dynamic
+  take route, like text
+  take handler, like dynamic
+  like void
+  case node
+    text <void ($app).put($route, $handler)>
+
+bind serve-app
+  take module, like dynamic
+  take app, like dynamic
+  take port, like number
+  like dynamic
+  case node
+    text <($module).serve(\{ fetch: ($app).fetch, port: $port \})>
+
+bind close-server
+  take server, like dynamic
+  like void
+  case node
+    text <void ($server).close()>
+
+bind header-of
+  take context, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <($context).req.header($name)>
+
+bind params-of
+  take context, like dynamic
+  like dynamic
+  case node
+    text <($context).req.param()>
+
+bind reply-text
+  take context, like dynamic
+  take text, like text
+  take status, like number
+  like dynamic
+  case node
+    text <($context).text($text, $status)>
+
+bind reply-json
+  take context, like dynamic
+  take value, like dynamic
+  like dynamic
+  case node
+    text <($context).json($value)>
+
+bind reply-ok
+  take context, like dynamic
+  like dynamic
+  case node
+    text <($context).json(\{ ok: true \})>
+
+bind reply-bytes
+  take context, like dynamic
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <($context).body($bytes, 200, \{ "content-type": "application/octet-stream" \})>
+
+bind request-of
+  take context, like dynamic
+  like dynamic
+  case node
+    text <($context).req>
+
+# `unit` is the separate build's (compile/separate.ts), keyed by content alone like the mill
+task remote-kinds
+  like list, like text
+
+  save kinds, make list
+  kinds/push <mill>
+  kinds/push <output>
+  kinds/push <unit>
+  back kinds
+
+task is-kind
+  take kind, like text
+  like boolean
+
+  walk remote-kinds()
+    take one
+    fork test, is-equal(one, kind)
+      hold
+        back true
+  back false
+
+# the artifacts present in a local cache dir, with the version namespace each one sits in
+task local-entries
+  take cache-dir, like text
+  like list, like stored-entry
+
+  back stored-entries(cache-dir, remote-kinds())
+
+task id-of
+  take kind, like text
+  take version, like text
+  take key, like text
+  like text
+
+  back <{kind}/{version}/{key}>
+
+# the ids of a host index, each entry's `kind/version/key`
+task index-ids
+  take index, like dynamic
+  like hash, like text, like boolean
+  mark private
+
+  save ids, make hash
+  walk items-of(index)
+    take entry
+    save id, id-of(as-text(member(entry, <kind>)), as-text(member(entry, <version>)), as-text(member(entry, <key>)))
+    save ids/{id}, true
+  back ids
+
+# Download every remote artifact the local cache is missing, into `cache-dir`. Answers how many were pulled
+task pull-remote-cache
+  take cache-dir, like text
+  take endpoint, like text
+  take token, like text, fall <>
+  like number
+
+  save index-response, wait host-global/fetch(<{endpoint}/index>, get-request(auth-headers(token)))
+  fork test, not(is-truthy(member(index-response, <ok>)))
+    hold
+      back 0
+  save index-text
+    call index-response/text
+      wait true
+  save remote, parse-json(index-text)
+  save have, make hash
+  walk local-entries(cache-dir)
+    take entry
+    save id, id-of(entry/kind, entry/version, entry/key)
+    save have/{id}, true
+
+  save pulled, 0
+  walk items-of(remote)
+    take entry
+    save kind, as-text(member(entry, <kind>))
+    save version, as-text(member(entry, <version>))
+    save key, as-text(member(entry, <key>))
+    save id, id-of(kind, version, key)
+    fork test, have/has(id)
+      hold
+        turn next
+    save response, wait host-global/fetch(<{endpoint}/{id}>, get-request(auth-headers(token)))
+    fork test, not(is-truthy(member(response, <ok>)))
+      hold
+        turn next
+    save file, entry-path-by-slug(cache-dir, kind, version, key)
+    node-file/mkdir-sync(node-path/dirname(file), make(folder-ask, bind(recursive, true)))
+    save buffer
+      call response/array-buffer
+        wait true
+    node-file/write-file-sync(file, bytes-of(buffer))
+    save pulled, add(pulled, 1)
+  back pulled
+
+# Upload every local artifact the remote is missing. Answers how many were pushed
+task push-remote-cache
+  take cache-dir, like text
+  take endpoint, like text
+  take token, like text, fall <>
+  like number
+
+  save index-response, wait host-global/fetch(<{endpoint}/index>, get-request(auth-headers(token)))
+  save have, make hash
+  fork test, is-truthy(member(index-response, <ok>))
+    hold
+      save index-text
+        call index-response/text
+          wait true
+      save have, index-ids(parse-json(index-text))
+
+  save pushed, 0
+  walk local-entries(cache-dir)
+    take entry
+    save id, id-of(entry/kind, entry/version, entry/key)
+    fork test, have/has(id)
+      hold
+        turn next
+    save body, node-file/read-file-sync(entry-path-by-slug(cache-dir, entry/kind, entry/version, entry/key))
+    save response, wait host-global/fetch(<{endpoint}/{id}>, put-request(auth-headers(token), body))
+    fork test, is-truthy(member(response, <ok>))
+      hold
+        save pushed, add(pushed, 1)
+  back pushed
+
+form server-ask
+  link store-dir, like text
+  link port, like number
+  link token, like text, need false
+
+task is-authed
+  take token, like text
+  take context, like dynamic
+  like boolean
+  mark private
+
+  fork test, is-equal(token, <>)
+    hold
+      back true
+  save given, header-of(context, <authorization>)
+  back is-equal(as-text(given), <Bearer {token}>)
+
+# A minimal remote cache server: stores artifacts on disk under `store-dir` and serves the GET-index, GET and PUT
+# protocol the client speaks. A bearer token, when given, gates reads and writes. For a team's or CI's own cache
+task start-remote-cache-server
+  take options, like server-ask
+  like remote-server
+
+  save store-dir, options/store-dir
+  save port, options/port
+  save token, options/token
+  save app, new-hono(hono-module)
+
+  save index-route
+    task
+      take context, like dynamic
+      like dynamic
+      fork test, not(is-authed(token, context))
+        hold
+          back reply-text(context, <unauthorized>, 401)
+      back reply-json(context, entries-json(local-entries(store-dir)))
+  route-get(app, </index>, index-route)
+
+  save read-route
+    task
+      take context, like dynamic
+      like dynamic
+      fork test, not(is-authed(token, context))
+        hold
+          back reply-text(context, <unauthorized>, 401)
+      save params, params-of(context)
+      save kind, as-text(member(params, <kind>))
+      fork test, not(is-kind(kind))
+        hold
+          back reply-text(context, <bad kind>, 400)
+      save file, entry-path-by-slug(store-dir, kind, as-text(member(params, <version>)), as-text(member(params, <key>)))
+      fork test, not(node-file/exists-sync(file))
+        hold
+          back reply-text(context, <miss>, 404)
+      back reply-bytes(context, node-file/read-file-sync(file))
+  route-get(app, </:kind/:version/:key>, read-route)
+
+  save write-route
+    task
+      take context, like dynamic
+      like dynamic
+      fork test, not(is-authed(token, context))
+        hold
+          back reply-text(context, <unauthorized>, 401)
+      save params, params-of(context)
+      save kind, as-text(member(params, <kind>))
+      fork test, not(is-kind(kind))
+        hold
+          back reply-text(context, <bad kind>, 400)
+      save file, entry-path-by-slug(store-dir, kind, as-text(member(params, <version>)), as-text(member(params, <key>)))
+      node-file/mkdir-sync(node-path/dirname(file), make(folder-ask, bind(recursive, true)))
+      save request, request-of(context)
+      save buffer
+        call request/array-buffer
+          wait true
+      node-file/write-file-sync(file, bytes-of(buffer))
+      back reply-ok(context)
+  route-put(app, </:kind/:version/:key>, write-route)
+
+  save server, serve-app(hono-node, app, port)
+  save closer
+    task
+      like void
+      close-server(server)
+  back make(remote-server, bind(port, port), bind(close, closer))

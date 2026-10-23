@@ -1,0 +1,333 @@
+# `term mold [file]`: shape Term data into another shape. Reads a data file (long or compact), a compact stream with
+# `--lines` (anchors re-declarable, one form per line), JSON with `--tree`, `tree/code` (told by its header bytes,
+# never by a flag), or stdin, and prints it as the canonical long form, the compact one-line-per-entry form (`--pack`),
+# JSON (`--json`, `--keep` leaves keys kebab), `tree/code` (`--code`, Zstandard frames where they are smaller,
+# `--canonical` for the canonical uncompressed bytes), or only its diagnostics (`--check`). Never writes a file in
+# place: `term form` is the in-place formatter. See note/project/term/host/06-package-and-cli.md and 10-code.md.
+#
+# The shaped data is DATA, on stdout through printData, byte for byte, so `term mold x.tree --json | jq` reads it
+# clean. The run around it, and every diagnostic as a Problem item with its frame, is the human view on stderr.
+#
+# Ported from call/code/mold.ts (term-cli-in-term-0056). The data reader (compile/host), the tree/code codec
+# (compile/host-code) and the output library are docked until their own ports land.
+
+dock load
+  load <@term/make/code/compile/host-code>, name mold-code
+  load <@term/make/code/compile/host>, name mold-data
+  load <@term/call/code/output>, name mold-output
+  load <node:fs>, name mold-fs
+  load <node:path>, name mold-path
+  load <node:zlib>, name mold-zlib
+  load <global:process>, name mold-process
+
+# ---- the host values Term has no word for ----
+
+bind mold-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind mold-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind mold-or
+  take value, like dynamic
+  take fallback, like dynamic
+  like dynamic
+  case node
+    text <($value ?? $fallback)>
+
+# `--code` refuses a terminal: binary there draws garbage
+bind mold-stdout-terminal
+  take process, like dynamic
+  like boolean
+  case node
+    text <Boolean($process.stdout.isTTY)>
+
+bind mold-utf8
+  take raw, like dynamic
+  like text
+  case node
+    text <$raw.toString("utf8")>
+
+# the input starts with tree/code's header
+bind mold-is-code
+  take code, like dynamic
+  take raw, like dynamic
+  like boolean
+  case node
+    text <<$code.MAGIC.every((byte, at) => $raw[at] === byte)>>
+
+# tree/code decoded, every frame one value, its Zstandard frames opened with Node's zlib
+bind mold-decode
+  take code, like dynamic
+  take zlib, like dynamic
+  take raw, like dynamic
+  like dynamic
+  case node
+    text <<$code.decodeTree(new Uint8Array($raw), { decompress: (packed, size) => new Uint8Array($zlib.zstdDecompressSync(packed, { maxOutputLength: size })) })>>
+
+# one frame is the value; a stream of several is a list of them
+bind mold-decoded-data
+  take values, like dynamic
+  like dynamic
+  case node
+    text <<($values.length === 1 ? $values[0] : { kind: "list", list: $values })>>
+
+bind mold-encode
+  take code, like dynamic
+  take zlib, like dynamic
+  take data, like dynamic
+  take canonical, like dynamic
+  like dynamic
+  case node
+    text <<$code.encodeTree($data, $canonical ? {} : { compress: plain => new Uint8Array($zlib.zstdCompressSync(plain)) })>>
+
+# compile/host.ts `fromJson` and `toJson`, called by their exact names: a dock member spelled to-json is emitted toJSON
+bind mold-from-json
+  take module, like dynamic
+  take text, like text
+  like dynamic
+  case node
+    text <$module.fromJson($text)>
+
+bind mold-to-json
+  take module, like dynamic
+  take data, like dynamic
+  take keep, like dynamic
+  like text
+  case node
+    text <$module.toJson($data, $keep)>
+
+bind mold-thrown-message
+  take problem, like dynamic
+  like text
+  case node
+    text <($problem instanceof Error ? $problem.message : String($problem))>
+
+# ---- what is said ----
+
+form mold-open
+  link verb, like text
+  link root, like dynamic
+  link facts, like list, like dynamic
+
+form mold-problem
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+
+form mold-problem-said
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+
+form mold-close
+  link verdict, like text
+
+form mold-source
+  link file, like text
+  link text, like text
+
+form mold-problem-entry
+  link diagnostic, like dynamic
+  link text, like text
+
+task mold-one
+  take value, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  out/push(value)
+  back out
+
+# the run ends on the data's own defects, each with its frame
+task refuse-data
+  take diagnostics, like dynamic
+  take text, like text
+  take root, like dynamic
+  like void
+  mark private
+
+  save problems, make list
+  walk diagnostics
+    take diagnostic, like dynamic
+    problems/push(make(mold-problem-entry, bind(diagnostic, diagnostic), bind(text, text)))
+  mold-output/reportProblems(problems, root)
+  mold-output/closeRun(make(mold-close, bind(verdict, <The data does not read>)))
+
+task call-mold
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  save named, input/file
+  save file, <\<stdin\>>
+  fork test, mold-truthy(named)
+    hold
+      save file, mold-path/resolve(root, named)
+  save shape, <long>
+  fork test, mold-truthy(input/check)
+    hold
+      save shape, <--check>
+    miss
+      fork test, mold-truthy(input/json)
+        hold
+          save shape, <--json>
+        miss
+          fork test, mold-truthy(input/pack)
+            hold
+              save shape, <--pack>
+            miss
+              fork test, mold-truthy(input/code)
+                hold
+                  save shape, <--code>
+  save facts, make list
+  facts/push(mold-or(named, <stdin>))
+  facts/push(shape)
+  mold-output/openRun(make(mold-open, bind(verb, <mold>), bind(root, root), bind(facts, facts)))
+
+  # binary on a terminal draws garbage and can leave it in a strange state: `tree/code` goes to a pipe or a file
+  fork test, and(mold-truthy(input/code), mold-stdout-terminal(mold-process))
+    hold
+      mold-output/report(make(mold-problem-said, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <write>), bind(subject, <tree/code is bytes, and standard output is a terminal>), bind(message, mold-one(<send it to a file or a pipe: term mold x.tree --code \> x.code>))))
+      mold-output/closeRun(make(mold-close, bind(verdict, <Nothing to mold>)))
+      back
+
+  save raw, mold-nothing()
+  save read-ok, false
+  fork
+    mark unsafe
+    fork test, mold-truthy(named)
+      hold
+        save raw, mold-fs/readFileSync(file)
+      miss
+        save raw, mold-fs/readFileSync(0)
+    save read-ok, true
+  halt take
+    take error, like dynamic
+    save read-ok, false
+  fork test, not(read-ok)
+    hold
+      mold-output/report(make(mold-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <read>), bind(subject, <{mold-or(named, <Standard input>)} could not be read>)))
+      mold-output/closeRun(make(mold-close, bind(verdict, <Nothing to mold>)))
+      back
+
+  save text, mold-utf8(raw)
+  save data, mold-nothing()
+  save anchors, mold-nothing()
+
+  fork test, mold-is-code(mold-code, raw)
+    hold
+      # tree/code, told by its header: every frame is one value, and a stream of several is a list of them
+      save decoded, mold-decode(mold-code, mold-zlib, raw)
+      fork test, not(mold-truthy(decoded/ok))
+        hold
+          save problem, decoded/problem
+          mold-output/report(make(mold-problem-said, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <read>), bind(subject, <The input is not valid tree/code ({problem/name})>), bind(message, mold-one(<{problem/message}, at byte {problem/at}>))))
+          mold-output/closeRun(make(mold-close, bind(verdict, <The data does not read>)))
+          back
+      save data, mold-decoded-data(decoded/values)
+    miss
+      fork test, or(mold-truthy(input/tree), file/ends-with(<.json>))
+        hold
+          save parsed-ok, false
+          save problem-text, <>
+          fork
+            mark unsafe
+            save data, mold-from-json(mold-data, text)
+            save parsed-ok, true
+          halt take
+            take error, like dynamic
+            save problem-text, mold-thrown-message(error)
+          fork test, not(parsed-ok)
+            hold
+              mold-output/report(make(mold-problem-said, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <read>), bind(subject, <The input is not JSON>), bind(message, mold-one(problem-text))))
+              mold-output/closeRun(make(mold-close, bind(verdict, <The data does not read>)))
+              back
+        miss
+          fork test, mold-truthy(input/lines)
+            hold
+              # a stream: one form per line, anchors re-declarable, each line expanded as it is read
+              save stream, mold-data/readStream(make(mold-source, bind(file, file), bind(text, text)))
+              fork test, not(mold-truthy(stream/ok))
+                hold
+                  refuse-data(stream/diagnostics, text, root)
+                  back
+              fork test, mold-truthy(input/check)
+                hold
+                  mold-output/closeRun(make(mold-close, bind(verdict, <The data reads>)))
+                  back
+              save data, stream/data
+            miss
+              save read, mold-data/readDataText(make(mold-source, bind(file, file), bind(text, text)))
+              fork test, not(mold-truthy(read/ok))
+                hold
+                  refuse-data(read/diagnostics, text, root)
+                  back
+              fork test, mold-truthy(input/check)
+                hold
+                  save checked, mold-data/expandData(read/data, file)
+                  fork test, not(mold-truthy(checked/ok))
+                    hold
+                      refuse-data(checked/diagnostics, text, root)
+                      back
+                  mold-output/closeRun(make(mold-close, bind(verdict, <The data reads>)))
+                  back
+              # `--trees` keeps the anchors as written; the default expands them, so the output is plain data
+              fork test, mold-truthy(input/trees)
+                hold
+                  save data, read/data/root
+                  save anchors, read/data/trees
+                miss
+                  save expanded, mold-data/expandData(read/data, file)
+                  fork test, not(mold-truthy(expanded/ok))
+                    hold
+                      refuse-data(expanded/diagnostics, text, root)
+                      back
+                  save data, expanded/data
+
+  fork test, mold-truthy(input/check)
+    hold
+      mold-output/closeRun(make(mold-close, bind(verdict, <The data reads>)))
+      back
+
+  fork test, mold-truthy(input/code)
+    hold
+      save bytes, mold-nothing()
+      save encoded-ok, false
+      save problem-text, <>
+      save canonical, input/canonical
+      fork
+        mark unsafe
+        save bytes, mold-encode(mold-code, mold-zlib, data, canonical)
+        save encoded-ok, true
+      halt take
+        take error, like dynamic
+        save problem-text, mold-thrown-message(error)
+      fork test, not(encoded-ok)
+        hold
+          mold-output/report(make(mold-problem-said, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <write>), bind(subject, <The data cannot be written as tree/code>), bind(message, mold-one(problem-text))))
+          mold-output/closeRun(make(mold-close, bind(verdict, <The data does not encode>)))
+          back
+      mold-output/printBytes(bytes)
+    miss
+      fork test, mold-truthy(input/json)
+        hold
+          save keep, input/keep
+          mold-output/printData(<{mold-to-json(mold-data, data, keep)}\n>)
+        miss
+          fork test, mold-truthy(input/pack)
+            hold
+              mold-output/printData(mold-data/writeCompact(data, anchors))
+            miss
+              mold-output/printData(mold-data/writeLong(data, anchors))
+
+  mold-output/closeRun(make(mold-close, bind(verdict, <Molded>)))

@@ -1,0 +1,34 @@
+# The Node builtins the browser compile NAMES and never calls (build.mjs aliases each one here). A module on the
+# compile path imports one at its top for something the worker never reaches, so the import has to resolve, and
+# what it hands back throws the moment it is called. Ported from call/code/browser/absent.ts, term-cli-in-term-0063.
+#
+# ONLY THE NAMES THE CLOSURE ACTUALLY IMPORTS ARE HERE, on purpose. A new Node import on the compile path then fails
+# the bundle with esbuild's "No matching export", naming the file, instead of shipping a stub nobody looked at.
+#
+#   fileURLToPath   make/code/resolve.ts `stdlibBase`, read only when TERM_STDLIB is unset, and the bundle sets it
+
+# raise a plain Error with the message, as `throw new Error(message)` does
+bind absence-throw
+  take message, like text
+  like dynamic
+  case node
+    text <(() =\> \{ throw new Error($message) \})()>
+
+# the error a call of a builtin the browser lacks raises
+task refuse-builtin
+  take name, like text
+  like dynamic
+
+  back absence-throw(<`{name}` is a Node builtin, and the browser compile has no Node>)
+
+task file-url-to-path
+  take value, like dynamic, fall absence-nothing()
+  like dynamic
+
+  back refuse-builtin(<fileURLToPath>)
+
+# `undefined`, the argument a call without one passes
+bind absence-nothing
+  like dynamic
+  case node
+    text <undefined>

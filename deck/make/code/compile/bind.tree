@@ -16,6 +16,15 @@ load @term/base/maybe
 load @term/base/text
   find split
   find char-code-at
+  find char-at
+  find char-count
+  find substring
+  find starts-with
+  find trim-start
+  find trim-end
+
+load ./ts-names
+  find is-primary
 
 load ./node
   find bind-import
@@ -240,9 +249,17 @@ task bind-target-of
     miss
       back make none
 
-# render a bind's native expression for one environment: substitute each `$param` placeholder with the already-emitted
-# argument string, in parameter order. None when the bind declares no target for this environment (the backend emits a
-# gap)
+# render a bind's native expression for one environment: each `$param` hole takes the already-emitted argument. None
+# when the bind declares no target for this environment (the backend emits a gap). Four rules, each once a silent
+# defect that compiled clean:
+# - a hole is a WHOLE parameter name, the longest that matches, so `$stored` beside `$store` is its own
+#   (term-compiler-0052)
+# - the text is host code: a `\n`, `\r` or `\t` the literal turned into a control character is written back as the
+#   escape, never a line break inside a host string (term-compiler-0047)
+# - an argument that is not one primary is grouped wherever the text around its hole could bind into it:
+#   `$value.trim()` over an awaited call is `(await f()).trim()` (term-compiler-0046)
+# - an argument the text reads more than once is evaluated once, into a temporary, unless it is a plain name or
+#   number (term-compiler-0051)
 task render-bind
   take one, like statement
   take env, like text
@@ -255,18 +272,223 @@ task render-bind
       save out, target/expression
       sift one
         case bind
+          save names, make list
+          save givens, make list
           walk params
             take param
             take at
+            push(names, param/name)
             save given, <>
             fork test, is-below(at, args/length)
               hold
                 save given, get(args, at)
-            save pieces, split(out, <${param/name}>)
-            save out, join(pieces, given)
+            push(givens, given)
+          save out, splice-holes(host-text(out), names, givens, env)
         miss
           save nothing, 0
       back make(some, out)
+
+# a bind's text with every hole filled: see render-bind
+task splice-holes
+  take text, like text
+  take names, like list, like text
+  take givens, like list, like text
+  take env, like text
+  like text
+  mark private
+
+  # the text cut at its holes: `pieces` one longer than `holes`, each hole a parameter's index
+  save pieces, make list
+  save holes, make list
+  save piece, <>
+  save at, 0
+  save size, char-count(text)
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one, char-at(text, at)
+      fork test, is-equal(one, <$>)
+        hold
+          save hole, hole-at(text, at, names)
+          fork test, is-minimum(hole, 0)
+            hold
+              push(pieces, piece)
+              push(holes, hole)
+              save piece, <>
+              save at, add(at, add(1, char-count(get(names, hole))))
+              turn next
+      save piece, <{piece}{one}>
+      save at, add(at, 1)
+  push(pieces, piece)
+  # what each parameter's holes take: its argument, or a temporary bound once around the whole text
+  save fills, make list
+  save temps, make list
+  save temp-values, make list
+  walk names
+    take name
+    take index
+    save given, get(givens, index)
+    fork test, and(is-above(uses-of(holes, index), 1), and(is-unequal(given, <>), not(is-plain-value(given))))
+      hold
+        save temp, <__bind_{join(split(name, <->), <_>)}>
+        push(temps, temp)
+        push(temp-values, given)
+        push(fills, temp)
+      miss
+        push(fills, given)
+  save out, get(pieces, 0)
+  walk holes
+    take hole
+    take k
+    save fill, get(fills, hole)
+    save before, get(pieces, k)
+    save after, get(pieces, add(k, 1))
+    fork test, and(is-unequal(fill, <>), not(is-primary(fill)))
+      hold
+        fork test, not(is-delimited(before, after, is-equal(k, 0)))
+          hold
+            save fill, <({fill})>
+    save out, <{out}{fill}{after}>
+  save at, subtract(temps/length, 1)
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      save out, bound-once(env, get(temps, at), get(temp-values, at), out)
+      save at, subtract(at, 1)
+  back out
+
+# the parameter whose hole starts at the `$` at `at`: the longest name that follows it whole (no name character after
+# it), or -1
+task hole-at
+  take text, like text
+  take at, like number
+  take names, like list, like text
+  like number
+  mark private
+
+  save rest, substring(text, add(at, 1))
+  save rest-size, char-count(rest)
+  save best, -1
+  save best-size, 0
+  walk names
+    take name
+    take index
+    save size, char-count(name)
+    fork test, and(is-above(size, best-size), starts-with(rest, name))
+      hold
+        save whole, true
+        fork test, is-below(size, rest-size)
+          hold
+            save whole, not(is-name-code(char-code-at(rest, size)))
+        fork test, whole
+          hold
+            save best, index
+            save best-size, size
+  back best
+
+# a letter, a digit or `_`: a character that would carry a name on past a hole
+task is-name-code
+  take code, like number
+  like boolean
+  mark private
+
+  back or(and(is-minimum(code, 48), is-maximum(code, 57)), or(and(is-minimum(code, 65), is-maximum(code, 90)), or(and(is-minimum(code, 97), is-maximum(code, 122)), is-equal(code, 95))))
+
+# how many holes are the parameter at `index`
+task uses-of
+  take holes, like list, like number
+  take index, like number
+  like number
+  mark private
+
+  save count, 0
+  walk holes
+    take hole
+    fork test, is-equal(hole, index)
+      hold
+        save count, add(count, 1)
+  back count
+
+# a name, a member chain or a number: read the same however often the text reads it
+task is-plain-value
+  take text, like text
+  like boolean
+  mark private
+
+  save size, char-count(text)
+  fork test, is-equal(size, 0)
+    hold
+      back false
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save code, char-code-at(text, at)
+      fork test, not(or(is-name-code(code), or(is-equal(code, 46), is-equal(code, 36))))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+# whether a hole stands where any expression fits whole: after an opening delimiter, a comma or a semicolon (or at the
+# start of the text) and before a closing one, a comma or a semicolon (or at its end). A hole right after another hole
+# is not
+task is-delimited
+  take before, like text
+  take after, like text
+  take first, like boolean
+  like boolean
+  mark private
+
+  save left, trim-end(before)
+  save right, trim-start(after)
+  save opens, false
+  fork test, is-equal(left, <>)
+    hold
+      save opens, first
+    miss
+      save last, char-at(left, subtract(char-count(left), 1))
+      save opens, or(is-equal(last, <(>), or(is-equal(last, <[>), or(is-equal(last, <\{>), or(is-equal(last, <,>), is-equal(last, <;>)))))
+  save closes, true
+  fork test, is-unequal(right, <>)
+    hold
+      save next, char-at(right, 0)
+      save closes, or(is-equal(next, <)>), or(is-equal(next, <]>), or(is-equal(next, <\}>), or(is-equal(next, <,>), is-equal(next, <;>)))))
+  back and(opens, closes)
+
+# the text with `temp` bound once to `value` around it, as each backend writes a let in an expression
+task bound-once
+  take env, like text
+  take temp, like text
+  take value, like text
+  take body, like text
+  like text
+  mark private
+
+  fork test, is-equal(env, <rust>)
+    hold
+      back <(\{ let {temp} = {value}; {body} \})>
+  fork test, is-equal(env, <swift>)
+    hold
+      back <(\{ ({temp}) in {body} \}({value}))>
+  fork test, is-equal(env, <kotlin>)
+    hold
+      back <(({value}).let \{ {temp} -> {body} \})>
+  fork test, is-above(split(body, <await >)/length, 1)
+    hold
+      back <(await (async ({temp}) => {body})({value}))>
+  back <(({temp}) => {body})({value})>
+
+# a bind's text is host code: the escapes the text literal turned into control characters are written back as escapes,
+# since a line break, return or tab inside a host string is not the character it named
+task host-text
+  take text, like text
+  like text
+  mark private
+
+  save out, join(split(text, <\n>), <\\n>)
+  save out, join(split(out, <\r>), <\\r>)
+  back join(split(out, <\t>), <\\t>)
     case none
       back make none
 

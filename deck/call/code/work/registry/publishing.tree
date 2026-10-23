@@ -1,0 +1,764 @@
+# `term host`: publish this package to its scope's OCI registry, or with `--trust` / `--untrust` rotate the scope's key
+# set instead, or with `--ping` announce the version the registry already holds. Registry credentials come from
+# TERM_OCI_TOKEN (for TERM_OCI_HOST, default ghcr.io), GHCR_TOKEN, or the docker config (oci/auth.ts). A term.surf
+# token (TERM_TOKEN, or the user-level `auth` file) never reaches a registry: it only credits the version to an
+# account in the package index (note/project/term/registry/19-package-index.md).
+#
+# Ported from call/code/host.ts (term-cli-in-term-0053). The decisions that are not the registry, the key or the
+# terminal are host-words.tree's, loaded. The registry, the key set and the index are @cluesurf/deck.tree's, docked
+# (decision cli-in-term/002), `term boot` and the user-level home are docked until their own ports land, and every item
+# prints through the output library, docked. Each task takes the original's input record as it is, so a caller passes
+# what it passed before.
+
+load ../../host-words
+  find package-name
+  find is-released
+  find annotations-of
+  find sentence
+  find ping-facts
+  find unrouted
+  find remote-source
+
+dock load
+  load <@cluesurf/deck.tree>, name deck-tree-module
+    mark async
+  load <@term/call/code/boot>, name boot-module
+    mark async
+  load <@term/call/code/home>, name home-module
+  load <@term/call/code/output>, name output
+  load <node:fs>, name node-fs
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <node:path>, name node-path
+  load <node:child_process>, name child-process
+
+# ---- the host values Term has no word for ----
+
+bind nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+# `value ?? ""`
+bind text-or-empty
+  take value, like dynamic
+  like text
+  case node
+    text <($value ?? "")>
+
+# `value ?? []`
+bind list-or-empty
+  take value, like dynamic
+  like list, like text
+  case node
+    text <($value ?? [])>
+
+# `value?.trim()`
+bind trim-maybe
+  take value, like dynamic
+  like dynamic
+  case node
+    text <$value?.trim()>
+
+# `site?.startsWith('https://')`, as a truth
+bind is-https
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value?.startsWith("https://"))>
+
+# `manifest.mind?.[0]?.name ?? 'unknown'`
+bind first-author
+  take manifest, like dynamic
+  like dynamic
+  case node
+    text <($manifest.mind?.[0]?.name ?? "unknown")>
+
+bind now-ms
+  like number
+  case node
+    text <Date.now()>
+
+bind now-iso
+  like text
+  case node
+    text <new Date().toISOString()>
+
+bind parse-json
+  take text, like dynamic
+  like dynamic
+  case node
+    text <JSON.parse($text)>
+
+# `JSON.stringify(value, null, 2)`
+bind json-pretty
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value, null, 2)>
+
+# a dry run's manifest as the data it prints: its JSON laid out, and a line end
+bind manifest-data
+  take bytes, like dynamic
+  like text
+  case node
+    text <(JSON.stringify(JSON.parse($bytes.toString("utf8")), null, 2) + String.fromCharCode(10))>
+
+# a key and its value, as one entry of a host record
+bind pair-of
+  take key, like text
+  take value, like dynamic
+  like list, like dynamic
+  case node
+    text <[$key, $value]>
+
+bind record-of
+  take entries, like list, like dynamic
+  like dynamic
+  case node
+    text <Object.fromEntries($entries)>
+
+# `{ ...first, ...second }`
+bind merged
+  take first, like dynamic
+  take second, like dynamic
+  like dynamic
+  case node
+    text <(\{ ...$first, ...$second \})>
+
+# the fetch config `--registry` names: that registry, and no scope routes
+bind flag-config
+  take registry, like dynamic
+  like dynamic
+  case node
+    text <(\{ registry: $registry, scopeRegistries: \{\} \})>
+
+# the default fetch config with the manifest's own scope routes over its defaults
+bind scoped-config
+  take defaults, like dynamic
+  take scoped, like dynamic
+  like dynamic
+  case node
+    text <(\{ ...$defaults, scopeRegistries: \{ ...$defaults.scopeRegistries, ...$scoped \} \})>
+
+# what every build of the artifact shares. `package` and `link` are the library's own keys
+bind common-of
+  take dir, like dynamic
+  take name, like text
+  take version, like dynamic
+  take links, like list, like dynamic
+  take local, like dynamic
+  take author, like dynamic
+  take time, like text
+  take message, like text
+  take annotations, like dynamic
+  take include, like list, like text
+  like dynamic
+  case node
+    text <(\{ dir: $dir, package: $name, version: $version, target: \{ kind: "version", version: $version \}, link: $links, local: $local, author: $author, time: $time, message: $message, annotations: $annotations, include: $include \})>
+
+# a dependency as the signed config spells it: the JSON key `code` holds its constraint, which the signature covers
+bind link-of
+  take deck, like dynamic
+  take code, like dynamic
+  like dynamic
+  case node
+    text <(\{ deck: $deck, code: $code \})>
+
+bind git-options
+  like dynamic
+  case node
+    text <(\{ encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] \})>
+
+bind trim-text
+  take value, like dynamic
+  like text
+  case node
+    text <$value.trim()>
+
+bind key-folder-options
+  like dynamic
+  case node
+    text <(\{ recursive: true, mode: 0o700 \})>
+
+bind key-file-options
+  like dynamic
+  case node
+    text <(\{ mode: 0o600, flag: "wx" \})>
+
+# AN ERROR A PERSON CAN ACT ON, not a bug in Term: `expected` keeps failRun from reporting it as a crash (exit 70)
+bind refuse
+  take message, like text
+  like void
+  case node
+    text <(() =\> \{ throw Object.assign(new Error($message), \{ expected: true \}) \})()>
+
+# ---- what the library is asked ----
+
+form dir-ask
+  link dir, like dynamic
+
+form manifest-ask
+  link manifest, like dynamic
+
+form hold-ask
+  link hold, like dynamic
+
+form host-ask
+  link host, like dynamic
+
+form route-ask
+  link name, like text
+  link config, like dynamic
+
+form held-ask
+  link repository, like dynamic
+  link reference, like dynamic
+
+form rotate-ask
+  link transport, like dynamic
+  link repository, like dynamic
+  link scope, like dynamic
+  link keypair, like dynamic
+  link add, like list, like dynamic
+  link remove, like list, like dynamic
+
+form publisher-ask
+  link transport, like dynamic
+  link repository, like dynamic
+  link scope, like dynamic
+  link keypair, like dynamic
+
+form push-ask
+  link transport, like dynamic
+  link repository, like dynamic
+  link scope, like dynamic
+  link keys-repository, like dynamic
+  link keypair, like dynamic
+  link log, like dynamic
+
+form keypair-ask
+  link keypair, like dynamic
+
+form ping-ask
+  link repository, like dynamic
+  link digest, like dynamic
+  link token, like dynamic
+  link keypair, like dynamic
+
+form announce-ask
+  link route, like dynamic
+  link digest, like dynamic
+  link keypair, like dynamic
+
+form mint-ask
+  link mint, like boolean
+
+form boot-ask
+  link root, like dynamic
+  link entry, like text
+  link out, like text
+
+# ---- what is printed ----
+
+form facts-open
+  link verb, like text
+  link root, like dynamic
+  link facts, like list, like text
+
+form problem-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+
+form located-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form rotate-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link counts, like list, like dynamic
+  link facts, like list, like text
+  link fields, like list, like dynamic
+
+form read-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form build-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link bytes, like dynamic
+  link counts, like list, like dynamic
+  link fields, like list, like dynamic
+
+form message-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+
+form skip-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link facts, like list, like text
+  link fields, like list, like dynamic
+
+form facts-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link facts, like list, like text
+
+form warning-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link facts, like list, like text
+  link message, like list, like text
+
+form debug-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link level, like text
+
+form plain-close
+  link verdict, like text
+
+form counted-close
+  link verdict, like text
+  link counts, like list, like dynamic
+
+form failure-close
+  link verdict, like text
+  link failure, like text
+
+form next-failure-close
+  link verdict, like text
+  link next, like text
+  link failure, like text
+
+form facts-close
+  link verdict, like text
+  link facts, like list, like text
+
+# ---- the pieces ----
+
+task one-text
+  take value, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  out/push(value)
+  back out
+
+task one-field
+  take value, like dynamic
+  like list, like dynamic
+  mark private
+
+  save out, make list
+  out/push(value)
+  back out
+
+# the input's flag as a one-item list, or the empty list when it is not given
+task given-list
+  take value, like dynamic
+  like list, like dynamic
+  mark private
+
+  save out, make list
+  fork test, is-truthy(value)
+    hold
+      out/push(value)
+  back out
+
+# each step of a push, a debug item: shown under --verbose
+task push-log
+  take message, like text
+  like void
+  mark private
+
+  output/report(make(debug-item, bind(glyph, <info>), bind(verb, <push>), bind(subject, sentence(message)), bind(level, <debug>)))
+
+# The registry a package publishes to: `--registry` when given, else the package's own `base` line for its scope, else
+# the scope's default (`@term`'s built in, any other `ghcr.io/<scope>`). Every one must be OCI.
+task route-of
+  take name, like text
+  take registry, like dynamic
+  take manifest, like dynamic
+  like dynamic
+  mark private
+
+  save flag, nothing()
+  fork test, not(is-absent(registry))
+    hold
+      save flag, deck-tree-module/normalize-registry(registry)
+  fork test, not(is-absent(flag))
+    hold
+      fork test, not(deck-tree-module/is-oci-registry(flag))
+        hold
+          refuse(<--registry must be an OCI registry, \<host\>/\<namespace\>. The custom https registry is retired (note/project/term/registry/18-oci-registry-default.md)>)
+  save config, nothing()
+  fork test, is-truthy(flag)
+    hold
+      save config, flag-config(flag)
+    miss
+      save defaults, deck-tree-module/make-default-fetch-config()
+      save scoped, deck-tree-module/host-scope-registries(make(manifest-ask, bind(manifest, manifest)))
+      save config, scoped-config(defaults, scoped)
+  save route, deck-tree-module/oci-route-of(make(route-ask, bind(name, name), bind(config, config)))
+  # an UNSCOPED package has no scope to pick a registry by: said so, with where to put one
+  fork test, not(is-truthy(route))
+    hold
+      refuse(unrouted(name, is-truthy(flag)))
+  back route
+
+# The term.surf token that credits a publish to an account in the package index: `TERM_TOKEN` (`SEED_TOKEN` still
+# honored), else the user-level `auth` file, which holds the token and nothing else. Sent to the index only
+task read-index-token
+  like dynamic
+  mark private
+
+  save from-env, trim-maybe(home-module/env(<TOKEN>))
+  fork test, is-truthy(from-env)
+    hold
+      back from-env
+  save file, home-module/kept-at(home-module/user-home(<auth>), home-module/legacy-user-home(<auth>))
+  save token, nothing()
+  fork
+    mark unsafe
+    # read first and trimmed after: a bind's text is spliced around its argument, so trim-text(read-file(..)) would
+    # emit `await read(..).trim()`, the trim of a promise
+    save text, fs-promise/read-file(file, <utf-8>)
+    save token, trim-text(text)
+  halt take
+    take error
+    save token, nothing()
+  fork test, is-truthy(token)
+    hold
+      back token
+  back nothing()
+
+task read-keypair
+  take file, like text
+  like dynamic
+  mark private
+
+  back parse-json(fs-promise/read-file(file, <utf-8>))
+
+# The signing keypair. A release is signed so authorship cannot be forged, and the scope's key set says which keys
+# may sign it. Minted on the first publish from this machine, at mode 0600.
+task load-publish-keypair
+  take input, like dynamic
+  like dynamic
+
+  save file, home-module/kept-at(home-module/user-home(<key>), home-module/legacy-user-home(<key>))
+  save pair, nothing()
+  save found, false
+  fork
+    mark unsafe
+    save pair, read-keypair(file)
+    save found, true
+  halt take
+    take error
+    save found, false
+  fork test, found
+    hold
+      back pair
+  fork test, not(is-truthy(input/mint))
+    hold
+      back nothing()
+  save made, deck-tree-module/generate-keypair()
+  fs-promise/mkdir(node-path/dirname(file), key-folder-options())
+  fs-promise/write-file(file, json-pretty(made), key-file-options())
+  back made
+
+# The https address of the repository this package directory pushes to (`remote.origin.url`), or nothing when it is
+# not in a git repository or has no origin. Credentials in an https remote are dropped, because this is written into
+# a public manifest, and only the host and the path are kept.
+task git-source
+  take dir, like text
+  like dynamic
+
+  save arguments, make list
+  arguments/push(<-C>)
+  arguments/push(dir)
+  arguments/push(<config>)
+  arguments/push(<--get>)
+  arguments/push(<remote.origin.url>)
+  save remote, <>
+  save read, false
+  fork
+    mark unsafe
+    save remote, trim-text(child-process/exec-file-sync(<git>, arguments, git-options()))
+    save read, true
+  halt take
+    take error
+    save read, false
+  fork test, not(read)
+    hold
+      back nothing()
+  save source, remote-source(remote)
+  fork test, is-equal(source, <>)
+    hold
+      back nothing()
+  back source
+
+# A hint to the package index; its crawl finds what a lost ping misses, so this never fails a publish. A term.surf
+# token, when there is one, credits the version to its account. Reports the outcome and answers whether it was sent.
+# `pnpm term:release` calls it too, for `@term/code`
+task announce
+  take input, like dynamic
+  like boolean
+
+  save token, read-index-token()
+  save ping, deck-tree-module/ping-index(make(ping-ask, bind(repository, input/route/repository), bind(digest, input/digest), bind(token, token), bind(keypair, input/keypair)))
+  save sent, is-equal(ping/form, <sent>)
+  fork test, sent
+    hold
+      output/report(make(facts-item, bind(glyph, <done>), bind(verb, <ping>), bind(subject, <package index>), bind(facts, ping-facts(text-or-empty(ping/outcome), text-or-empty(ping/publisher), is-truthy(token)))))
+    miss
+      output/report(make(warning-item, bind(glyph, <warning>), bind(verb, <ping>), bind(subject, <package index>), bind(facts, one-text(<{ping/form}>)), bind(message, one-text(sentence(ping/reason)))))
+  back sent
+
+# `--trust` / `--untrust`: sign a new key set for the scope with this machine's key
+task rotate-key-set
+  take input, like dynamic
+  take route, like dynamic
+  like void
+  mark private
+
+  save keypair, load-publish-keypair(make(mint-ask, bind(mint, false)))
+  fork test, not(is-truthy(keypair))
+    hold
+      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <sign>), bind(subject, <There is no signing key on this machine, so it cannot sign a new key set>)))
+      output/close-run(make(next-failure-close, bind(verdict, <The key set was not changed>), bind(next, <term host, once, to publish and make a key>), bind(failure, <environment>)))
+      back
+  save started, now-ms()
+  save transport, deck-tree-module/transport-for(make(host-ask, bind(host, route/registry/host)))
+  save rotated, deck-tree-module/rotate-keys(make(rotate-ask, bind(transport, transport), bind(repository, route/keys-repository), bind(scope, route/scope), bind(keypair, keypair), bind(add, given-list(input/trust)), bind(remove, given-list(input/untrust))))
+  save counts, one-field(output/count(rotated/keys/length, <keys>, <key>))
+  save facts, one-text(<generation {rotated/sequence}>)
+  save fields, one-field(output/field(<ref>, <{route/registry/host}/{route/keys-repository}:keys>))
+  output/report(make(rotate-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <rotate>), bind(subject, <key set of {route/scope}>), bind(duration, subtract(now-ms(), started)), bind(counts, counts), bind(facts, facts), bind(fields, fields)))
+  output/close-run(make(plain-close, bind(verdict, <Key set rotated>)))
+
+# `--ping`: announce the version the registry already holds, and build and push nothing. A rebuild cannot repeat a
+# push that landed, because a build carries its own time, so it is a new digest under a write-once tag
+task ping-held
+  take name, like text
+  take version, like dynamic
+  take route, like dynamic
+  like void
+  mark private
+
+  save keypair, load-publish-keypair(make(mint-ask, bind(mint, false)))
+  save transport, deck-tree-module/transport-for(make(host-ask, bind(host, route/registry/host)))
+  save held, wait transport/get-manifest(make(held-ask, bind(repository, route/repository/name), bind(reference, version)))
+  fork test, not(is-truthy(held))
+    hold
+      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <ping>), bind(subject, <{name}@{version} is not published at {route/registry/host}/{route/repository/name}>)))
+      output/close-run(make(next-failure-close, bind(verdict, <Nothing was announced>), bind(next, <term host>), bind(failure, <usage>)))
+      back
+  fork test, not(is-truthy(keypair))
+    hold
+      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <ping>), bind(subject, <There is no signing key on this machine, so it cannot claim the version>)))
+      output/close-run(make(failure-close, bind(verdict, <Nothing was announced>), bind(failure, <environment>)))
+      back
+  output/report(make(read-item, bind(glyph, <info>), bind(verb, <read>), bind(subject, <{name}@{version}>), bind(fields, one-field(output/field(<digest>, held/digest)))))
+  # the index checks the signer against the scope's key set, so it must exist and hold this key: created on the
+  # scope's first use, a refusal when this key is not a member
+  save keys, deck-tree-module/ensure-publisher(make(publisher-ask, bind(transport, deck-tree-module/transport-for(make(host-ask, bind(host, route/registry/host)))), bind(repository, route/keys-repository), bind(scope, route/scope), bind(keypair, keypair)))
+  fork test, is-truthy(keys/created)
+    hold
+      output/report(make(located-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <create>), bind(subject, <key set of {route/scope}>), bind(fields, one-field(output/field(<ref>, <{route/registry/host}/{route/keys-repository}>)))))
+  save sent, announce(make(announce-ask, bind(route, route), bind(digest, held/digest), bind(keypair, keypair)))
+  fork test, sent
+    hold
+      output/close-run(make(plain-close, bind(verdict, <Announced {name}@{version}>)))
+    miss
+      output/close-run(make(failure-close, bind(verdict, <The index did not take it>), bind(failure, <environment>)))
+
+# the dry run: build the artifact with an existing key or a throwaway one, upload nothing, print its manifest
+task build-dry
+  take name, like text
+  take version, like dynamic
+  take route, like dynamic
+  take common, like dynamic
+  like void
+  mark private
+
+  save keypair, load-publish-keypair(make(mint-ask, bind(mint, false)))
+  fork test, not(is-truthy(keypair))
+    hold
+      save keypair, deck-tree-module/generate-keypair()
+  save started, now-ms()
+  save built, deck-tree-module/build-oci-artifact(merged(common, make(keypair-ask, bind(keypair, keypair))))
+  save release, built/release
+  save artifact, built/artifact
+  save target, <{route/registry/host}/{route/repository/name}:{artifact/config/tag}>
+  save counts, make list
+  counts/push(output/count(release/files/length, <files>, <file>))
+  counts/push(output/count(release/closure/length, <objects>, <object>))
+  counts/push(output/count(artifact/packed, <packed>))
+  counts/push(output/count(artifact/files/packs/length, <packs>, <pack>))
+  counts/push(output/count(artifact/loose, <loose>))
+  save fields, make list
+  fields/push(output/field(<commit>, release/commit))
+  fields/push(output/field(<digest>, artifact/digest))
+  output/report(make(build-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <{name}@{version}>), bind(duration, subtract(now-ms(), started)), bind(bytes, artifact/manifest/length), bind(counts, counts), bind(fields, fields)))
+  save said, <There is no term.surf token (TERM_TOKEN or the auth file), so the ping would be anonymous.>
+  fork test, is-truthy(read-index-token())
+    hold
+      save said, <A term.surf token was found, so the ping would credit the version to its account.>
+  output/report(make(message-item, bind(glyph, <info>), bind(verb, <ping>), bind(subject, <package index>), bind(message, one-text(said))))
+  output/close-run(make(facts-close, bind(verdict, <Dry run, nothing uploaded>), bind(facts, one-text(target))))
+  # the manifest itself is the data a dry run is asked for: stdout, as it is
+  output/print-data(manifest-data(artifact/manifest))
+
+# the publish: mint a key on first use, push, and announce the version to the index
+task push-version
+  take name, like text
+  take version, like dynamic
+  take route, like dynamic
+  take common, like dynamic
+  like void
+  mark private
+
+  save keypair, load-publish-keypair(make(mint-ask, bind(mint, true)))
+  save started, now-ms()
+  save transport, deck-tree-module/transport-for(make(host-ask, bind(host, route/registry/host)))
+  save asked, make(push-ask, bind(transport, transport), bind(repository, route/repository), bind(scope, route/scope), bind(keys-repository, route/keys-repository), bind(keypair, keypair), bind(log, push-log))
+  save result, deck-tree-module/publish-to-oci(merged(common, asked))
+  fork test, is-truthy(result/unchanged)
+    hold
+      output/report(make(skip-item, bind(glyph, <skipped>), bind(verb, <push>), bind(subject, <{name}@{version}>), bind(duration, subtract(now-ms(), started)), bind(facts, one-text(<already published>)), bind(fields, one-field(output/field(<digest>, result/digest)))))
+      # the index may still lack it: the first ping can fail (a private package) after the push landed, and this is
+      # the run that follows the fix
+      announce(make(announce-ask, bind(route, route), bind(digest, result/digest), bind(keypair, keypair)))
+      output/close-run(make(plain-close, bind(verdict, <Already published, nothing moved>)))
+      back
+  save counts, make list
+  counts/push(output/count(result/blobs/uploaded, <blobs>, <blob>, result/blobs/total))
+  counts/push(output/count(result/layers, <layers>, <layer>))
+  output/report(make(build-item, bind(glyph, <done>), bind(verb, <push>), bind(subject, <{result/reference}>), bind(duration, subtract(now-ms(), started)), bind(bytes, result/bytes/uploaded), bind(counts, counts), bind(fields, one-field(output/field(<manifest>, <{result/manifest-size} B>)))))
+  announce(make(announce-ask, bind(route, route), bind(digest, result/digest), bind(keypair, keypair)))
+  output/close-run(make(plain-close, bind(verdict, <Published {name}@{version}>)))
+
+task publish
+  take input, like dynamic
+  like void
+  mark private
+
+  save root, input/root
+  save manifest, deck-tree-module/load-manifest(make(dir-ask, bind(dir, root)))
+  save errors, deck-tree-module/validate-manifest(make(manifest-ask, bind(manifest, manifest)))
+  fork test, is-above(errors/length, 0)
+    hold
+      # each a Problem item, `at` the manifest (section 12)
+      walk errors
+        take err
+        output/report(make(located-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <check>), bind(subject, sentence(err)), bind(fields, one-field(output/location(<deck.tree>)))))
+      output/close-run(make(counted-close, bind(verdict, <Nothing was published>), bind(counts, one-field(output/count(errors/length, <errors>, <error>)))))
+      back
+  save name, package-name(text-or-empty(manifest/host), manifest/name)
+  save version, deck-tree-module/show-code(manifest/mark)
+  # A RELEASED name is not a source package: `@term/code` is the toolchain, published per platform by
+  # `pnpm term:release`, and a source artifact under it would make every install fail
+  fork test, is-released(name)
+    hold
+      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <check>), bind(subject, <{name} is released with pnpm term:release, not published with term host>)))
+      output/close-run(make(failure-close, bind(verdict, <Nothing was published>), bind(failure, <usage>)))
+      back
+  save route, route-of(name, input/registry, manifest)
+  fork test, or(is-truthy(input/trust), is-truthy(input/untrust))
+    hold
+      rotate-key-set(input, route)
+      back
+  fork test, is-truthy(input/ping)
+    hold
+      ping-held(name, version, route)
+      back
+  # A package with a `line` console ships it BUILT, so an installed copy runs with `node` alone: `term boot
+  # <line>/base.tree --out host/line`, the one generated directory a publish carries
+  save include, make list
+  fork test, is-truthy(manifest/line)
+    hold
+      save entry, node-path/join(root, manifest/line, <base.tree>)
+      fork test, node-fs/exists-sync(entry)
+        hold
+          # built inside this run: callBoot reports its own `build` item into it rather than opening another
+          boot-module/call-boot(make(boot-ask, bind(root, root), bind(entry, entry), bind(out, node-path/join(root, <host>, <line>))))
+          include/push(<host/line>)
+  save local, deck-tree-module/local-object-store()
+  save links, make list
+  walk manifest/link
+    take dependency
+    links/push(link-of(dependency/name, deck-tree-module/write-code-hold(make(hold-ask, bind(hold, dependency/mark)))))
+  # the package's source repository, which GHCR reads to LINK the package to it: `site` in deck.tree wins, else the
+  # git remote the package directory pushes to
+  save source, nothing()
+  fork test, is-https(manifest/site)
+    hold
+      save source, manifest/site
+    miss
+      save source, git-source(root)
+  save entries, make list
+  walk annotations-of(text-or-empty(source), text-or-empty(manifest/lock), text-or-empty(manifest/head), list-or-empty(manifest/make))
+    take one
+    entries/push(pair-of(one/key, one/value))
+  save common, common-of(root, name, version, links, local, first-author(manifest), now-iso(), <{name} {version}>, record-of(entries), include)
+  fork test, is-truthy(input/dry-run)
+    hold
+      build-dry(name, version, route, common)
+    miss
+      push-version(name, version, route, common)
+
+task call-host
+  take input, like dynamic
+  like void
+
+  save facts, make list
+  fork test, is-truthy(input/dry-run)
+    hold
+      facts/push(<--dry>)
+    miss
+      fork test, is-truthy(input/ping)
+        hold
+          facts/push(<--ping>)
+  output/open-run(make(facts-open, bind(verb, <host>), bind(root, input/root), bind(facts, facts)))
+  fork
+    mark unsafe
+    publish(input)
+  halt take
+    take error
+    output/fail-run(error, input/root)

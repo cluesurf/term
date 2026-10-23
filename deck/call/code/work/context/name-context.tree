@@ -1,0 +1,735 @@
+# `term show name <name>`: one name of the project with what a reader needs around it, sized to a token budget. An
+# agent asks this instead of searching and reading whole files: the definition and its doc comment, the forms its
+# signature names, every place in the project that uses it, and the heads of what it calls, in that order, each part
+# taken while the budget lasts and what did not fit counted.
+#
+# Everything is read with the one parser and the mill (make/code/analyze.ts), the doc comment from the parse tree's
+# own comments, as hover reads it. Each file is milled alone: no build, no cache, and a file that does not compile
+# still answers for the parts that mill. What a definition shows, which expressions use a name, what a task calls, the
+# budget and the text are call/code/context-slice.tree; this module reads and mills the files, follows the loads, reads
+# a doc comment off the parse tree, and sorts the uses by the host's collation, `localeCompare`.
+#
+# Ported from deck/call/code/context.ts (term-cli-in-term-0052). The original's closures over one run's tables are a
+# record, `context-reader`, handed to each task; the file each definition was read from rides beside it (`located`)
+# where the original kept a WeakMap.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/call/context-slice
+  find definition
+  find use
+  find context-slice
+  find definition-of
+  find use-lines
+  find signature-names
+  find called-names
+  find written-name
+  find doc-text
+  find fit
+  find render-context
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <global:process>, name node-process
+  load <@term/make/code/analyze>, name analyze-module
+  load <@term/make/code/compile/load>, name load-module
+  load <@term/make/code/compile/mill-run>, name mill-module
+  load <@term/make/code/compile/native>, name native-module
+  load <@term/make/code/parser/narrow>, name narrow-module
+  load <@term/make/code/parser/tree>, name tree-module
+  load <@term/make/code/resolve>, name resolve-module
+  load <@term/call/code/deck-of>, name deck-module
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/role-of>, name role-module
+  load <@term/call/code/output>, name output
+
+# ---- the host values Term has no word for ----
+
+bind is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind is-same
+  take a, like dynamic
+  take b, like dynamic
+  like boolean
+  case node
+    text <($a === $b)>
+
+bind value-or
+  take value, like dynamic
+  take fallback, like dynamic
+  like dynamic
+  case node
+    text <($value ?? $fallback)>
+
+bind has-text
+  take value, like text
+  take part, like text
+  like boolean
+  case node
+    text <$value.includes($part)>
+
+bind is-text
+  take value, like dynamic
+  like boolean
+  case node
+    text <(typeof $value === "string")>
+
+bind is-tree-file
+  take file, like text
+  like boolean
+  case node
+    text <$file.endsWith(".tree")>
+
+bind lines-of
+  take text, like text
+  like list, like text
+  case node
+    text <$text.split(String.fromCharCode(10))>
+
+bind leaves-root
+  take rel, like text
+  like boolean
+  case node
+    text <($rel.startsWith("..") || process.getBuiltinModule("node:path").isAbsolute($rel))>
+
+# a path with the platform's separator written `/`
+bind slashed
+  take rel, like text
+  like text
+  case node
+    text <$rel.split(process.getBuiltinModule("node:path").sep).join("/")>
+
+bind floor
+  take value, like dynamic
+  like number
+  case node
+    text <Math.floor($value)>
+
+bind is-positive
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value && $value \> 0)>
+
+# the uses in the host's collation of their places, then by line, as `localeCompare` sorts them
+bind sort-uses
+  take uses, like list, like use
+  like void
+  case node
+    text <$uses.sort((a, b) =\> a.place.localeCompare(b.place) || a.line - b.line)>
+
+bind json-of
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+bind set-exit-code
+  take code, like number
+  like void
+  case node
+    text <(process.exitCode = $code, undefined)>
+
+# ---- one run's tables ----
+
+form milled
+  link file, like text
+  link text, like text
+  link lines, like list, like text
+  link program, like dynamic
+
+# a definition and the file it was read from: what is printed names a place a reader can follow, never a machine path
+form located
+  link found, like definition
+  link file, like text
+
+form context-reader
+  link root, like text
+  link role-of, like dynamic
+  link lean-of, like dynamic
+  link resolve, like dynamic
+  link parsed, like dynamic
+  link deck-of, like dynamic
+  link files, like list, like text
+  link milled, like hash, like text, like maybe, like milled
+
+form mill-source
+  link file, like text
+  link text, like text
+
+form mill-options
+  link role, like dynamic
+  link lean, like dynamic
+
+form missing-name
+  link error, like text
+  link name, like text
+
+form run-ask
+  link verb, like text
+  link root, like text
+
+form item-ask
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link fields
+    like list, like dynamic
+    need false
+
+form close-ask
+  link verdict, like text
+  link failure
+    like text
+    need false
+
+# a file's text, or none when it cannot be read
+task text-of
+  take file, like text
+  like maybe, like text
+  mark private
+
+  save read, make none
+  fork
+    mark unsafe
+    save read
+      make some
+        node-fs/read-file-sync(file, <utf8>)
+  halt take
+    take problem
+    save read, make none
+  back read
+
+# a file milled alone, once a run, or none when it cannot be read or does not mill
+task mill
+  take reader, like context-reader
+  take file, like text
+  take given, like maybe, like text
+  like maybe, like milled
+  mark private
+
+  fork test, not(reader/milled/has(file))
+    hold
+      save text, given
+      sift given
+        case none
+          save text, text-of(file)
+        miss
+          save nothing, 0
+      save made, make none
+      sift text
+        case some
+          link read
+          save source
+            make mill-source
+              bind file, file
+              bind text, read
+          save options
+            make mill-options
+              bind role, reader/role-of(file)
+              bind lean, value-or(reader/lean-of(file), false)
+          save result, analyze-module/analyze(source, options)
+          save program, result/program
+          fork test, is-truthy(program)
+            hold
+              save one
+                make milled
+                  bind file, file
+                  bind text, read
+                  bind lines, lines-of(read)
+                  bind program, program
+              save made
+                make some
+                  read one
+        case none
+          save nothing, 0
+      save reader/milled/{file}, made
+  back reader/milled/get(file)
+
+# a file's place as a reader names it: its path under the project, else its deck and its path in the deck
+# (`@term/base/code/text/string.tree`), which names the file a line number counts in on every machine
+task place-of
+  take reader, like context-reader
+  take file, like text
+  like text
+  mark private
+
+  save rel, node-path/relative(reader/root, file)
+  fork test, not(leaves-root(rel))
+    hold
+      back rel
+  save deck, reader/deck-of(file)
+  fork test, is-truthy(deck)
+    hold
+      back <{deck/name}/{slashed(node-path/relative(deck/root, file))}>
+  back file
+
+# the doc comment of the top-level definition on a line: the `#` lines the parser keeps on its group, as hover reads them
+task doc-at
+  take one, like milled
+  take line, like number
+  like text
+  mark private
+
+  save source
+    make mill-source
+      bind file, one/file
+      bind text, one/text
+  save parsed, tree-module/parse-tolerant(source)
+  save comments, make list
+  walk narrow-module/groups-of(parsed/tree/nodes)
+    take group
+    save span, mill-module/span-of-node(group)
+    fork test, and(is-truthy(span), is-same(span/start/line, line))
+      hold
+        walk value-or(group/comments, make list)
+          take comment
+          push(comments, comment/text)
+        back doc-text(comments)
+  back doc-text(comments)
+
+# the name a statement defines, as a reader wrote it, or none
+task statement-name
+  take statement, like dynamic
+  like maybe, like text
+  mark private
+
+  save name, statement/name
+  fork test, is-text(name)
+    hold
+      save written, written-name(name)
+      back
+        make some
+          read written
+  back make none
+
+# the definition a statement makes of `name`, with its doc comment, its head and its whole text, or none
+task statement-definition
+  take one, like milled
+  take statement, like dynamic
+  take name, like text
+  take place, like text
+  like maybe, like definition
+  mark private
+
+  save doc
+    task
+      take line, like number
+      like text
+      back doc-at(one, line)
+  back definition-of(one/lines, statement, name, place, doc)
+
+# the first definition a milled file makes of `name`, with the file
+task define
+  take reader, like context-reader
+  take one, like milled
+  take name, like text
+  like maybe, like located
+  mark private
+
+  walk one/program
+    take statement
+    sift statement-definition(one, statement, name, place-of(reader, one/file))
+      case some
+        link found
+        back
+          make some
+            make located
+              bind found, found
+              bind file, one/file
+      case none
+        save nothing, 0
+  back make none
+
+# the definition a module answers for under `name`, as a `load` of it reaches it: its own, else one its `bear` chain
+# passes on
+task in-module
+  take reader, like context-reader
+  take import-path, like text
+  take from, like text
+  take name, like text
+  take depth, like number
+  like maybe, like located
+  mark private
+
+  save source, reader/resolve(import-path, from)
+  save milled-one, make none
+  fork test, is-truthy(source)
+    hold
+      save given
+        make some
+          read source/text
+      fork test, is-absent(source/text)
+        hold
+          save given, make none
+      save milled-one, mill(reader, source/file, given)
+  sift milled-one
+    case some
+      link one
+      fork test, is-above(depth, 16)
+        hold
+          back make none
+      save own, define(reader, one, name)
+      sift own
+        case some
+          back own
+        case none
+          save nothing, 0
+      save asked
+        make mill-source
+          bind file, one/file
+          bind text, one/text
+      walk load-module/import-finds-of(asked, reader/parsed)
+        take found
+        fork test, is-truthy(found/bear)
+          hold
+            save passed, in-module(reader, found/path, one/file, name, add(depth, 1))
+            sift passed
+              case some
+                back passed
+              case none
+                save nothing, 0
+      back make none
+    case none
+      back make none
+
+# a name as the file that uses it would reach it: its own definition, then the module its `find` names, then any file
+# of the project that defines it
+task lookup
+  take reader, like context-reader
+  take name, like text
+  take from, like milled
+  like maybe, like located
+  mark private
+
+  save own, define(reader, from, name)
+  sift own
+    case some
+      back own
+    case none
+      save nothing, 0
+
+  save asked
+    make mill-source
+      bind file, from/file
+      bind text, from/text
+  walk load-module/import-finds-of(asked, reader/parsed)
+    take found
+    # by the alias it was found under, or by its own name, which is what the mill writes an aliased call as
+    save at, -1
+    save index, 0
+    walk found/names
+      take real
+      fork test, is-below(at, 0)
+        hold
+          save alias, found/aliases/{index}
+          fork test, or(is-same(value-or(alias, real), name), is-same(real, name))
+            hold
+              save at, index
+      save index, add(index, 1)
+    fork test, is-minimum(at, 0)
+      hold
+        save reached, in-module(reader, found/path, from/file, found/names/{at}, 0)
+        sift reached
+          case some
+            back reached
+          case none
+            save nothing, 0
+
+  walk reader/files
+    take file
+    sift text-of(file)
+      case some
+        link text
+        fork test, has-text(text, name)
+          hold
+            save given
+              make some
+                read text
+            sift mill(reader, file, given)
+              case some
+                link one
+                save there, define(reader, one, name)
+                sift there
+                  case some
+                    back there
+                  case none
+                    save nothing, 0
+              case none
+                save nothing, 0
+      case none
+        save nothing, 0
+  back make none
+
+# ---- the slice ----
+
+# what `term show name <name>` answers for `query`, sized to `budget` tokens
+task context-of
+  take root, like text
+  take query, like text
+  take budget, like number
+  like context-slice
+
+  save role-of, role-module/project-role-of(root)
+  save lean-of, role-module/project-lean-of(root)
+  # `{platform}` filled for node, as `term make` fills it, so a load of a platform module reaches its node file
+  save resolve, native-module/with-native-env(<node>, make-module/project-resolver(root, <node>, root))
+  save parsed, load-module/make-parse-memo()
+  save deck-of, deck-module/project-deck-of()
+  save files, make list
+  walk make-module/find-tree-files(root)
+    take file
+    fork test, is-tree-file(file)
+      hold
+        push(files, file)
+  save reader
+    make context-reader
+      bind root, root
+      bind role-of, role-of
+      bind lean-of, lean-of
+      bind resolve, resolve
+      bind parsed, parsed
+      bind deck-of, deck-of
+      bind files, files
+      bind milled, make hash
+
+  save holding, make list
+  walk files
+    take file
+    sift text-of(file)
+      case some
+        link text
+        fork test, has-text(text, query)
+          hold
+            push(holding, file)
+      case none
+        save nothing, 0
+
+  # ---- the definitions: in the project, else where the project's own loads reach, else any module that exports it ----
+
+  save definitions, make list
+  save definition-files, make list
+  save none-given, make none
+  walk holding
+    take file
+    sift mill(reader, file, none-given)
+      case some
+        link one
+        walk one/program
+          take statement
+          sift statement-definition(one, statement, query, place-of(reader, file))
+            case some
+              link found
+              push(definitions, found)
+              push(definition-files, file)
+            case none
+              save nothing, 0
+      case none
+        save nothing, 0
+
+  fork test, is-equal(definitions/length, 0)
+    hold
+      walk holding
+        take file
+        sift mill(reader, file, none-given)
+          case some
+            link one
+            sift lookup(reader, query, one)
+              case some
+                link found
+                push(definitions, found/found)
+                push(definition-files, found/file)
+                halt
+              case none
+                save nothing, 0
+          case none
+            save nothing, 0
+
+  fork test, is-equal(definitions/length, 0)
+    hold
+      walk resolve-module/find-modules-exporting(root, query)
+        take home
+        sift in-module(reader, home/import-path, node-path/join(root, <term-show.tree>), query, 0)
+          case some
+            link found
+            push(definitions, found/found)
+            push(definition-files, found/file)
+            halt
+          case none
+            save nothing, 0
+
+  # ---- the uses: every call of it, every read of it as a value, every `make` of it, across the project ----
+
+  save uses, make list
+  save seen, make hash
+  walk holding
+    take file
+    sift mill(reader, file, none-given)
+      case some
+        link one
+        walk one/program
+          take statement
+          save owner, <(top level)>
+          sift statement-name(statement)
+            case some
+              link named
+              save owner, named
+            case none
+              save nothing, 0
+          walk use-lines(statement, query)
+            take line
+            save key, <{file}:{line}:{owner}>
+            fork test, not(seen/has(key))
+              hold
+                save seen/{key}, true
+                save used
+                  make use
+                    bind in, owner
+                    bind place, place-of(reader, file)
+                    bind line, add(line, 1)
+                push(uses, used)
+      case none
+        save nothing, 0
+  sort-uses(uses)
+
+  # ---- what the first definition reaches: the forms its signature names, and the tasks it calls ----
+
+  save forms, make list
+  save calls, make list
+  # a task it calls that nothing the file can reach defines: listed rather than left out, since it is the first thing
+  # to fix
+  save unresolved, make list
+
+  fork test, is-above(definitions/length, 0)
+    hold
+      save main, get(definitions, 0)
+      sift mill(reader, get(definition-files, 0), none-given)
+        case some
+          link main-milled
+          save main-statement, make none
+          walk main-milled/program
+            take statement
+            sift statement-name(statement)
+              case some
+                link named
+                fork test, and(is-equal(named, main/name), is-same(add(statement/span/start/line, 1), main/line))
+                  hold
+                    save main-statement
+                      make some
+                        read statement
+                    halt
+              case none
+                save nothing, 0
+          sift main-statement
+            case some
+              link chosen
+              walk signature-names(chosen)
+                take name
+                fork test, not(is-equal(name, query))
+                  hold
+                    sift lookup(reader, name, main-milled)
+                      case some
+                        link found
+                        fork test, is-equal(found/found/kind, <form>)
+                          hold
+                            push(forms, found/found)
+                      case none
+                        save nothing, 0
+              walk called-names(chosen, query)
+                take name
+                sift lookup(reader, name, main-milled)
+                  case some
+                    link found
+                    push(calls, found/found)
+                  case none
+                    push(unresolved, name)
+            case none
+              save nothing, 0
+        case none
+          save nothing, 0
+
+  back fit(query, budget, definitions, forms, uses, calls, unresolved)
+
+# `term show name <name>`, printed: the slice as text, or as JSON with `--json`
+task show-context
+  take input, like dynamic
+  like void
+
+  fork test, not(is-truthy(input/query))
+    hold
+      save opening
+        make run-ask
+          bind verb, <show>
+          bind root, input/root
+      output/open-run(opening)
+      save item
+        make item-ask
+          bind glyph, <failed>
+          bind kind, <problem>
+          bind subject, <Which name? term show name \<task, form or mask\>>
+      output/report(item)
+      save closing
+        make close-ask
+          bind verdict, <Nothing shown>
+          bind failure, <usage>
+      output/close-run(closing)
+      back
+
+  save budget, 4000
+  fork test, is-positive(input/budget)
+    hold
+      save budget, floor(input/budget)
+  save slice, context-of(input/root, input/query, budget)
+
+  fork test, is-equal(slice/definitions/length, 0)
+    hold
+      fork test, is-truthy(input/json)
+        hold
+          save missing
+            make missing-name
+              bind error, <not-found>
+              bind name, input/query
+          output/print-data(<{json-of(missing)}\n>)
+          set-exit-code(1)
+          back
+      save opening
+        make run-ask
+          bind verb, <show>
+          bind root, input/root
+      output/open-run(opening)
+      save fields, make list
+      push(fields, output/field(<looked>, <every .tree file of the project, the standard library and link/>))
+      save item
+        make item-ask
+          bind glyph, <failed>
+          bind kind, <problem>
+          bind subject, <No task, form or mask is named {input/query} here or in what the project can load>
+          bind fields, fields
+      output/report(item)
+      save closing
+        make close-ask
+          bind verdict, <Nothing shown>
+      output/close-run(closing)
+      back
+
+  fork test, is-truthy(input/json)
+    hold
+      output/print-data(<{json-of(slice)}\n>)
+    miss
+      output/print-data(render-context(slice))

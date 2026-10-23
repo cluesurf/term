@@ -29,6 +29,9 @@ load ../compile/rolling
 load ../term/quote
   find json-quote
 
+load @term/base/maybe
+  find maybe
+
 # a literal piece's text: a bare text, or a `chunk` record's value as `String` writes it, none for anything else
 task chunk-of
   take part, like roll-value

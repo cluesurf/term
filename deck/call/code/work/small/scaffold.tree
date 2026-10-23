@@ -1,0 +1,256 @@
+# `term wake [name]`: scaffold a new Term project. Creates a deck.tree manifest, a starter entry module, a readme and
+# a .gitignore. With a name it makes a new directory; without one it scaffolds the current directory. Ported from
+# call/code/wake.ts (term-cli-in-term-0060). The texts it writes were Term already, call/code/wake-files.tree, which
+# call/code/wake-text.ts only re-exports; work/wake.tree was an earlier conversion that wrote other texts.
+#
+# THE FILE SYSTEM IS node:fs/promises, as the original's: a folder that cannot be made is named as its own failure
+# names it (the first folder of the path that could not be made, where mkdirSync names the target).
+#
+# A FILE ALREADY THERE IS THE AUTHOR'S and is kept: wake in a folder that held a `readme.md` or a `.gitignore` replaced
+# it without a word (guides: commands/wake, 2026-10-04). Each file is written with the `wx` flag, which refuses to
+# write over one. The original wrote the four at once and waited for all; here they are written one after another, in
+# the scaffold's order, which differs only in which failure is named when two writes fail for reasons other than a
+# file being there.
+
+load @term/call/wake-files
+  find deck-tree
+  find boot-tree
+  find readme
+  find gitignore
+
+load @term/call/draft-mark
+  find is-space
+
+load @term/base/text
+  find split
+  find char-code-at
+  find substring
+
+load @term/base/list
+  find get
+  find join
+  find contains
+
+dock load
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <node:path>, name node-path
+  load <@term/call/code/output>, name output
+  load <global:Error>, name host-error
+  load <global:String>, name host-string
+
+form folder-ask
+  link recursive, like boolean
+
+form write-ask
+  link flag, like text
+
+form scaffold-file
+  link file, like text
+  link text, like text
+
+form wake-open
+  link verb, like text
+  link root, like text
+  link subject, like text
+
+form problem-at
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form problem-said
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link message, like list, like text
+
+form kept-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link facts, like list, like text
+
+form added-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+
+form nothing-close
+  link verdict, like text
+
+form ready-close
+  link verdict, like text
+  link counts, like list, like dynamic
+  link next, like text
+  link done, like boolean
+
+# JavaScript's `trim`: every `\s` code point off both ends
+task trimmed
+  take value, like text
+  like text
+  mark private
+
+  save points, split(value, <>)
+  save start, 0
+  walk test
+    hook test, and(is-below(start, points/length), is-space(char-code-at(get(points, start), 0)))
+    hook hold
+      save start, add(start, 1)
+  save end, points/length
+  walk test
+    hook test, and(is-above(end, start), is-space(char-code-at(get(points, subtract(end, 1)), 0)))
+    hook hold
+      save end, subtract(end, 1)
+  save kept, make list
+  save at, start
+  walk test
+    hook test, is-below(at, end)
+    hook hold
+      kept/push(get(points, at))
+      save at, add(at, 1)
+  back join(kept, <>)
+
+# the message of a failure the host raised, as the original printed it: an Error's message, else the value as text
+task message-of
+  take error, like dynamic
+  like text
+  mark private
+
+  fork test, host-error-check(error)
+    hold
+      back error/message
+  back host-string/call(<>, error)
+
+task host-error-check
+  take value, like dynamic
+  like boolean
+  mark private
+
+  # `value instanceof Error`
+  back host-error/prototype/is-prototype-of(value)
+
+task close-nothing
+  like void
+  mark private
+
+  output/close-run(make(nothing-close, bind(verdict, <Nothing written>)))
+
+# write one file unless something is already there: `written`, `kept`, or the failure's message
+task write-new
+  take full, like text
+  take text, like text
+  like text
+  mark private
+
+  fork
+    mark unsafe
+    fs-promise/write-file(full, text, make(write-ask, bind(flag, <wx>)))
+    back <written>
+  halt take
+    take error
+    fork test, is-equal(error/code, <EEXIST>)
+      hold
+        back <kept>
+    back <failed: {message-of(error)}>
+
+# the scaffold: written in order, then one item per file, then the closing item; or the first failure, after every
+# write was tried (the original tried all four at once and then reported the failure)
+task write-scaffold
+  take target, like text
+  take label, like text
+  take project, like text
+  take named, like boolean
+  like void
+  mark private
+
+  fs-promise/mkdir(node-path/join(target, <code>), make(folder-ask, bind(recursive, true)))
+  fs-promise/mkdir(node-path/join(target, <test>), make(folder-ask, bind(recursive, true)))
+  save scaffold, make list
+  save deck-text, deck-tree(label)
+  save boot-text, boot-tree()
+  save readme-text, readme(label)
+  save ignore-text, gitignore()
+  scaffold/push(make(scaffold-file, bind(file, <deck.tree>), bind(text, deck-text)))
+  scaffold/push(make(scaffold-file, bind(file, <code/boot.tree>), bind(text, boot-text)))
+  scaffold/push(make(scaffold-file, bind(file, <readme.md>), bind(text, readme-text)))
+  scaffold/push(make(scaffold-file, bind(file, <.gitignore>), bind(text, ignore-text)))
+  save kept, make list
+  save failure, <>
+  walk scaffold
+    take one
+    save status, write-new(node-path/join(target, one/file), one/text)
+    fork test, is-equal(status, <kept>)
+      hold
+        kept/push(one/file)
+    fork test, and(is-equal(failure, <>), status/starts-with(<failed: >))
+      hold
+        save failure, substring(status, 8)
+  fork test, is-unequal(failure, <>)
+    hold
+      report-failure(failure)
+    miss
+      # one item per file, in the order a reader opens them: `add` for each written, `keep` for each already there
+      save written, 0
+      walk scaffold
+        take one
+        fork test, contains(kept, one/file)
+          hold
+            save facts, make list
+            facts/push(<already here, left as it was>)
+            output/report(make(kept-item, bind(glyph, <info>), bind(verb, <keep>), bind(subject, one/file), bind(facts, facts)))
+          miss
+            save written, add(written, 1)
+            output/report(make(added-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, one/file)))
+      save counts, make list
+      counts/push(output/count(written, <files>, <file>))
+      save next, <term boot>
+      fork test, named
+        hold
+          save next, <cd {project} && term boot>
+      output/close-run(make(ready-close, bind(verdict, <{label} is ready>), bind(counts, counts), bind(next, next), bind(done, true)))
+
+task report-failure
+  take message, like text
+  like void
+  mark private
+
+  save said, make list
+  said/push(message)
+  output/report(make(problem-said, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <The project could not be written>), bind(message, said)))
+  close-nothing()
+
+# `root` is the folder the command ran in, `name` the project's name or the empty text
+task call-wake
+  take root, like text
+  take name, like text
+  like void
+
+  save project, trimmed(name)
+  save named, and(is-unequal(project, <>), is-unequal(project, <.>))
+  save target, root
+  fork test, named
+    hold
+      save target, node-path/resolve(root, project)
+  # the deck's name is the folder's own name, never the path that reached it: `term wake ~/work/demo` names it `demo`
+  save label, node-path/basename(target)
+  save shown, output/show-path(target)
+  output/open-run(make(wake-open, bind(verb, <wake>), bind(root, root), bind(subject, shown)))
+
+  fork
+    mark unsafe
+    fs-promise/mkdir(target, make(folder-ask, bind(recursive, true)))
+    save existing, fs-promise/readdir(target)
+    fork test, contains(existing, <deck.tree>)
+      hold
+        save fields, make list
+        fields/push(output/location(<{shown}/deck.tree>))
+        output/report(make(problem-at, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <A deck.tree is already here>), bind(fields, fields)))
+        close-nothing()
+      miss
+        write-scaffold(target, label, project, named)
+  halt take
+    take error
+    report-failure(message-of(error))

@@ -1,0 +1,341 @@
+# `term roll --diff <before>`: what a change did to what the project's tasks can DO. For every task, the native
+# modules it can reach (work/context/reaching.tree) and the exceptions it can raise, before and after, and for the build
+# the exceptions and routes that came or went. A reviewer of code they did not write, an agent's or a colleague's, reads
+# this before the code: a task that gained `node:child_process` is the line to look at.
+#
+# `before` is a roll a run wrote (`term roll --json > before.json`), or a git ref, whose tree is read with
+# `git archive` into the project's `tmp/` under the commit it names and rolled there with the project's own `link/`.
+# Reading a ref writes nothing to the repository. A gained reach is a warning, so `--strict` makes the diff a gate.
+#
+# Ported from deck/call/code/roll-diff.ts (term-cli-in-term-0057). The comparison itself was already Term
+# (call/code/roll-delta.tree); this is the face that fed it. `rollBefore` answers a `roll-earlier` (case found or
+# refused) where the original answered `{ roll } | { error }`, and `diffRolls(name, before, after, host)` is
+# `compare-rolls`, since roll-delta.tree's `diff-rolls` (over its own entry lists) keeps that name.
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find ends-with
+  find substring
+
+load @term/call/roll-delta
+  find roll-entry
+  find roll-lists
+  find roll-diff
+  find diff-rolls
+
+load @term/call/work/context/reaching
+  find make-reach-graph
+  find reach-at-line
+  find site-file-of
+
+dock load
+  load <@term/call/code/deck-of>, name deck-of-module
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <node:child_process>, name node-child
+
+# ---- the host values Term has no word for ----
+
+# `deckOf(file)?.root ?? fallback`: the folder of the deck a manifest names
+bind roll-deck-root
+  take decks, like dynamic
+  take file, like text
+  take fallback, like text
+  like text
+  case node
+    text <($decks($file)?.root ?? $fallback)>
+
+# `deckOf(file)?.name ?? '@local'`
+bind roll-deck-name
+  take decks, like dynamic
+  take file, like text
+  like text
+  case node
+    text <($decks($file)?.name ?? "@local")>
+
+bind roll-is-list
+  take value, like dynamic
+  like boolean
+  case node
+    text <Array.isArray($value)>
+
+bind roll-is-true
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === true)>
+
+bind roll-set-reach
+  take entry, like dynamic
+  take reach, like list, like text
+  like void
+  case node
+    text <($entry.reach = $reach, undefined)>
+
+# `JSON.parse(text)`, or the message of what it threw, as `{ roll }` or `{ error }`
+bind roll-parse-json
+  take text, like text
+  like dynamic
+  case node
+    text <(() =\> \{ try \{ return \{ roll: JSON.parse($text) \} \} catch (error) \{ return \{ error: error instanceof Error ? error.message : String(error) \} \} \})()>
+
+bind roll-has-error
+  take answer, like dynamic
+  like boolean
+  case node
+    text <("error" in $answer)>
+
+# `git -C root ...args` with its output as text: the status, stdout and stderr
+bind roll-run-git
+  take child, like dynamic
+  take root, like text
+  take args, like list, like text
+  like dynamic
+  case node
+    text <$child.spawnSync("git", ["-C", $root, ...$args], \{ encoding: "utf8", maxBuffer: 64 * 1024 * 1024 \})>
+
+# `git -C top archive --format=tar <commit> [prefix]`, its output as bytes
+bind roll-run-archive
+  take child, like dynamic
+  take top, like text
+  take commit, like text
+  take prefix, like text
+  like dynamic
+  case node
+    text <$child.spawnSync("git", ["-C", $top, "archive", "--format=tar", $commit, ...($prefix ? [$prefix] : [])], \{ maxBuffer: 1024 * 1024 * 1024 \})>
+
+# `tar -x -C at`, the archive on its stdin
+bind roll-run-tar
+  take child, like dynamic
+  take at, like text
+  take archive, like dynamic
+  like dynamic
+  case node
+    text <$child.spawnSync("tar", ["-x", "-C", $at], \{ input: $archive \})>
+
+bind roll-status-zero
+  take run, like dynamic
+  like boolean
+  case node
+    text <($run.status === 0)>
+
+# `(run.stdout ?? '').trim()`
+bind roll-out-text
+  take run, like dynamic
+  like text
+  case node
+    text <($run.stdout ?? "").trim()>
+
+# `String(run.stderr ?? '').trim()`, also for a run that answered bytes
+bind roll-error-text
+  take run, like dynamic
+  like text
+  case node
+    text <String($run.stderr ?? "").trim()>
+
+bind roll-make-folder
+  take fs, like dynamic
+  take folder, like text
+  like void
+  case node
+    text <$fs.mkdirSync($folder, \{ recursive: true \})>
+
+# a run of git: whether it passed, and what it wrote, trimmed
+form git-answer
+  link ok, like boolean
+  link out, like text
+  link error, like text
+
+# a roll as it stood: found, or why it could not be read
+form roll-earlier
+  case found
+    link roll, like dynamic
+  case refused
+    link error, like text
+
+# the project's own deck, as its tasks are listed on the roll
+task own-host
+  take root, like text
+  like text
+
+  back roll-deck-name(deck-of-module/project-deck-of(), node-path/join(root, <deck.tree>))
+
+# every task of the project's own deck with the native modules it can reach, as `reach`, sorted. A dependency's task
+# is left as it is: what a deck the project loads can do is that deck's roll, and its tasks are reached through the
+# project's own
+task add-reach
+  take roll, like dynamic
+  take root, like text
+  like void
+
+  save base, roll-deck-root(deck-of-module/project-deck-of(), node-path/join(root, <deck.tree>), root)
+  save host, own-host(root)
+  save graph, make-reach-graph(root)
+  save tasks, roll/task
+  walk tasks
+    take entry, like dynamic
+    fork test, is-unequal(entry/host, host)
+      hold
+        turn next
+    sift site-file-of(base, entry/site)
+      case some
+        link at
+        roll-set-reach(entry, reach-at-line(graph, at/file, at/line))
+      case none
+        save none-reached, make list
+        roll-set-reach(entry, none-reached)
+
+task run-git
+  take root, like text
+  take args, like list, like text
+  like git-answer
+  mark private
+
+  save run, roll-run-git(node-child, root, args)
+  back
+    make git-answer
+      bind ok, roll-status-zero(run)
+      bind out, roll-out-text(run)
+      bind error, roll-error-text(run)
+
+task refuse-before
+  take error, like text
+  like roll-earlier
+  mark private
+
+  back
+    make refused
+      bind error, error
+
+# a roll as it stood at `before`: a JSON file a run wrote, else a git ref, rolled where its tree is read out
+task roll-before
+  take root, like text
+  take before, like text
+  take roll-at
+    like task
+      take at, like text
+      like dynamic
+  like roll-earlier
+
+  save file, node-path/resolve(root, before)
+  fork test, and(node-fs/exists-sync(file), ends-with(before, <.json>))
+    hold
+      save parsed, roll-parse-json(node-fs/read-file-sync(file, <utf8>))
+      fork test, roll-has-error(parsed)
+        hold
+          back refuse-before(<{before} is not a roll: {parsed/error}>)
+      back
+        make found
+          bind roll, parsed/roll
+
+  save asked, make list
+  asked/push(<rev-parse>)
+  asked/push(<--verify>)
+  asked/push(<--quiet>)
+  asked/push(<{before}^\{commit\}>)
+  save commit, run-git(root, asked)
+  fork test, or(not(commit/ok), is-equal(commit/out, <>))
+    hold
+      back refuse-before(<{before} is neither a roll file (.json) nor a commit this repository has>)
+
+  save top-args, make list
+  top-args/push(<rev-parse>)
+  top-args/push(<--show-toplevel>)
+  save top-run, run-git(root, top-args)
+  save top, top-run/out
+  save prefix-args, make list
+  prefix-args/push(<rev-parse>)
+  prefix-args/push(<--show-prefix>)
+  save prefix-run, run-git(root, prefix-args)
+  save prefix, prefix-run/out
+  # under the commit, so a second diff against it reads what the first wrote, and a ref that moved reads its new commit
+  save at, node-path/join(root, <tmp>, <roll-at-{substring(commit/out, 0, 12)}>)
+  save rolled, node-path/join(at, prefix)
+
+  fork test, not(node-fs/exists-sync(rolled))
+    hold
+      roll-make-folder(node-fs, at)
+      save archive, roll-run-archive(node-child, top, commit/out, prefix)
+      fork test, not(roll-status-zero(archive))
+        hold
+          back refuse-before(<git archive could not read {before}: {roll-error-text(archive)}>)
+      save tar, roll-run-tar(node-child, at, archive/stdout)
+      fork test, not(roll-status-zero(tar))
+        hold
+          back refuse-before(<the tree of {before} could not be unpacked: {roll-error-text(tar)}>)
+
+  # the dependencies the project has now: `link/` is not in a commit, and a roll of the old tree needs them to resolve
+  save link, node-path/join(root, <link>)
+  fork test, and(node-fs/exists-sync(link), not(node-fs/exists-sync(node-path/join(rolled, <link>))))
+    hold
+      node-fs/symlink-sync(link, node-path/join(rolled, <link>))
+
+  save old, roll-at(rolled)
+  add-reach(old, rolled)
+  back
+    make found
+      bind roll, old
+
+# a roll entry as the comparison reads it: a field that is not a list reads as none (`reach`) or empty (`halt`), and
+# only a literal `true` is async, as the comparison this replaced read them
+task entry-of
+  take entry, like dynamic
+  like roll-entry
+  mark private
+
+  save reach, make none
+  fork test, roll-is-list(entry/reach)
+    hold
+      save listed, entry/reach
+      save reach
+        make some
+          read listed
+  save halt, make list
+  fork test, roll-is-list(entry/halt)
+    hold
+      save halt, entry/halt
+  back
+    make roll-entry
+      bind host, entry/host
+      bind name, entry/name
+      bind site, entry/site
+      bind reach, reach
+      bind halt, halt
+      bind async, roll-is-true(entry/async)
+
+task entries-of
+  take entries, like list, like dynamic
+  like list, like roll-entry
+  mark private
+
+  save out, make list
+  walk entries
+    take entry, like dynamic
+    out/push(entry-of(entry))
+  back out
+
+task lists-of
+  take roll, like dynamic
+  like roll-lists
+  mark private
+
+  back
+    make roll-lists
+      bind task, entries-of(roll/task)
+      bind exception, entries-of(roll/exception)
+      bind dock, entries-of(roll/dock)
+
+# the roll at `before` against the roll now, for the project's own deck `host` (roll-delta.tree `diff-rolls`)
+task compare-rolls
+  take before-name, like text
+  take before, like dynamic
+  take after, like dynamic
+  take host, like text
+  like roll-diff
+
+  back diff-rolls(before-name, lists-of(before), lists-of(after), host)

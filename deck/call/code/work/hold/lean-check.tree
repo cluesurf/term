@@ -1,0 +1,568 @@
+mark draft
+
+# `term hold --lean`: the second checker over a project's claims, ported from call/code/hold-lean.ts
+# (term-cli-in-term-0048; note/project/term/proof/lean-export/spec.md). After the gate every claim of the project (a
+# `rule` with no `show`) is exported with the terms Term's kernel kept, to ONE Lean 4 file under the project's home
+# (`.base/@term/code/lean/hold.lean`), Lean checks it, and the `#print axioms` line of each claim is read back. Per
+# claim: checked, checked resting on axioms, refused by Lean, or declined by the exporter with its reason. Any of the
+# last three fails the gate, and so does a machine with no Lean: the re-check is never passed in silence.
+#
+# The files exported are the ones holding a claim and every file they load, transitively: a relative load by its
+# path, a package load through the project's resolver. A load nothing resolves (a native one) is dropped and named.
+# The parser, the exporter and the Lean runner are the compiler's, docked; their answers are host values.
+
+load @term/base/maybe
+  find maybe
+
+load @term/call/work/output/printer
+  find report
+  find count
+  find field
+
+dock load
+  load <@term/make/code/parser/tree>, name tree-parsing
+  load <@term/make/code/parser/narrow>, name narrowing
+  load <@term/make/code/compile/mill-run>, name mill-running
+  load <@term/make/code/compile/mill-check>, name load-reading
+  load <@term/make/code/compile/template>, name templating
+  load <@term/make/code/check/lean-export>, name lean-exporting
+  load <@term/make/code/check/lean-run>, name lean-running
+  load <@term/make/code/compile/native>, name native-env
+  load <@term/call/code/make>, name file-resolving
+  load <@term/call/code/home>, name home-finding
+  load <node:fs>, name host-fs
+  load <node:path>, name host-path
+
+# ---- the host's values ----
+
+# a file's claims: each top-level `rule` (the file's templates expanded, so a fused law counts) with no `show` under
+# it or its name
+bind claims-in
+  take parsing, like dynamic
+  take narrow, like dynamic
+  take running, like dynamic
+  take templates, like dynamic
+  take file, like text
+  take text, like text
+  like list, like text
+  case node
+    text <<((parsed) => parsed.ok ? $narrow.groupsOf($templates.expandTemplates(parsed.tree).nodes).flatMap(group => { if ($running.headWord(group) !== "rule") return []; const name = group.nodes[1]; if (name?.kind !== "group") return []; const shows = [...group.nodes, ...name.nodes].some(child => child.kind === "group" && $running.headWord(child) === "show"); const word = $running.headWord(name); return !shows && word ? [word] : [] }) : [])($parsing.parse({ file: $file, text: $text }))>>
+
+bind parses
+  take parsing, like dynamic
+  take file, like text
+  take text, like text
+  like boolean
+  case node
+    text <$parsing.parse(\{ file: $file, text: $text \}).ok>
+
+bind load-targets
+  take reading, like dynamic
+  take file, like text
+  take text, like text
+  like list, like text
+  case node
+    text <$reading.millLoadTargets(\{ file: $file, text: $text \})>
+
+# where a load leads: a relative one by its path, a package one through the resolver; the empty text for nowhere
+bind load-target-file
+  take resolving, like dynamic
+  take resolver, like dynamic
+  take paths, like dynamic
+  take file, like text
+  take target, like text
+  like text
+  case node
+    text <<(($target.startsWith(".") ? $resolving.resolveTreeFile($paths.resolve($paths.dirname($file), $target)) : $target ? $resolver($target, $file)?.file : undefined) ?? "")>>
+
+bind starts-relative
+  take target, like text
+  like boolean
+  case node
+    text <$target.startsWith(".")>
+
+bind source-pair
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ file: $file, text: $text \})>
+
+bind lean-binary
+  take running, like dynamic
+  like text
+  case node
+    text <($running.findLean() ?? "")>
+
+bind install-line
+  take running, like dynamic
+  like text
+  case node
+    text <$running.LEAN_INSTALL>
+
+bind error-said
+  take problem, like dynamic
+  like text
+  case node
+    text <($problem instanceof Error ? $problem.message : String($problem))>
+
+bind exported-lean
+  take exported, like dynamic
+  like text
+  case node
+    text <$exported.lean>
+
+bind exported-diagnostics
+  take exported, like dynamic
+  like list, like text
+  case node
+    text <$exported.kernel.diagnostics>
+
+# the exporter's reason for a claim it refused, the empty text for one it did not
+bind refused-reason
+  take exported, like dynamic
+  take name, like text
+  like text
+  case node
+    text <<($exported.refused.find(one => one.name === $name)?.reason ?? "")>>
+
+bind was-refused
+  take exported, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <<$exported.refused.some(one => one.name === $name)>>
+
+bind was-exported
+  take exported, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <<$exported.exported.some(entry => entry.claim && entry.name === $name)>>
+
+bind run-lean
+  take running, like dynamic
+  take lean, like text
+  take file, like text
+  take source, like text
+  take claims, like list, like text
+  like dynamic
+  case node
+    text <$running.runLean(\{ lean: $lean, file: $file, source: $source, claims: $claims \})>
+
+bind lean-version
+  take running, like dynamic
+  take lean, like text
+  like dynamic
+  case node
+    text <$running.leanVersion($lean)>
+
+# Lean's verdict on a claim, nothing when it gave none
+bind verdict-of
+  take run, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <<$run?.claims.find(one => one.name === $name)>>
+
+bind verdict-word
+  take verdict, like dynamic
+  like text
+  case node
+    text <$verdict.verdict>
+
+bind verdict-axioms
+  take verdict, like dynamic
+  like list, like text
+  case node
+    text <$verdict.axioms>
+
+bind verdict-error
+  take verdict, like dynamic
+  like text
+  case node
+    text <($verdict.error || "")>
+
+bind lean-truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind no-run
+  like dynamic
+  case node
+    text <undefined>
+
+bind make-folder
+  take fs, like dynamic
+  take dir, like text
+  like void
+  case node
+    text <$fs.mkdirSync($dir, \{ recursive: true \})>
+
+# ---- the shapes ----
+
+form lean-claim
+  link name, like text
+  # the file that states it, relative to the project
+  link file, like text
+  # checked, axioms, refused or declined
+  link verdict, like text
+  link axioms, like list, like text
+  # Lean's first error line for a refused claim, the exporter's reason for a declined one
+  link reason
+    like maybe, like text
+    need false
+
+form hold-lean
+  # no Lean at TERM_LEAN or on the PATH
+  link missing, like boolean
+  link claims, like list, like lean-claim
+  # loads left out of the joined program, `<file>: <target>`
+  link dropped, like list, like text
+  # what the exporter's own run of the kernel reported
+  link diagnostics, like list, like text
+  link ok, like boolean
+  # the Lean file written, absolute
+  link file
+    like maybe, like text
+    need false
+  # the Lean binary run, and its version
+  link lean
+    like maybe, like text
+    need false
+  link version
+    like maybe, like dynamic
+    need false
+
+form file-read
+  link file, like text
+  link claims, like list, like text
+  link loads, like list, like text
+
+form stated-claim
+  link name, like text
+  link file, like text
+
+# what visiting the files gathers: the files to join, every file after what it loads, and the loads dropped
+form join-order
+  link order, like list, like text
+  link seen, like list, like text
+  link dropped, like list, like text
+  link read, like list, like file-read
+
+# ---- reading a file ----
+
+# what one file says at its top level: its claims and what it loads
+task read-file
+  take file, like text
+  like file-read
+
+  save text, host-fs/read-file-sync(file, <utf8>)
+  save none, make list
+  fork test, not(parses(tree-parsing, file, text))
+    hold
+      back make(file-read, bind(file, file), bind(claims, none), bind(loads, make list))
+  back make(file-read, bind(file, file), bind(claims, claims-in(tree-parsing, narrowing, mill-running, templating, file, text)), bind(loads, load-targets(load-reading, file, text)))
+
+task read-of
+  take order, like join-order
+  take file, like text
+  like file-read
+  mark private
+
+  walk order/read
+    take one
+    fork test, is-equal(one/file, file)
+      hold
+        back one
+  save fresh, read-file(file)
+  order/read/push fresh
+  back fresh
+
+# the files to join: each stating file and what it loads, every file after what it loads
+task visit
+  take order, like join-order
+  take root, like text
+  take resolver, like dynamic
+  take file, like text
+  like void
+  mark private
+
+  walk order/seen
+    take one
+    fork test, is-equal(one, file)
+      hold
+        back
+  order/seen/push file
+  save own, read-of(order, file)
+  walk own/loads
+    take target
+    save found, load-target-file(file-resolving, resolver, host-path, file, target)
+    fork test, is-unequal(found, <>)
+      hold
+        visit(order, root, resolver, found)
+      miss
+        save shown, target
+        fork test, is-equal(target, <>)
+          hold
+            save shown, <a native load>
+        order/dropped/push <{host-path/relative(root, file)}: {shown}>
+  order/order/push file
+
+# ---- the check ----
+
+task hold-lean
+  take root, like text
+  take files, like list, like text
+  like hold-lean
+
+  save reads, make list
+  walk files
+    take file
+    reads/push read-file(file)
+  save resolver, native-env/with-native-env(<node>, file-resolving/project-resolver(root))
+  save order, make(join-order, bind(order, make list), bind(seen, make list), bind(dropped, make list), bind(read, reads))
+  walk reads
+    take one
+    fork test, is-above(one/claims/length, 0)
+      hold
+        visit(order, root, resolver, one/file)
+
+  # the project's own claims: a package's are exported with it, and not reported as the project's
+  save stated, make list
+  walk order/order
+    take file
+    fork test, contains-file(files, file)
+      hold
+        save read, read-of(order, file)
+        walk read/claims
+          take name
+          stated/push make(stated-claim, bind(name, name), bind(file, host-path/relative(root, file)))
+  save lean, lean-binary(lean-running)
+  save missing, is-equal(lean, <>)
+  save no-claims, make list
+  save no-diagnostics, make list
+
+  fork test, is-equal(stated/length, 0)
+    hold
+      back make(hold-lean, bind(missing, missing), bind(claims, no-claims), bind(dropped, order/dropped), bind(diagnostics, no-diagnostics), bind(ok, not(missing)))
+
+  save sources, make list
+  walk order/order
+    take file
+    sources/push source-pair(host-path/relative(root, file), host-fs/read-file-sync(file, <utf8>))
+  save exported, no-run()
+  save stopped, <>
+  fork
+    mark unsafe
+    save exported, lean-exporting/export-lean(lean-exporting/join-sources(sources))
+  halt take
+    take problem
+    save stopped, <the exporter stopped: {error-said(problem)}>
+  fork test, is-unequal(stopped, <>)
+    hold
+      save declined, make list
+      walk stated
+        take one
+        declined/push make(lean-claim, bind(name, one/name), bind(file, one/file), bind(verdict, <declined>), bind(axioms, make list), bind(reason, make(some, stopped)))
+      back make(hold-lean, bind(missing, missing), bind(claims, declined), bind(dropped, order/dropped), bind(diagnostics, no-diagnostics), bind(ok, false))
+
+  save diagnostics, exported-diagnostics(exported)
+  save file, home-finding/project-home(root, <lean>, <hold.lean>)
+  make-folder(host-fs, host-path/dirname(file))
+  host-fs/write-file-sync(file, exported-lean(exported))
+
+  save leaning, make list
+  walk stated
+    take one
+    fork test, was-exported(exported, one/name)
+      hold
+        leaning/push one/name
+  save run, no-run()
+  fork test, not(missing)
+    hold
+      save run, run-lean(lean-running, lean, file, exported-lean(exported), leaning)
+
+  save claims, make list
+  walk stated
+    take one
+    save verdict, verdict-of(run, one/name)
+    fork test, lean-truth(verdict)
+      hold
+        save checked, make(lean-claim, bind(name, one/name), bind(file, one/file), bind(verdict, verdict-word(verdict)), bind(axioms, verdict-axioms(verdict)))
+        save said, verdict-error(verdict)
+        fork test, is-unequal(said, <>)
+          hold
+            save checked/reason, make(some, said)
+        claims/push checked
+        turn next
+    fork test, or(was-refused(exported, one/name), not(contains-file(leaning, one/name)))
+      hold
+        save why, refused-reason(exported, one/name)
+        fork test, not(was-refused(exported, one/name))
+          hold
+            save why, <the exporter did not write it>
+        claims/push make(lean-claim, bind(name, one/name), bind(file, one/file), bind(verdict, <declined>), bind(axioms, make list), bind(reason, make(some, why)))
+        turn next
+    # exported, and Lean is missing: not checked, and the gate says so through `missing`
+    claims/push make(lean-claim, bind(name, one/name), bind(file, one/file), bind(verdict, <refused>), bind(axioms, make list), bind(reason, make(some, <Lean did not run>)))
+
+  save ok, not(missing)
+  walk claims
+    take claim
+    fork test, is-unequal(claim/verdict, <checked>)
+      hold
+        save ok, false
+  save answer, make(hold-lean, bind(missing, missing), bind(claims, claims), bind(dropped, order/dropped), bind(diagnostics, diagnostics), bind(ok, ok), bind(file, make(some, file)))
+  fork test, not(missing)
+    hold
+      save answer/lean, make(some, lean)
+      save found-version, lean-version(lean-running, lean)
+      save answer/version, make(some, found-version)
+  back answer
+
+# `list.includes(value)`
+bind contains-file
+  take values, like list, like text
+  take value, like text
+  like boolean
+  case node
+    text <$values.includes($value)>
+
+# ---- the items ----
+
+form problem-fields-say
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+  link fields, like list, like dynamic
+
+form lean-say
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+
+form lean-problem-say
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+
+form dropped-say
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+
+form total-say
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link counts, like list, like dynamic
+  link fields
+    like maybe, like list, like dynamic
+    need false
+
+task reason-text
+  take claim, like lean-claim
+  like text
+  mark private
+
+  sift claim/reason
+    case some
+      link why
+      back why
+    case none
+      back <>
+
+task of-verdict
+  take result, like hold-lean
+  take verdict, like text
+  like number
+  mark private
+
+  save tally, 0
+  walk result/claims
+    take claim
+    fork test, is-equal(claim/verdict, verdict)
+      hold
+        save tally, add(tally, 1)
+  back tally
+
+# one item per claim, then the total. A missing Lean is a ✗ with the one line that installs it
+task report-lean
+  take result, like hold-lean
+  like void
+
+  fork test, result/missing
+    hold
+      save lines, make list
+      lines/push <Looked at TERM_LEAN, then the PATH.>
+      save fields, make list
+      fields/push field(<next>, install-line(lean-running))
+      report(make(problem-fields-say, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <lean>), bind(subject, <Lean 4 is not installed, so no claim was re-checked>), bind(message, lines), bind(fields, fields)))
+
+  walk result/claims
+    take claim
+    save verdict, claim/verdict
+    fork test, is-equal(verdict, <checked>)
+      hold
+        report(make(lean-say, bind(glyph, <done>), bind(verb, <lean>), bind(subject, <{claim/name} checked>)))
+        turn next
+    fork test, is-equal(verdict, <axioms>)
+      hold
+        report(make(lean-problem-say, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <lean>), bind(subject, <{claim/name} checked, rests on {claim/axioms/join(<, >)}>)))
+        turn next
+    fork test, is-equal(verdict, <refused>)
+      hold
+        fork test, not(result/missing)
+          hold
+            report(make(lean-problem-say, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <lean>), bind(subject, <{claim/name} refused: {reason-text(claim)}>)))
+        turn next
+    report(make(lean-problem-say, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <lean>), bind(subject, <{claim/name} declined: {reason-text(claim)}>)))
+
+  fork test, is-above(result/dropped/length, 0)
+    hold
+      report(make(dropped-say, bind(glyph, <warning>), bind(verb, <lean>), bind(subject, <Loads left out of the joined program: the exporter reads no module binding yet>), bind(message, result/dropped)))
+
+  save glyph, <failed>
+  fork test, result/ok
+    hold
+      save glyph, <done>
+  save subject, <No claim was re-checked in Lean>
+  fork test, not(result/missing)
+    hold
+      save shown, <>
+      sift result/version
+        case some
+          link version
+          fork test, lean-truth(version)
+            hold
+              save shown, < {version-text(version)}>
+        case none
+          save shown, shown
+      save subject, <{of-verdict(result, <checked>)} of {result/claims/length} claims checked by Lean{shown}>
+  save counts, make list
+  counts/push count(of-verdict(result, <refused>), <refused>)
+  counts/push count(of-verdict(result, <axioms>), <on an axiom>)
+  counts/push count(of-verdict(result, <declined>), <declined>)
+  save total, make(total-say, bind(glyph, glyph), bind(verb, <lean>), bind(subject, subject), bind(counts, counts))
+  sift result/file
+    case some
+      link written
+      save fields, make list
+      fields/push field(<file>, written)
+      save total/fields, make(some, fields)
+    case none
+      save total, total
+  report(total)
+
+bind version-text
+  take version, like dynamic
+  like text
+  case node
+    text <String($version)>

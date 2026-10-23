@@ -5,6 +5,7 @@ load @term/base/bit
   find shift-left
   find shift-right
   find unsigned-shift-right
+  find bitwise-exclusive-or
 
 task fnv-hash-32-1a
   take v, like text

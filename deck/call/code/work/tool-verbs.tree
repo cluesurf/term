@@ -1,17 +1,6 @@
 load @term/call/work/home
   find root, name project-root
 
-load @term/call/work/tint
-  find log-good
-  find log-fail
-  find log-step
-  find log-warn
-  find fade
-  find name, name tint-name
-  find bold
-  find mark
-  find format-error
-
 # The remaining verbs: `term time`, `term hold`, `term zone` and `term mark`. `mark` is a forwarder like `zone`.
 #
 # `zone` is the one that CANNOT be more than this. It slices the argument vector at `zone` and hands everything
@@ -27,7 +16,9 @@ dock load
   load <@term/call/code/hold>, name hold-module
   load <@term/call/code/zone>, name zone-module
   load <@term/call/code/mark>, name mark-module
-  load <node:process>, name node-process
+  # the process argument vector `zone` and `mark` hand over whole (traps.md: <global:process>, never <node:process>,
+  # for anything that may use the process object as `this`)
+  load <global:process>, name host-process
 
 form time-ask
   link root, like text
@@ -52,6 +43,7 @@ form hold-ask
   link cache, like boolean
   link force, like boolean
   link json, like boolean
+  link commit, like boolean
   link lean, like boolean
   link report, like boolean
 
@@ -84,34 +76,32 @@ task time
 
   like void
 
-  # the project root is READ, not taken: a hook has no `root` argument to pass
+  # the project root is READ, not taken: a hook has no `root` argument to pass. No tint, catch or exit of its own: a
+  # throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term)
   save root, call project-root
-  fork
-    mark unsafe
-    call time-module/callTime
-      make time-ask
-        bind root, read root
-        bind filter, read filter
-        bind file, read file
-        bind json, read json
-        bind save, read save
-        bind compare, read compare
-        bind failOnRegression, read fail-on-regression
-        bind markdown, read markdown
-        bind history, read history
-        bind cpu, read cpu
-        bind memory, read memory
-        bind top, read top
-      wait true
-  halt take
-    take error
-    log-fail format-error error
-    node-process/exit code 1
+  call time-module/callTime
+    make time-ask
+      bind root, read root
+      bind filter, read filter
+      bind file, read file
+      bind json, read json
+      bind save, read save
+      bind compare, read compare
+      bind failOnRegression, read fail-on-regression
+      bind markdown, read markdown
+      bind history, read history
+      bind cpu, read cpu
+      bind memory, read memory
+      bind top, read top
+    wait true
 
-# `term hold`: verify that the `.tree` files hold -- report gaps, run the cross checks
+# `term hold [paths..]`: the proof gate -- every file compiles, no claim is open, every tier-0 obligation is proven or
+# baselined. The parameters stand in the hook's order (paths, cross, commit, cache, force, json, lean, report)
 task hold
   mark async
+  take paths, like list, like text
   take cross, like boolean
+  take commit, like boolean
   take cache, like boolean
   take force, like boolean
   take json, like boolean
@@ -120,30 +110,30 @@ task hold
 
   like void
 
-  # the project root is READ, not taken: a hook has no `root` argument to pass
+  # the project root is READ, not taken: a hook has no `root` argument to pass. No tint, catch or exit of its own: a
+  # throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term)
   save root, call project-root
-  fork
-    mark unsafe
-    call hold-module/callHold
-      make hold-ask
-        bind root, read root
-        bind paths, make list
-        bind cross, read cross
-        bind cache, read cache
-        bind force, read force
-        bind json, read json
-        bind lean, read lean
-        bind report, read report
-      wait true
-  halt take
-    take error
-    log-fail format-error error
-    node-process/exit code 1
+  call hold-module/callHold
+    make hold-ask
+      bind root, read root
+      bind paths, read paths
+      bind cross, read cross
+      bind cache, read cache
+      bind force, read force
+      bind json, read json
+      bind commit, read commit
+      bind lean, read lean
+      bind report, read report
+    wait true
 
-# `term zone ...`: the whole zone console, under one command, with its arguments handed over untouched
+# `term zone ...`: the whole zone console, under one command, with its arguments handed over untouched. As line.ts
+# does, `callZone` is handed the WHOLE process argument vector and slices it at `zone` itself: the route's `rest` is
+# what the dispatcher kept, and it has already read words a zone invocation means for the zone console. No catch or
+# exit of its own: a throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term)
 task zone
   mark async
 
+  # the hook's take, bound by name; the words are read whole from the process instead
   take rest
     like list
       like text
@@ -152,20 +142,16 @@ task zone
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  fork
-    mark unsafe
-    call zone-module/callZone
-      make zone-ask, bind(root, read root), bind argv, read rest
-      wait true
-  halt take
-    take error
-    log-fail format-error error
-    node-process/exit code 1
+  call zone-module/callZone
+    make zone-ask, bind(root, read root), bind argv, host-process/argv
+    wait true
 
-# `term mark ...`: the benchmark runner in the Term repository's deck/mark/, booted there with its arguments untouched
+# `term mark ...`: the benchmark runner in the Term repository's deck/mark/, booted there with its arguments
+# untouched. `callMark` is handed the whole process argument vector and slices it after `mark`, as line.ts does
 task mark
   mark async
 
+  # the hook's take, bound by name; the words are read whole from the process instead
   take rest
     like list
       like text
@@ -173,12 +159,6 @@ task mark
   like void
 
   save root, call project-root
-  fork
-    mark unsafe
-    call mark-module/callMark
-      make mark-ask, bind(root, read root), bind argv, read rest
-      wait true
-  halt take
-    take error
-    log-fail format-error error
-    node-process/exit code 1
+  call mark-module/callMark
+    make mark-ask, bind(root, read root), bind argv, host-process/argv
+    wait true

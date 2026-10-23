@@ -1,0 +1,393 @@
+# `term base import`: getting ordinary data in. Point it at a file or a directory, a CSV of words, a JSON export, a
+# directory of both, and its rows become records of one form on a branch.
+#
+#   term base import words.csv --form word --key slug
+#   term base import rows.jsonl --form word --mark id
+#
+# The parsing and the lifting are @cluesurf/save/bridge/from-data's, docked; this is the IO and the wiring. A RE-IMPORT
+# UPDATES rather than duplicates: the branch's records are read first, and a row whose key is already there keeps its
+# mark, so running a file twice changes nothing. It commits by CHANGES on top of the branch, so importing one form
+# leaves every other form alone.
+#
+# Ported from call/code/base-import.ts (term-cli-in-term-0038). The repository is work/base/repository.tree's.
+
+load @term/base/list
+  find list
+  find push
+  find sort
+
+load @term/make/check/eliminate
+  find utf16-order
+
+load ./repository
+  find refuse
+  find need
+  find save-repository
+
+dock load
+  load <@cluesurf/save/bridge/from-data>, name from-data-module
+  load <@cluesurf/save/diff/diff>, name diff-module
+  load <@term/call/code/output>, name output
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+
+# ---- host values ----
+
+bind lift-is-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind lift-is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind lift-empty-record
+  like dynamic
+  case node
+    text <(\{\})>
+
+bind lift-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind lift-new-map
+  like dynamic
+  case node
+    text <new Map()>
+
+bind lift-copy-map
+  take map, like dynamic
+  like dynamic
+  case node
+    text <new Map($map)>
+
+bind lift-map-set
+  take map, like dynamic
+  take key, like dynamic
+  take value, like dynamic
+  like void
+  case node
+    text <void $map.set($key, $value)>
+
+bind lift-is-file
+  take file, like dynamic
+  like boolean
+  case node
+    text <process.getBuiltinModule("node:fs").statSync($file).isFile()>
+
+bind lift-is-folder
+  take file, like dynamic
+  like boolean
+  case node
+    text <process.getBuiltinModule("node:fs").statSync($file).isDirectory()>
+
+bind lift-lower
+  take value, like dynamic
+  like text
+  case node
+    text <$value.toLowerCase()>
+
+bind lift-now
+  like number
+  case node
+    text <Date.now()>
+
+bind lift-line-break
+  like text
+  case node
+    text <String.fromCharCode(10)>
+
+bind lift-tab
+  like text
+  case node
+    text <String.fromCharCode(9)>
+
+# `error instanceof Error ? error.message : String(error)`
+bind lift-message-of
+  take error, like dynamic
+  like text
+  case node
+    text <($error instanceof Error ? $error.message : String($error))>
+
+bind lift-parse-json-rows
+  take module, like dynamic
+  take text, like dynamic
+  like dynamic
+  case node
+    text <$module.parseJsonRows($text)>
+
+bind lift-is-bad-row
+  take module, like dynamic
+  take error, like dynamic
+  like boolean
+  case node
+    text <($error instanceof $module.BadRow)>
+
+# ---- the records the output library and @cluesurf/save take ----
+
+form import-open
+  link verb, like text
+  link root, like dynamic
+  link subject, like dynamic
+  link facts, like list, like dynamic
+
+form import-close
+  link verdict, like text
+
+form import-close-counts
+  link verdict, like text
+  link counts, like list, like dynamic
+
+form import-close-counts-message
+  link verdict, like text
+  link counts, like list, like dynamic
+  link message, like list, like text
+
+form read-item
+  link glyph, like text
+  link verb, like text
+  link subject, like dynamic
+  link counts, like list, like dynamic
+
+form committed-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link counts, like list, like dynamic
+  link facts, like list, like text
+
+form diagnostic-item
+  link glyph, like text
+  link kind, like text
+  link subject, like dynamic
+  link fields, like list, like dynamic
+
+form usage-refusal
+  link failure, like text
+  link fields, like list, like dynamic
+  link verdict, like text
+
+form message-refusal
+  link message, like list, like text
+
+form fields-refusal
+  link fields, like list, like dynamic
+
+form delimited-ask
+  link text, like dynamic
+  link delimiter, like text
+
+form column-mark
+  link kind, like text
+  link column, like dynamic
+
+form lift-ask
+  link rows, like dynamic
+  link form, like dynamic
+  link mark, like column-mark
+  link existing, like dynamic
+
+form import-meta
+  link author, like dynamic
+  link time, like number
+  link message, like dynamic
+
+task one-of
+  take value, like dynamic
+  like list, like dynamic
+  mark private
+
+  save out, make list
+  push(out, value)
+  back out
+
+# What a source's extension says it is: the delimiter of a delimited file, the empty text for a JSON-like one, and
+# nothing for any other. A directory is walked for these and nothing else, so a readme beside the data is skipped
+task delimiter-of
+  take extension, like text
+  like text
+  mark private
+
+  fork test, is-equal(extension, <.csv>)
+    hold
+      back <,>
+  fork test, is-equal(extension, <.tsv>)
+    hold
+      back lift-tab()
+  back <>
+
+task is-data-file
+  take extension, like text
+  like boolean
+  mark private
+
+  back or(or(is-equal(extension, <.csv>), is-equal(extension, <.tsv>)), or(or(is-equal(extension, <.json>), is-equal(extension, <.jsonl>)), is-equal(extension, <.ndjson>)))
+
+# every data file a source names: the file itself, or the ones inside a directory, sorted so two imports of one
+# directory make the same marks in the same order
+task source-files
+  take source, like dynamic
+  like list, like dynamic
+  mark private
+
+  fork test, not(node-fs/exists-sync(source))
+    hold
+      refuse(<There is no file or directory at {source}>, lift-empty-record())
+  fork test, not(lift-is-folder(source))
+    hold
+      back one-of(source)
+  save names, make list
+  walk node-fs/readdir-sync(source)
+    take name, like dynamic
+    push(names, <{name}>)
+  save found, make list
+  walk sort(names, utf16-order)
+    take name
+    save one, node-path/join(source, name)
+    fork test, lift-is-file(one)
+      hold
+        fork test, is-data-file(lift-lower(node-path/extname(one)))
+          hold
+            push(found, one)
+  fork test, is-equal(found/length, 0)
+    hold
+      save said, make list
+      push(said, <A directory is walked for those and nothing else.>)
+      refuse(<There is no .csv, .tsv, .json, .jsonl or .ndjson file in {source}>, make(message-refusal, bind(message, said)))
+  back found
+
+# one file's rows, by its extension
+task rows-of
+  take file, like dynamic
+  like dynamic
+  mark private
+
+  save extension, lift-lower(node-path/extname(file))
+  save text, node-fs/read-file-sync(file, <utf8>)
+  fork test, or(is-equal(extension, <.csv>), is-equal(extension, <.tsv>))
+    hold
+      back from-data-module/parse-delimited(make(delimited-ask, bind(text, text), bind(delimiter, delimiter-of(extension))))
+  # through a bind by its exact name: a dock call spelled parse-json-rows is emitted parseJSONRows (traps.md)
+  back lift-parse-json-rows(from-data-module, text)
+
+task call-base-import
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  save source, input/source
+  save form, input/form
+  save branch, input/branch
+  save key, input/key
+  save mark, input/mark
+  save facts, make list
+  push(facts, form)
+  push(facts, branch)
+  output/open-run(make(import-open, bind(verb, <import>), bind(root, root), bind(subject, source), bind(facts, facts)))
+  # neither, or both: without one of them every row would get a fresh mark and a second import would duplicate
+  # every record silently. A flag the command line owed: wrong usage, exit 2 (section 18)
+  fork test, is-equal(lift-is-absent(key), lift-is-absent(mark))
+    hold
+      save fields, make list
+      push(fields, output/field(<--key>, <the column identifies a row in the source; the mark is found or created against it, so a re-import updates>))
+      push(fields, output/field(<--mark>, <the column already holds a uuid version 4, and it is used as the mark>))
+      refuse(<Say where the mark comes from, with exactly one of --key and --mark>, make(usage-refusal, bind(failure, <usage>), bind(fields, fields), bind(verdict, <The command line was not understood>)))
+  save held, need(root)
+  save repo, held/repo
+  save files, source-files(source)
+  save rows, make list
+  walk files
+    take file, like dynamic
+    fork
+      mark unsafe
+      save found, rows-of(file)
+      walk found
+        take row, like dynamic
+        push(rows, row)
+      output/report(make(read-item, bind(glyph, <done>), bind(verb, <read>), bind(subject, node-path/basename(file)), bind(counts, one-of(output/count(found/length, <rows>, <row>)))))
+    halt take
+      take error
+      refuse(lift-message-of(error), make(fields-refusal, bind(fields, one-of(output/location(file)))))
+  fork test, is-equal(rows/length, 0)
+    hold
+      output/close-run(make(import-close-counts, bind(verdict, <Nothing to import>), bind(counts, one-of(output/count(0, <rows>, <row>)))))
+      back
+  save head, repo/head(branch)
+  save existing, lift-new-map()
+  fork test, lift-is-truthy(head)
+    hold
+      save existing, repo/checkout(head)
+  save by, make(column-mark, bind(kind, <key>), bind(column, key))
+  fork test, lift-is-absent(key)
+    hold
+      save by, make(column-mark, bind(kind, <column>), bind(column, mark))
+  save lifted, lift-nothing()
+  fork
+    mark unsafe
+    save lifted, from-data-module/records-from(make(lift-ask, bind(rows, rows), bind(form, form), bind(mark, by), bind(existing, existing)))
+  halt take
+    take error
+    save said, <Could not lift the rows: {lift-message-of(error)}>
+    fork test, lift-is-bad-row(from-data-module, error)
+      hold
+        save said, <{error/message}>
+    refuse(said, lift-empty-record())
+  # applied ON TOP of what is there, so importing one form leaves every other form alone
+  save next, lift-copy-map(existing)
+  save records, lifted/records
+  walk records
+    take record, like dynamic
+    lift-map-set(next, record/mark, record)
+  save changes, diff-module/diff-dataset(existing, next)
+  fork test, is-equal(changes/length, 0)
+    hold
+      save counts, make list
+      push(counts, output/count(rows/length, <rows>, <row>))
+      push(counts, output/count(0, <changes>, <change>))
+      save said, make list
+      push(said, <Every record is already what the source says.>)
+      output/close-run(make(import-close-counts-message, bind(verdict, <Nothing changed>), bind(counts, counts), bind(message, said)))
+      back
+  save message, input/message
+  fork test, lift-is-absent(message)
+    hold
+      save message, <import {records/length} {form} record(s) from {node-path/basename(source)}>
+  save done, repo/commit(branch, make(import-meta, bind(author, input/author), bind(time, lift-now()), bind(message, message)), next)
+  fork test, not(lift-is-truthy(done/ok))
+    hold
+      save diagnostics, done/diagnostics
+      fork test, not(lift-is-absent(diagnostics))
+        hold
+          walk diagnostics
+            take one, like dynamic
+            save at, one/mark
+            fork test, lift-is-absent(at)
+              hold
+                save at, <(dataset)>
+            output/report(make(diagnostic-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, one/message), bind(fields, one-of(output/field(<mark>, at)))))
+      output/close-run(make(import-close, bind(verdict, <The commit was refused>)))
+      back
+  save-repository(held)
+  # the commit hash is what a script captures, so it is data
+  save ending, lift-line-break()
+  output/print-data(<{done/commit}{ending}>)
+  save plural, <s>
+  fork test, is-equal(records/length, 1)
+    hold
+      save plural, <>
+  save column, key
+  fork test, lift-is-absent(key)
+    hold
+      save column, mark
+  save tallies, make list
+  push(tallies, output/count(lifted/minted, <new>))
+  push(tallies, output/count(lifted/reused, <matched>))
+  save said, make list
+  push(said, <by {column}>)
+  output/report(make(committed-item, bind(glyph, <done>), bind(verb, <commit>), bind(subject, <{records/length} {form} record{plural}>), bind(counts, tallies), bind(facts, said)))
+  output/close-run(make(import-close-counts, bind(verdict, <Imported onto {branch}>), bind(counts, one-of(output/count(changes/length, <changes>, <change>)))))

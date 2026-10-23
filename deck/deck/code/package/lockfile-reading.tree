@@ -1,0 +1,232 @@
+# A project's `lock.tree`: read, through the mill or by hand, written and saved. Ported from deck/deck/code/lock.ts
+# (term-cli-in-term-0080): loadLockfile, parseLockfile, parseLockfileByHand, writeLockfile, saveLockfile.
+#
+# The decisions:
+#   - the lockfile reads THROUGH THE MILL (grammar-reading.tree `parse-lockfile-mill`), so `load-lockfile` and
+#     `parse-lockfile` take the grammars record last; the hand extraction is the retired reference path, kept
+#   - `load-lockfile` answers a maybe where the original answered undefined, for a lockfile that is not there or
+#     does not read alike
+#   - the decks are sorted by the host's `localeCompare`, as the original sorted them
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../version
+  find parse-code
+  find show-code
+
+load ./lockfile-shape
+  find lock-link
+  find lock-entry
+  find lock-need
+  find lockfile
+
+load ./grammar-reading
+  find manifest-grammars
+  find parse-lockfile-mill
+
+load ./tree-reading
+  find tree-form
+  find read-tree
+  find value-of
+  find forms-with
+
+dock load
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <node:path>, name node-path
+  load <global:Number>, name host-number
+
+bind lockfile-decks-sorted
+  take decks, like list, like lock-entry
+  like list, like lock-entry
+  case node
+    text <<[...$decks].sort(function (a, b) { return a.name.localeCompare(b.name) })>>
+
+bind lockfile-lines-joined
+  take lines, like list, like text
+  like text
+  case node
+    text <$lines.join(String.fromCharCode(10))>
+
+bind lockfile-is-filled
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+task load-lockfile
+  take dir, like text
+  take grammars, like manifest-grammars
+  like maybe, like lockfile
+
+  save file, node-path/join(dir, <lock.tree>)
+
+  fork
+    mark unsafe
+    save content, fs-promise/read-file(file, <utf-8>)
+    save read, parse-lockfile(content, grammars)
+    back make(some, read)
+  halt take
+    take unread
+    back make none
+
+task parse-lockfile
+  take text, like text
+  take grammars, like manifest-grammars
+  like lockfile
+
+  back parse-lockfile-mill(text, grammars)
+
+# a maybe text, the empty text for none
+task text-or-blank
+  take value, like maybe, like text
+  like text
+  mark private
+
+  sift value
+    case some
+      link found
+      back found
+    case none
+      back <>
+
+# the first bare word of a form, the empty text when it has none
+task first-term
+  take form, like tree-form
+  like text
+  mark private
+
+  fork test, is-above(form/terms/length, 0)
+    hold
+      back get(form/terms, 0)
+
+  back <>
+
+task parse-lockfile-by-hand
+  take text, like text
+  like lockfile
+
+  save result, read-tree(<lock.tree>, text)
+
+  fork test, not(result/ok)
+    hold
+      save said, <>
+      fork test, is-above(result/diagnostics/length, 0)
+        hold
+          save first, get(result/diagnostics, 0)
+          save said, <: {first/message}>
+      halt <lock.tree could not be parsed{said}>
+
+  save version, 1
+  save decks, make list
+  save need-found, false
+  save need, make(lock-need, bind(name, <>), bind(code, parse-code(<0.0.0>)), bind(hash, <>))
+
+  walk result/forms
+    take form
+
+    fork test, is-equal(form/head, <need>)
+      hold
+        save name, first-term(form)
+        save code, text-or-blank(value-of(form, <code>))
+        save hash, text-or-blank(value-of(form, <hash>))
+        fork test, and(lockfile-is-filled(name), and(lockfile-is-filled(code), lockfile-is-filled(hash)))
+          hold
+            save need, make(lock-need, bind(name, name), bind(code, parse-code(code)), bind(hash, hash))
+            save need-found, true
+        turn next
+
+    fork test, is-equal(form/head, <lock>)
+      hold
+        save stated, host-number/parse-int(text-or-blank(form/value), 10)
+        fork test, host-number/is-finite(stated)
+          hold
+            save version, stated
+        turn next
+
+    fork test, not(is-equal(form/head, <deck>))
+      hold
+        turn next
+
+    save code-text, <0.0.0>
+    sift value-of(form, <code>)
+      case some
+        link written
+        save code-text, written
+      case none
+        save nothing, 0
+
+    save links, make list
+    walk forms-with(form, <link>)
+      take one
+      links/push(make(lock-link, bind(name, first-term(one)), bind(code, text-or-blank(value-of(one, <code>)))))
+
+    save entry-name, first-term(form)
+    save entry-code, parse-code(code-text)
+    save entry-hash, text-or-blank(value-of(form, <hash>))
+    save entry-site, text-or-blank(value-of(form, <site>))
+    save key, text-or-blank(value-of(form, <key>))
+    # the key only when there is one, as the original spread it
+    fork test, lockfile-is-filled(key)
+      hold
+        decks/push(make(lock-entry, bind(name, entry-name), bind(code, entry-code), bind(hash, entry-hash), bind(site, entry-site), bind(key, key), bind(link, links)))
+      miss
+        decks/push(make(lock-entry, bind(name, entry-name), bind(code, entry-code), bind(hash, entry-hash), bind(site, entry-site), bind(link, links)))
+
+  save out, make(lockfile, bind(version, version), bind(decks, decks))
+  fork test, need-found
+    hold
+      save out/need, make(some, need)
+  back out
+
+task write-lockfile
+  take lockfile, like lockfile
+  like text
+
+  save lines, make list
+  lines/push(<lock \<{lockfile/version}\>>)
+  lines/push(<>)
+
+  # the toolchain first: it is what runs everything below it
+  sift lockfile/need
+    case some
+      link need
+      lines/push(<need {need/name}>)
+      lines/push(<  code \<{show-code(need/code)}\>>)
+      lines/push(<  hash \<{need/hash}\>>)
+      lines/push(<>)
+    case none
+      save nothing, 0
+
+  walk lockfile-decks-sorted(lockfile/decks)
+    take entry
+    lines/push(<deck {entry/name}>)
+    lines/push(<  code \<{show-code(entry/code)}\>>)
+    lines/push(<  hash \<{entry/hash}\>>)
+    lines/push(<  site \<{entry/site}\>>)
+
+    fork test, lockfile-is-filled(entry/key)
+      hold
+        lines/push(<  key \<{entry/key}\>>)
+
+    walk entry/link
+      take dep
+      lines/push(<  link {dep/name}, code \<{dep/code}\>>)
+
+    lines/push(<>)
+
+  back lockfile-lines-joined(lines)
+
+task save-lockfile
+  take dir, like text
+  take lockfile, like lockfile
+  like void
+
+  save file, node-path/join(dir, <lock.tree>)
+  save content, write-lockfile(lockfile)
+  fs-promise/write-file(file, content, <utf-8>)

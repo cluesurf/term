@@ -116,7 +116,8 @@ async function node(): Promise<void> {
   const ts = result.typescript
   ok('the list draws model.tree\'s `view` of its `replay` of the events taken', /rowsOf\(view\w*\(replay\(eventsOf\(log\)\), asker\)/.test(ts), '')
   ok('`replay` runs model.tree\'s `step`', /function replay\(es: Events\): Shelf \{[\s\S]{0,400}?step\w*\(replay\(/.test(ts), '')
-  ok('edit and delete ask permit.tree\'s `grant-delete` for the note\'s permit', (ts.match(/const p: Permit = grantDelete\(asker, at, whose\)/g) ?? []).length === 2, '')
+  // a raising call records its Term frame in `__site` first (term/hive decision 001): `(__site = "<frame>", call)`
+  ok('edit and delete ask permit.tree\'s `grant-delete` for the note\'s permit', (ts.match(/const p: Permit = (\(__site = "[^"]*", )?grantDelete\(asker, at, whose\)/g) ?? []).length === 2, '')
   ok('and delete spends that permit as the erase event', /log\.push\((eraseBy\(p\)|\{ form: "erase", who: p\.person\.id, rank: p\.person\.rank, id: p\.note \})\)/.test(ts), (/[^\n]*log\.push[^\n]*/.exec(ts) ?? [''])[0])
 
   const readRuntime = (p: string): string | undefined => (fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : undefined)

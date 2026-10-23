@@ -1,0 +1,458 @@
+# THE DOCUMENT NOTIFICATIONS: a document opened, changed, saved or closed in the editor, a file created, changed or
+# deleted on disk, and the client pulling a document's diagnostics. Each keeps the server's documents in step with what
+# the editor shows and analyzes what that made stale (document-analysis.tree).
+#
+# Ported from server.ts (term-cli-in-term-0101, part 2 of 5): handle's cases `textDocument/didOpen`, `didChange`,
+# `didSave`, `didClose`, `workspace/didChangeWatchedFiles` and `textDocument/diagnostic`, each a task request-loop.tree
+# calls with the server record. The decisions:
+#   - a message's parameters are the host's JSON value, read by host expressions as the original read them (`??`,
+#     optional chaining), and a version is kept as the client sent it, so `version + 1` adds as the host adds
+#   - a uri the client sent that is not a text fails as the original failed, with its message: `pathFor` called
+#     `uri.startsWith` on it
+#   - the scratch-path and config-file patterns are written out by unit (self-host traps T001, T024)
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+
+load @term/make/fixing
+  find units-of
+
+load ./geometry
+  find apply-change
+
+load ./package-index
+  find forget-file
+  find canonical
+
+load ./language-server
+  find language-server
+  find document
+  find open-document
+  find close-document
+  find path-for
+  find is-under
+  find is-given
+
+load ./document-analysis
+  find run-document
+  find schedule
+  find settled
+  find is-deferred-server
+
+load ./server-reply
+  find respond
+  find notify
+  find require-param
+  find uri-of
+
+dock load
+  load <node:path>, name node-path
+  load <@term/call/code/deck-of>, name deck-module
+
+# a file event, its path read off its uri
+form file-change
+  link file, like text
+  link type, like dynamic
+
+# ---- the host ----
+
+bind document-item
+  take params, like dynamic
+  like dynamic
+  case node
+    text <($params)?.textDocument>
+
+bind item-uri
+  take item, like dynamic
+  like dynamic
+  case node
+    text <$item.uri>
+
+# `item.text ?? ''`
+bind item-text
+  take item, like dynamic
+  like dynamic
+  case node
+    text <($item.text ?? "")>
+
+# `item.version ?? 0`
+bind item-version
+  take item, like dynamic
+  like dynamic
+  case node
+    text <($item.version ?? 0)>
+
+bind is-text
+  take value, like dynamic
+  like boolean
+  case node
+    text <(typeof $value === "string")>
+
+# what `uri.startsWith('file:')` threw on a uri that is not a text
+bind raise-not-text
+  take value, like dynamic
+  like void
+  case node
+    text <(() =\> \{ throw new TypeError("uri.startsWith is not a function") \})()>
+
+# `change?.contentChanges ?? []`
+bind content-changes
+  take params, like dynamic
+  like list, like dynamic
+  case node
+    text <(($params)?.contentChanges ?? [])>
+
+# `change?.textDocument?.version ?? doc.version + 1`
+bind next-version
+  take params, like dynamic
+  take version, like dynamic
+  like dynamic
+  case node
+    text <(($params)?.textDocument?.version ?? $version + 1)>
+
+# `params?.changes ?? []`
+bind file-events
+  take params, like dynamic
+  like list, like dynamic
+  case node
+    text <(($params)?.changes ?? [])>
+
+bind event-uri
+  take event, like dynamic
+  like dynamic
+  case node
+    text <$event.uri>
+
+bind event-type
+  take event, like dynamic
+  like dynamic
+  case node
+    text <$event.type>
+
+# `c.type === n`
+bind is-type
+  take value, like dynamic
+  take wanted, like number
+  like boolean
+  case node
+    text <($value === $wanted)>
+
+bind previous-result
+  take params, like dynamic
+  like dynamic
+  case node
+    text <($params)?.previousResultId>
+
+bind full-report
+  like dynamic
+  case node
+    text <(\{ kind: "full", items: [] \})>
+
+bind unchanged-report
+  take id, like text
+  like dynamic
+  case node
+    text <(\{ kind: "unchanged", resultId: $id \})>
+
+bind items-report
+  take id, like text
+  take items, like list, like dynamic
+  like dynamic
+  case node
+    text <(\{ kind: "full", resultId: $id, items: $items \})>
+
+bind closed-params
+  take uri, like text
+  like dynamic
+  case node
+    text <(\{ uri: $uri, diagnostics: [] \})>
+
+bind number-text
+  take value, like number
+  like text
+  case node
+    text <String($value)>
+
+bind is-same-value
+  take one, like dynamic
+  take other, like dynamic
+  like boolean
+  case node
+    text <($one === $other)>
+
+# ---- the paths ----
+
+task is-separator
+  take unit, like number
+  like boolean
+  mark private
+
+  back or(is-equal(unit, 47), is-equal(unit, 92))
+
+# whether units from `start` to `stop` spell a word
+task spells
+  take units, like list, like number
+  take start, like number
+  take stop, like number
+  take word, like text
+  like boolean
+  mark private
+
+  save wanted, units-of(word)
+  fork test, is-unequal(subtract(stop, start), wanted/length)
+    hold
+      back false
+  save k, 0
+  walk test
+    hook test, is-below(k, wanted/length)
+    hook hold
+      fork test, is-unequal(get(units, add(start, k)), get(wanted, k))
+        hold
+          back false
+      save k, add(k, 1)
+  back true
+
+# A path no package builds from, so a change under it changes nothing the server holds: scratch, caches, installed
+# modules, build output, and any hidden folder. `/[\\/](?:tmp|node_modules|host|\.[^\\/]*)[\\/]/`: a segment between
+# two separators that is one of those names or begins with a dot
+task is-ignored-path
+  take file, like text
+  like boolean
+
+  save units, units-of(file)
+  save open, -1
+  save at, 0
+  walk units
+    take unit
+    fork test, is-separator(unit)
+      hold
+        fork test, is-minimum(open, 0)
+          hold
+            save start, add(open, 1)
+            fork test, or(or(spells(units, start, at, <tmp>), spells(units, start, at, <node_modules>)), spells(units, start, at, <host>))
+              hold
+                back true
+            fork test, and(is-below(start, at), is-equal(get(units, start), 46))
+              hold
+                back true
+        save open, at
+    save at, add(at, 1)
+  back false
+
+# `/(?:^|[\\/])(?:role|deck)\.tree$/`: a package's role or deck file
+task is-config-file
+  take file, like text
+  like boolean
+
+  save units, units-of(file)
+  save size, units/length
+  fork test, is-below(size, 9)
+    hold
+      back false
+  save start, subtract(size, 9)
+  fork test, or(spells(units, start, size, <role.tree>), spells(units, start, size, <deck.tree>))
+    miss
+      back false
+  fork test, is-equal(start, 0)
+    hold
+      back true
+  back is-separator(get(units, subtract(start, 1)))
+
+# ---- the handlers ----
+
+task did-open
+  take server, like language-server
+  take params, like dynamic
+  like list, like dynamic
+
+  save item, require-param(document-item(params), <textDocument>)
+  save uri, require-param(item-uri(item), <textDocument.uri>)
+  save body, item-text(item)
+  save version, item-version(item)
+  fork test, is-text(uri)
+    miss
+      raise-not-text(uri)
+  save doc, open-document(server, uri, body, version)
+  # an opened file is analyzed at once: there is no burst of typing to wait out
+  back run-document(server, doc, true)
+
+task did-change
+  take server, like language-server
+  take params, like dynamic
+  like list, like dynamic
+
+  save uri, uri-of(params)
+  fork test, server/documents/has(uri)
+    miss
+      back make list
+  save doc, server/documents/get(uri)
+  walk content-changes(params)
+    take each
+    save doc/text, apply-change(doc/text, each)
+  save doc/version, next-version(params, doc/version)
+  save doc/revision, add(doc/revision, 1)
+  fork test, is-deferred-server(server)
+    hold
+      schedule(server, doc, true)
+      back make list
+  back run-document(server, doc, true)
+
+task did-close
+  take server, like language-server
+  take params, like dynamic
+  like list, like dynamic
+
+  save uri, uri-of(params)
+  save had, server/documents/has(uri)
+  close-document(server, uri)
+  save out, make list
+  fork test, and(had, is-equal(server/pull, false))
+    hold
+      push(out, notify(<textDocument/publishDiagnostics>, closed-params(uri)))
+  back out
+
+# Every open document that read a file changed on disk is analyzed again. An event costs what it changed:
+#
+#   scratch, caches and output   ignored. Nothing under them is a file of any package (findTreeFiles)
+#   an open document SAVED       nothing. The editor's text is what every analysis already read
+#   a file created or deleted    the file lists of the packages holding it, and no other
+#   a role or deck file          the readers of the packages holding it, and the deck names
+task did-change-watched-files
+  take server, like language-server
+  take params, like dynamic
+  like list, like dynamic
+
+  save changes, make list
+  walk file-events(params)
+    take event
+    save file, path-for(event-uri(event))
+    save kind, event-type(event)
+    fork test, or(is-equal(file, <>), is-ignored-path(file))
+      hold
+        turn next
+    # LSP FileChangeType: 1 created, 2 changed, 3 deleted. A role or deck file is read from DISK by the readers, so
+    # its save counts even while it is open
+    fork test, and(and(is-type(kind, 2), is-equal(is-config-file(file), false)), server/by-file/has(canonical(file)))
+      hold
+        turn next
+    push(changes, make(file-change, bind(file, file), bind(type, kind)))
+
+  save out, make list
+  fork test, is-equal(changes/length, 0)
+    hold
+      back out
+
+  save files, make list
+  save seen, make hash
+  walk changes
+    take change
+    fork test, seen/has(change/file)
+      miss
+        seen/set(change/file, true)
+        push(files, change/file)
+  server/exporting/clear()
+  # the packages whose role or deck file changed: a document reading any file of one is analyzed again
+  save config-roots, make list
+  walk changes
+    take change
+    fork test, is-config-file(change/file)
+      hold
+        push(config-roots, node-path/dirname(change/file))
+
+  walk changes
+    take change
+    fork test, is-type(change/type, 2)
+      miss
+        forget-file(server/workspace, change/file)
+
+  fork test, is-above(config-roots/length, 0)
+    hold
+      save roots, make list
+      walk server/readers-by-root/keys()
+        take root
+        push(roots, root)
+      walk roots
+        take root
+        save hit, false
+        walk changes
+          take change
+          fork test, is-under(change/file, root)
+            hold
+              save hit, true
+              halt
+        fork test, hit
+          hold
+            server/readers-by-root/remove(root)
+      save server/deck-of, deck-module/projectDeckOf()
+
+  walk server/documents/values()
+    take doc
+    save touched, false
+    walk files
+      take one
+      fork test, or(doc/closure/has(one), doc/closure/has(canonical(one)))
+        hold
+          save touched, true
+          halt
+    save config, false
+    fork test, is-above(config-roots/length, 0)
+      hold
+        save files-read, make list
+        push(files-read, doc/file)
+        walk doc/closure/keys()
+          take one
+          push(files-read, one)
+        walk files-read
+          take one
+          walk config-roots
+            take root
+            fork test, or(is-under(one, root), is-under(one, canonical(root)))
+              hold
+                save config, true
+                halt
+          fork test, config
+            hold
+              halt
+    fork test, or(touched, config)
+      hold
+        save doc/stale, true
+        fork test, is-deferred-server(server)
+          hold
+            schedule(server, doc, false)
+          miss
+            walk run-document(server, doc, false)
+              take note
+              push(out, note)
+  back out
+
+task pull-diagnostics
+  take server, like language-server
+  take message, like dynamic
+  take params, like dynamic
+  take outbox, like list, like dynamic
+  like dynamic
+
+  save found, settled(server, params, outbox)
+  save previous, previous-result(params)
+  sift found
+    case some
+      link doc
+      sift doc/view
+        case some
+          link seen
+          save id, number-text(doc/result-id)
+          fork test, is-same-value(previous, id)
+            hold
+              back respond(message, unchanged-report(id))
+          back respond(message, items-report(id, seen/diagnostics))
+        case none
+          back respond(message, full-report())
+    case none
+      back respond(message, full-report())

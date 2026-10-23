@@ -1,0 +1,105 @@
+# Where the running toolchain is installed, and its CLI's own file: the ONE place a port of `@term/call` asks
+# (decision 006, note/project/term/cli-in-term/decision/006-running-install-is-found-by-one-walk.md). Nothing else in a
+# port reads `import.meta.url` or `process.argv[1]` to locate the toolchain.
+#
+#   find-install-root()   the Term package the running CLI belongs to: `deck/term/deck/term` in a checkout,
+#                         `code/<version>/term` in an install. The empty text when there is none
+#   find-running-cli()    `<install root>/host/line.js`, never `host/need.mjs` (booting that re-runs version
+#                         dispatch in the child's cwd). The empty text when there is no root
+#
+# THE ORDER. `TERM_STDLIB`, when set and holding `code/`, is `<root>/deck/base` (the pin the worker pool sets for a
+# bundle under /tmp). Else the nearest folder above this module's own that holds `deck/base/code`, the marker and walk
+# of the compiler's `stdlibBase` (make/code/resolve.ts), so the compiler and the CLI can never name two installs. Else
+# the same walk from the folder of `realpath(process.argv[1])`: a bundle outside the install, started by the install's
+# `host/need.mjs` or `host/line.js`. Answered once per process.
+#
+# THE PLATFORM IS IN TWO BINDS. A native CLI adds its own case to `running-module-folder` (the executable's folder) and
+# `running-entry-folder`, and no caller changes.
+
+load @term/base/list
+  find get
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+
+# the folder this module is in, `path.dirname(fileURLToPath(import.meta.url))`: `host/` once bundled
+bind running-module-folder
+  like text
+  case node
+    text <process.getBuiltinModule("node:path").dirname(process.getBuiltinModule("node:url").fileURLToPath(import.meta.url))>
+
+# the folder of `realpath(process.argv[1])`, the empty text when there is no such file
+bind running-entry-folder
+  like text
+  case node
+    text <<(() => { const entry = process.argv[1]; if (!entry) return ""; try { return process.getBuiltinModule("node:path").dirname(process.getBuiltinModule("node:fs").realpathSync(entry)) } catch { return "" } })()>>
+
+# `process.env.TERM_STDLIB`, the empty text when it is unset
+bind running-stdlib-pin
+  like text
+  case node
+    text <(process.env.TERM_STDLIB ?? "")>
+
+# the answer, once found: this module holds it for the life of the process
+host install-found, make list
+
+# the nearest of `start` and the folders above it that holds `deck/base/code`, ten deep as `stdlibBase` walks
+task install-root-above
+  take start, like text
+  like text
+  mark private
+
+  fork test, is-equal(start, <>)
+    hold
+      back <>
+  save dir, start
+  save depth, 0
+  walk test
+    hook test, is-below(depth, 10)
+    hook hold
+      fork test, node-file/exists-sync(node-path/join(dir, <deck>, <base>, <code>))
+        hold
+          back dir
+      save parent, node-path/dirname(dir)
+      fork test, is-equal(parent, dir)
+        hold
+          halt
+      save dir, parent
+      save depth, add(depth, 1)
+  back <>
+
+task locate-install
+  like text
+  mark private
+
+  save pin, running-stdlib-pin()
+  fork test, is-unequal(pin, <>)
+    hold
+      fork test, node-file/exists-sync(node-path/join(pin, <code>))
+        hold
+          back node-path/dirname(node-path/dirname(node-path/resolve(pin)))
+  save own, install-root-above(running-module-folder())
+  fork test, is-unequal(own, <>)
+    hold
+      back own
+  back install-root-above(running-entry-folder())
+
+task find-install-root
+  like text
+
+  fork test, is-above(install-found/length, 0)
+    hold
+      back get(install-found, 0)
+  save root, locate-install()
+  install-found/push(root)
+  back root
+
+task find-running-cli
+  like text
+
+  save root, find-install-root()
+  fork test, is-equal(root, <>)
+    hold
+      back <>
+  back node-path/join(root, <host>, <line.js>)

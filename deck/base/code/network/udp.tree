@@ -4,6 +4,7 @@ mark stable
 
 load @term/base/native/{platform}/network/udp
   find udp-open
+  find udp-handle
 
 load @term/base/native/{platform}/network/udp/socket
   find udp-socket-send

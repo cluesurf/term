@@ -30,6 +30,9 @@ load @term/base/text
 load ./frames
   find frame-limit
 
+load @term/base/maybe
+  find maybe
+
 # the class every raise throws on TypeScript
 task exception-class
   like text

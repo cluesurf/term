@@ -1,0 +1,935 @@
+# `term knit`'s LAW LIBRARY, ported from call/code/knit-law.ts (term-cli-in-term-0045); the design is
+# note/project/term/assurance/prove-loop/decision/002-law-library.md. A law the person names with `--law <name>` is a
+# fixed Term statement, a template in @term/site/law/<name>.tree (`tree <name>-law`), generic over the app's forms and
+# its step or view task. The model fills the template's holes with the app's own names (`fuse <name>-law` /
+# `bind view, view`) and proves the claim it makes with a `task <name>`. It never writes the claim.
+#
+#   THE SEAL            before every round the library's template text is appended below a marker in each file that
+#                       fuses it, so the claim is made IN that file
+#   THE INSTANCE CHECK  the claim named <name> in the project must be the one the library's template makes with the
+#                       project's fill: both are milled the way the build mills them and compared node for node
+#                       (positions set aside)
+#
+# The parser, the mill, the templates and the law sentences are the compiler's own, docked; their parse trees and
+# milled statements are host values, read as the original read them.
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/list
+  find contains
+
+load @term/base/text
+  find starts-with
+  find ends-with
+  find index-of
+  find substring
+
+load @term/call/work/knit/gate
+  find law-instance
+
+dock load
+  load <@term/make/code/parser/tree>, name tree-parsing
+  load <@term/make/code/parser/narrow>, name narrowing
+  load <@term/make/code/compile/mill-run>, name mill-running
+  load <@term/make/code/compile/template>, name templating
+  load <@term/make/code/compile/mill>, name milling
+  load <@term/make/code/check/law-english>, name law-wording
+  load <node:fs>, name host-fs
+  load <node:path>, name host-path
+
+# the line the library's text is appended under. Everything from it to the end of a file is the loop's, written again
+# before every round, so a model that edits it changes nothing
+host library-mark, <# ---- THE LAW LIBRARY (@term/site/law), appended by term knit before every round. Never edit below this line ---->
+
+# LIBRARY_MARK, for a caller outside this file
+task read-library-mark
+  like text
+
+  back library-mark
+
+# ---- the host's values ----
+
+bind law-truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind law-text-or-empty
+  take value, like dynamic
+  like text
+  case node
+    text <(typeof $value === "string" ? $value : "")>
+
+# a list of names in the order `Array.prototype.sort` gives them, a copy
+bind sorted-names
+  take names, like list, like text
+  like list, like text
+  case node
+    text <[...$names].sort()>
+
+bind text-lines
+  take text, like text
+  like list, like text
+  case node
+    text <$text.split(String.fromCharCode(10))>
+
+bind blank-joined
+  take parts, like list, like text
+  like text
+  case node
+    text <$parts.join(String.fromCharCode(10, 10))>
+
+bind line-joined
+  take parts, like list, like text
+  like text
+  case node
+    text <$parts.join(String.fromCharCode(10))>
+
+bind trimmed-end
+  take text, like text
+  like text
+  case node
+    text <$text.trimEnd()>
+
+# a parse's tree, or nothing when it did not parse
+bind parsed-tree
+  take parsed, like dynamic
+  like dynamic
+  case node
+    text <($parsed.ok ? $parsed.tree : undefined)>
+
+bind law-first-message
+  take result, like dynamic
+  like text
+  case node
+    text <($result.diagnostics[0]?.message ?? "failed")>
+
+bind tree-nodes
+  take tree, like dynamic
+  like list, like dynamic
+  case node
+    text <$tree.nodes>
+
+bind node-at
+  take node, like dynamic
+  take at, like number
+  like dynamic
+  case node
+    text <$node.nodes[$at]>
+
+bind node-count
+  take node, like dynamic
+  like number
+  case node
+    text <$node.nodes.length>
+
+bind nodes-from
+  take node, like dynamic
+  take at, like number
+  like list, like dynamic
+  case node
+    text <$node.nodes.slice($at)>
+
+bind is-group
+  take node, like dynamic
+  like boolean
+  case node
+    text <($node?.kind === "group")>
+
+# one word: a group holding one name and nothing else
+bind is-word-group
+  take node, like dynamic
+  like boolean
+  case node
+    text <($node?.kind === "group" && $node.nodes.length === 1 && $node.nodes[0]?.kind === "name")>
+
+# `collectTemplates(tree)`, a host Map
+bind template-named
+  take templates, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <$templates.get($name)>
+
+bind has-template
+  take templates, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$templates.has($name)>
+
+bind template-params
+  take template, like dynamic
+  like list, like text
+  case node
+    text <$template.params>
+
+# a fill: hole to name, a host record whose keys keep their order
+bind empty-fill
+  like dynamic
+  case node
+    text <(\{\})>
+
+bind put-fill
+  take fill, like dynamic
+  take hole, like text
+  take name, like text
+  like void
+  case node
+    text <($fill[$hole] = $name)>
+
+bind fill-has
+  take fill, like dynamic
+  take hole, like text
+  like boolean
+  case node
+    text <($hole in $fill)>
+
+bind fill-at
+  take fill, like dynamic
+  take hole, like text
+  like dynamic
+  case node
+    text <$fill[$hole]>
+
+bind fill-holes
+  take fill, like dynamic
+  like list, like text
+  case node
+    text <Object.keys($fill)>
+
+# a milled statement as data, its positions set aside, so two spellings at different places compare equal
+bind statement-shape
+  take statement, like dynamic
+  like text
+  case node
+    text <<JSON.stringify($statement, (key, value) => (key === "span" || key === "file" ? undefined : value))>>
+
+# a milled program's statements, or nothing when it did not mill
+bind milled-program
+  take built, like dynamic
+  like list, like dynamic
+  case node
+    text <$built.program>
+
+bind is-ok
+  take result, like dynamic
+  like boolean
+  case node
+    text <($result.ok === true)>
+
+bind statement-name
+  take statement, like dynamic
+  like dynamic
+  case node
+    text <$statement.name>
+
+bind is-named
+  take statement, like dynamic
+  like boolean
+  case node
+    text <(typeof $statement.name === "string")>
+
+# a claim, a theorem or an axiom
+bind is-rule
+  take statement, like dynamic
+  like boolean
+  case node
+    text <($statement.form === "function" && ($statement.claim === true || $statement.theorem === true || $statement.axiom === true))>
+
+bind sentence-text
+  take sentences, like dynamic
+  like dynamic
+  case node
+    text <$sentences[0]?.text>
+
+bind one-statement
+  take statement, like dynamic
+  like list, like dynamic
+  case node
+    text <[$statement]>
+
+# a role the caller answered, `undefined` for null as well
+bind role-or-nothing
+  take role, like dynamic
+  like dynamic
+  case node
+    text <($role ?? undefined)>
+
+# the laws in `localeCompare` order of their names, a copy (a stable sort, as the original's)
+bind sorted-laws
+  take laws, like list, like library-law
+  like list, like library-law
+  case node
+    text <<[...$laws].sort((a, b) => a.name.localeCompare(b.name))>>
+
+# a file name without its `.tree`
+bind law-name-of-file
+  take name, like text
+  like text
+  case node
+    text <$name.slice(0, -5)>
+
+# where the marker starts on a line of its own after the first, or -1
+bind marker-at
+  take text, like text
+  take mark, like text
+  like number
+  case node
+    text <$text.indexOf(String.fromCharCode(10) + $mark)>
+
+bind law-text-before
+  take text, like text
+  take end, like number
+  like text
+  case node
+    text <$text.slice(0, $end)>
+
+# `readdirSync(dir, { withFileTypes: true })`, each entry's name and whether it is a folder
+bind law-entry-name
+  take entry, like dynamic
+  like text
+  case node
+    text <$entry.name>
+
+bind entry-is-folder
+  take entry, like dynamic
+  like boolean
+  case node
+    text <$entry.isDirectory()>
+
+bind typed-entries
+  take fs, like dynamic
+  take dir, like text
+  like list, like dynamic
+  case node
+    text <$fs.readdirSync($dir, \{ withFileTypes: true \})>
+
+# ---- the shapes ----
+
+# one law of the library: the law and the claim its template makes, the template `<name>-law`, the library file
+# (absolute), its text, and the template's holes in order
+form library-law
+  link name, like text
+  link template, like text
+  link file, like text
+  link text, like text
+  link params, like list, like text
+
+# a top-level `fuse` and its fill as `bind <hole>, <name>` lines
+form fused-law
+  link template, like text
+  link fill, like dynamic
+  link problems, like list, like text
+
+form parse-ask
+  link file, like text
+  link text, like text
+
+form instance-ask
+  link project, like text
+  link required, like list, like text
+  link laws, like list, like library-law
+  link role-of
+    like task
+      take file, like text
+      like dynamic
+  link lean-of
+    like task
+      take file, like text
+      like boolean
+
+form tree-file
+  link file, like text
+  link rel, like text
+  link text, like text
+  link own, like text
+  # the parse tree of `own`, nothing when it did not parse
+  link tree, like dynamic
+
+form milled-answer
+  link ok, like boolean
+  link program, like list, like dynamic
+  link error, like text
+
+# ---- the library ----
+
+task library-dir
+  take root, like text
+  like text
+
+  back host-path/join(root, <deck/site/code/law>)
+
+# every law of the library, by name
+task library-names
+  take root, like text
+  like list, like text
+
+  save dir, library-dir(root)
+  save names, make list
+  fork test, not(host-fs/exists-sync(dir))
+    hold
+      back names
+  walk host-fs/readdir-sync(dir)
+    take name
+    fork test, ends-with(name, <.tree>)
+      hold
+        names/push law-name-of-file(name)
+  back sorted-names(names)
+
+# one law of the library: its file must parse and define the template `<name>-law`
+task library-law
+  take root, like text
+  take name, like text
+  like maybe, like library-law
+
+  save file, host-path/join(library-dir(root), <{name}.tree>)
+  fork test, not(contains(library-names(root), name))
+    hold
+      back make none
+  save text, host-fs/read-file-sync(file, <utf8>)
+  save tree, parsed-tree(tree-parsing/parse(make(parse-ask, bind(file, file), bind(text, text))))
+  fork test, not(law-truth(tree))
+    hold
+      back make none
+  save template, <{name}-law>
+  save found, template-named(templating/collect-templates(tree), template)
+  fork test, not(law-truth(found))
+    hold
+      back make none
+  back make(some, make(library-law, bind(name, name), bind(template, template), bind(file, file), bind(text, text), bind(params, template-params(found))))
+
+# ---- reading a file's own text ----
+
+# a file's text above the marker: what the model wrote
+task own-text
+  take text, like text
+  like text
+
+  fork test, starts-with(text, library-mark)
+    hold
+      back <>
+  save at, marker-at(text, library-mark)
+  fork test, is-below(at, 0)
+    hold
+      back text
+  back law-text-before(text, add(at, 1))
+
+# the 1-based line the marker is on, if the file has one
+task mark-line
+  take text, like text
+  like maybe, like number
+
+  save at, 0
+  walk text-lines(text)
+    take line
+    save at, add(at, 1)
+    fork test, is-equal(line, library-mark)
+      hold
+        back make(some, at)
+  back make none
+
+# one word: a group holding one name and nothing else, or the empty text
+task word-of
+  take node, like dynamic
+  like text
+
+  fork test, not(is-word-group(node))
+    hold
+      back <>
+  back law-text-or-empty(mill-running/head-word(node))
+
+# the head word of a group, the empty text when it has none
+task head-of
+  take group, like dynamic
+  like text
+  mark private
+
+  back law-text-or-empty(mill-running/head-word(group))
+
+# every top-level `fuse` of a parse tree, and its fill as `bind <hole>, <name>` lines
+task fuses-of
+  take tree, like dynamic
+  like list, like fused-law
+
+  save out, make list
+  walk narrowing/groups-of(tree-nodes(tree))
+    take group
+    fork test, is-unequal(head-of(group), <fuse>)
+      hold
+        turn next
+    save template, word-of(node-at(group, 1))
+    fork test, is-equal(template, <>)
+      hold
+        turn next
+    save fill, empty-fill()
+    save problems, make list
+    walk nodes-from(group, 2)
+      take child
+      fork test, or(not(is-group(child)), is-unequal(head-of(child), <bind>))
+        hold
+          problems/push <every line under the fuse is `bind \<hole\>, \<name\>`>
+          turn next
+      save hole, word-of(node-at(child, 1))
+      save value, word-of(node-at(child, 2))
+      fork test, or(or(is-equal(hole, <>), is-equal(value, <>)), is-unequal(node-count(child), 3))
+        hold
+          problems/push <a `bind` under the fuse names one hole and one form or task: `bind view, view`>
+          turn next
+      put-fill(fill, hole, value)
+    out/push make(fused-law, bind(template, template), bind(fill, fill), bind(problems, problems))
+  back out
+
+# the top-level rules a parse tree writes by hand, by name
+task rules-of
+  take tree, like dynamic
+  like list, like text
+
+  save names, make list
+  walk narrowing/groups-of(tree-nodes(tree))
+    take group
+    fork test, is-equal(head-of(group), <rule>)
+      hold
+        save named, node-at(group, 1)
+        fork test, is-group(named)
+          hold
+            save name, head-of(named)
+            fork test, is-unequal(name, <>)
+              hold
+                names/push name
+  back names
+
+# ---- the seal ----
+
+# every .tree file under the project's code/, sorted
+task tree-files
+  take project, like text
+  like list, like text
+
+  save out, make list
+  walk-tree-files(host-path/join(project, <code>), out)
+  back sorted-names(out)
+
+task walk-tree-files
+  take dir, like text
+  take out, like list, like text
+  like void
+  mark private
+
+  fork test, not(host-fs/exists-sync(dir))
+    hold
+      back
+  walk typed-entries(host-fs, dir)
+    take entry
+    save file, host-path/join(dir, law-entry-name(entry))
+    fork test, entry-is-folder(entry)
+      hold
+        walk-tree-files(file, out)
+      miss
+        fork test, ends-with(law-entry-name(entry), <.tree>)
+          hold
+            out/push file
+
+# the text a file should hold: what the model wrote, and under the marker each library law it fuses
+task sealed
+  take text, like text
+  take laws, like list, like library-law
+  like text
+
+  save own, own-text(text)
+  save tree, parsed-tree(tree-parsing/parse(make(parse-ask, bind(file, <x.tree>), bind(text, own))))
+  save fused, make list
+  fork test, law-truth(tree)
+    hold
+      walk fuses-of(tree)
+        take stating
+        fused/push stating/template
+  # by name, so a file seals to the same text whatever order the laws were given in
+  save chosen, make list
+  walk laws
+    take law
+    fork test, contains(fused, law/template)
+      hold
+        chosen/push law
+  save needed, sorted-laws(chosen)
+  fork test, is-equal(needed/length, 0)
+    hold
+      back own
+  save texts, make list
+  walk needed
+    take law
+    texts/push trimmed-end(law/text)
+  back <{trimmed-end(own)}\n\n{library-mark}\n\n{blank-joined(texts)}\n>
+
+# seal every file of the project, and say which changed
+task seal
+  take project, like text
+  take laws, like list, like library-law
+  like list, like text
+
+  save changed, make list
+  walk tree-files(project)
+    take file
+    save text, host-fs/read-file-sync(file, <utf8>)
+    save next, sealed(text, laws)
+    fork test, is-unequal(next, text)
+      hold
+        host-fs/write-file-sync(file, next)
+        changed/push host-path/relative(project, file)
+  back changed
+
+# ---- the instance check ----
+
+task milled
+  take file, like text
+  take text, like text
+  take role, like dynamic
+  take lean, like boolean
+  like milled-answer
+
+  save parsed, tree-parsing/parse(make(parse-ask, bind(file, file), bind(text, text)))
+  fork test, not(is-ok(parsed))
+    hold
+      back make(milled-answer, bind(ok, false), bind(program, make list), bind(error, <it does not parse: {law-first-message(parsed)}>))
+  save built, milling/mill(templating/expand-templates(parsed-tree(parsed)), file, role-or-nothing(role), lean)
+  fork test, not(is-ok(built))
+    hold
+      back make(milled-answer, bind(ok, false), bind(program, make list), bind(error, <it does not mill: {law-first-message(built)}>))
+  back make(milled-answer, bind(ok, true), bind(program, milled-program(built)), bind(error, <>))
+
+# a statement's sentence, none when it has none
+task sentence-of
+  take statement, like maybe, like dynamic
+  like maybe, like text
+
+  sift statement
+    case some
+      save said, sentence-text(law-wording/law-sentences(one-statement(value)))
+      fork test, law-truth(said)
+        hold
+          save sentence, law-text-or-empty(said)
+          back make(some, sentence)
+      back make none
+    case none
+      back make none
+
+task fuse-text
+  take law, like library-law
+  take fill, like dynamic
+  like text
+
+  save lines, make list
+  lines/push <fuse {law/template}>
+  walk law/params
+    take param
+    save name, param
+    fork test, fill-has-value(fill, param)
+      hold
+        save name, law-text-or-empty(fill-at(fill, param))
+    lines/push <  bind {param}, {name}>
+  back line-joined(lines)
+
+# `fill[param] ?? param`: whether the fill holds a value that is not null or undefined
+bind fill-has-value
+  take fill, like dynamic
+  take hole, like text
+  like boolean
+  case node
+    text <($fill[$hole] != null)>
+
+# how a law is stated: the fuse to write, each hole a name of the app's
+task how-to-state
+  take law, like library-law
+  like text
+
+  save lines, make list
+  lines/push <fuse {law/template}>
+  walk law/params
+    take param
+    lines/push <  bind {param}, \<your {param}\>>
+  back line-joined(lines)
+
+task refuse-instance
+  take name, like text
+  take problem, like text
+  like law-instance
+  mark private
+
+  back make(law-instance, bind(law, name), bind(ok, false), bind(problem, make(some, problem)))
+
+task refuse-at
+  take name, like text
+  take problem, like text
+  take file, like text
+  take fill, like dynamic
+  take english, like maybe, like text
+  like law-instance
+  mark private
+
+  save refused, make(law-instance, bind(law, name), bind(ok, false), bind(problem, make(some, problem)), bind(file, make(some, file)), bind(fill, make(some, fill)))
+  # the english only when there is one: an instance without it has no such key
+  sift english
+    case some
+      link said
+      save refused/english, make(some, said)
+    case none
+      back refused
+  back refused
+
+# the files that hold something, as a list of their relative paths
+task rels-of
+  take files, like list, like tree-file
+  like text
+  mark private
+
+  save rels, make list
+  walk files
+    take one
+    rels/push one/rel
+  back rels/join(<, >)
+
+# THE INSTANCE CHECK, over the project's files as they are on disk (sealed or not: the marker and what is under it are
+# the loop's, and the check reads both the model's text and the library's)
+task check-instances
+  take input, like instance-ask
+  like list, like law-instance
+
+  save files, make list
+  walk tree-files(input/project)
+    take file
+    save text, host-fs/read-file-sync(file, <utf8>)
+    save own, own-text(text)
+    save tree, parsed-tree(tree-parsing/parse(make(parse-ask, bind(file, file), bind(text, own))))
+    files/push make(tree-file, bind(file, file), bind(rel, host-path/relative(input/project, file)), bind(text, text), bind(own, own), bind(tree, tree))
+
+  # what each file defines, by name: the app's forms and tasks, read from the model's own text
+  save defined, make list
+  walk files
+    take one
+    save read, milled(one/file, one/own, input/role-of(one/file), input/lean-of(one/file))
+    save names, make list
+    walk read/program
+      take statement
+      fork test, and(not(is-rule(statement)), is-named(statement))
+        hold
+          names/push law-text-or-empty(statement-name(statement))
+    defined/push names
+
+  save out, make list
+  walk input/required
+    take name
+    out/push check-instance(input, files, defined, name)
+  back out
+
+task check-instance
+  take input, like instance-ask
+  take files, like list, like tree-file
+  take defined, like list, like list, like text
+  take name, like text
+  like law-instance
+  mark private
+
+  save found, make none
+  walk input/laws
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        save found, make(some, one)
+        halt
+  sift found
+    case none
+      back refuse-instance(name, <there is no law named {name} in the law library>)
+    case some
+      back check-law(input, files, defined, value)
+
+task check-law
+  take input, like instance-ask
+  take files, like list, like tree-file
+  take defined, like list, like list, like text
+  take law, like library-law
+  like law-instance
+  mark private
+
+  save name, law/name
+  save states-by, <State it with\n\n{how-to-state(law)}\n\nin code/law.tree, each hole bound to the name of your app's own form or task, and prove the claim it makes with `task {name}`.>
+
+  # a claim of the same name written by hand
+  save by-hand, make list
+  walk files
+    take one
+    fork test, law-truth(one/tree)
+      hold
+        fork test, contains(rules-of(one/tree), name)
+          hold
+            by-hand/push one
+  fork test, is-above(by-hand/length, 0)
+    hold
+      back refuse-instance(name, <`rule {name}` is written by hand in {rels-of(by-hand)}. {name} is a law of the library and may not be restated: remove that rule. {states-by}>)
+
+  # a template of the library's name written by hand
+  save own-template, make list
+  walk files
+    take one
+    fork test, law-truth(one/tree)
+      hold
+        fork test, has-template(templating/collect-templates(one/tree), law/template)
+          hold
+            own-template/push one
+  fork test, is-above(own-template/length, 0)
+    hold
+      back refuse-instance(name, <`tree {law/template}` is written by hand in {rels-of(own-template)}. The template is the library's, and the loop appends it: remove yours.>)
+
+  save fusing-files, make list
+  save fusing, make list
+  walk files
+    take one
+    fork test, law-truth(one/tree)
+      hold
+        walk fuses-of(one/tree)
+          take stating
+          fork test, is-equal(stating/template, law/template)
+            hold
+              fusing-files/push one
+              fusing/push stating
+  fork test, is-equal(fusing/length, 0)
+    hold
+      back refuse-instance(name, <{name} is not stated. {states-by}>)
+  fork test, is-above(fusing/length, 1)
+    hold
+      back refuse-instance(name, <{name} is fused {fusing/length} times ({rels-of(fusing-files)}): fuse it once.>)
+
+  save one, fusing-files/0
+  save stated, fusing/0
+  save fill, stated/fill
+  save no-english, make none
+
+  fork test, is-above(stated/problems/length, 0)
+    hold
+      save first, stated/problems/0
+      back refuse-at(name, <the fuse of {law/template} in {one/rel}: {first}. {states-by}>, one/rel, fill, no-english)
+
+  save missing, make list
+  walk law/params
+    take param
+    fork test, not(fill-has(fill, param))
+      hold
+        missing/push param
+  save unknown, make list
+  walk fill-holes(fill)
+    take hole
+    fork test, not(contains(law/params, hole))
+      hold
+        unknown/push hole
+  fork test, or(is-above(missing/length, 0), is-above(unknown/length, 0))
+    hold
+      save left, <>
+      fork test, is-above(missing/length, 0)
+        hold
+          save left, <: it leaves out {missing/join(<, >)}>
+      save strange, <>
+      fork test, is-above(unknown/length, 0)
+        hold
+          save joint, <:>
+          fork test, is-above(missing/length, 0)
+            hold
+              save joint, <, and>
+          save strange, <{joint} {law/template} has no hole {unknown/join(<, >)}>
+      back refuse-at(name, <the fuse of {law/template} in {one/rel} must bind exactly the holes {law/params/join(<, >)}{left}{strange}.>, one/rel, fill, no-english)
+
+  # each hole names the app's own form or task, defined in a file other than the one stating the law
+  save elsewhere, make list
+  save index, 0
+  walk files
+    take other
+    fork test, is-unequal(other/file, one/file)
+      hold
+        walk defined/{index}
+          take defined-name
+          elsewhere/push defined-name
+    save index, add(index, 1)
+  save foreign, make list
+  walk law/params
+    take param
+    fork test, not(contains(elsewhere, law-text-or-empty(fill-at(fill, param))))
+      hold
+        foreign/push param
+  fork test, is-above(foreign/length, 0)
+    hold
+      save binds, make list
+      save names, make list
+      walk foreign
+        take param
+        save named, law-text-or-empty(fill-at(fill, param))
+        binds/push <`bind {param}, {named}`>
+        names/push named
+      back refuse-at(name, <{binds/join(<, >)}: a hole names the app's own form or task, defined in a file other than {one/rel} (code/model.tree), and {names/join(<, >)} is not. The law is about the app, not about something written beside it.>, one/rel, fill, no-english)
+
+  # the claim the project makes, and the one the library's template makes alone with the same fill
+  save role, input/role-of(one/file)
+  save lean, input/lean-of(one/file)
+  save project, milled(one/file, one/text, role, lean)
+  fork test, not(project/ok)
+    hold
+      back refuse-at(name, <{one/rel} could not be read, so {name} could not be checked: {project/error}>, one/rel, fill, no-english)
+
+  save claims, make list
+  walk project/program
+    take statement
+    fork test, and(is-rule(statement), is-equal(law-text-or-empty(statement-name(statement)), name))
+      hold
+        claims/push statement
+  save reference, milled(law/file, <{trimmed-end(law/text)}\n\n{fuse-text(law, fill)}\n>, role, lean)
+  save expected, make none
+  fork test, reference/ok
+    hold
+      walk reference/program
+        take statement
+        fork test, and(is-rule(statement), is-equal(law-text-or-empty(statement-name(statement)), name))
+          hold
+            save expected, make(some, statement)
+            halt
+  save english, sentence-of(expected)
+
+  sift expected
+    case none
+      save why, <>
+      fork test, not(reference/ok)
+        hold
+          save why, <: {reference/error}>
+      back refuse-at(name, <the library's {name} could not be made with this fill{why}>, one/rel, fill, no-english)
+    case some
+      link wanted
+      fork test, is-unequal(claims/length, 1)
+        hold
+          fork test, is-equal(claims/length, 0)
+            hold
+              back refuse-at(name, <{one/rel} fuses {law/template} but holds no claim named {name}: the library's text is appended below the marker before every round. Keep the fuse at the top level.>, one/rel, fill, english)
+          back refuse-at(name, <{one/rel} holds {claims/length} claims named {name}: only the fuse may make it.>, one/rel, fill, english)
+      save claim, claims/0
+      fork test, is-unequal(statement-shape(claim), statement-shape(wanted))
+        hold
+          save theirs, <>
+          sift english
+            case some
+              link said
+              save theirs, < The library's says: {said}>
+            case none
+              save theirs, theirs
+          save yours, <>
+          sift sentence-of(make(some, claim))
+            case some
+              link written
+              save yours, < Yours says: {written}>
+            case none
+              save yours, yours
+          back refuse-at(name, <the claim named {name} in {one/rel} is not the library's {name} with this fill.{theirs}{yours}>, one/rel, fill, english)
+      save passed, make(law-instance, bind(law, name), bind(ok, true), bind(file, make(some, one/rel)), bind(fill, make(some, fill)))
+      sift english
+        case some
+          link sentence
+          save passed/english, make(some, sentence)
+        case none
+          back passed
+      back passed

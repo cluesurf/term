@@ -1,0 +1,400 @@
+# `term scan <file>`: type-check one file with its project's imports resolved, its role and `mark lean` read from the
+# project's role files and a test file rewritten, as `term make` reads it, and report diagnostics. This is the agent's
+# fast inner-loop verifier. `--back json` returns `{ ok, diagnostics }` with codes and spans, and the process exits
+# non-zero on any error.
+#
+# Each diagnostic carries its `fixes`, the edits that resolve it (make/code/fix.ts), and `--fix` writes the SURE ones
+# into the file and scans again; a guess is offered, never written.
+#
+# Ported from deck/call/code/scan.ts (term-cli-in-term-0059). The compiler, the fix face (make/code/fix.ts), the
+# export search (make/code/resolve.ts), the build's reader and resolver, the role readers and the output library are
+# docked. `callScan(input)` takes the original's record.
+
+load @term/base/list
+  find list
+
+dock load
+  load <@term/make/code/compile/compile>, name compile-module
+  load <@term/make/code/fix>, name fix-module
+  load <@term/make/code/resolve>, name resolving-module
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/role-of>, name role-module
+  load <@term/call/code/output>, name output
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+
+# ---- the host values Term has no word for ----
+
+bind scan-call-role
+  take roles, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <$roles($file)>
+
+bind scan-unit-text
+  take unit, like dynamic
+  take source, like text
+  like text
+  case node
+    text <("text" in $unit ? $unit.text : $source)>
+
+bind scan-compile-ask
+  take resolve, like dynamic
+  take roles, like dynamic
+  take leans, like dynamic
+  like dynamic
+  case node
+    text <<({ resolve: $resolve, roleOf: $roles, leanOf: $leans })>>
+
+bind scan-source
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <<({ file: $file, text: $text })>>
+
+bind scan-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# the diagnostics a scan reports: its errors when it failed, its warnings (unused, termination, unchecked holds) when it
+# compiled
+bind scan-diagnostics
+  take result, like dynamic
+  like list, like dynamic
+  case node
+    text <($result.ok ? $result.warnings : $result.diagnostics)>
+
+bind scan-export-search
+  take finder, like dynamic
+  like dynamic
+  case node
+    text <<({ findExport: $finder })>>
+
+bind scan-sure
+  take fixes, like list, like dynamic
+  like list, like dynamic
+  case node
+    text <<$fixes.filter((fix) => fix.sure)>>
+
+bind scan-append
+  take list, like list, like dynamic
+  take more, like list, like dynamic
+  like void
+  case node
+    text <<($list.push(...$more), undefined)>>
+
+bind scan-new-map
+  like dynamic
+  case node
+    text <new Map()>
+
+bind scan-map-has
+  take map, like dynamic
+  take key, like text
+  like boolean
+  case node
+    text <$map.has($key)>
+
+bind scan-map-get
+  take map, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$map.get($key)>
+
+bind scan-map-set
+  take map, like dynamic
+  take key, like text
+  take value, like dynamic
+  like void
+  case node
+    text <($map.set($key, $value), undefined)>
+
+bind scan-key
+  take root, like text
+  take name, like text
+  like text
+  case node
+    text <($root + String.fromCharCode(0) + $name)>
+
+# the JSON shape an agent consumes: stable, workspace-relative, no machine paths or timestamps
+bind scan-json-diagnostic
+  take path, like dynamic
+  take root, like text
+  take d, like dynamic
+  take fixes, like list, like dynamic
+  like dynamic
+  case node
+    text <<({ code: $d.code, name: $d.name, severity: $d.severity, message: $d.message, hint: $d.hint, file: $path.relative($root, $d.file), span: { start: $d.span.start, end: $d.span.end }, fixes: $fixes.map((fix) => ({ title: fix.title, sure: fix.sure, edits: fix.edits.map((edit) => ({ span: { start: edit.span.start, end: edit.span.end }, text: edit.text, was: edit.was })) })) })>>
+
+bind scan-json-answer
+  take ok, like dynamic
+  take diagnostics, like list, like dynamic
+  take fixing, like boolean
+  take applied, like list, like dynamic
+  take refused, like list, like dynamic
+  like text
+  case node
+    text <<JSON.stringify({ ok: $ok, diagnostics: $diagnostics, ...($fixing ? { applied: $applied.map((fix) => fix.title), refused: $refused.map((one) => ({ title: one.fix.title, reason: one.reason })) } : {}) })>>
+
+bind scan-not-found
+  take file, like dynamic
+  like text
+  case node
+    text <<JSON.stringify({ ok: false, error: "not-found", file: $file })>>
+
+bind scan-exit-one
+  like void
+  case node
+    text <(process.exitCode = 1, undefined)>
+
+bind scan-or
+  take value, like text
+  take fallback, like text
+  like text
+  case node
+    text <($value || $fallback)>
+
+bind scan-problem
+  take d, like dynamic
+  take text, like dynamic
+  like dynamic
+  case node
+    text <<({ diagnostic: $d, text: $text })>>
+
+bind scan-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+form scan-open
+  link verb, like text
+  link root, like text
+  link facts, like list, like dynamic
+
+form scan-problem-item
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form scan-change
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+
+form scan-refused
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form scan-close
+  link verdict, like text
+
+form scan-close-counts
+  link verdict, like text
+  link counts, like list, like dynamic
+
+form scan-close-next
+  link verdict, like text
+  link counts, like list, like dynamic
+  link next, like text
+
+# one file compiled the way `term make` reads it: its role, its lean flag, and a test file rewritten
+form scanned
+  link result, like dynamic
+  link source, like text
+  link text, like text
+
+# which modules export a name, asked once a run per name: it reads every module the project can reach
+host exported, scan-new-map()
+
+task exporting
+  take root, like text
+  take name, like text
+  like dynamic
+  mark private
+
+  save key, scan-key(root, name)
+  fork test, not(scan-map-has(exported, key))
+    hold
+      scan-map-set(exported, key, resolving-module/find-modules-exporting(root, name))
+  back scan-map-get(exported, key)
+
+task scan-once
+  take root, like text
+  take file, like text
+  like scanned
+  mark private
+
+  save source, node-fs/read-file-sync(file, <utf8>)
+  save roles, role-module/project-role-of(root)
+  save leans, role-module/project-lean-of(root)
+  save unit, make-module/buildable(file, source, scan-call-role(roles, file))
+  save text, scan-unit-text(unit, source)
+  save result, compile-module/compile(scan-source(file, text), scan-compile-ask(make-module/project-resolver(root, <node>, root), roles, leans))
+  back make(scanned, bind(result, result), bind(source, source), bind(text, text))
+
+# the fixes of a diagnostic in the scanned file. A test file is compiled rewritten, so its fixes are offered only when
+# the rewrite and the file are one text. A diagnostic in an imported module is that module's to fix
+task fixes-for
+  take root, like text
+  take file, like text
+  take d, like dynamic
+  take one, like scanned
+  like list, like dynamic
+  mark private
+
+  fork test, or(is-unequal(d/file, file), is-unequal(one/text, one/source))
+    hold
+      save none, make list
+      back none
+  save finder
+    task
+      take name, like text
+      like dynamic
+      back exporting(root, name)
+  back fix-module/fixes-of(d, one/source, scan-export-search(finder))
+
+task sure-fixes
+  take root, like text
+  take file, like text
+  take diagnostics, like list, like dynamic
+  take one, like scanned
+  like list, like dynamic
+  mark private
+
+  save all, make list
+  walk diagnostics
+    take d, like dynamic
+    scan-append(all, fixes-for(root, file, d, one))
+  back scan-sure(all)
+
+task call-scan
+  take input, like dynamic
+  like void
+
+  save root, input/root
+  save json, is-equal(input/back, <json>)
+  save fixing, scan-truthy(input/fix)
+  save file, node-path/resolve(root, input/file)
+  save facts, make list
+  facts/push(input/file)
+
+  fork test, not(node-fs/exists-sync(file))
+    hold
+      fork test, json
+        hold
+          output/print-data(<{scan-not-found(input/file)}\n>)
+          scan-exit-one()
+        miss
+          output/open-run(make(scan-open, bind(verb, <scan>), bind(root, root), bind(facts, facts)))
+          # relative to the working folder, the way the file was named
+          save fields, make list
+          fields/push(output/field(<looked>, scan-or(node-path/relative(root, file), file)))
+          output/report(make(scan-problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no such file>), bind(fields, fields)))
+          output/close-run(make(scan-close, bind(verdict, <Nothing scanned>)))
+      back
+
+  save one, scan-once(root, file)
+  save diagnostics, scan-diagnostics(one/result)
+  save applied, make list
+  save refused, make list
+
+  # --fix: write every sure fix, then scan again, while a round writes something, at most four rounds
+  save round, 0
+  walk test
+    hook test, and(fixing, is-below(round, 4))
+    hook hold
+      save round, add(round, 1)
+      save sure, sure-fixes(root, file, diagnostics, one)
+      fork test, is-equal(sure/length, 0)
+        hold
+          halt
+      save done, fix-module/apply-fixes(one/source, sure)
+      scan-append(refused, done/refused)
+      save written, done/applied
+      fork test, is-equal(written/length, 0)
+        hold
+          halt
+      scan-append(applied, written)
+      node-fs/write-file-sync(file, done/text)
+      save one, scan-once(root, file)
+      save diagnostics, scan-diagnostics(one/result)
+
+  save result, one/result
+
+  fork test, json
+    hold
+      # the answer the agent asked for: data on stdout, the exit code the gate
+      save shaped, make list
+      walk diagnostics
+        take d, like dynamic
+        shaped/push(scan-json-diagnostic(node-path, root, d, fixes-for(root, file, d, one)))
+      output/print-data(<{scan-json-answer(result/ok, shaped, fixing, applied, refused)}\n>)
+      fork test, not(scan-truthy(result/ok))
+        hold
+          scan-exit-one()
+      back
+
+  # the working folder is the subject, the file a fact
+  output/open-run(make(scan-open, bind(verb, <scan>), bind(root, root), bind(facts, facts)))
+  walk applied
+    take fix, like dynamic
+    output/report(make(scan-change, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <fix>), bind(subject, fix/title)))
+  walk refused
+    take refusal, like dynamic
+    save fields, make list
+    fields/push(output/field(<why>, refusal/reason))
+    output/report(make(scan-refused, bind(glyph, <warning>), bind(kind, <problem>), bind(verb, <fix>), bind(subject, <Not applied: {refusal/fix/title}>), bind(fields, fields)))
+
+  # each diagnostic a Problem item with its frame; the run fails on any error
+  save problems, make list
+  save errors, 0
+  walk diagnostics
+    take d, like dynamic
+    save shown, scan-nothing()
+    fork test, is-equal(d/file, file)
+      hold
+        save shown, one/text
+    problems/push(scan-problem(d, shown))
+    fork test, is-equal(d/severity, <error>)
+      hold
+        save errors, add(errors, 1)
+  output/report-problems(problems, root)
+  save warnings, subtract(diagnostics/length, errors)
+  save sure-count, 0
+  fork test, not(fixing)
+    hold
+      save sure-count, sure-fixes(root, file, diagnostics, one)/length
+
+  save counts, make list
+  fork test, is-above(applied/length, 0)
+    hold
+      counts/push(output/count(applied/length, <fixes applied>, <fix applied>))
+  fork test, is-above(errors, 0)
+    hold
+      counts/push(output/count(errors, <errors>, <error>))
+  fork test, is-above(warnings, 0)
+    hold
+      counts/push(output/count(warnings, <warnings>, <warning>))
+  save verdict, <{input/file} does not check>
+  fork test, scan-truthy(result/ok)
+    hold
+      save verdict, <{input/file} checks>
+  fork test, is-above(sure-count, 0)
+    hold
+      save which, <the {sure-count} sure fixes>
+      fork test, is-equal(sure-count, 1)
+        hold
+          save which, <the one sure fix>
+      output/close-run(make(scan-close-next, bind(verdict, verdict), bind(counts, counts), bind(next, <term scan {input/file} --fix, which applies {which}>)))
+      back
+  output/close-run(make(scan-close-counts, bind(verdict, verdict), bind(counts, counts)))

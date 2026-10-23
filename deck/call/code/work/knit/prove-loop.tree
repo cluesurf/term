@@ -1,0 +1,1100 @@
+# `term knit` - THE PROVE LOOP, ported from call/code/knit.ts (term-cli-in-term-0046, part 2 of 2; the frame around it
+# is project-frame.tree). A plain-English spec (and, if given, a TypeScript module to port) goes in. A model writes the
+# Term code, the laws and their proofs into a new project, the loop runs `term hold` on it, hands the model what
+# failed, and repeats until the project holds with every law the person named, or a limit is reached. Out come the
+# Term source, the emitted TypeScript, and a report whose every law is rendered in English from its Term form.
+#
+# The model may search; only the kernel decides: the loop runs `term hold` itself, as a child process, and reads its
+# exit code and its `--log json` items. Spend is capped in code (`--cap`): before every request the loop prices the
+# worst that request can cost, and stops with the reason when it would pass the cap. Nothing about the API is loaded
+# until the loop runs (speaker.tree).
+#
+# The conversation is the Messages API's own records (snake_case on the wire), host values built and read by binds; a
+# speaker is any record with a model and an `ask` that answers a turn, so a test drives the loop with a scripted one.
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/list
+  find contains
+
+load @term/call/work/knit/spend
+  find limits
+  find progress
+  find spend-total
+  find stop-answer
+  find price-of
+  find is-priced
+  find ceiling-price
+  find no-spend
+  find spend
+  find cost-of
+  find worst-next
+  find worst-ask
+  find stop-of
+  find stop-with
+  find go-on
+  find price
+  find dollars
+
+load @term/call/work/knit/hold-reading
+  find hold-read
+
+load @term/call/work/knit/gate
+  find gate
+  find gate-ask
+  find gate-of
+  find feedback-ask
+  find feedback-of
+  find code-path
+  find law-instance
+  find law-sentence
+
+load @term/call/work/knit/run-report
+  find knit-result
+  find report-of
+
+load @term/call/work/knit/law-library
+  find library-law
+  find library-names
+  find seal
+  find check-instances
+  find instance-ask
+
+load @term/call/work/knit/speaker
+  find speaker
+  find speaker-ask
+  find claude-speaker
+
+load @term/call/work/knit/project-frame
+  find port-source
+  find first-ask
+  find package-root
+  find line-of
+  find system-of
+  find knit-tools
+  find first-message
+  find scaffold
+  find laws-of
+  find laws-text
+  find run-hold
+  find line-at
+  find emit
+
+load @term/call/work/output/printer
+  find open-run
+  find report
+  find close-run
+  find field
+  find count
+
+dock load
+  load <@term/call/code/role-of>, name role-finding
+  load <node:fs>, name host-fs
+  load <node:path>, name host-path
+  load <global:process>, name host-process
+  load <global:Promise>, name loop-promise
+    mark async
+
+# ---- the host's values ----
+
+bind loop-now
+  like number
+  case node
+    text <Date.now()>
+
+bind loop-seconds
+  take started, like number
+  like float
+  case node
+    text <((Date.now() - $started) / 1000)>
+
+bind iso-date
+  take at, like number
+  like text
+  case node
+    text <new Date($at).toISOString()>
+
+# half the characters, rounded up, and 2000: what the first request can send beside the conversation
+bind first-input-of
+  take system, like text
+  like float
+  case node
+    text <(Math.ceil($system.length / 2) + 2000)>
+
+bind half-up
+  take count, like float
+  like float
+  case node
+    text <Math.ceil($count / 2)>
+
+bind ask-record
+  take system, like text
+  take tools, like dynamic
+  take messages, like list, like dynamic
+  like dynamic
+  case node
+    text <(\{ system: $system, tools: $tools, messages: $messages \})>
+
+bind user-text
+  take text, like text
+  like dynamic
+  case node
+    text <(\{ role: "user", content: $text \})>
+
+bind user-blocks
+  take blocks, like list, like dynamic
+  like dynamic
+  case node
+    text <(\{ role: "user", content: $blocks \})>
+
+bind assistant-blocks
+  take content, like dynamic
+  like dynamic
+  case node
+    text <(\{ role: "assistant", content: $content \})>
+
+bind tool-result
+  take id, like dynamic
+  take text, like text
+  take error, like boolean
+  like dynamic
+  case node
+    text <(\{ type: "tool_result", tool_use_id: $id, content: $text, ...($error ? \{ is_error: true \} : \{\}) \})>
+
+# a turn as a speaker answers it: a host record, a scripted speaker's or the API's
+bind turn-content
+  take turn, like dynamic
+  like dynamic
+  case node
+    text <$turn.content>
+
+bind turn-usage
+  take turn, like dynamic
+  like dynamic
+  case node
+    text <$turn.usage>
+
+bind turn-stop-reason
+  take turn, like dynamic
+  like text
+  case node
+    text <$turn.stopReason>
+
+bind turn-model
+  take turn, like dynamic
+  like text
+  case node
+    text <$turn.model>
+
+bind turn-fell-back
+  take turn, like dynamic
+  like boolean
+  case node
+    text <Boolean($turn.fellBack)>
+
+bind turn-refusal
+  take turn, like dynamic
+  like text
+  case node
+    text <($turn.refusal ?? "")>
+
+bind turn-broken
+  take turn, like dynamic
+  like list, like dynamic
+  case node
+    text <($turn.broken ?? [])>
+
+bind tool-uses
+  take content, like dynamic
+  like list, like dynamic
+  case node
+    text <<$content.filter(block => block.type === "tool_use")>>
+
+# the text blocks of an answer, joined and trimmed
+bind said-text
+  take content, like dynamic
+  like text
+  case node
+    text <<$content.filter(block => block.type === "text").map(block => String(block.text ?? "")).join("\n").trim()>>
+
+bind use-name
+  take use, like dynamic
+  like text
+  case node
+    text <$use.name>
+
+bind use-id
+  take use, like dynamic
+  like dynamic
+  case node
+    text <$use.id>
+
+bind use-path
+  take use, like dynamic
+  like text
+  case node
+    text <(typeof $use.input?.path === "string" ? $use.input.path : "")>
+
+bind use-shown
+  take use, like dynamic
+  like text
+  case node
+    text <<($use.name === "write_file" ? `write_file ${String($use.input?.path ?? "")}` : $use.name)>>
+
+bind use-content
+  take use, like dynamic
+  like dynamic
+  case node
+    text <$use.input?.content>
+
+bind loop-is-text
+  take value, like dynamic
+  like boolean
+  case node
+    text <(typeof $value === "string")>
+
+bind loop-as-text
+  take value, like dynamic
+  like text
+  case node
+    text <$value>
+
+bind line-count
+  take text, like text
+  like number
+  case node
+    text <$text.split(String.fromCharCode(10)).length>
+
+bind text-length
+  take text, like text
+  like float
+  case node
+    text <$text.length>
+
+bind cut
+  take text, like text
+  take most, like number
+  like text
+  case node
+    text <$text.slice(0, $most)>
+
+# a failed request: its message, and the usage of the attempts that broke partway (`broken`)
+bind failure-said
+  take problem, like dynamic
+  like text
+  case node
+    text <($problem instanceof Error ? $problem.message : String($problem))>
+
+bind failure-broken
+  take problem, like dynamic
+  like list, like dynamic
+  case node
+    text <($problem.broken ?? [])>
+
+bind empty-usage
+  like dynamic
+  case node
+    text <(\{\})>
+
+bind is-setup-failure
+  take problem, like dynamic
+  like boolean
+  case node
+    text <($problem?.constructor?.name === "KnitSetup")>
+
+bind setup-next
+  take problem, like dynamic
+  like text
+  case node
+    text <$problem.next>
+
+bind setup-message
+  take problem, like dynamic
+  like text
+  case node
+    text <$problem.message>
+
+bind loop-raise-again
+  take problem, like dynamic
+  like void
+  case node
+    text <<(() => { throw $problem })()>>
+
+bind round-seconds
+  take seconds, like float
+  like float
+  case node
+    text <Math.round($seconds)>
+
+bind time-name
+  like text
+  case node
+    text <<`knit-${new Date().toISOString().replace(/[:.]/g, "-")}`>>
+
+bind pretty-json
+  take value, like dynamic
+  like text
+  case node
+    text <(JSON.stringify($value, null, 2) + String.fromCharCode(10))>
+
+bind call-say
+  take say, like dynamic
+  take line, like text
+  like void
+  case node
+    text <$say($line)>
+
+bind make-dirs-of
+  take fs, like dynamic
+  take dir, like text
+  like void
+  case node
+    text <$fs.mkdirSync($dir, \{ recursive: true \})>
+
+bind loop-truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# ---- the shapes ----
+
+form knit-input
+  link root, like text
+  link spec, like text
+  link port
+    like maybe, like port-source
+    need false
+  link name, like text
+  link out, like text
+  link required, like list, like text
+  link limits, like limits
+  link lean, like boolean
+  link example, like boolean
+  link model, like text
+  link max-tokens, like number
+  # the CLI that runs `term hold` and `term make`
+  link line, like text
+
+form turn-row
+  link turn, like number
+  link stop, like text
+  link model, like text
+  link fell-back, like boolean
+  link cost, like float
+  link usage, like dynamic
+  link tools, like list, like text
+  link said, like text
+
+form round-row
+  link round, like number
+  link holds, like boolean
+  link problems, like number
+  link first, like list, like text
+  link seconds, like float
+  link gate
+    like maybe, like list, like text
+    need false
+
+form transcript
+  link turns, like list, like turn-row
+  link rounds, like list, like round-row
+
+form loop-answer
+  link result, like knit-result
+  link transcript, like transcript
+  link messages, like list, like dynamic
+
+# what one run carries between its rounds and turns
+form loop-state
+  link project, like text
+  link library, like list, like library-law
+  link instances, like list, like law-instance
+  link total, like spend-total
+  link rounds, like number
+  link turns, like number
+  link grow, like float
+  link gate, like gate
+  link last
+    like maybe, like hold-read
+    need false
+  link finished, like boolean
+  link stop, like stop-answer
+
+# callKnit's input, as line.ts (and work/knit.tree) hands it: a flag left out is absent
+form knit-ask
+  link root, like text
+  link spec
+    like maybe, like text
+    need false
+  link spec-file
+    like maybe, like text
+    need false
+  link port
+    like maybe, like text
+    need false
+  link name
+    like maybe, like text
+    need false
+  link out
+    like maybe, like text
+    need false
+  link laws
+    like maybe, like list, like text
+    need false
+  link model, like text
+  link effort, like text
+  link cap, like float
+  link rounds, like number
+  link turns, like number
+  link minutes, like number
+  link lean, like boolean
+  link example, like boolean
+  link max-tokens, like number
+
+form problem-say
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link message, like list, like text
+
+form setup-say
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form open-say
+  link verb, like text
+  link root, like text
+  link subject, like text
+  link facts, like list, like text
+
+form close-say
+  link verdict, like text
+  link failure, like text
+
+form info-say
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+
+form law-say
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+
+form written-say
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like dynamic
+  link counts, like list, like dynamic
+
+form verdict-say
+  link verdict, like text
+  link facts, like list, like text
+  link message
+    like maybe, like list, like text
+    need false
+
+# ---- one round ----
+
+# a round's answer: what the model is told, and the run as the round left it (a record handed to a task is the task's
+# own copy, so the run comes back in the answer)
+form round-step
+  link text, like text
+  link state, like loop-state
+
+# one round of `term hold`, and the gate on it: what the model is told
+task run-round
+  take input, like knit-input
+  take state, like loop-state
+  take transcript, like transcript
+  take say, like dynamic
+  like round-step
+  mark private
+
+  save project, state/project
+  save state/rounds, add(state/rounds, 1)
+  # the library's text under the marker of every file that fuses a law, before term hold reads the project
+  seal(project, state/library)
+  save round, run-hold(input/line, project, input/lean)
+  save hold, round/hold
+  save read, laws-of(project)
+  save state/last, make(some, hold)
+  save state/instances, check-of(input, state)
+  # a build of term hold with no --lean yet prints no `lean`: the gate is then what term hold says
+  save judged, gate-of(make(gate-ask, bind(hold, hold), bind(laws, read/laws), bind(required, input/required), bind(lean, input/lean), bind(instances, make(some, state/instances))))
+  save state/gate, judged
+  save state/finished, judged/ok
+  save first, make list
+  walk hold/problems
+    take problem
+    fork test, is-below(first/length, 3)
+      hold
+        first/push problem/subject
+  save row, make(round-row, bind(round, state/rounds), bind(holds, hold/holds), bind(problems, hold/problems/length), bind(first, first), bind(seconds, round/seconds))
+  fork test, not(judged/ok)
+    hold
+      save row/gate, make(some, judged/reasons)
+  transcript/rounds/push row
+  save shown, <{hold/problems/length} problems>
+  fork test, hold/holds
+    hold
+      save shown, <holds>
+  save passes, <>
+  fork test, judged/ok
+    hold
+      save passes, <, the gate passes>
+  call-say(say, <round {state/rounds}: {shown}{passes}>)
+  save line-of-project
+    task
+      take at, like text
+      like maybe, like text
+      back line-at(project, at)
+  save told, feedback-of(hold, make(feedback-ask, bind(line-at, line-of-project), bind(gate, make(some, judged))))
+  back make(round-step, bind(text, told), bind(state, state))
+
+task check-of
+  take input, like knit-input
+  take state, like loop-state
+  like list, like law-instance
+  mark private
+
+  save project, state/project
+  back check-instances(make(instance-ask, bind(project, project), bind(required, input/required), bind(laws, state/library), bind(role-of, role-reader(project)), bind(lean-of, lean-reader(project))))
+
+bind role-reader-of
+  take finder, like dynamic
+  take project, like text
+  like dynamic
+  case node
+    text <$finder.projectRoleOf($project)>
+
+bind lean-reader-of
+  take finder, like dynamic
+  take project, like text
+  like dynamic
+  case node
+    text <$finder.projectLeanOf($project)>
+
+task role-reader
+  take project, like text
+  like dynamic
+  mark private
+
+  back role-reader-of(role-finding, project)
+
+task lean-reader
+  take project, like text
+  like dynamic
+  mark private
+
+  back lean-reader-of(role-finding, project)
+
+# ---- the loop ----
+
+task knit-loop
+  take input, like knit-input
+  take speaker, like speaker
+  # a host function given each line of progress
+  take say, like dynamic
+  like loop-answer
+  mark async
+
+  save project, host-path/join(input/out, <project>)
+  scaffold(project, input/name, input/required)
+
+  save started, loop-now()
+  save root, package-root()
+  save system, system-of(root, input/example)
+  # the whole library, which the seal appends wherever a file fuses one of its laws, and the laws the person named,
+  # which the instance check holds the project to: a name the library lacks is refused there
+  save library, make list
+  walk library-names(root)
+    take name
+    sift library-law(root, name)
+      case some
+        link found
+        library/push found
+      case none
+        save library, library
+  save named, make list
+  walk input/required
+    take name
+    walk library
+      take law
+      fork test, is-equal(law/name, name)
+        hold
+          named/push law
+  save messages, make list
+  messages/push user-text(first-message(make(first-ask, bind(spec, input/spec), bind(required, input/required), bind(port, input/port), bind(library, make(some, named)))))
+  save transcript, make(transcript, bind(turns, make list), bind(rounds, make list))
+  save price, price-of(input/model)
+  save lean, <off>
+  fork test, input/lean
+    hold
+      save lean, <unavailable>
+  save reasons, make list
+  reasons/push <term hold has not run>
+  save state, make(loop-state, bind(project, project), bind(library, library), bind(instances, make list), bind(total, no-spend()), bind(rounds, 0), bind(turns, 0), bind(grow, 0.0), bind(gate, make(gate, bind(ok, false), bind(reasons, reasons), bind(notes, make list), bind(lean, lean))), bind(finished, false), bind(stop, go-on()))
+  save tools, knit-tools()
+  save asking-price, ceiling-price()
+  fork test, is-priced(input/model)
+    hold
+      save asking-price, price
+  # tokens counted as half the characters, more than Term source or English ever take, so the worst is never low
+  save first-input, first-input-of(system)
+
+  walk test
+    hook test, true
+    hook hold
+      save worst, worst-next(state/total, make(worst-ask, bind(price, asking-price), bind(max-tokens, as-float(input/max-tokens)), bind(first-input, first-input), bind(grow, half-up(state/grow))))
+      save state/stop, stop-of(make(progress, bind(rounds, state/rounds), bind(turns, state/turns), bind(started, started), bind(now, loop-now()), bind(spend, state/total), bind(holds, state/gate/ok), bind(finished, state/finished)), input/limits, worst)
+      fork test, state/stop/stop
+        hold
+          halt
+
+      save state/turns, add(state/turns, 1)
+      save answer, make none
+      save failure, make none
+      fork
+        mark unsafe
+        save asked, ask-record(system, tools, messages)
+        save turn, loop-promise/resolve(speaker/ask(asked))
+        save answer, make(some, turn)
+      halt take
+        take problem
+        save failure, make(some, problem)
+
+      sift failure
+        case some
+          link problem
+          # what a stream that broke partway was billed still counts. Such a request is asked again, after the cap is
+          # checked again at the top of the loop; any other failure stops the run
+          save broken, failure-broken(problem)
+          save cost, 0.0
+          walk broken
+            take usage
+            save state/total, spend(state/total, usage, ceiling-price())
+          walk broken
+            take usage
+            save cost, add(cost, cost-of(usage, ceiling-price()))
+          save said, failure-said(problem)
+          save first-usage, empty-usage()
+          fork test, is-above(broken/length, 0)
+            hold
+              save first-usage, broken/0
+          transcript/turns/push make(turn-row, bind(turn, state/turns), bind(stop, <error>), bind(model, input/model), bind(fell-back, false), bind(cost, cost), bind(usage, first-usage), bind(tools, make list), bind(said, cut(said, 400)))
+          call-say(say, <turn {state/turns}: the request failed: {cut(said, 200)}>)
+          fork test, is-above(broken/length, 0)
+            hold
+              turn next
+          save state/stop, stop-with(<error>, <The request to the model failed: {said}>)
+          halt
+        case none
+          save failure, failure
+
+      sift answer
+        case some
+          link answered
+          save state, run-turn(input, state, transcript, messages, say, answered, price)
+        case none
+          save failure, failure
+      fork test, state/stop/stop
+        hold
+          halt
+
+  save seconds, loop-seconds(started)
+  # the project as it is left: sealed, and each named law checked against the library once more
+  seal(project, library)
+  save state/instances, check-of(input, state)
+  save laws, laws-of(project)/laws
+  save holds, false
+  fork test, state/stop/stop
+    hold
+      sift state/stop/reason
+        case some
+          link reason
+          save holds, is-equal(reason, <holds>)
+        case none
+          save holds, false
+  save emitted, make list
+  fork test, holds
+    hold
+      save emitted, emit(input/line, project)
+  save verdict, <stopped>
+  fork test, holds
+    hold
+      save verdict, <holds>
+  save said, <>
+  fork test, state/stop/stop
+    hold
+      sift state/stop/message
+        case some
+          link message
+          save said, message
+        case none
+          save said, said
+
+  # the summary of the last round, when it printed one: run.json holds it before `emitted`, as the original wrote it
+  save summary, make none
+  sift state/last
+    case some
+      link last
+      sift last/summary
+        case some
+          link printed
+          fork test, loop-truth(printed)
+            hold
+              save summary, make(some, printed)
+        case none
+          save said, said
+    case none
+      save said, said
+  save result, make(knit-result, bind(name, input/name), bind(date, iso-date(started)), bind(spec, input/spec), bind(model, input/model), bind(verdict, verdict), bind(stop, said), bind(rounds, state/rounds), bind(turns, state/turns), bind(seconds, seconds), bind(spend, state/total), bind(cap, input/limits/cap), bind(gate, state/gate), bind(laws, laws), bind(required, input/required), bind(instances, make(some, state/instances)), bind(summary, summary), bind(emitted, emitted))
+  back make(loop-answer, bind(result, result), bind(transcript, transcript), bind(messages, messages))
+
+# one answer of the model: its spend, its tool calls run, and what the model is told back
+task run-turn
+  take input, like knit-input
+  take state, like loop-state
+  take transcript, like transcript
+  take messages, like list, like dynamic
+  take say, like dynamic
+  take turn, like dynamic
+  take price, like price
+  like loop-state
+  mark private
+
+  # attempts that broke partway were billed too, at the dearest rates since the model that served them is unknown
+  walk turn-broken(turn)
+    take usage
+    save state/total, spend(state/total, usage, ceiling-price())
+
+  save model, turn-model(turn)
+  save turn-price, price-of(model)
+  fork test, or(turn-fell-back(turn), not(is-priced(model)))
+    hold
+      save turn-price, ceiling-price()
+  save usage, turn-usage(turn)
+  save cost, cost-of(usage, turn-price)
+  save state/total, spend(state/total, usage, turn-price)
+  save state/grow, 0.0
+  save content, turn-content(turn)
+  messages/push assistant-blocks(content)
+
+  save uses, tool-uses(content)
+  save shown, make list
+  save names, make list
+  walk uses
+    take use
+    shown/push use-shown(use)
+    names/push use-name(use)
+  save stop-reason, turn-stop-reason(turn)
+  transcript/turns/push make(turn-row, bind(turn, state/turns), bind(stop, stop-reason), bind(model, model), bind(fell-back, turn-fell-back(turn)), bind(cost, cost), bind(usage, usage), bind(tools, shown), bind(said, cut(said-text(content), 400)))
+  save doing, names/join(<, >)
+  fork test, is-equal(doing, <>)
+    hold
+      save doing, stop-reason
+  call-say(say, <turn {state/turns}: {doing}, {dollars(state/total/dollars)} so far>)
+
+  fork test, is-equal(stop-reason, <refusal>)
+    hold
+      save state/stop, stop-with(<refusal>, <The model declined: {turn-refusal(turn)}>)
+      back state
+
+  fork test, is-equal(uses/length, 0)
+    hold
+      save nudge, <Continue: write the files with write_file and call hold. The run ends when term hold holds with the required laws.>
+      messages/push user-text(nudge)
+      save state/grow, add(state/grow, text-length(nudge))
+      back state
+
+  save results, make list
+  walk uses
+    take use
+    save text, <>
+    save error, false
+    save name, use-name(use)
+    fork test, is-equal(stop-reason, <max_tokens>)
+      hold
+        save text, <Your turn was cut off at the output limit, so this call was not run. Write one file per write_file call.>
+        save error, true
+      miss
+        fork test, is-equal(name, <write_file>)
+          hold
+            save asked, use-path(use)
+            save body, use-content(use)
+            save where, code-path(state/project, asked)
+            fork test, not(where/ok)
+              hold
+                save why, <>
+                sift where/reason
+                  case some
+                    link reason
+                    save why, reason
+                  case none
+                    save why, why
+                save text, <Not written: {why}.>
+                save error, true
+              miss
+                fork test, not(loop-is-text(body))
+                  hold
+                    save text, <Not written: content must be the whole file as text.>
+                    save error, true
+                  miss
+                    sift where/file
+                      case some
+                        link file
+                        save written, loop-as-text(body)
+                        make-dirs-of(host-fs, host-path/dirname(file))
+                        host-fs/write-file-sync(file, written)
+                        save text, <Wrote {asked}, {line-count(written)} lines.>
+                      case none
+                        save text, text
+          miss
+            fork test, is-equal(name, <hold>)
+              hold
+                save step, run-round(input, state, transcript, say)
+                save state, step/state
+                save text, step/text
+              miss
+                fork test, is-equal(name, <laws>)
+                  hold
+                    seal(state/project, state/library)
+                    save text, laws-text(state/project)
+                  miss
+                    save text, <There is no tool named {name}.>
+                    save error, true
+    save state/grow, add(state/grow, text-length(text))
+    results/push tool-result(use-id(use), text, error)
+  messages/push user-blocks(results)
+  back state
+
+bind as-float
+  take value, like number
+  like float
+  case node
+    text <$value>
+
+# ---- the command ----
+
+task call-knit
+  take input, like knit-ask
+  like void
+  mark async
+
+  save root, input/root
+  save spec, <>
+  save from-file, <>
+  sift input/spec-file
+    case some
+      link file
+      save from-file, file
+    case none
+      save from-file, <>
+  fork test, is-unequal(from-file, <>)
+    hold
+      save spec, host-fs/read-file-sync(host-path/resolve(root, from-file), <utf8>)
+    miss
+      sift input/spec
+        case some
+          link words
+          save spec, words
+        case none
+          save spec, <>
+  save name, <>
+  sift input/name
+    case some
+      link given
+      save name, given
+    case none
+      save name, time-name()
+  save out, <>
+  sift input/out
+    case some
+      link given-out
+      save out, host-path/resolve(root, given-out)
+    case none
+      save out, host-path/resolve(root, host-path/join(<tmp>, <knit>, name))
+  save laws, make list
+  sift input/laws
+    case some
+      link asked
+      save laws, asked
+    case none
+      save laws, laws
+
+  save facts, make list
+  facts/push input/model
+  facts/push <cap {dollars(input/cap)}>
+  open-run(make(open-say, bind(verb, <knit>), bind(root, root), bind(subject, name), bind(facts, facts)))
+
+  fork test, is-equal(frame-trim(spec), <>)
+    hold
+      save lines, make list
+      lines/push <Give one in words, or --spec-file \<file\>.>
+      report(make(problem-say, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no spec>), bind(message, lines)))
+      host-process/exit(close-run(make(close-say, bind(verdict, <Nothing to knit>), bind(failure, <usage>))))
+
+  # every --law names a law of the library
+  save known, library-names(package-root())
+  save strange, make list
+  walk laws
+    take law
+    sift library-law(package-root(), law)
+      case some
+        save strange, strange
+      case none
+        strange/push law
+  fork test, is-above(strange/length, 0)
+    hold
+      save shown, known/join(<, >)
+      fork test, is-equal(shown, <>)
+        hold
+          save shown, <none>
+      save lines, make list
+      lines/push <--law names a law of the library (deck/site/code/law): {shown}.>
+      report(make(problem-say, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <The law library has no law named {strange/join(<, >)}>), bind(message, lines)))
+      host-process/exit(close-run(make(close-say, bind(verdict, <Nothing to knit>), bind(failure, <usage>))))
+
+  fork test, host-fs/exists-sync(host-path/join(out, <project>))
+    hold
+      save lines, make list
+      lines/push <A run never overwrites another. Name this one with --name.>
+      report(make(problem-say, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <{out} already holds a run>), bind(message, lines)))
+      host-process/exit(close-run(make(close-say, bind(verdict, <Nothing was run>), bind(failure, <usage>))))
+
+  # the API, reached only now
+  save made, make none
+  fork
+    mark unsafe
+    save speaker, claude-speaker(make(speaker-ask, bind(model, input/model), bind(effort, input/effort), bind(max-tokens, input/max-tokens)))
+    save made, make(some, speaker)
+  halt take
+    take problem
+    fork test, is-setup-failure(problem)
+      hold
+        save fields, make list
+        fields/push field(<next>, setup-next(problem))
+        report(make(setup-say, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, setup-message(problem)), bind(fields, fields)))
+        host-process/exit(close-run(make(close-say, bind(verdict, <The loop did not start>), bind(failure, <environment>))))
+    loop-raise-again(problem)
+
+  sift made
+    case some
+      link ready
+      run-knit(input, root, spec, name, out, laws, ready)
+    case none
+      save made, made
+
+task run-knit
+  take input, like knit-ask
+  take root, like text
+  take spec, like text
+  take name, like text
+  take out, like text
+  take laws, like list, like text
+  take speaker, like speaker
+  like void
+  mark async
+  mark private
+
+  make-dirs-of(host-fs, out)
+  save port, make none
+  sift input/port
+    case some
+      link file
+      fork test, is-unequal(file, <>)
+        hold
+          save text, host-fs/read-file-sync(host-path/resolve(root, file), <utf8>)
+          save port, make(some, make(port-source, bind(file, file), bind(text, text)))
+    case none
+      save port, port
+  save say
+    task
+      take line, like text
+      like void
+      report(make(info-say, bind(glyph, <info>), bind(verb, <knit>), bind(subject, line)))
+  save limits-given, make(limits, bind(rounds, input/rounds), bind(turns, input/turns), bind(minutes, input/minutes), bind(cap, input/cap))
+  save asked, make(knit-input, bind(root, root), bind(spec, spec), bind(port, port), bind(name, name), bind(out, out), bind(required, laws), bind(limits, limits-given), bind(lean, input/lean), bind(example, input/example), bind(model, input/model), bind(max-tokens, input/max-tokens), bind(line, line-of(package-root())))
+  save run, knit-loop(asked, speaker, say)
+  save result, run/result
+  write-run(out, result, run/transcript, run/messages)
+
+  save glyph, <info>
+  fork test, is-equal(result/verdict, <holds>)
+    hold
+      save glyph, <done>
+  walk result/laws
+    take law
+    fork test, contains(result/required, law/name)
+      hold
+        save lines, make list
+        lines/push rendered-sentence(law)
+        report(make(law-say, bind(glyph, glyph), bind(verb, <law>), bind(subject, law/name), bind(message, lines)))
+
+  save fields, make list
+  fields/push field(<report>, host-path/join(out, <report.txt>))
+  fields/push field(<project>, host-path/join(out, <project>))
+  save counts, make list
+  counts/push count(result/rounds, <rounds>, <round>)
+  counts/push count(result/turns, <requests>, <request>)
+  report(make(written-say, bind(glyph, <info>), bind(verb, <knit>), bind(subject, <Written>), bind(fields, fields), bind(counts, counts)))
+
+  save facts, make list
+  facts/push <{dollars(result/spend/dollars)} spent>
+  facts/push <{round-seconds(result/seconds)}s>
+  save closing, make(verdict-say, bind(verdict, <Does not hold>), bind(facts, facts))
+  fork test, is-equal(result/verdict, <holds>)
+    hold
+      save closing/verdict, <Holds>
+    miss
+      save lines, make list
+      lines/push result/stop
+      walk result/gate/reasons
+        take reason
+        lines/push reason
+      save closing/message, make(some, lines)
+  host-process/exit(close-run(closing))
+
+# a law's sentence, or why it was not rendered
+task rendered-sentence
+  take law, like law-sentence
+  like text
+  mark private
+
+  sift law/text
+    case some
+      link sentence
+      back sentence
+    case none
+      sift law/refused
+        case some
+          link why
+          back <not rendered: {why}>
+        case none
+          back <not rendered: >
+
+bind frame-trim
+  take text, like text
+  like text
+  case node
+    text <$text.trim()>
+
+# the run on disk: the report, the run's data, the transcript summary, and the whole conversation
+task write-run
+  take out, like text
+  take result, like knit-result
+  take transcript, like transcript
+  take messages, like list, like dynamic
+  like void
+
+  host-fs/write-file-sync(host-path/join(out, <report.txt>), report-of(result))
+  host-fs/write-file-sync(host-path/join(out, <run.json>), pretty-json(result))
+  host-fs/write-file-sync(host-path/join(out, <transcript.json>), pretty-json(transcript))
+  host-fs/write-file-sync(host-path/join(out, <conversation.json>), pretty-json(messages))

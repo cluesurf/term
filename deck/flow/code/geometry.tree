@@ -1,0 +1,713 @@
+# TEXT GEOMETRY for the language server: positions, edits, folding and selection, read off the document text alone.
+#
+# EVERY COLUMN HERE IS A UTF-16 CODE UNIT, which is what the LSP means by a character unless a client negotiates
+# otherwise, and what a JavaScript string index is. The compiler's columns are string indices too, so a span from the
+# parser maps across unchanged. Term text holds Greek, CJK and emoji, and an emoji is two units: a column counted in
+# code points would land one place left of every name after it.
+#
+# Ported from text.ts (term-cli-in-term-0097). The decisions:
+#   - a text is read as its units (`units-of`, fixing.tree) and written back with `units-text`, which joins a high and
+#     a low surrogate in a row into their code point and leaves one standing alone as JavaScript's slice leaves it
+#     (self-host traps.md T001). A line is the units between two line feeds, as `split('\n')` cut them
+#   - `trim`, `trimStart` and `trimEnd` are JavaScript's, through `whitespace-code` (compile/main-entry.tree)
+#   - `Mapping` held two closures. It is the record `mapping` here, and its methods are `outer-position` and
+#     `inner-position`; `IDENTITY` is the task `identity-mapping` (traps.md T022: a top-level value is a task)
+#   - an absent `parent`, `kind`, `range` and `range-length` are maybes with `need false`, so each stays an optional
+#     field on TypeScript (T002)
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/math
+  find maximum
+  find minimum
+
+load @term/make/fixing
+  find units-of
+  find units-text
+
+load @term/make/compile/main-entry
+  find whitespace-code
+
+# a position in a document, zero-based, its character in UTF-16 units
+form lsp-position
+  link line, like number
+  link character, like number
+
+form lsp-range
+  link start, like lsp-position
+  link end, like lsp-position
+
+# one `didChange` content change: the whole document when it has no range, else the text under the range replaced
+form content-change
+  link range
+    like maybe, like lsp-range
+    need false
+  link range-length
+    like maybe, like number
+    need false
+  link text, like text
+
+form folding-range
+  link start-line, like number
+  link end-line, like number
+  # `comment`, `imports` or `region`, absent for a plain block
+  link kind
+    like maybe, like text
+    need false
+
+# each step of a selection contains the one before it, its parent
+form selection-range
+  link range, like lsp-range
+  link parent
+    like maybe, like selection-range
+    need false
+
+# Where a line of the text the compiler read came from in the text the author wrote. A test file is compiled after
+# its `test` blocks are rewritten into tasks, which moves lines (call/code/test-preprocess.ts `origin`). For every
+# other file the two texts are one and the mapping is the identity.
+form mapping
+  link identity, like boolean
+  # the author's lines, each as its units
+  link source-lines, like list, like list, like number
+  # per compiled line, the source line it came from
+  link origin, like list, like number
+  # per compiled line, the column shift to its source line, none when the text differs beyond indentation
+  link shifts, like list, like maybe, like number
+  # per source line, the first compiled line that carries its text
+  link back-lines, like hash, like number, like number
+
+# ---- lines ----
+
+# the units of a text cut at each line feed, as `split('\n')` cuts it: one more line than there are line feeds
+task lines-of
+  take units, like list, like number
+  like list, like list, like number
+  mark private
+
+  save out, make list
+  save line, make list
+  walk units
+    take unit
+    fork test, is-equal(unit, 10)
+      hold
+        push(out, line)
+        save line, make list
+      miss
+        push(line, unit)
+  push(out, line)
+  back out
+
+# how many units of whitespace open a line: `line.length - line.trimStart().length`
+task indent-of
+  take line, like list, like number
+  like number
+  mark private
+
+  save at, 0
+  walk test
+    hook test, and(is-below(at, line/length), whitespace-code(get(line, at)))
+    hook hold
+      save at, add(at, 1)
+  back at
+
+# whether a line holds nothing but whitespace
+task is-blank
+  take line, like list, like number
+  like boolean
+  mark private
+
+  back is-equal(indent-of(line), line/length)
+
+# the line's length without its trailing whitespace: `line.trimEnd().length`
+task trimmed-end
+  take line, like list, like number
+  like number
+  mark private
+
+  save end, line/length
+  walk test
+    hook test, and(is-above(end, 0), whitespace-code(get(line, subtract(end, 1))))
+    hook hold
+      save end, subtract(end, 1)
+  back end
+
+# whether the line, its leading whitespace taken off, opens with `#`
+task opens-comment
+  take line, like list, like number
+  like boolean
+  mark private
+
+  save at, indent-of(line)
+  back and(is-below(at, line/length), is-equal(get(line, at), 35))
+
+# `line.trim() === other.trim()`
+task same-trimmed
+  take line, like list, like number
+  take other, like list, like number
+  like boolean
+  mark private
+
+  save from, indent-of(line)
+  save to, trimmed-end(line)
+  save other-from, indent-of(other)
+  save other-to, trimmed-end(other)
+  # a blank line trims to nothing, whatever its indent
+  fork test, is-maximum(to, from)
+    hold
+      back is-maximum(other-to, other-from)
+  fork test, is-unequal(subtract(to, from), subtract(other-to, other-from))
+    hold
+      back false
+  save at, 0
+  walk test
+    hook test, is-below(at, subtract(to, from))
+    hook hold
+      fork test, is-unequal(get(line, add(from, at)), get(other, add(other-from, at)))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+# whether two lines hold the same units
+task same-line
+  take line, like list, like number
+  take other, like list, like number
+  like boolean
+  mark private
+
+  fork test, is-unequal(line/length, other/length)
+    hold
+      back false
+  save at, 0
+  walk test
+    hook test, is-below(at, line/length)
+    hook hold
+      fork test, is-unequal(get(line, at), get(other, at))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+# ---- positions and edits ----
+
+# the offset of a position in the text's units, clamped into it: a line past the end is the end, a character past a
+# line's end is that line's end (the protocol says to treat both that way rather than fail)
+task unit-offset
+  take units, like list, like number
+  take position, like lsp-position
+  like number
+  mark private
+
+  save line, 0
+  save offset, 0
+  walk test
+    hook test, is-below(line, position/line)
+    hook hold
+      save next, line-feed-after(units, offset)
+      fork test, is-below(next, 0)
+        hold
+          back units/length
+      save offset, add(next, 1)
+      save line, add(line, 1)
+  save end, line-feed-after(units, offset)
+  save line-end, units/length
+  fork test, is-minimum(end, 0)
+    hold
+      save line-end, end
+  back minimum(add(offset, maximum(0, position/character)), line-end)
+
+# the first line feed at or after `from`, or -1
+task line-feed-after
+  take units, like list, like number
+  take from, like number
+  like number
+  mark private
+
+  save at, from
+  walk test
+    hook test, is-below(at, units/length)
+    hook hold
+      fork test, is-equal(get(units, at), 10)
+        hold
+          back at
+      save at, add(at, 1)
+  back -1
+
+task offset-at
+  take text, like text
+  take position, like lsp-position
+  like number
+
+  back unit-offset(units-of(text), position)
+
+# apply one `didChange` content change: a whole-document replacement, or a ranged edit
+task apply-change
+  take text, like text
+  take change, like content-change
+  like text
+
+  sift change/range
+    case some
+      link range
+      save units, units-of(text)
+      save start, unit-offset(units, range/start)
+      save end, maximum(start, unit-offset(units, range/end))
+      save out, make list
+      save at, 0
+      walk test
+        hook test, is-below(at, start)
+        hook hold
+          push(out, get(units, at))
+          save at, add(at, 1)
+      walk units-of(change/text)
+        take unit
+        push(out, unit)
+      save at, end
+      walk test
+        hook test, is-below(at, units/length)
+        hook hold
+          push(out, get(units, at))
+          save at, add(at, 1)
+      back units-text(out, 0, out/length)
+    case none
+      back change/text
+
+# ---- folding ----
+
+# the last line of the block a line opens: every following line that is blank or indented deeper, up to the last
+# non-blank one
+task block-end
+  take lines, like list, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  save indent, indent-of(get(lines, at))
+  save end, at
+  save index, add(at, 1)
+  walk test
+    hook test, is-below(index, lines/length)
+    hook hold
+      save line, get(lines, index)
+      fork test, is-blank(line)
+        miss
+          fork test, is-maximum(indent-of(line), indent)
+            hold
+              back end
+          save end, index
+      save index, add(index, 1)
+  back end
+
+# the first word of a line, its leading whitespace taken off: what `split(/[\s,]/)[0]` reads
+task head-of
+  take line, like list, like number
+  like text
+  mark private
+
+  save from, indent-of(line)
+  save to, from
+  walk test
+    hook test, and(is-below(to, line/length), and(not(whitespace-code(get(line, to))), is-unequal(get(line, to), 44)))
+    hook hold
+      save to, add(to, 1)
+  back units-text(line, from, to)
+
+# A block folds from the line that opens it to its last indented line. A run of two or more `#` comment lines folds
+# as a comment, and a `load` / `bear` block as imports.
+task folding-ranges
+  take text, like text
+  like list, like folding-range
+
+  save lines, lines-of(units-of(text))
+  save out, make list
+  save i, 0
+  walk test
+    hook test, is-below(i, lines/length)
+    hook hold
+      save line, get(lines, i)
+      fork test, is-blank(line)
+        miss
+          fork test, opens-comment(line)
+            hold
+              fold-comment-run(lines, i, out)
+            miss
+              save end, block-end(lines, i)
+              fork test, is-above(end, i)
+                hold
+                  save head, head-of(line)
+                  fork test, or(is-equal(head, <load>), is-equal(head, <bear>))
+                    hold
+                      push(out, fold-of(i, end, make(some, <imports>)))
+                    miss
+                      push(out, fold-of(i, end, make none))
+      save i, add(i, 1)
+  back out
+
+# a comment run at one indent, counted once from its first line, folded when it is two lines or more
+task fold-comment-run
+  take lines, like list, like list, like number
+  take i, like number
+  take out, like list, like folding-range
+  like void
+  mark private
+
+  save line, get(lines, i)
+  save indent, indent-of(line)
+  fork test, is-above(i, 0)
+    hold
+      save previous, get(lines, subtract(i, 1))
+      fork test, and(opens-comment(previous), is-equal(indent-of(previous), indent))
+        hold
+          send back
+  save end, i
+  save going, true
+  walk test
+    hook test, and(going, is-below(add(end, 1), lines/length))
+    hook hold
+      save next, get(lines, add(end, 1))
+      fork test, and(opens-comment(next), is-equal(indent-of(next), indent))
+        hold
+          save end, add(end, 1)
+        miss
+          save going, false
+  fork test, is-above(end, i)
+    hold
+      push(out, fold-of(i, end, make(some, <comment>)))
+
+# a fold from one line to another, of a kind or of none
+task fold-of
+  take start-line, like number
+  take end-line, like number
+  take kind, like maybe, like text
+  like folding-range
+  mark private
+
+  sift kind
+    case some
+      link given
+      back
+        make folding-range
+          bind start-line, start-line
+          bind end-line, end-line
+          bind kind, make(some, given)
+    case none
+      back
+        make folding-range
+          bind start-line, start-line
+          bind end-line, end-line
+
+# ---- selection ----
+
+# a unit of a name: `[A-Za-z0-9-]`
+task is-name-unit
+  take unit, like number
+  like boolean
+  mark private
+
+  fork test, or(and(is-minimum(unit, 65), is-maximum(unit, 90)), and(is-minimum(unit, 97), is-maximum(unit, 122)))
+    hold
+      back true
+  back or(and(is-minimum(unit, 48), is-maximum(unit, 57)), is-equal(unit, 45))
+
+task range-of
+  take start-line, like number
+  take start-character, like number
+  take end-line, like number
+  take end-character, like number
+  like lsp-range
+  mark private
+
+  back
+    make lsp-range
+      bind start, position-of(start-line, start-character)
+      bind end, position-of(end-line, end-character)
+
+task position-of
+  take line, like number
+  take character, like number
+  like lsp-position
+  mark private
+
+  back
+    make lsp-position
+      bind line, line
+      bind character, character
+
+# whether `outer` holds `inner`
+task holds-range
+  take outer, like lsp-range
+  take inner, like lsp-range
+  like boolean
+  mark private
+
+  save starts-before, or(is-below(outer/start/line, inner/start/line), and(is-equal(outer/start/line, inner/start/line), is-maximum(outer/start/character, inner/start/character)))
+  save ends-after, or(is-above(outer/end/line, inner/end/line), and(is-equal(outer/end/line, inner/end/line), is-minimum(outer/end/character, inner/end/character)))
+  back and(starts-before, ends-after)
+
+task same-range
+  take a, like lsp-range
+  take b, like lsp-range
+  like boolean
+  mark private
+
+  save starts, and(is-equal(a/start/line, b/start/line), is-equal(a/start/character, b/start/character))
+  save ends, and(is-equal(a/end/line, b/end/line), is-equal(a/end/character, b/end/character))
+  back and(starts, ends)
+
+# The selection steps out from a position: the word under it, the line's content, the block that line opens, then
+# each enclosing block, then the whole document. Each step contains the one before, as the protocol requires.
+task selection-range
+  take text, like text
+  take position, like lsp-position
+  like selection-range
+
+  save lines, lines-of(units-of(text))
+  save last-line, maximum(0, subtract(lines/length, 1))
+  save whole, range-of(0, 0, last-line, get(lines, last-line)/length)
+
+  save line, minimum(maximum(0, position/line), last-line)
+  save content, get(lines, line)
+  save character, minimum(maximum(0, position/character), content/length)
+
+  save steps, make list
+
+  # the word
+  save from, character
+  save to, character
+  walk test
+    hook test, and(is-above(from, 0), is-name-unit(get(content, subtract(from, 1))))
+    hook hold
+      save from, subtract(from, 1)
+  walk test
+    hook test, and(is-below(to, content/length), is-name-unit(get(content, to)))
+    hook hold
+      save to, add(to, 1)
+  fork test, is-above(to, from)
+    hold
+      push(steps, range-of(line, from, line, to))
+
+  # the line's content
+  save blank-line, is-blank(content)
+  fork test, blank-line
+    miss
+      push(steps, range-of(line, indent-of(content), line, trimmed-end(content)))
+
+  # the block this line opens, then each block enclosing it
+  save at, line
+  fork test, blank-line
+    hold
+      save at, -1
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      save end, block-end(lines, at)
+      push(steps, range-of(at, indent-of(get(lines, at)), end, get(lines, end)/length))
+      # the nearest line above with a smaller indent opens the enclosing block
+      save indent, indent-of(get(lines, at))
+      save up, subtract(at, 1)
+      walk test
+        hook test, and(is-minimum(up, 0), or(is-blank(get(lines, up)), is-minimum(indent-of(get(lines, up)), indent)))
+        hook hold
+          save up, subtract(up, 1)
+      fork test, is-equal(indent, 0)
+        hold
+          save at, -1
+        miss
+          save at, up
+
+  push(steps, whole)
+
+  # keep only steps that strictly grow, so each parent contains its child
+  save kept, make list
+  walk steps
+    take step
+    fork test, is-equal(kept/length, 0)
+      hold
+        push(kept, step)
+      miss
+        save last, get(kept, subtract(kept/length, 1))
+        fork test, and(holds-range(step, last), not(same-range(step, last)))
+          hold
+            push(kept, step)
+
+  save index, subtract(kept/length, 1)
+  save result
+    make selection-range
+      bind range, get(kept, index)
+  save index, subtract(index, 1)
+  walk test
+    hook test, is-minimum(index, 0)
+    hook hold
+      save inner
+        make selection-range
+          bind range, get(kept, index)
+          bind parent, make(some, result)
+      save result, inner
+      save index, subtract(index, 1)
+  back result
+
+# ---- mapping ----
+
+task identity-mapping
+  like mapping
+
+  back
+    make mapping
+      bind identity, true
+      bind source-lines, make list
+      bind origin, make list
+      bind shifts, make list
+      bind back-lines, make hash
+
+task make-mapping
+  take source, like text
+  take compiled, like text
+  take origin, like list, like number
+  like mapping
+
+  save source-lines, lines-of(units-of(source))
+  save compiled-lines, lines-of(units-of(compiled))
+
+  # per compiled line, the column shift to its source line, or none when the text differs beyond indentation
+  save shifts, make list
+  save n, 0
+  walk test
+    hook test, is-below(n, compiled-lines/length)
+    hook hold
+      save line, get(compiled-lines, n)
+      save from-line, n
+      fork test, is-below(n, origin/length)
+        hold
+          save from-line, get(origin, n)
+      fork test, and(is-minimum(from-line, 0), is-below(from-line, source-lines/length))
+        hold
+          save from, get(source-lines, from-line)
+          fork test, same-line(line, from)
+            hold
+              push(shifts, make(some, 0))
+            miss
+              fork test, same-trimmed(line, from)
+                hold
+                  save shift, subtract(indent-of(from), indent-of(line))
+                  push(shifts, make(some, shift))
+                miss
+                  push(shifts, make none)
+        miss
+          push(shifts, make none)
+      save n, add(n, 1)
+
+  # per source line, the compiled line that carries its text (the first such)
+  save back-lines, make hash
+  save n, 0
+  walk test
+    hook test, is-below(n, origin/length)
+    hook hold
+      save from-line, get(origin, n)
+      fork test, is-below(n, shifts/length)
+        hold
+          sift get(shifts, n)
+            case some
+              fork test, back-lines/has(from-line)
+                miss
+                  save back-lines/{from-line}, n
+            case none
+              save skipped, true
+      save n, add(n, 1)
+
+  back
+    make mapping
+      bind identity, false
+      bind source-lines, source-lines
+      bind origin, origin
+      bind shifts, shifts
+      bind back-lines, back-lines
+
+# the shift recorded for a compiled line, none past the list
+task shift-at
+  take map, like mapping
+  take line, like number
+  like maybe, like number
+  mark private
+
+  fork test, and(is-minimum(line, 0), is-below(line, map/shifts/length))
+    hold
+      back get(map/shifts, line)
+  back make none
+
+# compiler coordinates to the author's. `edge` is `start` or `end`: where on a rewritten line the position lands
+task outer-position
+  take map, like mapping
+  take position, like lsp-position
+  take edge, like text, fall <start>
+  like lsp-position
+
+  fork test, map/identity
+    hold
+      back position
+  save line, position/line
+  fork test, and(is-minimum(position/line, 0), is-below(position/line, map/origin/length))
+    hold
+      save line, get(map/origin, position/line)
+  save text, make list
+  fork test, and(is-minimum(line, 0), is-below(line, map/source-lines/length))
+    hold
+      save text, get(map/source-lines, line)
+  sift shift-at(map, position/line)
+    case some
+      link delta
+      back position-of(line, maximum(0, minimum(text/length, add(position/character, delta))))
+    case none
+      fork test, is-equal(edge, <start>)
+        hold
+          back position-of(line, indent-of(text))
+      back position-of(line, text/length)
+
+# the author's coordinates to the compiler's
+task inner-position
+  take map, like mapping
+  take position, like lsp-position
+  like lsp-position
+
+  fork test, map/identity
+    hold
+      back position
+  fork test, map/back-lines/has(position/line)
+    hold
+      save line, map/back-lines/get(position/line)
+      save delta, 0
+      sift shift-at(map, line)
+        case some
+          link given
+          save delta, given
+        case none
+          save skipped, true
+      back position-of(line, maximum(0, subtract(position/character, delta)))
+  # a source line the compiled text does not carry verbatim: its first compiled line, or itself
+  save first, -1
+  save at, 0
+  walk test
+    hook test, and(is-below(first, 0), is-below(at, map/origin/length))
+    hook hold
+      fork test, is-equal(get(map/origin, at), position/line)
+        hold
+          save first, at
+      save at, add(at, 1)
+  fork test, is-minimum(first, 0)
+    hold
+      back position-of(first, position/character)
+  back position-of(position/line, position/character)
+
+task outer-range
+  take map, like mapping
+  take range, like lsp-range
+  like lsp-range
+
+  fork test, map/identity
+    hold
+      back range
+  back
+    make lsp-range
+      bind start, outer-position(map, range/start, <start>)
+      bind end, outer-position(map, range/end, <end>)

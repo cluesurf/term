@@ -1,0 +1,571 @@
+# `term hold` - THE GATE, ported from call/code/hold.ts `callHold` (term-cli-in-term-0047): one command, one line, a
+# non-zero exit while anything is unproven. It holds the project (project-hold.tree), prints each problem, the
+# baseline it commits under `--commit`, the kernel's work, the TRUST LEDGER and the certificates, then the second
+# checker under `--lean` (call/code/hold-lean.ts), the report under `--report` (call/code/hold-report.ts), the
+# cross-backend differential under `--cross`, and the verdict. See note/project/term/proof/readme.md.
+
+load @term/base/maybe
+  find maybe
+
+load @term/call/hold-plan
+  find commit-keys
+  find reason-lines
+  find reason-count
+  find gone-subject
+  find open-subject
+  find gate-of
+
+load @term/call/work/hold/project-hold
+  find hold-project
+  find hold-summary
+  find hold-failure
+  find baseline-keys
+
+load @term/call/work/output/printer
+  find open-run
+  find report
+  find close-run
+  find count
+  find field
+  find print-data
+  find problem-of
+  find report-problems
+
+dock load
+  load <@term/call/code/make>, name tree-finding
+  load <@term/call/code/files>, name file-collecting
+  load <@term/call/code/hold-lean>, name lean-holding
+  load <@term/call/code/hold-report>, name report-holding
+  load <@term/call/code/role-of>, name role-reading
+  load <@term/call/code/cache-store>, name version-reading
+  load <@term/call/code/home>, name home-finding
+  load <@term/test/code/hold-incremental>, name incremental-holding
+  load <@term/test/code/obligation-cache>, name obligation-caching
+  load <@term/test/code/prove-file>, name proof-reporting
+  load <node:fs>, name host-fs
+  load <node:path>, name host-path
+  load <global:process>, name host-process
+
+# ---- the host's values ----
+
+bind new-found
+  like dynamic
+  case node
+    text <(\{ compile: [], obligations: new Map() \})>
+
+bind found-compile
+  take found, like dynamic
+  like dynamic
+  case node
+    text <$found.compile>
+
+bind found-placed
+  take found, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$found.obligations.get($key)>
+
+bind placed-diagnostic
+  take placed, like dynamic
+  like dynamic
+  case node
+    text <$placed.diagnostic>
+
+bind placed-text
+  take placed, like dynamic
+  like dynamic
+  case node
+    text <$placed.text>
+
+bind verdict-truth
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# the summary as `--json` prints it: `lean` under --lean and `report` under --report
+bind summary-json
+  take summary, like hold-summary
+  take lean, like dynamic
+  take page, like dynamic
+  like text
+  case node
+    text <(JSON.stringify(\{ ...$summary, ...($lean ? \{ lean: $lean \} : \{\}), ...($page ? \{ report: $page \} : \{\}) \}, null, 2) + String.fromCharCode(10))>
+
+bind commit-json
+  take keys, like list, like text
+  like text
+  case node
+    text <(JSON.stringify(\{ obligations: $keys \}, null, 2) + String.fromCharCode(10))>
+
+bind reason-counts
+  take pairs, like dynamic
+  like list, like reason-count
+  case node
+    text <<$pairs.map(([reason, count]) => ({ reason, count }))>>
+
+bind pair-count
+  take pairs, like dynamic
+  like number
+  case node
+    text <$pairs.length>
+
+bind lean-ok
+  take lean, like dynamic
+  like boolean
+  case node
+    text <($lean ? $lean.ok : true)>
+
+bind page-holds
+  take page, like dynamic
+  like boolean
+  case node
+    text <($page ? $page.holds : true)>
+
+bind page-text
+  take page, like dynamic
+  like text
+  case node
+    text <$page.page>
+
+bind page-top
+  take page, like dynamic
+  like text
+  case node
+    text <$page.top>
+
+bind page-file
+  take page, like dynamic
+  like text
+  case node
+    text <$page.file>
+
+bind lean-of-root
+  take holding, like dynamic
+  take root, like text
+  take files, like list, like text
+  like dynamic
+  case node
+    text <$holding.holdLean($root, $files)>
+
+bind report-of-root
+  take holding, like dynamic
+  take root, like text
+  take files, like list, like text
+  take summary, like hold-summary
+  take found, like dynamic
+  take lean, like dynamic
+  like dynamic
+  case node
+    text <$holding.holdReport(\{ root: $root, files: $files, summary: $summary, found: $found, lean: $lean \})>
+
+bind nothing-yet
+  like dynamic
+  case node
+    text <undefined>
+
+# ---- the cross-backend differential ----
+
+bind cross-hold
+  take incremental, like dynamic
+  take caching, like dynamic
+  take building, like dynamic
+  take roles, like dynamic
+  take version, like dynamic
+  take home, like dynamic
+  take files, like list, like text
+  take root, like text
+  take memory, like boolean
+  take force, like dynamic
+  take disk, like dynamic
+  like dynamic
+  case node
+    text <<((read) => $incremental.holdIncremental({ files: $files, resolve: $building.projectResolver($root, "node", $root), cache: $memory ? $caching.memoryObligationCache() : $caching.diskObligationCache($home.projectHome($root, "hold")), version: $version.compilerVersion(), cross: true, force: $force, read }))((file) => { const source = $disk.readFileSync(file, "utf8"); const made = $building.buildable(file, source, $roles(file)); return "text" in made ? made.text : source })>>
+
+bind cross-outcomes
+  take result, like dynamic
+  like list, like dynamic
+  case node
+    text <$result.outcomes>
+
+bind cross-ok-of
+  take result, like dynamic
+  like boolean
+  case node
+    text <Boolean($result.ok)>
+
+bind outcome-failed
+  take outcome, like dynamic
+  like boolean
+  case node
+    text <(!$outcome.ok && Boolean($outcome.report))>
+
+bind outcome-subject
+  take outcome, like dynamic
+  take root, like text
+  take paths, like dynamic
+  like text
+  case node
+    text <($outcome.report.compiles ? "The backends disagree" : `${$paths.relative($root, $outcome.file)} does not compile`)>
+
+# the differential's own report, its paths relative to the project
+bind outcome-quote
+  take outcome, like dynamic
+  take proving, like dynamic
+  take root, like text
+  take paths, like dynamic
+  like list, like text
+  case node
+    text <<$proving.renderReport($outcome.report).split("\n").map(line => line.split(`${$root}${$paths.sep}`).join(""))>>
+
+# ---- the shapes ----
+
+form hold-ask
+  link root, like text
+  link paths, like list, like text
+  link cross
+    like maybe, like boolean
+    need false
+  link cache
+    like maybe, like boolean
+    need false
+  link force
+    like maybe, like boolean
+    need false
+  link json
+    like maybe, like boolean
+    need false
+  link commit
+    like maybe, like boolean
+    need false
+  link lean
+    like maybe, like boolean
+    need false
+  link report
+    like maybe, like boolean
+    need false
+
+form open-say
+  link verb, like text
+  link root, like text
+  link counts, like list, like dynamic
+  link facts, like list, like text
+
+form problem-say
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link message, like list, like text
+
+form verdict-say
+  link verdict, like text
+
+form commit-say
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link counts, like list, like dynamic
+
+form prove-say
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link facts, like list, like text
+
+form counted-say
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link counts, like list, like dynamic
+  link message, like list, like text
+
+form reasons-say
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+
+form trust-say
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link counts, like list, like dynamic
+  link message, like list, like text
+  link fields, like list, like dynamic
+
+form fields-say
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form open-claims-say
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link message, like list, like text
+
+form quote-say
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link quote, like list, like text
+
+form counts-say
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link counts, like list, like dynamic
+
+form failed-page-say
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form close-counts
+  link verdict, like text
+  link counts, like list, like dynamic
+
+# ---- the gate ----
+
+task flag
+  take value, like maybe, like boolean
+  like boolean
+  mark private
+
+  sift value
+    case some
+      link given
+      back given
+    case none
+      back false
+
+task call-hold
+  take input, like hold-ask
+  like void
+  mark async
+
+  save root, input/root
+  save commit, flag(input/commit)
+  save lean-asked, flag(input/lean)
+  save report-asked, flag(input/report)
+  # the same files `term make` compiles for node, so the gate and the build agree on what the project is
+  save files, make list
+  fork test, is-above(input/paths/length, 0)
+    hold
+      save files, wait file-collecting/collect-tree-files(input/paths, root)
+    miss
+      save skipped, make list
+      save files, tree-finding/find-tree-files(root, skipped, <node>)
+
+  save facts, make list
+  fork test, commit
+    hold
+      facts/push <--commit>
+  fork test, lean-asked
+    hold
+      facts/push <--lean>
+  fork test, report-asked
+    hold
+      facts/push <--report>
+  save opening, make list
+  opening/push count(files/length, <files>, <file>)
+  open-run(make(open-say, bind(verb, <hold>), bind(root, root), bind(counts, opening), bind(facts, facts)))
+
+  fork test, is-equal(files/length, 0)
+    hold
+      save lines, make list
+      fork test, is-above(input/paths/length, 0)
+        hold
+          lines/push <Looked in {input/paths/join(<, >)}.>
+      report(make(problem-say, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no .tree file to hold>), bind(message, lines)))
+      host-process/exit(close-run(make(verdict-say, bind(verdict, <Nothing to hold>))))
+
+  save found, new-found()
+  save summary, hold-project(root, files, found)
+
+  # every file that does not compile, each diagnostic a Problem item with its frame
+  report-problems(found-compile(found), root)
+
+  fork test, commit
+    hold
+      save fresh-keys, make list
+      walk summary/fresh
+        take failure
+        fresh-keys/push failure/key
+      save keys, commit-keys(baseline-keys(root), summary/gone, fresh-keys)
+      host-fs/write-file-sync(host-path/join(root, <hold.json>), commit-json(keys))
+      # the count of what the commit ADDED is printed, so a baseline cannot grow in silence
+      save counts, make list
+      counts/push count(keys/length, <obligations>, <obligation>)
+      counts/push count(summary/fresh/length, <added>)
+      counts/push count(summary/gone/length, <removed>)
+      report(make(commit-say, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <commit>), bind(subject, <hold.json>), bind(counts, counts)))
+      save summary/baselined, add(summary/baselined, summary/fresh/length)
+      save summary/fresh, make list
+      save summary/gone, make list
+
+  # the second checker, when asked for: every claim exported and re-checked by Lean 4
+  save lean, nothing-yet()
+  fork test, lean-asked
+    hold
+      save lean, lean-of-root(lean-holding, root, files)
+
+  # the MVP report, when asked for: one row per law of laws.tree, written under the project's home
+  save page, nothing-yet()
+  fork test, report-asked
+    hold
+      save page, report-of-root(report-holding, root, files, summary, found, lean)
+
+  fork test, flag(input/json)
+    hold
+      print-data(summary-json(summary, lean, page))
+    miss
+      fork test, verdict-truth(page)
+        hold
+          print-data(page-text(page))
+
+  # each tier-0 obligation that is not proven and not in the baseline, a Problem item under `prove`
+  walk summary/fresh
+    take failure
+    save placed, found-placed(found, failure/key)
+    fork test, verdict-truth(placed)
+      hold
+        save item, problem-of(placed-diagnostic(placed), root, placed-text(placed))
+        save item/verb, <prove>
+        report(item)
+      miss
+        save keys, make list
+        keys/push failure/key
+        report(make(prove-say, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <prove>), bind(subject, failure/message), bind(facts, keys)))
+
+  save ledger, summary/ledger
+  save kernel, summary/kernel
+
+  save work, make list
+  work/push count(kernel/proven, <proven as one term>)
+  work/push count(kernel/commands, <checked statement by statement>)
+  work/push count(kernel/declined, <declined>)
+  # one line per reason, most common first: `An expression the kernel cannot represent: 1`
+  report(make(counted-say, bind(glyph, <info>), bind(verb, <prove>), bind(subject, <What the kernel did with the tasks>), bind(counts, work), bind(message, reason-lines(reason-counts(kernel/reasons)))))
+
+  # and why each task checked statement by statement was not lowered to one term
+  fork test, is-above(pair-count(kernel/statementwise), 0)
+    hold
+      report(make(reasons-say, bind(glyph, <info>), bind(verb, <prove>), bind(subject, <Why a task was checked statement by statement>), bind(message, reason-lines(reason-counts(kernel/statementwise)))))
+
+  # the TRUST LEDGER: what the proofs rest on that nothing here proves
+  save trust, make list
+  trust/push count(ledger/native/length, <impure tasks>, <impure task>)
+  trust/push count(ledger/axioms/length, <axioms>, <axiom>)
+  trust/push count(ledger/unending/length, <recursions not shown to end>, <recursion not shown to end>)
+  trust/push count(ledger/roaming/length, <marked roam>)
+  save trust-lines, make list
+  trust-lines/push <An impure task reaches native code, is async, or has no body. One assumption: native code handed only scalars reaches no Term value.>
+  save trust-fields, make list
+  fork test, is-above(ledger/axioms/length, 0)
+    hold
+      trust-fields/push field(<axioms>, ledger/axioms/join(<, >))
+  report(make(trust-say, bind(glyph, <info>), bind(verb, <trust>), bind(subject, <What the proofs rest on and nothing here proves>), bind(counts, trust), bind(message, trust-lines), bind(fields, trust-fields)))
+
+  # one the search found and the checker refused is reported unproven, and counted here because it is a bug in the
+  # search (check/certificate.ts). Sturm and CAD are not certified, and the item says so
+  save certified, <info>
+  fork test, is-above(summary/uncertified, 0)
+    hold
+      save certified, <warning>
+  save refused, make list
+  refused/push count(summary/uncertified, <found by the search and refused>)
+  save trusted, make list
+  trusted/push <Sturm and CAD are trusted as written.>
+  report(make(counted-say, bind(glyph, certified), bind(verb, <certify>), bind(subject, <Every linear refutation and sum-of-squares certificate replayed by the checker>), bind(counts, refused), bind(message, trusted)))
+
+  fork test, is-above(summary/gone/length, 0)
+    hold
+      save next, make list
+      next/push field(<next>, <term hold --commit, to shrink hold.json>)
+      report(make(fields-say, bind(glyph, <info>), bind(verb, <hold>), bind(subject, gone-subject(summary/gone/length)), bind(fields, next)))
+
+  # an open claim is a promise, and a gate cannot pass a promise
+  fork test, is-above(summary/open/length, 0)
+    hold
+      save named, make list
+      named/push summary/open/join(<, >)
+      report(make(open-claims-say, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <prove>), bind(subject, open-subject(summary/open/length)), bind(message, named)))
+
+  # the cross-backend differential, when asked for, after the proof gate
+  save cross-ok, true
+  fork test, flag(input/cross)
+    hold
+      save memory, false
+      sift input/cache
+        case some
+          link cached
+          save memory, not(cached)
+        case none
+          save memory, false
+      save force, nothing-yet()
+      sift input/force
+        case some
+          link forced
+          save force, forced-value(forced)
+        case none
+          save force, force
+      save result, cross-hold(incremental-holding, obligation-caching, tree-finding, role-reading/project-role-of(root), version-reading, home-finding, files, root, memory, force, host-fs)
+      walk cross-outcomes(result)
+        take outcome
+        fork test, outcome-failed(outcome)
+          hold
+            save quoted, outcome-quote(outcome, proof-reporting, root, host-path)
+            report(make(quote-say, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <cross>), bind(subject, outcome-subject(outcome, root, host-path)), bind(quote, quoted)))
+      save cross-ok, cross-ok-of(result)
+      fork test, cross-ok
+        hold
+          save agreed, make list
+          agreed/push count(files/length, <files>, <file>)
+          report(make(counts-say, bind(glyph, <done>), bind(verb, <cross>), bind(subject, <Every backend agrees>), bind(counts, agreed)))
+
+  fork test, verdict-truth(lean)
+    hold
+      lean-holding/report-lean(lean)
+
+  fork test, verdict-truth(page)
+    hold
+      save page-fields, make list
+      page-fields/push field(<file>, page-file(page))
+      fork test, page-holds(page)
+        hold
+          report(make(fields-say, bind(glyph, <done>), bind(verb, <report>), bind(subject, page-top(page)), bind(fields, page-fields)))
+        miss
+          report(make(failed-page-say, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <report>), bind(subject, page-top(page)), bind(fields, page-fields)))
+
+  save gate, gate-of(summary/proven, summary/total, summary/baselined, summary/failed/length, summary/open/length, summary/fresh/length, cross-ok, <hold.json>)
+  save holds, and(gate/holds, and(lean-ok(lean), page-holds(page)))
+
+  # a gate that passed says so with a ✓ of its own: a run of `·` items closes `·`, which reads as "nothing was done"
+  # for the one command whose whole job is a verdict
+  fork test, gate/holds
+    hold
+      save proved, make list
+      proved/push count(summary/proven, <proven>, <>, summary/total)
+      report(make(counts-say, bind(glyph, <done>), bind(verb, <prove>), bind(subject, <Every obligation is proven or in the baseline>), bind(counts, proved)))
+
+  # THE GATE: exit 0 when everything holds, 1 when anything does not
+  save verdict, <Does not hold>
+  fork test, holds
+    hold
+      save verdict, <Holds>
+  host-process/exit(close-run(make(close-counts, bind(verdict, verdict), bind(counts, gate/counts))))
+
+bind forced-value
+  take value, like boolean
+  like dynamic
+  case node
+    text <$value>

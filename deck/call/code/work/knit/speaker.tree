@@ -1,0 +1,267 @@
+# `term knit`'s one door to the Claude API, ported from call/code/knit-model.ts (term-cli-in-term-0044). The key is
+# read from the environment only when the loop asks for a speaker, and the raw-HTTP Messages client
+# (deck/make/code/code/api-client.ts `streamMessage`, docked: it is outside the Term package) is imported only then,
+# so `term` starts, and every other verb runs, with no key set (note/project/term/assurance/prove-loop).
+#
+# The request body is the Messages API's own record, snake_case on the wire, so it is built as a host value. The turn
+# that comes back is a Term record; its content blocks and usage are passed back UNCHANGED, thinking blocks included.
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/list
+  find contains
+
+# a promise a bind hands out is awaited through `Promise.resolve`, a dock call (a bind is never awaited itself)
+dock load
+  load <global:Promise>, name host-promise
+    mark async
+
+# ---- the request ----
+
+# the request body for one turn: adaptive thinking (the only mode Opus 5.5 takes) at the effort asked, the fixed
+# system prompt and the growing conversation cached for an hour (a turn plus a round of `term hold` can pass five
+# minutes; a longer TTL may not follow a shorter one, so both are an hour), strict tools, and the refusal fallback
+bind knit-request-body
+  take model, like text
+  take effort, like text
+  take most, like number
+  take system, like text
+  take tools, like dynamic
+  take messages, like dynamic
+  take fallback, like boolean
+  like dynamic
+  case node
+    text <<({ model: $model, max_tokens: $most, thinking: { type: "adaptive" }, output_config: { effort: $effort }, system: [{ type: "text", text: $system, cache_control: { type: "ephemeral", ttl: "1h" } }], cache_control: { type: "ephemeral", ttl: "1h" }, tools: $tools.map(tool => ({ ...tool, strict: true })), messages: $messages, ...($fallback ? { fallbacks: "default" } : {}) })>>
+
+form body-ask
+  link model, like text
+  link effort, like text
+  link max-tokens, like number
+  link system, like text
+  # the tools and the conversation, as the API takes them
+  link tools, like dynamic
+  link messages, like dynamic
+
+form request-body
+  link body, like dynamic
+  link betas, like list, like text
+
+# the models the server-side refusal fallback takes (claude-api skill: on by default for these)
+task takes-fallback
+  take model, like text
+  like boolean
+  mark private
+
+  save models, make list
+  models/push <claude-opus-5-5>
+  models/push <claude-opus-5>
+  models/push <claude-fable-5-1>
+  back contains(models, model)
+
+task body-of
+  take input, like body-ask
+  like request-body
+
+  save fallback, takes-fallback(input/model)
+  save body, knit-request-body(input/model, input/effort, input/max-tokens, input/system, input/tools, input/messages, fallback)
+  save betas, make list
+  fork test, fallback
+    hold
+      betas/push <server-side-fallback-2026-07-01>
+  back make(request-body, bind(body, body), bind(betas, betas))
+
+# ---- the answer ----
+
+# one turn of the model. `broken`: attempts that broke partway and were retried, billed and not in `usage`
+form turn
+  link content, like dynamic
+  link usage, like dynamic
+  link stop-reason, like text
+  # the model that served the turn, and whether a fallback model ran in it (priced then at the dearest rates)
+  link model, like text
+  link fell-back, like boolean
+  link refusal
+    like maybe, like text
+    need false
+  link broken
+    like maybe, like dynamic
+    need false
+
+bind message-content
+  take message, like dynamic
+  like dynamic
+  case node
+    text <$message.content>
+
+bind message-usage
+  take message, like dynamic
+  like dynamic
+  case node
+    text <$message.usage>
+
+bind message-stop-reason
+  take message, like dynamic
+  like text
+  case node
+    text <String($message.stop_reason ?? "")>
+
+bind message-model
+  take message, like dynamic
+  take fallback, like text
+  like text
+  case node
+    text <String($message.model ?? $fallback)>
+
+bind is-refusal
+  take message, like dynamic
+  like boolean
+  case node
+    text <($message.stop_reason === "refusal")>
+
+# `category: explanation` of a refusal
+bind refusal-of
+  take message, like dynamic
+  like text
+  case node
+    text <<`${$message.stop_details?.category ?? "no category"}: ${$message.stop_details?.explanation ?? ""}`>>
+
+# whether a fallback model served the turn
+bind fell-back-in
+  take usage, like dynamic
+  like boolean
+  case node
+    text <<($usage.iterations ?? []).some(one => one.type === "fallback_message")>>
+
+# `message.broken_usage ?? []`
+bind broken-usage-of
+  take message, like dynamic
+  like list, like dynamic
+  case node
+    text <($message.broken_usage ?? [])>
+
+task turn-of
+  take message, like dynamic
+  take model, like text
+  like turn
+
+  save usage, message-usage(message)
+  save answer, make(turn, bind(content, message-content(message)), bind(usage, usage), bind(stop-reason, message-stop-reason(message)), bind(model, message-model(message, model)), bind(fell-back, fell-back-in(usage)))
+  fork test, is-refusal(message)
+    hold
+      save refused, refusal-of(message)
+      save answer/refusal, make(some, refused)
+  save broken, broken-usage-of(message)
+  fork test, is-above(broken/length, 0)
+    hold
+      save answer/broken, make(some, broken)
+  back answer
+
+# ---- the failures ----
+
+# `KnitSetup`: the loop cannot start, and what to do (`next`)
+bind raise-knit-setup
+  take message, like text
+  take next, like text
+  like void
+  case node
+    text <<(() => { throw Object.assign(new (class KnitSetup extends Error {})($message), { next: $next }) })()>>
+
+# `KnitRequest`: a request that failed for good, with the usage of the attempts that broke partway (`broken`), so the
+# cap still counts them
+bind raise-knit-request
+  take problem, like dynamic
+  like void
+  case node
+    text <<(() => { throw Object.assign(new (class KnitRequest extends Error {})($problem instanceof Error ? $problem.message : String($problem)), { broken: $problem?.brokenUsage ?? [] }) })()>>
+
+# ---- the speaker ----
+
+bind environment-key
+  like text
+  case node
+    text <(process.env.ANTHROPIC_API_KEY ?? "")>
+
+# the Messages client, imported only when a speaker is made
+bind load-messages-client
+  like dynamic
+  case node
+    text <import("@/../../../make/code/code/api-client")>
+
+bind stream-one-message
+  take client, like dynamic
+  take key, like text
+  take request, like request-body
+  like dynamic
+  case node
+    text <$client.streamMessage(\{ apiKey: $key, body: $request.body, betas: $request.betas, retries: 4, retryBroken: false \})>
+
+bind ask-system
+  take asked, like dynamic
+  like text
+  case node
+    text <$asked.system>
+
+bind ask-tools
+  take asked, like dynamic
+  like dynamic
+  case node
+    text <$asked.tools>
+
+bind ask-messages
+  take asked, like dynamic
+  like dynamic
+  case node
+    text <$asked.messages>
+
+form speaker-ask
+  link model, like text
+  link effort, like text
+  link max-tokens, like number
+
+# what the loop asks of a model: the loop is written against it, so test/call/knit.ts drives it with a scripted
+# speaker and no network. `ask` takes `{ system, tools, messages }`
+form speaker
+  link model, like text
+  link ask
+    like task
+      mark async
+      take asked, like dynamic
+      like turn
+
+task claude-speaker
+  take input, like speaker-ask
+  like speaker
+  mark async
+
+  save key, environment-key()
+  fork test, is-equal(key, <>)
+    hold
+      raise-knit-setup(<ANTHROPIC_API_KEY is not set, so the loop cannot reach the model>, <set ANTHROPIC_API_KEY, or run it under a zone that holds the key: zone load \<zone\> -- term knit ...>)
+  save client, host-promise/resolve(load-messages-client())
+  save ask
+    task
+      take asked, like dynamic
+      like turn
+      mark async
+      save request, body-of(make(body-ask, bind(model, input/model), bind(effort, input/effort), bind(max-tokens, input/max-tokens), bind(system, ask-system(asked)), bind(tools, ask-tools(asked)), bind(messages, ask-messages(asked))))
+      save message, make none
+      fork
+        mark unsafe
+        save pending, stream-one-message(client, key, request)
+        save streamed, host-promise/resolve(pending)
+        save message, make(some, streamed)
+      halt take
+        take problem
+        raise-knit-request(problem)
+      sift message
+        case some
+          back turn-of(value, input/model)
+        case none
+          back turn-of(make-nothing(), input/model)
+  back make(speaker, bind(model, input/model), bind(ask, ask))
+
+bind make-nothing
+  like dynamic
+  case node
+    text <undefined>

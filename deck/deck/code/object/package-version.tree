@@ -1,0 +1,372 @@
+# A package version built on @cluesurf/save: its files walked, chunked into the object store, and written as a base
+# dataset. Ported from deck/deck/code/object/version.ts (term-cli-in-term-0082): readVersionFiles, buildVersion.
+#
+# A version is a base dataset of file records (deck/deck/code/object/dataset.ts), written by save's `writeDataset`,
+# so the package manager inherits the tree, the O(change) diff and sync instead of keeping its own.
+#
+# The sync / async seam is here, and deliberate: save's store API is synchronous and in process, the package
+# manager's is async and networked. So the tree is computed in memory against a MemoryChunkStore, and only then are
+# its chunks shipped to the async object store: compute locally, upload what is missing.
+#
+# The decisions:
+#   - the store is the caller's host object (its `put`, awaited), the bytes host Buffers, a file record the
+#     original's host record (`record` present only for a `.tree` kept as a record, which dataset.ts tests)
+#   - every parameter is given: the chunk parameters (the caller's default-chunk-params() where the original
+#     defaulted them), the exclusions as a list of names (default-version-exclude() where the original defaulted its
+#     Set) and the included paths as a list (empty where it was left out)
+#   - the walk is the original's: entries in the order the file system gives them, the files sorted by path in UTF-16
+#     order at the end
+#   - save's datasetOfFiles (deck/deck/code/object/dataset.ts, not yet ported), writeDataset, MemoryChunkStore,
+#     parseTree, formatTree and canonicalBytes are docked
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find split
+  find starts-with
+  find ends-with
+  find substring
+  find char-count
+
+load ./object-address
+  find hash-object
+
+load ./content-chunking
+  find chunk-params
+  find chunk-buffer
+
+load ./file-treatment
+  find classify
+
+dock load
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <node:path>, name node-path
+  load <@cluesurf/save/store/tree>, name save-tree
+  load <@cluesurf/save/store/chunk-store>, name save-chunk-store
+  load <@cluesurf/save/tree/parse>, name save-tree-parse
+  load <@cluesurf/save/tree/format>, name save-tree-format
+  load <@cluesurf/save/canon/canonicalize>, name save-canonicalize
+  load <@term/deck/code/object/dataset>, name dataset-module
+
+form built-version
+  # the prolly-tree root naming this version's file set
+  link root, like text
+  link files, like list, like dynamic
+  # the in-memory chunks the tree is made of, to be shipped to the object store
+  link tree-chunks, like dynamic
+
+form folder-ask
+  link with-file-types, like boolean
+
+form chunk-object
+  link id, like text
+  link bytes, like dynamic
+
+# what one walk carries down: the files found so far are pushed into `files`
+form version-walk
+  link store, like dynamic
+  link params, like chunk-params
+  link exclude, like list, like text
+  link include, like list, like text
+  link files, like list, like dynamic
+
+bind version-chunk-store
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.MemoryChunkStore()>
+
+bind version-put
+  take shelf, like dynamic
+  take item, like chunk-object
+  like dynamic
+  case node
+    text <$shelf.put($item)>
+
+bind version-utf8-text
+  take data, like dynamic
+  like text
+  case node
+    text <$data.toString("utf8")>
+
+bind version-is-executable
+  take mode, like number
+  like boolean
+  case node
+    text <(($mode & 0o111) !== 0)>
+
+bind version-byte-length
+  take data, like dynamic
+  like number
+  case node
+    text <$data.length>
+
+bind version-slice
+  take data, like dynamic
+  take start, like number
+  take end, like number
+  like dynamic
+  case node
+    text <$data.subarray($start, $end)>
+
+bind version-copy-bytes
+  take slice, like dynamic
+  like dynamic
+  case node
+    text <Buffer.from($slice)>
+
+bind version-folder-record
+  take path, like text
+  like dynamic
+  case node
+    text <<({ path: $path, mode: "dir", size: 0, chunks: [] })>>
+
+bind version-chunked-record
+  take path, like text
+  take mode, like text
+  take size, like number
+  take chunks, like list, like text
+  like dynamic
+  case node
+    text <<({ path: $path, mode: $mode, size: $size, chunks: $chunks })>>
+
+bind version-tree-record
+  take path, like text
+  take mode, like text
+  take size, like number
+  take record, like dynamic
+  like dynamic
+  case node
+    text <<({ path: $path, mode: $mode, size: $size, chunks: [], record: $record })>>
+
+bind version-no-record
+  like dynamic
+  case node
+    text <undefined>
+
+bind version-is-no-record
+  take record, like dynamic
+  like boolean
+  case node
+    text <($record === undefined)>
+
+bind version-sorted-files
+  take files, like list, like dynamic
+  like void
+  case node
+    text <<$files.sort(function (a, b) { return a.path < b.path ? -1 : a.path > b.path ? 1 : 0 })>>
+
+# files and directories a published package never carries
+task default-version-exclude
+  like list, like text
+
+  back split(<node_modules .git host tmp .base>, < >)
+
+# a root-relative path as an inclusion names it: without a leading `./` or trailing `/`s
+task include-path
+  take at, like text
+  like text
+  mark private
+
+  save path, at
+  fork test, starts-with(path, <./>)
+    hold
+      save path, substring(path, 2, char-count(path))
+  walk test
+    hook test, ends-with(path, </>)
+    hook hold
+      save path, substring(path, 0, subtract(char-count(path), 1))
+  back path
+
+task has-name
+  take names, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+# shipped by an inclusion: the path an inclusion names, or one inside it
+task is-included
+  take include, like list, like text
+  take at, like text
+  like boolean
+  mark private
+
+  walk include
+    take keep
+    fork test, or(is-equal(at, keep), starts-with(at, <{keep}/>))
+      hold
+        back true
+  back false
+
+# a directory an inclusion is inside of
+task leads-to
+  take include, like list, like text
+  take at, like text
+  like boolean
+  mark private
+
+  walk include
+    take keep
+    fork test, starts-with(keep, <{at}/>)
+      hold
+        back true
+  back false
+
+# The `.tree` as a record, or nothing when the record grammar cannot hold it, and then the file ships as bytes.
+#
+# A record is an OPTIMIZATION (a one-field edit costs one record), never a requirement: the bytes carry the same file.
+# The record grammar is not Term's, so a valid Term file can fail it (a blank file, a comments-only one, a lean
+# `role.tree` whose `mark lean` the parser takes as an identity the encoder refuses), so the record is ENCODED here
+# as well as parsed. And the record must give the file back: a checkout writes it out with `formatTree`, so it is kept
+# only when that writes these exact bytes (the record grammar once cut every published `.tree` to its first block,
+# 2026-10-05). test/oci.test.ts "installs Term source byte for byte" holds it.
+task record-of
+  take data, like dynamic
+  like dynamic
+  mark private
+
+  fork
+    mark unsafe
+    save text, version-utf8-text(data)
+    save record, save-tree-parse/parse-tree(text)
+    save-canonicalize/canonical-bytes(record)
+    fork test, is-equal(save-tree-format/format-tree(record), text)
+      hold
+        back record
+    back version-no-record()
+  halt take
+    take refused
+    back version-no-record()
+
+# one file read into its record: a `.tree` the record grammar holds as a record, anything else chunked into the store
+task read-file-record
+  take full, like text
+  take at, like text
+  take walking, like version-walk
+  like void
+  mark private
+
+  save data, fs-promise/read-file(full)
+  save stat, fs-promise/stat(full)
+  save mode, <file>
+  fork test, version-is-executable(stat/mode)
+    hold
+      save mode, <exec>
+  save size, version-byte-length(data)
+
+  fork test, is-equal(classify(at, data), <tree>)
+    hold
+      save record, record-of(data)
+      fork test, not(version-is-no-record(record))
+        hold
+          walking/files/push(version-tree-record(at, mode, size, record))
+          back
+
+  save chunks, make list
+  walk chunk-buffer(data, walking/params)
+    take cut
+    save slice, version-slice(data, cut/start, cut/end)
+    save id, hash-object(<chunk>, slice)
+    wait version-put(walking/store, make(chunk-object, bind(id, id), bind(bytes, version-copy-bytes(slice))))
+    chunks/push(id)
+
+  walking/files/push(version-chunked-record(at, mode, size, chunks))
+
+# a directory walked into the file list; `partial` is a directory walked only because an included path is inside it,
+# and nothing else in it ships
+task walk-folder
+  take dir, like text
+  take prefix, like text
+  take partial, like boolean
+  take walking, like version-walk
+  like void
+  mark private
+
+  save entries, fs-promise/readdir(dir, make(folder-ask, bind(with-file-types, true)))
+
+  walk entries
+    take entry
+    save name, entry/name
+    save relative, name
+    fork test, not(is-equal(prefix, <>))
+      hold
+        save relative, <{prefix}/{name}>
+
+    fork test, and(partial, and(not(is-included(walking/include, relative)), not(leads-to(walking/include, relative))))
+      hold
+        turn next
+
+    # `link/` at the top is where `term load` links installed dependencies, and a package never carries another's
+    # install; a `code/link/` deeper down is source and ships
+    fork test, or(has-name(walking/exclude, name), and(is-equal(prefix, <>), is-equal(name, <link>)))
+      hold
+        fork test, not(is-included(walking/include, relative))
+          hold
+            fork test, and(entry/is-directory(), leads-to(walking/include, relative))
+              hold
+                walk-folder(node-path/join(dir, name), relative, true, walking)
+            turn next
+
+    # dotfiles are skipped, as the tarball publisher skips them
+    fork test, and(starts-with(name, <.>), not(is-equal(name, <.treeignore>)))
+      hold
+        turn next
+
+    save full, node-path/join(dir, name)
+
+    fork test, entry/is-directory()
+      hold
+        save before, walking/files/length
+        walk-folder(full, relative, and(partial, not(is-included(walking/include, relative))), walking)
+        # an EMPTY directory would vanish, the tree being made of file paths: it is recorded so a checkout can make it
+        fork test, is-equal(walking/files/length, before)
+          hold
+            walking/files/push(version-folder-record(relative))
+        turn next
+
+    fork test, entry/is-file()
+      hold
+        read-file-record(full, relative, walking)
+
+# a directory walked into the flat file list a version is made of, each file's chunks put in the store as it goes
+task read-version-files
+  take dir, like text
+  take store, like dynamic
+  take params, like chunk-params
+  take exclude, like list, like text
+  take include, like list, like text
+  like list, like dynamic
+
+  save kept, make list
+  walk include
+    take at
+    kept/push(include-path(at))
+  save files, make list
+  save walking, make(version-walk, bind(store, store), bind(params, params), bind(exclude, exclude), bind(include, kept), bind(files, files))
+  walk-folder(dir, <>, false, walking)
+  version-sorted-files(files)
+  back files
+
+# a version built: walked, chunked, and its prolly tree written; the tree's own chunks stay in memory for the caller
+# to ship, since only those the receiver lacks need to move
+task build-version
+  take dir, like text
+  take store, like dynamic
+  take params, like chunk-params
+  take exclude, like list, like text
+  take include, like list, like text
+  like built-version
+
+  save files, read-version-files(dir, store, params, exclude, include)
+  save tree-chunks, version-chunk-store(save-chunk-store)
+  save root, save-tree/write-dataset(dataset-module/dataset-of-files(files), tree-chunks)
+  back make(built-version, bind(root, root), bind(files, files), bind(tree-chunks, tree-chunks))

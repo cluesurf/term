@@ -1,0 +1,456 @@
+# The cask program: the app's cask entry compiled for the target's native backend with the cask runtime prepended, and
+# built by that platform's compiler. Swift for macOS and iOS (swiftc), Rust for Linux and Windows (cargo), Kotlin for
+# Android (kotlinc, then d8). Part of the port of deck/call/code/cask.ts (cli-in-term-0032): its `buildProgram`,
+# `cargoManifest`, `buildRustProgram`, `caskAndroidDriver` and `buildAndroidProgram`.
+
+load @term/base/list
+  find list
+  find join
+
+load @term/call/cask-plan
+  find minimum-of
+  find driver-line
+  find simulator-entitlements
+  find rust-platform
+  find cargo-manifest, name plan-cargo-manifest
+
+load ./host-value
+  find is-truthy
+  find refuse
+
+load ./toolchain
+  find read-runtime
+  find swift-flags
+  find android-tools
+
+load ./identity
+  find swift-module
+
+dock load
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+  load <node:child_process>, name node-child
+  load <global:process>, name node-process
+  load <@term/make/code/compile/compile>, name compile-module
+  load <@term/make/code/compile/native>, name native-module
+  load <@term/make/code/compile/swift>, name swift-module-emit
+  load <@term/make/code/compile/rust>, name rust-module-emit
+  load <@term/make/code/compile/kotlin>, name kotlin-module-emit
+  load <@term/make/code/resolve>, name resolve-module
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/output>, name output
+
+form program-source
+  link file, like text
+  link text, like text
+
+form program-options
+  link resolve, like dynamic
+  link env, like text
+
+form tool-text
+  link encoding, like text
+
+form tool-place
+  link cwd, like text
+
+form program-folder
+  link recursive, like boolean
+
+form program-remove
+  link recursive, like boolean
+  link force, like boolean
+
+# what `buildProgram` is asked: the app's root, its cask entry, the top-level Swift line calling the program's `boot`,
+# the executable to write, where the intermediate Swift goes, the target (macos when not given) and the app's bundle
+# identifier, which an iOS simulator build carries in its entitlements
+form swift-ask
+  link root, like text
+  link entry, like text
+  link driver, like text
+  link exe, like text
+  link work, like text
+  link target
+    like text
+    need false
+  link identifier
+    like text
+    need false
+
+# the Swift written, and the native half as compiled, without the driver line: what the runtime version hashes
+form swift-built
+  link source, like text
+  link native, like text
+
+form rust-ask
+  link root, like text
+  link entry, like text
+  link driver, like text
+  link work, like text
+  link crate, like text
+  link target, like text
+
+# the cargo project, the executable when this machine is the target's own platform, and the native half
+form rust-built
+  link project, like text
+  link exe
+    like text
+    need false
+  link native, like text
+
+form android-ask
+  link root, like text
+  link entry, like text
+  link identifier, like text
+  link driver, like text
+  link work, like text
+  # `android`, whose chain reaches the toolkit hosts (native-dom-0006, device-layer-0013), or `kotlin`. Under bare
+  # `kotlin` a cask answered every device call with its `unavailable` fallback
+  link env
+    like text
+    need false
+
+form android-built
+  link dex, like text
+  link native, like text
+
+# the first three diagnostics' messages, as the refusal names them
+task program-said
+  take diagnostics, like dynamic
+  like text
+  mark private
+
+  save said, make list
+  save at, 0
+  walk test
+    hook test, and(is-below(at, 3), is-below(at, diagnostics/length))
+    hook hold
+      save one, diagnostics/{at}
+      said/push(<{one/message}>)
+      save at, add(at, 1)
+  back join(said, <; >)
+
+# the cask entry compiled in `env`, or the refusal naming the first three problems
+task compile-entry
+  take root, like text
+  take entry, like text
+  take env, like text
+  like dynamic
+  mark private
+
+  save source
+    make program-source
+      bind file, entry
+      bind text, node-fs/read-file-sync(entry, <utf8>)
+  save options
+    make program-options
+      bind resolve, make-module/project-resolver(root, env)
+      bind env, env
+  save result, compile-module/compile(source, options)
+  fork test, not(result/ok)
+    hold
+      refuse(<the cask program failed to compile: {program-said(result/diagnostics)}>, <>)
+  back result
+
+# the release flags. `-wmo` lets generics specialize across the one module. `-enforce-exclusivity=unchecked` drops the
+# dynamic exclusivity check on every access to a class's stored property, which was about 3x of fannkuch-redux. It is
+# sound for emitted Term code because the emitter never creates an overlapping access
+# (note/project/term/compiler/codegen/ios.md, Build)
+task release-flags
+  like list, like text
+  mark private
+
+  save flags, make list
+  flags/push(<-O>)
+  flags/push(<-wmo>)
+  flags/push(<-enforce-exclusivity=unchecked>)
+  back flags
+
+# the cask program compiled to Swift, the cask runtime prepended, and `driver`, the top-level Swift line that calls
+# the program's `boot`
+task build-program
+  take ask, like swift-ask
+  like swift-built
+
+  save target, ask/target
+  fork test, not(is-truthy(target))
+    hold
+      save target, <macos>
+  # the platform's own env, not bare `swift`: its chain reaches the toolkit host a device module answers through
+  # (device-layer-0013)
+  save env, <macos>
+  fork test, is-equal(target, <ios>)
+    hold
+      save env, <ios>
+  save result, compile-entry(ask/root, ask/entry, env)
+
+  save swift, swift-module-emit/emit-swift(result/program)
+  save prelude, native-module/native-prelude(result/program, env, read-runtime, swift)
+  # a `boot` that can raise is `throws` in Swift, and the top-level line calling it says `try` (2026-10-04)
+  save line, driver-line(ask/driver, swift)
+  save parts, make list
+  parts/push(<import Foundation>)
+  parts/push(prelude)
+  parts/push(swift)
+  parts/push(line)
+  parts/push(<>)
+  save source, join(parts, <\n>)
+  save work, ask/work
+  save file, node-path/join(work, <app.swift>)
+  node-fs/mkdir-sync(work, make(program-folder, bind(recursive, true)))
+  node-fs/write-file-sync(file, source)
+  node-fs/mkdir-sync(node-path/dirname(ask/exe), make(program-folder, bind(recursive, true)))
+
+  save release, release-flags()
+  fork test, is-equal(target, <ios>)
+    hold
+      # the iOS simulator SDK through xcrun. The stdlib's macOS package flags are not iOS modules and are not passed
+      save sdk-args, make list
+      sdk-args/push(<-sdk>)
+      sdk-args/push(<iphonesimulator>)
+      sdk-args/push(<--show-sdk-path>)
+      save sdk-said, node-child/exec-file-sync(<xcrun>, sdk-args, make(tool-text, bind(encoding, <utf8>)))
+      save sdk, sdk-said/trim()
+      # The app's entitlements in the binary's __entitlements section, where the simulator reads them: its identifier
+      # and its own keychain group (device-layer-0020). In the signature instead, the simulator refuses to launch it
+      save section, make list
+      fork test, is-truthy(ask/identifier)
+        hold
+          save entitlements, node-path/join(work, <entitlements.plist>)
+          node-fs/write-file-sync(entitlements, simulator-entitlements(ask/identifier))
+          section/push(<-Xlinker>)
+          section/push(<-sectcreate>)
+          section/push(<-Xlinker>)
+          section/push(<__TEXT>)
+          section/push(<-Xlinker>)
+          section/push(<__entitlements>)
+          section/push(<-Xlinker>)
+          section/push(entitlements)
+      save args, make list
+      args/push(<-sdk>)
+      args/push(<iphonesimulator>)
+      args/push(<swiftc>)
+      args/push(<-target>)
+      args/push(<arm64-apple-ios{minimum-of(<ios>)}-simulator>)
+      args/push(<-sdk>)
+      args/push(sdk)
+      walk release
+        take flag, like text
+        args/push(flag)
+      walk section
+        take flag, like text
+        args/push(flag)
+      args/push(<-module-name>)
+      args/push(swift-module())
+      args/push(<-o>)
+      args/push(ask/exe)
+      args/push(file)
+      output/run-tool(<xcrun>, args)
+    miss
+      save args, make list
+      walk swift-flags()
+        take flag, like text
+        args/push(flag)
+      walk release
+        take flag, like text
+        args/push(flag)
+      args/push(<-module-name>)
+      args/push(swift-module())
+      args/push(<-o>)
+      args/push(ask/exe)
+      args/push(file)
+      output/run-tool(<swiftc>, args)
+
+  save native-parts, make list
+  native-parts/push(prelude)
+  native-parts/push(swift)
+  back
+    make swift-built
+      bind source, file
+      bind native, join(native-parts, <\n>)
+
+# the manifest of the app's cargo project: the stdlib's own crate list (deck/base/code/native/rust/Cargo.toml) read at
+# build time so the two cannot drift, plus SQLite, plus each platform's toolkit under its own `cfg`
+task cargo-manifest
+  take crate, like text
+  take source, like text
+  like text
+
+  save stdlib, resolve-module/stdlib-base()
+  save own-text, <>
+  fork test, is-truthy(stdlib)
+    hold
+      save own, node-path/join(stdlib, <code/native/rust/Cargo.toml>)
+      fork test, and(is-truthy(own), node-fs/exists-sync(own))
+        hold
+          save own-text, node-fs/read-file-sync(own, <utf8>)
+  back plan-cargo-manifest(crate, own-text, source)
+
+# compile the cask entry for rust into a cargo project at `<work>/cargo`, and build it when this machine is the
+# target's own platform. Elsewhere the project is checked with the runtime's stub half when cargo is here, and the
+# build happens on a box of that platform
+task build-rust-program
+  take ask, like rust-ask
+  like rust-built
+
+  save result, compile-entry(ask/root, ask/entry, <rust>)
+  save rust, rust-module-emit/emit-rust(result/program)
+  save prelude, native-module/native-prelude(result/program, <rust>, read-runtime, rust)
+  save parts, make list
+  parts/push(prelude)
+  parts/push(rust)
+  parts/push(<fn main() \{\n  {ask/driver}\n\}>)
+  parts/push(<>)
+  save source, join(parts, <\n>)
+  save project, node-path/join(ask/work, <cargo>)
+  node-fs/mkdir-sync(node-path/join(project, <src>), make(program-folder, bind(recursive, true)))
+  node-fs/write-file-sync(node-path/join(project, <src/main.rs>), source)
+  node-fs/write-file-sync(node-path/join(project, <Cargo.toml>), cargo-manifest(ask/crate, source))
+
+  save version-args, make list
+  version-args/push(<--version>)
+  save cargo-said, node-child/spawn-sync(<cargo>, version-args, make(tool-text, bind(encoding, <utf8>)))
+  save cargo, is-equal(cargo-said/status, 0)
+  save native-parts, make list
+  native-parts/push(prelude)
+  native-parts/push(rust)
+  save native, join(native-parts, <\n>)
+
+  fork test, is-equal(rust-platform(ask/target), node-process/platform)
+    hold
+      save build-args, make list
+      build-args/push(<build>)
+      build-args/push(<--release>)
+      build-args/push(<--quiet>)
+      output/run-tool(<cargo>, build-args, make(tool-place, bind(cwd, project)))
+      save crate, ask/crate
+      save exe-name, crate
+      fork test, is-equal(ask/target, <windows>)
+        hold
+          save exe-name, <{crate}.exe>
+      back
+        make rust-built
+          bind project, project
+          bind exe, node-path/join(project, <target/release>, exe-name)
+          bind native, native
+
+  fork test, cargo
+    hold
+      # the emitted program against the runtime's signatures, on this platform's stub half
+      save check-args, make list
+      check-args/push(<check>)
+      check-args/push(<--quiet>)
+      output/run-tool(<cargo>, check-args, make(tool-place, bind(cwd, project)))
+  back
+    make rust-built
+      bind project, project
+      bind native, native
+
+# The Activity a cask app starts at, its `program()` running `start` (the Kotlin of the program's first call), and the
+# two names the device runtimes ask of the app's host: `hostActivity()` and `hostPermissionAnswers`. They are written
+# HERE because this is what makes the cask the app's host; a program drawn in Android's own views or in Compose defines
+# them in its own host, so the cask runtime cannot (device-layer-0013)
+task cask-android-driver
+  take start, like text
+  like text
+
+  save lines, make list
+  lines/push(<class TermActivity : CaskActivity() \{>)
+  lines/push(<  override fun program() \{ {start} \}>)
+  lines/push(<\}>)
+  lines/push(<>)
+  lines/push(<fun hostActivity(): android.app.Activity? = cask.activity>)
+  lines/push(<>)
+  lines/push(<val hostPermissionAnswers = mutableListOf\<(Int) -\> Unit\>()>)
+  back join(lines, <\n>)
+
+# every `.class` file under `dir`, in the order the walk meets them
+task class-files
+  take dir, like text
+  take found, like list, like text
+  like void
+  mark private
+
+  walk node-fs/readdir-sync(dir)
+    take name, like text
+    save full, node-path/join(dir, name)
+    save stat, node-fs/stat-sync(full)
+    fork test, stat/is-directory()
+      hold
+        class-files(full, found)
+      miss
+        fork test, name/ends-with(<.class>)
+          hold
+            found/push(full)
+
+# the cask program compiled to Kotlin with the cask runtime prepended, an Activity the build writes calling the
+# program's `boot`, compiled against android.jar and dexed
+task build-android-program
+  take ask, like android-ask
+  like android-built
+
+  save tools, android-tools()
+  save env, ask/env
+  fork test, not(is-truthy(env))
+    hold
+      save env, <android>
+  save result, compile-entry(ask/root, ask/entry, env)
+
+  save kotlin, kotlin-module-emit/emit-kotlin(result/program)
+  save prelude, native-module/native-prelude(result/program, env, read-runtime, kotlin)
+  # one package, the app's identifier, so the manifest's `.TermActivity` resolves; imports hoisted above everything
+  save parts, make list
+  parts/push(prelude)
+  parts/push(kotlin)
+  parts/push(ask/driver)
+  save hoisted, kotlin-module-emit/hoist-kotlin-imports(join(parts, <\n>))
+  save source, <package {ask/identifier}\n\n{hoisted}\n>
+  save work, ask/work
+  save file, node-path/join(work, <app.kt>)
+  save classes, node-path/join(work, <classes>)
+  save dex-dir, node-path/join(work, <dex>)
+  node-fs/rm-sync(classes, make(program-remove, bind(recursive, true), bind(force, true)))
+  node-fs/rm-sync(dex-dir, make(program-remove, bind(recursive, true), bind(force, true)))
+  node-fs/mkdir-sync(classes, make(program-folder, bind(recursive, true)))
+  node-fs/mkdir-sync(dex-dir, make(program-folder, bind(recursive, true)))
+  node-fs/write-file-sync(file, source)
+
+  # Term's types already rule out a null where a non-null is declared, so kotlinc's own null checks are dead weight:
+  # the three flags drop them (note/project/term/compiler/codegen/android.md, Build)
+  save kotlin-args, make list
+  kotlin-args/push(<-cp>)
+  kotlin-args/push(tools/platform)
+  kotlin-args/push(<-d>)
+  kotlin-args/push(classes)
+  kotlin-args/push(<-nowarn>)
+  kotlin-args/push(<-Xno-param-assertions>)
+  kotlin-args/push(<-Xno-call-assertions>)
+  kotlin-args/push(<-Xno-receiver-assertions>)
+  kotlin-args/push(file)
+  output/run-tool(<kotlinc>, kotlin-args)
+
+  save found, make list
+  class-files(classes, found)
+
+  # `--release`: d8's default is a debug dex, with debug information kept and no optimization of the bytecode
+  save dex-args, make list
+  dex-args/push(<--release>)
+  dex-args/push(<--lib>)
+  dex-args/push(tools/platform)
+  dex-args/push(<--min-api>)
+  dex-args/push(minimum-of(<android>))
+  dex-args/push(<--output>)
+  dex-args/push(dex-dir)
+  walk found
+    take one, like text
+    dex-args/push(one)
+  dex-args/push(tools/stdlib)
+  output/run-tool(node-path/join(tools/build-tools, <d8>), dex-args)
+
+  save native-parts, make list
+  native-parts/push(prelude)
+  native-parts/push(kotlin)
+  back
+    make android-built
+      bind dex, node-path/join(dex-dir, <classes.dex>)
+      bind native, join(native-parts, <\n>)

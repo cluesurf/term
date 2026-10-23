@@ -571,12 +571,21 @@ test <back hands the body a record of the properties read>
           call find-one
             read query
             bind body, read leave
-        call verdict/push
-          call is-equal
-            call field-text
-              read found
-              text <title>
-            text <server>
+        # a `back` query's hit is a record of the properties read, chosen by the query at run time (seam decisions 002
+        # group F, 003)
+        sift found
+          case hash
+            like text
+            like find-value
+            link record
+            call verdict/push
+              call is-equal
+                call field-text
+                  read record
+                  text <title>
+                text <server>
+          miss
+            halt <the hit of a back query is not a record>
   want hold
     call get
       read verdict

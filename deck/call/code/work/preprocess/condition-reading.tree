@@ -1,0 +1,608 @@
+# A `want`'s condition read by the compiler's own parser, so a failing `want` can say what it compared.
+#
+# A CONDITION THAT IS ONE COMPARISON OF TWO VALUES (`is-equal double(0), 1`, any of the comparisons) gives the
+# comparison and each value's own source text. The pieces are cut at the comparison's top-level commas (inline) or are
+# its two lines (stacked), and each is read again by the parser as `save x, <piece>` and must give back exactly the
+# node the comparison holds. Where the comma rule nests a value differently from the cut, or a value spans lines, the
+# check fails and the `want` keeps the plain marker, so the rewrite can never change what is compared.
+#
+# A CONDITION THAT IS AN `and` OF PARTS gives each part's own rows, in order, so a failing `want` is checked part by
+# part and names the part that did not hold. Written inline (`and(x, y)` or `and x, y`) or stacked (`and` or
+# `call and`, each part on the lines one level under it).
+#
+# Ported from deck/call/code/test-preprocess.ts (term-cli-in-term-0021): comparison, conjuncts, topLevelPieces,
+# inlineArguments, saveOf, readsAs and shapeOf. The parser, its group reader and its tokenizer are DOCKED, as
+# work/testing/test-running.tree docks them: their nodes are handed back to them as they came, and a port that loaded
+# them would carry a second copy of the parser.
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find trim
+
+dock load
+  load <@term/make/code/parser/tree>, name parsing-module
+  load <@term/make/code/parser/narrow>, name narrowing-module
+  load <@term/make/code/parser/token>, name tokenizing-module
+
+# a line of a condition, with the source line (counted from zero) it was written on
+form source-row
+  link text, like text
+  link from, like number
+
+# what the parser and the tokenizer are handed
+form parse-ask
+  link file, like text
+  link text, like text
+
+# a condition read: its first word, the word it calls, the values under it, its rows at their own indent and the
+# source they join to. `found` is false when it is no one group
+form condition-cut
+  link found, like boolean
+  link first, like text
+  link word, like text
+  link values, like dynamic
+  link flat, like list, like source-row
+  link source, like text
+
+# a comparison of two values: its head (`is-equal` or `call is-equal`) and each value's rows
+form compared-values
+  link found, like boolean
+  link head, like text
+  link left, like list, like source-row
+  link right, like list, like source-row
+
+# the parts of an `and`, each its rows
+form and-parts
+  link found, like boolean
+  link parts, like list, like list, like source-row
+
+# ---- the host values Term has no word for ----
+
+# how many spaces (any space `trimStart` takes) a line is indented by, in code units
+bind indent-units
+  take line, like text
+  like number
+  case node
+    text <($line.length - $line.trimStart().length)>
+
+bind condition-unit-length
+  take text, like text
+  like number
+  case node
+    text <$text.length>
+
+bind condition-units-from
+  take text, like text
+  take start, like number
+  like text
+  case node
+    text <$text.slice($start)>
+
+bind units-between
+  take text, like text
+  take start, like number
+  take stop, like number
+  like text
+  case node
+    text <$text.slice($start, $stop)>
+
+bind lines-joined
+  take texts, like list, like text
+  like text
+  case node
+    text <$texts.join(String.fromCharCode(10))>
+
+bind texts-joined-by-space
+  take texts, like list, like text
+  like text
+  case node
+    text <$texts.join(" ")>
+
+bind host-length
+  take value, like dynamic
+  like number
+  case node
+    text <$value.length>
+
+bind host-item
+  take value, like dynamic
+  take at, like number
+  like dynamic
+  case node
+    text <$value[$at]>
+
+bind host-items-from
+  take value, like dynamic
+  take start, like number
+  like dynamic
+  case node
+    text <$value.slice($start)>
+
+bind is-undefined-value
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+bind text-of-host
+  take value, like dynamic
+  like text
+  case node
+    text <$value>
+
+# a node's kind, the empty text for no node
+bind kind-of-node
+  take node, like dynamic
+  like text
+  case node
+    text <($node?.kind ?? "")>
+
+bind nodes-of-node
+  take node, like dynamic
+  like dynamic
+  case node
+    text <$node.nodes>
+
+bind diagnostic-count
+  take read, like dynamic
+  like number
+  case node
+    text <$read.diagnostics.length>
+
+bind parsed-top-nodes
+  take parsed, like dynamic
+  like dynamic
+  case node
+    text <$parsed.tree.nodes>
+
+bind tokens-of
+  take read, like dynamic
+  like list, like dynamic
+  case node
+    text <$read.tokens.list>
+
+bind token-kind
+  take token, like dynamic
+  like text
+  case node
+    text <$token.kind>
+
+bind token-start-column
+  take token, like dynamic
+  like number
+  case node
+    text <$token.span.start.column>
+
+bind token-end-column
+  take token, like dynamic
+  like number
+  case node
+    text <$token.span.end.column>
+
+# `is-equal(a, b)`: the text inside a call's own parentheses, undefined when it is not one
+bind inside-call
+  take source, like text
+  like dynamic
+  case node
+    text <(/^[\w-]+\((.*)\)$/.exec($source)?.[1])>
+
+# `and(a, b)`: the text inside its parentheses, undefined when it is not one
+bind inside-and
+  take source, like text
+  like dynamic
+  case node
+    text <(/^and\((.*)\)$/.exec($source)?.[1])>
+
+# ---- reading ----
+
+# the comparisons whose two values a failing `want` reports
+task is-comparison-word
+  take word, like text
+  like boolean
+
+  walk comparison-words()
+    take one, like text
+    fork test, is-equal(one, word)
+      hold
+        back true
+  back false
+
+task comparison-words
+  like list, like text
+
+  save words, make list
+  words/push(<is-equal>)
+  words/push(<is-unequal>)
+  words/push(<is-above>)
+  words/push(<is-below>)
+  words/push(<is-minimum>)
+  words/push(<is-maximum>)
+  back words
+
+task no-condition
+  like condition-cut
+
+  back make(condition-cut, bind(found, false), bind(first, <>), bind(word, <>), bind(values, make list), bind(flat, make list), bind(source, <>))
+
+# A condition's rows read as one group: the rows at their own indent, so the condition is a top-level group, then its
+# first word, and under `call` the word it calls. The original's undefined word is the empty text here: neither is a
+# comparison nor `and`.
+task read-condition
+  take rows, like list, like source-row
+  like condition-cut
+
+  fork test, is-equal(rows/length, 0)
+    hold
+      back no-condition()
+  save base, indent-units(rows/0/text)
+  walk rows
+    take row, like source-row
+    save indent, indent-units(row/text)
+    fork test, is-below(indent, base)
+      hold
+        save base, indent
+  save flat, make list
+  save texts, make list
+  walk rows
+    take row, like source-row
+    save text, condition-units-from(row/text, base)
+    flat/push(make(source-row, bind(text, text), bind(from, row/from)))
+    texts/push(text)
+  save source, lines-joined(texts)
+  save parsed, parsing-module/parse-tolerant(make(parse-ask, bind(file, <want.tree>), bind(text, source)))
+  fork test, is-above(diagnostic-count(parsed), 0)
+    hold
+      back no-condition()
+  save top, parsed-top-nodes(parsed)
+  fork test, not(is-equal(host-length(top), 1))
+    hold
+      back no-condition()
+  save group, host-item(narrowing-module/groups-of(top), 0)
+  fork test, is-undefined-value(group)
+    hold
+      back no-condition()
+  save nodes, nodes-of-node(group)
+  save head, host-item(nodes, 0)
+  save first, <>
+  fork test, is-equal(kind-of-node(head), <name>)
+    hold
+      save first, parsing-module/render-head(head)
+  save word, first
+  save skip, 1
+  fork test, is-equal(first, <call>)
+    hold
+      save skip, 2
+      save word, <>
+      save inner, host-item(nodes, 1)
+      fork test, is-equal(kind-of-node(inner), <group>)
+        hold
+          save inside, nodes-of-node(inner)
+          fork test, is-equal(host-length(inside), 1)
+            hold
+              fork test, is-equal(kind-of-node(host-item(inside, 0)), <name>)
+                hold
+                  save word, parsing-module/render-head(host-item(inside, 0))
+  back make(condition-cut, bind(found, true), bind(first, first), bind(word, word), bind(values, host-items-from(nodes, skip)), bind(flat, flat), bind(source, source))
+
+# The pieces of a condition after its word: cut at the top-level commas of its one line (inside its own parentheses
+# when `wrapped` is given, else after the word), or one per line one level in, a deeper line joining the piece before
+# it. `found` is false when a stacked line sits shallower.
+task condition-pieces
+  take cut, like condition-cut
+  take wrapped, like dynamic
+  like and-parts
+
+  save pieces, make list
+  fork test, is-equal(cut/flat/length, 1)
+    hold
+      save one, cut/flat/0
+      save texts, make list
+      fork test, is-undefined-value(wrapped)
+        hold
+          save texts, inline-arguments(cut/source)
+        miss
+          save texts, top-level-pieces(text-of-host(wrapped))
+      walk texts
+        take text, like text
+        save piece, make list
+        piece/push(make(source-row, bind(text, text), bind(from, one/from)))
+        pieces/push(piece)
+      back make(and-parts, bind(found, true), bind(parts, pieces))
+  save at, 1
+  walk test
+    hook test
+      is-below(at, cut/flat/length)
+    hook hold
+      save row, cut/flat/{at}
+      save indent, indent-units(row/text)
+      save moved, make(source-row, bind(text, condition-units-from(row/text, 2)), bind(from, row/from))
+      fork test, is-equal(indent, 2)
+        hold
+          save piece, make list
+          piece/push(moved)
+          pieces/push(piece)
+        miss
+          fork test, and(is-above(indent, 2), is-above(pieces/length, 0))
+            hold
+              save last, pieces/{subtract(pieces/length, 1)}
+              last/push(moved)
+            miss
+              back make(and-parts, bind(found, false), bind(parts, make list))
+      save at, add(at, 1)
+  back make(and-parts, bind(found, true), bind(parts, pieces))
+
+# does every piece read back as the value at its place
+task pieces-read-as
+  take pieces, like list, like list, like source-row
+  take stacked, like boolean
+  take values, like dynamic
+  like boolean
+
+  save at, 0
+  walk pieces
+    take piece, like list, like source-row
+    fork test, not(reads-as(piece, stacked, host-item(values, at)))
+      hold
+        back false
+    save at, add(at, 1)
+  back true
+
+# A condition that is ONE comparison of two values: the comparison and each value's own source text, or not found
+task comparison
+  take rows, like list, like source-row
+  like compared-values
+
+  save none, make(compared-values, bind(found, false), bind(head, <>), bind(left, make list), bind(right, make list))
+  save cut, read-condition(rows)
+  fork test, not(cut/found)
+    hold
+      back none
+  fork test, not(is-comparison-word(cut/word))
+    hold
+      back none
+  fork test, not(is-equal(host-length(cut/values), 2))
+    hold
+      back none
+  save wrapped, inside-call(cut/source)
+  save read, condition-pieces(cut, wrapped)
+  fork test, not(read/found)
+    hold
+      back none
+  save pieces, read/parts
+  fork test, not(is-equal(pieces/length, 2))
+    hold
+      back none
+  fork test, not(pieces-read-as(pieces, is-above(cut/flat/length, 1), cut/values))
+    hold
+      back none
+  save head, cut/word
+  fork test, is-equal(cut/first, <call>)
+    hold
+      save head, <call {cut/word}>
+  back make(compared-values, bind(found, true), bind(head, head), bind(left, pieces/0), bind(right, pieces/1))
+
+# A condition that is an `and` of two parts or more: each part's own rows, in order, or not found
+task conjuncts
+  take rows, like list, like source-row
+  like and-parts
+
+  save none, make(and-parts, bind(found, false), bind(parts, make list))
+  save cut, read-condition(rows)
+  fork test, not(cut/found)
+    hold
+      back none
+  fork test, not(is-equal(cut/word, <and>))
+    hold
+      back none
+  save count, host-length(cut/values)
+  fork test, is-below(count, 2)
+    hold
+      back none
+  save wrapped, inside-and(cut/source)
+  save read, condition-pieces(cut, wrapped)
+  fork test, not(read/found)
+    hold
+      back none
+  save pieces, read/parts
+  fork test, not(is-equal(pieces/length, count))
+    hold
+      back none
+  fork test, not(pieces-read-as(pieces, is-above(cut/flat/length, 1), cut/values))
+    hold
+      back none
+  back make(and-parts, bind(found, true), bind(parts, pieces))
+
+# a token that opens or closes a depth: a parenthesis, a text or a brace
+task is-opening-token
+  take kind, like text
+  like boolean
+
+  fork test, is-equal(kind, <open-paren>)
+    hold
+      back true
+  fork test, is-equal(kind, <open-angle>)
+    hold
+      back true
+  back is-equal(kind, <open-brace>)
+
+task is-closing-token
+  take kind, like text
+  like boolean
+
+  fork test, is-equal(kind, <close-paren>)
+    hold
+      back true
+  fork test, is-equal(kind, <close-angle>)
+    hold
+      back true
+  back is-equal(kind, <close-brace>)
+
+# the text between each begin and its end, trimmed, the empty ones left out: from `start` to the first cut, from each
+# cut past its comma to the next, and from the last to the end
+task pieces-between
+  take text, like text
+  take start, like number
+  take cuts, like list, like number
+  like list, like text
+
+  save pieces, make list
+  save begin, start
+  walk cuts
+    take cut, like number
+    save piece, trim(units-between(text, begin, cut))
+    fork test, is-above(condition-unit-length(piece), 0)
+      hold
+        pieces/push(piece)
+    save begin, add(cut, 1)
+  save piece, trim(units-between(text, begin, condition-unit-length(text)))
+  fork test, is-above(condition-unit-length(piece), 0)
+    hold
+      pieces/push(piece)
+  back pieces
+
+# a text cut at its top-level commas: outside parentheses, text and braces
+task top-level-pieces
+  take text, like text
+  like list, like text
+
+  save read, tokenizing-module/tokenize(make(parse-ask, bind(file, <want.tree>), bind(text, text)))
+  fork test, is-above(diagnostic-count(read), 0)
+    hold
+      back make list
+  save cuts, make list
+  save depth, 0
+  walk tokens-of(read)
+    take token, like dynamic
+    save kind, token-kind(token)
+    fork test, is-opening-token(kind)
+      hold
+        save depth, add(depth, 1)
+      miss
+        fork test, is-closing-token(kind)
+          hold
+            save depth, subtract(depth, 1)
+          miss
+            fork test, and(is-equal(kind, <comma>), is-equal(depth, 0))
+              hold
+                cuts/push(token-start-column(token))
+  back pieces-between(text, 0, cuts)
+
+# the text after the first word of a one-line call, cut at its top-level commas: outside parentheses, text and braces.
+# Each piece is the line between two cuts, as written, so an escape inside a text survives
+task inline-arguments
+  take line, like text
+  like list, like text
+
+  save read, tokenizing-module/tokenize(make(parse-ask, bind(file, <want.tree>), bind(text, line)))
+  fork test, is-above(diagnostic-count(read), 0)
+    hold
+      back make list
+  save cuts, make list
+  save start, 0
+  save past, false
+  save depth, 0
+  walk tokens-of(read)
+    take token, like dynamic
+    save kind, token-kind(token)
+    fork test, not(past)
+      hold
+        # the comparison's own word and the space after it
+        save past, is-equal(kind, <space>)
+        fork test, past
+          hold
+            save start, token-end-column(token)
+      miss
+        fork test, is-opening-token(kind)
+          hold
+            save depth, add(depth, 1)
+          miss
+            fork test, is-closing-token(kind)
+              hold
+                save depth, subtract(depth, 1)
+        fork test, and(is-equal(kind, <comma>), is-equal(depth, 0))
+          hold
+            cuts/push(token-start-column(token))
+  fork test, not(past)
+    hold
+      back make list
+  back pieces-between(line, start, cuts)
+
+# `save <name>` of a value: on its line when it was written inline, else the value's own lines under it, each the text
+# the person wrote at another indent, so a diagnostic on one is placed back on its line and column. The `save` line
+# itself is placed on the `want`
+#
+# Stacked when the value has more than one row, or its row is not the `want`'s own line
+task save-of
+  take name, like text
+  take value, like list, like source-row
+  take want, like number
+  like list, like source-row
+
+  save stacked, or(is-above(value/length, 1), not(is-equal(value/0/from, want)))
+  fork test, stacked
+    hold
+      back stacked-save-rows(name, value, want)
+  save rows, make list
+  rows/push(make(source-row, bind(text, <  save {name}, {value/0/text}>), bind(from, want)))
+  back rows
+
+# the stacked `save`: its line placed on the `want`, each value row on its own
+task stacked-save-rows
+  take name, like text
+  take value, like list, like source-row
+  take want, like number
+  like list, like source-row
+
+  save rows, make list
+  rows/push(make(source-row, bind(text, <  save {name}>), bind(from, want)))
+  walk value
+    take row, like source-row
+    rows/push(make(source-row, bind(text, <    {row/text}>), bind(from, row/from)))
+  back rows
+
+# does `save x` of a piece hold, beside `x`, exactly the node `want`
+task reads-as
+  take piece, like list, like source-row
+  take stacked, like boolean
+  take want, like dynamic
+  like boolean
+
+  save written, make list
+  fork test, stacked
+    hold
+      written/push(<save x>)
+      walk piece
+        take row, like source-row
+        written/push(<  {row/text}>)
+    miss
+      written/push(<save x, {piece/0/text}>)
+  save parsed, parsing-module/parse-tolerant(make(parse-ask, bind(file, <want.tree>), bind(text, lines-joined(written))))
+  fork test, is-above(diagnostic-count(parsed), 0)
+    hold
+      back false
+  save group, host-item(narrowing-module/groups-of(parsed-top-nodes(parsed)), 0)
+  fork test, is-undefined-value(group)
+    hold
+      back false
+  save saved, host-items-from(nodes-of-node(group), 2)
+  fork test, not(is-equal(host-length(saved), 1))
+    hold
+      back false
+  back is-equal(shape-of(host-item(saved, 0)), shape-of(want))
+
+# a node's structure, for comparing two parses: kinds and words, spans and comments aside
+task shape-of
+  take node, like dynamic
+  like text
+
+  save kind, kind-of-node(node)
+  fork test, is-equal(kind, <group>)
+    hold
+      save shapes, make list
+      walk nodes-of-node(node)
+        take child, like dynamic
+        shapes/push(shape-of(child))
+      back <({texts-joined-by-space(shapes)})>
+  back <{kind}:{parsing-module/render-head(node)}>

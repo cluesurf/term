@@ -1,0 +1,133 @@
+# The runtime version of a native build (native-dom-0015): one sha256 over everything that decides whether a page
+# update can run on an installed app. A page update ships TypeScript and assets only, so it is safe exactly when the
+# native half it talks to is byte for byte the one it was built against: the same emitted program (which holds the
+# generated dispatcher and its allowlist), the same runtime shims, the same target, minimum OS and toolchain. Ported from
+# call/code/runtime-version.ts (term-cli-in-term-0040), whole.
+#
+# The framing and the tone are call/code/runtime-frame.tree. This module hashes the frame with node's sha256, which is
+# synchronous where Term's is not, reads the tone alphabet from @cluesurf/save (the one place it is written), and asks
+# the toolchain for its version. The driver line that hands `boot` its page directory or dev URL is NOT an input: it
+# differs between a dev build and a release of the same binary surface.
+
+load @term/call/runtime-frame
+  find native-source
+  find frame
+  find not-hex
+  find tone-of, name tone-in-alphabet
+
+dock load
+  load <@cluesurf/save/canon/mark>, name tone-mark
+  load <node:crypto>, name node-crypto
+  load <node:child_process>, name node-child
+
+# ---- the host's values ----
+
+# `createHash('sha256').update(text).digest('hex')`: the text as UTF-8
+bind stamp-sha256
+  take crypto, like dynamic
+  take value, like text
+  like text
+  case node
+    text <$crypto.createHash("sha256").update($value).digest("hex")>
+
+# TONE_ALPHABET, read by its exact name (a dock read of an UPPER_SNAKE name loses its underscores)
+bind stamp-alphabet
+  take module, like dynamic
+  like text
+  case node
+    text <$module.TONE_ALPHABET>
+
+# `throw new Error(message)`
+bind stamp-refuse
+  take message, like text
+  like void
+  case node
+    text <(() =\> \{ throw new Error($message) \})()>
+
+# the first non-blank line of a run's stdout and stderr, trimmed, or `none` when the command could not start
+bind stamp-first-line
+  take run, like dynamic
+  like text
+  case node
+    text <($run.error === undefined ? ((String($run.stdout ?? "") + String.fromCharCode(10) + String($run.stderr ?? "")).split(String.fromCharCode(10)).find(line =\> line.trim())?.trim() ?? "none") : "none")>
+
+# ---- the shapes ----
+
+form runtime-ask
+  # the cask target: macos, ios, android, linux, windows
+  link target, like text
+  # the lowest OS the binary runs on, which changes what the native half may call
+  link minimum, like text
+  # the first line of the native compiler's own version output (`toolchain-of`)
+  link toolchain, like text
+  # the native sources as built, by a stable name. Order does not matter: they are sorted by name
+  link sources, like list, like dynamic
+
+form runtime-stamp
+  # 64 hex characters, what a manifest carries on the wire
+  link hex, like text
+  # the same digest in the tone alphabet, eight groups of eight, what a person reads
+  link tone, like text
+
+form spawn-ask
+  link encoding, like text
+
+# the native compiler's version line for each compiler asked this process
+host toolchains, make hash
+
+# every field length-prefixed, so no two different inputs can frame to the same bytes
+task runtime-version
+  take input, like runtime-ask
+  like runtime-stamp
+
+  save sources, make list
+  walk input/sources
+    take source
+    sources/push(make(native-source, bind(name, source/name), bind(text, source/text)))
+  save framed, frame(input/target, input/minimum, input/toolchain, sources)
+  save hex, stamp-sha256(node-crypto, framed)
+  back make(runtime-stamp, bind(hex, hex), bind(tone, tone-of(hex)))
+
+# a sha256 in the tone alphabet, eight groups of eight. Never truncated
+task tone-of
+  take hex, like text
+  like text
+
+  save bad, not-hex(hex)
+  fork test, is-unequal(bad, <>)
+    hold
+      stamp-refuse(<toneOf: not hex: {bad}>)
+  back tone-in-alphabet(hex, stamp-alphabet(tone-mark))
+
+# The native compiler's version line for a target, read once per process. A toolchain that is not installed answers
+# `none`, which still hashes, so a version computed without the compiler can never equal one computed with it
+task toolchain-of
+  take target, like text
+  like text
+
+  save command, <rustc>
+  save flag, <--version>
+  fork test, or(is-equal(target, <macos>), is-equal(target, <ios>))
+    hold
+      save command, <swiftc>
+  fork test, is-equal(target, <android>)
+    hold
+      save command, <kotlinc>
+      save flag, <-version>
+  fork test, toolchains/has(command)
+    hold
+      save known, toolchains/get(command)
+      sift known
+        case some
+          link known-line
+          back known-line
+        case none
+          save nothing-known, 0
+
+  # kotlinc prints its version on stderr and exits 0, swiftc and rustc print on stdout, so both are read
+  save args, make list
+  args/push(flag)
+  save run, node-child/spawn-sync(command, args, make(spawn-ask, bind(encoding, <utf8>)))
+  save line, stamp-first-line(run)
+  save toolchains/{command}, line
+  back line

@@ -1,0 +1,408 @@
+# THE ROLL OF THE BUILD: every definition of every module the project's entries load, each typed once in its own
+# unit's build (compile/roll.ts `own`) and kept with the unit, so a module's part changes only when the module does.
+# It prints nothing: a file that does not compile is in `failed`, and its diagnostics in `problems` for the caller to
+# report (`term roll` draws them; `term make` has reported the same ones from its own build already).
+#
+# `rolls`, from the build just run (`compileProjectSeparate`), is each unit's roll by its label. Without it (`term
+# roll`, `term make --merged`) each entry is built from units here, from the cache when the build ran, writing nothing.
+#
+# Ported from deck/call/code/roll.ts, its first half (term-cli-in-term-0057). The build session, the unit compile, the
+# cache and the roll merger are docked (call/code/make.ts, compile/separate, cache-store.ts, compile/roll.ts): the
+# session and the merger are host values the compiler reads as they are. `ROLL_KINDS` is roll-words.tree's
+# `roll-kinds()`.
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find starts-with
+  find substring
+
+dock load
+  load <@term/make/code/compile/compile>, name compile-module
+  load <@term/make/code/compile/separate>, name separate-module
+  load <@term/make/code/compile/roll>, name roll-module
+  load <@term/call/code/deck-of>, name deck-of-module
+  load <@term/call/code/role-of>, name role-module
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/cache-store>, name cache-module
+  load <@term/call/code/output>, name output
+  load <node:fs>, name node-fs
+  load <node:path>, name node-path
+
+# ---- the host values Term has no word for ----
+
+bind roll-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind roll-absent
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value === undefined)>
+
+# `process.env.TERM_ROLL_PROFILE === '1'`, written out: a dock read of an UPPER_SNAKE name loses its underscores
+bind roll-profile-asked
+  like boolean
+  case node
+    text <(process.env.TERM_ROLL_PROFILE === "1")>
+
+bind roll-now
+  like number
+  case node
+    text <Date.now()>
+
+bind roll-new-map
+  like dynamic
+  case node
+    text <new Map()>
+
+bind roll-map-keys
+  take map, like dynamic
+  like list, like text
+  case node
+    text <Array.from($map.keys())>
+
+bind roll-map-get
+  take map, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$map.get($key)>
+
+bind roll-map-set
+  take map, like dynamic
+  take key, like text
+  take value, like dynamic
+  like void
+  case node
+    text <($map.set($key, $value), undefined)>
+
+bind roll-pairs
+  take result, like dynamic
+  like list, like dynamic
+  case node
+    text <$result.rolls>
+
+bind roll-pair-label
+  take pair, like dynamic
+  like text
+  case node
+    text <$pair[0]>
+
+bind roll-pair-roll
+  take pair, like dynamic
+  like dynamic
+  case node
+    text <$pair[1]>
+
+bind roll-copy
+  take value, like dynamic
+  like dynamic
+  case node
+    text <structuredClone($value)>
+
+bind roll-keys
+  take value, like dynamic
+  like list, like text
+  case node
+    text <Object.keys($value)>
+
+# `value[key] ?? []`
+bind roll-kind-entries
+  take roll, like dynamic
+  take kind, like text
+  like list, like dynamic
+  case node
+    text <($roll[$kind] ?? [])>
+
+bind roll-set-site
+  take entry, like dynamic
+  take site, like text
+  like void
+  case node
+    text <($entry.site = $site, undefined)>
+
+# a text's length in UTF-16 units, which is what `slice` counts
+bind roll-units
+  take value, like text
+  like number
+  case node
+    text <$value.length>
+
+# `deckOf(file)?.name ?? deckFromPath(file)`
+bind roll-host-of
+  take decks, like dynamic
+  take fallback, like dynamic
+  take file, like text
+  like text
+  case node
+    text <($decks($file)?.name ?? $fallback($file))>
+
+# the deck part of the roll: each deck with its files, `__files` read by the merge and dropped
+bind roll-deck-entry
+  take host, like text
+  take files, like list, like text
+  like dynamic
+  case node
+    text <(\{ host: $host, kind: "deck", name: $host, site: "", file: $files.length, __files: $files \})>
+
+bind roll-deck-part
+  take decks, like list, like dynamic
+  like dynamic
+  case node
+    text <(\{ deck: $decks, exception: [], task: [], dock: [], tell: [], kind: [] \})>
+
+bind roll-add
+  take merger, like dynamic
+  take roll, like dynamic
+  like void
+  case node
+    text <$merger.add($roll)>
+
+bind roll-done
+  take merger, like dynamic
+  like dynamic
+  case node
+    text <$merger.done()>
+
+bind roll-call
+  take session, like dynamic
+  take files, like list, like text
+  like void
+  case node
+    text <$session.turn($files)>
+
+bind roll-close
+  take session, like dynamic
+  like void
+  case node
+    text <$session.close()>
+
+bind roll-has-faults
+  take unit, like dynamic
+  like boolean
+  case node
+    text <("faults" in $unit)>
+
+bind roll-place
+  take unit, like dynamic
+  take diagnostic, like dynamic
+  like dynamic
+  case node
+    text <$unit.place($diagnostic)>
+
+bind roll-loose-problem
+  take diagnostic, like dynamic
+  like dynamic
+  case node
+    text <(\{ diagnostic: $diagnostic, text: undefined \})>
+
+bind roll-call-role
+  take roles, like dynamic
+  take file, like text
+  like dynamic
+  case node
+    text <$roles($file)>
+
+# what compileSeparate is given: the session's resolver and memos, the cache, and the readers `term make` builds with
+bind roll-separate-options
+  take session, like dynamic
+  take cache, like dynamic
+  take modules, like dynamic
+  take roles, like dynamic
+  take leans, like dynamic
+  take decks, like dynamic
+  like dynamic
+  case node
+    text <(\{ resolve: $session.resolve, cache: $cache, modules: $modules, roleOf: $roles, leanOf: $leans, deckOf: $decks, parsed: $session.parsed, units: $session.units, walked: $session.walked \})>
+
+# the options a whole-program compile is given, with the roll asked for and only the roll kept
+bind roll-only-options
+  take options, like dynamic
+  like dynamic
+  case node
+    text <(\{ ...$options, roll: true, rollOnly: true \})>
+
+bind roll-entry-answer
+  take one, like dynamic
+  like dynamic
+  case node
+    text <($one.ok ? \{ ok: true, roll: $one.roll, diagnostics: [] \} : \{ ok: false, diagnostics: $one.diagnostics \})>
+
+bind roll-split-label
+  take label, like text
+  like list, like text
+  case node
+    text <$label.split("+")>
+
+form source-file
+  link file, like text
+  link text, like text
+
+# what the roll pass answers: the merged roll, the files that did not build, and their problems
+form project-roll-answer
+  link roll, like dynamic
+  link failed, like list, like text
+  link problems, like list, like dynamic
+
+# sites relative to the root, so the printed roll reads the same on every machine
+task relativize
+  take roll, like dynamic
+  take root, like text
+  like dynamic
+  mark private
+
+  save prefix, <{root}/>
+  save cut, roll-units(prefix)
+  walk roll-keys(roll)
+    take kind
+    walk roll-kind-entries(roll, kind)
+      take entry, like dynamic
+      save site, entry/site
+      fork test, starts-with(site, prefix)
+        hold
+          roll-set-site(entry, substring(site, cut))
+  back roll
+
+# every unit's roll of the project's entries, each entry built from units as `term make` builds it, writing nothing: the
+# cache answers every unit the last build built. An entry that does not build is in `failed` with its diagnostics
+task unit-rolls
+  take root, like text
+  take failed, like list, like text
+  take problems, like list, like dynamic
+  like dynamic
+  mark private
+
+  save link, <{node-path/join(root, <link>)}{node-path/sep}>
+  save none-ignored, make list
+  save found, make-module/find-tree-files(root, none-ignored, <node>)
+  save files, make list
+  walk found
+    take file
+    fork test, not(starts-with(file, link))
+      hold
+        files/push(file)
+  save session, make-module/build-session(root)
+  save cache, cache-module/project-cache(root)
+  save deck-of, deck-of-module/project-deck-of()
+  # the role and lean readers, the same ones `term make` compiles with: a lean grammar read long-form reports every
+  # property head as an unknown name (lean-0035, 2026-09-12)
+  save role-of, role-module/project-role-of(root)
+  save lean-of, role-module/project-lean-of(root)
+  save rolls, roll-new-map()
+  save modules
+    task
+      take of, like text
+      like text
+      back <./{make-module/unit-slug(root, of, deck-of)}>
+
+  roll-call(session, files)
+
+  walk files
+    take file
+    save unit, make-module/buildable(file, node-fs/read-file-sync(file, <utf8>), roll-call-role(role-of, file))
+    fork test, roll-has-faults(unit)
+      hold
+        failed/push(node-path/relative(root, file))
+        turn next
+    # a file that is not a program (a grammar, a data file) has no tasks to list
+    fork test, make-module/is-whole-file(file, unit/text, roll-call-role(role-of, file))
+      hold
+        turn next
+    save source
+      make source-file
+        bind file, file
+        bind text, unit/text
+    save result, separate-module/compile-separate(source, roll-separate-options(session, cache, modules, role-of, lean-of, deck-of))
+    fork test, not(roll-truthy(result/ok))
+      hold
+        failed/push(node-path/relative(root, file))
+        walk result/diagnostics
+          take diagnostic, like dynamic
+          fork test, is-equal(diagnostic/file, file)
+            hold
+              problems/push(roll-place(unit, diagnostic))
+            miss
+              problems/push(roll-loose-problem(diagnostic))
+        turn next
+    # each unit's roll as a [label, roll] pair, in the order the build made them
+    save made, roll-pairs(result)
+    walk made
+      take pair, like dynamic
+      roll-map-set(rolls, roll-pair-label(pair), roll-pair-roll(pair))
+
+  roll-close(session)
+  back rolls
+
+# the roll of the build: every unit's roll merged one at a time, never all held at once (compile/roll.ts
+# `makeRollMerger`), and a deck part naming each deck's files. `rolls` is the build's own, or undefined to build here
+task project-roll
+  take root, like text
+  take rolls, like dynamic
+  like project-roll-answer
+
+  save failed, make list
+  save problems, make list
+  # `TERM_ROLL_PROFILE=1` prints where the pass spent its time, to stderr
+  save profile, roll-profile-asked()
+  save started-at, roll-now()
+  save units, rolls
+  fork test, roll-absent(rolls)
+    hold
+      save units, unit-rolls(root, failed, problems)
+  save deck-of, deck-of-module/project-deck-of()
+  save merger, roll-module/make-roll-merger()
+  # each deck's files: every unit's, labelled by its files joined (compile/separate.ts)
+  save decks, make hash
+  save hosts, make list
+  save labels, roll-map-keys(units)
+  walk labels
+    take label
+    # a copy: the merge joins paths in place, and the unit's roll is the session's, read again next build
+    roll-add(merger, relativize(roll-copy(roll-map-get(units, label)), root))
+    walk roll-split-label(label)
+      take file
+      save host, roll-host-of(deck-of, roll-module/deck-from-path, file)
+      fork test, decks/has(host)
+        hold
+          save held, decks/get(host)
+          held/push(file)
+        miss
+          save fresh, make list
+          fresh/push(file)
+          save decks/{host}, fresh
+          hosts/push(host)
+  save deck-entries, make list
+  walk hosts
+    take host
+    deck-entries/push(roll-deck-entry(host, decks/get(host)))
+  roll-add(merger, roll-deck-part(deck-entries))
+  save roll, roll-done(merger)
+  fork test, profile
+    hold
+      output/print-profile(<roll pass: {subtract(roll-now(), started-at)} ms over {labels/length} units>)
+  back
+    make project-roll-answer
+      bind roll, roll
+      bind failed, failed
+      bind problems, problems
+
+# one entry's roll, and its diagnostics when it does not build: the whole-program compile the roll is read from, with
+# only the roll and the diagnostics cached (compile's `rollOnly`)
+task entry-roll
+  take source, like dynamic
+  take options, like dynamic
+  like dynamic
+
+  back roll-entry-answer(compile-module/compile(source, roll-only-options(options)))
+
+# where an entry's roll is kept, by its closure key (`SeparateResult.closureKey`)
+task roll-key
+  take closure-key, like text
+  like text
+
+  back <roll:{closure-key}>

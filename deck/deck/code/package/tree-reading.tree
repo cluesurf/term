@@ -1,0 +1,519 @@
+# Reading `.tree` with the real parser, flattened into one uniform shape a manifest reader walks:
+#
+#   deck @term/base          -> head deck, terms [@term/base]
+#   code <0.0.4>             -> head code, value 0.0.4
+#   link @term/bind, code <0.0.x>
+#                            -> head link, terms [@term/bind], forms [head code, value 0.0.x]
+#
+# Indented children arrive as `forms` too, so a nested block reads the same way as an inline comma chain. Comments
+# never appear: the parser keeps them as trivia on the group.
+#
+# Ported from deck/deck/code/read.ts (term-cli-in-term-0076). The decisions:
+#   - a literal's text is the SOURCE across the node's whole token extent, as the original sliced it, so `{code,view}`
+#     in a glob comes back as written. The extent is the earliest and latest span under the node, through its parts,
+#     its nodes and an interpolation's group, the fields the original's reflective walk visited
+#   - a column counts UTF-16 units (self-host traps T001), so a line is cut through `units-of` / `units-text`
+#   - `value` is a `maybe` with `need false`, stored bare on TypeScript as the original's optional field, because
+#     `<>` and no value read differently (`value ?? terms[0]`)
+#   - `read-tree` answers a `tree-reading`: `ok`, the forms, and the parser's diagnostics, each list empty when the
+#     original's answer had no such field
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/text
+  find split
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load @term/base/maybe
+  find maybe
+
+load @term/make/parser/tree
+  find node
+  find root-node
+  find parse
+
+load @term/make/parser/token
+  find token-source
+
+load @term/make/parser/diagnostic
+  find position
+  find span
+  find diagnostic
+
+load @term/make/fixing
+  find units-of
+  find units-text
+
+# one head-led line and everything hanging off it
+form tree-form
+  link head, like text
+  # bare-word arguments in order: a package name, a path, a keyword
+  link terms, like list, like text
+  # the first `<...>` value, when the line carries one
+  link value
+    like maybe, like text
+    need false
+  # every `<...>` on the line, in order: `time <made>, <toss>` is a range
+  link values, like list, like text
+  # nested forms, whether written inline after a comma or indented beneath
+  link forms, like list, like tree-form
+
+form tree-reading
+  link ok, like boolean
+  link forms, like list, like tree-form
+  link diagnostics, like list, like diagnostic
+
+# the earliest and latest position under a node, `found` false when none carries a span
+form token-extent
+  link found, like boolean
+  link start, like position
+  link end, like position
+
+task is-before
+  take a, like position
+  take b, like position
+  like boolean
+  mark private
+
+  fork test, not(is-equal(a/line, b/line))
+    hold
+      back is-below(a/line, b/line)
+  back is-below(a/column, b/column)
+
+task widen
+  take extent, like token-extent
+  take at, like span
+  like token-extent
+  mark private
+
+  save start, extent/start
+  save end, extent/end
+  fork test, or(not(extent/found), is-before(at/start, start))
+    hold
+      save start, at/start
+  fork test, or(not(extent/found), is-before(end, at/end))
+    hold
+      save end, at/end
+  back make(token-extent, bind(found, true), bind(start, start), bind(end, end))
+
+# the original's walk: a node's own span, then its parts, its nodes, and an interpolation's group
+task extent-under
+  take one, like node
+  take extent, like token-extent
+  like token-extent
+  mark private
+
+  save out, extent
+  sift one
+    case chunk
+      link chunk-text
+      link chunk-span
+      save out, widen(out, chunk-span)
+    case integer
+      link integer-value
+      link integer-text
+      link integer-span
+      save out, widen(out, integer-span)
+    case decimal
+      link decimal-value
+      link decimal-text
+      link decimal-span
+      save out, widen(out, decimal-span)
+    case radix
+      link radix-value
+      link radix-text
+      link radix-span
+      save out, widen(out, radix-span)
+    case name
+      link name-parts
+      walk name-parts
+        take part
+        save out, extent-under(part, out)
+    case text
+      link text-parts
+      walk text-parts
+        take part
+        save out, extent-under(part, out)
+    case group
+      link group-nodes
+      walk group-nodes
+        take member
+        save out, extent-under(member, out)
+    case interpolation
+      link interpolation-depth
+      link interpolation-group
+      sift interpolation-group
+        case some
+          link inner
+          save out, extent-under(inner, out)
+        case none
+          save nothing, 0
+  back out
+
+# `\<`, `\>`, `\{`, `\}` and `\\` are how those characters are written in a literal: each comes back as itself
+task unescape-literal
+  take value, like text
+  like text
+  mark private
+
+  save runes, to-runes(value)
+  save out, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, runes/length)
+    hook hold
+      save rune, get(runes, at)
+      save next-rune, -1
+      fork test, is-below(add(at, 1), runes/length)
+        hold
+          save next-rune, get(runes, add(at, 1))
+      save escaped, or(or(is-equal(next-rune, 60), is-equal(next-rune, 62)), or(or(is-equal(next-rune, 123), is-equal(next-rune, 125)), is-equal(next-rune, 92)))
+      fork test, and(is-equal(rune, 92), escaped)
+        hold
+          out/push(next-rune)
+          save at, add(at, 2)
+        miss
+          out/push(rune)
+          save at, add(at, 1)
+  back from-runes(out)
+
+# the units of a line from `start` to `stop`, each clamped as a JavaScript slice clamps it
+task slice-line
+  take line, like text
+  take start, like number
+  take stop, like number
+  like text
+  mark private
+
+  save units, units-of(line)
+  save from, start
+  fork test, is-above(from, units/length)
+    hold
+      save from, units/length
+  save to, stop
+  fork test, is-above(to, units/length)
+    hold
+      save to, units/length
+  fork test, is-below(to, from)
+    hold
+      back <>
+  back units-text(units, from, to)
+
+task line-at
+  take lines, like list, like text
+  take at, like number
+  like text
+  mark private
+
+  fork test, and(is-minimum(at, 0), is-below(at, lines/length))
+    hold
+      back get(lines, at)
+  back <>
+
+# the source text a span covers, across lines
+task source-slice
+  take lines, like list, like text
+  take start, like position
+  take end, like position
+  like text
+  mark private
+
+  fork test, is-equal(start/line, end/line)
+    hold
+      back slice-line(line-at(lines, start/line), start/column, end/column)
+  save out, make list
+  out/push(slice-line(line-at(lines, start/line), start/column, 9007199254740991))
+  save line, add(start/line, 1)
+  walk test
+    hook test, is-below(line, end/line)
+    hook hold
+      out/push(line-at(lines, line))
+      save line, add(line, 1)
+  out/push(slice-line(line-at(lines, end/line), 0, end/column))
+  back join(out, <\n>)
+
+# the literal source text of a name or a text node
+task literal-of
+  take one, like node
+  take lines, like list, like text
+  like text
+  mark private
+
+  save blank, make(position, bind(line, 0), bind(column, 0))
+  save extent, extent-under(one, make(token-extent, bind(found, false), bind(start, blank), bind(end, blank)))
+  fork test, extent/found
+    hold
+      back unescape-literal(source-slice(lines, extent/start, extent/end))
+  # no span under it: the chunks' texts
+  save out, <>
+  save parts, make list
+  sift one
+    case name
+      link name-parts
+      save parts, name-parts
+    case text
+      link text-parts
+      save parts, text-parts
+    miss
+      save nothing, 0
+  walk parts
+    take part
+    sift part
+      case chunk
+        link chunk-text
+        save out, <{out}{chunk-text}>
+      miss
+        save nothing, 0
+  back out
+
+# a group is a bare TERM when it holds exactly one name and nothing else: `bear ./code` carries `./code`
+task term-name
+  take members, like list, like node
+  like maybe, like node
+  mark private
+
+  fork test, is-equal(members/length, 1)
+    hold
+      save only, get(members, 0)
+      sift only
+        case name
+          back make(some, only)
+        miss
+          back make none
+  back make none
+
+task add-value
+  take form, like tree-form
+  take value, like text
+  like tree-form
+  mark private
+
+  save out, form
+  out/values/push(value)
+  sift out/value
+    case some
+      save nothing, 0
+    case none
+      save out/value, make(some, value)
+  back out
+
+task form-of-group
+  take members, like list, like node
+  take lines, like list, like text
+  like maybe, like tree-form
+  mark private
+
+  fork test, is-equal(members/length, 0)
+    hold
+      back make none
+  save first, get(members, 0)
+  sift first
+    case name
+      save nothing, 0
+    miss
+      back make none
+  save form, make(tree-form, bind(head, literal-of(first, lines)), bind(terms, make list), bind(values, make list), bind(forms, make list))
+  save at, 0
+  walk members
+    take member
+    fork test, is-above(at, 0)
+      hold
+        save form, read-into(form, member, lines)
+    save at, add(at, 1)
+  back make(some, form)
+
+task read-into
+  take form, like tree-form
+  take one, like node
+  take lines, like list, like text
+  like tree-form
+  mark private
+
+  save out, form
+  sift one
+    case text
+      save out, add-value(out, literal-of(one, lines))
+    case name
+      out/terms/push(literal-of(one, lines))
+    case integer
+      link integer-value
+      save out, add-value(out, <{integer-value}>)
+    case decimal
+      link decimal-value
+      save out, add-value(out, <{decimal-value}>)
+    case radix
+      link radix-value
+      save out, add-value(out, <{radix-value}>)
+    case group
+      link group-nodes
+      save only, term-name(group-nodes)
+      sift only
+        case some
+          link only-name
+          out/terms/push(literal-of(only-name, lines))
+        case none
+          save nested, form-of-group(group-nodes, lines)
+          sift nested
+            case some
+              link nested-form
+              out/forms/push(nested-form)
+            case none
+              save nothing, 0
+    miss
+      save nothing, 0
+  back out
+
+# Parse `.tree` source into top-level forms. A source that does not parse answers the parser's own diagnostics,
+# so a malformed manifest reports with a span and a caret like every other Term error
+task read-tree
+  take file, like text
+  take text, like text
+  like tree-reading
+
+  save parsed, parse(make(token-source, bind(file, file), bind(text, text)))
+  fork test, not(parsed/ok)
+    hold
+      back make(tree-reading, bind(ok, false), bind(forms, make list), bind(diagnostics, parsed/diagnostics))
+  save lines, split(text, <\n>)
+  save forms, make list
+  sift parsed/tree
+    case root
+      link root-nodes
+      walk root-nodes
+        take one
+        sift one
+          case group
+            link group-nodes
+            save found, form-of-group(group-nodes, lines)
+            sift found
+              case some
+                link found-form
+                forms/push(found-form)
+              case none
+                save nothing, 0
+          miss
+            save nothing, 0
+  back make(tree-reading, bind(ok, true), bind(forms, forms), bind(diagnostics, make list))
+
+# the first nested form with this head
+task form-of
+  take form, like tree-form
+  take head, like text
+  like maybe, like tree-form
+
+  walk form/forms
+    take nested
+    fork test, is-equal(nested/head, head)
+      hold
+        back make(some, nested)
+  back make none
+
+# every nested form with this head
+task forms-with
+  take form, like tree-form
+  take head, like text
+  like list, like tree-form
+
+  save out, make list
+  walk form/forms
+    take nested
+    fork test, is-equal(nested/head, head)
+      hold
+        out/push(nested)
+  back out
+
+# the `<...>` value of the first nested form with this head
+task value-of
+  take form, like tree-form
+  take head, like text
+  like maybe, like text
+
+  save found, form-of(form, head)
+  sift found
+    case some
+      link found-form
+      back found-form/value
+    case none
+      back make none
+
+# the first bare-word argument of the first nested form with this head
+task term-of
+  take form, like tree-form
+  take head, like text
+  like maybe, like text
+
+  save found, form-of(form, head)
+  sift found
+    case some
+      link found-form
+      fork test, is-above(found-form/terms/length, 0)
+        hold
+          save first, get(found-form/terms, 0)
+          back make(some, first)
+      back make none
+    case none
+      back make none
+
+# A COMMA CHAIN NESTS: `link @x, code <1.x.x>, have 1` hangs `have` off `code`, so the whole chain is searched
+task deep-form-of
+  take form, like tree-form
+  take head, like text
+  like maybe, like tree-form
+
+  walk form/forms
+    take nested
+    fork test, is-equal(nested/head, head)
+      hold
+        back make(some, nested)
+    save deeper, deep-form-of(nested, head)
+    sift deeper
+      case some
+        back deeper
+      case none
+        save nothing, 0
+  back make none
+
+task deep-value-of
+  take form, like tree-form
+  take head, like text
+  like maybe, like text
+
+  save found, deep-form-of(form, head)
+  sift found
+    case some
+      link found-form
+      back found-form/value
+    case none
+      back make none
+
+# the bare words a form carries, WITHOUT its nested forms: a role's `take <glob>` has `miss` children
+task terms-of
+  take form, like tree-form
+  like text
+
+  back join(form/terms, < >)
+
+# A MULTI-WORD VALUE BECOMES A NESTED GROUP: `task vitest run` is a `vitest` group holding `run`. This walks the
+# payload back into the phrase that was written, descending into EVERY nested form
+task phrase-of
+  take form, like tree-form
+  like text
+
+  save words, make list
+  walk form/terms
+    take word
+    words/push(word)
+  walk form/forms
+    take nested
+    words/push(nested/head)
+    save rest, phrase-of(nested)
+    fork test, not(is-equal(rest, <>))
+      hold
+        words/push(rest)
+  back join(words, < >)

@@ -1,0 +1,358 @@
+# The browser development server: `term boot --env browser` in development (`term boot`, `term boot moon`). Compiles
+# the app in per-module mode, serves each module lazily over native ESM, and hot-reloads on change over SSE. The entry
+# is an argument or the `deck.tree` boot entry. Stays alive until interrupted. Ported from call/code/feed.ts
+# (term-cli-in-term-0062). The server is call/code/dev/server.ts, the entry and port checks call/code/boot.ts, the
+# reader @term/deck's read.ts: docked until their own ports land.
+#
+# It was `term feed` until 2026-10-05, when the development server became `term boot`'s own mode. `term feed` now
+# refuses and names `term boot` (`refuse-feed`).
+#
+# A SERVICE in the terminal output standard's sense (section 11): a `start` item with its address, a `reload` item per
+# hot-applied file, and on ctrl-c the closing `Stopped` item with the uptime, exit 130.
+#
+# THE SERVER'S STATE IS THE MODULE'S. The original's ctrl-c handler, watcher callback and debounce timer closed over
+# the server, the watcher, the pending files and the timer; a task handed to the host as a callback closes over
+# nothing, so each reads one `serving` record this module holds, which `serve-browser-development` fills.
+
+load ./home-folder
+  find names-any-home
+
+load @term/base/list
+  find contains
+
+dock load
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
+  load <node:timers>, name timers
+  load <@term/call/code/dev/server>, name server-module
+  # portIsFree answers a promise, so every call into boot.ts is awaited
+  load <@term/call/code/boot>, name boot-module
+    mark async
+  load <@term/deck/code/read>, name read-module
+  load <@term/call/code/output>, name output
+  load <global:process>, name host-process
+  load <global:Date>, name host-date
+
+form serving
+  mark shared
+  link root, like text
+  link started, like boolean
+  link server, like dynamic
+  link watcher, like dynamic
+  link timer, like dynamic
+  link timed, like boolean
+  link pending, like list, like text
+
+form boot-open
+  link verb, like text
+  link root, like text
+  link facts, like list, like text
+
+form problem-item
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+
+form refuse-close
+  link verdict, like text
+  link failure, like text
+  link next, like text
+
+form missing-entry-item
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form failure-close
+  link verdict, like text
+  link failure, like text
+
+form port-item
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form interrupted-close
+  link verdict, like text
+  link failure, like text
+  link uptime, like boolean
+
+form reload-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link facts, like list, like text
+
+form start-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+  link duration, like number
+  link facts, like list, like text
+
+form server-ask
+  link root, like text
+  link entry, like text
+  link port, like number
+  link env, like text
+  link boot, like boolean
+
+form watch-ask
+  link recursive, like boolean
+
+form tree-ask
+  link file, like text
+  link text, like text
+
+# the one server this process runs, read by the ctrl-c handler, the watcher and the timer
+host states, make hash
+
+task state
+  like serving
+  mark private
+
+  save key, <serving>
+  fork test, not(states/has(key))
+    hold
+      save fresh, make(serving, bind(root, <>), bind(started, false), bind(server, 0), bind(watcher, 0), bind(timer, 0), bind(timed, false), bind(pending, make list))
+      save states/{key}, fresh
+  back states/get(key)
+
+# `term feed`: the development server is `term boot`, and this says so
+task refuse-feed
+  take root, like text
+  like void
+
+  save facts, make list
+  output/open-run(make(boot-open, bind(verb, <feed>), bind(root, root), bind(facts, facts)))
+  output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <The development server is term boot, and term feed no longer starts it>)))
+  save host-process/exit-code, output/close-run(make(refuse-close, bind(verdict, <Nothing was started>), bind(failure, <usage>), bind(next, <term boot, which is term boot moon (development), or term boot star (production)>)))
+
+# ctrl-c, answered from the opening item on, the port checks and the cold build included: the server and the watcher
+# closed when they were started, then the run closed, `Stopped` with the uptime or `Not started`
+task stop-on-interrupt
+  like void
+  mark private
+
+  save one, state()
+  save verdict, <Not started>
+  fork test, one/started
+    hold
+      one/watcher/close()
+      one/server/close()
+      save verdict, <Stopped>
+  host-process/exit(output/close-run(make(interrupted-close, bind(verdict, verdict), bind(failure, <interrupted>), bind(uptime, one/started))))
+
+# a page entry with a `boot` task that nothing calls: the shell calls it once the module loads. Read by the parser,
+# never a pattern (note/project/term/one-parser.md): `task boot` is a form headed `task` whose first term, or else
+# whose first child's head, is `boot`
+task defines-boot
+  take form, like dynamic
+  like boolean
+  mark private
+
+  fork test, is-unequal(form/head, <task>)
+    hold
+      back false
+  fork test, is-above(form/terms/length, 0)
+    hold
+      back is-equal(form/terms/0, <boot>)
+  fork test, is-above(form/forms/length, 0)
+    hold
+      back is-equal(form/forms/0/head, <boot>)
+  back false
+
+# every file the watcher saw change since the last flush, hot-applied, one `reload` item each
+task flush-pending
+  like void
+  mark private
+
+  save one, state()
+  save one/timed, false
+  walk one/pending
+    take changed
+    save begun, host-date/now()
+    save result, one/server/update(changed)
+    save took, subtract(host-date/now(), begun)
+    save facts, make list
+    facts/push(result/type)
+    output/report(make(reload-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <reload>), bind(subject, <{output/show-path(changed, one/root)} changed>), bind(duration, took), bind(facts, facts)))
+  save one/pending, make list
+
+# one change the watcher saw: a `.tree` file of the project's own, not under a toolchain home or a host/ folder, added
+# to the pending files, and the flush put off 30 ms past the last change
+task on-change
+  take event, like dynamic
+  take name, like dynamic
+  like void
+  mark private
+
+  save file, file-name-of(name)
+  fork test, file/ends-with(<.tree>)
+    hold
+      # the watched name is relative, so a leading separator lets a folder at the top match too
+      fork test, not(or(names-any-home(</{file}>), file/includes(</host/>)))
+        hold
+          save one, state()
+          save full, node-path/join(one/root, file)
+          fork test, node-file/exists-sync(full)
+            hold
+              save real, node-file/realpath-sync(full)
+              fork test, not(contains(one/pending, real))
+                hold
+                  one/pending/push(real)
+              fork test, one/timed
+                hold
+                  timers/clear-timeout(one/timer)
+              save one/timer, timers/set-timeout(flush-pending, 30)
+              save one/timed, true
+
+# the watcher's file name, a text, or the empty text when it gave none
+task file-name-of
+  take name, like unknown
+  like text
+  mark private
+
+  sift name
+    case text
+      back name
+    miss
+      back <>
+
+task serve-browser-development
+  take root, like text
+  take entry, like text
+  take port, like maybe, like number
+  take env, like text
+  take open, like boolean
+  like void
+
+  fork test, open
+    hold
+      save facts, make list
+      facts/push(<development>)
+      facts/push(<browser>)
+      output/open-run(make(boot-open, bind(verb, <boot>), bind(root, root), bind(facts, facts)))
+  save one, state()
+  save one/root, root
+  host-process/on(<SIGINT>, stop-on-interrupt)
+  fork
+    mark unsafe
+    serve(root, entry, port, env)
+  halt take
+    take error
+    output/fail-run(error, root)
+
+task serve
+  take root, like text
+  take entry, like text
+  take port, like maybe, like number
+  take env, like text
+  like void
+  mark private
+
+  save found, boot-module/find-entry(root, entry)
+  save path, entry-path-of(found)
+  fork test, or(is-equal(path, <>), not(node-file/exists-sync(path)))
+    hold
+      save fields, make list
+      save subject, <There is no entry: none was given and deck.tree has no `boot \<path\>`>
+      fork test, is-unequal(path, <>)
+        hold
+          fields/push(output/location(output/show-path(path, root)))
+          save subject, <The entry file does not exist>
+      output/report(make(missing-entry-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject), bind(fields, fields)))
+      # an entry the command line or the manifest owed: wrong usage, exit 2, as `term boot` ends on the same miss
+      output/close-run(make(failure-close, bind(verdict, <Not started>), bind(failure, <usage>)))
+    miss
+      serve-entry(root, path, port, env)
+
+# findEntry's answer as a text: the path, or the empty text when it found none
+task entry-path-of
+  take found, like unknown
+  like text
+  mark private
+
+  sift found
+    case text
+      back found
+    miss
+      back <>
+
+task serve-entry
+  take root, like text
+  take entry, like text
+  take given, like maybe, like number
+  take env, like text
+  like void
+  mark private
+
+  save started, host-date/now()
+  # the port is checked, as `term boot`'s is: one named with `-p` that is taken is refused, and without `-p` the first
+  # free one from 5173 is used
+  save port, 5173
+  save named, false
+  sift given
+    case some
+      link chosen
+      save port, chosen
+      save named, true
+    case none
+      save port, 5173
+  fork test, and(named, not(boot-module/port-is-free(port)))
+    hold
+      save fields, make list
+      fields/push(output/field(<next>, <term halt -p {port}, or term boot -p \<another port\>>))
+      output/report(make(port-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <Port {port} is in use>), bind(fields, fields)))
+      output/close-run(make(failure-close, bind(verdict, <Not started>), bind(failure, <environment>)))
+    miss
+      walk test
+        hook test, and(not(named), and(not(boot-module/port-is-free(port)), is-below(port, 5273)))
+        hook hold
+          save port, add(port, 1)
+      start-server(root, entry, port, env, started)
+
+task start-server
+  take root, like text
+  take entry, like text
+  take port, like number
+  take env, like text
+  take started, like number
+  like void
+  mark private
+
+  # a page entry with a `boot` task that nothing calls: the shell calls it. A `hook` table boots itself. A file that
+  # does not parse calls nothing here, and the build says why
+  save read, read-module/read-tree(make(tree-ask, bind(file, entry), bind(text, node-file/read-file-sync(entry, <utf8>))))
+  save defined, false
+  save hooked, false
+  fork test, read/ok
+    hold
+      walk read/forms
+        take form
+        fork test, defines-boot(form)
+          hold
+            save defined, true
+        fork test, is-equal(form/head, <hook>)
+          hold
+            save hooked, true
+  save target, env
+  fork test, is-equal(env, <>)
+    hold
+      save target, <browser>
+  save server, server-module/start-dev-server(make(server-ask, bind(root, root), bind(entry, entry), bind(port, port), bind(env, target), bind(boot, and(defined, not(hooked)))))
+  save one, state()
+  save one/server, server
+  # watch the project for `.tree` edits and hot-apply each change
+  save one/watcher, node-file/watch(root, make(watch-ask, bind(recursive, true)), on-change)
+  save facts, make list
+  facts/push(<hot reload>)
+  save took, subtract(host-date/now(), started)
+  output/report(make(start-item, bind(glyph, <done>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, <http://localhost:{port}>), bind(duration, took), bind(facts, facts)))
+  # stay alive until interrupted, then close the watcher and the server (stop-on-interrupt)
+  save one/started, true

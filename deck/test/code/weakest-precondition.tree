@@ -6,7 +6,10 @@
 #
 # Ported from deck/test/code/deductive.ts (self-hosting, 2026-10-05). Its expression language is smt-query.tree's
 # terms and formulas, an implication being `not a, or b`. A loop's frozen variant was named by the statement's object
-# identity; here a counter threaded through `wp` names it, one name per loop, as the identity gave.
+# identity; here a counter threaded through `wp` names it, one name per VISIT of the loop. A nested loop is visited
+# twice (for the outer invariant and for the outer variant), so it gets two names where the identity gave one; each
+# name appears in one condition only, and every condition is proven alone, so the conditions are the original's up to
+# renaming (tmp/self-host/pairs/test-weakest-precondition.ts compares them so, cli-in-term-0107).
 
 load @term/base/list
   find list

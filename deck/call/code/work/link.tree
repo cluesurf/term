@@ -1,137 +1,44 @@
 load @term/call/work/home
   find root, name project-root
 
-load @term/call/work/tint
-  find log-good
-  find log-fail
-  find log-step
-  find log-warn
-  find fade
-  find name, name tint-name
-  find bold
-  find mark
-  find format-error
-
-# `term link` -- use a working copy of a package instead of an installed one.
+# `term link [deck]` -- use a working copy of a package instead of an installed one.
 #
 # With NO argument it registers the current package in the global link registry (`~/.base/@term/code/link`), so
 # any project can later `term link <name>` and get this working copy. With an argument it consumes that
-# registration by name, and failing that treats the argument as a path to a local package.
+# registration by name, and failing that treats the argument as a path to a local package. `--toss` removes the
+# deck's link instead.
 #
-# Ported from deck/call/code/link.ts (cli-in-term-0004).
+# The verb takes its hook's arguments and hands them to the shipped handlers (deck/call/code/link.ts `callLink`
+# and `callUnlink`), which print through the output library. It prints nothing of its own, catches nothing and never
+# exits: a throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term, part 2).
 
-load @term/base/path
-  find join
-
-load @term/base/file
-  find test, name file-test
+form link-ask
+  link root, like text
+  link deck, like text
 
 dock load
-  load <@cluesurf/deck.tree>, name deck-tree
-  load <node:path>, name node-path
-  load <node:process>, name node-process
-  load <global:console>, name console
-
-form register-ask
-  link packageDir, like text
-
-form consume-ask
-  link root, like text
-  link name, like text
-
-form dev-link-ask
-  link root, like text
-  link packageDir, like text
-
-form unlink-ask
-  link root, like text
-  link name, like text
-
-# no argument: register this package globally
-task link-register
-  mark async
-  take root, like text
-
-  like void
-
-  log-step <Registering current package globally...>
-
-  fork
-    mark unsafe
-    save shown
-      call deck-tree/registerGlobalLink
-        make register-ask, bind packageDir, read root
-        wait true
-    call log-good, text <Registered {{shown}}>
-    call console/log, call fade, text <  use it elsewhere with: term link {{shown}}>
-  halt take
-    take error
-    log-fail format-error error
-    node-process/exit code 1
+  load <@term/call/code/link>, name link-module
 
 task link
   mark async
   take deck, like text
+  take toss, like boolean
 
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
   fork test
-    is-equal read(deck), <>
+    read toss
     hold
-      link-register root
-      send back
-  log-step <Linking {{deck}}...>
-
-  fork
-    mark unsafe
-    save consumed
-      call deck-tree/consumeGlobalLink
-        make consume-ask, bind(root, read root), bind name, read deck
+      call link-module/callUnlink
+        make link-ask
+          bind root, read root
+          bind deck, read deck
         wait true
-    fork test
-      read consumed
-      hook hold
-        call log-good, text <Linked {{deck}}>
-        send back
-    # not registered: treat the argument as a path to a local package
-    save directory, call node-path/resolve, read deck
-    save manifest
-      call join, read(directory), text <deck.tree>
-    save there
-      call file-test, read(manifest), wait true
-    fork test
-      read there
-      hook miss
-        call log-fail
-          text <"{{deck}}" is not in the global link registry and is not a local package (no deck.tree at {{directory}})>
-        call node-process/exit, code 1
-    call deck-tree/devLink
-      make dev-link-ask, bind(root, read root), bind packageDir, read directory
-      wait true
-    call log-good, text <Linked {{deck}}>
-  halt take
-    take error
-    log-fail format-error error
-    node-process/exit code 1
-
-task unlink
-  mark async
-  take root, like text
-  take deck, like text
-
-  like void
-
-  log-step <Unlinking {{deck}}...>
-
-  fork
-    mark unsafe
-    call deck-tree/devUnlink
-      make unlink-ask, bind(root, read root), bind name, read deck
-      wait true
-    call log-good, text <Unlinked {{deck}}>
-  halt take
-    take error
-    log-fail format-error error
-    node-process/exit code 1
+      send back
+  call link-module/callLink
+    make link-ask
+      bind root, read root
+      bind deck, read deck
+    wait true

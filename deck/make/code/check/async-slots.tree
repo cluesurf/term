@@ -60,6 +60,27 @@ task async-slots
           push(item-flags, is-async-task(item-of(param/type)))
         save slots/{name}, slot-flags
         save item-slots/{name}, item-flags
+      # a record field that is `like task / mark async`, keyed `<form>/<field>` (a case's fields by the case's name),
+      # which no task name can be: a task literal bound to it in a `make` is made async (term/compiler decision 006)
+      case record-type
+        walk fields
+          take field
+          fork test, is-async-task(make(some, field/type))
+            hold
+              save field-flag, make list
+              push(field-flag, true)
+              save field-key, <{name}/{field/name}>
+              save slots/{field-key}, field-flag
+        walk variants
+          take variant
+          walk variant/fields
+            take field
+            fork test, is-async-task(make(some, field/type))
+              hold
+                save field-flag, make list
+                push(field-flag, true)
+                save field-key, <{variant/name}/{field/name}>
+                save slots/{field-key}, field-flag
       miss
         turn next
 
