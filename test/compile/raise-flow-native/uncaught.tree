@@ -1,0 +1,22 @@
+load @term/base/exception
+  find absence
+
+task deep-c
+  take key, like text
+  like text
+  halt absence
+    bind thing, read key
+
+task deep-b
+  take key, like text
+  like text
+  send back
+    call deep-c
+      read key
+
+# nothing catches the raise: the program prints its form, its note and its flow to standard error and exits 1
+task run
+  like text
+  send back
+    call deep-b
+      text <z>

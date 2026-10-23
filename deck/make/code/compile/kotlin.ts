@@ -19,6 +19,7 @@ import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
 import { boundedLoops } from '@term/make/code/ir/facts/bounds'
 import { asciiTexts } from '@term/make/code/ir/facts/text'
 import { taggedForms } from '@term/make/code/compile/tag'
+import { raiseSetsOf } from '@term/make/code/check/effects'
 import type { Expression, Program, Statement, Type } from '@term/make/code/compile/node'
 import { fillTasks, inspectFormsOf, lastReads, ownedFields, slotTakes, tailTasks, recordCopies, redeclaredLets, textCursors } from '@term/make/code/compile/backend'
 import type { FormSpec, TextCursors } from '@term/make/code/compile/backend'
@@ -412,8 +413,14 @@ const KOTLIN_HELPERS = {
   // the stack on every raise, and the hive keeps Term's own `flow`. `termException` is the boundary that makes a
   // foreign throw a `failure`.
   exception: [
-    'class TermException(val host: String, val form: String, val note: String, val code: String, val time: Long, val link: Any?, val base: Any?) : RuntimeException(form + ": " + note, null, false, false)',
+    // `flow`: the Term frames the raise passes (term/hive decision 001), the raise's own first, then each call it leaves
+    // through, appended in that call's catch on the error path alone. A frame text holds several a line apart where a
+    // task was inlined into its caller; past 64 a frame adds nothing
+    'class TermException(val host: String, val form: String, val note: String, val code: String, val time: Long, val link: Any?, val base: Any?) : RuntimeException(form + ": " + note, null, false, false) {\n    val flow: java.util.ArrayList<String> = java.util.ArrayList()\n    fun at(site: String): TermException {\n        for (frame in site.split("\\n")) { if (flow.size >= 64) break; flow.add(frame) }\n        return this\n    }\n}',
     'fun termException(thrown: Any?): TermException = if (thrown is TermException) thrown else TermException("", "failure", thrown?.toString() ?: "", "", 0L, null, thrown)',
+    // a raise nothing caught, as every backend prints it: its form and note, a frame a line, on standard error, exit 1.
+    // A raise in a file-level value comes wrapped in the class initializer's error
+    'fun termUnhandled(thrown: Throwable) {\n    val raised = (if (thrown is ExceptionInInitializerError) thrown.cause else thrown) as? TermException ?: return\n    val text = StringBuilder(raised.form + ": " + raised.note + "\\n")\n    for (frame in raised.flow) text.append("  at ").append(frame).append("\\n")\n    System.err.print(text)\n    System.err.flush()\n    kotlin.system.exitProcess(1)\n}',
   ].join('\n\n'),
   // an async call nothing awaits, started as a coroutine of its own. A raise in it is thrown where it ends, as an
   // unhandled raise ends the program anywhere else
@@ -753,6 +760,8 @@ export function emitKotlin(
     instanceTargets,
     implFns,
     exceptionForms,
+    // the tasks whose raise set is not empty: a call to one gains its Term frame on the way out (term/hive decision 001)
+    raising: flags([...raiseSetsOf(program, [...exceptionForms.keys()]).raises].flatMap(([name, raised]) => (raised.length > 0 ? [name] : []))),
     nativeAliases,
     hiddenGeneric,
     asyncFns,

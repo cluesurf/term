@@ -10,7 +10,8 @@
 // so a linked list of 200,000 nodes ended the program when it was dropped, with no message, where Rust and Kotlin went
 // on (test/stdlib/ordered-collections.ts, 2026-10-05). The same stack holds a deep recursion in the program's own code
 // alike on all three. 1 GiB is reserved address space, not memory: a page is committed only when it is touched.
-// TypeScript runs on node's own stack, which a program cannot widen safely.
+// TypeScript runs on node's own stack, which a program cannot widen safely, and on node's own event loop: its main
+// stops with the same stall defect the others print when the loop empties with the entry still waiting.
 
 import * as mainEntry from '@term/make/code/compile/main-entry'
 
@@ -38,7 +39,8 @@ export function entryOf(backend: MainBackend | 'node', emitted: string, named?: 
 
 // the main for `entry` (already spelled for the backend) in `emitted`, a backend's output, to be appended to it.
 // `threads` false is a Rust main with no thread of its own, for a target that has none: WebAssembly under WASI
-export function nativeMain(backend: MainBackend, emitted: string, entry = 'run', threads = true): string {
+// `node` is the TypeScript program's main, run on node's event loop: no thread of its own, and a stall stops it
+export function nativeMain(backend: MainBackend | 'node', emitted: string, entry = 'run', threads = true): string {
   return mainEntry.nativeMain(backend, emitted, entry, threads)
 }
 

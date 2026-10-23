@@ -41,10 +41,6 @@ function checkWidths(program: Program, file: string): Diagnostic[] {
     }
   }
 
-  if (widths.size === 0 && fields.size === 0) {
-    return []
-  }
-
   const out: Diagnostic[] = []
   const outside = (literal: Record<string, unknown>, width: string, name: string): void => {
     // exact, past 2^53 too (compile/node.ts, `digits`)
@@ -60,6 +56,22 @@ function checkWidths(program: Program, file: string): Diagnostic[] {
           message: `${value} is outside \`${width}\` (${low} to ${high}), the width of "${name}"`,
         }),
       )
+    }
+  }
+
+  // the list width of the result of the task being visited
+  let resultWidth: string | undefined
+  const listItems = (init: unknown, width: string | undefined, name: string): void => {
+    const array = init as { form?: string; items?: Record<string, unknown>[] } | undefined
+
+    if (!width || array?.form !== 'array') {
+      return
+    }
+
+    for (const item of array.items ?? []) {
+      if (item.form === 'integer') {
+        outside(item, width, name)
+      }
     }
   }
 
@@ -97,6 +109,16 @@ function checkWidths(program: Program, file: string): Diagnostic[] {
       })
     }
 
+    // a list literal declared a list of a width (`save ys, like list, like u8 / make list(3, 300)`): each literal item is
+    // inside the width (width-0011, check/infer.ts `inferWanted`)
+    if (record.form === 'let') {
+      listItems(record.init, listWidth(record.type), record.name as string)
+    }
+
+    if (record.form === 'return') {
+      listItems(record.value, resultWidth, 'the result')
+    }
+
     if (record.form === 'record') {
       for (const field of (record.fields as { name: string; value: Record<string, unknown> }[] | undefined) ?? []) {
         const width = fields.get(`${record.name as string}/${field.name}`)
@@ -116,11 +138,20 @@ function checkWidths(program: Program, file: string): Diagnostic[] {
 
   for (const s of program) {
     if (s.form === 'function' && s.span.file === file) {
+      resultWidth = listWidth(s.result)
       visit(s.body)
     }
   }
 
   return out
+}
+
+// the width of a list type's element, when it is a number of a width: `like list, like u8` is an array of `number{u8}`
+function listWidth(type: unknown): string | undefined {
+  const list = type as { kind?: string; element?: { kind?: string; width?: string } } | undefined
+  const width = list?.kind === 'array' && list.element?.kind === 'number' ? list.element.width : undefined
+
+  return width !== undefined && width in WIDTHS ? width : undefined
 }
 
 const SAFE = 2n ** 53n - 1n

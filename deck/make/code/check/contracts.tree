@@ -1148,6 +1148,15 @@ task obligations-in
       walk items
         take item
         obligations-in(item, guards, out, tasks)
+      # a list literal built as a list of a width (width-0011): each item that is not a literal is owed the range. A
+      # literal item is held to the width where it is written (check/literals.ts)
+      fork test, tasks/widths
+        hold
+          walk items
+            take item
+            fork test, not(is-integer-literal(item))
+              hold
+                element-owed(node, item, guards, out)
     case map
       walk entries
         take entry

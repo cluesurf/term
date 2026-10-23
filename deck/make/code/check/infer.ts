@@ -215,6 +215,9 @@ function checkProgram(
   // each top-level statement to its module, so a type error points at the real source rather than the entry.
   let currentFile = file
 
+  // the element type the next list literal takes, set by `inferWanted` and taken by the `array` case
+  let wantedElement: Type | undefined
+
   // the unification substitution, the atomic core of inference (code/check/substitution.ts). The local aliases keep
   // the rest of this pass reading naturally (`fresh()`, `resolve(t)`, `unify(a, b)`); the state and algorithms live in
   // the reusable component, the first extracted from the modular checker.
@@ -1097,7 +1100,11 @@ function checkProgram(
       }
 
       case 'array': {
-        const element = fresh()
+        // a list literal declared or wanted as a list of a width takes that element (`inferWanted`); taken here, before
+        // the items are inferred, so a list nested in an item does not take it too
+        const hinted = wantedElement
+        wantedElement = undefined
+        const element = hinted ?? fresh()
 
         for (const item of node.items) {
           expect(
@@ -1701,10 +1708,6 @@ function checkProgram(
             functions.has(method) &&
             !!ownTaskFiles.get(method)?.has(currentFile)
 
-          if (process.env.S2_TRACE && mangled && functions.has(mangled) && ownTask && methodFiles.get(mangled) !== currentFile) {
-            process.stderr.write(`S2-OWN ${currentFile} ${method} not ${mangled}\n`)
-          }
-
           if (
             mangled &&
             functions.has(mangled) &&
@@ -2175,17 +2178,19 @@ function checkProgram(
   ): void {
     switch (node.form) {
       case 'let': {
-        const initType = inferExpression(node.init, env)
+        // the annotation is a MILLED type and has to be seeded like any other before it can be compared: an
+        // unrecognized name becomes a fresh variable rather than a named type that unifies with nothing. Without
+        // this, `host x, text <...>` reports `expected text, found string`, because the mill records the annotation
+        // as the named type `text` while a literal infers as the string primitive. Seeded before the initializer is
+        // inferred, so a list literal declared a list of a width is built at it (`inferWanted`)
+        const annotated = node.type ? seedType(node.type, new Map()) : undefined
+        const initType = inferWanted(node.init, annotated, env)
 
         // an explicit annotation (`host el, like element / read x`) types the binding: check the initializer against it
         // (gradual `unknown` from an opaque field unifies freely) and bind the declared type so the value can be re-typed
         // to a concrete form for receiver dispatch. Otherwise infer the binding's type from its initializer.
         if (node.type) {
-          // the annotation is a MILLED type and has to be seeded like any other before it can be compared: an
-          // unrecognized name becomes a fresh variable rather than a named type that unifies with nothing. Without
-          // this, `host x, text <...>` reports `expected text, found string`, because the mill records the annotation
-          // as the named type `text` while a literal infers as the string primitive.
-          const declared = seedType(node.type, new Map())
+          const declared = annotated!
 
           // an ambient declaration (`host document, name <document> / like document`) has no initializer; the mill
           // synthesizes a unit placeholder, so do not check it against the declared type. A real initializer (a
@@ -2243,7 +2248,7 @@ function checkProgram(
       case 'return':
         if (node.value) {
           expect(
-            inferExpression(node.value, env),
+            inferWanted(node.value, result, env),
             result,
             node.span,
             'return value',
@@ -3219,6 +3224,32 @@ function checkProgram(
 
     if (node.leanNames) {
       node.leanNames.unshift(false)
+    }
+  }
+
+  // A LIST LITERAL BUILT AT THE LIST OF A WIDTH IT IS WANTED AS (D12, width-0011). `save ys, like list, like u8 /
+  // make list(3, 7)` inferred its element from the items, a plain `number`, and the invariant element width refused it
+  // as `a list of number where a list of u8 is wanted`. Declared (a `let`'s annotation) or wanted (a task's result) as a
+  // list whose element is a number of a width, the literal takes that element: its items are checked against it as
+  // scalars, a literal item outside the width is refused (check/literals.ts) and any other item is owed the range
+  // (check/contracts.tree). Any other wanted type changes nothing.
+  function inferWanted(node: Expression, wanted: Type | undefined, env: Env): Type {
+    if (node.form === 'array' && wanted) {
+      const list = resolve(wanted)
+
+      if (list.kind === 'array') {
+        const element = resolve(list.element)
+
+        if (element.kind === 'number' && element.width) {
+          wantedElement = element
+        }
+      }
+    }
+
+    try {
+      return inferExpression(node, env)
+    } finally {
+      wantedElement = undefined
     }
   }
 

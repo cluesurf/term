@@ -34,6 +34,7 @@ import {
   runtimeBound,
 } from '@term/make/code/check/overload'
 import { extendForms } from '@term/make/code/check/extend'
+import { frameText } from '@term/make/code/compile/frames'
 import { bindFormsByImport } from '@term/make/code/check/scope'
 import { fillMaskDefaults } from '@term/make/code/check/mask-defaults'
 import {
@@ -175,7 +176,7 @@ function stampSites(program: Program, deckOf?: (file: string) => { name: string;
     const one = node as { form?: string; site?: string; name?: string; span?: Span }
 
     if ((one.form === 'call' || one.form === 'throw') && one.site === undefined && one.span) {
-      one.site = `${task} ${file}:${one.span.start.line + 1}`
+      one.site = frameText(task, file, one.span.start.line + 1)
     }
 
     for (const [key, value] of Object.entries(node)) {

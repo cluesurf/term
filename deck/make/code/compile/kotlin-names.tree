@@ -585,7 +585,7 @@ task kotlin-inspect-of
       back <__inspect{kotlin-pascal(kind/key)}({value})>
     # a caught exception: its form and its note, and its flow
     case raised
-      back <(({value}).form + "(note " + showText(({value}).note) + ", flow list())")>
+      back <(({value}).form + "(note " + showText(({value}).note) + ", flow list(" + ({value}).flow.joinToString(", ") \{ showText(it) \} + "))")>
     case opaque
       back <"opaque({kind/name})">
 

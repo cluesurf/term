@@ -118,12 +118,10 @@ export function buildOn({ backend, program, resolve, dir, name, file }: Program)
 
   if (backend === 'typescript') {
     const prelude = nativePrelude(result.program, env, readRuntime, result.typescript)
-    // `run` may be asynchronous (a terminal app's loop yields to the event loop), so its answer is awaited either way. A
-    // raise nothing caught is printed by the exception prelude's `__termUnhandled`, as the native mains print it
-    writeFileSync(
-      `${stem}.ts`,
-      `${prelude}\n${result.typescript}\nPromise.resolve().then(() => run()).then(text => process.stdout.write(text), (raised: unknown) => { if (typeof __termUnhandled === 'function') __termUnhandled(raised); throw raised })\n`,
-    )
+    // the main `term make --emit node --build` writes (compile/main-entry.tree): `run` awaited either way (a terminal
+    // app's loop yields to the event loop), a raise nothing caught printed by the exception prelude's `__termUnhandled`
+    // as the native mains print it, and a stall stopped with the defect as on the native backends
+    writeFileSync(`${stem}.ts`, `${prelude}\n${result.typescript}\n${nativeMain('node', result.typescript)}\n`)
 
     // node with tsx's loader, never `npx`: npx draws a progress spinner whenever its output is a terminal, and a
     // program run in a pseudo-terminal then shows a stray braille glyph in its last row

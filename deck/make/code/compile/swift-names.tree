@@ -849,7 +849,7 @@ task swift-inspect-of
       back <__inspect{pascal(kind/key)}({value})>
     # a caught exception: its form and its note, and its flow
     case raised
-      back <([({value}).form, "(note ", showText(value: ({value}).note), ", flow list())"].joined())>
+      back <([({value}).form, "(note ", showText(value: ({value}).note), ", flow list(", ({value}).flow.map \{ showText(value: $0) \}.joined(separator: ", "), "))"].joined())>
     case opaque
       back <"opaque({kind/name})">
 

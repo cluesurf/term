@@ -1,0 +1,148 @@
+load @term/base/debug
+  find inspect
+
+load @term/base/exception
+  find absence
+
+# a form raise, three tasks below the guard that catches it
+task deep-c
+  take key, like text
+  like text
+  halt absence
+    bind thing, read key
+
+task deep-b
+  take key, like text
+  like text
+  send back
+    call deep-c
+      read key
+
+task deep-a
+  take key, like text
+  like text
+  send back
+    call deep-b
+      read key
+
+# a text raised: `failure`, with a flow like any other raise
+task say
+  take key, like text
+  like text
+  halt <no key {key}>
+
+# a raise in a handler: its own frame, then the call it passes out through
+task again
+  take key, like text
+  like text
+  fork
+    mark unsafe
+    send back
+      call deep-c
+        read key
+  halt take
+    take problem
+    halt absence
+      bind thing, text <again>
+
+# a closure's sites are named by the task it is written in
+task through
+  take key, like text
+  like text
+  save each
+    task inner
+      take k, like text
+      like text
+      fork
+        mark unsafe
+        send back
+          call deep-c
+            read k
+      halt take
+        take problem
+        send back
+          call inspect
+            read problem
+  send back
+    call each
+      read key
+
+# a recursion 100 deep: the flow keeps the innermost 64 frames
+task dive
+  take n, like number
+  like number
+  fork test
+    hook test
+      call is-equal
+        read n
+        code 0
+    hook hold
+      halt absence
+        bind thing, text <bottom>
+  send back
+    call add
+      call dive
+        call subtract
+          read n
+          code 1
+      code 1
+
+# a task that cannot raise adds no frame, beside one that can
+task calm
+  take key, like text
+  like text
+  send back, text <{key}!>
+
+task mixed
+  take key, like text
+  like text
+  save first
+    call calm
+      read key
+  send back
+    call deep-c
+      read first
+
+task run
+  like text
+  save out, <>
+  fork
+    mark unsafe
+    call deep-a
+      text <a>
+  halt take
+    take problem
+    save out, <{out}{inspect(problem)}\n>
+  fork
+    mark unsafe
+    call say
+      text <b>
+  halt take
+    take problem
+    save out, <{out}{inspect(problem)}\n>
+  fork
+    mark unsafe
+    call again
+      text <c>
+  halt take
+    take problem
+    save out, <{out}{inspect(problem)}\n>
+  save closed
+    call through
+      text <d>
+  save out, <{out}{closed}\n>
+  fork
+    mark unsafe
+    call dive
+      code 100
+  halt take
+    take problem
+    save out, <{out}{inspect(problem)}\n>
+  fork
+    mark unsafe
+    call mixed
+      text <e>
+  halt take
+    take problem
+    save out, <{out}{inspect(problem)}\n>
+  send back, read out

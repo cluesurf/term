@@ -369,8 +369,20 @@ const SWIFT_HELPERS = {
   ].join('\n'),
   // the one exception value of a Term program on this backend (note/project/term/hive/11-native-exceptions.md)
   exception: [
-    'struct TermException: Error { let host: String; let form: String; let note: String; let code: String; let time: Int; let link: Any?; let base: Any? }',
+    // `flow`: the Term frames the raise passes (term/hive decision 001), the raise's own first, then each call it
+    // leaves through, appended by `termCall` on the error path alone. A frame text holds several a line apart where a
+    // task was inlined into its caller; past 64 a frame adds nothing
+    'struct TermException: Error { let host: String; let form: String; let note: String; let code: String; let time: Int; let link: Any?; let base: Any?; var flow: [String] = [] }',
+    'extension TermException { func at(_ site: String) -> TermException { var raised = self; for frame in site.split(separator: "\\n") { if raised.flow.count >= 64 { break }; raised.flow.append(String(frame)) }; return raised } }',
     'func termException(_ thrown: Any) -> TermException { if let e = thrown as? TermException { return e }; return TermException(host: "", form: "failure", note: "\\(thrown)", code: "", time: 0, link: nil, base: thrown) }',
+    // a call that passes a raise out, its frame added as the raise leaves through it; `termEnd` where nothing around
+    // the call can carry a raise (`try!` before), which ends the program as a raise nothing caught
+    '@inline(__always) func termCall<T>(_ site: String, _ body: () throws -> T) throws -> T { do { return try body() } catch let raised as TermException { throw raised.at(site) } }',
+    '@inline(__always) func termCallAsync<T>(_ site: String, _ body: () async throws -> T) async throws -> T { do { return try await body() } catch let raised as TermException { throw raised.at(site) } }',
+    'func termEnd<T>(_ site: String, _ body: () throws -> T) -> T { do { return try body() } catch { termUnhandled(termException(error).at(site)) } }',
+    'func termEndAsync<T>(_ site: String, _ body: () async throws -> T) async -> T { do { return try await body() } catch { termUnhandled(termException(error).at(site)) } }',
+    // a raise nothing caught, as every backend prints it: its form and note, a frame a line, on standard error, exit 1
+    'func termUnhandled(_ thrown: Any) -> Never { let raised = termException(thrown); var text = raised.form + ": " + raised.note + "\\n"; for frame in raised.flow { text += "  at " + frame + "\\n" }; FileHandle.standardError.write(Data(text.utf8)); exit(1) }',
   ].join('\n'),
   // the reference wrapper for maps (a class so mutation persists across a struct copy). `data` is insertion-ordered
   // (SeedOrdered), so a walk over a map's keys visits them in the order they were first set, as TypeScript's Map and

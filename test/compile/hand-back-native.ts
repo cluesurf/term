@@ -7,9 +7,9 @@
 //   http     a ticked clock job takes four 40 ms beats while an HTTP request waits 400 ms on a local server: its last
 //            beat lands before the response, not after it
 //   stall    a job that waits on a channel nothing sends to, after a file read that came back: the read's hand-back
-//            leaves the count, and the wait still stops with the defect. Rust, Kotlin and Swift (whose loop is
-//            native/swift/runtime/loop.swift, term-stdlib-parity-0014). Not node yet: its event loop ends the process
-//            when nothing is pending, silently and with exit 0
+//            leaves the count, and the wait still stops with the defect. On every backend: Swift's loop is
+//            native/swift/runtime/loop.swift (term-stdlib-parity-0014), and node's main (compile/main-entry.tree)
+//            stops when its event loop empties with the entry unsettled (term-stdlib-parity-0016)
 //
 // Every run has a 20 s limit, so a hang is a failure and never a stuck suite.
 // Run: npx tsx test/compile/hand-back-native.ts   (HAND_BACK_ONLY=typescript, rust, swift or kotlin runs one)
@@ -213,14 +213,12 @@ try {
       o => o.status === 0 && o.output === 'pong during',
     )
 
-    if (backend === 'rust' || backend === 'kotlin' || backend === 'swift') {
-      report(
-        backend,
-        'a wait on a job that never ends stops with the defect, after a hand-back came back (stall)',
-        runBuilt(backend, 'stall', stallProgram(plain)),
-        o => o.status !== 0 && o.error.includes(DEFECT),
-      )
-    }
+    report(
+      backend,
+      'a wait on a job that never ends stops with the defect, after a hand-back came back (stall)',
+      runBuilt(backend, 'stall', stallProgram(plain)),
+      o => o.status !== 0 && o.error.includes(DEFECT),
+    )
   }
 } finally {
   server.stop()

@@ -116,6 +116,10 @@ load ../check/arm
 load ../term/quote
   find json-quote
 
+load ./frames
+  find frames-of
+  find raise-frames
+
 # ---- what the face hands in ----
 
 # a form held by node class (swift.ts `nodeClasses`): its payload case, the class's name, and the case's fields
@@ -2133,12 +2137,36 @@ task emit-call
           mark-need(st, <spawn>)
           back <__termSpawn \{ {raise}await {callee-text}({joined}) \}>
       save call-text, <{callee-text}({joined})>
+      save throws, false
       fork test, and(is-unequal(callee-name, <>), facts/throwing/has(callee-name))
         hold
+          save throws, true
           save call-text, <({try-word(st)} {callee-text}({joined}))>
       fork test, async-value-call(callee, callee-name, st)
         hold
+          save throws, true
           save call-text, <({try-word(st)} {callee-text}({joined}))>
+      # A CALL THAT PASSES A RAISE OUT gains its Term frame as the raise leaves through it (term/hive decision 001):
+      # `termCall` adds it on the error path, and `termEnd`, where nothing around the call carries a raise, adds it and
+      # ends the program as a raise nothing caught
+      save call-site, frames-of(node)
+      fork test, and(throws, is-unequal(call-site, <>))
+        hold
+          mark-need(st, <exception>)
+          save waits, or(awaited, facts/async-tasks/has(callee-name))
+          save inner, <try {callee-text}({joined})>
+          save wrapper, <termCall>
+          save outer, <{try-word(st)} >
+          fork test, is-equal(try-word(st), <try!>)
+            hold
+              save wrapper, <termEnd>
+              save outer, <>
+          fork test, waits
+            hold
+              save inner, <try await {callee-text}({joined})>
+              save wrapper, <{wrapper}Async>
+              save outer, <{outer}await >
+          save call-text, <({outer}{wrapper}({swift-quote(call-site)}) \{ {inner} \})>
       fork test, fresh
         hold
           back <SeedList({call-text})>
@@ -3657,16 +3685,22 @@ task emit-throw
           save exception-record, facts/exception-forms/has(record-name)
         miss
           save nothing, 0
+      # the raise's own Term frame first (term/hive decision 001); a raised carrier keeps the flow it has
+      save at, <>
+      save raise-site, raise-frames(node)
+      fork test, is-unequal(raise-site, <>)
+        hold
+          save at, <.at({swift-quote(raise-site)})>
       fork test, and(is-text-value, not(facts/has-hive-tell))
         hold
-          back <throw TermException(host: "", form: "failure", note: {emit-expr(thrown, field-scope, st, facts)}, code: "", time: 0, link: nil, base: nil)>
+          back <throw TermException(host: "", form: "failure", note: {emit-expr(thrown, field-scope, st, facts)}, code: "", time: 0, link: nil, base: nil){at}>
       fork test, is-text-value
         hold
-          back <throw (\{ () -\> TermException in let told = TermException(host: "", form: "failure", note: {emit-expr(thrown, field-scope, st, facts)}, code: "", time: 0, link: nil, base: nil){tell-part}; return told \})()>
+          back <throw (\{ () -\> TermException in let told = TermException(host: "", form: "failure", note: {emit-expr(thrown, field-scope, st, facts)}, code: "", time: 0, link: nil, base: nil){tell-part}; return told \})(){at}>
       fork test, exception-record
         hold
-          back <throw try (\{ () throws -\> TermException in let raised = {emit-expr(thrown, field-scope, st, facts)}; let told = TermException(host: raised.host, form: raised.form, note: raised.note, code: raised.code, time: raised.time, link: raised.link, base: raised){tell-part}; return told \})()>
-      back <throw termException({emit-expr(thrown, field-scope, st, facts)})>
+          back <throw try (\{ () throws -\> TermException in let raised = {emit-expr(thrown, field-scope, st, facts)}; let told = TermException(host: raised.host, form: raised.form, note: raised.note, code: raised.code, time: raised.time, link: raised.link, base: raised){tell-part}; return told \})(){at}>
+      back <throw termException({emit-expr(thrown, field-scope, st, facts)}){at}>
     miss
       back <>
 

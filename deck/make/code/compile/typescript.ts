@@ -31,6 +31,7 @@ import * as tsEmit from '@term/make/code/compile/ts-emit'
 import * as tsPreludes from '@term/make/code/compile/ts-preludes'
 import * as tsAssemble from '@term/make/code/compile/ts-assemble'
 import * as shapes from '@term/make/code/compile/backend-shapes'
+import { raiseSetsOf } from '@term/make/code/check/effects'
 
 // The TypeScript emitter is Term in four parts (self-hosting, 2026-10-06): compile/ts-names.tree, the helpers that read
 // no emitter state (the names, a type's spelling and empty value, one primary, the identity cases, the fill spec),
@@ -124,6 +125,11 @@ let tsEqualUsed = false
 let tsTextUsed = false
 // set when a list read, write, pop or slice goes through the checked list helpers (note/project/term/stdlib/semantics.md)
 let tsListUsed = false
+// set when the emitter wrote a raise or a frame (term/hive decision 001): the module then carries the exception class
+// and its frame helpers (`__termAt`, `__termRaised`, `__termTop`, `__termUnhandled`)
+let tsFlowUsed = false
+// the tasks whose raise set is not empty: a call to one passes a raise out, and so gains a frame
+let tsRaising = new Set<string>()
 // the `note shared` forms: references by design, compared and keyed by identity as on the other backends
 let tsSharedForms = new Set<string>()
 
@@ -252,6 +258,7 @@ function makeEmitter(
     tagByVariant: tsTagByVariant,
     functionParams: tsFunctionParams,
     exceptions: flags(tsExceptions),
+    raising: flags(tsRaising),
     dockNames: flags(tsDockNames),
     opaque: tsOpaqueTypes,
     binds,
@@ -295,6 +302,7 @@ function makeEmitter(
     tsEqualUsed ||= st.equalUsed
     tsTextUsed ||= st.textUsed
     tsListUsed ||= st.listUsed
+    tsFlowUsed ||= st.flowUsed
 
     return value
   }
@@ -381,6 +389,12 @@ export function emitTypeScript(
   tsEqualUsed = false
   tsTextUsed = false
   tsListUsed = false
+  tsFlowUsed = false
+  // over the whole program a per-module emit is handed, else this one: a separately built unit's stubs carry the sets
+  // their own units closed over (`stubRaises`), so a call gains its frame alike in a separate build and a merged one
+  tsRaising = new Set(
+    [...raiseSetsOf(options?.context ?? program, [...tsExceptions]).raises].flatMap(([name, raised]) => (raised.length > 0 ? [name] : [])),
+  )
   tsFieldless = new Map()
   tsIdentity = new Set(tables.identity)
   tsGuards = new Map()
@@ -478,6 +492,7 @@ export function emitTypeScript(
       equalUsed: tsEqualUsed,
       textUsed: tsTextUsed,
       listUsed: tsListUsed,
+      flowUsed: tsFlowUsed,
       fieldless: tsFieldless,
       guards: tsGuards,
     }),

@@ -583,6 +583,116 @@ task run
   { total: 1, proven: 0 },
 )
 
+// width-0011: a `make list` declared or returned as a list of a width is built at that width. Its literal items are held
+// to the width where they are written, and every other item owes the range, as a push does
+expect(
+  'on: a make list of literals declared a list of u8 builds and owes nothing',
+  `task run
+  like number
+  save ys
+    like list
+      like u8
+    make list(3, 7)
+  back ys/length
+`,
+  { total: 0, proven: 0 },
+)
+
+expect(
+  'on: a computed item of a make list declared a list of u8 owes the range, not proven',
+  `task run
+  take v, like number
+  like number
+  save ys
+    like list
+      like u8
+    make list(v, 7)
+  back ys/length
+`,
+  { total: 1, proven: 0 },
+)
+
+expect(
+  'on: a u8 item of a make list declared a list of u8 owes the range, proven',
+  `task run
+  take v, like u8
+  like number
+  save ys
+    like list
+      like u8
+    make list(v, 7)
+  back ys/length
+`,
+  { total: 1, proven: 1 },
+)
+
+expect(
+  'on: a make list returned as a list of u8 builds at u8',
+  `task run
+  take v, like number
+  like list, like u8
+  save start, 0
+  back make list(v, 7)
+`,
+  { total: 1, proven: 0 },
+)
+
+expectRefused(
+  'on: a literal item outside u8 in a make list declared a list of u8 is refused',
+  `task run
+  like number
+  save ys
+    like list
+      like u8
+    make list(3, 300)
+  back ys/length
+`,
+  true,
+)
+
+expectRefused(
+  'off: the same literal item is refused',
+  `task run
+  like number
+  save ys
+    like list
+      like u8
+    make list(3, 300)
+  back ys/length
+`,
+  false,
+)
+
+{
+  // a list of number that is not a literal is still refused as a list of u8: only the literal is built at the width
+  setWidthRanges(true)
+  const result = compile(
+    {
+      file: 'w.tree',
+      text: `task run
+  like number
+  save xs, make list(3, 7)
+  save ys
+    like list
+      like u8
+    read xs
+  back ys/length
+`,
+    },
+    { resolve: withNativeEnv('node', stdlib) },
+  )
+  setWidthRanges(false)
+  const refused = !result.ok && result.diagnostics.some(d => /a list of number where a list of u8 is wanted/.test(d.message))
+
+  if (refused) {
+    pass++
+    console.log('ok    on: a list of number held in a variable is still refused as a list of u8')
+  } else {
+    fail++
+    console.log(`FAIL  on: a list of number held in a variable is still refused as a list of u8  (ok=${result.ok})`)
+  }
+}
+
 console.log(`\nwidth-range: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

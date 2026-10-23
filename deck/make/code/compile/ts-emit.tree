@@ -110,6 +110,12 @@ load ../ir/facts/guards
 load ../term/quote
   find json-quote
 
+load ./frames
+  find frames-of
+  find raise-frames
+  find passes-raise
+  find holds-passing-call
+
 # ---- what the face hands in ----
 
 # one bound a loop's guard checks (ir/facts/bounds.ts `BoundCheck`): `base + offset` against 0 or the list's length
@@ -166,6 +172,8 @@ form emit-facts
   link tag-by-variant, like hash, like text, like text
   link function-params, like hash, like text, like list, like function-param
   link exceptions, like hash, like text, like boolean
+  # the tasks whose raise set is not empty, whose calls gain a Term frame (compile/frames.tree)
+  link raising, like hash, like text, like boolean
   link dock-names, like hash, like text, like boolean
   link opaque, like hash, like text, like text
   link binds, like hash, like text, like statement
@@ -281,6 +289,10 @@ form emit-state
   link equal-used, like boolean
   link text-used, like boolean
   link list-used, like boolean
+  # a raise or a frame was written: the module carries the exception class and its frame helpers
+  link flow-used, like boolean
+  # the task or closure being written keeps `__site`, the frame of the call it is making (term/hive decision 001)
+  link site-local, like boolean
   # the field-less variants' constants and the identity guards a match called, each in the order first met
   link fieldless, like hash, like text, like text
   link guards, like hash, like text, like text
@@ -327,6 +339,8 @@ task new-emit-state
       bind equal-used, false
       bind text-used, false
       bind list-used, false
+      bind flow-used, false
+      bind site-local, false
       bind fieldless, fieldless
       bind guards, guards
       bind arm-cases, text-texts()
@@ -1485,6 +1499,17 @@ task emit-expression
       fork test, read(async)
         hold
           save arrow, <async {arrow}>
+      # a closure making a call that passes a raise out keeps its own `__site`, as a task does; any other writes none,
+      # and so never the `__site` of the task it is written in
+      save outer-local, st/site-local
+      save framed, holds-passing-call(closure-body, facts/raising)
+      save st/site-local, framed
+      fork test, framed
+        hold
+          save st/flow-used, true
+          save block, emit-block(closure-body, 0, st, facts)
+          save st/site-local, outer-local
+          back <{arrow} =\> \{ let __site = ""; try {block} catch (__raised) \{ __termFrame(__raised, __site); throw __raised \} \}>
       # a single trailing `return X` becomes a concise arrow
       fork test, is-equal(closure-body/length, 1)
         hold
@@ -1495,12 +1520,16 @@ task emit-expression
               sift return-value
                 case some
                   link returned
-                  back <{arrow} =\> ({emit-expression(returned, 0, st, facts)})>
+                  save concise, <{arrow} =\> ({emit-expression(returned, 0, st, facts)})>
+                  save st/site-local, outer-local
+                  back concise
                 case none
                   save nothing, 0
             miss
               save nothing, 0
-      back <{arrow} =\> {emit-block(closure-body, 0, st, facts)}>
+      save block, <{arrow} =\> {emit-block(closure-body, 0, st, facts)}>
+      save st/site-local, outer-local
+      back block
     case unary
       link unary-op
       link operand
@@ -1972,7 +2001,17 @@ task emit-call
                     miss
                       push(rendered, empty)
                       save at, add(at, 1)
-      back <{emit-expression(callee, 0, st, facts)}({join-texts(rendered, <, >)}){bang}>
+      save called, <{emit-expression(callee, 0, st, facts)}({join-texts(rendered, <, >)}){bang}>
+      # A CALL THAT PASSES A RAISE OUT names its frame first (term/hive decision 001): one store in the task's `__site`,
+      # which the task's catch appends on the way out. Outside every task the call is wrapped once
+      fork test, passes-raise(node, facts/raising)
+        hold
+          save st/flow-used, true
+          fork test, st/site-local
+            hold
+              back <(__site = {json-quote(frames-of(node))}, {called})>
+          back <__termTop({json-quote(frames-of(node))}, () =\> {called})>
+      back called
     miss
       back <>
 
@@ -2471,19 +2510,28 @@ task emit-statement
       back emit-return(node, depth, st, facts)
     case throw
       link thrown
+      # every raise starts its flow with its own frame, a text raised as a `failure` carrier like a form (term/hive
+      # decision 001), and a raised value keeps its flow and gains the frame. In a task keeping `__site`, the raise
+      # clears it once its carrier is built (a trailing argument, evaluated after the carrier, whose own calls set it),
+      # so the task's catch adds no call it is not passing out through
+      save st/flow-used, true
+      save at, json-quote(raise-frames(node))
+      fork test, st/site-local
+        hold
+          save at, <{at}, (__site = "")>
       sift thrown
         case record
           link record-name
           fork test, facts/exceptions/has(record-name)
             hold
-              back <throw new TermException({emit-expression(thrown, 0, st, facts)})>
+              back <throw __termRaised(new TermException({emit-expression(thrown, 0, st, facts)}), {at})>
         case string
-          back <throw ((note: string) =\> Object.assign(new Error(note), \{ name: "TermException", host: "", form: "failure", note, code: "", time: Date.now(), link: \{\} \}))({emit-expression(thrown, 0, st, facts)})>
+          back <throw __termRaised(new TermException(\{ host: "", form: "failure", note: {emit-expression(thrown, 0, st, facts)}, code: "", time: Date.now(), link: \{\} \}), {at})>
         case template
-          back <throw ((note: string) =\> Object.assign(new Error(note), \{ name: "TermException", host: "", form: "failure", note, code: "", time: Date.now(), link: \{\} \}))({emit-expression(thrown, 0, st, facts)})>
+          back <throw __termRaised(new TermException(\{ host: "", form: "failure", note: {emit-expression(thrown, 0, st, facts)}, code: "", time: Date.now(), link: \{\} \}), {at})>
         miss
           save nothing, 0
-      back <throw {emit-expression(thrown, 0, st, facts)}>
+      back <throw __termRaised({emit-expression(thrown, 0, st, facts)}, {at})>
     case while
       back emit-while(node, depth, st, facts)
     case guard
@@ -2498,7 +2546,12 @@ task emit-statement
         case some
           link clause
           save caught, to-camel(clause/name)
-          save handler, < catch ({caught}: any) \{ if ({caught} instanceof __TermStop) throw {caught};{substring(emit-block(clause/body, depth, st, facts), 1)}>
+          # the guarded call the raise came out through is the last frame it gains
+          save appended, <>
+          fork test, st/site-local
+            hold
+              save appended, < __termFrame({caught}, __site);>
+          save handler, < catch ({caught}: any) \{ if ({caught} instanceof __TermStop) throw {caught};{appended}{substring(emit-block(clause/body, depth, st, facts), 1)}>
         case none
           save nothing, 0
       back <try {emit-block(guard-body, depth, st, facts)}{handler}>
@@ -3879,6 +3932,11 @@ task emit-function
             case none
               save nothing, 0
       save body, <>
+      # A TASK MAKING A CALL THAT PASSES A RAISE OUT keeps `__site`, the frame of the call it is making, and appends it
+      # to whatever raise leaves its body (term/hive decision 001): a store per such call, and nothing else on the way
+      save outer-local, st/site-local
+      save framed, and(not(stub), holds-passing-call(fn-body, facts/raising))
+      save st/site-local, framed
       fork test, stub
         hold
           save body, <\{\n{pad(add(depth, 1))}throw new Error({json-quote(<stub: {fn-name}>)})\n{pad(depth)}\}>
@@ -3888,6 +3946,11 @@ task emit-function
               save body, <\{\n{declared}{holders}{pad(add(depth, 1))}while (true) {after-open(emit-block(fn-body, add(depth, 1), st, facts), rebind)}\n{pad(depth)}\}>
             miss
               save body, after-open(emit-block(fn-body, depth, st, facts), declared)
+      fork test, framed
+        hold
+          save st/flow-used, true
+          save body, <\{\n{pad(add(depth, 1))}let __site = ""\n{pad(add(depth, 1))}try {body} catch (__raised) \{ __termFrame(__raised, __site); throw __raised \}\n{pad(depth)}\}>
+      save st/site-local, outer-local
       save st/tailing, previous-tails
       save out, <{keyword} {to-camel(fn-name)}{generic-text}({join-texts(params, <, >)}): {return-type} {body}>
       save st/assigned-names, previous

@@ -262,8 +262,9 @@ task frames
     }
   }
 
-  // ---- language/naming: a task named like a compiler word is warned about ----
-  // `add` folds to `+` before names are bound, so a file's own `task add` was passed over with no message
+  // ---- language/naming: a task named like a compiler word is the one its file's calls reach ----
+  // `add` folded to `+` before names were bound, so a file's own `task add` was passed over (warned as `builtin-shadow`
+  // from 2026-10-04) and `add(2, 3)` was 5. A file's own task wins (term-module-scope-0001): it is 6
   {
     const built = build(`task add
   take a, like number
@@ -281,11 +282,48 @@ task five
       code 2
       code 3
 `)
+    // another file is read alone and still folds its `add(...)`, so a task another file could import is warned about
     ok(
-      'a task named like a compiler word builds, and is warned as `builtin-shadow`',
-      built.ok && built.warnings.some(w => w.startsWith('builtin-shadow: a task named "add" is never called by that name')),
+      'a task named like a compiler word builds, warned that only its own file reaches it by name',
+      built.ok && built.warnings.some(w => w.startsWith('builtin-shadow: a task named "add" is reached by that name only in this file')),
       built.warnings.join(' | ') || built.messages,
     )
+
+    if (built.ok) {
+      const mod = await load(built.typescript)
+      ok('and a call of it in its own file is that task: add(2, 3) is 6', mod.five?.() === 6, String(mod.five?.()))
+    }
+  }
+
+  // the same task `mark private`: only its own file can call it, where its calls reach it, so nothing is warned
+  {
+    const built = build(`task add
+  take a, like number
+  take b, like number
+  like number
+  mark private
+  send back
+    call multiply
+      read a
+      read b
+
+task five
+  like number
+  send back
+    call add
+      code 2
+      code 3
+`)
+    ok(
+      'a private task named like a compiler word builds with no `builtin-shadow` warning',
+      built.ok && !built.warnings.some(w => w.startsWith('builtin-shadow')),
+      built.warnings.join(' | ') || built.messages,
+    )
+
+    if (built.ok) {
+      const mod = await load(built.typescript)
+      ok('and add(2, 3) is 6', mod.five?.() === 6, String(mod.five?.()))
+    }
   }
 
   // ---- applications/web/routes: braces in a component's text ----

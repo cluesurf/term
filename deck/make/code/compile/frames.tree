@@ -15,10 +15,13 @@ load @term/base/list
 load @term/base/text
   find index-of
   find substring
+  find ends-with
+  find char-count
 
 load ./node
   find expression
   find statement
+  find binding
 
 load ./node-walk
   find expressions-in
@@ -118,6 +121,79 @@ task frames-of
       back site
     miss
       back <>
+
+# the frame a raise carries first, empty for any other statement
+task raise-frames
+  take node, like statement
+  like text
+
+  sift node
+    case throw
+      back site
+    miss
+      back <>
+
+# WHETHER A CALL PASSES A RAISE OUT to the code that made it, and so gains its frame (decision 001, rule 7): a call of a
+# task whose raise set is not empty (`raising`, by name, as each backend reads check/effects' raise sets), or of a task
+# value, whose raises nobody knows. A call of a task that cannot raise, a native's, one started and not waited for
+# (`tick`) and one with no site (a call the build made, with no source) gain nothing. A task's unchecked or reusing copy
+# (`<task>-fast`, `<task>-reuse`) raises what the task does
+task passes-raise
+  take node, like expression
+  take raising, like hash, like text, like boolean
+  like boolean
+
+  sift node
+    case call
+      fork test, or(is-equal(site, <>), background)
+        hold
+          back false
+      sift callee
+        case variable
+          sift binding
+            case some
+              link bound
+              sift bound
+                case parameter
+                  back true
+                case local
+                  back true
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+          back raising/has(task-of-copy(name))
+        miss
+          back false
+    miss
+      back false
+
+# a task's own name, for one of its copies
+task task-of-copy
+  take name, like text
+  like text
+  mark private
+
+  fork test, ends-with(name, <-fast>)
+    hold
+      back substring(name, 0, subtract(char-count(name), 5))
+  fork test, ends-with(name, <-reuse>)
+    hold
+      back substring(name, 0, subtract(char-count(name), 6))
+  back name
+
+# whether a body holds a call that passes a raise out: on TypeScript its task keeps the running site
+task holds-passing-call
+  take body, like list, like statement
+  take raising, like hash, like text, like boolean
+  like boolean
+
+  walk expressions-in(body)
+    take one
+    fork test, passes-raise(one, raising)
+      hold
+        back true
+  back false
 
 # the most frames a flow holds: past it a site adds nothing, so a deep recursion raising for control flow pays a length
 # check per frame and not an append

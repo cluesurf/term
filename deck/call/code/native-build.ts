@@ -75,7 +75,7 @@ export function buildNative(input: { source: string; target: EmitTarget; folder:
 
   if (input.target === 'node') {
     const file = `${stem}.ts`
-    writeFileSync(file, `${input.source}\nPromise.resolve(${entry}()).then(answer => { if (answer !== undefined) process.stdout.write(String(answer)) }, error => { console.error(error); process.exit(1) })\n`) // output: generated
+    writeFileSync(file, `${input.source}\n${nativeMain('node', input.source, entry)}\n`) // output: generated
     const artifact = `${stem}.mjs`
 
     try {

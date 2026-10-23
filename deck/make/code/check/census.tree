@@ -441,7 +441,7 @@ task references-into
           add-reference(found, <value>, var-name)
         case record
           link record-name
-          add-reference(found, <type>, record-name)
+          add-reference(found, <make>, record-name)
         miss
           save nothing, 0
     case statement-handle
@@ -575,25 +575,77 @@ task reaches-text-form
   like boolean
   mark private
 
-  fork test, text-files/has(file)
-    hold
-      back true
+  save reach, file-reach(scopes, file)
+  walk reach/files
+    take one
+    fork test, text-files/has(one)
+      hold
+        back true
+  back false
+
+# the file itself and every file any of its finds reaches, with their `bear` chains
+task file-reach
+  take scopes, like list, like file-scope
+  take file, like text
+  like file-set
+  mark private
+
+  save reach, new-file-set()
+  push(reach/files, file)
   sift scope-of(scopes, file)
     case some
       link own
-      save reach, new-file-set()
       walk own/finds
         take entry
         walk entry/targets
           take target
           gather-exported(scopes, target, reach)
-      walk reach/files
-        take one
-        fork test, text-files/has(one)
-          hold
-            back true
     case none
       save nothing, 0
+  back reach
+
+# case name -> the files defining a form with a case of that name: `make <case>` builds a variant of its form, and
+# names no form of its own
+task case-files
+  take program, like list, like statement
+  like hash, like text, like list, like text
+  mark private
+
+  save out, text-lists()
+  walk program
+    take one
+    sift one
+      case record-type
+        save own-file, file-of(one)
+        walk variants
+          take variant
+          save variant-name, variant/name
+          save files, make list
+          fork test, out/has(variant-name)
+            hold
+              save files, out/get(variant-name)
+          fork test, not(has-text(files, own-file))
+            hold
+              push(files, own-file)
+          save out/{variant-name}, files
+      miss
+        save nothing, 0
+  back out
+
+# whether a type reference names a case of a form its file reaches (own, or found)
+task reaches-case
+  take scopes, like list, like file-scope
+  take file, like text
+  take owners, like list, like text
+  like boolean
+  mark private
+
+  save reach, file-reach(scopes, file)
+  walk reach/files
+    take one
+    fork test, has-text(owners, one)
+      hold
+        back true
   back false
 
 task census-of
@@ -671,6 +723,7 @@ task census-of
   save seen, text-flags()
   save variants, variant-fields-of(program)
   save text-files, text-form-files(program)
+  save cases, case-files(program)
   # every form method's bare name
   save methods, text-flags()
   walk program
@@ -699,8 +752,14 @@ task census-of
         references-into(handle, found)
         walk found
           take ref
-          save files, definer-files(definers, ref/namespace, ref/name)
-          fork test, and(and(is-above(files/length, 0), not(has-text(files, own-file))), not(and(is-equal(ref/namespace, <value>), local/has(ref/name))))
+          # a construction (`make x`) is a type reference that may also name a case of a form the file reaches
+          save built, is-equal(ref/namespace, <make>)
+          save space, ref/namespace
+          fork test, built
+            hold
+              save space, <type>
+          save files, definer-files(definers, space, ref/name)
+          fork test, and(and(is-above(files/length, 0), not(has-text(files, own-file))), not(and(is-equal(space, <value>), local/has(ref/name))))
             hold
               save reach, new-file-set()
               sift scope-of(scopes, own-file)
@@ -723,24 +782,28 @@ task census-of
                   hold
                     save reached, true
               # a text form's generated task is reached through its form (decision 001 rule 1b)
-              fork test, and(not(reached), is-equal(ref/namespace, <value>))
+              fork test, and(not(reached), is-equal(space, <value>))
                 hold
                   fork test, or(is-equal(ref/name, <to-text>), is-equal(ref/name, <from-text>))
                     hold
                       save reached, reaches-text-form(scopes, own-file, text-files)
+              # `make <case>` of a form the file reaches builds that variant (term-module-scope-0004)
+              fork test, and(not(reached), and(built, cases/has(ref/name)))
+                hold
+                  save reached, reaches-case(scopes, own-file, cases/get(ref/name))
               fork test, not(reached)
                 hold
-                  save key, <{own-file} {ref/namespace} {ref/name}>
+                  save key, <{own-file} {space} {ref/name}>
                   fork test, not(seen/has(key))
                     hold
                       save seen/{key}, true
                       save entry
                         make unimported
-                          bind namespace, ref/namespace
+                          bind namespace, space
                           bind name, ref/name
                           bind file, own-file
                           bind definers, sort-texts(files)
-                      fork test, and(is-equal(ref/namespace, <value>), methods/has(ref/name))
+                      fork test, and(is-equal(space, <value>), methods/has(ref/name))
                         hold
                           push(shadowed, entry)
                         miss

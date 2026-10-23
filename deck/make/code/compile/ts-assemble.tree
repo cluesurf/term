@@ -103,6 +103,8 @@ form emit-flags
   link equal-used, like boolean
   link text-used, like boolean
   link list-used, like boolean
+  # a raise or a Term frame was written: the exception class and its frame helpers ride in front
+  link flow-used, like boolean
   link fieldless, like hash, like text, like text
   link guards, like hash, like text, like text
 
@@ -644,6 +646,13 @@ task assemble-type-script
       fork test, declares
         hold
           push(prelude, class-prelude)
+
+  # a raise and a frame are written through the class and its helpers, so they bring it when nothing else did
+  fork test, flags/flow-used
+    hold
+      fork test, is-equal(has-text(prelude, class-prelude), false)
+        hold
+          save prelude, with-first(prelude, class-prelude)
 
   # the form walk raises through the class, so it brings the class when nothing else did
   fork test, flags/form-walk-used

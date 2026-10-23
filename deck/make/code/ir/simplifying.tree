@@ -2815,7 +2815,8 @@ task specialized-value
           sift sent
             case some
               link value
-              back make(some, carry-frames(value, outer))
+              save framed, carry-frames(value, outer)
+              back make(some, framed)
             case none
               back make none
         miss

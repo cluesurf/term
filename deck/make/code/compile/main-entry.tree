@@ -387,6 +387,19 @@ task native-main
   take threads, like boolean
   like text
 
+  # node runs the entry on its own event loop, which ends the process when nothing is left pending. An entry still
+  # unsettled then waits on work that nothing can finish, and it stops as Rust, Swift and Kotlin do, with the defect
+  # and exit 1, never silently with exit 0 (term-stdlib-parity-0016). `beforeExit` fires exactly when the loop is
+  # empty, so it never cuts a pending timer, handle or hand-back short
+  fork test, is-equal(backend, <node>)
+    hold
+      save lines, make list
+      push(lines, <let __termSettled = false>)
+      push(lines, <process.on('beforeExit', () =\> \{ if (!__termSettled) \{ process.stderr.write('defect: the program waits on work that nothing can finish\\n'); process.exit(1) \} \})>)
+      # a raise nothing caught is printed by the exception prelude's `__termUnhandled` where the program has one (form,
+      # note, a frame a line, exit 1), as the native mains print it; anything else is node's own text
+      push(lines, <Promise.resolve().then(() =\> {entry}()).then(answer =\> \{ __termSettled = true; if (answer !== undefined) process.stdout.write(String(answer)) \}, error =\> \{ __termSettled = true; if (typeof __termUnhandled === 'function') __termUnhandled(error); console.error(error); process.exit(1) \})>)
+      back join-lines(lines)
   fork test, is-equal(backend, <rust>)
     hold
       save signature, rust-signature(emitted, entry)
@@ -421,7 +434,8 @@ task native-main
       save finished, called
       fork test, raises
         hold
-          save finished, <{called}.unwrap_or_else(|e| \{ eprintln!("\{\}", e); std::process::exit(1) \})>
+          # the raise nothing caught, its form, note and Term frames on stderr, exit 1 (term/hive decision 001)
+          save finished, <{called}.unwrap_or_else(|e| __term_unhandled(e))>
       fork test, not(threads)
         hold
           fork test, silent
@@ -482,6 +496,10 @@ task native-main
       fork test, raises
         hold
           save call, <do \{ {value} \} catch \{ FileHandle.standardError.write("\\(error)\\n".data(using: .utf8)!); exit(1) \}>
+          # the raise nothing caught, its form, note and Term frames on stderr, exit 1 (term/hive decision 001)
+          fork test, is-above(index-of(emitted, <func termUnhandled>), -1)
+            hold
+              save call, <do \{ {value} \} catch \{ termUnhandled(error) \}>
       save lines, make list
       push(lines, <var __termAnswer = "">)
       push(lines, <let __termDone = DispatchSemaphore(value: 0)>)
@@ -517,7 +535,12 @@ task native-main
   push(lines, <    val thread = Thread(null, \{ try \{ {run} \} catch (e: Throwable) \{ failure = e \} \}, "term", {entry-stack-bytes()}L)>)
   push(lines, <    thread.start()>)
   push(lines, <    thread.join()>)
-  push(lines, <    failure?.let \{ throw it \}>)
+  # the raise nothing caught, its form, note and Term frames on stderr, exit 1 (term/hive decision 001)
+  save report, <>
+  fork test, is-above(index-of(emitted, <fun termUnhandled>), -1)
+    hold
+      save report, <termUnhandled(it); >
+  push(lines, <    failure?.let \{ {report}throw it \}>)
   # Kotlin's own `print`, named whole: a task called `print` (@term/base/debug) would win over the implicit import
   push(lines, <    kotlin.io.print(answer)>)
   push(lines, <\}>)

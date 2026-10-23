@@ -1,10 +1,12 @@
-# A task named like one of the compiler's own words is passed over at every call, and said so nowhere.
+# A task named like one of the compiler's own words is reached by that name only in its own file.
 #
 # `add`, `subtract`, `is-equal`, `not` and the rest are folded to operators where they are written (`foldBuiltin` in
-# compile/mint-bridge.ts), before any name is bound, so a file's own `task add` taking `a` and `b` and multiplying them
-# builds clean and `add(2, 3)` is 5 (guides: language/naming, 2026-10-04). Whether the words stay global is a decision of
-# its own (plan: "The compiler's own words are global"); until it is made, the task that can never be reached by name is
-# warned about where it is declared.
+# compile/mint-bridge.ts), before any name is bound, EXCEPT in a file that defines a top-level task of that name: there
+# a call is that task (term-module-scope-0001, the rule module-scope-0008 keeps for methods: a file's own task wins).
+# Until then a file's own `task add` multiplying `a` and `b` was passed over and `add(2, 3)` was 5 (guides:
+# language/naming, 2026-10-04). Another file is read alone, so its `add(2, 3)` is still the operator, whatever it
+# imported: a task of such a name that another file could import (one that is not `mark private`) is warned about
+# where it is declared.
 #
 # Ported from check/builtin-shadow.ts (self-hosting, 2026-10-05).
 
@@ -66,6 +68,10 @@ task check-builtin-shadow
         fork test, or(is-method(method), is-equal(is-in-file(span, file), false))
           hold
             turn next
+        # a private task is called only in its own file, where its calls reach it
+        fork test, is-equal(private, true)
+          hold
+            turn next
         fork test, and(is-equal(is-binary-builtin(name), false), is-equal(is-unary-builtin(name), false))
           hold
             turn next
@@ -73,7 +79,7 @@ task check-builtin-shadow
           make diagnostic-input
             bind file, file
             bind span, span
-            bind message, make(some, <a task named "{name}" is never called by that name: `{name}(...)` is the compiler's own word, folded before names are bound>)
+            bind message, make(some, <a task named "{name}" is reached by that name only in this file: in another file `{name}(...)` is the compiler's own word, folded before names are bound. Mark it private, or name it with another verb>)
         save shadow, make builtin-shadow
         push(found, diagnose(shadow, input))
       miss

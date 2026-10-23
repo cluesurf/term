@@ -60,19 +60,20 @@ const run = spawnSync('node', [LINE, 'make'], {
   env: { ...process.env, NO_COLOR: '1', TERM_WORKER_HEAP_MB: HEAP_MB },
 })
 const out = `${run.stdout}${run.stderr}`
+// the report wraps long lines, so a phrase is looked for with its spaces and line breaks made one space
+const flat = out.replace(/\s+/g, ' ')
 
 ok('the build ends on its own (no signal, no timeout)', run.signal === null && run.status !== null, `signal ${run.signal}`)
 ok('the build exits non-zero', run.status !== 0 && run.status !== null, `status ${run.status}`)
 ok('the build never dies of a fatal heap (exit 134)', run.status !== 134, out)
 ok('the units were built across the worker pool', /units in parallel/.test(out), out)
 
-const reported = out.match(/out-of-memory/g) ?? []
-const named = out.split('\n').filter(line => /out-of-memory/.test(line) || /ran out of memory/.test(line))
+const reported = flat.match(/ran out of memory at its/g) ?? []
 
-ok('the big file is reported out of memory', /big\.tree/.test(named.join('\n')) || /big\.tree[\s\S]{0,400}ran out of memory/.test(out), out)
-ok('the limit and the remedy are named', out.includes(`${HEAP_MB} MB heap limit`) && out.includes('TERM_WORKER_HEAP_MB'), out)
-ok('no small file is reported out of memory', !/small-\d+\.tree[^\n]*(out-of-memory|ran out of memory)/.test(out), out)
-ok('the report names one unit out of memory', reported.length >= 1, out)
+ok('the big file is reported out of memory', /out of memory at its \d+ MB heap limit out-of-memory file code\/big\.tree/.test(flat), out)
+ok('the limit and the remedy are named', flat.includes(`${HEAP_MB} MB heap limit`) && flat.includes('raise TERM_WORKER_HEAP_MB'), out)
+ok('no small file is reported out of memory', !/out-of-memory file code\/small-\d+\.tree/.test(flat), out)
+ok('exactly one unit is reported out of memory', reported.length === 1, out)
 
 let built = 0
 

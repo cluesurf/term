@@ -868,58 +868,49 @@ task infinity
 # THE FAST REFUSAL. Phase one in floating point, run before the exact search: when it ends at an optimum whose sum of
 # artificials is clearly above zero, no x >= 0 solves A x = b, and the exact search is skipped. This can only DECLINE.
 task plainly-infeasible
-  take a, like list, like list, like rational
+  take a, like list, like hash, like number, like rational
+  take n, like number
   take b, like list, like rational
   take work, like work-budget
   like boolean
   mark private
 
   save m, a/length
-  save n, 0
-  fork test, is-above(m, 0)
-    hold
-      save n, get(a, 0)/length
   save width, add(n, m)
   save table, make list
   save i, 0
   walk test
     hook test, is-below(i, m)
     hook hold
+      save given, get(a, i)
+      save right, value-of(get(b, i))
+      # each row scaled to a largest entry of 1, so one tolerance serves every row. An entry the row leaves out is 0,
+      # which counts only when the row has nothing else
       save raw, make list
-      walk get(a, i)
-        take c
-        push(raw, value-of(c))
-      push(raw, value-of(get(b, i)))
-      # each row scaled to a largest entry of 1, so one tolerance serves every row
+      walk given/keys()
+        take j
+        push(raw, value-of(given/get(j)))
+      push(raw, right)
+      fork test, is-below(given/keys()/length, n)
+        hold
+          push(raw, 0.0)
       save scale, largest-magnitude(raw)
       fork test, or(is-equal(scale, 0.0), is-unequal(scale, scale))
         hold
           save scale, 1.0
       save flip, 1.0
-      fork test, is-below(get(raw, n), 0.0)
+      fork test, is-below(right, 0.0)
         hold
           save flip, -1.0
-      save row, make list
-      save j, 0
-      walk test
-        hook test, is-below(j, n)
-        hook hold
-          push(row, divide(multiply(flip, get(raw, j)), scale))
-          save j, add(j, 1)
-      save j, 0
-      walk test
-        hook test, is-below(j, m)
-        hook hold
-          save unit, 0.0
-          fork test, is-equal(i, j)
-            hold
-              save unit, 1.0
-          push(row, unit)
-          save j, add(j, 1)
-      push(row, divide(multiply(flip, get(raw, n)), scale))
-      walk row
-        take c
-        fork test, not(is-finite(c))
+      save row, make hash
+      walk given/keys()
+        take j
+        row/set(j, divide(multiply(flip, value-of(given/get(j))), scale))
+      row/set(add(n, i), 1.0)
+      row/set(width, divide(multiply(flip, right), scale))
+      walk row/keys()
+        take j
+        fork test, not(is-finite(row/get(j)))
           hold
             back false
       push(table, row)
@@ -944,12 +935,9 @@ task plainly-infeasible
       save j, add(j, 1)
   walk table
     take row
-    save j, 0
-    walk test
-      hook test, is-maximum(j, width)
-      hook hold
-        save cost/{j}, subtract(get(cost, j), get(row, j))
-        save j, add(j, 1)
+    walk row/keys()
+      take j
+      save cost/{j}, subtract(get(cost, j), row/get(j))
   save epsilon, 0.000000001
   save step, 0
   walk test
@@ -975,10 +963,10 @@ task plainly-infeasible
       walk test
         hook test, is-below(i, m)
         hook hold
-          save c, get(get(table, i), enter)
+          save c, float-at(get(table, i), enter)
           fork test, is-above(c, epsilon)
             hold
-              save ratio, divide(get(get(table, i), width), c)
+              save ratio, divide(float-at(get(table, i), width), c)
               save takes, is-below(ratio, subtract(best, epsilon))
               fork test, and(not(takes), is-minimum(leave, 0))
                 hold
@@ -992,20 +980,19 @@ task plainly-infeasible
         hold
           # unbounded in phase one cannot happen for a sum of non-negatives: a numerical fault, so no verdict
           back false
-      save pivot, get(get(table, leave), enter)
-      save lead, make list
-      walk get(table, leave)
-        take c
-        push(lead, divide(c, pivot))
+      save pivot, float-at(get(table, leave), enter)
+      save from, get(table, leave)
+      save lead, make hash
+      walk from/keys()
+        take j
+        lead/set(j, divide(from/get(j), pivot))
       # only the columns the pivot row is not exactly zero in change, in any row
       save live, make list
-      save j, 0
-      walk lead
-        take c
-        fork test, is-unequal(c, 0.0)
+      walk lead/keys()
+        take j
+        fork test, is-unequal(lead/get(j), 0.0)
           hold
             push(live, j)
-        save j, add(j, 1)
       save cells, to-float(multiply(m, live/length))
       fork test, is-above(add(work/spent, cells), work/budget)
         hold
@@ -1017,20 +1004,57 @@ task plainly-infeasible
       walk test
         hook test, is-below(i, m)
         hook hold
-          save k, get(get(table, i), enter)
+          save k, float-at(get(table, i), enter)
           fork test, and(is-unequal(i, leave), is-unequal(k, 0.0))
             hold
               save row, get(table, i)
               walk live
                 take col
-                save row/{col}, subtract(get(row, col), multiply(k, get(lead, col)))
+                row/set(col, subtract(float-at(row, col), multiply(k, lead/get(col))))
           save i, add(i, 1)
       save k, get(cost, enter)
       walk live
         take col
-        save cost/{col}, subtract(get(cost, col), multiply(k, get(lead, col)))
+        save cost/{col}, subtract(get(cost, col), multiply(k, lead/get(col)))
       save basis/{leave}, enter
   back false
+
+# a sparse row's entry: what it holds at a column, else 0
+task float-at
+  take row, like hash, like number, like float
+  take at, like number
+  like float
+  mark private
+
+  fork test, row/has(at)
+    hold
+      back row/get(at)
+  back 0.0
+
+# and the same over exact rationals
+task entry-at
+  take row, like hash, like number, like rational
+  take at, like number
+  like rational
+  mark private
+
+  fork test, row/has(at)
+    hold
+      back row/get(at)
+  back zero()
+
+# set a sparse row's entry, leaving a zero out
+task put-entry
+  take row, like hash, like number, like rational
+  take at, like number
+  take value, like rational
+  mark private
+
+  fork test, is-zero(value)
+    hold
+      row/remove(at)
+    miss
+      row/set(at, value)
 
 task to-float
   take value, like number
@@ -1060,7 +1084,8 @@ task largest-magnitude
 # Phase one of the simplex, exact, with Bland's rule (so it cannot cycle): is there x >= 0 with A x = b? x, or none.
 # Every row of b is made non-negative first, and one artificial per row starts the basis.
 task feasible
-  take a, like list, like list, like rational
+  take a, like list, like hash, like number, like rational
+  take n, like number
   take b, like list, like rational
   take work, like work-budget
   take profile, like product-profile
@@ -1068,48 +1093,39 @@ task feasible
   like maybe, like list, like rational
   mark private
 
-  fork test, plainly-infeasible(a, b, work)
+  fork test, plainly-infeasible(a, n, b, work)
     hold
       fork test, profiling
         hold
           save profile/float-declined, add(profile/float-declined, 1.0)
       back make none
   save m, a/length
-  save n, 0
-  fork test, is-above(m, 0)
-    hold
-      save n, get(a, 0)/length
   save width, add(n, m)
   save minus-one, whole(-1)
+  # SPARSE ROWS: a row holds only its entries that are not zero, column to value. The rows of a search are mostly
+  # zeros, and a dense table of a fresh rational per cell held 2.6 GB of zeros at once on the angle-step control
+  # (term-compiler-0028), more the further the budget let the case split go
   save table, make list
   save i, 0
   walk test
     hook test, is-below(i, m)
     hook hold
       save flip, is-below(sign(get(b, i)), 0)
-      save row, make list
-      walk get(a, i)
-        take c
+      save given, get(a, i)
+      save row, make hash
+      walk given/keys()
+        take j
         fork test, flip
           hold
-            push(row, times(c, minus-one))
+            put-entry(row, j, times(given/get(j), minus-one))
           miss
-            push(row, c)
-      save j, 0
-      walk test
-        hook test, is-below(j, m)
-        hook hold
-          fork test, is-equal(i, j)
-            hold
-              push(row, one())
-            miss
-              push(row, zero())
-          save j, add(j, 1)
+            put-entry(row, j, given/get(j))
+      row/set(add(n, i), one())
       fork test, flip
         hold
-          push(row, times(get(b, i), minus-one))
+          put-entry(row, width, times(get(b, i), minus-one))
         miss
-          push(row, get(b, i))
+          put-entry(row, width, get(b, i))
       push(table, row)
       save i, add(i, 1)
   save basis, make list
@@ -1133,14 +1149,9 @@ task feasible
       save j, add(j, 1)
   walk table
     take row
-    save j, 0
-    walk test
-      hook test, is-maximum(j, width)
-      hook hold
-        fork test, not(is-zero(get(row, j)))
-          hold
-            save reduced/{j}, minus(get(reduced, j), get(row, j))
-        save j, add(j, 1)
+    walk row/keys()
+      take j
+      save reduced/{j}, minus(get(reduced, j), row/get(j))
   save step, 0
   walk test
     hook test, is-below(step, 5000)
@@ -1170,10 +1181,10 @@ task feasible
       walk test
         hook test, is-below(i, m)
         hook hold
-          save c, get(get(table, i), enter)
+          save c, entry-at(get(table, i), enter)
           fork test, is-above(sign(c), 0)
             hold
-              save ratio, over(get(get(table, i), width), c)
+              save ratio, over(entry-at(get(table, i), width), c)
               save takes, not(has-best)
               fork test, has-best
                 hold
@@ -1187,29 +1198,20 @@ task feasible
       fork test, is-below(leave, 0)
         hold
           back make none
-      save pivot, get(get(table, leave), enter)
-      save lead, make list
-      walk get(table, leave)
-        take c
-        fork test, is-zero(c)
-          hold
-            push(lead, c)
-          miss
-            push(lead, over(c, pivot))
+      save pivot, entry-at(get(table, leave), enter)
+      save from, get(table, leave)
+      save lead, make hash
       save live, make list
-      save j, 0
-      walk lead
-        take c
-        fork test, not(is-zero(c))
-          hold
-            push(live, j)
-        save j, add(j, 1)
+      walk from/keys()
+        take j
+        lead/set(j, over(from/get(j), pivot))
+        push(live, j)
       # THE WORK this pivot will cost, before it is paid: each other row rewritten in the live columns, at a price that
       # grows with the size of the numbers there, so the pivot row's total bit length stands for it
       save bits, 0
       walk live
         take col
-        save bits, add(bits, add(bit-length(get(lead, col)/n), bit-length(get(lead, col)/d)))
+        save bits, add(bits, add(bit-length(lead/get(col)/n), bit-length(lead/get(col)/d)))
       save cost-of-pivot, to-float(multiply(m, bits))
       fork test, is-above(add(work/spent, cost-of-pivot), work/budget)
         hold
@@ -1221,20 +1223,20 @@ task feasible
       walk test
         hook test, is-below(i, m)
         hook hold
-          fork test, and(is-unequal(i, leave), not(is-zero(get(get(table, i), enter))))
+          fork test, and(is-unequal(i, leave), not(is-zero(entry-at(get(table, i), enter))))
             hold
-              save k, get(get(table, i), enter)
+              save k, entry-at(get(table, i), enter)
               save row, get(table, i)
               walk live
                 take col
-                save row/{col}, minus(get(row, col), times(k, get(lead, col)))
+                put-entry(row, col, minus(entry-at(row, col), times(k, lead/get(col))))
           save i, add(i, 1)
       save k, get(reduced, enter)
       fork test, not(is-zero(k))
         hold
           walk live
             take col
-            save reduced/{col}, minus(get(reduced, col), times(k, get(lead, col)))
+            save reduced/{col}, minus(get(reduced, col), times(k, lead/get(col)))
       save basis/{leave}, enter
       fork test, profiling
         hold
@@ -1244,7 +1246,7 @@ task feasible
   walk test
     hook test, is-below(i, m)
     hook hold
-      fork test, and(is-minimum(get(basis, i), n), not(is-zero(get(get(table, i), width))))
+      fork test, and(is-minimum(get(basis, i), n), not(is-zero(entry-at(get(table, i), width))))
         hold
           back make none
       save i, add(i, 1)
@@ -1262,7 +1264,7 @@ task feasible
       save column-at, get(basis, i)
       fork test, is-below(column-at, n)
         hold
-          save x/{column-at}, get(get(table, i), width)
+          save x/{column-at}, entry-at(get(table, i), width)
       save i, add(i, 1)
   back make(some, x)
 
@@ -1334,19 +1336,24 @@ task refute
             bind k, minus-one
         push(columns, negated)
     save i, add(i, 1)
+  # one sparse line per monomial, over the columns: each column writes only the monomials its row's polynomial has
   save matrix, make list
+  save line-of, make hash
+  save at, 0
   walk keys
     take key
-    save line, make list
-    walk columns
-      take c
-      save poly, get(rows, c/row)/polynomial
-      save entry, zero()
-      fork test, poly/has(key)
-        hold
-          save entry, poly/get(key)
-      push(line, times(c/k, entry))
+    save line, make hash
     push(matrix, line)
+    line-of/set(key, at)
+    save at, add(at, 1)
+  save j, 0
+  walk columns
+    take c
+    save poly, get(rows, c/row)/polynomial
+    walk poly/keys()
+      take key
+      put-entry(get(matrix, line-of/get(key)), j, times(c/k, poly/get(key)))
+    save j, add(j, 1)
   # Σ = -1 identically
   save first-b, make list
   walk keys
@@ -1361,14 +1368,14 @@ task refute
   walk matrix
     take line
     push(second-a, line)
-  save strict-line, make list
+  save strict-line, make hash
+  save j, 0
   walk columns
     take c
     fork test, is-equal(get(rows, c/row)/relation, <positive>)
       hold
-        push(strict-line, one())
-      miss
-        push(strict-line, zero())
+        strict-line/set(j, one())
+    save j, add(j, 1)
   push(second-a, strict-line)
   save second-b, make list
   walk keys
@@ -1396,7 +1403,7 @@ task refute
     fork test, profiling
       hold
         save searched-at, now()
-    save x, feasible(a, b, work, profile, profiling)
+    save x, feasible(a, columns/length, b, work, profile, profiling)
     fork test, profiling
       hold
         save profile/exact-ms, add(profile/exact-ms, subtract(now(), searched-at))

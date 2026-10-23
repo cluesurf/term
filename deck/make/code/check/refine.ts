@@ -31,7 +31,12 @@ export function linear(
 // satisfiability memo: the same canonical constraint system recurs often across a compile (many holds share the same
 // shape, e.g. `n >= 0 |- n*n >= 0`), so caching the verdict by the system's canonical key avoids re-running the whole
 // elimination. Keyed on the REDUCED system, so two systems that normalize to the same constraints share a result.
+//
+// It is module state, so a long-running language server would keep every system it ever saw: at SAT_CACHE_MOST
+// entries it starts over. A verdict is a function of its key, so forgetting one costs only the time to decide it again
+// (term-compiler-0028, decision 005)
 const satCache = new Map<string, boolean>()
+const SAT_CACHE_MOST = 50000
 
 // is the system of constraints unsatisfiable?
 function unsatisfiable(ineqs: Inequality[]): boolean {
@@ -50,6 +55,11 @@ function unsatisfiable(ineqs: Inequality[]): boolean {
   }
 
   const verdict = decide(reduced.value)
+
+  if (satCache.size >= SAT_CACHE_MOST) {
+    satCache.clear()
+  }
+
   satCache.set(cacheKey, verdict)
 
   return verdict

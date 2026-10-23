@@ -126,6 +126,11 @@ load ../ir/facts/guards
 load ../term/quote
   find json-quote
 
+load ./frames
+  find frames-of
+  find raise-frames
+  find passes-raise
+
 # ---- what the face hands in ----
 
 # one bound a loop's guard checks (ir/facts/bounds.ts `BoundCheck`): `base + offset` against 0 or the list's size
@@ -207,6 +212,8 @@ form kotlin-facts
   link instance-targets, like hash, like text, like list, like text
   link impl-fns, like hash, like text, like statement
   link exception-forms, like hash, like text, like boolean
+  # the tasks whose raise set is not empty, whose calls gain a Term frame (compile/frames.tree)
+  link raising, like hash, like text, like boolean
   link native-aliases, like hash, like text, like boolean
   link hidden-generic, like hash, like text, like boolean
   link async-fns, like hash, like text, like boolean
@@ -2158,7 +2165,14 @@ task kt-call
       fork test, and(and(task-callee, facts/async-fns/has(callee-name)), and(not(awaited), not(st/suspend-context)))
         hold
           back need(<start>, <termStart \{ {callee-text}({join-texts(rendered, <, >)}) \}>, st)
-      back <{callee-text}({join-texts(rendered, <, >)})>
+      save called, <{callee-text}({join-texts(rendered, <, >)})>
+      # A CALL THAT PASSES A RAISE OUT gains its Term frame as the raise leaves through it (term/hive decision 001): a
+      # catch around the call alone, which the JVM's exception table keeps off the path a call returns by
+      fork test, passes-raise(node, facts/raising)
+        hold
+          needs-add(<exception>, st)
+          back <(try \{ {called} \} catch (__raised: TermException) \{ throw __raised.at({kotlin-string(frames-of(node))}) \})>
+      back called
     miss
       back <>
 
@@ -3586,17 +3600,22 @@ task kt-statement
       needs-add(<exception>, st)
       sift thrown
         case string
-          back kt-told(<TermException("", "failure", {kt-expr(thrown, st, facts)}, "", 0L, null, null)>, facts)
+          back kt-told(<TermException("", "failure", {kt-expr(thrown, st, facts)}, "", 0L, null, null)>, node, facts)
         case template
-          back kt-told(<TermException("", "failure", {kt-expr(thrown, st, facts)}, "", 0L, null, null)>, facts)
+          back kt-told(<TermException("", "failure", {kt-expr(thrown, st, facts)}, "", 0L, null, null)>, node, facts)
         case record
           link thrown-name
           fork test, facts/exception-forms/has(thrown-name)
             hold
-              back kt-told(<run \{ val raised = {kt-expr(thrown, st, facts)}; TermException(raised.host, raised.form, raised.note, raised.code, raised.time, raised.link, raised) \}>, facts)
+              back kt-told(<run \{ val raised = {kt-expr(thrown, st, facts)}; TermException(raised.host, raised.form, raised.note, raised.code, raised.time, raised.link, raised) \}>, node, facts)
         miss
           save nothing, 0
-      back <throw termException({kt-expr(thrown, st, facts)})>
+      # a raised carrier keeps the flow it has and gains this raise's frame
+      save again, <>
+      fork test, is-unequal(raise-frames(node), <>)
+        hold
+          save again, <.at({kotlin-string(raise-frames(node))})>
+      back <throw termException({kt-expr(thrown, st, facts)}){again}>
     case while
       back kt-while(node, depth, st, facts)
     case guard
@@ -3705,17 +3724,23 @@ task impl-fn
       back make(some, found)
   back make none
 
-# a raise, telling the hive first when the program has it
+# a raise, telling the hive first when the program has it, with its own Term frame first (term/hive decision 001)
 task kt-told
   take built, like text
+  take node, like statement
   take facts, like kotlin-facts
   like text
   mark private
 
+  save at, <>
+  save raise-site, raise-frames(node)
+  fork test, is-unequal(raise-site, <>)
+    hold
+      save at, <.at({kotlin-string(raise-site)})>
   fork test, facts/hive-tell
     hold
-      back <throw run \{ val told = {built}; hiveTell(HiveEntry(host = told.host, kind = "exception", name = told.form, site = "", base = told)); told \}>
-  back <throw {built}>
+      back <throw run \{ val told = {built}; hiveTell(HiveEntry(host = told.host, kind = "exception", name = told.form, site = "", base = told)); told \}{at}>
+  back <throw {built}{at}>
 
 # a let's function type, from the closure it is bound to
 task closure-type

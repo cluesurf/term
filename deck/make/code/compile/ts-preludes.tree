@@ -27,6 +27,9 @@ load @term/base/text
   find index-of
   find split
 
+load ./frames
+  find frame-limit
+
 # the class every raise throws on TypeScript
 task exception-class
   like text
@@ -457,16 +460,40 @@ task exception-prelude
   push(lines, <    super(base.note)>)
   push(lines, <    Object.assign(this, base)>)
   push(lines, <    this.name = TermException.name>)
-  push(lines, <    // the frames of the raise, innermost first, in `capture-trace`'s shape, where the raise gave none: every raise>)
-  push(lines, <    // built `flow: []`, so an exception carried no stack (guides: library/exceptions, 2026-10-05)>)
-  push(lines, <    const flow = (this as \{ flow?: unknown \}).flow>)
-  push(lines, <    if (!Array.isArray(flow) || flow.length === 0) \{>)
-  push(lines, <      ;(this as \{ flow?: unknown \}).flow = (this.stack ?? '').split(String.fromCharCode(10)).slice(1).map(line =\> line.trim()).filter(line =\> line.length !== 0)>)
-  push(lines, <    \}>)
+  push(lines, <    // the Term frames the raise passes, innermost first, which the raise and every call it leaves through append>)
+  push(lines, <    // (term/hive decision 001). Never the platform stack: `capture-trace` gives that, on request>)
+  push(lines, <    if (!Array.isArray((this as \{ flow?: unknown \}).flow)) (this as \{ flow?: unknown \}).flow = []>)
   push(lines, <    // the hive hears every raise, once wakeHive has hooked it in>)
   push(lines, <    const hive = (globalThis as \{ __termRaise?: (e: unknown) =\> void \}).__termRaise>)
   push(lines, <    if (hive) hive(this)>)
   push(lines, <  \}>)
+  push(lines, <\}>)
+  # THE FRAMES (term/hive decision 001): a frame text holds one frame, or several a line apart where a task was
+  # inlined into its caller (compile/frames.tree); past the limit a frame adds nothing
+  push(lines, <export function __termFrame(raised: unknown, site: string): void \{>)
+  push(lines, <  const flow = (raised as \{ flow?: unknown \} | null)?.flow>)
+  push(lines, <  if (site === "" || !Array.isArray(flow)) return>)
+  push(lines, <  if (site.indexOf(String.fromCharCode(10)) \< 0) \{ if (flow.length \< {frame-limit()}) flow.push(site); return \}>)
+  push(lines, <  for (const frame of site.split(String.fromCharCode(10))) if (flow.length \< {frame-limit()}) flow.push(frame)>)
+  push(lines, <\}>)
+  # `cleared`: the task's `__site` emptied as the raise is thrown, read by nothing here
+  push(lines, <export function __termRaised\<T\>(raised: T, site: string, _cleared?: string): T \{>)
+  push(lines, <  __termFrame(raised, site)>)
+  push(lines, <  return raised>)
+  push(lines, <\}>)
+  # a call outside every task that passes a raise out, which no task's catch frames
+  push(lines, <export function __termTop\<T\>(site: string, call: () =\> T): T \{>)
+  push(lines, <  try \{ return call() \} catch (raised) \{ __termFrame(raised, site); throw raised \}>)
+  push(lines, <\}>)
+  # a raise nothing caught, as every backend prints it: its form and note, a frame a line, on standard error, exit 1
+  push(lines, <export function __termUnhandled(raised: unknown): void \{>)
+  push(lines, <  const e = raised as \{ name?: unknown; form?: unknown; note?: unknown; flow?: unknown \} | null>)
+  push(lines, <  const host = (globalThis as \{ process?: \{ stderr: \{ write(text: string): unknown \}; exit(code: number): never \} \}).process>)
+  push(lines, <  if (!host || !e || e.name !== "TermException") return>)
+  push(lines, <  let text = String(e.form) + ": " + String(e.note) + String.fromCharCode(10)>)
+  push(lines, <  for (const frame of Array.isArray(e.flow) ? e.flow : []) text += "  at " + String(frame) + String.fromCharCode(10)>)
+  push(lines, <  host.stderr.write(text)>)
+  push(lines, <  host.exit(1)>)
   push(lines, <\}>)
   back join(lines, <\n>)
 

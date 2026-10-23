@@ -40,9 +40,11 @@ load ../compile/node
   find expression
   find statement
   find statement-span
+  find type
 
 load ../compile/node-walk
   find expressions-in
+  find statements-in
 
 form literal-findings
   link errors, like list, like diagnostic
@@ -192,11 +194,39 @@ task check-widths
         turn next
 
   save out, make list
+  save ranges, width-ranges()
+
+  # a list literal declared a list of a width (`save ys, like list, like u8 / make list(3, 300)`), or returned as the
+  # result of a task declared one: each literal item is inside the width (width-0011, check/infer.ts `inferWanted`)
+  walk program
+    take one
+    sift one
+      case function
+        fork test, not(is-in-file(span, file))
+          hold
+            turn next
+        save result-width, list-width(result)
+        walk statements-in(body)
+          take inner
+          sift inner
+            case let
+              check-list-items(ranges, list-width(type), name, init, file, out)
+            case return
+              sift value
+                case some
+                  link returned
+                  check-list-items(ranges, result-width, <the result>, returned, file, out)
+                case none
+                  save nothing, 0
+            miss
+              turn next
+      miss
+        turn next
+
   fork test, and(is-equal(tasks/length, 0), not(any-field))
     hold
       back out
 
-  save ranges, width-ranges()
   walk program
     take one
     sift one
@@ -273,21 +303,77 @@ task check-field
       save width, table/get(key)
   fork test, is-unequal(width, <>)
     hold
-      sift given
-        case integer
-          save exact, exact-of(value, digits)
-          walk ranges
-            take range
-            fork test, is-equal(range/name, width)
+      check-in-width(ranges, width, field-name, given, file, out)
+
+# a literal is inside the width of what it is put in, named `name`. Anything but an integer literal is not checked here
+task check-in-width
+  take ranges, like list, like width-range
+  take width, like text
+  take name, like text
+  take given, like expression
+  take file, like text
+  take out, like list, like diagnostic
+  like void
+  mark private
+
+  sift given
+    case integer
+      save exact, exact-of(value, digits)
+      walk ranges
+        take range
+        fork test, is-equal(range/name, width)
+          hold
+            save low, make-big-integer(range/low)
+            save high, make-big-integer(range/high)
+            fork test, or(is-below(big-compare(exact, low), 0), is-above(big-compare(exact, high), 0))
               hold
-                save low, make-big-integer(range/low)
-                save high, make-big-integer(range/high)
-                fork test, or(is-below(big-compare(exact, low), 0), is-above(big-compare(exact, high), 0))
-                  hold
-                    save shown, exact/text()
-                    push(out, mismatch(file, span, <{shown} is outside `{width}` ({range/low} to {range/high}), the width of "{field-name}">, <>))
+                save shown, exact/text()
+                push(out, mismatch(file, span, <{shown} is outside `{width}` ({range/low} to {range/high}), the width of "{name}">, <>))
+    miss
+      save nothing, 0
+
+# the width of a list type's element when it is a number of a width (`like list, like u8`), else the empty text
+task list-width
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case array
+          sift element
+            case number
+              back width
+            miss
+              back <>
         miss
-          save nothing, 0
+          back <>
+    case none
+      back <>
+
+# each literal item of a list literal built as a list of a width is inside the width
+task check-list-items
+  take ranges, like list, like width-range
+  take width, like text
+  take name, like text
+  take given, like expression
+  take file, like text
+  take out, like list, like diagnostic
+  like void
+  mark private
+
+  fork test, is-equal(width, <>)
+    hold
+      back
+  sift given
+    case array
+      walk items
+        take item
+        check-in-width(ranges, width, name, item, file, out)
+    miss
+      save nothing, 0
 
 task check-call
   take tasks, like list, like width-task

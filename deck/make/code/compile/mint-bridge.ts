@@ -191,6 +191,9 @@ type Bridge = {
   hostTask?: boolean
   // every name the file defines or imports (`namesInFile`)
   named: Set<string>
+  // the top-level tasks the file defines itself (`tasksInFile`): a call of one is that task, never the compiler's word
+  // of the same name folded to an operator (`foldBuiltin`, term-module-scope-0001)
+  ownTasks: Set<string>
   // the owning form's type parameters: every method of the form carries them as leading generics
   ownerParams?: string[]
   // `find X, name Y`: Y is a local synonym for X in this file, rewritten to X across the built program
@@ -991,7 +994,7 @@ function expressionOf(
         }
 
         return (
-          foldBuiltin(plainName(callee), args, span) ?? {
+          foldBuiltin(bridge, plainName(callee), args, span) ?? {
             form: 'call',
             callee: readPath(plainName(callee), span),
             args,
@@ -1041,7 +1044,7 @@ function expressionOf(
         const names = written.map(entry => entry.name ?? '')
         const leanNames = written.map(entry => entry.lean === true)
 
-        const folded = foldBuiltin(plainName(callee), args, span)
+        const folded = foldBuiltin(bridge, plainName(callee), args, span)
 
         return finish(
           folded ??
@@ -1109,7 +1112,7 @@ function expressionOf(
       // the arithmetic, comparison and boolean builtins fold to an operator here as they do under `call`:
       // `and a, b` is `a && b`, not a call to something named `and`. Probed 2026-09-12 that it was not
       // (note/project/term/mill/lean.md, "meet and becomes and"), and the fold was only ever run from callOf.
-      const plain = foldBuiltin(plainName(callee), args, span)
+      const plain = foldBuiltin(bridge, plainName(callee), args, span)
 
       return finish(
         plain ??
@@ -1572,6 +1575,23 @@ function opensParen(node: Node | undefined): boolean {
 // a body can sit above the definition it calls. Two readers ask it: whether a `host` statement is the task of that
 // name, and whether a line the grammar matched as the binding dialect's vocabulary (`home`, `rank`, `time`, ...,
 // code/drop/mine.tree) is a call after all
+// the top-level `task x` names of the file, read off the parse tree before anything mints
+function tasksInFile(tree: RootNode): Set<string> {
+  const names = new Set<string>()
+
+  for (const group of tree.nodes) {
+    if (group.kind === 'group' && headWord(group) === 'task') {
+      const word = wordOf(group.nodes[1])
+
+      if (word !== undefined) {
+        names.add(word)
+      }
+    }
+  }
+
+  return names
+}
+
 function namesInFile(tree: RootNode): Set<string> {
   const names = new Set<string>()
   const add = (node: Node | undefined): void => {
@@ -1907,7 +1927,7 @@ function callOf(bridge: Bridge, value: Form): Expression | undefined {
   const leanNames = written.map(entry => entry.lean === true)
 
   // the arithmetic and comparison builtins lower to an operator, not a call: they have no definition to bind to
-  const folded = foldBuiltin(name, args, span)
+  const folded = foldBuiltin(bridge, name, args, span)
 
   // `halt kink` as a child of the call passes the callee's exception on rather than handling it here
   const propagate = formsAt(value, 'halt').some(
@@ -2002,11 +2022,20 @@ function withLinks(
   return piped
 }
 
+// The compiler's own words (`add`, `is-equal`, `not`, ...) lower to an operator where they are written, UNLESS the file
+// defines a top-level task of that name: then the call is that task (term-module-scope-0001), the rule receiver dispatch
+// keeps for a method (module-scope-0008, check/infer.ts): a file's own task wins. A file's `task add` multiplying its
+// two numbers was passed over at every call, and `add(2, 3)` was 5 from a green build. test/check/own-task-wins.ts.
 function foldBuiltin(
+  bridge: Bridge,
   name: string,
   args: Expression[],
   span: Span,
 ): Expression | undefined {
+  if (bridge.ownTasks.has(name)) {
+    return undefined
+  }
+
   const op = isBinaryBuiltin(name) ? binaryBuiltinOp(name) : undefined
 
   if (op && args.length === 2) {
@@ -4004,7 +4033,7 @@ function claimOf(bridge: Bridge, shown: Form): Expression | undefined {
     .filter((one): one is Expression => one !== undefined)
 
   return (
-    foldBuiltin(callee, args, span) ?? {
+    foldBuiltin(bridge, callee, args, span) ?? {
       form: 'call',
       callee: readPath(callee, span),
       args,
@@ -5629,6 +5658,7 @@ export function millByGrammar(
     bound: new Set(),
     hostTask: named.has('host'),
     named,
+    ownTasks: tasksInFile(tree),
     aliases: new Map(),
     grammar,
     twins: [],

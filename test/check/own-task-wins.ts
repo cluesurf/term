@@ -116,5 +116,23 @@ const LOADS = `load @term/base/list\n  find list\n\n`
   ok('another file\'s task of the name does not take the call from the method', !callees.includes('last'), `${callees.join(',')} ${said(result)}`)
 }
 
+// term-module-scope-0001: the same rule for the compiler's own words. A file's `task add` is what its `add(2, 3)` calls,
+// never the `+` the word folds to elsewhere (compile/mint-bridge.ts `foldBuiltin`)
+{
+  const main = `task add\n  take a, like number\n  take b, like number\n  like number\n  send back, multiply(a, b)\n\ntask five\n  like number\n  send back, add(2, 3)\n`
+  const result = build(main)
+  ok('a file\'s own task named like a compiler word builds', result.ok, said(result))
+  // the one-line task may be inlined, so the emitted `five` is a call of it or its body, never the sum
+  const five = result.ok ? /function five\(\)[^{]*\{([^}]*)\}/.exec(result.typescript)?.[1] ?? '' : ''
+  ok('a file\'s own `add` is the one its call reaches, not the operator', /add\(2, 3\)|2 \* 3|\b6\b/.test(five) && !/2 \+ 3|\b5\b/.test(five), five)
+}
+
+{
+  // a file without such a task still folds the word to the operator
+  const main = `task five\n  like number\n  send back, add(2, 3)\n`
+  const result = build(main)
+  ok('without a task of its own, `add` is still the operator', result.ok && !calleesOf(result, 'five').includes('add'), `${calleesOf(result, 'five').join(',')} ${said(result)}`)
+}
+
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail > 0 ? 1 : 0)
