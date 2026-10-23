@@ -1,0 +1,83 @@
+note <the checker to gap report: a program that compiles yields no gap, a broken one a gap with its kind, place, message and excerpt>
+
+# The checks of deck/test/code/demo-gap.ts (decision 004, term-cli-in-term-0114): a clean program compiles with no gap;
+# a type error becomes a gap of kind type-mismatch, placed at `type-bad.tree:<line>:<column>`, its message the
+# obligation (`expected number`) and its excerpt a caret; an undefined reference becomes a gap. The pure half of the
+# report (a gap read from a diagnostic) is checker-report.tree's. The compiler is docked: `term test` builds the module
+# inside the project, whose tsconfig maps the dock to its source (decision 009).
+
+load ../code/diagnostic-gap
+  find gaps-from-diagnostics
+
+dock load
+  load <@term/make/code/compile/compile>, name gap-compiling
+
+form gap-source
+  link file, like text
+  link text, like text
+
+form gap-options
+  link resolve, like dynamic
+
+# the resolver of a program that loads nothing: every load resolves to nothing
+bind gap-no-resolve
+  take seed, like number
+  like dynamic
+  case node
+    text <(() =\> undefined)>
+
+bind gap-compiled
+  take result, like dynamic
+  like boolean
+  case node
+    text <$result.ok>
+
+bind gap-diagnostics
+  take result, like dynamic
+  like dynamic
+  case node
+    text <$result.diagnostics>
+
+# whether a location reads `<file>:<line>:<column>`
+bind gap-placed
+  take location, like text
+  take file, like text
+  like boolean
+  case node
+    text <<new RegExp("^" + $file.replace(".", "\\.") + ":\\d+:\\d+$").test($location)>>
+
+form gap-run
+  link compiled, like boolean
+  link gaps, like list, like dynamic
+
+task gaps-for
+  take file, like text
+  take source, like text
+  like gap-run
+
+  host compiled, gap-compiling/compile(make(gap-source, bind(file, file), bind(text, source)), make(gap-options, bind(resolve, gap-no-resolve(0))))
+  back make(gap-run, bind(compiled, gap-compiled(compiled)), bind(gaps, gaps-from-diagnostics(source, gap-diagnostics(compiled))))
+
+host clean, <task add-one\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      code 1\n>
+
+host type-bad, <task add-one\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      text \<oops\>\n>
+
+host ref-bad, <task greet\n  like number\n  send back\n    read missing-variable\n>
+
+test <a clean program compiles with no gap>
+  host found, gaps-for(<clean.tree>, clean)
+  want hold, found/compiled
+  want hold, is-equal found/gaps/length, 0
+
+test <a type error becomes a gap of its kind, placed, with the obligation and a caret>
+  host found, gaps-for(<type-bad.tree>, type-bad)
+  want hold, is-minimum found/gaps/length, 1
+  host gap, found/gaps/0
+  want hold, is-equal gap/kind, <type-mismatch>
+  want hold, gap-placed(gap/location, <type-bad.tree>)
+  want hold, gap/message/includes(<expected number>)
+  want hold, gap/excerpt/includes(<^>)
+
+test <an undefined reference becomes a gap>
+  host found, gaps-for(<ref-bad.tree>, ref-bad)
+  want hold, is-minimum found/gaps/length, 1

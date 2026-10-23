@@ -31,6 +31,19 @@ load @term/call/work/hold/law-report
   find hold-report
   find report-ask
 
+# the cross-backend differential: @term/test's ports (term-cli-in-term-0118), where it docked hold-incremental.ts,
+# obligation-cache.ts and prove-file.ts
+load @term/test/incremental-hold
+  find hold-incremental
+
+load @term/test/obligation-store
+  find obligation-cache
+  find memory-obligation-cache
+  find disk-obligation-cache
+
+load @term/test/file-proof
+  find render-report
+
 load @term/call/work/output/printer
   find open-run
   find report
@@ -47,9 +60,6 @@ dock load
   load <@term/call/code/role-of>, name role-reading
   load <@term/call/code/cache-store>, name version-reading
   load <@term/call/code/home>, name home-finding
-  load <@term/test/code/hold-incremental>, name incremental-holding
-  load <@term/test/code/obligation-cache>, name obligation-caching
-  load <@term/test/code/prove-file>, name proof-reporting
   load <node:fs>, name host-fs
   load <node:path>, name host-path
   load <global:process>, name host-process
@@ -163,21 +173,25 @@ bind nothing-yet
 
 # ---- the cross-backend differential ----
 
-bind cross-hold
-  take incremental, like dynamic
-  take caching, like dynamic
+# the differential's ask, in the original's key order; each file read as the build reads it
+bind cross-ask
+  take cache, like dynamic
   take building, like dynamic
   take roles, like dynamic
   take version, like dynamic
-  take home, like dynamic
   take files, like list, like text
   take root, like text
-  take memory, like boolean
   take force, like dynamic
   take disk, like dynamic
   like dynamic
   case node
-    text <<((read) => $incremental.holdIncremental({ files: $files, resolve: $building.projectResolver($root, "node", $root), cache: $memory ? $caching.memoryObligationCache() : $caching.diskObligationCache($home.projectHome($root, "hold")), version: $version.compilerVersion(), cross: true, force: $force, read }))((file) => { const source = $disk.readFileSync(file, "utf8"); const made = $building.buildable(file, source, $roles(file)); return "text" in made ? made.text : source })>>
+    text <<((read) => ({ files: $files, resolve: $building.projectResolver($root, "node", $root), cache: $cache, version: $version.compilerVersion(), cross: true, force: $force, read }))((file) => { const source = $disk.readFileSync(file, "utf8"); const made = $building.buildable(file, source, $roles(file)); return "text" in made ? made.text : source })>>
+
+bind outcome-report
+  take outcome, like dynamic
+  like dynamic
+  case node
+    text <$outcome.report>
 
 bind cross-outcomes
   take result, like dynamic
@@ -207,13 +221,12 @@ bind outcome-subject
 
 # the differential's own report, its paths relative to the project
 bind outcome-quote
-  take outcome, like dynamic
-  take proving, like dynamic
+  take rendered, like text
   take root, like text
   take paths, like dynamic
   like list, like text
   case node
-    text <<$proving.renderReport($outcome.report).split("\n").map(line => line.split(`${$root}${$paths.sep}`).join(""))>>
+    text <<$rendered.split("\n").map(line => line.split(`${$root}${$paths.sep}`).join(""))>>
 
 # ---- the shapes ----
 
@@ -330,6 +343,17 @@ form close-counts
   link counts, like list, like dynamic
 
 # ---- the gate ----
+
+# the differential's obligation cache: in memory under --no-cache, else the project's hold folder
+task obligation-cache-for
+  take memory, like boolean
+  take root, like text
+  like obligation-cache
+
+  fork test, memory
+    hold
+      back memory-obligation-cache()
+  back disk-obligation-cache(home-finding/project-home(root, <hold>))
 
 task flag
   take value, like maybe, like boolean
@@ -518,12 +542,13 @@ task call-hold
           save force, forced-value(forced)
         case none
           save force, force
-      save result, cross-hold(incremental-holding, obligation-caching, tree-finding, role-reading/project-role-of(root), version-reading, home-finding, files, root, memory, force, host-fs)
+      save cache, obligation-cache-for(memory, root)
+      save result, hold-incremental(cross-ask(cache, tree-finding, role-reading/project-role-of(root), version-reading, files, root, force, host-fs))
       walk cross-outcomes(result)
         take outcome
         fork test, outcome-failed(outcome)
           hold
-            save quoted, outcome-quote(outcome, proof-reporting, root, host-path)
+            save quoted, outcome-quote(render-report(outcome-report(outcome)), root, host-path)
             report(make(quote-say, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <cross>), bind(subject, outcome-subject(outcome, root, host-path)), bind(quote, quoted)))
       save cross-ok, cross-ok-of(result)
       fork test, cross-ok

@@ -18,12 +18,11 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { buildable, findTreeFiles, projectResolver } from '@term/call/code/make'
 import { projectRoleOf } from '@term/call/code/role-of'
-import {
-  huntSeedCompiler,
-  type FuzzEntry,
-  type HuntResult,
-} from '@term/test/code/seed-hunt'
-import { runFuzzCampaign } from '@term/test/code/compiler-fuzz'
+import { huntSeedCompiler, type HuntResult } from '@term/test/code/compiler-hunt'
+import { runFuzzCampaign } from '@term/test/code/compiler-fuzzing'
+
+/** How to start a fuzz child (seed-hunt.ts's FuzzEntry; the port reads the ask as a host value). */
+type FuzzEntry = { command: string; args: string[] }
 import { closeRun, count, field, openRun, printData, report } from '@term/call/code/output'
 
 /**

@@ -115,8 +115,9 @@ let tsInspectUsed = false
 let tsHostUsed = false
 // set when a `need false` maybe field is read or written (D10), so `__termMaybe` and `__termSome` ride in front
 let tsMaybeFieldUsed = false
-// the Term names of the program's `dock load` modules: a call rooted at one returns the host's own value
-let tsDockNames = new Set<string>()
+// the Term names of the program's `dock load` modules: a call rooted at one returns the host's own value. False where a
+// task of the module takes the name, so the dock is bound and read apart (ts-assemble `dock-import`, decision 007)
+let tsDockNames = new Map<string, boolean>()
 // set when an emitted `+`, `-` or `*` on two numbers is range-checked (__termInt), so the helper rides in front
 let tsIntUsed = false
 // set when an `is-equal` compares by structure (__termEqual) or a map key is interned (__termKey)
@@ -259,7 +260,7 @@ function makeEmitter(
     functionParams: tsFunctionParams,
     exceptions: flags(tsExceptions),
     raising: flags(tsRaising),
-    dockNames: flags(tsDockNames),
+    dockNames: tsDockNames,
     opaque: tsOpaqueTypes,
     binds,
     fills: fillTable,
@@ -384,7 +385,7 @@ export function emitTypeScript(
   tsInspectUsed = false
   tsHostUsed = false
   tsMaybeFieldUsed = false
-  tsDockNames = new Set(tables.dockNames.keys())
+  tsDockNames = new Map(tables.dockNames)
   tsIntUsed = false
   tsEqualUsed = false
   tsTextUsed = false

@@ -170,12 +170,20 @@ export function dispatch(
   // positional. A non-variadic command keeps interspersed flags.
   const variadic = current.takes.some(take => take.variadic)
   let raw = false
+  // how many positionals came before a literal `--`: a word after it that no slot holds is the task's to read from the
+  // process (`term boot x.tree -- list` hands `list` to the booted program, work/inspect-verbs.tree words-after-dashes),
+  // never refused, as yargs left it
+  let dashedAt = Infinity
 
   while (i < argv.length) {
     const token = argv[i]!
 
     // a literal `--` ends option parsing: the remainder is verbatim
     if (token === '--') {
+      if (!raw) {
+        dashedAt = positionals.length
+      }
+
       raw = true
       i++
       continue
@@ -281,7 +289,7 @@ export function dispatch(
   }
 
   // a positional no slot was left to hold is an error too, rather than a word dropped
-  if (posCursor < positionals.length) {
+  if (posCursor < positionals.length && posCursor < dashedAt) {
     return {
       ok: false,
       command,

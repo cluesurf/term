@@ -3,8 +3,9 @@
 # tolerant parser, a perf budget, and hang-safe structure-aware fuzzing under a child-process watchdog. Exits non-zero
 # on any finding AND whenever a check did not run, so it gates CI.
 #
-# Ported from deck/call/code/hunt.ts (term-cli-in-term-0059). The engine (@term/test seed-hunt, compiler-fuzz), the
-# build's file walk, reader and resolver, the role reader and the output library are docked. `callHunt(input)` and
+# Ported from deck/call/code/hunt.ts (term-cli-in-term-0059). The engine is @term/test's compiler-hunt and
+# compiler-fuzzing ports, loaded (term-cli-in-term-0118); the build's file walk, reader and resolver, the role reader
+# and the output library are docked. `callHunt(input)` and
 # `runHuntFuzzChild(args)` keep their names and shapes; the constant HUNT_FUZZ_CHILD is the task `hunt-fuzz-child()`.
 # The hunt's items, one per oracle family and one per violation, crash, slow input, hang and check that did not run,
 # are made by a bind field for field as the original's `reportHunt` wrote them, and reported here in its order.
@@ -12,9 +13,13 @@
 load @term/base/list
   find list
 
+load @term/test/compiler-hunt
+  find hunt-seed-compiler
+
+load @term/test/compiler-fuzzing
+  find run-fuzz-campaign
+
 dock load
-  load <@term/test/code/seed-hunt>, name hunt-engine
-  load <@term/test/code/compiler-fuzz>, name fuzz-engine
   load <@term/call/code/make>, name make-module
   load <@term/call/code/role-of>, name role-module
   load <@term/call/code/output>, name output
@@ -129,7 +134,7 @@ task run-hunt-fuzz-child
 
   fork
     mark unsafe
-    fuzz-engine/run-fuzz-campaign(args)
+    run-fuzz-campaign(args)
   halt take
     take problem, like dynamic
     hunt-child-failed(problem)
@@ -163,7 +168,7 @@ task call-hunt
       like text
       save source, node-fs/read-file-sync(file, <utf8>)
       back hunt-unit-text(make-module/buildable(file, source, hunt-call-role(roles, file)), source)
-  save result, hunt-engine/hunt-seed-compiler(hunt-ask(root, make-module/project-resolver(root, <node>, root), files, input, hunt-self-entry(hunt-fuzz-child()), read))
+  save result, hunt-seed-compiler(hunt-ask(root, make-module/project-resolver(root, <node>, root), files, input, hunt-self-entry(hunt-fuzz-child()), read))
 
   fork test, and(given, not(node-fs/exists-sync(dir)))
     hold

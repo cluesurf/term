@@ -2247,6 +2247,29 @@ task emit-member
       save walked, st/walked-list
       save st/walked-list, false
       save target-kind, kind-of(expression-type(member-target))
+      # a dock a task of the module also names is bound as `__dockAny_<alias>` (ts-assemble `dock-import`), and a path
+      # off the alias reads it there, never the task's function (term/compiler decision 007)
+      save indexed, false
+      sift member-index
+        case some
+          save indexed, true
+        case none
+          save nothing, 0
+      save spelled-apart, read(nick)
+      sift member-target
+        case variable
+          link dock-root
+          fork test, and(and(facts/dock-names/has(dock-root), not(facts/dock-names/get(dock-root))), not(indexed))
+            hold
+              fork test, is-equal(spelled-apart, <>)
+                hold
+                  save spelled-apart, to-member(member-name)
+                  fork test, host-spelled(member-name)
+                    hold
+                      save spelled-apart, member-name
+              back <__dockAny_{to-camel(dock-root)}.{spelled-apart}>
+        miss
+          save nothing, 0
       save has-index, false
       sift member-index
         case some

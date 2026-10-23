@@ -265,6 +265,8 @@ hook tool
   expect('a word no slot holds is refused', noSlot.ok, false)
   const badGlobal = dispatch(program, ['build', '--color', 'red'])
   expect('a global\'s choices are checked', badGlobal.ok, false)
+  const dashed = dispatch(program, ['build', 'a.tree', '--', 'run', '--help'])
+  expect('words after -- no slot holds are left to the task, not refused', [dashed.ok, dashed.ok && dashed.args.file], [true, 'a.tree'])
 
   // A PASSING COMMAND (`mark pass`, decision cli-in-term/008 part 2): every word after its path reaches its one slot
   // verbatim, `--help`, `--` and unknown or global flags included; words before it are still the console's

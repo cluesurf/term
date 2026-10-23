@@ -10,8 +10,13 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { compile } from '@term/make/code/compile/compile'
-import { DEFAULT_FUZZ_CORPUS, minimizeCrash, shrinkInput } from '@term/test/code/compiler-fuzz'
-import { huntSeedCompiler, renderHunt, type FuzzEntry } from '@term/test/code/seed-hunt'
+import { fuzzCorpus, minimizeCrash, shrinkInput } from '@term/test/code/compiler-fuzzing'
+import { huntSeedCompiler, renderHunt } from '@term/test/code/compiler-hunt'
+
+// the ports' shapes (term-cli-in-term-0118): the corpus constant is the task fuzz-corpus, and a fuzz entry is the
+// host value seed-hunt.ts typed FuzzEntry
+const DEFAULT_FUZZ_CORPUS = fuzzCorpus()
+type FuzzEntry = { command: string; args: string[] }
 
 const none = () => undefined
 

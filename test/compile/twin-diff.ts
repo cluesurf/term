@@ -1,4 +1,4 @@
-// Differential admission (deck/test/code/twin-diff.ts, optimize-0010): a twin is admitted as TESTED only when it agrees
+// Differential admission (deck/test/code/twin-admission.tree, was twin-diff.ts, optimize-0010): a twin is admitted as TESTED only when it agrees
 // with its task on generated inputs in TypeScript and on the same inputs replayed on Rust, Swift and Kotlin, AND the
 // comparison catches deliberately wrong copies of it. Held here both ways: the stdlib's two `count-each` twins are
 // admitted, and a twin that skips the first value is refused with the smallest input that shows it.
@@ -9,7 +9,10 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { nativeFlags } from './native-flags'
-import { admit, cache, REPLAY_TASK } from '@term/test/code/twin-diff'
+import { admit, compileCache, replayTask } from '@term/test/code/twin-admission'
+// the port's constants are tasks (term-cli-in-term-0118): the module's one CompileCache, and the replay task's name
+const cache = compileCache()
+const REPLAY_TASK = replayTask()
 import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
 import type { Source } from '@term/make/code/compile/load'

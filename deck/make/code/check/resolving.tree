@@ -179,6 +179,10 @@ task build-global-scope
       case native
         save deferred, make binding/deferred
         save global/{alias}, deferred
+        # the dock again under a key no Term name can be (it holds a space): a task of the alias's name takes the
+        # plain key, and the root of a path still reaches the dock (`resolve-member-root`, term/compiler decision 007)
+        save apart-key, <dock {alias}>
+        save global/{apart-key}, make binding/deferred
       case view
         save global/{name}, function-binding(params/length)
       miss
@@ -274,6 +278,10 @@ task known-names
     take scope
     walk scope/keys()
       take name
+      # a dock's second key (`dock-key`) is no name anyone writes
+      fork test, has-space(name)
+        hold
+          turn next
       fork test, not(seen/has(name))
         hold
           save seen/{name}, true
@@ -384,6 +392,51 @@ task unknown-name
       bind hint, make(some, hint)
       bind fixes, make(some, fixes)
   push(state/diagnostics, diagnose(make(unknown-name), input))
+
+# the key a dock alias is also kept under in the global scope, which no Term name can be (it holds a space)
+task dock-key
+  take alias, like text
+  like text
+  mark private
+
+  back <dock {alias}>
+
+task has-space
+  take name, like text
+  like boolean
+  mark private
+
+  save parts, split(name, < >)
+  back is-above(parts/length, 1)
+
+# THE ROOT OF A PATH REACHES THE DOCK (term/compiler decision 007). A dock alias and a task of the same file share the
+# global scope's plain key, and the task's binding won it, so `resolve-module/basename(file)` was bound to the task:
+# Swift and Kotlin renamed it with the task (compile/dock-apart.tree) and read `.basename` off the function. A path
+# root bound to a TASK whose name a dock also takes is the dock; a parameter or local of that name still hides both
+task resolve-member-root
+  take state, like resolve-state
+  take root, like expression
+  like expression
+  mark private
+
+  sift root
+    case variable
+      sift binding
+        case some
+          link bound
+          sift bound
+            case function
+              save global, get(state/stack, 0)
+              fork test, global/has(dock-key(name))
+                hold
+                  save root/binding, make(some, global/get(dock-key(name)))
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  back root
 
 # a variable, bound or reported. The expression to keep: the variable, or the typed hole it is
 task resolve-variable
@@ -828,7 +881,7 @@ task resolve-expression
         save at, add(at, 1)
       save node/fields, fields
     case member
-      save node/target, resolve-expression(state, target)
+      save node/target, resolve-member-root(state, resolve-expression(state, target))
     case template
       save at, 0
       walk parts

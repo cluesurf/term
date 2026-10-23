@@ -1,16 +1,10 @@
-mark draft
-
 note <proofs run one after another and many at once: the same verdicts, in input order>
 
 # The parallel checks of deck/test/code/demo-perf.ts (decision 004, term-cli-in-term-0114), over smt-proof.tree and
 # concurrency.tree: twelve obligations (max proven, `return a` refuted, in turn) run serially and eight at a time, and
 # both must answer the same verdicts in input order. Needs the solver, so node only. Its first three checks are
-# proof-sequence.tree's.
-#
-# SHELVED (term-cli-in-term-0114): the parallel run fails "you can't execute multiple async functions at the same
-# time". runtime/smt-text.ts hands every query to z3-solver's async_call on one shared context, and z3-solver refuses a
-# second async call while one is out. The fix is a queue in smt-text.ts (each evaluate waits for the one before), which
-# passes this file (2 of 2, tried and reverted: smt-text.ts is outside 0114's writes). Bring the file in with that fix.
+# proof-sequence.tree's. z3-solver refuses a second async call on one context while one is out, so runtime/smt-text.ts
+# queues every query (term-cli-in-term-0173): "at once" is many proofs in flight, their solver calls one at a time.
 
 load ../code/smt-proof
   find prove-expr

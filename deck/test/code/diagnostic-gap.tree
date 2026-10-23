@@ -17,13 +17,15 @@ load ./checker-report
   find checker-gap
   find gap-from-diagnostic
 
-bind diagnostic-name
+# named for this module: a bind of one name in two modules one port loads is one bind (traps.md), and
+# work/hold/project-hold.tree and work/testing/test-command.tree each have a diagnostic-name or diagnostic-message
+bind gap-diagnostic-name
   take found, like dynamic
   like text
   case node
     text <$found.name>
 
-bind diagnostic-message
+bind gap-diagnostic-message
   take found, like dynamic
   like text
   case node
@@ -93,8 +95,8 @@ task gap-from-host-diagnostic
 
   host filled
     make diagnostic-in
-      bind name, diagnostic-name(found)
-      bind message, diagnostic-message(found)
+      bind name, gap-diagnostic-name(found)
+      bind message, gap-diagnostic-message(found)
       bind file, diagnostic-file(found)
       bind has-span, diagnostic-has-span(found)
       bind start-line, diagnostic-start-line(found)

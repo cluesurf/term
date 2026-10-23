@@ -1,0 +1,36 @@
+note <the compiler fuzzed: mutated programs fed to the live compiler, which must always answer and never throw>
+
+# The checks of deck/test/code/demo-compiler-fuzz.ts (decision 004, term-cli-in-term-0114), its budget and seed: 3,000
+# mutated inputs from the default corpus at seed 7, four mutations each. The fuzzer ran the full budget; it reached
+# three or more distinct diagnostic codes (real coverage); and every input was classified: a crash is a finding the
+# demo listed rather than failed on, so the check is that each crash carries the input and the error that make it one.
+# The demo's fourth outcome, a HANG caught by a watchdog over a child process, has no form here: the campaign runs in
+# the test's own process, so a compiler that never answered would stall the test, which is itself the finding. The
+# compiler is docked by compiler-fuzzing.tree: `term test` builds the module inside the project, whose tsconfig maps
+# the dock to its source (decision 009).
+
+load ../code/compiler-fuzzing
+  find fuzz-compiler
+  find fuzz-corpus
+  find fuzz-ask
+  find fuzz-report
+
+load @term/base/list
+  find list
+
+task campaign
+  like fuzz-report
+
+  back fuzz-compiler(make(fuzz-ask, bind(corpus, fuzz-corpus()), bind(runs, 3000), bind(seed, 7), bind(mutations-per-run, 4), bind(probe-file, <>), bind(has-budget, false), bind(perf-budget-ms, 0)))
+
+test <the fuzzer runs its full budget, reaches three or more diagnostics, and classifies every input>
+  host report, campaign()
+  want hold, is-equal report/runs, 3000
+  want hold, is-minimum report/codes-seen/length, 3
+  save classified, true
+  walk report/crashes
+    take each
+    fork test, or(is-equal(each/input, <>), is-equal(each/error, <>))
+      hold
+        save classified, false
+  want hold, classified

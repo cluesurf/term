@@ -313,6 +313,9 @@ task ts-tables
       miss
         turn next
 
+  # each docked module's alias: true, or false where a task of the module takes the same name, so the dock is bound
+  # apart (`dock-import`) and a path off it is read there (term/compiler decision 007)
+  save task-names, top-task-names(program)
   save dock-names, make hash
   walk program
     take one
@@ -322,7 +325,7 @@ task ts-tables
         link module
         fork test, and(is-unequal(native-kind-of(one), <type>), is-equal(starts-with(module, <global:>), false))
           hold
-            dock-names/set(alias, true)
+            dock-names/set(alias, not(task-names/has(alias)))
       miss
         turn next
 
@@ -424,14 +427,37 @@ task has-text
         back true
   back false
 
-# the dock import of an alias: the module bound once, read through `any`
+# the dock import of an alias: the module bound once, read through `any`. Where a task of the module takes the alias,
+# the local is `__dockAny_<alias>`, which no Term name spells (ts-emit reads a path off it there, decision 007)
 task dock-import
   take alias, like text
   take module, like text
+  take apart, like boolean
   like text
   mark private
 
+  fork test, apart
+    hold
+      back <import * as __dock_{alias} from "{module}"\nconst __dockAny_{alias}: any = __dock_{alias}>
   back <import * as __dock_{alias} from "{module}"\nconst {alias}: any = __dock_{alias}>
+
+# the names of the module's own top-level tasks, as written, where a dock alias of the same name must be bound apart
+task top-task-names
+  take program, like list, like statement
+  like hash, like text, like boolean
+  mark private
+
+  save names, make hash
+  walk program
+    take one
+    sift one
+      case function
+        fork test, not(stub)
+          hold
+            names/set(name, true)
+      miss
+        turn next
+  back names
 
 # the module's imports: each `dock load` once by alias, each `<global:X>` declared and aliased, and what the binds the
 # program calls need on this env
@@ -444,6 +470,7 @@ task module-imports
 
   save dock-aliases, make hash
   save imports, make list
+  save task-names, top-task-names(program)
 
   walk program
     take one
@@ -458,7 +485,7 @@ task module-imports
               hold
                 turn next
             dock-aliases/set(spelled, true)
-            push(imports, dock-import(spelled, module))
+            push(imports, dock-import(spelled, module, task-names/has(alias)))
       miss
         turn next
 
@@ -499,7 +526,7 @@ task module-imports
               fork test, is-equal(dock-aliases/has(spelled), false)
                 hold
                   dock-aliases/set(spelled, true)
-                  push(imports, dock-import(spelled, need/module))
+                  push(imports, dock-import(spelled, need/module, false))
             miss
               save line, <import "{need/module}">
               fork test, is-equal(has-text(imports, line), false)

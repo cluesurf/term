@@ -1,0 +1,169 @@
+note <a property test over a real compiled type: the compiler's record types read as shapes, and claims checked over them>
+
+# The checks of deck/test/code/demo-ir.ts (decision 004, term-cli-in-term-0114): a program of two records compiles; the
+# record table taken from the compiler's own program holds both; `point` reads as a record shape of two fields; values
+# generated from `point` are points, and from `line` lines holding a point (the shape recurses through the record); and
+# a claim false in general (a = b) finds a counterexample. The compiler is docked: `term test` builds the module inside
+# the project, whose tsconfig maps the dock to its source (decision 009).
+
+load ../code/compiler-type-shape
+  find ir-to-seed-type
+  find gen-from-ir
+
+load ../code/property-check
+  find shape
+  find sample
+  find check
+
+load @term/base/list
+  find list
+
+dock load
+  load <@term/make/code/compile/compile>, name shape-compiling
+
+form shape-source
+  link file, like text
+  link text, like text
+
+form shape-options
+  link resolve, like dynamic
+
+bind shape-no-resolve
+  take seed, like number
+  like dynamic
+  case node
+    text <(() =\> undefined)>
+
+bind shape-compiled
+  take result, like dynamic
+  like boolean
+  case node
+    text <$result.ok>
+
+# the record types of a compiled program, by name: what the checker hands a record type's fields as
+bind record-table-of
+  take result, like dynamic
+  like dynamic
+  case node
+    text <<new Map(($result.program ?? []).filter(one_ => one_?.form === "record-type" && one_.name && one_.fields).map(one_ => [one_.name, one_.fields]))>>
+
+bind table-has
+  take table, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <$table.has($name)>
+
+# the compiler's type of a record, by its name
+bind named-type
+  take name, like text
+  like dynamic
+  case node
+    text <<({ kind: "named", name: $name })>>
+
+host source, <form point\n  link a, like number\n  link b, like number\n\nform line\n  link head, like point\n  link size, like number\n>
+
+task compiled
+  like dynamic
+
+  back shape-compiling/compile(make(shape-source, bind(file, <shapes.tree>), bind(text, source)), make(shape-options, bind(resolve, shape-no-resolve(0))))
+
+task records
+  like dynamic
+
+  back record-table-of(compiled())
+
+# a record value's field by name, a flag when it has none
+task field-of
+  take value, like sample
+  take name, like text
+  like sample
+
+  sift value
+    case fields
+      link names
+      link values
+      save at, 0
+      walk names
+        take one
+        fork test, is-equal(one, name)
+          hold
+            back get(values, at)
+        save at, add(at, 1)
+    miss
+      back make(flag, bind(value, false))
+  back make(flag, bind(value, false))
+
+task is-number
+  take value, like sample
+  like boolean
+
+  sift value
+    case number
+      back true
+    miss
+      back false
+
+task is-point
+  take value, like sample
+  like boolean
+
+  back and(is-number(field-of(value, <a>)), is-number(field-of(value, <b>)))
+
+task is-line
+  take value, like sample
+  like boolean
+
+  back and(is-number(field-of(value, <size>)), is-point(field-of(value, <head>)))
+
+# false in general: a point's two numbers are equal
+task sides-equal
+  take value, like sample
+  like boolean
+
+  host a, field-of(value, <a>)
+  host b, field-of(value, <b>)
+  sift a
+    case number
+      link first
+      sift b
+        case number
+          link second
+          back is-equal(first, second)
+        miss
+          back false
+    miss
+      back false
+
+task record-size
+  take kind, like shape
+  like number
+
+  sift kind
+    case record
+      link names
+      back names/length
+    miss
+      back 0
+
+test <a real program of two records compiles>
+  want hold, shape-compiled(compiled())
+
+test <the record table from the compiler's program holds both records>
+  host table, records()
+  want hold, and(table-has(table, <point>), table-has(table, <line>))
+
+test <point reads as a record shape of two fields>
+  want hold, is-equal record-size(ir-to-seed-type(named-type(<point>), records())), 2
+
+test <values generated from the real point type are points>
+  host found, check(gen-from-ir(named-type(<point>), records()), is-point, 100, 1, 64)
+  want hold, found/ok
+
+test <values generated from line are lines holding a point>
+  host found, check(gen-from-ir(named-type(<line>), records()), is-line, 100, 1, 64)
+  want hold, found/ok
+
+test <a claim false in general finds a counterexample over the derived type>
+  host found, check(gen-from-ir(named-type(<point>), records()), sides-equal, 200, 1, 64)
+  want miss, found/ok

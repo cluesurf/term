@@ -46,12 +46,12 @@ import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
 import { renderDiagnostic } from '@term/call/code/report'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import type { BuildProblem } from '@term/call/code/make'
-import { holdIncremental } from '@term/test/code/hold-incremental'
+import { holdIncremental } from '@term/test/code/incremental-hold'
 import {
   diskObligationCache,
   memoryObligationCache,
-} from '@term/test/code/obligation-cache'
-import { renderReport } from '@term/test/code/prove-file'
+} from '@term/test/code/obligation-store'
+import { renderReport } from '@term/test/code/file-proof'
 import { closeRun, count, field, openRun, printData, problemOf, report, reportProblems } from '@term/call/code/output'
 import { projectHome } from '@term/call/code/home'
 import * as plan from '@term/call/code/hold-plan'
