@@ -51,6 +51,7 @@ load ./ts-preludes
   find exception-class
   find exception-prelude
   find form-walk-prelude
+  find inspect-prelude
   find maybe-field-prelude
   find host-value-prelude
   find int-prelude
@@ -95,6 +96,7 @@ form wake-group
 # the identity guards by case
 form emit-flags
   link form-walk-used, like boolean
+  link inspect-used, like boolean
   link host-used, like boolean
   link maybe-field-used, like boolean
   link int-used, like boolean
@@ -650,6 +652,10 @@ task assemble-type-script
         hold
           save prelude, with-first(prelude, class-prelude)
       push(prelude, form-walk-prelude())
+
+  fork test, flags/inspect-used
+    hold
+      push(prelude, inspect-prelude())
 
   fork test, flags/maybe-field-used
     hold

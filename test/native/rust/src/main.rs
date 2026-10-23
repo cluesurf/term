@@ -1,4 +1,5 @@
-// The rust native smoke suite: the SHIPPED runtime shims, compiled and run against tokio and hyper.
+// The rust native smoke suite: the SHIPPED runtime shims, compiled and run, the file shims over std::fs handed back
+// and the servers over tokio and hyper.
 //
 // The native gate proves every module type-checks and `cargo check`s. It never runs a line. This does: it writes
 // a file with `aio::file_write`, reads it back, appends, streams it, stats it, walks a directory, watches for a
@@ -20,7 +21,10 @@
 pub struct TermMap<K, V> { slot: std::collections::HashMap<K, usize>, entry: Vec<Option<(K, V)>> }
 impl<K: std::hash::Hash + Eq + Clone, V> TermMap<K, V> {
     pub fn new() -> Self { TermMap { slot: std::collections::HashMap::new(), entry: Vec::new() } }
-    pub fn get(&self, key: &K) -> Option<&V> { self.slot.get(key).and_then(|&i| self.entry[i].as_ref().map(|e| &e.1)) }
+    // a key looked up borrowed, as the emitted map's `get_text` does: a `&str` reads a `String` key
+    pub fn get<Q: std::hash::Hash + Eq + ?Sized>(&self, key: &Q) -> Option<&V> where K: std::borrow::Borrow<Q> {
+        self.slot.get(key).and_then(|&i| self.entry[i].as_ref().map(|e| &e.1))
+    }
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
         if let Some(&i) = self.slot.get(&key) { return self.entry[i].as_mut().map(|e| std::mem::replace(&mut e.1, value)); }
         self.slot.insert(key.clone(), self.entry.len());
@@ -83,31 +87,38 @@ pub struct Response {
     pub body: String,
 }
 
+// the hand-back the emitted program's executor carries (compile/rust-assemble.tree, `__term_hand_back`, decision 001),
+// stood in for: this suite drives the shims on tokio, so the blocking call goes to tokio's blocking pool. The executor's
+// own hand-back is proven by test/compile/hand-back-native.ts, through the compiler
+async fn __term_hand_back<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> T {
+    tokio::task::spawn_blocking(work).await.expect("hand-back")
+}
+
 // ---- the shipped shims ----
 
 include!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../../deck/seed/code/native/rust/file/runtime/aio.rs"
+    "/../../../deck/base/code/native/rust/file/runtime/aio.rs"
 ));
 include!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../../deck/seed/code/native/rust/file/runtime/watch.rs"
+    "/../../../deck/base/code/native/rust/file/runtime/watch.rs"
 ));
 include!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../../deck/seed/code/native/rust/file/asynchronous/runtime/stat.rs"
+    "/../../../deck/base/code/native/rust/file/asynchronous/runtime/stat.rs"
 ));
 include!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../../deck/seed/code/native/rust/file/asynchronous/runtime/walk.rs"
+    "/../../../deck/base/code/native/rust/file/asynchronous/runtime/walk.rs"
 ));
 include!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../../deck/seed/code/native/rust/network/runtime/server.rs"
+    "/../../../deck/base/code/native/rust/network/runtime/server.rs"
 ));
 include!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../../deck/seed/code/native/rust/network/runtime/http2.rs"
+    "/../../../deck/base/code/native/rust/network/runtime/http2.rs"
 ));
 
 // ---- the harness ----
@@ -552,7 +563,7 @@ fn main() {
     let local = tokio::task::LocalSet::new();
 
     local.block_on(&tokio, async {
-        println!("-- asynchronous files (tokio::fs)");
+        println!("-- asynchronous files (std::fs, handed back)");
         files().await;
         println!("-- http server (hyper)");
         server().await;

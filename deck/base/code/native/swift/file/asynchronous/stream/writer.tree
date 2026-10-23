@@ -1,4 +1,4 @@
-# swift asynchronous file write stream, over NIOFileSystem. Internal: reached only through the public
+# swift asynchronous file write stream, over a POSIX descriptor, each write handed back (decision 001). Internal: reached only through the public
 # file/stream/writer API.
 
 dock type

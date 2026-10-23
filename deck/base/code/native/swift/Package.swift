@@ -3,12 +3,10 @@
 // The libraries the Seed stdlib's swift target wraps.
 //
 // Foundation, Dispatch and CryptoKit are Apple system frameworks swiftc links on its own, so most of the swift
-// runtime shims (native/swift/runtime/*.swift) need no package at all. The two that do are the ones with no
-// system answer:
+// runtime shims (native/swift/runtime/*.swift) need no package at all, the asynchronous filesystem among them:
+// FileManager and POSIX calls handed back to the waiting task from a pool of 4 (aio.swift, decision 001), which is
+// what NIOFileSystem was underneath. The one that does is the one with no system answer:
 //
-//   NIOFileSystem (swift-nio)  the asynchronous filesystem API. Foundation has none: FileManager and FileHandle
-//                              are synchronous, and wrapping them in a Task is a thread pool wearing async
-//                              clothing, not asynchronous IO.
 //   Hummingbird                the HTTP server. Foundation has no server either, and hand-rolling one over
 //                              POSIX sockets is how the previous shim worked: no keep-alive, no chunked bodies,
 //                              no TLS, one request per connection.
@@ -40,7 +38,6 @@ let package = Package(
             dependencies: [
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOPosix", package: "swift-nio"),
-                .product(name: "_NIOFileSystem", package: "swift-nio"),
                 .product(name: "Hummingbird", package: "hummingbird"),
                 .product(name: "HummingbirdHTTP2", package: "hummingbird"),
                 .product(name: "HummingbirdTLS", package: "hummingbird"),

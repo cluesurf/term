@@ -59,7 +59,9 @@ private let CASK_TRACE = ProcessInfo.processInfo.environment["CASK_TRACE"] != ni
 // is asynchronous and answers with the reply text; the reply goes back into the page on the main thread, which is
 // the one thread WKWebView accepts a script from. CASK_TRACE=1 in the environment prints every message and reply
 final class CaskBridge: NSObject, WKScriptMessageHandler {
-    var onMessage: ((String) async -> String)?
+    // an async Term task is `async throws` on Swift, so the handler is taken as one. The generated dispatch answers
+    // every raise itself; one that still escapes is answered as an exception with no id, never a crash
+    var onMessage: ((String) async throws -> String)?
     weak var webview: WKWebView?
     private let trace = ProcessInfo.processInfo.environment["CASK_TRACE"] != nil
 
@@ -70,7 +72,13 @@ final class CaskBridge: NSObject, WKScriptMessageHandler {
         guard let text = message.body as? String, let handler = onMessage else { return }
         if trace { print("cask <- \(text)") }
         Task {
-            let reply = await handler(text)
+            let reply: String
+            do {
+                reply = try await handler(text)
+            } catch {
+                let note = "\(error)".replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+                reply = "{\"id\":\"\",\"exception\":\"\(note)\"}"
+            }
             if self.trace { print("cask -> \(reply)") }
             await MainActor.run {
                 self.webview?.evaluateJavaScript("window.term.reply(\(reply))", completionHandler: nil)
@@ -314,7 +322,7 @@ enum cask {
         }
     }
 
-    static func onMessage(_ handle: CaskWindow, _ handler: @escaping (String) async -> String) {
+    static func onMessage(_ handle: CaskWindow, _ handler: @escaping (String) async throws -> String) {
         handle.bridge.onMessage = handler
     }
 

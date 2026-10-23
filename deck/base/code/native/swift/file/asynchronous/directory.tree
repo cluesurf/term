@@ -1,5 +1,5 @@
-# swift asynchronous directory reading. Forwards to the linked `walk` runtime shim, which is NIOFileSystem's
-# DirectoryEntries async sequence.
+# swift asynchronous directory reading. Forwards to the linked `walk` runtime shim, which is FileManager handed back
+# through `aio`'s `handBack`, the swift runtime's one pool (decision 001), so `aio` is docked too.
 # Internal: reached only through the public file/directory API.
 
 # The dock ALIAS is `walk-file`, not `walk`: the alias is what the emitted namespace is called, and `walk` is
@@ -7,6 +7,7 @@
 # mentions neither. The GLOBAL stays `walk`, so the shim file is still runtime/walk.<ext>.
 dock load
   load <global:walk>, name walk-file
+  load <global:aio>, name aio
 
 load @term/base/file/directory
   find walk-entry

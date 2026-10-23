@@ -681,6 +681,21 @@ function checkProgram(
     })
   }
 
+  // `inspect` and `print` of @term/base/debug are lowered at each call with the argument's static type, as `melt` is
+  // (term/base-v1 decision 001): a call to either becomes `inspect-form`, which every emitter walks by that type. Only
+  // the stdlib's own definitions are, so a task of the same name elsewhere is an ordinary call
+  const debugIntrinsics = new Set<string>()
+
+  for (const statement of program) {
+    if (
+      statement.form === 'function' &&
+      (statement.name === 'inspect' || statement.name === 'print') &&
+      /(^|\/)base\/code\/debug\.tree$/.test(statement.span.file ?? '')
+    ) {
+      debugIntrinsics.add(statement.name)
+    }
+  }
+
   // a declarative native binding registers a function-shaped signature (no generics, no body to check): calls resolve
   // and type-check against it, and each backend renders the env's native template in place of a real call.
   for (const statement of program) {
@@ -1434,6 +1449,65 @@ function checkProgram(
       }
 
       case 'call': {
+        // `inspect(value)`: the text of the value as its Term construction, walked by its static type. `print(value)`
+        // writes that text to standard error, through debug's `write-debug-line`. A type parameter is refused: the
+        // static type is the only shape a native value has (term/base-v1 decision 001)
+        if (
+          node.callee.form === 'variable' &&
+          !env.has(node.callee.name) &&
+          (node.callee.name === 'inspect-form' || debugIntrinsics.has(node.callee.name))
+        ) {
+          const printing = node.callee.name === 'print'
+
+          // the inner call a `print` was rewritten to, whose argument is inferred already
+          if (node.callee.name === 'inspect-form' && (node as { printed?: boolean }).printed) {
+            type = stringType()
+            break
+          }
+
+          if (node.args.length !== 1) {
+            diagnostics.push(
+              diagnose('type-mismatch', {
+                file: currentFile,
+                span: node.span,
+                message: `"${printing ? 'print' : 'inspect'}" takes one value`,
+              }),
+            )
+          }
+
+          const argType = node.args[0] ? inferExpression(node.args[0], env) : unknownType()
+          const generic = freeTypeVarsImpl(argType, sub).find(id => currentGenericNames.has(id))
+
+          if (generic !== undefined) {
+            diagnostics.push(
+              diagnose('inspect-generic', {
+                file: currentFile,
+                span: node.span,
+                message: `inspect needs a concrete type, and \`${currentGenericNames.get(generic)}\` is a type parameter here`,
+              }),
+            )
+          }
+
+          if (printing) {
+            // `print(x)` is `write-debug-line(inspect-form(x))`: the inner call is typed here, the outer one by the
+            // ordinary path below, as a call of debug's own task
+            const inner: Expression = {
+              form: 'call',
+              callee: { form: 'variable', name: 'inspect-form', span: node.callee.span, type: unknownType() },
+              args: node.args,
+              span: node.span,
+              type: stringType(),
+              printed: true,
+            } as Expression
+            node.callee = { ...node.callee, name: 'write-debug-line' }
+            node.args = [inner]
+          } else {
+            node.callee = { ...node.callee, name: 'inspect-form' }
+            type = stringType()
+            break
+          }
+        }
+
         // `call fill / <data> / like <form>` is the form; `call melt / <value> / like <form>` is data. The value
         // is inferred for its own sake (a `data` in, a value of the form in), the result comes from the `like`.
         if (

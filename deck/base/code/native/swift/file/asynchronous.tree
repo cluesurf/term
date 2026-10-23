@@ -1,6 +1,5 @@
-# swift asynchronous filesystem. Forwards to the linked `aio` runtime shim, which is NIOFileSystem -- swift-nio's
-# asynchronous filesystem API. Foundation has none: FileManager and FileHandle are synchronous, and an `async`
-# wrapper around them is a blocked thread wearing async clothing.
+# swift asynchronous filesystem. Forwards to the linked `aio` runtime shim: FileManager and POSIX calls run on the
+# runtime's pool of 4 and handed back to the waiting task (note/project/term/decision/001-native-work-hands-back-to-the-loop.md).
 #
 # Internal: reached only through the public file API.
 

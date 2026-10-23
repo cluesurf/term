@@ -1,248 +1,258 @@
-// Asynchronous filesystem runtime for the swift target, over NIOFileSystem -- swift-nio's asynchronous filesystem
-// API, which is the ecosystem's answer and not a thread pool of our own.
+// Asynchronous filesystem runtime for the swift target: Foundation's FileManager and POSIX calls, each HANDED BACK
+// (note/project/term/decision/001-native-work-hands-back-to-the-loop.md). `handBack` runs the blocking call on the
+// runtime's pool of 4 worker threads and resumes the waiting task with its answer, so a read that blocks (a FIFO, a
+// slow disk) stalls no other job. No swift-nio: a program that reads a file builds with plain `swiftc`, and
+// NIOFileSystem was a blocking pool too (it runs its syscalls on NIOThreadPool).
 //
-// WHY NOT FOUNDATION. FileManager and FileHandle are synchronous to the bone. Wrapping them in `Task.detached`
-// gives an `async` signature over a blocked thread, which reads as asynchronous and is not: a thousand concurrent
-// reads become a thousand stalled threads. NIOFileSystem runs the syscalls on a bounded pool with a real async
-// interface, the same shape `tokio::fs` has on the rust target, so the two backends behave alike under load.
+// TOTAL, LIKE THE REST OF THE NATIVE SURFACE. The public file API has no error channel, so a failure reads as the
+// empty / false / zero answer. A handle open is the exception: a missing file there cannot be papered over.
 //
-// TOTAL, LIKE THE REST OF THE NATIVE SURFACE. Every call here `throws` upstream and the public file API has no
-// error channel, so a failure reads as the empty / false / zero answer. A handle open is the exception: a missing
-// file there cannot be papered over.
-//
-// Reached only through the public file API. See note/project/term/stdlib/native-async-file-and-server.md.
+// `handBack` is the swift runtime's one hand-back: the stat and walk shims call it too, and their modules dock this
+// one so it is in the program. Reached only through the public file API. See
+// note/project/term/stdlib/native-async-file-and-server.md.
 import Foundation
-import NIOCore
-import _NIOFileSystem
 
 enum aio {
-  // An open file. NIOFileSystem addresses reads and writes by absolute offset and keeps no cursor, so the cursor
-  // `seek` moves lives here. A class, not a struct, because the emitted `file` record holds it and every emitted
-  // record is a value: two copies of the record must be two views of ONE open file, not two cursors.
+  // the runtime pool: 4 workers, libuv's default, so the pool is the same size on every backend. An
+  // OperationQueue starts no thread until the first operation is added
+  private static let pool: OperationQueue = {
+    let queue = OperationQueue()
+    queue.name = "term.hand-back"
+    queue.maxConcurrentOperationCount = 4
+    return queue
+  }()
+
+  // a blocking call run on the pool, its answer handed back to the task waiting on it
+  static func handBack<T>(_ work: @escaping () -> T) async -> T {
+    await withCheckedContinuation { (waiting: CheckedContinuation<T, Never>) in
+      pool.addOperation { waiting.resume(returning: work()) }
+    }
+  }
+
+  // An open file: its descriptor and the cursor `seek` moves. Reads and writes are positional (pread / pwrite) at
+  // the cursor. A class, not a struct, because the emitted `file` record holds it and every emitted record is a
+  // value: two copies of the record must be two views of ONE open file, not two cursors.
   final class Handle: @unchecked Sendable {
-    let file: ReadWriteFileHandle
+    let descriptor: Int32
     var at: Int64
-    init(file: ReadWriteFileHandle, at: Int64) {
-      self.file = file
+    init(descriptor: Int32, at: Int64) {
+      self.descriptor = descriptor
       self.at = at
     }
   }
 
   // A read stream: the open file, where it is, and how much of the window is left (nil for "to the end").
   final class Reader: @unchecked Sendable {
-    let file: ReadFileHandle
+    let descriptor: Int32
     var at: Int64
     var left: Int64?
-    init(file: ReadFileHandle, at: Int64, left: Int64?) {
-      self.file = file
+    init(descriptor: Int32, at: Int64, left: Int64?) {
+      self.descriptor = descriptor
       self.at = at
       self.left = left
     }
   }
 
   final class Writer: @unchecked Sendable {
-    let file: WriteFileHandle
+    let descriptor: Int32
     var at: Int64
-    init(file: WriteFileHandle, at: Int64) {
-      self.file = file
+    init(descriptor: Int32, at: Int64) {
+      self.descriptor = descriptor
       self.at = at
     }
   }
 
-  private static var shared: FileSystem { FileSystem.shared }
-
   // ---- whole file ----
 
   static func fileRead(_ path: String) async -> String {
-    guard let bytes = await readBuffer(path) else { return "" }
-    return String(buffer: bytes)
+    await handBack { String(decoding: readWhole(path), as: UTF8.self) }
   }
 
   static func fileReadBytes(_ path: String) async -> Data {
-    guard let bytes = await readBuffer(path) else { return Data() }
-    return Data(bytes.readableBytesView)
+    await handBack { Data(readWhole(path)) }
   }
 
-  private static func readBuffer(_ path: String) async -> ByteBuffer? {
-    do {
-      return try await shared.withFileHandle(forReadingAt: FilePath(path)) { file in
-        try await file.readToEnd(maximumSizeAllowed: .gibibytes(1))
-      }
-    } catch {
-      return nil
+  // every byte up to the end, read until `read` answers 0, so a pipe or a FIFO is read to its writer's close rather
+  // than to the size `stat` gave when it was opened
+  private static func readWhole(_ path: String) -> [UInt8] {
+    let descriptor = Foundation.open(path, O_RDONLY)
+    guard descriptor >= 0 else { return [] }
+    defer { Foundation.close(descriptor) }
+
+    var out: [UInt8] = []
+    var chunk = [UInt8](repeating: 0, count: 65536)
+
+    while true {
+      let count = chunk.withUnsafeMutableBytes { Foundation.read(descriptor, $0.baseAddress, 65536) }
+      if count <= 0 { break }
+      out.append(contentsOf: chunk[0..<count])
     }
+
+    return out
   }
 
   static func fileWrite(_ path: String, _ data: String) async {
-    await writeBytes(path, Array(data.utf8), append: false)
+    await handBack { writeBytes(path, Array(data.utf8), append: false) }
   }
 
   static func fileWriteBytes(_ path: String, _ data: Data) async {
-    await writeBytes(path, Array(data), append: false)
+    await handBack { writeBytes(path, Array(data), append: false) }
   }
 
   static func fileAppend(_ path: String, _ data: String) async {
-    await writeBytes(path, Array(data.utf8), append: true)
+    await handBack { writeBytes(path, Array(data.utf8), append: true) }
   }
 
-  private static func writeBytes(
-    _ path: String,
-    _ bytes: [UInt8],
-    append: Bool
-  ) async {
-    do {
-      let at = FilePath(path)
-      let start: Int64 =
-        append ? Int64((try? await shared.info(forFileAt: at)?.size) ?? 0) : 0
-      let options: OpenOptions.Write =
-        append
-        ? .modifyFile(createIfNecessary: true)
-        : .newFile(replaceExisting: true)
+  // the whole of `bytes` written through one descriptor, replacing the file or added at its end
+  private static func writeBytes(_ path: String, _ bytes: [UInt8], append: Bool) {
+    let flags = O_WRONLY | O_CREAT | (append ? O_APPEND : O_TRUNC)
+    let descriptor = Foundation.open(path, flags, 0o644)
+    guard descriptor >= 0 else { return }
+    defer { Foundation.close(descriptor) }
+    _ = writeAll(descriptor, bytes, at: nil)
+  }
 
-      try await shared.withFileHandle(forWritingAt: at, options: options) { file in
-        _ = try await file.write(
-          contentsOf: bytes,
-          toAbsoluteOffset: start
-        )
+  // every byte written, at `at` (pwrite) or at the descriptor's own offset; the count written
+  private static func writeAll(_ descriptor: Int32, _ bytes: [UInt8], at: Int64?) -> Int {
+    var done = 0
+    while done < bytes.count {
+      let count = bytes[done...].withUnsafeBytes { chunk -> Int in
+        if let at {
+          return Foundation.pwrite(descriptor, chunk.baseAddress, chunk.count, off_t(at + Int64(done)))
+        }
+        return Foundation.write(descriptor, chunk.baseAddress, chunk.count)
       }
-    } catch {
-      return
+      if count <= 0 { break }
+      done += count
     }
+    return done
+  }
+
+  // up to `size` bytes at `at`; the bytes read, fewer at the end of the file
+  private static func readAt(_ descriptor: Int32, _ size: Int, at: Int64) -> [UInt8] {
+    guard size > 0 else { return [] }
+    var buffer = [UInt8](repeating: 0, count: size)
+    let count = buffer.withUnsafeMutableBytes { chunk in
+      Foundation.pread(descriptor, chunk.baseAddress, size, off_t(at))
+    }
+    return count > 0 ? Array(buffer[0..<count]) : []
   }
 
   static func fileCopy(_ from: String, _ to: String, _ deep: Bool) async {
-    // NIOFileSystem's copyItem is already recursive for a directory, so `deep` only decides whether a directory
-    // is allowed through at all: without it this is the single-file copy node's copyFile means.
-    do {
-      if !deep {
-        let info = try await shared.info(forFileAt: FilePath(from))
-
-        if info?.type == .directory {
-          return
-        }
-      }
-
-      try await shared.copyItem(at: FilePath(from), to: FilePath(to))
-    } catch {
-      return
+    // FileManager's copyItem is already recursive for a directory, so `deep` only decides whether a directory is
+    // allowed through at all: without it this is the single-file copy node's copyFile means.
+    await handBack {
+      var directory: ObjCBool = false
+      guard FileManager.default.fileExists(atPath: from, isDirectory: &directory) else { return }
+      if directory.boolValue && !deep { return }
+      try? FileManager.default.copyItem(atPath: from, toPath: to)
     }
   }
 
   static func fileMove(_ from: String, _ to: String) async {
-    try? await shared.moveItem(at: FilePath(from), to: FilePath(to))
+    await handBack { try? FileManager.default.moveItem(atPath: from, toPath: to) }
   }
 
+  // `deep` removes a directory tree. Without it a directory is still removed when empty, so `remove` means the
+  // same thing on a file and on a directory, the way node's `rm` does.
   static func fileRemove(_ path: String, _ deep: Bool) async {
-    _ = try? await shared.removeItem(at: FilePath(path), recursively: deep)
+    await handBack {
+      if deep {
+        try? FileManager.default.removeItem(atPath: path)
+      } else {
+        _ = Foundation.remove(path)
+      }
+    }
   }
 
   // an empty `kind` asks only whether the path exists; "file", "directory" and "link" ask what it is
   static func fileTest(_ path: String, _ kind: String) async -> Bool {
-    let at = FilePath(path)
+    await handBack {
+      var info = Foundation.stat()
 
-    do {
       if kind == "link" {
-        let info = try await shared.info(forFileAt: at, infoAboutSymbolicLink: true)
-        return info?.type == .symlink
+        guard Foundation.fstatat(AT_FDCWD, path, &info, AT_SYMLINK_NOFOLLOW) == 0 else { return false }
+        return (info.st_mode & S_IFMT) == S_IFLNK
       }
 
-      guard let info = try await shared.info(forFileAt: at) else { return false }
+      guard Foundation.fstatat(AT_FDCWD, path, &info, 0) == 0 else { return false }
 
       switch kind {
       case "": return true
-      case "file": return info.type == .regular
-      case "directory": return info.type == .directory
+      case "file": return (info.st_mode & S_IFMT) == S_IFREG
+      case "directory": return (info.st_mode & S_IFMT) == S_IFDIR
       default: return true
       }
-    } catch {
-      return false
     }
   }
 
   // ---- link ----
 
   static func linkMake(_ from: String, _ to: String, _ hard: Bool) async {
-    // NIOFileSystem has no hard link, and a hard link is one syscall: this is the same `link(2)` any crate calls.
-    if hard {
-      _ = from.withCString { source in
-        to.withCString { target in link(source, target) }
+    await handBack {
+      if hard {
+        _ = Foundation.link(from, to)
+      } else {
+        _ = Foundation.symlink(from, to)
       }
-
-      return
     }
-
-    try? await shared.createSymbolicLink(
-      at: FilePath(to),
-      withDestination: FilePath(from)
-    )
   }
 
   static func linkRead(_ path: String) async -> String {
-    guard
-      let target = try? await shared.destinationOfSymbolicLink(at: FilePath(path))
-    else {
-      return ""
-    }
-
-    return target.string
+    await handBack { (try? FileManager.default.destinationOfSymbolicLink(atPath: path)) ?? "" }
   }
 
   // ---- permission and owner ----
 
   static func permissionRead(_ path: String) async -> Int {
-    guard let info = try? await shared.info(forFileAt: FilePath(path)) else {
-      return 0
+    await handBack {
+      var info = Foundation.stat()
+      guard Foundation.fstatat(AT_FDCWD, path, &info, 0) == 0 else { return 0 }
+      return Int(info.st_mode & 0o7777)
     }
-
-    return Int(info.permissions.rawValue)
   }
 
   static func permissionWrite(_ path: String, _ mode: Int) async {
-    _ = path.withCString { chmod($0, mode_t(mode)) }
+    await handBack { _ = Foundation.chmod(path, mode_t(mode)) }
   }
 
   static func ownerUser(_ path: String) async -> Int {
-    guard let info = try? await shared.info(forFileAt: FilePath(path)) else {
-      return 0
+    await handBack {
+      var info = Foundation.stat()
+      guard Foundation.fstatat(AT_FDCWD, path, &info, 0) == 0 else { return 0 }
+      return Int(info.st_uid)
     }
-
-    return Int(info.userID.rawValue)
   }
 
   static func ownerGroup(_ path: String) async -> Int {
-    guard let info = try? await shared.info(forFileAt: FilePath(path)) else {
-      return 0
+    await handBack {
+      var info = Foundation.stat()
+      guard Foundation.fstatat(AT_FDCWD, path, &info, 0) == 0 else { return 0 }
+      return Int(info.st_gid)
     }
-
-    return Int(info.groupID.rawValue)
   }
 
   static func ownerWrite(_ path: String, _ user: Int, _ group: Int) async {
-    _ = path.withCString { chown($0, uid_t(user), gid_t(group)) }
+    await handBack { _ = Foundation.chown(path, uid_t(user), gid_t(group)) }
   }
 
   // ---- temporary ----
 
   // A unique name under the system temporary directory. The name is a uuid, so there is no retry loop and no
   // mkdtemp template: a collision cannot happen.
-  static func temporaryMake(
-    _ kind: String,
-    _ prefix: String,
-    _ suffix: String
-  ) async -> String {
-    let root =
-      (try? await shared.temporaryDirectory)
-      ?? FilePath(NSTemporaryDirectory())
+  static func temporaryMake(_ kind: String, _ prefix: String, _ suffix: String) async -> String {
     let name = "\(prefix)\(UUID().uuidString.lowercased())\(suffix)"
-    let at = root.appending(name)
+    let at = (NSTemporaryDirectory() as NSString).appendingPathComponent(name)
 
-    if kind == "directory" {
-      try? await shared.createDirectory(at: at, withIntermediateDirectories: true)
-    } else {
-      await writeBytes(at.string, [], append: false)
+    return await handBack {
+      if kind == "directory" {
+        try? FileManager.default.createDirectory(atPath: at, withIntermediateDirectories: true)
+      } else {
+        writeBytes(at, [], append: false)
+      }
+
+      return at
     }
-
-    return at.string
   }
 
   // ---- handle ----
@@ -255,166 +265,133 @@ enum aio {
     _ append: Bool,
     _ clear: Bool
   ) async -> Handle {
-    let at = FilePath(path)
-    let options: OpenOptions.Write =
-      clear && !append
-      ? .newFile(replaceExisting: true)
-      : .modifyFile(createIfNecessary: create)
+    await handBack {
+      var flags = O_RDWR
+      if create { flags |= O_CREAT }
+      if clear && !append { flags |= O_TRUNC }
 
-    guard
-      let file = try? await shared.openFile(
-        forReadingAndWritingAt: at,
-        options: options
-      )
-    else {
-      fatalError("file handle open: \(path)")
+      let descriptor = Foundation.open(path, flags, 0o644)
+      if descriptor < 0 {
+        fatalError("file handle open: \(path)")
+      }
+
+      // appending starts at the end, everything else at the start, which is what the open flags mean elsewhere
+      let start: Int64 = append ? Int64(Foundation.lseek(descriptor, 0, SEEK_END)) : 0
+
+      return Handle(descriptor: descriptor, at: start)
     }
-
-    // appending starts at the end, everything else at the start, which is what the open flags mean elsewhere
-    let start: Int64 =
-      append ? Int64((try? await shared.info(forFileAt: at)?.size) ?? 0) : 0
-
-    return Handle(file: file, at: start)
   }
 
   static func handleClose(_ file: Handle) async {
-    try? await file.file.close()
+    await handBack { _ = Foundation.close(file.descriptor) }
   }
 
   static func handleRead(_ file: Handle, _ size: Int) async -> String {
-    guard size > 0 else { return "" }
-
-    guard
-      let chunk = try? await file.file.readChunk(
-        fromAbsoluteOffset: file.at,
-        length: .bytes(Int64(size))
-      )
-    else {
-      return ""
+    await handBack {
+      let bytes = readAt(file.descriptor, size, at: file.at)
+      file.at += Int64(bytes.count)
+      return String(decoding: bytes, as: UTF8.self)
     }
-
-    file.at += Int64(chunk.readableBytes)
-
-    return String(buffer: chunk)
   }
 
   static func handleWrite(_ file: Handle, _ data: String) async -> Int {
-    let bytes = Array(data.utf8)
-
-    guard
-      (try? await file.file.write(contentsOf: bytes, toAbsoluteOffset: file.at))
-        != nil
-    else {
-      return 0
+    await handBack {
+      let bytes = Array(data.utf8)
+      let count = writeAll(file.descriptor, bytes, at: file.at)
+      guard count == bytes.count else { return 0 }
+      file.at += Int64(count)
+      return count
     }
-
-    file.at += Int64(bytes.count)
-
-    return bytes.count
   }
 
   // `frame` is "start" (absolute), "relative" (from the cursor) or "end" (back from the end)
   static func handleSeek(_ file: Handle, _ offset: Int, _ frame: String) async {
-    switch frame {
-    case "relative":
-      file.at += Int64(offset)
-    case "end":
-      let size = Int64((try? await file.file.info().size) ?? 0)
-      file.at = size - Int64(offset)
-    default:
-      file.at = Int64(max(0, offset))
+    await handBack {
+      switch frame {
+      case "relative":
+        file.at += Int64(offset)
+      case "end":
+        var info = Foundation.stat()
+        let size = Foundation.fstat(file.descriptor, &info) == 0 ? Int64(info.st_size) : 0
+        file.at = size - Int64(offset)
+      default:
+        file.at = Int64(max(0, offset))
+      }
     }
   }
 
   static func handleFlush(_ file: Handle) async {
-    // NIOFileSystem has no fsync of its own; the descriptor is the one the syscall wants
-    try? await file.file.withUnsafeDescriptor { descriptor in
-      _ = fsync(descriptor.rawValue)
-    }
+    await handBack { _ = Foundation.fsync(file.descriptor) }
   }
 
   static func handleClear(_ file: Handle, _ size: Int) async {
-    try? await file.file.resize(to: .bytes(Int64(max(0, size))))
-    file.at = min(file.at, Int64(max(0, size)))
+    await handBack {
+      _ = Foundation.ftruncate(file.descriptor, off_t(max(0, size)))
+      file.at = min(file.at, Int64(max(0, size)))
+    }
   }
 
   // ---- streams ----
 
   static func readerOpen(_ path: String, _ start: Int, _ size: Int) async -> Reader {
-    guard let file = try? await shared.openFile(forReadingAt: FilePath(path))
-    else {
-      fatalError("file reader open: \(path)")
-    }
+    await handBack {
+      let descriptor = Foundation.open(path, O_RDONLY)
+      if descriptor < 0 {
+        fatalError("file reader open: \(path)")
+      }
 
-    return Reader(
-      file: file,
-      at: Int64(max(0, start)),
-      left: size > 0 ? Int64(size) : nil
-    )
+      return Reader(descriptor: descriptor, at: Int64(max(0, start)), left: size > 0 ? Int64(size) : nil)
+    }
   }
 
   // the next chunk, or the empty text at the end of the stream (or of the window)
   static func readerNext(_ stream: Reader) async -> String {
-    let want: Int64
-    if let left = stream.left {
-      if left <= 0 { return "" }
-      want = min(left, 65536)
-    } else {
-      want = 65536
+    await handBack {
+      let want: Int64
+      if let left = stream.left {
+        if left <= 0 { return "" }
+        want = min(left, 65536)
+      } else {
+        want = 65536
+      }
+
+      let bytes = readAt(stream.descriptor, Int(want), at: stream.at)
+      stream.at += Int64(bytes.count)
+
+      if let left = stream.left {
+        stream.left = left - Int64(bytes.count)
+      }
+
+      return String(decoding: bytes, as: UTF8.self)
     }
-
-    guard
-      let chunk = try? await stream.file.readChunk(
-        fromAbsoluteOffset: stream.at,
-        length: .bytes(want)
-      )
-    else {
-      return ""
-    }
-
-    stream.at += Int64(chunk.readableBytes)
-
-    if let left = stream.left {
-      stream.left = left - Int64(chunk.readableBytes)
-    }
-
-    return String(buffer: chunk)
   }
 
   static func readerClose(_ stream: Reader) async {
-    try? await stream.file.close()
+    await handBack { _ = Foundation.close(stream.descriptor) }
   }
 
   static func writerOpen(_ path: String, _ append: Bool) async -> Writer {
-    let at = FilePath(path)
-    let options: OpenOptions.Write =
-      append ? .modifyFile(createIfNecessary: true) : .newFile(replaceExisting: true)
+    await handBack {
+      let descriptor = Foundation.open(path, O_WRONLY | O_CREAT | (append ? 0 : O_TRUNC), 0o644)
+      if descriptor < 0 {
+        fatalError("file writer open: \(path)")
+      }
 
-    guard let file = try? await shared.openFile(forWritingAt: at, options: options)
-    else {
-      fatalError("file writer open: \(path)")
+      let start: Int64 = append ? Int64(Foundation.lseek(descriptor, 0, SEEK_END)) : 0
+
+      return Writer(descriptor: descriptor, at: start)
     }
-
-    let start: Int64 =
-      append ? Int64((try? await shared.info(forFileAt: at)?.size) ?? 0) : 0
-
-    return Writer(file: file, at: start)
   }
 
   static func writerPush(_ stream: Writer, _ data: String) async {
-    let bytes = Array(data.utf8)
-
-    guard
-      (try? await stream.file.write(contentsOf: bytes, toAbsoluteOffset: stream.at))
-        != nil
-    else {
-      return
+    await handBack {
+      let bytes = Array(data.utf8)
+      let count = writeAll(stream.descriptor, bytes, at: stream.at)
+      stream.at += Int64(count)
     }
-
-    stream.at += Int64(bytes.count)
   }
 
   static func writerClose(_ stream: Writer) async {
-    try? await stream.file.close()
+    await handBack { _ = Foundation.close(stream.descriptor) }
   }
 }

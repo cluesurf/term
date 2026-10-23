@@ -11,13 +11,14 @@ load @term/site/dom/dom
   find view
   find append
 load ../logic/registry
+  find action
   find list-actions
   find run-action
 
 view command-palette
   take host, like view
   take class, like text
-  take registry, like signal
+  take registry, like signal, like list, like action
   save actions
     call list-actions
       bind self, read registry

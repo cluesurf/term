@@ -35,19 +35,21 @@ load @term/base/list
 # fade-in windows from, so late-mounting nodes ride the same clock rather than each carrying its own.
 form font-cell
   link family, like text
-  link signal, like signal
+  link signal, like signal text
   link instant, like boolean
   link first-ask, like number
 
 # what `subscribe-font` hands back to a text node: the status signal to gate opacity on, the instant flag that decides
 # snap (no transition) vs fade-in when the status is `ready`, and the family's first-ask timestamp.
 form font-watch
-  link signal, like signal
+  link signal, like signal text
   link instant, like boolean
   link first-ask, like number
 
-# module-scope: one cell per font family, shared across the whole document.
+# module-scope: one cell per font family, shared across the whole document. Typed with its element, so a cell read
+# back out is a `font-cell` and not the gradual unknown (seam decision 002, group C)
 host font-cells
+  like list, like font-cell
   make list
 
 # map a native terminal status to the shared signal's value: only `ready` shows the real font; `error` / `timeout`

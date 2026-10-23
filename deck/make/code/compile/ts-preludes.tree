@@ -931,3 +931,38 @@ task form-walk-prelude
   push(lines, <  return \{ form: "hash", list: Object.entries(value as object).map(([name, base]) =\> (\{ name, base: __termMeltAny(base) \})) \}>)
   push(lines, <\}>)
   back join(lines, <\n>)
+
+# the walk a module that lowers an `inspect` carries: it dispatches on the kind the call site wrote (backend-shapes.tree
+# `inspect-kind`) and writes structure only. Every scalar's text is debug.tree's own task (`show-text` ...), so the bytes
+# are those of every backend (term/base-v1 decision 001). A record or a union is kept by its key while it is walked, so
+# an `again` inside it reaches it
+task inspect-prelude
+  like text
+
+  save lines, make list
+  push(lines, <function __termInspect(value: any, kind: any, open: Map\<string, any\> = new Map()): string \{>)
+  push(lines, <  switch (kind.kind) \{>)
+  push(lines, <    case "text": return showText(value)>)
+  push(lines, <    case "number": return showInteger(value)>)
+  push(lines, <    case "decimal": return showDecimal(value)>)
+  push(lines, <    case "flag": return showFlag(value)>)
+  push(lines, <    case "blank": return "void">)
+  push(lines, <    case "list": return "list(" + (value as unknown[]).map(item =\> __termInspect(item, kind.item, open)).join(", ") + ")">)
+  push(lines, <    case "map": return "hash(" + [...(value as Map\<unknown, unknown\>)].map(([k, v]) =\> __termInspect(k, kind.keys, open) + " " + __termInspect(v, kind.values, open)).join(", ") + ")">)
+  push(lines, <    case "record": open.set(kind.key, kind); return __termInspectFields(kind.name, kind.fields, value, open)>)
+  push(lines, <    case "union": \{>)
+  push(lines, <      open.set(kind.key, kind)>)
+  push(lines, <      const one = kind.text ? kind.cases.find((c: any) =\> c.text === value) : kind.cases.find((c: any) =\> c.name === value?.[kind.tag])>)
+  push(lines, <      return one ? __termInspectFields(one.name, one.fields, value, open) : "opaque(" + kind.name + ")">)
+  push(lines, <    \}>)
+  push(lines, <    case "again": return __termInspect(value, open.get(kind.key), open)>)
+  push(lines, <    case "raised": return value.form + "(note " + showText(value.note) + ", flow list(" + (Array.isArray(value.flow) ? value.flow : []).map((line: string) =\> showText(line)).join(", ") + "))">)
+  push(lines, <    default: return "opaque(" + kind.name + ")">)
+  push(lines, <  \}>)
+  push(lines, <\}>)
+  push(lines, <>)
+  push(lines, <function __termInspectFields(name: string, fields: any[], value: any, open: Map\<string, any\>): string \{>)
+  push(lines, <  if (fields.length === 0) return name>)
+  push(lines, <  return name + "(" + fields.map((f: any) =\> f.name + " " + __termInspect(value[f.member], f.kind, open)).join(", ") + ")">)
+  push(lines, <\}>)
+  back join(lines, <\n>)

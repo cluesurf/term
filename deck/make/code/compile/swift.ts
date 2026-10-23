@@ -1584,7 +1584,10 @@ export function emitSwift(
     // routes go to `hiveWakeTyped` as `HiveEntry` records whose `base` is the payload form's own struct
     const typedWake = program.some(n => n.form === 'function' && n.name === 'hive-wake-typed')
     const TYPED_KINDS = new Set(['exception', 'tell', 'dock'])
-    const textOf = (value: unknown): string => JSON.stringify(typeof value === 'string' ? value : value == null ? '' : String(value))
+    // a Swift string literal: JSON's \u0007 and \f are not Swift escapes, so every other control character is \u{..}
+    const quote = (text: string): string =>
+      `"${[...text].map(c => (c === '\\' ? '\\\\' : c === '"' ? '\\"' : c === '\n' ? '\\n' : c === '\r' ? '\\r' : c === '\t' ? '\\t' : c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127 ? `\\u{${c.charCodeAt(0).toString(16)}}` : c)).join('')}"`
+    const textOf = (value: unknown): string => quote(typeof value === 'string' ? value : value == null ? '' : String(value))
     // a list FIELD of a struct is a Swift array; only a parameter is a SeedList
     const textsOf = (value: unknown): string => `[${(Array.isArray(value) ? value : []).map(textOf).join(', ')}] as [String]`
     const rollOf = (entry: Record<string, unknown>): Record<string, unknown> => (entry.base ?? {}) as Record<string, unknown>

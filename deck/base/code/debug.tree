@@ -1,15 +1,21 @@
-# Checks for a program's own assumptions. `assert-that` stops the run with the stdlib's `defect` when its condition is
-# false, on every backend, the way a list read past the end does: a broken assumption is a stop, not an exception a
-# caller handles (note/project/term/stdlib/semantics.md, "Two kinds of failure"). To print while debugging, `log/debug`; for the
-# call stack, `error/trace`.
+# Checks for a program's own assumptions, and a value shown while debugging. `assert-that` stops the run with the
+# stdlib's `defect` when its condition is false, on every backend, the way a list read past the end does: a broken
+# assumption is a stop, not an exception a caller handles (note/project/term/stdlib/semantics.md, "Two kinds of
+# failure"). `inspect` answers a value as one line of Term construction syntax, the same bytes on every backend, and
+# `print` writes that line to standard error (note/project/term/base-v1/decision/001-inspect-prints-term-construction.md).
+# For the call stack, `error/trace`.
 #
-# RENAMED AND CUT 2026-10-02 (base-v1-0020): this module declared `inspect`, `print`, `pause` and `assert` with no
-# bodies, so a call built clean and failed at run time.
+# `inspect` and `print` are lowered at each call with the argument's static type (check/infer.ts, like `melt`): the
+# bodies below run only where no call site is lowered, which leaves the type unknown. A value whose static type is a
+# type parameter is refused at the call, `inspect-generic`.
 
 mark unstable
 
 load @term/base/stop
   find abandon
+
+load @term/base/console
+  find error, name console-error
 
 # true when the condition holds; otherwise the run stops, saying what was assumed
 task assert-that
@@ -23,3 +29,92 @@ task assert-that
       send back, true
   call abandon, text <assertion: {{message}}>
   send back, false
+
+# the value as one line of the Term construction that reads as it: `user(name <Ada>, age 36)`, `list(1, 2)`,
+# `hash(<a> 1)`, `circle(radius 2)`, `none`, `opaque(task)`
+task inspect
+  take value, like unknown
+  like text
+  send back
+    call inspect-form
+      read value
+
+# `inspect` of the value and a line break, on standard error, whatever the log level
+task print
+  take value, like unknown
+  call write-debug-line
+    call inspect-form
+      read value
+
+# one line on standard error: what a lowered `print` writes
+task write-debug-line
+  take line, like text
+  call console-error
+    read line
+
+# ---- the text of a scalar, which every backend's walker calls ----
+
+# a text as the Term literal that reads back as it, escaping exactly what the lexer reads as an escape
+# (parser/token.tree `is-chunk-escape`): `\\` `\<` `\>` `\{` `\}` `\n` `\r` `\t` `\e`, every other character as itself
+task show-text
+  take value, like text
+  like text
+  save out
+    call value/replace-all
+      text <\\>
+      text <\\\\>
+  save out
+    call out/replace-all
+      text <\<>
+      text <\\\<>
+  save out
+    call out/replace-all
+      text <\>>
+      text <\\\>>
+  save out
+    call out/replace-all
+      text <\{>
+      text <\\\{>
+  save out
+    call out/replace-all
+      text <\}>
+      text <\\\}>
+  save out
+    call out/replace-all
+      text <\n>
+      text <\\n>
+  save out
+    call out/replace-all
+      text <\r>
+      text <\\r>
+  save out
+    call out/replace-all
+      text <\t>
+      text <\\t>
+  save out
+    call out/replace-all
+      text <\e>
+      text <\\e>
+  send back, text <\<{out}\>>
+
+# an integer of any width: its decimal digits, a leading `-`
+task show-integer
+  take value, like integer
+  like text
+  send back, text <{value}>
+
+# a decimal as `{x}` interpolation writes it on every backend: `2.5`, `1`, `NaN`
+task show-decimal
+  take value, like float
+  like text
+  send back, text <{value}>
+
+task show-flag
+  take value, like boolean
+  like text
+  fork test
+    hook test
+      read value
+    hook hold
+      send back, text <true>
+  send back, text <false>

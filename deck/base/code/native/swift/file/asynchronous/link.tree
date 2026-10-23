@@ -1,5 +1,5 @@
-# swift asynchronous symbolic and hard links, over NIOFileSystem (and link(2) for the hard case, which
-# NIOFileSystem does not offer). Internal: reached only through the public file/link API.
+# swift asynchronous symbolic and hard links, over link(2) / symlink(2) handed back to the waiting task (decision
+# 001). Internal: reached only through the public file/link API.
 
 dock load
   load <global:aio>, name aio

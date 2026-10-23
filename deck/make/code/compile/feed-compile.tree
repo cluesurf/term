@@ -3323,15 +3323,28 @@ task compile-any-helper
   fork test, is-text-cursor(ops)
     hold
       save element, <like text>
+  # the type every branch shares: a character, a text or a range answers the element, a form rule its own result.
+  # The helper is written with it, and with `like unknown` only where the branches differ (seam decision 002, group
+  # D): it used to be unknown as soon as any branch was a form rule, so a rule returning what it matched as a text
+  # returned an unknown
+  save shared, element
+  save fresh, like list, like text
+    make list
   walk branches
     take branch
-    fork test, is-form-rule(branch)
-      hold
-        save element, <like unknown>
+    sift branch
+      case form
+        link branch-name
+        save own, join(return-type-of(branch-name, ops, grammar, fresh), <\n>)
+        fork test, not(is-equal(own, element))
+          hold
+            save shared, <like unknown>
+      miss
+        save nothing, 0
   save lines, make list
   push(lines, <task {name}>)
   push(lines, <  take cursor, like {ops/cursor-type}>)
-  push(lines, <  {element}>)
+  push(lines, <  {shared}>)
   push(lines, <  save code>)
   push(lines, <    call {ops/peek-code}(read(cursor))>)
 

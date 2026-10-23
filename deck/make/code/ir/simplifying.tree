@@ -3131,6 +3131,17 @@ task forwarder-target
                   fork test, is-unequal(given/length, params/length)
                     hold
                       back make none
+                  # a call that carries its type (`fill` / `melt` with a form, an `inspect` stamped with its argument's
+                  # static type) is lowered by that type, which the caller's call would not carry
+                  sift sent-value
+                    case call
+                      sift into
+                        case some
+                          back make none
+                        case none
+                          save nothing, 0
+                    miss
+                      save nothing, 0
                   save i, 0
                   walk given
                     take arg

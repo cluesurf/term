@@ -1,16 +1,14 @@
-// Directory reading for the kotlin target, over java.nio.file on `Dispatchers.IO`. `dirList` is one level or every
+// Directory reading for the kotlin target, over java.nio.file handed back (`termLoop.handBack`). `dirList` is one level or every
 // level as relative paths; `dirWalk` is every level as `WalkEntry` records (path, kind, depth), which is the form
 // the module that docks this declares. Reached only through the public file/directory API.
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.Paths
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 object walkFile {
   suspend fun dirMake(path: String) {
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       try {
         Files.createDirectories(Paths.get(path))
       } catch (error: kotlin.Exception) {
@@ -21,7 +19,7 @@ object walkFile {
 
   // one level, or every level below it as paths relative to `path`
   suspend fun dirList(path: String, deep: Boolean): MutableList<String> =
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       val out = mutableListOf<String>()
       val root = Paths.get(path)
 
@@ -36,7 +34,7 @@ object walkFile {
           }
         }
       } catch (error: kotlin.Exception) {
-        return@withContext out
+        return@handBack out
       }
 
       out
@@ -45,7 +43,7 @@ object walkFile {
   // every entry beneath `path`, with what it is and how far below the root it sits. `depth` 0 walks all the way
   // down, which is what node's own recursive readdir does.
   suspend fun dirWalk(path: String, depth: Long): MutableList<WalkEntry> =
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       val out = mutableListOf<WalkEntry>()
       val root = Paths.get(path)
 
@@ -56,7 +54,7 @@ object walkFile {
           }
         }
       } catch (error: kotlin.Exception) {
-        return@withContext out
+        return@handBack out
       }
 
       out

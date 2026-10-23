@@ -930,8 +930,11 @@ function emitRustPass(
     // payload form, never a boxed JSON text, so a reader gets the record
     const typedWake = program.some(n => n.form === 'function' && n.name === 'hive-wake-typed')
     const TYPED_KINDS = new Set(['exception', 'tell', 'dock'])
+    // a Rust string literal: JSON's \u0007 and \f are not Rust escapes, so every other control character is \u{..}
+    const quote = (text: string): string =>
+      `"${[...text].map(c => (c === '\\' ? '\\\\' : c === '"' ? '\\"' : c === '\n' ? '\\n' : c === '\r' ? '\\r' : c === '\t' ? '\\t' : c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127 ? `\\u{${c.charCodeAt(0).toString(16)}}` : c)).join('')}"`
     const textOf = (value: unknown): string =>
-      `${JSON.stringify(typeof value === 'string' ? value : value == null ? '' : String(value))}.to_string()`
+      `${quote(typeof value === 'string' ? value : value == null ? '' : String(value))}.to_string()`
     const listOf = (items: string[]): string => `std::rc::Rc::new(std::cell::RefCell::new(vec![${items.join(', ')}]))`
     // a list FIELD of a struct is a plain Vec; only a parameter is the shared list
     const textsOf = (value: unknown): string => `vec![${(Array.isArray(value) ? value : []).map(textOf).join(', ')}]`

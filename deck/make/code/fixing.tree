@@ -616,10 +616,13 @@ task from-the-end
   like list, like edit
   mark private
 
-  save ordered, make list
+  # typed where they are made: an element read off an untyped empty list is the gradual unknown (seam decision 002)
+  save ordered, like list, like edit
+    make list
   walk taken
     take change
-    save placed, make list
+    save placed, like list, like edit
+      make list
     save done, false
     walk ordered
       take other

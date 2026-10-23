@@ -766,6 +766,7 @@ form diagnostic-name
   case empty-site, text <empty-site>
   case stray-save, text <stray-save>
   case missing-wait, text <missing-wait>
+  case inspect-generic, text <inspect-generic>
 
 # a name's catalog entry. `fix` is the default actionable hint, so every error says how to resolve it
 task entry-of
@@ -974,6 +975,10 @@ task entry-of
     # handed on as the answer (check/missing-wait.ts, term/compiler decision 004, guides: language/async, language/native)
     case missing-wait
       back error-entry(0x41, <this call into a host module answers a promise, and nothing waits for it>, <write `wait` before the call, `tick` to start it without waiting, or `mark async` under the module's load line>)
+    # `inspect` or `print` of a value whose static type is a type parameter: the walker is chosen by the static type, the
+    # only shape a native value has (term/base-v1 decision 001)
+    case inspect-generic
+      back error-entry(0x42, <inspect needs a concrete type, and this value's type is a type parameter>, <call inspect where the type is known, such as in the caller that names it, or inspect a field of a known type>)
 
 # every name, in catalog order, for a tool that walks them all (a text form cannot list its cases)
 task diagnostic-names
@@ -1046,3 +1051,4 @@ task diagnostic-names
       make empty-site
       make stray-save
       make missing-wait
+      make inspect-generic

@@ -7,7 +7,6 @@ import HummingbirdHTTP2
 import HummingbirdTLS
 import NIOCore
 import NIOPosix
-import _NIOFileSystem
 
 // the versions this stdlib was built against, so a mismatch shows up here rather than inside an emitted module
 public enum TermSwiftRuntime {

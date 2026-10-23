@@ -1,15 +1,12 @@
-// Asynchronous filesystem runtime for the kotlin target: java.nio.file and java.nio.channels, run on
-// `Dispatchers.IO` through kotlinx-coroutines.
+// Asynchronous filesystem runtime for the kotlin target: java.nio.file and java.nio.channels, each call HANDED BACK
+// (note/project/term/decision/001-native-work-hands-back-to-the-loop.md). `termLoop.handBack` runs the blocking call
+// on the runtime's pool of 4 daemon threads and resumes the waiting coroutine ON THE LOOP THREAD with its answer, so
+// a read that blocks (a FIFO, a slow disk) stalls no other job, and no two jobs ever run at once. No kotlinx:
+// `Dispatchers.IO` resumed the coroutine on the IO thread, off the loop.
 //
-// WHY A DISPATCHER AND NOT A CHANNEL. The JVM's one genuinely asynchronous filesystem type,
-// AsynchronousFileChannel, covers plain files and nothing else: no directory walk, no metadata, no symlink, no
-// permission, no watch. Half this surface would have to be blocking anyway, and a surface that is asynchronous in
-// half its calls is worse than one that is honest. `withContext(Dispatchers.IO)` on a pool that grows for blocked
-// threads is what the kotlin ecosystem does for filesystem work, and it is what Ktor itself does.
-//
-// So `suspend` here means the caller's coroutine is not blocked, which is the promise the Term API makes. It does
-// not mean the kernel is doing the waiting, which is what tokio::fs and NIOFileSystem give the other two targets.
-// That difference is named in note/project/term/stdlib/native-async-file-and-server.md rather than papered over.
+// So `suspend` here means the caller's coroutine is not blocked, which is the promise the Term API makes. No
+// portable runtime has the kernel wait for a regular file (tokio::fs, NIOFileSystem and libuv are pools too), and
+// AsynchronousFileChannel covers plain files only, so the pool is the same answer on every backend.
 //
 // TOTAL, LIKE THE REST OF THE NATIVE SURFACE: a failure reads as the empty / false / zero answer, except a handle
 // open, where a missing file cannot be papered over.
@@ -23,8 +20,6 @@ import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.PosixFilePermissions
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 object aio {
   // An open file: the channel plus the cursor. A class, not a data holder, because the emitted `file` record is a
@@ -40,7 +35,7 @@ object aio {
 
   // ---- whole file ----
 
-  suspend fun fileRead(path: String): String = withContext(Dispatchers.IO) {
+  suspend fun fileRead(path: String): String = termLoop.handBack {
     try {
       Files.readString(at(path))
     } catch (error: kotlin.Exception) {
@@ -48,7 +43,7 @@ object aio {
     }
   }
 
-  suspend fun fileReadBytes(path: String): ByteArray = withContext(Dispatchers.IO) {
+  suspend fun fileReadBytes(path: String): ByteArray = termLoop.handBack {
     try {
       Files.readAllBytes(at(path))
     } catch (error: kotlin.Exception) {
@@ -61,7 +56,7 @@ object aio {
   }
 
   suspend fun fileWriteBytes(path: String, data: ByteArray) {
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       try {
         Files.write(at(path), data)
       } catch (error: kotlin.Exception) {
@@ -71,7 +66,7 @@ object aio {
   }
 
   suspend fun fileAppend(path: String, data: String) {
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       try {
         Files.write(
           at(path),
@@ -87,7 +82,7 @@ object aio {
 
   // `deep` copies a directory tree; without it this is the single-file copy node's copyFile means
   suspend fun fileCopy(from: String, to: String, deep: Boolean) {
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       try {
         if (deep) {
           copyTree(at(from), at(to))
@@ -116,7 +111,7 @@ object aio {
   }
 
   suspend fun fileMove(from: String, to: String) {
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       try {
         Files.move(at(from), at(to), StandardCopyOption.REPLACE_EXISTING)
       } catch (error: kotlin.Exception) {
@@ -128,7 +123,7 @@ object aio {
   // `deep` removes a directory tree. Without it a directory is still removed when empty, so `remove` means the
   // same thing on a file and on a directory, the way node's `rm` does.
   suspend fun fileRemove(path: String, deep: Boolean) {
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       try {
         if (deep) {
           removeTree(at(path))
@@ -154,7 +149,7 @@ object aio {
   }
 
   // an empty `kind` asks only whether the path exists; "file", "directory" and "link" ask what it is
-  suspend fun fileTest(path: String, kind: String): Boolean = withContext(Dispatchers.IO) {
+  suspend fun fileTest(path: String, kind: String): Boolean = termLoop.handBack {
     try {
       when (kind) {
         "" -> Files.exists(at(path))
@@ -171,7 +166,7 @@ object aio {
   // ---- link ----
 
   suspend fun linkMake(from: String, to: String, hard: Boolean) {
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       try {
         if (hard) {
           Files.createLink(at(to), at(from))
@@ -184,7 +179,7 @@ object aio {
     }
   }
 
-  suspend fun linkRead(path: String): String = withContext(Dispatchers.IO) {
+  suspend fun linkRead(path: String): String = termLoop.handBack {
     try {
       Files.readSymbolicLink(at(path)).toString()
     } catch (error: kotlin.Exception) {
@@ -195,7 +190,7 @@ object aio {
   // ---- permission and owner ----
 
   // the raw unix mode, the same number chmod takes, rebuilt from the POSIX permission set the JVM reports
-  suspend fun permissionRead(path: String): Long = withContext(Dispatchers.IO) {
+  suspend fun permissionRead(path: String): Long = termLoop.handBack {
     try {
       var mode = 0L
 
@@ -221,7 +216,7 @@ object aio {
   }
 
   suspend fun permissionWrite(path: String, mode: Long) {
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       try {
         // the low nine bits as the octal string PosixFilePermissions parses
         val octal = java.lang.Long.toOctalString(mode and 0x1ffL).padStart(3, '0')
@@ -246,7 +241,7 @@ object aio {
     return out.toString()
   }
 
-  suspend fun ownerUser(path: String): Long = withContext(Dispatchers.IO) {
+  suspend fun ownerUser(path: String): Long = termLoop.handBack {
     try {
       (Files.getAttribute(at(path), "unix:uid") as Number).toLong()
     } catch (error: kotlin.Exception) {
@@ -254,7 +249,7 @@ object aio {
     }
   }
 
-  suspend fun ownerGroup(path: String): Long = withContext(Dispatchers.IO) {
+  suspend fun ownerGroup(path: String): Long = termLoop.handBack {
     try {
       (Files.getAttribute(at(path), "unix:gid") as Number).toLong()
     } catch (error: kotlin.Exception) {
@@ -263,7 +258,7 @@ object aio {
   }
 
   suspend fun ownerWrite(path: String, user: Long, group: Long) {
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       try {
         Files.setAttribute(at(path), "unix:uid", user.toInt())
         Files.setAttribute(at(path), "unix:gid", group.toInt())
@@ -276,7 +271,7 @@ object aio {
   // ---- temporary ----
 
   suspend fun temporaryMake(kind: String, prefix: String, suffix: String): String =
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       try {
         if (kind == "directory") {
           Files.createTempDirectory(prefix).toString()
@@ -297,7 +292,7 @@ object aio {
     create: Boolean,
     append: Boolean,
     clear: Boolean,
-  ): Handle = withContext(Dispatchers.IO) {
+  ): Handle = termLoop.handBack {
     val options = mutableSetOf<StandardOpenOption>()
 
     if (read) options.add(StandardOpenOption.READ)
@@ -312,7 +307,7 @@ object aio {
   }
 
   suspend fun handleClose(file: Handle) {
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       try {
         file.channel.close()
       } catch (error: kotlin.Exception) {
@@ -321,14 +316,14 @@ object aio {
     }
   }
 
-  suspend fun handleRead(file: Handle, size: Long): String = withContext(Dispatchers.IO) {
-    if (size <= 0L) return@withContext ""
+  suspend fun handleRead(file: Handle, size: Long): String = termLoop.handBack {
+    if (size <= 0L) return@handBack ""
 
     try {
       val buffer = java.nio.ByteBuffer.allocate(size.toInt())
       val count = file.channel.read(buffer, file.at)
 
-      if (count <= 0) return@withContext ""
+      if (count <= 0) return@handBack ""
 
       file.at += count.toLong()
       String(buffer.array(), 0, count, Charsets.UTF_8)
@@ -337,7 +332,7 @@ object aio {
     }
   }
 
-  suspend fun handleWrite(file: Handle, data: String): Long = withContext(Dispatchers.IO) {
+  suspend fun handleWrite(file: Handle, data: String): Long = termLoop.handBack {
     try {
       val bytes = data.toByteArray(Charsets.UTF_8)
       val count = file.channel.write(java.nio.ByteBuffer.wrap(bytes), file.at)
@@ -350,7 +345,7 @@ object aio {
 
   // `frame` is "start" (absolute), "relative" (from the cursor) or "end" (back from the end)
   suspend fun handleSeek(file: Handle, offset: Long, frame: String) {
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       try {
         file.at =
           when (frame) {
@@ -365,7 +360,7 @@ object aio {
   }
 
   suspend fun handleFlush(file: Handle) {
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       try {
         file.channel.force(false)
       } catch (error: kotlin.Exception) {
@@ -375,7 +370,7 @@ object aio {
   }
 
   suspend fun handleClear(file: Handle, size: Long) {
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       try {
         file.channel.truncate(maxOf(0L, size))
         file.at = minOf(file.at, maxOf(0L, size))
@@ -388,16 +383,16 @@ object aio {
   // ---- streams ----
 
   suspend fun readerOpen(path: String, start: Long, size: Long): Reader =
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       val channel = FileChannel.open(at(path), setOf(StandardOpenOption.READ))
       Reader(channel, maxOf(0L, start), if (size > 0L) size else null)
     }
 
   // the next chunk, or the empty text at the end of the stream (or of the window)
-  suspend fun readerNext(stream: Reader): String = withContext(Dispatchers.IO) {
+  suspend fun readerNext(stream: Reader): String = termLoop.handBack {
     val left = stream.left
 
-    if (left != null && left <= 0L) return@withContext ""
+    if (left != null && left <= 0L) return@handBack ""
 
     val want = if (left != null) minOf(left, 65536L) else 65536L
 
@@ -405,7 +400,7 @@ object aio {
       val buffer = java.nio.ByteBuffer.allocate(want.toInt())
       val count = stream.channel.read(buffer, stream.at)
 
-      if (count <= 0) return@withContext ""
+      if (count <= 0) return@handBack ""
 
       stream.at += count.toLong()
 
@@ -420,7 +415,7 @@ object aio {
   }
 
   suspend fun readerClose(stream: Reader) {
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       try {
         stream.channel.close()
       } catch (error: kotlin.Exception) {
@@ -429,7 +424,7 @@ object aio {
     }
   }
 
-  suspend fun writerOpen(path: String, append: Boolean): Writer = withContext(Dispatchers.IO) {
+  suspend fun writerOpen(path: String, append: Boolean): Writer = termLoop.handBack {
     val options = mutableSetOf(StandardOpenOption.WRITE, StandardOpenOption.CREATE)
 
     if (!append) options.add(StandardOpenOption.TRUNCATE_EXISTING)
@@ -439,7 +434,7 @@ object aio {
   }
 
   suspend fun writerPush(stream: Writer, data: String) {
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       try {
         val bytes = data.toByteArray(Charsets.UTF_8)
         val count = stream.channel.write(java.nio.ByteBuffer.wrap(bytes), stream.at)
@@ -451,7 +446,7 @@ object aio {
   }
 
   suspend fun writerClose(stream: Writer) {
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       try {
         stream.channel.close()
       } catch (error: kotlin.Exception) {

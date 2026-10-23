@@ -1,5 +1,5 @@
-# rust asynchronous filesystem. Forwards to the linked `aio` runtime shim, which is `tokio::fs` -- the standard
-# asynchronous filesystem API of the rust ecosystem, on the same runtime the network stack uses.
+# rust asynchronous filesystem. Forwards to the linked `aio` runtime shim: std::fs calls run on the runtime's pool of 4
+# and handed back to the program's loop (note/project/term/decision/001-native-work-hands-back-to-the-loop.md).
 #
 # Internal: reached only through the public file API.
 

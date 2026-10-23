@@ -1,6 +1,7 @@
-// File metadata for the rust target, over `tokio::fs::metadata`. It builds the emitted `FileMetadata` record
-// directly (the shim is prepended to the module that declares it, so the type is in scope through `use super::*`),
-// which is what keeps one `stat` call from becoming seven. Reached only through the public file/metadata API.
+// File metadata for the rust target, over `std::fs::metadata` handed back to the program's loop
+// (`crate::__term_hand_back`, decision 001). It builds the emitted `FileMetadata` record directly (the shim is
+// prepended to the module that declares it, so the type is in scope through `use super::*`), which is what keeps one
+// `stat` call from becoming seven. Reached only through the public file/metadata API.
 mod stat {
     use super::FileMetadata;
     use std::os::unix::fs::MetadataExt;
@@ -16,10 +17,14 @@ mod stat {
     }
 
     pub async fn meta_read(path: String, follow: bool) -> FileMetadata {
+        crate::__term_hand_back(move || meta_of(path, follow)).await
+    }
+
+    fn meta_of(path: String, follow: bool) -> FileMetadata {
         let meta = if follow {
-            tokio::fs::metadata(&path).await
+            std::fs::metadata(&path)
         } else {
-            tokio::fs::symlink_metadata(&path).await
+            std::fs::symlink_metadata(&path)
         };
 
         let meta = match meta {

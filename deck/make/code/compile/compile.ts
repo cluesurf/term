@@ -106,6 +106,37 @@ let awaitOutsideTasks = true
 // which is IO: the check asks for the first source the program does not answer for and it has not been handed, and
 // this reads it (none for a file that does not exist) and asks again, so the files read are the ones it needs, in
 // the order it needs them
+// AN `inspect` IS WALKED BY THE TYPE ITS ARGUMENT HAD WHERE IT WAS WRITTEN (term/base-v1 decision 001). The checked
+// type is kept on the call as its `into`, so inlining a small task, which puts the caller's argument in place of its
+// parameter (`show(value)` with `value` unknown, called with `5`), leaves the walk the one its source said
+function stampInspectTypes(program: Program): void {
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      node.forEach(visit)
+
+      return
+    }
+
+    if (node === null || typeof node !== 'object') {
+      return
+    }
+
+    const one = node as { form?: string; callee?: { form?: string; name?: string }; args?: { type?: unknown }[]; into?: unknown }
+
+    if (one.form === 'call' && one.callee?.form === 'variable' && one.callee.name === 'inspect-form' && !one.into && one.args?.[0]?.type) {
+      one.into = one.args[0].type
+    }
+
+    for (const [key, value] of Object.entries(node)) {
+      if (key !== 'span' && key !== 'type' && key !== 'into') {
+        visit(value)
+      }
+    }
+  }
+
+  visit(program)
+}
+
 function staleFindsOf(program: Program, file: string, scope: ImportScope | undefined): Diagnostic[] {
   const scopes = scopeList(scope)
   const sources: ReadSource[] = []
@@ -1136,6 +1167,14 @@ export function compileProgram(
       }
     }
 
+    // a lowered `inspect` calls debug's scalar texts from its walker, and a `print` debug's line writer, which no
+    // source names (term/base-v1 decision 001). Kept whenever the program loads debug.tree
+    if (program.some(s => s.form === 'function' && s.name === 'inspect' && /(^|\/)base\/code\/debug\.tree$/.test(s.span.file ?? ''))) {
+      for (const name of ['show-text', 'show-integer', 'show-decimal', 'show-flag', 'write-debug-line']) {
+        roots.add(name)
+      }
+    }
+
     // View lowering (further below) rewrites `zone` components into calls to
     // the render runtime (element / text / attribute / dynamic / event /
     // append / show / each / ...). That lowering runs AFTER this prune, so the
@@ -1218,6 +1257,8 @@ export function compileProgram(
   if (checkErrors.length) {
     return { ok: false, diagnostics: checkErrors }
   }
+
+  stampInspectTypes(program)
 
   // `mark sole` and `mark hide` on a form (affine-kinds decision 001), held here, after the checker typed every value
   // and before any backend, so TypeScript, Rust, Swift and Kotlin refuse alike: a form holding a sole value is sole

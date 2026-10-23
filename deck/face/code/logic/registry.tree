@@ -20,9 +20,10 @@ form action
   link run
     like task
 
-# create a registry (a signal holding the action list)
+# create a registry (a signal holding the action list). Typed in full, `like signal, like list, like action`: a bare `like signal`
+# held the gradual unknown, so each action read back out was one (seam decision 002, group B)
 task make-registry
-  like signal
+  like signal, like list, like action
   send back
     call make-signal
       bind value
@@ -30,7 +31,7 @@ task make-registry
 
 # register an action
 task register-action
-  take self, like signal
+  take self, like signal, like list, like action
   take entry, like action
   save items
     call read-signal
@@ -43,15 +44,15 @@ task register-action
 
 # every registered action (for the palette to enumerate)
 task list-actions
-  take self, like signal
-  like list
+  take self, like signal, like list, like action
+  like list, like action
   send back
     call read-signal
       bind self, read self
 
 # run the action with the given key (the palette / a shortcut calls this)
 task run-action
-  take self, like signal
+  take self, like signal, like list, like action
   take key, like text
   save items
     call read-signal

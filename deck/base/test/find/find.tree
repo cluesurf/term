@@ -196,13 +196,18 @@ task leave
   mark async
   take it, like unknown
 
-# the body `run <npm dev>`
+# the body `run <npm dev>`. A hit is a pane for a pane query and a row for a `back` query, chosen by the query at run
+# time, so the body tests which it got (seam decision 002, group F)
 task type-npm
   mark async
   take it, like unknown
-  call run
-    read it
-    text <npm dev>
+  sift it
+    case pane
+      call run
+        read it
+        text <npm dev>
+    miss
+      halt <the hit of a pane query is not a pane>
 
 # how a `find one` of the query ends: the hit, none, or many with the count
 task outcome-of
@@ -581,9 +586,13 @@ test <back hands the body a record of the properties read>
 task type-awkward
   mark async
   take it, like unknown
-  call run
-    read it
-    text <echo "hi there"\nsecond \\ line>
+  sift it
+    case pane
+      call run
+        read it
+        text <echo "hi there"\nsecond \\ line>
+    miss
+      halt <the hit of a pane query is not a pane>
 
 # a literal `\n` is a newline: three characters
 test <the awkward line holds quotes and one newline>

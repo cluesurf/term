@@ -1,5 +1,5 @@
-// The swift native smoke suite: the SHIPPED runtime shims, compiled and RUN against NIOFileSystem and
-// Hummingbird.
+// The swift native smoke suite: the SHIPPED runtime shims, compiled and RUN: the file shims over FileManager and
+// POSIX handed back (aio.handBack), the servers over Hummingbird.
 //
 // The native gate proves every module typechecks. It never runs a line. This does. If a shim typechecks but does
 // the wrong thing, this is what says so.
@@ -304,7 +304,7 @@ func shell(_ args: [String]) -> String {
   return String(decoding: data, as: UTF8.self)
 }
 
-print("-- asynchronous files (NIOFileSystem)")
+print("-- asynchronous files (FileManager and POSIX, handed back)")
 await files()
 print("-- http server (Hummingbird)")
 await server()

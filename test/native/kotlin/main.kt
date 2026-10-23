@@ -1,5 +1,5 @@
-// The kotlin native smoke suite: the SHIPPED runtime shims, compiled and RUN against java.nio on Dispatchers.IO
-// and Ktor.
+// The kotlin native smoke suite: the SHIPPED runtime shims, compiled and RUN against java.nio, handed back through
+// the stand-in `termLoop` in loop.kt, and Ktor.
 //
 // The native gate proves every module compiles. It never runs a line. This does. If a shim compiles but does the
 // wrong thing, this is what says so.
@@ -257,7 +257,7 @@ suspend fun http2Server() {
 }
 
 fun main() = runBlocking {
-  println("-- asynchronous files (java.nio on Dispatchers.IO)")
+  println("-- asynchronous files (java.nio, handed back)")
   files()
   println("-- http server (Ktor CIO)")
   server()

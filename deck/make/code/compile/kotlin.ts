@@ -429,16 +429,31 @@ const KOTLIN_HELPERS = {
     [
       'object termLoop {',
       '    private val queue = java.util.concurrent.LinkedBlockingQueue<() -> Unit>()',
-      '    private val timers = java.util.concurrent.atomic.AtomicInteger()',
+      '    // the timers set and the work handed out (note/project/term/decision/001-native-work-hands-back-to-the-loop.md),',
+      '    // each settled when the loop RUNS its completion, so a hand-back nobody reads still leaves the count',
+      '    private val pending = java.util.concurrent.atomic.AtomicInteger()',
       '    private val clock = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r -> Thread(r).apply { isDaemon = true } }',
+      '    // the runtime pool: 4 daemon workers, libuv\'s default and the size on every backend, started on the first hand-back',
+      '    private val pool by lazy { java.util.concurrent.Executors.newFixedThreadPool(4) { r -> Thread(r).apply { isDaemon = true } } }',
       '    fun post(work: () -> Unit) { queue.put(work) }',
       '    // `work` on the loop once `ms` have passed',
       '    fun after(ms: Long, work: () -> Unit) {',
-      '        timers.incrementAndGet()',
-      '        clock.schedule({ post { timers.decrementAndGet(); work() } }, maxOf(ms, 0L), java.util.concurrent.TimeUnit.MILLISECONDS)',
+      '        pending.incrementAndGet()',
+      '        clock.schedule({ post { pending.decrementAndGet(); work() } }, maxOf(ms, 0L), java.util.concurrent.TimeUnit.MILLISECONDS)',
       '    }',
-      '    // run an asynchronous entry to its answer on this thread, running what is posted meanwhile. With nothing posted',
-      '    // and no timer due, the program waits on work that nothing can finish, and it stops rather than hanging',
+      '    // a blocking call run on the pool, the waiting coroutine resumed with its answer on the loop',
+      '    suspend fun <T> handBack(work: () -> T): T = suspendCoroutine { waiting ->',
+      '        pending.incrementAndGet()',
+      '        pool.execute { val answer = runCatching(work); post { pending.decrementAndGet(); waiting.resumeWith(answer) } }',
+      '    }',
+      '    // a platform future (`sendAsync`), its completion posted to the loop the same way, with no pool thread',
+      '    suspend fun <T> await(future: java.util.concurrent.CompletableFuture<T>): T = suspendCoroutine { waiting ->',
+      '        pending.incrementAndGet()',
+      '        future.whenComplete { value, failure -> post { pending.decrementAndGet(); waiting.resumeWith(if (failure == null) Result.success(value) else Result.failure(failure)) } }',
+      '    }',
+      '    // run an asynchronous entry to its answer on this thread, running what is posted meanwhile. With nothing posted,',
+      '    // no timer set and nothing handed out, the program waits on work that nothing can finish, and it stops rather',
+      '    // than hanging',
       '    fun <T> block(body: suspend () -> T): T {',
       '        var outcome: Result<T>? = null',
       '        body.startCoroutine(object : kotlin.coroutines.Continuation<T> {',
@@ -448,7 +463,7 @@ const KOTLIN_HELPERS = {
       '        // `kotlin.error`, qualified: a program that loads @term/base/log defines its own `error`, which answers Unit',
       '        // and made `work` an Any that cannot be called (device-layer-0013, the Android cask)',
       '        while (outcome == null) {',
-      '            val work = queue.poll() ?: if (timers.get() == 0) kotlin.error("defect: the program waits on work that nothing can finish") else queue.take()',
+      '            val work = queue.poll() ?: if (pending.get() == 0) kotlin.error("defect: the program waits on work that nothing can finish") else queue.take()',
       '            work()',
       '        }',
       '        return outcome!!.getOrThrow()',
@@ -1008,7 +1023,11 @@ export function emitKotlin(
     // `hiveWakeTyped` as `HiveEntry` records whose `base` is the payload form's own class, every field present
     const typedWake = program.some(n => n.form === 'function' && n.name === 'hive-wake-typed')
     const TYPED_KINDS = new Set(['exception', 'tell', 'dock'])
-    const textOf = (value: unknown): string => JSON.stringify(typeof value === 'string' ? value : value == null ? '' : String(value))
+    // a Kotlin string literal: `$` would open a template (seam-0013), and JSON's \f is not a Kotlin escape, so every
+    // other control character is \uXXXX
+    const quote = (text: string): string =>
+      `"${[...text].map(c => (c === '\\' ? '\\\\' : c === '"' ? '\\"' : c === '$' ? '\\$' : c === '\n' ? '\\n' : c === '\r' ? '\\r' : c === '\t' ? '\\t' : c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127 ? `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}` : c)).join('')}"`
+    const textOf = (value: unknown): string => quote(typeof value === 'string' ? value : value == null ? '' : String(value))
     const textsOf = (value: unknown): string =>
       `mutableListOf<String>(${(Array.isArray(value) ? value : []).map(item => textOf(item)).join(', ')})`
     const rollOf = (entry: Record<string, unknown>): Record<string, unknown> => (entry.base ?? {}) as Record<string, unknown>

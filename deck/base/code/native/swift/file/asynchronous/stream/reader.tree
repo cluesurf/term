@@ -1,5 +1,5 @@
-# swift asynchronous file read stream: an open NIOFileSystem handle plus how much of the window is left, pulled a
-# chunk at a time. Internal: reached only through the public file/stream/reader API.
+# swift asynchronous file read stream: an open descriptor plus how much of the window is left, pulled a chunk at a
+# time, each read handed back to the waiting task (decision 001). Internal: reached only through the public file/stream/reader API.
 
 dock type
   load <aio.Reader>, name reader-dock

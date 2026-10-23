@@ -3697,7 +3697,9 @@ task emit-guard
         case some
           link clause
           mark-need(st, <exception>)
-          # the caught value is bound only where the handler reads it
+          # the caught value is bound only where the handler reads it. Its name is a local, so a task of the same name
+          # (the console's `error`) is never read in its place (`error/form` wrapped the task as a closure value)
+          add-text(st/bound-names, clause/name)
           save binding, <>
           fork test, has-text(names-in(block-handles(clause/body)), clause/name)
             hold

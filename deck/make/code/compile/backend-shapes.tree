@@ -19,6 +19,7 @@ load @term/base/text
   find char-code-at
   find char-count
   find split
+  find replace-all
 
 load ./node
   find type
@@ -1244,3 +1245,379 @@ task scalar-type
           back false
     case none
       back false
+
+# ---- inspect: a value as one line of Term construction (term/base-v1 decision 001) ----
+
+# what `inspect` walks for a static type: the one spec every backend's walker dispatches on. Not `form-kind`, which is
+# melt's data contract. A record or a union names its walker by `key` (its form and type arguments), and `again` is a
+# form met inside its own walk, whose walker is called by that key, so a recursive form's walkers call each other by
+# name. `raised` is a caught exception's carrier. The case names stay off the stdlib's type names (self-host/traps.md
+# T038)
+form inspect-kind
+  mark tag, name kind
+  case text
+  case number
+  case decimal
+  case flag
+  case blank
+  case list
+    link item, like inspect-kind
+  case map
+    link keys, like inspect-kind
+    link values, like inspect-kind
+  case record
+    link name, like text
+    link key, like text
+    link type, like type
+    link fields, like list, like inspect-field
+  # `text` for a `mark text` form, whose cases carry no fields and print by name
+  case union
+    link name, like text
+    link key, like text
+    link type, like type
+    link cases, like list, like inspect-case
+    link text, like boolean
+  case again
+    link name, like text
+    link key, like text
+    link type, like type
+  case raised
+  case opaque
+    link name, like text
+
+form inspect-field
+  link name, like text
+  link kind, like inspect-kind
+
+# a case of a union: its name, the text a `mark text` case is on TypeScript, its fields, and the type arguments of the
+# form's heads its own fields mention, in the form's order (a Kotlin case class carries only those)
+form inspect-case
+  link name, like text
+  link text, like text
+  link fields, like list, like inspect-field
+  link heads, like list, like type
+
+task opaque-kind
+  take name, like text
+  like inspect-kind
+  mark private
+
+  back
+    make inspect-kind/opaque
+      bind name, name
+
+# the kind `inspect` walks for a static type. `forms` is every form of the program by name (`inspect-forms`), `seen`
+# the walkers already open above this one
+task inspect-kind-of
+  take given, like maybe, like type
+  take forms, like hash, like text, like statement
+  take seen, like list, like text
+  like inspect-kind
+
+  sift given
+    case some
+      link known
+      sift known
+        case string
+          back make inspect-kind/text
+        case boolean
+          back make inspect-kind/flag
+        case number
+          back make inspect-kind/number
+        case float
+          back make inspect-kind/decimal
+        case unit
+          back make inspect-kind/blank
+        case array
+          save item, inspect-kind-of(make(some, element), forms, seen)
+          back
+            make inspect-kind/list
+              bind item, item
+        case map
+          save keys, inspect-kind-of(make(some, key), forms, seen)
+          save values, inspect-kind-of(make(some, value), forms, seen)
+          back
+            make inspect-kind/map
+              bind keys, keys
+              bind values, values
+        case named
+          link named-name
+          save given-args, make list
+          fork test, is-above(args/length, 0)
+            hold
+              save given-args, args
+          back inspect-named(known, named-name, given-args, forms, seen)
+        case function
+          back opaque-kind(<task>)
+        case dynamic
+          back opaque-kind(<dynamic>)
+        case bytes
+          back opaque-kind(<bytes>)
+        miss
+          back opaque-kind(<unknown>)
+    case none
+      back opaque-kind(<unknown>)
+
+task inspect-named
+  take known, like type
+  take form-name, like text
+  take given-args, like list, like type
+  take forms, like hash, like text, like statement
+  take seen, like list, like text
+  like inspect-kind
+  mark private
+
+  fork test, is-equal(form-name, <text>)
+    hold
+      back make inspect-kind/text
+  fork test, is-equal(form-name, <boolean>)
+    hold
+      back make inspect-kind/flag
+  fork test, one-of-names(form-name, <number integer natural size count index int uint int8 int16 int32 int64 uint8 uint16 uint32 uint64 u8 u16 u32 u64 i8 i16 i32 i64>)
+    hold
+      back make inspect-kind/number
+  fork test, one-of-names(form-name, <decimal float float32 float64 double real>)
+    hold
+      back make inspect-kind/decimal
+  fork test, is-equal(form-name, <void>)
+    hold
+      back make inspect-kind/blank
+  fork test, is-equal(form-name, <exception>)
+    hold
+      back make inspect-kind/raised
+  fork test, is-equal(form-name, <list>)
+    hold
+      save first, make none
+      walk given-args
+        take one
+        save first, make(some, one)
+        halt
+      save item, inspect-kind-of(first, forms, seen)
+      back
+        make inspect-kind/list
+          bind item, item
+  fork test, and(is-equal(form-name, <hash>), is-above(given-args/length, 1))
+    hold
+      save key-type, get(given-args, 0)
+      save value-type, get(given-args, 1)
+      save keys, inspect-kind-of(make(some, key-type), forms, seen)
+      save values, inspect-kind-of(make(some, value-type), forms, seen)
+      back
+        make inspect-kind/map
+          bind keys, keys
+          bind values, values
+  fork test, forms/has(form-name)
+    hold
+      back inspect-form-kind(known, forms/get(form-name), given-args, forms, seen)
+  back opaque-kind(form-name)
+
+# a form's record or union kind, its type arguments put for its heads in every field
+task inspect-form-kind
+  take known, like type
+  take shape, like statement
+  take given-args, like list, like type
+  take forms, like hash, like text, like statement
+  take seen, like list, like text
+  like inspect-kind
+  mark private
+
+  save key, inspect-key(known)
+  sift shape
+    case record-type
+      fork test, has-text(seen, key)
+        hold
+          back
+            make inspect-kind/again
+              bind name, name
+              bind key, key
+              bind type, known
+      save inner, make list
+      walk seen
+        take one
+        push(inner, one)
+      push(inner, key)
+      fork test, is-above(variants/length, 0)
+        hold
+          save cases, make list
+          walk variants
+            take variant
+            save case-fields, make list
+            walk variant/fields
+              take field
+              save field-type, inspect-subst(field/type, params, given-args)
+              save made
+                make inspect-field
+                  bind name, field/name
+                  bind kind, inspect-kind-of(make(some, field-type), forms, inner)
+              push(case-fields, made)
+            save case-text, replace-all(variant/name, <->, <_>)
+            sift variant/text
+              case some
+                link written
+                save case-text, written
+              case none
+                save nothing, 0
+            save heads, make list
+            save at, 0
+            walk params
+              take param
+              save mentioned, false
+              walk variant/fields
+                take field
+                fork test, inspect-mentions(field/type, param)
+                  hold
+                    save mentioned, true
+              fork test, and(mentioned, is-below(at, given-args/length))
+                hold
+                  push(heads, get(given-args, at))
+              save at, add(at, 1)
+            save made-case
+              make inspect-case
+                bind name, variant/name
+                bind text, case-text
+                bind fields, case-fields
+                bind heads, heads
+            push(cases, made-case)
+          save is-text, false
+          fork test, is-equal(shape/text, true)
+            hold
+              save is-text, true
+          back
+            make inspect-kind/union
+              bind name, name
+              bind key, key
+              bind type, known
+              bind cases, cases
+              bind text, is-text
+      save out, make list
+      walk fields
+        take field
+        save field-type, inspect-subst(field/type, params, given-args)
+        save made
+          make inspect-field
+            bind name, field/name
+            bind kind, inspect-kind-of(make(some, field-type), forms, inner)
+        push(out, made)
+      back
+        make inspect-kind/record
+          bind name, name
+          bind key, key
+          bind type, known
+          bind fields, out
+    miss
+      back opaque-kind(key)
+
+# a field's type with the form's type arguments put for its heads
+task inspect-subst
+  take given, like type
+  take params, like list, like text
+  take given-args, like list, like type
+  like type
+  mark private
+
+  sift given
+    case named
+      link named-name
+      save at, 0
+      walk params
+        take one
+        fork test, and(is-equal(one, named-name), is-below(at, given-args/length))
+          hold
+            back get(given-args, at)
+        save at, add(at, 1)
+      fork test, is-above(args/length, 0)
+        hold
+          save out, make list
+          walk args
+            take one
+            push(out, inspect-subst(one, params, given-args))
+          back
+            make type/named
+              bind name, named-name
+              bind args, out
+      back given
+    case array
+      back
+        make type/array
+          bind element, inspect-subst(element, params, given-args)
+    case map
+      back
+        make type/map
+          bind key, inspect-subst(key, params, given-args)
+          bind value, inspect-subst(value, params, given-args)
+    miss
+      back given
+
+# does the type name the head anywhere in it
+task inspect-mentions
+  take given, like type
+  take head, like text
+  like boolean
+  mark private
+
+  sift given
+    case named
+      fork test, is-equal(name, head)
+        hold
+          back true
+      fork test, is-above(args/length, 0)
+        hold
+          walk args
+            take one
+            fork test, inspect-mentions(one, head)
+              hold
+                back true
+      back false
+    case array
+      back inspect-mentions(element, head)
+    case map
+      back or(inspect-mentions(key, head), inspect-mentions(value, head))
+    miss
+      back false
+
+# the name of a form's walker: the form and its type arguments, `pair-number` for a `pair number`
+task inspect-key
+  take given, like type
+  like text
+
+  sift given
+    case named
+      link named-name
+      save out, named-name
+      fork test, is-above(args/length, 0)
+        hold
+          walk args
+            take one
+            save out, <{out}-{inspect-key(one)}>
+      back out
+    case array
+      back <list-{inspect-key(element)}>
+    case map
+      back <hash-{inspect-key(key)}-{inspect-key(value)}>
+    case string
+      back <text>
+    case number
+      back <number>
+    case float
+      back <decimal>
+    case boolean
+      back <boolean>
+    case unit
+      back <void>
+    miss
+      back <unknown>
+
+# every form of the program by name, which `inspect-kind-of` reads
+task inspect-forms
+  take program, like list, like statement
+  like hash, like text, like statement
+
+  save out, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        out/set(name, one)
+      miss
+        save nothing, 0
+  back out

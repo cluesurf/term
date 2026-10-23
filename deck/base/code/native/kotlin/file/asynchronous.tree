@@ -1,7 +1,5 @@
-# kotlin asynchronous filesystem. Forwards to the linked `aio` runtime shim, which is java.nio.file run on
-# `Dispatchers.IO` through kotlinx-coroutines. The JVM has no asynchronous filesystem API worth the name
-# (AsynchronousFileChannel covers plain files only), so the dispatcher IS the answer here, and it is the answer
-# the kotlin ecosystem gives.
+# kotlin asynchronous filesystem. Forwards to the linked `aio` runtime shim: java.nio.file calls run on the runtime's
+# pool of 4 and handed back to `termLoop` (note/project/term/decision/001-native-work-hands-back-to-the-loop.md).
 #
 # Internal: reached only through the public file API.
 

@@ -1,4 +1,4 @@
-// File metadata for the kotlin target, over java.nio.file's attribute views, read on `Dispatchers.IO`. It builds
+// File metadata for the kotlin target, over java.nio.file's attribute views, handed back (`termLoop.handBack`). It builds
 // the emitted `FileMetadata` record directly (the shim is prepended to the module that declares it, so the type is
 // in scope), which is what keeps one attribute read from becoming seven. Reached only through the public
 // file/metadata API.
@@ -6,12 +6,10 @@ import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Paths
 import java.nio.file.attribute.PosixFileAttributes
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 object stat {
   suspend fun metaRead(path: String, follow: Boolean): FileMetadata =
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       try {
         val at = Paths.get(path)
         val options =

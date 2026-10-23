@@ -1,76 +1,97 @@
-# Rust file system implementation. Forwards to the linked `io` runtime (runtime/io in this directory), which wraps std::fs and absorbs its Result type so the public file API stays total. Internal: reached only through the public file API.
+# Rust file system implementation. Internal: reached only through the public file API.
+#
+# The read and write family is asynchronous, as on node: each call is forwarded to this env's file/asynchronous
+# module, whose `aio` shim hands the blocking call back to the program's loop
+# (note/project/term/decision/001-native-work-hands-back-to-the-loop.md), so a read that blocks stalls no other job.
+# `file-exists` and `stat-file` stay synchronous, as node's `existsSync` is, through the linked `io` runtime, which
+# wraps std::fs and absorbs its Result type so the public file API stays total.
+# `remove` and `copy` pass `deep` false: std::fs::copy takes a file, and a remove takes a file or, now, an empty directory, as on Kotlin.
 
 dock load
   load <global:io>, name io
+
+load @term/base/native/rust/file/asynchronous
+  find file-read
+  find file-read-bytes
+  find file-write
+  find file-write-bytes
+  find file-append
+  find file-copy
+  find file-move
+  find file-remove
 
 load @term/base/file/stat
   find path-info
 
 task read-file
+  mark async
   take path, like text
   like text
   send back
-    call io/file-read
+    call file-read
       read path
 
 task write-file
+  mark async
   take path, like text
   take data, like text
   like void
-  send back
-    call io/file-write
-      read path
-      read data
+  call file-write
+    read path
+    read data
 
 task read-file-bytes
+  mark async
   take path, like text
   like bytes
   send back
-    call io/file-read-bytes
+    call file-read-bytes
       read path
 
 task write-file-bytes
+  mark async
   take path, like text
   take data, like bytes
   like void
-  send back
-    call io/file-write-bytes
-      read path
-      read data
+  call file-write-bytes
+    read path
+    read data
 
 task append-file
+  mark async
   take path, like text
   take data, like text
   like void
-  send back
-    call io/file-append
-      read path
-      read data
+  call file-append
+    read path
+    read data
 
 task remove-file
+  mark async
   take path, like text
   like void
-  send back
-    call io/file-remove
-      read path
+  call file-remove
+    read path
+    false
 
 task copy-file
+  mark async
   take from, like text
   take to, like text
   like void
-  send back
-    call io/file-copy
-      read from
-      read to
+  call file-copy
+    read from
+    read to
+    false
 
 task move-file
+  mark async
   take from, like text
   take to, like text
   like void
-  send back
-    call io/file-move
-      read from
-      read to
+  call file-move
+    read from
+    read to
 
 task file-exists
   take path, like text

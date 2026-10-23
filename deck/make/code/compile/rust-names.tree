@@ -452,10 +452,13 @@ task borrows-at-tail
 
   # the cuts in order of their start (a block closes before the one around it, so they come out of order), each taken
   # only when it starts past the last one taken
-  save sorted, make list
+  # typed where they are made: an element read off an untyped empty list is the gradual unknown (seam decision 002)
+  save sorted, like list, like cut-range
+    make list
   walk cuts
     take range
-    save placed, make list
+    save placed, like list, like cut-range
+      make list
     save done, false
     walk sorted
       take other
@@ -2630,7 +2633,7 @@ task collect-array-bounds
 
 # ---- filling a form from data on Rust ----
 
-# a text as JSON writes it: quoted, with `"`, `\` and the control characters escaped, and a lone surrogate as `\uXXXX`
+# a text as a Rust string literal: quoted, with `"`, `\` and the control characters escaped, the rest as `\u\{XX\}`
 task json-text
   take value, like text
   like text
@@ -2646,14 +2649,6 @@ task json-text
       hold
         save out, <{out}\\\\>
         turn next
-    fork test, is-equal(code, 8)
-      hold
-        save out, <{out}\\b>
-        turn next
-    fork test, is-equal(code, 12)
-      hold
-        save out, <{out}\\f>
-        turn next
     fork test, is-equal(code, 10)
       hold
         save out, <{out}\\n>
@@ -2666,14 +2661,11 @@ task json-text
       hold
         save out, <{out}\\t>
         turn next
+    # Rust's spelling, `\u\{1b\}`: JSON's `\u001b`, `\b` and `\f` are not Rust escapes, and a text holding ESC (Term's
+    # `\e`) did not build (term/base-v1 N7)
     fork test, or(is-below(code, 32), and(is-minimum(code, 55296), is-maximum(code, 57343)))
       hold
-        save hex, hex-of(code)
-        walk test
-          hook test, is-below(hex/length, 4)
-          hook hold
-            save hex, <0{hex}>
-        save out, <{out}\\u{hex}>
+        save out, <{out}\\u\{{hex-of(code)}\}>
         turn next
     save out, <{out}{from-runes(single(code))}>
   back <"{out}">

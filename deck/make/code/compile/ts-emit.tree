@@ -71,6 +71,9 @@ load ./backend-shapes
   find string-read
   find map-collect-of
   find is-text
+  find inspect-kind
+  find inspect-field
+  find inspect-kind-of
 
 load ./backend-names
   find names-in
@@ -153,6 +156,8 @@ form emit-facts
   link variant-fields, like hash, like text, like list, like ts-field
   link variant-fields-by-owner, like hash, like text, like hash, like text, like list, like ts-field
   link record-fields, like hash, like text, like list, like ts-field
+  # every form of the program by name, which a lowered `inspect` walks (backend-shapes.tree `inspect-forms`)
+  link inspect-forms, like hash, like text, like statement
   link shared-forms, like hash, like text, like boolean
   link identity, like hash, like text, like boolean
   link text-by-owner, like hash, like text, like hash, like text, like text
@@ -269,6 +274,7 @@ form emit-state
   mark shared
   # the prelude flags: each set when the emitted text calls the helper it names
   link form-walk-used, like boolean
+  link inspect-used, like boolean
   link host-used, like boolean
   link maybe-field-used, like boolean
   link int-used, like boolean
@@ -314,6 +320,7 @@ task new-emit-state
   back
     make emit-state
       bind form-walk-used, false
+      bind inspect-used, false
       bind host-used, false
       bind maybe-field-used, false
       bind int-used, false
@@ -1064,6 +1071,59 @@ task fill-kind-json
       link spec
       back <\{"kind":"form","spec":{fill-spec-json(spec)}\}>
 
+# the JSON of an `inspect` kind (compile/backend-shapes.tree), with each field's member and a union's tag as this
+# backend writes them, which `__termInspect` walks (ts-preludes.tree `inspect-prelude`)
+task inspect-kind-json
+  take kind, like inspect-kind
+  take facts, like emit-facts
+  like text
+  mark private
+
+  sift kind
+    case list
+      link item
+      back <\{"kind":"list","item":{inspect-kind-json(item, facts)}\}>
+    case map
+      link keys
+      link values
+      back <\{"kind":"map","keys":{inspect-kind-json(keys, facts)},"values":{inspect-kind-json(values, facts)}\}>
+    case record
+      back <\{"kind":"record","name":{json-quote(kind/name)},"key":{json-quote(kind/key)},"fields":{inspect-fields-json(kind/fields, facts)}\}>
+    case union
+      save owner-type, kind/type
+      save tag, <form>
+      walk kind/cases
+        take one
+        save tag, tag-for(one/name, make(some, owner-type), facts)
+        halt
+      save parts, make list
+      walk kind/cases
+        take one
+        push(parts, <\{"name":{json-quote(one/name)},"text":{json-quote(one/text)},"fields":{inspect-fields-json(one/fields, facts)}\}>)
+      save texts, <false>
+      fork test, kind/text
+        hold
+          save texts, <true>
+      back <\{"kind":"union","name":{json-quote(kind/name)},"key":{json-quote(kind/key)},"tag":{json-quote(tag)},"text":{texts},"cases":[{join-texts(parts, <,>)}]\}>
+    case again
+      back <\{"kind":"again","key":{json-quote(kind/key)}\}>
+    case opaque
+      back <\{"kind":"opaque","name":{json-quote(kind/name)}\}>
+    miss
+      back <\{"kind":{json-quote(kind/kind)}\}>
+
+task inspect-fields-json
+  take fields, like list, like inspect-field
+  take facts, like emit-facts
+  like text
+  mark private
+
+  save parts, make list
+  walk fields
+    take field
+    push(parts, <\{"name":{json-quote(field/name)},"member":{json-quote(to-member(field/name))},"kind":{inspect-kind-json(field/kind, facts)}\}>)
+  back <[{join-texts(parts, <,>)}]>
+
 # ---- reading a list ----
 
 # a name, a literal, or a field of a name: evaluating it twice changes nothing
@@ -1719,6 +1779,21 @@ task emit-call
               back <({emit-expression(member-target, 0, st, facts)}.flat() as any)>
         miss
           save nothing, 0
+      # `inspect(value)`: the value walked by its static type (term/base-v1 decision 001)
+      fork test, and(is-equal(callee-name, <inspect-form>), is-above(args/length, 0))
+        hold
+          save st/inspect-used, true
+          save shown, get(args, 0)
+          # the type the checker stamped where the call was written (compile.ts `stampInspectTypes`)
+          save static-type, expression-type(shown)
+          sift into
+            case some
+              link stamped
+              save static-type, make(some, stamped)
+            case none
+              save nothing, 0
+          save kind, inspect-kind-of(static-type, facts/inspect-forms, make list)
+          back <__termInspect({emit-expression(shown, 0, st, facts)}, {inspect-kind-json(kind, facts)})>
       # `call fill / <data> / like <form>`: walk the data against the form's fields
       fork test, or(is-equal(callee-name, <fill-form>), is-equal(callee-name, <melt-form>))
         hold

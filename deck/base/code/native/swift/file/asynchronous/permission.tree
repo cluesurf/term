@@ -1,4 +1,4 @@
-# swift asynchronous file permissions, over NIOFileSystem for the read and chmod(2) for the write. The mode is the raw unix mode, the same number chmod takes.
+# swift asynchronous file permissions, over stat(2) for the read and chmod(2) for the write, handed back (decision 001). The mode is the raw unix mode, the same number chmod takes.
 # Internal: reached only through the public file/permission API.
 
 dock load

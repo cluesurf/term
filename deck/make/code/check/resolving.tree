@@ -116,6 +116,7 @@ task intrinsics
   save out, make list
   push(out, <fill-form>)
   push(out, <melt-form>)
+  push(out, <inspect-form>)
   push(out, <native-test>)
   push(out, <native-test-else>)
   push(out, <debug>)

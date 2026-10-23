@@ -30,6 +30,7 @@ import * as tsNames from '@term/make/code/compile/ts-names'
 import * as tsEmit from '@term/make/code/compile/ts-emit'
 import * as tsPreludes from '@term/make/code/compile/ts-preludes'
 import * as tsAssemble from '@term/make/code/compile/ts-assemble'
+import * as shapes from '@term/make/code/compile/backend-shapes'
 
 // The TypeScript emitter is Term in four parts (self-hosting, 2026-10-06): compile/ts-names.tree, the helpers that read
 // no emitter state (the names, a type's spelling and empty value, one primary, the identity cases, the fill spec),
@@ -105,6 +106,10 @@ let tsVariantFieldsByOwner = new Map<
 let tsRecordFields = new Map<string, { name: string; type: Type; optional?: boolean }[]>()
 // did this module lower a `fill` or `melt` with a form? Then the walk rides in its prelude
 let tsFormWalkUsed = false
+// every form of the program by name, which a lowered `inspect` walks (compile/backend-shapes.tree `inspect-kind-of`)
+let tsInspectForms = new Map<string, Statement>()
+// did this module lower an `inspect`? Then `__termInspect` rides in its prelude
+let tsInspectUsed = false
 // did a host value meet a declared type (`save body, like text, wait fs/read-file(...)`)? Then `__termHost` rides along
 let tsHostUsed = false
 // set when a `need false` maybe field is read or written (D10), so `__termMaybe` and `__termSome` ride in front
@@ -238,6 +243,7 @@ function makeEmitter(
     variantFields: tsVariantFields,
     variantFieldsByOwner: tsVariantFieldsByOwner,
     recordFields: tsRecordFields,
+    inspectForms: tsInspectForms,
     sharedForms: flags(tsSharedForms),
     identity: flags(tsIdentity),
     textByOwner: tsTextByOwner,
@@ -282,6 +288,7 @@ function makeEmitter(
   // the prelude flags the emitter raised, onto the module's own
   const sync = <T>(value: T): T => {
     tsFormWalkUsed ||= st.formWalkUsed
+    tsInspectUsed ||= st.inspectUsed
     tsHostUsed ||= st.hostUsed
     tsMaybeFieldUsed ||= st.maybeFieldUsed
     tsIntUsed ||= st.intUsed
@@ -364,7 +371,9 @@ export function emitTypeScript(
   tsVariantFields = tables.variantFields as never
   tsVariantFieldsByOwner = tables.variantFieldsByOwner as never
   tsRecordFields = tables.recordFields as never
+  tsInspectForms = shapes.inspectForms(program as never) as never
   tsFormWalkUsed = false
+  tsInspectUsed = false
   tsHostUsed = false
   tsMaybeFieldUsed = false
   tsDockNames = new Set(tables.dockNames.keys())
@@ -462,6 +471,7 @@ export function emitTypeScript(
     () => emitter.reuseTasks,
     () => ({
       formWalkUsed: tsFormWalkUsed,
+      inspectUsed: tsInspectUsed,
       hostUsed: tsHostUsed,
       maybeFieldUsed: tsMaybeFieldUsed,
       intUsed: tsIntUsed,

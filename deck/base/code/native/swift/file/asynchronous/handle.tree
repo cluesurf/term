@@ -1,6 +1,6 @@
-# swift asynchronous file handles, over NIOFileSystem. An open file is a NIO read-write handle plus the cursor,
-# which is what sits in the private `dock` of the public `file` record. The cursor is ours because NIOFileSystem
-# addresses every read and write by absolute offset and keeps none of its own.
+# swift asynchronous file handles, over a POSIX descriptor, each call handed back (decision 001). An open file is
+# the descriptor plus the cursor, which is what sits in the private `dock` of the public `file` record. Reads and
+# writes are positional (pread / pwrite) at that cursor.
 #
 # Internal: reached only through the public file/handle API.
 
