@@ -9,6 +9,7 @@ dock type
 
 dock load
   load <global:channel>, name channel
+  load <global:loop>, name term-loop
 
 task mailbox-make
   like channel-handle

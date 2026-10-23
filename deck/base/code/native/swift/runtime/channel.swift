@@ -6,6 +6,9 @@
 // A receive used to block on a DispatchSemaphore, which parks a thread of Swift's cooperative pool for as long as the
 // channel is empty: one receiver per core and nothing else could run, the sender included (codegen-performance-0004).
 // The small lock here is taken only inside synchronous methods, never across a suspension.
+//
+// A receiver that waits leaves the program's loop (runtime/loop.swift), and the send that hands it a value wakes it
+// before resuming it, so a receive nothing will ever send to stops the program, as on Rust and Kotlin.
 import Foundation
 
 final class SeedChannel: @unchecked Sendable {
@@ -13,7 +16,8 @@ final class SeedChannel: @unchecked Sendable {
     private var buffer: [Any] = []
     // the next unread buffered value: removing from the front of an array is O(n)
     private var head = 0
-    private var waiting: [CheckedContinuation<Any, Never>] = []
+    // each waiting receiver, and whether the loop counts it
+    private var waiting: [(CheckedContinuation<Any, Never>, Bool)] = []
 
     func send(_ item: Any) {
         state.lock()
@@ -22,8 +26,9 @@ final class SeedChannel: @unchecked Sendable {
             buffer.append(item)
             state.unlock()
         } else {
-            let receiver = waiting.removeFirst()
+            let (receiver, counted) = waiting.removeFirst()
             state.unlock()
+            termLoop.wake(counted)
             receiver.resume(returning: item)
         }
     }
@@ -45,8 +50,9 @@ final class SeedChannel: @unchecked Sendable {
             state.unlock()
             receiver.resume(returning: value)
         } else {
-            waiting.append(receiver)
+            waiting.append((receiver, termLoop.counted))
             state.unlock()
+            _ = termLoop.leave()
         }
     }
 

@@ -276,6 +276,7 @@ task json-word
               read at
               read k
             text <a literal is misspelled>
+            halt kink
       save k
         call add
           read k
@@ -306,6 +307,7 @@ task json-digits
       call refuse-json
         read at
         text <a digit is missing>
+        halt kink
   save n
     call length
       read runes
@@ -356,14 +358,17 @@ task json-number
     call json-whole
       read runes
       read signed
+      halt kink
   save fraction
     call json-fraction
       read runes
       read whole
+      halt kink
   save exponent
     call json-exponent
       read runes
       read fraction
+      halt kink
   send back, read exponent
 
 # past a leading minus, if there is one
@@ -418,6 +423,7 @@ task json-whole
     call json-digits
       read runes
       read at
+      halt kink
   send back, read digits
 
 # past a point and its digits, if there is a point
@@ -445,6 +451,7 @@ task json-fraction
           call add
             read at
             code 1
+          halt kink
       send back, read digits
   send back, read at
 
@@ -483,6 +490,7 @@ task json-exponent
         call json-digits
           read runes
           read signed
+          halt kink
       send back, read digits
   send back, read at
 
@@ -576,6 +584,7 @@ task json-escape
           call refuse-json
             read at
             text <an escape is not one JSON knows>
+            halt kink
       send back
         call add
           read at
@@ -595,6 +604,7 @@ task json-escape
       call refuse-json
         read at
         text <a unicode escape needs four hex digits>
+        halt kink
   # a low surrogate cannot open a pair
   fork test
     hook test
@@ -609,6 +619,7 @@ task json-escape
       call refuse-json
         read at
         text <an escaped surrogate must be a pair>
+        halt kink
   # a high surrogate must be followed by an escaped low one
   fork test
     hook test
@@ -655,6 +666,7 @@ task json-escape
           call refuse-json
             read at
             text <an escaped surrogate must be a pair>
+            halt kink
       send back
         call add
           read at
@@ -719,15 +731,18 @@ task json-string
           call refuse-json
             read i
             text <a control character in a string must be escaped>
+            halt kink
       save next
         call json-string-step
           read runes
           read i
           read c
+          halt kink
       save i, read next
   call refuse-json
     read at
     text <a string is not closed>
+    halt kink
   send back, read i
 
 # past one character of a string body: an escape, or one code point
@@ -752,6 +767,7 @@ task json-string-step
         call json-escape
           read runes
           read at
+          halt kink
       send back, read escaped
   send back
     call add
@@ -816,10 +832,12 @@ task json-container
           read runes
           read i
           read object
+          halt kink
       save value
         call json-value
           read runes
           read start
+          halt kink
       save after
         call json-skip-space
           read runes
@@ -847,6 +865,7 @@ task json-container
           call refuse-json
             read after
             text <a comma or a closing bracket is missing>
+            halt kink
       save next
         call json-skip-space
           read runes
@@ -857,6 +876,7 @@ task json-container
   call refuse-json
     read i
     text <a value is missing>
+    halt kink
   send back
     call add
       read i
@@ -890,10 +910,12 @@ task json-key
       call refuse-json
         read at
         text <a key must be a string>
+        halt kink
   save key
     call json-string
       read runes
       read at
+      halt kink
   save after
     call json-skip-space
       read runes
@@ -909,6 +931,7 @@ task json-key
       call refuse-json
         read after
         text <a key must be followed by a colon>
+        halt kink
   send back
     call add
       read after
@@ -942,6 +965,7 @@ task json-value
       call refuse-json
         read i
         text <a value is missing>
+        halt kink
   fork test
     hook test
       call is-equal
@@ -953,6 +977,7 @@ task json-value
           read runes
           read i
           true
+          halt kink
       send back, read found
   fork test
     hook test
@@ -965,6 +990,7 @@ task json-value
           read runes
           read i
           false
+          halt kink
       send back, read found
   fork test
     hook test
@@ -976,6 +1002,7 @@ task json-value
         call json-string
           read runes
           read i
+          halt kink
       send back, read found
   fork test
     hook test
@@ -990,6 +1017,7 @@ task json-value
         call json-number
           read runes
           read i
+          halt kink
       send back, read found
   fork test
     hook test
@@ -1003,6 +1031,7 @@ task json-value
           read i
           call to-runes
             text <true>
+          halt kink
       send back, read found
   fork test
     hook test
@@ -1016,6 +1045,7 @@ task json-value
           read i
           call to-runes
             text <false>
+          halt kink
       send back, read found
   fork test
     hook test
@@ -1029,10 +1059,12 @@ task json-value
           read i
           call to-runes
             text <null>
+          halt kink
       send back, read found
   call refuse-json
     read i
     text <a value cannot start here>
+    halt kink
   send back, read i
 
 # raise `json-mismatch` unless the text is exactly one JSON value, with optional whitespace around it
@@ -1048,6 +1080,7 @@ task check-json
       call json-value
         read runes
         code 0
+        halt kink
   fork test
     hook test
       call is-below
@@ -1058,4 +1091,5 @@ task check-json
       call refuse-json
         read end
         text <text follows the value>
+        halt kink
   send back, true

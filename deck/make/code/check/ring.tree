@@ -226,7 +226,9 @@ task add-into
   like hash, like text, like number
   mark private
 
-  save next, safe-add(get-or-default(poly, key, 0), coeff)
+  save next
+    safe-add(get-or-default(poly, key, 0), coeff)
+      halt kink
   fork test, is-equal(next, 0)
     hold
       poly/remove(key)
@@ -265,7 +267,9 @@ task add-poly
   save out, copy-poly(a)
   walk b/keys()
     take k
-    save out, add-into(out, k, b/get(k))
+    save out
+      add-into(out, k, b/get(k))
+        halt kink
   back out
 
 task scale-poly
@@ -277,7 +281,9 @@ task scale-poly
   save out, make hash
   walk a/keys()
     take m
-    save out/{m}, safe-multiply(a/get(m), k)
+    save out/{m}
+      safe-multiply(a/get(m), k)
+        halt kink
   back out
 
 task mul-poly
@@ -299,7 +305,9 @@ task mul-poly
         take entry
         save v, entry/variable
         save powers/{v}, add(get-or-default(powers, v, 0), entry/power)
-      save out, add-into(out, mono-key(powers), safe-multiply(ca, cb))
+      save out
+        add-into(out, mono-key(powers), safe-multiply(ca, cb))
+          halt kink
   back out
 
 task no-poly
@@ -348,8 +356,12 @@ task to-poly
       save terms/{name}, 1
       back poly-of(terms)
     case binary
-      save l, to-poly(cache, left)
-      save r, to-poly(cache, right)
+      save l
+        to-poly(cache, left)
+          halt kink
+      save r
+        to-poly(cache, right)
+          halt kink
       fork test, or(not(l/found), not(r/found))
         hold
           back no-poly()
@@ -398,9 +410,15 @@ task ring-equal-exact
   # constructions
   fork test, and(is-record(left), is-record(right))
     hold
-      back records-equal(cache, left, right)
-  save l, to-poly(cache, left)
-  save r, to-poly(cache, right)
+      back
+        records-equal(cache, left, right)
+          halt kink
+  save l
+    to-poly(cache, left)
+      halt kink
+  save r
+    to-poly(cache, right)
+      halt kink
   fork test, or(not(l/found), not(r/found))
     hold
       back false
@@ -788,24 +806,36 @@ task ring-equal-modulo-exact
   like boolean
   mark private
 
-  save l, to-poly(cache, left)
-  save r, to-poly(cache, right)
+  save l
+    to-poly(cache, left)
+      halt kink
+  save r
+    to-poly(cache, right)
+      halt kink
   fork test, or(not(l/found), not(r/found))
     hold
       back false
-  save difference, add-poly(l/terms, scale-poly(r/terms, -1))
+  save difference
+    add-poly(l/terms, scale-poly(r/terms, -1))
+      halt kink
   fork test, is-zero-poly(difference)
     hold
       back true
   save generators, make list
   walk hypotheses
     take hypothesis
-    save a, to-poly(cache, hypothesis/left)
-    save b, to-poly(cache, hypothesis/right)
+    save a
+      to-poly(cache, hypothesis/left)
+        halt kink
+    save b
+      to-poly(cache, hypothesis/right)
+        halt kink
     fork test, or(not(a/found), not(b/found))
       hold
         turn next
-    save g, add-poly(a/terms, scale-poly(b/terms, -1))
+    save g
+      add-poly(a/terms, scale-poly(b/terms, -1))
+        halt kink
     save lead, lead-monomial(cache, g)
     fork test, lead/found
       hold
@@ -854,7 +884,9 @@ task ring-equal-modulo-exact
       save chosen, get(generators, target-g)
       save quotient, make hash
       save quotient/{target-q}, 1
-      save difference, add-poly(scale-poly(difference, chosen/lead-coeff), scale-poly(mul-poly(cache, quotient, chosen/poly), subtract(0, c)))
+      save difference
+        add-poly(scale-poly(difference, chosen/lead-coeff), scale-poly(mul-poly(cache, quotient, chosen/poly), subtract(0, c)))
+          halt kink
       save steps, add(steps, 1)
   back is-zero-poly(difference)
 

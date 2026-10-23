@@ -65,6 +65,8 @@ task bench-sample-gzip-bytes
   like list
     like u8
   save result
+    like list
+      like u8
     make list
   call push
     read result

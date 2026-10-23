@@ -90,6 +90,28 @@ tell @probe/tell/upload-excess
   link limit
   link actual
   name too-large
+
+load @term/site/code/http/body
+  find redirect
+
+view upload-page
+  take host, like view
+  view span
+    text <upload>
+
+# a page route whose POST raises through its lifted handler (answer-post-upload): the roll's dock entry for it holds
+# what the handler raises, and the compiler's wake tells it, so routes-of answers it with nothing woken by hand
+hook /upload
+  view upload-page
+  task post
+    take request
+    take params
+    save kept
+      call upload
+        code 9
+    send back
+      call redirect
+        text </upload?kept={kept}>
 `
 
 async function main(): Promise<void> {
@@ -118,7 +140,10 @@ async function main(): Promise<void> {
   // the json module docks `<global:json>`: the native prelude goes first, as `term boot` prepends it
   const prelude = nativePrelude(result.program, 'node', (p: string) => (fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : undefined))
   const js = (await transform(`${prelude}\n${result.typescript}`, { loader: 'ts', format: 'esm' })).code
-  const file = path.join(root, 'app.mjs')
+  // the page route brings the node host, which imports `hono`: the module is written under the toolchain, as
+  // test/site/post-route.ts writes its own, so that import resolves from its node_modules
+  fs.mkdirSync(path.join(TERM, 'test', 'tmp'), { recursive: true })
+  const file = path.join(fs.mkdtempSync(path.join(TERM, 'test', 'tmp', 'tell-')), 'app.mjs')
   fs.writeFileSync(file, js)
 
   const M = (await import(pathToFileURL(file).href)) as {
@@ -181,10 +206,18 @@ async function main(): Promise<void> {
   ok('/errors/<case> shows note, hint, props and status', page.status === 200 && page.body.includes('Files may be up to 5 MB') && page.body.includes('<code>limit</code>') && page.body.includes('status 413'), page.body)
   ok('/errors/<unknown> is an absence', M.errorPage('nothing').status === 404)
 
-  // routes-of reads the typed dock roll (seam-0006): a route woken through hive-wake-typed, as the compiler's wake tells
-  // a roll dock entry, is answered for the exception its halt names, and only for that one. (A `hook /path` route reaches
-  // no roll dock entry today, seam log 2026-10-22, so the entry is woken here by hand)
-  M.hiveWakeTyped('@probe/tell', [], [], [{ host: '@probe/tell', kind: 'dock', name: 'post /upload', site: 'app.tree', base: { halt: ['upload-excess'] } }])
+  // the page route reaches the roll (seam-0025): route lowering takes it out of the program before the roll is built,
+  // and its POST raises only through the lifted handler, so before 0025 the roll held no dock entry for it
+  const docks = (result.roll?.dock ?? []) as { name: string; halt?: string[] }[]
+  const posted = docks.filter(entry => entry.name === 'post /upload')
+  ok(
+    'the roll holds the page route post /upload, its halt what the lifted handler raises',
+    posted.length === 1 && JSON.stringify(posted[0]!.halt) === JSON.stringify(['upload-excess']),
+    JSON.stringify(docks),
+  )
+
+  // routes-of reads the typed dock roll (seam-0006), woken by the compiler's own wake (M.wakeHive above): the route is
+  // answered for the exception its halt names, and only for that one
   const routes = M.routesFor('upload-excess')
   ok('routes-of answers the route that can raise the exception', routes.length === 1 && routes[0]!.includes('/upload'), JSON.stringify(routes))
   console.log(`      routes-of upload-excess: ${JSON.stringify(routes)}`)

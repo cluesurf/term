@@ -243,6 +243,30 @@ task run
 
 const CASES_EXPECTED = 'some a none some b c none d'
 
+// A NUMBER OUT OF A MAYBE PARAMETER (seam-0020): Rust lends a parameter, so a `sift` arm over it bound the payload as
+// `&i64`, and `add(m/value, 1)` failed rustc (E0308 at `i64::checked_add(value, 1)`). A Copy payload is bound by value
+const BORROWED = `load @term/base/maybe
+  find maybe
+
+task bump
+  take m, like maybe, like number
+
+  like number
+
+  sift m
+    case some
+      back add(m/value, 1)
+    case none
+      back 0
+
+task run
+  like text
+
+  back <{bump(make(some, 41))} {bump(make none)}>
+`
+
+const BORROWED_EXPECTED = '42 0'
+
 const dir = mkdtempSync(join(tmpdir(), 'term-narrow-'))
 const only = process.env.NARROW_ONLY ?? ''
 
@@ -282,6 +306,14 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
     `${backend}: a test of a form's case narrows the value to that case in the branch it guards`,
     cases.form === 'ran' && cases.output === CASES_EXPECTED,
     cases.form === 'ran' ? `got ${JSON.stringify(cases.output)}` : cases.form === 'skipped' ? cases.reason : `${cases.stage}: ${cases.reason}`,
+  )
+
+  const borrowed = runOn({ backend, program: BORROWED, resolve: env => projectResolver(process.cwd(), env), dir, name: 'borrowed' })
+
+  ok(
+    `${backend}: a number read out of a sift arm over a maybe parameter is a number`,
+    borrowed.form === 'ran' && borrowed.output === BORROWED_EXPECTED,
+    borrowed.form === 'ran' ? `got ${JSON.stringify(borrowed.output)}` : borrowed.form === 'skipped' ? borrowed.reason : `${borrowed.stage}: ${borrowed.reason}`,
   )
 }
 

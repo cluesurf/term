@@ -3,6 +3,7 @@
 
 dock load
   load <global:aio>, name aio
+  load <global:loop>, name term-loop
 
 load @term/base/file/owner
   find file-owner

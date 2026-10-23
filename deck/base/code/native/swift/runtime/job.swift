@@ -5,6 +5,10 @@
 // type throws on Swift, compile/swift-emit.tree). A cancelled job's task is cancelled, and it stops at its next wait on
 // the clock or on another job: it is never resumed there. Every settle is a wait on the job's own state, woken when it changes, never a
 // poll. What the states mean is code/task.tree's. Reached only through the public task API.
+//
+// A job is counted by the program's loop (runtime/loop.swift) from its start to its end, a wait on a job leaves the
+// loop and its settle wakes it, and a wait with a limit is a timer, so a wait on a job nothing can finish stops the
+// program as on Rust and Kotlin.
 final class SeedJob: @unchecked Sendable {
     private let lock = NSLock()
     private var current = "running"
@@ -43,23 +47,36 @@ final class SeedJob: @unchecked Sendable {
 final class SeedJobOnce: @unchecked Sendable {
     private let lock = NSLock()
     private var waiting: CheckedContinuation<Void, Never>?
+    // whether the loop counts the waiter, so the one resume wakes it there: a wait with a timer passes false and
+    // releases its timer itself
+    private let counted: Bool
 
-    init(_ waiting: CheckedContinuation<Void, Never>) { self.waiting = waiting }
+    init(_ waiting: CheckedContinuation<Void, Never>, counted: Bool) {
+        self.waiting = waiting
+        self.counted = counted
+    }
 
     func fire() {
         lock.lock()
         let resumed = waiting
         waiting = nil
         lock.unlock()
-        resumed?.resume()
+        if let resumed {
+            termLoop.wake(counted)
+            resumed.resume()
+        }
     }
 }
 
 enum job {
     static func spawn(_ work: @escaping () async throws -> Any) -> SeedJob {
         let started = SeedJob()
+        let counted = termLoop.start()
         let body: () async -> Void = {
-            do { started.settle("done", try await work(), nil) } catch { started.settle("failed", (), error) }
+            await termLoop.$counted.withValue(counted) {
+                do { started.settle("done", try await work(), nil) } catch { started.settle("failed", (), error) }
+            }
+            termLoop.end(counted)
         }
         if #available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *) {
             started.task = Task.immediate { await body() }
@@ -72,27 +89,32 @@ enum job {
     // a cancelled job's task stops at its wait: it is never resumed, so nothing after the wait runs
     private static func stopIfCancelled() async {
         if Task.isCancelled {
+            termLoop.end(termLoop.counted)
             await withUnsafeContinuation { (_: UnsafeContinuation<Void, Never>) in }
         }
     }
 
     static func settle(_ job: SeedJob) async {
         await withCheckedContinuation { (waiting: CheckedContinuation<Void, Never>) in
-            job.onSettled { waiting.resume() }
+            let once = SeedJobOnce(waiting, counted: termLoop.counted)
+            job.onSettled { once.fire() }
+            _ = termLoop.leave()
         }
         await stopIfCancelled()
     }
 
     // true when the job stopped running before `milliseconds` passed
     static func settleWithin(_ job: SeedJob, _ milliseconds: Int) async -> Bool {
+        let held = termLoop.hold()
         await withCheckedContinuation { (waiting: CheckedContinuation<Void, Never>) in
-            let once = SeedJobOnce(waiting)
+            let once = SeedJobOnce(waiting, counted: false)
             job.onSettled { once.fire() }
             Task {
                 try? await Task.sleep(nanoseconds: UInt64(max(milliseconds, 0)) * 1_000_000)
                 once.fire()
             }
         }
+        termLoop.release(held)
         await stopIfCancelled()
         return job.state != "running"
     }
@@ -109,9 +131,10 @@ enum job {
     // any one job stopped, for any reason
     static func settleAny(_ jobs: SeedList<SeedJob>) async {
         await withCheckedContinuation { (waiting: CheckedContinuation<Void, Never>) in
-            let once = SeedJobOnce(waiting)
+            let once = SeedJobOnce(waiting, counted: termLoop.counted)
             if jobs.data.isEmpty { once.fire() }
             jobs.data.forEach { $0.onSettled { once.fire() } }
+            _ = termLoop.leave()
         }
         await stopIfCancelled()
     }

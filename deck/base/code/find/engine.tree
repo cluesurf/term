@@ -332,6 +332,7 @@ task resolve-hits
   call refuse-early-tests
     read query
     read parts
+    halt kink
   save engine-tests
     call kept-tests
       read query

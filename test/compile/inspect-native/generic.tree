@@ -1,0 +1,20 @@
+# Refused on purpose, so it is shelved out of every build walk: test/compile/inspect-native.ts compiles it alone and
+# wants `inspect-generic`. A type parameter has no shape a native backend can walk.
+mark draft
+
+load @term/base/debug
+  find inspect
+
+task show-any
+  head t
+  take value, like t
+  like text
+  send back
+    call inspect
+      read value
+
+task run
+  like text
+  send back
+    call show-any
+      code 1

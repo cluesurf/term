@@ -41,6 +41,7 @@ task read
     call expand
       call read-raw
         read input
+        halt kink
 
 # text to data with the anchors kept
 task read-raw
@@ -82,6 +83,7 @@ task read-raw
           save anchor
             call read-tree
               read root
+              halt kink
           walk list
             read trees
             hook next
@@ -113,6 +115,7 @@ task read-raw
             read items
             call read-mesh
               read root
+              halt kink
           turn next
       fork test
         hook test
@@ -147,6 +150,7 @@ task read-raw
         call read-entry
           read root
           read kind
+          halt kink
   fork test
     hook test
       call and
@@ -168,6 +172,7 @@ task read-raw
           bind list, read items
   call check-keys
     read root
+    halt kink
   send back
     make data-file
       bind root, read root
@@ -503,6 +508,7 @@ task read-entry
                 call read-items
                   read rest
                   read name
+                  halt kink
   save scalars, code 0
   save blocks
     make list
@@ -578,6 +584,7 @@ task read-entry
             call read-entries
               read blocks
               read name
+              halt kink
 
 # the entries of a map block
 task read-entries
@@ -612,6 +619,7 @@ task read-entries
             call read-entry
               read one
               read kind
+              halt kink
           turn next
       fork test
         hook test
@@ -703,6 +711,7 @@ task read-items
             read out
             call read-mesh
               read one
+              halt kink
           turn next
       fork test
         hook test
@@ -741,6 +750,7 @@ task read-items
                   call kids-of
                     read one
                   read owner
+                  halt kink
           turn next
       fork test
         hook test
@@ -806,6 +816,7 @@ task read-mesh
           call kids-of
             read root
           text <mesh>
+          halt kink
 
 task read-tree
   mark private
@@ -867,6 +878,7 @@ task read-tree
             call read-entries
               read rest
               read name
+              halt kink
           bind items
             make list
   send back
@@ -879,6 +891,7 @@ task read-tree
         call read-items
           read rest
           read name
+          halt kink
 
 # a key given twice in one map, with no fuse between, is an error
 task check-keys
@@ -901,9 +914,11 @@ task check-keys
             case hash
               call check-keys
                 read entry/base
+                halt kink
             case array
               call check-keys
                 read entry/base
+                halt kink
             case text
               call length(read seen)
             case number
@@ -941,6 +956,7 @@ task check-keys
           take site, name item
           call check-keys
             read item
+            halt kink
     case text
       send back
     case number

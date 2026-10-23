@@ -162,6 +162,7 @@ task to-code
   save out, make list
   put-header(out)
   put-frame(out, item)
+    halt kink
   back from-byte-list(out)
 
 task to-code-all
@@ -172,6 +173,7 @@ task to-code-all
   walk items
     take item
     put-frame(out, item)
+      halt kink
   back from-byte-list(out)
 
 task put-header
@@ -193,6 +195,7 @@ task put-frame
   save texts, make hash
   save shapes, make hash
   put-value(body, item, texts, shapes)
+    halt kink
   out/push(1)
   put-varint(out, body/length)
   walk body
@@ -218,6 +221,7 @@ task put-value
       put-integer(out, value)
     case decimal
       put-decimal(out, value)
+        halt kink
     case text
       put-text(out, value, texts)
     case flag
@@ -235,11 +239,14 @@ task put-value
       walk items
         take one
         put-value(out, one, texts, shapes)
+          halt kink
     case hash
       link entries
       put-hash(out, entries, texts, shapes)
+        halt kink
     case graft
       refuse-code(<unencodable>, 0, <an unexpanded fuse {name}: expand the anchors before encoding>)
+        halt kink
   back 0
 
 task put-hash
@@ -264,6 +271,7 @@ task put-hash
     fork test, seen/has(key)
       hold
         refuse-code(<unencodable>, 0, <"{key}" is a key twice in one map>)
+          halt kink
     seen/set(key, true)
     save size, utf8-length(key)
     save name, <{name}|{size}:{key}>
@@ -279,6 +287,7 @@ task put-hash
   walk entries
     take entry
     put-value(out, entry/base, texts, shapes)
+      halt kink
   back 0
 
 task put-text
@@ -348,6 +357,7 @@ task put-decimal
   fork test, not(is-finite(value))
     hold
       refuse-code(<unencodable>, 0, <a decimal that is not finite: tree/text has no spelling for it>)
+        halt kink
   save signed, is-negative-zero(value)
   fork test, and(is-small-whole(value), not(signed))
     hold
@@ -411,28 +421,35 @@ task from-code
   fork test, is-below(all/length, 4)
     hold
       refuse-code(<not-tree-code>, 0, <the input does not start with the tree/code header (d3 54 52)>)
+        halt kink
   fork test, or(is-unequal(all/0, 211), or(is-unequal(all/1, 84), is-unequal(all/2, 82)))
     hold
       refuse-code(<not-tree-code>, 0, <the input does not start with the tree/code header (d3 54 52)>)
+        halt kink
   save version, all/3
   fork test, is-unequal(version, 1)
     hold
       refuse-code(<unknown-version>, 3, <tree/code version {version}, and this decoder reads version 1>)
+        halt kink
   save reader/at, 4
   save out, make list
   save ended, false
   walk test
     hook test, and(not(ended), is-below(reader/at, reader/end))
     hook hold
-      save kind, take-byte(reader)
+      save kind
+        take-byte(reader)
+          halt kink
       fork test, is-equal(kind, 0)
         hold
           fork test, is-below(reader/at, reader/end)
             hold
               refuse-code(<frame-length>, reader/at, <bytes follow the end of the stream>)
+                halt kink
           save ended, true
         miss
           take-frame(reader, kind, out)
+            halt kink
   back out
 
 task take-frame
@@ -445,14 +462,19 @@ task take-frame
   fork test, is-equal(kind, 2)
     hold
       refuse-code(<no-decompressor>, start, <a Zstandard frame: a Term app decodes plain frames, and its transport decompresses>)
+        halt kink
   fork test, is-unequal(kind, 1)
     hold
       refuse-code(<unknown-tag>, start, <a frame kind of {kind}>)
-  save length, take-varint(reader)
+        halt kink
+  save length
+    take-varint(reader)
+      halt kink
   save left, subtract(reader/end, reader/at)
   fork test, is-above(length, left)
     hold
       refuse-code(<truncated>, reader/at, <the frame says {length} bytes and {left} are left>)
+        halt kink
   save frame
     make code-reader
       bind input, reader/input
@@ -469,6 +491,7 @@ task take-frame
     hold
       save past, subtract(frame/end, frame/at)
       refuse-code(<frame-length>, frame/at, <the frame holds {past} bytes past its value>)
+        halt kink
   save reader/at, frame/end
   back 0
 
@@ -479,6 +502,7 @@ task take-byte
   fork test, is-minimum(reader/at, reader/end)
     hold
       refuse-code(<truncated>, reader/at, <the input ends inside a value>)
+        halt kink
   save at, reader/at
   save one, reader/input/{at}
   save reader/at, add(at, 1)
@@ -496,16 +520,20 @@ task take-varint
   walk test
     hook test, is-minimum(last, 128)
     hook hold
-      save last, take-byte(reader)
+      save last
+        take-byte(reader)
+          halt kink
       save count, add(count, 1)
       fork test, is-above(count, 9)
         hold
           refuse-code(<too-large>, start, <a varint past the 64-bit range this decoder carries>)
+            halt kink
       save value, bitwise-or(value, shift-left(bitwise-and(last, 127), shift))
       save shift, add(shift, 7)
   fork test, and(is-above(count, 1), is-equal(last, 0))
     hold
       refuse-code(<non-canonical>, start, <a varint is longer than it needs to be>)
+        halt kink
   back value
 
 task take-head
@@ -520,6 +548,7 @@ task take-head
   fork test, is-unequal(minor, 28)
     hold
       refuse-code(<unknown-tag>, at, <minor {minor} is not defined>)
+        halt kink
   back add(28, take-varint(reader))
 
 task take-value
@@ -531,14 +560,21 @@ task take-value
   fork test, is-above(depth, 256)
     hold
       refuse-code(<too-deep>, reader/at, <values nest deeper than 256>)
+        halt kink
   save at, reader/at
-  save first, take-byte(reader)
+  save first
+    take-byte(reader)
+      halt kink
   save major, shift-right(first, 5)
   save minor, bitwise-and(first, 31)
   fork test, is-equal(major, 7)
     hold
-      back take-simple(reader, tables, minor, at, depth)
-  save n, take-head(reader, minor, at)
+      back
+        take-simple(reader, tables, minor, at, depth)
+          halt kink
+  save n
+    take-head(reader, minor, at)
+      halt kink
   save left, subtract(reader/end, reader/at)
   fork test, is-equal(major, 0)
     hold
@@ -548,19 +584,23 @@ task take-value
       back number-data(subtract(subtract(0, n), 1))
   fork test, is-equal(major, 2)
     hold
-      back take-text(reader, tables, n, at)
+      back
+        take-text(reader, tables, n, at)
+          halt kink
   fork test, is-equal(major, 3)
     hold
       save known, tables/texts/length
       fork test, is-minimum(n, known)
         hold
           refuse-code(<bad-reference>, at, <text {n} is referred to, and the frame has {known}>)
+            halt kink
       back text-data(tables/texts/{n})
   fork test, is-equal(major, 4)
     hold
       fork test, is-above(n, left)
         hold
           refuse-code(<truncated>, at, <a list of {n} values, and {left} bytes are left>)
+            halt kink
       save items, make list
       save k, 0
       walk test
@@ -574,15 +614,22 @@ task take-value
       fork test, is-above(multiply(n, 2), left)
         hold
           refuse-code(<truncated>, at, <a map of {n} keys, and {left} bytes are left>)
-      back take-shape(reader, tables, n, at, depth)
+            halt kink
+      back
+        take-shape(reader, tables, n, at, depth)
+          halt kink
   fork test, is-equal(major, 6)
     hold
       save known, tables/shapes/length
       fork test, is-minimum(n, known)
         hold
           refuse-code(<bad-reference>, at, <shape {n} is referred to, and the frame has {known}>)
-      back take-entries(reader, tables, tables/shapes/{n}, depth)
+            halt kink
+      back
+        take-entries(reader, tables, tables/shapes/{n}, depth)
+          halt kink
   refuse-code(<unknown-tag>, at, <a tag of {first}>)
+    halt kink
   back make blank
 
 task take-text
@@ -596,7 +643,10 @@ task take-text
   fork test, is-above(n, left)
     hold
       refuse-code(<truncated>, at, <a text of {n} bytes, and {left} are left>)
-  save raw, take-bytes(reader, n)
+        halt kink
+  save raw
+    take-bytes(reader, n)
+      halt kink
   save value, text-of-bytes(raw)
   # UTF-8 that does not read back to the same bytes was not valid UTF-8: the platform decoder replaced something
   save written, to-byte-list(raw)
@@ -604,6 +654,7 @@ task take-text
   fork test, is-unequal(again/length, n)
     hold
       refuse-code(<bad-text>, at, <a text is not valid UTF-8>)
+        halt kink
   save k, 0
   walk test
     hook test, is-below(k, n)
@@ -611,12 +662,14 @@ task take-text
       fork test, is-unequal(again/{k}, written/{k})
         hold
           refuse-code(<bad-text>, at, <a text is not valid UTF-8>)
+            halt kink
       save k, add(k, 1)
   fork test, is-unequal(value, <>)
     hold
       fork test, tables/known/has(value)
         hold
           refuse-code(<non-canonical>, at, <"{value}" is written again where a reference to it belongs>)
+            halt kink
       tables/texts/push(value)
       tables/known/set(value, true)
   back text-data(value)
@@ -637,25 +690,32 @@ task take-shape
     hook test, is-below(k, n)
     hook hold
       save key-at, reader/at
-      save key, take-value(reader, tables, add(depth, 1))
+      save key
+        take-value(reader, tables, add(depth, 1))
+          halt kink
       sift key
         case text
           fork test, seen/has(value)
             hold
               refuse-code(<repeated-key>, key-at, <"{value}" is a key twice in one shape>)
+                halt kink
           seen/set(value, true)
           keys/push(value)
           save size, utf8-length(value)
           save name, <{name}|{size}:{value}>
         miss
           refuse-code(<unknown-tag>, key-at, <a key of a map is not a text>)
+            halt kink
       save k, add(k, 1)
   fork test, tables/shaped/has(name)
     hold
       refuse-code(<non-canonical>, at, <a shape is written again where a reference to it belongs>)
+        halt kink
   tables/shapes/push(keys)
   tables/shaped/set(name, true)
-  back take-entries(reader, tables, keys, depth)
+  back
+    take-entries(reader, tables, keys, depth)
+      halt kink
 
 task take-entries
   mark private
@@ -669,6 +729,7 @@ task take-entries
   fork test, is-above(count, left)
     hold
       refuse-code(<truncated>, reader/at, <a map of {count} values, and {left} bytes are left>)
+        halt kink
   save entries, make list
   walk keys
     take key
@@ -702,9 +763,11 @@ task take-simple
       fork test, not(is-finite(value))
         hold
           refuse-code(<unknown-tag>, at, <a decimal that is not finite, which Term data does not hold>)
+            halt kink
       fork test, and(or(is-small-whole(value), f64-fits-f32(value)), not(is-negative-zero(value)))
         hold
           refuse-code(<non-canonical>, at, <the decimal {value} is written as a double, and a shorter form holds it>)
+            halt kink
       back decimal-data(value)
   fork test, is-equal(minor, 4)
     hold
@@ -712,13 +775,17 @@ task take-simple
       fork test, not(is-finite(value))
         hold
           refuse-code(<unknown-tag>, at, <a decimal that is not finite, which Term data does not hold>)
+            halt kink
       fork test, or(is-small-whole(value), is-negative-zero(value))
         hold
           refuse-code(<non-canonical>, at, <the decimal {value} is written as a single, and it belongs elsewhere>)
+            halt kink
       back decimal-data(value)
   fork test, is-equal(minor, 5)
     hold
-      save inner, take-value(reader, tables, add(depth, 1))
+      save inner
+        take-value(reader, tables, add(depth, 1))
+          halt kink
       sift inner
         case number
           link integer
@@ -726,10 +793,13 @@ task take-simple
           fork test, is-minimum(absolute(whole), whole-limit)
             hold
               refuse-code(<non-canonical>, at, <a whole decimal holds an integer past 2^53>)
+                halt kink
           back decimal-data(whole)
         miss
           refuse-code(<non-canonical>, at, <a whole decimal holds something other than an integer>)
+            halt kink
   refuse-code(<unknown-tag>, at, <simple {minor} is not defined in tree/code version 1>)
+    halt kink
   back make blank
 
 task take-bytes
@@ -741,6 +811,7 @@ task take-bytes
   fork test, is-above(count, left)
     hold
       refuse-code(<truncated>, reader/at, <{count} bytes are needed and {left} are left>)
+        halt kink
   save raw, make list
   save k, 0
   save at, reader/at

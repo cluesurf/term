@@ -313,6 +313,7 @@ task skip-comment
                 call place
                   read cursor
                 text <a control character in a comment>
+                halt kink
           call move
             read cursor
             code 1
@@ -377,6 +378,7 @@ task end-line
   call skip-comment
     read r
     read cursor
+    halt kink
   fork test
     hook test
       call is-below
@@ -399,6 +401,7 @@ task end-line
         call place
           read cursor
         text <the line goes on after its value>
+        halt kink
   send back
     call place
       read cursor
@@ -442,6 +445,7 @@ task skip-space
       call skip-comment
         read r
         read cursor
+        halt kink
       fork test
         hook test
           call take-newline
@@ -655,6 +659,7 @@ task read-escape
                 call place
                   read cursor
                 text <a hexadecimal digit was expected in a unicode escape>
+                halt kink
           save value
             call add
               call multiply
@@ -685,12 +690,14 @@ task read-escape
           call refuse-toml
             read start
             text <a unicode escape names no scalar value>
+            halt kink
       send back
         call rune-to-text
           read value
   call refuse-toml
     read start
     text <this escape is not in TOML>
+    halt kink
   send back, text <>
 
 # a code point a string may hold as itself: not a control character but tab
@@ -791,6 +798,7 @@ task read-string
             call read-escape
               read r
               read cursor
+              halt kink
           save out, text <{{out}}{{piece}}>
         hook test
           call is-string-rune
@@ -821,10 +829,12 @@ task read-string
               call refuse-toml
                 read start
                 text <a string is not closed on its line>
+                halt kink
           call refuse-toml
             call place
               read cursor
             text <a control character in a string>
+            halt kink
   send back, read out
 
 # a multi-line string """...""" or '''...''', the cursor on the first of the three quotes
@@ -999,11 +1009,13 @@ task read-long-string
               call refuse-toml
                 read before
                 text <a backslash before blanks must end the line>
+                halt kink
             hook miss
               save piece
                 call read-escape
                   read r
                   read cursor
+                  halt kink
               save out, text <{{out}}{{piece}}>
         hook test
           call take-newline
@@ -1034,10 +1046,12 @@ task read-long-string
               call refuse-toml
                 read start
                 text <a multi-line string is not closed>
+                halt kink
           call refuse-toml
             call place
               read cursor
             text <a control character in a string>
+            halt kink
   send back, read out
 
 # line breaks and blanks only, for a line-ending backslash
@@ -1130,10 +1144,12 @@ task read-simple-key
             call place
               read cursor
             text <a key cannot be a multi-line string>
+            halt kink
       send back
         call read-string
           read r
           read cursor
+          halt kink
   save out, text <>
   # a cursor walk: each turn reads a rune or more, or the next decides to stop, so no more turns are taken than twice the runes
   save turns, code 0
@@ -1183,6 +1199,7 @@ task read-simple-key
         call place
           read cursor
         text <a key was expected>
+        halt kink
   send back, read out
 
 # a dotted key, as its segments
@@ -1203,6 +1220,7 @@ task read-key
     call read-simple-key
       read r
       read cursor
+      halt kink
   call skip-blank
     read r
     read cursor
@@ -1245,6 +1263,7 @@ task read-key
         call read-simple-key
           read r
           read cursor
+          halt kink
       call skip-blank
         read r
         read cursor
@@ -1467,6 +1486,7 @@ task read-date-time
           call refuse-toml
             read at
             text <a date is out of range>
+            halt kink
       save out
         call substring
           read text
@@ -1503,6 +1523,7 @@ task read-date-time
               read at
               code 10
             text <a date and its time are joined by T>
+            halt kink
       save out, text <{{out}}T>
       save i, code 11
   save rest
@@ -1521,6 +1542,7 @@ task read-date-time
           read at
           read i
         text <a time is HH:MM:SS>
+        halt kink
   save hour
     call add
       call multiply
@@ -1582,6 +1604,7 @@ task read-date-time
           read at
           read i
         text <a time is out of range>
+        halt kink
   save time
     call substring
       read text
@@ -1649,6 +1672,7 @@ task read-date-time
                 read i
                 read j
             text <a digit was expected after the point>
+            halt kink
       save out
         call substring
           read text
@@ -1677,6 +1701,7 @@ task read-date-time
                 read i
                 read j
             text <a time without a date has no offset>
+            halt kink
       save z
         call at-rune
           read rest
@@ -1740,6 +1765,7 @@ task read-date-time
             read i
             read j
         text <an offset is Z or +HH:MM>
+        halt kink
   send back, read out
 
 # the date and time as read, with the date-time separator written `T` (substring keeps the code points as they were)
@@ -1815,6 +1841,7 @@ task strip-underscores
                   read at
                   read k
                 text <an underscore must sit between two digits>
+                halt kink
           fork test
             hook test
               call or
@@ -1836,6 +1863,7 @@ task strip-underscores
                   read at
                   read k
                 text <an underscore must sit between two digits>
+                halt kink
         hook miss
           save piece
             call rune-to-text
@@ -1942,6 +1970,7 @@ task read-number-token
           call refuse-toml
             read at
             text <a hexadecimal, octal or binary integer has no sign>
+            halt kink
       save radix, code 16
       fork test
         hook test
@@ -1968,6 +1997,7 @@ task read-number-token
           call add
             read at
             code 2
+          halt kink
       fork test
         hook test
           call starts-with
@@ -1977,6 +2007,7 @@ task read-number-token
           call refuse-toml
             read at
             text <a hexadecimal, octal or binary integer has no sign>
+            halt kink
       send back
         make toml-integer
           bind value
@@ -1984,6 +2015,7 @@ task read-number-token
               read digits
               read radix
               read at
+              halt kink
   # decimal: no leading zero before more digits
   fork test
     hook test
@@ -2001,6 +2033,7 @@ task read-number-token
       call refuse-toml
         read at
         text <a decimal number has no leading zero>
+        halt kink
   fork test
     hook test
       call or
@@ -2025,6 +2058,7 @@ task read-number-token
         call strip-underscores
           read body
           read at
+          halt kink
       # every point must have a digit on both sides
       save p
         call to-runes
@@ -2062,6 +2096,7 @@ task read-number-token
                   call refuse-toml
                     read at
                     text <a point needs a digit on each side>
+                    halt kink
           save k
             call add
               read k
@@ -2080,6 +2115,7 @@ task read-number-token
             call read-float
               text <{{sign}}{{plain}}>
               read at
+              halt kink
   send back
     make toml-integer
       bind value
@@ -2087,6 +2123,7 @@ task read-number-token
           text <{{sign}}{{body}}>
           code 10
           read at
+          halt kink
 
 task read-integer
   mark private
@@ -2098,6 +2135,7 @@ task read-integer
     call strip-underscores
       read text
       read at
+      halt kink
   fork
     mark unsafe
     save value
@@ -2111,6 +2149,7 @@ task read-integer
       call refuse-toml
         read at
         text <this is not a number>
+        halt kink
 
 task read-float
   mark private
@@ -2128,6 +2167,7 @@ task read-float
     call refuse-toml
       read at
       text <this is not a number>
+      halt kink
     send back, 0.0
 
 # one value at the cursor
@@ -2178,12 +2218,14 @@ task read-value
                 call read-long-string
                   read r
                   read cursor
+                  halt kink
       send back
         make toml-text
           bind value
             call read-string
               read r
               read cursor
+              halt kink
   fork test
     hook test
       call is-equal
@@ -2223,6 +2265,7 @@ task read-value
           call skip-space
             read r
             read cursor
+            halt kink
           fork test
             hook test
               call is-equal
@@ -2241,9 +2284,11 @@ task read-value
                 call read-value
                   read r
                   read cursor
+                  halt kink
               call skip-space
                 read r
                 read cursor
+                halt kink
               save next
                 call peek
                   read r
@@ -2272,6 +2317,7 @@ task read-value
                     call place
                       read cursor
                     text <an array item is followed by a comma or the closing bracket>
+                    halt kink
       send back
         make toml-array
           bind items, read items
@@ -2285,6 +2331,7 @@ task read-value
         call read-inline-table
           read r
           read cursor
+          halt kink
   save token
     call read-token
       read r
@@ -2316,6 +2363,7 @@ task read-value
       call refuse-toml
         read at
         text <a value was expected>
+        halt kink
   save t
     call to-runes
       read token
@@ -2373,6 +2421,7 @@ task read-value
             call read-date-time
               read token
               read at
+              halt kink
   fork test
     hook test
       call fits-shape
@@ -2385,10 +2434,12 @@ task read-value
             call read-date-time
               read token
               read at
+              halt kink
   send back
     call read-number-token
       read token
       read at
+      halt kink
 
 # ---------------------------------------------------------------- building tables from paths
 
@@ -2497,6 +2548,7 @@ task check-key
       call refuse-toml
         read at
         text <a key may not hold U+0001 or U+0002>
+        halt kink
   send back, read name
 
 # the path a header's segments reach from the top, through the last element of any array of tables on the way
@@ -2524,6 +2576,7 @@ task resolve-header
           call check-key
             read part
             read at
+            halt kink
       fork test
         hook test
           call is-below
@@ -2558,6 +2611,7 @@ task resolve-header
               call refuse-toml
                 read at
                 text <a header goes through a key that is a value>
+                halt kink
             hook test
               call is-equal
                 read kind
@@ -2600,6 +2654,7 @@ task assign
           call check-key
             read part
             read at
+            halt kink
       fork test
         hook test
           call is-below
@@ -2636,6 +2691,7 @@ task assign
               call refuse-toml
                 read at
                 text <a dotted key goes through a key already defined>
+                halt kink
       save k
         call add
           read k
@@ -2651,6 +2707,7 @@ task assign
       call refuse-toml
         read at
         text <this key is defined twice>
+        halt kink
   call set-kind
     read registry
     read path
@@ -2870,6 +2927,7 @@ task read-inline-table
         call read-key
           read r
           read cursor
+          halt kink
       fork test
         hook test
           call is-unequal
@@ -2883,6 +2941,7 @@ task read-inline-table
             call place
               read cursor
             text <a key is followed by =>
+            halt kink
       call move
         read cursor
         code 1
@@ -2896,7 +2955,9 @@ task read-inline-table
         call read-value
           read r
           read cursor
+          halt kink
         read at
+        halt kink
       call skip-blank
         read r
         read cursor
@@ -2930,6 +2991,7 @@ task read-inline-table
                 call place
                   read cursor
                 text <an inline table has no comma after its last entry>
+                halt kink
         hook test
           call is-equal
             read next
@@ -2944,6 +3006,7 @@ task read-inline-table
             call place
               read cursor
             text <an inline table entry is followed by a comma or the closing brace, on the same line>
+            halt kink
   send back
     make toml-table
       bind entries
@@ -3005,6 +3068,7 @@ task parse-toml
       call skip-space
         read r
         read cursor
+        halt kink
       save c
         call peek
           read r
@@ -3047,6 +3111,7 @@ task parse-toml
             call read-key
               read r
               read cursor
+              halt kink
           fork test
             hook test
               call is-unequal
@@ -3060,6 +3125,7 @@ task parse-toml
                 call place
                   read cursor
                 text <a header is closed by ]>
+                halt kink
           call move
             read cursor
             code 1
@@ -3080,6 +3146,7 @@ task parse-toml
                     call place
                       read cursor
                     text <an array of tables header is closed by ]]>
+                    halt kink
               call move
                 read cursor
                 code 1
@@ -3088,6 +3155,7 @@ task parse-toml
               read registry
               read parts
               read at
+              halt kink
           save kind
             call kind-of
               read registry
@@ -3126,6 +3194,7 @@ task parse-toml
                   call refuse-toml
                     read at
                     text <an array of tables is already something else>
+                    halt kink
               save table
                 call join-path
                   read path
@@ -3167,6 +3236,7 @@ task parse-toml
                   call refuse-toml
                     read at
                     text <this table is defined twice>
+                    halt kink
                 hook test
                   call is-equal
                     read kind
@@ -3175,19 +3245,23 @@ task parse-toml
                   call refuse-toml
                     read at
                     text <this table was defined by dotted keys>
+                    halt kink
                 hook miss
                   call refuse-toml
                     read at
                     text <this table is already something else>
+                    halt kink
               save table, read path
           call end-line
             read r
             read cursor
+            halt kink
         hook miss
           save parts
             call read-key
               read r
               read cursor
+              halt kink
           fork test
             hook test
               call is-unequal
@@ -3201,6 +3275,7 @@ task parse-toml
                 call place
                   read cursor
                 text <a key is followed by =>
+                halt kink
           call move
             read cursor
             code 1
@@ -3214,10 +3289,13 @@ task parse-toml
             call read-value
               read r
               read cursor
+              halt kink
             read at
+            halt kink
           call end-line
             read r
             read cursor
+            halt kink
   send back
     make toml-table
       bind entries

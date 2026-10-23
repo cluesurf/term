@@ -298,6 +298,18 @@ async function main(): Promise<void> {
   const rolled = mod.tellEntries() as Entry[]
   ok('hive-roll answers the typed tell too', rolled.length === 1 && rolled[0]!.name === 'typed-absence' && rolled[0]!.base.note === 'Not here', JSON.stringify(rolled))
   ok('an ear on tell hears the typed tell once', heardTells.filter(e => e.kind === 'tell').length === 1, JSON.stringify(heardTells.map(e => e.kind)))
+
+  // the typed wake is idempotent on the deck name, as `hive-wake` is (seam-0015): a second wake of every deck, and a
+  // second typed wake of one, add no entry to the roster or to a typed list
+  const rosterBefore = (mod.exceptions() as unknown[]).length
+  const decksBefore = mod.decks()
+  mod.wakeHive()
+  mod.wakeTyped()
+  ok(
+    'a second wake adds nothing',
+    (mod.exceptions() as unknown[]).length === rosterBefore && mod.decks() === decksBefore && mod.tellCount() === 1 && mod.dockCount() === 1 && mod.tellEntries().length === 1,
+    `${rosterBefore} -> ${(mod.exceptions() as unknown[]).length}, tells ${mod.tellCount()}, docks ${mod.dockCount()}`,
+  )
   mod.clearTells()
   ok('hive-clear on tell empties the roll and the typed list', mod.tellEntries().length === 0 && mod.tellCount() === 0)
   ok('hive-clear on tell leaves the other kinds', mod.dockCount() === 1)

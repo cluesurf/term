@@ -399,6 +399,7 @@ task comment-at-end
   take here, like number
 
   report-strict(report, <commentAtEnd>, <% comment has no terminating newline; LaTeX would fail because of commenting the end of math mode (e.g. $)>, make(none), here)
+    halt kink
 
 # ---- the lexer ----
 
@@ -422,6 +423,7 @@ task make-latex-lexer
       bind open-comment, false
       bind report, report
   read-from(lexer, 0)
+    halt kink
   back lexer
 
 # KaTeX's `setCatcode`: `\url` makes `%` a character while it reads, and gives it back after. The rest of the source
@@ -435,6 +437,7 @@ task set-url
       back
   save lexer/url, url
   read-from(lexer, lexer/last-end)
+    halt kink
 
 # the next token, KaTeX's `lex`: an `EOF` at the end of the source
 task lex
@@ -462,6 +465,7 @@ task lex
     hold
       save lexer/open-comment, false
       comment-at-end(lexer/report, lexer/runes/length)
+        halt kink
   save lexer/last-end, lexer/runes/length
   back token-at(<EOF>, lexer/runes/length, lexer/runes/length)
 
@@ -473,7 +477,9 @@ task read-from
 
   save runes, lexer/runes
   save rest, from-runes(runes/slice(from, runes/length))
-  save found, read-tokens(lexer/table, rest, lexer/url, from)
+  save found
+    read-tokens(lexer/table, rest, lexer/url, from)
+      halt kink
   save lexer/tokens, found/tokens
   save lexer/reach, found/reach
   save lexer/stuck, found/stuck
@@ -526,7 +532,9 @@ task read-tokens
           # a `\verb` the grammar could not close: closed here, and the rest read again from where it ends
           fork test, is-equal(kind/rule, <verb-wide>)
             hold
-              save rest, close-verb(table, kind, to-runes(input), url, offset)
+              save rest
+                close-verb(table, kind, to-runes(input), url, offset)
+                  halt kink
               walk rest/tokens
                 take one
                 push(tokens, one)
@@ -536,7 +544,9 @@ task read-tokens
               save stuck, rest/stuck
               save open, rest/open-comment
               halt, name each
-          sift token-of-match(kind, runes, offset)
+          sift
+            token-of-match(kind, runes, offset)
+              halt kink
             case some
               link one
               push(tokens, one)
@@ -575,6 +585,7 @@ task close-verb
       save delimiter, get(runes, found/start)
     case none
       unshaped(kind, offset, offset)
+        halt kink
   # the closing delimiter is on the line, or just past it when it is itself the line feed that ends the line
   save close, -1
   sift latex-match-named(kind, <verb-line>)
@@ -590,6 +601,7 @@ task close-verb
           save k, add(k, 1)
     case none
       unshaped(kind, offset, offset)
+        halt kink
 
   save tokens, make list
   save reach, make list
@@ -625,7 +637,9 @@ task close-verb
           link root
           walk root/children
             take word
-            sift token-of-match(word, command-runes, add(offset, kind/start))
+            sift
+              token-of-match(word, command-runes, add(offset, kind/start))
+                halt kink
               case some
                 link one
                 push(tokens, one)
@@ -633,10 +647,14 @@ task close-verb
                 push(reach, add(offset, from))
               case none
                 unshaped(word, offset, offset)
+                  halt kink
         case none
           unshaped(kind, offset, offset)
+            halt kink
 
-  save after, read-tokens(table, from-runes(runes/slice(from, runes/length)), url, add(offset, from))
+  save after
+    read-tokens(table, from-runes(runes/slice(from, runes/length)), url, add(offset, from))
+      halt kink
   walk after/tokens
     take one
     push(tokens, one)
@@ -680,6 +698,7 @@ task token-of-match
           back make(some, word)
         case none
           unshaped(kind, at, end)
+            halt kink
   fork test, is-equal(kind/rule, <verb>)
     hold
       save token, token-at(text-of(kind, runes), at, end)
@@ -690,6 +709,7 @@ task token-of-match
           save token/verb, make(some, body)
         case none
           unshaped(kind, at, end)
+            halt kink
       save token/star, is-some(latex-match-named(kind, <verb-starred>))
       back make(some, token)
   save plain, token-at(text-of(kind, runes), at, end)
@@ -767,7 +787,9 @@ task body-tokens
   fork test, table/bodies/has(body)
     hold
       back table/bodies/get(body)
-  save found, read-tokens(table, body, false, 0)
+  save found
+    read-tokens(table, body, false, 0)
+      halt kink
   fork test, is-minimum(found/stuck, 0)
     hold
       save runes, to-runes(body)

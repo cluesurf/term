@@ -662,7 +662,9 @@ function extendFormsIn(
 
     const fields: { name: string; value: Expression }[] = [
       { name: 'host', value: text(hostOf(s)) },
-      { name: 'form', value: text(form) },
+      // the form as its author wrote it: one two decks declare is split by file (`absence__in0_1`), and the raise
+      // names it as the roll does, its `host` telling the two apart (seam-0016)
+      { name: 'form', value: text(form.replace(/__in\d+_\d+$/, '')) },
       { name: 'code', value: call(OCCURRENCE_TASK) },
       { name: 'time', value: call(TIME_TASK) },
     ]

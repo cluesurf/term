@@ -22,7 +22,7 @@
 //     (task/term/roll-cover.ts, 2026-10-05), counts a deck's files as their union, continues a path a unit ended at
 //     another unit's task, and sorts each kind by host, name and site so a pool's merge reads like a single thread's
 
-import type { Expression, Program } from '@term/make/code/compile/node'
+import type { Expression, Program, Statement } from '@term/make/code/compile/node'
 import { raiseSetsOf } from '@term/make/code/check/effects'
 import * as rolling from '@term/make/code/compile/rolling'
 
@@ -59,6 +59,9 @@ export type RollOptions = {
   // mark each entry with what a merge reads and then drops (`makeRollMerger`). A roll that goes anywhere else, the
   // hive's wake, carries none
   ids?: boolean
+  // the docks the route lowering took out of the program (compile.ts `lowerRoutes`): every page route, rolled as the
+  // program's own docks are, so the wake tells it and `routes-of` answers it (seam-0018, seam-0025)
+  docks?: Statement[]
 }
 
 // ---- the value, both ways ----
@@ -158,6 +161,7 @@ export function buildRoll(
       own: options?.own ? new Map([...options.own].map(name => [name, true])) : undefined,
       root: options?.root,
       ids: options?.ids === true,
+      docks: options?.docks,
     } as never,
     path => {
       const deck = deckOf?.(path)

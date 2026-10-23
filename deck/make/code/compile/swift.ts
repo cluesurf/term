@@ -350,6 +350,17 @@ const SWIFT_HELPERS = {
     '}',
     'func __termDrain() -> Bool { __termOutstanding.wait(); return true }',
   ].join('\n'),
+  // an integer step past the integer's range is a STOP (D15), as Kotlin's TermStop and TypeScript's __TermStop are: no
+  // guard catches it, and the process ends with exit 1 naming excess or shortage. Swift's own `+`, `-` and `*` TRAP
+  // there, which killed the process by a signal (term-stdlib-parity-0015). Generic, so a narrowed width is checked at
+  // its own edge
+  stop: [
+    'func termStop(_ message: String) -> Never { FileHandle.standardError.write(Data((message + "\\n").utf8)); exit(1) }',
+    '@inline(__always) func termAdd<T: FixedWidthInteger>(_ a: T, _ b: T) -> T { let (r, o) = a.addingReportingOverflow(b); if o { termStop(a < 0 ? "shortage: a number past \\(T.min)" : "excess: a number past \\(T.max)") }; return r }',
+    '@inline(__always) func termSubtract<T: FixedWidthInteger>(_ a: T, _ b: T) -> T { let (r, o) = a.subtractingReportingOverflow(b); if o { termStop(a < 0 ? "shortage: a number past \\(T.min)" : "excess: a number past \\(T.max)") }; return r }',
+    '@inline(__always) func termMultiply<T: FixedWidthInteger>(_ a: T, _ b: T) -> T { let (r, o) = a.multipliedReportingOverflow(by: b); if o { termStop((a < 0) != (b < 0) ? "shortage: a number past \\(T.min)" : "excess: a number past \\(T.max)") }; return r }',
+    '@inline(__always) func termNegate<T: FixedWidthInteger>(_ a: T) -> T { let (r, o) = T.zero.subtractingReportingOverflow(a); if o { termStop("excess: a number past \\(T.max)") }; return r }',
+  ].join('\n'),
   // the one exception value of a Term program on this backend (note/project/term/hive/11-native-exceptions.md)
   exception: [
     'struct TermException: Error { let host: String; let form: String; let note: String; let code: String; let time: Int; let link: Any?; let base: Any? }',
@@ -489,6 +500,23 @@ const SWIFT_HELPERS = {
 } as const
 
 type SwiftHelper = keyof typeof SWIFT_HELPERS
+
+// the `spawn` helper in a program that has the loop: a tick is counted there from its start to its end, as a job is
+// (runtime/job.swift), so a wait inside it is seen
+const SWIFT_SPAWN_COUNTED = [
+  'let __termOutstanding = DispatchGroup()',
+  'func __termSpawn(_ work: @escaping () async -> Void) {',
+  '    __termOutstanding.enter()',
+  '    let counted = termLoop.start()',
+  '    let body: () async -> Void = { await termLoop.$counted.withValue(counted) { await work() }; termLoop.end(counted); __termOutstanding.leave() }',
+  '    if #available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *) {',
+  '        Task.immediate { await body() }',
+  '    } else {',
+  '        Task { await body() }',
+  '    }',
+  '}',
+  'func __termDrain() -> Bool { __termOutstanding.wait(); return true }',
+].join('\n')
 
 // every type kind the program's nodes carry, found by walking the program's objects: a list or map value has a list
 // or map type on some node even where the emitter writes no annotation for it
@@ -1562,7 +1590,18 @@ export function emitSwift(
     st.needs.set('spawn', true)
   }
 
-  const prelude = (Object.keys(SWIFT_HELPERS) as SwiftHelper[]).filter(h => st.needs.has(h)).map(h => SWIFT_HELPERS[h])
+  // the program's loop (native/swift/runtime/loop.swift, term-stdlib-parity-0014), present when a module the program
+  // loads docks it: a tick is counted there as a job is, and the main runs an asynchronous entry inside it, found by
+  // `__termLoopEntry` (compile/main-entry.tree), so a wait that nothing can finish stops as on Rust and Kotlin
+  const hasLoop = program.some(n => n.form === 'native' && n.module === 'global:loop')
+
+  if (hasLoop) {
+    body.push('func __termLoopEntry<T>(_ body: () async throws -> T) async rethrows -> T { try await termLoop.entry(body) }')
+  }
+
+  const prelude = (Object.keys(SWIFT_HELPERS) as SwiftHelper[])
+    .filter(h => st.needs.has(h))
+    .map(h => (h === 'spawn' && hasLoop ? SWIFT_SPAWN_COUNTED : SWIFT_HELPERS[h]))
 
   // the wake chain: one `hiveWake` per deck with its static entries, when the program has the stdlib hive and
   // the compile driver handed over the roll. A static entry's `base` is the declaration as JSON text; an entry

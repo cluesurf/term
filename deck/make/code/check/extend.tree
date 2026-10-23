@@ -1386,6 +1386,19 @@ task record-expression
       bind fields, fields
       bind span, at
 
+# a form as its author wrote it: one two decks declare is split by file (`absence__in0_1`), and the raise names it as
+# the roll does, its `host` telling the two apart (seam-0016)
+task written-form
+  take name, like text
+  like text
+  mark private
+
+  save at, index-of(name, <__in>, 0)
+  fork test, is-below(at, 0)
+    hold
+      back name
+  back substring(name, 0, at)
+
 # finish a raise: `halt <form>` with its props as written
 task fill-raise
   take state, like extend-state
@@ -1484,7 +1497,7 @@ task fill-raise
                 error(state, top, at, <"{form-name}" needs "{field/name}", which this raise does not give>)
       save fields-out, make list
       push(fields-out, new-field(<host>, text-expression(host-of(state, top), at)))
-      push(fields-out, new-field(<form>, text-expression(form-name, at)))
+      push(fields-out, new-field(<form>, text-expression(written-form(form-name), at)))
       push(fields-out, new-field(<code>, call-expression(<exception-code>, at)))
       push(fields-out, new-field(<time>, call-expression(<exception-time>, at)))
       # the pins of the exception itself (`note`, and anything else pinned on the shared form)

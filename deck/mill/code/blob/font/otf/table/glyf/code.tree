@@ -98,8 +98,10 @@ task read-glyf-flags
   take cursor, like feed-cursor
   take point-count, like number
   like list
-    like number
+    like u8
   save result
+    like list
+      like u8
     make list
   walk test
     hook test
@@ -195,7 +197,7 @@ task read-glyf-coordinates
   take cursor, like feed-cursor
   take flags
     like list
-      like number
+      like u8
   take short-bit, like number
   take same-bit, like number
   like list
@@ -243,7 +245,7 @@ task glyf-build-contours
       like number
   take flags
     like list
-      like number
+      like u8
   like list
     like list
       like otf-glyph-point

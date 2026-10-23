@@ -188,6 +188,18 @@ task walk-expression
       walk args
         take arg
         walk-expression(arg, values, types)
+      # a lowered `inspect`'s walk calls debug.tree's scalar texts, which no source of this module names (term/base-v1
+      # decision 001)
+      sift callee
+        case variable
+          fork test, is-equal(name, <inspect-form>)
+            hold
+              add-name(values, <show-text>)
+              add-name(values, <show-integer>)
+              add-name(values, <show-decimal>)
+              add-name(values, <show-flag>)
+        miss
+          save nothing, 0
     case binary
       walk-expression(left, values, types)
       walk-expression(right, values, types)

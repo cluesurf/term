@@ -185,7 +185,7 @@ if (!only || only === 'typescript') {
 // the product of a mask's task, RUN past i64 on each native backend (term-compiler-0019, gap 113). `side` is 2^62, which
 // fits an i64, so `measure` alone answers it; `twice` doubles it through the mask to 2^63, and the program stops with
 // excess there, as a plain multiply does. On TypeScript 2^62 is already past 2^53 where `side` is made, so the stop
-// comes before the mask and TypeScript's proof is the emitted check above
+// comes before the mask, and it is the same stop
 const PAST = (body: string): string => `mask measurer
   task measure
     take self
@@ -229,27 +229,34 @@ task run
   back <{${body}}>
 `
 
-for (const backend of BACKENDS.filter(b => b !== 'typescript' && (!only || b === only))) {
-  const within = runOn({ backend, program: PAST('measure(b)'), resolve: env => projectResolver(process.cwd(), env), dir, name: 'mask-within' })
+// THE STOP IS THE SAME ON ALL FOUR (D15, term-stdlib-parity-0015): the process ends with an exit code, not a signal,
+// and says excess on stderr. Swift's own `*` trapped (killed by a signal) until its products went through termMultiply.
+// A stop by a signal is `trap`, and fails here
+const stopOf = (ran: Ran): string =>
+  ran.form !== 'failed' || ran.stage !== 'run' ? 'no stop' : /^exit null/.test(ran.reason) ? 'trap' : /^exit [1-9]\d*: [\s\S]*excess/.test(ran.reason) ? 'excess' : 'other'
 
-  if (within.form === 'skipped') {
-    console.log(`skip  ${backend} range run: ${within.reason}`)
-    continue
+for (const backend of BACKENDS.filter(b => !only || b === only)) {
+  // 2^62 fits the i64 of every native backend. TypeScript's integers end at 2^53 (note/project/term/stdlib/semantics.md),
+  // so there `big` itself stops, with the same excess, before the mask is reached
+  if (backend !== 'typescript') {
+    const within = runOn({ backend, program: PAST('measure(b)'), resolve: env => projectResolver(process.cwd(), env), dir, name: 'mask-within' })
+
+    if (within.form === 'skipped') {
+      console.log(`skip  ${backend} range run: ${within.reason}`)
+      continue
+    }
+
+    ok(`${backend}: a mask task answers 2^62 unchanged`, within.form === 'ran' && within.output === '4611686018427387904', within.form === 'ran' ? `got ${JSON.stringify(within.output)}` : `${within.stage}: ${within.reason}`)
   }
 
-  ok(`${backend}: a mask task answers 2^62 unchanged`, within.form === 'ran' && within.output === '4611686018427387904', within.form === 'ran' ? `got ${JSON.stringify(within.output)}` : `${within.stage}: ${within.reason}`)
-
-  // the plain product of the same value, beside it: Rust and Kotlin stop with excess, Swift's `*` traps (number.ts),
-  // and the product through the mask must stop exactly as the plain one does
-  const stopOf = (ran: Ran): string =>
-    ran.form !== 'failed' || ran.stage !== 'run' ? 'no stop' : /excess/i.test(ran.reason) ? 'excess' : /^exit null/.test(ran.reason) ? 'trap' : 'other'
+  // the plain product of the same value, beside it, and the product through the mask, which must stop exactly as the
+  // plain one does
   const plain = runOn({ backend, program: PAST('plain(big)'), resolve: env => projectResolver(process.cwd(), env), dir, name: 'mask-plain' })
   const past = runOn({ backend, program: PAST('twice(b)'), resolve: env => projectResolver(process.cwd(), env), dir, name: 'mask-past' })
-  const wanted = backend === 'swift' ? 'trap' : 'excess'
-  ok(`${backend}: a plain multiply to 2^63 stops (${wanted})`, stopOf(plain) === wanted, plain.form === 'ran' ? `ran and printed ${JSON.stringify(plain.output)}` : `${plain.stage}: ${plain.reason}`)
+  ok(`${backend}: a plain multiply to 2^63 stops with excess`, stopOf(plain) === 'excess', plain.form === 'ran' ? `ran and printed ${JSON.stringify(plain.output)}` : `${plain.stage}: ${plain.reason}`)
   ok(
-    `${backend}: twice through the mask, 2^63, stops as the plain multiply does (${wanted})`,
-    stopOf(past) === wanted,
+    `${backend}: twice through the mask, 2^63, stops with excess as the plain multiply does`,
+    stopOf(past) === 'excess',
     past.form === 'ran' ? `ran and printed ${JSON.stringify(past.output)}` : `${past.stage}: ${past.reason}`,
   )
 }

@@ -62,6 +62,7 @@ task run
   call started
     read command
     read result
+    halt kink
   send back, read result
 
 # run `command` on this terminal: it reads the keyboard and writes as it goes, so a password prompt or a progress bar
@@ -129,6 +130,7 @@ task run-with-input
   call started
     read command
     read result
+    halt kink
   send back, read result
 
 # a runner answers -1 for a command it could not start, with the platform's reason in `error`

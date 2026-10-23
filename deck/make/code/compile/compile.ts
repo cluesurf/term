@@ -987,8 +987,14 @@ export function compileProgram(
   }
 
   const routed = lowerRoutes(program, env ?? 'node')
+  // the docks the lowering replaced, kept for the roll alone: the program no longer holds them, and the roll's dock
+  // walk is how the hive's wake tells a page route and `routes-of` answers it (seam-0018, seam-0025)
+  let pageDocks: Statement[] | undefined
 
   if (routed !== program) {
+    const kept = new Set(routed)
+
+    pageDocks = program.filter(s => s.form === 'dock' && !kept.has(s))
     program = routed
     roots?.add('route')
     roots?.add('boot')
@@ -1299,7 +1305,7 @@ export function compileProgram(
 
   // the roll alone, for an entry already known to build: everything below only refuses or warns
   if (wantRoll === 'fast') {
-    return { ok: true, program: [], typescript: '', warnings: [], roll: buildRoll(program, file, { deckOf, ids: true }) }
+    return { ok: true, program: [], typescript: '', warnings: [], roll: buildRoll(program, file, { deckOf, ids: true, docks: pageDocks }) }
   }
 
   // elaboration: lower the now-typed surface into the sound dependent kernel and let it verify. The kernel is the
@@ -1534,15 +1540,15 @@ export function compileProgram(
   // the unit: a project's roll is assembled from them (call/code/roll.ts `projectRoll`), where each entry used to type
   // its whole closure again for its roll (note/project/term/incremental-best-in-class.md, step 5)
   const roll = wantRoll
-    ? buildRoll(program, file, { deckOf, ids: true })
+    ? buildRoll(program, file, { deckOf, ids: true, docks: pageDocks })
     : emitOnly
-      ? buildRoll(program, file, { deckOf, own: emitOnly })
+      ? buildRoll(program, file, { deckOf, own: emitOnly, docks: pageDocks })
       : undefined
 
   // what wakes the hive: every deck with its exceptions and tells, whether or not a roll was asked for. Cheap, and
   // only emitted when the program loads the stdlib hive.
   const wake = program.some(s => s.form === 'function' && s.name === 'hive-wake')
-    ? wakeGroups(buildRoll(program, file, { deckOf }))
+    ? wakeGroups(buildRoll(program, file, { deckOf, docks: pageDocks }))
     : undefined
 
   // every function outside the public surface is marked `internal`: every call it receives is in this program. Only

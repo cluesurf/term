@@ -471,6 +471,42 @@ task run
   { total: 0, proven: 0 },
 )
 
+// EVERY WRITE INTO A LIST OF A WIDTH OWES IT (width-0004): `push`, `set`, a member `push`, `unshift` and `splice`, and an
+// index assignment. The list's element type is read off the receiver's checked type
+const WRITES = (value: string, write: string) => `load @term/base/list
+  find push
+  find set
+
+task run
+  take xs, like list, like u8
+  take v, like ${value}
+  take i, like number
+  like number
+  ${write}
+  back 0
+`
+
+for (const [way, write] of [
+  ['push(xs, v)', 'push(xs, v)'],
+  ['xs/push(v)', 'xs/push(v)'],
+  ['xs/unshift(v)', 'xs/unshift(v)'],
+  ['set(xs, i, v)', 'set(xs, i, v)'],
+  ['save xs/{i}, v', 'save xs/{i}, v'],
+] as const) {
+  expect(`on: ${way} with v a number owes the width`, WRITES('number', write), { total: 1, proven: 0 })
+  expect(`on: ${way} with v a u8 owes it, proven`, WRITES('u8', write), { total: 1, proven: 1 })
+  expect(`off: ${way} owes nothing`, WRITES('number', write), { total: 0, proven: 0 }, false)
+}
+
+expect('on: xs/splice(i, 0, v, v) owes each inserted item', WRITES('number', 'xs/splice(i, 0, v, v)'), { total: 2, proven: 0 })
+expect('on: a literal pushed inside the width is owed and proven', WRITES('number', 'push(xs, 7)'), { total: 1, proven: 1 })
+expect('on: a literal pushed past the width is owed and not proven', WRITES('number', 'push(xs, 300)'), { total: 1, proven: 0 })
+expect(
+  'on: a push into a list of number owes nothing',
+  WRITES('number', 'push(xs, v)').replace('take xs, like list, like u8', 'take xs, like list, like number'),
+  { total: 0, proven: 0 },
+)
+
 console.log(`\nwidth-range: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

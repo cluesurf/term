@@ -2378,7 +2378,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "array-item",
-      "site": "code/json.tree:323:1",
+      "site": "code/json.tree:326:1",
       "take": [
         {
           "name": "value",
@@ -2403,7 +2403,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "array-size",
-      "site": "code/json.tree:316:1",
+      "site": "code/json.tree:319:1",
       "take": [
         {
           "name": "value",
@@ -2944,7 +2944,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "check-json",
-      "site": "code/json/check.tree:1039:1",
+      "site": "code/json/check.tree:1071:1",
       "take": [
         {
           "name": "text",
@@ -3339,7 +3339,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "field-boolean",
-      "site": "code/json.tree:217:1",
+      "site": "code/json.tree:219:1",
       "take": [
         {
           "name": "value",
@@ -3370,7 +3370,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "field-number",
-      "site": "code/json.tree:207:1",
+      "site": "code/json.tree:208:1",
       "take": [
         {
           "name": "value",
@@ -3740,7 +3740,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "from-boolean",
-      "site": "code/json.tree:273:1",
+      "site": "code/json.tree:276:1",
       "take": [
         {
           "name": "value",
@@ -3782,7 +3782,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "from-number",
-      "site": "code/json.tree:266:1",
+      "site": "code/json.tree:269:1",
       "take": [
         {
           "name": "value",
@@ -3856,7 +3856,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "from-text",
-      "site": "code/json.tree:259:1",
+      "site": "code/json.tree:262:1",
       "take": [
         {
           "name": "value",
@@ -4277,7 +4277,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "hive-clear",
-      "site": "code/hive.tree:240:1",
+      "site": "code/hive.tree:260:1",
       "take": [
         {
           "name": "kind",
@@ -4291,7 +4291,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "hive-docks",
-      "site": "code/hive.tree:376:1",
+      "site": "code/hive.tree:396:1",
       "take": [
         {
           "name": "host",
@@ -4306,7 +4306,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "hive-exceptions",
-      "site": "code/hive.tree:318:1",
+      "site": "code/hive.tree:338:1",
       "take": [
         {
           "name": "host",
@@ -4321,7 +4321,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "hive-hear",
-      "site": "code/hive.tree:406:1",
+      "site": "code/hive.tree:426:1",
       "take": [
         {
           "name": "kind",
@@ -4339,7 +4339,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "hive-roll",
-      "site": "code/hive.tree:284:1",
+      "site": "code/hive.tree:304:1",
       "take": [
         {
           "name": "kind",
@@ -4358,7 +4358,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "hive-size",
-      "site": "code/hive.tree:417:1",
+      "site": "code/hive.tree:437:1",
       "take": [],
       "like": "number",
       "halt": []
@@ -4367,7 +4367,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "hive-tell",
-      "site": "code/hive.tree:216:1",
+      "site": "code/hive.tree:236:1",
       "take": [
         {
           "name": "entry",
@@ -4381,7 +4381,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "hive-tells",
-      "site": "code/hive.tree:347:1",
+      "site": "code/hive.tree:367:1",
       "take": [
         {
           "name": "host",
@@ -4396,7 +4396,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "hive-wake",
-      "site": "code/hive.tree:104:1",
+      "site": "code/hive.tree:109:1",
       "take": [
         {
           "name": "name",
@@ -4414,7 +4414,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "hive-wake-typed",
-      "site": "code/hive.tree:161:1",
+      "site": "code/hive.tree:166:1",
       "take": [
         {
           "name": "name",
@@ -4503,7 +4503,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "is-array",
-      "site": "code/json.tree:288:1",
+      "site": "code/json.tree:291:1",
       "take": [
         {
           "name": "value",
@@ -4524,7 +4524,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "is-boolean",
-      "site": "code/json.tree:309:1",
+      "site": "code/json.tree:312:1",
       "take": [
         {
           "name": "value",
@@ -4584,7 +4584,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "is-object",
-      "site": "code/json.tree:295:1",
+      "site": "code/json.tree:298:1",
       "take": [
         {
           "name": "value",
@@ -4605,7 +4605,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "is-text",
-      "site": "code/json.tree:302:1",
+      "site": "code/json.tree:305:1",
       "take": [
         {
           "name": "value",
@@ -4743,7 +4743,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "json-container",
-      "site": "code/json/check.tree:762:1",
+      "site": "code/json/check.tree:778:1",
       "take": [
         {
           "name": "runes",
@@ -4773,7 +4773,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "json-digits",
-      "site": "code/json/check.tree:289:1",
+      "site": "code/json/check.tree:290:1",
       "take": [
         {
           "name": "runes",
@@ -4798,7 +4798,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "json-escape",
-      "site": "code/json/check.tree:520:1",
+      "site": "code/json/check.tree:528:1",
       "take": [
         {
           "name": "runes",
@@ -4823,7 +4823,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "json-exponent",
-      "site": "code/json/check.tree:452:1",
+      "site": "code/json/check.tree:459:1",
       "take": [
         {
           "name": "runes",
@@ -4849,7 +4849,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "json-fraction",
-      "site": "code/json/check.tree:424:1",
+      "site": "code/json/check.tree:430:1",
       "take": [
         {
           "name": "runes",
@@ -5133,7 +5133,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "json-key",
-      "site": "code/json/check.tree:866:1",
+      "site": "code/json/check.tree:886:1",
       "take": [
         {
           "name": "runes",
@@ -5225,7 +5225,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "json-number",
-      "site": "code/json/check.tree:341:1",
+      "site": "code/json/check.tree:343:1",
       "take": [
         {
           "name": "runes",
@@ -5290,7 +5290,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "json-plus-or-minus",
-      "site": "code/json/check.tree:489:1",
+      "site": "code/json/check.tree:497:1",
       "take": [
         {
           "name": "runes",
@@ -5376,7 +5376,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "json-sign",
-      "site": "code/json/check.tree:370:1",
+      "site": "code/json/check.tree:375:1",
       "take": [
         {
           "name": "runes",
@@ -5412,7 +5412,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "json-string",
-      "site": "code/json/check.tree:668:1",
+      "site": "code/json/check.tree:680:1",
       "take": [
         {
           "name": "runes",
@@ -5437,7 +5437,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "json-string-step",
-      "site": "code/json/check.tree:734:1",
+      "site": "code/json/check.tree:749:1",
       "take": [
         {
           "name": "runes",
@@ -5486,7 +5486,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "json-value",
-      "site": "code/json/check.tree:918:1",
+      "site": "code/json/check.tree:941:1",
       "take": [
         {
           "name": "runes",
@@ -5511,7 +5511,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "json-whole",
-      "site": "code/json/check.tree:395:1",
+      "site": "code/json/check.tree:400:1",
       "take": [
         {
           "name": "runes",
@@ -6203,7 +6203,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "make-array",
-      "site": "code/json.tree:245:1",
+      "site": "code/json.tree:248:1",
       "take": [],
       "like": "dynamic",
       "halt": [
@@ -6219,7 +6219,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "make-null",
-      "site": "code/json.tree:280:1",
+      "site": "code/json.tree:283:1",
       "take": [],
       "like": "dynamic",
       "halt": [
@@ -6235,7 +6235,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "make-object",
-      "site": "code/json.tree:229:1",
+      "site": "code/json.tree:232:1",
       "take": [],
       "like": "dynamic",
       "halt": [
@@ -6501,7 +6501,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "object-keys",
-      "site": "code/json.tree:332:1",
+      "site": "code/json.tree:335:1",
       "take": [
         {
           "name": "value",
@@ -6882,7 +6882,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "parse-float",
-      "site": "code/text/number.tree:471:1",
+      "site": "code/text/number.tree:474:1",
       "take": [
         {
           "name": "value",
@@ -7037,7 +7037,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "plain-decimal",
-      "site": "code/text/number.tree:690:1",
+      "site": "code/text/number.tree:697:1",
       "take": [
         {
           "name": "shown",
@@ -7076,7 +7076,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "push-item",
-      "site": "code/json.tree:250:1",
+      "site": "code/json.tree:253:1",
       "take": [
         {
           "name": "value",
@@ -7321,7 +7321,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "set-field",
-      "site": "code/json.tree:234:1",
+      "site": "code/json.tree:237:1",
       "take": [
         {
           "name": "value",
@@ -7859,7 +7859,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "to-fixed",
-      "site": "code/text/number.tree:937:1",
+      "site": "code/text/number.tree:944:1",
       "take": [
         {
           "name": "value",
@@ -7931,7 +7931,7 @@
       "host": "@term/base",
       "kind": "task",
       "name": "to-radix",
-      "site": "code/text/number.tree:596:1",
+      "site": "code/text/number.tree:603:1",
       "take": [
         {
           "name": "value",
@@ -8280,7 +8280,7 @@
       "host": "@term/host",
       "kind": "task",
       "name": "emit",
-      "site": "code/stream.tree:284:1",
+      "site": "code/stream.tree:285:1",
       "take": [
         {
           "name": "writer",
@@ -8350,7 +8350,7 @@
       "host": "@term/host",
       "kind": "task",
       "name": "expand-with",
-      "site": "code/fuse.tree:38:1",
+      "site": "code/fuse.tree:39:1",
       "take": [
         {
           "name": "value",
@@ -8463,7 +8463,7 @@
       "host": "@term/host",
       "kind": "task",
       "name": "from-code",
-      "site": "code/code.tree:402:1",
+      "site": "code/code.tree:412:1",
       "take": [
         {
           "name": "input",
@@ -8621,7 +8621,7 @@
       "host": "@term/host",
       "kind": "task",
       "name": "make-writer",
-      "site": "code/stream.tree:276:1",
+      "site": "code/stream.tree:277:1",
       "take": [],
       "like": "stream-writer",
       "halt": []
@@ -8630,7 +8630,7 @@
       "host": "@term/host",
       "kind": "task",
       "name": "melt",
-      "site": "code/fill.tree:46:1",
+      "site": "code/fill.tree:47:1",
       "take": [
         {
           "name": "value",
@@ -8826,7 +8826,7 @@
       "host": "@term/host",
       "kind": "task",
       "name": "read-raw",
-      "site": "code/read.tree:46:1",
+      "site": "code/read.tree:47:1",
       "take": [
         {
           "name": "input",
@@ -8992,7 +8992,7 @@
       "host": "@term/host",
       "kind": "task",
       "name": "to-code-all",
-      "site": "code/code.tree:167:1",
+      "site": "code/code.tree:168:1",
       "take": [
         {
           "name": "items",
@@ -9125,7 +9125,7 @@
       "host": "@term/host",
       "kind": "task",
       "name": "write-lines",
-      "site": "code/stream.tree:406:1",
+      "site": "code/stream.tree:407:1",
       "take": [
         {
           "name": "value",
@@ -9339,7 +9339,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "bare-of",
-      "site": "code/http/tell.tree:154:1",
+      "site": "code/http/tell.tree:157:1",
       "take": [
         {
           "name": "name",
@@ -9443,7 +9443,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "case-of",
-      "site": "code/http/tell.tree:171:1",
+      "site": "code/http/tell.tree:174:1",
       "take": [
         {
           "name": "name",
@@ -9457,7 +9457,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "case-path",
-      "site": "code/http/tell.tree:181:1",
+      "site": "code/http/tell.tree:184:1",
       "take": [
         {
           "name": "case",
@@ -9610,7 +9610,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "error-page",
-      "site": "code/http/tell.tree:424:1",
+      "site": "code/http/tell.tree:430:1",
       "take": [
         {
           "name": "case",
@@ -9633,11 +9633,11 @@
       "host": "@term/site",
       "kind": "task",
       "name": "error-row",
-      "site": "code/http/tell.tree:371:1",
+      "site": "code/http/tell.tree:375:1",
       "take": [
         {
           "name": "entry",
-          "like": "hive-entry"
+          "like": "hive-entry, like tell-roll"
         }
       ],
       "like": "text",
@@ -9647,7 +9647,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "errors-page",
-      "site": "code/http/tell.tree:399:1",
+      "site": "code/http/tell.tree:406:1",
       "take": [],
       "like": "response",
       "halt": []
@@ -9766,7 +9766,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "expose",
-      "site": "code/http/tell.tree:276:1",
+      "site": "code/http/tell.tree:278:1",
       "take": [
         {
           "name": "e",
@@ -9924,7 +9924,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "hint-key",
-      "site": "code/http/tell.tree:209:1",
+      "site": "code/http/tell.tree:212:1",
       "take": [
         {
           "name": "host",
@@ -10083,7 +10083,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "like-of",
-      "site": "code/http/tell.tree:226:1",
+      "site": "code/http/tell.tree:229:1",
       "take": [
         {
           "name": "host",
@@ -10462,7 +10462,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "note-key",
-      "site": "code/http/tell.tree:194:1",
+      "site": "code/http/tell.tree:197:1",
       "take": [
         {
           "name": "host",
@@ -10968,11 +10968,11 @@
       "host": "@term/site",
       "kind": "task",
       "name": "render-error",
-      "site": "code/http/tell.tree:463:1",
+      "site": "code/http/tell.tree:471:1",
       "take": [
         {
           "name": "entry",
-          "like": "hive-entry"
+          "like": "hive-entry, like tell-roll"
         },
         {
           "name": "case",
@@ -11128,7 +11128,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "routes-of",
-      "site": "code/http/tell.tree:345:1",
+      "site": "code/http/tell.tree:350:1",
       "take": [
         {
           "name": "form",
@@ -11472,7 +11472,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "status-of",
-      "site": "code/http/tell.tree:42:1",
+      "site": "code/http/tell.tree:45:1",
       "take": [
         {
           "name": "case",
@@ -11486,7 +11486,7 @@
       "host": "@term/site",
       "kind": "task",
       "name": "tell-of",
-      "site": "code/http/tell.tree:246:1",
+      "site": "code/http/tell.tree:248:1",
       "take": [
         {
           "name": "host",
@@ -11497,7 +11497,7 @@
           "like": "text"
         }
       ],
-      "like": "maybe, like hive-entry, like unknown",
+      "like": "maybe, like hive-entry, like tell-roll",
       "halt": []
     },
     {
@@ -11623,7 +11623,51 @@
       "halt": []
     }
   ],
-  "dock": [],
+  "dock": [
+    {
+      "host": "@assurance/notes",
+      "kind": "dock",
+      "name": "delete /notes/:id",
+      "site": "code/site.tree:440:1",
+      "halt": [],
+      "__file": "/Users/lancepollard/base/crew/cluesurf/deck/term/deck/term/test/assurance/notes/code/site.tree"
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "dock",
+      "name": "patch /notes/:id",
+      "site": "code/site.tree:440:1",
+      "halt": [],
+      "__file": "/Users/lancepollard/base/crew/cluesurf/deck/term/deck/term/test/assurance/notes/code/site.tree"
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "dock",
+      "name": "post /notes",
+      "site": "code/site.tree:432:1",
+      "halt": [
+        "data-mismatch",
+        "failure"
+      ],
+      "__file": "/Users/lancepollard/base/crew/cluesurf/deck/term/deck/term/test/assurance/notes/code/site.tree"
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "dock",
+      "name": "post /notes/:id",
+      "site": "code/site.tree:440:1",
+      "halt": [],
+      "__file": "/Users/lancepollard/base/crew/cluesurf/deck/term/deck/term/test/assurance/notes/code/site.tree"
+    },
+    {
+      "host": "@assurance/notes",
+      "kind": "dock",
+      "name": "post /notes/:id/delete",
+      "site": "code/site.tree:459:1",
+      "halt": [],
+      "__file": "/Users/lancepollard/base/crew/cluesurf/deck/term/deck/term/test/assurance/notes/code/site.tree"
+    }
+  ],
   "tell": [],
   "kind": [],
   "supervision": []

@@ -5,6 +5,7 @@
 
 dock load
   load <global:aio>, name aio
+  load <global:loop>, name term-loop
 
 task file-read
   mark async

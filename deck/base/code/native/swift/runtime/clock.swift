@@ -38,10 +38,14 @@ enum clock {
   }
 
   // a wait that blocks nothing: the task is suspended and its thread runs other work meanwhile. A cancelled job's task
-  // (runtime/job.swift) stops here: it is never resumed, so nothing after its wait runs
+  // (runtime/job.swift) stops here: it is never resumed, so nothing after its wait runs. The timer is pending on the
+  // program's loop while it lasts (runtime/loop.swift), and a task stopped for good leaves it
   static func pause(_ ms: Int) async {
+    let held = termLoop.hold()
     try? await Task.sleep(nanoseconds: UInt64(max(ms, 0)) * 1_000_000)
+    termLoop.release(held)
     if Task.isCancelled {
+      termLoop.end(termLoop.counted)
       await withUnsafeContinuation { (_: UnsafeContinuation<Void, Never>) in }
     }
   }

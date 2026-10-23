@@ -1206,6 +1206,9 @@ task call-obligations
                   fork test, and(is-array-typed(list-target), is-equal(given/length, wanted-args))
                     hold
                       owes-index(list-target, get(given, 0), at, guards, out)
+              fork test, tasks/widths
+                hold
+                  member-list-writes(list-target, method, given, guards, out)
             case some
               save nothing, 0
         case variable
@@ -1221,10 +1224,111 @@ task call-obligations
               fork test, tasks/widths
                 hold
                   width-owed(callee, given, guards, out)
+          fork test, tasks/widths
+            hold
+              free-list-writes(callee-name, given, guards, out)
         miss
           save nothing, 0
     miss
       save nothing, 0
+
+# the width of a list's element, or the empty text: `like list, like u8` is an array of a number carrying `u8`
+task element-width
+  take e, like expression
+  like text
+  mark private
+
+  sift expression-type(e)
+    case some
+      link known
+      sift known
+        case array
+          sift element
+            case number
+              back width
+            miss
+              back <>
+        miss
+          back <>
+    case none
+      back <>
+
+# a value written into a list of a width is inside the width (D12, width-0004), owed where its guards hold. A literal is
+# owed too: the prover settles one inside the width and names one outside it
+task element-owed
+  take target, like expression
+  take value, like expression
+  take guards, like list, like expression
+  take out, like list, like statement
+  like void
+  mark private
+
+  save width, element-width(target)
+  fork test, is-unequal(width, <>)
+    hold
+      sift width-hold(value, width, guards, expression-span(value))
+        case some
+          link owed
+          push(out, owed)
+        case none
+          save nothing, 0
+
+# the values a call to the list form's own task writes into the list it is given first: `push(xs, v)` is `list_push`,
+# `set(xs, i, v)` is `list_set`
+task free-list-writes
+  take name, like text
+  take given, like list, like expression
+  take guards, like list, like expression
+  take out, like list, like statement
+  like void
+  mark private
+
+  fork test, is-equal(given/length, 0)
+    hold
+      back
+  save target, get(given, 0)
+  fork test, is-equal(name, <list_push>)
+    hold
+      save i, 1
+      walk test
+        hook test, is-below(i, given/length)
+        hook hold
+          element-owed(target, get(given, i), guards, out)
+          save i, add(i, 1)
+  fork test, and(is-equal(name, <list_set>), is-equal(given/length, 3))
+    hold
+      element-owed(target, get(given, 2), guards, out)
+
+# the values a member call writes into its list: `xs/push(v)` and `xs/unshift(v)` each argument, `xs/set(i, v)` the
+# second, and `xs/splice(at, count, ...)` each item after the first two
+task member-list-writes
+  take target, like expression
+  take method, like text
+  take given, like list, like expression
+  take guards, like list, like expression
+  take out, like list, like statement
+  like void
+  mark private
+
+  save from, -1
+  fork test, or(is-equal(method, <push>), is-equal(method, <unshift>))
+    hold
+      save from, 0
+  fork test, and(is-equal(method, <set>), is-equal(given/length, 2))
+    hold
+      save from, 1
+  fork test, is-equal(method, <splice>)
+    hold
+      save from, 2
+  fork test, is-below(from, 0)
+    hold
+      back
+  save i, from
+  walk test
+    hook test, is-below(i, given/length)
+    hook hold
+      element-owed(target, get(given, i), guards, out)
+      save i, add(i, 1)
 
 # a value passed to a width-typed parameter is inside the width. A literal is refused outright by check/literals.ts and
 # owes nothing here
@@ -1825,6 +1929,22 @@ task lower-list
           link assign-value
           link assign-span
           append-all(out, owed-at(two-of(assign-target, assign-value), context, make list))
+          # `save xs/{i}, v` into a list of a width owes v the width, as a `push` does (width-0004)
+          fork test, and(context/tier0, context/tasks/widths)
+            hold
+              sift assign-target
+                case member
+                  link written-list
+                  link written-name
+                  link written-index
+                  sift written-index
+                    case some
+                      save no-guards, make list
+                      element-owed(written-list, assign-value, no-guards, out)
+                    case none
+                      save nothing, 0
+                miss
+                  save nothing, 0
           push(out, statement)
           sift assign-target
             case variable

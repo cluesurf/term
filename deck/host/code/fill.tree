@@ -38,6 +38,7 @@ task fill
     read value
     read shape
     text <>
+    halt kink
   send back
     call to-dynamic
       read value
@@ -62,6 +63,7 @@ task check-shape
         read value
         read kind
         read path
+        halt kink
     case hash
       link expected
       fork case, read value
@@ -89,6 +91,7 @@ task check-shape
                         call join-path
                           read path
                           read want/name
+                        halt kink
               fork test
                 hook test
                   call and(call(not(read found)), call(not(call(is-optional(read want/base)))))
@@ -98,6 +101,7 @@ task check-shape
                       read path
                       read want/name
                     text <is missing>
+                    halt kink
           walk list
             read present
             hook next
@@ -123,34 +127,42 @@ task check-shape
                       read path
                       read entry/name
                     text <is not in the shape>
+                    halt kink
         case array
           call refuse
             read path
             text <is a list where a map belongs>
+            halt kink
         case text
           call refuse
             read path
             text <is a scalar where a map belongs>
+            halt kink
         case number
           call refuse
             read path
             text <is a scalar where a map belongs>
+            halt kink
         case decimal
           call refuse
             read path
             text <is a scalar where a map belongs>
+            halt kink
         case flag
           call refuse
             read path
             text <is a scalar where a map belongs>
+            halt kink
         case blank
           call refuse
             read path
             text <is void where a map belongs>
+            halt kink
         case graft
           call refuse
             read path
             text <is an unexpanded fuse>
+            halt kink
     case array
       link items
       fork case, read value
@@ -173,6 +185,7 @@ task check-shape
                     call join-path
                       read path
                       call index-text read index
+                    halt kink
                   save index
                     call add
                       read index
@@ -181,50 +194,62 @@ task check-shape
           call refuse
             read path
             text <is a map where a list belongs>
+            halt kink
         case text
           call refuse
             read path
             text <is a scalar where a list belongs>
+            halt kink
         case number
           call refuse
             read path
             text <is a scalar where a list belongs>
+            halt kink
         case decimal
           call refuse
             read path
             text <is a scalar where a list belongs>
+            halt kink
         case flag
           call refuse
             read path
             text <is a scalar where a list belongs>
+            halt kink
         case blank
           call refuse
             read path
             text <is void where a list belongs>
+            halt kink
         case graft
           call refuse
             read path
             text <is an unexpanded fuse>
+            halt kink
     case number
       call refuse
         read path
         text <has a shape that is not a shape>
+        halt kink
     case decimal
       call refuse
         read path
         text <has a shape that is not a shape>
+        halt kink
     case flag
       call refuse
         read path
         text <has a shape that is not a shape>
+        halt kink
     case blank
       call refuse
         read path
         text <has a shape that is not a shape>
+        halt kink
     case graft
       call refuse
         read path
         text <has a shape that is not a shape>
+        halt kink
 
 # a scalar kind named by the shape: `<text>`, `<number>`, `<decimal>`, `<flag>`, `<blank>`, `<map>`, `<list>`,
 # `<any>`, with a `?` for one that may also be void. A number fits a decimal
@@ -281,6 +306,7 @@ task check-kind
           call concat
             read want
             text < belongs>
+    halt kink
 
 task kind-name
   mark private

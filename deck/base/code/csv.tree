@@ -34,6 +34,7 @@ task parse
     call parse-with
       read input
       text <,>
+      halt kink
 
 # parse with an explicit one-character delimiter (tab for TSV)
 task parse-with

@@ -189,6 +189,7 @@ task back-run
       save turns
         call add(read(turns), code(1))
       call count-step(read(budget), read(at))
+        halt kink
       save op
         call op-at(read(g), read(pc))
       save failed, false
@@ -330,6 +331,7 @@ task back-run
             call copy-numbers(read(slots))
           save end
             call back-run(read(g), read(s), read(part), read(pos), read(inner), read(budget))
+              halt kink
           save holds
             call is-minimum(read(end), code(0))
           fork test
@@ -363,6 +365,7 @@ task back-run
             call copy-numbers(read(slots))
           save end
             call back-run(read(g), read(s), read(part), read(pos), read(inner), read(budget))
+              halt kink
           fork test
             hook test
               call is-minimum(read(end), code(0))
@@ -494,6 +497,7 @@ task back-search
             call add(read(k), code(1))
       save end
         call back-run(read(g), read(s), code(0), read(start), read(slots), read(budget))
+          halt kink
       fork test
         hook test
           call is-minimum(read(end), code(0))

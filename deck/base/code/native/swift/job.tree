@@ -9,6 +9,7 @@ dock type
 
 dock load
   load <global:job>, name job
+  load <global:loop>, name term-loop
 
 task job-spawn
   take work

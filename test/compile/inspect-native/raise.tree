@@ -1,0 +1,33 @@
+load @term/base/debug
+  find inspect
+  find print
+
+load @term/base/exception
+  find exception
+  find absence
+
+form place
+  link city, like text
+
+task fails
+  take key, like text
+  like text
+  halt absence
+    bind thing, read key
+
+# a caught exception, inspected, on standard output; a `print` of a record on standard error alone
+task run
+  like text
+  fork
+    mark unsafe
+    send back
+      call fails
+        text <a>
+  halt take
+    take problem
+    call print
+      make place
+        bind city, text <Oslo>
+    send back
+      call inspect
+        read problem

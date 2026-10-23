@@ -218,6 +218,7 @@ task read-lines
         call feed
           read reader
           read line
+          halt kink
       fork case, read found
         case none
           turn next

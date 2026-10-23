@@ -6,12 +6,16 @@
 // NSLock does not allow (codegen-performance-0004). Here `held` and the queue of waiting continuations are guarded by
 // a small lock taken only inside synchronous methods, never across a suspension, and `unlock` hands the mutex straight
 // to the next waiter in arrival order.
+//
+// A waiter leaves the program's loop (runtime/loop.swift) and the unlock that hands it the mutex wakes it, so a lock
+// nothing will ever unlock stops the program, as on Rust and Kotlin.
 import Foundation
 
 final class SeedMutex: @unchecked Sendable {
     private let state = NSLock()
     private var held = false
-    private var waiting: [CheckedContinuation<Void, Never>] = []
+    // each waiter, and whether the loop counts it
+    private var waiting: [(CheckedContinuation<Void, Never>, Bool)] = []
 
     // takes the mutex and resumes at once, or queues the waiter for the unlock that hands it over
     private func acquire(_ waiter: CheckedContinuation<Void, Never>) {
@@ -22,8 +26,9 @@ final class SeedMutex: @unchecked Sendable {
             state.unlock()
             waiter.resume()
         } else {
-            waiting.append(waiter)
+            waiting.append((waiter, termLoop.counted))
             state.unlock()
+            _ = termLoop.leave()
         }
     }
 
@@ -39,8 +44,9 @@ final class SeedMutex: @unchecked Sendable {
             state.unlock()
         } else {
             // the mutex stays held: it passes to the next waiter
-            let next = waiting.removeFirst()
+            let (next, counted) = waiting.removeFirst()
             state.unlock()
+            termLoop.wake(counted)
             next.resume()
         }
     }

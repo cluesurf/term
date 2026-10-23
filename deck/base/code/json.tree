@@ -203,6 +203,7 @@ task field-text
       call get-field
         read value
         read key
+      halt kink
 
 task field-number
   take value, like dynamic
@@ -213,6 +214,7 @@ task field-number
       call get-field
         read value
         read key
+      halt kink
 
 task field-boolean
   take value, like dynamic
@@ -223,6 +225,7 @@ task field-boolean
       call get-field
         read value
         read key
+      halt kink
 
 # Builder side: assemble a dynamic value from a typed form's fields, then stringify. Symmetric with the field accessors above. set-field and push-item return the container so calls chain.
 

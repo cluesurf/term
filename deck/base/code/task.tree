@@ -48,6 +48,7 @@ form handle
     send back
       call outcome
         read self
+        halt kink
 
   # wait at most `milliseconds`. Past it the task is cancelled, so nothing is left running that nobody waits for, and
   # `timeout` is raised with the time waited
@@ -74,6 +75,7 @@ form handle
     send back
       call outcome
         read self
+        halt kink
 
   # stop waiting for the task. Its result, or its raise, is discarded when it arrives, and a `wait` raises `outage`
   task cancel
@@ -200,6 +202,7 @@ task gather
             make list
               call outcome
                 read started
+                halt kink
   save results
     make list
   walk list, read jobs

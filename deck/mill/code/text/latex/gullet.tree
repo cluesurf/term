@@ -135,6 +135,7 @@ task end-group
   fork test, is-equal(g/undo/length, 0)
     hold
       refuse(token-at(<EOF>, 0, 0), <Unbalanced namespace destruction: attempt to pop global namespace; please report this as a bug>)
+        halt kink
   save undos, g/undo/pop()
   walk undos/reverse()
     take one
@@ -147,6 +148,7 @@ task end-groups
     hook test, is-above(g/undo/length, 0)
     hook hold
       end-group(g)
+        halt kink
 
 task put-current
   take g, like latex-gullet
@@ -323,11 +325,15 @@ task scan-argument
       save start, pop-token(g)
       save delimiters, make list
       push(delimiters, <]>)
-      save argument, consume-argument(g, make(some, delimiters))
+      save argument
+        consume-argument(g, make(some, delimiters))
+          halt kink
       save tokens, argument/tokens
       save last, argument/end
     miss
-      save argument, consume-argument(g, make none)
+      save argument
+        consume-argument(g, make none)
+          halt kink
       save tokens, argument/tokens
       save start, argument/start
       save last, argument/end
@@ -376,6 +382,7 @@ task consume-argument
               fork test, is-equal(depth, -1)
                 hold
                   refuse(one, <Extra \}>)
+                    halt kink
             miss
               fork test, is-equal(one/text, <EOF>)
                 hold
@@ -384,6 +391,7 @@ task consume-argument
                     hold
                       save wanted, get(delims, matched)
                   refuse(one, <Unexpected end of input in a macro argument, expected '{wanted}'>)
+                    halt kink
       fork test, delimited
         hold
           save want, get(delims, matched)
@@ -425,6 +433,7 @@ task consume-arguments
       fork test, is-unequal(given/length, add(count, 1))
         hold
           refuse(future(g), <The length of delimiters doesn't match the number of args!>)
+            halt kink
       save leading, get(given, 0)
       walk leading
         take wanted
@@ -432,6 +441,7 @@ task consume-arguments
         fork test, is-unequal(wanted, one/text)
           hold
             refuse(one, <Use of the macro doesn't match its definition>)
+              halt kink
     case none
       save nothing, 0
   save out, make list
@@ -459,6 +469,7 @@ task count-expansion
   fork test, is-above(g/expansions, g/most)
     hold
       refuse(future(g), <Too many expansions: infinite loop or need to increase maxExpand setting>)
+        halt kink
 
 # ---- expanding ----
 
@@ -479,12 +490,15 @@ task expand-once
   save found, make none
   fork test, not(top/noexpand)
     hold
-      save found, expansion-of(g, name, top)
+      save found
+        expansion-of(g, name, top)
+          halt kink
   sift found
     case none
       fork test, and(expandable-only, and(starts-with(name, <\\>), not(is-defined(g, name))))
         hold
           refuse(top, <Undefined control sequence: {name}>)
+            halt kink
       push-token(g, top)
       back not-expanded()
     case some
@@ -494,11 +508,16 @@ task expand-once
           push-token(g, top)
           back not-expanded()
       count-expansion(g, 1)
+        halt kink
       save tokens, expansion/tokens
-      save arguments, consume-arguments(g, expansion/arguments, expansion/delimiters)
+      save arguments
+        consume-arguments(g, expansion/arguments, expansion/delimiters)
+          halt kink
       fork test, is-above(expansion/arguments, 0)
         hold
-          save tokens, substitute(tokens, arguments, name)
+          save tokens
+            substitute(tokens, arguments, name)
+              halt kink
       push-tokens(g, tokens)
       back
         make latex-expanded
@@ -553,6 +572,7 @@ task substitute
           fork test, is-equal(i, 0)
             hold
               refuse(one, <Incomplete placeholder at end of macro body>)
+                halt kink
           save i, subtract(i, 1)
           save digit, get(out, i)
           fork test, is-equal(digit/text, <#>)
@@ -563,9 +583,11 @@ task substitute
               fork test, is-below(index, 1)
                 hold
                   refuse(digit, <Not a valid argument number>)
+                    halt kink
               fork test, is-above(index, arguments/length)
                 hold
                   refuse(digit, <Illegal parameter number in definition of {name}>)
+                    halt kink
               save before, out/slice(0, i)
               save after, out/slice(add(i, 2), out/length)
               save argument, get(arguments, subtract(index, 1))
@@ -595,6 +617,7 @@ task expand-after-future
   like latex-token
 
   expand-once(g, false)
+    halt kink
   back future(g)
 
 # KaTeX's `expandNextToken`: expand until the next token is no macro, and take it. A token `\noexpand` marked reads
@@ -606,7 +629,9 @@ task expand-next-token
   walk test
     hook test, true
     hook hold
-      save step, expand-once(g, false)
+      save step
+        expand-once(g, false)
+          halt kink
       fork test, not(step/expanded)
         hold
           save token, g/stack/pop()
@@ -628,7 +653,9 @@ task expand-tokens
   walk test
     hook test, is-above(g/stack/length, floor)
     hook hold
-      save step, expand-once(g, true)
+      save step
+        expand-once(g, true)
+          halt kink
       fork test, not(step/expanded)
         hold
           save token, g/stack/pop()
@@ -638,6 +665,7 @@ task expand-tokens
               save token/relax, false
           push(out, token)
   count-expansion(g, out/length)
+    halt kink
   back out
 
 # a macro's full expansion as text, none when it is no macro
@@ -683,7 +711,9 @@ task expansion-of
           back make(some, expanded)
       fork test, g/table/builtins/has(name)
         hold
-          save built, expand-builtin(g, name, token)
+          save built
+            expand-builtin(g, name, token)
+              halt kink
           back make(some, built)
       back make none
   sift macro-of(g, name)
@@ -711,7 +741,9 @@ task expansion-of
         case definition-builtin
           # the builtin the definition names, which a `\let` may have given another name
           link builtin
-          save expanded, expand-builtin(g, builtin, token)
+          save expanded
+            expand-builtin(g, builtin, token)
+              halt kink
           back make(some, expanded)
         case definition-middle
           save expanded, expand-middle(g, double, once, middle, middle-double, old-middle, old-middle-double)
@@ -817,6 +849,7 @@ task expand-builtin
     hold
       save t, pop-token(g)
       expand-once(g, true)
+        halt kink
       save out, make list
       push(out, t)
       back tokens-expansion(out)
@@ -831,7 +864,9 @@ task expand-builtin
 
   fork test, is-equal(name, <\\@ifnextchar>)
     hold
-      save args, consume-arguments(g, 3, make none)
+      save args
+        consume-arguments(g, 3, make none)
+          halt kink
       consume-spaces(g)
       save next, future(g)
       save wanted, get(args, 0)
@@ -842,7 +877,9 @@ task expand-builtin
 
   fork test, is-equal(name, <\\TextOrMath>)
     hold
-      save args, consume-arguments(g, 2, make none)
+      save args
+        consume-arguments(g, 2, make none)
+          halt kink
       fork test, is-equal(g/mode, <text>)
         hold
           back tokens-expansion(get(args, 0))
@@ -866,6 +903,7 @@ task expand-builtin
   fork test, or(is-equal(name, <\\message>), is-equal(name, <\\errmessage>))
     hold
       consume-arguments(g, 1, make none)
+        halt kink
       back tokens-expansion(make list)
   fork test, is-equal(name, <\\show>)
     hold
@@ -900,16 +938,22 @@ task expand-builtin
       fork test, has-tag(g)
         hold
           refuse(token, <Multiple \\tag>)
+            halt kink
       back text-expansion(g, <\\gdef\\df@tag\{\\text\{#1\}\}>, token)
 
   fork test, is-equal(name, <\\bra@ket>)
     hold
-      back expand-braket(g, false)
+      back
+        expand-braket(g, false)
+          halt kink
   fork test, is-equal(name, <\\bra@set>)
     hold
-      back expand-braket(g, true)
+      back
+        expand-braket(g, true)
+          halt kink
 
   refuse(token, <No builtin macro {name}>)
+    halt kink
   back tokens-expansion(make list)
 
 # whether `\df@tag` has a value: KaTeX's `macros.get("\\df@tag")` read as true or false
@@ -958,6 +1002,7 @@ task expand-char
                   fork test, is-equal(token/text, <EOF>)
                     hold
                       refuse(token, <\\char` missing argument>)
+                        halt kink
                   save number, get(runes, 0)
             miss
               save base, 10
@@ -967,6 +1012,7 @@ task expand-char
       fork test, or(is-below(number, 0), is-minimum(number, base))
         hold
           refuse(token, <Invalid base-{base} digit {token/text}>)
+            halt kink
       walk test
         hook test, true
         hook hold
@@ -1005,36 +1051,48 @@ task new-command
   take skip-existing, like boolean
   like text
 
-  save first, consume-argument(g, make none)
+  save first
+    consume-argument(g, make none)
+      halt kink
   save arg, first/tokens
   fork test, is-unequal(arg/length, 1)
     hold
       refuse(first/start, <\\newcommand's first argument must be a macro name>)
+        halt kink
   save name, get(arg, 0)/text
   save exists, is-defined(g, name)
   fork test, and(exists, not(exists-ok))
     hold
       refuse(first/start, <\\newcommand\{{name}\} attempting to redefine {name}; use \\renewcommand>)
+        halt kink
   fork test, and(not(exists), not(missing-ok))
     hold
       refuse(first/start, <\\renewcommand\{{name}\} when command {name} does not yet exist; use \\newcommand>)
+        halt kink
   save count, 0
-  save next, consume-argument(g, make none)
+  save next
+    consume-argument(g, make none)
+      halt kink
   save arg, next/tokens
   fork test, and(is-equal(arg/length, 1), is-equal(get(arg, 0)/text, <[>))
     hold
       save texts, make list
-      save one, expand-next-token(g)
+      save one
+        expand-next-token(g)
+          halt kink
       walk test
         hook test, and(is-unequal(one/text, <]>), is-unequal(one/text, <EOF>))
         hook hold
           push(texts, one/text)
-          save one, expand-next-token(g)
+          save one
+            expand-next-token(g)
+              halt kink
       save written, join(texts, <>)
       save read, run-latex-grammar(<whole-number>, written)
       fork test, not(read/ok)
         hold
           refuse(one, <Invalid number of arguments: {written}>)
+            halt kink
       save count, whole-of(written)
       save arg, consume-argument(g, make none)/tokens
   fork test, not(and(exists, skip-existing))
@@ -1161,8 +1219,11 @@ task expand-braket
   save body, consume-argument(g, make none)/tokens
   save inner, right/concat(body)
   save all, inner/concat(left)
-  save expanded, expand-tokens(g, all)
+  save expanded
+    expand-tokens(g, all)
+      halt kink
   end-group(g)
+    halt kink
   back tokens-expansion(expanded/reverse())
 
 task expand-middle

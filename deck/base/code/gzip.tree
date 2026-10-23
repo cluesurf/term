@@ -1051,6 +1051,7 @@ task read-bits
           call refuse-gzip
             read at
             text <the data ends inside a block>
+            halt kink
       save buffer
         call bitwise-or
           read buffer
@@ -1229,6 +1230,7 @@ task decode
             read data
             read reader
             code 1
+            halt kink
       save count
         call byte-at
           read counts
@@ -1271,6 +1273,7 @@ task decode
     call refuse-gzip
       read reader/at
       text <a code is not in the table>
+      halt kink
 
 # the symbols of a block, literals and matches, until the end of block
 task inflate-codes
@@ -1325,6 +1328,7 @@ task inflate-codes
           read data
           read reader
           read literals
+          halt kink
       fork test
         hook test
           call is-below
@@ -1353,6 +1357,7 @@ task inflate-codes
               call refuse-gzip
                 read reader/at
                 text <a length code is out of range>
+                halt kink
           save copy-length
             call add
               call byte-at
@@ -1364,11 +1369,13 @@ task inflate-codes
                 call byte-at
                   read length-extras
                   read s
+                halt kink
           save d
             call decode
               read data
               read reader
               read distances
+              halt kink
           fork test
             hook test
               call is-minimum
@@ -1378,6 +1385,7 @@ task inflate-codes
               call refuse-gzip
                 read reader/at
                 text <a distance code is out of range>
+                halt kink
           save distance
             call add
               call byte-at
@@ -1389,6 +1397,7 @@ task inflate-codes
                 call byte-at
                   read distance-extras
                   read d
+                halt kink
           fork test
             hook test
               call is-above
@@ -1399,6 +1408,7 @@ task inflate-codes
               call refuse-gzip
                 read reader/at
                 text <a distance reaches before the start>
+                halt kink
           save from
             call subtract
               call list-length
@@ -1495,6 +1505,7 @@ task dynamic-tables
         read data
         read reader
         code 5
+        halt kink
       code 257
   save distance-count
     call add
@@ -1502,6 +1513,7 @@ task dynamic-tables
         read data
         read reader
         code 5
+        halt kink
       code 1
   save length-count
     call add
@@ -1509,6 +1521,7 @@ task dynamic-tables
         read data
         read reader
         code 4
+        halt kink
       code 4
   save order
     make list
@@ -1555,6 +1568,7 @@ task dynamic-tables
           read data
           read reader
           code 3
+          halt kink
       # every entry of `order` is a place in the nineteen lengths; tested, since the prover reads no values from it
       fork test
         hook test
@@ -1615,6 +1629,7 @@ task dynamic-tables
           read data
           read reader
           read code-table
+          halt kink
       fork test
         hook test
           call is-below
@@ -1642,6 +1657,7 @@ task dynamic-tables
                   call refuse-gzip
                     read reader/at
                     text <a repeat has nothing before it>
+                    halt kink
               save value
                 call byte-at
                   read lengths
@@ -1656,6 +1672,7 @@ task dynamic-tables
                     read data
                     read reader
                     code 2
+                    halt kink
             hook test
               call is-equal
                 read symbol
@@ -1668,6 +1685,7 @@ task dynamic-tables
                     read data
                     read reader
                     code 3
+                    halt kink
             hook miss
               save repeat
                 call add
@@ -1676,6 +1694,7 @@ task dynamic-tables
                     read data
                     read reader
                     code 7
+                    halt kink
           fork test
             hook test
               call is-above
@@ -1688,6 +1707,7 @@ task dynamic-tables
               call refuse-gzip
                 read reader/at
                 text <a repeat runs past the lengths>
+                halt kink
           save j, code 0
           walk test
             down
@@ -1782,12 +1802,14 @@ task inflate
             read data
             read reader
             code 1
+            halt kink
           code 1
       save kind
         call read-bits
           read data
           read reader
           code 2
+          halt kink
       fork test
         hook test
           call is-equal
@@ -1838,6 +1860,7 @@ task inflate
               call refuse-gzip
                 read at
                 text <a stored block's length does not match its complement>
+                halt kink
           fork test
             hook test
               call is-above
@@ -1852,6 +1875,7 @@ task inflate
               call refuse-gzip
                 read at
                 text <the data ends inside a block>
+                halt kink
           save k, code 0
           walk test
             down
@@ -1894,6 +1918,7 @@ task inflate
             read out
             read tables/literals
             read tables/distances
+            halt kink
         hook test
           call is-equal
             read kind
@@ -1903,16 +1928,19 @@ task inflate
             call dynamic-tables
               read data
               read reader
+              halt kink
           call inflate-codes
             read data
             read reader
             read out
             read tables/literals
             read tables/distances
+            halt kink
         hook miss
           call refuse-gzip
             read reader/at
             text <a block type is reserved>
+            halt kink
   # the rest of the last byte is padding
   save reader/buffer
     code 0
@@ -1999,6 +2027,7 @@ task past-zero
       call refuse-gzip
         read k
         text <a header text is not ended>
+        halt kink
   send back
     call add
       read k
@@ -2026,6 +2055,7 @@ task gunzip
       call refuse-gzip
         code 0
         text <there is no data>
+        halt kink
   walk test
     down
       call subtract
@@ -2055,6 +2085,7 @@ task gunzip
           call refuse-gzip
             read at
             text <the gzip magic number is missing>
+            halt kink
       fork test
         hook test
           call is-unequal
@@ -2070,6 +2101,7 @@ task gunzip
               read at
               code 2
             text <the method is not deflate>
+            halt kink
       save flags
         call byte-at
           read input
@@ -2087,6 +2119,7 @@ task gunzip
               read at
               code 3
             text <the header is cut short>
+            halt kink
       save place
         call add
           read at
@@ -2128,6 +2161,7 @@ task gunzip
             call past-zero
               read input
               read place
+              halt kink
       fork test
         hook test
           call is-equal
@@ -2140,6 +2174,7 @@ task gunzip
             call past-zero
               read input
               read place
+              halt kink
       fork test
         hook test
           call is-equal
@@ -2164,6 +2199,7 @@ task gunzip
         read input
         read reader
         read out
+        halt kink
       save end
         read reader/at
       fork test
@@ -2177,6 +2213,7 @@ task gunzip
           call refuse-gzip
             read end
             text <the check at the end is cut short>
+            halt kink
       fork test
         hook test
           call is-unequal
@@ -2192,6 +2229,7 @@ task gunzip
           call refuse-gzip
             read end
             text <the CRC-32 does not match the data>
+            halt kink
       fork test
         hook test
           call is-unequal
@@ -2212,6 +2250,7 @@ task gunzip
               read end
               code 4
             text <the length does not match the data>
+            halt kink
       # the next member starts past this one, which is 18 bytes at the least, and no further than the end; stated, so
       # the walk is seen to rise where the reader's progress inside `inflate` cannot be followed
       save next

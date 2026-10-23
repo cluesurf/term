@@ -557,6 +557,7 @@ task write-formatted
     call checked-places
       read fewest
       read most
+      halt kink
   save currency
     call is-above
       call char-count
@@ -683,6 +684,7 @@ task format-number
       read fewest
       read most
       text <>
+      halt kink
 
 # `value` as an amount of the currency `currency` (`<EUR>`, `<JPY>`), with that currency's own number of minor digits,
 # its symbol where `language` puts it, else the ISO code
@@ -718,3 +720,4 @@ task format-currency
       read places
       read places
       read symbol
+      halt kink

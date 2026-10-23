@@ -156,6 +156,7 @@ task regex-number
           call refuse-regex
             read from
             text <a count above 1000 is not in the dialect>
+            halt kink
       save i
         call add
           read i
@@ -523,6 +524,7 @@ task canonical-pattern
                   call refuse-regex
                     read at
                     text <lookaround, named groups and inline flags are not in the dialect>
+                    halt kink
             hook miss
               save out, text <{{out}}(>
               save groups
@@ -556,6 +558,7 @@ task canonical-pattern
               call refuse-regex
                 read at
                 text <a closing parenthesis has no group to close>
+                halt kink
             hook miss
               save depth
                 call subtract
@@ -634,6 +637,7 @@ task canonical-pattern
               call refuse-regex
                 read at
                 text <a quantifier has nothing to repeat>
+                halt kink
           # JavaScript forgets what a group caught on an earlier turn of a repetition and the others keep it
           fork test
             hook test
@@ -646,6 +650,7 @@ task canonical-pattern
               call refuse-regex
                 read at
                 text <a repeated group may not hold a capturing group, because the engines disagree on what it keeps: write the inner group as (?:...)>
+                halt kink
           fork test
             hook test
               call is-equal
@@ -666,11 +671,13 @@ task canonical-pattern
                   call refuse-regex
                     read at
                     text <a brace must open a count such as \{2\} or \{1,3\}, and a literal brace is escaped>
+                    halt kink
               save low
                 call regex-number
                   read r
                   read i
                   read low-end
+                  halt kink
               save shape, text <{{low}}>
               save i, read low-end
               fork test
@@ -702,6 +709,7 @@ task canonical-pattern
                             read i
                             code 1
                           read high-end
+                          halt kink
                       fork test
                         hook test
                           call is-below
@@ -711,6 +719,7 @@ task canonical-pattern
                           call refuse-regex
                             read at
                             text <a count runs backward>
+                            halt kink
                       save shape, text <{{low}},{{high}}>
                     hook miss
                       save shape, text <{{low}},>
@@ -726,6 +735,7 @@ task canonical-pattern
                   call refuse-regex
                     read at
                     text <a count is not closed>
+                    halt kink
               save i
                 call add
                   read i
@@ -853,6 +863,7 @@ task canonical-pattern
                               call refuse-regex
                                 read at
                                 text <a negated escape such as \D cannot sit inside a class>
+                                halt kink
                           save body, text <{{body}}{{expanded}}>
                           save member
                             call subtract
@@ -871,6 +882,7 @@ task canonical-pattern
                               call refuse-regex
                                 read at
                                 text <this escape is not in the dialect>
+                                halt kink
                     hook miss
                       save member, read d
                       save i
@@ -945,6 +957,7 @@ task canonical-pattern
                               call refuse-regex
                                 read at
                                 text <a range runs backward or ends in an escape that is not a character>
+                                halt kink
                           save top
                             call regex-class-literal
                               read upper
@@ -962,6 +975,7 @@ task canonical-pattern
               call refuse-regex
                 read at
                 text <a class is not closed>
+                halt kink
           fork test
             hook test
               read negated
@@ -993,6 +1007,7 @@ task canonical-pattern
               call refuse-regex
                 read at
                 text <a pattern cannot end in a backslash>
+                halt kink
           save expanded
             call regex-class-body
               read letter
@@ -1033,6 +1048,7 @@ task canonical-pattern
                   call refuse-regex
                     read at
                     text <word boundaries are not in the dialect: each engine reads a word differently>
+                    halt kink
               save named
                 call regex-escaped
                   read letter
@@ -1045,6 +1061,7 @@ task canonical-pattern
                   call refuse-regex
                     read at
                     text <this escape is not in the dialect>
+                    halt kink
               save written
                 call regex-literal
                   read named
@@ -1086,6 +1103,7 @@ task canonical-pattern
       call refuse-regex
         read n
         text <a group is not closed>
+        halt kink
   # ICU refuses an empty pattern, and an empty group means the same to every engine
   fork test
     hook test

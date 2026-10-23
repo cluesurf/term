@@ -149,8 +149,9 @@ for (const [name, emit, type] of [
   const signature = out.split('\n').find(line => /quotient/.test(line)) ?? ''
   check(`${name}: number is ${type}, whose / truncates`, signature.includes(type), signature.trim())
 
-  // and whose product stops past the edge rather than wrapping: Rust's release `*` and Kotlin's `*` wrap, Swift traps
-  const guard = { rust: 'i64::checked_mul', kotlin: 'Math.multiplyExact', swift: '(a * b)' }[name]
+  // and whose product stops past the edge rather than wrapping: Rust's release `*` and Kotlin's `*` wrap, and Swift's
+  // traps (a signal), so each goes through a check that stops naming excess (D15, term-stdlib-parity-0015)
+  const guard = { rust: 'i64::checked_mul', kotlin: 'Math.multiplyExact', swift: 'termMultiply(a, b)' }[name]
   check(`${name}: a product past ${type} stops rather than wrapping (${guard})`, out.includes(guard), '')
 }
 

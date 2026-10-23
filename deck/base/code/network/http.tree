@@ -212,6 +212,7 @@ task fetch
       read header
       read timeout
       wait true
+      halt kink
 
 task post
   mark async
@@ -232,6 +233,7 @@ task post
       read header
       read timeout
       wait true
+      halt kink
 
 # a streaming HTTP response: the status plus the raw platform response in the opaque `dock` handle. `read` in
 # `http/response` drains the body once, as text, bytes or json.

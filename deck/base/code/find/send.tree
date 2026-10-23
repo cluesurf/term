@@ -554,6 +554,7 @@ task find-hello
     call ask
       call make-request
         text <hello>
+      halt kink
   send back
     call json-as-text
       call json-get-field
@@ -570,6 +571,7 @@ task find-parts
     call ask
       call make-request
         text <hello>
+      halt kink
   save parts
     call json-get-field
       read answer
@@ -631,6 +633,7 @@ task find-hits
   save answer
     call ask
       read request
+      halt kink
   save hits
     call json-get-field
       read answer
@@ -675,6 +678,7 @@ task find-read
   save answer
     call ask
       read request
+      halt kink
   send back
     call value-of
       call json-get-field
@@ -716,3 +720,4 @@ task find-call
     read arguments
   call ask
     read request
+    halt kink

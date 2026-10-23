@@ -15,7 +15,7 @@ object prompt {
 
   suspend fun lineAsk(tool: Tool, prompt: String): String {
     withContext(Dispatchers.IO) {
-      print(prompt)
+      kotlin.io.print(prompt)
       System.out.flush()
     }
 

@@ -150,7 +150,12 @@ task matches
   take pattern, like text
   take input, like text
   like boolean
-  fork case, call(find-match-prepared, call(prepared-for, read(pattern)), read(input))
+  fork case
+    call find-match-prepared
+      call prepared-for
+        read pattern
+        halt kink
+      read input
     case some
       send back, true
     case none
@@ -162,7 +167,12 @@ task find-match
   take input, like text
   like maybe
     head regex-match
-  fork case, call(find-match-prepared, call(prepared-for, read(pattern)), read(input))
+  fork case
+    call find-match-prepared
+      call prepared-for
+        read pattern
+        halt kink
+      read input
     case some
       link hit
       send back
@@ -181,7 +191,11 @@ task find-matches
   save out
     make list
   walk list
-    call find-matches-prepared(call(prepared-for, read(pattern)), read(input))
+    call find-matches-prepared
+      call prepared-for
+        read pattern
+        halt kink
+      read input
     hook next
       take site, name hit
       call out/push(call(record-of, read(hit)))
@@ -282,6 +296,7 @@ task rewrite-matches
     call find-matches
       read pattern
       read input
+      halt kink
     hook next
       take site, name hit
       save before
@@ -317,6 +332,7 @@ task replace-matches
     call find-matches
       read pattern
       read input
+      halt kink
     hook next
       take site, name hit
       save before
@@ -343,7 +359,11 @@ task replace-first-match
   save runes
     call to-runes
       read input
-  fork case, call(find-match, read(pattern), read(input))
+  fork case
+    call find-match
+      read pattern
+      read input
+      halt kink
     case some
       link first
       save before
@@ -381,6 +401,7 @@ task split-at-matches
     call find-matches
       read pattern
       read input
+      halt kink
     hook next
       take site, name hit
       fork test

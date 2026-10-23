@@ -90,6 +90,7 @@ task local-millis
         call offset-minutes
           read millis
           read zone
+          halt kink
         code 60000
 
 # the local wall-clock year / month / day / hour / minute / second in `zone`
@@ -102,6 +103,7 @@ task local-parts
       call local-millis
         read millis
         read zone
+        halt kink
 
 # the zone's offset from UTC in whole hours at the given instant
 task offset-hours
@@ -113,6 +115,7 @@ task offset-hours
       call offset-minutes
         read millis
         read zone
+        halt kink
       code 60
 
 # an instant as it reads in a zone: the instant, the zone, and the zone's offset from UTC at it, in minutes
@@ -134,6 +137,7 @@ task in-zone
         call offset-minutes
           read millis
           read zone
+          halt kink
 
 # the instant laid out by `pattern` (calendar/civil.tree's tokens) on the zone's wall clock, `Z` its offset there
 task format-in-zone
@@ -148,6 +152,7 @@ task format-in-zone
       call offset-minutes
         read millis
         read zone
+        halt kink
 
 # the instant a wall-clock time in `zone` names. A time the zone skips (the hour lost when clocks go forward) is read
 # with the offset from before the change, so it lands that far past the gap; a time the zone reads twice (the hour
@@ -177,12 +182,14 @@ task from-local
         read wall
         code 86400000
       read zone
+      halt kink
   save after
     call offset-minutes
       call add
         read wall
         code 86400000
       read zone
+      halt kink
   save early
     call subtract
       read wall
@@ -200,12 +207,14 @@ task from-local
       call offset-minutes
         read early
         read zone
+        halt kink
       read before
   save late-fits
     call is-equal
       call offset-minutes
         read late
         read zone
+        halt kink
       read after
   fork test
     hook test

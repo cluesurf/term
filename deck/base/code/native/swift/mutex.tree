@@ -6,6 +6,7 @@ dock type
 
 dock load
   load <global:mutex>, name mutex
+  load <global:loop>, name term-loop
 
 load @term/base/mutex
   find mutex

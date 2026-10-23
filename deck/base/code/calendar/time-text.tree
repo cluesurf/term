@@ -106,6 +106,7 @@ task time-digits
               read at
               read k
             text <a digit is missing>
+            halt kink
       save total
         call add
           call multiply
@@ -147,6 +148,7 @@ task time-mark
       call refuse-time
         read at
         read reason
+        halt kink
   send back, true
 
 task time-range
@@ -169,6 +171,7 @@ task time-range
       call refuse-time
         read at
         read reason
+        halt kink
   send back, read value
 
 # milliseconds since the epoch for an RFC 3339 timestamp
@@ -183,88 +186,104 @@ task parse-rfc-3339
       read r
       code 0
       code 4
+      halt kink
   call time-mark
     read r
     code 4
     code 45
     code 45
     text <a dash must follow the year>
+    halt kink
   save month
     call time-range
       call time-digits
         read r
         code 5
         code 2
+        halt kink
       code 1
       code 12
       code 5
       text <the month is outside 01 to 12>
+      halt kink
   call time-mark
     read r
     code 7
     code 45
     code 45
     text <a dash must follow the month>
+    halt kink
   save day
     call time-range
       call time-digits
         read r
         code 8
         code 2
+        halt kink
       code 1
       call days-in-month
         read year
         read month
       code 8
       text <the day is outside the month>
+      halt kink
   call time-mark
     read r
     code 10
     code 84
     code 116
     text <a T must separate the date and the time>
+    halt kink
   save hour
     call time-range
       call time-digits
         read r
         code 11
         code 2
+        halt kink
       code 0
       code 23
       code 11
       text <the hour is outside 00 to 23>
+      halt kink
   call time-mark
     read r
     code 13
     code 58
     code 58
     text <a colon must follow the hour>
+    halt kink
   save minute
     call time-range
       call time-digits
         read r
         code 14
         code 2
+        halt kink
       code 0
       code 59
       code 14
       text <the minute is outside 00 to 59>
+      halt kink
   call time-mark
     read r
     code 16
     code 58
     code 58
     text <a colon must follow the minute>
+    halt kink
   save second
     call time-range
       call time-digits
         read r
         code 17
         code 2
+        halt kink
       code 0
       code 59
       code 17
       text <the second is outside 00 to 59>
+      halt kink
   # a fraction: its first three digits are the milliseconds, the rest is dropped
   save at, code 19
   save millis, code 0
@@ -338,6 +357,7 @@ task parse-rfc-3339
           call refuse-time
             read at
             text <a fraction needs a digit>
+            halt kink
       walk test
         down
           call subtract
@@ -390,6 +410,7 @@ task parse-rfc-3339
           call refuse-time
             read at
             text <a zone must be Z or a signed offset>
+            halt kink
       save offset-hour
         call time-range
           call time-digits
@@ -398,12 +419,14 @@ task parse-rfc-3339
               read at
               code 1
             code 2
+            halt kink
           code 0
           code 23
           call add
             read at
             code 1
           text <the offset hour is outside 00 to 23>
+          halt kink
       call time-mark
         read r
         call add
@@ -412,6 +435,7 @@ task parse-rfc-3339
         code 58
         code 58
         text <a colon must follow the offset hour>
+        halt kink
       save offset-minute
         call time-range
           call time-digits
@@ -420,12 +444,14 @@ task parse-rfc-3339
               read at
               code 4
             code 2
+            halt kink
           code 0
           code 59
           call add
             read at
             code 4
           text <the offset minute is outside 00 to 59>
+          halt kink
       save offset
         call add
           call multiply
@@ -456,6 +482,7 @@ task parse-rfc-3339
       call refuse-time
         read at
         text <text follows the time>
+        halt kink
   save days
     call to-day-number
       call from-parts

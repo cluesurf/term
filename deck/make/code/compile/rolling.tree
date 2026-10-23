@@ -49,7 +49,11 @@ load ./node
   find statement-span
   find dock-route
   find dock-call
+  find dock-argument
   find field-value
+
+load ./route-lower
+  find handler-name
 
 load ./type-text
   find show-type
@@ -482,6 +486,24 @@ task written-name
 
   back strip-end-suffix(strip-end-suffix(name, false), true)
 
+# names as written, each once, in their order: an exception two decks (or two files) declare is split by file
+# (`absence__in0_1`), and the roll writes it as its author did, the deck telling the two apart (seam-0016)
+task written-names
+  take names, like list, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  save seen, make hash
+  walk names
+    take one
+    save written, written-name(one)
+    fork test, is-equal(seen/has(written), false)
+      hold
+        seen/set(written, true)
+        push(out, written)
+  back out
+
 # the deck a file belongs to, from its path, when nothing better is known: `/link/@scope/name/`, else `@local`
 task deck-from-path
   take file, like text
@@ -601,6 +623,11 @@ form roll-options
     like maybe, like text
     need false
   link ids, like boolean
+  # the routes the route lowering took out of the program (compile.ts `lowerRoutes`, a dock with a view or a proxy
+  # becomes `route` and `boot` before any roll is built), so the dock walk still rolls them (seam-0018, seam-0025)
+  link docks
+    like maybe, like list, like statement
+    need false
 
 # what one roll build shares across its tasks
 form roll-context
@@ -789,7 +816,7 @@ task route-raises
         hold
           seen/set(raised, true)
           push(out, raised)
-  back sorted-texts(out)
+  back sorted-texts(written-names(out))
 
 # `${prefix}/${path}` with every run of `/` made one, or the path alone without a prefix
 task route-path
@@ -847,6 +874,18 @@ task walk-route
     walk method/calls
       take one
       push(calls, one)
+    # a top-level page route's method body is lifted out as a task of its own (route-lower.tree `handler-name`,
+    # mint-bridge.ts `routeHandlers`), so what it raises is that task's, and the method's own calls never hold it
+    fork test, is-equal(prefix, <>)
+      hold
+        save none-args, like list, like dock-argument
+          make list
+        save handler
+          make dock-call
+            bind name, handler-name(method/name, route/path)
+            bind args, none-args
+            bind span, method/span
+        push(calls, handler)
     save pairs, make list
     push(pairs, pair-of(<host>, text-of-value(host-of(at, s))))
     push(pairs, pair-of(<kind>, text-of-value(<dock>)))
@@ -858,6 +897,25 @@ task walk-route
   walk route/children
     take child
     walk-route(at, sets, roll, s, child, path)
+
+# every dock of `statements` this unit owns, rolled as a route
+task roll-docks
+  take at, like roll-context
+  take sets, like roll-raises
+  take roll, like list, like roll-kind
+  take statements, like list, like statement
+  mark private
+
+  walk statements
+    take s
+    sift s
+      case dock
+        link route
+        fork test, is-mine(at, s)
+          hold
+            walk-route(at, sets, roll, s, route, <>)
+      miss
+        turn next
 
 # Build the roll of a checked program. `raise-sets-of` answers the raise sets for the exceptions named, `deck-of` names a
 # file's deck (none where the caller knows none), and `same-node` tells whether two nodes are one
@@ -1095,10 +1153,10 @@ task build-roll
         save pairs, make list
         push(pairs, pair-of(<host>, text-of-value(host-of(at, s))))
         push(pairs, pair-of(<kind>, text-of-value(<exception>)))
-        push(pairs, pair-of(<name>, text-of-value(name)))
+        push(pairs, pair-of(<name>, text-of-value(written-name(name))))
         push(pairs, pair-of(<site>, text-of-value(site-of(at, s))))
-        push(pairs, pair-of(<like>, text-of-value(like)))
-        push(pairs, pair-of(<chain>, texts-value(chain)))
+        push(pairs, pair-of(<like>, text-of-value(written-name(like))))
+        push(pairs, pair-of(<chain>, texts-value(written-names(chain))))
         push(pairs, pair-of(<note>, literal-of(note)))
         push(pairs, pair-of(<link>, pairs-value(links)))
         fork test, ids
@@ -1176,7 +1234,7 @@ task build-roll
         push(pairs, pair-of(<site>, text-of-value(site-of(at, s))))
         push(pairs, pair-of(<take>, make(item-values, takes)))
         push(pairs, pair-of(<like>, text-of-value(answer)))
-        push(pairs, pair-of(<halt>, texts-value(raised)))
+        push(pairs, pair-of(<halt>, texts-value(written-names(raised))))
         fork test, is-above(raised/length, 0)
           hold
             save paths, make list
@@ -1209,17 +1267,15 @@ task build-roll
       miss
         turn next
 
-  # docks: each route with the union of what its handlers raise
-  walk program
-    take s
-    sift s
-      case dock
-        link route
-        fork test, is-mine(at, s)
-          hold
-            walk-route(at, sets, roll, s, route, <>)
-      miss
-        turn next
+  # docks: each route with the union of what its handlers raise, the program's own and those the route lowering took
+  # out of it, which are in it no longer and so are never rolled twice
+  roll-docks(at, sets, roll, program)
+  sift options/docks
+    case some
+      link lowered
+      roll-docks(at, sets, roll, lowered)
+    case none
+      save nothing, 0
 
   # a unit's own supervisors: each entry is told apart by the statement it came from
   save mine-sites, make hash

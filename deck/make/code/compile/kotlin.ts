@@ -20,7 +20,7 @@ import { boundedLoops } from '@term/make/code/ir/facts/bounds'
 import { asciiTexts } from '@term/make/code/ir/facts/text'
 import { taggedForms } from '@term/make/code/compile/tag'
 import type { Expression, Program, Statement, Type } from '@term/make/code/compile/node'
-import { fillTasks, lastReads, ownedFields, slotTakes, tailTasks, recordCopies, redeclaredLets, textCursors } from '@term/make/code/compile/backend'
+import { fillTasks, inspectFormsOf, lastReads, ownedFields, slotTakes, tailTasks, recordCopies, redeclaredLets, textCursors } from '@term/make/code/compile/backend'
 import type { FormSpec, TextCursors } from '@term/make/code/compile/backend'
 import { rustBoxing } from '@term/make/code/compile/rust'
 import { privateForms, recordPlaces, recordReuse } from '@term/make/code/compile/place'
@@ -729,6 +729,9 @@ export function emitKotlin(
     functionParams,
     binds,
     recordFields,
+    // a lowered `inspect`'s forms and the walkers it writes (term/base-v1 decision 001)
+    inspectForms: inspectFormsOf(program),
+    inspectWalkers: new Map<string, string>(),
     sharedForms,
     unionForms,
     floatForms,
@@ -981,6 +984,9 @@ export function emitKotlin(
       st.reusing = { form: 'none' }
     }
   }
+
+  // the walkers a lowered `inspect` wrote, one per form it met (term/base-v1 decision 001)
+  body.push(...[...facts.inspectWalkers.values()].filter(text => text !== ''))
 
   const needs = new Set<string>(st.needs.keys())
 

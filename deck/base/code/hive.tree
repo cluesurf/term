@@ -87,6 +87,10 @@ form hive
   link docks
     like list
       like hive-entry dock-roll
+  # the decks whose typed entries have arrived, so `hive-wake-typed` is idempotent on the deck name as `hive-wake` is
+  link typed
+    like list
+      like text
   link ear
     like list
       like hive-ear
@@ -98,6 +102,7 @@ host hive
     bind exceptions, make list
     bind tells, make list
     bind docks, make list
+    bind typed, make list
     bind ear, make list
 
 # a deck arrives with its static entries. Idempotent on the deck name: a deck that arrives twice is one deck.
@@ -169,6 +174,21 @@ task hive-wake-typed
   take docks
     like list
       like hive-entry dock-roll
+  # idempotent on the deck name, as `hive-wake` is: a second wake adds no entry (seam-0015)
+  walk list
+    read hive/typed
+    hook next
+      take site, name woken
+      fork test
+        hook test
+          call is-equal
+            read woken
+            read name
+        hook hold
+          send back
+  call push
+    read hive/typed
+    read name
   walk list
     read exceptions
     hook next

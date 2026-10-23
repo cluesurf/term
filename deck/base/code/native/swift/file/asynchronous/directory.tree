@@ -8,6 +8,7 @@
 dock load
   load <global:walk>, name walk-file
   load <global:aio>, name aio
+  load <global:loop>, name term-loop
 
 load @term/base/file/directory
   find walk-entry

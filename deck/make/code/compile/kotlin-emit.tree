@@ -1962,6 +1962,30 @@ task kt-call
       # whether this call sits directly under `wait true`, read before the arguments render their own calls
       save awaited, st/awaiting
       save st/awaiting, false
+      # `inspect(value)`: walked by the type the checker stamped where it was written (term/base-v1 decision 001)
+      fork test, and(is-equal(callee-name, <inspect-form>), is-above(call-args/length, 0))
+        hold
+          save shown, get(call-args, 0)
+          save static-type, expression-type(shown)
+          sift read(into)
+            case some
+              link stamped
+              save static-type, make(some, stamped)
+            case none
+              save nothing, 0
+          save kind, inspect-kind-of(static-type, facts/inspect-forms, make list)
+          save spell
+            task
+              take given, like type
+              like text
+              back kotlin-type(make(some, given), st, facts)
+          save class-of
+            task
+              take form-name, like text
+              take case-name, like text
+              like text
+              back variant-class-name(form-name, case-name, facts)
+          back kotlin-inspect-of(kind, <({kt-expr(shown, st, facts)})>, facts/inspect-walkers, spell, class-of)
       # `fill` and `melt` with a form: a function per form, generated at the end of the module
       fork test, or(is-equal(callee-name, <fill-form>), is-equal(callee-name, <melt-form>))
         hold

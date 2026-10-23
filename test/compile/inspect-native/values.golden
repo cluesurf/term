@@ -1,0 +1,21 @@
+<a\\b\<c\>d\{e\}f\ng\rh\ti\ej>
+-42
+2.5
+1
+NaN
+true
+void
+list()
+list(list(1, 2), list(3))
+hash(<a> 1, <b> 2)
+user(name <Ada>, secret <x>, home place(city <Oslo>))
+circle(radius 2)
+big-dot
+plus
+some(value 3)
+none
+pair(left 1, right 2)
+node(left leaf, value 1, right node(left leaf, value 2, right leaf))
+opaque(unknown)
+opaque(task)
+opaque(handle)

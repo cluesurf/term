@@ -21,6 +21,10 @@ load @term/base/text
   find to-upper-case
   find starts-with
 
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
 load ./node
   find type
   find expression
@@ -917,3 +921,52 @@ task swift-inspect-walker
       walkers/set(key, <func __inspect{pascal(key)}(_ value: {spell(kind/type)}) -\> String \{\n  switch value \{\n{join-texts(arms, <\n>)}\n  \}\n\}>)
     miss
       save nothing, 0
+
+# a text as a Swift string literal: `"`, `\` and the line controls escaped, every other control character as `\u\{1b\}`.
+# JSON's `\u001b`, `\b` and `\f` are not Swift escapes, and a text holding ESC (Term's `\e`) did not build (term/base-v1
+# N7)
+task swift-quote
+  take value, like text
+  like text
+
+  save digits, <0123456789abcdef>
+  save out, <>
+  walk to-runes(value)
+    take code
+    fork test, is-equal(code, 34)
+      hold
+        save out, <{out}\\">
+        turn next
+    fork test, is-equal(code, 92)
+      hold
+        save out, <{out}\\\\>
+        turn next
+    fork test, is-equal(code, 10)
+      hold
+        save out, <{out}\\n>
+        turn next
+    fork test, is-equal(code, 13)
+      hold
+        save out, <{out}\\r>
+        turn next
+    fork test, is-equal(code, 9)
+      hold
+        save out, <{out}\\t>
+        turn next
+    fork test, or(is-below(code, 32), is-equal(code, 127))
+      hold
+        save high, <7>
+        fork test, is-below(code, 16)
+          hold
+            save high, <0>
+          miss
+            fork test, is-below(code, 32)
+              hold
+                save high, <1>
+        save low, char-at(digits, modulo(code, 16))
+        save out, <{out}\\u\{{high}{low}\}>
+        turn next
+    save one, make list
+    push(one, code)
+    save out, <{out}{from-runes(one)}>
+  back <"{out}">

@@ -461,13 +461,19 @@ task native-main
       fork test, raises
         hold
           save attempt, <try >
-      # an asynchronous entry runs on Swift's own executor, awaited at the top level
+      # an asynchronous entry runs on Swift's own executor, awaited at the top level. In a program that has the loop
+      # (native/swift/runtime/loop.swift, which defines `__termLoopEntry`) it runs inside it, counted, so a wait that
+      # nothing can finish stops as on Rust and Kotlin
       fork test, is-async
         hold
+          save called, <{attempt}await {entry}()>
+          fork test, is-above(index-of(emitted, <func __termLoopEntry>), -1)
+            hold
+              save called, <{attempt}await __termLoopEntry \{ {attempt}await {entry}() \}>
           fork test, silent
             hold
-              back <{attempt}await {entry}()>
-          back <print({attempt}await {entry}(), terminator: "")>
+              back called
+          back <print({called}, terminator: "")>
       save value, <__termAnswer = "\\({attempt}{entry}())">
       fork test, silent
         hold
@@ -512,7 +518,8 @@ task native-main
   push(lines, <    thread.start()>)
   push(lines, <    thread.join()>)
   push(lines, <    failure?.let \{ throw it \}>)
-  push(lines, <    print(answer)>)
+  # Kotlin's own `print`, named whole: a task called `print` (@term/base/debug) would win over the implicit import
+  push(lines, <    kotlin.io.print(answer)>)
   push(lines, <\}>)
   back join-lines(lines)
 

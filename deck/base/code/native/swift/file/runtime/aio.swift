@@ -22,11 +22,15 @@ enum aio {
     return queue
   }()
 
-  // a blocking call run on the pool, its answer handed back to the task waiting on it
+  // a blocking call run on the pool, its answer handed back to the task waiting on it. The work is pending on the
+  // program's loop (runtime/loop.swift) until the task runs again
   static func handBack<T>(_ work: @escaping () -> T) async -> T {
-    await withCheckedContinuation { (waiting: CheckedContinuation<T, Never>) in
+    let held = termLoop.hold()
+    let answer = await withCheckedContinuation { (waiting: CheckedContinuation<T, Never>) in
       pool.addOperation { waiting.resume(returning: work()) }
     }
+    termLoop.release(held)
+    return answer
   }
 
   // An open file: its descriptor and the cursor `seek` moves. Reads and writes are positional (pread / pwrite) at

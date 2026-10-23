@@ -33,6 +33,7 @@ task expand
       read file/root
       read file/trees
       read expanding
+      halt kink
 
 # a value expanded against an anchor table kept elsewhere (a stream reader's), the anchors as `data-tree` values
 task expand-with
@@ -48,6 +49,7 @@ task expand-with
       read value
       read trees
       read expanding
+      halt kink
 
 task find-tree
   mark private
@@ -92,6 +94,7 @@ task expand-value
               read list
               read trees
               read expanding
+              halt kink
     case array
       link list
       send back
@@ -101,6 +104,7 @@ task expand-value
               read list
               read trees
               read expanding
+              halt kink
     case graft
       link name
       halt data-defect
@@ -255,6 +259,7 @@ task expand-entries
               call guard-cycle
                 read expanding
                 read name
+                halt kink
               call push
                 read expanding
                 read name
@@ -263,6 +268,7 @@ task expand-entries
                   read value/entries
                   read trees
                   read expanding
+                  halt kink
               call pop-last
                 read expanding
               walk list
@@ -282,6 +288,7 @@ task expand-entries
                   read entry/base
                   read trees
                   read expanding
+                  halt kink
         case array
           call replace
             read out
@@ -292,6 +299,7 @@ task expand-entries
                   read entry/base
                   read trees
                   read expanding
+                  halt kink
         case text
           call replace
             read out
@@ -365,6 +373,7 @@ task expand-items
               call guard-cycle
                 read expanding
                 read name
+                halt kink
               call push
                 read expanding
                 read name
@@ -373,6 +382,7 @@ task expand-items
                   read value/items
                   read trees
                   read expanding
+                  halt kink
               call pop-last
                 read expanding
               walk list
@@ -389,6 +399,7 @@ task expand-items
               read item
               read trees
               read expanding
+              halt kink
         case array
           call push
             read out
@@ -396,6 +407,7 @@ task expand-items
               read item
               read trees
               read expanding
+              halt kink
         case text
           call push
             read out

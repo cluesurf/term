@@ -6008,6 +6008,69 @@ task field-type-in
       back make(some, known)
   back make none
 
+# a case field's type in one arm: a field typed by its form's own parameter (`maybe`'s `value`, `like t`) is the
+# subject's type argument in that place, so a `maybe number` arm knows its `value` is a number and copies it out of a
+# borrowed subject (seam-0020). Any other field is its declared type
+task arm-field-type
+  take given, like maybe, like type
+  take owner, like text
+  take subject-type, like maybe, like type
+  take facts, like rust-facts
+  like maybe, like type
+  mark private
+
+  save wanted, <>
+  sift given
+    case some
+      link known
+      sift known
+        case named
+          link param-name
+          save wanted, param-name
+        miss
+          back given
+    case none
+      back given
+  fork test, not(facts/inspect-forms/has(owner))
+    hold
+      back given
+  save at, -1
+  sift facts/inspect-forms/get(owner)
+    case record-type
+      link form-name
+      link form-params
+      walk form-params
+        take one
+        take index
+        fork test, is-equal(one, wanted)
+          hold
+            save at, index
+    miss
+      back given
+  fork test, is-below(at, 0)
+    hold
+      back given
+  sift subject-type
+    case some
+      link subject
+      sift subject
+        case named
+          link subject-name
+          link subject-args
+          sift subject-args
+            case some
+              link arg-list
+              fork test, is-above(arg-list/length, at)
+                hold
+                  back make(some, get(arg-list, at))
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back given
+
 # the same test `borrowedRecords` makes: a field whose type is a record, not a `mark shared` handle
 task is-record-field
   take types, like hash, like text, like type
@@ -6221,15 +6284,22 @@ task emit-case-arm
     hold
       walk locals
         take local
-        fork test, and(and(not(is-record-field(field-types, local/field, facts)), not(facts/field-lists/has(<{label}/{local/field}>))), has-text(read, local/local))
+        fork test, and(not(is-record-field(field-types, local/field, facts)), not(facts/field-lists/has(<{label}/{local/field}>)))
           hold
-            save given, field-type-in(field-types, local/field)
+            save given, arm-field-type(field-type-in(field-types, local/field), owner, scene/subject-type, facts)
+            # a Copy field is copied out whenever the arm reads it, by its own name or as the subject's field
+            # (`m/value`, which the arm binds as `value`): left a reference, `add(m/value, 1)` was `&i64` (seam-0020).
+            # Any other field is cloned only when read by its own name, and is otherwise used where it lies
             fork test, copy-type(given)
               hold
-                push(derefs, <{pad(add(depth, 2))}let {snake(local/local)} = *{snake(local/local)};>)
+                fork test, arm-reads(named, local/local, scene)
+                  hold
+                    push(derefs, <{pad(add(depth, 2))}let {snake(local/local)} = *{snake(local/local)};>)
               miss
-                note-clone(given, st, facts)
-                push(derefs, <{pad(add(depth, 2))}let {snake(local/local)} = {snake(local/local)}.clone();>)
+                fork test, has-text(read, local/local)
+                  hold
+                    note-clone(given, st, facts)
+                    push(derefs, <{pad(add(depth, 2))}let {snake(local/local)} = {snake(local/local)}.clone();>)
     miss
       # under a referenced subject every field read is copied or cloned out, a recursive one through its box
       fork test, scene/referenced
@@ -6970,6 +7040,30 @@ task param-text
               save nothing, 0
   back <{vname(param/name)}: {spell(given, facts)}>
 
+# whether a task wrote its result (`like void` is written; a task with no `like` is not), read off the signature as
+# written, since the checker fills an unwritten result with unit
+task result-written
+  take node, like statement
+  like boolean
+  mark private
+
+  sift node
+    case function
+      link declared
+      sift declared
+        case some
+          link signature
+          sift signature/result
+            case some
+              back true
+            case none
+              back false
+        case none
+          back false
+    miss
+      back false
+  back false
+
 task emit-function
   take node, like statement
   take depth, like number
@@ -7125,10 +7219,11 @@ task emit-function
         lent/set(one/name, <write>)
       save st/lent-names, lent
 
-      # a task with no declared result but a valued `send back` answers the boxed dynamic
+      # a task with no declared result but a valued `send back` answers the boxed dynamic. A written `like void` is a
+      # declared result: its `send back` of a host call (typed dynamic) answers `()` as the host call does
       save declared, fn-result
       save result-kind, kind-of(fn-result)
-      fork test, or(is-equal(result-kind, <>), is-equal(result-kind, <unit>))
+      fork test, and(or(is-equal(result-kind, <>), is-equal(result-kind, <unit>)), not(result-written(node)))
         hold
           fork test, has-valued-return(fn-body)
             hold

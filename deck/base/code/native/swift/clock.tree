@@ -2,6 +2,7 @@
 
 dock load
   load <global:clock>, name clock
+  load <global:loop>, name term-loop
 
 task current-time
   like number

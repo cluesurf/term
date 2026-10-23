@@ -151,6 +151,7 @@ task supervise
         call spawn
           call child-work
             read one
+            halt kink
       call alive/push
         true
   save restarted
@@ -232,6 +233,7 @@ task supervise
                     read handles
                     read alive
                     read at
+                    halt kink
                 hook miss
                   # `restarts` and the state read ran in between, so the bound is asked where the write is
                   fork test
@@ -348,6 +350,7 @@ task restart-children
             call spawn
               call child-work
                 read one
+                halt kink
           # the new child's work has started, and may have done anything, so the bounds are asked where they are used
           fork test
             hook test

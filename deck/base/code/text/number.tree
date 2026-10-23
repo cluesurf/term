@@ -320,6 +320,7 @@ task parse-integer
       call refuse-number
         code 0
         text <a radix is from 2 to 36>
+        halt kink
   save r
     call to-runes
       read value
@@ -355,6 +356,7 @@ task parse-integer
       call refuse-number
         read i
         text <no digits>
+        halt kink
   save total, code 0
   walk test
     down
@@ -389,6 +391,7 @@ task parse-integer
           call refuse-number
             read i
             text <not a digit in base {{radix}}>
+            halt kink
       # a negative value is built downward, so the least integer reads without passing the greatest
       fork test
         hook test
@@ -500,6 +503,7 @@ task parse-float
       call refuse-number
         read i
         text <a digit was expected>
+        halt kink
   save i, read end
   fork test
     hook test
@@ -528,6 +532,7 @@ task parse-float
               read i
               code 1
             text <a digit was expected after the point>
+            halt kink
       save i, read end
   save mark
     call number-rune-at
@@ -578,6 +583,7 @@ task parse-float
           call refuse-number
             read i
             text <a digit was expected in the exponent>
+            halt kink
       save i, read end
   fork test
     hook test
@@ -588,6 +594,7 @@ task parse-float
       call refuse-number
         read i
         text <the number ends before this>
+        halt kink
   send back
     call host-parse-float
       read value

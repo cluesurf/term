@@ -33,6 +33,14 @@ enum watchFile {
     // hand the change to whoever is waiting, or hold it until someone asks
     func post(_ event: WatchEvent) {
       lock.lock()
+
+      // a change the source posts after `watchClose` is nobody's: the watch has ended
+      if closed {
+        lock.unlock()
+
+        return
+      }
+
       let waiter = waiting
       waiting = nil
 
@@ -115,9 +123,13 @@ enum watchFile {
     }
   }
 
+  // a change still held when the watch closes is dropped with it, so `watchNext` after `watchClose` is the empty
+  // event at once. One write can post two changes (O_TRUNC, then the bytes, since aio writes in place), and the
+  // second, held here, was answered after close
   static func watchClose(_ watcher: Watcher) async {
     watcher.lock.lock()
     watcher.closed = true
+    watcher.ready.removeAll()
     let waiter = watcher.waiting
     watcher.waiting = nil
     let source = watcher.source

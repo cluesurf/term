@@ -220,6 +220,7 @@ task find-holds
             read hit
             read name
           read value
+          halt kink
     case lack
       send back
         call not
@@ -229,6 +230,7 @@ task find-holds
               read hit
               read name
             read value
+            halt kink
     case hold
       send back
         call compare-values
@@ -239,6 +241,7 @@ task find-holds
           call operand-value
             read b
             read hit
+          halt kink
     case meet
       link mode
       link members
@@ -250,6 +253,7 @@ task find-holds
           call find-holds
             read one
             read hit
+            halt kink
         fork test
           hook test
             read got
@@ -298,6 +302,7 @@ task find-all-hold
       call find-holds
         read one
         read hit
+        halt kink
     fork test
       hook test
         call not
