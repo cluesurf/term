@@ -494,6 +494,14 @@ task width-of
   like maybe, like text
   mark private
 
+  # a read whose checked type is a number of a width (an element of a list of u8, read by index or by `get`, or a
+  # generic's answer at u8): inside the width, since every way into such a list owes it (width-0004, D12)
+  sift width-of-type(expr)
+    case some
+      link typed
+      back make(some, typed)
+    case none
+      save nothing, 0
   sift expr
     case call
       sift callee
@@ -528,6 +536,56 @@ task width-of
         case none
           save nothing, 0
     miss
+      save nothing, 0
+  back make none
+
+# a width word the prover holds a range for
+task is-width-word
+  take word, like text
+  like boolean
+  mark private
+
+  back or(or(or(is-equal(word, <u8>), is-equal(word, <u16>)), or(is-equal(word, <u32>), is-equal(word, <u64>))), or(or(is-equal(word, <i8>), is-equal(word, <i16>)), or(is-equal(word, <i32>), is-equal(word, <i64>))))
+
+# the width an expression's checked type carries, `number{u8}` answering `u8`, or none
+task width-of-type
+  take expr, like expression
+  like maybe, like text
+
+  sift expression-type(expr)
+    case some
+      link known
+      sift known
+        case number
+          fork test, is-width-word(width)
+            hold
+              back make(some, width)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back make none
+
+# the width of a list's element, `like list, like u8` answering `u8`, or none
+task element-width-of
+  take expr, like expression
+  like maybe, like text
+
+  sift expression-type(expr)
+    case some
+      link known
+      sift known
+        case array
+          sift element
+            case number
+              fork test, is-width-word(width)
+                hold
+                  back make(some, width)
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    case none
       save nothing, 0
   back make none
 

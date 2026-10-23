@@ -36,11 +36,16 @@ enum termLoop {
 
   // the asynchronous entry, counted as the first running task
   static func entry<T>(_ body: () async throws -> T) async rethrows -> T {
+    begin()
+    return try await $counted.withValue(true) { try await body() }
+  }
+
+  // an NSLock is not taken in an asynchronous function itself
+  private static func begin() {
     lock.lock()
     on = true
     running += 1
     lock.unlock()
-    return try await $counted.withValue(true) { try await body() }
   }
 
   // a counted task starts another: counted from before it exists, so no wait can miss it. Answers whether it was

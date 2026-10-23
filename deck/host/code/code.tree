@@ -549,7 +549,10 @@ task take-head
     hold
       refuse-code(<unknown-tag>, at, <minor {minor} is not defined>)
         halt kink
-  back add(28, take-varint(reader))
+  save extra
+    take-varint(reader)
+      halt kink
+  back add(28, extra)
 
 task take-value
   mark private
@@ -733,10 +736,13 @@ task take-entries
   save entries, make list
   walk keys
     take key
+    save taken
+      take-value(reader, tables, add(depth, 1))
+        halt kink
     save entry
       make data-entry
         bind name, key
-        bind base, take-value(reader, tables, add(depth, 1))
+        bind base, taken
     entries/push(entry)
   back hash-data(entries)
 

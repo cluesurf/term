@@ -17,16 +17,16 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
 // the job whose work is running, read by a wait as it ends
-const current = new AsyncLocalStorage<SeedJob>()
+const __termJobCurrent = new AsyncLocalStorage<SeedJob>()
 
 // a wait that never ends: what a cancelled job's next wait becomes
-const never = (): Promise<void> => new Promise<void>(() => {})
+const __termJobNever = (): Promise<void> => new Promise<void>(() => {})
 
 // what every runtime wait does as it ends: stop here when the job running it was cancelled. Kept on globalThis, so the
 // clock's `delay` reaches it without loading this runtime (native/node/clock.tree)
-const stop = (): Promise<void> | undefined => (current.getStore()?.state === 'cancelled' ? never() : undefined)
+const __termJobStop = (): Promise<void> | undefined => (__termJobCurrent.getStore()?.state === 'cancelled' ? __termJobNever() : undefined)
 
-;(globalThis as { __term_job_stop?: () => Promise<void> | undefined }).__term_job_stop = stop
+;(globalThis as { __term_job_stop?: () => Promise<void> | undefined }).__term_job_stop = __termJobStop
 
 type SeedJob = {
   promise: Promise<void>
@@ -38,7 +38,7 @@ type SeedJob = {
   waiting: (() => void)[]
 }
 
-const release = (self: SeedJob): void => {
+const __termJobRelease = (self: SeedJob): void => {
   const waiting = self.waiting
 
   self.waiting = []
@@ -62,7 +62,7 @@ const job = {
     }
 
     self.promise = Promise.resolve()
-      .then(() => current.run(self, work))
+      .then(() => __termJobCurrent.run(self, work))
       .then(
         result => {
           if (self.state === 'running') {
@@ -70,7 +70,7 @@ const job = {
             self.result = result
           }
 
-          release(self)
+          __termJobRelease(self)
         },
         error => {
           if (self.state === 'running') {
@@ -78,7 +78,7 @@ const job = {
             self.error = error
           }
 
-          release(self)
+          __termJobRelease(self)
         },
       )
 
@@ -91,7 +91,7 @@ const job = {
       await new Promise<void>(resolve => self.waiting.push(resolve))
     }
 
-    await stop()
+    await __termJobStop()
   },
 
   // the same, giving up after `ms` milliseconds: true when it stopped running in time
@@ -175,7 +175,7 @@ const job = {
   cancel: (self: SeedJob): void => {
     if (self.state === 'running') {
       self.state = 'cancelled'
-      release(self)
+      __termJobRelease(self)
     }
   },
 

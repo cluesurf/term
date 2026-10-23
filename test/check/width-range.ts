@@ -507,6 +507,82 @@ expect(
   { total: 0, proven: 0 },
 )
 
+// A VALUE OF A WIDTH TYPE IS KNOWN TO FIT (width-0005): an element of a list of u8, read by index, by `get` or as a
+// walk's item, is inside u8, since every way into the list owed it
+expect(
+  'on: an element read by index, passed to a u8 parameter, is proven',
+  `${PAINT}
+task run
+  take xs, like list, like u8
+  take i, like number
+  like number
+  save shown, paint(xs/{i})
+  back shown
+`,
+  { total: 1, proven: 1 },
+)
+
+expect(
+  'on: a walk item of a list of u8, passed to a u8 parameter, is proven',
+  `${PAINT}
+task run
+  take xs, like list, like u8
+  like number
+  save total, 0
+  walk xs
+    take b
+    save total, paint(b)
+  back total
+`,
+  { total: 1, proven: 1 },
+)
+
+expect(
+  'on: a walk item the body writes is not assumed',
+  `${PAINT}
+task run
+  take xs, like list, like u8
+  like number
+  save total, 0
+  walk xs
+    take b
+    save b, add(b, 300)
+    save total, paint(b)
+  back total
+`,
+  { total: 1, proven: 0 },
+)
+
+expect(
+  'on: get(xs, i) sent back from a like-u8 task is proven',
+  `load @term/base/list
+  find get
+
+task first
+  take xs, like list, like u8
+  take i, like number
+  like u8
+  save start, 0
+  back get(xs, i)
+`,
+  { total: 1, proven: 1 },
+)
+
+expect(
+  'on: a walk item of a list of number passed to a u8 parameter is not proven',
+  `${PAINT}
+task run
+  take xs, like list, like number
+  like number
+  save total, 0
+  walk xs
+    take b
+    save total, paint(b)
+  back total
+`,
+  { total: 1, proven: 0 },
+)
+
 console.log(`\nwidth-range: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

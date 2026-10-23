@@ -369,7 +369,10 @@ task to-poly
         case plus
           back poly-of(add-poly(l/terms, r/terms))
         case minus
-          back poly-of(add-poly(l/terms, scale-poly(r/terms, -1)))
+          save negated
+            scale-poly(r/terms, -1)
+              halt kink
+          back poly-of(add-poly(l/terms, negated))
         case times
           back poly-of(mul-poly(cache, l/terms, r/terms))
         miss
@@ -422,7 +425,10 @@ task ring-equal-exact
   fork test, or(not(l/found), not(r/found))
     hold
       back false
-  back is-zero-poly(add-poly(l/terms, scale-poly(r/terms, -1)))
+  save negated
+    scale-poly(r/terms, -1)
+      halt kink
+  back is-zero-poly(add-poly(l/terms, negated))
 
 task is-record
   take e, like expression
@@ -498,7 +504,10 @@ task records-equal
       fork test, and(not(matched), is-equal(g/name, f/name))
         hold
           save matched, true
-          fork test, not(ring-equal-exact(cache, f/value, g/value))
+          save same-value
+            ring-equal-exact(cache, f/value, g/value)
+              halt kink
+          fork test, not(same-value)
             hold
               back false
     fork test, not(matched)
@@ -884,8 +893,11 @@ task ring-equal-modulo-exact
       save chosen, get(generators, target-g)
       save quotient, make hash
       save quotient/{target-q}, 1
+      save product
+        mul-poly(cache, quotient, chosen/poly)
+          halt kink
       save difference
-        add-poly(scale-poly(difference, chosen/lead-coeff), scale-poly(mul-poly(cache, quotient, chosen/poly), subtract(0, c)))
+        add-poly(scale-poly(difference, chosen/lead-coeff), scale-poly(product, subtract(0, c)))
           halt kink
       save steps, add(steps, 1)
   back is-zero-poly(difference)

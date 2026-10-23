@@ -1,4 +1,7 @@
 mark unstable
 
+load @term/base/text/8
+  find text-8
+
 form text-ascii
   like text-8

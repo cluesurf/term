@@ -6035,7 +6035,8 @@ task arm-field-type
     hold
       back given
   save at, -1
-  sift facts/inspect-forms/get(owner)
+  save declared, facts/inspect-forms/get(owner)
+  sift declared
     case record-type
       link form-name
       link form-params
@@ -6057,14 +6058,10 @@ task arm-field-type
         case named
           link subject-name
           link subject-args
-          sift subject-args
-            case some
-              link arg-list
-              fork test, is-above(arg-list/length, at)
-                hold
-                  back make(some, get(arg-list, at))
-            case none
-              save nothing, 0
+          fork test, is-above(subject-args/length, at)
+            hold
+              save placed, get(subject-args, at)
+              back make(some, placed)
         miss
           save nothing, 0
     case none

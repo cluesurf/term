@@ -112,6 +112,7 @@ load ./inequality
   find field-provable
   find theorem-parts
   find written-alike
+  find element-width-of
 
 load ./hold-state
   find hold-state
@@ -1927,7 +1928,24 @@ task walk-holds
           case none
             save nothing, 0
         save loop-before, forget(keep-across-turns(state, calls, current, loop-body, walk), forgotten)
-        walk-holds(state, calls, wc, loop-body, loop-before, walk)
+        # an item of a list of a width is inside the width, as a parameter of that width is: every way into such a
+        # list owes it (width-0004). Not when the body writes the item, which then holds whatever was written
+        save in-loop, loop-before
+        fork test, wc/width-ranges()
+          hold
+            sift element-width-of(iterable)
+              case some
+                link item-width
+                fork test, not(has-text(written-in-block(loop-body), item))
+                  hold
+                    save item-facts, facts()
+                    walk calls/width-facts(item, item-width)
+                      take q
+                      push(item-facts, q)
+                    save in-loop, both-facts(loop-before, item-facts)
+              case none
+                save nothing, 0
+        walk-holds(state, calls, wc, loop-body, in-loop, walk)
         save current, loop-before
       case match
         link subject
