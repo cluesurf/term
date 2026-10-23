@@ -12,10 +12,10 @@
 // Run: npx tsx test/call/lifecycle.ts
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { manifestValueOf } from '@term/call/code/manifest-name'
+import { tempDir } from '../temp'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
@@ -54,7 +54,7 @@ function termFor(cwd: string, wait: number, ...argv: string[]): string {
   return `${run.stdout ?? ''}${run.stderr ?? ''}`
 }
 
-const box = mkdtempSync(join(tmpdir(), 'term-lifecycle-'))
+const box = tempDir('term-lifecycle-')
 
 // `wake`: scaffolds a project
 const woke = term(box, 'wake', 'demo')
@@ -178,7 +178,7 @@ ok(
 )
 
 // `base`: makes a repository and reports it coherent
-const repo = mkdtempSync(join(tmpdir(), 'term-base-'))
+const repo = tempDir('term-base-')
 const inited = term(repo, 'base', 'init')
 
 ok('`base init` creates a repository', existsSync(join(repo, '.base')), inited)
@@ -315,7 +315,7 @@ ok('`wash` removes host/', !existsSync(join(root, 'host/code/boot.ts')))
 // which is what a temp file is — was reported `no such path` while sitting right there. Found by word.surf's
 // guide save gate, the first caller to hand the verb one.
 {
-  const absDir = mkdtempSync(join(tmpdir(), 'term-view-abs-'))
+  const absDir = tempDir('term-view-abs-')
 
   writeFileSync(
     join(absDir, 'doc.tree'),

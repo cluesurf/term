@@ -445,7 +445,10 @@ task walk-folder
   mark private
 
   save results, make list
-  walk node-file/readdir-sync(folder, with-file-types())
+  # the directory entries the host answers (seam decision 004)
+  save entries, like list, like dynamic
+    node-file/readdir-sync(folder, with-file-types())
+  walk entries
     take entry, like dynamic
     save name, host-text(entry/name)
     save full, node-path/join(folder, name)

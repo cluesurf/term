@@ -171,12 +171,16 @@ task defines-entry
   take file, like text
   like boolean
 
-  save read, read-module/read-tree(make(tree-source, bind(file, file), bind(text, node-fs/read-file-sync(file, <utf8>))))
+  # the host reader's answer and its forms (seam decision 004)
+  save read, like dynamic
+    read-module/read-tree(make(tree-source, bind(file, file), bind(text, node-fs/read-file-sync(file, <utf8>))))
   fork test, not(is-truthy(read/ok))
     hold
       back false
   save names, entry-names()
-  walk read/forms
+  save forms, like list, like dynamic
+    read/forms
+  walk forms
     take form, like dynamic
     fork test, is-unequal(<{form/head}>, <task>)
       hold
@@ -190,7 +194,10 @@ task defines-entry
       hold
         turn next
     save takes, false
-    walk form/forms
+    # the host tree's child forms (seam decision 004)
+    save children, like list, like dynamic
+      form/forms
+    walk children
       take one, like dynamic
       fork test, is-equal(<{one/head}>, <take>)
         hold

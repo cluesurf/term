@@ -293,7 +293,9 @@ task walk-folder
   like void
   mark private
 
-  save entries, fs-promise/readdir(dir, make(folder-ask, bind(with-file-types, true)))
+  # the directory entries the host answers (seam decision 004)
+  save entries, like list, like dynamic
+    fs-promise/readdir(dir, make(folder-ask, bind(with-file-types, true)))
 
   walk entries
     take entry

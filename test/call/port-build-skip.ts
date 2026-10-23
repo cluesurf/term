@@ -13,10 +13,10 @@
 //
 // Run: npx tsx test/call/port-build-skip.ts      (about 15 minutes: four full compiles of the 321 modules)
 import { execFileSync } from 'node:child_process'
-import { constants, cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { constants, cpSync, existsSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
+import { tempDir } from '../temp'
 
 const TERM = join(import.meta.dirname, '..', '..')
 // tsx's command, wherever the workspace hoisted it
@@ -46,7 +46,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 const LEAVE = new Set(['node_modules', 'target', '.build', '.base', 'tmp', '.git'])
 
 // the real path: the resolver records `/private/var/...` where the temporary directory says `/var/...`
-const copy = realpathSync(mkdtempSync(join(tmpdir(), 'term-port-build-skip-')))
+const copy = realpathSync(tempDir('term-port-build-skip-'))
 
 function clone(): void {
   cpSync(join(TERM, 'deck'), join(copy, 'deck'), {

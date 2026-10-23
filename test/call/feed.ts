@@ -7,11 +7,11 @@
 
 import { spawn, spawnSync } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const LINE = process.env.TERM_LINE ?? join(HERE, '../../host/line.js')
@@ -40,7 +40,7 @@ type Chromium = { launch: (o: { headless: boolean }) => Promise<{ newPage: () =>
 // the server's command line
 const SERVE = ['boot', '--env', 'browser']
 
-const project = mkdtempSync(join(tmpdir(), 'term-feed-'))
+const project = tempDir('term-feed-')
 mkdirSync(join(project, 'code'))
 writeFileSync(join(project, 'deck.tree'), 'deck hello\n  mark <0.0.1>\n  boot ./code/boot\n')
 writeFileSync(join(project, 'code/boot.tree'), 'load @term/base/console\n  find log\n\ntask boot\n  mark async\n  log <hello from term>\n')

@@ -4,11 +4,11 @@
 // browser development server, refuses and names `term boot`.
 // Run: npx tsx test/call/boot-mode.ts
 
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { bootMode } from '@term/call/code/boot'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -39,7 +39,7 @@ ok('a mode alone names no entry', bootMode('star').mode === 'production' && boot
 
 // the command itself, through the built CLI: a command-line program booted into a folder, in each mode
 const line = join(import.meta.dirname, '..', '..', 'host', 'line.js')
-const root = realpathSync(mkdtempSync(join(tmpdir(), 'boot-mode-')))
+const root = realpathSync(tempDir('boot-mode-'))
 mkdirSync(join(root, 'code'), { recursive: true })
 writeFileSync(join(root, 'deck.tree'), `deck @probe/boot-mode\n  mark <0.0.2>\n  boot ./code/base.tree\n`)
 writeFileSync(join(root, 'code', 'base.tree'), `# run at ${Date.now()}\n\n# Answer three\nhook say\n  task answer\n\ntask answer\n  like number\n  back 3\n`)

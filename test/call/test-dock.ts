@@ -6,10 +6,11 @@
 // Run from deck/term/deck/term: npx tsx test/call/test-dock.ts
 
 import { spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -29,7 +30,7 @@ const line = join(here, 'host', 'line.js')
 const fixture = join(here, 'test', 'call', 'test-dock-fixture')
 
 // the fixture copied to a project of its own, its package installed in its node_modules as npm would
-const root = realpathSync(mkdtempSync(join(tmpdir(), 'test-dock-')))
+const root = realpathSync(tempDir('test-dock-'))
 cpSync(fixture, root, { recursive: true })
 mkdirSync(join(root, 'node_modules'), { recursive: true })
 cpSync(join(root, 'vendor', 'probe-dock-package'), join(root, 'node_modules', 'probe-dock-package'), { recursive: true })

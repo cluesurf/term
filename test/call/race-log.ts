@@ -3,11 +3,11 @@
 // region, facts, target, compiler and rules (level one of note/project/term/optimize/learning.md).
 // Run: npx tsx test/call/race-log.ts
 
-import { mkdtempSync, readdirSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { lookupRace, ratioBucket, readRaces, sizeBucket, toneDigest, writeRace } from '../../deck/call/code/race-log'
 import type { RaceRecord } from '../../deck/call/code/race-log'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -22,7 +22,7 @@ function ok(name: string, holds: boolean, detail = ''): void {
   }
 }
 
-const root = mkdtempSync(join(tmpdir(), 'race-log-'))
+const root = tempDir('race-log-')
 const region = toneDigest({ task: 'count-each', at: 'code/stats.tree', ordinal: 0 })
 const rules = toneDigest(['count-each/tally', 'count-each/dense'])
 const facts = { element: 'number', size: { values: sizeBucket(1100), queries: sizeBucket(1030) }, distinct_ratio: ratioBucket(0.31), sorted: 'no' as const, pure: 'yes' as const }

@@ -5,10 +5,10 @@
 // Run: npx tsx test/call/emit-build.ts   (EMIT_BUILD_ONLY=node, rust, swift or kotlin runs one)
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -27,7 +27,7 @@ const LINE = join(dirname(fileURLToPath(import.meta.url)), '../../host/line.js')
 const TOOLS: Record<string, string[]> = { node: [], rust: ['rustc', 'cargo'], swift: ['swiftc'], kotlin: ['kotlinc', 'java'] }
 const have = (tool: string): boolean => spawnSync('which', [tool], { encoding: 'utf8' }).status === 0
 
-const project = mkdtempSync(join(tmpdir(), 'term-emit-build-'))
+const project = tempDir('term-emit-build-')
 mkdirSync(join(project, 'code'))
 writeFileSync(join(project, 'deck.tree'), 'deck @probe/emit-build\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\n')
 

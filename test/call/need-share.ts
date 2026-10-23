@@ -4,11 +4,11 @@
 // scratch directory, each with the list `pnpm term:release` writes.
 // Run: npx tsx test/call/need-share.ts
 import { execFileSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { extractShared, readFileList, writeFileList } from '@term/call/code/need-load'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -23,7 +23,7 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const root = mkdtempSync(join(tmpdir(), 'term-share-'))
+const root = tempDir('term-share-')
 
 // a payload: `term/` with these files and its list, packed as a release packs it
 function payload(name: string, files: Record<string, string>, executable: string[] = []): string {

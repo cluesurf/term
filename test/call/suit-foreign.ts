@@ -7,9 +7,9 @@
 // Run: npx tsx test/call/suit-foreign.ts (after `pnpm run make:line`)
 
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { tempDir } from '../temp'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const LINE = process.env.TERM_LINE ?? join(HERE, '../../host/line.js')
@@ -113,7 +113,7 @@ test a-suit-for-a-foreign-form-dispatches
 `
 
 function project(worn: string): string {
-  const root = mkdtempSync(join(tmpdir(), 'term-suit-foreign-'))
+  const root = tempDir('term-suit-foreign-')
   write(root, 'deck.tree', 'deck @fixture/app\n  mark <0.0.2>\n  link @fixture/shape, mark <0.0.x>\n  link @fixture/sizer, mark <0.0.x>\n')
   write(root, 'link/@fixture/shape/deck.tree', 'deck @fixture/shape\n  mark <0.0.2>\n')
   write(root, 'link/@fixture/shape/code/base.tree', SHAPE)

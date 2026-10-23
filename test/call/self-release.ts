@@ -16,8 +16,7 @@
 // Run: npx tsx test/call/self-release.ts
 import { execFile, execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, utimesSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, readFileSync, readlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 import { writeFileList } from '../../deck/call/code/need-load'
@@ -26,6 +25,7 @@ import { ensurePublisher } from '../../deck/deck/code/oci/keys'
 import { currentPlatform, publishRelease } from '../../deck/deck/code/oci/release'
 import { httpTransport } from '../../deck/deck/code/oci/transport'
 import { startOciServer } from '../../deck/deck/test/oci-server'
+import { tempDir } from '../temp'
 
 const TERM = join(import.meta.dirname, '..', '..')
 // the installer term.surf serves at /load
@@ -59,7 +59,7 @@ if (!PLATFORM || !existsSync(payloadFile)) {
 // one payload per version, the version written into its package.json. Built before the registry starts: tar is a
 // synchronous child, and nothing is listening yet for it to block
 function payloadOf(version: string): Buffer {
-  const dir = mkdtempSync(join(tmpdir(), `term-payload-${version}-`))
+  const dir = tempDir(`term-payload-${version}-`)
   const manifest = join(dir, 'term', 'package.json')
 
   execFileSync('tar', ['-xzf', payloadFile, '-C', dir])
@@ -95,7 +95,7 @@ for (const version of [VERSION, NEXT]) {
 }
 
 // a fresh machine: its own HOME, trust pins and store, pointed at the loopback registry
-const home = mkdtempSync(join(tmpdir(), 'term-self-'))
+const home = tempDir('term-self-')
 const env = {
   ...process.env,
   HOME: home,
@@ -179,7 +179,7 @@ try {
     `${evaluated.stdout}\n${evaluated.out}`,
   )
 
-  const kept = mkdtempSync(join(tmpdir(), 'term-kept-'))
+  const kept = tempDir('term-kept-')
   const off = await load({ HOME: kept, TERM_TRUST_DIR: join(kept, 'trust'), TERM_STORE: join(kept, 'store'), TERM_LOAD_VERSION: VERSION, TERM_LOAD_PATH: '0' })
   ok('   and TERM_LOAD_PATH=0 edits no profile', off.code === 0 && !existsSync(join(kept, '.zshrc')) && /no profile was edited/.test(off.out), off.out)
   ok(
@@ -214,8 +214,8 @@ try {
   ok(`back returns bin/term to ${VERSION}`, back.code === 0 && readlinkSync(bin).includes(`/code/${VERSION}/`), back.out)
 
   // ---- dispatch ----
-  const outside = mkdtempSync(join(tmpdir(), 'term-outside-'))
-  const project = mkdtempSync(join(tmpdir(), 'term-project-'))
+  const outside = tempDir('term-outside-')
+  const project = tempDir('term-project-')
 
   writeFileSync(join(project, 'deck.tree'), 'deck @alice/app\n  mark <1.0.0>\n')
 
@@ -321,7 +321,7 @@ try {
   ok('check refuses an install whose digest is not the signed release', tampered.code !== 0 && /not the release/.test(tampered.out), tampered.out)
 
   // with no version named, the loader takes the newest, into a second machine
-  const fresh = mkdtempSync(join(tmpdir(), 'term-load-'))
+  const fresh = tempDir('term-load-')
   const latest = await load({ HOME: fresh, TERM_TRUST_DIR: join(fresh, 'trust'), TERM_STORE: join(fresh, 'store') })
   ok(`the loader with no version installs the newest, ${NEXT}`, latest.code === 0 && existsSync(join(fresh, '.base', '@term', 'code', 'code', NEXT, 'install.tree')), latest.out)
 

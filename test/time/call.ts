@@ -8,6 +8,7 @@ import { callTime } from '@term/call/code/time'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -45,7 +46,7 @@ function trapExit(): { restore: () => void; calls: number[] } {
 }
 
 async function makeProject(source: string): Promise<string> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'seed-time-'))
+  const root = tempDir('seed-time-')
   await fs.writeFile(path.join(root, 'bench.tree'), source)
 
   return root
@@ -164,7 +165,7 @@ async function main(): Promise<void> {
 
   // no benchmarks: a project with no `time-*` task fails clearly rather than reporting an empty success.
   {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'seed-time-'))
+    const root = tempDir('seed-time-')
     await fs.writeFile(
       path.join(root, 'plain.tree'),
       `task helper\n  take n, like number\n  send back, read n\n`,

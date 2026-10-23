@@ -6,9 +6,9 @@
 import { execFile } from 'node:child_process'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 
 const LINE = join(import.meta.dirname, '..', '..', 'host', 'line.js')
 
@@ -57,7 +57,7 @@ await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 
 function bind(token: string | undefined, args: string[] = []): Promise<string> {
-  const home = mkdtempSync(join(tmpdir(), 'term-bind-'))
+  const home = tempDir('term-bind-')
 
   if (token) {
     mkdirSync(join(home, '.base', '@term', 'code'), { recursive: true })

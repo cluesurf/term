@@ -14,11 +14,10 @@
 // Run: npx tsx test/call/update-app.ts
 
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { assembleBundle, buildPage, buildProgram, signBundle, stampRuntimeVersion } from '@term/call/code/cask'
 import { publishUpdate, stampUpdateKey } from '@term/call/code/update'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -42,7 +41,7 @@ if (process.platform !== 'darwin') {
 const TERM = process.cwd()
 const CASK = join(TERM, 'deck/cask')
 const APP = join(CASK, 'test/update')
-const dir = mkdtempSync(join(tmpdir(), 'term-update-app-'))
+const dir = tempDir('term-update-app-')
 const identifier = 'surf.term.update-app-test'
 const keyFile = join(dir, 'key.pem')
 const entry = `import { boot } from './app'\nboot()\n`

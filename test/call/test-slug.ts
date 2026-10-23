@@ -4,8 +4,7 @@
 // and in its port, call/code/work/test-text.tree, which this holds equal to it over a set of phrases.
 // Run: npx tsx test/call/test-slug.ts
 
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { transformSync } from 'esbuild'
@@ -13,6 +12,7 @@ import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
 import { nativePrelude, withNativeEnv } from '@term/make/code/compile/native'
 import { preprocessTests } from '@term/call/code/test-preprocess'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -51,7 +51,7 @@ const built = compile(
 ok('test-text.tree builds', built.ok, built.ok ? '' : built.diagnostics.map(d => d.message.split('\n').join(' ')).join(' | '))
 
 if (built.ok) {
-  const dir = mkdtempSync(join(tmpdir(), 'term-test-slug-'))
+  const dir = tempDir('term-test-slug-')
   const out = join(dir, 'module.mjs')
   // the regex engine is a runtime global, defined by the prelude as task/port-build.ts writes it
   const prelude = nativePrelude(built.program, 'node', path => (existsSync(path) ? readFileSync(path, 'utf8') : undefined))

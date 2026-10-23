@@ -2,15 +2,10 @@
 // tsx in a temp workspace and checks the structured output + exit codes. Run: npx tsx test/call/verifier.ts
 
 import { execFileSync } from 'node:child_process'
-import {
-  mkdtempSync,
-  writeFileSync,
-  readFileSync,
-  existsSync,
-} from 'node:fs'
-import { tmpdir } from 'node:os'
+import { writeFileSync, readFileSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { tempDir } from '../temp'
 
 const SEED_ROOT = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -58,7 +53,7 @@ function seed(
 }
 
 function main(): void {
-  const dir = mkdtempSync(join(tmpdir(), 'seed-cli-'))
+  const dir = tempDir('seed-cli-')
 
   // scan: a clean file is ok, exit 0, no diagnostics
   writeFileSync(

@@ -9,10 +9,10 @@
 
 import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildRustProgram } from '@term/call/code/cask'
 import { publishUpdate, stampUpdateKey } from '@term/call/code/update'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -35,7 +35,7 @@ if (spawnSync('cargo', ['--version']).status !== 0) {
 
 const TERM = process.cwd()
 const CASK = join(TERM, 'deck/cask')
-const dir = mkdtempSync(join(tmpdir(), 'term-update-rust-'))
+const dir = tempDir('term-update-rust-')
 const identifier = 'surf.term.update-rust-test'
 const keyFile = join(dir, 'key.pem')
 const runtimeVersion = 'a'.repeat(64)

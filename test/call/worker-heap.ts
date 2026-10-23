@@ -7,9 +7,9 @@
 // Run: npx tsx test/call/worker-heap.ts (after `pnpm run make:line`)
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 // TERM_LINE points at another bundle, so a change can be tried without replacing the CLI a running gate uses
@@ -36,7 +36,7 @@ function task(name: string, value: number): string {
   return `task ${name}\n  like number\n  send back\n    call add\n      code ${value}\n      code 1\n\n`
 }
 
-const project = mkdtempSync(join(tmpdir(), 'term-worker-heap-'))
+const project = tempDir('term-worker-heap-')
 mkdirSync(join(project, 'code'))
 writeFileSync(join(project, 'deck.tree'), 'deck @probe/heap\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\n')
 

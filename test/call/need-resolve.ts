@@ -2,11 +2,11 @@
 // plus nearest-wins, a stale pin, a pin not installed, and every refusal. Real files in a scratch directory: a home with
 // installed versions, projects with deck.tree and lock.tree. No network: resolution never reaches one.
 // Run: npx tsx test/call/need-resolve.ts
-import { existsSync, mkdirSync, mkdtempSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { chooseVersion, frontOf, markUsed, splitFlag, type NeedChoice, type NeedWorld } from '@term/call/code/need'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -21,7 +21,7 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const root = mkdtempSync(join(tmpdir(), 'term-need-'))
+const root = tempDir('term-need-')
 const home = join(root, 'home')
 
 // installed: 2.6.2, 2.6.4, 2.7.0 (each a directory with an install.tree)

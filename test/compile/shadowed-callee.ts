@@ -11,8 +11,6 @@
 // must build and run on every backend.
 // Run: npx tsx test/compile/shadowed-callee.ts   (SC_ONLY=typescript, rust, swift or kotlin runs one backend)
 
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { projectResolver } from '@term/call/code/make'
 import { compile } from '@term/make/code/compile/compile'
@@ -20,6 +18,7 @@ import { emitRust } from '@term/make/code/compile/rust'
 import { raiseSetsOf } from '@term/make/code/check/effects'
 import { raiseSetsOf as raiseSetsOfTree } from '@term/make/host/port/code/check/effects'
 import { BACKENDS, runOn } from './shared/run-on'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -102,7 +101,7 @@ task run
   send back, text <fired {t/count}>
 `
 
-const dir = mkdtempSync(join(tmpdir(), 'term-shadowed-callee-'))
+const dir = tempDir('term-shadowed-callee-')
 const resolve = projectResolver(process.cwd(), 'rust')
 const result = compile({ file: join(dir, 'shadowed.tree'), text: PROGRAM }, { resolve, env: 'rust' })
 

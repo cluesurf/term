@@ -7,9 +7,9 @@
 // Run: npx tsx test/call/test-sampled.ts
 
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -25,7 +25,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 const line = join(process.cwd(), 'host', 'line.js')
-const root = realpathSync(mkdtempSync(join(tmpdir(), 'test-sampled-')))
+const root = realpathSync(tempDir('test-sampled-'))
 mkdirSync(join(root, 'test'), { recursive: true })
 writeFileSync(join(root, 'deck.tree'), `deck @probe/sampled\n  mark <0.0.1>\n`)
 writeFileSync(

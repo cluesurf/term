@@ -21,9 +21,9 @@
 // Run: npx tsx test/call/walk.ts
 
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
@@ -42,7 +42,7 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const box = mkdtempSync(join(tmpdir(), 'term-walk-'))
+const box = tempDir('term-walk-')
 const home = join(box, 'home')
 
 mkdirSync(home, { recursive: true })

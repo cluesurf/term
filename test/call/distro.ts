@@ -19,12 +19,12 @@
 // Run: npx tsx test/call/distro.ts
 import { createHash } from 'node:crypto'
 import { spawn, spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { tmpdir } from 'node:os'
 import { join, normalize } from 'node:path'
 import { releaseRedirect } from '../../../../../../mesh/site/term.surf/home/site/tool/release-redirect'
+import { tempDir } from '../temp'
 
 const TERM = join(import.meta.dirname, '..', '..')
 const VERSION = process.env.TERM_DISTRO_VERSION || (JSON.parse(readFileSync(join(TERM, 'package.json'), 'utf8')) as { version: string }).version
@@ -230,7 +230,7 @@ ok('dnf: term self update is refused, naming dnf', /dnf installed this copy, so 
 site.close()
 
 // a copy of what term.surf serves, with indexes that say something their signatures do not
-const forgedDir = mkdtempSync(join(tmpdir(), 'term-forged-'))
+const forgedDir = tempDir('term-forged-')
 cpSync(join(DISTRO, 'public'), forgedDir, { recursive: true })
 writeFileSync(join(forgedDir, 'apt', 'dists', 'stable', 'InRelease'), readFileSync(join(forgedDir, 'apt', 'dists', 'stable', 'InRelease'), 'utf8').replace('Label: term', 'Label: tampered'))
 writeFileSync(join(forgedDir, 'rpm', 'repodata', 'repomd.xml'), `${readFileSync(join(forgedDir, 'rpm', 'repodata', 'repomd.xml'), 'utf8')}<!-- tampered -->\n`)

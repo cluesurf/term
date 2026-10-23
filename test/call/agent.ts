@@ -3,13 +3,13 @@
 // JSON an agent reads. Run: npx tsx test/call/agent.ts
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { applyFixes } from '@term/make/code/fix'
 import { diagnosticNames } from '@term/make/code/parser/diagnostic'
 import { lintCatalog } from '@term/make/code/lint/lint'
+import { tempDir } from '../temp'
 
 const TERM_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const LINE = join(TERM_ROOT, 'deck', 'call', 'code', 'line.ts')
@@ -267,7 +267,7 @@ function selfSkill(dir: string): void {
 }
 
 function main(): void {
-  const dir = mkdtempSync(join(tmpdir(), 'term-agent-'))
+  const dir = tempDir('term-agent-')
 
   scanFixes(dir)
   typedHoles(dir)

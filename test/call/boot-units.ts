@@ -5,11 +5,11 @@
 // edited program. Then the same program is booted whole, and the two answer alike.
 // Run: npx tsx test/call/boot-units.ts
 
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { callBoot, lastBootUnits } from '@term/call/code/boot'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -24,7 +24,7 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const root = realpathSync(mkdtempSync(join(tmpdir(), 'boot-units-')))
+const root = realpathSync(tempDir('boot-units-'))
 mkdirSync(join(root, 'code'), { recursive: true })
 writeFileSync(join(root, 'deck.tree'), `deck @probe/boot\n  mark <0.0.1>\n`)
 

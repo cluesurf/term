@@ -1,12 +1,12 @@
 // `seed make` project build: incremental artifact writes (only files whose output changed are rewritten) and rich,
 // colored compiler diagnostics. Run: npx tsx test/call/make.ts
 
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, writeFileSync, existsSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { compileProject } from '@term/call/code/make'
 import { compile } from '@term/make/code/compile/compile'
 import { renderDiagnostic } from '@term/call/code/report'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -30,7 +30,7 @@ const GOOD = `task double
       read n
 `
 
-const root = mkdtempSync(join(tmpdir(), 'seed-make-'))
+const root = tempDir('seed-make-')
 mkdirSync(join(root, 'src'), { recursive: true })
 writeFileSync(join(root, 'src', 'math.tree'), GOOD)
 
@@ -101,8 +101,8 @@ ok(
 // found, and a project under a symlinked home or volume is the same case.
 //
 // The symlink is made HERE rather than relied on from the platform, so this holds on Linux too.
-const realRoot = mkdtempSync(join(tmpdir(), 'seed-make-real-'))
-const linkRoot = join(mkdtempSync(join(tmpdir(), 'seed-make-link-')), 'project')
+const realRoot = tempDir('seed-make-real-')
+const linkRoot = join(tempDir('seed-make-link-'), 'project')
 
 mkdirSync(join(realRoot, 'code'), { recursive: true })
 writeFileSync(join(realRoot, 'deck.tree'), 'deck @term/probe\n')

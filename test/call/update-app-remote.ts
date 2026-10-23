@@ -16,13 +16,12 @@
 //
 // Both build and launch through task/term/cask/rust-remote.ts, the code app-smoke uses.
 // Run: UPDATE_REMOTE=windows npx tsx test/call/update-app-remote.ts
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { assembleRustBundle, buildPage, buildRustProgram, crateOf, stampRuntimeVersion } from '@term/call/code/cask'
 import { publishUpdate, stampUpdateKey } from '@term/call/code/update'
 // as its default: the task/ scripts are CommonJS, whose exports Node finds only on `default`
 import remoteRust from '../../../../../../task/term/cask/rust-remote'
+import { tempDir } from '../temp'
 
 type RemoteTarget = 'linux' | 'windows'
 
@@ -51,7 +50,7 @@ const CASK = join(TERM, 'deck/cask')
 const APP = join(CASK, 'test/update')
 const NAME = 'TermUpdate'
 const identifier = `surf.term.update-${target}`
-const dir = mkdtempSync(join(tmpdir(), `term-update-${target}-`))
+const dir = tempDir(`term-update-${target}-`)
 const keyFile = join(dir, 'key.pem')
 const entry = `import { boot } from './app'\nboot()\n`
 // how long one launch may take before it counts as hung

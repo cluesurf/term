@@ -16,10 +16,10 @@
 // PORT_RACE_SCRIPT=<abs path to a port-build.ts> runs the same race against another copy of the script (the proof
 // ran the one before this fix, with the hold added by hand, and it failed `A leaves B's port`).
 import { execFileSync, spawn } from 'node:child_process'
-import { appendFileSync, constants, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, constants, cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
+import { tempDir } from '../temp'
 
 const TERM = join(import.meta.dirname, '..', '..')
 const TSX = createRequire(import.meta.url).resolve('tsx/cli')
@@ -48,7 +48,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 // the clone port-build-skip.ts makes: the package's deck/ without caches and outputs other than the ports
 const LEAVE = new Set(['node_modules', 'target', '.build', '.base', 'tmp', '.git'])
-const copy = realpathSync(mkdtempSync(join(tmpdir(), 'term-port-race-')))
+const copy = realpathSync(tempDir('term-port-race-'))
 
 function clone(): void {
   cpSync(join(TERM, 'deck'), join(copy, 'deck'), {

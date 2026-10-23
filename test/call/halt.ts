@@ -6,9 +6,10 @@
 
 import { spawn, spawnSync } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const LINE = process.env.TERM_LINE ?? join(HERE, '../../host/line.js')
@@ -43,7 +44,7 @@ hook /
 type Booted = { child: ChildProcess; dir: string; log: () => string; exited: Promise<number | null> }
 
 async function boot(name: string, port: number): Promise<Booted> {
-  const dir = mkdtempSync(join(tmpdir(), `term-halt-${name}-`))
+  const dir = tempDir(`term-halt-${name}-`)
   mkdirSync(join(dir, 'code'))
   writeFileSync(join(dir, 'deck.tree'), `deck ${name}\n  mark <0.0.1>\n`)
   writeFileSync(join(dir, 'code/route.tree'), ROUTE)
@@ -99,7 +100,7 @@ try {
 // it runs no `run.mjs`, so only `-p` stopped one (guides: commands/halt, 2026-10-05). It was `term feed`, and is
 // `term boot --env browser` since the same day, which halt finds by its command line (call/code/halt.ts `services`)
 {
-  const dir = mkdtempSync(join(tmpdir(), 'term-halt-feed-'))
+  const dir = tempDir('term-halt-feed-')
   mkdirSync(join(dir, 'code'))
   writeFileSync(join(dir, 'deck.tree'), 'deck halt-feed\n  mark <0.0.1>\n  boot ./code/boot\n')
   writeFileSync(join(dir, 'code/boot.tree'), 'load @term/base/console\n  find log\n\ntask boot\n  mark async\n  log <fed>\n')

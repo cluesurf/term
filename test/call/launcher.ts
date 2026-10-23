@@ -3,9 +3,9 @@
 // argument unchanged, and exit with Node's code. The source is the same one release.ts cross-compiles to term.exe.
 // Run: npx tsx test/call/launcher.ts
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 
 const TERM = join(import.meta.dirname, '..', '..')
 
@@ -22,7 +22,7 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const root = mkdtempSync(join(tmpdir(), 'term-launcher-'))
+const root = tempDir('term-launcher-')
 const payload = join(root, 'payload', 'term')
 const exe = join(payload, 'bin', process.platform === 'win32' ? 'term.exe' : 'term-launcher')
 

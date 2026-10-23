@@ -254,7 +254,10 @@ task call-roll
     hold
       save told, names-of(roll/tell)
       save kept, make list
-      walk roll/exception
+      # the host roll's exception entries (seam decision 004)
+      save entries, like list, like dynamic
+        roll/exception
+      walk entries
         take entry, like dynamic
         fork test, is-private(entry/host, entry/name, told)
           hold
@@ -262,15 +265,22 @@ task call-roll
       roll-set-kind(roll, <exception>, kept)
 
   # which tell covers each exception, and which routes can answer with it
+  # the host roll's tell, dock and exception entries (seam decision 004)
   save tells, make list
-  walk roll/tell
+  save tell-entries, like list, like dynamic
+    roll/tell
+  walk tell-entries
     take one, like dynamic
     tells/push(make(roll-tell, bind(name, one/name), bind(note, one/note)))
   save routes, make list
-  walk roll/dock
+  save dock-entries, like list, like dynamic
+    roll/dock
+  walk dock-entries
     take one, like dynamic
     routes/push(make(roll-route, bind(name, one/name), bind(halt, one/halt)))
-  walk roll/exception
+  save exception-entries, like list, like dynamic
+    roll/exception
+  walk exception-entries
     take exception, like dynamic
     save cover, cover-of(exception/host, exception/name, tells, routes)
     roll-set-cover(exception, cover/tell, cover/dock)

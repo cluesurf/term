@@ -694,7 +694,10 @@ task make-rust-cask
           save loader, <>
           fork test, node-fs/exists-sync(build)
             hold
-              walk node-fs/readdir-sync(build)
+              # the build folder's names the host answers (seam decision 004)
+              save entry-names, like list, like dynamic
+                node-fs/readdir-sync(build)
+              walk entry-names
                 take entry-name, like text
                 fork test, entry-name/starts-with(<webview2-com-sys->)
                   hold

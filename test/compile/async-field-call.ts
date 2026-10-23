@@ -4,14 +4,14 @@
 // matched no case. Found by deck/test/code/model-proposer.tree, whose model proposals were silently passed over for
 // synthesis (2026-10-05). Run: npx tsx test/compile/async-field-call.ts
 
-import { mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { transformSync } from 'esbuild'
 import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
 import { withNativeEnv } from '@term/make/code/compile/native'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -71,7 +71,7 @@ if (!built.ok) {
   ok('the caller of an async field is async', /async function askThrough/.test(built.typescript), built.typescript.split('\n').filter(l => /askThrough/.test(l)).join(' | '))
   ok('the call through the field is awaited', /await who\.ask\(n\)/.test(built.typescript), built.typescript.split('\n').filter(l => /who\.ask/.test(l)).join(' | '))
 
-  const dir = mkdtempSync(join(tmpdir(), 'term-async-field-'))
+  const dir = tempDir('term-async-field-')
   const file = join(dir, 'module.mjs')
   writeFileSync(file, transformSync(built.typescript, { loader: 'ts', format: 'esm' }).code)
   const mod = (await import(pathToFileURL(file).href)) as { run: () => Promise<number> }

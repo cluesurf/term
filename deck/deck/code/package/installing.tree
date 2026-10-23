@@ -336,7 +336,9 @@ task install
       save previous, locked/need
     case none
       save nothing, 0
-  save need, make none
+  # maybe the host's pin answer (seam decision 004)
+  save need, like maybe, like dynamic
+    make none
   sift loaded/need
     case some
       link asked
@@ -350,7 +352,9 @@ task install
       fork test, offline
         hold
           save ask/offline, true
-      save pin-answer, wait oci-need/pin-need(ask)
+      # the host's pin answer, a record of the original's shape (seam decision 004)
+      save pin-answer, like dynamic
+        wait oci-need/pin-need(ask)
       save need, make(some, pin-answer)
     case none
       save nothing, 0

@@ -10,11 +10,11 @@
 //
 // Run: npx tsx test/call/home-move.ts
 import { execFileSync } from 'node:child_process'
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { frontDir, settle, settleFront } from '@term/call/code/home'
 import { GITIGNORE } from '@term/call/code/wake-text'
+import { tempDir } from '../temp'
 
 const LINE = join(import.meta.dirname, '..', '..', 'host', 'line.js')
 
@@ -32,7 +32,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 function scratch(): string {
-  return mkdtempSync(join(tmpdir(), 'term-home-move-'))
+  return tempDir('term-home-move-')
 }
 
 // the block `term wake` wrote before 2026-10-05

@@ -5,10 +5,10 @@
 // Run: npx tsx test/call/make-env.ts   (MAKE_ENV_ONLY=node, rust, swift or kotlin runs one)
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -30,7 +30,7 @@ const have = (tool: string): boolean => spawnSync('which', [tool], { encoding: '
 
 // a project of two programs and a library one of them loads, and with `broken` a third program that does not check
 function project(broken: boolean): string {
-  const root = mkdtempSync(join(tmpdir(), 'term-make-env-'))
+  const root = tempDir('term-make-env-')
   mkdirSync(join(root, 'code/tool'), { recursive: true })
   writeFileSync(join(root, 'deck.tree'), 'deck @probe/make-env\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\n')
   writeFileSync(join(root, 'code/twice.tree'), 'task twice\n  take n, like number\n  like number\n  back multiply(n, 2)\n')
@@ -58,7 +58,7 @@ const only = process.env.MAKE_ENV_ONLY ?? ''
   const wrong = term(root, 'make', '--env', 'cobol')
   ok('an unknown backend is a usage error, naming the backends', wrong.status === 2 && /rust, swift, kotlin, node/.test(wrong.stderr), `${wrong.status} ${wrong.stderr}`)
 
-  const empty = mkdtempSync(join(tmpdir(), 'term-make-env-'))
+  const empty = tempDir('term-make-env-')
   mkdirSync(join(empty, 'code'))
   writeFileSync(join(empty, 'deck.tree'), 'deck @probe/make-env-empty\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\n')
   writeFileSync(join(empty, 'code/twice.tree'), 'task twice\n  take n, like number\n  like number\n  back multiply(n, 2)\n')

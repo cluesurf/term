@@ -553,7 +553,8 @@ task link-packages
           works/push(tick install-settled(one, seed-dir, config))
           save at, add(at, 1)
       # the failure that came first in time, as `Promise.all` raised it, once the chunk has settled
-      save first, make none
+      save first, like maybe, like settled-install
+        make none
       walk works
         take work
         save done, work/wait()

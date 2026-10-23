@@ -5,10 +5,10 @@
 // Run: npx tsx test/call/emit-llvm-wasm.ts
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -37,7 +37,7 @@ const triple = /^host: (.+)$/m.exec(spawnSync('rustc', ['--version', '--verbose'
 const hasLlc = existsSync(join(sysroot, 'lib', 'rustlib', triple, 'bin', 'llc'))
 const hasWasi = existsSync(join(sysroot, 'lib', 'rustlib', 'wasm32-wasip1', 'lib'))
 
-const project = mkdtempSync(join(tmpdir(), 'term-emit-llvm-'))
+const project = tempDir('term-emit-llvm-')
 mkdirSync(join(project, 'code'))
 writeFileSync(join(project, 'deck.tree'), 'deck @probe/emit-llvm\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\n')
 

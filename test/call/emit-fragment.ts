@@ -4,10 +4,10 @@
 // Run: npx tsx test/call/emit-fragment.ts
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -23,7 +23,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 const LINE = join(dirname(fileURLToPath(import.meta.url)), '../../host/line.js')
-const project = mkdtempSync(join(tmpdir(), 'term-emit-fragment-'))
+const project = tempDir('term-emit-fragment-')
 mkdirSync(join(project, 'code'))
 writeFileSync(join(project, 'deck.tree'), 'deck @probe/emit-fragment\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\n')
 

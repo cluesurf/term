@@ -6,8 +6,7 @@
 // struct-fuzz.tree and coverage-fuzz.tree, each defining `draw-under` (2026-10-05).
 // Run: npx tsx test/check/lean-label-unknown-callee.ts
 
-import { mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { transformSync } from 'esbuild'
@@ -15,6 +14,7 @@ import { compile } from '@term/make/code/compile/compile'
 import type { Source } from '@term/make/code/compile/load'
 import { stdlibResolver } from '@term/make/code/resolve'
 import { withNativeEnv } from '@term/make/code/compile/native'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -89,7 +89,7 @@ ok('a task two modules define, written under `get`, is a nested call', built.ok,
 
 if (built.ok) {
   // each file reaches its own pick-index: a's is the last index, b's the first, so 6 + 4
-  const dir = mkdtempSync(join(tmpdir(), 'term-lean-label-'))
+  const dir = tempDir('term-lean-label-')
   const file = join(dir, 'module.mjs')
   writeFileSync(file, transformSync(built.typescript, { loader: 'ts', format: 'esm' }).code)
   const mod = (await import(pathToFileURL(file).href)) as { run: () => number }

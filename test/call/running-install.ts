@@ -11,11 +11,11 @@
 // Run: npx tsx test/call/running-install.ts      (from deck/term/deck/term)
 
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { buildSync } from 'esbuild'
+import { tempDir } from '../temp'
 
 const TERM = realpathSync(process.cwd())
 const PORT = join(TERM, 'deck/call/host/port/code/work/need/running-install.ts')
@@ -30,7 +30,7 @@ console.log(JSON.stringify({ root, cli, again: findInstallRoot() }))
 `
 
 function fresh(): string {
-  return realpathSync(mkdtempSync(join(tmpdir(), 'running-install-')))
+  return realpathSync(tempDir('running-install-'))
 }
 
 // the probe bundled with the port into one ESM file

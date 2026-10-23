@@ -5,10 +5,10 @@
 // Run: npx tsx test/call/page-status.ts (after `pnpm run make:line`)
 
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const LINE = process.env.TERM_LINE ?? join(HERE, '../../host/line.js')
@@ -104,7 +104,7 @@ async function serve(
 }
 
 function project(name: string, entry: string, text: string): string {
-  const dir = mkdtempSync(join(tmpdir(), `term-${name}-`))
+  const dir = tempDir(`term-${name}-`)
   mkdirSync(join(dir, 'code'))
   writeFileSync(join(dir, 'deck.tree'), `deck ${name}\n  mark <0.0.1>\n`)
   writeFileSync(join(dir, entry), text)

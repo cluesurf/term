@@ -7,6 +7,7 @@ note <the proof protocol: a document's goals, hammered and folded back, and the 
 load ../code/proof-view
   find proof-document
   find proof-state
+  find proof-state-view
   find proof-hammer
   find render-info-view
 
@@ -81,7 +82,7 @@ task max-document
       bind goals, make list(goal-of(<verify>, <max-correct>, max-body), goal-of(<verify>, <first-is-max>, variable-at(0)), goal-of(<synthesize>, <find-max>, constant-of(0)))
 
 task status-of
-  take view, like dynamic
+  take view, like proof-state-view
   take name, like text
   like text
 

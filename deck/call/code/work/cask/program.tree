@@ -371,7 +371,10 @@ task class-files
   like void
   mark private
 
-  walk node-fs/readdir-sync(dir)
+  # the directory's names the host answers (seam decision 004)
+  save names, like list, like dynamic
+    node-fs/readdir-sync(dir)
+  walk names
     take name, like text
     save full, node-path/join(dir, name)
     save stat, node-fs/stat-sync(full)

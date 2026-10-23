@@ -7,9 +7,9 @@
 // exit, the diagnostic on stderr, and no file written.
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 
 const TERM = process.cwd()
 const LINE = join(TERM, 'host/line.js')
@@ -34,7 +34,7 @@ function skip(name: string, why: string): void {
 
 const have = (tool: string): boolean => spawnSync('which', [tool]).status === 0
 
-const dir = mkdtempSync(join(tmpdir(), 'term-emit-'))
+const dir = tempDir('term-emit-')
 mkdirSync(join(dir, 'code'), { recursive: true })
 
 // a stdlib import, so the closure and the native env rewrite are exercised, not only the entry file

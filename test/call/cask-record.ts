@@ -9,11 +9,11 @@ import { compile } from '@term/make/code/compile/compile'
 import { projectResolver } from '@term/call/code/make'
 import { generateBridge } from '@term/call/code/cask-generate'
 import { nativePrelude } from '@term/make/code/compile/native'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { transformSync } from 'esbuild'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -87,7 +87,7 @@ ok('the converters compile', result.ok, result.ok ? '' : result.diagnostics.slic
 if (result.ok) {
   const prelude = nativePrelude(result.program, 'node', path => (existsSync(path) ? readFileSync(path, 'utf8') : undefined))
   const js = transformSync(`${prelude}\n${result.typescript}`, { loader: 'ts', format: 'esm' }).code
-  const out = join(mkdtempSync(join(tmpdir(), 'term-cask-record-')), 'record.mjs')
+  const out = join(tempDir('term-cask-record-'), 'record.mjs')
   writeFileSync(out, js)
   const mod = await import(pathToFileURL(out).href)
 

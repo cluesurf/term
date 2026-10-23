@@ -8,12 +8,12 @@
 // Run: npx tsx test/call/update-app-android.ts
 
 import { spawn, spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { androidDevice, androidTools, assembleApk, buildAndroidProgram, buildPage, caskAndroidDriver, stampRuntimeVersion } from '@term/call/code/cask'
 import { publishUpdate, stampUpdateKey } from '@term/call/code/update'
 import { holdDeviceSync } from '../compile/shared/device-hold'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -39,7 +39,7 @@ if ('missing' in found) {
 const TERM = process.cwd()
 const CASK = join(TERM, 'deck/cask')
 const APP = join(CASK, 'test/update')
-const dir = mkdtempSync(join(tmpdir(), 'term-update-android-'))
+const dir = tempDir('term-update-android-')
 const identifier = 'surf.term.updateandroid'
 const keyFile = join(dir, 'key.pem')
 const served = join(dir, 'served')

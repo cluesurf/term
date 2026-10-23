@@ -36,6 +36,8 @@ import { applyStreamEvent, MessageRequestError, streamMessage } from '../../../.
 import type { StreamedMessage } from '../../../../../make/code/code/api-client'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
+// each folder under tmp/knit-test is removed when the test ends (term-cli-in-term-0177)
+import { removeAtExit } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -172,7 +174,7 @@ ok('an empty path may not', !codePath('/p', '').ok)
 
 const root = packageRoot()
 mkdirSync(join(root, 'tmp/knit-test'), { recursive: true })
-const lawDir = mkdtempSync(join(root, 'tmp/knit-test', 'law-'))
+const lawDir = removeAtExit(mkdtempSync(join(root, 'tmp/knit-test', 'law-')))
 const library = libraryNames(root)
 ok('the library holds the three state laws of the MVP', ['deleted-stays-gone', 'isolation', 'ownership'].every(name => library.includes(name)), library.join(','))
 const isoLaw = libraryLaw(root, 'isolation')!
@@ -400,7 +402,7 @@ const base = { root, spec: 'only the owner of a note, or an admin, can delete it
 
 if (existsSync(line)) {
   const seen: unknown[][] = []
-  const out = mkdtempSync(join(workDir, 'loop-'))
+  const out = removeAtExit(mkdtempSync(join(workDir, 'loop-')))
   // with --lean where Lean 4 is installed (TERM_LEAN, else the PATH): Lean re-checks the two laws
   const run = await knitLoop(
     { ...base, lean: hasLean, name: 'scripted', out, limits: { rounds: 5, turns: 6, minutes: 10, cap: 25 } },
@@ -452,7 +454,7 @@ if (existsSync(line)) {
 
   // the cap, with answers too dear to afford a second
   const dear = await knitLoop(
-    { ...base, name: 'dear', out: mkdtempSync(join(workDir, 'dear-')), limits: { rounds: 50, turns: 50, minutes: 10, cap: 1 } },
+    { ...base, name: 'dear', out: removeAtExit(mkdtempSync(join(workDir, 'dear-'))), limits: { rounds: 50, turns: 50, minutes: 10, cap: 1 } },
     scripted([turnOf([use('laws')], { input_tokens: 100_000, output_tokens: 20_000 })]),
   )
   ok('the cap stops a run before a request that could pass it, and the run spent no more than the cap', dear.result.stop.startsWith('Stopped at the spend cap') && dear.result.spend.dollars <= 1, `${dear.result.stop} ${dear.result.spend.dollars}`)
@@ -460,7 +462,7 @@ if (existsSync(line)) {
   // a stream that broke partway: its billed usage counts at the ceiling, and the request is asked again
   let brokeOnce = false
   const flaky = await knitLoop(
-    { ...base, name: 'flaky', out: mkdtempSync(join(workDir, 'flaky-')), limits: { rounds: 5, turns: 2, minutes: 10, cap: 25 } },
+    { ...base, name: 'flaky', out: removeAtExit(mkdtempSync(join(workDir, 'flaky-'))), limits: { rounds: 5, turns: 2, minutes: 10, cap: 25 } },
     {
       model: 'claude-opus-5-5',
       async ask() {
@@ -477,13 +479,13 @@ if (existsSync(line)) {
 
   // a model that never calls a tool is nudged, and the turn limit ends it
   const idle = await knitLoop(
-    { ...base, name: 'idle', out: mkdtempSync(join(workDir, 'idle-')), limits: { rounds: 5, turns: 3, minutes: 10, cap: 25 } },
+    { ...base, name: 'idle', out: removeAtExit(mkdtempSync(join(workDir, 'idle-'))), limits: { rounds: 5, turns: 3, minutes: 10, cap: 25 } },
     scripted([turnOf([{ type: 'text', text: 'thinking aloud' }], undefined, 'end_turn')]),
   )
   ok('a model that writes nothing is nudged and stopped at the turn limit', idle.result.turns === 3 && /3 requests/.test(idle.result.stop) && idle.messages.filter(m => m.role === 'user').length === 4)
 
   // an answer cut off at max_tokens: its calls are answered as not run
-  const cutOut = mkdtempSync(join(workDir, 'cut-'))
+  const cutOut = removeAtExit(mkdtempSync(join(workDir, 'cut-')))
   const cut = await knitLoop(
     { ...base, name: 'cut', out: cutOut, limits: { rounds: 5, turns: 1, minutes: 10, cap: 25 } },
     scripted([turnOf([use('write_file', { path: 'code/law.tree', content: 'task x' })], undefined, 'max_tokens')]),

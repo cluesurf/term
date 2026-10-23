@@ -13,10 +13,10 @@
 // macOS only (swiftc and the Security framework). Run: npx tsx test/call/update.ts
 
 import { execFileSync, spawnSync } from 'node:child_process'
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { publishUpdate, signManifest, stampUpdateKey, updateKey } from '@term/call/code/update'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -38,7 +38,7 @@ if (process.platform !== 'darwin') {
 }
 
 const TERM = process.cwd()
-const dir = mkdtempSync(join(tmpdir(), 'term-update-'))
+const dir = tempDir('term-update-')
 const keyFile = join(dir, 'key.pem')
 const identifier = 'surf.term.update-test'
 const VERSION = 'a'.repeat(64)

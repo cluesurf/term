@@ -5,11 +5,11 @@
 // carries `trim`, not the text module's other tasks.
 // Run: npx tsx test/call/boot-shake.ts
 
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { callBoot } from '@term/call/code/boot'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -24,7 +24,7 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const root = realpathSync(mkdtempSync(join(tmpdir(), 'boot-shake-')))
+const root = realpathSync(tempDir('boot-shake-'))
 mkdirSync(join(root, 'code'), { recursive: true })
 writeFileSync(join(root, 'deck.tree'), `deck @probe/shake\n  mark <0.0.2>\n  link @term/base, mark <0.0.x>\n`)
 

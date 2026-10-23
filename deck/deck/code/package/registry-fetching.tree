@@ -55,7 +55,8 @@ host default-registry, <https://registry.npmjs.org>
 
 host cache-ttl-ms, 300000
 
-host meta-cache, make hash
+host meta-cache, like hash, like text, like cached-meta
+  make hash
 
 bind fetching-routes-of
   take config, like fetch-config

@@ -5,9 +5,9 @@
 // Run: npx tsx test/call/test-case.ts
 
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -26,7 +26,7 @@ const line = join(process.cwd(), 'host', 'line.js')
 
 // a project whose only file is one control, built and tested
 function control(text: string): { code: number | null; out: string } {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'test-case-')))
+  const root = realpathSync(tempDir('test-case-'))
   mkdirSync(join(root, 'code'), { recursive: true })
   mkdirSync(join(root, 'test', 'case'), { recursive: true })
   writeFileSync(join(root, 'deck.tree'), `deck @probe/case\n  mark <0.0.1>\n`)

@@ -5,10 +5,10 @@
 // Run: npx tsx test/call/cast.ts (after `pnpm run make:line`)
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { tempDir } from '../temp'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const LINE = process.env.TERM_LINE ?? join(HERE, '../../host/line.js')
@@ -28,7 +28,7 @@ function ok(name: string, good: boolean, detail = ''): void {
 
 // the page application on commands/cast, with the last line of `boot` as given
 function project(last: string): string {
-  const root = mkdtempSync(join(tmpdir(), 'term-cast-'))
+  const root = tempDir('term-cast-')
   mkdirSync(join(root, 'code'))
   writeFileSync(join(root, 'deck.tree'), 'deck shop\n  mark <0.0.1>\n  boot ./code/boot\n')
   writeFileSync(

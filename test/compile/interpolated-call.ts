@@ -5,8 +5,7 @@
 // AND run, beside a field path in an interpolation, which must still read the field.
 // Run: npx tsx test/compile/interpolated-call.ts
 
-import { mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { transformSync } from 'esbuild'
@@ -14,6 +13,7 @@ import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
 import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
 import { existsSync, readFileSync } from 'node:fs'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -56,7 +56,7 @@ if (!built.ok) {
   ok('the program builds', false, built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
 } else {
   const prelude = nativePrelude(built.program, 'node', path => (existsSync(path) ? readFileSync(path, 'utf8') : undefined))
-  const dir = mkdtempSync(join(tmpdir(), 'term-interpolated-call-'))
+  const dir = tempDir('term-interpolated-call-')
   const file = join(dir, 'module.mjs')
   writeFileSync(file, transformSync(`${prelude}\n${built.typescript}`, { loader: 'ts', format: 'esm' }).code)
   const mod = (await import(pathToFileURL(file).href)) as { shown: () => string; field: () => string }

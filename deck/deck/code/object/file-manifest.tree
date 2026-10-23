@@ -331,8 +331,13 @@ task cut-shard
   mark private
 
   save text, emit-manifest(make(hold-manifest, bind(package, deck-name), bind(ref, ref), bind(hash, hash), bind(files, run)))
-  save foot, get(run, 0)/path
-  save head, get(run, subtract(run/length, 1))/path
+  # the run's first and last entries, host file records (seam decision 004)
+  save first, like dynamic
+    get(run, 0)
+  save last, like dynamic
+    get(run, subtract(run/length, 1))
+  save foot, first/path
+  save head, last/path
   back make(manifest-shard, bind(hash, hash-object-text(<tree>, text)), bind(foot, foot), bind(head, head), bind(size, run/length), bind(text, text))
 
 # a tag's value on a line: the empty text for the bare tag, the rest after `tag ` with one `<...>` taken off, else none

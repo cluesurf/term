@@ -190,7 +190,10 @@ task resolve-ref
   fork test, is-equal(ref/kind, <version>)
     hold
       save wanted, ref/version
-      walk refs/versions
+      # the version records the host's JSON answers (seam decision 004)
+      save versions, like list, like dynamic
+        refs/versions
+      walk versions
         take one
         fork test, is-equal(one/version, wanted)
           hold
@@ -198,7 +201,10 @@ task resolve-ref
       halt <no such version {package-name}@{wanted}>
 
   save wanted, ref/branch
-  walk refs/branches
+  # the branch records the host's JSON answers (seam decision 004)
+  save branches, like list, like dynamic
+    refs/branches
+  walk branches
     take one
     fork test, is-equal(one/branch, wanted)
       hold

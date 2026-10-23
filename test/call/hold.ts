@@ -3,11 +3,11 @@
 //
 // Each refusal sits beside the project that holds, so a gate that refused everything would fail here.
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { holdProject } from '@term/call/code/hold'
 import { findTreeFiles } from '@term/call/code/make'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -23,7 +23,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 function project(files: Record<string, string>): string {
-  const root = mkdtempSync(join(tmpdir(), 'term-hold-'))
+  const root = tempDir('term-hold-')
 
   for (const [name, text] of Object.entries(files)) {
     mkdirSync(join(root, 'code'), { recursive: true })

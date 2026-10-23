@@ -16,9 +16,9 @@
 // Run: npx tsx test/call/bad-input.ts
 
 import { execFileSync } from 'node:child_process'
-import { readFileSync, mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { tempDir } from '../temp'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
@@ -60,7 +60,7 @@ function ok(name: string, good: boolean, detail = ''): void {
 }
 
 // an empty directory: no deck.tree, no .tree files, nothing. The ordinary way to be in the wrong place.
-const empty = mkdtempSync(join(tmpdir(), 'term-bad-'))
+const empty = tempDir('term-bad-')
 
 for (const verb of verbs()) {
   let out = ''

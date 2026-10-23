@@ -23,10 +23,10 @@
 // Run: npx tsx test/call/deck-verbs.ts
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseManifest } from '../../deck/deck/code/package/manifest'
+import { tempDir } from '../temp'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
@@ -45,7 +45,7 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const box = mkdtempSync(join(tmpdir(), 'term-deck-verbs-'))
+const box = tempDir('term-deck-verbs-')
 const home = join(box, 'home')
 
 mkdirSync(home, { recursive: true })

@@ -16,10 +16,10 @@
 //
 // Run: npx tsx test/call/files.ts
 
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { collectTreeFiles } from '@term/call/code/files'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -34,7 +34,7 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const root = mkdtempSync(join(tmpdir(), 'term-files-'))
+const root = tempDir('term-files-')
 
 const put = (name: string, text = 'task probe\n  like number\n  send back, code 1\n'): void => {
   const full = join(root, name)
@@ -157,7 +157,7 @@ ok(
 {
   const { projectRoleOf } = await import('@term/call/code/role-of')
 
-  const roleRoot = mkdtempSync(join(tmpdir(), 'term-role-'))
+  const roleRoot = tempDir('term-role-')
   const write = (name: string, text: string): void => {
     mkdirSync(dirname(join(roleRoot, name)), { recursive: true })
     writeFileSync(join(roleRoot, name), text)
@@ -183,7 +183,7 @@ ok(
   )
 
   // a manifest that names a DIRECTORY resolves `<dir>/base.tree`, which is what `role ./role` meant all along
-  const declared = mkdtempSync(join(tmpdir(), 'term-role-declared-'))
+  const declared = tempDir('term-role-declared-')
   const put2 = (name: string, text: string): void => {
     mkdirSync(dirname(join(declared, name)), { recursive: true })
     writeFileSync(join(declared, name), text)
@@ -213,7 +213,7 @@ ok(
 {
   const { projectRoleOf } = await import('@term/call/code/role-of')
 
-  const outer = mkdtempSync(join(tmpdir(), 'term-pkg-role-'))
+  const outer = tempDir('term-pkg-role-')
   const add = (name: string, text: string): void => {
     mkdirSync(dirname(join(outer, name)), { recursive: true })
     writeFileSync(join(outer, name), text)

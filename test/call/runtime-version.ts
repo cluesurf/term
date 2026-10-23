@@ -2,11 +2,11 @@
 // same for the same native half, whatever order the sources arrive in, and different the moment anything that decides
 // compatibility differs: one byte of a source, the target, the minimum OS, the toolchain. Length framing must keep
 // two different splits of the same bytes apart. Run: npx tsx test/call/runtime-version.ts
-import { mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { runtimeVersion, toneOf, toolchainOf } from '@term/call/code/runtime-version'
 import { stampRuntimeVersion } from '@term/call/code/cask'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -76,7 +76,7 @@ ok('a toolchain line is never empty', line.length > 0, line)
 // what `term make --target` writes into the app: the hex, one line, in a file named `runtime-version`, and the same
 // native half stamps the same version every time
 {
-  const into = mkdtempSync(join(tmpdir(), 'term-runtime-version-'))
+  const into = tempDir('term-runtime-version-')
   const first = stampRuntimeVersion({ target: 'android', native: 'class Program {}\n', into })
   const written = readFileSync(join(into, 'runtime-version'), 'utf8')
   ok('the build writes the hex into the app', written === `${first.hex}\n`, JSON.stringify(written))

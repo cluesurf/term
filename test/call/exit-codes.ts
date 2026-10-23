@@ -5,9 +5,9 @@
 // Run: npx tsx test/call/exit-codes.ts (after `pnpm run make:line`)
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { tempDir } from '../temp'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 // TERM_LINE points at another bundle, so a change can be tried without replacing the CLI a running gate uses
@@ -33,7 +33,7 @@ function term(cwd: string, ...args: string[]): { status: number | null; out: str
 }
 
 // a project with one benchmark and one test file, which is what `term time` walks
-const project = mkdtempSync(join(tmpdir(), 'term-exit-codes-'))
+const project = tempDir('term-exit-codes-')
 mkdirSync(join(project, 'code'))
 mkdirSync(join(project, 'test'))
 writeFileSync(join(project, 'deck.tree'), 'deck @probe/exit\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\n')
@@ -61,13 +61,13 @@ writeFileSync(
 
 // ---- commands/show: outside a project ----
 {
-  const empty = mkdtempSync(join(tmpdir(), 'term-exit-empty-'))
+  const empty = tempDir('term-exit-empty-')
   const run = term(empty, 'show', 'mark')
 
   ok('`term show mark` outside a project exits non-zero', run.status !== 0, run.out)
 
   // from the project's own `code/` folder, the nearest deck.tree above it
-  const shown = mkdtempSync(join(tmpdir(), 'term-show-'))
+  const shown = tempDir('term-show-')
   mkdirSync(join(shown, 'code'))
   writeFileSync(join(shown, 'deck.tree'), 'deck @probe/show\n  mark <0.0.2>\n')
 
@@ -98,7 +98,7 @@ writeFileSync(
 
   ok('`term show nope` is refused, exit 2', unknown.status === 2 && /nothing named nope to show/.test(unknown.out), unknown.out)
 
-  const broken = mkdtempSync(join(tmpdir(), 'term-show-broken-'))
+  const broken = tempDir('term-show-broken-')
   writeFileSync(join(broken, 'deck.tree'), 'deck @probe/broken\n  mark <not a version>\n')
 
   const unread = term(broken, 'show', 'mark')
@@ -187,7 +187,7 @@ writeFileSync(
 
 // ---- commands/test, tests/writing: a failing test says which `want` failed ----
 {
-  const tests = mkdtempSync(join(tmpdir(), 'term-want-'))
+  const tests = tempDir('term-want-')
   mkdirSync(join(tests, 'test'))
   writeFileSync(join(tests, 'deck.tree'), 'deck @probe/want\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\n')
   writeFileSync(
@@ -225,7 +225,7 @@ test <double of zero is zero>
 
 // ---- tests/writing: a `want` over `and(...)` names the part that did not hold, and that part's two values ----
 {
-  const tests = mkdtempSync(join(tmpdir(), 'term-want-and-'))
+  const tests = tempDir('term-want-and-')
   mkdirSync(join(tests, 'test'))
   writeFileSync(join(tests, 'deck.tree'), 'deck @probe/want-and\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\n')
   writeFileSync(
@@ -286,7 +286,7 @@ test <a stacked and of ands holds>
 
 // ---- parsers/grammars: a grammar builds and rolls as its reader, and a miss says where and what ----
 {
-  const grammar = mkdtempSync(join(tmpdir(), 'term-grammar-'))
+  const grammar = tempDir('term-grammar-')
   mkdirSync(join(grammar, 'code/version'), { recursive: true })
   writeFileSync(join(grammar, 'deck.tree'), 'deck @probe/grammar\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\nlink @term/mill, mark <0.0.x>\n')
   writeFileSync(
@@ -335,7 +335,7 @@ try {
 
 // ---- a `mine.tree` under the `mill` role is a mill grammar, checked as itself, never read as a feed grammar ----
 {
-  const mills = mkdtempSync(join(tmpdir(), 'term-mill-'))
+  const mills = tempDir('term-mill-')
   mkdirSync(join(mills, 'code/text'), { recursive: true })
   writeFileSync(join(mills, 'deck.tree'), 'deck @probe/mill\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\n')
   writeFileSync(join(mills, 'role.tree'), 'role mill\n  take @/code/**/*.tree\n')
@@ -362,7 +362,7 @@ mine text-def
 
 // ---- packages/versions: `term move mark rc` starts and moves a pre-release, and a bad level is refused ----
 {
-  const moved = mkdtempSync(join(tmpdir(), 'term-move-'))
+  const moved = tempDir('term-move-')
   writeFileSync(join(moved, 'deck.tree'), 'deck @probe/move\n  mark <1.4.2>\n')
 
   const versions = ['rc', 'rc', '3'].map(level => {
@@ -380,7 +380,7 @@ mine text-def
 
 // ---- packages/versions: `term save` takes the versions a link accepts ----
 {
-  const saved = mkdtempSync(join(tmpdir(), 'term-save-'))
+  const saved = tempDir('term-save-')
   writeFileSync(join(saved, 'deck.tree'), 'deck @probe/save\n  mark <0.0.1>\n')
 
   // the install after it has no registry to reach here, so only the manifest is read
@@ -396,7 +396,7 @@ mine text-def
 
 // ---- commands/wake: a file already in the folder is kept ----
 {
-  const woken = mkdtempSync(join(tmpdir(), 'term-wake-'))
+  const woken = tempDir('term-wake-')
   writeFileSync(join(woken, 'readme.md'), '# mine\n')
   writeFileSync(join(woken, '.gitignore'), 'secrets\n')
 
@@ -408,7 +408,7 @@ mine text-def
 
 // ---- commands/wash: `-h` is help, and a folder that is no project is left alone ----
 {
-  const loose = mkdtempSync(join(tmpdir(), 'term-wash-'))
+  const loose = tempDir('term-wash-')
   mkdirSync(join(loose, 'make'))
   writeFileSync(join(loose, 'make/notes.txt'), 'mine\n')
 
@@ -427,7 +427,7 @@ mine text-def
 
 // ---- commands/view: with no path, the documents are what role.tree gives the view role ----
 {
-  const viewed = mkdtempSync(join(tmpdir(), 'term-view-'))
+  const viewed = tempDir('term-view-')
   mkdirSync(join(viewed, 'code'))
   mkdirSync(join(viewed, 'page'))
   writeFileSync(join(viewed, 'deck.tree'), 'deck @probe/view\n  mark <0.0.1>\n')
@@ -494,7 +494,7 @@ view page
 
 // ---- commands/mind: a replaced fact, forgetting one, and the memory kept by git ----
 {
-  const minded = mkdtempSync(join(tmpdir(), 'term-mind-'))
+  const minded = tempDir('term-mind-')
   writeFileSync(join(minded, 'deck.tree'), 'deck @probe/mind\n  mark <0.0.1>\n')
 
   term(minded, 'mind', 'Ratios use integer division', '--name', 'integer-ratio', '--kind', 'decision')
@@ -516,7 +516,7 @@ view page
   ok('a refused `--kind` is one readable item, exit 2', kind.status === 2 && !kind.out.includes('␊') && /wish/.test(kind.out), kind.out)
 
   // the scaffold's .gitignore keeps the memory and ignores the rest of .base/
-  const woken = mkdtempSync(join(tmpdir(), 'term-mind-git-'))
+  const woken = tempDir('term-mind-git-')
   term(woken, 'wake')
   spawnSync('git', ['-C', woken, 'init', '-q'])
   const ignored = (file: string): boolean => spawnSync('git', ['-C', woken, 'check-ignore', '-q', file]).status === 0
@@ -526,7 +526,7 @@ view page
 
 // ---- packages/decks: a deck under the project's own deck/ folder is linked by `term load` ----
 {
-  const local = mkdtempSync(join(tmpdir(), 'term-local-deck-'))
+  const local = tempDir('term-local-deck-')
   mkdirSync(join(local, 'code'))
   mkdirSync(join(local, 'deck/tools/code'), { recursive: true })
   writeFileSync(join(local, 'deck.tree'), 'deck @probe/app\n  mark <0.0.1>\n  link @alice/tools, mark <1.x.x>\n')
@@ -575,7 +575,7 @@ view page
 
 // ---- packages/install: a load of a deck that is not installed is refused at the load ----
 {
-  const missing = mkdtempSync(join(tmpdir(), 'term-missing-deck-'))
+  const missing = tempDir('term-missing-deck-')
   mkdirSync(join(missing, 'code'))
   writeFileSync(join(missing, 'deck.tree'), 'deck @probe/app\n  mark <0.0.1>\n  link @alice/tools, mark <1.x.x>\n')
   writeFileSync(join(missing, 'code/base.tree'), 'load @alice/tools/stars\n  find stars\n\ntask boot\n  like number\n  send back, stars()\n')
@@ -587,7 +587,7 @@ view page
 
 // ---- packages/install: a `link/` entry that points nowhere does not stop the walk ----
 {
-  const dangling = mkdtempSync(join(tmpdir(), 'term-dangling-'))
+  const dangling = tempDir('term-dangling-')
   mkdirSync(join(dangling, 'code'))
   mkdirSync(join(dangling, 'link/@alice'), { recursive: true })
   writeFileSync(join(dangling, 'deck.tree'), 'deck @probe/app\n  mark <0.0.1>\n')
@@ -601,7 +601,7 @@ view page
 
 // ---- commands/hunt: a test file is rewritten before it is hunted, so it compiles ----
 {
-  const hunted = mkdtempSync(join(tmpdir(), 'term-hunt-'))
+  const hunted = tempDir('term-hunt-')
   mkdirSync(join(hunted, 'code'))
   mkdirSync(join(hunted, 'test'))
   writeFileSync(join(hunted, 'deck.tree'), 'deck @probe/hunt\n  mark <0.0.1>\n')
@@ -615,7 +615,7 @@ view page
 
 // ---- commands/test: a file of laws alone is counted as checked proofs, not as a test ----
 {
-  const lawful = mkdtempSync(join(tmpdir(), 'term-laws-'))
+  const lawful = tempDir('term-laws-')
   mkdirSync(join(lawful, 'test'))
   writeFileSync(join(lawful, 'deck.tree'), 'deck @probe/laws\n  mark <0.0.1>\n')
   writeFileSync(join(lawful, 'test/one.tree'), 'test <one>\n  want hold\n    call is-equal\n      code 1\n      code 1\n')
@@ -641,7 +641,7 @@ view page
 
 // ---- commands/walk: the session reads the project it was started in ----
 {
-  const walked = mkdtempSync(join(tmpdir(), 'term-walk-'))
+  const walked = tempDir('term-walk-')
   mkdirSync(join(walked, 'code'))
   writeFileSync(join(walked, 'deck.tree'), 'deck @probe/walk\n  mark <0.0.1>\n')
   writeFileSync(join(walked, 'code/count.tree'), 'task triple\n  take n, like number\n  like number\n  send back, multiply(n, 3)\n')
@@ -660,7 +660,7 @@ view page
 
 // ---- commands/scan: a file is read the way `term make` reads it ----
 {
-  const scanned = mkdtempSync(join(tmpdir(), 'term-scan-'))
+  const scanned = tempDir('term-scan-')
   mkdirSync(join(scanned, 'code'))
   writeFileSync(join(scanned, 'deck.tree'), 'deck @probe/scan\n  mark <0.0.1>\n')
   writeFileSync(join(scanned, 'role.tree'), 'role code\n  mark lean\n  take @/code/**/*.tree\n')
@@ -695,7 +695,7 @@ view page
 
 // ---- packages/manifest: a field no tool reads is warned about ----
 {
-  const inert = mkdtempSync(join(tmpdir(), 'term-inert-'))
+  const inert = tempDir('term-inert-')
   mkdirSync(join(inert, 'code'))
   writeFileSync(join(inert, 'deck.tree'), 'deck @probe/inert\n  mark <0.0.1>\n  test ./test\n  book ./note\n')
   writeFileSync(join(inert, 'code/base.tree'), 'task one\n  like number\n  send back, 1\n')
@@ -704,7 +704,7 @@ view page
 
   ok('`term lint` warns on `test` and `book` in a manifest, at their lines', /`test` in a manifest is read by nothing/.test(linted.out) && /`book` in a manifest is read by nothing/.test(linted.out) && /deck\.tree:3/.test(linted.out), linted.out)
 
-  const fresh = mkdtempSync(join(tmpdir(), 'term-inert-wake-'))
+  const fresh = tempDir('term-inert-wake-')
   term(fresh, 'wake')
 
   ok('and a new project has none', !/manifest-inert|read by nothing/.test(term(fresh, 'lint').out), readFileSync(join(fresh, 'deck.tree'), 'utf8'))
@@ -712,7 +712,7 @@ view page
 
 // ---- tests/backends: `term hold --cross` ----
 {
-  const crossed = mkdtempSync(join(tmpdir(), 'term-cross-'))
+  const crossed = tempDir('term-cross-')
   mkdirSync(join(crossed, 'code'))
   mkdirSync(join(crossed, 'test'))
   writeFileSync(join(crossed, 'deck.tree'), 'deck @probe/cross\n  mark <0.0.1>\n')
@@ -732,7 +732,7 @@ view page
 
 // ---- commands/wash: `boot` and `store` targets ----
 {
-  const washed = mkdtempSync(join(tmpdir(), 'term-wash-boot-'))
+  const washed = tempDir('term-wash-boot-')
   writeFileSync(join(washed, 'deck.tree'), 'deck demo\n  mark <0.0.1>\n')
 
   for (const dir of ['.base/@term/code/boot/x', '.base/@term/code/client/y', 'build', 'work', 'host']) {
@@ -748,11 +748,11 @@ view page
   )
 
   // the machine-wide store, pointed somewhere harmless: its module cache goes, the installed decks beside it stay
-  const home = mkdtempSync(join(tmpdir(), 'term-wash-store-'))
+  const home = tempDir('term-wash-store-')
   mkdirSync(join(home, 'mill/v1'), { recursive: true })
   mkdirSync(join(home, 'blobs'))
   writeFileSync(join(home, 'index.json'), '{}')
-  const nowhere = mkdtempSync(join(tmpdir(), 'term-wash-anywhere-'))
+  const nowhere = tempDir('term-wash-anywhere-')
   const run = spawnSync('node', [LINE, 'wash', 'store'], { cwd: nowhere, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1', TERM_CACHE_HOME: home } })
   const out = `${run.stdout}${run.stderr}`
 
@@ -765,7 +765,7 @@ view page
 
 // ---- commands/look: a module that does not compile is listed, and says so ----
 {
-  const looked = mkdtempSync(join(tmpdir(), 'term-look-broken-'))
+  const looked = tempDir('term-look-broken-')
   mkdirSync(join(looked, 'code'))
   writeFileSync(join(looked, 'deck.tree'), 'deck demo\n  mark <0.0.1>\n')
   writeFileSync(join(looked, 'code/broken.tree'), 'task half\n  take n, like number\n\n  like number\n\n  back <not a number>\n')
@@ -777,7 +777,7 @@ view page
 
 // ---- library/collections: `term boot` after a list read past its end stops the program ----
 {
-  const stopped = mkdtempSync(join(tmpdir(), 'term-boot-stop-'))
+  const stopped = tempDir('term-boot-stop-')
   mkdirSync(join(stopped, 'code'))
   writeFileSync(join(stopped, 'deck.tree'), 'deck @probe/stop\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\n')
   writeFileSync(
@@ -818,7 +818,7 @@ task boot
 // the server shim imported `node:http` as `http` and the client shim declared `const http`, both prepended, so a
 // program loading `network/server` and `network/http` declared `http` twice (2026-10-04)
 {
-  const both = mkdtempSync(join(tmpdir(), 'term-serve-fetch-'))
+  const both = tempDir('term-serve-fetch-')
   mkdirSync(join(both, 'code'))
   writeFileSync(join(both, 'deck.tree'), 'deck probe\n  mark <0.0.1>\n')
   writeFileSync(

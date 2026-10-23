@@ -718,13 +718,17 @@ task analyze-now
 
   # this file alone, milled with its role and lean flag: the lint engine's input, and the navigation program when the
   # compile did not produce one. The author's text, since lint findings carry fixes against it
-  save findings, make list
+  # the host lint engine's findings, none until it answers (seam decision 004)
+  save findings, like list, like dynamic
+    make list
   save milled, no-value()
   fork
     mark unsafe
     save local, source-module/analyze(source-of(doc/file, doc/text), reader-options(role, lean))
     save milled, local/program
-    save findings, local/lint()
+    # the host lint engine's findings (seam decision 004)
+    save findings, like list, like dynamic
+      local/lint()
   halt take
     take problem
     save findings, make list

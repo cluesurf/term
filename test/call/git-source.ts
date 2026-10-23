@@ -2,10 +2,9 @@
 // which is what links a GHCR package to its repository. It is written into a public manifest, so a credential in an
 // https remote must never survive. Run: npx tsx test/call/git-source.ts
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { gitSource } from '@term/call/code/host'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -22,7 +21,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 // a fresh repository in the system temp directory, with `origin` set when one is given
 function repo(remote?: string): string {
-  const dir = mkdtempSync(join(tmpdir(), 'term-git-source-'))
+  const dir = tempDir('term-git-source-')
 
   execFileSync('git', ['init', '-q', dir])
 
@@ -47,7 +46,7 @@ for (const [remote, source] of CASES) {
 }
 
 ok('no origin is undefined', gitSource(repo()) === undefined)
-ok('outside a repository is undefined', gitSource(mkdtempSync(join(tmpdir(), 'term-git-source-none-'))) === undefined)
+ok('outside a repository is undefined', gitSource(tempDir('term-git-source-none-')) === undefined)
 
 console.log(`\ngit-source: ${pass} pass, ${fail} fail`)
 

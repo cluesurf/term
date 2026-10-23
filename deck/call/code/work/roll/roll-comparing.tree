@@ -176,7 +176,9 @@ task add-reach
   save base, roll-deck-root(deck-of-module/project-deck-of(), node-path/join(root, <deck.tree>), root)
   save host, own-host(root)
   save graph, make-reach-graph(root)
-  save tasks, roll/task
+  # the host roll's task entries (seam decision 004)
+  save tasks, like list, like dynamic
+    roll/task
   walk tasks
     take entry, like dynamic
     fork test, is-unequal(entry/host, host)

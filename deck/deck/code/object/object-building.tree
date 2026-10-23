@@ -152,7 +152,9 @@ task build-tree
   take exclude, like list, like text
   like text
 
-  save dirents, fs-promise/readdir(dir, make(folder-ask, bind(with-file-types, true)))
+  # the directory entries the host answers (seam decision 004)
+  save dirents, like list, like dynamic
+    fs-promise/readdir(dir, make(folder-ask, bind(with-file-types, true)))
   save entries, make list
 
   walk dirents

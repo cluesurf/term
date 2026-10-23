@@ -626,7 +626,10 @@ task importers-of
       save finds, make list
       save lines, split(body, <\n>)
       save aliased, false
-      walk load-module/importFindsOf(make(index-document, bind(file, real), bind(text, body)), parsed)
+      # the finds the loader answers, host values (seam decision 004)
+      save entries, like list, like dynamic
+        load-module/importFindsOf(make(index-document, bind(file, real), bind(text, body)), parsed)
+      walk entries
         take entry
         save i, name-position(entry/names, name)
         fork test, is-below(i, 0)
