@@ -335,7 +335,10 @@ task manifest-findings
   fork test, is-absent(manifest-name-module/manifest-name(text, file))
     hold
       back out
-  walk deck-tree-module/manifest-spellings(make(spelling-ask, bind(text, text), bind(file, file)))
+  # the old spellings the manifest reader answers, host values (seam decision 004)
+  save spellings, like list, like dynamic
+    deck-tree-module/manifest-spellings(make(spelling-ask, bind(text, text), bind(file, file)))
+  walk spellings
     take found
     save span, make(stretch, bind(start, make(place, bind(line, found/line), bind(column, found/column))), bind(end, make(place, bind(line, found/line), bind(column, found/end))))
     save fix, make(edit, bind(span, span), bind(text, found/text))

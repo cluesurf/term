@@ -353,7 +353,10 @@ task accesses-of
       back out
   walk values-of(tasks)
     take pairs
-    walk pairs
+    # each `[task, access]` pair the capability answers, a host value (seam decision 004)
+    save pair-list, like list, like dynamic
+      read pairs
+    walk pair-list
       take pair
       save access, pair/1
       fork test, not(contains(out, access))

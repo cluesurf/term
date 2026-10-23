@@ -154,7 +154,9 @@ task module-of
       bind role, graph/role-of(file)
       bind lean, value-or(graph/lean-of(file), false)
   save milled, analyze-module/analyze(source, options)
-  save program, milled/program
+  # the program `analyze` answers, a host value (seam decision 004)
+  save program, like list, like dynamic
+    read milled/program
   fork test, not(is-truthy(program))
     hold
       back make none
@@ -186,7 +188,10 @@ task module-of
     make analyze-source
       bind file, file
       bind text, text
-  walk load-module/import-finds-of(asked, graph/parsed)
+  # the finds the loader answers, host values (seam decision 004)
+  save finds, like list, like dynamic
+    load-module/import-finds-of(asked, graph/parsed)
+  walk finds
     take found
     push(one/loads, found/path)
     fork test, is-truthy(found/bear)

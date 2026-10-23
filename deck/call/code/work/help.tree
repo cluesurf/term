@@ -466,6 +466,7 @@ task push-group
   take rows, like list, like help-row
   take title, like text
   take takes, like list, like dock-take
+  take notes, like list, like text
   take positional, like boolean
   take width, like number
   like list, like help-row
@@ -505,7 +506,7 @@ task push-group
     take one
     take at
     save indent, indents/{at}
-    rows/push span-row(set-column(switches/{at}, add(widest, 4), add(2, indent), 2), measured-column(one/note))
+    rows/push span-row(set-column(switches/{at}, add(widest, 4), add(2, indent), 2), measured-column(notes/{at}))
     save tags, tag-words(one)
     fork test, is-equal(tags, <>)
       hold
@@ -656,14 +657,34 @@ task help-text
         take one
         options/push last-named(given, one/name)
 
+  # a slot named like an option is one key to yargs (`term base import <source>` and the program's `--source`): it
+  # leaves Options, and a slot with no note of its own shows the option's
+  save slot-notes, make list
+  walk positionals
+    take one
+    save note, one/note
+    fork test, and(is-equal(note, <>), has-named(options, one/name))
+      hold
+        save named, last-named(options, one/name)
+        save note, named/note
+    slot-notes/push note
+  save kept, make list
+  save option-notes, make list
+  walk options
+    take one
+    fork test, not(has-named(positionals, one/name))
+      hold
+        kept/push one
+        option-notes/push one/note
+
   fork test, is-above(children/length, 0)
     hold
       save rows, push-commands(rows, prefix, children, width)
   fork test, is-above(positionals/length, 0)
     hold
-      save rows, push-group(rows, <Positionals:>, positionals, true, width)
-  fork test, is-above(options/length, 0)
+      save rows, push-group(rows, <Positionals:>, positionals, slot-notes, true, width)
+  fork test, is-above(kept/length, 0)
     hold
-      save rows, push-group(rows, <Options:>, options, false, width)
+      save rows, push-group(rows, <Options:>, kept, option-notes, false, width)
 
   back lay-out(rows, width)

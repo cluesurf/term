@@ -152,7 +152,7 @@ form milled
   link file, like text
   link text, like text
   link lines, like list, like text
-  link program, like dynamic
+  link program, like list, like dynamic
 
 # a definition and the file it was read from: what is printed names a place a reader can follow, never a machine path
 form located
@@ -395,7 +395,10 @@ task in-module
         make mill-source
           bind file, one/file
           bind text, one/text
-      walk load-module/import-finds-of(asked, reader/parsed)
+      # the finds the loader answers, host values (seam decision 004)
+      save finds, like list, like dynamic
+        load-module/import-finds-of(asked, reader/parsed)
+      walk finds
         take found
         fork test, is-truthy(found/bear)
           hold
@@ -429,7 +432,10 @@ task lookup
     make mill-source
       bind file, from/file
       bind text, from/text
-  walk load-module/import-finds-of(asked, reader/parsed)
+  # the finds the loader answers, host values (seam decision 004)
+  save finds, like list, like dynamic
+    load-module/import-finds-of(asked, reader/parsed)
+  walk finds
     take found
     # by the alias it was found under, or by its own name, which is what the mill writes an aliased call as
     save at, -1
@@ -563,7 +569,10 @@ task context-of
 
   fork test, is-equal(definitions/length, 0)
     hold
-      walk resolve-module/find-modules-exporting(root, query)
+      # the modules the resolver answers, host values (seam decision 004)
+      save homes, like list, like dynamic
+        resolve-module/find-modules-exporting(root, query)
+      walk homes
         take home
         sift in-module(reader, home/import-path, node-path/join(root, <term-show.tree>), query, 0)
           case some

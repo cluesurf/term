@@ -71,7 +71,9 @@ task swift-flags
   fork test, not(node-fs/exists-sync(file))
     hold
       back flags
-  save text, node-fs/read-file-sync(file, <utf8>)
+  # read as utf8 the host answers a text (seam decision 004)
+  save text, like text
+    node-fs/read-file-sync(file, <utf8>)
   walk text/split(<\n>)
     take line, like text
     fork test, is-above(line/length, 0)

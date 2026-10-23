@@ -305,7 +305,9 @@ task call-scan
 
   save one, scan-once(root, file)
   save diagnostics, scan-diagnostics(one/result)
-  save applied, make list
+  # the fixes the fixer answers, host values (seam decision 004)
+  save applied, like list, like dynamic
+    make list
   save refused, make list
 
   # --fix: write every sure fix, then scan again, while a round writes something, at most four rounds

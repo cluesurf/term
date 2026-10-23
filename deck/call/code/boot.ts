@@ -49,6 +49,10 @@ import { closeRun, count, failRun, field, followChild, isRunOpen, location, open
 import { HOME_POSIX, projectHome } from '@term/call/code/home'
 // named `booting`: `plan` is a local of the build below
 import * as booting from '@term/call/code/boot-plan'
+// a program's docks resolve as the project's own build resolves them, one rule for `term test` and `term boot`
+// (decision 009): the tsconfig's paths inlined, every other bare dock external
+import { bundleDocks, inlinedHold, nearestTsconfig } from '@term/call/code/test-run'
+import type { InlinedSource } from '@term/call/code/test-run'
 
 // WHAT BOOTING DECIDES WITHOUT A TOOL is Term since 2026-10-06, call/code/boot-plan.tree: the mode a word names, the
 // entry a manifest's `boot` line names, the program's name, the app's host settings, whether a browser bundle calls
@@ -941,12 +945,16 @@ export async function callBoot(input: {
         return null
       }
 
+      // the folder whose tsconfig.json decides which docks are inlined: the app's, else the project's
+      const dockRoot = appDir ?? projectRoot
       const bundleConfig = {
         bundle: true,
         format: 'esm' as const,
         platform:
           env === 'browser' ? ('browser' as const) : ('node' as const),
-        packages: 'external' as const,
+        // a dock the tsconfig's `paths` maps is inlined from source, every other bare one stays external
+        // (test-run.ts `bundleDocks`); the tsconfig named in the key, so moving to another rebuilds
+        docks: nearestTsconfig(dockRoot) ?? '',
         // native `case node` templates call `require(...)`. The output
         // is ESM, where esbuild's require shim just throws - so give
         // node bundles a real one. Browser bundles get none: a
@@ -994,8 +1002,18 @@ export async function callBoot(input: {
       // build's own business: the title already names the source, and the cache path read as where the program was
       const shown = input.out ? path.relative(cwd, out) || '.' : undefined
 
+      // what the bundle inlined, each source with its hash: a kept bundle is reused only while every one still holds it
+      const listed = path.join(cached, 'inputs.json')
+      const inlinedStill = (): boolean => {
+        try {
+          return existsSync(listed) && inlinedHold(JSON.parse(readFileSync(listed, 'utf8')) as InlinedSource[])
+        } catch {
+          return false
+        }
+      }
+
       // an `--out` directory is always rewritten: it is somebody's published copy, not a cache keyed by its input
-      if (!input.out && existsSync(bundle)) {
+      if (!input.out && existsSync(bundle) && inlinedStill()) {
         report({ glyph: 'skipped', verb: 'build', subject: path.relative(cwd, entry) || entry, duration: Date.now() - started, facts: ['cached'], fields: shown ? [location(shown)] : [] })
       } else {
         mkdirSync(cached, { recursive: true })
@@ -1005,12 +1023,15 @@ export async function callBoot(input: {
         // module of the closure sees the shims it docks, as the one merged module did
         const banner = ['banner' in bundleConfig ? (bundleConfig.banner?.js ?? '') : '', plan.banner].filter(part => part).join('\n')
 
-        buildSync({
-          entryPoints: [plan.write(cached)],
-          outfile: bundle,
-          ...bundleConfig,
-          ...(banner ? { banner: { js: banner } } : {}),
+        const bundled = await bundleDocks({
+          root: dockRoot,
+          entry: plan.write(cached),
+          own: cached,
+          banner,
+          platform: bundleConfig.platform,
         })
+        writeFileSync(bundle, bundled.text)
+        writeFileSync(listed, JSON.stringify(bundled.inlined))
         report({ glyph: 'done', verb: 'build', subject: path.relative(cwd, entry) || entry, duration: Date.now() - started, fields: shown ? [location(shown)] : [] })
       }
 

@@ -295,7 +295,9 @@ task apply-upgrades
       output/report(make(seek-plain, bind(glyph, <info>), bind(verb, <fix>), bind(subject, <No dependency upgrade to apply>)))
       back
   save done, apply-manifest-upgrades(root, upgrades, true)
-  save applied, done/applied
+  # the upgrades the manifest writer answers, host values (seam decision 004)
+  save applied, like list, like dynamic
+    read done/applied
   fork test, is-equal(applied/length, 0)
     hold
       output/report(make(seek-plain, bind(glyph, <warning>), bind(verb, <fix>), bind(subject, <Upgrades were computed but no manifest line matched, so nothing was written>)))

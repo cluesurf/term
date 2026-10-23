@@ -715,7 +715,10 @@ task files-under
   mark private
 
   save found, make list
-  walk node-file/readdir-sync(dir, make(entries-ask, bind(with-file-types, true), bind(recursive, true)))
+  # the directory entries the host answers (seam decision 004)
+  save entries, like list, like dynamic
+    node-file/readdir-sync(dir, make(entries-ask, bind(with-file-types, true), bind(recursive, true)))
+  walk entries
     take entry
     fork test, entry/is-file()
       hold

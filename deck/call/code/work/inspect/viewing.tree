@@ -240,7 +240,9 @@ task count-nodes
     take one, like dynamic
     seen/push(1)
     save shape, view-member(one, <form>)
-    save value, one/value
+    # a field of the host node (seam decision 004)
+    save value, like dynamic
+      read one/value
     fork test, is-equal(shape, <view>)
       hold
         views/push(value/name)

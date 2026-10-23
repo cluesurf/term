@@ -525,7 +525,10 @@ task call-time
         files/push(node-path/resolve(root, input/file))
       miss
         save none-ignored, make list
-        walk make-module/find-tree-files(root, none-ignored, <node>)
+        # the files the build walk answers, host values (seam decision 004)
+        save tree-files, like list, like dynamic
+          make-module/find-tree-files(root, none-ignored, <node>)
+        walk tree-files
           take found
           fork test, not(found/starts-with(link))
             hold

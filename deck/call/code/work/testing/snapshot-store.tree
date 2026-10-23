@@ -96,9 +96,13 @@ task read-snapshots
   fork test, not(is-same(root/kind, <hash>))
     hold
       back make(unreadable, bind(problem, <{file} holds a {back-text(root/kind)}, where a hash from each test's phrase to its snapshots goes>))
-  walk root/list
+  # the hash's entries the data reader answers, host values (seam decision 004)
+  save entries, like list, like dynamic
+    read root/list
+  walk entries
     take entry, like dynamic
-    save items, make list
+    save items, like list, like dynamic
+      make list
     fork test, is-same(entry/base/kind, <list>)
       hold
         save items, entry/base/list

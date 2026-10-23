@@ -127,12 +127,18 @@ task props-of
   fork test, not(contract-truthy(built/ok))
     hold
       back contract-nothing()
-  walk built/program
+  # the program the mill answers, host values (seam decision 004)
+  save statements, like list, like dynamic
+    read built/program
+  walk statements
     take one, like dynamic
     fork test, and(is-equal(contract-member(one, <form>), <view>), is-equal(one/name, name))
       hold
         save props, make list
-        walk one/params
+        # the view's parameters, host values off the milled program (seam decision 004)
+        save params, like list, like dynamic
+          read one/params
+        walk params
           take param, like dynamic
           props/push(<{param/name}: {contract-type-text(contract-member(param, <type>))}>)
         back props

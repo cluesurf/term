@@ -374,7 +374,10 @@ task main-source
   like text
   mark private
 
-  walk files/files
+  # each `[path, text]` entry the compiler answers, a host value (seam decision 004)
+  save entries, like list, like dynamic
+    read files/files
+  walk entries
     take one
     fork test, is-same(one/0, files/main)
       hold

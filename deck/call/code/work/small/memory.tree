@@ -185,7 +185,10 @@ task all-facts
   fork test, not(node-file/exists-sync(dir))
     hold
       back out
-  walk node-file/readdir-sync(dir)
+  # the names the host answers (seam decision 004)
+  save names, like list, like dynamic
+    node-file/readdir-sync(dir)
+  walk names
     take name
     fork test, and(name/ends-with(<.md>), is-unequal(name, <index.md>))
       hold

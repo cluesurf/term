@@ -230,6 +230,7 @@ hook term
       task base-init
     # Commits per branch, newest first
     hook log
+      # one branch, or omit for all
       slot branch
         like text
       task base-log
@@ -237,6 +238,8 @@ hook term
     hook diff
       slot to
         like text
+        need true
+      # omit to diff from empty
       slot from
         like text
       task base-diff
@@ -244,13 +247,16 @@ hook term
     hook show
       slot commit
         like text
+        need true
       slot mark
         like text
+        need true
       task base-show
     # Every record at a commit
     hook list
       slot commit
         like text
+        need true
       task base-list
     # Whether the repository is coherent
     hook check
@@ -259,11 +265,13 @@ hook term
     hook status
       slot branch
         like text
+        bind <main>
       task base-status
     # Commit the working files onto a branch
     hook commit
       slot message
         like text
+        need true
       take branch
         like text
         bind <main>
@@ -275,11 +283,13 @@ hook term
     hook checkout
       slot commit
         like text
+        need true
       task base-checkout
     # Merge a branch into another
     hook merge
       slot from
         like text
+        need true
       take into
         like text
         bind <main>
@@ -291,16 +301,20 @@ hook term
     hook export
       slot commit
         like text
+        need true
       take out
         like text
+        need true
       task base-export
     # Bring a csv, tsv, json or jsonl file, or a directory of them, in as records
     hook import
       slot source
         like text
+        need true
       # the record form these rows are instances of
       take form
         like text
+        need true
       # a column that identifies a row in the source. The mark is found or created against it, so a
       # re-import updates rather than duplicates
       take key
@@ -321,6 +335,7 @@ hook term
     hook project
       slot commit
         like text
+        need true
       # a mapping file, for an existing schema. Left out, the schema is worked out from the records and
       # the tables are created
       take mapping
@@ -331,7 +346,7 @@ hook term
       # actually write. Without it nothing is touched
       take write
         like boolean
-        bind false
+        bind code false
       # the name this projection is bookkept under. Defaults to the directory name
       take repository
         like text
@@ -340,6 +355,7 @@ hook term
     hook tag
       slot name
         like text
+        need true
       slot commit
         like text
       take branch

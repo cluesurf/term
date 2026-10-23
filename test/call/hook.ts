@@ -321,6 +321,18 @@ hook tool
     })
     .then(code => {
       expect('--help before a passing command is the console\'s help of it', [code, seen.length, shown[0]?.startsWith('tool zone')], [0, 1, true])
+      shown.length = 0
+      return runCommandLine({
+        name: 'tool',
+        routes: program,
+        argv: ['build', '--', '--help'],
+        resolve: () => () => 0,
+        out: line => shown.push(line),
+        err: line => shown.push(line),
+      })
+    })
+    .then(code => {
+      expect('--help after a literal -- is not the console\'s help', [code, shown.some(line => line.startsWith('tool build'))], [0, false])
       console.log(`\nhook: ${pass} pass, ${fail} fail`)
 
       if (fail) {process.exit(1)}

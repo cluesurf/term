@@ -83,6 +83,14 @@ load ../cache/remote-store
 load ../need/running-install
   find find-install-root
 
+# a program's docks resolve as the project's own build resolves them, one rule for `term test` and `term boot`
+# (decision 009): the tsconfig's paths inlined, every other bare dock external
+load ../testing/test-running
+  find nearest-tsconfig
+  find bundle-docks
+  find inlined-hold
+  find inlined-source
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
@@ -426,13 +434,28 @@ bind boot-comma-joined
   case node
     text <$parts.join(", ")>
 
-# esbuild's settings for the program's bundle, in the original's key order: the cache key holds them as JSON
+# esbuild's settings for the program's bundle, in the original's key order: the cache key holds them as JSON. `docks`
+# names the tsconfig whose paths are inlined (test-running.tree `bundle-docks`), the empty text for none
 bind boot-bundle-config
   take env, like text
+  take docks, like text
   take banner, like text
   like dynamic
   case node
-    text <(\{ bundle: true, format: "esm", platform: $env === "browser" ? "browser" : "node", packages: "external", ...($env === "browser" ? \{\} : \{ banner: \{ js: $banner \} \}) \})>
+    text <(\{ bundle: true, format: "esm", platform: $env === "browser" ? "browser" : "node", docks: $docks, ...($env === "browser" ? \{\} : \{ banner: \{ js: $banner \} \}) \})>
+
+# what a kept bundle inlined, read back from its list
+bind boot-inlined-of
+  take raw, like text
+  like list, like inlined-source
+  case node
+    text <<JSON.parse($raw)>>
+
+bind boot-inlined-json
+  take inlined, like list, like inlined-source
+  like text
+  case node
+    text <<JSON.stringify($inlined)>>
 
 bind boot-json
   take value, like dynamic
@@ -446,16 +469,6 @@ bind boot-routes-json
   like text
   case node
     text <JSON.stringify($routes, (key, value) =\> (key === "span" ? undefined : value))>
-
-bind boot-bundle
-  take esbuild, like dynamic
-  take entry, like text
-  take outfile, like text
-  take config, like dynamic
-  take banner, like text
-  like void
-  case node
-    text <void $esbuild.buildSync(\{ entryPoints: [$entry], outfile: $outfile, ...$config, ...($banner ? \{ banner: \{ js: $banner \} \} : \{\}) \})>
 
 bind boot-bundle-dispatch
   take esbuild, like dynamic
@@ -1218,7 +1231,12 @@ task bundle-plan
   fork test, is-unequal(run/env, <browser>)
     hold
       save node-banner-text, node-banner(anchor)
-  save config, boot-bundle-config(run/env, node-banner-text)
+  # the folder whose tsconfig.json decides which docks are inlined: the app's, else the project's
+  save dock-root, run/project-root
+  fork test, boot-truthy(run/app-dir)
+    hold
+      save dock-root, text-of(run/app-dir)
+  save config, boot-bundle-config(run/env, nearest-tsconfig(dock-root), node-banner-text)
   # incremental cache in `.base/@term/code/boot/<hash>`: the key folds in everything that can change the output
   save parts, make list
   parts/push(boot-cache-epoch())
@@ -1241,8 +1259,19 @@ task bundle-plan
           save shown, <.>
       fields/push(output/location(shown))
   save bundle, node-path/join(out, <app.mjs>)
+  # what the bundle inlined, each source with its hash: a kept bundle is reused only while every one still holds it
+  save listed, node-path/join(cached, <inputs.json>)
+  save inlined-still, false
+  fork
+    mark unsafe
+    fork test, node-file/exists-sync(listed)
+      hold
+        save inlined-still, inlined-hold(boot-inlined-of(text-of(node-file/read-file-sync(listed, <utf8>))))
+  halt take
+    take problem
+    save inlined-still, false
   # an `--out` folder is always rewritten: it is somebody's published copy, not a cache keyed by its input
-  fork test, and(not(out-given), node-file/exists-sync(bundle))
+  fork test, and(not(out-given), and(node-file/exists-sync(bundle), inlined-still))
     hold
       save facts, make list
       facts/push(<cached>)
@@ -1259,7 +1288,13 @@ task bundle-plan
         hold
           banners/push(plan/banner)
       save entry-file, write-plan(plan, cached)
-      boot-bundle(esbuild-module, entry-file, bundle, config, boot-joined(banners))
+      save platform, <node>
+      fork test, is-equal(run/env, <browser>)
+        hold
+          save platform, <browser>
+      save bundled, bundle-docks(dock-root, entry-file, cached, boot-joined(banners), platform)
+      node-file/write-file-sync(bundle, bundled/text)
+      node-file/write-file-sync(listed, boot-inlined-json(bundled/inlined))
       output/report(make(built-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, shown-entry(run)), bind(duration, subtract(host-date/now(), started)), bind(fields, fields)))
   # the CLI install's node_modules linked next to the bundle, so ESM resolves the external bare specifiers. Not for
   # `--out`: a shipped bundle resolves through the package that carries it

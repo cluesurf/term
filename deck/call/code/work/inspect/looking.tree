@@ -307,7 +307,10 @@ task call-look
   fork test, is-truthy(checked/ok)
     hold
       save results, new-map()
-      walk checked/program
+      # the checked program the compiler answers, host values (seam decision 004)
+      save statements, like list, like dynamic
+        read checked/program
+      walk statements
         take one
         fork test, and(is-equal(one/form, <function>), is-truthy(one/result))
           hold
