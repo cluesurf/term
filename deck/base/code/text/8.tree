@@ -1,8 +1,5 @@
 mark unstable
 
-load @term/base/integer/unsigned/8
-  find u8
-
 form text-8
   like list
     like u8

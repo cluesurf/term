@@ -353,13 +353,19 @@ const SWIFT_HELPERS = {
   // an integer step past the integer's range is a STOP (D15), as Kotlin's TermStop and TypeScript's __TermStop are: no
   // guard catches it, and the process ends with exit 1 naming excess or shortage. Swift's own `+`, `-` and `*` TRAP
   // there, which killed the process by a signal (term-stdlib-parity-0015). Generic, so a narrowed width is checked at
-  // its own edge
+  // its own edge. Each also has an `Int` overload, which Swift picks first for the common case: an unoptimized build
+  // (no -O) calls the generic one unspecialized, and its frame cost made a 100,000-deep tail recursion overflow the
+  // stack where the plain operator did not (meaning-native `tail`, term-stdlib-parity-0023)
   stop: [
     'func termStop(_ message: String) -> Never { FileHandle.standardError.write(Data((message + "\\n").utf8)); exit(1) }',
     '@inline(__always) func termAdd<T: FixedWidthInteger>(_ a: T, _ b: T) -> T { let (r, o) = a.addingReportingOverflow(b); if o { termStop(a < 0 ? "shortage: a number past \\(T.min)" : "excess: a number past \\(T.max)") }; return r }',
     '@inline(__always) func termSubtract<T: FixedWidthInteger>(_ a: T, _ b: T) -> T { let (r, o) = a.subtractingReportingOverflow(b); if o { termStop(a < 0 ? "shortage: a number past \\(T.min)" : "excess: a number past \\(T.max)") }; return r }',
     '@inline(__always) func termMultiply<T: FixedWidthInteger>(_ a: T, _ b: T) -> T { let (r, o) = a.multipliedReportingOverflow(by: b); if o { termStop((a < 0) != (b < 0) ? "shortage: a number past \\(T.min)" : "excess: a number past \\(T.max)") }; return r }',
     '@inline(__always) func termNegate<T: FixedWidthInteger>(_ a: T) -> T { let (r, o) = T.zero.subtractingReportingOverflow(a); if o { termStop("excess: a number past \\(T.max)") }; return r }',
+    '@inline(__always) func termAdd(_ a: Int, _ b: Int) -> Int { let (r, o) = a.addingReportingOverflow(b); if o { termStop(a < 0 ? "shortage: a number past \\(Int.min)" : "excess: a number past \\(Int.max)") }; return r }',
+    '@inline(__always) func termSubtract(_ a: Int, _ b: Int) -> Int { let (r, o) = a.subtractingReportingOverflow(b); if o { termStop(a < 0 ? "shortage: a number past \\(Int.min)" : "excess: a number past \\(Int.max)") }; return r }',
+    '@inline(__always) func termMultiply(_ a: Int, _ b: Int) -> Int { let (r, o) = a.multipliedReportingOverflow(by: b); if o { termStop((a < 0) != (b < 0) ? "shortage: a number past \\(Int.min)" : "excess: a number past \\(Int.max)") }; return r }',
+    '@inline(__always) func termNegate(_ a: Int) -> Int { let (r, o) = Int.zero.subtractingReportingOverflow(a); if o { termStop("excess: a number past \\(Int.max)") }; return r }',
   ].join('\n'),
   // the one exception value of a Term program on this backend (note/project/term/hive/11-native-exceptions.md)
   exception: [

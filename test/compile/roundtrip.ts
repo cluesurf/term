@@ -30,6 +30,7 @@ import {
   hoistKotlinImports,
 } from '@term/make/code/compile/kotlin'
 import { emitRust } from '@term/make/code/compile/rust'
+import { nativeMain } from '@term/make/code/compile/native-main'
 import { emitTypeScript } from '@term/make/code/compile/typescript'
 import type { Program } from '@term/make/code/compile/node'
 import { readFileSync, existsSync } from 'node:fs'
@@ -633,42 +634,21 @@ function runKotlinAsync(
 
 // Rust file IO end to end: compile the synchronous native/rust/file module (which forwards to the linked `io`
 // runtime), prepend the io runtime shim (from base.tree, via nativePrelude), append a main that writes a temp file through the emitted code then reads it
-// back, run with rustc, and assert stdout. Proves native file IO actually RUNS on a real compiled toolchain, not just
-// that it emits the right shape. main owns the path and clones it across the two calls (each emitted call moves its arg).
+// back, and assert stdout. Proves native file IO actually RUNS on a real compiled toolchain, not just that it emits the
+// right shape. The whole native/rust/file module comes in with it, whose watch shim names tokio and notify, so it builds
+// in the shared cargo project, driven by the compiler's own main (compile/native-main.ts)
 function runRustIo(name: string, program: Program, want: string): void {
   if (skip_filtered(name)) {return}
 
-  if (!have('rustc')) {return skipped(name, 'rustc not installed')}
+  if (!have('cargo')) {return skipped(name, 'cargo not installed')}
 
-  const path = join(dir, 'seed_rust_io_roundtrip.txt')
-  const main = `\nfn main() {\n  let p = ${JSON.stringify(
-    path,
-  )}.to_string();\n  write_demo(p.clone(), ${JSON.stringify(
-    want,
-  )}.to_string());\n  print!("{}", read_demo(p));\n}\n`
-
-  const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
-  writeFileSync(
-    file,
-    `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(
-      program,
-    )}${main}`,
-  )
-
-  const exe = file.replace(/\.rs$/, '')
-
-  deferNative(name, async () => {
-    const built = await run('rustc', ['-A', 'warnings', '-O', file, '-o', exe])
-
-    if (built.status !== 0) {
-      nativeFailure(name, 'rustc', built.stderr)
-
-      return
-    }
-
-    const ran = await run(exe, [])
-    ok(name, ran.stdout.trim(), want)
-  })
+  const proj = join(tmpdir(), 'seed-rust-runtime')
+  mkdirSync(join(proj, 'src', 'bin'), { recursive: true })
+  writeFileSync(join(proj, 'Cargo.toml'), RUST_CARGO_TOML)
+  const rust = emitRust(program)
+  const bin = `p_${name.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}`.slice(0, 80)
+  writeFileSync(join(proj, 'src', 'bin', `${bin}.rs`), `${nativePrelude(program, 'rust', readRuntime, rust)}\n${rust}\n${nativeMain('rust', rust)}\n`)
+  cargoJobs.push({ name, proj, bin, check: out => ok(name, out.trim(), want) })
 }
 
 // Swift file IO end to end: prepend the io runtime shim (from base.tree), write + read a temp file through emitted Swift.
@@ -681,19 +661,9 @@ function runSwiftIo(
 
   if (!have('swiftc')) {return skipped(name, 'swiftc not installed')}
 
-  const path = join(dir, 'seed_swift_io.txt')
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
-  // Swift calls a Term task by its inputs' labels
-  const main = `\nwriteDemo(path: ${JSON.stringify(path)}, data: ${JSON.stringify(
-    want,
-  )})\nprint(readDemo(path: ${JSON.stringify(path)}), terminator: "")\n`
-
-  writeFileSync(
-    file,
-    `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(
-      program,
-    )}${main}`,
-  )
+  const swift = emitSwift(program)
+  writeFileSync(file, `import Foundation\n${nativePrelude(program, 'swift', readRuntime, swift)}\n${swift}\n${nativeMain('swift', swift)}\n`)
 
   const exe = file.replace(/\.swift$/, '')
 
@@ -722,22 +692,9 @@ function runKotlinIo(
   if (!have('kotlinc') || !have('java'))
     {return skipped(name, 'kotlinc/java not installed')}
 
-  const path = join(dir, 'seed_kotlin_io.txt')
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
-  const main = `\nfun main() {\n  writeDemo(${JSON.stringify(
-    path,
-  )}, ${JSON.stringify(want)})\n  print(readDemo(${JSON.stringify(
-    path,
-  )}))\n}\n`
-
-  writeFileSync(
-    file,
-    hoistKotlinImports(
-      `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(
-        program,
-      )}${main}`,
-    ),
-  )
+  const kotlin = emitKotlin(program)
+  writeFileSync(file, hoistKotlinImports(`${nativePrelude(program, 'kotlin', readRuntime, kotlin)}\n${kotlin}\n${nativeMain('kotlin', kotlin)}\n`))
 
   deferKotlin(name, file, out => ok(name, out.trim(), want))
 }
@@ -1018,7 +975,9 @@ x25519-dalek = { version = "2", features = ["static_secrets"] }
 chrono = "0.4"
 reqwest = { version = "0.12", features = ["rustls-tls"] }
 serde_json = "1"
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "net", "io-util"] }
+tokio = { version = "1", features = ["full"] }
+notify = "7"
+libc = "0.2"
 unicode-normalization = "0.1"
 unicode-segmentation = "1"
 tokio-tungstenite = "0.24"
@@ -1602,9 +1561,14 @@ task demo
   send back, read total
 `
 
-// per-target file IO programs (identical shape, different native platform module)
+// per-target file IO programs (identical shape, different native platform module). The file calls hand back to the
+// program's one loop (note/project/term/decision/001-native-work-hands-back-to-the-loop.md), so write-demo and
+// read-demo are async on every native backend, and `run` is the entry the compiler's own main drives
+// (compile/native-main.ts), never a harness main calling them as if they were not
 const ioProgram = (
   platform: string,
+  path: string,
+  data: string,
 ) => `load @term/base/code/native/${platform}/file
   find write-file
   find read-file
@@ -1623,6 +1587,15 @@ task read-demo
   send back
     call read-file
       read path
+
+task run
+  like text
+  call write-demo
+    text <${path}>
+    text <${data}>
+  send back
+    call read-demo
+      text <${path}>
 `
 
 // a value computed through the public math interface: power(2,10) forwards to the per-target math shim's pow
@@ -3199,17 +3172,17 @@ async function main(): Promise<void> {
   // the per-target io runtime shim (the same public-style file ops, three different platform file systems)
   runRustIo(
     'rust + io runtime: file write then read round-trips',
-    frontEnd(ioProgram('rust'), true),
+    frontEnd(ioProgram('rust', join(dir, 'seed_rust_io_roundtrip.txt'), 'hello rust io'), true),
     'hello rust io',
   )
   runSwiftIo(
     'swift + io runtime: file write then read round-trips',
-    frontEnd(ioProgram('swift'), true),
+    frontEnd(ioProgram('swift', join(dir, 'seed_swift_io.txt'), 'hello swift io'), true),
     'hello swift io',
   )
   runKotlinIo(
     'kotlin + io runtime: file write then read round-trips',
-    frontEnd(ioProgram('kotlin'), true),
+    frontEnd(ioProgram('kotlin', join(dir, 'seed_kotlin_io.txt'), 'hello kotlin io'), true),
     'hello kotlin io',
   )
 

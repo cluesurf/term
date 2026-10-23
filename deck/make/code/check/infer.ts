@@ -805,6 +805,7 @@ function checkProgram(
   // every bare method name, used to recognise a call site as a method call before dispatching.
   const methodTable = new Map<string, Map<string, string>>()
   const methodNames = new Set<string>()
+  const methodFiles = new Map<string, string | undefined>()
 
   for (const statement of program) {
     if (statement.form !== 'function' || !statement.method) {
@@ -818,6 +819,25 @@ function checkProgram(
     byName.set(statement.method.name, statement.name)
     methodTable.set(statement.method.form, byName)
     methodNames.add(statement.method.name)
+    methodFiles.set(statement.name, statement.span.file ?? file)
+  }
+
+  // A FILE'S OWN TASK WINS (module-scope-0008). A call whose callee names a top-level task of the calling file is
+  // that task, never a method of a form some OTHER file defines: `task last` beside `find list` called as
+  // `last(make list, 3, 1, 2)` dispatched to list's `last` (a maybe) and printed `[object Object]` with a green
+  // build. A method of a form the same file defines still dispatches, since both are the file's own.
+  // test/check/own-task-wins.ts.
+  const ownTaskFiles = new Map<string, Set<string | undefined>>()
+
+  for (const statement of program) {
+    if (statement.form !== 'function' || statement.method) {
+      continue
+    }
+
+    const files = ownTaskFiles.get(statement.name) ?? new Set()
+
+    files.add(statement.span.file ?? file)
+    ownTaskFiles.set(statement.name, files)
   }
 
   // the methods that are THIN NATIVE WRAPPERS: a body that calls `self/<its own name>` (hash's `get`, `has`, `set`, list's
@@ -1676,7 +1696,20 @@ function checkProgram(
             }
           }
 
-          if (mangled && functions.has(mangled)) {
+          // the calling file's own top-level task of this name wins over a method of a form defined elsewhere
+          const ownTask =
+            functions.has(method) &&
+            !!ownTaskFiles.get(method)?.has(currentFile)
+
+          if (process.env.S2_TRACE && mangled && functions.has(mangled) && ownTask && methodFiles.get(mangled) !== currentFile) {
+            process.stderr.write(`S2-OWN ${currentFile} ${method} not ${mangled}\n`)
+          }
+
+          if (
+            mangled &&
+            functions.has(mangled) &&
+            !(ownTask && methodFiles.get(mangled) !== currentFile)
+          ) {
             node.callee.name = mangled
           }
         }

@@ -820,6 +820,7 @@ task json-of-expression
       link f9
       link f10
       link f11
+      link f12
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"call">)
@@ -880,6 +881,9 @@ task json-of-expression
       fork test, and(enters(skip-keys, <propagate>), f11)
         hold
           push(members, <"propagate":{flag-json(f11)}>)
+      fork test, and(enters(skip-keys, <site>), is-unequal(f12, <>))
+        hold
+          push(members, <"site":{json-quote(f12)}>)
     case array
       link f1
       link f2
@@ -1762,6 +1766,7 @@ task json-of-statement
       link f1
       link f2
       link f3
+      link f4
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"throw">)
@@ -1774,6 +1779,9 @@ task json-of-statement
       fork test, and(enters(skip-keys, <raise>), is-unequal(f3, <>))
         hold
           push(members, <"raise":{json-quote(f3)}>)
+      fork test, and(enters(skip-keys, <site>), is-unequal(f4, <>))
+        hold
+          push(members, <"site":{json-quote(f4)}>)
     case hold
       link f1
       link f2

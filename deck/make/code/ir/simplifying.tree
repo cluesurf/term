@@ -57,6 +57,11 @@ load ../compile/node-reach
 load ../compile/expr-equal
   find expressions-equal
 
+load ../compile/frames
+  find carry-frames
+  find frames-of
+  find join-frames
+
 load ./egraph-arith
   find egraph-arith
 
@@ -2680,7 +2685,7 @@ task simplify-call
           # its name
           fork test, not(state/caller-bound/has(callee-name))
             hold
-              sift specialized-value(callee-name, args, state)
+              sift specialized-value(callee-name, args, frames-of(node), state)
                 case some
                   link value
                   back value
@@ -2713,7 +2718,7 @@ task simplify-call
                             bind span, at
                             bind type, param/type
                         push(args, zero)
-                  sift small-value(callee-name, tiny, args, state)
+                  sift small-value(callee-name, tiny, args, frames-of(node), state)
                     case some
                       link value
                       back value
@@ -2764,6 +2769,7 @@ task fills-zero
 task specialized-value
   take name, like text
   take args, like list, like expression
+  take outer, like text
   take state, like simplify-state
   like maybe, like expression
   mark private
@@ -2809,7 +2815,7 @@ task specialized-value
           sift sent
             case some
               link value
-              back make(some, value)
+              back make(some, carry-frames(value, outer))
             case none
               back make none
         miss
@@ -2844,6 +2850,7 @@ task small-value
   take name, like text
   take tiny, like small-task
   take args, like list, like expression
+  take outer, like text
   take state, like simplify-state
   like maybe, like expression
   mark private
@@ -2887,8 +2894,8 @@ task small-value
     save k, add(k, 1)
   save state/inlining/{name}, true
   # a COPY per call site: facts are keyed by node identity, and an emitter may rename a node it visits, so two sites
-  # must never share one
-  save value, simplify-expression(substitute-expr(deep-copy-expression(tiny/value), subst), state)
+  # must never share one. Its calls gain this call's frames before the arguments go in, which keep their own
+  save value, simplify-expression(substitute-expr(carry-frames(deep-copy-expression(tiny/value), outer), subst), state)
   state/inlining/remove(name)
   back make(some, value)
 
@@ -3103,6 +3110,18 @@ task simplify-statement
 
 # ---- trivial-forwarder inlining ----
 
+# the callee of a forwarder's call
+task callee-of
+  take node, like expression
+  like expression
+  mark private
+
+  sift node
+    case call
+      back callee
+    miss
+      back node
+
 # the call this function forwards to verbatim (a free function or a native member), or none if it is not a trivial
 # pass-through. Awaited, argument-reordering and argument-augmenting wrappers do not qualify
 task forwarder-target
@@ -3155,15 +3174,16 @@ task forwarder-target
                       miss
                         back make none
                     save i, add(i, 1)
+                  # the whole call, so a call rewritten to its target keeps the forwarder's frame too
                   sift called
                     case variable
                       link called-name
                       fork test, is-unequal(called-name, name)
                         hold
-                          back make(some, called)
+                          back make(some, sent-value)
                       back make none
                     case member
-                      back make(some, called)
+                      back make(some, sent-value)
                     miss
                       back make none
                 miss
@@ -3205,9 +3225,11 @@ task rewrite-expression
       walk args
         take arg
         push(new-args, rewrite-expression(arg, forwarders))
-      # collapse a chain of wrappers in one pass, guarding against a forwarder cycle
+      # collapse a chain of wrappers in one pass, guarding against a forwarder cycle. Each wrapper passed puts the frame
+      # of its own call in front of the frames this call has (compile/frames.tree)
       save seen, make hash
       save going, true
+      save framed, frames-of(node)
       walk test
         hook test, going
         hook hold
@@ -3218,7 +3240,9 @@ task rewrite-expression
               fork test, and(forwarders/has(callee-name), not(seen/has(callee-name)))
                 hold
                   save seen/{callee-name}, true
-                  save chained, forwarders/get(callee-name)
+                  save inner, forwarders/get(callee-name)
+                  save chained, callee-of(inner)
+                  save framed, join-frames(frames-of(inner), framed)
                   save going, true
             miss
               save nothing, 0
@@ -3227,6 +3251,7 @@ task rewrite-expression
         case call
           save copy/callee, chained
           save copy/args, new-args
+          save copy/site, framed
         miss
           save nothing, 0
       back copy
@@ -3849,7 +3874,7 @@ task inline-forwarders
         walk forwarders/keys()
           take name
           save target, forwarders/get(name)
-          fork test, and(not(bound/has(name)), not(bound/has(root-of(target))))
+          fork test, and(not(bound/has(name)), not(bound/has(root-of(callee-of(target)))))
             hold
               save visible/{name}, target
         fork test, is-equal(visible/keys()/length, forwarders/keys()/length)

@@ -3,7 +3,10 @@
 //
 // The API is PULL, not callback: `watchOpen` registers the watch, `watchNext` awaits the next change, and
 // `watchClose` stops it. WatchService is already pull-shaped (`take()` blocks until a change), so the whole shim
-// is that call moved onto `Dispatchers.IO` and the JDK's three event kinds renamed to the four the Term API uses.
+// is that call HANDED BACK to the runtime's pool (`termLoop.handBack`,
+// note/project/term/decision/001-native-work-hands-back-to-the-loop.md), the waiting coroutine resumed on the loop,
+// and the JDK's three event kinds renamed to the four the Term API uses. No kotlinx. A `watchNext` waiting holds one
+// pool worker and counts as pending work, so the loop waits for the change rather than calling it a stall.
 //
 // Reached only through the public file/watch API.
 import java.nio.file.FileSystems
@@ -12,8 +15,6 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.StandardWatchEventKinds
 import java.nio.file.WatchService
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 object watchFile {
   // the running watch: the service, the directories registered with it (so a key can be turned back into a path),
@@ -22,7 +23,7 @@ object watchFile {
     var closed = false
   }
 
-  suspend fun watchOpen(path: String, deep: Boolean): Watcher = withContext(Dispatchers.IO) {
+  suspend fun watchOpen(path: String, deep: Boolean): Watcher = termLoop.handBack {
     try {
       val service = FileSystems.getDefault().newWatchService()
       val roots = mutableMapOf<Any, Path>()
@@ -62,11 +63,11 @@ object watchFile {
 
   // the next change. A closed watcher answers with the empty event rather than waiting forever, so a loop over
   // `watchNext` ends after `watchClose`.
-  suspend fun watchNext(watcher: Watcher): WatchEvent = withContext(Dispatchers.IO) {
+  suspend fun watchNext(watcher: Watcher): WatchEvent = termLoop.handBack {
     val service = watcher.service
 
     if (service == null || watcher.closed) {
-      return@withContext WatchEvent("", "")
+      return@handBack WatchEvent("", "")
     }
 
     try {
@@ -86,7 +87,7 @@ object watchFile {
             }
           val at = event.context()
 
-          return@withContext WatchEvent(
+          return@handBack WatchEvent(
             kind,
             if (at is Path) root.resolve(at).toString() else root.toString(),
           )
@@ -101,7 +102,7 @@ object watchFile {
   }
 
   suspend fun watchClose(watcher: Watcher) {
-    withContext(Dispatchers.IO) {
+    termLoop.handBack {
       watcher.closed = true
 
       try {

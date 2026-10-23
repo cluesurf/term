@@ -40,6 +40,9 @@ export type Program = {
   resolve: (env: NativeEnv) => Resolver
   dir: string
   name: string
+  // the `.tree` the program is written to and compiled as, when it must be one path on every backend: a raise's frames
+  // name it (term/hive decision 001), so `<name>-<backend>.tree` would differ by backend
+  file?: string
 }
 
 export const BACKENDS: Backend[] = ['typescript', 'rust', 'swift', 'kotlin']
@@ -93,7 +96,7 @@ function cargoBuild(project: string, target: string): string | undefined {
 
 // compile `program` for `backend` and build it, answering the command that runs its `run` task and prints what it
 // returned
-export function buildOn({ backend, program, resolve, dir, name }: Program): Built {
+export function buildOn({ backend, program, resolve, dir, name, file }: Program): Built {
   const missing = TOOLS[backend].filter(tool => !have(tool))
 
   if (missing.length > 0) {
@@ -102,8 +105,9 @@ export function buildOn({ backend, program, resolve, dir, name }: Program): Buil
 
   const env = ENV[backend]
   const stem = join(dir, `${name}-${backend}`)
-  writeFileSync(`${stem}.tree`, program)
-  const result = compile({ file: `${stem}.tree`, text: program }, { resolve: resolve(env), env })
+  const source = file ?? `${stem}.tree`
+  writeFileSync(source, program)
+  const result = compile({ file: source, text: program }, { resolve: resolve(env), env })
 
   if (!result.ok) {
     return { form: 'failed', stage: 'compile', reason: [...new Set(result.diagnostics.map(d => d.message))].slice(0, 6).join(' | ') }
@@ -114,8 +118,12 @@ export function buildOn({ backend, program, resolve, dir, name }: Program): Buil
 
   if (backend === 'typescript') {
     const prelude = nativePrelude(result.program, env, readRuntime, result.typescript)
-    // `run` may be asynchronous (a terminal app's loop yields to the event loop), so its answer is awaited either way
-    writeFileSync(`${stem}.ts`, `${prelude}\n${result.typescript}\nPromise.resolve(run()).then(text => process.stdout.write(text))\n`)
+    // `run` may be asynchronous (a terminal app's loop yields to the event loop), so its answer is awaited either way. A
+    // raise nothing caught is printed by the exception prelude's `__termUnhandled`, as the native mains print it
+    writeFileSync(
+      `${stem}.ts`,
+      `${prelude}\n${result.typescript}\nPromise.resolve().then(() => run()).then(text => process.stdout.write(text), (raised: unknown) => { if (typeof __termUnhandled === 'function') __termUnhandled(raised); throw raised })\n`,
+    )
 
     // node with tsx's loader, never `npx`: npx draws a progress spinner whenever its output is a terminal, and a
     // program run in a pseudo-terminal then shows a stray braille glyph in its last row

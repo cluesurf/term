@@ -6,7 +6,7 @@
 
 import { stdlibBase } from '@term/make/code/resolve'
 import { Worker } from 'node:worker_threads'
-import { cpus, tmpdir } from 'node:os'
+import { cpus, tmpdir, totalmem } from 'node:os'
 import { rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import * as path from 'node:path'
@@ -67,6 +67,19 @@ function ensureWorkerBundle(): string {
   return out
 }
 
+// The heap one worker may hold: TERM_WORKER_HEAP_MB, else three quarters of the machine shared between the workers,
+// never under 2048 MB. The same rule as call/code/worker-heap.ts, which the compiler package cannot import
+// (note/project/term/compiler/decision/005-prover-memory-bounded-by-problem.md)
+function workerHeapMb(workers: number): number {
+  const given = Number(process.env.TERM_WORKER_HEAP_MB)
+
+  if (Number.isFinite(given) && given > 0) {
+    return Math.floor(given)
+  }
+
+  return Math.max(2048, Math.floor((totalmem() * 0.75) / Math.max(1, workers) / (1024 * 1024)))
+}
+
 type WorkerEntry = {
   worker: Worker
   busy: boolean
@@ -90,25 +103,33 @@ export class WorkerPool {
   private revision = 0
   private context: DefContext | undefined
 
-  constructor(size: number = Math.max(1, cpus().length - 1)) {
-    const bundle = ensureWorkerBundle()
+  // each worker's heap limit in MB: one that runs out of memory fails only the job it held, and is replaced
+  private readonly heapMb: number
+
+  constructor(size: number = Math.max(1, cpus().length - 1), heapMb: number = workerHeapMb(size)) {
+    this.heapMb = heapMb
+
+    // the bundle lives under /tmp, from where stdlibBase() cannot walk up to deck/seed: pin the stdlib for it
+    if (!process.env.TERM_STDLIB) {
+      const stdlib = stdlibBase()
+
+      if (stdlib) {
+        process.env.TERM_STDLIB = stdlib
+      }
+    }
 
     for (let i = 0; i < size; i++) {
-      // the bundle lives under /tmp, from where stdlibBase() cannot walk up to deck/seed: pin the stdlib for it
-      if (!process.env.TERM_STDLIB) {
-        const stdlib = stdlibBase()
-
-        if (stdlib) {
-          process.env.TERM_STDLIB = stdlib
-        }
-      }
-
-      const worker = new Worker(bundle)
-      const entry: WorkerEntry = { worker, busy: false, revision: -1 }
-      worker.on('message', message => this.onMessage(entry, message))
-      worker.on('error', error => this.onError(error))
-      this.workers.push(entry)
+      this.workers.push(this.spawn())
     }
+  }
+
+  private spawn(): WorkerEntry {
+    const worker = new Worker(ensureWorkerBundle(), { resourceLimits: { maxOldGenerationSizeMb: this.heapMb } })
+    const entry: WorkerEntry = { worker, busy: false, revision: -1 }
+    worker.on('message', message => this.onMessage(entry, message))
+    worker.on('error', error => this.onError(entry, error))
+
+    return entry
   }
 
   // set the shared build context for subsequent jobs. Cheap: it only bumps the revision; each worker is sent the new
@@ -222,8 +243,24 @@ export class WorkerPool {
     this.drain()
   }
 
-  private onError(error: Error): void {
-    // a worker crash rejects every outstanding job: the caller falls back or fails the build, never hangs
+  private onError(entry: WorkerEntry, error: Error): void {
+    // a worker that ran out of its heap fails only the job it held, and a new worker takes its place
+    if ((error as { code?: unknown }).code === 'ERR_WORKER_OUT_OF_MEMORY') {
+      const id = (entry as WorkerEntry & { current?: number }).current
+      const pending = id === undefined ? undefined : this.pending.get(id)
+
+      if (id !== undefined && pending) {
+        this.pending.delete(id)
+        pending.reject(new Error(`${pending.source.name}: out-of-memory at the worker's ${this.heapMb} MB heap limit`))
+      }
+
+      this.workers.splice(this.workers.indexOf(entry), 1, this.spawn())
+      this.drain()
+
+      return
+    }
+
+    // any other worker crash rejects every outstanding job: the caller falls back or fails the build, never hangs
     for (const [id, pending] of this.pending) {
       pending.reject(error)
       this.pending.delete(id)

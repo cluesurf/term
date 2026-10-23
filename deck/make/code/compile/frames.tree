@@ -1,0 +1,127 @@
+# THE TERM FRAMES OF A RAISE (note/project/term/hive/decision/001-raise-records-term-frames.md). A raise's `flow` holds
+# Term frames, never platform ones: the raise site, then each call site the exception passes out through, innermost
+# first, at most 64. A frame is one text, `<task> <file>:<line>`: the Term task holding the site (a closure is named by
+# the task it is written in, a site outside every task by `top`), a space, the `.tree` file, a colon, the 1-based line.
+#
+# The build stamps each call and each raise with its frame before the simplifier runs (compile.ts `stampSites`), so a
+# task inlined into its caller keeps its own frames: the inlined call's site is the callee's frame, a line break, and
+# the caller's (`join-frames`). Every backend reads the stamped text and appends it whole on its error path, the same
+# bytes on TypeScript, Rust, Swift and Kotlin. The file is spelled by its deck, `<deck>/<path in the deck>`, else by its
+# own name, so one file's frame is the same text in a separate build and a merged one, on every machine.
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find index-of
+  find substring
+
+load ./node
+  find expression
+  find statement
+
+load ./node-walk
+  find expressions-in
+  find statements-in
+
+load ./node-reach
+  find reach-expression
+
+# the frame of a site in `task`, in `file`, at `line` (1-based)
+task frame-text
+  take task, like text
+  take file, like text
+  take line, like number
+  like text
+
+  back <{written-task(task)} {file}:{line}>
+
+# a task as its author wrote it: one two decks declare is split by file (`find__in0_1`), and its frame names it as
+# written, as a raise names its form (check/extend.tree `written-form`)
+task written-task
+  take name, like text
+  like text
+
+  save at, index-of(name, <__in>, 0)
+  fork test, is-below(at, 0)
+    hold
+      back name
+  back substring(name, 0, at)
+
+# the frames of a call inlined into another: its own first, then the call it now stands in for
+task join-frames
+  take inner, like text
+  take outer, like text
+  like text
+
+  fork test, is-equal(inner, <>)
+    hold
+      back outer
+  fork test, is-equal(outer, <>)
+    hold
+      back inner
+  back <{inner}\n{outer}>
+
+# A COPY OF A CALLEE INLINED AT A CALL whose frames are `outer` (ir/simplifying.tree's small tasks, specializations and
+# forwarders, ir/inline-statements.tree): each call and raise in it keeps its own frames and gains the call's it now
+# stands in for. A closure's body is left as written, since the closure runs where it is called, not here
+task carry-frames
+  take value, like expression
+  take outer, like text
+  like expression
+
+  fork test, is-unequal(outer, <>)
+    hold
+      save skip, make list
+      push(skip, <span>)
+      push(skip, <type>)
+      push(skip, <body>)
+      walk reach-expression(value, skip)/expressions
+        take one
+        sift one
+          case call
+            save one/site, join-frames(site, outer)
+          miss
+            turn next
+  back value
+
+task carry-frames-in
+  take body, like list, like statement
+  take outer, like text
+  like list, like statement
+
+  fork test, is-unequal(outer, <>)
+    hold
+      walk expressions-in(body)
+        take one
+        sift one
+          case call
+            save one/site, join-frames(site, outer)
+          miss
+            turn next
+      walk statements-in(body)
+        take one
+        sift one
+          case throw
+            save one/site, join-frames(site, outer)
+          miss
+            turn next
+  back body
+
+# the frames a call carries, empty for any other expression
+task frames-of
+  take node, like expression
+  like text
+
+  sift node
+    case call
+      back site
+    miss
+      back <>
+
+# the most frames a flow holds: past it a site adds nothing, so a deep recursion raising for control flow pays a length
+# check per frame and not an append
+task frame-limit
+  like number
+
+  back 64

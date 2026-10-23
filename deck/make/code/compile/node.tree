@@ -332,6 +332,11 @@ form expression
     link propagate
       like boolean
       need false
+    # the Term frames of this call, innermost first and one per line (compile/frames.tree): what a raise passing out
+    # through it appends to its `flow` (term/hive decision 001)
+    link site
+      like text
+      need false
   case array
     link items, like list, like expression
     link span, like span
@@ -789,6 +794,10 @@ form statement
     link value, like expression
     link span, like span
     link raise
+      like text
+      need false
+    # the Term frame of the raise, the first of its `flow` (compile/frames.tree)
+    link site
       like text
       need false
   # a verification condition

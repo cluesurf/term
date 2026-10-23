@@ -137,6 +137,68 @@ function stampInspectTypes(program: Program): void {
   visit(program)
 }
 
+// EVERY CALL AND EVERY RAISE KNOWS ITS TERM FRAME (term/hive decision 001, compile/frames.tree): `<task> <file>:<line>`,
+// stamped before the simplifier runs, so a task inlined into its caller keeps the frames of its own source, and every
+// backend appends the same text where a raise passes. A closure's sites are named by the task it is written in, a site
+// outside every task by `top`. The file is spelled by its deck (`@term/base/code/exception.tree`), else by its own name,
+// so a frame is one text in a separate build and a merged one and on every machine. A node already stamped (a stub's
+// body, built by the unit that owns it) keeps its frame
+function stampSites(program: Program, deckOf?: (file: string) => { name: string; root: string } | undefined): void {
+  const spelled = new Map<string, string>()
+  const spell = (file: string | undefined): string => {
+    if (file === undefined) {
+      return ''
+    }
+
+    let known = spelled.get(file)
+
+    if (known === undefined) {
+      const deck = deckOf?.(file)
+      known = deck ? `${deck.name}/${relativePath(deck.root, file)}` : (file.split('/').pop() ?? file)
+      spelled.set(file, known)
+    }
+
+    return known
+  }
+
+  const visit = (node: unknown, task: string, file: string): void => {
+    if (Array.isArray(node)) {
+      node.forEach(one => visit(one, task, file))
+
+      return
+    }
+
+    if (node === null || typeof node !== 'object') {
+      return
+    }
+
+    const one = node as { form?: string; site?: string; name?: string; span?: Span }
+
+    if ((one.form === 'call' || one.form === 'throw') && one.site === undefined && one.span) {
+      one.site = `${task} ${file}:${one.span.start.line + 1}`
+    }
+
+    for (const [key, value] of Object.entries(node)) {
+      if (key !== 'span' && key !== 'type' && key !== 'into' && key !== 'result') {
+        visit(value, task, file)
+      }
+    }
+  }
+
+  for (const statement of program) {
+    const file = spell(statement.span.file)
+    const task = statement.form === 'function' ? (statement.method?.name ?? statement.name) : 'top'
+    visit(statement, task, file)
+  }
+}
+
+// a path inside `root`, with `/` between its parts on every platform
+function relativePath(root: string, file: string): string {
+  const base = root.endsWith('/') ? root : `${root}/`
+
+  return file.startsWith(base) ? file.slice(base.length) : file
+}
+
 function staleFindsOf(program: Program, file: string, scope: ImportScope | undefined): Diagnostic[] {
   const scopes = scopeList(scope)
   const sources: ReadSource[] = []
@@ -1265,6 +1327,7 @@ export function compileProgram(
   }
 
   stampInspectTypes(program)
+  stampSites(program, deckOf)
 
   // `mark sole` and `mark hide` on a form (affine-kinds decision 001), held here, after the checker typed every value
   // and before any backend, so TypeScript, Rust, Swift and Kotlin refuse alike: a form holding a sole value is sole

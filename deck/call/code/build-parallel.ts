@@ -20,6 +20,7 @@ import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { stdlibBase } from '@term/make/code/resolve'
 import { addOwed } from '@term/make/code/check/holds'
 import type { Owed } from '@term/make/code/check/holds'
+import { isOutOfMemory, outOfMemoryDiagnostic, workerHeapMb } from '@term/call/code/worker-heap'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 
@@ -168,10 +169,15 @@ export function compileProjectParallel(
   // The compiler version travels WITH the worker. A worker's own module is this bundle in the temp directory, so it
   // cannot find the package root to fingerprint the compiler, and left to itself it would key its cache under a hash
   // of the bundle and never read a single entry its parent wrote. See projectCache in cache-store.ts.
-  const workers = Array.from(
-    { length: size },
-    () => new Worker(bundle, { workerData: { version: compilerVersions() } }),
-  )
+  //
+  // Each worker's heap is limited, so one that runs out of memory ends alone: its file is reported as `out-of-memory`
+  // and a new worker takes its place (worker-heap.ts)
+  const heapMb = workerHeapMb(size)
+  const spawn = (): Worker =>
+    new Worker(bundle, { workerData: { version: compilerVersions() }, resourceLimits: { maxOldGenerationSizeMb: heapMb } })
+  const workers = Array.from({ length: size }, spawn)
+  // the file each busy worker holds, so a worker's death is reported against it
+  const holding = new Map<Worker, string>()
 
   let compiled = 0
   let failed = 0
@@ -237,6 +243,7 @@ export function compileProjectParallel(
       }
 
       const file = files[next++]!
+      holding.set(worker, file)
       worker.postMessage({
         type: 'job',
         id: next,
@@ -255,15 +262,36 @@ export function compileProjectParallel(
       }
     }
 
-    for (const worker of workers) {
+    const listen = (worker: Worker): void => {
       worker.on('message', (reply: Reply) => {
+        holding.delete(worker)
         settle(reply)
         dispatch(worker)
       })
-      // a worker that dies mid-job: surface it as a build failure rather than hanging the pool
-      worker.on('error', error =>
-        settle({ file: '<worker>', ok: false, error: String(error) }),
-      )
+      // a worker that dies mid-job: surface it as a build failure rather than hanging the pool. One that ran out of
+      // its heap fails its file as `out-of-memory` and is replaced, so the files still queued are built
+      worker.on('error', error => {
+        const file = holding.get(worker) ?? '<worker>'
+        holding.delete(worker)
+
+        if (isOutOfMemory(error)) {
+          const diagnostic = outOfMemoryDiagnostic(file, heapMb)
+          settle({ file, ok: false, error: `${file}: ${diagnostic.message}`, problems: [diagnostic] })
+
+          const replacement = spawn()
+          workers.push(replacement)
+          listen(replacement)
+          dispatch(replacement)
+
+          return
+        }
+
+        settle({ file, ok: false, error: String(error) })
+      })
+    }
+
+    for (const worker of workers) {
+      listen(worker)
     }
 
     for (const worker of workers) {

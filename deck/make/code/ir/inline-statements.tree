@@ -62,6 +62,10 @@ load ../compile/render-names
   find render-names
   find render-support
 
+load ../compile/frames
+  find carry-frames-in
+  find frames-of
+
 form inline-result
   link program, like list, like statement
   link inlined, like list, like text
@@ -1010,7 +1014,7 @@ task inline-let
         make assign-to
           bind variable, variable
           bind span, at
-      walk expand(callee, call-args(lifted/call), back-to, round)
+      walk expand(callee, call-args(lifted/call), frames-of(lifted/call), back-to, round)
         take one
         push(out, one)
     case none
@@ -1174,6 +1178,7 @@ task tails
 task expand
   take callee, like statement
   take args, like list, like expression
+  take outer, like text
   take back-to, like tail-back
   take round, like inline-round
   like list, like statement
@@ -1182,7 +1187,8 @@ task expand
   save out, make list
   sift callee
     case function
-      save copied, copy-program(body)
+      # each call and raise of the copy gains the frame of the call it replaces (compile/frames.tree)
+      save copied, carry-frames-in(copy-program(body), outer)
       save renamed, make hash
       save substituted-names, make list
       save substituted, make list
@@ -1396,7 +1402,7 @@ task walk-body
                   take before-one
                   push(out, before-one)
                 save effect-back, make effect
-                walk expand(callee, call-args(lifted/call), effect-back, round)
+                walk expand(callee, call-args(lifted/call), frames-of(lifted/call), effect-back, round)
                   take expanded
                   push(out, expanded)
                 turn next

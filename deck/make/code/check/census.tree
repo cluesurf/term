@@ -12,8 +12,8 @@
 #
 # Ported from check/scope-census.ts (self-hosting, 2026-10-06), which stays as the face. The original's two walks
 # visited every key of every object but `span`, types included, and read a `name` wherever one stood: a local is a
-# `let`'s or a view `save`'s name, a walk's item and index, an entry of any `params` or `binds` list, and a handler's
-# name; a reference is a variable, a placed component, a named type, a construction, a raise and a mask instance. Here
+# `let`'s or a view `save`'s name, a walk's item and index, an entry of any `params` list, a `case` arm's
+# variant fields as check/arm.tree binds them (term-module-scope-0003), and a handler's name; a reference is a variable, a placed component, a named type, a construction, a raise and a mask instance. Here
 # each is the case of the node that holds it, walked by compile/node-children.tree with only `span` skipped.
 
 load @term/base/list
@@ -51,6 +51,9 @@ load ../compile/import-scope
 
 load ../compile/view-lower
   find is-html-tag
+
+load ./arm
+  find arm-locals
 
 # ---- the answer ----
 
@@ -198,6 +201,49 @@ task defined
 
 # ---- the names a statement binds ----
 
+# the fields each case name brings into a `case` arm, as check/resolving.tree gathers them for the resolver: a
+# variantless record matched under its OWN name binds its record-level fields, and TWO FORMS MAY NAME A CASE ALIKE, so
+# every field any case of that name has is in. The census does not know the subject's type, so it takes the union,
+# exactly as the resolver declares it
+task variant-fields-of
+  take program, like list, like statement
+  like hash, like text, like list, like text
+  mark private
+
+  save out, text-lists()
+  walk program
+    take one
+    sift one
+      case record-type
+        fork test, is-above(fields/length, 0)
+          hold
+            save own, make list
+            walk fields
+              take field
+              push(own, field/name)
+            save out/{name}, own
+        walk variants
+          take variant
+          save variant-name, variant/name
+          save merged, make list
+          fork test, out/has(variant-name)
+            hold
+              save known, out/get(variant-name)
+              walk known
+                take kept
+                fork test, not(has-text(merged, kept))
+                  hold
+                    push(merged, kept)
+          walk variant/fields
+            take field
+            fork test, not(has-text(merged, field/name))
+              hold
+                push(merged, field/name)
+          save out/{variant-name}, merged
+      miss
+        save nothing, 0
+  back out
+
 task add-name
   take into, like hash, like text, like boolean
   take name, like text
@@ -237,6 +283,7 @@ task dock-route-locals
 task locals-into
   take handle, like node-handle
   take into, like hash, like text, like boolean
+  take variants, like hash, like text, like list, like text
   mark private
 
   sift handle
@@ -287,11 +334,23 @@ task locals-into
         case match
           link match-subject
           link match-cases
+          # an arm's locals are its variant's fields, selected or renamed by a leading `link` run: the one rule the
+          # checker and every emitter bind them by (check/arm.tree), never only the `link` names
           walk match-cases
             take arm
+            save binds, make list
             walk arm/binds
               take one
-              add-name(into, one)
+              push(binds, one)
+            fork test, variants/has(arm/label)
+              hold
+                walk arm-locals(variants/get(arm/label), binds)
+                  take one
+                  add-name(into, one/local)
+              miss
+                walk binds
+                  take one
+                  add-name(into, one)
         case guard
           link guard-body
           link guard-catch
@@ -348,7 +407,7 @@ task locals-into
       save nothing, 0
   walk node-children(handle, only-span())
     take child
-    locals-into(child, into)
+    locals-into(child, into, variants)
 
 # ---- every reference under a node ----
 
@@ -483,6 +542,60 @@ task namespace-tables
 
   back make hash
 
+# the files that define a `mark text` form, whose generated `to-text` and `from-text` travel with it (decision 001
+# rule 1b of note/project/term/module-scope)
+task text-form-files
+  take program, like list, like statement
+  like hash, like text, like boolean
+  mark private
+
+  save out, text-flags()
+  walk program
+    take one
+    sift one
+      case record-type
+        # `read`: a bare `text` is the literal word
+        fork test, is-equal(read(text), true)
+          hold
+            save own-file, file-of(one)
+            fork test, is-unequal(own-file, <>)
+              hold
+                save out/{own-file}, true
+      miss
+        save nothing, 0
+  back out
+
+# whether a file reaches a `mark text` form: defines one, or finds anything in a file (or that file's `bear` chain)
+# that defines one. The census does not know the type of a `to-text` call's argument, so a call is reached through its
+# form whenever ANY text form is in reach, and counted only when none is
+task reaches-text-form
+  take scopes, like list, like file-scope
+  take file, like text
+  take text-files, like hash, like text, like boolean
+  like boolean
+  mark private
+
+  fork test, text-files/has(file)
+    hold
+      back true
+  sift scope-of(scopes, file)
+    case some
+      link own
+      save reach, new-file-set()
+      walk own/finds
+        take entry
+        walk entry/targets
+          take target
+          gather-exported(scopes, target, reach)
+      walk reach/files
+        take one
+        fork test, text-files/has(one)
+          hold
+            back true
+    case none
+      save nothing, 0
+  back false
+
 task census-of
   take program, like list, like statement
   take scopes, like list, like file-scope
@@ -556,6 +669,8 @@ task census-of
   save unimported, make list
   save shadowed, make list
   save seen, text-flags()
+  save variants, variant-fields-of(program)
+  save text-files, text-form-files(program)
   # every form method's bare name
   save methods, text-flags()
   walk program
@@ -579,7 +694,7 @@ task census-of
         save handle
           make node-handle/statement-handle
             bind node, one
-        locals-into(handle, local)
+        locals-into(handle, local, variants)
         save found, make list
         references-into(handle, found)
         walk found
@@ -607,6 +722,12 @@ task census-of
                 fork test, holds-file(reach, definer)
                   hold
                     save reached, true
+              # a text form's generated task is reached through its form (decision 001 rule 1b)
+              fork test, and(not(reached), is-equal(ref/namespace, <value>))
+                hold
+                  fork test, or(is-equal(ref/name, <to-text>), is-equal(ref/name, <from-text>))
+                    hold
+                      save reached, reaches-text-form(scopes, own-file, text-files)
               fork test, not(reached)
                 hold
                   save key, <{own-file} {ref/namespace} {ref/name}>

@@ -9,7 +9,9 @@
 //
 // A project file's answer comes back whole, and `compileProjectSeparate` takes it as built: it writes the artifacts
 // and reports the problems on the main thread, as it does for an entry it compiles itself. Anything the pool did not
-// answer, it compiles. So a pool that fails part way costs time, never a wrong build.
+// answer, it compiles. So a pool that fails part way costs time, never a wrong build. The one exception is a unit
+// whose worker ran out of its heap (worker-heap.ts): it is answered here as its own `out-of-memory` failure, since the
+// main thread compiling it again would run out the same way, with no limit to stop it short of the whole process.
 //
 // It lives apart from make.ts so that the worker, which imports make.ts, never bundles esbuild.
 
@@ -26,6 +28,7 @@ import type { SeparateResult } from '@term/make/code/compile/separate'
 import { finish, first, makeSchedule } from '@term/make/code/compile/schedule'
 import { stdlibBase } from '@term/make/code/resolve'
 import { projectRoleOf } from '@term/call/code/role-of'
+import { isOutOfMemory, outOfMemoryDiagnostic, workerHeapMb } from '@term/call/code/worker-heap'
 
 type Reply = { file: string; result?: SeparateResult; error?: string; built?: number; spent?: { building: number; rolling: number } }
 
@@ -39,6 +42,10 @@ export async function compileUnitsParallel(
   jobs: number
   workers: number
   failures: string[]
+  // the units whose worker ran out of its heap, each answered in `results` as an `out-of-memory` failure
+  outOfMemory: Set<string>
+  // the heap limit each worker had, in MB
+  heapMb: number
   // the units built for modules outside the project, which no entry's answer counts
   built: number
   // the workers' time, summed: walking the closures before the pool starts, building units, computing rolls
@@ -130,18 +137,22 @@ export async function compileUnitsParallel(
 
   // `TERM_POOL_PROFILE=<dir>` writes each worker's CPU profile there, to see where a pool's time goes
   const profile = process.env.TERM_POOL_PROFILE
-  const workers = Array.from(
-    { length: size },
-    () =>
-      new Worker(bundle, {
-        workerData: { version: compilerVersions() },
-        ...(profile ? { execArgv: ['--cpu-prof', `--cpu-prof-dir=${profile}`] } : {}),
-      }),
-  )
+  // each worker's heap is limited, so one that runs out of memory ends alone and its unit is reported (worker-heap.ts)
+  const heapMb = workerHeapMb(size)
+  const spawn = (): Worker =>
+    new Worker(bundle, {
+      workerData: { version: compilerVersions() },
+      resourceLimits: { maxOldGenerationSizeMb: heapMb },
+      ...(profile ? { execArgv: ['--cpu-prof', `--cpu-prof-dir=${profile}`] } : {}),
+    })
+  const workers = Array.from({ length: size }, spawn)
   const plan = makeSchedule(graph)
   const ready = first(plan)
   const results = new Map<string, SeparateResult>()
   const failures: string[] = []
+  // the units whose worker ran out of memory: each is answered here as its own `out-of-memory` failure, so the main
+  // build never compiles it again on its own thread, where the same growth would end the whole process
+  const outOfMemory = new Set<string>()
   const idle: Worker[] = []
   // the job each busy worker holds
   const holding = new Map<Worker, string>()
@@ -158,7 +169,8 @@ export async function compileUnitsParallel(
         worker.postMessage({ type: 'job', root, file, entry: entries.has(file) })
       }
 
-      // every job answered, or nobody left to answer the rest, which the main build then compiles itself
+      // every job answered, or nobody left to answer the rest, which the main build then compiles itself (all but an
+      // out-of-memory unit, which is answered as its failure)
       if (done === graph.size || alive === 0) {
         settle()
       }
@@ -171,7 +183,7 @@ export async function compileUnitsParallel(
       ready.push(...finish(plan, file))
     }
 
-    for (const worker of workers) {
+    const listen = (worker: Worker): void => {
       worker.on('message', (reply: Reply) => {
         holding.delete(worker)
 
@@ -193,8 +205,9 @@ export async function compileUnitsParallel(
         dispatch()
       })
 
-      // a worker that dies takes its job with it: the job is released with no answer, and the pool goes on without
-      // that worker
+      // a worker that dies takes its job with it. One that ran out of its heap answers its unit as an `out-of-memory`
+      // failure and is replaced, so the pool keeps its size. Any other death releases the job with no answer, and the
+      // pool goes on without that worker
       worker.on('error', error => {
         const file = holding.get(worker)
         holding.delete(worker)
@@ -204,6 +217,18 @@ export async function compileUnitsParallel(
 
         alive--
         failures.push(`${file ?? '<worker>'}: ${String(error)}`)
+
+        if (isOutOfMemory(error)) {
+          if (file !== undefined) {
+            outOfMemory.add(file)
+            results.set(file, { ok: false, diagnostics: [outOfMemoryDiagnostic(file, heapMb)] })
+          }
+
+          const replacement = spawn()
+          workers.push(replacement)
+          alive++
+          listen(replacement)
+        }
 
         if (file !== undefined) {
           release(file)
@@ -215,10 +240,14 @@ export async function compileUnitsParallel(
       idle.push(worker)
     }
 
+    for (const worker of workers) {
+      listen(worker)
+    }
+
     dispatch()
   })
 
   await Promise.all(workers.map(worker => worker.terminate()))
 
-  return { results, jobs: graph.size, workers: size, failures, built, spent }
+  return { results, jobs: graph.size, workers: size, failures, outOfMemory, heapMb, built, spent }
 }
