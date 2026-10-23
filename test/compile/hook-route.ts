@@ -9,6 +9,7 @@
 import { compile } from '@term/make/code/compile/compile'
 import { statementJson } from '@term/make/code/compile/node-json'
 import type { Statement } from '@term/make/code/compile/node'
+import { projectResolver } from '@term/call/code/make'
 
 let pass = 0
 let fail = 0
@@ -275,6 +276,42 @@ const routePass = compile(
 )
 const routePassMessages = routePass.ok ? [] : routePass.diagnostics.map(d => d.message)
 ok('mark pass under a URL route is refused', routePassMessages.some(m => m.includes('mark pass')), routePassMessages.join(' | '))
+
+// A MAYBE TAKE OR SLOT CAN BE ABSENT (decision cli-in-term/008 part 1): its route keeps the whole `maybe` type with
+// its item, and `need true`, a `bind` default or a maybe of a list is refused, naming the take
+const maybeConsole = (lines: string, param: string): string => `load @term/base/maybe
+  find maybe
+
+hook tool
+  hook hunt
+${lines}
+    task hunt
+
+task hunt
+  take ${param}
+  like text
+
+  send back, <z>
+`
+const maybeOk = compile({ file: `${process.cwd()}/test/compile/maybe-line.tree`, text: maybeConsole('    take runs\n      like maybe, like number\n    slot glob\n      like maybe, like text', 'runs, like maybe, like number\n  take glob, like maybe, like text') }, { ...asCall, resolve: projectResolver(process.cwd()) })
+ok('a console of maybe takes compiles', maybeOk.ok, maybeOk.ok ? '' : maybeOk.diagnostics.map(d => d.message).join(' | '))
+const maybeRoute = (maybeOk.ok ? maybeOk.program : []).find((s): s is Dock => s.form === 'dock')?.route.children[0]
+const runsType = maybeRoute?.takes.find(take => take.name === 'runs')?.type
+ok(
+  'a maybe take keeps the maybe type with its item',
+  JSON.stringify(runsType) === JSON.stringify({ kind: 'named', name: 'maybe', args: [{ kind: 'number' }] }),
+  JSON.stringify(runsType),
+)
+ok('a maybe slot stays positional', maybeRoute?.takes.find(take => take.name === 'glob')?.positional === true)
+
+const maybeRefused = (lines: string, param: string, want: string, name: string): void => {
+  const found = refusals(maybeConsole(lines, param))
+  ok(name, found.some(m => m.includes(want)), found.join(' | '))
+}
+
+maybeRefused('    take runs\n      like maybe, like number\n      need true', 'runs, like maybe, like number', '`runs` is a maybe', 'a maybe take with need true is refused')
+maybeRefused('    take runs\n      like maybe, like number\n      bind code 3', 'runs, like maybe, like number', '`runs` is a maybe', 'a maybe take with a default is refused')
+maybeRefused('    slot globs\n      like maybe, like list, like text', 'globs, like maybe, like list, like text', '`globs` is a maybe of a list', 'a maybe list slot is refused')
 
 console.log(`\nhook-route: ${pass} pass, ${fail} fail`)
 

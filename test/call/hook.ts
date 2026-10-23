@@ -8,6 +8,7 @@ import {
   programOf,
   runCommandLine,
 } from '@term/call/code/hook-dispatch'
+import { projectResolver } from '@term/call/code/make'
 
 let pass = 0
 let fail = 0
@@ -380,10 +381,70 @@ hook tool
     })
     .then(code => {
       expect('--help after a literal -- is not the console\'s help', [code, shown.some(line => line.startsWith('tool build'))], [0, false])
+
+      return maybes()
+    })
+    .then(() => {
       console.log(`\nhook: ${pass} pass, ${fail} fail`)
 
       if (fail) {process.exit(1)}
     })
+}
+
+// A MAYBE TAKE OR SLOT (decision cli-in-term/008 part 1) reaches its task as `none` when the line does not name it and
+// as `some` of the value when it does, the value read by the item's kind: the empty text and 0 are given values
+async function maybes(): Promise<void> {
+  const MAYBE = `load @term/base/maybe
+  find maybe
+
+hook probe
+  slot target
+    like maybe, like text
+  take runs
+    like maybe, like number
+  take json
+    like boolean
+  task probe
+
+task probe
+  take target, like maybe, like text
+  take runs, like maybe, like number
+  take json, like boolean
+  like void
+`
+  const built = compile(
+    { file: `${process.cwd()}/test/call/maybe-line.tree`, text: MAYBE },
+    { resolve: projectResolver(process.cwd()), roleOf: () => 'call' },
+  )
+
+  if (!built.ok) {
+    console.log('FAIL compile maybe', JSON.stringify(built.diagnostics.slice(0, 3).map(d => d.message)))
+    process.exit(1)
+  }
+
+  const routes = commandRoutes(built.program)
+  const run = async (argv: string[]): Promise<unknown[]> => {
+    let got: unknown[] = []
+    await runCommandLine({
+      name: 'tool',
+      routes,
+      argv,
+      resolve: () => (...args: unknown[]) => {
+        got = args
+      },
+      out: () => undefined,
+      err: line => console.log(`  err: ${line}`),
+    })
+    return got
+  }
+
+  const none = { form: 'none' }
+  expect('a maybe text slot absent is none, a maybe number absent none', await run(['probe']), [none, none, false])
+  expect('a maybe text slot given "" is some("")', (await run(['probe', '']))[0], { form: 'some', value: '' })
+  expect('a maybe number take --runs 0 is some(0), a number', (await run(['probe', '--runs', '0']))[1], { form: 'some', value: 0 })
+  expect('a maybe take given reads its item: --runs=3', (await run(['probe', 'x', '--runs=3'])), [{ form: 'some', value: 'x' }, { form: 'some', value: 3 }, false])
+  const refused = dispatch(routes, ['probe', '--runs', 'many'])
+  expect('a maybe number take refuses a word that is no number', refused.ok, false)
 }
 
 main()

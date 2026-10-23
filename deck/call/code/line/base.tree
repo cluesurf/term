@@ -819,7 +819,7 @@ hook term
     # What to clean: deck, the build output (the default); tail, the logs; boot, what boot and cast write; base, the
     # machine-wide module cache
     slot target
-      like text
+      like maybe, like text
     task wash
 
   # Start REPL
@@ -1075,19 +1075,19 @@ hook term
   hook hunt
     # Directory of .tree files to hunt (default: this project's .tree files, as term make finds them)
     slot glob
-      like text
+      like maybe, like text
     # Fuzz inputs per term
     take runs
-      like number
+      like maybe, like number
     # Distinct fuzz seeds
     take seeds
-      like number
+      like maybe, like number
     # Watchdog seconds per fuzz term
     take fuzz-timeout
-      like number
+      like maybe, like number
     # Milliseconds one compile may take before it is a finding (default 1000)
     take budget
-      like number
+      like maybe, like number
     # Machine-readable output
     take json
       like boolean

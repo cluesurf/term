@@ -4775,6 +4775,26 @@ function routeOf(
     const literal = fallbackValue
       ? (expressionOf(bridge, fallbackValue) ?? undefined)
       : undefined
+    // A MAYBE TAKE OR SLOT IS ONE THAT CAN BE ABSENT (decision cli-in-term/008 part 1): it reaches its task as `none`
+    // when the line does not name it. `need true` (never absent), a `bind` default (never absent) and a list item (a
+    // list's absence is the empty list) each contradict that, so each is refused, naming the take
+    if (!isRoute && type?.kind === 'named' && type.name === 'maybe') {
+      const name = wordAt(take, 'name') ?? 'x'
+      const kind = positional ? 'slot' : 'take'
+
+      if (needWord(take) === 'true') {
+        refuse(bridge, take, `the ${kind} \`${name}\` is a maybe, which is absent when not given: it cannot also be \`need true\`. Drop one`)
+      }
+
+      if (fallbackBind) {
+        refuse(bridge, fallbackBind, `the ${kind} \`${name}\` is a maybe, which is absent when not given: a \`bind\` default means it never is. Drop the default, or the maybe`)
+      }
+
+      if (positional && isListType(type.args?.[0])) {
+        refuse(bridge, take, `the slot \`${name}\` is a maybe of a list: a list slot is never absent, it is the empty list. Write \`slot ${name}, like list, like ...\``)
+      }
+    }
+
     const fallback: DockLiteral | undefined =
       literal?.form === 'integer' || literal?.form === 'float'
         ? { form: 'number', value: Number(literal.value) }

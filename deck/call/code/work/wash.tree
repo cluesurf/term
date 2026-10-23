@@ -9,8 +9,8 @@ load @term/call/work/home
 # never exits: a throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term, part 2).
 
 # line.ts passed `target: argv.target`, absent when no target was named, and callWash tells absent from any word
-# (an unknown word is refused): so an absent target, which the hook hands over as the empty text, is left out of
-# the ask rather than passed as `""`
+# (an unknown word is refused, `""` among them). The slot is a maybe (decision cli-in-term/008 part 1): none is
+# left out of the ask, and a given word, the empty text included, is passed as written
 form wash-ask
   link root, like text
   link target, like text
@@ -18,27 +18,24 @@ form wash-ask
 form root-ask
   link root, like text
 
+load @term/base/maybe
+  find maybe
+  find some
+  find none
+
 dock load
   load <@term/call/code/wash>, name wash-module
 
 task wash
   mark async
-  take target, like text
+  take target, like maybe, like text
 
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  fork test
-    is-equal target, <>
-    hold
-      call wash-module/callWash
-        make root-ask
-          bind root, read root
-        wait true
-      send back
-  call wash-module/callWash
-    make wash-ask
-      bind root, read root
-      bind target, read target
-    wait true
+  sift target
+    case some
+      wait wash-module/callWash(make wash-ask, root(root), target(value))
+    case none
+      wait wash-module/callWash(make root-ask, root(root))

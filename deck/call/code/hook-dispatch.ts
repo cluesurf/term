@@ -85,6 +85,20 @@ function takeNamed(takes: DockTake[], word: string, short: boolean): DockTake | 
     : takes.find(take => take.name === word || (take.aliases ?? []).includes(word))
 }
 
+// A MAYBE TAKE (`like maybe, like number`, decision cli-in-term/008 part 1) can be absent: its route's type is the
+// named `maybe` with its item as the one argument. A given word is read by the ITEM's kind, so `--runs 0` is the
+// number 0, never the text
+function maybeItem(take: DockTake): DockTake['type'] | undefined {
+  const type = take.type
+
+  return type?.kind === 'named' && type.name === 'maybe' ? type.args?.[0] : undefined
+}
+
+// the kind a take's word is read as: a maybe take's item's, else its own type's
+function kindOf(take: DockTake | undefined): string | undefined {
+  return take ? (maybeItem(take) ?? take.type)?.kind : undefined
+}
+
 // resolve an argv (without the node + script prefix) against the command routes
 export function dispatch(
   routes: DockRoute[],
@@ -230,7 +244,7 @@ export function dispatch(
         const value = argv[i + 1]
         // a boolean flag stands alone, and takes the next word only when it is `true` or `false`: `-l ada` is the
         // flag and then the positional `ada`
-        const flag = reachable.find(take => take.name === key)?.type?.kind === 'boolean'
+        const flag = kindOf(reachable.find(take => take.name === key)) === 'boolean'
 
         if (value !== undefined && !value.startsWith('-') && (!flag || value === 'true' || value === 'false')) {
           setArg(key, value)
@@ -328,9 +342,11 @@ export function dispatch(
 
       // type coercion, which refuses a value that is not the type. `--times x` for a `like number` take reached the
       // task as the text `x`, and `--loud yes` as false (guides: applications/command-line, 2026-10-03)
-      if (take.type?.kind === 'number' || take.type?.kind === 'float') {
+      const kind = kindOf(take)
+
+      if (kind === 'number' || kind === 'float') {
         const n = Number(value)
-        const whole = take.type.kind === 'number'
+        const whole = kind === 'number'
 
         if (value.trim() === '' || Number.isNaN(n) || (whole && !Number.isInteger(n))) {
           return {
@@ -341,7 +357,7 @@ export function dispatch(
         }
 
         args[take.name] = n
-      } else if (take.type?.kind === 'boolean') {
+      } else if (kind === 'boolean') {
         if (value !== 'true' && value !== 'false') {
           return {
             ok: false,
@@ -405,8 +421,11 @@ export function renderHelp(
       const flag = `--${take.name}${take.short ? `, -${take.short}` : ''}`
       const meta: string[] = []
 
-      if (take.type) {
-        meta.push(take.type.kind)
+      // a maybe take by its item (decision cli-in-term/008: `--runs` is a number)
+      const kind = kindOf(take)
+
+      if (kind) {
+        meta.push(kind)
       }
 
       if (take.required) {
@@ -632,14 +651,20 @@ export async function runCommandLine(input: RunInput): Promise<number> {
   }
 
   // arguments go to the task BY NAME: each parameter takes the take of its own name, and one no take names takes the
-  // take at its position. A route compiled before the names were recorded falls back to take order. Absent optionals
-  // become their natural zero: false for a boolean, [] for a variadic, "" for everything else.
+  // take at its position. A route compiled before the names were recorded falls back to take order. A maybe take is
+  // the program's own maybe value, `none` when absent and `some` of the value when given (the shape `__termMaybe`
+  // builds, compile/ts-preludes.tree; decision cli-in-term/008 part 1). Absent plain optionals become their natural
+  // zero: false for a boolean, [] for a variadic, "" for everything else.
   const params = hit.route.calls[0]?.params
   const takes = params
     ? params.map((param, index) => hit.route.takes.find(take => take.name === param) ?? hit.route.takes[index])
     : hit.route.takes
   const ordered = takes.filter((take): take is NonNullable<typeof take> => take !== undefined).map(take => {
     const value = hit.args[take.name]
+
+    if (maybeItem(take) !== undefined) {
+      return value === undefined ? { form: 'none' } : { form: 'some', value }
+    }
 
     if (value !== undefined) {
       return value

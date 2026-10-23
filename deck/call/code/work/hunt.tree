@@ -13,20 +13,25 @@ load @term/call/work/home
 # CLI with `__hunt-fuzz-campaign`, which dispatch.tree `start-line` answers) and the run's output and exit. No print,
 # catch or exit of its own: a throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term).
 
+load @term/base/maybe
+  find maybe
+  find some
+  find none
+
 dock load
   load <@term/call/code/hunt>, name hunt-module
   load <global:JSON>, name host-json
 
-# line.ts passed yargs's answer, where a flag left out is absent; the hook hands a left-out number over as 0 and a
-# left-out text as the empty text, and `callHunt` reads `runs`, `seeds`, `fuzzTimeout` and `budget` as "use the
-# default" only when absent. So the ask is built as JSON, without the ones that were not given
+# line.ts passed yargs's answer, where a flag left out is absent, and `callHunt` reads `glob`, `runs`, `seeds`,
+# `fuzzTimeout` and `budget` as "use the default" only when absent. Each is a maybe (decision cli-in-term/008
+# part 1), so the ask is built as JSON from the given ones only: `--runs 0` is passed as 0
 task hunt
   mark async
-  take glob, like text
-  take runs, like number
-  take seeds, like number
-  take fuzz-timeout, like number
-  take budget, like number
+  take glob, like maybe, like text
+  take runs, like maybe, like number
+  take seeds, like maybe, like number
+  take fuzz-timeout, like maybe, like number
+  take budget, like maybe, like number
   take json, like boolean
 
   like void
@@ -35,13 +40,15 @@ task hunt
   save root, call project-root
   save entries, make list
   entries/push <"root":{quoted(root)}>
-  fork test, is-unequal(glob, <>)
-    hold
-      entries/push <"glob":{quoted(glob)}>
-  number-entry(entries, <runs>, runs)
-  number-entry(entries, <seeds>, seeds)
-  number-entry(entries, <fuzzTimeout>, fuzz-timeout)
-  number-entry(entries, <budget>, budget)
+  sift glob
+    case some
+      entries/push <"glob":{quoted(value)}>
+    case none
+      save nothing, 0
+  given-entry(entries, <runs>, runs)
+  given-entry(entries, <seeds>, seeds)
+  given-entry(entries, <fuzzTimeout>, fuzz-timeout)
+  given-entry(entries, <budget>, budget)
   entries/push <"json":{json}>
   save text, <>
   walk entries
@@ -60,13 +67,15 @@ task quoted
   like text
   back host-json/stringify(value)
 
-# an entry of the ask for a number that was given: the hook's 0 is a flag left out
-task number-entry
+# an entry of the ask for a number that was given
+task given-entry
   mark private
   take entries, like list, like text
   take name, like text
-  take value, like number
+  take value, like maybe, like number
   like void
-  fork test, is-unequal(value, 0)
-    hold
+  sift value
+    case some
       entries/push <"{name}":{value}>
+    case none
+      save nothing, 0
