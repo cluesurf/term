@@ -1,8 +1,8 @@
 // A console in the hook dialect lowers to route data a dispatcher and a help renderer can read (decision term/003
 // parts 1 and 2, term-cli-in-term-0140): a `slot` under a hook is a positional (`positional`, and `variadic` too when
 // list-typed), a take's long aliases are its `name` lines in order (`aliases`), and both reach the JSON
-// compile/node-json.tree writes, the form the route data travels in. A list-typed `take` under a command is refused
-// naming `slot`, a slot with a line the hook-slot rule does not read (`code`) is refused instead of dropped, and a
+// compile/node-json.tree writes, the form the route data travels in. A list-typed `take` under a command is a
+// repeatable option (decision cli-in-term/010), a slot with a line the hook-slot rule does not read (`code`) is refused instead of dropped, and a
 // task's own `slot` parameter means what it meant.
 // Run: npx tsx test/compile/hook-route.ts
 
@@ -132,18 +132,34 @@ const refusals = (text: string): string[] => {
   return result.ok ? [] : result.diagnostics.map(d => d.message)
 }
 
-const listTake = refusals(`hook tool
+// a list-typed take under a command is a REPEATABLE option (decision cli-in-term/010, superseding that point of 003
+// part 1): its type is the list, and it is neither positional nor variadic, which stay a list slot's
+const listTake = compile(
+  {
+    file: '/gate/code/line/base.tree',
+    text: `hook tool
   hook one
-    take paths, like list, like text
+    take law, like list, like text
     task one
 
 task one
-  take paths, like list, like text
+  take law, like list, like text
   like text
 
   send back, <one>
-`)
-ok('a list-typed take under a command is refused, naming slot', listTake.some(m => m.includes('slot')), listTake.join(' | '))
+`,
+  },
+  asCall,
+)
+ok('a list-typed take under a command compiles', listTake.ok, listTake.ok ? '' : listTake.diagnostics.map(d => d.message).join(' | '))
+const lawTake = (listTake.ok ? listTake.program : [])
+  .find((s): s is Dock => s.form === 'dock')
+  ?.route.children.find(child => child.path === 'one')?.takes[0]
+ok(
+  'a list take is a repeatable option: list-typed, not positional, not variadic',
+  lawTake?.type?.kind === 'array' && lawTake.positional === undefined && lawTake.variadic === undefined,
+  JSON.stringify(lawTake),
+)
 
 const coded = refusals(`hook tool
   hook one

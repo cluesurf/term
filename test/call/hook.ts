@@ -102,7 +102,7 @@ hook gather
   task gather
 `
 
-function main(): Promise<void> {
+async function main(): Promise<void> {
   const r = compile({ file: 'cli.tree', text: SRC }, {})
 
   if (!r.ok) {
@@ -125,8 +125,8 @@ function main(): Promise<void> {
   ])
 
   // A LIST SLOT IS THE REST OF THE WORDS: its type says so, with no marker (`many` until 2026-10-05), whether the
-  // element is written (`like list, like text`) or not (`like list`). A list `take` under a command is refused
-  // (decision term/003 part 1, test/compile/hook-route.ts)
+  // element is written (`like list, like text`) or not (`like list`). A list `take` under a command is a repeatable
+  // option instead (decision cli-in-term/010, below)
   const join = dispatch(routes, ['join', 'The', 'Name', 'of', 'the', 'Rose'])
   expect('a list take collects every word left', join.ok && join.args.words, ['The', 'Name', 'of', 'the', 'Rose'])
   const gather = dispatch(routes, ['gather', 'a.txt', 'b.txt'])
@@ -267,6 +267,51 @@ hook tool
   expect('a global\'s choices are checked', badGlobal.ok, false)
   const dashed = dispatch(program, ['build', 'a.tree', '--', 'run', '--help'])
   expect('words after -- no slot holds are left to the task, not refused', [dashed.ok, dashed.ok && dashed.args.file], [true, 'a.tree'])
+
+  // A LIST TAKE IS A REPEATABLE OPTION (decision cli-in-term/010): every occurrence in line order, `--x=v` too; left
+  // out, the task gets the empty list; a positional never fills it
+  const REPEAT = `task gather
+  take spec, like list, like text
+  take law, like list, like text
+  send back
+    code 0
+
+hook tool
+  hook knit
+    slot spec
+      like list, like text
+    take law
+      like list, like text
+    task gather
+`
+  const repeatBuilt = compile({ file: 'repeat.tree', text: REPEAT }, {})
+
+  if (!repeatBuilt.ok) {
+    console.log('FAIL compile repeat', JSON.stringify(repeatBuilt.diagnostics.slice(0, 3)))
+    process.exit(1)
+  }
+
+  const repeat = commandRoutes(repeatBuilt.program)
+  // (a command with a list slot stops reading flags at its first bare word, the variadic rule above, so the flags come
+  // first here)
+  const laws = dispatch(repeat, ['knit', '--law', 'one', '--law=two', 'a', 'spec'])
+  expect('a list option collects every occurrence in order', laws.ok && laws.args.law, ['one', 'two'])
+  expect('and the positionals still go to the list slot', laws.ok && laws.args.spec, ['a', 'spec'])
+  const oneLaw = dispatch(repeat, ['knit', '--law', 'one'])
+  expect('one occurrence is a list of one', oneLaw.ok && oneLaw.args.law, ['one'])
+  const handed: unknown[][] = []
+  await runCommandLine({
+    name: 'tool',
+    routes: repeat,
+    argv: ['knit', 'x'],
+    resolve: () => (...args: unknown[]) => {
+      handed.push(args)
+      return 0
+    },
+    out: () => undefined,
+    err: () => undefined,
+  })
+  expect('a list option left out reaches the task as the empty list', handed[0], [['x'], []])
 
   // A PASSING COMMAND (`mark pass`, decision cli-in-term/008 part 2): every word after its path reaches its one slot
   // verbatim, `--help`, `--` and unknown or global flags included; words before it are still the console's

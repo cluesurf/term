@@ -157,6 +157,21 @@ export function dispatch(
   // a flag word to the take it names, by name, long alias or short letter. A word no take names is kept as written,
   // and refused below
   const keyOf = (word: string, short: boolean): string => takeNamed(reachable, word, short)?.name ?? word
+  // A LIST TAKE IS A REPEATABLE OPTION (decision cli-in-term/010): `--law a --law b` collects `[a, b]` in line order. A
+  // list slot is the rest of the words instead, and is never named by a flag here
+  const repeats = (key: string): boolean => {
+    const take = reachable.find(one => one.name === key)
+
+    return take !== undefined && !take.positional && take.type?.kind === 'array'
+  }
+  const setArg = (key: string, value: string | boolean): void => {
+    if (repeats(key) && typeof value === 'string') {
+      const held = args[key]
+      args[key] = [...(Array.isArray(held) ? held : []), value]
+    } else {
+      args[key] = value
+    }
+  }
 
   // parse the rest: --flag / -f value, --flag=value, --no-flag, boolean flags, positionals
   const args: Record<string, ArgValue> = {}
@@ -208,7 +223,7 @@ export function dispatch(
       if (eq >= 0) {
         const raw = body.slice(0, eq)
         const key = keyOf(raw, isShort)
-        args[key] = body.slice(eq + 1)
+        setArg(key, body.slice(eq + 1))
         i++
       } else {
         const key = keyOf(body, isShort)
@@ -218,7 +233,7 @@ export function dispatch(
         const flag = reachable.find(take => take.name === key)?.type?.kind === 'boolean'
 
         if (value !== undefined && !value.startsWith('-') && (!flag || value === 'true' || value === 'false')) {
-          args[key] = value
+          setArg(key, value)
           i += 2
         } else {
           args[key] = true
@@ -630,7 +645,8 @@ export async function runCommandLine(input: RunInput): Promise<number> {
       return value
     }
 
-    if (take.variadic) {
+    // a list slot (the rest of the words) and a list option (decision cli-in-term/010) left out are the empty list
+    if (take.variadic || take.type?.kind === 'array') {
       return []
     }
 

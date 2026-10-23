@@ -105,6 +105,9 @@ load @term/call/work/inspect-verbs
   find seek
   find view
 
+load @term/call/work/knit
+  find knit
+
 load @term/call/work/link
   find link
 
@@ -1001,6 +1004,71 @@ hook term
     take report
       like boolean
     task hold
+
+  # The prove loop: from a spec in words, a model writes the Term code, the laws and the proofs until term hold
+  # holds. Every law reported in English from its Term form
+  hook knit
+    # The spec, in plain English
+    slot spec
+      like list, like text
+    # Read the spec from this file instead
+    take spec-file
+      like text
+    # A TypeScript module to port
+    take port
+      like text
+    # A law of the law library (deck/site/code/law) the project must prove of its own forms and tasks, by name
+    # (repeat for more)
+    take law
+      like list, like text
+    # The run's name (default: knit- and the time)
+    take name
+      like text
+    # Where the run is written (default: tmp/knit/<name>)
+    take out
+      like text
+    # The model that writes the proofs
+    take model
+      like text
+      bind <claude-opus-5-5>
+    # How hard the model thinks
+    take effort
+      like text
+      pick low
+      pick medium
+      pick high
+      pick xhigh
+      pick max
+      bind <high>
+    # The most the run may spend, in dollars, from the usage the API reports
+    take cap
+      like number
+      bind code 25
+    # The most rounds of term hold
+    take rounds
+      like number
+      bind code 20
+    # The most requests to the model
+    take turns
+      like number
+      bind code 40
+    # The most minutes the run may take
+    take minutes
+      like number
+      bind code 60
+    # The most tokens one answer may take
+    take max-tokens
+      like number
+      bind code 64000
+    # Also re-check every law in Lean 4 (--no-lean to skip)
+    take lean
+      like boolean
+      bind code true
+    # Show the model the notes demo as an example (--no-example to leave it out)
+    take example
+      like boolean
+      bind code true
+    task knit
 
   # Automated bug-hunt: oracles + fuzzing over .tree files (crashes, hangs, round-trip, determinism,
   # backend emit, perf). Fails when any check did not run

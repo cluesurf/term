@@ -4728,15 +4728,10 @@ function routeOf(
     // order, which is the task's argument order (decision term/003 part 1, cli-in-term-0010)
     const positional = take.form === 'hook-slot'
 
-    // A LIST TAKE UNDER A COMMAND IS REFUSED. It silently meant the rest of the words until decision term/003, and a
-    // list option (`--port 1 --port 2`) is not a feature: the rest of the words is a `slot`
-    if (!isRoute && !positional && isListType(type)) {
-      refuse(
-        bridge,
-        take,
-        `a list-typed \`take\` under a command is not a flag: write the rest of the words as \`slot ${wordAt(take, 'name') ?? 'x'}, like list, like text\``,
-      )
-    }
+    // A LIST TAKE UNDER A COMMAND IS A REPEATABLE OPTION (`--law a --law b`, decision cli-in-term/010, superseding that
+    // point of term/003 part 1): its type is the list, and it is never `variadic`, which stays the mark of a list SLOT
+    // (the rest of the words). It silently meant the rest of the words until decision term/003
+    const repeatable = !isRoute && !positional && isListType(type)
 
     if (at(take, 'many').length > 0) {
       refuse(
@@ -4804,7 +4799,7 @@ function routeOf(
       // because a list is what it is handed: the type says it, so no second word has to. It was `take paths / many`
       // beside a `like text` until 2026-10-05, a marker that said the same thing as the type and could disagree
       // with it (a `many` on a `like text` handed a list to a task that declared text)
-      ...(isListType(type) ? { variadic: true } : {}),
+      ...(isListType(type) && !repeatable ? { variadic: true } : {}),
       ...(positional ? { positional: true } : {}),
       ...(choices.length > 0 ? { choices } : {}),
       span: spanOf(take),
