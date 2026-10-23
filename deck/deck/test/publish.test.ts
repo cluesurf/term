@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { validateManifest } from '../code/manifest'
+import { validateManifest } from '../code/package/manifest'
 import { DeckManifest } from '../code/form'
 
 describe('validateManifest', () => {

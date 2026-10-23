@@ -1,0 +1,353 @@
+mark draft
+# The Term compiler benchmark suite: time the real compiler paths (tokenize, parse, compile, stream-split) across real
+# stdlib files and synthetic workloads that isolate one cost each (file length, line length, nesting depth,
+# import-closure size). It then analyzes the numbers, scaling exponents and ratios, into insights, the way the bug-hunt
+# analyzes correctness.
+#
+# Reusable: `run-compiler-bench` answers structured results and insights, so a script, a gate or a skill can consume
+# them. The resolver is injected, to keep @term/test free of a call-to-test cycle.
+#
+# Ported from deck/test/code/seed-bench.ts (term-cli-in-term-0110). The decisions:
+#   - tokenize and parse are parser/token.tree and parser/tree.tree, loaded; compile, the compile cache, module
+#     discovery and the two splitters are still TypeScript, docked (decision 004)
+#   - every figure in an insight is placed with the original's `toFixed`, in a bind, never the stdlib's `to-fixed`
+#     (which rounds the decimal a number prints as)
+#   - the timing is bench-timing.tree's, the original's ./bench
+
+load @term/base/list
+  find list
+
+load @term/make/parser/token
+  find tokenize
+  find token-source
+
+load @term/make/parser/tree
+  find parse
+
+load ./bench-timing
+  find bench
+  find bench-ask
+  find scaling
+
+dock load
+  load <@term/make/code/compile/compile>, name compiling-module
+  load <@term/make/code/compile/cache>, name caching-module
+  load <@term/make/code/compile/load>, name loading-module
+  load <@term/make/code/compile/incremental-parse>, name splitting-module
+  load <@term/make/code/compile/stream>, name streaming-module
+  load <node:fs>, name node-fs
+
+form bench-suite
+  link results, like list, like dynamic
+  link insights, like list, like text
+
+bind compiler-iterations-of
+  take ask, like dynamic
+  like number
+  case node
+    text <($ask.iterations ?? 30)>
+
+bind compiler-root-of
+  take ask, like dynamic
+  like text
+  case node
+    text <$ask.root>
+
+bind compiler-resolve-of
+  take ask, like dynamic
+  like dynamic
+  case node
+    text <$ask.resolve>
+
+bind compiler-repeat
+  take piece, like text
+  take count, like number
+  like text
+  case node
+    text <$piece.repeat($count)>
+
+bind compiler-fixed
+  take value, like dynamic
+  take digits, like number
+  like text
+  case node
+    text <$value.toFixed($digits)>
+
+bind compiler-exponent-of
+  take fit, like dynamic
+  like dynamic
+  case node
+    text <$fit.exponent>
+
+bind compiler-verdict-of
+  take fit, like dynamic
+  like text
+  case node
+    text <$fit.verdict>
+
+bind compiler-median-of
+  take result, like dynamic
+  like dynamic
+  case node
+    text <$result.median>
+
+# `cold.median / Math.max(warm.median, 0.001)`, and the streaming ratio, as the original divided them
+bind compiler-ratio
+  take over, like dynamic
+  take under, like dynamic
+  like dynamic
+  case node
+    text <($over / $under)>
+
+bind compiler-at-least
+  take value, like dynamic
+  take least, like dynamic
+  like dynamic
+  case node
+    text <Math.max($value, $least)>
+
+bind compiler-lines-of
+  take source, like text
+  like list, like text
+  case node
+    text <$source.split(String.fromCharCode(10))>
+
+bind compiler-new-cache
+  take module, like dynamic
+  like dynamic
+  case node
+    text <new $module.CompileCache()>
+
+bind compiler-compile
+  take module, like dynamic
+  take file, like text
+  take source, like text
+  take resolve, like dynamic
+  like dynamic
+  case node
+    text <$module.compile(\{ file: $file, text: $source \}, \{ resolve: $resolve \})>
+
+bind compiler-compile-cached
+  take module, like dynamic
+  take file, like text
+  take source, like text
+  take resolve, like dynamic
+  take shared, like dynamic
+  like dynamic
+  case node
+    text <$module.compile(\{ file: $file, text: $source \}, \{ resolve: $resolve, cache: $shared \})>
+
+bind compiler-collect
+  take module, like dynamic
+  take file, like text
+  take source, like text
+  take resolve, like dynamic
+  like dynamic
+  case node
+    text <$module.collectModules(\{ file: $file, text: $source \}, $resolve)>
+
+# synthetic source generators, each isolating one cost dimension
+
+# `n` small definitions
+task many-definitions
+  take count, like number
+  like text
+
+  host parts, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      parts/push(<task t{at}\n  send back, mark {at}\n>)
+      save at, add(at, 1)
+
+  back join(parts, <\n>)
+
+# one line `n` characters long
+task long-line
+  take count, like number
+  like text
+
+  host run, compiler-repeat(<a>, count)
+  back <task t\n  send back, text \<{run}\>\n>
+
+# nested fork and hook, to stress the tree builder's indentation handling
+task deep-nesting
+  take count, like number
+  like text
+
+  host lines, make list(<task t>, <  take x, like number>)
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      host one, compiler-repeat(<  >, add(at, 1))
+      host two, compiler-repeat(<  >, add(at, 2))
+      host three, compiler-repeat(<  >, add(at, 3))
+      host four, compiler-repeat(<  >, add(at, 4))
+      lines/push(<{one}fork test>)
+      lines/push(<{two}hook test>)
+      lines/push(<{three}call is-above>)
+      lines/push(<{four}read x>)
+      lines/push(<{four}mark {at}>)
+      lines/push(<{two}hook hold>)
+      save at, add(at, 1)
+
+  host last, compiler-repeat(<  >, add(count, 2))
+  lines/push(<{last}send back, read x>)
+  back <{join(lines, <\n>)}\n>
+
+task tokenize-once
+  take source, like text
+
+  tokenize(make(token-source, bind(file, <t.tree>), bind(text, source)))
+
+task parse-once
+  take source, like text
+
+  parse(make(token-source, bind(file, <t.tree>), bind(text, source)))
+
+task bench-tokenize
+  take name, like text
+  take source, like text
+  take iterations, like number
+  take size, like number
+  like dynamic
+
+  save run
+    task
+      like void
+      tokenize-once(source)
+
+  back bench(make(bench-ask, bind(name, name), bind(run, run), bind(iterations, iterations), bind(size, size)))
+
+task bench-parse
+  take name, like text
+  take source, like text
+  take iterations, like number
+  take size, like number
+  like dynamic
+
+  save run
+    task
+      like void
+      parse-once(source)
+
+  back bench(make(bench-ask, bind(name, name), bind(run, run), bind(iterations, iterations), bind(size, size)))
+
+# Run the compiler benchmark suite
+task run-compiler-bench
+  take ask, like dynamic
+  like bench-suite
+
+  host iterations, compiler-iterations-of(ask)
+  host root, compiler-root-of(ask)
+  host resolve, compiler-resolve-of(ask)
+  host results, make list
+  host insights, make list
+
+  # tokenize scaling on file length (definition count)
+  host by-length, make list
+  walk make list(100, 400, 1600, 6400)
+    take count
+    host found, bench-tokenize(<tokenize {count} defs>, many-definitions(count), iterations, count)
+    by-length/push(found)
+    results/push(found)
+  host tokenize-fit, scaling(by-length)
+  insights/push(<tokenize vs file length: exponent {compiler-fixed(compiler-exponent-of(tokenize-fit), 2)} - {compiler-verdict-of(tokenize-fit)}>)
+
+  # parse scaling on file length
+  host parse-length, make list
+  walk make list(100, 400, 1600, 6400)
+    take count
+    host found, bench-parse(<parse {count} defs>, many-definitions(count), iterations, count)
+    parse-length/push(found)
+    results/push(found)
+  host parse-fit, scaling(parse-length)
+  insights/push(<parse vs file length: exponent {compiler-fixed(compiler-exponent-of(parse-fit), 2)} - {compiler-verdict-of(parse-fit)}>)
+
+  # tokenize scaling on LINE length (the guard on the cursor fix that made it linear)
+  host line-length, make list
+  walk make list(1000, 4000, 16000, 64000)
+    take count
+    host found, bench-tokenize(<tokenize {count}-char line>, long-line(count), iterations, count)
+    line-length/push(found)
+    results/push(found)
+  host line-fit, scaling(line-length)
+  insights/push(<tokenize vs LINE length: exponent {compiler-fixed(compiler-exponent-of(line-fit), 2)} - {compiler-verdict-of(line-fit)} (must stay linear after the cursor fix)>)
+
+  # parse scaling on nesting depth
+  host nesting, make list
+  walk make list(10, 40, 160)
+    take count
+    host found, bench-parse(<parse depth {count}>, deep-nesting(count), iterations, count)
+    nesting/push(found)
+    results/push(found)
+  host nesting-fit, scaling(nesting)
+  insights/push(<parse vs nesting depth: exponent {compiler-fixed(compiler-exponent-of(nesting-fit), 2)} - {compiler-verdict-of(nesting-fit)}>)
+
+  # streaming split against whole-file split (they should be comparable)
+  host big, many-definitions(2000)
+  save whole-run
+    task
+      like void
+      splitting-module/split-top-level(big)
+  host whole, bench(make(bench-ask, bind(name, <splitTopLevel 2000 defs>), bind(run, whole-run), bind(iterations, iterations), bind(size, 2000)))
+  save stream-run
+    task
+      like void
+      streaming-module/split-streaming-to-array(compiler-lines-of(big))
+  host streamed, bench(make(bench-ask, bind(name, <splitStreaming 2000 defs>), bind(run, stream-run), bind(iterations, iterations), bind(size, 2000)))
+  results/push(whole)
+  results/push(streamed)
+  host stream-ratio, compiler-ratio(compiler-median-of(streamed), compiler-median-of(whole))
+  insights/push(<streaming split overhead vs whole-file: {compiler-fixed(stream-ratio, 2)}x>)
+
+  # compile, uncached against cached (the cost of re-checking a closure)
+  host cache, compiler-new-cache(caching-module)
+  host small, many-definitions(50)
+  save few, iterations
+  fork test, is-above(iterations, 10)
+    hold
+      save few, 10
+  save cold-run
+    task
+      like void
+      compiler-compile(compiling-module, <c.tree>, small, resolve)
+  host cold, bench(make(bench-ask, bind(name, <compile (cold, no cache)>), bind(run, cold-run), bind(iterations, few), bind(size, 50)))
+  save warm-run
+    task
+      like void
+      compiler-compile-cached(compiling-module, <c.tree>, small, resolve, cache)
+  host warm, bench(make(bench-ask, bind(name, <compile (warm, shared cache)>), bind(run, warm-run), bind(iterations, few), bind(size, 50)))
+  results/push(cold)
+  results/push(warm)
+  host speedup, compiler-ratio(compiler-median-of(cold), compiler-at-least(compiler-median-of(warm), 0.001))
+  insights/push(<compile cache speedup (self-contained file): {compiler-fixed(speedup, 2)}x>)
+
+  # import-heavy: module discovery and compile of a real stdlib file that pulls in the transitive closure (guards the
+  # collectModules scan and the resolver's memo and read cache). A fresh resolver per iteration shows the cold cost
+  host heavy-file, <deck/base/code/native/node/environment/directory.tree>
+  fork test, node-fs/exists-sync(<{root}/{heavy-file}>)
+    hold
+      host heavy-text, node-fs/read-file-sync(<{root}/{heavy-file}>, <utf8>)
+      save heavy-few, iterations
+      fork test, is-above(iterations, 8)
+        hold
+          save heavy-few, 8
+      save discover-run
+        task
+          like void
+          compiler-collect(loading-module, heavy-file, heavy-text, resolve)
+      host discover, bench(make(bench-ask, bind(name, <collectModules (stdlib closure)>), bind(run, discover-run), bind(iterations, heavy-few)))
+      save heavy-run
+        task
+          like void
+          compiler-compile(compiling-module, heavy-file, heavy-text, resolve)
+      host heavy, bench(make(bench-ask, bind(name, <compile import-heavy stdlib file>), bind(run, heavy-run), bind(iterations, heavy-few)))
+      results/push(discover)
+      results/push(heavy)
+      insights/push(<module discovery for an import-heavy file: {compiler-fixed(compiler-median-of(discover), 0)}ms (closure resolved once via the resolver memo)>)
+      insights/push(<import-heavy compile: {compiler-fixed(compiler-median-of(heavy), 0)}ms (was ~775ms before the scan + resolver-cache wins; remainder is closure type-check, the tree-shaking target)>)
+
+  back make(bench-suite, bind(results, results), bind(insights, insights))

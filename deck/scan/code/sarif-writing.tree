@@ -1,0 +1,264 @@
+# Findings written as SARIF 2.1.0, the format GitHub code scanning ingests (`gh code-scanning upload-sarif`, or the
+# upload-sarif action). This is what lets a custom-ecosystem scanner show alerts in the GitHub Security tab though it
+# is not Dependabot: dependency findings and code findings both become SARIF results, beside CodeQL and any other tool.
+#
+# Ported from deck/scan/code/sarif.ts (term-cli-in-term-0096). Every SARIF record is built in a bind named for this
+# module, in the original's key order, so the JSON text is the original's byte for byte. The options are the
+# original's host record (root, toolVersion, manifestFile), read by binds. Paths go through node:path, docked.
+
+dock load
+  load <node:path>, name node-path
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+bind sarif-text
+  take record, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$record[$key]>
+
+bind sarif-or
+  take value, like dynamic
+  take fallback, like dynamic
+  like dynamic
+  case node
+    text <<($value || $fallback)>>
+
+bind sarif-is-nothing
+  take value, like dynamic
+  like boolean
+  case node
+    text <<($value === undefined || $value === null)>>
+
+bind sarif-slashed
+  take rel, like text
+  take separator, like text
+  like text
+  case node
+    text <<$rel.split($separator).join("/")>>
+
+bind sarif-is-dependency
+  take finding, like dynamic
+  like boolean
+  case node
+    text <<($finding.kind === "dependency")>>
+
+bind sarif-rule-id
+  take finding, like dynamic
+  like text
+  case node
+    text <<($finding.kind === "dependency" ? $finding.advisory.id : $finding.ruleId)>>
+
+bind sarif-severity
+  take finding, like dynamic
+  like text
+  case node
+    text <$finding.severity>
+
+bind sarif-location
+  take uri, like text
+  take point, like dynamic
+  like dynamic
+  case node
+    text <<({ physicalLocation: { artifactLocation: { uri: $uri }, region: { startLine: $point.line, startColumn: $point.column } } })>>
+
+bind sarif-manifest-point
+  take file, like text
+  like dynamic
+  case node
+    text <<({ file: $file, line: 1, column: 1 })>>
+
+bind sarif-dependency-rule
+  take id, like text
+  take finding, like dynamic
+  take score, like text
+  like dynamic
+  case node
+    text <<({ id: $id, name: "VulnerableDependency", shortDescription: { text: $finding.advisory.title }, helpUri: $finding.advisory.url, properties: { tags: ["security", "dependency"], "security-severity": $score } })>>
+
+bind sarif-code-rule
+  take id, like text
+  take finding, like dynamic
+  take score, like text
+  like dynamic
+  case node
+    text <<({ id: $id, name: $id.replace(/[^A-Za-z0-9]+/g, "_"), shortDescription: { text: $finding.message }, properties: { tags: ["security"], "security-severity": $score } })>>
+
+bind sarif-dependency-result
+  take finding, like dynamic
+  take level, like text
+  take location, like dynamic
+  like dynamic
+  case node
+    text <<({ ruleId: $finding.advisory.id, level: $level, message: { text: `${$finding.node.name}@${$finding.node.version} is vulnerable: ` + `${$finding.advisory.title} (${$finding.advisory.id})` + ($finding.fixVersion ? `. Upgrade to ${$finding.fixVersion}.` : ".") }, locations: [$location], partialFingerprints: { package: `${$finding.node.registryName}@${$finding.node.version}`, advisory: $finding.advisory.id } })>>
+
+bind sarif-code-result
+  take finding, like dynamic
+  take level, like text
+  take location, like dynamic
+  like dynamic
+  case node
+    text <<({ ruleId: $finding.ruleId, level: $level, message: { text: $finding.message }, locations: [$location] })>>
+
+bind sarif-has-trace
+  take finding, like dynamic
+  like boolean
+  case node
+    text <<Boolean($finding.trace && $finding.trace.length > 0)>>
+
+bind sarif-trace
+  take finding, like dynamic
+  like list, like dynamic
+  case node
+    text <$finding.trace>
+
+bind sarif-flow-step
+  take location, like dynamic
+  take step, like dynamic
+  like dynamic
+  case node
+    text <<({ location: { ...$location, message: { text: $step.label } } })>>
+
+bind sarif-set-flows
+  take base, like dynamic
+  take steps, like list, like dynamic
+  like void
+  case node
+    text <<$base.codeFlows = [{ threadFlows: [{ locations: $steps }] }]>>
+
+bind sarif-log
+  take version, like dynamic
+  take rules, like list, like dynamic
+  take results, like list, like dynamic
+  like dynamic
+  case node
+    text <<({ $schema: "https://json.schemastore.org/sarif-2.1.0.json", version: "2.1.0", runs: [{ tool: { driver: { name: "term-scan", informationUri: "https://term.surf", version: $version ?? "0.1.0", rules: $rules } }, results: $results }] })>>
+
+bind sarif-json
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value, null, 2)>
+
+# the SARIF level of a severity; GitHub also reads the numeric `security-severity` (0 to 10) for its own ranking
+task sarif-level
+  take severity, like text
+  like text
+  mark private
+
+  fork test, or(is-equal(severity, <critical>), is-equal(severity, <high>))
+    hold
+      back <error>
+  fork test, is-equal(severity, <moderate>)
+    hold
+      back <warning>
+
+  back <note>
+
+task security-score
+  take severity, like text
+  like text
+  mark private
+
+  fork test, is-equal(severity, <critical>)
+    hold
+      back <9.0>
+  fork test, is-equal(severity, <high>)
+    hold
+      back <7.0>
+  fork test, is-equal(severity, <moderate>)
+    hold
+      back <4.0>
+  fork test, is-equal(severity, <low>)
+    hold
+      back <2.0>
+
+  back <0.0>
+
+# a repo-relative, forward-slash URI for a file (SARIF locations are relative to the repo root on GitHub)
+task uri-of
+  take root, like text
+  take file, like text
+  like text
+  mark private
+
+  host relative, node-path/relative(root, file)
+  host rel, sarif-or(relative, node-path/basename(file))
+
+  back sarif-slashed(rel, node-path/sep)
+
+task location-of
+  take root, like text
+  take point, like dynamic
+  like dynamic
+  mark private
+
+  host uri, uri-of(root, sarif-text(point, <file>))
+
+  back sarif-location(uri, point)
+
+task to-sarif
+  take result, like dynamic
+  take options, like dynamic
+  like dynamic
+
+  host root, sarif-text(options, <root>)
+  save manifest-file, sarif-text(options, <manifestFile>)
+  fork test, sarif-is-nothing(manifest-file)
+    hold
+      save manifest-file, node-path/join(root, <deck.tree>)
+
+  # one SARIF rule descriptor per distinct ruleId, in the order first seen
+  host findings, sarif-text(result, <findings>)
+  save descriptors, make hash
+  save descriptor-order, make list
+  walk findings
+    take finding
+    host id, sarif-rule-id(finding)
+    fork test, descriptors/has(id)
+      hold
+        turn next
+    host score, security-score(sarif-severity(finding))
+    save descriptor, sarif-code-rule(id, finding, score)
+    fork test, sarif-is-dependency(finding)
+      hold
+        save descriptor, sarif-dependency-rule(id, finding, score)
+    descriptors/set(id, true)
+    descriptor-order/push(descriptor)
+
+  save results, make list
+  walk findings
+    take finding
+    host level, sarif-level(sarif-severity(finding))
+    fork test, sarif-is-dependency(finding)
+      hold
+        host manifest-point, sarif-manifest-point(manifest-file)
+        host manifest-location, location-of(root, manifest-point)
+        results/push(sarif-dependency-result(finding, level, manifest-location))
+        turn next
+    host at-location, location-of(root, sarif-text(finding, <at>))
+    host base, sarif-code-result(finding, level, at-location)
+    # a taint trace as a SARIF code flow (GitHub shows the source-to-sink path)
+    fork test, sarif-has-trace(finding)
+      hold
+        save steps, make list
+        walk sarif-trace(finding)
+          take step
+          host step-location, location-of(root, step)
+          steps/push(sarif-flow-step(step-location, step))
+        sarif-set-flows(base, steps)
+    results/push(base)
+
+  back sarif-log(sarif-text(options, <toolVersion>), descriptor-order, results)
+
+task to-sarif-json
+  take result, like dynamic
+  take options, like dynamic
+  like text
+
+  back sarif-json(to-sarif(result, options))

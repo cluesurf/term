@@ -4,7 +4,7 @@ export {
   addDependency,
   removeDependency,
   verifyInstall,
-} from './install'
+} from './package/install'
 export {
   loadManifest,
   parseManifest,
@@ -14,15 +14,15 @@ export {
   manifestSpellings,
   rewriteManifestSpellings,
   isDefaultCodeRoot,
-} from './manifest'
-export type { ManifestSpelling } from './manifest'
+} from './package/manifest'
+export type { ManifestSpelling } from './package/manifest'
 export {
   loadLockfile,
   parseLockfile,
   writeLockfile,
   saveLockfile,
-} from './lock'
-export { resolve, buildLockfile } from './resolve'
+} from './package/lock'
+export { resolve, buildLockfile } from './package/resolve'
 export {
   linkPackages,
   cleanLinks,
@@ -32,8 +32,8 @@ export {
   unregisterGlobalLink,
   listGlobalLinks,
   consumeGlobalLink,
-} from './link'
-export { hashFile, hashBuffer, hashText, verifyHash } from './hash'
+} from './package/link'
+export { hashFile, hashBuffer, hashText, verifyHash } from './package/hash'
 export {
   parseCode,
   parseCodeHold,
@@ -50,7 +50,7 @@ export {
   getVersionList,
   getVersionMeta,
   makeDefaultFetchConfig,
-} from './fetch'
+} from './package/fetch'
 export {
   initStore,
   hasFile,
@@ -59,12 +59,12 @@ export {
   getStoreRoot,
   getBaseDir,
   getTreeDir,
-} from './store'
+} from './package/store'
 export {
   findWorkspaces,
   findProjectRoot,
   topologicalSort,
-} from './workspace'
+} from './package/workspace'
 export {
   toRegistryName,
   toTreeName,
@@ -76,9 +76,9 @@ export {
   DEFAULT_OCI_HOST,
   TERM_REGISTRY,
   DEFAULT_SCOPE_REGISTRIES,
-} from './name'
-export { auditDependencies } from './audit'
-export type { Advisory, AuditResult } from './audit'
+} from './package/name'
+export { auditDependencies } from './package/audit'
+export type { Advisory, AuditResult } from './package/audit'
 
 export type {
   Code,
@@ -188,9 +188,9 @@ export {
 export type { ReleaseConfig, ReleaseEntry } from './oci/release'
 export { TOOLCHAIN, newestMatching, pinNeed, pinSatisfies, releasedVersions, showPin } from './oci/need'
 export type { DeckNeed, LockNeed } from './form'
-export { readTree, valueOf } from './read'
-export type { Form } from './read'
+export { readTree, valueOf } from './package/read'
+export type { Form } from './package/read'
 export { pingIndex, publishStatement } from './oci/index-ping'
 export type { IndexPing } from './oci/index-ping'
-export { parseRoleFile, matchRole, matchRoleRule, globMatch } from './role'
+export { parseRoleFile, matchRole, matchRoleRule, globMatch } from './package/role'
 export type { RoleConfig, RoleRule } from './form'

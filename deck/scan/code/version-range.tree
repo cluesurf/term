@@ -1,0 +1,317 @@
+# Version comparison and npm-style range satisfaction for the scanner, built on the package manager's own versions
+# (@term/deck/version, deck/deck/code/version.tree: its `code`, compare-code, parse-code-hold and code-match), so the
+# scanner and the resolver agree on version ordering. Covers the range grammar that OSV ECOSYSTEM ranges and the
+# registry bulk advisory service emit: comparators (`<`, `<=`, `>`, `>=`, `=`), AND by whitespace, OR by `||`, hyphen
+# ranges (`1.0.0 - 2.0.0`), the `x`/`*` wildcards, and caret/tilde (the package manager's own holds).
+#
+# Ported from deck/scan/code/semver.ts (term-cli-in-term-0093). The original's regular expressions are host binds,
+# each named for this module so no other module's bind of the same name can replace it (traps, 0103). A version the
+# original left without a prerelease is a `code` whose prerelease is `<>`, as version.tree writes it; to-code answers
+# the code or nothing (undefined), and the face turns the code back into the original's shape. A refusal from
+# parse-code-hold (`^1.2`, `~x`) is version.tree's failure, whose note is the original's Error message.
+
+load @term/deck/version
+  find code
+  find compare-code
+  find parse-code-hold
+  find code-match
+
+load @term/base/list
+  find list
+
+bind range-trim
+  take value, like text
+  like text
+  case node
+    text <$value.trim()>
+
+bind range-starts-v-or-equals
+  take value, like text
+  like boolean
+  case node
+    text <<($value.startsWith("v") || $value.startsWith("="))>>
+
+bind range-index-of
+  take value, like text
+  take part, like text
+  like number
+  case node
+    text <$value.indexOf($part)>
+
+bind range-slice-from
+  take value, like text
+  take start, like number
+  like text
+  case node
+    text <$value.slice($start)>
+
+bind range-slice
+  take value, like text
+  take start, like number
+  take stop, like number
+  like text
+  case node
+    text <$value.slice($start, $stop)>
+
+bind range-split
+  take value, like text
+  take part, like text
+  like list, like text
+  case node
+    text <$value.split($part)>
+
+# `x`, `X` or `*`: the original's loop stops reading parts there
+bind range-is-wild-part
+  take value, like text
+  like boolean
+  case node
+    text <<($value === "x" || $value === "X" || $value === "*")>>
+
+bind range-is-digits
+  take value, like text
+  like boolean
+  case node
+    text <</^\d+$/.test($value)>>
+
+bind range-parse-int
+  take value, like text
+  like number
+  case node
+    text <parseInt($value, 10)>
+
+bind range-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+# a comparator's operator (`=` when none is written) and its operand, trimmed, as the original's
+# /^(>=|<=|>|<|=|~|\^)?\s*(.+)$/ read them; an empty list when the pattern refuses the text
+bind range-comparator-parts
+  take value, like text
+  like list, like text
+  case node
+    text <<(function (rangeFound) { return rangeFound ? [rangeFound[1] ?? "=", rangeFound[2].trim()] : [] })(/^(>=|<=|>|<|=|~|\^)?\s*(.+)$/.exec($value))>>
+
+# an operand that is a wildcard prefix (`1.x`, `1.*`, `1`, `1.2`)
+bind range-is-wild-operand
+  take value, like text
+  like boolean
+  case node
+    text <</(^|\.)(x|\*)$|^\d+$|^\d+\.\d+$/.test($value)>>
+
+# `1` to `1.x.x`, `1.*` to `1.x.x`, `1.2` to `1.2.x`
+bind range-wild-normalized
+  take value, like text
+  like text
+  case node
+    text <<$value.replace(/\*/g, "x").split(".").concat(["x", "x"]).slice(0, 3).join(".")>>
+
+# a hyphen range's two ends, as /^(\S+)\s+-\s+(\S+)$/ read them; an empty list when it is no hyphen range
+bind range-hyphen-ends
+  take value, like text
+  like list, like text
+  case node
+    text <<(function (rangeFound) { return rangeFound ? [rangeFound[1], rangeFound[2]] : [] })(/^(\S+)\s+-\s+(\S+)$/.exec($value))>>
+
+# the whitespace-separated comparators of a clause, empty ones left out
+bind range-comparators
+  take value, like text
+  like list, like text
+  case node
+    text <<$value.split(/\s+/).filter(Boolean)>>
+
+bind range-at-least
+  take value, like text
+  like text
+  case node
+    text <<(">=" + $value)>>
+
+bind range-at-most
+  take value, like text
+  like text
+  case node
+    text <<("<=" + $value)>>
+
+# a version read for comparison, `found` false when the text is no plain dotted version
+form code-reading
+  link found, like boolean
+  link code, like code
+
+task no-code
+  like code-reading
+  mark private
+
+  back make(code-reading, bind(found, false), bind(code, make(code, bind(major, 0), bind(minor, 0), bind(patch, 0), bind(prerelease, <>), bind(build, <>))))
+
+# a version text read as a code, tolerating a leading `v` or `=`, a missing minor or patch (read as 0), and a
+# prerelease suffix (everything after the first `-`)
+task read-code
+  take text, like text
+  like code-reading
+
+  save value, range-trim(text)
+  fork test, range-starts-v-or-equals(value)
+    hold
+      save rest, range-slice-from(value, 1)
+      save value, range-trim(rest)
+  fork test, or(is-equal(value, <>), or(is-equal(value, <*>), is-equal(value, <x>)))
+    hold
+      back no-code()
+  save prerelease, <>
+  save dash, range-index-of(value, <->)
+  fork test, not(is-equal(dash, -1))
+    hold
+      save after, add(dash, 1)
+      save prerelease, range-slice-from(value, after)
+      save value, range-slice(value, 0, dash)
+  save parts, range-split(value, <.>)
+  fork test, or(is-equal(parts/length, 0), is-above(parts/length, 3))
+    hold
+      back no-code()
+  save numbers, make list
+  walk parts
+    take part
+    fork test, range-is-wild-part(part)
+      hold
+        halt
+    fork test, not(range-is-digits(part))
+      hold
+        back no-code()
+    numbers/push(range-parse-int(part))
+  fork test, is-equal(numbers/length, 0)
+    hold
+      back no-code()
+  save minor, 0
+  fork test, is-above(numbers/length, 1)
+    hold
+      save minor, read numbers/1
+  save patch, 0
+  fork test, is-above(numbers/length, 2)
+    hold
+      save patch, read numbers/2
+
+  back make(code-reading, bind(found, true), bind(code, make(code, bind(major, read numbers/0), bind(minor, minor), bind(patch, patch), bind(prerelease, prerelease), bind(build, <>))))
+
+# the code a version text reads as, or nothing for anything that is not a plain dotted version
+task to-code
+  take text, like text
+  like dynamic
+
+  host reading, read-code(text)
+  fork test, reading/found
+    hold
+      back reading/code
+  back range-nothing()
+
+# below 0 when `a` comes first, 0 when equal, above 0 when `b` does; an unparseable version sorts last
+task compare-version
+  take a, like text
+  take b, like text
+  like number
+
+  host left, read-code(a)
+  host right, read-code(b)
+  fork test, and(not(left/found), not(right/found))
+    hold
+      back 0
+  fork test, not(left/found)
+    hold
+      back 1
+  fork test, not(right/found)
+    hold
+      back -1
+
+  back compare-code(left/code, right/code)
+
+# does one comparator (`>=1.2.0`, `<2.0.0`, `=1.0.0`, a bare `1.2.3`, `*`) hold for the version?
+task satisfies-comparator
+  take version, like text
+  take comparator, like text
+  like boolean
+  mark private
+
+  host raw, range-trim(comparator)
+  fork test, or(is-equal(raw, <>), or(is-equal(raw, <*>), is-equal(raw, <x>)))
+    hold
+      back true
+  host found, range-comparator-parts(raw)
+  fork test, is-equal(found/length, 0)
+    hold
+      back false
+  host operator, read found/0
+  host operand, read found/1
+
+  # caret and tilde are the package manager's own holds, tested against the INSTALLED version
+  fork test, or(is-equal(operator, <^>), is-equal(operator, <~>))
+    hold
+      host target, read-code(version)
+      fork test, not(target/found)
+        hold
+          back true
+      back code-match(target/code, parse-code-hold(<{operator}{operand}>))
+
+  # a wildcard operand with no comparator is a prefix match, through the holds' wildcard form
+  fork test, and(is-equal(operator, <=>), range-is-wild-operand(operand))
+    hold
+      host target, read-code(version)
+      fork test, target/found
+        hold
+          back code-match(target/code, parse-code-hold(range-wild-normalized(operand)))
+
+  host order, compare-version(version, operand)
+  fork test, is-equal(operator, <\>>)
+    hold
+      back is-above(order, 0)
+  fork test, is-equal(operator, <\>=>)
+    hold
+      back is-minimum(order, 0)
+  fork test, is-equal(operator, <\<>)
+    hold
+      back is-below(order, 0)
+  fork test, is-equal(operator, <\<=>)
+    hold
+      back is-maximum(order, 0)
+  fork test, is-equal(operator, <=>)
+    hold
+      back is-equal(order, 0)
+
+  back false
+
+# does the version satisfy an npm-style range? OR across `||`, AND across whitespace, hyphen ranges, and the
+# comparators above. An empty range means any
+task satisfies
+  take version, like text
+  take range, like text
+  like boolean
+
+  host trimmed, range-trim(range)
+  fork test, or(is-equal(trimmed, <>), is-equal(trimmed, <*>))
+    hold
+      back true
+  walk range-split(trimmed, <||>)
+    take or-part
+    host clause, range-trim(or-part)
+
+    # a hyphen range: `a - b` is `>=a <=b`
+    host ends, range-hyphen-ends(clause)
+    fork test, is-equal(ends/length, 2)
+      hold
+        host low, read ends/0
+        host high, read ends/1
+        fork test, and(satisfies-comparator(version, range-at-least(low)), satisfies-comparator(version, range-at-most(high)))
+          hold
+            back true
+        turn next
+
+    save all, true
+    walk range-comparators(clause)
+      take comparator
+      fork test, not(satisfies-comparator(version, comparator))
+        hold
+          save all, false
+          halt
+    fork test, all
+      hold
+        back true
+
+  back false

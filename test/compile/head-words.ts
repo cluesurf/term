@@ -19,8 +19,8 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 // relative, because @term/deck is a published package with no path alias in this repo
-import { readTree } from '../../deck/deck/code/read'
-import type { Form } from '../../deck/deck/code/read'
+import { readTree } from '../../deck/deck/code/package/read'
+import type { Form } from '../../deck/deck/code/package/read'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')

@@ -1,0 +1,326 @@
+# Where known-vulnerability data comes from. Three sources are built in, blending feeds as a real audit pipeline does:
+#   - a LOCAL database directory of advisory files (the project's own advisories, or a mirror of OSV or GitHub
+#     Advisory Database records), so an air-gapped or custom-ecosystem project still gets alerts
+#   - an OSV FEED file (the open OSV export, for one ecosystem)
+#   - the REGISTRY bulk service (the npm-compatible advisory endpoint the package manager already speaks), reported
+#     unavailable when the registry has none
+# A source gathers the advisories relevant to a set of dependency nodes; the audit engine then matches versions.
+#
+# Ported from deck/scan/code/advisory.ts (term-cli-in-term-0094). A source is the record advisory-source, a name and
+# an async gather closure taking the nodes, as the original's AdvisorySource; a gathering and an advisory are host
+# records built in binds named for this module, in the original's key order. The files are read through
+# node:fs/promises, docked; the bulk service is @cluesurf/deck.tree's auditDependencies, docked. The ecosystem has
+# no default here: the face passes `term` where the caller left it out.
+
+dock load
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <node:path>, name node-path
+  load <@cluesurf/deck.tree>, name deck-tree-module
+    mark async
+
+load ./osv-reading
+  find from-osv-feed
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+form advisory-source
+  link name, like text
+  link gather
+    like task
+      mark async
+      take nodes, like list, like dynamic
+      like dynamic
+
+bind sources-gathering
+  take advisories, like list, like dynamic
+  take available, like boolean
+  like dynamic
+  case node
+    text <<({ advisories: $advisories, available: $available })>>
+
+# a source asked for and not reached: no advisories, and said so
+bind sources-unavailable
+  like dynamic
+  case node
+    text <<({ advisories: [], available: false })>>
+
+bind sources-is-directory
+  take stat, like dynamic
+  like boolean
+  case node
+    text <$stat.isDirectory()>
+
+bind sources-ends-json
+  take entry, like text
+  like boolean
+  case node
+    text <<$entry.endsWith(".json")>>
+
+bind sources-parse-json
+  take text, like text
+  like dynamic
+  case node
+    text <JSON.parse($text)>
+
+bind sources-push-all
+  take shelf, like list, like dynamic
+  take items, like list, like dynamic
+  like void
+  case node
+    text <<$shelf.push(...$items)>>
+
+bind sources-items
+  take data, like dynamic
+  like list, like dynamic
+  case node
+    text <<(Array.isArray($data) ? $data : [$data])>>
+
+# is every item already one of the scanner's own Advisory records (versus an OSV record to convert)?
+bind sources-all-native
+  take items, like list, like dynamic
+  like boolean
+  case node
+    text <<$items.every(sourcesItem => typeof sourcesItem === "object" && sourcesItem !== null && "packageName" in sourcesItem && "ranges" in sourcesItem)>>
+
+bind sources-asked-root
+  take root, like text
+  like dynamic
+  case node
+    text <<({ root: $root })>>
+
+bind sources-asked-name
+  take value, like dynamic
+  like dynamic
+  case node
+    text <<({ name: $value })>>
+
+bind sources-available
+  take result, like dynamic
+  like boolean
+  case node
+    text <<Boolean($result.available)>>
+
+bind sources-audited
+  take result, like dynamic
+  like list, like dynamic
+  case node
+    text <$result.advisories>
+
+bind sources-item-name
+  take item, like dynamic
+  like dynamic
+  case node
+    text <$item.name>
+
+bind sources-lower-severity
+  take item, like dynamic
+  like text
+  case node
+    text <$item.severity.toLowerCase()>
+
+# an advisory of the bulk service, its npm range string carried as rangeExpression
+bind sources-registry-advisory
+  take item, like dynamic
+  take registry, like dynamic
+  take severity, like text
+  like dynamic
+  case node
+    text <<({ id: $item.url || `${$item.name}@${$item.version}`, packageName: $registry, severity: $severity, title: $item.title, url: $item.url, ranges: [], rangeExpression: $item.vulnerableRange, references: $item.url ? [$item.url] : [] })>>
+
+bind sources-package-name
+  take advisory, like dynamic
+  like text
+  case node
+    text <$advisory.packageName>
+
+# one advisory file's contents (an Advisory array or object, or an OSV feed) as advisories
+task parse-advisory-file
+  take data, like dynamic
+  take ecosystem, like text
+  like list, like dynamic
+  mark private
+
+  host items, sources-items(data)
+  fork test, sources-all-native(items)
+    hold
+      back items
+
+  back from-osv-feed(data, ecosystem)
+
+# every `.json` file under the directory, parsed, walking folders as the directory lists them; a directory that will
+# not list answers none, and a file that will not read or parse is skipped
+task read-json-files-under
+  take dir, like text
+  like list, like dynamic
+  mark private
+
+  save out, make list
+  save entries, make list
+  fork
+    mark unsafe
+    save entries, fs-promise/readdir(dir)
+  halt take
+    take unread
+    back out
+  walk entries
+    take entry
+    host full, node-path/join(dir, entry)
+    host stat, fs-promise/stat(full)
+    fork test, sources-is-directory(stat)
+      hold
+        host below, read-json-files-under(full)
+        sources-push-all(out, below)
+      miss
+        fork test, sources-ends-json(entry)
+          hold
+            fork
+              mark unsafe
+              host text, fs-promise/read-file(full, <utf-8>)
+              host parsed, sources-parse-json(text)
+              out/push(parsed)
+            halt take
+              # a malformed advisory file is skipped, never fatal to the scan
+              take unread
+              save skipped, 0
+
+  back out
+
+task gather-local
+  take dir, like text
+  take ecosystem, like text
+  like dynamic
+  mark private
+
+  host files, read-json-files-under(dir)
+  save advisories, make list
+  walk files
+    take data
+    sources-push-all(advisories, parse-advisory-file(data, ecosystem))
+
+  back sources-gathering(advisories, true)
+
+task gather-osv-file
+  take file, like text
+  take ecosystem, like text
+  like dynamic
+  mark private
+
+  fork
+    mark unsafe
+    host text, fs-promise/read-file(file, <utf-8>)
+    host data, sources-parse-json(text)
+    host advisories, from-osv-feed(data, ecosystem)
+    back sources-gathering(advisories, true)
+  halt take
+    take unread
+    back sources-unavailable()
+
+  back sources-unavailable()
+
+task gather-registry
+  take root, like text
+  like dynamic
+  mark private
+
+  host asked, sources-asked-root(root)
+  host result, deck-tree-module/audit-dependencies(asked)
+  fork test, not(sources-available(result))
+    hold
+      back sources-unavailable()
+  save advisories, make list
+  walk sources-audited(result)
+    take item
+    host name-asked, sources-asked-name(sources-item-name(item))
+    host registry, deck-tree-module/to-registry-name(name-asked)
+    host severity, registry-severity(sources-lower-severity(item))
+    advisories/push(sources-registry-advisory(item, registry, severity))
+
+  back sources-gathering(advisories, true)
+
+# the bulk service's severity in the scanner's vocabulary: one of its five words, else moderate
+task registry-severity
+  take lower, like text
+  like text
+  mark private
+
+  fork test, or(is-equal(lower, <critical>), or(is-equal(lower, <high>), or(is-equal(lower, <moderate>), or(is-equal(lower, <low>), is-equal(lower, <info>)))))
+    hold
+      back lower
+
+  back <moderate>
+
+# a directory of advisory files (native or OSV): every advisory it holds, the matcher filters by version
+task local-database-source
+  take dir, like text
+  take ecosystem, like text
+  like advisory-source
+
+  # read by nothing: a body that is pure and answers a closure is handed to the kernel (traps, 0083)
+  save place, node-path/join(dir)
+  save gather
+    task
+      take nodes, like list, like dynamic
+      like dynamic
+      mark async
+      back gather-local(dir, ecosystem)
+
+  back make(advisory-source, bind(name, <local:{dir}>), bind(gather, gather))
+
+# one OSV feed file (a JSON array of OSV records, or one record)
+task osv-file-source
+  take file, like text
+  take ecosystem, like text
+  like advisory-source
+
+  # read by nothing (traps, 0083)
+  save place, node-path/join(file)
+  save gather
+    task
+      take nodes, like list, like dynamic
+      like dynamic
+      mark async
+      back gather-osv-file(file, ecosystem)
+
+  back make(advisory-source, bind(name, <osv:{file}>), bind(gather, gather))
+
+# the registry's npm-compatible bulk advisory service, through the package manager's client
+task registry-source
+  take root, like text
+  like advisory-source
+
+  # read by nothing (traps, 0083)
+  save place, node-path/join(root)
+  save gather
+    task
+      take nodes, like list, like dynamic
+      like dynamic
+      mark async
+      back gather-registry(root)
+
+  back make(advisory-source, bind(name, <registry>), bind(gather, gather))
+
+# the advisories grouped by the registry name they affect, in the order first seen, so the matcher tries only a
+# package's own
+task index-by-package
+  take advisories, like list, like dynamic
+  like hash, like text, like list, like dynamic
+
+  save map, make hash
+  walk advisories
+    take advisory
+    host name, sources-package-name(advisory)
+    fork test, map/has(name)
+      hold
+        host held, map/get(name)
+        held/push(advisory)
+      miss
+        save one, make list
+        one/push(advisory)
+        map/set(name, one)
+
+  back map

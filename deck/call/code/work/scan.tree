@@ -6,13 +6,14 @@ load @term/call/work/home
 #
 # The verb takes its hook's arguments and hands them to the shipped handler (deck/call/code/scan.ts `callScan`),
 # which checks the file and prints through the output library. It prints nothing of its own, catches nothing and
-# never exits: a throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term, part 2). The global `--back`
-# that line.ts passed is not reached yet: the dispatcher keeps it for the output library only.
+# never exits: a throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term, part 2). `--back`, the program's
+# option, reaches it as line.ts passed it: the hook declares a `back` of its own (cli-in-term-0011).
 
 form scan-ask
   link root, like text
   link file, like text
   link fix, like boolean
+  link back, like text
 
 dock load
   load <@term/call/code/scan>, name scan-module
@@ -21,6 +22,7 @@ task scan
   mark async
   take file, like text
   take fix, like boolean
+  take back, like text
 
   like void
 
@@ -31,4 +33,5 @@ task scan
       bind root, read root
       bind file, read file
       bind fix, read fix
+      bind back, read back
     wait true

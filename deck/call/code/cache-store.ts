@@ -47,7 +47,7 @@ import { gzipSync, gunzipSync } from 'zlib'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import type { CacheStore } from '@term/make/code/compile/cache'
-import { getBaseDir } from '@term/deck/code/store'
+import { getBaseDir } from '@term/deck/code/package/store'
 import { env, projectHome } from '@term/call/code/home'
 import {
   CACHE_EPOCH,

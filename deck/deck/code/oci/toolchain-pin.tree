@@ -16,17 +16,17 @@
 #   - a need, a pin and an answer are the original's host records (an answer's `pin` and `reason` present only when
 #     set); the transport is the caller's host value
 #   - versions are parsed, compared, matched and shown by code.ts (the face over version.tree, docked so the
-#     callers' shapes stay); oci/release.ts releaseRoute is docked until its lane; transport-for is oci-routing.tree's
+#     callers' shapes stay); release-route is toolchain-release.tree's (oci/release.ts was docked until
+#     term-cli-in-term-0115 loaded the port); transport-for is oci-routing.tree's
 
 load ./oci-routing
   find transport-for
 
+load ./toolchain-release
+  find release-route
+
 dock load
   load <@term/deck/code/code>, name code-module
-  load <@term/deck/code/oci/release>, name release-module
-
-form route-ask
-  link package, like text
 
 bind pin-list-tags
   take transport, like dynamic
@@ -145,7 +145,7 @@ task pin-need
     hold
       back pin-refused(<the toolchain request is not pinned, and an offline load cannot read the releases>)
 
-  save route, release-module/release-route(make(route-ask, bind(package, name)))
+  save route, release-route(name, pin-nothing())
   save transport, transport-for(route/registry/host, false)
   save repository, route/repository/name
   save versions, released-versions(transport, repository)

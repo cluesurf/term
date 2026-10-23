@@ -2382,9 +2382,15 @@ task import-bound
   save group, get(state/groups, place)
   save imported, reached-files(state, group, alias)
   save asked, asked-files(state, name, alias)
-  # the file imported the name from a module that defines it some OTHER way: it means that one, never this group's
+  # the file imported the name from a module that defines it some OTHER way: it means that one, never this group's.
+  # Left as written, it would reach a definition that kept the bare name (the entry file's own task of the name), so
+  # a method it imported is bound to that method by its own name (term-compiler-0053: posix-path.tree's `join` took
+  # posix.tree's calls to @term/base/list's `join`)
   fork test, and(is-equal(imported/length, 0), is-above(asked/length, 0))
     hold
+      fork test, has-text(group/renamed, name)
+        hold
+          back method-meant(state, name, arity, asked)
       back <>
   # a name one file defines as a task and another some other way: a reference whose file imported neither means the
   # other, as the flat program read it
@@ -2428,6 +2434,48 @@ task import-bound
     hold
       save among, fit
   refuse(state, group, at, among, is-above(imported/length, 0))
+  back <>
+
+# the one method named `name` the files a `find` asked for reach (through their `bear` chains) that takes `arity`
+# arguments, by its own name (`list_join`), as a sibling method call is bound. `<>` when there is none or more than one
+task method-meant
+  take state, like walk-state
+  take name, like text
+  take arity, like number
+  take asked, like list, like text
+  like text
+  mark private
+
+  fork test, is-below(arity, 0)
+    hold
+      back <>
+  save reach, new-file-set()
+  walk asked
+    take target
+    gather-exported(state/scopes, target, reach)
+  # inside the arm below a function's fields are locals by their own names, so the asked name is kept apart
+  save wanted, name
+  save count, arity
+  save found, make list
+  walk state/program
+    take one
+    sift one
+      case function
+        sift method
+          case some
+            link owner
+            fork test, and(is-equal(owner/name, wanted), holds-file(reach, file-of(one)))
+              hold
+                fork test, and(is-minimum(count, required-count(one)), is-maximum(count, most-count(one)))
+                  hold
+                    save found, add-text(found, name)
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  fork test, is-equal(found/length, 1)
+    hold
+      back get(found, 0)
   back <>
 
 task typed-apart

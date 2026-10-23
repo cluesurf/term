@@ -4,7 +4,7 @@ import {
   parseManifest,
   rewriteManifestSpellings,
   writeManifest,
-} from '../code/manifest'
+} from '../code/package/manifest'
 
 describe('parseManifest', () => {
   it('parses a basic manifest', () => {

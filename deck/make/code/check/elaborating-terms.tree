@@ -690,6 +690,8 @@ task closure-term
   save closure-scope, scope
   save value-scope, scope
   save outer-generics, ts/generics
+  # each parameter's type as a term in the context of the ones before it, the domains of the closure's own pi type
+  save domains, make list
   walk params
     take param
     save type-term, no-term()
@@ -702,6 +704,7 @@ task closure-term
     sift type-term
       case some
         link found
+        push(domains, found)
         save param-type, evaluate(st, closure-ctx/env, found)
         save closure-scope, scope-with(closure-scope, param/name, closure-ctx/level)
         save value-scope, scope-with(value-scope, param/name, closure-ctx/level)
@@ -745,7 +748,21 @@ task closure-term
       sift body(ts, statements, closure-scope, closure-ctx, value)
         case some
           link inner
-          back some-term(lambdas(params/length, inner))
+          # annotated with its own pi type, built from its written parameters and result: a closure saved to a local
+          # or put in a record is INFERRED, and the kernel infers no bare function (term-compiler-0055: a pure task
+          # answering closures was refused "cannot infer a bare function")
+          save pi-type, quote(st, closure-ctx/level, value)
+          save d, subtract(domains/length, 1)
+          walk test
+            hook test, is-minimum(d, 0)
+            hook hold
+              save pi-type, arrow(get(domains, d), pi-type)
+              save d, subtract(d, 1)
+          save annotated
+            make ann
+              bind term, lambdas(params/length, inner)
+              bind type, pi-type
+          back some-term(annotated)
         case none
           back no-term()
     case none

@@ -6,11 +6,15 @@
 # mill. Nothing here is bound to a running task yet: the `task` line names the handler each command WILL call, and
 # the CLI still dispatches through yargs until cli-in-term-0004 moves a verb across.
 #
-# HOW A COMMAND IS WRITTEN. Each `hook` is one command and nested `hook`s are its subcommands. A `take` is a
-# parameter: `like text` / `like boolean` / `like number` is its type, and `like list, like text` collects every
-# word left. `need true` makes it required, `code t` gives it a short `-t`, `bind <value>` a default, and one
-# `pick <value>` per allowed value is its enum. The `#` comment above a hook or a take is its `--help` text. `task <name>` names the
-# implementation.
+# HOW A COMMAND IS WRITTEN (decision note/project/term/decision/003-hook-dialect-slot-alias-program-hook.md). The
+# console is ONE program hook, `hook term`: its `note` is the usage line, its takes are the global options every
+# command accepts, and its nested hooks are the commands (nested further for subcommands). A `slot` is a positional
+# (`term make [file]`), bound by position only, and `slot paths, like list, like text` takes every word left. A
+# `take` is a flag, never a positional: `like text` / `like boolean` / `like number` is its type, `code t` its one
+# short `-t`, `take ride, name watch` and each `name <word>` line under it its long aliases, `bind <value>` a default,
+# and one `pick <value>` per allowed value its enum. `need true` makes either required. The `#` comment above a hook,
+# a slot or a take is its `--help` text. `task <name>` names the implementation, which receives its own hook's slots
+# and takes, never the program's.
 #
 # ONE CONSTRAINT NOTHING CHECKS. Arguments reach the implementation IN `take` ORDER, so every hook must list its
 # takes in the same order as the task it binds. Reorder one without the other and the arguments arrive shifted,
@@ -145,785 +149,920 @@ load @term/call/work/wake
 load @term/call/work/wash
   find wash
 
-# The base record system
-hook base
-  # STATED, not inferred. The file header above would otherwise become this command's help text: comments attach
-  # to the next node and a blank line does not break the run, so the first statement in a file inherits whatever
-  # is written above it. An explicit `note` wins, which is why this one command has one.
-  note <The base record system>
-  # Create a repository here
-  hook init
-    task base-init
-  # Commits per branch, newest first
-  hook log
-    take branch
-      like text
-    task base-log
-  # Field-level changes between two commits
-  hook diff
-    take to
-      like text
-    take from
-      like text
-    task base-diff
-  # One record in canonical form, which is what is hashed
-  hook show
-    take commit
-      like text
-    take mark
-      like text
-    task base-show
-  # Every record at a commit
-  hook list
-    take commit
-      like text
-    task base-list
-  # Whether the repository is coherent
-  hook check
-    task base-check
-  # What the working files would change
-  hook status
-    take branch
-      like text
-    task base-status
-  # Commit the working files onto a branch
-  hook commit
-    take message
-      like text
-    take branch
-      like text
-      bind <main>
-    take author
-      like text
-      bind <anonymous>
-    task base-commit
-  # Write a commit back out as .tree files
-  hook checkout
-    take commit
-      like text
-    task base-checkout
-  # Merge a branch into another
-  hook merge
-    take from
-      like text
-    take into
-      like text
-      bind <main>
-    take author
-      like text
-      bind <anonymous>
-    task base-merge
-  # Write the working tree at a commit as .tree files
-  hook export
-    take commit
-      like text
-    take out
-      like text
-    task base-export
-  # Bring a csv, tsv, json or jsonl file, or a directory of them, in as records
-  hook import
-    take source
-      like text
-    # the record form these rows are instances of
-    take form
-      like text
-    # a column that identifies a row in the source. The mark is found or created against it, so a
-    # re-import updates rather than duplicates
-    take key
-      like text
-    # a column that already holds a uuid version 4, used as the mark
-    take mark
-      like text
-    take branch
-      like text
-      bind <main>
-    take author
-      like text
-      bind <import>
-    take message
-      like text
-    task base-import
-  # What a projection would write, and with --into --write, write it
-  hook project
-    take commit
-      like text
-    # a mapping file, for an existing schema. Left out, the schema is worked out from the records and
-    # the tables are created
-    take mapping
-      like text
-    # a Postgres connection url to write the projection into
-    take into
-      like text
-    # actually write. Without it nothing is touched
-    take write
-      like boolean
-      bind false
-    # the name this projection is bookkept under. Defaults to the directory name
-    take repository
-      like text
-    task base-project
-  # Name a commit, so it can be cited
-  hook tag
-    take name
-      like text
-    take commit
-      like text
-    take branch
-      like text
-      bind <main>
-    task base-tag
-
-# Scaffold a new Seed project
-hook wake
-  # Project name (a new directory); omit for current directory
-  take name
-    like text
-  task wake
-
-# Install all dependencies
-hook load
-  # Clean install from scratch
-  take clean
+# The term console. Its usage line is the program's `note`, and its takes are the global options every command
+# accepts (line.ts:177-205 and 1715, in yargs' order: help first, version last)
+hook term
+  note <Usage: term \<verb\> [objects] [options]>
+  # Show help
+  take hint
+    name help
     like boolean
-  # Install without network
-  take offline
+    code h
+  # Response format
+  take back
+    like text
+    code b
+    pick json
+    pick link
+    pick line
+    bind <line>
+  # Print only failed items and the closing item
+  take quiet
     like boolean
-  task load
-
-# Add a dependency
-hook save
-  # Package name to add
-  take deck
-    like text
-  # The versions it accepts: 1.4.2, 1.x.x, ^1.2.0, ~1.2.0, 1.0.0..2.0.0 (default 0.x.x)
-  take mark
-    like text
-  task save
-
-# Remove a dependency
-hook toss
-  # Package name to remove
-  take deck
-    like text
-  task toss
-
-# Link a local package for development
-hook link
-  # Path to local package
-  take deck
-    like text
-  # Remove the deck's link instead, so the next term load installs the published one
-  take toss
+    code q
+  # Also print debug items
+  take verbose
     like boolean
-  task link
-
-# Check if packages are installed correctly (--audit for the security scan)
-hook seek
-  # Security scan: audit dependencies against the advisory database
-  take audit
+  # Also print trace items, for debugging Term itself
+  take trace
     like boolean
-  # Also run the static code scan (dangerous native imports, taint) over the project
-  take code
+  # One JSON object per event on stdout, and no human view
+  take log
+    like text
+    pick json
+  # Color the output
+  take color
+    like text
+    pick auto
+    pick always
+    pick never
+    bind <auto>
+  # Clocks in UTC rather than local time
+  take utc
     like boolean
-  # Write a SARIF 2.1.0 report to this path (for GitHub code scanning)
-  take sarif
-    like text
-  # Console output format (default human)
-  take format
-    like text
-    pick <human>
-    pick <json>
-    pick <sarif>
-  # Rewrite deck.tree to the safe dependency versions
-  take fix
+  # One sentence per item, for screen readers and transcripts
+  take plain
     like boolean
-  task seek
-
-# Publish package to registry
-hook host
-  # Dry run (no upload)
-  take dry
+  # Warnings fail the run with exit 1
+  take strict
     like boolean
-  # The oci:// registry to publish to, in place of the scope's own
-  take registry
-    like text
-  # Add this public key to the scope's key set instead of publishing
-  take trust
-    like text
-  # Remove this public key from the scope's key set instead of publishing
-  take untrust
-    like text
-  # Announce the already-published version to the package index instead of publishing
-  take ping
-    like boolean
-  task host
-
-# Log in to term.surf with Google, for publishing
-hook bind
-  # Forget the term.surf token on this machine instead
-  take toss
-    like boolean
-  # Log in again even while the saved token works
-  take again
-    like boolean
-  task bind
-
-hook self
-  note <The versions of term on this machine: list, find, load, pick, need, show, toss, wash, check, update, back, and skill, which teaches a coding agent its verbs>
-  # Installed versions, the front, the default, and what runs here
-  hook list
-    task self-list
-  # Released versions, newest first
-  hook find
-    # Only versions in this range: 2.6.x
-    take range
-      like text
-    # Every platform, not only this one
-    take all
-      like boolean
-    task self-find
-  # Install a version, verified, without switching to it
-  hook load
-    # A version or a range: 2.6.4, 2.6.x
-    take range
-      like text
-      need true
-    task self-load
-  # The version that runs outside any project
-  hook pick
-    # A version or a range: 2.6.4, 2.6.x
-    take range
-      like text
-      need true
-    task self-pick
-  # The version this project needs, written to deck.tree and pinned in lock.tree
-  hook need
-    # A version or a range: 2.6.4, 2.6.x
-    take range
-      like text
-    # Remove the project's request instead
-    take none
-      like boolean
-    task self-need
-  # Which version runs here, and every rule that decided it
-  hook show
-    task self-show
-  # Remove one installed version
-  hook toss
-    # The exact version: 2.6.2
-    take mark
-      like text
-      need true
-    task self-toss
-  # Versions nothing has used in --days; removed only with --commit
-  hook wash
-    # Unused for this many days (default 90)
-    take days
-      like number
-    # Remove them, rather than list them
-    take commit
-      like boolean
-    task self-wash
-  # Verify this install against the signed release
-  hook check
-    task self-check
-  # Install the newest release and move the front to it
-  hook update
-    task self-update
-  # Move the front back to the previous version
-  hook back
-    task self-back
-  # Write the skill that teaches a coding agent term's verbs into this project, at .claude/skills/term/SKILL.md
-  hook skill
-    task self-skill
-
-# Install the newest release and move the front to it (term self update)
-hook update
-  task self-update
-
-# Build/compile the project
-hook make
-  # Watch files and recompile incrementally on every change
-  take ride
-    like boolean
-  # Separate compilation, the default: each module checked once against its imports' stubs and cached, per-module artifacts
-  take separate
-    like boolean
-  # One whole-program compile per file instead, optimized across modules (the build before separate compilation)
-  take merged
-    like boolean
-  # Say why each unit that was built was built: its own text, a name it reaches, its settings, or the compiler
-  take explain
-    like boolean
-  # Compile .tree files even when package.json owns `make` (which otherwise runs that script instead)
-  take trees
-    like boolean
-  # Build a native app cask for a platform (macos, ios, android, linux, windows)
-  take target
-    like text
-  # The page entry of the cask app (default face/base.tree)
-  take page
-    like text
-  # The cask entry of the app (default cask.tree)
-  take entry
-    like text
-  # Dev loop: the cask loads this URL instead of the bundled page
-  take url
-    like text
-  # A Developer ID identity for codesign (ad hoc when absent)
-  take sign
-    like text
-  # With --target uikit: the Apple team to sign for (read from the keychain when it holds one team)
-  take team
-    like text
-  # With --target uikit: the https address the app will be served at, for an install page an iPhone opens
-  take link
-    like text
-  # Also make a .dmg beside the .app
-  take dmg
-    like boolean
-  # Also publish the page just built as a signed over-the-air update into this directory
-  take publish
-    like text
-  # The update channel --publish writes (default main)
-  take channel
-    like text
-  # With --emit: the program to emit, with its whole import closure
-  take file
-    like text
-  # Write ONE program as a single source file for node (TypeScript), rust, swift or kotlin (runtime prelude plus emitted code), or for wgsl or hvm (a numeric part of the language: anything outside it is refused, by name and place), or llvm (IR) or wasm (WASI), through the Rust. A check error refuses
-  take emit
-    like text
-  # With --emit: the file to write (default standard output)
-  take out
-    like text
-  # With --emit rust, swift or kotlin and --out <folder>: one file per Term module beside a shared one, each written only when it changed
-  take units
-    like boolean
-  # Every program of the project (a file with a `run`, `boot` or `main` task taking nothing) for rust, swift, kotlin or node, one file each under host/<env>/. One that does not build is reported and the rest written
-  take env
-    like text
-  # With --emit: add the main that calls the program and build it with its toolchain, into --out <folder> (default host/<target>). With --env: build every program, beside its source
-  take build
-    like boolean
-  # With --emit: build it, then run it, its output and exit code passed through
-  take run
-    like boolean
-  # With --build or --run: the task the program starts at (default run, else boot, else main)
-  take main
-    like text
-  task make-project
-
-# Type-check a file and report diagnostics (the verifier)
-hook scan
-  # The .tree file to check
-  take file
-    like text
-  # Write the sure fixes into the file and scan again. A guess is offered, never written
-  take fix
-    like boolean
-  task scan
-
-# Project memory: remember a fact, or recall facts
-hook mind
-  # A fact to remember (omit to recall)
-  take fact
-    like text
-  # A short name for the fact
-  take name
-    like text
-  # The kind of fact
-  take kind
-    like text
-    pick <decision>
-    pick <convention>
-    pick <constraint>
-    pick <reference>
-    pick <note>
-  # Recall only facts matching this query
-  take find
-    like text
-  # Forget the fact with this name
-  take forget
-    like text
-  task mind
-
-# Run tests
-hook test
-  # Filter tests
-  take filter
-    like text
-  # Compile each test file whole, instead of one unit at a time with the units shared across files
-  take merged
-    like boolean
-  # Run only the tests whose phrase or name holds this, in any case
-  take case
-    like text
-  # The backend the tests run on: node (the default), rust, swift or kotlin
-  take env
-    like text
-  # Run, then run again on every edit the tests whose files the edit reaches, until ctrl-c
-  take ride
-    like boolean
-  # Write what each `want snapshot` sees into the test file's snapshot file, instead of comparing against it
-  take update
-    like boolean
-  task test-project
-
-# Run benchmarks, or profile a file with --cpu / --memory
-hook time
-  # Filter benchmarks by name
-  take filter
-    like text
-  # Run benchmarks in a specific file
-  take file
-    like text
-  # Profile CPU hotspots of a .tree file
-  take cpu
-    like text
-  # Profile memory use of a .tree file
-  take memory
-    like text
-  # Show the top-N hottest functions (with --cpu)
-  take top
-    like number
-  # Output JSON instead of table
-  take json
-    like boolean
-  # Save results as a named baseline
-  take save
-    like text
-  # Compare against a saved baseline
-  take compare
-    like text
-  # Fail if any benchmark regresses by more than N%
-  take fail-on-regression
-    like number
-  # Output comparison as markdown
-  take markdown
-    like boolean
-  # Show history for a specific benchmark
-  take history
-    like text
-  task time
-
-# Compare emitted code with hand-written code per target (time: time-* tasks)
-hook mark
-  # a filter on <family>/<program>, or `list`; then --target, --runs, --quick, --check, --size, --export, --markdown, --purpose, --label
-  slot rest
-    like list, like text
-  task mark-bench
-
-# Compile and run an app, in development (the default) or production
-hook boot
-  # moon, dev or development (the default), or star, prod or production
-  take mode
-    like text
-  # Entry .tree module (defaults to deck.tree boot)
-  take entry
-    like text
-  # Port to serve on
-  take port
-    code p
-    like number
-  # Target env (node, browser)
-  take env
-    like text
-  # Remote cache endpoint (pull before, push after)
-  take remote
-    like text
-  # Bearer token for the remote cache
-  take remote-token
-    like text
-  # Write a command-line program to this directory (run.mjs, app.mjs, dock.mjs) instead of running it
-  take out
-    like text
-  task boot
-
-# Build an SSR app into a deployable Cloudflare Worker (work/index.ts + build/)
-hook cast
-  # Entry .tree module (defaults to deck.tree boot)
-  take entry
-    like text
-  # Deploy target (cloudflare)
-  take target
-    like text
-    bind <cloudflare>
-  task cast
-
-# Stop running term boot servers (all, or specific --port list)
-hook halt
-  # Comma-separated ports to stop (default: all)
-  take port
-    code p
-    like text
-  task halt
-
-# Retired: the development server is term boot
-hook feed
-  # Entry .tree module (defaults to deck.tree boot)
-  take entry
-    like text
-  # Port to serve on
-  take port
-    code p
-    like number
-  # Target env
-  take env
-    like text
-  task feed
-
-# Run the long-lived compiler worker (shared warm analyzer)
-hook work
-  # Port to serve on
-  take port
-    code p
-    like number
-  # Target env
-  take env
-    like text
-  # Develop a native app cask: the page on a dev server with hot swaps, the app pointed at it
-  take target
-    like text
-  # The page entry of the cask app (default face/base.tree)
-  take page
-    like text
-  # The cask entry of the app (default cask.tree)
-  take entry
-    like text
-  task work
-
-# Clean build artifacts
-hook wash
-  # What to clean (deck, tail)
-  take target
-    like text
-  task wash
-
-# Start REPL
-hook walk
-  task walk-project
-
-# Version management
-hook move
-  # What to move (code)
-  take target
-    like text
-  # Bump level: 1=major, 2=minor, 3=patch
-  take level
-    like text
-  task bump-code
-
-# Show package info
-hook note
-  # Package to inspect
-  take deck
-    like text
-  task note
-
-# Format .tree files into canonical layout
-hook form
-  # Files or directories to format (default: current directory)
-  slot paths
-    like list, like text
-  # Report which files would change without writing (for CI)
-  take check
-    like boolean
-  # Print formatted source to stdout instead of writing
-  take list
-    like boolean
-  task form
-
-# Inspect what a module exposes (forms + tasks), following its load/bear graph
-hook look
-  # A package path (@cluesurf/bind/code/browser/dom) or a .tree file
-  take target
-    like text
-  # Output JSON
-  take json
-    like boolean
-  # Output CSV
-  take csv
-    like boolean
-  # Only forms or only tasks
-  take kind
-    like text
-    pick <form>
-    pick <task>
-  # Everything the module loads, not only what it offers
-  take all
-    like boolean
-  task look
-
-# The roll of this project: every deck, exception, task, route and tell in the build
-hook roll
-  # One kind of entry, in full: deck, exception, task, dock, tell, kind, or a kind a deck declares
-  # with `roll <name>` (default: every deck with counts)
-  take kind
-    like text
-  # Output the roll as JSON
-  take json
-    like boolean
-  # Only the exceptions no tell covers
-  take private
-    like boolean
-  # Only the entries of one deck (@term/site)
-  take host
-    like text
-  # Under each exception, one call path from every task that can raise it to the raise site
-  take path
-    like boolean
-  # What changed in what each task can reach and raise since a roll file (term roll --json > before.json)
-  # or a git ref. A task that gained a native module is a warning, so --strict makes it a gate
-  take diff
-    like text
-  task roll
-
-# Shape Term data: a data file (long or compact), JSON or tree/code, printed as long form, compact
-# (--pack), JSON (--json) or tree/code (--code)
-hook mold
-  # A data file, long or compact (.tree or .line), a stream with --lines, or a .json file (stdin when
-  # absent)
-  take file
-    like text
-  # Compact form, one entry per line
-  take pack
-    like boolean
-  # JSON, keys in snake case
-  take json
-    like boolean
-  # With --json: leave keys as written
-  take keep
-    like boolean
-  # The input is JSON
-  take tree
-    like boolean
-  # Keep tree anchors instead of expanding them
-  take trees
-    like boolean
-  # The input is a compact stream: one form per line, anchors re-declarable
-  take lines
-    like boolean
-  # Only report problems, exit 1 on any
-  take check
-    like boolean
-  # tree/code bytes, Zstandard frames where smaller (to a file or a pipe)
-  take code
-    like boolean
-  # With --code: the canonical bytes, every frame uncompressed
-  take canonical
-    like boolean
-  task mold
-
-# Check a document in the view role and print what it uses
-hook view
-  # A .tree document, or a directory of them (the project root when absent)
-  take path
-    like text
-  # Print the query manifest instead
-  take find
-    like boolean
-  task view
-
-# Lint .tree files for style and correctness
-hook lint
-  # Files or directories to lint (default: current directory)
-  slot paths
-    like list, like text
-  # Apply autofixes in place
-  take fix
-    like boolean
-  task lint
-
-# The proof gate: every file compiles, no claim is open, every tier-0 obligation is proven or baselined. One line,
-# non-zero exit
-hook hold
-  # Files or directories to verify (default: current directory)
-  slot paths
-    like list, like text
-  # Also run the cross-backend differential
-  take cross
-    like boolean
-  # Rewrite hold.json to the obligations not proven today, and print how many that added
-  take commit
-    like boolean
-  # Skip files unchanged since they last held
-  take cache
+  # Animate the spinner (--no-motion holds it still)
+  take motion
     like boolean
     bind true
-  # Re-check everything, ignoring the cache
-  take force
+  # Accept every default instead of asking
+  take yes
     like boolean
-  # Machine-readable output
-  take json
+    code y
+  # Pass a child process's output through untouched
+  take raw
     like boolean
-  # Also re-check every claim in Lean 4 (TERM_LEAN, else the PATH)
-  take lean
-    like boolean
-  # Print the report: every law laws.tree names, in English, and what it rests on
-  take report
-    like boolean
-  task hold
-
-# Automated bug-hunt: oracles + fuzzing over .tree files (crashes, hangs, round-trip, determinism,
-# backend emit, perf). Fails when any check did not run
-hook hunt
-  # Directory of .tree files to hunt (default: this project's .tree files, as term make finds them)
-  take glob
+  # Show one service of a stream, without tags
+  take source
     like text
-  # Fuzz inputs per term
-  take runs
-    like number
-  # Distinct fuzz seeds
-  take seeds
-    like number
-  # Watchdog seconds per fuzz term
-  take fuzz-timeout
-    like number
-  # Milliseconds one compile may take before it is a finding (default 1000)
-  take budget
-    like number
-  # Machine-readable output
-  take json
+  # Show every problem and list entry past the cap
+  take all
     like boolean
-  task hunt
+  # Show the version number
+  take version
+    like boolean
+    code v
 
-# Display information
-hook show
-  # `mark` for this package's version (`code` is the old spelling), `tools` for the native toolchains,
-  # `kink` for what a diagnostic means, `name` for one name of the project with what surrounds it; omit
-  # for the toolchain version and platform
-  take what
-    like text
-  # With `kink`: a diagnostic's name or code (type-mismatch, 0007, L019), every one when left out. With
-  # `name`: the task, form or mask to show
-  take name
-    like text
-  # With `name`: the most tokens the answer may take, roughly four characters each (default 4000)
-  take budget
-    like number
-  task show
+  # The base record system
+  hook base
+    # STATED, not inferred. The file header above would otherwise become this command's help text: comments attach
+    # to the next node and a blank line does not break the run, so the first statement in a file inherits whatever
+    # is written above it. An explicit `note` wins, which is why this one command has one.
+    note <The base record system>
+    # Create a repository here
+    hook init
+      task base-init
+    # Commits per branch, newest first
+    hook log
+      slot branch
+        like text
+      task base-log
+    # Field-level changes between two commits
+    hook diff
+      slot to
+        like text
+      slot from
+        like text
+      task base-diff
+    # One record in canonical form, which is what is hashed
+    hook show
+      slot commit
+        like text
+      slot mark
+        like text
+      task base-show
+    # Every record at a commit
+    hook list
+      slot commit
+        like text
+      task base-list
+    # Whether the repository is coherent
+    hook check
+      task base-check
+    # What the working files would change
+    hook status
+      slot branch
+        like text
+      task base-status
+    # Commit the working files onto a branch
+    hook commit
+      slot message
+        like text
+      take branch
+        like text
+        bind <main>
+      take author
+        like text
+        bind <anonymous>
+      task base-commit
+    # Write a commit back out as .tree files
+    hook checkout
+      slot commit
+        like text
+      task base-checkout
+    # Merge a branch into another
+    hook merge
+      slot from
+        like text
+      take into
+        like text
+        bind <main>
+      take author
+        like text
+        bind <anonymous>
+      task base-merge
+    # Write the working tree at a commit as .tree files
+    hook export
+      slot commit
+        like text
+      take out
+        like text
+      task base-export
+    # Bring a csv, tsv, json or jsonl file, or a directory of them, in as records
+    hook import
+      slot source
+        like text
+      # the record form these rows are instances of
+      take form
+        like text
+      # a column that identifies a row in the source. The mark is found or created against it, so a
+      # re-import updates rather than duplicates
+      take key
+        like text
+      # a column that already holds a uuid version 4, used as the mark
+      take mark
+        like text
+      take branch
+        like text
+        bind <main>
+      take author
+        like text
+        bind <import>
+      take message
+        like text
+      task base-import
+    # What a projection would write, and with --into --write, write it
+    hook project
+      slot commit
+        like text
+      # a mapping file, for an existing schema. Left out, the schema is worked out from the records and
+      # the tables are created
+      take mapping
+        like text
+      # a Postgres connection url to write the projection into
+      take into
+        like text
+      # actually write. Without it nothing is touched
+      take write
+        like boolean
+        bind false
+      # the name this projection is bookkept under. Defaults to the directory name
+      take repository
+        like text
+      task base-project
+    # Name a commit, so it can be cited
+    hook tag
+      slot name
+        like text
+      slot commit
+        like text
+      take branch
+        like text
+        bind <main>
+      task base-tag
 
-# Secrets and environment: run a command with a zone's values, and manage them
-hook zone
-  # The zone verb and its arguments
-  slot rest
-    like list, like text
-  task zone
+  # Scaffold a new Seed project
+  hook wake
+    # Project name (a new directory); omit for current directory
+    slot name
+      like text
+    task wake
+
+  # Install all dependencies
+  hook load
+    # Clean install from scratch
+    take clean
+      like boolean
+    # Install without network
+    take offline
+      like boolean
+    task load
+
+  # Add a dependency
+  hook save
+    # Package name to add
+    slot deck
+      like text
+    # The versions it accepts: 1.4.2, 1.x.x, ^1.2.0, ~1.2.0, 1.0.0..2.0.0 (default 0.x.x)
+    slot mark
+      like text
+    task save
+
+  # Remove a dependency
+  hook toss
+    # Package name to remove
+    slot deck
+      like text
+    task toss
+
+  # Link a local package for development
+  hook link
+    # Path to local package
+    slot deck
+      like text
+    # Remove the deck's link instead, so the next term load installs the published one
+    take toss
+      like boolean
+    task link
+
+  # Check if packages are installed correctly (--audit for the security scan)
+  hook seek
+    # Security scan: audit dependencies against the advisory database
+    take audit
+      like boolean
+    # Also run the static code scan (dangerous native imports, taint) over the project
+    take code
+      like boolean
+    # Write a SARIF 2.1.0 report to this path (for GitHub code scanning)
+    take sarif
+      like text
+    # Console output format (default human)
+    take format
+      like text
+      pick <human>
+      pick <json>
+      pick <sarif>
+    # Rewrite deck.tree to the safe dependency versions
+    take fix
+      like boolean
+    task seek
+
+  # Publish package to registry
+  hook host
+    # Dry run (no upload)
+    take dry
+      like boolean
+    # The oci:// registry to publish to, in place of the scope's own
+    take registry
+      like text
+    # Add this public key to the scope's key set instead of publishing
+    take trust
+      like text
+    # Remove this public key from the scope's key set instead of publishing
+    take untrust
+      like text
+    # Announce the already-published version to the package index instead of publishing
+    take ping
+      like boolean
+    task host
+
+  # Log in to term.surf with Google, for publishing
+  hook bind
+    # Forget the term.surf token on this machine instead
+    take toss
+      like boolean
+    # Log in again even while the saved token works
+    take again
+      like boolean
+    task bind
+
+  hook self
+    note <The versions of term on this machine: list, find, load, pick, need, show, toss, wash, check, update, back, and skill, which teaches a coding agent its verbs>
+    # Installed versions, the front, the default, and what runs here
+    hook list
+      task self-list
+    # Released versions, newest first
+    hook find
+      # Only versions in this range: 2.6.x
+      slot range
+        like text
+      # Every platform, not only this one
+      take all
+        like boolean
+      task self-find
+    # Install a version, verified, without switching to it
+    hook load
+      # A version or a range: 2.6.4, 2.6.x
+      slot range
+        like text
+        need true
+      task self-load
+    # The version that runs outside any project
+    hook pick
+      # A version or a range: 2.6.4, 2.6.x
+      slot range
+        like text
+        need true
+      task self-pick
+    # The version this project needs, written to deck.tree and pinned in lock.tree
+    hook need
+      # A version or a range: 2.6.4, 2.6.x
+      slot range
+        like text
+      # Remove the project's request instead
+      take none
+        like boolean
+      task self-need
+    # Which version runs here, and every rule that decided it
+    hook show
+      task self-show
+    # Remove one installed version
+    hook toss
+      # The exact version: 2.6.2
+      slot mark
+        like text
+        need true
+      task self-toss
+    # Versions nothing has used in --days; removed only with --commit
+    hook wash
+      # Unused for this many days (default 90)
+      take days
+        like number
+      # Remove them, rather than list them
+      take commit
+        like boolean
+      task self-wash
+    # Verify this install against the signed release
+    hook check
+      task self-check
+    # Install the newest release and move the front to it
+    hook update
+      task self-update
+    # Move the front back to the previous version
+    hook back
+      task self-back
+    # Write the skill that teaches a coding agent term's verbs into this project, at .claude/skills/term/SKILL.md
+    hook skill
+      # Response format, the program's option, which this command's task reads too
+      take back
+        like text
+        code b
+        pick json
+        pick link
+        pick line
+        bind <line>
+      task self-skill
+
+  # Install the newest release and move the front to it (term self update)
+  hook update
+    task self-update
+
+  # Build/compile the project, or with --emit one program for one backend
+  hook make
+    # With --emit: the program to emit, with its whole import closure
+    slot file
+      like text
+    # Write ONE program as a single source file for node (TypeScript), rust, swift or kotlin (runtime prelude plus emitted code), or for wgsl or hvm (a numeric part of the language: anything outside it is refused, by name and place), or llvm (IR) or wasm (WASI), through the Rust. A check error refuses
+    take emit
+      like text
+    # With --emit: the file to write (default standard output)
+    take out
+      like text
+    # With --emit rust, swift or kotlin and --out <folder>: one file per Term module beside a shared one, each written only when it changed
+    take units
+      like boolean
+    # Every program of the project (a file with a `run`, `boot` or `main` task taking nothing) for rust, swift, kotlin or node, one file each under host/<env>/. One that does not build is reported and the rest written
+    take env
+      like text
+    # With --emit: add the main that calls the program and build it with its toolchain, into --out <folder> (default host/<target>). With --env: build every program, beside its source
+    take build
+      like boolean
+    # With --emit: build it, then run it, its output and exit code passed through
+    take run
+      like boolean
+    # With --build or --run: the task the program starts at (default run, else boot, else main)
+    take main
+      like text
+    # Watch files and recompile incrementally on every change
+    take ride, name watch
+      like boolean
+    # Separate compilation, the default: each module checked once against its imports' stubs and cached, per-module artifacts
+    take separate
+      like boolean
+    # One whole-program compile per file instead, optimized across modules (the build before separate compilation)
+    take merged
+      like boolean
+    # Say why each unit that was built was built: its own text, a name it reaches, its settings, or the compiler
+    take explain
+      like boolean
+    # Compile .tree files even when package.json owns `make` (which otherwise runs that script instead)
+    take trees
+      like boolean
+    # Build a native app cask for a platform (macos, ios, android, linux, windows), a Compose app (compose: the desktop with its JVM, compose-android: an APK), or an iPhone app drawn by UIKit (uikit: an Xcode project, signed ad hoc with --team)
+    take target
+      like text
+    # With --target uikit: the Apple team to sign for (read from the keychain when it holds one team)
+    take team
+      like text
+    # With --target uikit: the https address the app will be served at, for an install page an iPhone opens
+    take link
+      like text
+    # The page entry of the cask app (default face/base.tree)
+    take page
+      like text
+    # The cask entry of the app (default cask.tree; for a Compose or UIKit target, the file the boot line of deck.tree names, else app.tree)
+    take entry
+      like text
+    # Dev loop: the cask loads this URL instead of the bundled page
+    take url
+      like text
+    # A Developer ID identity for codesign (ad hoc when absent)
+    take sign
+      like text
+    # Also make a .dmg beside the .app
+    take dmg
+      like boolean
+    # Also publish the page just built as a signed over-the-air update into this directory
+    take publish
+      like text
+    # The update channel --publish writes (default main)
+    take channel
+      like text
+    task make-project
+
+  # Type-check a file and report diagnostics (the verifier)
+  hook scan
+    # The .tree file to check
+    slot file
+      like text
+    # Write the sure fixes into the file and scan again. A guess is offered, never written
+    take fix
+      like boolean
+    # Response format, the program's option, which this command's task reads too
+    take back
+      like text
+      code b
+      pick json
+      pick link
+      pick line
+      bind <line>
+    task scan
+
+  # Project memory: remember a fact, or recall facts
+  hook mind
+    # A fact to remember (omit to recall)
+    slot fact
+      like text
+    # A short name for the fact
+    take name
+      like text
+    # The kind of fact
+    take kind
+      like text
+      pick <decision>
+      pick <convention>
+      pick <constraint>
+      pick <reference>
+      pick <note>
+    # Recall only facts matching this query
+    take find
+      like text
+    # Forget the fact with this name
+    take forget
+      like text
+    # Response format, the program's option, which this command's task reads too
+    take back
+      like text
+      code b
+      pick json
+      pick link
+      pick line
+      bind <line>
+    task mind
+
+  # Run tests
+  hook test
+    # Filter tests
+    slot filter
+      like text
+    # Compile each test file whole, instead of one unit at a time with the units shared across files
+    take merged
+      like boolean
+    # Run only the tests whose phrase or name holds this, in any case
+    take case
+      like text
+    # The backend the tests run on: node (the default), rust, swift or kotlin
+    take env
+      like text
+    # Run, then run again on every edit the tests whose files the edit reaches, until ctrl-c
+    take ride
+      like boolean
+    # Write what each `want snapshot` sees into the test file's snapshot file, instead of comparing against it
+    take update
+      like boolean
+    task test-project
+
+  # Run benchmarks, or profile a file with --cpu / --memory
+  hook time
+    # Filter benchmarks by name
+    slot filter
+      like text
+    # Run benchmarks in a specific file
+    take file
+      like text
+    # Profile CPU hotspots of a .tree file
+    take cpu
+      like text
+    # Profile memory use of a .tree file
+    take memory
+      like text
+    # Show the top-N hottest functions (with --cpu)
+    take top
+      like number
+    # Output JSON instead of table
+    take json
+      like boolean
+    # Save results as a named baseline
+    take save
+      like text
+    # Compare against a saved baseline
+    take compare
+      like text
+    # Fail if any benchmark regresses by more than N%
+    take fail-on-regression
+      like number
+    # Output comparison as markdown
+    take markdown
+      like boolean
+    # Show history for a specific benchmark
+    take history
+      like text
+    task time
+
+  # Compare emitted code with hand-written code per target (time: time-* tasks)
+  hook mark
+    # a filter on <family>/<program>, or `list`; then --target, --runs, --quick, --check, --size, --export, --markdown, --purpose, --label
+    slot rest
+      like list, like text
+    task mark-bench
+
+  # Compile and run an app, in development (the default) or production
+  hook boot
+    # moon, dev or development (the default), or star, prod or production
+    slot mode
+      like text
+    # Entry .tree module (defaults to deck.tree boot)
+    slot entry
+      like text
+    # Port to serve on
+    take port
+      code p
+      like number
+    # Target env (node, browser)
+    take env
+      like text
+    # Remote cache endpoint (pull before, push after)
+    take remote
+      like text
+    # Bearer token for the remote cache
+    take remote-token
+      like text
+    # Write a command-line program to this directory (run.mjs, app.mjs, dock.mjs) instead of running it
+    take out
+      like text
+    task boot
+
+  # Build an SSR app into a deployable Cloudflare Worker (work/index.ts + build/)
+  hook cast
+    # Entry .tree module (defaults to deck.tree boot)
+    slot entry
+      like text
+    # Deploy target (cloudflare)
+    take target
+      like text
+      bind <cloudflare>
+    task cast
+
+  # Stop running term boot servers (all, or specific --port list)
+  hook halt
+    # Comma-separated ports to stop (default: all)
+    take port
+      code p
+      like text
+    task halt
+
+  # Retired: the development server is term boot
+  hook feed
+    # Entry .tree module (defaults to deck.tree boot)
+    slot entry
+      like text
+    # Port to serve on
+    take port
+      code p
+      like number
+    # Target env
+    take env
+      like text
+    task feed
+
+  # Run the long-lived compiler worker (shared warm analyzer)
+  hook work
+    # Port to serve on
+    take port
+      code p
+      like number
+    # Target env
+    take env
+      like text
+    # Develop a native app cask: the page on a dev server with hot swaps, the app pointed at it
+    take target
+      like text
+    # The page entry of the cask app (default face/base.tree)
+    take page
+      like text
+    # The cask entry of the app (default cask.tree)
+    take entry
+      like text
+    task work
+
+  # Clean build artifacts
+  hook wash
+    # What to clean (deck, tail)
+    slot target
+      like text
+    task wash
+
+  # Start REPL
+  hook walk
+    task walk-project
+
+  # Version management
+  hook move
+    # What to move (code)
+    slot target
+      like text
+    # Bump level: 1=major, 2=minor, 3=patch
+    slot level
+      like text
+    task bump-code
+
+  # Show package info
+  hook note
+    # Package to inspect
+    slot deck
+      like text
+    task note
+
+  # Format .tree files into canonical layout
+  hook form
+    # Files or directories to format (default: current directory)
+    slot paths
+      like list, like text
+    # Report which files would change without writing (for CI)
+    take check
+      like boolean
+    # Print formatted source to stdout instead of writing
+    take list
+      like boolean
+    task form
+
+  # Inspect what a module exposes (forms + tasks), following its load/bear graph
+  hook look
+    # A package path (@cluesurf/bind/code/browser/dom) or a .tree file
+    slot target
+      like text
+    # Output JSON
+    take json
+      like boolean
+    # Output CSV
+    take csv
+      like boolean
+    # Only forms or only tasks
+    take kind
+      like text
+      pick <form>
+      pick <task>
+    # Everything the module loads, not only what it offers
+    take all
+      like boolean
+    task look
+
+  # The roll of this project: every deck, exception, task, route and tell in the build
+  hook roll
+    # One kind of entry, in full: deck, exception, task, dock, tell, kind, or a kind a deck declares
+    # with `roll <name>` (default: every deck with counts)
+    slot kind
+      like text
+    # Output the roll as JSON
+    take json
+      like boolean
+    # Only the exceptions no tell covers
+    take private
+      like boolean
+    # Only the entries of one deck (@term/site)
+    take host
+      like text
+    # Under each exception, one call path from every task that can raise it to the raise site
+    take path
+      like boolean
+    # What changed in what each task can reach and raise since a roll file (term roll --json > before.json)
+    # or a git ref. A task that gained a native module is a warning, so --strict makes it a gate
+    take diff
+      like text
+    # Response format, the program's option, which this command's task reads too
+    take back
+      like text
+      code b
+      pick json
+      pick link
+      pick line
+      bind <line>
+    task roll
+
+  # Shape Term data: a data file (long or compact), JSON or tree/code, printed as long form, compact
+  # (--pack), JSON (--json) or tree/code (--code)
+  hook mold
+    # A data file, long or compact (.tree or .line), a stream with --lines, or a .json file (stdin when
+    # absent)
+    slot file
+      like text
+    # Compact form, one entry per line
+    take pack
+      like boolean
+    # JSON, keys in snake case
+    take json
+      like boolean
+    # With --json: leave keys as written
+    take keep
+      like boolean
+    # The input is JSON
+    take tree
+      like boolean
+    # Keep tree anchors instead of expanding them
+    take trees
+      like boolean
+    # The input is a compact stream: one form per line, anchors re-declarable
+    take lines
+      like boolean
+    # Only report problems, exit 1 on any
+    take check
+      like boolean
+    # tree/code bytes, Zstandard frames where smaller (to a file or a pipe)
+    take code
+      like boolean
+    # With --code: the canonical bytes, every frame uncompressed
+    take canonical
+      like boolean
+    task mold
+
+  # Check a document in the view role and print what it uses
+  hook view
+    # A .tree document, or a directory of them (the project root when absent)
+    slot path
+      like text
+    # Print the query manifest instead
+    take find
+      like boolean
+    # Response format, the program's option, which this command's task reads too
+    take back
+      like text
+      code b
+      pick json
+      pick link
+      pick line
+      bind <line>
+    task view
+
+  # Lint .tree files for style and correctness
+  hook lint
+    # Files or directories to lint (default: current directory)
+    slot paths
+      like list, like text
+    # Apply autofixes in place
+    take fix
+      like boolean
+    task lint
+
+  # The proof gate: every file compiles, no claim is open, every tier-0 obligation is proven or baselined. One line,
+  # non-zero exit
+  hook hold
+    # Files or directories to verify (default: current directory)
+    slot paths
+      like list, like text
+    # Also run the cross-backend differential
+    take cross
+      like boolean
+    # Rewrite hold.json to the obligations not proven today, and print how many that added
+    take commit
+      like boolean
+    # Skip files unchanged since they last held
+    take cache
+      like boolean
+      bind true
+    # Re-check everything, ignoring the cache
+    take force
+      like boolean
+    # Machine-readable output
+    take json
+      like boolean
+    # Also re-check every claim in Lean 4 (TERM_LEAN, else the PATH)
+    take lean
+      like boolean
+    # Print the report: every law laws.tree names, in English, and what it rests on
+    take report
+      like boolean
+    task hold
+
+  # Automated bug-hunt: oracles + fuzzing over .tree files (crashes, hangs, round-trip, determinism,
+  # backend emit, perf). Fails when any check did not run
+  hook hunt
+    # Directory of .tree files to hunt (default: this project's .tree files, as term make finds them)
+    slot glob
+      like text
+    # Fuzz inputs per term
+    take runs
+      like number
+    # Distinct fuzz seeds
+    take seeds
+      like number
+    # Watchdog seconds per fuzz term
+    take fuzz-timeout
+      like number
+    # Milliseconds one compile may take before it is a finding (default 1000)
+    take budget
+      like number
+    # Machine-readable output
+    take json
+      like boolean
+    task hunt
+
+  # Display information
+  hook show
+    # `mark` for this package's version (`code` is the old spelling), `tools` for the native toolchains,
+    # `kink` for what a diagnostic means, `name` for one name of the project with what surrounds it; omit
+    # for the toolchain version and platform
+    slot what
+      like text
+    # With `kink`: a diagnostic's name or code (type-mismatch, 0007, L019), every one when left out. With
+    # `name`: the task, form or mask to show
+    slot name
+      like text
+    # With `name`: the most tokens the answer may take, roughly four characters each (default 4000)
+    take budget
+      like number
+    # Response format, the program's option, which this command's task reads too
+    take back
+      like text
+      code b
+      pick json
+      pick link
+      pick line
+      bind <line>
+    task show
+
+  # Secrets and environment: run a command with a zone's values, and manage them
+  hook zone
+    # The zone verb and its arguments
+    slot rest
+      like list, like text
+    task zone
 
 
-# Print the shell completion script (add to your shell rc file)
-hook fill
-  task fill
+  # Print the shell completion script (add to your shell rc file)
+  hook fill
+    task fill
 
 # The four verbs a hook cannot bind by their own name (see the top of the file): each task takes its hook's takes by
 # name and calls the verb.
 task make-project
+  take file, like text
+  take emit, like text
+  take out, like text
+  take units, like boolean
+  take env, like text
+  take build, like boolean
+  take run, like boolean
+  take main, like text
   take ride, like boolean
   take separate, like boolean
   take merged, like boolean
   take explain, like boolean
   take trees, like boolean
+  take target, like text
+  take team, like text
+  take link, like text
+  take page, like text
+  take entry, like text
+  take url, like text
+  take sign, like text
+  take dmg, like boolean
+  take publish, like text
+  take channel, like text
   like void
   call make-verb
     read ride

@@ -1,0 +1,208 @@
+# The resolved dependency graph, read from the lockfile (`lock.tree`) plus the manifest (`deck.tree`). The lockfile
+# pins one exact version per package and records each package's own dependency edges (`link`), so the whole
+# direct-plus-transitive set is walked, the direct ones marked, and the shortest path from the root to each node
+# recorded (for reporting "you depend on X because A -> B -> X"). This is the graph the advisory matcher runs over.
+#
+# Ported from deck/scan/code/graph.ts (term-cli-in-term-0093). The lockfile and manifest readers and the name and
+# version spellings are @cluesurf/deck.tree's, docked. A lock entry, a manifest and a node are the original's host
+# records, read and built through binds named for this module (a field named by a Term word, `code` or `link`, is
+# read by a bind, never a path). The original's breadth-first queue is a list read by an index, which is its
+# `shift` in the same order.
+
+dock load
+  load <@cluesurf/deck.tree>, name deck-tree-module
+    mark async
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+bind graph-asked-dir
+  take value, like text
+  like dynamic
+  case node
+    text <<({ dir: $value })>>
+
+bind graph-asked-name
+  take value, like text
+  like dynamic
+  case node
+    text <<({ name: $value })>>
+
+bind graph-has-no-decks
+  take lockfile, like dynamic
+  like boolean
+  case node
+    text <<(!$lockfile || $lockfile.decks.length === 0)>>
+
+bind graph-decks
+  take lockfile, like dynamic
+  like list, like dynamic
+  case node
+    text <$lockfile.decks>
+
+bind graph-name
+  take entry, like dynamic
+  like text
+  case node
+    text <$entry.name>
+
+bind graph-code
+  take entry, like dynamic
+  like dynamic
+  case node
+    text <$entry.code>
+
+# a lock entry's or a manifest's `link` list
+bind graph-links
+  take entry, like dynamic
+  like list, like dynamic
+  case node
+    text <$entry.link>
+
+bind graph-manifest-links
+  take manifest, like dynamic
+  like list, like dynamic
+  case node
+    text <<($manifest?.link ?? [])>>
+
+bind graph-holds
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind graph-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind graph-extended
+  take before, like list, like text
+  take last, like text
+  like list, like text
+  case node
+    text <<[...$before, $last]>>
+
+bind graph-node
+  take name, like text
+  take registry, like text
+  take version, like text
+  take direct, like boolean
+  take trail, like list, like text
+  like dynamic
+  case node
+    text <<({ name: $name, registryName: $registry, version: $version, direct: $direct, path: $trail })>>
+
+task tree-name-of
+  take name, like text
+  like text
+  mark private
+
+  host asked, graph-asked-name(name)
+  back deck-tree-module/to-tree-name(asked)
+
+# the graph of the project rooted at `root`: empty when there is no lockfile (nothing pinned to audit). Direct
+# dependencies come from the manifest's `link`, transitive edges from each lock entry's `link`. A manifest that will
+# not load is tolerated: every locked package is then taken as possibly direct
+task read-dependency-graph
+  take root, like text
+  like list, like dynamic
+
+  host lock-asked, graph-asked-dir(root)
+  host lockfile, deck-tree-module/load-lockfile(lock-asked)
+  fork test, graph-has-no-decks(lockfile)
+    hold
+      back make list
+
+  save manifest, graph-nothing()
+  fork
+    mark unsafe
+    host manifest-asked, graph-asked-dir(root)
+    save manifest, deck-tree-module/load-manifest(manifest-asked)
+  halt take
+    # the original's .catch(() => undefined)
+    take unread
+    save manifest, graph-nothing()
+  host has-manifest, graph-holds(manifest)
+
+  # the exact version per locked package, and its edges, by tree name
+  save version-of, make hash
+  save edges-of, make hash
+  walk graph-decks(lockfile)
+    take entry
+    host tree-name, tree-name-of(graph-name(entry))
+    host shown, deck-tree-module/show-code(graph-code(entry))
+    version-of/set(tree-name, shown)
+    save edges, make list
+    walk graph-links(entry)
+      take link-entry
+      edges/push(tree-name-of(graph-name(link-entry)))
+    edges-of/set(tree-name, edges)
+
+  # the direct names, each once, in the order the manifest lists them
+  save direct-names, make hash
+  save direct-order, make list
+  walk graph-manifest-links(manifest)
+    take link-entry
+    host direct-name, tree-name-of(graph-name(link-entry))
+    fork test, not(direct-names/has(direct-name))
+      hold
+        direct-names/set(direct-name, true)
+        direct-order/push(direct-name)
+
+  # breadth first from the direct dependencies (every locked package when there is no manifest), recording the
+  # shortest path to each node
+  save roots, direct-order
+  fork test, not(has-manifest)
+    hold
+      save every, make list
+      walk version-of/keys()
+        take locked
+        every/push(locked)
+      save roots, every
+
+  save path-of, make hash
+  save queue, make list
+  walk roots
+    take start
+    fork test, and(version-of/has(start), not(path-of/has(start)))
+      hold
+        save first-path, make list
+        first-path/push(start)
+        path-of/set(start, first-path)
+        queue/push(start)
+
+  save at, 0
+  walk test
+    hook test, is-below(at, queue/length)
+    hook hold
+      host here-name, read queue/{at}
+      save at, add(at, 1)
+      host here, path-of/get(here-name)
+      fork test, edges-of/has(here-name)
+        hold
+          walk edges-of/get(here-name)
+            take dep
+            fork test, and(version-of/has(dep), not(path-of/has(dep)))
+              hold
+                path-of/set(dep, graph-extended(here, dep))
+                queue/push(dep)
+
+  save nodes, make list
+  walk version-of/keys()
+    take name
+    host version, version-of/get(name)
+    save trail, make list
+    fork test, path-of/has(name)
+      hold
+        save trail, path-of/get(name)
+      miss
+        trail/push(name)
+    host registry, deck-tree-module/to-registry-name(graph-asked-name(name))
+    host direct, or(direct-names/has(name), not(has-manifest))
+    nodes/push(graph-node(name, registry, version, direct, trail))
+
+  back nodes

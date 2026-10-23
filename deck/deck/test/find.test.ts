@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { findProjectRoot } from '../code/workspace'
+import { findProjectRoot } from '../code/package/workspace'
 
 describe('findProjectRoot', () => {
   it('placeholder', () => {

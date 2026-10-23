@@ -26,7 +26,7 @@ import { existsSync, readdirSync, readFileSync, readlinkSync, statSync, writeFil
 import nodePath from 'path'
 
 import { parseCode, parseCodeHold } from '@term/deck/code/code'
-import { formOf, readTree, valueOf, type Form } from '@term/deck/code/read'
+import { formOf, readTree, valueOf, type Form } from '@term/deck/code/package/read'
 import type { Code, CodeHold, LockNeed } from '@term/deck/code/form'
 
 import { frontDir, userHome } from '@term/call/code/home'

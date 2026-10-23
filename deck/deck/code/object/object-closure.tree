@@ -13,8 +13,8 @@
 #   - subtrees are collected at the same time and the blob sizes read in batches of 100 at the same time, through
 #     @term/base/task's gather, the original's Promise.all: results in source order, the first failure raised (gather
 #     also cancels the rest, which Promise.all left running)
-#   - release.ts's reachableFromCommit and dataset.ts's filesOfDataset (not yet ported) and save's readDataset and
-#     MemoryChunkStore are docked
+#   - reachable-from-commit is release-building.tree's and files-of-dataset file-dataset.tree's (docked from release.ts
+#     and dataset.ts until term-cli-in-term-0115 loaded the ports); save's readDataset and MemoryChunkStore are docked
 
 load @term/base/list
   find list
@@ -32,9 +32,13 @@ load ./directory-node
 load ./object-shape
   find validate-entries
 
+load ./release-building
+  find reachable-from-commit
+
+load ./file-dataset
+  find files-of-dataset
+
 dock load
-  load <@term/deck/code/object/release>, name release-module
-  load <@term/deck/code/object/dataset>, name dataset-module
   load <@cluesurf/save/store/tree>, name save-tree
   load <@cluesurf/save/store/chunk-store>, name save-chunk-store
 
@@ -57,9 +61,6 @@ form file-ref
   link blob, like text
   link mode, like text
 
-form reach-ask
-  link commit-id, like text
-  link store, like dynamic
 
 bind closure-store-get
   take shelf, like dynamic
@@ -289,7 +290,7 @@ task build-manifest
   take store, like dynamic
   like manifest-listing
 
-  save reachable, wait release-module/reachable-from-commit(make(reach-ask, bind(commit-id, commit-id), bind(store, store)))
+  save reachable, reachable-from-commit(commit-id, store)
   save chunks, closure-chunk-store(save-chunk-store)
   walk closure-members(reachable)
     take id
@@ -298,7 +299,7 @@ task build-manifest
 
   save commit, read-json(store, commit-id)
   save files, make list
-  walk dataset-module/files-of-dataset(save-tree/read-dataset(commit/root, chunks))
+  walk files-of-dataset(save-tree/read-dataset(commit/root, chunks))
     take file
     save mode, <file>
     fork test, is-equal(file/mode, <exec>)

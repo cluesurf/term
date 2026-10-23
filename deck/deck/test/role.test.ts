@@ -6,7 +6,7 @@ import {
   matchRole,
   matchRoleRule,
   globMatch,
-} from '../code/role'
+} from '../code/package/role'
 
 describe('parseRoleFile', () => {
   it('parses basic role definitions', () => {

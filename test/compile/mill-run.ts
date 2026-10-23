@@ -353,7 +353,7 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
 {
   // the HAND reader is the reference here: parseManifest itself reads through the mill now, so comparing
   // against it would be mill-vs-mill
-  const { parseManifestByHand: parseManifest } = await import('../../deck/deck/code/manifest')
+  const { parseManifestByHand: parseManifest } = await import('../../deck/deck/code/package/manifest')
   const { readdirSync } = await import('node:fs')
 
   // the deck grammar with its load closure inlined (the executor takes one grammar map)
@@ -502,7 +502,7 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
 // links the reader sees (no lock.tree is committed in the tree, so the writer's own output is the fixture)
 
 {
-  const { writeLockfile, parseLockfileByHand: parseLockfile } = await import('../../deck/deck/code/lock')
+  const { writeLockfile, parseLockfileByHand: parseLockfile } = await import('../../deck/deck/code/package/lock')
   const fixture = writeLockfile({
     lockfile: {
       version: 1,
@@ -608,7 +608,7 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
 // would have fallen through to another role, silently.
 
 {
-  const { parseRoleFile, parseRoleFileByHand } = await import('../../deck/deck/code/role')
+  const { parseRoleFile, parseRoleFileByHand } = await import('../../deck/deck/code/package/role')
   const { readFileSync: read, existsSync: has } = await import('node:fs')
 
   const roleFile = join(TERM, 'base/role.tree')

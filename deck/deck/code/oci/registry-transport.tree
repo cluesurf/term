@@ -27,7 +27,8 @@
 #     retries test the caught value's form and status (is-oci-failure, oci-failure-status), never a class
 #   - a failure that is not an oci-failure (a network TypeError, a JSON SyntaxError) passes through unchanged, as in
 #     the original; the bodies of the retries are guarded whole, as the original's try held them
-#   - auth.ts (parseChallenge, basicHeader) is docked until its lane
+#   - parse-challenge and basic-header are registry-credentials.tree's (auth.ts was docked until
+#     term-cli-in-term-0115 loaded the port)
 
 load ./oci-address
   find assert-digest
@@ -39,10 +40,13 @@ load ./oci-failure
   find is-oci-failure
   find oci-failure-status
 
+load ./registry-credentials
+  find parse-challenge
+  find basic-header
+
 dock load
   load <node:crypto>, name node-crypto
   load <global:process>, name host-process
-  load <@term/deck/code/oci/auth>, name auth-module
 
 form wire-try
   link failed, like boolean
@@ -345,19 +349,11 @@ bind wire-scope
 
 # --- the token flow
 
-bind wire-challenge
-  take auth, like dynamic
+bind wire-authenticate-header
   take response, like dynamic
   like dynamic
   case node
-    text <<$auth.parseChallenge($response.headers.get("www-authenticate"))>>
-
-bind wire-basic-header
-  take auth, like dynamic
-  take creds, like dynamic
-  like text
-  case node
-    text <$auth.basicHeader($creds)>
+    text <<$response.headers.get("www-authenticate")>>
 
 bind wire-kind
   take value, like dynamic
@@ -779,7 +775,7 @@ task fetch-token
       save header, wire-nothing()
       fork test, is-equal(wire-kind(creds), <basic>)
         hold
-          save header, wire-basic-header(auth-module, creds)
+          save header, basic-header(creds)
       save response, wait wire-token-get(wire, realm, service, scope, header)
 
   fork test, not(wire-ok(response))
@@ -814,7 +810,7 @@ task authorize
   like boolean
   mark private
 
-  save challenge, wire-challenge(auth-module, response)
+  save challenge, parse-challenge(wire-authenticate-header(response))
   fork test, not(wire-truthy(challenge))
     hold
       back false
@@ -829,7 +825,7 @@ task authorize
       save host, wire-field(wire, <host>)
       fork test, or(not(plain), wire-is-loopback(host))
         hold
-          wire-token-set(wire, wire-scope-key(scope), wire-basic-entry(wire-basic-header(auth-module, creds)))
+          wire-token-set(wire, wire-scope-key(scope), wire-basic-entry(basic-header(creds)))
           back true
       back false
 

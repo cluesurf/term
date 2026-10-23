@@ -1,0 +1,120 @@
+# A compiler diagnostic, as `compile()` hands it over, turned into the gap report the synthesis loop consumes
+# (checker-report.tree). A diagnostic leaves `file`, `span`, `hint` and `severity` out when it has none, and a Term
+# record cannot say whether a field is there, so the diagnostic is read here as the host value it is and each absent
+# field filled the way the original filled it: `<source>` for a file, no span, `<>` for a hint, `error` for a
+# severity. A field given EMPTY is kept empty, as the original kept it.
+#
+# Ported from deck/test/code/checker-gap.ts (term-cli-in-term-0108), the face checker-report.tree's header names: its
+# `gapFromDiagnostic` is `gap-from-host-diagnostic` (checker-report.tree's own `gap-from-diagnostic` takes the filled
+# record), and `gapsFromDiagnostics` keeps its name. Each read of a field that may be absent is a host bind, the
+# original's own expression.
+
+load @term/base/list
+  find list
+
+load ./checker-report
+  find diagnostic-in
+  find checker-gap
+  find gap-from-diagnostic
+
+bind diagnostic-name
+  take found, like dynamic
+  like text
+  case node
+    text <$found.name>
+
+bind diagnostic-message
+  take found, like dynamic
+  like text
+  case node
+    text <$found.message>
+
+# `diagnostic.file ?? '<source>'`
+bind diagnostic-file
+  take found, like dynamic
+  like text
+  case node
+    text <($found.file ?? "\<source\>")>
+
+bind diagnostic-has-span
+  take found, like dynamic
+  like boolean
+  case node
+    text <($found.span !== undefined)>
+
+bind diagnostic-start-line
+  take found, like dynamic
+  like number
+  case node
+    text <($found.span?.start.line ?? 0)>
+
+bind diagnostic-start-column
+  take found, like dynamic
+  like number
+  case node
+    text <($found.span?.start.column ?? 0)>
+
+bind diagnostic-end-line
+  take found, like dynamic
+  like number
+  case node
+    text <($found.span?.end.line ?? 0)>
+
+bind diagnostic-end-column
+  take found, like dynamic
+  like number
+  case node
+    text <($found.span?.end.column ?? 0)>
+
+bind diagnostic-hint
+  take found, like dynamic
+  like text
+  case node
+    text <($found.hint ?? "")>
+
+bind diagnostic-severity
+  take found, like dynamic
+  like text
+  case node
+    text <($found.severity ?? "error")>
+
+# `diagnostics ?? []`, as a list to walk
+bind diagnostic-list
+  take found, like dynamic
+  like list, like dynamic
+  case node
+    text <($found ?? [])>
+
+# one diagnostic, as the compiler hands it over, as a gap
+task gap-from-host-diagnostic
+  take source, like text
+  take found, like dynamic
+  like checker-gap
+
+  host filled
+    make diagnostic-in
+      bind name, diagnostic-name(found)
+      bind message, diagnostic-message(found)
+      bind file, diagnostic-file(found)
+      bind has-span, diagnostic-has-span(found)
+      bind start-line, diagnostic-start-line(found)
+      bind start-column, diagnostic-start-column(found)
+      bind end-line, diagnostic-end-line(found)
+      bind end-column, diagnostic-end-column(found)
+      bind hint, diagnostic-hint(found)
+      bind severity, diagnostic-severity(found)
+
+  back gap-from-diagnostic(source, filled)
+
+# a compile's diagnostics (or none) as the gap reports the loop consumes
+task gaps-from-diagnostics
+  take source, like text
+  take diagnostics, like dynamic
+  like list, like checker-gap
+
+  host gaps, make list
+  walk diagnostic-list(diagnostics)
+    take each
+    gaps/push(gap-from-host-diagnostic(source, each))
+
+  back gaps

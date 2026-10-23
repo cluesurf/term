@@ -10,8 +10,8 @@
 #   - a write policy is the original's host value, `{ token }` or `open`; the stores and the scope keys are the
 #     caller's host values
 #   - every answer is the original's, its status, headers and body text, written in binds
-#   - registry.ts (acceptObject, acceptPack, resolveRef, publishCommit) is docked until its lane; build-manifest is
-#     object-closure.tree's
+#   - accept-object, accept-pack, resolve-ref and publish-commit are registry-operations.tree's (docked from
+#     registry.ts until term-cli-in-term-0115 loaded the port); build-manifest is object-closure.tree's
 #   - REGISTRY_TOKEN_VARIABLE is registry-token-variable(), and write-access-from-env takes its environment (the
 #     caller's process.env where the original defaulted it)
 
@@ -21,10 +21,15 @@ load @term/base/list
 load ./object-closure
   find build-manifest
 
+load ./registry-operations
+  find accept-object
+  find accept-pack
+  find resolve-ref
+  find publish-commit
+
 dock load
   load <node:http>, name node-http
   load <node:crypto>, name node-crypto
-  load <@term/deck/code/object/registry>, name registry-module
 
 # what a server is made over
 form server-setup
@@ -35,30 +40,6 @@ form server-setup
 
 form write-token
   link token, like text
-
-form object-ask
-  link store, like dynamic
-  link id, like text
-  link bytes, like dynamic
-
-form pack-ask
-  link store, like dynamic
-  link bytes, like dynamic
-
-form resolve-ask
-  link refs, like dynamic
-  link package, like text
-  link ref, like dynamic
-
-form commit-ask
-  link store, like dynamic
-  link refs, like dynamic
-  link scope-keys, like dynamic
-  link package, like dynamic
-  link target, like dynamic
-  link commit, like dynamic
-  link sig, like dynamic
-  link key, like dynamic
 
 bind env-token
   take env, like dynamic
@@ -316,7 +297,7 @@ task answer-request
       hold
         save id, header-object-id(req)
         save bytes, wait read-body(req)
-        wait registry-module/accept-object(make(object-ask, bind(store, setup/store), bind(id, id), bind(bytes, bytes)))
+        accept-object(setup/store, id, bytes)
         send-json(res, 200, ok-body())
         back
 
@@ -370,7 +351,7 @@ task answer-request
     fork test, and(is-post, and(is-part(parts, 0, <packages>), is-part(parts, 1, <bundle!>)))
       hold
         save bytes, wait read-body(req)
-        save stored, wait registry-module/accept-pack(make(pack-ask, bind(store, setup/store), bind(bytes, bytes)))
+        save stored, accept-pack(setup/store, bytes)
         send-json(res, 200, stored-body(stored))
         back
 
@@ -379,7 +360,7 @@ task answer-request
       hold
         save body-bytes, wait read-body(req)
         save body, json-of-bytes(body-bytes)
-        save result, wait registry-module/publish-commit(make(commit-ask, bind(store, setup/store), bind(refs, setup/refs), bind(scope-keys, setup/scope-keys), bind(package, body/package), bind(target, body/target), bind(commit, body/commit), bind(sig, body/sig), bind(key, body/key)))
+        save result, publish-commit(setup/store, setup/refs, setup/scope-keys, body/package, body/target, body/commit, body/sig, body/key)
         send-json(res, 200, result)
         back
 
@@ -407,7 +388,7 @@ task answer-request
               hold
                 send-json(res, 400, error-body(<a ref is required>))
                 back
-            save commit, wait registry-module/resolve-ref(make(resolve-ask, bind(refs, setup/refs), bind(package, package-name), bind(ref, ref)))
+            save commit, resolve-ref(setup/refs, package-name, ref)
             save manifest, build-manifest(commit, commit, package-name, setup/store)
             send-json(res, 200, manifest)
             back

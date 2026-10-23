@@ -1,10 +1,6 @@
 load @term/call/work/home
   find root, name project-root
 
-load @term/base/text
-  find starts-with
-  find substring
-
 # `term roll [kind]` -- the roll of this project: every deck in the build, every exception with who can raise it,
 # every public task with what it raises, every route, every tell.
 #
@@ -17,7 +13,6 @@ load @term/base/text
 
 dock load
   load <@term/call/code/roll>, name roll-module
-  load <global:process>, name host-process
 
 # what `callRoll` takes without `--diff`. NOT `roll-ask` or `show-ask`: Term names are package-global, and
 # base-verbs.tree declares a `show-ask` of its own
@@ -40,8 +35,9 @@ form roll-diff-ask
   link diff, like text
 
 # The hook passes a take to the parameter of its own name, else to the one at its position, so these stand in the
-# hook's order (kind, json, private, host, path, diff): `json-out`, `only-private`, `only-host` and `show-path` are
-# filled by position.
+# hook's order (kind, json, private, host, path, diff, back): `json-out`, `only-private`, `only-host` and `show-path`
+# are filled by position. `back` is the program's `--back`, which roll's hook declares too, so it is handed here as
+# yargs gave it to both (cli-in-term-0011)
 task roll
   mark async
   take kind, like text
@@ -50,6 +46,7 @@ task roll
   take only-host, like text
   take show-path, like boolean
   take diff, like text
+  take back, like text
 
   like void
 
@@ -57,7 +54,7 @@ task roll
   save root, call project-root
   # `--back json` too, the spelling every agent-facing verb takes (line.ts: `argv.json || argv.back === 'json'`)
   save json, json-out
-  fork test, back-is-json(host-process/argv)
+  fork test, is-equal(back, <json>)
     hold
       save json, true
   fork test, is-equal(diff, <>)
@@ -82,36 +79,3 @@ task roll
           bind path, read show-path
           bind diff, read diff
         wait true
-
-# whether the command line gives the global `--back` the value `json`, as yargs read it: `--back json`,
-# `--back=json`, `-b json` or `-b=json`, the last one given winning, and nothing after a bare `--`. `back` is a global
-# flag, not one of roll's takes, so the hook never hands it over
-task back-is-json
-  take words, like list, like text
-
-  like boolean
-
-  save value, <>
-  save at, 0
-  save count, words/length
-  walk test
-    hook test, is-below(at, count)
-    hook hold
-      save word, words/{at}
-      save at, add(at, 1)
-      fork test, is-equal(word, <-->)
-        hold
-          halt
-      fork test, or(is-equal(word, <--back>), is-equal(word, <-b>))
-        hold
-          fork test, is-below(at, count)
-            hold
-              save value, words/{at}
-              save at, add(at, 1)
-      fork test, starts-with(word, <--back=>)
-        hold
-          save value, substring(word, 7)
-      fork test, starts-with(word, <-b=>)
-        hold
-          save value, substring(word, 3)
-  back is-equal(value, <json>)

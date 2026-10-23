@@ -28,7 +28,7 @@ dock load
   # portIsFree answers a promise, so every call into boot.ts is awaited
   load <@term/call/code/boot>, name boot-module
     mark async
-  load <@term/deck/code/read>, name read-module
+  load <@term/deck/code/package/read>, name read-module
   load <@term/call/code/output>, name output
   load <global:process>, name host-process
   load <global:Date>, name host-date

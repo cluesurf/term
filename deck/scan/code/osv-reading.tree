@@ -1,0 +1,363 @@
+# OSV records (https://ossf.github.io/osv-schema/) read into the scanner's Advisory model. OSV is the lingua franca of
+# vulnerability data: OSV.dev, the GitHub Advisory Database and most language ecosystems publish it, and its schema
+# maps a vulnerability to affected package versions or commit ranges. The parts version matching needs are read
+# (affected packages, SEMVER/ECOSYSTEM ranges, explicit versions), and the severity.
+#
+# Ported from deck/scan/code/osv.ts (term-cli-in-term-0094). An OSV record, its parts and the Advisory and windows
+# built from it are host records, read and built through binds named for this module, in the original's key order
+# (a window opened by `introduced: 0` keeps an `introduced` key holding undefined, as the original's did). The
+# registry name is @cluesurf/deck.tree's, docked. The ecosystem has no default here: the face passes `term` where
+# the caller left it out, as the original's default parameter did. The OsvRecord type stays TypeScript (the face).
+
+dock load
+  load <@cluesurf/deck.tree>, name deck-tree-module
+
+load @term/base/list
+  find list
+
+bind osv-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind osv-lower
+  take value, like dynamic
+  like text
+  case node
+    text <$value.toLowerCase()>
+
+# the record's textual severity, lower case, or empty when it gives none
+bind osv-text-severity
+  take record, like dynamic
+  like text
+  case node
+    text <<($record.database_specific?.severity?.toLowerCase() ?? "")>>
+
+# the base score of the record's first CVSS severity, when it has one and the score reads as a number (a bare
+# number or nothing else: the vector is not evaluated); empty otherwise
+bind osv-cvss-score
+  take record, like dynamic
+  like list, like number
+  case node
+    text <<(function (osvFound) { if (!osvFound) { return [] } const osvScore = Number(osvFound.score); return Number.isNaN(osvScore) ? [] : [osvScore] })($record.severity?.find(osvEach => osvEach.type.startsWith("CVSS")))>>
+
+bind osv-affected
+  take record, like dynamic
+  like list, like dynamic
+  case node
+    text <<($record.affected ?? [])>>
+
+bind osv-ecosystem
+  take affected, like dynamic
+  like dynamic
+  case node
+    text <$affected.package?.ecosystem>
+
+bind osv-package-name
+  take affected, like dynamic
+  like dynamic
+  case node
+    text <$affected.package?.name>
+
+bind osv-ranges
+  take affected, like dynamic
+  like list, like dynamic
+  case node
+    text <<($affected.ranges ?? [])>>
+
+bind osv-is-git
+  take range, like dynamic
+  like boolean
+  case node
+    text <<($range.type === "GIT")>>
+
+bind osv-events
+  take range, like dynamic
+  like list, like dynamic
+  case node
+    text <<($range.events ?? [])>>
+
+bind osv-has-introduced
+  take event, like dynamic
+  like boolean
+  case node
+    text <<($event.introduced !== undefined)>>
+
+bind osv-has-fixed
+  take event, like dynamic
+  like boolean
+  case node
+    text <<($event.fixed !== undefined)>>
+
+bind osv-has-last-affected
+  take event, like dynamic
+  like boolean
+  case node
+    text <<($event.last_affected !== undefined)>>
+
+# a window opened by an `introduced` event, `0` meaning from the beginning
+bind osv-opened
+  take event, like dynamic
+  like dynamic
+  case node
+    text <<({ introduced: $event.introduced === "0" ? undefined : $event.introduced })>>
+
+bind osv-closed-fixed
+  take window, like dynamic
+  take event, like dynamic
+  like dynamic
+  case node
+    text <<({ ...($window ?? {}), fixed: $event.fixed })>>
+
+bind osv-closed-last
+  take window, like dynamic
+  take event, like dynamic
+  like dynamic
+  case node
+    text <<({ ...($window ?? {}), lastAffected: $event.last_affected })>>
+
+bind osv-push-versions
+  take shelf, like list, like text
+  take affected, like dynamic
+  like void
+  case node
+    text <<$shelf.push(...($affected.versions ?? []))>>
+
+bind osv-references
+  take record, like dynamic
+  like list, like text
+  case node
+    text <<($record.references ?? []).map(osvReference => osvReference.url).filter(osvUrl => Boolean(osvUrl))>>
+
+bind osv-title
+  take record, like dynamic
+  like dynamic
+  case node
+    text <<($record.summary ?? $record.details?.slice(0, 120) ?? $record.id)>>
+
+bind osv-url
+  take shelf, like list, like text
+  take record, like dynamic
+  like dynamic
+  case node
+    text <<($shelf.find(osvUrl => osvUrl.includes("advisories") || osvUrl.includes("CVE")) ?? $shelf[0] ?? `https://osv.dev/vulnerability/${$record.id}`)>>
+
+bind osv-fixed-of
+  take windows, like list, like dynamic
+  like list, like text
+  case node
+    text <<$windows.map(osvWindow => osvWindow.fixed).filter(osvFixed => Boolean(osvFixed))>>
+
+bind osv-advisory
+  take record, like dynamic
+  take registry, like text
+  take severity, like text
+  take title, like dynamic
+  take url, like dynamic
+  take windows, like list, like dynamic
+  take versions, like dynamic
+  take fixed, like list, like text
+  take references, like list, like text
+  like dynamic
+  case node
+    text <<({ id: $record.id, packageName: $registry, severity: $severity, title: $title, url: $url, ranges: $windows, versions: $versions, fixedVersions: $fixed, aliases: $record.aliases, references: $references })>>
+
+bind osv-records
+  take data, like dynamic
+  like list, like dynamic
+  case node
+    text <<(Array.isArray($data) ? $data : [$data])>>
+
+bind osv-is-record
+  take record, like dynamic
+  like boolean
+  case node
+    text <<Boolean($record && typeof $record === "object" && $record.id)>>
+
+bind osv-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind osv-asked-name
+  take value, like dynamic
+  like dynamic
+  case node
+    text <<({ name: $value })>>
+
+# OSV ecosystem names are case-sensitive ("npm", "PyPI"); they are compared ignoring case, and a missing ecosystem
+# matches (some private feeds omit it)
+task matches-ecosystem
+  take actual, like dynamic
+  take wanted, like text
+  like boolean
+  mark private
+
+  fork test, not(osv-truthy(actual))
+    hold
+      back true
+
+  back is-equal(osv-lower(actual), osv-lower(wanted))
+
+# an OSV or GHSA textual severity, or a CVSS base score, in the scanner's vocabulary
+task severity-of
+  take record, like dynamic
+  like text
+  mark private
+
+  host text, osv-text-severity(record)
+  fork test, is-equal(text, <critical>)
+    hold
+      back <critical>
+  fork test, is-equal(text, <high>)
+    hold
+      back <high>
+  fork test, or(is-equal(text, <moderate>), is-equal(text, <medium>))
+    hold
+      back <moderate>
+  fork test, is-equal(text, <low>)
+    hold
+      back <low>
+
+  # a CVSS base score, when there is one
+  host scores, osv-cvss-score(record)
+  walk scores
+    take score
+    fork test, is-minimum(score, 9)
+      hold
+        back <critical>
+    fork test, is-minimum(score, 7)
+      hold
+        back <high>
+    fork test, is-minimum(score, 4)
+      hold
+        back <moderate>
+    back <low>
+
+  back <moderate>
+
+# OSV range events as windows: each `introduced` opens one that the next `fixed` or `last_affected` closes. GIT
+# ranges are skipped (versions are matched, not commits)
+task windows-of
+  take record, like dynamic
+  take ecosystem, like text
+  like list, like dynamic
+  mark private
+
+  save out, make list
+  walk osv-affected(record)
+    take affected
+    fork test, not(matches-ecosystem(osv-ecosystem(affected), ecosystem))
+      hold
+        turn next
+    walk osv-ranges(affected)
+      take range
+      fork test, osv-is-git(range)
+        hold
+          turn next
+      save current, osv-nothing()
+      walk osv-events(range)
+        take event
+        fork test, osv-has-introduced(event)
+          hold
+            fork test, osv-truthy(current)
+              hold
+                out/push(current)
+            save current, osv-opened(event)
+          miss
+            fork test, osv-has-fixed(event)
+              hold
+                host closed, osv-closed-fixed(current, event)
+                out/push(closed)
+                save current, osv-nothing()
+              miss
+                fork test, osv-has-last-affected(event)
+                  hold
+                    host closed, osv-closed-last(current, event)
+                    out/push(closed)
+                    save current, osv-nothing()
+      fork test, osv-truthy(current)
+        hold
+          out/push(current)
+
+  back out
+
+# the explicit affected versions of the record's packages in the ecosystem, or nothing when there are none
+task versions-of
+  take record, like dynamic
+  take ecosystem, like text
+  like dynamic
+  mark private
+
+  save versions, make list
+  walk osv-affected(record)
+    take affected
+    fork test, not(matches-ecosystem(osv-ecosystem(affected), ecosystem))
+      hold
+        turn next
+    osv-push-versions(versions, affected)
+  fork test, is-equal(versions/length, 0)
+    hold
+      back osv-nothing()
+
+  back versions
+
+# the registry name (with `.tree`) of the first package the record names in the ecosystem, or nothing
+task package-name-of
+  take record, like dynamic
+  take ecosystem, like text
+  like dynamic
+  mark private
+
+  walk osv-affected(record)
+    take affected
+    fork test, not(matches-ecosystem(osv-ecosystem(affected), ecosystem))
+      hold
+        turn next
+    host name, osv-package-name(affected)
+    fork test, osv-truthy(name)
+      hold
+        host asked, osv-asked-name(name)
+        back deck-tree-module/to-registry-name(asked)
+
+  back osv-nothing()
+
+# one OSV record as an Advisory, or nothing when it affects no package in the ecosystem
+task from-osv
+  take record, like dynamic
+  take ecosystem, like text
+  like dynamic
+
+  host registry, package-name-of(record, ecosystem)
+  fork test, not(osv-truthy(registry))
+    hold
+      back osv-nothing()
+  host references, osv-references(record)
+  host severity, severity-of(record)
+  host title, osv-title(record)
+  host url, osv-url(references, record)
+  host windows, windows-of(record, ecosystem)
+  host versions, versions-of(record, ecosystem)
+  host fixed, osv-fixed-of(windows-of(record, ecosystem))
+
+  back osv-advisory(record, registry, severity, title, url, windows, versions, fixed, references)
+
+# a whole OSV feed (an array of records, or one record) as the advisories of one ecosystem
+task from-osv-feed
+  take data, like dynamic
+  take ecosystem, like text
+  like list, like dynamic
+
+  save out, make list
+  walk osv-records(data)
+    take record
+    fork test, not(osv-is-record(record))
+      hold
+        turn next
+    host advisory, from-osv(record, ecosystem)
+    fork test, osv-truthy(advisory)
+      hold
+        out/push(advisory)
+
+  back out

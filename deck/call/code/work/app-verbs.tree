@@ -273,10 +273,12 @@ task self-back
 form self-skill-ask
   link root, like text
   link version, like text
+  link back, like text
 
 # `term self skill`: write the skill that teaches a coding agent term's verbs into this project, at
 # .claude/skills/term/SKILL.md
 task self-skill
+  take back, like text
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
@@ -288,6 +290,7 @@ task self-skill
       make self-skill-ask
         bind root, read root
         bind version, read version
+        bind back, read back
   halt take
     take error
     log-fail format-error error
@@ -464,12 +467,14 @@ task self-wash
 form show-toolchain-ask
   link root, like text
   link version, like text
+  link back, like text
 
 form show-what-ask
   link root, like text
   link what, like text
   link budget, like number
   link version, like text
+  link back, like text
 
 form show-name-ask
   link root, like text
@@ -477,6 +482,7 @@ form show-name-ask
   link name, like text
   link budget, like number
   link version, like text
+  link back, like text
 
 # `term show [what] [name]`: the toolchain's version and platform, the project's version (`mark`), the native
 # toolchains (`tools`), what a diagnostic means (`kink`), or one name of the project sized to `--budget` (`name`).
@@ -489,6 +495,7 @@ task show
   take what, like text
   take name, like text
   take budget, like number
+  take back, like text
 
   like void
 
@@ -504,6 +511,7 @@ task show
           make show-toolchain-ask
             bind root, read root
             bind version, read version
+            bind back, read back
           wait true
         send back
     fork test
@@ -515,6 +523,7 @@ task show
             bind what, read what
             bind budget, read budget
             bind version, read version
+            bind back, read back
           wait true
         send back
     call show-module/callShow
@@ -524,6 +533,7 @@ task show
         bind name, read name
         bind budget, read budget
         bind version, read version
+        bind back, read back
       wait true
   halt take
     take error

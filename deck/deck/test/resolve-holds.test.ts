@@ -2,8 +2,8 @@
 // not were kept the first and dropped the second without a word (guides: packages/install, 2026-10-04). Workspace
 // decks, so nothing is fetched.
 import { describe, it, expect } from 'vitest'
-import { resolve } from '../code/resolve'
-import { makeDefaultFetchConfig } from '../code/fetch'
+import { resolve } from '../code/package/resolve'
+import { makeDefaultFetchConfig } from '../code/package/fetch'
 import { parseCode, parseCodeHold } from '../code/code'
 import type { DeckManifest } from '../code/form'
 

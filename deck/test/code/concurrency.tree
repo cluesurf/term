@@ -1,0 +1,143 @@
+# Bounded concurrency for verification work. Many obligations are independent (distinct files, distinct synthesis
+# candidates, distinct solver queries), so they can run at once: `map-concurrent` runs up to `limit` jobs at a time and
+# answers their results in input order, so work that waits (the solver, a model) overlaps instead of queueing.
+#
+# Ported from deck/test/code/parallel.ts (term-cli-in-term-0108). The original launched `concurrency` runners pulling
+# from one shared cursor, and `Promise.all` over them. Here each runner is a `tick`ed job (`run-lane`), and the cursor is
+# a list whose length is the next index: jobs interleave only at their waits, so reading the length and pushing is one
+# step, as `next++` was. A runner whose worker raises stops, as the original's did, and the rest go on; the raise that
+# came FIRST IN TIME is raised once every runner has settled, where `Promise.all` raised it at once and left the rest
+# running: every worker call is made all the same.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load @term/base/task
+  find handle
+
+load @term/base/math
+  find minimum
+  find maximum
+
+dock load
+  load <global:Promise>, name host-promise
+
+# the most jobs at once when the caller says nothing (DEFAULT_CONCURRENCY)
+host default-limit, 8
+
+# how many runners the original started: `Array.from({ length: Math.min(concurrency, items.length) })`, whose length
+# truncates a fraction and reads NaN and anything below zero as none
+bind lane-count
+  take limit, like number
+  take size, like number
+  like number
+  case node
+    text <Array.from(\{ length: Math.min($limit, $size) \}).length>
+
+# a slot no runner filled, as `new Array(n)` leaves it
+bind concurrency-hole
+  like unknown
+  case node
+    text <undefined>
+
+# the original's `!cpuCount || cpuCount < 1`: none, zero, NaN and anything below one. A bind, because the build
+# folds not(is-minimum(x, 1)) into x < 1, which reads NaN as a count
+bind is-unknown-count
+  take count, like number
+  like boolean
+  case node
+    text <(!$count || $count \< 1)>
+
+# a runner: claim the next index, run the worker on it, keep its answer, until the items run out or a worker raises
+task run-lane
+  take items, like list, like unknown
+  take worker
+    like task
+      mark async
+      take item, like unknown
+      take index, like number
+      like unknown
+  take claimed, like list, like number
+  take results, like hash, like number, like unknown
+  take failures, like list, like unknown
+  like void
+  mark private
+  mark async
+
+  fork
+    mark unsafe
+    walk test
+      hook test, true
+      hook hold
+        save index, claimed/length
+        claimed/push(index)
+        fork test, is-minimum(index, items/length)
+          hold
+            halt
+        save answer, call(worker, items/{index}, index)
+        results/set(index, answer)
+  halt take
+    take problem
+    failures/push(problem)
+
+# `worker` over `items`, at most `limit` in flight at once, the answers in input order. A worker that raises raises
+# out of the whole call (catch inside the worker to keep a failure as a value)
+task map-concurrent
+  take items, like list, like unknown
+  take worker
+    like task
+      mark async
+      take item, like unknown
+      take index, like number
+      like unknown
+  take limit, like number, fall 8
+  like list, like unknown
+
+  host claimed, make list
+  host results, make hash
+  host failures, make list
+  host lanes, make list
+
+  host count, lane-count(limit, items/length)
+  save started, 0
+  walk test
+    hook test, is-below(started, count)
+    hook hold
+      lanes/push(tick run-lane(items, worker, claimed, results, failures))
+      save started, add(started, 1)
+
+  walk lanes
+    take lane
+    lane/wait()
+
+  fork test, is-above(failures/length, 0)
+    hold
+      wait host-promise/reject(failures/0)
+
+  host answers, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, items/length)
+    hook hold
+      fork test, results/has(at)
+        hold
+          answers/push(results/get(at))
+        miss
+          answers/push(concurrency-hole())
+      save at, add(at, 1)
+
+  back answers
+
+# the most jobs at once to use by default: the processor count when it is known, never above `default-limit`
+task default-concurrency
+  take cpu-count, like number, fall 0
+  like number
+
+  fork test, is-unknown-count(cpu-count)
+    hold
+      back default-limit
+
+  back maximum(1, minimum(default-limit, cpu-count))

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { hashBuffer, hashText, verifyHash } from '../code/hash'
+import { hashBuffer, hashText, verifyHash } from '../code/package/hash'
 
 describe('hashBuffer', () => {
   it('hashes a buffer consistently', async () => {

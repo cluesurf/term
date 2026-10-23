@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildLockfile } from '../code/resolve'
+import { buildLockfile } from '../code/package/resolve'
 
 describe('buildLockfile', () => {
   it('converts resolution map to lockfile', () => {

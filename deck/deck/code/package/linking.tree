@@ -56,9 +56,9 @@ dock load
   load <node:fs/promises>, name fs-promise
     mark async
   load <node:path>, name node-path
-  load <@term/deck/code/store>, name deck-store
-  load <@term/deck/code/hash>, name deck-hash
-  load <@term/deck/code/fetch>, name deck-fetch
+  load <@term/deck/code/package/store>, name deck-store
+  load <@term/deck/code/package/hash>, name deck-hash
+  load <@term/deck/code/package/fetch>, name deck-fetch
   load <@term/deck/code/oci/client>, name oci-client
   load <@term/deck/code/oci/install>, name oci-install
   load <@term/deck/code/oci/reference>, name oci-reference

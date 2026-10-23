@@ -1,0 +1,93 @@
+# Rule scan/native-danger: a `dock load` of a host module that gives arbitrary command or code execution. Importing
+# one is not always a bug, but every use is worth a security review, so the rule names the import site. This is the
+# structural, always-correct half of the code scan (taint-tracking.tree adds data-flow reasoning on top).
+#
+# Ported from deck/scan/code/rule/native-danger.ts (term-cli-in-term-0095). The rule is a task answering the
+# code-rule record, native-danger-rule(), where the original was the constant nativeDangerRule; the face holds one.
+# The original's three module tests are one bind, named for this module, answering which matched first.
+
+load ./rule-running
+  find code-rule
+  find point-of
+
+load @term/base/list
+  find list
+
+bind danger-form
+  take node, like dynamic
+  like dynamic
+  case node
+    text <$node.form>
+
+bind danger-part
+  take node, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$node[$key]>
+
+# which dangerous module the name is, the first that matches: 0 child_process, 1 vm, 2 eval or Function, -1 none
+bind danger-kind
+  take module, like dynamic
+  like number
+  case node
+    text <<(/(^|[:/])child_process$/.test($module) ? 0 : /(^|[:/])vm$/.test($module) ? 1 : (/(^|[:.])eval$/i.test($module) || /(^|[:.])Function$/.test($module)) ? 2 : -1)>>
+
+bind danger-finding
+  take id, like text
+  take severity, like text
+  take module, like dynamic
+  take what, like text
+  take at, like dynamic
+  like dynamic
+  case node
+    text <<({ kind: "code", ruleId: $id, severity: $severity, message: `imports "${$module}", which ${$what}. Review every use for untrusted input`, at: $at })>>
+
+task native-danger-id
+  like text
+
+  back <scan/native-danger>
+
+# the findings of one program: every dangerous module it docks, in program order
+task check-dangerous-imports
+  take program, like list, like dynamic
+  take file, like text
+  like list, like dynamic
+  mark private
+
+  save findings, make list
+  walk program
+    take statement
+    fork test, or(not(is-equal(danger-form(statement), <native>)), not(is-equal(danger-part(statement, <kind>), <module>)))
+      hold
+        turn next
+    host module, danger-part(statement, <module>)
+    host kind, danger-kind(module)
+    fork test, is-equal(kind, -1)
+      hold
+        turn next
+    save severity, <high>
+    save what, <runs host commands (child_process)>
+    fork test, is-equal(kind, 1)
+      hold
+        save what, <evaluates code in a VM context>
+    fork test, is-equal(kind, 2)
+      hold
+        save severity, <critical>
+        save what, <evaluates arbitrary code (eval / Function)>
+    host at, point-of(file, danger-part(statement, <span>))
+    findings/push(danger-finding(native-danger-id(), severity, module, what, at))
+
+  back findings
+
+task native-danger-rule
+  like code-rule
+
+  save check
+    task
+      take program, like list, like dynamic
+      take file, like text
+      like list, like dynamic
+      back check-dangerous-imports(program, file)
+
+  back make(code-rule, bind(id, native-danger-id()), bind(description, <A dock-loaded host module grants command or code execution and warrants review.>), bind(check, check))

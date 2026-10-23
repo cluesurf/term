@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { findWorkspaces, topologicalSort } from '../code/workspace'
+import { findWorkspaces, topologicalSort } from '../code/package/workspace'
 import { DeckManifest } from '../code/form'
 
 describe('topologicalSort', () => {

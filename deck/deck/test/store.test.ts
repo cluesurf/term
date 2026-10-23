@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, mkdtempSync } from 'fs'
 import path from 'path'
 import os from 'os'
-import { getFilePath, getStoreRoot, getTreeDir } from '../code/store'
+import { getFilePath, getStoreRoot, getTreeDir } from '../code/package/store'
 
 // each case in a home of its own, so what exists on this machine decides nothing
 let home = ''

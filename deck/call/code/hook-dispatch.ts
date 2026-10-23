@@ -1,15 +1,21 @@
 // The CLI dispatcher for the `hook` command DSL. The mill lowers a top-level `hook` command tree to `dock` route
 // statements (path = command name, takes = args/flags, calls[0] = the bound implementation task, children =
 // subcommands). This walks that route tree against a real argv: it descends matching subcommands, parses the
-// remaining `--flag value` / `--flag=value` / boolean flags and positionals, maps positionals to the command's takes
-// in order, and returns the bound task plus the collected arguments. A thin runtime layer then calls the task's
+// remaining `--flag value` / `--flag=value` / boolean flags and positionals, binds positionals to the command's
+// SLOTS in order, and returns the bound task plus the collected arguments. A thin runtime layer then calls the task's
 // handler. Pure and browser-safe (no process / yargs); the entry point feeds it `process.argv`.
+//
+// A CONSOLE IS ONE PROGRAM HOOK (decision term/003 part 3): `hook term` holds every command as a nested hook, and its
+// takes are the global options. A hook's takes reach every hook nested in it: an ancestor's flag is accepted anywhere
+// on the line after the command, and its value is the console's (`globals`), never a task's argument. A file of
+// several top-level hooks, or of one hook with no commands under it, is read as before: its top-level hooks are the
+// commands and there are no globals (`programOf`).
 
 import type {
   Program,
   Statement,
 } from '@term/make/code/compile/node'
-import type { DockRoute } from '@term/make/code/compile/node'
+import type { DockRoute, DockTake } from '@term/make/code/compile/node'
 
 // the emitted-identifier mapping, re-exported so the generated CLI entry
 // resolves task names exactly as the emitter wrote them
@@ -42,6 +48,20 @@ export function commandRoutes(program: Program): DockRoute[] {
     .map(s => named(s.route))
 }
 
+// THE PROGRAM a console's routes are. A console file has one top-level hook, the program, whose nested hooks are the
+// commands and whose takes are the global options. Anything else (a test's several top-level commands, an app of
+// one command with nothing nested) has no program: its top-level hooks are the commands
+export function programOf(routes: DockRoute[]): {
+  program?: DockRoute
+  commands: DockRoute[]
+} {
+  const only = routes.length === 1 ? routes[0] : undefined
+
+  return only && only.children.length > 0
+    ? { program: only, commands: only.children }
+    : { commands: routes }
+}
+
 export type ArgValue = string | boolean | number | string[]
 
 export type Dispatch =
@@ -50,19 +70,33 @@ export type Dispatch =
       command: string[] // the resolved command path, e.g. ['make', 'face']
       task?: string // the bound implementation task name (calls[0])
       args: Record<string, ArgValue>
+      // the values of the takes of the hooks ABOVE the command (the program's global options), which the console
+      // reads itself and never hands to the task
+      globals: Record<string, ArgValue>
       route: DockRoute // the matched command, for arg order + help
     }
   | { ok: false; error: string; command: string[] }
+
+// the take a flag word names among these takes: by its name, any of its long aliases, or its short letter. The
+// first match wins, so a command's own take shadows an ancestor's of the same name
+function takeNamed(takes: DockTake[], word: string, short: boolean): DockTake | undefined {
+  return short
+    ? takes.find(take => take.short === word)
+    : takes.find(take => take.name === word || (take.aliases ?? []).includes(word))
+}
 
 // resolve an argv (without the node + script prefix) against the command routes
 export function dispatch(
   routes: DockRoute[],
   argv: string[],
 ): Dispatch {
-  let level = routes
+  const { program, commands } = programOf(routes)
+  let level = commands
   let current: DockRoute | undefined
 
   const command: string[] = []
+  // the takes of every hook above the command, the nearest first: the program's, then each group's on the way down
+  let above: DockTake[] = program ? [...program.takes] : []
 
   let i = 0
 
@@ -78,6 +112,10 @@ export function dispatch(
 
     if (!next) {
       break
+    }
+
+    if (current) {
+      above = [...current.takes, ...above]
     }
 
     current = next
@@ -97,14 +135,12 @@ export function dispatch(
     }
   }
 
-  // short-flag letter -> the take's full name, so `-t` resolves to `--title`
-  const shortToName = new Map<string, string>()
-
-  for (const take of current.takes) {
-    if (take.short) {
-      shortToName.set(take.short, take.name)
-    }
-  }
+  // every take a flag may name here: the command's own first, so one shadows an ancestor's of the same name
+  const own = current.takes
+  const reachable = [...own, ...above]
+  // a flag word to the take it names, by name, long alias or short letter. A word no take names is kept as written,
+  // and refused below
+  const keyOf = (word: string, short: boolean): string => takeNamed(reachable, word, short)?.name ?? word
 
   // parse the rest: --flag / -f value, --flag=value, --no-flag, boolean flags, positionals
   const args: Record<string, ArgValue> = {}
@@ -136,9 +172,9 @@ export function dispatch(
     if (isLong || isShort) {
       const body = token.slice(isLong ? 2 : 1)
 
-      // boolean negation: `--no-cache` sets cache=false
+      // boolean negation: `--no-cache` sets cache=false, through an alias too
       if (isLong && body.startsWith('no-')) {
-        args[body.slice(3)] = false
+        args[keyOf(body.slice(3), false)] = false
         i++
         continue
       }
@@ -147,15 +183,15 @@ export function dispatch(
 
       if (eq >= 0) {
         const raw = body.slice(0, eq)
-        const key = isShort ? (shortToName.get(raw) ?? raw) : raw
+        const key = keyOf(raw, isShort)
         args[key] = body.slice(eq + 1)
         i++
       } else {
-        const key = isShort ? (shortToName.get(body) ?? body) : body
+        const key = keyOf(body, isShort)
         const value = argv[i + 1]
         // a boolean flag stands alone, and takes the next word only when it is `true` or `false`: `-l ada` is the
         // flag and then the positional `ada`
-        const flag = current.takes.find(take => take.name === key)?.type?.kind === 'boolean'
+        const flag = reachable.find(take => take.name === key)?.type?.kind === 'boolean'
 
         if (value !== undefined && !value.startsWith('-') && (!flag || value === 'true' || value === 'false')) {
           args[key] = value
@@ -178,29 +214,35 @@ export function dispatch(
   }
 
   // A FLAG NO TAKE NAMES IS AN ERROR. `greet ada --typo` printed `hello, ada` and exited 0, so a misspelled option was
-  // the option left out, in silence (guides: applications/command-line, 2026-10-03)
-  const known = new Set(current.takes.map(take => take.name))
+  // the option left out, in silence (guides: applications/command-line, 2026-10-03). An ancestor's take is known here
+  // too: the program's options are accepted on every command
+  const known = new Set(reachable.map(take => take.name))
 
   for (const key of Object.keys(args)) {
     if (!known.has(key)) {
+      const listed = own.map(take => take.name)
+
       return {
         ok: false,
         command,
         error: `unknown flag "${key.length === 1 ? `-${key}` : `--${key}`}"${
-          known.size > 0 ? `. The flags are ${[...known].map(name => `--${name}`).join(', ')}` : ''
+          listed.length > 0 ? `. The flags are ${listed.map(name => `--${name}`).join(', ')}` : ''
         }`,
       }
     }
   }
 
-  // bind positionals to the command's declared takes, in order. A take
-  // already filled by a flag does NOT consume a positional: otherwise
-  // `view call --tier dev node script.js` would spend `node` on the
-  // (already-set) tier slot and mis-bind the command name. The cursor
-  // only advances when a positional is actually taken.
+  // POSITIONALS BIND TO SLOTS ONLY, in order (decision term/003 part 1): a `take` is only ever a flag, so `term make
+  // foo.tree` cannot set the first flag. A slot already filled by its flag (`--file x`, as yargs allows) does NOT
+  // consume a positional, and the cursor only advances when a positional is actually taken. A list slot takes every
+  // word left
   let posCursor = 0
 
-  for (const take of current.takes) {
+  for (const take of own) {
+    if (!take.positional) {
+      continue
+    }
+
     if (take.variadic) {
       if (args[take.name] === undefined) {
         args[take.name] = positionals.slice(posCursor)
@@ -210,8 +252,6 @@ export function dispatch(
       continue
     }
 
-    // a flag already supplied this value: leave the positionals for the
-    // remaining takes
     if (args[take.name] !== undefined) {
       continue
     }
@@ -224,7 +264,7 @@ export function dispatch(
     }
   }
 
-  // a positional no take was left to hold is an error too, rather than a word dropped
+  // a positional no slot was left to hold is an error too, rather than a word dropped
   if (posCursor < positionals.length) {
     return {
       ok: false,
@@ -233,9 +273,9 @@ export function dispatch(
     }
   }
 
-  // coerce by declared type, validate choices, then apply defaults
-  for (const take of current.takes) {
-    let value = args[take.name]
+  // coerce by declared type, validate choices, then apply defaults, for the command's takes and every ancestor's
+  for (const take of reachable) {
+    const value = args[take.name]
 
     if (value !== undefined && typeof value === 'string') {
       // choices / enum validation
@@ -273,8 +313,6 @@ export function dispatch(
 
         args[take.name] = value === 'true'
       }
-
-      value = args[take.name]
     }
 
     // default value when nothing was provided
@@ -283,11 +321,29 @@ export function dispatch(
     }
   }
 
+  // an ancestor's value is the console's, never the task's: a name the command declares itself stays the command's
+  // (and the console reads it too, as yargs gave a global option to both)
+  const globals: Record<string, ArgValue> = {}
+  const mine = new Set(own.map(take => take.name))
+
+  for (const take of above) {
+    const value = args[take.name]
+
+    if (value !== undefined) {
+      globals[take.name] = value
+
+      if (!mine.has(take.name)) {
+        delete args[take.name]
+      }
+    }
+  }
+
   return {
     ok: true,
     command,
     task: current.calls[0]?.name,
     args,
+    globals,
     route: current,
   }
 }
@@ -410,16 +466,18 @@ export async function runCommandLine(input: RunInput): Promise<number> {
   // asked for. `view code save --help` renders the save command's help.
   const wantHelp = argv.some(a => a === '--help' || a === '-h')
   const bare = argv.filter(a => a !== '--help' && a !== '-h')
+  // the commands are the program's nested hooks, when the console is one program hook
+  const { commands } = programOf(routes)
 
   if (bare.length === 0) {
-    out(renderUsage(name, routes))
+    out(renderUsage(name, commands))
 
     return wantHelp ? 0 : 2
   }
 
   if (wantHelp) {
     // walk the bare tokens to the deepest matching command
-    let level = routes
+    let level = commands
     let current: DockRoute | undefined
 
     const parents: string[] = []
@@ -440,7 +498,7 @@ export async function runCommandLine(input: RunInput): Promise<number> {
     }
 
     if (!current) {
-      out(renderUsage(name, routes))
+      out(renderUsage(name, commands))
 
       return 0
     }

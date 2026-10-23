@@ -31,7 +31,7 @@ load @term/call/work/preprocess/condition-reading
   find save-of
 
 dock load
-  load <@term/deck/code/read>, name data-reading-module
+  load <@term/deck/code/package/read>, name data-reading-module
   load <@term/make/code/compile/host>, name host-text-module
 
 # a guard's lines, each with the source line it came from

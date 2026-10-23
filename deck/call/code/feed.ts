@@ -16,7 +16,7 @@ import { findEntry, portIsFree } from '@term/call/code/boot'
 import type { NativeEnv } from '@term/make/code/compile/native'
 import { closeRun, failRun, field, location, openRun, report, showPath } from '@term/call/code/output'
 import { ANY_HOME } from '@term/call/code/home'
-import { readTree } from '@term/deck/code/read'
+import { readTree } from '@term/deck/code/package/read'
 
 // `term feed`: the development server is `term boot`, and this says so
 export function refuseFeed(input: { root: string }): void {

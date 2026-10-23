@@ -1,0 +1,254 @@
+# The static rule engine: security rules run over the milled Term AST to flag dangerous patterns in first-party code
+# (the code-scanning / Semgrep equivalent, beside the dependency audit). A rule inspects a milled program and answers
+# findings. This module holds the rule record and the AST-walking helpers the rules share; the rules themselves are
+# dangerous-import.tree and taint-tracking.tree.
+#
+# Ported from deck/scan/code/rule.ts (term-cli-in-term-0095). The milled program is the compiler's host value
+# (compile/node's Statement and Expression), read here by its `form` and fields through binds named for this module,
+# so the walk visits exactly what the original's switch visited, in its order. The Rule type is the record
+# code-rule, its check a closure over (program, file), as the original's.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+form code-rule
+  link id, like text
+  link description, like text
+  link check
+    like task
+      take program, like list, like dynamic
+      take file, like text
+      like list, like dynamic
+
+bind ast-form
+  take node, like dynamic
+  like text
+  case node
+    text <$node.form>
+
+bind ast-part
+  take node, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$node[$key]>
+
+bind ast-parts
+  take node, like dynamic
+  take key, like text
+  like list, like dynamic
+  case node
+    text <$node[$key]>
+
+bind ast-holds
+  take node, like dynamic
+  take key, like text
+  like boolean
+  case node
+    text <Boolean($node[$key])>
+
+bind ast-point
+  take file, like text
+  take span, like dynamic
+  like dynamic
+  case node
+    text <<({ file: $file, line: $span.start.line + 1, column: $span.start.column + 1 })>>
+
+bind ast-push-all
+  take shelf, like list, like dynamic
+  take items, like list, like dynamic
+  like void
+  case node
+    text <<$shelf.push(...$items)>>
+
+# internal spans are 0-based line and column; source points and SARIF are 1-based
+task point-of
+  take file, like text
+  take span, like dynamic
+  like dynamic
+
+  back ast-point(file, span)
+
+# a statement visitor that does nothing: a closure's statements are walked for their expressions alone
+task skip-statement
+  take statement, like dynamic
+  like void
+  mark private
+
+  save ignored, statement
+
+# every expression in an expression tree, pre-order, nested calls, members, closures and the expressions inside a
+# closure body's statements included
+task walk-expression
+  take expression, like dynamic
+  take visit
+    like task
+      take expression, like dynamic
+      like void
+  like void
+
+  visit(expression)
+  host form, ast-form(expression)
+  fork test, is-equal(form, <binary>)
+    hold
+      walk-expression(ast-part(expression, <left>), visit)
+      walk-expression(ast-part(expression, <right>), visit)
+      back
+  fork test, is-equal(form, <unary>)
+    hold
+      walk-expression(ast-part(expression, <operand>), visit)
+      back
+  fork test, is-equal(form, <call>)
+    hold
+      walk-expression(ast-part(expression, <callee>), visit)
+      walk ast-parts(expression, <args>)
+        take argument
+        walk-expression(argument, visit)
+      back
+  fork test, is-equal(form, <member>)
+    hold
+      walk-expression(ast-part(expression, <target>), visit)
+      back
+  fork test, is-equal(form, <array>)
+    hold
+      walk ast-parts(expression, <items>)
+        take item
+        walk-expression(item, visit)
+      back
+  fork test, is-equal(form, <map>)
+    hold
+      walk ast-parts(expression, <entries>)
+        take entry
+        walk-expression(ast-part(entry, <key>), visit)
+        walk-expression(ast-part(entry, <value>), visit)
+      back
+  fork test, is-equal(form, <record>)
+    hold
+      walk ast-parts(expression, <fields>)
+        take field
+        walk-expression(ast-part(field, <value>), visit)
+      back
+  fork test, is-equal(form, <await>)
+    hold
+      walk-expression(ast-part(expression, <expr>), visit)
+      back
+  fork test, is-equal(form, <closure>)
+    hold
+      walk-statements(ast-parts(expression, <body>), skip-statement, visit)
+      back
+  fork test, is-equal(form, <conditional>)
+    hold
+      walk ast-parts(expression, <branches>)
+        take branch
+        walk-expression(ast-part(branch, <cond>), visit)
+        walk-expression(ast-part(branch, <value>), visit)
+      fork test, ast-holds(expression, <otherwise>)
+        hold
+          walk-expression(ast-part(expression, <otherwise>), visit)
+
+# every statement, pre-order, and through visit-expression every expression inside it
+task walk-statements
+  take statements, like list, like dynamic
+  take visit-statement
+    like task
+      take statement, like dynamic
+      like void
+  take visit-expression
+    like task
+      take expression, like dynamic
+      like void
+  like void
+
+  walk statements
+    take statement
+    visit-statement(statement)
+    host form, ast-form(statement)
+    fork test, is-equal(form, <let>)
+      hold
+        walk-expression(ast-part(statement, <init>), visit-expression)
+        turn next
+    fork test, is-equal(form, <assign>)
+      hold
+        walk-expression(ast-part(statement, <target>), visit-expression)
+        walk-expression(ast-part(statement, <value>), visit-expression)
+        turn next
+    fork test, or(is-equal(form, <expression>), is-equal(form, <hold>))
+      hold
+        walk-expression(ast-part(statement, <expr>), visit-expression)
+        turn next
+    fork test, is-equal(form, <return>)
+      hold
+        fork test, ast-holds(statement, <value>)
+          hold
+            walk-expression(ast-part(statement, <value>), visit-expression)
+        turn next
+    fork test, is-equal(form, <throw>)
+      hold
+        walk-expression(ast-part(statement, <value>), visit-expression)
+        turn next
+    fork test, is-equal(form, <if>)
+      hold
+        walk ast-parts(statement, <branches>)
+          take branch
+          walk-expression(ast-part(branch, <cond>), visit-expression)
+          walk-statements(ast-parts(branch, <body>), visit-statement, visit-expression)
+        fork test, ast-holds(statement, <otherwise>)
+          hold
+            walk-statements(ast-parts(statement, <otherwise>), visit-statement, visit-expression)
+        turn next
+    fork test, is-equal(form, <while>)
+      hold
+        walk-expression(ast-part(statement, <cond>), visit-expression)
+        walk-statements(ast-parts(statement, <body>), visit-statement, visit-expression)
+        turn next
+    fork test, is-equal(form, <match>)
+      hold
+        walk-expression(ast-part(statement, <subject>), visit-expression)
+        walk ast-parts(statement, <cases>)
+          take arm
+          walk-statements(ast-parts(arm, <body>), visit-statement, visit-expression)
+        fork test, ast-holds(statement, <otherwise>)
+          hold
+            walk-statements(ast-parts(statement, <otherwise>), visit-statement, visit-expression)
+        turn next
+    fork test, is-equal(form, <for-each>)
+      hold
+        walk-expression(ast-part(statement, <iterable>), visit-expression)
+        walk-statements(ast-parts(statement, <body>), visit-statement, visit-expression)
+        turn next
+    fork test, is-equal(form, <function>)
+      hold
+        walk-statements(ast-parts(statement, <body>), visit-statement, visit-expression)
+
+# the native alias to module map of a program (from `dock load <module>, name alias`): which local names are FFI
+# handles onto which host module
+task native-modules
+  take program, like list, like dynamic
+  like hash, like text, like text
+
+  save map, make hash
+  walk program
+    take statement
+    fork test, and(is-equal(ast-form(statement), <native>), is-equal(ast-part(statement, <kind>), <module>))
+      hold
+        map/set(ast-part(statement, <alias>), ast-part(statement, <module>))
+
+  back map
+
+# the rules run over a program, their findings one after another
+task run-rules
+  take program, like list, like dynamic
+  take file, like text
+  take rules, like list, like code-rule
+  like list, like dynamic
+
+  save findings, make list
+  walk rules
+    take each
+    host found, each/check(program, file)
+    ast-push-all(findings, found)
+
+  back findings

@@ -10,9 +10,9 @@ import { parseTolerant, renderHead } from '@term/make/code/parser/tree'
 import { groupsOf } from '@term/make/code/parser/narrow'
 import type { Node } from '@term/make/code/parser/tree'
 import { tokenize } from '@term/make/code/parser/token'
-import { readTree } from '@term/deck/code/read'
+import { readTree } from '@term/deck/code/package/read'
 import { escapeText } from '@term/make/code/compile/host'
-import type { Form } from '@term/deck/code/read'
+import type { Form } from '@term/deck/code/package/read'
 
 // the one assertion head, `want`, with a mode named for the fork branch it requires: `want hold` asserts its body (a
 // boolean expression) is true (it holds), `want miss` asserts it is false (it misses). The body holds the actual

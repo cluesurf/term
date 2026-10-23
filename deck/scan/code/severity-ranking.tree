@@ -1,0 +1,39 @@
+# How bad a finding is: the severities ordered high to low, in npm's and GitHub's advisory vocabulary, and a rank for
+# sorting and comparing them (higher is worse).
+#
+# Ported from deck/scan/code/form.ts (term-cli-in-term-0093). The rest of form.ts is the scanner's data model, types
+# only (Advisory, AdvisoryRange, DependencyNode, DependencyFinding, SourcePoint, CodeFinding, Finding, ScanResult):
+# the ports pass those records as the host values the original's callers build, so they have no Term form here, and
+# the face keeps the TypeScript types. SEVERITY_ORDER is a task, severity-order(), answering a fresh list.
+
+load @term/base/list
+  find list
+
+# critical, high, moderate, low, info
+task severity-order
+  like list, like text
+
+  save order, make list
+  order/push(<critical>)
+  order/push(<high>)
+  order/push(<moderate>)
+  order/push(<low>)
+  order/push(<info>)
+
+  back order
+
+# the severity's rank, higher is worse: 5 for critical down to 1 for info, 0 for a word that is no severity
+task severity-rank
+  take severity, like text
+  like number
+
+  host order, severity-order()
+  save index, 0
+  walk order
+    take each
+    fork test, is-equal(each, severity)
+      hold
+        back subtract(order/length, index)
+    save index, add(index, 1)
+
+  back 0

@@ -56,7 +56,7 @@ load ./manifest-text
   find write-code-hold
 
 dock load
-  load <@term/deck/code/fetch>, name deck-fetch
+  load <@term/deck/code/package/fetch>, name deck-fetch
   load <@term/deck/code/oci/client>, name oci-client
   load <@term/deck/code/oci/install>, name oci-install
   load <@term/deck/code/oci/reference>, name oci-reference

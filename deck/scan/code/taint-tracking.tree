@@ -1,0 +1,307 @@
+# Rule scan/taint: an intraprocedural taint check. A function parameter is a taint SOURCE. A call into a host module
+# that executes commands or code (child_process exec/spawn, vm run*, or a method named exec/eval/query/run on a
+# native handle) is a SINK. When tainted data reaches a sink argument without passing through a sanitizer, the rule
+# reports it with a source-to-sink trace: the classic injection pattern (unsanitized input to a shell, eval or query)
+# that CodeQL and Semgrep taint rules catch.
+#
+# One function at a time, taint followed through `save` / `host` bindings (`let`) and reassignment (`assign`), never
+# across functions (that needs a call graph).
+#
+# Ported from deck/scan/code/rule/taint.ts (term-cli-in-term-0095). The rule is a task answering the code-rule
+# record, taint-rule(), where the original was the constant taintRule; the face holds one. The tainted names are a
+# hash used as a set; a visitor that finds something records it in a list, which the closure shares with its task.
+
+load ./rule-running
+  find code-rule
+  find point-of
+  find walk-expression
+  find walk-statements
+  find native-modules
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+bind taint-form
+  take node, like dynamic
+  like dynamic
+  case node
+    text <$node.form>
+
+bind taint-part
+  take node, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$node[$key]>
+
+bind taint-parts
+  take node, like dynamic
+  take key, like text
+  like list, like dynamic
+  case node
+    text <$node[$key]>
+
+bind taint-name
+  take node, like dynamic
+  like text
+  case node
+    text <$node.name>
+
+# a callee whose name signals escaping or validation: whatever passes through one is clean
+bind taint-is-sanitizer
+  take name, like dynamic
+  like boolean
+  case node
+    text <<Boolean($name && /escape|sanitiz|quote|encode|validate|allowlist|whitelist/i.test($name))>>
+
+# a host module whose methods execute commands or code
+bind taint-is-sink-module
+  take module, like dynamic
+  like boolean
+  case node
+    text <<[/(^|[:/])child_process$/, /(^|[:/])vm$/].some(taintPattern => taintPattern.test($module))>>
+
+# a method that is a sink on any native handle (query builders, dynamic evaluation)
+bind taint-is-sink-method
+  take method, like dynamic
+  like boolean
+  case node
+    text <<["exec", "execSync", "execFile", "execFileSync", "spawn", "spawnSync", "eval", "run", "runInThisContext", "runInNewContext", "runInContext", "query"].includes($method)>>
+
+bind taint-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind taint-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind taint-sink
+  take handle, like dynamic
+  take method, like dynamic
+  like dynamic
+  case node
+    text <<({ handle: $handle, method: $method })>>
+
+bind taint-finding
+  take sink, like dynamic
+  take at, like dynamic
+  take source, like dynamic
+  like dynamic
+  case node
+    text <<({ kind: "code", ruleId: "scan/taint", severity: "high", message: `untrusted input reaches "${$sink.handle}/${$sink.method}" without sanitizing; a command / code injection risk`, at: $at, trace: [...($source ? [{ ...$source, label: "tainted input" }] : []), { ...$at, label: `sink: ${$sink.handle}/${$sink.method}` }] })>>
+
+# the callee's name, for a variable or a member; nothing for anything else
+task callee-name
+  take expression, like dynamic
+  like dynamic
+  mark private
+
+  host form, taint-form(expression)
+  fork test, or(is-equal(form, <variable>), is-equal(form, <member>))
+    hold
+      back taint-name(expression)
+
+  back taint-nothing()
+
+# does the expression read any of the tainted names?
+task mentions-any
+  take expression, like dynamic
+  take names, like hash, like text, like boolean
+  like boolean
+  mark private
+
+  save hits, make list
+  save look
+    task
+      take node, like dynamic
+      like void
+      fork test, and(is-equal(taint-form(node), <variable>), names/has(taint-name(node)))
+        hold
+          hits/push(true)
+  walk-expression(expression, look)
+
+  back is-above(hits/length, 0)
+
+# is a sanitizer called anywhere in the expression?
+task has-sanitizer
+  take expression, like dynamic
+  like boolean
+  mark private
+
+  save hits, make list
+  save look
+    task
+      take node, like dynamic
+      like void
+      fork test, is-equal(taint-form(node), <call>)
+        hold
+          host name, callee-name(taint-part(node, <callee>))
+          fork test, taint-is-sanitizer(name)
+            hold
+              hits/push(true)
+  walk-expression(expression, look)
+
+  back is-above(hits/length, 0)
+
+# an expression carries taint when it reads a tainted name and is not sanitized within
+task is-tainted
+  take expression, like dynamic
+  take tainted, like hash, like text, like boolean
+  like boolean
+  mark private
+
+  back and(mentions-any(expression, tainted), not(has-sanitizer(expression)))
+
+# a call onto a native handle that is a sink, as its handle and method; nothing otherwise
+task as-sink
+  take expression, like dynamic
+  take natives, like hash, like text, like text
+  like dynamic
+  mark private
+
+  fork test, not(is-equal(taint-form(expression), <call>))
+    hold
+      back taint-nothing()
+  host callee, taint-part(expression, <callee>)
+  fork test, or(not(is-equal(taint-form(callee), <member>)), not(is-equal(taint-form(taint-part(callee, <target>)), <variable>)))
+    hold
+      back taint-nothing()
+  host handle, taint-name(taint-part(callee, <target>))
+  host method, taint-name(callee)
+  fork test, not(natives/has(handle))
+    hold
+      back taint-nothing()
+  host module-name, natives/get(handle)
+  fork test, not(taint-truthy(module-name))
+    hold
+      back taint-nothing()
+  fork test, or(taint-is-sink-module(module-name), taint-is-sink-method(method))
+    hold
+      back taint-sink(handle, method)
+
+  back taint-nothing()
+
+# the first tainted variable read inside an argument, pre-order, as the trace's source point; nothing when none
+task taint-source-point
+  take expression, like dynamic
+  take tainted, like hash, like text, like boolean
+  take file, like text
+  like dynamic
+  mark private
+
+  save points, make list
+  save look
+    task
+      take node, like dynamic
+      like void
+      fork test, and(is-equal(points/length, 0), and(is-equal(taint-form(node), <variable>), tainted/has(taint-name(node))))
+        hold
+          points/push(point-of(file, taint-part(node, <span>)))
+  walk-expression(expression, look)
+  fork test, is-equal(points/length, 0)
+    hold
+      back taint-nothing()
+
+  back read points/0
+
+# one function body, taint threaded through its bindings in source order, each sink tainted data reaches reported
+task check-function
+  take function, like dynamic
+  take natives, like hash, like text, like text
+  take file, like text
+  take findings, like list, like dynamic
+  like void
+  mark private
+
+  save tainted, make hash
+  walk taint-parts(function, <params>)
+    take param
+    tainted/set(taint-name(param), true)
+
+  save visit-statement
+    task
+      take statement, like dynamic
+      like void
+      host form, taint-form(statement)
+      # through `save x, <expr>` / `host x, <expr>`
+      fork test, is-equal(form, <let>)
+        hold
+          fork test, is-tainted(taint-part(statement, <init>), tainted)
+            hold
+              tainted/set(taint-name(statement), true)
+            miss
+              tainted/remove(taint-name(statement))
+      # and through `save x` reassignment
+      fork test, and(is-equal(form, <assign>), is-equal(taint-form(taint-part(statement, <target>)), <variable>))
+        hold
+          host target, taint-part(statement, <target>)
+          fork test, is-tainted(taint-part(statement, <value>), tainted)
+            hold
+              tainted/set(taint-name(target), true)
+            miss
+              tainted/remove(taint-name(target))
+
+  save visit-expression
+    task
+      take expression, like dynamic
+      like void
+      host sink, as-sink(expression, natives)
+      fork test, or(not(taint-truthy(sink)), not(is-equal(taint-form(expression), <call>)))
+        hold
+          back
+      save tainted-arguments, make list
+      walk taint-parts(expression, <args>)
+        take argument
+        fork test, is-tainted(argument, tainted)
+          hold
+            tainted-arguments/push(argument)
+            halt
+      fork test, is-equal(tainted-arguments/length, 0)
+        hold
+          back
+      host sink-point, point-of(file, taint-part(expression, <span>))
+      host first-tainted, read tainted-arguments/0
+      host source-point, taint-source-point(first-tainted, tainted, file)
+      findings/push(taint-finding(sink, sink-point, source-point))
+
+  walk-statements(taint-parts(function, <body>), visit-statement, visit-expression)
+
+task taint-id
+  like text
+
+  back <scan/taint>
+
+task check-taint
+  take program, like list, like dynamic
+  take file, like text
+  like list, like dynamic
+  mark private
+
+  host natives, native-modules(program)
+  save findings, make list
+  walk program
+    take statement
+    fork test, is-equal(taint-form(statement), <function>)
+      hold
+        check-function(statement, natives, file, findings)
+
+  back findings
+
+task taint-rule
+  like code-rule
+
+  save check
+    task
+      take program, like list, like dynamic
+      take file, like text
+      like list, like dynamic
+      back check-taint(program, file)
+
+  back make(code-rule, bind(id, taint-id()), bind(description, <Untrusted input (a function parameter) reaches a command / code / query sink without sanitizing.>), bind(check, check))

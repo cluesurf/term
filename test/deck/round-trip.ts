@@ -20,7 +20,7 @@
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
-import { parseManifest, writeManifest } from '../../deck/deck/code/manifest'
+import { parseManifest, writeManifest } from '../../deck/deck/code/package/manifest'
 import { parse } from '@term/make/code/parser/tree'
 import { headWord } from '@term/make/code/compile/mill-run'
 

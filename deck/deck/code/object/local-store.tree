@@ -12,9 +12,9 @@
 # The decisions:
 #   - a store is the original's ObjectStore shape, a record of four async tasks (`has`, `get`, `put` taking the
 #     original's `{ id, bytes }`, `missing`), so every caller takes it unchanged
-#   - the store under a root is `rooted-object-store(root)`; the user's store, an OCI image layout (oci/client.ts
-#     `localStore`, docked until its lane), is `local-object-store()`: the original told the two apart by whether an
-#     input was given at all
+#   - the store under a root is `rooted-object-store(root)`; the user's store, an OCI image layout (oci-routing.tree's
+#     `local-store`, docked from oci/client.ts until term-cli-in-term-0115 loaded the port), is
+#     `local-object-store()`: the original told the two apart by whether an input was given at all
 #   - a write goes to a temp file named by a fresh UUID, then is renamed, as the original's
 
 load @term/base/list
@@ -26,12 +26,14 @@ load ./object-address
 load ./tone-path
   find tone-path
 
+load ../oci/oci-routing
+  find local-store
+
 dock load
   load <node:fs/promises>, name fs-promise
     mark async
   load <node:path>, name node-path
   load <node:crypto>, name node-crypto
-  load <@term/deck/code/oci/client>, name oci-client
 
 form object-store
   link has
@@ -72,7 +74,7 @@ task verify-object
 task local-object-store
   like dynamic
 
-  back oci-client/local-store()
+  back local-store()
 
 task object-file-path
   take root, like text

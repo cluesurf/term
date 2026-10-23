@@ -71,7 +71,7 @@ dock load
   load <node:path>, name node-path
   load <global:Promise>, name host-promise
   load <global:Number>, name host-number
-  load <@term/deck/code/name>, name deck-name
+  load <@term/deck/code/package/name>, name deck-name
 
 # the first bare word, as `terms[0]`
 task first-term

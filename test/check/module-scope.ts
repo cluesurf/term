@@ -381,6 +381,22 @@ const ROOT_MODULE = `task root\n  like text\n  send back, text <here>\n`
   }
 }
 
+// a module's internal call binds inside that module: b finds `join`, a METHOD of l's `bag`, and calls it as a task.
+// The entry defines a task `join` of its own, which keeps the bare name, and b's call reached it ("join" takes 1
+// argument). browser/posix-path.tree's `join` took posix.tree's calls to @term/base/list's `join` (term-compiler-0053)
+{
+  const l = `form bag\n  link items, like list, like text\n  task join\n    take self\n    take separator, like text\n    like text\n    send back, <{self/items/length}{separator}>\n`
+  const b = `load @app/l\n  find bag\n  find join\n\ntask glue\n  take b, like bag\n  like text\n  send back\n    call join\n      read b\n      text </>\n`
+  const main = `load @app/b\n  find glue\n\nload @app/l\n  find bag\n\ntask join\n  take paths, like list, like text\n  like text\n  save b\n    make bag\n      bind items, read paths\n  save g, call glue(read b)\n  send back, <[{g}]>\n`
+  const result = build({ '@app/l': l, '@app/b': b }, main)
+  ok('a loaded module\'s call to a method it imported is not taken by the entry\'s task of the name', result.ok, said(result))
+
+  if (result.ok) {
+    const mod = await runOf(result.typescript)
+    ok('the entry\'s task calls the module, and the module its method', mod.join?.(['a', 'b']) === '[2/]', String(mod.join?.(['a', 'b'])))
+  }
+}
+
 console.log(`\nmodule-scope: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

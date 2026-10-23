@@ -40,7 +40,7 @@ dock load
   load <@term/make/code/compile/cache>, name compile-cache-module
   load <@term/make/code/compile/cache-scope.generated>, name scope-module
   load <@term/make/code/compile/load>, name parse-module
-  load <@term/deck/code/store>, name store-module
+  load <@term/deck/code/package/store>, name store-module
 
 form folder-ask
   link recursive, like boolean

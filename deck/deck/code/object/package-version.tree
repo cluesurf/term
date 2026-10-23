@@ -16,8 +16,8 @@
 #     Set) and the included paths as a list (empty where it was left out)
 #   - the walk is the original's: entries in the order the file system gives them, the files sorted by path in UTF-16
 #     order at the end
-#   - save's datasetOfFiles (deck/deck/code/object/dataset.ts, not yet ported), writeDataset, MemoryChunkStore,
-#     parseTree, formatTree and canonicalBytes are docked
+#   - dataset-of-files is file-dataset.tree's (docked from dataset.ts until term-cli-in-term-0115 loaded the port);
+#     save's writeDataset, MemoryChunkStore, parseTree, formatTree and canonicalBytes are docked
 
 load @term/base/list
   find list
@@ -39,6 +39,9 @@ load ./content-chunking
 load ./file-treatment
   find classify
 
+load ./file-dataset
+  find dataset-of-files
+
 dock load
   load <node:fs/promises>, name fs-promise
     mark async
@@ -48,7 +51,6 @@ dock load
   load <@cluesurf/save/tree/parse>, name save-tree-parse
   load <@cluesurf/save/tree/format>, name save-tree-format
   load <@cluesurf/save/canon/canonicalize>, name save-canonicalize
-  load <@term/deck/code/object/dataset>, name dataset-module
 
 form built-version
   # the prolly-tree root naming this version's file set
@@ -368,5 +370,5 @@ task build-version
 
   save files, read-version-files(dir, store, params, exclude, include)
   save tree-chunks, version-chunk-store(save-chunk-store)
-  save root, save-tree/write-dataset(dataset-module/dataset-of-files(files), tree-chunks)
+  save root, save-tree/write-dataset(dataset-of-files(files), tree-chunks)
   back make(built-version, bind(root, root), bind(files, files), bind(tree-chunks, tree-chunks))

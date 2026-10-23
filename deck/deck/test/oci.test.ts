@@ -23,7 +23,7 @@ import {
   versionOfTag,
 } from '../code/oci/reference'
 import { httpTransport, sha256Digest, type OciTransport } from '../code/oci/transport'
-import { parseLockfile, writeLockfile } from '../code/lock'
+import { parseLockfile, writeLockfile } from '../code/package/lock'
 import { startOciServer, type OciServer } from './oci-server'
 
 const TIME = '2026-01-01T00:00:00.000Z'

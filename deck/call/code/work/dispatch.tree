@@ -2,8 +2,12 @@
 #
 # `deck/call/code/line/base.tree` describes the 47 commands; this walks that description against a real argv. It
 # descends matching subcommands, parses `--flag value`, `--flag=value`, `-f value`, bare boolean flags and
-# `--no-flag` negation, binds the remaining positionals to the command's takes in order, coerces by declared type,
+# `--no-flag` negation, binds the remaining positionals to the command's slots in order, coerces by declared type,
 # validates a `pick` set, applies defaults, and answers the task to run with the arguments to run it on.
+#
+# THE CONSOLE IS ONE PROGRAM HOOK (decision term/003 part 3). `hook term` holds every command, and its takes are the
+# global options: `start-line` reads them off the program (`globals-of`), where a hand copy of line.ts's table stood
+# until cli-in-term-0011.
 #
 # THIS IS THE KEYSTONE OF THE CONVERSION. Everything else that has been ported is a verb; this is what turns the
 # command tree from a description into a program. It is pure and reads nothing from the environment, which is why
@@ -217,12 +221,6 @@ form line-start
   link exit, like number
   link words, like list, like text
 
-# one global flag of the output standard (sections 18 and 20), which line.ts declared on yargs for every command
-form global-flag
-  link name, like text
-  link short, like text
-  link takes-value, like boolean
-
 # a word of the command line that starts with `-`, read: `--color=never` is `color` with the value `never`, `-q` the
 # short `q`
 form flag-word
@@ -247,32 +245,48 @@ form usage-close
   link next, like text
   link failure, like text
 
-task global-flag-of
-  take name, like text
-  take short, like text
-  take takes-value, like boolean
-  like global-flag
-  back make global-flag, name(name), short(short), takes-value(takes-value)
+# THE PROGRAM (decision term/003 part 3): a console is one top-level hook, `hook term`, whose nested hooks are the
+# commands and whose takes are the global options. A file of several top-level hooks has no program, and its hooks are
+# the commands (hook-dispatch.ts `programOf`, the same rule)
+task is-program
+  take routes, like list, like dock-route
+  like boolean
+  fork test, is-equal(routes/length, 1)
+    hold
+      back is-above(routes/0/children/length, 0)
+  back false
 
-# line.ts's yargs options, in its order. `back` is the response format, the rest the output standard's
-task global-flags
-  like list, like global-flag
-  save out, make list
-  out/push global-flag-of(<back>, <b>, true)
-  out/push global-flag-of(<quiet>, <q>, false)
-  out/push global-flag-of(<verbose>, <>, false)
-  out/push global-flag-of(<trace>, <>, false)
-  out/push global-flag-of(<log>, <>, true)
-  out/push global-flag-of(<color>, <>, true)
-  out/push global-flag-of(<utc>, <>, false)
-  out/push global-flag-of(<plain>, <>, false)
-  out/push global-flag-of(<strict>, <>, false)
-  out/push global-flag-of(<motion>, <>, false)
-  out/push global-flag-of(<yes>, <y>, false)
-  out/push global-flag-of(<raw>, <>, false)
-  out/push global-flag-of(<source>, <>, true)
-  out/push global-flag-of(<all>, <>, false)
-  back out
+# the commands: the program's nested hooks
+task commands-of
+  take routes, like list, like dock-route
+  like list, like dock-route
+  fork test, is-program(routes)
+    hold
+      back routes/0/children
+  back routes
+
+# the global options: the program's takes, in its order (help first, version last, as yargs printed them)
+task globals-of
+  take routes, like list, like dock-route
+  like list, like dock-take
+  fork test, is-program(routes)
+    hold
+      back routes/0/takes
+  back make list
+
+# does the take hold a value, or stand alone as a boolean flag?
+task takes-value
+  take flag, like dock-take
+  like boolean
+  sift flag/type
+    case some
+      sift value
+        case boolean
+          back false
+        miss
+          back true
+    case none
+      back true
 
 task read-flag-word
   take word, like text
@@ -287,11 +301,26 @@ task read-flag-word
       back make flag-word, name(body), short(false), inline(false), value(<>)
   back make flag-word, name(substring(word, 1)), short(true), inline(false), value(<>)
 
-# the global flag a flag word names, its `--no-` form included
+# is this word the take's name or one of its long aliases?
+task is-named
+  take one, like dock-take
+  take word, like text
+  like boolean
+  fork test, is-equal(one/name, word)
+    hold
+      back true
+  walk one/aliases
+    take alias
+    fork test, is-equal(alias, word)
+      hold
+        back true
+  back false
+
+# the global take a flag word names, by name, long alias or short letter, its `--no-` form included
 task global-of
-  take flags, like list, like global-flag
+  take flags, like list, like dock-take
   take word, like flag-word
-  like maybe, like global-flag
+  like maybe, like dock-take
   walk flags
     take one
     fork test, word/short
@@ -300,12 +329,14 @@ task global-of
           hold
             back make(some, one)
       miss
-        fork test, is-equal(one/name, word/name)
+        fork test, is-named(one, word/name)
           hold
             back make(some, one)
-        fork test, and(not(one/takes-value), is-equal(<no-{one/name}>, word/name))
+        fork test, and(not(takes-value(one)), starts-with(word/name, <no->))
           hold
-            back make(some, one)
+            fork test, is-named(one, substring(word/name, 3))
+              hold
+                back make(some, one)
   back make none
 
 # does the command declare a take of this name itself? Then the flag is the command's too, as yargs gave it to both
@@ -327,15 +358,18 @@ task is-passing
   like boolean
   back or(is-equal(route/path, <zone>), is-equal(route/path, <mark>))
 
-task is-help
+# does the flag word name the program's take of this name (`hint` is yargs' help, `version` its version), by its
+# name, an alias or its letter?
+task names-global
+  take flags, like list, like dock-take
   take word, like text
+  take name, like text
   like boolean
-  back or(is-equal(word, <--help>), or(is-equal(word, <-h>), is-equal(word, <--hint>)))
-
-task is-version
-  take word, like text
-  like boolean
-  back or(is-equal(word, <--version>), is-equal(word, <-v>))
+  sift global-of(flags, read-flag-word(word))
+    case some
+      back is-equal(value/name, name)
+    case none
+      back false
 
 # a value of a host object as text, or the empty text when it is none: the gradual seam narrows it
 task text-or-empty
@@ -493,7 +527,9 @@ task start-line
   home-module/settle(host-path/join(root, <.base>), root)
 
   save version, text-or-empty(show-module/termVersion())
-  save flags, global-flags()
+  # the global options are the program's takes (decision term/003 part 3), and the commands its nested hooks
+  save flags, globals-of(routes)
+  save commands, commands-of(routes)
 
   # the command the bare words name: whether a flag is the command's own, and whether it takes its words whole
   save bare, make list
@@ -504,7 +540,7 @@ task start-line
         bare/push word
   save takes, make list
   save passing, false
-  sift route-for(routes, bare)
+  sift route-for(commands, bare)
     case some
       save takes, value/takes
       save passing, is-passing(value)
@@ -541,11 +577,11 @@ task start-line
                       save first, word
                       save raw, passing
                 miss
-                  fork test, is-help(word)
+                  fork test, names-global(flags, word, <hint>)
                     hold
                       save help, true
                     miss
-                      fork test, is-version(word)
+                      fork test, names-global(flags, word, <version>)
                         hold
                           save asked-version, true
                         miss
@@ -557,7 +593,7 @@ task start-line
                               fork test, own
                                 hold
                                   kept/push word
-                              fork test, flag/takes-value
+                              fork test, takes-value(flag)
                                 hold
                                   save given, parsed/value
                                   fork test, and(not(parsed/inline), is-below(at, count))
@@ -570,11 +606,10 @@ task start-line
                                   entries/push <"{flag/name}":{text-or-empty(host-json/stringify(given))}>
                                 miss
                                   save on, true
-                                  fork test, is-unequal(parsed/name, flag/name)
+                                  # `--no-motion`: the word named the take only through its `no-` form
+                                  fork test, and(not(parsed/short), not(is-named(flag, parsed/name)))
                                     hold
-                                      fork test, not(parsed/short)
-                                        hold
-                                          save on, false
+                                      save on, false
                                   fork test, and(parsed/inline, is-equal(parsed/value, <false>))
                                     hold
                                       save on, false
@@ -598,7 +633,7 @@ task start-line
 
   fork test, help
     hold
-      show-help(routes, bare)
+      show-help(commands, bare)
       back done-with(0)
   fork test, asked-version
     hold
@@ -612,9 +647,9 @@ task start-line
     hold
       output-module/printData(banner-module/bannerText())
       back done-with(0)
-  sift route-for(routes, bare)
+  sift route-for(commands, bare)
     case none
-      back done-with(usage-failure(<There is no command named {first}>, suggest(routes, first)))
+      back done-with(usage-failure(<There is no command named {first}>, suggest(commands, first)))
     case some
       save nothing, 0
   back make line-start, done(false), exit(0), words(kept)

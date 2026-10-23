@@ -1,0 +1,178 @@
+mark draft
+# A generic micro-benchmark harness, target-agnostic so it can time any code path in any codebase (not just the Term
+# compiler). It runs a function many times with a warmup, collects per-iteration timings, and reports robust statistics
+# (min, median, p95, mean, operations per second) so a real change is distinguishable from noise. A companion to
+# `hunt`: one finds correctness bugs, this finds performance ones.
+#
+# Ported from deck/test/code/bench.ts (term-cli-in-term-0110). The statistics, the scaling fit and the table are
+# bench-report.tree's; this keeps the timing (a caller's closure under the clock, warmed up, synchronously or awaited)
+# and the optional `size` its callers read. The decisions:
+#   - an ask is the original's object, every field but `name` and `run` optional, read through binds (`?? 50`), so a
+#     TypeScript caller passes what it passed before
+#   - a result's `size` is absent (undefined) when none was given, as the original's; bench-report's `has-size` is the
+#     same fact, and the two shapes are translated in binds
+#   - the clock is `performance.now()`, the original's own
+
+load @term/base/list
+  find list
+
+load ./bench-report
+  find bench-result
+  find stats-of
+  find scaling, name fit-scaling
+  find render-bench, name render-report
+
+form bench-ask
+  link name, like text
+  link run
+    like task
+      like dynamic
+  link iterations
+    like number
+    need false
+  link warmup
+    like number
+    need false
+  # an optional caller-supplied size, for scaling analysis
+  link size
+    like number
+    need false
+
+bind bench-clock
+  like float
+  case node
+    text <performance.now()>
+
+bind bench-iterations-of
+  take ask, like dynamic
+  like number
+  case node
+    text <($ask.iterations ?? 50)>
+
+bind bench-warmup-of
+  take ask, like dynamic
+  like number
+  case node
+    text <($ask.warmup ?? 5)>
+
+bind bench-name-of
+  take ask, like dynamic
+  like text
+  case node
+    text <$ask.name>
+
+bind bench-size-of
+  take ask, like dynamic
+  like dynamic
+  case node
+    text <$ask.size>
+
+bind bench-is-given
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value !== undefined)>
+
+bind bench-or-zero
+  take value, like dynamic
+  like number
+  case node
+    text <($value ?? 0)>
+
+# one run of the caller's closure, its answer (a promise for the async variant) handed back
+bind bench-run-once
+  take ask, like dynamic
+  like dynamic
+  case node
+    text <$ask.run()>
+
+# bench-report's result as the original's: `has-size` dropped, `size` undefined when none was given
+bind bench-shown
+  take report, like bench-result
+  like dynamic
+  case node
+    text <(\{ name: $report.name, iterations: $report.iterations, min: $report.min, median: $report.median, mean: $report.mean, p95: $report.p95, max: $report.max, opsPerSec: $report.opsPerSec, size: $report.hasSize ? $report.size : undefined \})>
+
+# the original's results as bench-report's: `has-size` says whether `size` was given, and an absent size is 0
+bind bench-reports-of
+  take results, like list, like dynamic
+  like list, like bench-result
+  case node
+    text <$results.map((benchOne) =\> (\{ ...benchOne, hasSize: benchOne.size !== undefined, size: benchOne.size ?? 0 \}))>
+
+# the statistics of one benchmark's timings, `size` undefined when none was given
+task stats-of-samples
+  take name, like text
+  take samples, like list, like float
+  take size, like dynamic
+  like dynamic
+
+  back bench-shown(stats-of(name, samples, bench-is-given(size), bench-or-zero(size)))
+
+# Time `run` over `iterations` (after `warmup` untimed runs)
+task bench
+  take ask, like bench-ask
+  like dynamic
+
+  host iterations, bench-iterations-of(ask)
+  host warmup, bench-warmup-of(ask)
+  save at, 0
+  walk test
+    hook test, is-below(at, warmup)
+    hook hold
+      bench-run-once(ask)
+      save at, add(at, 1)
+
+  host samples, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, iterations)
+    hook hold
+      host started, bench-clock()
+      bench-run-once(ask)
+      samples/push(subtract(bench-clock(), started))
+      save at, add(at, 1)
+
+  back stats-of-samples(bench-name-of(ask), samples, bench-size-of(ask))
+
+# The async variant, for promise-returning work: each run is awaited
+task bench-async
+  take ask, like bench-ask
+  like dynamic
+  mark async
+
+  host iterations, bench-iterations-of(ask)
+  host warmup, bench-warmup-of(ask)
+  save at, 0
+  walk test
+    hook test, is-below(at, warmup)
+    hook hold
+      wait bench-run-once(ask)
+      save at, add(at, 1)
+
+  host samples, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, iterations)
+    hook hold
+      host started, bench-clock()
+      wait bench-run-once(ask)
+      samples/push(subtract(bench-clock(), started))
+      save at, add(at, 1)
+
+  back stats-of-samples(bench-name-of(ask), samples, bench-size-of(ask))
+
+# The growth exponent of a benchmark across sizes: median time ~ size^k fitted in log-log space. k near 1 is linear,
+# near 2 quadratic. This is how a super-linear pass is caught before it bites
+task scaling
+  take results, like list, like dynamic
+  like dynamic
+
+  back fit-scaling(bench-reports-of(results))
+
+# a table of results
+task render-bench
+  take results, like list, like dynamic
+  like text
+
+  back render-report(bench-reports-of(results))

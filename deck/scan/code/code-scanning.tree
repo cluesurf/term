@@ -1,0 +1,185 @@
+# The static rules run over a set of `.tree` files: each file parsed and milled to the typed AST, then every rule
+# applied. A file that will not read, parse or mill is skipped (the scanner is not a type checker; `term scan` is), so
+# a broken file never crashes the security scan. This is the code-scanning half of a full scan.
+#
+# Ported from deck/scan/code/code-scan.ts (term-cli-in-term-0096). The parser and the mill are the compiler's,
+# docked (parser/tree, compile/mill). The constant defaultRules is a task, default-rules(), making the two built-in
+# rules; scan-files and scan-project take the rules positionally, nothing meaning the built-in set, and
+# find-tree-files its list to fill, as the original's `out`. A CodeScan is a host record built in a bind in the
+# original's key order.
+
+dock load
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <node:path>, name node-path
+  load <@term/make/code/parser/tree>, name tree-parsing
+  load <@term/make/code/compile/mill>, name milling
+
+load ./rule-running
+  find code-rule
+  find run-rules
+
+load ./dangerous-import
+  find native-danger-rule
+
+load ./taint-tracking
+  find taint-rule
+
+load @term/base/list
+  find list
+
+bind coding-asked
+  take file, like text
+  take text, like text
+  like dynamic
+  case node
+    text <<({ file: $file, text: $text })>>
+
+bind coding-ok
+  take result, like dynamic
+  like boolean
+  case node
+    text <Boolean($result.ok)>
+
+bind coding-tree
+  take result, like dynamic
+  like dynamic
+  case node
+    text <$result.tree>
+
+bind coding-program
+  take result, like dynamic
+  like list, like dynamic
+  case node
+    text <$result.program>
+
+bind coding-push-all
+  take shelf, like list, like dynamic
+  take items, like list, like dynamic
+  like void
+  case node
+    text <<$shelf.push(...$items)>>
+
+bind coding-is-nothing
+  take value, like dynamic
+  like boolean
+  case node
+    text <<($value === undefined || $value === null)>>
+
+bind coding-is-directory
+  take stat, like dynamic
+  like boolean
+  case node
+    text <$stat.isDirectory()>
+
+bind coding-ends-tree
+  take entry, like text
+  like boolean
+  case node
+    text <<$entry.endsWith(".tree")>>
+
+bind coding-scan
+  take findings, like list, like dynamic
+  take count, like number
+  take skipped, like list, like text
+  like dynamic
+  case node
+    text <<({ findings: $findings, fileCount: $count, skipped: $skipped })>>
+
+bind coding-length
+  take items, like list, like dynamic
+  like number
+  case node
+    text <$items.length>
+
+# the built-in rule set; pass your own rules to scan-files to extend it
+task default-rules
+  like list, like code-rule
+
+  save rules, make list
+  rules/push(native-danger-rule())
+  rules/push(taint-rule())
+
+  back rules
+
+# the `.tree` files scanned with the rules, the built-in set when `rules` is nothing
+task scan-files
+  take files, like list, like text
+  take rules, like dynamic
+  like dynamic
+
+  save chosen, rules
+  fork test, coding-is-nothing(rules)
+    hold
+      save chosen, default-rules()
+  save findings, make list
+  save skipped, make list
+  walk files
+    take file
+    save text, <>
+    save unread, false
+    fork
+      mark unsafe
+      save text, fs-promise/read-file(file, <utf-8>)
+    halt take
+      take problem
+      save unread, true
+    fork test, unread
+      hold
+        skipped/push(file)
+        turn next
+    host parsed, tree-parsing/parse(coding-asked(file, text))
+    fork test, not(coding-ok(parsed))
+      hold
+        skipped/push(file)
+        turn next
+    host milled, milling/mill(coding-tree(parsed), file)
+    fork test, not(coding-ok(milled))
+      hold
+        skipped/push(file)
+        turn next
+    coding-push-all(findings, run-rules(coding-program(milled), file, chosen))
+
+  back coding-scan(findings, coding-length(files), skipped)
+
+# every `.tree` file under the directory, pushed onto `out` and answered, passing over generated output and
+# dependency and version-control folders (the compiler's project walk skips the same)
+task find-tree-files
+  take dir, like text
+  take out, like list, like text
+  like list, like text
+
+  save entries, make list
+  fork
+    mark unsafe
+    save entries, fs-promise/readdir(dir)
+  halt take
+    take unread
+    back out
+  walk entries
+    take entry
+    fork test, or(is-equal(entry, <node_modules>), or(is-equal(entry, <host>), is-equal(entry, <.git>)))
+      hold
+        turn next
+    host full, node-path/join(dir, entry)
+    host stat, fs-promise/stat(full)
+    fork test, coding-is-directory(stat)
+      hold
+        find-tree-files(full, out)
+      miss
+        fork test, coding-ends-tree(entry)
+          hold
+            out/push(full)
+
+  back out
+
+# a whole project directory's `.tree` sources
+task scan-project
+  take root, like text
+  take rules, like dynamic
+  like dynamic
+
+  save out, make list
+  host files, find-tree-files(root, out)
+
+  back scan-files(files, rules)

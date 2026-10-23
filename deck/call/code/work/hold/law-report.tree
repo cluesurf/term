@@ -27,7 +27,7 @@ dock load
   load <@term/make/code/compile/mill>, name milling
   load <@term/make/code/compile/host>, name data-reading
   load <@term/make/code/check/law-english>, name law-wording
-  load <@term/deck/code/read>, name tree-reading
+  load <@term/deck/code/package/read>, name tree-reading
   load <@term/call/code/role-of>, name role-reading
   load <@term/call/code/home>, name home-finding
   load <node:fs>, name host-fs

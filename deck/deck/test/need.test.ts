@@ -5,8 +5,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { codeMatch, parseCode, showCode } from '../code/code'
-import { parseLockfile, parseLockfileByHand, writeLockfile } from '../code/lock'
-import { parseManifest, parseManifestByHand, writeManifest } from '../code/manifest'
+import { parseLockfile, parseLockfileByHand, writeLockfile } from '../code/package/lock'
+import { parseManifest, parseManifestByHand, writeManifest } from '../code/package/manifest'
 import { generateKeypair } from '../code/object/sign'
 import { newestMatching, pinNeed, pinSatisfies, releasedVersions } from '../code/oci/need'
 import { publishRelease } from '../code/oci/release'

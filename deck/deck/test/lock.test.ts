@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseLockfile, writeLockfile } from '../code/lock'
+import { parseLockfile, writeLockfile } from '../code/package/lock'
 
 describe('parseLockfile', () => {
   it('parses a lockfile', () => {

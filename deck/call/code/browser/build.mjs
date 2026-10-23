@@ -71,7 +71,7 @@ const alias = {
   'node:path': PATH,
   // the package manager's barrel re-exports its registry, OCI and signing code, all Node. The compile path reads
   // only the role reader from it (call/code/role-of.ts), so the barrel is narrowed to that one module
-  '@cluesurf/deck.tree': path.join(termRoot, 'deck', 'deck', 'code', 'role.ts'),
+  '@cluesurf/deck.tree': path.join(termRoot, 'deck', 'deck', 'code', 'package', 'role.ts'),
 }
 
 for (const name of ABSENT_BUILTINS) {

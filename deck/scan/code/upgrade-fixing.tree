@@ -1,0 +1,182 @@
+# Dependency fixes, computed and applied: a set of dependency findings turned into version upgrades, and the manifest
+# (`deck.tree`) rewritten to pin the safe versions. Opening a pull request is NOT done here: the repository's own PR
+# tool takes the rewritten manifest (create-only, never merge), so the scanner computes and writes the patch and a
+# person or a separate bot reviews and merges it.
+#
+# Ported from deck/scan/code/fix.ts (term-cli-in-term-0096). An upgrade is the original's host record, built and
+# raised to a higher target in binds named for this module (a later finding of the same package mutates it, as the
+# original did); each manifest line is matched by the original's pattern, in a bind. apply-upgrades takes its
+# root, upgrades and write flag positionally. The manifest is read and written through node:fs/promises, docked.
+
+dock load
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <node:path>, name node-path
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+bind fixing-version
+  take finding, like dynamic
+  like dynamic
+  case node
+    text <$finding.fixVersion>
+
+bind fixing-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind fixing-node-name
+  take finding, like dynamic
+  like text
+  case node
+    text <$finding.node.name>
+
+bind fixing-upgrade
+  take finding, like dynamic
+  like dynamic
+  case node
+    text <<({ name: $finding.node.name, from: $finding.node.version, to: $finding.fixVersion, clears: [$finding.advisory.id] })>>
+
+# a later finding of the package: its advisory cleared too, and the higher target kept (compared as text, as the
+# original did)
+bind fixing-merge
+  take existing, like dynamic
+  take finding, like dynamic
+  like void
+  case node
+    text <<(function () { $existing.clears.push($finding.advisory.id); if ($finding.fixVersion > $existing.to) { $existing.to = $finding.fixVersion } })()>>
+
+bind fixing-lines
+  take text, like text
+  like list, like text
+  case node
+    text <<$text.split("\n")>>
+
+bind fixing-joined
+  take lines, like list, like text
+  like text
+  case node
+    text <<$lines.join("\n")>>
+
+# a dependency line's parts, `  link @scope/name, mark <range>` or the old `code <range>`: the lead, the name, the
+# comma, the space before the range and the rest; empty when the line is no dependency line
+bind fixing-line-parts
+  take line, like text
+  like list, like text
+  case node
+    text <<(function (fixingFound) { return fixingFound ? [fixingFound[1], fixingFound[2], fixingFound[3], fixingFound[4], fixingFound[5] ?? ""] : [] })(/^(\s*link\s+)(\S+?)(\s*,\s*)(?:mark|code)(\s*)<[^>]*>(.*)$/.exec($line))>>
+
+bind fixing-rewritten
+  take parts, like list, like text
+  take target, like dynamic
+  like text
+  case node
+    text <<`${$parts[0]}${$parts[1]}${$parts[2]}mark${$parts[3]}<^${$target}>${$parts[4]}`>>
+
+bind fixing-upgrade-name
+  take upgrade, like dynamic
+  like text
+  case node
+    text <$upgrade.name>
+
+bind fixing-upgrade-to
+  take upgrade, like dynamic
+  like dynamic
+  case node
+    text <$upgrade.to>
+
+# did the upgrade change a line: is the manifest's dependency line now pinned to its target?
+bind fixing-was-applied
+  take upgrade, like dynamic
+  take updated, like text
+  like boolean
+  case node
+    text <<new RegExp(`link\\s+${$upgrade.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*,\\s*mark\\s*<\\^${$upgrade.to.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}>`).test($updated)>>
+
+bind fixing-applying
+  take applied, like list, like dynamic
+  take text, like text
+  like dynamic
+  case node
+    text <<({ applied: $applied, manifestText: $text })>>
+
+# one upgrade per package (the highest fix needed), with the advisories it clears, in the order first seen
+task plan-upgrades
+  take findings, like list, like dynamic
+  like list, like dynamic
+
+  save by-name, make hash
+  save order, make list
+  walk findings
+    take finding
+    fork test, not(fixing-truthy(fixing-version(finding)))
+      hold
+        turn next
+    host name, fixing-node-name(finding)
+    fork test, by-name/has(name)
+      hold
+        fixing-merge(by-name/get(name), finding)
+      miss
+        host upgrade, fixing-upgrade(finding)
+        by-name/set(name, upgrade)
+        order/push(upgrade)
+
+  back order
+
+# the manifest's `link <name>, mark <range>` lines of upgraded dependencies rewritten to a caret range of the fixed
+# version, in the current spelling (`mark` where the old one said `code`); every other line byte for byte
+task apply-upgrades-to-manifest
+  take manifest-text, like text
+  take upgrades, like list, like dynamic
+  like text
+
+  save by-name, make hash
+  walk upgrades
+    take upgrade
+    by-name/set(fixing-upgrade-name(upgrade), upgrade)
+  save out, make list
+  walk fixing-lines(manifest-text)
+    take line
+    host parts, fixing-line-parts(line)
+    fork test, is-equal(parts/length, 0)
+      hold
+        out/push(line)
+        turn next
+    host name, read parts/1
+    fork test, not(by-name/has(name))
+      hold
+        out/push(line)
+        turn next
+    host upgrade, by-name/get(name)
+    out/push(fixing-rewritten(parts, fixing-upgrade-to(upgrade)))
+
+  back fixing-joined(out)
+
+# the manifest read, the upgrades applied, and written back when `write` holds and the text changed; answers the
+# upgrades that changed a line and the new text
+task apply-upgrades
+  take root, like text
+  take upgrades, like list, like dynamic
+  take write, like boolean
+  like dynamic
+
+  host file, node-path/join(root, <deck.tree>)
+  host original, fs-promise/read-file(file, <utf-8>)
+  host updated, apply-upgrades-to-manifest(original, upgrades)
+  save applied, make list
+  walk upgrades
+    take upgrade
+    fork test, fixing-was-applied(upgrade, updated)
+      hold
+        applied/push(upgrade)
+  fork test, and(write, not(is-equal(updated, original)))
+    hold
+      fs-promise/write-file(file, updated, <utf-8>)
+
+  back fixing-applying(applied, updated)

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toRegistryName, toTreeName, parseScope, resolveRegistry, rootScope } from '../code/name'
+import { toRegistryName, toTreeName, parseScope, resolveRegistry, rootScope } from '../code/package/name'
 
 describe('toRegistryName', () => {
   it('adds .tree suffix', () => {

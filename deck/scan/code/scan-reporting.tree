@@ -1,0 +1,252 @@
+# A scan result rendered for people (a terminal summary) and for machines (a stable JSON shape). SARIF is its own
+# module (sarif-writing.tree); these two are for reading directly and for piping into other tools.
+#
+# Ported from deck/scan/code/report.ts (term-cli-in-term-0096). The result and its findings are the original's host
+# records, read through binds named for this module; every value is written into the text as the original's template
+# literals wrote it (a number by JavaScript's own conversion), so the report is the original's byte for byte.
+
+load ./severity-ranking
+  find severity-order
+
+load @term/base/list
+  find list
+
+bind report-text
+  take record, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$record[$key]>
+
+bind report-list
+  take record, like dynamic
+  take key, like text
+  like list, like dynamic
+  case node
+    text <$record[$key]>
+
+bind report-length
+  take items, like dynamic
+  like number
+  case node
+    text <$items.length>
+
+bind report-is-counted
+  take tally, like dynamic
+  take word, like text
+  like boolean
+  case node
+    text <<($tally[$word] > 0)>>
+
+bind report-counted
+  take tally, like dynamic
+  take word, like text
+  like text
+  case node
+    text <<`${$tally[$word]} ${$word}`>>
+
+bind report-joined
+  take items, like list, like dynamic
+  take glue, like text
+  like text
+  case node
+    text <$items.join($glue)>
+
+bind report-is-dependency
+  take finding, like dynamic
+  like boolean
+  case node
+    text <<($finding.kind === "dependency")>>
+
+bind report-is-code
+  take finding, like dynamic
+  like boolean
+  case node
+    text <<($finding.kind === "code")>>
+
+bind report-dependency-head
+  take finding, like dynamic
+  take via, like text
+  like text
+  case node
+    text <<`  [${$finding.severity}] ${$finding.node.name}@${$finding.node.version}${$via}`>>
+
+bind report-dependency-title
+  take finding, like dynamic
+  like text
+  case node
+    text <<`    ${$finding.advisory.title} (${$finding.advisory.id})`>>
+
+bind report-dependency-url
+  take finding, like dynamic
+  like text
+  case node
+    text <<`    ${$finding.advisory.url}`>>
+
+# ` (via a -> b -> c)`
+bind report-via
+  take trail, like list, like dynamic
+  like text
+  case node
+    text <<` (via ${$trail.join(" -> ")})`>>
+
+bind report-fix
+  take finding, like dynamic
+  like text
+  case node
+    text <<($finding.fixVersion ? `  fix: upgrade to ${$finding.fixVersion}` : "  fix: no known safe upgrade")>>
+
+bind report-has-trace
+  take finding, like dynamic
+  like boolean
+  case node
+    text <<Boolean($finding.trace && $finding.trace.length > 0)>>
+
+bind report-trace-line
+  take step, like dynamic
+  like text
+  case node
+    text <<`      ${$step.label}: ${$step.file}:${$step.line}:${$step.column}`>>
+
+bind report-code-head
+  take finding, like dynamic
+  like text
+  case node
+    text <<`  [${$finding.severity}] ${$finding.ruleId}  ${$finding.at.file}:${$finding.at.line}:${$finding.at.column}`>>
+
+bind report-code-message
+  take finding, like dynamic
+  like text
+  case node
+    text <<`    ${$finding.message}`>>
+
+bind report-scanned
+  take result, like dynamic
+  like text
+  case node
+    text <<`Scanned ${$result.dependencyCount} dependenc(ies) and ${$result.fileCount} file(s).`>>
+
+bind report-count-line
+  take count, like number
+  take summary, like text
+  like text
+  case node
+    text <<`${$count} finding(s): ${$summary}`>>
+
+bind report-json
+  take value, like dynamic
+  like text
+  case node
+    text <JSON.stringify($value, null, 2)>
+
+# a compact severity summary, e.g. "2 critical, 1 high"
+task severity-summary
+  take result, like dynamic
+  like text
+
+  host tally, report-text(result, <bySeverity>)
+  save parts, make list
+  walk severity-order()
+    take word
+    fork test, report-is-counted(tally, word)
+      hold
+        parts/push(report-counted(tally, word))
+
+  back report-joined(parts, <, >)
+
+task describe-finding
+  take finding, like dynamic
+  like text
+  mark private
+
+  save lines, make list
+  fork test, report-is-dependency(finding)
+    hold
+      host trail, report-list(report-text(finding, <node>), <path>)
+      save via, <>
+      fork test, is-above(report-length(trail), 1)
+        hold
+          save via, report-via(trail)
+      host fix, report-fix(finding)
+      lines/push(report-dependency-head(finding, via))
+      lines/push(report-dependency-title(finding))
+      lines/push(report-dependency-url(finding))
+      lines/push(<  {fix}>)
+      back report-joined(lines, report-newline())
+
+  lines/push(report-code-head(finding))
+  lines/push(report-code-message(finding))
+  fork test, report-has-trace(finding)
+    hold
+      save steps, make list
+      walk report-list(finding, <trace>)
+        take step
+        steps/push(report-trace-line(step))
+      lines/push(report-joined(steps, report-newline()))
+
+  back report-joined(lines, report-newline())
+
+bind report-newline
+  like text
+  case node
+    text <String.fromCharCode(10)>
+
+# a full report for people
+task format-human
+  take result, like dynamic
+  like text
+
+  host findings, report-list(result, <findings>)
+  save dependency-findings, make list
+  save code-findings, make list
+  walk findings
+    take finding
+    fork test, report-is-dependency(finding)
+      hold
+        dependency-findings/push(finding)
+  walk findings
+    take finding
+    fork test, report-is-code(finding)
+      hold
+        code-findings/push(finding)
+
+  save lines, make list
+  lines/push(report-scanned(result))
+  host consulted, report-list(result, <advisorySources>)
+  fork test, is-above(report-length(consulted), 0)
+    hold
+      lines/push(<Advisory sources: {report-joined(consulted, <, >)}.>)
+  host unavailable, report-list(result, <unavailableSources>)
+  fork test, is-above(report-length(unavailable), 0)
+    hold
+      lines/push(<Unavailable sources (skipped): {report-joined(unavailable, <, >)}.>)
+  fork test, is-equal(report-length(findings), 0)
+    hold
+      lines/push(<No security findings.>)
+      back report-joined(lines, report-newline())
+
+  lines/push(<>)
+  lines/push(report-count-line(report-length(findings), severity-summary(result)))
+  fork test, is-above(dependency-findings/length, 0)
+    hold
+      lines/push(<>)
+      lines/push(<Vulnerable dependencies:>)
+      walk dependency-findings
+        take finding
+        lines/push(describe-finding(finding))
+  fork test, is-above(code-findings/length, 0)
+    hold
+      lines/push(<>)
+      lines/push(<Code findings:>)
+      walk code-findings
+        take finding
+        lines/push(describe-finding(finding))
+
+  back report-joined(lines, report-newline())
+
+# a stable JSON report for machines
+task to-json
+  take result, like dynamic
+  like text
+
+  back report-json(result)

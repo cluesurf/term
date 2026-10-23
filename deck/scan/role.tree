@@ -1,0 +1,6 @@
+# Which files of the scanner are read with the LEAN surface (note/project/term/mill/lean.md,
+# note/term/self-host/03-lean.md): every module ported to Term, as in @term/deck, @term/flow and @term/test.
+
+role code
+  mark lean
+  take @/code/**/*.tree

@@ -19,7 +19,7 @@ import { join } from 'node:path'
 import { runOn } from './shared/run-on'
 import { DEVICE_MODULES } from '@term/call/code/cask-generate'
 import { projectResolver } from '@term/call/code/make'
-import { readTree } from '../../deck/deck/code/read'
+import { readTree } from '../../deck/deck/code/package/read'
 
 const ROOT = join(import.meta.dirname, '..', '..')
 const VIEW = join(ROOT, 'deck/site/code/view')

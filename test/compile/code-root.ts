@@ -16,7 +16,7 @@ import { withNativeEnv } from '@term/make/code/compile/native'
 import { collectModules } from '@term/make/code/compile/load'
 import { compile } from '@term/make/code/compile/compile'
 import { ambiguousLoads, manifestFindings } from '@term/call/code/lint'
-import { parseManifest } from '../../deck/deck/code/manifest'
+import { parseManifest } from '../../deck/deck/code/package/manifest'
 
 let pass = 0
 let fail = 0

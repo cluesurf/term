@@ -11,8 +11,8 @@ type Published = Record<string, Record<string, Record<string, string>>>
 // each deck's versions and, per version, its links; and how long each deck's metadata takes to arrive
 const registry: { published: Published; delay: Record<string, number> } = { published: {}, delay: {} }
 
-vi.mock('../code/fetch', async () => {
-  const actual = await vi.importActual<typeof import('../code/fetch')>('../code/fetch')
+vi.mock('../code/package/fetch', async () => {
+  const actual = await vi.importActual<typeof import('../code/package/fetch')>('../code/package/fetch')
 
   return {
     ...actual,
@@ -38,8 +38,8 @@ vi.mock('../code/fetch', async () => {
   }
 })
 
-const { resolve, buildLockfile } = await import('../code/resolve')
-const { makeDefaultFetchConfig } = await import('../code/fetch')
+const { resolve, buildLockfile } = await import('../code/package/resolve')
+const { makeDefaultFetchConfig } = await import('../code/package/fetch')
 
 // a plain registry for the test's scopes, which the mock above answers: an unmapped scope is an OCI registry's
 const config = () => ({

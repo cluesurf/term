@@ -1,0 +1,612 @@
+# Metamorphic and differential oracles for the compiler. A fuzzer that only asks "did it crash?" misses the compiler
+# answering WRONG without crashing; these hold properties a correct compiler meets on EVERY input, so a violation is a
+# defect even when nothing throws:
+#
+#   round trip      the printed form is a fixpoint of parse: print(parse(print(parse(x)))) is print(parse(x))
+#   deterministic   compiling one source twice emits the same TypeScript (and agrees on whether it compiled)
+#   backend emit    a program that compiles emits non-empty code on every backend (TypeScript, Rust, Kotlin, Swift)
+#                   without throwing. EMIT ONLY: nothing is built, run or compared across backends
+#   perf            a soft time budget flags a compile that is pathologically slow even when it returns
+#
+# They run over fuzzed inputs and over a real corpus (`audit-corpus`), where they catch defects on real code.
+#
+# Ported from deck/test/code/compiler-oracles.ts (term-cli-in-term-0109). The decisions:
+#   - a check that answered a violation or `null` answers a list of none or one, so `check-all` concatenates them
+#   - the compiler and the four emitters are docked (compile/compile.ts and compile/<backend>.ts are TypeScript); the
+#     parser is loaded, being parser/tree.tree already
+#   - the original handed each compile's time to an optional `timed` callback; here the private `emit-run` and
+#     `deterministic-run` answer the times with their verdicts, and `audit-corpus` keeps the fastest
+#   - `EMIT_BACKENDS` is `emit-backends`, a list of named tasks; `auditCorpus`'s options are the record `audit-ask`,
+#     whose `perf-budget-ms` is read as the host value it is, since an absent budget means no perf check
+#   - a message and every number printed into a detail is a host bind, the original's own expression
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/make/parser/tree
+  find parse
+  find print-tree
+  find parse-result
+
+load @term/make/parser/token
+  find token-source
+
+dock load
+  load <@term/make/code/compile/compile>, name compiling-module
+  load <@term/make/code/compile/typescript>, name typescript-module
+  load <@term/make/code/compile/rust>, name rust-module
+  load <@term/make/code/compile/kotlin>, name kotlin-module
+  load <@term/make/code/compile/swift>, name swift-module
+
+form oracle-violation
+  # `round-trip`, `deterministic`, `backend-emit`, `perf` or `crash`
+  link oracle, like text
+  link detail, like text
+  link input, like text
+
+form emit-backend
+  link name, like text
+  link emit
+    like task
+      take program, like dynamic
+      take wake, like dynamic
+      like dynamic
+
+form emit-ask
+  link wake, like dynamic
+
+form oracle-source
+  link file, like text
+  link text, like text
+
+form oracle-options
+  link resolve, like dynamic
+
+form compiled-emit
+  link compiled, like boolean
+  link violations, like list, like oracle-violation
+
+# a check's verdicts and the time of every compile it made that answered
+form timed-checks
+  link compiled, like boolean
+  link violations, like list, like oracle-violation
+  link times, like list, like number
+
+form parse-attempt
+  link threw, like boolean
+  link message, like text
+  link parsed, like maybe, like parse-result
+
+form print-attempt
+  link threw, like boolean
+  link message, like text
+  link printed, like text
+
+form check-ask
+  link text, like text
+  link resolve, like dynamic
+  link perf-budget-ms
+    like number
+    need false
+
+form audit-ask
+  link files, like list, like text
+  link read-file
+    like task
+      take path, like text
+      like text
+  link resolve, like dynamic
+  link parse-tolerant
+    like task
+      take source, like dynamic
+      like dynamic
+  link perf-budget-ms
+    like number
+    need false
+
+form file-violation
+  link file, like text
+  link violation, like oracle-violation
+
+form file-time
+  link file, like text
+  link ms, like number
+
+form corpus-audit
+  # files actually READ and checked, never the length of the list handed in
+  link files, like number
+  # files in the list that could not be read; reported, never dropped
+  link unreadable, like list, like text
+  # files that compiled, so the backend-emit oracle had something to emit
+  link compiled, like number
+  link violations, like list, like file-violation
+  link slowest, like list, like file-time
+
+bind oracle-message
+  take problem, like dynamic
+  like text
+  case node
+    text <($problem instanceof Error ? $problem.message : String($problem))>
+
+bind oracle-clock
+  like number
+  case node
+    text <performance.now()>
+
+bind oracle-endless
+  like number
+  case node
+    text <Number.POSITIVE_INFINITY>
+
+bind oracle-ok
+  take result, like dynamic
+  like boolean
+  case node
+    text <Boolean($result.ok)>
+
+bind oracle-raw-ok
+  take result, like dynamic
+  like dynamic
+  case node
+    text <$result.ok>
+
+bind oracle-program-of
+  take result, like dynamic
+  like dynamic
+  case node
+    text <$result.program>
+
+bind oracle-wake-of
+  take result, like dynamic
+  like dynamic
+  case node
+    text <$result.wake>
+
+bind oracle-ok-differs
+  take first, like dynamic
+  take second, like dynamic
+  like boolean
+  case node
+    text <($first.ok !== $second.ok)>
+
+bind oracle-typescript-differs
+  take first, like dynamic
+  take second, like dynamic
+  like boolean
+  case node
+    text <($first.ok && $second.ok && $first.typescript !== $second.typescript)>
+
+bind oracle-ok-detail
+  take first, like dynamic
+  take second, like dynamic
+  like text
+  case node
+    text <"compile ok differs across runs (" + $first.ok + " vs " + $second.ok + ")">
+
+bind oracle-empty-emit
+  take emitted, like dynamic
+  like boolean
+  case node
+    text <(typeof $emitted !== "string" || $emitted.length === 0)>
+
+bind oracle-perf-detail
+  take ms, like number
+  take budget, like number
+  like text
+  case node
+    text <"compile took " + $ms.toFixed(0) + "ms (budget " + $budget + "ms)">
+
+bind oracle-fastest-detail
+  take ms, like number
+  take budget, like number
+  like text
+  case node
+    text <"compile took " + $ms.toFixed(0) + "ms, the fastest of three (budget " + $budget + "ms)">
+
+bind oracle-has-budget
+  take asked, like dynamic
+  like boolean
+  case node
+    text <($asked.perfBudgetMs !== undefined)>
+
+bind oracle-budget-or
+  take asked, like dynamic
+  take fallback, like number
+  like number
+  case node
+    text <($asked.perfBudgetMs ?? $fallback)>
+
+bind oracle-slowest
+  take found, like list, like file-time
+  like list, like file-time
+  case node
+    text <$found.sort((timeA, timeB) =\> timeB.ms - timeA.ms).slice(0, 5)>
+
+task emit-with-type-script
+  take program, like dynamic
+  take wake, like dynamic
+  like dynamic
+  mark private
+
+  back typescript-module/emit-type-script(program, make(emit-ask, bind(wake, wake)))
+
+task emit-with-rust
+  take program, like dynamic
+  take wake, like dynamic
+  like dynamic
+  mark private
+
+  back rust-module/emit-rust(program, make(emit-ask, bind(wake, wake)))
+
+task emit-with-kotlin
+  take program, like dynamic
+  take wake, like dynamic
+  like dynamic
+  mark private
+
+  back kotlin-module/emit-kotlin(program, make(emit-ask, bind(wake, wake)))
+
+task emit-with-swift
+  take program, like dynamic
+  take wake, like dynamic
+  like dynamic
+  mark private
+
+  back swift-module/emit-swift(program, make(emit-ask, bind(wake, wake)))
+
+# the emitters the backend-emit oracle drives, in order, each handed the compile's own wake
+task emit-backends
+  like list, like emit-backend
+
+  back
+    make list
+      make(emit-backend, bind(name, <typescript>), bind(emit, emit-with-type-script))
+      make(emit-backend, bind(name, <rust>), bind(emit, emit-with-rust))
+      make(emit-backend, bind(name, <kotlin>), bind(emit, emit-with-kotlin))
+      make(emit-backend, bind(name, <swift>), bind(emit, emit-with-swift))
+
+task violation-of
+  take oracle, like text
+  take detail, like text
+  take input, like text
+  like list, like oracle-violation
+  mark private
+
+  back make list(make(oracle-violation, bind(oracle, oracle), bind(detail, detail), bind(input, input)))
+
+task parse-attempt-of
+  take text, like text
+  like parse-attempt
+  mark private
+
+  host source
+    make token-source
+      bind file, <o.tree>
+      bind text, text
+  fork
+    mark unsafe
+    host parsed, parse(source)
+    back make(parse-attempt, bind(threw, false), bind(message, <>), bind(parsed, make(some, parsed)))
+  halt take
+    take problem
+    back make(parse-attempt, bind(threw, true), bind(message, oracle-message(problem)), bind(parsed, make none))
+
+task print-attempt-of
+  take found, like parse-result
+  like print-attempt
+  mark private
+
+  fork
+    mark unsafe
+    host printed, print-tree(found/tree)
+    back make(print-attempt, bind(threw, false), bind(message, <>), bind(printed, printed))
+  halt take
+    take problem
+    back make(print-attempt, bind(threw, true), bind(message, oracle-message(problem)), bind(printed, <>))
+
+# canonical-form fixpoint: re-parsing the printed tree must be stable. Only a valid program has a form to compare
+task check-round-trip
+  take text, like text
+  like list, like oracle-violation
+
+  host none, make list
+  host first, parse-attempt-of(text)
+  fork test, first/threw
+    hold
+      back violation-of(<crash>, <parse threw: {first/message}>, text)
+
+  sift first/parsed
+    case some
+      link found
+      fork test, not(found/ok)
+        hold
+          back none
+      host printed, print-attempt-of(found)
+      fork test, printed/threw
+        hold
+          back violation-of(<crash>, <printTree threw: {printed/message}>, text)
+      host second, parse-attempt-of(printed/printed)
+      fork test, second/threw
+        hold
+          back violation-of(<crash>, <re-parse of printed form threw: {second/message}>, printed/printed)
+      sift second/parsed
+        case some
+          link again
+          fork test, not(again/ok)
+            hold
+              back violation-of(<round-trip>, <printed canonical form does not re-parse>, printed/printed)
+          # printed again OUTSIDE any guard, as the original printed it: a throw here goes to the caller
+          host reprinted, print-tree(again/tree)
+          fork test, not(is-equal(printed/printed, reprinted))
+            hold
+              back violation-of(<round-trip>, <canonical form is not a parse fixpoint>, text)
+        case none
+          back none
+    case none
+      back none
+
+  back none
+
+# one compile and its time
+task compile-once
+  take text, like text
+  take resolve, like dynamic
+  take file, like text
+  like dynamic
+  mark private
+
+  back compiling-module/compile(make(oracle-source, bind(file, file), bind(text, text)), make(oracle-options, bind(resolve, resolve)))
+
+# compiling twice must give the same output, with the time of each compile that answered
+task deterministic-run
+  take text, like text
+  take resolve, like dynamic
+  take file, like text
+  like timed-checks
+  mark private
+
+  host times, make list
+  fork
+    mark unsafe
+    host started, oracle-clock()
+    host first, compile-once(text, resolve, file)
+    times/push(subtract(oracle-clock(), started))
+    host again, oracle-clock()
+    host second, compile-once(text, resolve, file)
+    times/push(subtract(oracle-clock(), again))
+    fork test, oracle-ok-differs(first, second)
+      hold
+        back make(timed-checks, bind(compiled, true), bind(violations, violation-of(<deterministic>, oracle-ok-detail(first, second), text)), bind(times, times))
+    fork test, oracle-typescript-differs(first, second)
+      hold
+        back make(timed-checks, bind(compiled, true), bind(violations, violation-of(<deterministic>, <emitted TypeScript differs across identical runs>, text)), bind(times, times))
+    back make(timed-checks, bind(compiled, true), bind(violations, make list), bind(times, times))
+  halt take
+    take problem
+    back make(timed-checks, bind(compiled, false), bind(violations, violation-of(<crash>, <compile threw: {oracle-message(problem)}>, text)), bind(times, times))
+
+# compiling twice must give byte-identical output
+task check-deterministic
+  take text, like text
+  take resolve, like dynamic
+  take file, like text, fall <o.tree>
+  like list, like oracle-violation
+
+  back deterministic-run(text, resolve, file)/violations
+
+# the backend-emit oracle with the compile's time: whether the program compiled, and a violation per backend that failed
+task emit-run
+  take text, like text
+  take resolve, like dynamic
+  take file, like text
+  like timed-checks
+  mark private
+
+  host times, make list
+  host none, make list
+  save compiled, 0
+  fork
+    mark unsafe
+    host started, oracle-clock()
+    save compiled, compile-once(text, resolve, file)
+    times/push(subtract(oracle-clock(), started))
+  halt take
+    take problem
+    back make(timed-checks, bind(compiled, false), bind(violations, violation-of(<crash>, <compile threw: {oracle-message(problem)}>, text)), bind(times, times))
+
+  fork test, not(oracle-ok(compiled))
+    hold
+      back make(timed-checks, bind(compiled, false), bind(violations, none), bind(times, times))
+
+  host found, make list
+  host program, oracle-program-of(compiled)
+  host wake, oracle-wake-of(compiled)
+  walk emit-backends()
+    take backend
+    fork
+      mark unsafe
+      host emitted, call(backend/emit, program, wake)
+      fork test, oracle-empty-emit(emitted)
+        hold
+          found/push(make(oracle-violation, bind(oracle, <backend-emit>), bind(detail, <{backend/name} emitted nothing for a well-typed program>), bind(input, text)))
+    halt take
+      take problem
+      found/push(make(oracle-violation, bind(oracle, <backend-emit>), bind(detail, <{backend/name} emit threw on a well-typed program: {oracle-message(problem)}>), bind(input, text)))
+
+  back make(timed-checks, bind(compiled, true), bind(violations, found), bind(times, times))
+
+# the backend-emit oracle, also saying whether the program compiled (so a caller can count what was emitted)
+task backend-emit
+  take text, like text
+  take resolve, like dynamic
+  take file, like text, fall <o.tree>
+  like compiled-emit
+
+  host run, emit-run(text, resolve, file)
+  back make(compiled-emit, bind(compiled, run/compiled), bind(violations, run/violations))
+
+# a compiling program must emit non-empty code on every backend without throwing. One violation per backend that
+# failed
+task check-backend-emit
+  take text, like text
+  take resolve, like dynamic
+  take file, like text, fall <o.tree>
+  like list, like oracle-violation
+
+  back emit-run(text, resolve, file)/violations
+
+# flag a compile that exceeds a soft time budget (a near-hang, a blowup). A crash is the other oracles' to report
+task check-perf
+  take text, like text
+  take resolve, like dynamic
+  take budget-ms, like number
+  like list, like oracle-violation
+
+  host none, make list
+  host started, oracle-clock()
+  fork
+    mark unsafe
+    compile-once(text, resolve, <o.tree>)
+  halt take
+    take problem
+    back none
+  host ms, subtract(oracle-clock(), started)
+  fork test, is-above(ms, budget-ms)
+    hold
+      back violation-of(<perf>, oracle-perf-detail(ms, budget-ms), text)
+  back none
+
+# every oracle on one input
+task check-all
+  take ask, like check-ask
+  like list, like oracle-violation
+
+  host out, make list
+  walk check-round-trip(ask/text)
+    take each
+    out/push(each)
+  walk check-deterministic(ask/text, ask/resolve, <o.tree>)
+    take each
+    out/push(each)
+  walk check-backend-emit(ask/text, ask/resolve, <o.tree>)
+    take each
+    out/push(each)
+  walk check-perf(ask/text, ask/resolve, oracle-budget-or(ask, 1000))
+    take each
+    out/push(each)
+  back out
+
+# editor robustness: the tolerant parser must NEVER throw, on any input
+task check-tolerant
+  take text, like text
+  take parse-tolerant
+    like task
+      take source, like dynamic
+      like dynamic
+  like list, like oracle-violation
+
+  host none, make list
+  fork
+    mark unsafe
+    call(parse-tolerant, make(oracle-source, bind(file, <o.tree>), bind(text, text)))
+  halt take
+    take problem
+    back violation-of(<crash>, <parseTolerant threw (editor would crash): {oracle-message(problem)}>, text)
+  back none
+
+task already-found
+  take violations, like list, like file-violation
+  take file, like text
+  take check, like oracle-violation
+  like boolean
+  mark private
+
+  walk violations
+    take each
+    fork test, and(is-equal(each/file, file), and(is-equal(each/violation/oracle, check/oracle), is-equal(each/violation/detail, check/detail)))
+      hold
+        back true
+  back false
+
+# the oracles over a real corpus of files (the stdlib), where they catch defects on real code. `read-file` and
+# `parse-tolerant` are handed in, and every file compiles at its REAL path, so a relative load resolves
+task audit-corpus
+  take ask, like audit-ask
+  like corpus-audit
+
+  host violations, make list
+  host timings, make list
+  host unreadable, make list
+  host has-budget, oracle-has-budget(ask)
+  host budget, oracle-budget-or(ask, 0)
+  save compiled, 0
+
+  walk ask/files
+    take file
+    save text, <>
+    save readable, true
+    fork
+      mark unsafe
+      save text, call(ask/read-file, file)
+    halt take
+      take problem
+      unreadable/push(file)
+      save readable, false
+
+    fork test, readable
+      hold
+        host started, oracle-clock()
+        # the FASTEST of the file's three compiles (one to emit, two for determinism) is held to the budget: the first
+        # pays for loading the file's imports, and a budget is about the compiler, not a cold cache
+        save fastest, oracle-endless()
+        host emitted, emit-run(text, ask/resolve, file)
+        walk emitted/times
+          take ms
+          fork test, is-below(ms, fastest)
+            hold
+              save fastest, ms
+        fork test, emitted/compiled
+          hold
+            save compiled, add(compiled, 1)
+        host deterministic, deterministic-run(text, ask/resolve, file)
+        walk deterministic/times
+          take ms
+          fork test, is-below(ms, fastest)
+            hold
+              save fastest, ms
+
+        host checks, make list
+        walk check-round-trip(text)
+          take each
+          checks/push(each)
+        walk deterministic/violations
+          take each
+          checks/push(each)
+        walk emitted/violations
+          take each
+          checks/push(each)
+        walk check-tolerant(text, ask/parse-tolerant)
+          take each
+          checks/push(each)
+        fork test, and(has-budget, is-above(fastest, budget))
+          hold
+            checks/push(make(oracle-violation, bind(oracle, <perf>), bind(detail, oracle-fastest-detail(fastest, budget)), bind(input, text)))
+
+        # two oracles that both compile see the same throw; report it once per file
+        walk checks
+          take check
+          fork test, not(already-found(violations, file, check))
+            hold
+              violations/push(make(file-violation, bind(file, file), bind(violation, check)))
+        timings/push(make(file-time, bind(file, file), bind(ms, subtract(oracle-clock(), started))))
+
+  back
+    make corpus-audit
+      bind files, timings/length
+      bind unreadable, unreadable
+      bind compiled, compiled
+      bind violations, violations
+      bind slowest, oracle-slowest(timings)

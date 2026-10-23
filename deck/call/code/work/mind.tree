@@ -13,8 +13,8 @@ load @term/call/work/small/memory
 #
 # line.ts passed every option as yargs gave it, absent when not named, and callMind tells two of them apart from the
 # empty text: any `forget` forgets, and an absent `name` names the fact after itself. The hook hands an absent
-# option over as the empty text, so the empty text is none here. The global `--back` (`response`) is not reached
-# yet: the dispatcher keeps it for the output library only, so it is none.
+# option over as the empty text, so the empty text is none here. `--back` (`response`) is the program's option, and
+# the hook declares a `back` of its own so the dispatcher hands it here too, as yargs gave it to both (cli-in-term-0011).
 
 task given
   take value, like text
@@ -33,9 +33,10 @@ task mind
   take kind, like text
   take find, like text
   take forget, like text
+  take back, like text
 
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  call-mind(root, given(fact), given(name), given(kind), given(find), given(forget), make none)
+  call-mind(root, given(fact), given(name), given(kind), given(find), given(forget), given(back))

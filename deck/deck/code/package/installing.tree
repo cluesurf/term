@@ -66,12 +66,12 @@ dock load
     mark async
   load <node:fs>, name node-fs
   load <node:path>, name node-path
-  load <@term/deck/code/fetch>, name deck-fetch
-  load <@term/deck/code/store>, name deck-store
-  load <@term/deck/code/lock>, name deck-lock
-  load <@term/deck/code/workspace>, name deck-workspace
+  load <@term/deck/code/package/fetch>, name deck-fetch
+  load <@term/deck/code/package/store>, name deck-store
+  load <@term/deck/code/package/lock>, name deck-lock
+  load <@term/deck/code/package/workspace>, name deck-workspace
   load <@term/deck/code/oci/need>, name oci-need
-  load <@term/deck/code/name>, name deck-name
+  load <@term/deck/code/package/name>, name deck-name
 
 # what `install` answers: how many decks it installed, and the toolchain pin when the manifest asks for one
 form install-answer

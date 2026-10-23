@@ -1,0 +1,535 @@
+# A TOOLCHAIN RELEASE in an OCI registry: `@term/code`, the `term` command, one payload per platform
+# (note/project/term/term-load-install.md, note/term/self-host/09-distribution.md items R1 and R2). Ported from
+# deck/deck/code/oci/release.ts (term-cli-in-term-0092): RELEASE_ARTIFACT_TYPE, RELEASE_CONFIG_MEDIA_TYPE,
+# RELEASE_LAYER_MEDIA_TYPE, RELEASE_PLATFORMS, releaseRoute, releaseStatement, currentPlatform, verifyReleaseConfig,
+# publishRelease, readReleaseIndex, readRelease.
+#
+# A package version (artifact-format.tree) is a commit of source files in packs, and a release is not: it is a built
+# payload for ONE platform, installed whole and never checked out file by file. So it has its own shape:
+#
+#   tag <version>   an OCI image INDEX, one entry per platform, each with the `platform` field (os, architecture)
+#     manifest      artifactType application/vnd.cluesurf.term.release.v1
+#       config      who released what: package, version, platform, the layer's digest, the key, the signature
+#       layer 0     the payload, a .tar.gz, title `term-<platform>.tar.gz`
+#
+# THE LAYER DIGEST IS THE TARBALL'S SHA-256, so the shell loader and the Homebrew cask check a download against the
+# registry's own digest and need no second checksum file. The signature is what a digest cannot give: that the
+# scope's key set stands behind the bytes. It covers `term.release.v1 <package> <version> <platform> <layer digest>`,
+# every field an installer acts on, so none can be swapped without the key.
+#
+# The decisions:
+#   - the constants are tasks: release-artifact-type(), release-config-media-type(), release-layer-media-type(),
+#     release-platforms() (a fresh plain record per call, looked up as the original's object, so a name it lacks is
+#     refused the same way)
+#   - every task takes positional parameters: release-route(package-name, env), release-statement(package-name,
+#     version, platform, layer), verify-release-config(config, package-name, version, platform, layer),
+#     publish-release(transport, repository, package-name, version, payloads, keypair, annotations, log),
+#     read-release-index(transport, repository, version), read-release(transport, repository, package-name, version,
+#     platform); env, annotations and log none (undefined) where left out
+#   - configs, manifests and indexes are built in binds in the original's key order, so their bytes and digests are
+#     the original's; the transport is the caller's host record, called with the original's one record per method
+#   - every OciError is a halt of oci-failure (decision 007); signatures are object/id-signing.tree's, the route
+#     oci-routing.tree's oci-route-of over fetch.ts's default config (docked, through its face package/fetch.ts since
+#     term-cli-in-term-0115: the routes stay an object, as oci-route-of reads them)
+
+load ./oci-failure
+  find oci-failure
+
+load ./registry-transport
+  find manifest-media-type
+  find index-media-type
+  find sha256-digest
+
+load ./oci-routing
+  find oci-route-of
+
+load ../object/id-signing
+  find sign-id
+  find verify-id
+
+dock load
+  load <global:process>, name host-process
+  load <@term/deck/code/package/fetch>, name fetch-module
+
+bind payload-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind payload-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind payload-field
+  take record, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$record[$key]>
+
+bind payload-length
+  take value, like dynamic
+  like number
+  case node
+    text <$value.length>
+
+bind payload-at
+  take items, like dynamic
+  take index, like number
+  like dynamic
+  case node
+    text <$items[$index]>
+
+bind payload-list
+  take hint, like number
+  like dynamic
+  case node
+    text <<[]>>
+
+bind payload-push
+  take items, like dynamic
+  take item, like dynamic
+  like void
+  case node
+    text <$items.push($item)>
+
+bind payload-platform-table
+  take hint, like number
+  like dynamic
+  case node
+    text <<({ "darwin-arm64": { os: "darwin", architecture: "arm64" }, "darwin-x64": { os: "darwin", architecture: "amd64" }, "linux-x64": { os: "linux", architecture: "amd64" }, "linux-arm64": { os: "linux", architecture: "arm64" }, "windows-x64": { os: "windows", architecture: "amd64" }, "windows-arm64": { os: "windows", architecture: "arm64" } })>>
+
+bind payload-override
+  take env, like dynamic
+  take proc, like dynamic
+  like dynamic
+  case node
+    text <<($env ?? $proc.env)["TERM_RELEASE_REGISTRY"]?.trim()>>
+
+bind payload-scope-of
+  take name, like text
+  like text
+  case node
+    text <<($name.split("/")[0] ?? $name)>>
+
+bind payload-route-scope
+  take config, like dynamic
+  take scope, like text
+  take registry, like dynamic
+  like void
+  case node
+    text <<($config.scopeRegistries = { ...$config.scopeRegistries, [$scope]: $registry })>>
+
+bind payload-statement
+  take name, like dynamic
+  take version, like dynamic
+  take platform, like dynamic
+  take digest, like dynamic
+  like text
+  case node
+    text <<`term.release.v1 ${$name} ${$version} ${$platform} ${$digest}`>>
+
+bind payload-current
+  take proc, like dynamic
+  take table, like dynamic
+  like dynamic
+  case node
+    text <<((hereArch, hereOs) => { const hereName = hereOs && hereArch ? `${hereOs}-${hereArch}` : undefined; return hereName && $table[hereName] ? hereName : undefined })($proc.arch === "x64" ? "x64" : $proc.arch === "arm64" ? "arm64" : undefined, ({ darwin: "darwin", linux: "linux", win32: "windows" })[$proc.platform])>>
+
+bind payload-names-other
+  take config, like dynamic
+  take name, like text
+  take version, like text
+  take platform, like text
+  like boolean
+  case node
+    text <<($config.v !== 1 || $config.package !== $name || $config.version !== $version || $config.platform !== $platform)>>
+
+bind payload-said
+  take config, like dynamic
+  like text
+  case node
+    text <<`${$config.package}@${$config.version} for ${$config.platform}`>>
+
+bind payload-differs
+  take left, like dynamic
+  take right, like dynamic
+  like boolean
+  case node
+    text <($left !== $right)>
+
+bind payload-get-manifest
+  take transport, like dynamic
+  take repository, like dynamic
+  take reference, like dynamic
+  like dynamic
+  case node
+    text <<$transport.getManifest({ repository: $repository, reference: $reference })>>
+
+bind payload-put-blob
+  take transport, like dynamic
+  take repository, like dynamic
+  take digest, like text
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <<$transport.putBlob({ repository: $repository, digest: $digest, bytes: $bytes })>>
+
+bind payload-put-manifest
+  take transport, like dynamic
+  take repository, like dynamic
+  take reference, like dynamic
+  take bytes, like dynamic
+  take kind, like text
+  like dynamic
+  case node
+    text <<$transport.putManifest({ repository: $repository, reference: $reference, bytes: $bytes, mediaType: $kind })>>
+
+bind payload-get-blob
+  take transport, like dynamic
+  take repository, like dynamic
+  take descriptor, like dynamic
+  take limit, like number
+  like dynamic
+  case node
+    text <<$transport.getBlob({ repository: $repository, digest: $descriptor.digest, size: $descriptor.size, limit: $limit })>>
+
+bind payload-config
+  take name, like text
+  take version, like text
+  take platform, like text
+  take digest, like text
+  take key, like dynamic
+  take sig, like text
+  like dynamic
+  case node
+    text <<({ v: 1, package: $name, version: $version, platform: $platform, layer: $digest, key: $key, sig: $sig })>>
+
+bind payload-to-bytes
+  take value, like dynamic
+  like dynamic
+  case node
+    text <Buffer.from(JSON.stringify($value))>
+
+bind payload-manifest
+  take kind, like text
+  take artifact, like text
+  take ckind, like text
+  take cdigest, like text
+  take csize, like number
+  take lkind, like text
+  take digest, like text
+  take size, like number
+  take platform, like text
+  take name, like text
+  take version, like text
+  like dynamic
+  case node
+    text <<Buffer.from(JSON.stringify({ schemaVersion: 2, mediaType: $kind, artifactType: $artifact, config: { mediaType: $ckind, digest: $cdigest, size: $csize }, layers: [{ mediaType: $lkind, digest: $digest, size: $size, annotations: { "org.opencontainers.image.title": `term-${$platform}.tar.gz` } }], annotations: { "org.opencontainers.image.title": $name, "org.opencontainers.image.version": $version } }))>>
+
+bind payload-entry
+  take platform, like text
+  take manifest, like dynamic
+  take size, like number
+  take digest, like text
+  like dynamic
+  case node
+    text <<({ platform: $platform, manifest: $manifest, size: $size, layer: $digest })>>
+
+bind payload-log
+  take log, like dynamic
+  take message, like text
+  like void
+  case node
+    text <<($log ? $log($message) : undefined)>>
+
+bind payload-index
+  take kind, like text
+  take artifact, like text
+  take mkind, like text
+  take entries, like dynamic
+  take table, like dynamic
+  take annotations, like dynamic
+  take name, like text
+  take version, like text
+  like dynamic
+  case node
+    text <<Buffer.from(JSON.stringify({ schemaVersion: 2, mediaType: $kind, artifactType: $artifact, manifests: $entries.map(indexEntry => ({ mediaType: $mkind, digest: indexEntry.manifest, size: indexEntry.size, platform: $table[indexEntry.platform], annotations: { "org.opencontainers.image.title": `term-${indexEntry.platform}.tar.gz` } })), annotations: { ...$annotations, "org.opencontainers.image.title": $name, "org.opencontainers.image.version": $version } }))>>
+
+bind payload-published
+  take digest, like dynamic
+  take entries, like dynamic
+  like dynamic
+  case node
+    text <<({ index: $digest, entries: $entries })>>
+
+bind payload-parse
+  take bytes, like dynamic
+  like dynamic
+  case node
+    text <JSON.parse($bytes.toString("utf8"))>
+
+bind payload-platforms-of
+  take table, like dynamic
+  take index, like dynamic
+  like dynamic
+  case node
+    text <<Object.entries($table).filter(([, ofWant]) => $index.manifests?.some(ofOne => ofOne.platform?.os === ofWant.os && ofOne.platform?.architecture === ofWant.architecture)).map(([ofName]) => ofName)>>
+
+bind payload-index-answer
+  take digest, like dynamic
+  take platforms, like dynamic
+  like dynamic
+  case node
+    text <<({ digest: $digest, platforms: $platforms })>>
+
+bind payload-entry-of
+  take index, like dynamic
+  take want, like dynamic
+  like dynamic
+  case node
+    text <<$index.manifests?.find(entryOne => entryOne.platform?.os === $want?.os && entryOne.platform?.architecture === $want?.architecture)>>
+
+bind payload-listed
+  take platforms, like dynamic
+  like text
+  case node
+    text <<($platforms.join(", ") || "none")>>
+
+bind payload-is-moved
+  take fetched, like dynamic
+  take entry, like dynamic
+  like boolean
+  case node
+    text <<(!$fetched || $fetched.digest !== $entry.digest)>>
+
+bind payload-not-release
+  take manifest, like dynamic
+  take artifact, like text
+  take ckind, like text
+  take lkind, like text
+  take limit, like number
+  like boolean
+  case node
+    text <<((shapeLayer) => $manifest.artifactType !== $artifact || $manifest.config?.mediaType !== $ckind || $manifest.config.size > $limit || !shapeLayer || shapeLayer.mediaType !== $lkind)($manifest.layers?.[0])>>
+
+bind payload-read-answer
+  take config, like dynamic
+  take layer, like dynamic
+  like dynamic
+  case node
+    text <<({ config: $config, layer: $layer.digest, size: $layer.size })>>
+
+task release-artifact-type
+  like text
+
+  back <application/vnd.cluesurf.term.release.v1>
+
+task release-config-media-type
+  like text
+
+  back <application/vnd.cluesurf.term.release.config.v1+json>
+
+task release-layer-media-type
+  like text
+
+  back <application/vnd.cluesurf.term.release.v1.tar+gzip>
+
+# what a reader accepts for a release config, so a hostile registry cannot make it allocate without bound
+task release-config-limit
+  like number
+  mark private
+
+  back 65536
+
+# The platforms a release may carry, in 09's names, with the OCI `platform` each maps to. OCI says `amd64` where Node
+# and 09 say `x64`, and `windows` where Node says `win32`
+task release-platforms
+  like dynamic
+
+  back payload-platform-table(0)
+
+# Where a release lives: its scope's route, `ghcr.io/cluesurf/term/code` for `@term/code`.
+#
+# `TERM_RELEASE_REGISTRY=oci://<host>/<namespace>` moves it, for publishing to and installing from a registry other
+# than the scope's own: a staging namespace, or the loopback registry the end-to-end test runs. The one switch, read
+# by `pnpm term:release` and by `term self` alike, so the two never disagree about where a release is.
+task release-route
+  take package-name, like text
+  take env, like dynamic
+  like dynamic
+
+  save config, fetch-module/make-default-fetch-config()
+  save override, payload-override(env, host-process)
+  save scope, payload-scope-of(package-name)
+  fork test, payload-truthy(override)
+    hold
+      payload-route-scope(config, scope, override)
+
+  save route, oci-route-of(package-name, config)
+  fork test, not(payload-truthy(route))
+    hold
+      halt oci-failure
+        bind thing, <{package-name} does not route to an OCI registry>
+  back route
+
+# the exact text a release signature covers
+task release-statement
+  take package-name, like dynamic
+  take version, like dynamic
+  take platform, like dynamic
+  take layer, like dynamic
+  like text
+
+  back payload-statement(package-name, version, platform, layer)
+
+# this machine's platform in 09's names, or none when no release is built for it
+task current-platform
+  like dynamic
+
+  back payload-current(host-process, release-platforms())
+
+# whether this is a signed config for this release, this platform and these bytes; refuses, naming what does not match
+task verify-release-config
+  take config, like dynamic
+  take package-name, like text
+  take version, like text
+  take platform, like text
+  take layer, like text
+  like void
+
+  fork test, payload-names-other(config, package-name, version, platform)
+    hold
+      save said, payload-said(config)
+      halt oci-failure
+        bind thing, <the release config says {said}, not {package-name}@{version} for {platform}>
+
+  save signed, payload-field(config, <layer>)
+  fork test, payload-differs(signed, layer)
+    hold
+      halt oci-failure
+        bind thing, <the release config signs layer {signed}, and the manifest carries {layer}>
+
+  save statement, release-statement(payload-field(config, <package>), payload-field(config, <version>), payload-field(config, <platform>), signed)
+  fork test, not(verify-id(statement, payload-field(config, <sig>), payload-field(config, <key>)))
+    hold
+      halt oci-failure
+        bind thing, <the signature on {package-name}@{version} for {platform} does not verify>
+
+# Publish one release: every platform's layer, config and manifest by digest, then the index under the version tag.
+# WRITE-ONCE, like every version: a tag that already names an index is a refusal, so a release is never replaced.
+task publish-release
+  take transport, like dynamic
+  take repository, like dynamic
+  take package-name, like text
+  take version, like text
+  take payloads, like dynamic
+  take keypair, like dynamic
+  take annotations, like dynamic
+  take log, like dynamic
+  like dynamic
+
+  save existing, wait payload-get-manifest(transport, repository, version)
+  fork test, payload-truthy(existing)
+    hold
+      halt oci-failure
+        bind thing, <{package-name}@{version} is already released. Releases are write-once: raise the version>
+
+  save table, release-platforms()
+  save entries, payload-list(0)
+  save count, payload-length(payloads)
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save payload, payload-at(payloads, at)
+      save platform, payload-field(payload, <platform>)
+      fork test, not(payload-truthy(payload-field(table, platform)))
+        hold
+          halt oci-failure
+            bind thing, <no OCI platform is known for {platform}>
+
+      save bytes, payload-field(payload, <bytes>)
+      save layer, sha256-digest(bytes)
+      save sig, sign-id(release-statement(package-name, version, platform, layer), payload-field(keypair, <privateKey>))
+      save config, payload-config(package-name, version, platform, layer, payload-field(keypair, <publicKey>), sig)
+      save config-bytes, payload-to-bytes(config)
+      save config-digest, sha256-digest(config-bytes)
+
+      wait payload-put-blob(transport, repository, layer, bytes)
+      wait payload-put-blob(transport, repository, config-digest, config-bytes)
+
+      save manifest, payload-manifest(manifest-media-type(), release-artifact-type(), release-config-media-type(), config-digest, payload-length(config-bytes), release-layer-media-type(), layer, payload-length(bytes), platform, package-name, version)
+      save pushed, wait payload-put-manifest(transport, repository, sha256-digest(manifest), manifest, manifest-media-type())
+      save pushed-digest, payload-field(pushed, <digest>)
+
+      payload-push(entries, payload-entry(platform, pushed-digest, payload-length(manifest), layer))
+      payload-log(log, <{platform}: layer {layer}, manifest {pushed-digest}>)
+      save at, add(at, 1)
+
+  save index, payload-index(index-media-type(), release-artifact-type(), manifest-media-type(), entries, table, annotations, package-name, version)
+  save tagged, wait payload-put-manifest(transport, repository, version, index, index-media-type())
+  back payload-published(payload-field(tagged, <digest>), entries)
+
+# One release's index: its digest (what a lock.tree pins, covering every platform) and the platforms it carries. None
+# when the version is not released. Reads the index only, so it costs one request and verifies nothing.
+task read-release-index
+  take transport, like dynamic
+  take repository, like dynamic
+  take version, like dynamic
+  like dynamic
+
+  save indexed, wait payload-get-manifest(transport, repository, version)
+  fork test, not(payload-truthy(indexed))
+    hold
+      back payload-nothing()
+
+  save index, payload-parse(payload-field(indexed, <bytes>))
+  back payload-index-answer(payload-field(indexed, <digest>), payload-platforms-of(release-platforms(), index))
+
+# Read one platform's release and check it: the index under the version tag, the platform's manifest, its config, and
+# the signature over the layer the manifest names. Does NOT check the signer against the key set; the caller does
+# that with trusted-keys, the way package installs do.
+task read-release
+  take transport, like dynamic
+  take repository, like dynamic
+  take package-name, like text
+  take version, like text
+  take platform, like text
+  like dynamic
+
+  save indexed, wait payload-get-manifest(transport, repository, version)
+  fork test, not(payload-truthy(indexed))
+    hold
+      halt oci-failure
+        bind thing, <{package-name}@{version} is not released>
+
+  save index, payload-parse(payload-field(indexed, <bytes>))
+  save table, release-platforms()
+  save want, payload-field(table, platform)
+  save entry, payload-entry-of(index, want)
+  fork test, or(not(payload-truthy(want)), not(payload-truthy(entry)))
+    hold
+      save listed, payload-listed(payload-platforms-of(table, index))
+      halt oci-failure
+        bind thing, <{package-name}@{version} has no release for {platform}. It has {listed}>
+
+  save fetched, wait payload-get-manifest(transport, repository, payload-field(entry, <digest>))
+  fork test, payload-is-moved(fetched, entry)
+    hold
+      halt oci-failure
+        bind thing, <the {platform} manifest of {package-name}@{version} is missing or moved>
+
+  save manifest, payload-parse(payload-field(fetched, <bytes>))
+  fork test, payload-not-release(manifest, release-artifact-type(), release-config-media-type(), release-layer-media-type(), release-config-limit())
+    hold
+      halt oci-failure
+        bind thing, <the {platform} manifest of {package-name}@{version} is not a Term release>
+
+  save layer, payload-at(payload-field(manifest, <layers>), 0)
+  save config-bytes, wait payload-get-blob(transport, repository, payload-field(manifest, <config>), release-config-limit())
+  save config, payload-parse(config-bytes)
+  verify-release-config(config, package-name, version, platform, payload-field(layer, <digest>))
+  back payload-read-answer(config, layer)

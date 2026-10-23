@@ -38,6 +38,7 @@ form view-ask
   link root, like text
   link path, like text
   link find, like boolean
+  link back, like text
 
 form seek-ask
   link root, like text
@@ -76,6 +77,7 @@ task view
   mark async
   take path, like text
   take find, like boolean
+  take back, like text
 
   like void
 
@@ -88,6 +90,7 @@ task view
         bind root, read root
         bind path, read path
         bind find, read find
+        bind back, read back
       wait true
   halt take
     take error

@@ -46,7 +46,7 @@ dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <global:process>, name node-process
-  load <@term/deck/code/read>, name read-module
+  load <@term/deck/code/package/read>, name read-module
   # emit.ts, whose port is work/context/emission.tree, DOCKED: a load of it puts its task `read-runtime` beside
   # work/cask/toolchain.tree's (reached through building.tree), and a value reference to a task two files define
   # (`bind read-runtime, read-runtime`) is then an unknown name (traps.md, cli-in-term-0034)

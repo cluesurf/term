@@ -7,7 +7,7 @@
 // two lines to work around a limitation that was never in the language.
 
 import { describe, it, expect } from 'vitest'
-import { readTree } from '@/read'
+import { readTree } from '@/package/read'
 
 function forms(text: string) {
   const got = readTree({ file: 'x.tree', text })

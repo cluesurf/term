@@ -18,7 +18,7 @@ import { emitProgram } from '@term/call/code/emit'
 import type { EmitTarget } from '@term/call/code/emit'
 import { buildNative } from '@term/call/code/native-build'
 import { ENTRY_NAMES } from '@term/make/code/compile/native-main'
-import { readTree } from '@term/deck/code/read'
+import { readTree } from '@term/deck/code/package/read'
 import { closeRun, count, field, location, openRun, report, reportProblems, showPath } from '@term/call/code/output'
 
 export const PROJECT_ENVS = ['rust', 'swift', 'kotlin', 'node'] as const

@@ -9,35 +9,38 @@
 #     port that loads this module holds its own copy of it (traps, term-cli-in-term-0050), so a token is reused across
 #     every package of one resolve only while every caller reaches transports through one copy
 #   - a route is the original's host record; the fetch config is the caller's host value, read as the original read it
-#   - store.ts (getBaseDir, getStoreRoot), name.ts (parseScope, resolveRegistry, rootScope), auth.ts (credentialsFor),
-#     layout.ts (layoutObjectStore, layoutTransport) and transport.ts (httpTransport) are docked until their lanes
+#   - the store folders are file-store.tree's, the scope and registry naming registry-naming.tree's, the credentials
+#     registry-credentials.tree's, the layout image-layout.tree's and the HTTP transport registry-transport.tree's
+#     (store.ts, name.ts, auth.ts, layout.ts and transport.ts were docked until term-cli-in-term-0115 loaded the
+#     ports). A transport or store made here raises oci-failure; the TypeScript face client.ts lifts it to OciError
 
 load ./oci-address
   find is-oci-registry
   find parse-oci-registry
   find repository-of
 
+load ../package/file-store
+  find get-base-dir
+  find get-store-root
+
+load ../package/registry-naming
+  find parse-scope
+  find root-scope
+  find resolve-registry
+
+load ./registry-credentials
+  find credentials-for
+
+load ./image-layout
+  find layout-object-store
+  find layout-transport
+
+load ./registry-transport
+  find http-transport
+
 dock load
   load <node:path>, name node-path
   load <global:process>, name host-process
-  load <@term/deck/code/store>, name store-module
-  load <@term/deck/code/name>, name naming-module
-  load <@term/deck/code/oci/auth>, name auth-module
-  load <@term/deck/code/oci/layout>, name layout-module
-  load <@term/deck/code/oci/transport>, name transport-module
-
-form folder-ask
-  link dir, like text
-
-form layout-ask
-  link dir, like text
-  link prefix, like text
-
-form host-ask
-  link host, like text
-
-form scope-ask
-  link name, like text
 
 bind routing-env-text
   take env, like dynamic
@@ -45,14 +48,6 @@ bind routing-env-text
   like text
   case node
     text <($env[$key]?.trim() ?? "")>
-
-bind routing-transport
-  take module, like dynamic
-  take host, like text
-  take credentials, like dynamic
-  like dynamic
-  case node
-    text <<$module.httpTransport({ host: $host, credentials: $credentials })>>
 
 bind routing-scope-map
   take config, like dynamic
@@ -67,14 +62,13 @@ bind routing-has-key
   case node
     text <Boolean($key && $map[$key])>
 
-bind routing-resolve-registry
-  take module, like dynamic
-  take name, like text
-  take config, like dynamic
-  take map, like dynamic
-  like dynamic
+# the config's scope routes (an object, read by key as the original's resolveRegistry read it) as the hash
+# resolve-registry reads
+bind routing-routes
+  take routes, like dynamic
+  like hash, like text, like text
   case node
-    text <<$module.resolveRegistry({ name: $name, registry: $config.registry, scopeRegistries: $map })>>
+    text <<new Map(Object.entries($routes))>>
 
 bind routing-nothing
   like dynamic
@@ -110,7 +104,7 @@ task store-dir
   fork test, not(is-equal(pinned, <>))
     hold
       back pinned
-  back store-module/get-base-dir()
+  back get-base-dir()
 
 # where scope key pins are kept, beside the store. Not a cache: deleting it re-trusts every scope on first use
 task trust-dir
@@ -120,19 +114,19 @@ task trust-dir
   fork test, not(is-equal(pinned, <>))
     hold
       back pinned
-  back node-path/join(store-module/get-store-root(), <trust>)
+  back node-path/join(get-store-root(), <trust>)
 
 task local-store
   like dynamic
 
-  back layout-module/layout-object-store(make(folder-ask, bind(dir, store-dir())))
+  back layout-object-store(store-dir())
 
 # the local store read as a registry for one host, which is what an offline install resolves against
 task store-transport
   take host, like text
   like dynamic
 
-  back layout-module/layout-transport(make(layout-ask, bind(dir, store-dir()), bind(prefix, host)))
+  back layout-transport(store-dir(), host, routing-nothing())
 
 # one transport per host for the life of the process, so tokens are reused across every package of a resolve;
 # offline, the local store read as that host's registry
@@ -152,8 +146,9 @@ task transport-for
   save credentials
     task
       like dynamic
-      back auth-module/credentials-for(make(host-ask, bind(host, host)))
-  save made, routing-transport(transport-module, host, credentials)
+      back credentials-for(host, routing-nothing(), routing-nothing())
+  save absent, routing-nothing()
+  save made, http-transport(host, credentials, absent, absent, absent, absent, absent, absent)
   save transports/{host}, made
   back made
 
@@ -165,10 +160,10 @@ task oci-route-of
   take config, like dynamic
   like dynamic
 
-  save scope, naming-module/parse-scope(make(scope-ask, bind(name, name)))/scope
+  save scope, parse-scope(name)/scope
   save map, routing-scope-map(config)
   # the leading space of a nested scope, `@cluesurf` of `@cluesurf/@wordsurf`
-  save leading, naming-module/root-scope(scope)
+  save leading, root-scope(scope)
   save key, routing-nothing()
   fork test, routing-has-key(map, scope)
     hold
@@ -177,7 +172,7 @@ task oci-route-of
       fork test, routing-has-key(map, leading)
         hold
           save key, leading
-  save registry, routing-resolve-registry(naming-module, name, config, map)
+  save registry, resolve-registry(name, config/registry, routing-routes(map))
 
   fork test, not(is-oci-registry(registry))
     hold

@@ -1,0 +1,154 @@
+# The whole scan: the dependency audit and the code scan run together and merged into one ScanResult, the entry
+# point the CLI and CI call. Either half can be turned off; by default both run.
+#
+# Ported from deck/scan/code/scan.ts (term-cli-in-term-0096). run-scan takes the root, deps, code, sources, rules
+# and direct-only positionally, each switch read as the original read it (nothing is on); fails-threshold takes the
+# threshold with no default (the face passes `high` where the caller left it out). The findings are ordered worst
+# first by a stable insertion on severity-rank, which is the original's stable sort; the result is a host record
+# built in a bind in the original's key order.
+
+load ./dependency-audit
+  find audit-dependencies
+
+load ./code-scanning
+  find scan-project
+
+load ./severity-ranking
+  find severity-order
+  find severity-rank
+
+load @term/base/list
+  find list
+
+bind running-on
+  take value, like dynamic
+  like boolean
+  case node
+    text <<Boolean($value ?? true)>>
+
+bind running-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind running-read
+  take record, like dynamic
+  take key, like text
+  like dynamic
+  case node
+    text <$record[$key]>
+
+bind running-severity
+  take finding, like dynamic
+  like text
+  case node
+    text <$finding.severity>
+
+bind running-push-all
+  take shelf, like list, like dynamic
+  take items, like list, like dynamic
+  like void
+  case node
+    text <<$shelf.push(...$items)>>
+
+bind running-insert
+  take shelf, like list, like dynamic
+  take position, like number
+  take item, like dynamic
+  like void
+  case node
+    text <$shelf.splice($position, 0, $item)>
+
+bind running-zeroes
+  take words, like list, like text
+  like dynamic
+  case node
+    text <<Object.fromEntries($words.map(runningWord => [runningWord, 0]))>>
+
+bind running-count
+  take tally, like dynamic
+  take word, like text
+  like void
+  case node
+    text <$tally[$word]++>
+
+bind running-result
+  take findings, like list, like dynamic
+  take dependencies, like number
+  take files, like number
+  take tally, like dynamic
+  take consulted, like list, like text
+  take unavailable, like list, like text
+  like dynamic
+  case node
+    text <<({ findings: $findings, dependencyCount: $dependencies, fileCount: $files, bySeverity: $tally, advisorySources: $consulted, unavailableSources: $unavailable })>>
+
+task run-scan
+  take root, like text
+  take deps, like dynamic
+  take code, like dynamic
+  take sources, like dynamic
+  take rules, like dynamic
+  take direct-only, like dynamic
+  like dynamic
+
+  host do-deps, running-on(deps)
+  host do-code, running-on(code)
+  save findings, make list
+  save consulted, make list
+  save unavailable, make list
+  save dependency-count, 0
+  save file-count, 0
+
+  fork test, do-deps
+    hold
+      host audit, audit-dependencies(root, sources, running-truthy(direct-only))
+      running-push-all(findings, running-read(audit, <findings>))
+      save dependency-count, running-read(audit, <dependencyCount>)
+      running-push-all(consulted, running-read(audit, <consultedSources>))
+      running-push-all(unavailable, running-read(audit, <unavailableSources>))
+
+  fork test, do-code
+    hold
+      host scan, scan-project(root, rules)
+      running-push-all(findings, running-read(scan, <findings>))
+      save file-count, running-read(scan, <fileCount>)
+
+  # worst first, so the most severe findings lead; equal severities keep their order
+  save sorted, make list
+  walk findings
+    take finding
+    host rank, severity-rank(running-severity(finding))
+    save position, sorted/length
+    save index, 0
+    walk sorted
+      take placed
+      fork test, is-below(severity-rank(running-severity(placed)), rank)
+        hold
+          save position, index
+          halt
+      save index, add(index, 1)
+    running-insert(sorted, position, finding)
+
+  host tally, running-zeroes(severity-order())
+  walk sorted
+    take finding
+    running-count(tally, running-severity(finding))
+
+  back running-result(sorted, dependency-count, file-count, tally, consulted, unavailable)
+
+# one boolean gate for CI: is any finding at or above the threshold severity?
+task fails-threshold
+  take result, like dynamic
+  take threshold, like text
+  like boolean
+
+  host bar, severity-rank(threshold)
+  walk running-read(result, <findings>)
+    take finding
+    fork test, is-minimum(severity-rank(running-severity(finding)), bar)
+      hold
+        back true
+
+  back false

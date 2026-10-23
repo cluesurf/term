@@ -349,13 +349,25 @@ task find-unused
 
   save warnings, make list
 
-  # program-wide references: every name read in any function body (call targets included, since a `call helper`
-  # reads the `helper` variable). Used to spot a private function that nothing in the program calls.
+  # the references of this file: every name read in a function body of its own (call targets included, since a
+  # `call helper` reads the `helper` variable). Used to spot a private function that nothing calls. A private task is
+  # visible only in its file, so a read of the name in another module (its own bind, a local) never reaches it: counted
+  # program-wide, the merged build saw work/inspect/looking.tree's `cell(...)` and base-words.tree's local `cell` as
+  # uses of repository.tree's private `cell`, while the separate build, holding no other module's bodies, warned
+  # (term-compiler-0057)
   save referenced, fresh-reads()
   walk program
     take one
     sift one
       case function
+        sift span/file
+          case some
+            link where
+            fork test, is-unequal(where, file)
+              hold
+                turn next
+          case none
+            save nothing, 0
         walk-body(body, fresh-declared(), referenced)
       miss
         turn next

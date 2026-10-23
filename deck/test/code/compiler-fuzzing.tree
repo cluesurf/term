@@ -1,0 +1,808 @@
+# Compiler fuzzing (Fuzzilli-style, structure-aware): mutate valid `.tree` sources and feed them to the live compiler,
+# hunting for inputs that CRASH it. The oracle is robustness: a correct compiler always answers, `ok` or a list of
+# diagnostics, and NEVER throws, so any input that makes `compile` throw is a compiler bug, surfaced here with the
+# exact (shrunk) input that triggers it.
+#
+# The mutators work at the `.tree` line level (the format is indentation-significant), so a mutant stays close to a
+# plausible program and reaches the parser, mill, resolver and checker rather than bouncing off the lexer: change a
+# line's indentation, duplicate, delete or swap lines, replace a head word with another keyword, splice a line in from
+# another corpus entry, truncate. A mutant that shows a diagnostic code not seen before joins the corpus (the AFL
+# idea), so the search drives toward new compiler behavior.
+#
+# Ported from deck/test/code/compiler-fuzz.ts (term-cli-in-term-0109). The decisions:
+#   - the generator is seeded-random.tree's mulberry32, the original's `makeRng`, so a seed mutates the same way
+#   - `fuzzCompiler`'s options are the record `fuzz-ask`, every field present: `has-budget` says whether a perf budget
+#     was given, which the original told by `perfBudgetMs !== undefined` (it decides whether the report has `slow`)
+#   - `shrinkInput`'s inner `ddmin` closed over the lines and the word being shrunk; here `ddmin` takes a `shrink-frame`
+#     saying how a list of parts is joined back into the program (the lines, or one line's words between the lines
+#     before and after it), and the attempt count is a one-item list, as seeded-random holds its state
+#   - every text operation whose meaning is JavaScript's (a `\s` pattern, `trimStart`, a length in UTF-16 units,
+#     `Number(text)`, `JSON`, `performance.now`) is a host bind, the original's own expression
+#   - `DEFAULT_FUZZ_CORPUS` is `default-fuzz-corpus`; the CLI's `term hunt` forks itself into `run-fuzz-campaign`
+#   - a crash's text carries the error's stack, whose outer frames name this module rather than the original's
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load @term/base/text
+  find split
+
+load @term/base/float
+  find round-down
+  find to-decimal
+  find to-number
+
+load ./seeded-random
+  find seed-state
+  find next-random
+
+dock load
+  load <@term/make/code/compile/compile>, name compiling-module
+  load <node:fs>, name node-fs
+
+# a small corpus of valid, self-contained Term programs in CURRENT syntax. deck/test/test/hunt.test.ts holds every
+# entry to compiling clean
+host default-fuzz-corpus
+  make list
+    <task answer\n  like number\n  send back\n    code 42\n>
+    <form point\n  link x, like number\n  link y, like number\n>
+    <task add-one\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      code 1\n>
+    <task pick\n  take a, like number\n  take b, like number\n  like number\n  fork test\n    hook test\n      call is-above\n        read a\n        read b\n    hook hold\n      send back\n        read a\n    hook miss\n      send back\n        read b\n>
+
+# the head words the compiler recognizes: swapping these stresses the mill
+host fuzz-keywords
+  make list
+    <task>
+    <call>
+    <send>
+    <back>
+    <take>
+    <like>
+    <form>
+    <link>
+    <case>
+    <fork>
+    <hook>
+    <walk>
+    <save>
+    <host>
+    <read>
+    <make>
+    <bind>
+    <load>
+    <find>
+    <mark>
+    <text>
+    <code>
+    <halt>
+    <turn>
+    <show>
+    <fuse>
+    <tree>
+    <note>
+    <wait>
+    <dock>
+    <rule>
+    <have>
+    <must>
+
+form crash
+  link input, like text
+  link error, like text
+  # the run that produced it
+  link generation, like number
+
+form slow-input
+  link input, like text
+  link ms, like number
+
+form shrunk-crash
+  link signature, like text
+  link input, like text
+  link from, like text
+
+form fuzz-report
+  link runs, like number
+  link crashes, like list, like crash
+  # distinct diagnostic codes observed (a coverage proxy), ascending
+  link codes-seen, like list, like number
+  link corpus-grew, like number
+  # the inputs whose compile took longer than the budget, slowest first; only when a budget was given
+  link slow
+    like list, like slow-input
+    need false
+  # per crash signature, the smallest program found that still raises it, shrunk from the smallest the fuzzer hit
+  link shrunk
+    like list, like shrunk-crash
+    need false
+
+form fuzz-ask
+  link corpus, like list, like text
+  link runs, like number
+  link seed, like number
+  link mutations-per-run, like number
+  # written with the input under test BEFORE each compile, so a watchdog that kills a hung run can read it; `<>` for none
+  link probe-file, like text
+  link has-budget, like boolean
+  link perf-budget-ms, like number
+
+# one compile's outcome: its diagnostic codes, or the crash it threw
+form compile-outcome
+  link crashed, like boolean
+  link codes, like list, like number
+  link crash, like text
+
+# how ddmin joins its parts back into a program: the lines themselves, or one line's words, at `indent`, between
+# `before` and `after`
+form shrink-frame
+  link words, like boolean
+  link before, like list, like text
+  link indent, like text
+  link after, like list, like text
+
+form fuzz-source
+  link file, like text
+  link text, like text
+
+form fuzz-compile-options
+  link resolve
+    like task
+      take path, like text
+      like dynamic
+
+bind fuzz-tab
+  like text
+  case node
+    text <String.fromCharCode(9)>
+
+bind fuzz-trim-start
+  take line, like text
+  like text
+  case node
+    text <<$line.trimStart()>>
+
+bind fuzz-indent-of
+  take line, like text
+  like text
+  case node
+    text <<($line.match(/^\s*/)?.[0] ?? "")>>
+
+bind fuzz-rest-words
+  take line, like text
+  like text
+  case node
+    text <<$line.trimStart().split(/\s+/).slice(1).join(" ")>>
+
+bind fuzz-words-after
+  take line, like text
+  take count, like number
+  like list, like text
+  case node
+    text <<$line.slice($count).split(/\s+/).filter(Boolean)>>
+
+bind fuzz-text-length
+  take line, like text
+  like number
+  case node
+    text <$line.length>
+
+bind fuzz-insert-line
+  take rows, like list, like text
+  take place, like number
+  take added, like text
+  like void
+  case node
+    text <$rows.splice($place, 0, $added)>
+
+bind fuzz-remove-line
+  take rows, like list, like text
+  take place, like number
+  like void
+  case node
+    text <$rows.splice($place, 1)>
+
+bind fuzz-first-lines
+  take rows, like list, like text
+  take count, like number
+  like list, like text
+  case node
+    text <$rows.slice(0, $count)>
+
+bind fuzz-signature-text
+  take error, like text
+  like text
+  case node
+    text <$error.split(String.fromCharCode(10))[0].slice(0, 100)>
+
+# a compile's diagnostic codes, its warnings when it compiled and its diagnostics when not
+bind fuzz-codes
+  take compiled, like dynamic
+  like list, like number
+  case node
+    text <(($compiled.ok ? $compiled.warnings : $compiled.diagnostics) ?? []).map((fuzzDiagnostic) =\> fuzzDiagnostic.code)>
+
+# what a crash says: an Error's message and stack, anything else as text
+bind fuzz-crash-text
+  take problem, like dynamic
+  like text
+  case node
+    text <($problem instanceof Error ? $problem.message + String.fromCharCode(10) + ($problem.stack ?? "") : String($problem))>
+
+bind fuzz-clock
+  like number
+  case node
+    text <performance.now()>
+
+bind fuzz-round
+  take ms, like number
+  like number
+  case node
+    text <Math.round($ms)>
+
+bind fuzz-sorted-codes
+  take seen, like list, like number
+  like list, like number
+  case node
+    text <[...$seen].sort((codeA, codeB) =\> codeA - codeB)>
+
+bind fuzz-slowest
+  take found, like list, like slow-input
+  like list, like slow-input
+  case node
+    text <$found.sort((slowA, slowB) =\> slowB.ms - slowA.ms).slice(0, 5)>
+
+bind fuzz-arg
+  take words, like list, like text
+  take place, like number
+  like text
+  case node
+    text <($words[$place] ?? "")>
+
+bind fuzz-number-or
+  take given, like text
+  take fallback, like number
+  like number
+  case node
+    text <($given ? Number($given) : $fallback)>
+
+bind fuzz-read-corpus
+  take file, like text
+  like list, like text
+  case node
+    text <JSON.parse(process.getBuiltinModule("node:fs").readFileSync($file, "utf8"))>
+
+bind fuzz-write-report
+  take file, like text
+  take report, like fuzz-report
+  like void
+  case node
+    text <process.getBuiltinModule("node:fs").writeFileSync($file, JSON.stringify($report))>
+
+bind fuzz-refuse
+  take message, like text
+  like void
+  case node
+    text <(() =\> \{ throw new Error($message) \})()>
+
+bind fuzz-nothing
+  take path, like text
+  like dynamic
+  case node
+    text <undefined>
+
+# the resolver a fuzzed input compiles with: every load reaches nothing (`() => undefined`)
+task resolve-nothing
+  take path, like text
+  like dynamic
+  mark private
+
+  back fuzz-nothing(path)
+
+# DEFAULT_FUZZ_CORPUS, for a caller outside this module (a module constant is not exported)
+task fuzz-corpus
+  like list, like text
+
+  back default-fuzz-corpus
+
+# what a crash is known by: its message's first line. Two crashes of one signature are one defect
+task signature-of
+  take error, like text
+  like text
+
+  back fuzz-signature-text(error)
+
+# a whole number in [0, count)
+task draw-below
+  take state, like list, like number
+  take count, like number
+  like number
+
+  back to-number(round-down(multiply(next-random(state), to-decimal(count))))
+
+# one structure-aware mutation of a `.tree` source
+task mutate
+  take text, like text
+  take corpus, like list, like text
+  take state, like list, like number
+  like text
+  mark private
+
+  host rows, split(text, <\n>)
+  host indents, make list(<>, <  >, <    >, <      >, fuzz-tab())
+  host choice, draw-below(state, 7)
+
+  fork test, is-equal(choice, 0)
+    hold
+      # change a line's indentation
+      host at, draw-below(state, rows/length)
+      host indent, get(indents, draw-below(state, indents/length))
+      rows/set(at, <{indent}{fuzz-trim-start(get(rows, at))}>)
+      back join(rows, <\n>)
+  fork test, is-equal(choice, 1)
+    hold
+      # duplicate a line
+      host at, draw-below(state, rows/length)
+      host copied, get(rows, at)
+      fuzz-insert-line(rows, at, copied)
+      back join(rows, <\n>)
+  fork test, is-equal(choice, 2)
+    hold
+      # delete a line
+      host at, draw-below(state, rows/length)
+      fuzz-remove-line(rows, at)
+      back join(rows, <\n>)
+  fork test, is-equal(choice, 3)
+    hold
+      # swap two lines
+      host first, draw-below(state, rows/length)
+      host second, draw-below(state, rows/length)
+      host first-row, get(rows, first)
+      host second-row, get(rows, second)
+      rows/set(first, second-row)
+      rows/set(second, first-row)
+      back join(rows, <\n>)
+  fork test, is-equal(choice, 4)
+    hold
+      # replace the head word of a line with a random keyword
+      host at, draw-below(state, rows/length)
+      host row, get(rows, at)
+      host indent, fuzz-indent-of(row)
+      host rest, fuzz-rest-words(row)
+      host keyword, get(fuzz-keywords, draw-below(state, fuzz-keywords/length))
+      fork test, is-equal(rest, <>)
+        hold
+          rows/set(at, <{indent}{keyword}>)
+        miss
+          rows/set(at, <{indent}{keyword} {rest}>)
+      back join(rows, <\n>)
+  fork test, is-equal(choice, 5)
+    hold
+      # splice a line in from another corpus entry
+      host donor, split(get(corpus, draw-below(state, corpus/length)), <\n>)
+      host at, draw-below(state, add(rows/length, 1))
+      host given, get(donor, draw-below(state, donor/length))
+      fuzz-insert-line(rows, at, given)
+      back join(rows, <\n>)
+
+  # truncate at a random line
+  back join(fuzz-first-lines(rows, draw-below(state, rows/length)), <\n>)
+
+# compile one input, never throwing: its diagnostic codes, or the crash
+task try-compile
+  take input, like text
+  like compile-outcome
+
+  host nothing, make list
+  host source
+    make fuzz-source
+      bind file, <fuzz.tree>
+      bind text, input
+  host options
+    make fuzz-compile-options
+      bind resolve, resolve-nothing
+  fork
+    mark unsafe
+    host compiled, compiling-module/compile(source, options)
+    back
+      make compile-outcome
+        bind crashed, false
+        bind codes, fuzz-codes(compiled)
+        bind crash, <>
+  halt take
+    take problem
+    back
+      make compile-outcome
+        bind crashed, true
+        bind codes, nothing
+        bind crash, fuzz-crash-text(problem)
+
+# fuzz the compiler from a corpus: `runs` mutated inputs, every one that shows a new diagnostic code kept (the corpus
+# grows toward new behavior), and every input that makes the compiler throw recorded
+task fuzz-compiler
+  take ask, like fuzz-ask
+  like fuzz-report
+
+  host state, seed-state(ask/seed)
+  host corpus, make list
+  walk ask/corpus
+    take each
+    corpus/push(each)
+  host seen, make hash
+  host crashes, make list
+  host slow, make list
+  save grew, 0
+
+  # the corpus itself seeds the coverage
+  walk corpus
+    take entry
+    host outcome, try-compile(entry)
+    fork test, not(outcome/crashed)
+      hold
+        walk outcome/codes
+          take found
+          seen/set(found, true)
+
+  save run, 0
+  walk test
+    hook test, is-below(run, ask/runs)
+    hook hold
+      save text, get(corpus, draw-below(state, corpus/length))
+      host count, add(1, draw-below(state, ask/mutations-per-run))
+      save step, 0
+      walk test
+        hook test, is-below(step, count)
+        hook hold
+          save text, mutate(text, corpus, state)
+          save step, add(step, 1)
+
+      fork test, not(is-equal(ask/probe-file, <>))
+        hold
+          node-fs/write-file-sync(ask/probe-file, text)
+      host started, fuzz-clock()
+      host outcome, try-compile(text)
+      host took, subtract(fuzz-clock(), started)
+
+      fork test, and(ask/has-budget, is-above(took, ask/perf-budget-ms))
+        hold
+          host again, fuzz-clock()
+          try-compile(text)
+          save ms, subtract(fuzz-clock(), again)
+          fork test, is-below(took, ms)
+            hold
+              save ms, took
+          fork test, is-above(ms, ask/perf-budget-ms)
+            hold
+              slow/push(make(slow-input, bind(input, text), bind(ms, fuzz-round(ms))))
+
+      fork test, outcome/crashed
+        hold
+          crashes/push(make(crash, bind(input, text), bind(error, outcome/crash), bind(generation, run)))
+        miss
+          # coverage-guided: a mutant that showed a new diagnostic code joins the corpus
+          save novel, false
+          walk outcome/codes
+            take found
+            fork test, not(seen/has(found))
+              hold
+                seen/set(found, true)
+                save novel, true
+          fork test, and(novel, is-below(corpus/length, 500))
+            hold
+              corpus/push(text)
+              save grew, add(grew, 1)
+      save run, add(run, 1)
+
+  host codes, make list
+  walk seen/keys()
+    take code
+    codes/push(code)
+
+  fork test, ask/has-budget
+    hold
+      back
+        make fuzz-report
+          bind runs, ask/runs
+          bind crashes, crashes
+          bind codes-seen, fuzz-sorted-codes(codes)
+          bind corpus-grew, grew
+          bind slow, fuzz-slowest(slow)
+
+  back
+    make fuzz-report
+      bind runs, ask/runs
+      bind crashes, crashes
+      bind codes-seen, fuzz-sorted-codes(codes)
+      bind corpus-grew, grew
+
+# the parts joined back into the whole program
+task join-parts
+  take frame, like shrink-frame
+  take parts, like list, like text
+  like text
+  mark private
+
+  fork test, frame/words
+    miss
+      back join(parts, <\n>)
+
+  host whole, make list
+  walk frame/before
+    take each
+    whole/push(each)
+  whole/push(<{frame/indent}{join(parts, < >)}>)
+  walk frame/after
+    take each
+    whole/push(each)
+  back join(whole, <\n>)
+
+# `tries++ < limit && keeps(text)`: every attempt counted, the judgment asked only under the limit
+task still-holds
+  take keeps
+    like task
+      take text, like text
+      like boolean
+  take tries, like list, like number
+  take limit, like number
+  take text, like text
+  like boolean
+  mark private
+
+  host before, get(tries, 0)
+  tries/set(0, add(before, 1))
+  fork test, is-below(before, limit)
+    hold
+      back keeps(text)
+  back false
+
+# ddmin over the parts: drop a chunk and keep the drop when it still fails, halve the chunks when none can go, down to
+# single parts
+task ddmin
+  take parts, like list, like text
+  take frame, like shrink-frame
+  take keeps
+    like task
+      take text, like text
+      like boolean
+  take tries, like list, like number
+  take limit, like number
+  like list, like text
+  mark private
+
+  save current, parts
+  save chunks, 2
+
+  walk test
+    hook test, and(is-minimum(current/length, 2), is-below(get(tries, 0), limit))
+    hook hold
+      host size, fuzz-ceiling(current/length, chunks)
+      save dropped, false
+      save start, 0
+      walk test
+        hook test, and(not(dropped), is-below(start, current/length))
+        hook hold
+          host rest, fuzz-without(current, start, size)
+          # `rest.length > 0 && holds(...)`: an attempt is counted only for a rest that has parts
+          fork test, is-above(rest/length, 0)
+            hold
+              fork test, still-holds(keeps, tries, limit, join-parts(frame, rest))
+                hold
+                  save current, rest
+                  save chunks, maximum-of(subtract(chunks, 1), 2)
+                  save dropped, true
+          save start, add(start, size)
+      fork test, not(dropped)
+        hold
+          fork test, is-minimum(chunks, current/length)
+            hold
+              halt
+          save chunks, minimum-of(multiply(chunks, 2), current/length)
+
+  # a single part that still fails alone is as small as a list goes, but one part may be droppable entirely
+  fork test, is-equal(current/length, 1)
+    hold
+      host none, make list
+      fork test, still-holds(keeps, tries, limit, join-parts(frame, none))
+        hold
+          back none
+
+  back current
+
+bind fuzz-ceiling
+  take total, like number
+  take parts, like number
+  like number
+  case node
+    text <Math.ceil($total / $parts)>
+
+bind fuzz-without
+  take rows, like list, like text
+  take start, like number
+  take size, like number
+  like list, like text
+  case node
+    text <[...$rows.slice(0, $start), ...$rows.slice($start + $size)]>
+
+task maximum-of
+  take a, like number
+  take b, like number
+  like number
+  mark private
+
+  fork test, is-above(a, b)
+    hold
+      back a
+  back b
+
+task minimum-of
+  take a, like number
+  take b, like number
+  like number
+  mark private
+
+  fork test, is-below(a, b)
+    hold
+      back a
+  back b
+
+# SHRINK A FAILING INPUT to a smaller one `keeps` still holds of: ddmin over its lines, then over the words of each
+# line left, until no single line and no single word can go. `keeps` is the whole judgment; `limit` bounds the
+# attempts, since each is a compile
+task shrink-input
+  take input, like text
+  take keeps
+    like task
+      take text, like text
+      like boolean
+  take limit, like number, fall 4000
+  like text
+
+  host tries, make list(0)
+  host nothing, make list
+  host lines-frame
+    make shrink-frame
+      bind words, false
+      bind before, nothing
+      bind indent, <>
+      bind after, nothing
+  save rows, ddmin(split(input, <\n>), lines-frame, keeps, tries, limit)
+
+  # then each line's words, its indentation kept, since a line's depth is part of the program
+  save at, 0
+  walk test
+    hook test, and(is-below(at, rows/length), is-below(get(tries, 0), limit))
+    hook hold
+      host row, get(rows, at)
+      host indent, fuzz-indent-of(row)
+      host words, fuzz-words-after(row, fuzz-text-length(indent))
+      fork test, is-minimum(words/length, 2)
+        hold
+          host frame
+            make shrink-frame
+              bind words, true
+              bind before, fuzz-first-lines(rows, at)
+              bind indent, indent
+              bind after, fuzz-lines-from(rows, add(at, 1))
+          host kept, ddmin(words, frame, keeps, tries, limit)
+          host rebuilt, make list
+          walk fuzz-first-lines(rows, at)
+            take each
+            rebuilt/push(each)
+          rebuilt/push(<{indent}{join(kept, < >)}>)
+          walk fuzz-lines-from(rows, add(at, 1))
+            take each
+            rebuilt/push(each)
+          save rows, rebuilt
+      save at, add(at, 1)
+
+  back join(rows, <\n>)
+
+bind fuzz-lines-from
+  take rows, like list, like text
+  take start, like number
+  like list, like text
+  case node
+    text <$rows.slice($start)>
+
+# shrink a crash: the smallest program that still makes the compiler throw with the SAME signature. A probe file,
+# when given, holds each candidate before it compiles, so a candidate that hangs is reported as the hang it is
+task shrink-crash
+  take input, like text
+  take signature, like text
+  take probe-file, like text, fall <>
+
+  like text
+
+  save same-crash
+    task
+      take text, like text
+      like boolean
+      fork test, not(is-equal(probe-file, <>))
+        hold
+          node-fs/write-file-sync(probe-file, text)
+      host outcome, try-compile(text)
+      back and(outcome/crashed, is-equal(signature-of(outcome/crash), signature))
+
+  back shrink-input(input, same-crash, 4000)
+
+# one fuzz campaign as a CHILD PROCESS body: `<report-out> <probe-file> <runs> <seed> [<corpus.json>] [<budget>]`.
+# The corpus file is a JSON list of extra seed programs (the hunted project's own files). Writes the report as fuzzed,
+# then again with each signature's smallest crash shrunk; a parent that finds no report knows the campaign did not
+# finish
+task run-fuzz-campaign
+  take args, like list, like text
+  like fuzz-report
+
+  host report-out, fuzz-arg(args, 0)
+  host probe-file, fuzz-arg(args, 1)
+  host runs-arg, fuzz-arg(args, 2)
+  host seed-arg, fuzz-arg(args, 3)
+  host corpus-file, fuzz-arg(args, 4)
+  host budget-arg, fuzz-arg(args, 5)
+
+  fork test, is-equal(report-out, <>)
+    hold
+      fuzz-refuse(<fuzz campaign: no report path given>)
+
+  host corpus, make list
+  walk default-fuzz-corpus
+    take each
+    corpus/push(each)
+  fork test, not(is-equal(corpus-file, <>))
+    hold
+      walk fuzz-read-corpus(corpus-file)
+        take each
+        corpus/push(each)
+
+  host ask
+    make fuzz-ask
+      bind corpus, corpus
+      bind runs, fuzz-number-or(runs-arg, 3000)
+      bind seed, fuzz-number-or(seed-arg, 7)
+      bind mutations-per-run, 4
+      bind probe-file, probe-file
+      bind has-budget, not(is-equal(budget-arg, <>))
+      bind perf-budget-ms, fuzz-number-or(budget-arg, 0)
+  host report, fuzz-compiler(ask)
+
+  # the report as fuzzed, BEFORE shrinking: a shrink that hangs is killed by the watchdog, and what was found must
+  # survive it
+  fuzz-write-report(report-out, report)
+
+  # then each signature's smallest crash, shrunk to the smallest program that still raises it
+  host smallest, make hash
+  host order, make list
+  walk report/crashes
+    take each
+    host signature, signature-of(each/error)
+    fork test, smallest/has(signature)
+      hold
+        fork test, is-below(fuzz-text-length(each/input), fuzz-text-length(smallest/get(signature)))
+          hold
+            smallest/set(signature, each/input)
+      miss
+        smallest/set(signature, each/input)
+        order/push(signature)
+
+  host shrunk, make list
+  walk order
+    take signature
+    host from, smallest/get(signature)
+    shrunk/push(make(shrunk-crash, bind(signature, signature), bind(input, shrink-crash(from, signature, probe-file)), bind(from, from)))
+  save report/shrunk, shrunk
+  fuzz-write-report(report-out, report)
+
+  back report
+
+# shrink a crashing input to the smallest program that still crashes the same way
+task minimize-crash
+  take input, like text
+  like text
+
+  host first, try-compile(input)
+  fork test, first/crashed
+    hold
+      back shrink-crash(input, signature-of(first/crash), <>)
+  back input

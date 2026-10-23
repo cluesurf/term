@@ -1,0 +1,225 @@
+# Whether an installed version is affected by an advisory, and the lowest safe upgrade: the vulnerable-version-range
+# match. An advisory affects a version when ANY of its three vulnerable-version forms matches (structured ranges,
+# explicit versions, or an npm range expression).
+#
+# Ported from deck/scan/code/match.ts (term-cli-in-term-0093). An advisory and its ranges are the original's host
+# records (form.ts Advisory, AdvisoryRange), read field by field through binds named for this module. The original's
+# Set of candidates is a list kept free of repeats in the order first seen, and its sort a stable insertion by
+# compare-version, which is the original's stable sort by the same order.
+
+load ./version-range
+  find to-code
+  find compare-version
+  find satisfies
+
+load @term/base/list
+  find list
+
+bind matching-lists-version
+  take advisory, like dynamic
+  take version, like text
+  like boolean
+  case node
+    text <<Boolean($advisory.versions && $advisory.versions.includes($version))>>
+
+bind matching-ranges
+  take advisory, like dynamic
+  like list, like dynamic
+  case node
+    text <$advisory.ranges>
+
+bind matching-introduced
+  take window, like dynamic
+  like text
+  case node
+    text <<($window.introduced ?? "0")>>
+
+bind matching-has-fixed
+  take window, like dynamic
+  like boolean
+  case node
+    text <<($window.fixed !== undefined)>>
+
+bind matching-fixed-is-truthy
+  take window, like dynamic
+  like boolean
+  case node
+    text <<Boolean($window.fixed)>>
+
+bind matching-fixed
+  take window, like dynamic
+  like text
+  case node
+    text <$window.fixed>
+
+bind matching-has-last
+  take window, like dynamic
+  like boolean
+  case node
+    text <<($window.lastAffected !== undefined)>>
+
+bind matching-last
+  take window, like dynamic
+  like text
+  case node
+    text <$window.lastAffected>
+
+bind matching-has-expression
+  take advisory, like dynamic
+  like boolean
+  case node
+    text <<Boolean($advisory.rangeExpression)>>
+
+bind matching-expression
+  take advisory, like dynamic
+  like text
+  case node
+    text <$advisory.rangeExpression>
+
+bind matching-fixed-versions
+  take advisory, like dynamic
+  like list, like text
+  case node
+    text <<($advisory.fixedVersions ?? [])>>
+
+bind matching-insert
+  take shelf, like list, like text
+  take position, like number
+  take item, like text
+  like void
+  case node
+    text <$shelf.splice($position, 0, $item)>
+
+bind matching-is-something
+  take value, like dynamic
+  like boolean
+  case node
+    text <<($value !== undefined)>>
+
+bind matching-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+# is the version inside one structured window? `introduced <= v`, and `v < fixed` or no fixed, and
+# `v <= lastAffected` or no lastAffected. An absent or `0` introduced means from the beginning
+task in-range
+  take version, like text
+  take window, like dynamic
+  like boolean
+  mark private
+
+  host introduced, matching-introduced(window)
+  fork test, and(not(is-equal(introduced, <0>)), is-below(compare-version(version, introduced), 0))
+    hold
+      back false
+  fork test, matching-has-fixed(window)
+    hold
+      host fixed, matching-fixed(window)
+      fork test, is-minimum(compare-version(version, fixed), 0)
+        hold
+          back false
+  fork test, matching-has-last(window)
+    hold
+      host last, matching-last(window)
+      fork test, is-above(compare-version(version, last), 0)
+        hold
+          back false
+
+  back true
+
+# is an installed version affected by the advisory? An unparseable version is matched only by an exact listing or
+# the range expression, never by the structured windows
+task is-affected
+  take version, like text
+  take advisory, like dynamic
+  like boolean
+
+  host parsed, to-code(version)
+  fork test, matching-lists-version(advisory, version)
+    hold
+      back true
+  fork test, matching-is-something(parsed)
+    hold
+      walk matching-ranges(advisory)
+        take window
+        fork test, in-range(version, window)
+          hold
+            back true
+  fork test, matching-has-expression(advisory)
+    hold
+      host expression, matching-expression(advisory)
+      fork test, satisfies(version, expression)
+        hold
+          back true
+
+  back false
+
+# the advisory's known fixed versions: its `fixedVersions`, then every window's `fixed`, each once, in the order
+# first seen
+task fixed-versions-of
+  take advisory, like dynamic
+  like list, like text
+
+  save out, make list
+  walk matching-fixed-versions(advisory)
+    take fixed
+    fork test, not(out/contains(fixed))
+      hold
+        out/push(fixed)
+  walk matching-ranges(advisory)
+    take window
+    fork test, matching-fixed-is-truthy(window)
+      hold
+        host fixed, matching-fixed(window)
+        fork test, not(out/contains(fixed))
+          hold
+            out/push(fixed)
+
+  back out
+
+# the lowest version that clears EVERY advisory affecting a package: the smallest of the advisories' known fixed
+# versions above the installed one that no advisory still marks affected, or nothing when none is
+task plan-upgrade
+  take current-version, like text
+  take advisories, like list, like dynamic
+  like dynamic
+
+  save candidates, make list
+  walk advisories
+    take advisory
+    walk fixed-versions-of(advisory)
+      take fixed
+      # only upgrades, strictly newer than what is installed
+      fork test, and(is-above(compare-version(fixed, current-version), 0), not(candidates/contains(fixed)))
+        hold
+          candidates/push(fixed)
+
+  save sorted, make list
+  walk candidates
+    take candidate
+    save position, sorted/length
+    save index, 0
+    walk sorted
+      take placed
+      fork test, is-above(compare-version(placed, candidate), 0)
+        hold
+          save position, index
+          halt
+      save index, add(index, 1)
+    matching-insert(sorted, position, candidate)
+
+  walk sorted
+    take candidate
+    save still-vulnerable, false
+    walk advisories
+      take advisory
+      fork test, is-affected(candidate, advisory)
+        hold
+          save still-vulnerable, true
+          halt
+    fork test, not(still-vulnerable)
+      hold
+        back candidate
+
+  back matching-nothing()
