@@ -17,8 +17,10 @@
 //     `seed` now names the math library, and an alias would hand every stale import the stdlib
 //   - an in-tree package resolves by name after the link dir (`siblingResolver`), and only one that declares itself
 //     with a deck.tree. The symlinks it replaced were absolute and gitignored, and @term/face carried 40 errors from them
-//   - a linked file is canonicalized through `realpath`, so a package reached through `link/` and by its real path is
-//     one module
+//   - every answer is canonicalized through `realpath` (the stdlib, sibling and `link/` resolvers alike, as the project
+//     resolver's relative loads are), so a file reached through a symlinked folder and by its real path is one module.
+//     A stdlib under a linked folder (`TERM_STDLIB=<link>/base`) answered the lexical path while its relative loads
+//     answered the real one, and every name two files define lost its binding (term-compiler-0067)
 //   - the search for a name walks each package ONCE, `@term` first, and skips `tmp/` and a package's own `link/`. On the
 //     Term root it took 4.8 s for a missing name until 2026-10-05
 
@@ -170,7 +172,7 @@ export function stdlibResolver(): Resolver | undefined {
       return undefined
     }
 
-    return sourceOf(resolvePackagePath({ dir: base, rest, base: how?.base }))
+    return sourceOf(resolvePackagePath({ dir: base, rest, base: how?.base }), realpathSync)
   }
 }
 
@@ -200,7 +202,7 @@ export function siblingResolver(): Resolver | undefined {
       return undefined
     }
 
-    return sourceOf(resolvePackagePath({ dir: root, rest: sibling.rest, base: how?.base }))
+    return sourceOf(resolvePackagePath({ dir: root, rest: sibling.rest, base: how?.base }), realpathSync)
   }
 }
 

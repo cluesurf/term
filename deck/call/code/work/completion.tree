@@ -1,0 +1,538 @@
+# Shell completion: what `term --get-yargs-completions <words>` answers, the way yargs 17 answered it for line.ts's
+# `.completion('fill', ...)` (node_modules/yargs/build/lib/completion.js and yargs-factory.js `kRunYargsParserAndExecuteCommands`).
+# The script `term fill` prints calls it with the command line typed so far, `term` included, the word under the cursor
+# last (the empty word after a space). The answer is one completion per line: zsh's `name:description`, or bash's bare
+# names, by `SHELL` (or `ZSH_NAME`) naming zsh. The shell filters by what is typed, so `term ma` answers every command.
+#
+# The routes are the data (decision term/003): the commands are the program's nested hooks, the options every take of
+# the program and of the commands named, the choices a take's `pick`s. Rule for rule, as yargs gave them:
+#
+# - THE CONTEXT is the command the whole line names, read as yargs' parser read it: a flag takes the next word as its
+#   value unless it is a known boolean, has `=`, is `--no-<x>`, or the next word starts with `-`, so the key itself
+#   takes `term`; a bare word that names a command of the current one descends into it, the first that does not stops
+#   the descent, and `fill` (the completion command) is passed over. `--` makes every later word bare.
+# - A COMMAND MARKED `mark pass` (zone, mark) is not answered: yargs ran it, its parser reading the key as one of its
+#   words, so the console runs it too, the key and its value taken out when they stand before the command.
+# - CHOICES: when the last word, or the one before it with the last as a filter, is a flag whose take has `pick`s,
+#   those that start with the filter, and nothing else.
+# - COMMANDS, when the word under the cursor is not a flag and is not the command just named: every command of the
+#   context the line does not already hold, in source order.
+# - OPTIONS, when the word is a flag, or empty and no command was listed: every key of the context (the program's
+#   takes, then each command's, a take named twice in its first place with its last note; a take's name, then its
+#   letter and its long aliases, except the help and version takes, whose aliases yargs held apart), none a slot's,
+#   none the line already holds by any of its take's names; `--key`, or `-k` for a one-letter key unless the word
+#   starts with `--`. A boolean never gets a `--no-` form: line.ts's parser configuration left `boolean-negation` out.
+#
+# Not reproduced: yargs' second descent inside the context (a command named after an unknown word, which yargs entered
+# only when line.ts gave it a builder function, and the routes do not say which did), and choices of a positional
+# (no slot of the console has a `pick`). term-cli-in-term-0144.
+
+load @term/base/text
+  find starts-with
+  find substring
+  find char-count
+  find contains
+  find index-of
+  find replace-all
+
+load @term/make/compile/node
+  find dock-route
+  find dock-take
+
+load @term/base/maybe
+  find maybe
+  find some
+  find none
+
+load @term/base/console
+  find log
+
+dock load
+  load <global:process>, name host-process
+
+# What a command line asks of completion. `asked` when it holds the key. Then either `passes`, and `words` is the
+# command line to run, or the `lines` to print
+form completion
+  link asked, like boolean
+  link passes, like boolean
+  link lines, like list, like text
+  link words, like list, like text
+
+# The command a line names: its path, the commands under it, every take in reach, and where the key stood
+form completion-context
+  link path, like list, like text
+  link children, like list, like dock-route
+  link takes, like list, like dock-take
+  link passes, like boolean
+  link path-end, like number
+  link key-at, like number
+  link key-value, like boolean
+
+# one key of the options yargs offered: the key, and the take it names
+form option-key
+  link key, like text
+  link name, like text
+
+# a value of a host object as text, or the empty text when it is none
+task env-text
+  take value, like unknown
+  like text
+  sift value
+    case text
+      back value
+    miss
+      back <>
+
+# does the shell asking speak zsh? yargs read SHELL, then ZSH_NAME
+task is-zsh
+  like boolean
+  save shell, env-text(host-process/env/SHELL)
+  save name, env-text(host-process/env/ZSH_NAME)
+  back or(contains(shell, <zsh>), contains(name, <zsh>))
+
+# the command of this name among these
+task child-named
+  take routes, like list, like dock-route
+  take token, like text
+  like maybe, like dock-route
+  walk routes
+    take one
+    fork test, is-equal(one/path, token)
+      hold
+        back make(some, one)
+  back make none
+
+# every name a take answers to: its name, its letter, its long aliases
+task names-of
+  take one, like dock-take
+  like list, like text
+  save names, make list
+  names/push one/name
+  fork test, is-unequal(one/short, <>)
+    hold
+      names/push one/short
+  walk one/aliases
+    take alias
+    names/push alias
+  back names
+
+# the take one of whose names is this word
+task take-named
+  take takes, like list, like dock-take
+  take word, like text
+  like maybe, like dock-take
+  walk takes
+    take one
+    walk names-of(one)
+      take name
+      fork test, is-equal(name, word)
+        hold
+          back make(some, one)
+  back make none
+
+task is-boolean
+  take one, like dock-take
+  like boolean
+  sift one/type
+    case some
+      sift value
+        case boolean
+          back true
+        miss
+          back false
+    case none
+      back false
+
+# the key a flag word names: `--emit` is `emit`, `-q` is `q`, and of a cluster `-abc` the last letter, which is the one
+# that can take a value
+task flag-key
+  take word, like text
+  like text
+  fork test, starts-with(word, <-->)
+    hold
+      back substring(word, 2)
+  save size, char-count(word)
+  back substring(word, subtract(size, 1))
+
+# does this flag word take the next word as its value, as yargs-parser read it?
+task takes-next
+  take takes, like list, like dock-take
+  take word, like text
+  take next, like text
+  like boolean
+  fork test, is-minimum(index-of(word, <=>), 0)
+    hold
+      back false
+  fork test, starts-with(word, <--no->)
+    hold
+      back false
+  sift take-named(takes, flag-key(word))
+    case some
+      fork test, is-boolean(value)
+        hold
+          back or(is-equal(next, <true>), is-equal(next, <false>))
+    case none
+      save nothing, 0
+  back not(starts-with(next, <->))
+
+# the command the whole line names, read as yargs' parser read it before it answered
+task context-of
+  take commands, like list, like dock-route
+  take globals, like list, like dock-take
+  take words, like list, like text
+  like completion-context
+  save path, make list
+  save level, commands
+  save takes, make list
+  walk globals
+    take one
+    takes/push one
+  save passes, false
+  save descending, true
+  save raw, false
+  save path-end, 0
+  save key-at, -1
+  save key-value, false
+  save at, 0
+  save count, words/length
+  walk test
+    hook test, and(is-below(at, count), not(passes))
+    hook hold
+      save word, words/{at}
+      save at, add(at, 1)
+      save bare, raw
+      fork test, not(raw)
+        hold
+          fork test, is-equal(word, <-->)
+            hold
+              save raw, true
+            miss
+              fork test, and(starts-with(word, <->), is-unequal(word, <->))
+                hold
+                  save here, subtract(at, 1)
+                  save key, and(is-equal(word, <--get-yargs-completions>), is-below(key-at, 0))
+                  fork test, key
+                    hold
+                      save key-at, here
+                  fork test, is-below(at, count)
+                    hold
+                      fork test, takes-next(takes, word, words/{at})
+                        hold
+                          save at, add(at, 1)
+                          fork test, key
+                            hold
+                              save key-value, true
+                miss
+                  save bare, true
+      fork test, and(bare, descending)
+        hold
+          # the completion command is passed over, and the reading goes on (yargs-factory.js, the command loop)
+          fork test, is-unequal(word, <fill>)
+            hold
+              sift child-named(level, word)
+                case some
+                  path/push word
+                  save path-end, at
+                  save level, value/children
+                  walk value/takes
+                    take one
+                    takes/push one
+                  fork test, value/passes
+                    hold
+                      save passes, true
+                case none
+                  save descending, false
+  back make completion-context, path(path), children(level), takes(takes), passes(passes), path-end(path-end), key-at(key-at), key-value(key-value)
+
+# the words after the key: what the shell's script handed over
+task asked-words
+  take words, like list, like text
+  like list, like text
+  save asked, make list
+  save found, false
+  walk words
+    take word
+    fork test, found
+      hold
+        asked/push word
+      miss
+        fork test, is-equal(word, <--get-yargs-completions>)
+          hold
+            save found, true
+  back asked
+
+# does the line hold the key, before any `--`?
+task is-asked
+  take words, like list, like text
+  like boolean
+  walk words
+    take word
+    fork test, is-equal(word, <-->)
+      hold
+        back false
+    fork test, is-equal(word, <--get-yargs-completions>)
+      hold
+        back true
+  back false
+
+task strip-dashes
+  take word, like text
+  like text
+  save rest, word
+  walk test
+    hook test, starts-with(rest, <->)
+    hook hold
+      save rest, substring(rest, 1)
+  back rest
+
+# the choices the last words ask for: the flag before the cursor's word (or the cursor's word itself), filtered by the
+# word typed after it (completion.js getPreviousArgChoices)
+task previous-choices
+  take takes, like list, like dock-take
+  take args, like list, like text
+  like list, like text
+  save found, make list
+  save count, args/length
+  fork test, is-below(count, 1)
+    hold
+      back found
+  save previous, args/{subtract(count, 1)}
+  save filter, <>
+  fork test, and(not(starts-with(previous, <->)), is-above(count, 1))
+    hold
+      save filter, previous
+      save previous, args/{subtract(count, 2)}
+  fork test, not(starts-with(previous, <->))
+    hold
+      back found
+  sift take-named(takes, strip-dashes(previous))
+    case some
+      walk value/choices
+        take choice
+        fork test, or(is-equal(filter, <>), starts-with(choice, filter))
+          hold
+            found/push choice
+    case none
+      save nothing, 0
+  back found
+
+# a word with its colons escaped, as zsh's `_describe` reads `name:description`
+task escape-colons
+  take value, like text
+  like text
+  back replace-all(value, <:>, <\\:>)
+
+# a note on one line, as yargs flattened it
+task one-line
+  take value, like text
+  like text
+  save flat, replace-all(value, <\r\n>, < >)
+  save flat, replace-all(flat, <\n>, < >)
+  back replace-all(flat, <\r>, < >)
+
+task holds-word
+  take words, like list, like text
+  take word, like text
+  like boolean
+  walk words
+    take one
+    fork test, is-equal(one, word)
+      hold
+        back true
+  back false
+
+task holds-key
+  take keys, like list, like option-key
+  take key, like text
+  like boolean
+  walk keys
+    take one
+    fork test, is-equal(one/key, key)
+      hold
+        back true
+  back false
+
+# the dashes a key is written with: `-` for one letter that is not a digit, else `--`
+task dashes-for
+  take key, like text
+  like text
+  fork test, and(is-equal(char-count(key), 1), not(contains(<0123456789>, key)))
+    hold
+      back <->
+  back <-->
+
+# the keys of the options, in yargs' order: every take once, at its first place, its name then its letter and long
+# aliases (the help and version takes by their name alone)
+task option-keys
+  take globals, like list, like dock-take
+  take takes, like list, like dock-take
+  like list, like option-key
+  save keys, make list
+  walk takes
+    take one
+    save global, false
+    walk globals
+      take other
+      fork test, is-equal(other/name, one/name)
+        hold
+          save global, true
+    save names, make list
+    fork test, and(global, or(is-equal(one/name, <hint>), is-equal(one/name, <version>)))
+      hold
+        names/push one/name
+      miss
+        save names, names-of(one)
+    walk names
+      take name
+      fork test, not(holds-key(keys, name))
+        hold
+          keys/push make option-key, key(name), name(one/name)
+  back keys
+
+# the last take of this name: the note a key shows is the one given last
+task last-take
+  take takes, like list, like dock-take
+  take name, like text
+  like dock-take
+  save found, takes/0
+  walk takes
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        save found, one
+  back found
+
+# is this key a slot's (a positional is never offered as an option)?
+task is-slot-key
+  take takes, like list, like dock-take
+  take key, like text
+  like boolean
+  walk takes
+    take one
+    fork test, and(one/positional, holds-word(names-of(one), key))
+      hold
+        back true
+  back false
+
+# does the line already hold this take, by any of its names?
+task holds-take
+  take args, like list, like text
+  take one, like dock-take
+  like boolean
+  walk names-of(one)
+    take name
+    fork test, holds-word(args, <{dashes-for(name)}{name}>)
+      hold
+        back true
+  back false
+
+# the completions for the words after the key, in the context the line names
+task completions-of
+  take context, like completion-context
+  take globals, like list, like dock-take
+  take args, like list, like text
+  take zsh, like boolean
+  like list, like text
+  save lines, make list
+  save current, <>
+  fork test, is-above(args/length, 0)
+    hold
+      save current, args/{subtract(args/length, 1)}
+
+  save choices, previous-choices(context/takes, args)
+  fork test, is-above(choices/length, 0)
+    hold
+      walk choices
+        take choice
+        lines/push escape-colons(choice)
+      back lines
+
+  # the commands, unless the word is a flag or the command just named
+  save named, false
+  save depth, context/path/length
+  fork test, is-above(depth, 0)
+    hold
+      save named, is-equal(context/path/{subtract(depth, 1)}, current)
+  fork test, and(not(starts-with(current, <->)), not(named))
+    hold
+      walk context/children
+        take one
+        fork test, not(holds-word(args, one/path))
+          hold
+            fork test, zsh
+              hold
+                lines/push <{escape-colons(one/path)}:{one/note}>
+              miss
+                lines/push one/path
+
+  # the options, when the word is a flag, or empty with no command offered
+  fork test, or(starts-with(current, <->), and(is-equal(current, <>), is-equal(lines/length, 0)))
+    hold
+      save takes, context/takes
+      walk option-keys(globals, takes)
+        take entry
+        save one, last-take(takes, entry/name)
+        fork test, and(not(is-slot-key(takes, entry/key)), not(holds-take(args, one)))
+          hold
+            save dashes, <-->
+            fork test, not(starts-with(current, <-->))
+              hold
+                save dashes, dashes-for(entry/key)
+            fork test, zsh
+              hold
+                lines/push <{dashes}{escape-colons(entry/key)}:{one-line(one/note)}>
+              miss
+                lines/push <{dashes}{entry/key}>
+  back lines
+
+# A command line, asked whether it requests completions, and what they are (the console's `start-line` calls it
+# before anything else reads the line)
+task complete-line
+  take commands, like list, like dock-route
+  take globals, like list, like dock-take
+  take words, like list, like text
+  like completion
+  save nothing, make list
+  fork test, not(is-asked(words))
+    hold
+      back make completion, asked(false), passes(false), lines(nothing), words(words)
+  save context, context-of(commands, globals, words)
+  fork test, context/passes
+    hold
+      # the key and its value leave the line when they stand before the command; after it they are its words
+      save kept, make list
+      walk words
+        take word
+        take at
+        save dropped, false
+        fork test, is-below(context/key-at, context/path-end)
+          hold
+            fork test, is-equal(at, context/key-at)
+              hold
+                save dropped, true
+            fork test, and(context/key-value, is-equal(at, add(context/key-at, 1)))
+              hold
+                save dropped, true
+        fork test, not(dropped)
+          hold
+            kept/push word
+      back make completion, asked(true), passes(true), lines(nothing), words(kept)
+  save lines, completions-of(context, globals, asked-words(words), is-zsh())
+  back make completion, asked(true), passes(false), lines(lines), words(words)
+
+# print the completions, one per line, nothing when there are none
+task print-completions
+  take lines, like list, like text
+  like void
+  save text, <>
+  walk lines
+    take line
+    take at
+    fork test, is-equal(at, 0)
+      hold
+        save text, line
+      miss
+        save text, <{text}\n{line}>
+  fork test, is-above(lines/length, 0)
+    hold
+      log text

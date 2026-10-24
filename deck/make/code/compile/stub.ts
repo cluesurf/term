@@ -280,9 +280,17 @@ export function stubProgram(program: Program, known?: StubKnown, underProof = fa
       case 'record-type':
       case 'mask':
       case 'instance':
-      case 'bind':
       case 'native':
         out.push(statement)
+        break
+
+      // a native binding under the name it was WRITTEN with: one a task of another file shares its name with is renamed
+      // apart in its own unit (`is-given__native0`, check/disambiguate.tree `bind-natives-apart`), and a dependent whose
+      // `find is-given` reached it found no definition there, or bound the name to the other file's task (flow's
+      // code-actions.tree reached a private task of templates.tree, `private-name`). The dependent splits the two again
+      // by its own imports. A binding is written inline at each call, so no module exports it
+      case 'bind':
+        out.push({ ...statement, name: statement.name.replace(/__native\d+$/, '') })
         break
 
       // a component's surface is its name and its props. Its body, as its own unit's checker left it, is a shape

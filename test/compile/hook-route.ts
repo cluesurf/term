@@ -6,6 +6,7 @@
 // task's own `slot` parameter means what it meant.
 // Run: npx tsx test/compile/hook-route.ts
 
+import { readFileSync } from 'node:fs'
 import { compile } from '@term/make/code/compile/compile'
 import { statementJson } from '@term/make/code/compile/node-json'
 import type { Statement } from '@term/make/code/compile/node'
@@ -349,6 +350,20 @@ slotPassRefused('    slot first\n      mark pass\n      like list, like text\n  
 slotPassRefused('    slot rest\n      mark pass\n      like list, like text', 'itself `mark pass`', 'mark pass on a slot under a passing hook is refused', '    mark pass\n')
 slotPassRefused('    slot rest\n      mark async\n      like list, like text', '`mark async` is not read under a slot', 'another mark word on a slot is refused')
 slotPassRefused('    take rest\n      mark pass\n      like list, like text', 'mark pass', 'mark pass under a take is refused')
+
+// zone's own console marks `call`'s and `load`'s last slot (decision cli-in-term/012 part 2)
+const zoneRoot = `${process.cwd()}/../../../zone`
+const zoneFile = `${zoneRoot}/code/line/base.tree`
+const zoneBuilt = compile(
+  { file: zoneFile, text: readFileSync(zoneFile, 'utf8') },
+  { ...asCall, resolve: projectResolver(zoneRoot) },
+)
+ok('zone\'s console compiles', zoneBuilt.ok, zoneBuilt.ok ? '' : zoneBuilt.diagnostics.slice(0, 3).map(d => d.message).join(' | '))
+const zoneConsole = (zoneBuilt.ok ? zoneBuilt.program : []).find((s): s is Dock => s.form === 'dock')
+const zonePassing = (zoneConsole?.route.children ?? []).flatMap(route =>
+  route.takes.filter(take => take.passes).map(take => `${route.path} ${take.name}`),
+)
+ok('zone call and zone load pass at their list slot, and nothing else does', JSON.stringify(zonePassing) === '["call list","load list"]', JSON.stringify(zonePassing))
 
 // A MAYBE TAKE OR SLOT CAN BE ABSENT (decision cli-in-term/008 part 1): its route keeps the whole `maybe` type with
 // its item, and `need true`, a `bind` default or a maybe of a list is refused, naming the take

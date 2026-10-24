@@ -61,6 +61,11 @@ load @term/base/console
 load @term/call/work/help
   find help-text
 
+# what a shell's completion script asks for (term-cli-in-term-0144)
+load @term/call/work/completion
+  find complete-line
+  find print-completions
+
 dock load
   load <@term/call/code/home>, name home-module
   load <@term/call/code/output>, name output-module
@@ -518,6 +523,18 @@ task start-line
   save home, text-or-empty(host-os/homedir())
   home-module/settle(host-path/join(home, <.base>))
   home-module/settle(host-path/join(root, <.base>), root)
+
+  # `--get-yargs-completions`: what the script `term fill` prints asks for the command line typed so far, answered
+  # from the routes before the help, the version or a command reads the line, as yargs answered it
+  # (work/completion.tree, term-cli-in-term-0144). A line that names a `mark pass` command runs that command instead
+  save asked, complete-line(commands-of(routes), globals-of(routes), words)
+  fork test, asked/asked
+    hold
+      fork test, not(asked/passes)
+        hold
+          print-completions(asked/lines)
+          back done-with(0)
+      save words, asked/words
 
   save version, text-or-empty(show-module/termVersion())
   # the global options are the program's takes (decision term/003 part 3), and the commands its nested hooks
