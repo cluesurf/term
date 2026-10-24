@@ -8,8 +8,27 @@
 #
 # `POST /analyze {file, text}` answers that document's diagnostics, the build's errors or, when it builds, its
 # warnings. `POST /close {file}` drops a document's warm state. `GET /health` reports liveness and how many documents
-# are warm. Docked: hono, @hono/node-server, compile/compile, compile/cache, call/code/make (projectResolver),
-# call/code/boot (findProjectRoot), call/code/role-of, call/code/deck-of.
+# are warm. Docked: hono, @hono/node-server, compile/compile, compile/cache. The project root is found by the boot
+# lane's port (boot/entry-finding.tree, loaded since term-cli-in-term-0066), and the resolver, the role readers and the
+# deck finder are the build lane's ports (term-cli-in-term-0214).
+
+load ../boot/entry-finding
+  find find-project-root
+
+load ../build/project-resolving
+  find make-project-resolver
+
+load ../build/deck-finding
+  find make-deck-finder
+
+load ../build/role-reading
+  find make-role-reader
+
+load ../build/host-faces
+  find face-project-resolver
+  find face-deck-finder
+  find face-role-reader
+  find face-lean-reader
 
 dock load
   load <hono>, name hono-module
@@ -17,10 +36,6 @@ dock load
   load <node:path>, name node-path
   load <@term/make/code/compile/compile>, name compiling-module
   load <@term/make/code/compile/cache>, name cache-module
-  load <@term/call/code/make>, name making-module
-  load <@term/call/code/boot>, name booting-module
-  load <@term/call/code/role-of>, name role-reading
-  load <@term/call/code/deck-of>, name deck-reading
 
 # ---- the host values Term has no word for ----
 
@@ -154,11 +169,12 @@ task start-daemon
   take options, like dynamic
   like daemon
 
-  save project-root, booting-module/find-project-root(options/root)
-  save resolve, making-module/project-resolver(project-root, daemon-or(options/env, <node>))
-  save role-of, role-reading/project-role-of(project-root)
-  save lean-of, role-reading/project-lean-of(project-root)
-  save deck-of, deck-reading/project-deck-of()
+  save project-root, find-project-root(options/root)
+  save resolve, face-project-resolver(make-project-resolver(project-root, daemon-or(options/env, <node>)))
+  save reader, make-role-reader(project-root)
+  save role-of, face-role-reader(reader)
+  save lean-of, face-lean-reader(reader)
+  save deck-of, face-deck-finder(make-deck-finder())
   save port, daemon-or(options/port, 5179)
   # one compile cache for every document: a second question about a file reads again only what changed
   save cache, daemon-new-cache(cache-module)

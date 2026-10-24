@@ -1596,6 +1596,8 @@ task head-line
   take options, like layout-options
   take places, like list, like boolean
   take parent, like maybe, like node
+  # a lean part written `f(...)`: its riders are written inside the parentheses, `f(a, b)`, never `f a, b`
+  take closed, like boolean
   like head-line
   mark private
 
@@ -1708,12 +1710,16 @@ task head-line
           fork test, and(is-equal(n, 1), is-leaf(get(riders, 0)))
             hold
               save rider, flatten(get(riders, 0), false, place-at(places, 0), options, false)
+              fork test, closed
+                hold
+                  back head-line-of(1, <{indent}{h}{mark}({rider})>)
               back head-line-of(1, <{indent}{h} {rider}{mark}>)
           fork test, not(is-optional(group))
             hold
               # one part that is not a word rides only when it closes itself
               save closes, true
-              fork test, is-equal(n, 1)
+              # inside the parentheses every part closes itself
+              fork test, and(is-equal(n, 1), not(closed))
                 hold
                   save only, get(riders, 0)
                   save closes, and(and(is-group-node(only), is-call(only)), place-at(places, 0))
@@ -1726,6 +1732,9 @@ task head-line
                     push(rendered, flatten(kid, is-below(j, subtract(n, 1)), place-at(places, j), options, false))
                     save j, add(j, 1)
                   save text, <{h} {join(rendered, <, >)}>
+                  fork test, closed
+                    hold
+                      save text, <{h}({join(rendered, <, >)})>
                   save checked, make list
                   push(checked, head)
                   walk riders
@@ -2050,7 +2059,9 @@ task format-group
     case none
       save nothing, 0
   # a lean part under a call written `f(...)` keeps that spelling on its own line however wide (lean-shaped-kid): stacked,
-  # it would lose the parentheses and with them a label-or-call refusal. A comment inside it stacks as before
+  # it would lose the parentheses and with them a label-or-call refusal. A comment inside it stacks, and its head line
+  # keeps the parentheses round the parts that ride on it, `name(<x>)` over the comment (term-compiler-0071)
+  save keep-parens, false
   sift parent
     case some
       link above
@@ -2066,6 +2077,7 @@ task format-group
             hold
               push(lines, <{indent}{flatten(group, true, in-value, options, false)}>)
               back lines
+          save keep-parens, true
     case none
       save nothing, 0
   # a group opening a BLOCK grammar scope (`role note` over its lines) is its opener's line, and the scope's text
@@ -2101,7 +2113,7 @@ task format-group
           back lines
   save kids, kids-of(group)
   save places, value-kids(group)
-  save head, head-line(group, depth, options, places, parent)
+  save head, head-line(group, depth, options, places, parent, keep-parens)
   push(lines, head/text)
   # blank-line grouping inside a task body: signature lines are grouped by head, the first real statement is set off
   # from the signature, and a multi-line block is set off from a preceding simple statement

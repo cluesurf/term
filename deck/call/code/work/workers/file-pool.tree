@@ -6,9 +6,9 @@
 # for the whole pool. Output is byte-identical to the sequential build; only the work is spread across cores. All file
 # writes stay on the main thread (workers only compile and post the emitted text back).
 #
-# The worker entry (build-worker.ts) is still bundled here with esbuild, located from the running install's host/. Docked:
-# make.ts (findTreeFiles), cache-store.ts (compilerVersions), compile/resolve.ts (stdlibBase), check/holds.ts
-# (addOwed), node's worker_threads and esbuild (decision 002).
+# The worker entry is the Term port work/workers/file-worker.tree, which make:line bundles as host/build-worker.mjs
+# (decision 003, term-cli-in-term-0066). Docked: compile/resolve.ts (stdlibBase), check/holds.ts (addOwed) and node's
+# worker_threads. The file walk and the compiler versions are the build and cache lanes' ports (term-cli-in-term-0214).
 
 load ./heap-limit
   find worker-heap-mb
@@ -18,14 +18,16 @@ load ./heap-limit
 load ../need/running-install
   find find-install-root
 
+load ../build/tree-finding
+  find find-tree-files
+
+load ../cache/compile-store
+  find compiler-versions
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
-  load <node:os>, name node-system
   load <node:worker_threads>, name worker-threads
-  load <esbuild>, name esbuild-module
-  load <@term/call/code/cache-store>, name cache-store
-  load <@term/call/code/make>, name make-module
   load <@term/make/code/resolve>, name resolving-module
   load <@term/make/code/check/holds>, name holds-module
 
@@ -51,74 +53,20 @@ bind pool-throw
   case node
     text <(() =\> \{ throw new Error($message) \})()>
 
-# the esbuild options a worker module is bundled with: self-contained ESM resolving `@term/...` from the package tsconfig,
-# this module and the separate pool's kept out (the worker never runs them, and esbuild's native binary must not end up
-# in a temp-folder worker), and a `require` defined from import.meta.url for a CommonJS module in the compiler graph
-bind pool-worker-build
-  take source, like text
-  take out, like text
-  take tsconfig, like text
-  like dynamic
-  case node
-    text <(\{ entryPoints: [$source], outfile: $out, bundle: true, platform: "node", format: "esm", tsconfig: $tsconfig, external: ["@term/call/code/build-parallel", "@term/call/code/build-separate-parallel"], banner: \{ js: "import \{ createRequire as __seedCreateRequire \} from 'module'; const require = __seedCreateRequire(import.meta.url);" \} \})>
-
-# the file removed when this process ends: a worker bundle is the process's alone (term-cli-in-term-0178)
-bind pool-remove-at-exit
-  take bundled, like text
-  like void
-  case node
-    text <void process.once("exit", () =\> process.getBuiltinModule("node:fs").rmSync($bundled, \{ force: true \}))>
-
-# this process's id
-bind pool-pid
-  like number
-  case node
-    text <process.pid>
-
-# The original's `import.meta.url` was `deck/call/code/` from source under tsx and `host/` from the bundled CLI, so the
-# worker source and the package root are LOCATED rather than reached by a fixed number of `..` hops: the file named, in
-# the running install's host/ (decision 006, what the bundle read) or one of its seven nearest ancestors
-task find-up
-  take relative, like text
-  like dynamic
-
-  save dir, node-path/join(find-install-root(), <host>)
-  save level, 0
-  walk test
-    hook test, is-below(level, 8)
-    hook hold
-      save candidate, node-path/join(dir, relative)
-      fork test, node-file/exists-sync(candidate)
-        hold
-          back candidate
-      save parent, node-path/dirname(dir)
-      fork test, is-equal(parent, dir)
-        hold
-          back pool-nothing()
-      save dir, parent
-      save level, add(level, 1)
-  back pool-nothing()
-
-# A worker module, bundled. `name` is a file `deck/call/code/<name>.ts`, found from the running install's host/
+# A worker entry, as make:line bundled it (decision 003): the Term worker's emitted port, `host/<name>.mjs` in the
+# running install (`build-worker` from work/workers/file-worker.tree, `separate-worker` from unit-worker.tree). It is
+# LOCATED through the running install (decision 006), never from this module's own file, which is the port's path
+# until bundled and host/line.js after. No bundle is built at run time any more (term-cli-in-term-0066): an install
+# without the file fails here, before a worker starts, so the caller's sequential fallback is taken
 task bundle-worker
   take name, like text
   like text
 
-  save source, find-up(<{name}.ts>)
-  fork test, pool-is-nothing(source)
+  save bundled, node-path/join(find-install-root(), <host>, <{name}.mjs>)
+  fork test, not(node-file/exists-sync(bundled))
     hold
-      save source, find-up(node-path/join(<deck>, <call>, <code>, <{name}.ts>))
-  # the package root, whose tsconfig carries the `@term/...` path mappings
-  save tsconfig, find-up(<tsconfig.json>)
-  fork test, or(pool-is-nothing(source), pool-is-nothing(tsconfig))
-    hold
-      # fail before esbuild does, so the caller's fallback is taken without esbuild first printing a resolve error that
-      # looks like a broken build
-      pool-throw(<parallel build unavailable: could not locate {name}.ts or tsconfig.json>)
-  save out, node-path/join(node-system/tmpdir(), <term-{name}-{pool-pid()}.mjs>)
-  esbuild-module/build-sync(pool-worker-build(source, out, tsconfig))
-  pool-remove-at-exit(out)
-  back out
+      pool-throw(<parallel build unavailable: could not locate host/{name}.mjs>)
+  back bundled
 
 # the per-file worker, bundled once per process
 form bundle-memo
@@ -159,8 +107,8 @@ bind pool-size-of
   case node
     text <Math.max(1, Math.min($options?.concurrency ?? Math.max(1, process.getBuiltinModule("node:os").cpus().length - 1), $files))>
 
-# the worker bundle lives in the temp folder, from where stdlibBase() cannot walk up to the standard library: pin it
-# for the workers (worker_threads share process.env)
+# the worker is a bundle (host/<name>.mjs, in an install that may hold no source), whose own stdlibBase() walk is not
+# the parent's: pin the parent's for the workers (worker_threads share process.env)
 bind pool-pin-stdlib
   take stdlib, like dynamic
   like void
@@ -388,7 +336,7 @@ task spawn-file-worker
   like dynamic
   mark private
 
-  back pool-new-worker(worker-threads/Worker, run/bundle, cache-store/compilerVersions(), run/heap)
+  back pool-new-worker(worker-threads/Worker, run/bundle, compiler-versions(), run/heap)
 
 # one reply taken in: its claims, warnings and problems gathered, its artifact written on the main thread
 task write-reply
@@ -502,8 +450,7 @@ task compile-project-parallel
   # the SAME selection the sequential build makes: a build targets one platform, and the other platforms' native trees
   # are not compiled. Defaults to the worker's own default env, so the two cannot drift apart
   save platform, pool-platform-of(options)
-  save found, make list
-  save files, make-module/findTreeFiles(root, found, platform)
+  save files, find-tree-files(root, platform, root)
   fork test, is-equal(files/length, 0)
     hold
       back pool-promise(pool-zero-answer)
@@ -511,8 +458,8 @@ task compile-project-parallel
   save bundle, ensure-build-worker-bundle()
   save stdlib, resolving-module/stdlibBase()
   pool-pin-stdlib(stdlib)
-  # The compiler version travels WITH the worker: a worker's own module is the bundle in the temp folder, so it cannot
-  # find the package root to fingerprint the compiler. Each worker's heap is limited, so one that runs out of memory
+  # The compiler version travels WITH the worker: a worker's own module is a bundle, which cannot fingerprint the
+  # compiler the parent runs. Each worker's heap is limited, so one that runs out of memory
   # ends alone: its file is reported as `out-of-memory` and a new worker takes its place (heap-limit.tree)
   save heap, worker-heap-mb(size)
   save run, make(file-run, bind(root, root), bind(env, pool-env-of(options)), bind(files, files), bind(bundle, bundle), bind(heap, heap), bind(workers, make list), bind(holding, pool-new-map()), bind(compiled, 0), bind(failed, 0), bind(errors, make list), bind(warnings, make list), bind(problems, make list), bind(faults, make list), bind(open, pool-new-set()), bind(obligations, make(owed-count, bind(total, 0), bind(proven, 0))), bind(next, 0), bind(done, 0), bind(finish, pool-nothing()))

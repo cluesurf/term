@@ -45,7 +45,7 @@ load ./native-value
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
-  load <global:process>, name node-process
+  load <global:process>, name host-process
   load <@term/deck/code/package/read>, name read-module
   # emit.ts, whose port is work/context/emission.tree, DOCKED: a load of it puts its task `read-runtime` beside
   # work/cask/toolchain.tree's (reached through building.tree), and a value reference to a task two files define
@@ -240,7 +240,7 @@ task call-make-native
       save fields, make list
       fields/push(output/field(<backends>, join(envs, <, >)))
       output/report(make(native-problem-fields, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no backend named {input/env}>), bind(fields, fields)))
-      node-process/exit(output/close-run(make(native-close, bind(verdict, <Nothing built>), bind(failure, <usage>))))
+      host-process/exit(output/close-run(make(native-close, bind(verdict, <Nothing built>), bind(failure, <usage>))))
 
   save env, <{input/env}>
   save programs, project-programs(root, env)
@@ -250,7 +250,7 @@ task call-make-native
     hold
       save named, join(entry-names(), <`, `>)
       output/report(make(native-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <No file of the project defines `{named}` taking nothing, so there is no program to build>)))
-      node-process/exit(output/close-run(make(native-close-next, bind(verdict, <Nothing built>), bind(next, <term make --emit {env} \<file.tree\> --main \<task\>>), bind(failure, <failure>))))
+      host-process/exit(output/close-run(make(native-close-next, bind(verdict, <Nothing built>), bind(next, <term make --emit {env} \<file.tree\> --main \<task\>>), bind(failure, <failure>))))
 
   save host, node-path/join(root, <host>, env)
   save written, 0
@@ -334,6 +334,6 @@ task call-make-native
 
   fork test, is-above(failed, 0)
     hold
-      node-process/exit(output/close-run(make(native-close-failed, bind(verdict, verdict), bind(counts, counts), bind(failure, <failure>))))
+      host-process/exit(output/close-run(make(native-close-failed, bind(verdict, verdict), bind(counts, counts), bind(failure, <failure>))))
 
   output/close-run(make(native-close-counts, bind(verdict, verdict), bind(counts, counts)))

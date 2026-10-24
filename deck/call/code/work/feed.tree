@@ -14,7 +14,7 @@ load @term/base/maybe
 # Ported from deck/call/code/feed.ts (cli-in-term-0004).
 
 dock load
-  load <@term/call/code/feed>, name feed-module
+  load <@term/call/code/feed>, name feed-verb-module
 
 # the ask of refuseFeed: an option the line did not name reaches it as undefined, so those fields are host values
 # (feed-text-given, feed-number-given)
@@ -48,7 +48,7 @@ task feed
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  call feed-module/refuseFeed
+  call feed-verb-module/refuseFeed
     make feed-ask
       bind root, read root
       bind entry, feed-text-given(entry)

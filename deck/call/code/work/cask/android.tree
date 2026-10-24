@@ -20,11 +20,13 @@ load ./host-value
 load ./toolchain
   find android-tools
 
+load ../native/declaration
+  find permission-lines
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <node:child_process>, name node-child
-  load <@term/call/code/device-declare>, name declare-module
   load <@term/call/code/output>, name output
 
 form android-folder
@@ -82,7 +84,7 @@ task assemble-apk
   save work, ask/work
   save name, ask/name
   save manifest, node-path/join(work, <AndroidManifest.xml>)
-  node-fs/write-file-sync(manifest, android-manifest(name, ask/identifier, ask/version, declare-module/permission-lines(ask/native)))
+  node-fs/write-file-sync(manifest, android-manifest(name, ask/identifier, ask/version, permission-lines(ask/native)))
 
   save unsigned, node-path/join(work, <{name}-unsigned.apk>)
   save aligned, node-path/join(work, <{name}-aligned.apk>)

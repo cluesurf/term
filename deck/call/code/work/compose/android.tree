@@ -51,17 +51,19 @@ load ./toolchain
   find stage-entry
   find nul-text
 
+load ../workers/kotlin-compiler
+  find kotlinc
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <node:crypto>, name node-crypto
   load <node:child_process>, name node-child
-  load <global:process>, name node-process
+  load <global:process>, name host-process
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/native>, name native-module
   load <@term/make/code/compile/kotlin>, name kotlin-module
   load <@term/call/code/make>, name make-module
-  load <@term/call/code/kotlin-worker>, name kotlin-worker
 
 form android-source
   link file, like text
@@ -367,7 +369,7 @@ task kept
       back done
 
   node-fs/rm-sync(done, make(android-remove-folder, bind(recursive, true), bind(force, true)))
-  save fresh, node-path/join(root, <{key}.{node-process/pid}.{now-ms()}>)
+  save fresh, node-path/join(root, <{key}.{host-process/pid}.{now-ms()}>)
   node-fs/mkdir-sync(fresh, make(android-make-folder, bind(recursive, true)))
 
   fork
@@ -808,7 +810,7 @@ task build-compose-android
   save compiled
     compile-kotlin
       make kotlin-ask
-        bind compiler, value-or(ask/compiler, read(kotlin-worker/kotlinc))
+        bind compiler, value-or(ask/compiler, kotlinc)
         bind stages, stages
         bind dir, work
         bind name, <app>

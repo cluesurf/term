@@ -7,9 +7,9 @@
 # HTML interactive. Cached on a content hash of the emitted source and the toolchain, so an unchanged app reuses the
 # prior bundle. Best-effort: a failure reports a warning and returns (SSR still serves without it).
 #
-# The compiler, the native prelude, the process's compile cache (cache-store.ts, whose state the TypeScript build path
-# shares), the toolchain home (home.ts), the output run (output.ts) and esbuild are docked. The resolver, the deck
-# finder and the role readers are the build lane's ports, faced as the host functions the compiler takes.
+# The compiler, the native prelude, the toolchain home (home.ts), the output run (output.ts) and esbuild are docked.
+# The resolver, the deck finder and the role readers are the build lane's ports, faced as the host functions the
+# compiler takes, and the process's compile cache is the cache lane's (cache/compile-store, term-cli-in-term-0214).
 
 load @term/call/boot-plan
   find runs-boot
@@ -36,13 +36,17 @@ load ../build/deck-finding
 load ../build/role-reading
   find make-role-reader
 
+load ../cache/compile-store
+  find process-cache
+  find process-parse
+  find compiler-version
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
   load <esbuild>, name esbuild-module
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/native>, name native-module
-  load <@term/call/code/cache-store>, name cache-store
   load <@term/call/code/home>, name home-module
   load <@term/call/code/output>, name output
   load <global:Date>, name host-date
@@ -230,10 +234,10 @@ task bundle-client
 
   save resolve, boot-resolver-face(make-project-resolver(opts/app-dir, <browser>, opts/install-root))
   save source, make(compile-source, bind(file, opts/entry), bind(text, node-file/read-file-sync(opts/entry, <utf8>)))
-  # the process's one cache and parse memo for this project, kept across rebuilds (cache-store.ts). The role and the
+  # the process's one cache and parse memo for this project, kept across rebuilds (compile-store). The role and the
   # lean surface, exactly as `term make` reads them: without these a `mark lean` module in a booted program compiled
   # as longhand, every property head an unknown name (self-hosting-0015)
-  save options, make(compile-options, bind(resolve, resolve), bind(cache, cache-store/processCache(opts/project-root)), bind(parsed, cache-store/processParse()), bind(env, <browser>), bind(deck-of, face-deck-finder(make-deck-finder())), bind(role-of, face-role-reader(make-role-reader(opts/project-root))), bind(lean-of, face-lean-reader(make-role-reader(opts/project-root))))
+  save options, make(compile-options, bind(resolve, resolve), bind(cache, process-cache(opts/project-root)), bind(parsed, process-parse()), bind(env, <browser>), bind(deck-of, face-deck-finder(make-deck-finder())), bind(role-of, face-role-reader(make-role-reader(opts/project-root))), bind(lean-of, face-lean-reader(make-role-reader(opts/project-root))))
   save result, compile-module/compile(source, options)
   fork test, result/ok
     hold
@@ -271,7 +275,7 @@ task bundle-compiled
       save calls, <entry: import>
   save parts, make list
   parts/push(boot-cache-epoch())
-  parts/push(cache-store/compilerVersion())
+  parts/push(compiler-version())
   parts/push(<browser-client>)
   parts/push(<esbuild@{esbuild-module/version}>)
   parts/push(host-global/JSON/stringify(config))

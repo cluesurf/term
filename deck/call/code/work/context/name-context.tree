@@ -33,20 +33,37 @@ load @term/call/context-slice
   find fit
   find render-context
 
+load ../build/project-resolving
+  find make-project-resolver
+
+load ../build/role-reading
+  find make-role-reader
+
+load ../build/deck-finding
+  find make-deck-finder
+
+load ../build/tree-finding
+  find find-tree-files
+
+load ../build/host-faces
+  find face-project-resolver
+  find face-deck-finder
+  find face-role-reader
+  find face-lean-reader
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
-  load <global:process>, name node-process
+  load <global:process>, name host-process
   load <@term/make/code/analyze>, name analyze-module
   load <@term/make/code/compile/load>, name load-module
-  load <@term/make/code/compile/mill-run>, name mill-module
+  # named for itself, never `mill-module`: the test runner docks compile/mill under that alias, and a port keeps one
+  # import per alias (traps.md)
+  load <@term/make/code/compile/mill-run>, name mill-run-module
   load <@term/make/code/compile/native>, name native-module
   load <@term/make/code/parser/narrow>, name narrow-module
   load <@term/make/code/parser/tree>, name tree-module
   load <@term/make/code/resolve>, name resolve-module
-  load <@term/call/code/deck-of>, name deck-module
-  load <@term/call/code/make>, name make-module
-  load <@term/call/code/role-of>, name role-module
   load <@term/call/code/output>, name output
 
 # ---- the host values Term has no word for ----
@@ -295,7 +312,7 @@ task doc-at
   save comments, make list
   walk narrow-module/groups-of(parsed/tree/nodes)
     take group
-    save span, mill-module/span-of-node(group)
+    save span, mill-run-module/span-of-node(group)
     fork test, and(is-truthy(span), is-same(span/start/line, line))
       hold
         walk value-or(group/comments, make list)
@@ -492,14 +509,16 @@ task context-of
   take budget, like number
   like context-slice
 
-  save role-of, role-module/project-role-of(root)
-  save lean-of, role-module/project-lean-of(root)
+  save roles, make-role-reader(root)
+  save role-of, face-role-reader(roles)
+  save lean-of, face-lean-reader(roles)
   # `{platform}` filled for node, as `term make` fills it, so a load of a platform module reaches its node file
-  save resolve, native-module/with-native-env(<node>, make-module/project-resolver(root, <node>, root))
+  save resolve, native-module/with-native-env(<node>, face-project-resolver(make-project-resolver(root, <node>, root)))
   save parsed, load-module/make-parse-memo()
-  save deck-of, deck-module/project-deck-of()
+  save deck-of, face-deck-finder(make-deck-finder())
   save files, make list
-  walk make-module/find-tree-files(root)
+  # every platform's tree, as make.ts `findTreeFiles(root)` walked with no platform given
+  walk find-tree-files(root, <>, root)
     take file
     fork test, is-tree-file(file)
       hold

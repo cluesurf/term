@@ -1,0 +1,330 @@
+# `term wash [target]`: a project's build output removed, one `remove` change item per directory that was there
+# (terminal output standard, section 9). Ported from call/code/wash.ts (term-cli-in-term-0007), whole.
+#
+#   term wash          the build output (`deck`, the same)
+#   term wash tail     the logs
+#   term wash boot     what `term boot` and `term cast` write
+#   term wash base     the machine-wide module cache, in no project
+#
+# EVERY NAME THE FOLDER HAS HAD is washed: `.base/term/` became `.base/@cluesurf/term/` on 2026-08-30 and
+# `.base/@term/code/` on 2026-10-05 (home-folder.tree). The first rename left the old cache behind whole (13 GB of it
+# in `deck/bind` alone by 2026-09-01), and a move Windows refused leaves the second the live one, so a clean names all
+# three.
+#
+# The target is a maybe (decision cli-in-term/008): none is the build output, and a given word, the empty text
+# included, is read as written, so `term wash ""` is refused as the original refused it.
+
+load ./home-folder
+  find home-posix
+  find project-home
+
+load @term/call/work/cache/compile-store
+  find cache-home
+
+load @term/base/list
+  find contains
+
+load @term/base/maybe
+  find maybe
+
+dock load
+  load <node:path>, name node-path
+  load <node:fs/promises>, name fs-promise
+    mark async
+  load <@term/call/code/output>, name output
+  load <global:Error>, name host-error
+  load <global:String>, name host-string
+
+# The original read its one old spelling (`store`, which was `base` until 2026-10-04) from a plain object,
+# `RENAMED[target] ?? target`, so a word an object already has (`constructor`, `__proto__`) answered the object's own
+# member, a host value that is no text: printed into the refusal, and handed to the opening item as a fact, where a
+# function (`constructor`) throws in the output library. Kept as the original had it, the lookup, its value and its
+# truth, so the port answers what the original answered for every word (a `Diverges:` request in log.md)
+bind washed-word
+  take word, like text
+  like dynamic
+  case node
+    text <(\{ store: "base" \})[$word] ?? $word>
+
+bind is-truthy-word
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+bind is-renamed-word
+  take word, like text
+  like boolean
+  case node
+    text <Boolean((\{ store: "base" \})[$word])>
+
+form wash-open
+  link verb, like text
+  link root, like text
+  link facts, like list, like dynamic
+
+form warning-item
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+
+form problem-item
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+
+form looked-item
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link fields, like list, like dynamic
+
+form message-item
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+  link message, like list, like text
+
+form change-item
+  link glyph, like text
+  link kind, like text
+  link verb, like text
+  link subject, like text
+
+form plain-close
+  link verdict, like text
+
+form next-close
+  link verdict, like text
+  link next, like text
+
+form usage-close
+  link verdict, like text
+  link next, like text
+  link failure, like text
+
+form done-close
+  link verdict, like text
+  link done, like boolean
+
+form counted-close
+  link verdict, like text
+  link counts, like list, like dynamic
+  link done, like boolean
+
+form rm-ask
+  link recursive, like boolean
+  link force, like boolean
+
+# what a build writes: `host/`, `make/`, `hold/`, and the cache under each name the home has had
+task build-folders
+  like list, like text
+
+  save out, make list
+  out/push(<host>)
+  out/push(<make>)
+  out/push(<hold>)
+  out/push(<{home-posix()}/cache>)
+  out/push(<.base/@cluesurf/term/cache>)
+  out/push(<.base/term/cache>)
+  back out
+
+# what `term boot` and `term cast` write: the program boot runs, the browser bundles by content, the bundle and its
+# import map, and the Worker. Each is written again by the next boot or cast
+task boot-folders
+  like list, like text
+
+  save out, make list
+  out/push(<{home-posix()}/boot>)
+  out/push(<{home-posix()}/client>)
+  out/push(<.base/@cluesurf/term/boot>)
+  out/push(<.base/@cluesurf/term/client>)
+  out/push(<build>)
+  out/push(<work>)
+  back out
+
+# the words a target may be
+task wash-targets
+  like list, like text
+
+  save out, make list
+  out/push(<deck>)
+  out/push(<tail>)
+  out/push(<boot>)
+  out/push(<base>)
+  back out
+
+# whether anything is at a path, as `fs.access` answers it
+task is-there
+  take file, like text
+  like boolean
+  mark private
+
+  save found, false
+  fork
+    mark unsafe
+    fs-promise/access(file)
+    save found, true
+  halt take
+    take error
+    save found, false
+  back found
+
+task report-removed
+  take subject, like text
+  like void
+  mark private
+
+  output/report(make(change-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <remove>), bind(subject, subject)))
+
+# Each of `folders` that is there under `root` removed, one `remove` item apiece, and how many there were. A folder
+# shows as itself with a slash, or, when `whole` is true, as its whole path shown
+task remove-each
+  take root, like text
+  take folders, like list, like text
+  take whole, like boolean
+  like number
+  mark private
+
+  save cleaned, 0
+  walk folders
+    take folder
+    save full, node-path/join(root, folder)
+    fork
+      mark unsafe
+      fs-promise/access(full)
+      fs-promise/rm(full, make(rm-ask, bind(recursive, true), bind(force, true)))
+      save shown, <{folder}/>
+      fork test, whole
+        hold
+          save shown, <{output/show-path(full)}/>
+      report-removed(shown)
+      save cleaned, add(cleaned, 1)
+    halt take
+      # the directory is not there
+      take error
+      save absent, true
+  back cleaned
+
+task close-counted
+  take verdict, like text
+  take cleaned, like number
+  like void
+  mark private
+
+  save counts, make list
+  counts/push(output/count(cleaned, <directories>, <directory>))
+  output/close-run(make(counted-close, bind(verdict, verdict), bind(counts, counts), bind(done, is-above(cleaned, 0))))
+
+task close-cleaned
+  take verdict, like text
+  take cleaned, like number
+  like void
+  mark private
+
+  fork test, is-above(cleaned, 0)
+    hold
+      close-counted(verdict, cleaned)
+    miss
+      close-counted(<Nothing to clean>, cleaned)
+
+# `err instanceof Error ? err.message : String(err)`
+task error-text
+  take error, like dynamic
+  like text
+  mark private
+
+  save said, host-string/call(<>, error)
+  fork test, host-error/prototype/is-prototype-of(error)
+    hold
+      save said, host-string/call(<>, error/message)
+  back said
+
+# `term wash tail`: the project's logs, a removal reported only when there was something to remove
+task wash-tail
+  take root, like text
+  like void
+  mark private
+
+  save parts, make list
+  parts/push(<log>)
+  save log-folder, project-home(root, parts)
+  fork
+    mark unsafe
+    save existed, is-there(log-folder)
+    fs-promise/rm(log-folder, make(rm-ask, bind(recursive, true), bind(force, true)))
+    fork test, existed
+      hold
+        report-removed(<{output/show-path(log-folder, root)}/>)
+        output/close-run(make(done-close, bind(verdict, <Logs cleared>), bind(done, true)))
+      miss
+        output/close-run(make(done-close, bind(verdict, <No logs to clear>), bind(done, false)))
+  halt take
+    take error
+    save message, make list
+    message/push(error-text(error))
+    output/report(make(message-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <The logs could not be removed>), bind(message, message)))
+    output/close-run(make(plain-close, bind(verdict, <Logs not cleared>)))
+
+# `term wash`: the build's output removed, one `remove` change item per directory that was there
+task call-wash
+  take root, like text
+  take target, like maybe, like text
+  like void
+
+  save given, false
+  save word, <>
+  save washed, washed-word(<>)
+  sift target
+    case some
+      link value
+      save given, true
+      save word, value
+      save washed, washed-word(value)
+    case none
+      save absent, true
+  save facts, make list
+  # `target ? [target] : []`: the empty word is given and shows no fact
+  fork test, and(given, is-truthy-word(washed))
+    hold
+      facts/push(washed)
+  output/open-run(make(wash-open, bind(verb, <wash>), bind(root, root), bind(facts, facts)))
+  fork test, and(given, is-renamed-word(word))
+    hold
+      output/report(make(warning-item, bind(glyph, <warning>), bind(verb, <wash>), bind(subject, <term wash {word} is term wash {washed} now>)))
+  # `deck` is the build output, the same as no target, `tail` the logs, `boot` what boot and cast write, `base` the
+  # machine-wide module cache. Any other word is refused
+  fork test, and(given, not(contains(wash-targets(), washed)))
+    hold
+      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is nothing named {washed} to wash>)))
+      output/close-run(make(usage-close, bind(verdict, <Nothing removed>), bind(next, <term wash, or term wash deck, tail, boot or base>), bind(failure, <usage>)))
+      back
+  # the machine-wide cache of parsed modules, which every project shares and the next build of any of them fills
+  # again, with the separate build's units beside them. Not a project's, so it needs no deck.tree. The installed decks
+  # beside it (`blobs/`, `index.json`) are not a cache: an offline install reads them, so they stay
+  fork test, and(given, is-equal(washed, <base>))
+    hold
+      save shared, make list
+      shared/push(<mill>)
+      shared/push(<unit>)
+      save cleaned, remove-each(cache-home(), shared, true)
+      close-cleaned(<Shared module cache removed>, cleaned)
+      back
+  # only in a project: `make/`, `host/` and `hold/` are ordinary folder names, and outside a deck they are somebody's
+  # own
+  fork test, not(is-there(node-path/join(root, <deck.tree>)))
+    hold
+      save fields, make list
+      fields/push(output/field(<looked>, output/show-path(root)))
+      output/report(make(looked-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no deck.tree here, so nothing here is a build to wash>), bind(fields, fields)))
+      output/close-run(make(next-close, bind(verdict, <Nothing removed>), bind(next, <term wash, in the folder that holds the deck.tree>)))
+      back
+  fork test, and(given, is-equal(word, <tail>))
+    hold
+      wash-tail(root)
+      back
+  fork test, and(given, is-equal(word, <boot>))
+    hold
+      close-cleaned(<Boot output removed>, remove-each(root, boot-folders(), false))
+      back
+  close-cleaned(<Build output removed>, remove-each(root, build-folders(), false))

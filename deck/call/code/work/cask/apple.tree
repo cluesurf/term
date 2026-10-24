@@ -22,11 +22,13 @@ load ./host-value
 load ./bundle
   find app-bundle
 
+load ../native/declaration
+  find apple-usage
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <node:child_process>, name node-child
-  load <@term/call/code/device-declare>, name declare-module
   load <@term/call/code/output>, name output
 
 form apple-folder
@@ -95,7 +97,7 @@ task usage-of
   like list, like usage-text
 
   save usage, make list
-  walk entries-of(declare-module/apple-usage(native))
+  walk entries-of(apple-usage(native))
     take entry, like list, like dynamic
     save key, <{entry/0}>
     save said, <{entry/1}>

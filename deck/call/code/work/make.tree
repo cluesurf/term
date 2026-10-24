@@ -26,26 +26,42 @@ load @term/call/work/tint
 # is docked. Every dock here is one named thing to replace when the compiler is Term, rather than a TypeScript file
 # nobody is looking at.
 #
-# Ported from deck/call/code/make.ts's verb half (cli-in-term-0004).
+# Ported from deck/call/code/make.ts's verb half (cli-in-term-0004). The build, the emit, the role reader and the remote
+# cache are their lanes' ports, loaded since term-cli-in-term-0065.
+
+load @term/call/work/build/build-command
+  find call-make
+
+load @term/call/work/context/emission
+  find call-emit
+
+load @term/call/work/build/role-reading
+  find make-role-reader
+
+load @term/call/work/build/host-faces
+  find face-role-reader
+
+load @term/call/work/cache/remote-store
+  find pull-remote-cache
+  find push-remote-cache
+
+# line.ts's other make branches (line.ts:821-904), their lanes' ports since term-cli-in-term-0067
+load @term/call/work/native/project
+  find call-make-native
+
+load @term/call/work/compose/packaging
+  find make-compose
+  find make-compose-ask
+
+load @term/call/work/native/iphone
+  find make-uikit
+
+load @term/call/work/cask/command
+  find make-cask
+  find cask-ask
 
 dock load
-  load <@term/call/code/make>, name make-module
-  load <@term/call/code/role-of>, name role-module
-  load <@term/call/code/remote-cache>, name remote-module
   load <node:process>, name node-process
-  # line.ts's other make branches (line.ts:821-904), docked as every verb file docks today (decision cli-in-term/013
-  # part 1). Their ports exist, and integrates 0065 and 0067 swap each dock for one: work/context/emission.tree
-  # call-emit, native/project.tree call-make-native, compose/packaging.tree make-compose, native/iphone.tree
-  # make-uikit, cask/command.tree make-cask
-  load <@term/call/code/emit>, name emit-module
-  load <@term/call/code/make-native>, name native-module
-  # makeCompose, makeUikit and makeCask answer promises: every call into these three is awaited
-  load <@term/call/code/compose>, name compose-module
-    mark async
-  load <@term/call/code/uikit>, name uikit-module
-    mark async
-  load <@term/call/code/cask>, name cask-module
-    mark async
   load <@term/call/code/output>, name output-module
   # the global, for process.exitCode: a namespace import of node:process cannot be written (traps.md, 0041)
   load <global:process>, name host-process
@@ -80,27 +96,11 @@ form native-call-ask
   link env, like dynamic
   link build, like boolean
 
-form compose-call-ask
-  link root, like text
-  link target, like text
-  link entry, like dynamic
-
 form uikit-call-ask
   link root, like text
   link entry, like dynamic
   link team, like dynamic
   link link, like dynamic
-
-form cask-call-ask
-  link root, like text
-  link target, like text
-  link page, like dynamic
-  link entry, like dynamic
-  link url, like dynamic
-  link sign, like dynamic
-  link dmg, like boolean
-  link publish, like dynamic
-  link channel, like dynamic
 
 # a file named without --emit (line.ts:888-895)
 form file-refusal-open
@@ -179,7 +179,7 @@ task make
 
   fork test, option-named(emit)
     hold
-      call emit-module/callEmit
+      call call-emit
         make emit-call-ask
           bind root, read root
           bind file, option-given(file)
@@ -191,10 +191,10 @@ task make
           bind main, option-given(main)
       back
 
-  # every program of the project for one backend (call/code/make-native.ts)
+  # every program of the project for one backend (native/project.tree)
   fork test, option-named(env)
     hold
-      call native-module/callMakeNative
+      call call-make-native
         make native-call-ask
           bind root, read root
           bind env, option-given(env)
@@ -206,17 +206,17 @@ task make
   # a Compose app: its views drawn by Compose, packaged for the desktop with its own JVM or as an APK
   fork test, is-equal(target-word, <compose>)
     hold
-      compose-module/makeCompose(make(compose-call-ask, bind(root, read root), bind(target, read target-word), bind(entry, option-given(entry))))
+      make-compose(make(make-compose-ask, bind(root, read root), bind(target, read target-word), bind(entry, option-given(entry))))
       back
   fork test, is-equal(target-word, <compose-android>)
     hold
-      compose-module/makeCompose(make(compose-call-ask, bind(root, read root), bind(target, read target-word), bind(entry, option-given(entry))))
+      make-compose(make(make-compose-ask, bind(root, read root), bind(target, read target-word), bind(entry, option-given(entry))))
       back
 
   # an iPhone app drawn by UIKit: an Xcode project, signed ad hoc into an .ipa when there is a team to sign for
   fork test, is-equal(target-word, <uikit>)
     hold
-      call uikit-module/makeUikit
+      call make-uikit
         make uikit-call-ask
           bind root, read root
           bind entry, option-given(entry)
@@ -227,8 +227,8 @@ task make
   # any other target is a native app cask
   fork test, is-above(target-word/length, 0)
     hold
-      call cask-module/makeCask
-        make cask-call-ask
+      call make-cask
+        make cask-ask
           bind root, read root
           bind target, read target-word
           bind page, option-given(page)
@@ -253,7 +253,7 @@ task make
 
   fork
     mark unsafe
-    call make-module/callMake
+    call call-make
       make make-ask
         bind root, read root
         bind ride, read ride
@@ -261,7 +261,6 @@ task make
         bind merged, read merged
         bind explain, read explain
         bind trees, read trees
-      wait true
   halt take
     take error
     log-fail format-error error
@@ -273,7 +272,7 @@ task role-of
 
   like unknown
 
-  back call role-module/projectRoleOf, root
+  back face-role-reader(make-role-reader(root))
 
 # warm the local cache from a remote one before a build, and push what is new after it. Content addressing makes
 # both safe: a key's bytes never change.
@@ -285,7 +284,7 @@ task cache-pull
 
   like number
 
-  back call remote-module/pullRemoteCache, directory, endpoint, token, wait true
+  back pull-remote-cache(directory, endpoint, token)
 
 task cache-push
   mark async
@@ -295,4 +294,4 @@ task cache-push
 
   like number
 
-  back call remote-module/pushRemoteCache, directory, endpoint, token, wait true
+  back push-remote-cache(directory, endpoint, token)

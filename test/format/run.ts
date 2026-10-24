@@ -432,6 +432,15 @@ function rules(): void {
     ok('lean: a call-shaped part under a call keeps its parentheses, `greet(name(<x>))`', inline.includes('back greet(name(<x>))\n'), inline)
     ok('lean: ...and on its own line when the call stacks', wide.includes(`\n      name(${long})\n`), wide)
     ok('lean: ...and formatting it again changes nothing', format({ file: 'l.tree', text: wide }, { lean: true }) === wide)
+
+    // a part written `f(...)` that holds a comment stacks, and its head line keeps the parentheses (term-compiler-0071)
+    const commented = 'task run\n  greet\n    name(<x>)\n      # who\n      <y>\n'
+    const held = format({ file: 'l.tree', text: commented }, { lean: true })
+    const flat = format({ file: 'l.tree', text: 'task run\n  greet(name(<x>))\n    # who\n    <y>\n' }, { lean: true })
+
+    ok('lean: a call-shaped part holding a comment keeps its parentheses, `name(<x>)` over `# who`', held === commented, held)
+    ok('lean: ...and formatting it again changes nothing', format({ file: 'l.tree', text: held }, { lean: true }) === held)
+    ok('lean: ...and `greet(name(<x>))` over a comment stacks to the same call', flat === 'task run\n  greet\n    name(<x>)\n    # who\n    <y>\n', flat)
   }
 
   // a path after a call is written back as it was, never as the braces the parser holds it in

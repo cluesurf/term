@@ -5,8 +5,8 @@
 # the wrapper. `make-repl` and `feed-block` hold no terminal I/O, so they are testable; `call-walk` is the session on a
 # terminal or a pipe. How a block is read (call/code/repl-read.tree) was already Term.
 #
-# Docked: the compiler, the project resolver (call/code/make.ts), the output run (output.ts), node's readline and
-# esbuild's transform (decision 002).
+# Docked: the compiler, the output run (output.ts), node's readline and esbuild's transform (decision 002). The project
+# resolver is the build lane's port (term-cli-in-term-0214).
 
 load @term/call/repl-read
   find read-block
@@ -14,6 +14,12 @@ load @term/call/repl-read
   find trim-start
   find is-blank
   find is-definition
+
+load ../build/project-resolving
+  find make-project-resolver
+
+load ../build/host-faces
+  find face-project-resolver
 
 dock load
   load <node:fs>, name node-file
@@ -23,7 +29,6 @@ dock load
   load <node:readline>, name node-readline
   load <esbuild>, name esbuild-module
   load <@term/make/code/compile/compile>, name compile-module
-  load <@term/call/code/make>, name make-module
   load <@term/call/code/output>, name output
   load <global:process>, name host-process
 
@@ -469,7 +474,7 @@ task call-walk
   output/report(make(said-item, bind(glyph, <info>), bind(verb, <walk>), bind(subject, <Type a definition to add it, an expression to evaluate it, or exit>), bind(message, said)))
   # the project the session was started in, as `term make` resolves it: its own files by a relative path and its
   # linked decks as well as the standard library
-  save repl, make-repl(make-module/projectResolver(input/root, <node>, input/root), node-path/join(input/root, <repl.tree>))
+  save repl, make-repl(face-project-resolver(make-project-resolver(input/root, <node>, input/root)), node-path/join(input/root, <repl.tree>))
   save reader, node-readline/create-interface(make(reader-ask, bind(input, repl-stdin()), bind(output, repl-stdout()), bind(prompt, <term\> >)))
   save run, make(walk-run, bind(repl, repl), bind(root, input/root), bind(reader, reader), bind(buffer, make list), bind(work, repl-resolved()), bind(closed, false))
   reader/on

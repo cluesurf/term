@@ -20,21 +20,26 @@ load @term/call/work/tint
 #   base-import     `@term/base`'s import machinery, 214 TypeScript files below it
 #   base-engine     a Postgres driver loaded lazily at the moment a projection is written. The driver is `pg`,
 #                   an npm package, and the laziness is a dynamic `import()`. Term has neither.
-#   build-parallel  a pool of `worker_threads`, each running an esbuild-bundled worker from the temp directory
-#   cache-store     the compiler's own disk cache: gzip, atomic rename, an LRU sweep over a directory tree
-#   test-run        transforms an emitted module with esbuild and imports it by URL to run its test tasks
+#   build-parallel  a pool of `worker_threads`, each running the bundled Term worker (now loaded, see below)
+#
+# cache-store and test-run were docked here too, behind four forwarding tasks no verb called (project-cache,
+# cache-directory, compiler-version, run-test-file). Their ports are work/cache/compile-store.tree and
+# work/testing/test-running.tree, which every caller loads directly; the forwarders went with their docks in
+# term-cli-in-term-0065.
 #
 # So the Term side is the SHAPE -- the arguments each takes and what it answers -- and the dock is one named thing
 # to replace when the compiler and the runtime are Term. That is the whole conversion in one file: nothing here
 # pretends to be native, and nothing here hides which line stops it being native.
 #
 # Ported from deck/call/code/{base-import,base-engine,build-parallel,cache-store,test-run}.ts (cli-in-term-0004).
+# build-parallel is the workers lane's port (work/workers/file-pool.tree), loaded since term-cli-in-term-0066: its
+# worker is the Term worker entry make:line bundles as host/build-worker.mjs (decision 003).
+
+load @term/call/work/workers/file-pool
+  find compile-project-parallel
 
 dock load
   load <@term/call/code/base-import>, name base-import-module
-  load <@term/call/code/build-parallel>, name parallel-module
-  load <@term/call/code/cache-store>, name cache-module
-  load <@term/call/code/test-run>, name test-run-module
   load <node:process>, name node-process
 
 form import-ask
@@ -95,46 +100,4 @@ task build-parallel
 
   like unknown
 
-  back
-    call parallel-module/compileProjectParallel
-      root
-      make parallel-ask
-        bind concurrency, concurrency
-        bind env, env
-        bind platform, platform
-      wait true
-
-# the compiler's cache for one project: per-module mills shared machine-wide, the compiled output local
-task project-cache
-  take root, like text
-
-  like unknown
-
-  back call cache-module/projectCache, root
-
-# where that cache lives, which is the one place the path is written
-task cache-directory
-  take root, like text
-
-  like text
-
-  back call cache-module/projectCacheDir, root
-
-# the running compiler's fingerprint, folded into every cache key so a toolchain change cannot serve a stale hit
-task compiler-version
-  like text
-
-  back call cache-module/compilerVersion
-
-# run one test file and answer what held
-task run-test-file
-  mark async
-  take file, like text
-  take text, like text
-  take resolve, like unknown
-  take env, like text
-
-  like unknown
-
-  back
-    call test-run-module/runTestFile, file, read(text), resolve, env, wait true
+  back compile-project-parallel(root, make(parallel-ask, bind(concurrency, concurrency), bind(env, env), bind(platform, platform)))

@@ -19,9 +19,11 @@ load @term/base/maybe
 
 dock load
   load <@term/call/code/time>, name time-module
+  # hold.ts, docked until the output lane goes live: lane hold's port (work/hold/hold-gate.tree) prints through
+  # work/output/printer.tree, which the console configures only from 0069 on (decision term-cli-in-term-0210)
   load <@term/call/code/hold>, name hold-module
   load <@term/call/code/zone>, name zone-module
-  load <@term/call/code/mark>, name mark-module
+  load <@term/call/code/mark>, name mark-verb-module
 
 form time-ask
   link root, like text
@@ -192,6 +194,6 @@ task mark
 
   save root, call project-root
   save words, forwarded-words(<mark>, rest)
-  call mark-module/callMark
+  call mark-verb-module/callMark
     make mark-ask, bind(root, read root), bind(argv, read words)
     wait true

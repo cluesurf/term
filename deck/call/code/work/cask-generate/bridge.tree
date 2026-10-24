@@ -30,10 +30,12 @@ load ./shim
 load ./dispatcher
   find dispatch-text
 
+load ../cask/identity
+  find app-identity
+
 dock load
   load <@term/make/code/resolve>, name resolve-module
   load <@term/call/code/scope>, name scope-module
-  load <@term/call/code/cask>, name cask-module
   load <node:fs>, name node-fs
   load <node:path>, name node-path
 
@@ -130,7 +132,7 @@ task generate-bridge
         bind text, shim-text(docked, reading/carried, reading/refused, reading/watched, term)
 
   save scope, scope-module/readScope(app)/scope
-  save identity, cask-module/appIdentity(app)
+  save identity, app-identity(app)
   save name, identity/name
   outputs/push
     make bridge-output

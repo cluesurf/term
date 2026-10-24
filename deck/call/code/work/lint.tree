@@ -13,7 +13,7 @@ form lint-ask
   link fix, like boolean
 
 dock load
-  load <@term/call/code/lint>, name lint-module
+  load <@term/call/code/lint>, name lint-verb-module
 
 task lint
   mark async
@@ -24,7 +24,7 @@ task lint
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  call lint-module/callLint
+  call lint-verb-module/callLint
     make lint-ask
       bind root, read root
       bind paths, read paths

@@ -12,7 +12,8 @@
 #
 # Ported from deck/call/code/emit.ts (term-cli-in-term-0051). Each public task takes the original's one input record
 # as it came, so a TypeScript caller moves to it unchanged. The run is printed through call/code/output.ts, docked, so
-# it shares the options the console set (traps.md: a loaded port carries its own copy of the printer's state).
+# it shares the options the console set (traps.md: a loaded port carries its own copy of the printer's state). The
+# resolver, readers and project root are the build and boot lanes' ports, loaded since term-cli-in-term-0065.
 
 load @term/base/list
   find list
@@ -32,21 +33,35 @@ load @term/call/work/need/running-install
 load @term/call/work/output/diagnostic-report
   find render-diagnostic
 
+load ../boot/entry-finding
+  find find-project-root
+
+load ../build/project-resolving
+  find make-project-resolver
+
+load ../build/role-reading
+  find make-role-reader
+
+load ../build/deck-finding
+  find make-deck-finder
+
+load ../build/host-faces
+  find face-project-resolver
+  find face-deck-finder
+  find face-role-reader
+  find face-lean-reader
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <node:os>, name node-os
-  load <global:process>, name node-process
+  load <global:process>, name host-process
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/emit-target>, name target-module
   load <@term/make/code/check/binds>, name binds-module
   load <@term/make/code/compile/hvm>, name hvm-module
   load <@term/make/code/compile/wgsl>, name wgsl-module
   load <@term/make/code/parser/diagnostic>, name diagnostic-module
-  load <@term/call/code/make>, name make-module
-  load <@term/call/code/boot>, name boot-module
-  load <@term/call/code/deck-of>, name deck-module
-  load <@term/call/code/role-of>, name role-module
   load <@term/call/code/output>, name output
   load <@term/call/code/native-build>, name native-build
 
@@ -361,18 +376,19 @@ task compile-entry
   mark private
 
   # the original read its own folder, `host/` in the bundle: the running install's host/ (decision 006)
-  save install-root, boot-module/find-project-root(node-path/join(find-install-root(), <host>))
+  save install-root, find-project-root(node-path/join(find-install-root(), <host>))
   save source
     make program-source
       bind file, file
       bind text, text
+  save reader, make-role-reader(root)
   save options
     make compile-options
-      bind resolve, make-module/project-resolver(root, env, install-root)
+      bind resolve, face-project-resolver(make-project-resolver(root, env, install-root))
       bind env, env
-      bind deck-of, deck-module/project-deck-of()
-      bind role-of, role-module/project-role-of(root)
-      bind lean-of, role-module/project-lean-of(root)
+      bind deck-of, face-deck-finder(make-deck-finder())
+      bind role-of, face-role-reader(reader)
+      bind lean-of, face-lean-reader(reader)
   back compile-module/compile(source, options)
 
 # the main file's text of a program cut by module, or the empty text
@@ -584,7 +600,7 @@ task fail-usage
       bind verdict, <Nothing emitted>
       bind next, next
       bind failure, <usage>
-  node-process/exit(output/close-run(closing))
+  host-process/exit(output/close-run(closing))
 
 # a refusal drawn, every problem or every message, and the run closed with exit 1
 task fail-refused
@@ -612,7 +628,7 @@ task fail-refused
     make close-ask
       bind verdict, <Refused, nothing written>
       bind counts, counts
-  node-process/exit(output/close-run(closing))
+  host-process/exit(output/close-run(closing))
 
 # a build that failed: its first line the subject, the next 29 quoted
 task fail-built
@@ -651,7 +667,7 @@ task fail-built
     make close-ask
       bind verdict, <Not built for {target}>
       bind failure, <failure>
-  node-process/exit(output/close-run(closing))
+  host-process/exit(output/close-run(closing))
 
 # the command a built program runs, each part with a space quoted
 task command-line
@@ -776,7 +792,7 @@ task call-through-rust
           bind verdict, <Nothing emitted>
           bind next, <term make --emit {target} \<file.tree\> [--run]>
           bind failure, <usage>
-      node-process/exit(output/close-run(closing))
+      host-process/exit(output/close-run(closing))
 
   save started, now-ms()
   save asked
@@ -795,7 +811,7 @@ task call-through-rust
   save folder, <>
   fork test, ir-only
     hold
-      save folder, node-path/join(node-os/tmpdir(), <term-llvm-{node-process/pid}>)
+      save folder, node-path/join(node-os/tmpdir(), <term-llvm-{host-process/pid}>)
     miss
       save folder, node-path/resolve(input/root, value-or(input/out, node-path/join(<host>, target)))
   save built, nothing()
@@ -903,7 +919,7 @@ task finish-built
         make close-ask
           bind verdict, <Built {target}, running>
       output/close-run(closing)
-      node-process/exit(native-build/run-built(built/command))
+      host-process/exit(native-build/run-built(built/command))
 
 # one file per module, each written only when its text changed, and `units.txt` naming the files of this program
 task write-units
@@ -996,7 +1012,7 @@ task call-native
         make close-ask
           bind verdict, <Nothing emitted>
           bind failure, <usage>
-      node-process/exit(output/close-run(closing))
+      host-process/exit(output/close-run(closing))
 
   fork test, not(is-truthy(input/file))
     hold

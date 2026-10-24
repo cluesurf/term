@@ -33,12 +33,14 @@ load ./android
   find compose-android-ask
   find compose-android-built
 
+load ../boot/entry-finding
+  find find-entry
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <node:child_process>, name node-child
-  load <global:process>, name node-process
-  load <@term/call/code/boot>, name boot-module
+  load <global:process>, name host-process
   load <@term/call/code/output>, name output
 
 form package-folder
@@ -148,7 +150,7 @@ task package-compose-desktop
         libraries/push(one)
   compose-input(make(compose-input-ask, bind(jar, ask/jar), bind(libraries, libraries), bind(input, input)))
   save image, node-path/join(ask/out, ask/name)
-  fork test, is-equal(<{node-process/platform}>, <darwin>)
+  fork test, is-equal(<{host-process/platform}>, <darwin>)
     hold
       save image, node-path/join(ask/out, <{ask/name}.app>)
   node-fs/rm-sync(image, make(package-remove, bind(recursive, true), bind(force, true)))
@@ -190,7 +192,7 @@ task make-compose
   save root, ask/root
   save target, ask/target
   save named, <{value-or(ask/entry, <app.tree>)}>
-  save entry, value-or(boot-module/find-entry(root, ask/entry), node-path/join(root, named))
+  save entry, value-or(find-entry(root, ask/entry), node-path/join(root, named))
   save facts, make list
   facts/push(<--target {target}>)
   output/open-run(make(make-open, bind(verb, <make>), bind(root, root), bind(facts, facts)))

@@ -5,10 +5,11 @@
 # term-cli-in-term-0064.
 #
 # The server's state (the graph, the clock, the open streams, the served url of each file) is one shared dev-run
-# record every closure reads. Loaded: the module graph and HMR walk (make/dev/module-graph.tree, hmr.tree) and
-# term/hash. Docked: hono and its streaming, @hono/node-server, esbuild (transformSync), compile/compile,
-# make/dev/client.ts, call/code/make (projectResolver), cache-store (processCache, processParse), boot
-# (findProjectRoot), role-of.
+# record every closure reads. Loaded: the module graph and HMR walk (make/dev/module-graph.tree, hmr.tree),
+# term/hash, and the boot lane's find-project-root (boot/entry-finding.tree, since term-cli-in-term-0213, once
+# module-graph.tree and hmr.tree imported the list `contains` they call). Docked: hono and its streaming,
+# @hono/node-server, esbuild (transformSync), compile/compile, make/dev/client.ts. The resolver and the role readers
+# are the build lane's ports, the process's cache and parse memo the cache lane's (term-cli-in-term-0214).
 
 load @term/make/dev/module-graph
   find module-graph
@@ -32,6 +33,24 @@ load @term/make/dev/hmr
 load @term/make/term/hash
   find hash-text
 
+load ../boot/entry-finding
+  find find-project-root
+
+load ../build/project-resolving
+  find make-project-resolver
+
+load ../build/role-reading
+  find make-role-reader
+
+load ../build/host-faces
+  find face-project-resolver
+  find face-role-reader
+  find face-lean-reader
+
+load ../cache/compile-store
+  find process-cache
+  find process-parse
+
 dock load
   load <hono>, name hono-module
   load <hono/streaming>, name hono-streaming
@@ -40,10 +59,6 @@ dock load
   load <node:fs>, name node-file
   load <@term/make/code/compile/compile>, name compiling-module
   load <@term/make/code/dev/client>, name client-module
-  load <@term/call/code/make>, name making-module
-  load <@term/call/code/cache-store>, name cache-store
-  load <@term/call/code/boot>, name booting-module
-  load <@term/call/code/role-of>, name role-reading
 
 # ---- the host values Term has no word for ----
 
@@ -334,16 +349,16 @@ task start-dev-server
   take options, like dynamic
   like dev-server
 
-  save project-root, booting-module/find-project-root(options/root)
+  save project-root, find-project-root(options/root)
   save env, dev-or(options/env, <browser>)
   save port, dev-or(options/port, 5173)
-  save resolve, making-module/project-resolver(project-root, env)
+  save resolve, face-project-resolver(make-project-resolver(project-root, env))
   # canonicalize the entry so its graph-node id matches the watcher's realpath'd change events
   save entry-file, node-file/realpath-sync(options/entry)
 
   save file-by-hash, make hash
   save run, make(dev-run, bind(graph, make-module-graph()), bind(clock, 1), bind(clients, dev-new-set()), bind(file-by-hash, file-by-hash))
-  save cache, cache-store/process-cache(project-root)
+  save cache, process-cache(project-root)
 
   save url-of
     task
@@ -356,7 +371,9 @@ task start-dev-server
   save build
     task
       like list, like text
-      save result, compiling-module/compile(make(dev-source, bind(file, entry-file), bind(text, node-file/read-file-sync(entry-file, <utf8>))), make(dev-compile-options, bind(resolve, resolve), bind(cache, cache), bind(parsed, cache-store/process-parse()), bind(modules, url-of), bind(role-of, role-reading/project-role-of(project-root)), bind(lean-of, role-reading/project-lean-of(project-root))))
+      # the role readers are made on every build, as the original made them, so an edited role file is read again
+      save reader, make-role-reader(project-root)
+      save result, compiling-module/compile(make(dev-source, bind(file, entry-file), bind(text, node-file/read-file-sync(entry-file, <utf8>))), make(dev-compile-options, bind(resolve, resolve), bind(cache, cache), bind(parsed, process-parse()), bind(modules, url-of), bind(role-of, face-role-reader(reader)), bind(lean-of, face-lean-reader(reader))))
       fork test, not(result/ok)
         hold
           save messages, make list

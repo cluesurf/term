@@ -61,7 +61,7 @@ dock load
   load <node:os>, name node-os
   load <node:path>, name node-path
   load <node:child_process>, name node-child
-  load <global:process>, name node-process
+  load <global:process>, name host-process
   load <esbuild>, name esbuild-module
   load <@term/make/code/compile/kotlin>, name kotlin-module
   load <@term/make/code/resolve>, name resolve-module
@@ -286,7 +286,7 @@ task build-native
         hold
           back refused-build(<{failed}>)
       save command, make list
-      command/push(<{node-process/exec-path}>)
+      command/push(<{host-process/exec-path}>)
       command/push(artifact)
       back built-ok(command, artifact)
 
@@ -524,7 +524,7 @@ task build-through-rust
       save runner, <{stem}.mjs>
       node-fs/write-file-sync(runner, <import \{ readFileSync \} from 'node:fs'\nimport \{ WASI \} from 'node:wasi'\nconst wasi = new WASI(\{ version: 'preview1', args: [], env: \{\}, returnOnExit: true \})\nconst \{ instance \} = await WebAssembly.instantiate(readFileSync(new URL('./{name}.wasm', import.meta.url)), wasi.getImportObject())\nprocess.exitCode = wasi.start(instance)\n>)
       save command, make list
-      command/push(<{node-process/exec-path}>)
+      command/push(<{host-process/exec-path}>)
       command/push(<--no-warnings>)
       command/push(runner)
       back built-ok(command, module)

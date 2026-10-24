@@ -57,6 +57,9 @@ load ../cask/host-value
 load ./declaration
   find apple-usage
 
+load ../boot/entry-finding
+  find find-entry
+
 load ./native-value
   find message-of
   find encode-component
@@ -72,12 +75,11 @@ dock load
   load <node:path>, name node-path
   load <node:child_process>, name node-child
   load <node:crypto>, name node-crypto
-  load <global:process>, name node-process
+  load <global:process>, name host-process
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/load>, name load-module
   load <@term/make/code/compile/native>, name native-module
   load <@term/make/code/compile/swift>, name swift-emit
-  load <@term/call/code/boot>, name boot-module
   # scope.ts, whose port is work/context/app-scope.tree, DOCKED: a load of it puts its one-argument `bind refuse`
   # beside work/cask/host-value.tree's two-argument one, and a bind is not bound by import, so every call here took
   # the wrong one (traps.md, cli-in-term-0034)
@@ -340,12 +342,12 @@ task make-uikit
   # the file `--entry` names, else the one the manifest's `boot` line names (`boot ./code/boot`), else the older
   # `app.tree` beside the manifest
   save root, <{input/root}>
-  save entry, <{value-or(boot-module/find-entry(root, input/entry), node-path/join(root, value-or(input/entry, <app.tree>)))}>
+  save entry, <{value-or(find-entry(root, input/entry), node-path/join(root, value-or(input/entry, <app.tree>)))}>
   save opened, make list
   opened/push(<--target uikit>)
   output/open-run(make(iphone-open, bind(verb, <make>), bind(root, root), bind(facts, opened)))
 
-  fork test, is-unequal(<{node-process/platform}>, <darwin>)
+  fork test, is-unequal(<{host-process/platform}>, <darwin>)
     hold
       refuse(<an iPhone app builds on macOS, where Xcode is>, <environment>)
 

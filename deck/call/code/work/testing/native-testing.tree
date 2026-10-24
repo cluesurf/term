@@ -11,8 +11,8 @@
 # `test` blocks made tasks), since the file on disk still has them.
 #
 # Ported from deck/call/code/test-native.ts (term-cli-in-term-0019). Docked: the compiler's TypeScript modules
-# (compile/compile, compile/native and the three emitters), the project resolver (call/code/make.ts), the cache folder
-# (cache-store.ts) and the native build (native-build.ts).
+# (compile/compile, compile/native and the three emitters) and the native build (native-build.ts). The project resolver
+# and the cache folder are the build and cache lanes' ports, loaded since term-cli-in-term-0065.
 
 load @term/base/list
   find list
@@ -25,6 +25,15 @@ load ./test-running
   find test-run
   find test-result
 
+load ../build/project-resolving
+  find make-project-resolver
+
+load ../build/host-faces
+  find face-project-resolver
+
+load ../cache/compile-store
+  find project-cache-dir
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
@@ -34,8 +43,6 @@ dock load
   load <@term/make/code/compile/rust>, name rust-module
   load <@term/make/code/compile/swift>, name swift-module
   load <@term/make/code/compile/kotlin>, name kotlin-module
-  load <@term/call/code/make>, name make-module
-  load <@term/call/code/cache-store>, name cache-module
   load <@term/call/code/native-build>, name native-build
 
 # the backends this command runs a project's tests on (the original's NATIVE_TEST_ENVS)
@@ -305,7 +312,7 @@ task run-native-test-file
   save root, host-text(input/root)
   save file, host-text(input/file)
   save env, host-text(input/env)
-  save cache-dir, host-text(cache-module/project-cache-dir(root))
+  save cache-dir, project-cache-dir(root)
   save work, node-path/join(cache-dir, <test-native>, env)
   node-file/mkdir-sync(work, make(folder-make, bind(recursive, true)))
   # the report, beside the cache, loading the test file by its path from there (inside the package, as a relative load
@@ -317,7 +324,7 @@ task run-native-test-file
     take one, like dynamic
     names/push(host-text(one/name))
   node-file/write-file-sync(report-file, report-text(load, names))
-  save resolving, make-module/project-resolver(root, env)
+  save resolving, face-project-resolver(make-project-resolver(root, env))
   save real, host-text(node-file/realpath-sync(file))
   save rewritten, host-text(input/text)
   # the test file as rewritten, wherever the report's load lands on it

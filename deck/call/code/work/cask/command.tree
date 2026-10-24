@@ -82,14 +82,17 @@ load ./release
   find stamp-ask
   find publish-ask
 
+load ../cask-generate/bridge
+  find generate-bridge
+  find bridge-ask
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
-  load <global:process>, name node-process
+  load <global:process>, name host-process
   load <@term/make/code/compile/load>, name load-module
   load <@term/call/code/make>, name make-module
   load <@term/call/code/scope>, name scope-module
-  load <@term/call/code/cask-generate>, name generate-module
   load <@term/call/code/show>, name show-module
   load <@term/call/code/update>, name update-module
   load <@term/call/code/output>, name output
@@ -185,12 +188,6 @@ form source-ask
 form scope-ask
   link root, like text
   link files, like list, like text
-
-form bridge-ask
-  link page, like text
-  link out, like text
-  link commit, like boolean
-  link root, like text
 
 form key-ask
   link identifier, like text
@@ -377,7 +374,7 @@ task generate-and-report
       bind out, node-path/dirname(entry)
       bind commit, true
       bind root, root
-  report-bridge(generate-module/generate-bridge(asked))
+  report-bridge(generate-bridge(asked))
 
 task report-bridge
   take generated, like dynamic
@@ -466,14 +463,14 @@ task make-cask
   fork test, not(contains(targets, target))
     hold
       refuse(<target {target} is not built yet. Today: {join(targets, <, >)}>, <usage>)
-  fork test, and(or(is-equal(target, <macos>), is-equal(target, <ios>)), is-unequal(node-process/platform, <darwin>))
+  fork test, and(or(is-equal(target, <macos>), is-equal(target, <ios>)), is-unequal(host-process/platform, <darwin>))
     hold
       refuse(<an Apple cask builds on macOS, where swiftc, codesign and the simulator are>, <environment>)
 
   # the toolchain, before anything is built: a missing `cargo` or `swiftc` was found where the build first called it,
   # after the bridge and the program had been made (guides: basics/install, 2026-10-04)
   save missing, make list
-  walk cask-tools(target, node-process/platform)
+  walk cask-tools(target, host-process/platform)
     take tool, like text
     fork test, is-absent(show-module/tool-version(tool))
       hold
@@ -687,7 +684,7 @@ task make-rust-cask
           # the WebView2 loader is a DLL the executable links dynamically; cargo leaves it in the build directory and
           # Windows refuses to start the app without it beside the executable, silently
           save arch, <x64>
-          fork test, is-equal(node-process/arch, <arm64>)
+          fork test, is-equal(host-process/arch, <arm64>)
             hold
               save arch, <arm64>
           save build, node-path/join(program/project, <target/release/build>)
@@ -880,11 +877,11 @@ task work-cask
         save said, make list
         said/push(<The app is loading the dev server. Ctrl-C stops the server.>)
         output/report(make(said-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, <device>), bind(message, said)))
-        node-process/once
+        host-process/once
           <SIGINT>
           task
             like void
-            node-process/exit(output/close-run(make(run-interrupted, bind(verdict, <Stopped>), bind(failure, <interrupted>), bind(uptime, true))))
+            host-process/exit(output/close-run(make(run-interrupted, bind(verdict, <Stopped>), bind(failure, <interrupted>), bind(uptime, true))))
         wait-forever()
   halt take
     take problem

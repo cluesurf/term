@@ -9,9 +9,9 @@
 # Ported from deck/call/code/test.ts (term-cli-in-term-0018). `call-test` takes the original's one input record as it
 # came (root, filter, merged, case, env, ride, update), so a TypeScript caller moves to it unchanged. Docked until
 # their integrate: the output library (call/code/output.ts, so the run shares the options the console set: a loaded
-# port carries its own copy of the printer's state), the build session, resolver and watcher (call/code/make.ts, whose
-# session the docked test runner reads), the test runners (test-run.ts, test-native.ts), and the caches and readers
-# they are handed (cache-store.ts, deck-of.ts, role-of.ts, compile/reach.ts).
+# port carries its own copy of the printer's state, term-cli-in-term-0069) and the compiler's reach (compile/reach.ts).
+# The build session, resolver, watcher, readers, caches and both test runners are their lanes' ports, loaded since
+# term-cli-in-term-0065; what the compiler is handed of them goes through build/host-faces.tree.
 
 load @term/base/list
   find list
@@ -41,18 +41,50 @@ load @term/call/work/testing/snapshot-store
   find read-snapshots
   find write-snapshots
 
+load ./test-running
+  find run-test-file
+  find tests-of
+  find case-matches
+
+load ./native-testing
+  find run-native-test-file
+  find missing-tools
+
+load ../build/project-resolving
+  find make-project-resolver
+
+load ../build/role-reading
+  find make-role-reader
+
+load ../build/deck-finding
+  find make-deck-finder
+
+load ../build/build-session
+  find build-session
+  find make-build-session
+  find turn-session
+  find close-session
+
+load ../build/host-faces
+  find face-project-resolver
+  find face-session
+  find face-deck-finder
+  find face-role-reader
+  find face-lean-reader
+
+load ../build/tree-watching
+  find watch-tree-files
+
+load ../cache/compile-store
+  find project-cache
+  find project-cache-dir
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
   # an inherited method (once) is reached only through the global (traps.md)
   load <global:process>, name host-process
-  load <@term/call/code/make>, name make-module
-  load <@term/call/code/test-run>, name run-module
-  load <@term/call/code/test-native>, name native-module
   load <@term/make/code/compile/reach>, name reach-module
-  load <@term/call/code/cache-store>, name cache-module
-  load <@term/call/code/deck-of>, name deck-module
-  load <@term/call/code/role-of>, name role-module
   load <@term/call/code/output>, name output
 
 # ---- what the output library is handed ----
@@ -140,7 +172,9 @@ form test-units
   link root, like text
   link cache, like dynamic
   link bundles, like text
+  # the finder as the compiler takes it (a function), and as the unit naming port takes it (the record)
   link deck-of, like dynamic
+  link finder, like dynamic
   link parsed, like dynamic
   link units, like dynamic
   link walked, like dynamic
@@ -190,7 +224,7 @@ form test-context
   link lean-of, like dynamic
   link deck-of, like dynamic
   link read-runtime, like dynamic
-  link session, like dynamic
+  link session, like build-session
   link units, like dynamic
 
 # a round's counts, written by every file it runs
@@ -501,8 +535,8 @@ task run-control
   save expected, number-of(digits)
   # ALWAYS MERGED. A control is judged by how many refusals it gets, and the unit-at-a-time build reports fewer of a
   # file's diagnostics than it refuses (2 for `vibe/group-control.tree`, whose 7 rules it refuses one by one)
-  save ask, make(run-ask, bind(file, file), bind(source, source), bind(resolve, make-module/project-resolver(context/root)), bind(env, <node>), bind(read-runtime, context/read-runtime), bind(role-of, context/role-of), bind(lean-of, context/lean-of))
-  save ran, wait run-module/run-test-file(ask)
+  save ask, make(run-ask, bind(file, file), bind(source, source), bind(resolve, face-project-resolver(make-project-resolver(context/root))), bind(env, <node>), bind(read-runtime, context/read-runtime), bind(role-of, context/role-of), bind(lean-of, context/lean-of))
+  save ran, run-test-file(ask)
   # a GOAL refused, counted once however many diagnostics say so
   save diagnostics, make list
   fork test, is-truthy(ran/failure)
@@ -551,9 +585,9 @@ task run-round
   save resolve, nothing()
   fork test, is-truthy(context/units)
     hold
-      save resolve, context/session/resolve
+      save resolve, face-session(context/session)
     miss
-      save resolve, make-module/project-resolver(context/root)
+      save resolve, face-project-resolver(make-project-resolver(context/root))
   save tally, make(round-count, bind(pass, 0), bind(fail, 0), bind(proved, 0), bind(broken, 0), bind(skipped, 0), bind(controls, 0))
   walk files
     take file
@@ -568,7 +602,7 @@ task run-round
       save message, make list
       message/push(message-of(problem))
       output/report(make(item-ask, bind(glyph, <failed>), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(message, message)))
-  context/session/close()
+  close-session(context/session)
   back make(round-totals, bind(pass, tally/pass), bind(fail, tally/fail), bind(proved, tally/proved), bind(broken, tally/broken), bind(skipped, tally/skipped), bind(controls, tally/controls))
 
 # one test file of a round, its counts added to the round's
@@ -630,13 +664,13 @@ task run-file
   save listed, nothing()
   fork test, is-unequal(context/native, <>)
     hold
-      save listed, run-module/tests-of(file, source, make(plain-tests-ask, bind(plain-wants, true), bind(snapshots, snapshots)))
+      save listed, tests-of(file, source, make(plain-tests-ask, bind(plain-wants, true), bind(snapshots, snapshots)))
     miss
-      save listed, run-module/tests-of(file, source, make(tests-ask, bind(snapshots, snapshots)))
+      save listed, tests-of(file, source, make(tests-ask, bind(snapshots, snapshots)))
   save chosen, make list
   walk listed/tests
     take listed-test, like dynamic
-    fork test, or(is-equal(context/chosen, <>), run-module/case-matches(context/chosen, listed-test))
+    fork test, or(is-equal(context/chosen, <>), case-matches(context/chosen, listed-test))
       hold
         chosen/push(listed-test)
   # `--case` runs the tests whose phrase or name holds it, so a file holding none of them is not run at all
@@ -652,7 +686,7 @@ task run-file
       save native-runner
         task
           like dynamic
-          back native-module/run-native-test-file(native-run)
+          back run-native-test-file(native-run)
       save captured, capture-printed(native-runner)
     miss
       save ask, make(run-ask, bind(file, file), bind(source, source), bind(resolve, resolve), bind(env, <node>), bind(read-runtime, context/read-runtime), bind(role-of, context/role-of), bind(lean-of, context/lean-of), bind(units, context/units), bind(snapshots, snapshots))
@@ -663,11 +697,11 @@ task run-file
             task
               take asked-test, like dynamic
               like boolean
-              back run-module/case-matches(phrase, asked-test)
+              back case-matches(phrase, asked-test)
       save node-runner
         task
           like dynamic
-          back run-module/run-test-file(ask)
+          back run-test-file(ask)
       save captured, capture-printed(node-runner)
   save ran, captured/value
   save printed, captured/lines
@@ -809,7 +843,7 @@ task run-seed-tests
   save refusal, env-refusal(env, native-envs, update, make list)
   fork test, and(is-equal(refusal/subject, <>), is-unequal(native, <>))
     hold
-      save refusal, env-refusal(env, native-envs, update, native-module/missing-tools(native))
+      save refusal, env-refusal(env, native-envs, update, missing-tools(native))
   fork test, is-unequal(refusal/subject, <>)
     hold
       output/report(make(item-ask, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, refusal/subject)))
@@ -827,21 +861,23 @@ task run-seed-tests
       output/close-run(make(close-ask, bind(verdict, <No tests to run>), bind(message, message)))
       back
   # the same role and lean readers `term make` compiles with, so a lean grammar's tests read it lean
-  save role-of, role-module/project-role-of(root)
-  save lean-of, role-module/project-lean-of(root)
-  save deck-of, deck-module/project-deck-of()
+  save reader, make-role-reader(root)
+  save role-of, face-role-reader(reader)
+  save lean-of, face-lean-reader(reader)
+  save finder, make-deck-finder()
+  save deck-of, face-deck-finder(finder)
   save read-runtime, runtime-reader()
   # one build session for every test file: the units every file reaches, the standard library's above all, are
   # checked once for the run and read from the cache after that
-  save session, make-module/build-session(root)
+  save session, make-build-session(root)
   save merged, is-truthy(input/merged)
   save units, nothing()
   fork test, not(merged)
     hold
-      save units, make(test-units, bind(root, root), bind(cache, cache-module/project-cache(root)), bind(bundles, node-path/join(cache-module/project-cache-dir(root), <test>)), bind(deck-of, deck-of), bind(parsed, session/parsed), bind(units, session/units), bind(walked, session/walked))
+      save units, make(test-units, bind(root, root), bind(cache, project-cache(root)), bind(bundles, node-path/join(project-cache-dir(root), <test>)), bind(deck-of, deck-of), bind(finder, finder), bind(parsed, session/parsed), bind(units, session/units), bind(walked, session/walked))
   save context, make(test-context, bind(root, root), bind(filter, filter), bind(merged, merged), bind(chosen, chosen), bind(native, native), bind(update, update), bind(role-of, role-of), bind(lean-of, lean-of), bind(deck-of, deck-of), bind(read-runtime, read-runtime), bind(session, session), bind(units, units))
   # the session's first round: everything it was handed
-  session/turn(files)
+  turn-session(session, files)
   save first, run-round(context, files)
   fork test, not(ride)
     hold
@@ -868,7 +904,7 @@ task run-seed-tests
       like void
       mark async
       watch-round(context)
-  make-module/watch-tree-files(root, on-change)
+  watch-tree-files(root, on-change)
 
 # a round's glyph: failed when it failed
 task round-glyph
@@ -897,12 +933,17 @@ task watch-round
 
   # each edit lists the files again; nothing else reads the list
   save files, find-test-files(context/root, context/filter)
-  save moved, context/session/turn(files)
   save reached, files
-  fork test, and(is-truthy(moved), and(not(context/merged), is-equal(context/native, <>)))
-    hold
-      save graph, walked-edges(context/session/walked)
-      save reached, reach-module/stale-entries(graph, files, moved)
+  # what moved since the last build, or nothing when the session started over (every file runs again)
+  sift turn-session(context/session, files)
+    case some
+      link moved
+      fork test, and(not(context/merged), is-equal(context/native, <>))
+        hold
+          save graph, walked-edges(context/session/walked)
+          save reached, reach-module/stale-entries(graph, files, moved)
+    case none
+      save nothing, 0
   fork test, is-equal(reached/length, 0)
     hold
       back

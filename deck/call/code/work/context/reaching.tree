@@ -22,14 +22,23 @@ load @term/call/reach-graph
   find reach-at
   find site-parts-of
 
+load ../build/project-resolving
+  find make-project-resolver
+
+load ../build/role-reading
+  find make-role-reader
+
+load ../build/host-faces
+  find face-project-resolver
+  find face-role-reader
+  find face-lean-reader
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <@term/make/code/analyze>, name analyze-module
   load <@term/make/code/compile/load>, name load-module
   load <@term/make/code/compile/native>, name native-module
-  load <@term/call/code/make>, name make-module
-  load <@term/call/code/role-of>, name role-module
 
 # whether a host value is truthy, as `if (value)` reads it
 bind is-truthy
@@ -87,9 +96,10 @@ task make-reach-graph
   take root, like text
   like reach-graph
 
-  save role-of, role-module/project-role-of(root)
-  save lean-of, role-module/project-lean-of(root)
-  save resolve, native-module/with-native-env(<node>, make-module/project-resolver(root, <node>, root))
+  save reader, make-role-reader(root)
+  save role-of, face-role-reader(reader)
+  save lean-of, face-lean-reader(reader)
+  save resolve, native-module/with-native-env(<node>, face-project-resolver(make-project-resolver(root, <node>, root)))
   back
     make reach-graph
       bind role-of, role-of

@@ -15,7 +15,7 @@ load @term/base/maybe
   find maybe
 
 dock load
-  load <@term/call/code/roll>, name roll-module
+  load <@term/call/code/roll>, name roll-verb-module
 
 # what `callRoll` takes without `--diff`. NOT `roll-ask` or `show-ask`: Term names are package-global, and
 # base-verbs.tree declares a `show-ask` of its own
@@ -63,7 +63,7 @@ task roll
       save json, true
   sift diff
     case none
-      call roll-module/callRoll
+      call roll-verb-module/callRoll
         make roll-whole-ask
           bind root, read root
           bind kind, read kind
@@ -73,7 +73,7 @@ task roll
           bind path, read show-path
         wait true
     case some
-      call roll-module/callRoll
+      call roll-verb-module/callRoll
         make roll-diff-ask
           bind root, read root
           bind kind, read kind

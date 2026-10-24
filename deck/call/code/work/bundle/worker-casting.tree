@@ -12,9 +12,9 @@
 #
 # `wrangler deploy` then bundles `work/index.ts` and uploads it, with `build/` as the static-assets binding.
 #
-# The boot lane's ports find the entry and build the client bundle and assets. Docked: the compiler, the native
-# prelude, the project resolver (call/code/make.ts), the project cache (cache-store.ts), the output run (output.ts) and
-# esbuild (decision 002).
+# The boot lane's ports find the entry and build the client bundle and assets, and the build and cache lanes' ports
+# give the project resolver and the project cache (term-cli-in-term-0214). Docked: the compiler, the native prelude,
+# the output run (output.ts) and esbuild (decision 002).
 
 load ../boot/entry-finding
   find find-project-root
@@ -33,14 +33,21 @@ load ../boot/asset-building
 load ../need/running-install
   find find-install-root
 
+load ../build/project-resolving
+  find make-project-resolver
+
+load ../build/host-faces
+  find face-project-resolver
+
+load ../cache/compile-store
+  find project-cache
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
   load <esbuild>, name esbuild-module
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/native>, name native-module
-  load <@term/call/code/make>, name make-module
-  load <@term/call/code/cache-store>, name cache-store
   load <@term/call/code/output>, name output
   load <global:Date>, name host-date
 
@@ -418,8 +425,8 @@ task cast-worker
   save install-root, find-project-root(node-path/join(find-install-root(), <host>))
   save production, cast-set-production()
   save env, <cloudflare>
-  save resolve, make-module/projectResolver(app, env, install-root)
-  save cache, cache-store/projectCache(project-root)
+  save resolve, face-project-resolver(make-project-resolver(app, env, install-root))
+  save cache, project-cache(project-root)
   # 1. compile the SSR entry for the cloudflare env
   save source, make(compile-source, bind(file, entry-file), bind(text, node-file/read-file-sync(entry-file, <utf8>)))
   save result, compile-module/compile(source, make(compile-options, bind(resolve, resolve), bind(cache, cache), bind(env, env)))

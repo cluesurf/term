@@ -46,17 +46,21 @@ load ./android
 load ./packaging
   find compose-identity-of
 
+load ../workers/kotlin-compiler
+  find start-kotlin-worker
+
+load ../boot/entry-finding
+  find find-entry
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <node:child_process>, name node-child
   load <node:timers>, name timers
-  load <global:process>, name node-process
-  load <@term/call/code/kotlin-worker>, name kotlin-worker
+  load <global:process>, name host-process
   load <@term/make/code/compile/cache>, name cache-module
   load <@term/make/code/compile/load>, name load-module
   load <@term/call/code/output>, name output
-  load <@term/call/code/boot>, name boot-module
 
 # what the loop is started with: the app folder, the target, the entry `--entry` names, what the desktop app's
 # environment adds (a test runs it headless with TERM_WINDOW_AWAY=1), and the callback told every event
@@ -714,14 +718,14 @@ task start-compose-work
   save root, node-path/resolve(ask/root)
   # the file `--entry` names, else the manifest's `boot` line, else the older `app.tree` (packaging.tree `make-compose`)
   save named, <{value-or(ask/entry, <app.tree>)}>
-  save entry, <{value-or(boot-module/find-entry(root, ask/entry), node-path/join(root, named))}>
+  save entry, <{value-or(find-entry(root, ask/entry), node-path/join(root, named))}>
   save out, node-path/join(root, <host>, ask/target)
   save identifier, compose-identity-of(root)/identifier
   save address, node-path/join(out, address-name())
   node-fs/mkdir-sync(out, make(work-folder, bind(recursive, true)))
   # what the session keeps warm between builds: one Kotlin compiler, so a rebuild pays for the code and not for
   # starting a JVM, and the Term compiler's parsed modules, so an edit reparses only the files that changed
-  save kotlin, kotlin-worker/start-kotlin-worker(node-path/join(out, <kotlin>))
+  save kotlin, start-kotlin-worker(node-path/join(out, <kotlin>))
   save cache, new-compile-cache(cache-module)
   # and the parses the scope check walks (call/code/scope.ts), which an edit to the scope itself rechecks
   save memo, load-module/make-parse-memo()
@@ -798,7 +802,7 @@ task work-compose
 
   await-value(interrupted())
   await-value(call-with(work/stop, nothing()))
-  node-process/exit(output/close-run(make(work-close, bind(verdict, <Stopped>), bind(failure, <interrupted>), bind(uptime, true))))
+  host-process/exit(output/close-run(make(work-close, bind(verdict, <Stopped>), bind(failure, <interrupted>), bind(uptime, true))))
 
 # one event of the loop as an item: a build with where its time went stage by stage, a failure with the running app
 # kept, and a launch with the app's lines followed under its name

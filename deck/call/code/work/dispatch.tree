@@ -55,10 +55,19 @@ load @term/base/list
 load @term/base/console
   find log
 
+# the banner `term` alone prints, in Term, coloured by chalk's rules for standard output (decision cli-in-term/014
+# part 3, term-cli-in-term-0197), where make/code/show.ts asked `chalk.level > 0`
+load @term/make/banner
+  find banner-text
+
+load @term/base/terminal
+  find uses-color
+
 # THE RUN (term-cli-in-term-0012), below the dispatcher: what `deck/call/code/line.ts`'s `main()` did around yargs,
 # for the console, which `make:line` bundles as `host/line.js` since term-cli-in-term-0013. The parsing of a command's own flags and the call of its task are
 # still `hook-dispatch.ts`'s (`runCommandLine`, docked through the run entry port-build writes), and the
-# output library, the homes and the banner are their TypeScript modules: each dock below is one thing to port.
+# output library and the homes are their TypeScript modules: each dock below is one thing to port. The banner is
+# banner.tree, loaded above (term-cli-in-term-0197).
 # the help a `--help` prints, in Term (term-cli-in-term-0141)
 load @term/call/work/help
   find help-text
@@ -72,7 +81,6 @@ dock load
   load <@term/call/code/home>, name home-module
   load <@term/call/code/output>, name output-module
   load <@term/call/code/show>, name show-module
-  load <@term/make/code/show>, name banner-module
   load <@term/call/code/hunt>, name hunt-module
   load <@term/call/code/base>, name base-module
   load <node:os>, name host-os
@@ -768,7 +776,7 @@ task start-line
   # `term` alone answers with the list of commands: data on stdout
   fork test, is-equal(first, <>)
     hold
-      output-module/printData(banner-module/bannerText())
+      output-module/printData(banner-text(uses-color()))
       back done-with(0)
   sift route-for(commands, bare)
     case none

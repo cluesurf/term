@@ -6,7 +6,8 @@
 # the native prelude as a module of its own. THE PRELUDE IS A MODULE, AND EACH MODULE IMPORTS THE SHIMS IT DOCKS: the
 # reading of the emitted modules is call/code/unit-shim.tree, this writes the files.
 #
-# Docked: call/code/make.ts (`entryShim`, still TypeScript) and compile/typescript.ts (`toCamel`).
+# Docked: compile/typescript.ts (`toCamel`). The entry shim is the build lane's port (work/build/unit-naming.tree
+# `entry-shim`, term-cli-in-term-0214).
 
 load @term/call/unit-shim
   find docked-of
@@ -16,10 +17,12 @@ load @term/call/unit-shim
   find export-name
   find runtime-exports, name kept-by-place
 
+load ../build/unit-naming
+  find entry-shim
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
-  load <@term/call/code/make>, name make-module
   load <@term/make/code/compile/typescript>, name typescript-module
 
 # `writeUnitBundle`'s one input record: the folder, the module the program starts from, every module of its closure as
@@ -95,7 +98,12 @@ task write-unit-bundle
         save entry-code, bundle-code-of(module)
         save found, true
   save kept, runtime-exports(input/entry, entry-code, input/exports, bundle-keep-of(input))
-  node-file/write-file-sync(app, make-module/entryShim(input/dir, node-path/join(input/dir, <app.tree>), kept, input/slug))
+  save slug
+    task
+      take module, like text
+      like text
+      back bundle-apply-slug(input/slug, module)
+  node-file/write-file-sync(app, entry-shim(input/dir, node-path/join(input/dir, <app.tree>), kept, slug))
   back app
 
 # the names the program's run reaches it by, which are all the bundler may keep: the entry's own (its tests, a server's

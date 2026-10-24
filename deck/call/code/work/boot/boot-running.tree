@@ -10,10 +10,11 @@
 # process and `last-boot-units` are the module's own, as the original's module constants were.
 #
 # Docked: the compiler (compile/compile, compile/separate, compile/native), the command routes (hook-dispatch.ts), the
-# units bundle (unit-bundle.ts), the process's compile cache (cache-store.ts), the toolchain home (home.ts), the
-# manifest reader (manifest-name.ts), the output run (output.ts), the development server (feed.ts, imported when it
-# runs, as the original did) and esbuild. The resolver, deck finder, role readers, unit names and the tree watcher are
-# the build lane's ports, the remote cache the cache lane's, and the rest this lane's.
+# toolchain home (home.ts), the manifest reader (manifest-name.ts), the output run (output.ts), the development server
+# (feed.ts, imported when it runs, as the original did) and esbuild. The resolver, deck finder, role readers, unit names
+# and the tree watcher are the build lane's ports, the process's compile cache and the remote cache the cache lane's
+# (cache/compile-store loaded since term-cli-in-term-0214), the units bundle the bundle lane's (bundle/unit-writing,
+# loaded since term-cli-in-term-0066), and the rest this lane's.
 
 load @term/call/boot-plan
   find boot-mode, name read-boot-mode
@@ -80,6 +81,11 @@ load ../cache/remote-store
   find pull-remote-cache
   find push-remote-cache
 
+load ../cache/compile-store
+  find process-cache
+  find process-parse
+  find compiler-version
+
 load ../need/running-install
   find find-install-root
 
@@ -91,6 +97,10 @@ load ../testing/test-running
   find inlined-hold
   find inlined-source
 
+load ../bundle/unit-writing
+  find write-unit-bundle
+  find unit-ask
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
@@ -99,8 +109,6 @@ dock load
   load <@term/make/code/compile/separate>, name separate-module
   load <@term/make/code/compile/native>, name native-module
   load <@term/call/code/hook-dispatch>, name dispatch-module
-  load <@term/call/code/unit-bundle>, name unit-bundle
-  load <@term/call/code/cache-store>, name cache-store
   load <@term/call/code/home>, name home-module
   load <@term/call/code/manifest-name>, name manifest-module
   load <@term/call/code/output>, name output
@@ -317,15 +325,6 @@ form unit-options
   link walked, like dynamic
   link env, like text
   link keep-program, like boolean
-
-form unit-bundle-ask
-  link dir, like text
-  link entry, like text
-  link modules, like dynamic
-  link slug, like dynamic
-  link exports, like dynamic
-  link prelude, like text
-  link keep, like list, like text
 
 form folder-ask
   link recursive, like boolean
@@ -813,7 +812,7 @@ task boot-found
       save port, boot-number(input/port)
     miss
       save port, find-free-port(base-port())
-  save run, make(boot-run, bind(input, input), bind(owned, owned), bind(cwd, cwd), bind(project-root, project-root), bind(entry, entry), bind(env, env), bind(app-dir, app-dir), bind(base-dir, base-dir), bind(install-root, install-root), bind(resolve, resolve), bind(cache, cache-store/processCache(project-root)), bind(cache-dir, cache-dir), bind(bin-name, bin-name), bind(port, port), bind(server-cwd, base-dir), bind(dev, not(boot-production())), bind(child, boot-no-value()), bind(stops, make list), bind(address, <http://localhost:{port}>))
+  save run, make(boot-run, bind(input, input), bind(owned, owned), bind(cwd, cwd), bind(project-root, project-root), bind(entry, entry), bind(env, env), bind(app-dir, app-dir), bind(base-dir, base-dir), bind(install-root, install-root), bind(resolve, resolve), bind(cache, process-cache(project-root)), bind(cache-dir, cache-dir), bind(bin-name, bin-name), bind(port, port), bind(server-cwd, base-dir), bind(dev, not(boot-production())), bind(child, boot-no-value()), bind(stops, make list), bind(address, <http://localhost:{port}>))
   boot-built(run)
 
 # the program name a command-line tool prints in its usage and help lines: the tail of the `deck <name>` declaration in
@@ -1102,7 +1101,7 @@ task unit-plan
       like text
       back <./{unit-slug(project-root, file, finder)}>
   save source, make(compile-source, bind(file, run/entry), bind(text, node-file/read-file-sync(run/entry, <utf8>)))
-  save options, make(unit-options, bind(resolve, run/resolve), bind(cache, run/cache), bind(modules, modules), bind(role-of, face-role-reader(make-role-reader(project-root))), bind(lean-of, face-lean-reader(make-role-reader(project-root))), bind(deck-of, deck-of), bind(parsed, cache-store/processParse()), bind(units, process-units), bind(walked, process-walked), bind(env, run/env), bind(keep-program, true))
+  save options, make(unit-options, bind(resolve, run/resolve), bind(cache, run/cache), bind(modules, modules), bind(role-of, face-role-reader(make-role-reader(project-root))), bind(lean-of, face-lean-reader(make-role-reader(project-root))), bind(deck-of, deck-of), bind(parsed, process-parse()), bind(units, process-units), bind(walked, process-walked), bind(env, run/env), bind(keep-program, true))
   save built, separate-module/compileSeparate(source, options)
   fork test, not(built/ok)
     hold
@@ -1129,7 +1128,7 @@ task unit-plan
     task
       take dir, like text
       like text
-      back unit-bundle/writeUnitBundle(make(unit-bundle-ask, bind(dir, dir), bind(entry, entry), bind(modules, listed), bind(slug, slug), bind(exports, exports), bind(prelude, prelude), bind(keep, keep)))
+      back write-unit-bundle(make(unit-ask, bind(dir, dir), bind(entry, entry), bind(modules, listed), bind(slug, slug), bind(exports, exports), bind(prelude, prelude), bind(keep, keep)))
   # the prelude is a module of the bundle, not a banner (call/code/unit-bundle.ts)
   back make(boot-plan, bind(state, <planned>), bind(cli-routes, cli-routes), bind(key, boot-joined(lines)), bind(banner, <>), bind(write, write))
 
@@ -1143,7 +1142,7 @@ task whole-plan
 
   save project-root, run/project-root
   save source, make(compile-source, bind(file, run/entry), bind(text, node-file/read-file-sync(run/entry, <utf8>)))
-  save options, make(whole-options, bind(resolve, run/resolve), bind(cache, run/cache), bind(parsed, cache-store/processParse()), bind(env, run/env), bind(deck-of, face-deck-finder(make-deck-finder())), bind(role-of, face-role-reader(make-role-reader(project-root))), bind(lean-of, face-lean-reader(make-role-reader(project-root))))
+  save options, make(whole-options, bind(resolve, run/resolve), bind(cache, run/cache), bind(parsed, process-parse()), bind(env, run/env), bind(deck-of, face-deck-finder(make-deck-finder())), bind(role-of, face-role-reader(make-role-reader(project-root))), bind(lean-of, face-lean-reader(make-role-reader(project-root))))
   save result, compile-module/compile(source, options)
   fork test, not(result/ok)
     hold
@@ -1240,7 +1239,7 @@ task bundle-plan
   # incremental cache in `.base/@term/code/boot/<hash>`: the key folds in everything that can change the output
   save parts, make list
   parts/push(boot-cache-epoch())
-  parts/push(cache-store/compilerVersion())
+  parts/push(compiler-version())
   parts/push(run/env)
   parts/push(<esbuild@{esbuild-module/version}>)
   parts/push(boot-json(config))

@@ -10,6 +10,7 @@
 
 load @term/base/list
   find list
+  find contains
 
 load @term/base/hash
   find hash

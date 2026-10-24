@@ -32,13 +32,26 @@ load @term/call/work/tint
 # and its exit code. The machinery is docked because it is the compiler's or the package manager's, and a second
 # copy in Term would drift from the one that runs.
 #
-# Ported from deck/call/code/{test,walk,cast,host}.ts (cli-in-term-0004).
+# Ported from deck/call/code/{test,walk,cast,host}.ts (cli-in-term-0004). `term walk` and `term cast` run the bundle
+# lane's ports (work/bundle/repl-session.tree, worker-casting.tree), loaded since term-cli-in-term-0066, and `term test`
+# the testing lane's (work/testing/test-command.tree), since term-cli-in-term-0065.
+
+load @term/call/work/bundle/repl-session
+  find call-walk
+  find walk-ask
+
+load @term/call/work/bundle/worker-casting
+  find call-cast
+  find cast-ask
+
+# `term test` runs the testing lane's port (work/testing/test-command.tree), loaded since term-cli-in-term-0065
+load @term/call/work/testing/test-command
+  find call-test
 
 dock load
-  load <@term/call/code/test>, name test-module
-  load <@term/call/code/walk>, name walk-module
-  load <@term/call/code/cast>, name cast-module
-  load <@term/call/code/host>, name host-module
+  # named for itself, never `host-module`: ports in the console's closure dock compile/host under that alias, and a
+  # port keeps one import per alias (traps.md)
+  load <@term/call/code/host>, name host-verb-module
   load <@term/call/code/bind>, name bind-module
   load <@term/call/code/self>, name self-module
   load <@term/call/code/skill>, name skill-module
@@ -56,11 +69,6 @@ form test-ask
   link env, like text
   link ride, like boolean
   link update, like boolean
-
-form cast-ask
-  link root, like text
-  link entry, like text
-  link target, like text
 
 form host-ask
   link root, like text
@@ -87,7 +95,7 @@ task test
   save root, call project-root
   fork
     mark unsafe
-    call test-module/callTest
+    call call-test
       make test-ask
         bind root, read root
         bind filter, read filter
@@ -96,7 +104,6 @@ task test
         bind env, read env
         bind ride, read ride
         bind update, read update
-      wait true
   halt take
     take error
     log-fail format-error error
@@ -111,7 +118,7 @@ task walk
   save root, call project-root
   fork
     mark unsafe
-    call walk-module/callWalk, make(root-ask, bind root, read root), wait true
+    call-walk(make(walk-ask, bind(root, root)))
   halt take
     take error
     log-fail format-error error
@@ -131,12 +138,7 @@ task cast
   save root, call project-root
   fork
     mark unsafe
-    call cast-module/callCast
-      make cast-ask
-        bind root, read root
-        bind entry, read entry
-        bind target, read target
-      wait true
+    call-cast(make(cast-ask, bind(root, root), bind(entry, entry), bind(target, target)))
   halt take
     take error
     log-fail format-error error
@@ -157,7 +159,7 @@ task host
   save root, call project-root
   fork
     mark unsafe
-    call host-module/callHost
+    call host-verb-module/callHost
       make host-ask
         bind root, read root
         bind dryRun, read dry

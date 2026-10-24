@@ -23,18 +23,21 @@ load @term/call/work/tint
 # scan, the data shaper, and the app booter. What is Term here is the command's shape: its arguments, its checks,
 # its messages and its exit code.
 #
-# `mold` and `boot` KEEP THEIR MACHINERY IN TYPESCRIPT for a reason worth naming. `mold` reads standard input,
+# `mold` and `boot` KEPT THEIR MACHINERY IN TYPESCRIPT until their lanes ported it, for a reason worth naming. `mold` reads standard input,
 # which the stdlib cannot do (there is no stdin), and `boot` compiles and then runs a program in a child process
 # with a prepared prelude. Neither is a thin thing to reproduce, and a second copy would drift from the one that
 # runs.
 #
-# Ported from deck/call/code/{view,seek,mold,boot}.ts (cli-in-term-0004).
+# Ported from deck/call/code/{view,seek,mold,boot}.ts (cli-in-term-0004). `boot` now runs the boot lane's port
+# (work/boot/boot-running.tree), loaded since term-cli-in-term-0066.
+
+load @term/call/work/boot/boot-running
+  find call-boot
 
 dock load
   load <@term/call/code/view>, name view-module
   load <@term/call/code/seek>, name seek-module
   load <@term/call/code/mold>, name mold-module
-  load <@term/call/code/boot>, name boot-module
   load <node:process>, name node-process
   # the process argument vector `boot` reads the words after `--` from, as line.ts did (traps.md: <global:process>)
   load <global:process>, name host-process
@@ -237,7 +240,7 @@ task boot
         save text, entry-text
       miss
         save text, <{text},{entry-text}>
-  wait boot-module/callBoot(host-json/parse(<\{{text}\}>))
+  call-boot(host-json/parse(<\{{text}\}>))
 
 # an entry of the boot ask for a text that was given, left out when none
 task maybe-entry

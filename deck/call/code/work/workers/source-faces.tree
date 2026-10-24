@@ -1,0 +1,67 @@
+# The build lane's reading of one source file, in the shapes the pools and their workers pass between their binds.
+# They were written against call/code/make.ts `buildable` and `isWholeFile`, which answered a record (`{ text,
+# generated, place }` or `{ faults }`) and took the role as the host's string or undefined. The build lane's ports
+# answer a `build-input` and take the role as a text (term-cli-in-term-0065), so these face them: the same calls, the
+# original's shapes. term-cli-in-term-0214.
+
+load ../build/build-input
+  find build-input
+  find buildable
+  find place-problem
+
+load ../build/unit-naming
+  find is-whole-file
+
+# what `buildable` answered for a file it reads: the text to compile, whether it is a grammar's generated reader, and
+# `place`, which moves a diagnostic back onto the lines as written
+form readable-face
+  link text, like text
+  link generated, like boolean
+  link place, like dynamic
+
+# what it answered for a grammar the build refuses
+form refused-face
+  link faults, like list, like text
+
+# a role as the host held it (a text, or undefined for none), as the empty text for none
+task role-or-empty
+  take role, like unknown
+  like text
+  mark private
+
+  sift role
+    case text
+      back role
+    miss
+      back <>
+
+# the file as the build compiles it, in the original's shape. `role` is the host's: a text or undefined
+task face-buildable
+  take file, like text
+  take source, like text
+  take role, like dynamic
+  like dynamic
+
+  save input, buildable(file, source, role-or-empty(role))
+  sift input
+    case refused
+      link refusals
+      back make(refused-face, bind(faults, refusals))
+    case readable
+      link unit-text
+      link was-generated
+      save place
+        task
+          take diagnostic, like dynamic
+          like dynamic
+          back place-problem(input, diagnostic)
+      back make(readable-face, bind(text, unit-text), bind(generated, was-generated), bind(place, place))
+
+# a file compiled whole, not cut into units. `role` is the host's: a text or undefined
+task face-is-whole-file
+  take file, like text
+  take text, like text
+  take role, like dynamic
+  like boolean
+
+  back is-whole-file(file, text, role-or-empty(role))

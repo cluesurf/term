@@ -38,7 +38,7 @@ dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
   load <@term/make/code/compile/cache>, name compile-cache-module
-  load <@term/make/code/compile/cache-scope.generated>, name scope-module
+  load <@term/make/code/compile/cache-scope.generated>, name cache-scope-module
   load <@term/make/code/compile/load>, name parse-module
   load <@term/deck/code/package/store>, name store-module
 
@@ -476,7 +476,7 @@ task compiler-source-hash
     hold
       back <>
   save parts, make list
-  save scoped, scope-files(scope-module, kind)
+  save scoped, scope-files(cache-scope-module, kind)
   fork test, not(is-nothing(scoped))
     hold
       walk as-texts(scoped)
@@ -620,7 +620,7 @@ task compiler-versions
   like dynamic
 
   save entries, make list
-  walk scope-kinds(scope-module)
+  walk scope-kinds(cache-scope-module)
     take kind
     entries/push entry-of(kind, compiler-version(kind))
   back record-of(entries)

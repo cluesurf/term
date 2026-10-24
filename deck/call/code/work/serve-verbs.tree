@@ -22,35 +22,29 @@ load @term/base/text
 load @term/base/maybe
   find maybe
 
+# line.ts's Compose and cask work branches, their lanes' ports since term-cli-in-term-0067. Both name their ask
+# `work-ask`, so each is found under a name of its own
+load @term/call/work/compose/reload-loop
+  find work-compose
+  find work-ask, name compose-work-ask
+
+load @term/call/work/cask/command
+  find work-cask
+  find work-ask, name cask-work-ask
+
 dock load
   load <@term/make/code/parser/diagnostic>, name diagnostic-module
-  # line.ts's three work branches (line.ts:1248-1276), docked as every verb file docks today (decision cli-in-term/005
-  # part 2, 013 part 1). Each answers a promise: every call into them is awaited
+  # line.ts's compiler worker branch (line.ts:1248-1276), docked as every verb file docks today (decision
+  # cli-in-term/005 part 2, 013 part 1). It answers a promise: every call into it is awaited
   load <@term/call/code/work>, name worker-module
     mark async
-  load <@term/call/code/compose-work>, name compose-worker-module
-    mark async
-  load <@term/call/code/cask>, name cask-worker-module
-    mark async
 
-# The asks of the three branches. An option the line did not name reaches its handler as undefined, as line.ts
+# The ask of the worker branch. An option the line did not name reaches its handler as undefined, as line.ts
 # handed argv.<x> on, so those fields are host values (work-text-given, work-number-given)
 form worker-call-ask
   link root, like text
   link port, like dynamic
   link env, like dynamic
-
-form compose-worker-ask
-  link root, like text
-  link target, like text
-  link entry, like dynamic
-
-form cask-worker-ask
-  link root, like text
-  link target, like text
-  link page, like dynamic
-  link entry, like dynamic
-  link port, like dynamic
 
 # an option as line.ts handed it to a TypeScript handler: its value when the line named it, else undefined (an absent
 # argv.<x>). The argument is always a local, so the text may read it twice. Named for this file: a bind of one name
@@ -93,20 +87,26 @@ task work
   save target-word, work-text-of(target)
 
   # a Compose app (live-reload): no WebView to swap a page in, so each edit is a new build, relaunched where it was
+  # work-compose tells its own events: the ask's callback is not read, as compose-work.ts's workCompose never read one
+  save no-event
+    task
+      take event, like dynamic
+      like void
+      save ignored, event
   fork test, is-equal(target-word, <compose>)
     hold
-      compose-worker-module/workCompose(make(compose-worker-ask, bind(root, read root), bind(target, read target-word), bind(entry, work-text-given(entry))))
+      work-compose(make(compose-work-ask, bind(root, read root), bind(target, read target-word), bind(entry, work-text-given(entry)), bind(on-event, no-event)))
       back
   fork test, is-equal(target-word, <compose-android>)
     hold
-      compose-worker-module/workCompose(make(compose-worker-ask, bind(root, read root), bind(target, read target-word), bind(entry, work-text-given(entry))))
+      work-compose(make(compose-work-ask, bind(root, read root), bind(target, read target-word), bind(entry, work-text-given(entry)), bind(on-event, no-event)))
       back
 
   # any other target is a cask: its page on a dev server with hot swaps, the app pointed at it
   fork test, is-above(target-word/length, 0)
     hold
-      call cask-worker-module/workCask
-        make cask-worker-ask
+      call work-cask
+        make cask-work-ask
           bind root, read root
           bind target, read target-word
           bind page, work-text-given(page)

@@ -4,27 +4,20 @@ load @term/call/work/home
 # `term wash [target]` -- remove a project's build artifacts: `deck`, the build output (the default); `tail`, the
 # logs; `boot`, what boot and cast write; `base`, the machine-wide module cache.
 #
-# The verb takes its hook's argument and hands it to the shipped handler (deck/call/code/wash.ts `callWash`), which
-# removes what is there and prints through the output library. It prints nothing of its own, catches nothing and
-# never exits: a throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term, part 2).
+# The verb takes its hook's argument and hands it to the handler, the small lane's port of deck/call/code/wash.ts
+# (work/small/washing.tree `call-wash`, term-cli-in-term-0007), which removes what is there and prints through the
+# output library. It prints nothing of its own, catches nothing and never exits: a throw reaches dispatch.tree
+# `fail-line` (decision 005 of cli-in-term, part 2).
 
-# line.ts passed `target: argv.target`, absent when no target was named, and callWash tells absent from any word
-# (an unknown word is refused, `""` among them). The slot is a maybe (decision cli-in-term/008 part 1): none is
-# left out of the ask, and a given word, the empty text included, is passed as written
-form wash-ask
-  link root, like text
-  link target, like text
-
-form root-ask
-  link root, like text
+# line.ts passed `target: argv.target`, absent when no target was named, and the handler tells absent from any word
+# (an unknown word is refused, `""` among them). The slot is a maybe (decision cli-in-term/008 part 1): none and a
+# given word, the empty text included, reach the handler as they came
 
 load @term/base/maybe
   find maybe
-  find some
-  find none
 
-dock load
-  load <@term/call/code/wash>, name wash-module
+load @term/call/work/small/washing
+  find call-wash
 
 task wash
   mark async
@@ -34,8 +27,4 @@ task wash
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  sift target
-    case some
-      wait wash-module/callWash(make wash-ask, root(root), target(value))
-    case none
-      wait wash-module/callWash(make root-ask, root(root))
+  call-wash(root, target)

@@ -6,8 +6,8 @@
 #
 # Ported from deck/call/code/test-run.ts (term-cli-in-term-0019). Docked: the compiler's TypeScript modules
 # (compile/compile, compile/separate, compile/mill, compile/native, compile/typescript), the parser and its renderer
-# (handed straight to the docked mill and given the original's input), the preprocessor (call/code/test-preprocess.ts,
-# its own items), the unit naming and bundle writer (call/code/make.ts, unit-bundle.ts) and esbuild (decision 002).
+# (handed straight to the docked mill and given the original's input) and esbuild (decision 002). The preprocessor, the
+# unit naming, the bundle writer and the cache folder are their lanes' ports, loaded since term-cli-in-term-0065.
 
 load @term/base/list
   find list
@@ -27,13 +27,30 @@ load @term/call/boot-plan
 load ../need/running-install
   find find-install-root
 
+load ../cache/compile-store
+  find project-cache-dir
+
+load ../build/unit-naming
+  find unit-slug
+
+load ../bundle/unit-writing
+  find unit-ask
+  find write-unit-bundle
+
+load ../preprocess/test-rewriting
+  find preprocess-tests
+  find readable
+
+load ../preprocess/failure-reading
+  find want-failed
+  find want-line
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
   load <node:crypto>, name node-crypto
   load <esbuild>, name esbuild-module
   load <@term/make/code/resolve>, name resolving-module
-  load <@term/call/code/cache-store>, name cache-store-module
   load <@term/make/code/parser/tree>, name tree-module
   load <@term/make/code/parser/diagnostic>, name diagnostic-module
   load <@term/make/code/compile/mill>, name mill-module
@@ -41,9 +58,6 @@ dock load
   load <@term/make/code/compile/separate>, name separate-module
   load <@term/make/code/compile/native>, name native-module
   load <@term/make/code/compile/typescript>, name typescript-module
-  load <@term/call/code/make>, name make-module
-  load <@term/call/code/unit-bundle>, name bundle-module
-  load <@term/call/code/test-preprocess>, name preprocess-module
 
 # moved when the bundling itself changes, so a kept bundle from before is never run
 # 3: the prelude is a module of the bundle, imported by each module that docks a shim, and the entry the closure's shim
@@ -125,14 +139,6 @@ form separate-ask
   link parsed, like dynamic
   link units, like dynamic
   link walked, like dynamic
-
-form bundle-ask
-  link dir, like text
-  link entry, like text
-  link modules, like dynamic
-  link slug, like dynamic
-  link exports, like dynamic
-  link prelude, like text
 
 form folder-make
   link recursive, like boolean
@@ -296,7 +302,7 @@ task tests-of
   take options, like dynamic
   like listed-tests
 
-  save made, preprocess-module/preprocess-tests(source, options)
+  save made, preprocess-tests(source, options)
   save tests, make list
   walk discover-tests(host-text(made/text), file)
     take name
@@ -330,7 +336,7 @@ task compile-units
     task
       take file, like text
       like text
-      back make-module/unit-slug(units/root, file, units/deck-of)
+      back unit-slug(units/root, file, units/finder)
   save modules
     task
       take file, like text
@@ -693,7 +699,7 @@ task run-folder
   take key, like text
   like text
 
-  save runs, node-path/join(host-text(cache-store-module/project-cache-dir(root)), <test>, <run>)
+  save runs, node-path/join(project-cache-dir(root), <test>, <run>)
   node-file/mkdir-sync(runs, make(folder-make, bind(recursive, true)))
   back host-text(node-file/mkdtemp-sync(node-path/join(runs, <{substring(key, 0, 16)}->)))
 
@@ -728,7 +734,8 @@ task bundle-units
         save unread, true
   # the prelude is a module of the bundle, and the entry re-exports the closure's public tasks (call/code/unit-bundle.ts)
   save dir, run-folder(root, key)
-  save entry, bundle-module/write-unit-bundle(make(bundle-ask, bind(dir, dir), bind(entry, built/entry), bind(modules, entries-of(built/modules)), bind(slug, built/names), bind(exports, built/exports), bind(prelude, prelude)))
+  # no names to keep beyond the entry's own (`keep` absent, as the TypeScript runner left it)
+  save entry, write-unit-bundle(make(unit-ask, bind(dir, dir), bind(entry, built/entry), bind(modules, entries-of(built/modules)), bind(slug, built/names), bind(exports, built/exports), bind(prelude, prelude), bind(keep, void)))
   save bundled, bundle-docks(root, host-text(entry), dir, project-banner(root), <node>)
   fork
     mark unsafe
@@ -810,7 +817,7 @@ task run-test-file
   save source, host-text(input/source)
   # expand `test <phrase>` blocks into top-level tasks; a file with none passes through unchanged. `heads`: each test
   # task's 0-based line in the file as written
-  save made, preprocess-module/preprocess-tests(source, make-preprocess-options(input/snapshots))
+  save made, preprocess-tests(source, make-preprocess-options(input/snapshots))
   save rewritten, host-text(made/text)
   save names, make list
   walk discover-tests(rewritten, file)
@@ -830,17 +837,18 @@ task run-test-file
     miss
       # the real file path is the entry, so `@/...` local-package aliases resolve against this file's deck.tree
       save result, compile-module/compile(entry, make(compile-ask, bind(resolve, input/resolve), bind(role-of, input/role-of), bind(lean-of, input/lean-of)))
-  save readable, preprocess-module/readable(source, input/snapshots)
+  # named for itself, never `readable`: a local named like a task the file imports shadows the call (traps.md)
+  save as-read, readable(source, input/snapshots)
   fork test, not(is-truthy(result/ok))
     hold
-      save diagnostics, as-written(result/diagnostics, file, readable/place)
+      save diagnostics, as-written(result/diagnostics, file, as-read/place)
       back failed-run(<{render-each(diagnostics, source, diagnostic-module/render)}\ndid not compile>, diagnostics, source)
   # a proof obligation the compiler could not discharge is only a warning, but for `term test` an unproven `hold` is a
   # failure: a stated proposition with no accepted proof must not pass
   save unproven, unproven-of(result/warnings)
   fork test, is-above(unproven/length, 0)
     hold
-      save diagnostics, as-written(unproven, file, readable/place)
+      save diagnostics, as-written(unproven, file, as-read/place)
       save drawn, render-each(diagnostics, source, diagnostic-module/render)
       back failed-run(unproven-note(drawn, unproven/length), diagnostics, source)
   # a file with no runnable `test` tasks but a clean compile is a pass: any `hold` / `rule` proofs it carries were
@@ -925,8 +933,8 @@ task failed-test
   take line, like dynamic
   like test-result
 
-  save why, text-or(preprocess-module/want-failed(problem, source), message-of(problem))
-  save wanted, preprocess-module/want-line(problem)
+  save why, text-or(want-failed(problem, source), message-of(problem))
+  save wanted, want-line(problem)
   save at, line
   fork test, not(is-nothing(wanted))
     hold

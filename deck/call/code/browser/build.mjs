@@ -1,11 +1,12 @@
-// Bundle the browser compiler (./worker.ts) into ONE self-contained module worker, with esbuild. Modeled on
+// Bundle the browser compiler (the port of call/code/work/browser/browser-compiling.tree) into ONE self-contained
+// module worker, with esbuild. Modeled on
 // deck/flow/build.mjs, which bundles the language server the same way: every `@term/*` import resolved through the
 // Term package's tsconfig paths and inlined.
 //
 //   node deck/call/code/browser/build.mjs --out <file.js> [--meta <file.json>]
 //
-// NOTHING NODE-ONLY SURVIVES. `fs` and `path` (either spelling) are aliased to ./disk.ts and ./path.ts, the in-memory
-// snapshot the worker mounts. Every other Node builtin the compile path's modules import at their top (a CLI module
+// NOTHING NODE-ONLY SURVIVES. `fs` (either spelling) is the port of work/browser/snapshot-disk.tree in Node's module
+// shape, the in-memory snapshot the worker mounts, and `path` is aliased to ./path.ts. Every other Node builtin the compile path's modules import at their top (a CLI module
 // that also spawns, hashes or reads the clock) goes to ./absent.ts, which throws if it is ever CALLED: the compile and
 // emit path never calls one, and a call would be a defect worth hearing about rather than a silent stub. The one
 // dynamic `esbuild` import in the build driver is external, as in deck/flow/build.mjs: it sits inside a lazy
@@ -34,8 +35,51 @@ if (!outfile) {
   process.exit(2)
 }
 
+// the worker and its disk are the ports of call/code/work/browser (term-cli-in-term-0063), emitted by port-build
+const PORT = path.join(termRoot, 'deck', 'call', 'host', 'port', 'code', 'work', 'browser')
+const ENTRY = path.join(PORT, 'browser-compiling.ts')
+// the snapshot disk's port, the ONE module both the worker's dock and every compiler module's `fs` reach, so the
+// snapshot the worker mounts is the one they read. A Term module cannot say Node's module shape (a default export, a
+// `promises` record), so `fs` is this port wrapped in that shape by the plugin below, never a copy of it
+const DISK = path.join(PORT, 'snapshot-disk.ts')
+const DISK_NAMES = [
+  'existsSync',
+  'readFileSync',
+  'statSync',
+  'lstatSync',
+  'readdirSync',
+  'realpathSync',
+  'writeFileSync',
+  'mkdirSync',
+  'appendFileSync',
+  'rmSync',
+  'renameSync',
+  'watch',
+  'openSync',
+  'closeSync',
+  'writeSync',
+  'readSync',
+  'createWriteStream',
+  'createReadStream',
+]
+const DISK_SHAPE = [
+  `import * as disk from ${JSON.stringify(DISK)}`,
+  `export const { ${DISK_NAMES.join(', ')} } = disk`,
+  'export const promises = { readFile: async (path) => disk.readFileSync(path), writeFile: disk.writeFileSync, mkdir: disk.mkdirSync }',
+  `export default { ${DISK_NAMES.join(', ')}, promises }`,
+].join('\n')
+const diskShape = {
+  name: 'snapshot-fs',
+  setup(builder) {
+    builder.onResolve({ filter: /^(node:)?fs$/ }, () => ({ path: 'fs', namespace: 'snapshot-fs' }))
+    builder.onLoad({ filter: /.*/, namespace: 'snapshot-fs' }, () => ({
+      contents: DISK_SHAPE,
+      loader: 'js',
+      resolveDir: PORT,
+    }))
+  },
+}
 // the Node builtins the closure names, and what each becomes in the browser
-const DISK = path.join(here, 'disk.ts')
 const PATH = path.join(here, 'path.ts')
 const ABSENT = path.join(here, 'absent.ts')
 // only what the closure imports today. Any other builtin is left unaliased, so under `platform: 'browser'` esbuild
@@ -65,8 +109,6 @@ const NODE_BUILTINS = [
   'vm',
 ]
 const alias = {
-  fs: DISK,
-  'node:fs': DISK,
   path: PATH,
   'node:path': PATH,
   // the package manager's barrel re-exports its registry, OCI and signing code, all Node. The compile path reads
@@ -80,7 +122,8 @@ for (const name of ABSENT_BUILTINS) {
 }
 
 const result = await build({
-  entryPoints: [path.join(here, 'worker.ts')],
+  entryPoints: [ENTRY],
+  plugins: [diskShape],
   outfile,
   bundle: true,
   format: 'esm',

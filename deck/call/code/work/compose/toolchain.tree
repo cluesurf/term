@@ -29,7 +29,7 @@ dock load
   load <node:path>, name node-path
   load <node:crypto>, name node-crypto
   load <node:child_process>, name node-child
-  load <global:process>, name node-process
+  load <global:process>, name host-process
   load <@term/make/code/compile/load>, name load-module
   load <@term/make/code/compile/kotlin>, name kotlin-module
   load <@term/make/code/compile/native-main>, name native-main
@@ -302,7 +302,7 @@ task compile-kotlin
   fork test, not(node-fs/exists-sync(jar))
     hold
       node-fs/mkdir-sync(runtime-cache-dir, make(runtime-folder, bind(recursive, true)))
-      save fresh, node-path/join(runtime-cache-dir, <{key}.{node-process/pid}.{now-ms()}.jar>)
+      save fresh, node-path/join(runtime-cache-dir, <{key}.{host-process/pid}.{now-ms()}.jar>)
       save runtime-started, now-ms()
       save built, compile-file(ask, node-path/join(ask/dir, <{ask/name}-runtime.kt>), ask/runtime, ask/classpath, fresh)
       stages/push(stage-entry(<runtime>, subtract(now-ms(), runtime-started)))

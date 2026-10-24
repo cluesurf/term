@@ -20,7 +20,27 @@ type Page = {
   evaluate: <T>(f: () => T) => Promise<T>
   waitForFunction: (f: string, arg?: unknown, options?: { timeout: number }) => Promise<unknown>
 }
-type Chromium = { launch: (o: { headless: boolean }) => Promise<{ newPage: () => Promise<Page>; close: () => Promise<void> }> }
+type Launched = { newPage: () => Promise<Page>; close: () => Promise<void> }
+type Chromium = { launch: (o: { headless: boolean }) => Promise<Launched> }
+
+// Launch Chromium with its `playwright-artifacts-*` folder in a temporary folder of this test's own. Playwright makes
+// that folder with mkdtemp under os.tmpdir() at launch and does not always remove it by the time close() answers, so
+// it was left in the gate's folder on every run (term-cli-in-term-0215). os.tmpdir() reads TMPDIR on every call, so
+// TMPDIR names a tempDir for the launch alone, which test/temp.ts removes when the process ends, however it ends.
+async function launchOwned(browser: Chromium): Promise<Launched> {
+  const before = process.env.TMPDIR
+  process.env.TMPDIR = tempDir('term-page-status-browser-')
+
+  try {
+    return await browser.launch({ headless: true })
+  } finally {
+    if (before === undefined) {
+      delete process.env.TMPDIR
+    } else {
+      process.env.TMPDIR = before
+    }
+  }
+}
 
 // Playwright from mesh/, as the other browser suites take it, or the reason it is not there
 function chromium(): Chromium | string {
@@ -145,7 +165,7 @@ hook /
       return
     }
 
-    const launched = await browser.launch({ headless: true }).catch(error => {
+    const launched = await launchOwned(browser).catch(error => {
       console.log(`skip  the client in a browser  (Chromium did not launch: ${String(error).slice(0, 160)})`)
 
       return undefined
@@ -255,7 +275,7 @@ task boot
       return
     }
 
-    const launched = await browser.launch({ headless: true }).catch(() => undefined)
+    const launched = await launchOwned(browser).catch(() => undefined)
 
     if (!launched) {
       return

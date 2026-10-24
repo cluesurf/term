@@ -4,7 +4,7 @@
 # The separate build checks one unit at a time, a module or a cycle of modules, against the stubs of the units it
 # reaches (compile/separate.ts). Units that do not reach one another can be checked at once. This walks every entry's
 # closure on the main thread, cuts the union of the closures into its units, and hands each unit to a pool of workers
-# (separate-worker.ts) the moment every unit it reaches is built (compile/schedule.tree). Each worker compiles the unit's
+# (work/workers/unit-worker.tree, bundled by make:line as host/separate-worker.mjs) the moment every unit it reaches is built (compile/schedule.tree). Each worker compiles the unit's
 # module as its own entry, and leaves it in the cache the pool shares on disk.
 #
 # A project file's answer comes back whole, and `compileProjectSeparate` takes it as built. Anything the pool did not
@@ -12,9 +12,9 @@
 # worker ran out of its heap (heap-limit.tree): it is answered here as its own `out-of-memory` failure, since the main
 # thread compiling it again would run out the same way.
 #
-# Docked: cache-store.ts (compilerVersions, projectCache), make.ts (buildable, isWholeFile), compile/load.ts
-# (collectModules), compile/separate.ts (units), compile/resolve.ts (stdlibBase), role-of.ts (projectRoleOf) and node's
-# worker_threads.
+# Docked: compile/load.ts (collectModules), compile/separate.ts (units), compile/resolve.ts (stdlibBase) and node's
+# worker_threads. The compiler versions, the cache, the role reader and a file's reading are the build and cache lanes'
+# ports (term-cli-in-term-0214).
 
 load ./heap-limit
   find worker-heap-mb
@@ -23,6 +23,20 @@ load ./heap-limit
 
 load ./file-pool
   find bundle-worker
+
+load ./source-faces
+  find face-buildable
+  find face-is-whole-file
+
+load ../build/role-reading
+  find make-role-reader
+
+load ../build/host-faces
+  find face-role-reader
+
+load ../cache/compile-store
+  find compiler-versions
+  find project-cache
 
 load @term/make/compile/schedule
   find make-schedule
@@ -33,9 +47,6 @@ dock load
   load <node:fs>, name node-file
   load <node:worker_threads>, name worker-threads
   load <global:Date>, name host-date
-  load <@term/call/code/cache-store>, name cache-store
-  load <@term/call/code/make>, name make-module
-  load <@term/call/code/role-of>, name role-module
   load <@term/make/code/compile/load>, name load-module
   load <@term/make/code/compile/separate>, name separate-module
   load <@term/make/code/resolve>, name resolving-module
@@ -268,7 +279,7 @@ task spawn-unit-worker
   like dynamic
   mark private
 
-  back units-new-worker(worker-threads/Worker, run/bundle, cache-store/compilerVersions(), run/heap)
+  back units-new-worker(worker-threads/Worker, run/bundle, compiler-versions(), run/heap)
 
 task dispatch-units
   take run, like unit-run
@@ -371,8 +382,8 @@ task compile-units-parallel
   mark async
 
   save walked-at, host-date/now()
-  save cache, cache-store/projectCache(root)
-  save role-of, role-module/projectRoleOf(root)
+  save cache, project-cache(root)
+  save role-of, face-role-reader(make-role-reader(root))
   # every program entry's closure, walked once through the session, so the main build after this walks nothing new
   save entries, make hash
   save modules, make list
@@ -385,11 +396,11 @@ task compile-units-parallel
       back cache/scanned(source/file, source/text, compute)
   walk files
     take file
-    save unit, make-module/buildable(file, node-file/read-file-sync(file, <utf8>), units-apply(role-of, file))
+    save unit, face-buildable(file, node-file/read-file-sync(file, <utf8>), units-apply(role-of, file))
     fork test, units-has-faults(unit)
       hold
         turn next
-    fork test, units-truthy(make-module/isWholeFile(file, unit/text, units-apply(role-of, file)))
+    fork test, face-is-whole-file(file, unit/text, units-apply(role-of, file))
       hold
         turn next
     save entries/{file}, true
@@ -450,7 +461,7 @@ task compile-units-parallel
   save graph-size, units-hash-size(graph)
   save size, units-size-of(options, graph-size)
   save bundle, bundle-worker(<separate-worker>)
-  # the worker bundle lives in the temp folder, from where stdlibBase() cannot walk up to the standard library
+  # the worker is a bundle (host/separate-worker.mjs, decision 003) whose own stdlibBase() walk is not the parent's
   save stdlib, resolving-module/stdlibBase()
   units-pin-stdlib(stdlib)
   # each worker's heap is limited, so one that runs out of memory ends alone and its unit is reported (heap-limit.tree)

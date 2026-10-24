@@ -30,7 +30,7 @@ dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <node:child_process>, name node-child
-  load <global:process>, name node-process
+  load <global:process>, name host-process
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/native>, name native-module
   load <@term/make/code/compile/swift>, name swift-module-emit
@@ -316,7 +316,7 @@ task build-rust-program
   native-parts/push(rust)
   save native, join(native-parts, <\n>)
 
-  fork test, is-equal(rust-platform(ask/target), node-process/platform)
+  fork test, is-equal(rust-platform(ask/target), host-process/platform)
     hold
       save build-args, make list
       build-args/push(<build>)

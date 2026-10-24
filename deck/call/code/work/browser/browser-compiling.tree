@@ -21,9 +21,23 @@
 #                    { form: 'fault', id, message }                                                  the compiler threw
 #
 # The disk is DOCKED, never loaded: a port is emitted whole with its own copy of what it loads, and the snapshot the
-# worker mounts must be the one instance the bundle's `fs` alias hands every compiler module. Docked too, as still
+# worker mounts must be the one instance the bundle's `fs` alias hands every compiler module. The dock names the
+# emitted port of snapshot-disk.tree, the module build.mjs's `fs` alias wraps in Node's shape (term-cli-in-term-0213),
+# so both reach one module and one snapshot. Docked too, as still
 # TypeScript or as the compiler's own modules: compile/compile, compile/load, compile/native, compile/emit-target,
-# resolve, parser/diagnostic, call/code/deck-of, call/code/role-of.
+# resolve, parser/diagnostic. The deck finder and the role readers are the build lane's ports (term-cli-in-term-0214),
+# which read through the same `fs` alias.
+
+load ../build/deck-finding
+  find make-deck-finder
+
+load ../build/role-reading
+  find make-role-reader
+
+load ../build/host-faces
+  find face-deck-finder
+  find face-role-reader
+  find face-lean-reader
 
 dock load
   load <@term/make/code/compile/compile>, name compiling-module
@@ -32,9 +46,7 @@ dock load
   load <@term/make/code/compile/emit-target>, name target-module
   load <@term/make/code/resolve>, name resolving-module
   load <@term/make/code/parser/diagnostic>, name diagnostic-module
-  load <@term/call/code/deck-of>, name deck-reading
-  load <@term/call/code/role-of>, name role-reading
-  load <@term/call/code/browser/disk>, name snapshot-disk
+  load <@term/call/code/work/browser/snapshot-disk>, name snapshot-disk
 
 # ---- the host values Term has no word for ----
 
@@ -440,9 +452,10 @@ task compile-all
   save lines, worker-lines(text)
   save output, worker-new-record()
   save warned, worker-new-map()
-  save deck-of, deck-reading/project-deck-of()
-  save role-of, role-reading/project-role-of(</explore>)
-  save lean-of, role-reading/project-lean-of(</explore>)
+  save deck-of, face-deck-finder(make-deck-finder())
+  save reader, make-role-reader(</explore>)
+  save role-of, face-role-reader(reader)
+  save lean-of, face-lean-reader(reader)
 
   walk worker-emit-targets(target-module)
     take target, like text
