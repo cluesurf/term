@@ -34,7 +34,6 @@ load @term/base/text
   find substring
   find char-count
   find index-of
-  find contains
   find to-lower-case
   find to-upper-case
 
@@ -54,7 +53,7 @@ load @term/base/console
   find log
 
 # THE RUN (term-cli-in-term-0012), below the dispatcher: what `deck/call/code/line.ts`'s `main()` did around yargs,
-# for the console bundled as `host/term-line.js`. The parsing of a command's own flags and the call of its task are
+# for the console, which `make:line` bundles as `host/line.js` since term-cli-in-term-0013. The parsing of a command's own flags and the call of its task are
 # still `hook-dispatch.ts`'s (`runCommandLine`, docked through the run entry port-build writes), and the
 # output library, the homes and the banner are their TypeScript modules: each dock below is one thing to port.
 # the help a `--help` prints, in Term (term-cli-in-term-0141)
@@ -711,72 +710,3 @@ task fail-line
   save root, text-or-empty(host-process/cwd())
   back output-module/failRun(error, root)
 
-# `term fill`: the shell completion script, yargs's own template for zsh or bash by `SHELL` (yargs 17
-# completion-templates.js, with `term` for the app and `fill` for the command). Reached through the dock of
-# `@term/call/code/line` in app-verbs.tree, which make:line aliases to this module for host/term-line.js
-task call-fill
-  take ask, like unknown
-  like void
-  save shell, text-or-empty(host-process/env/SHELL)
-  save lines, make list
-  fork test, contains(shell, <zsh>)
-    hold
-      lines/push <#compdef term>
-      lines/push <###-begin-term-completions-###>
-      lines/push <#>
-      lines/push <# yargs command completion script>
-      lines/push <#>
-      lines/push <# Installation: term fill \>\> ~/.zshrc>
-      lines/push <#    or term fill \>\> ~/.zprofile on OSX.>
-      lines/push <#>
-      lines/push <_term_yargs_completions()>
-      lines/push <\{>
-      lines/push <  local reply>
-      lines/push <  local si=$IFS>
-      lines/push <  IFS=$'>
-      lines/push <' reply=($(COMP_CWORD="$((CURRENT-1))" COMP_LINE="$BUFFER" COMP_POINT="$CURSOR" term --get-yargs-completions "$\{words[@]\}"))>
-      lines/push <  IFS=$si>
-      lines/push <  _describe 'values' reply>
-      lines/push <\}>
-      lines/push <compdef _term_yargs_completions term>
-      lines/push <###-end-term-completions-###>
-    miss
-      lines/push <###-begin-term-completions-###>
-      lines/push <#>
-      lines/push <# yargs command completion script>
-      lines/push <#>
-      lines/push <# Installation: term fill \>\> ~/.bashrc>
-      lines/push <#    or term fill \>\> ~/.bash_profile on OSX.>
-      lines/push <#>
-      lines/push <_term_yargs_completions()>
-      lines/push <\{>
-      lines/push <    local cur_word args type_list>
-      lines/push <>
-      lines/push <    cur_word="$\{COMP_WORDS[COMP_CWORD]\}">
-      lines/push <    args=("$\{COMP_WORDS[@]\}")>
-      lines/push <>
-      lines/push <    # ask yargs to generate completions.>
-      lines/push <    type_list=$(term --get-yargs-completions "$\{args[@]\}")>
-      lines/push <>
-      lines/push <    COMPREPLY=( $(compgen -W "$\{type_list\}" -- $\{cur_word\}) )>
-      lines/push <>
-      lines/push <    # if no match was found, fall back to filename completion>
-      lines/push <    if [ $\{#COMPREPLY[@]\} -eq 0 ]; then>
-      lines/push <      COMPREPLY=()>
-      lines/push <    fi>
-      lines/push <>
-      lines/push <    return 0>
-      lines/push <\}>
-      lines/push <complete -o bashdefault -o default -F _term_yargs_completions term>
-      lines/push <###-end-term-completions-###>
-  lines/push <>
-  save text, <>
-  walk lines
-    take line
-    take at
-    fork test, is-equal(at, 0)
-      hold
-        save text, line
-      miss
-        save text, <{text}\n{line}>
-  log text

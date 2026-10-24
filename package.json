@@ -33,7 +33,7 @@
     "bind": "node host/line.js bind",
     "release": "pnpm exec tsx task/release.ts",
     "make:line": "node ../../../../task/term/line-lock.ts run --script make:line:steps",
-    "make:line:steps": "pnpm run make:port && pnpm exec esbuild deck/call/code/line.ts --bundle --platform=node --format=esm --packages=external --tsconfig=tsconfig.json --outfile=host/line.js --metafile=.base/@term/code/line-meta.json --banner:js='#!/usr/bin/env node' && pnpm exec esbuild deck/call/host/port/code/line/base-run.ts --bundle --platform=node --format=esm --packages=external --tsconfig=tsconfig.json --alias:@term/call/code/line=./deck/call/host/port/code/work/dispatch.ts --outfile=host/term-line.js --banner:js='#!/usr/bin/env node' && pnpm exec esbuild deck/call/code/hook-dispatch.ts --bundle --platform=node --format=esm --packages=external --tsconfig=tsconfig.json --outfile=host/dock.mjs && pnpm exec esbuild deck/call/code/need-run.ts --bundle --platform=node --format=esm --packages=external --tsconfig=tsconfig.json --outfile=host/need.mjs && pnpm exec esbuild deck/call/code/need-hand.ts --bundle --platform=node --format=esm --packages=external --tsconfig=tsconfig.json --outfile=host/need-hand.mjs && pnpm exec tsx task/line-imports.ts",
+    "make:line:steps": "pnpm run make:port && pnpm exec esbuild deck/call/code/line.ts --bundle --platform=node --format=esm --packages=external --tsconfig=tsconfig.json --outfile=host/line.js --metafile=.base/@term/code/line-meta.json --banner:js='#!/usr/bin/env node' && pnpm exec esbuild deck/call/host/port/code/line/base-run.ts --bundle --platform=node --format=esm --packages=external --tsconfig=tsconfig.json --outfile=host/term-line.js --banner:js='#!/usr/bin/env node' && pnpm exec esbuild deck/call/code/hook-dispatch.ts --bundle --platform=node --format=esm --packages=external --tsconfig=tsconfig.json --outfile=host/dock.mjs && pnpm exec esbuild deck/call/code/need-run.ts --bundle --platform=node --format=esm --packages=external --tsconfig=tsconfig.json --outfile=host/need.mjs && pnpm exec esbuild deck/call/code/need-hand.ts --bundle --platform=node --format=esm --packages=external --tsconfig=tsconfig.json --outfile=host/need-hand.mjs && pnpm exec tsx task/line-imports.ts",
     "prepublishOnly": "pnpm run make"
   },
   "prettier": "@cluesurf/wash/flow.json",
@@ -41,14 +41,12 @@
     "@hono/node-server": "^2.0.5",
     "chalk": "^5.4.1",
     "esbuild": "^0.28.1",
-    "hono": "^4.13.5",
-    "yargs": "^17.7.2"
+    "hono": "^4.13.5"
   },
   "devDependencies": {
     "@cluesurf/wash": "^0.9.0",
     "@types/node": "^22.19.13",
     "@types/pg": "^8.11.10",
-    "@types/yargs": "^17.0.33",
     "concurrently": "^10.0.3",
     "eslint": "^9.39.4",
     "jiti": "^2.7.0",

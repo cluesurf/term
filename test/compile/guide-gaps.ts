@@ -12,8 +12,12 @@ import { compile } from '@term/make/code/compile/compile'
 import { mill } from '@term/make/code/compile/mill'
 import { parse, printTree } from '@term/make/code/parser/tree'
 import { projectResolver } from '@term/call/code/make'
+import { setUnknownSeam, unknownSeamOn } from '@term/make/code/check/strict'
 
 const TERM = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
+
+// the seam as the environment set it, restored after a case that turns it off
+const seamWas = unknownSeamOn()
 
 let pass = 0
 let fail = 0
@@ -1725,11 +1729,17 @@ task runs
 
   // a whole-number sum inlined where an `unknown` is its operand keeps its range check, decided by the sum's own type
   // (compile/typescript.ts `integerDivision`): it was dropped, and the one program printed `seven1` built whole and
-  // stopped built in units (guides: types/gradual, 2026-10-05). Run, the text reaching it raises `mismatch`
+  // stopped built in units (guides: types/gradual, 2026-10-05). Run, the text reaching it raises `mismatch`. Since
+  // seam-0008 the seam refuses this program by default, so it is built with the seam off (TERM_UNKNOWN_SEAM=0), the
+  // setting under which it still builds and the range check still matters
   {
+    setUnknownSeam(false)
+
     const seam = build(
       'task bump\n  take n, like number\n\n  like number\n\n  back add(n, 1)\n\ntask pass-through\n  take value, like unknown\n\n  like number\n\n  back bump(value)\n',
     )
+
+    setUnknownSeam(seamWas)
     ok('the inlined sum keeps its range check', seam.ok && /passThrough[\s\S]*?__termIntStop/.test(seam.typescript), seam.messages || seam.typescript.slice(0, 400))
 
     if (seam.ok) {

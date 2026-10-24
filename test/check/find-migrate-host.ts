@@ -40,30 +40,32 @@ function build(text: string, deck: string) {
   return emit('main.tree', text, { host: true, options: { resolve, deckOf: () => ({ name: deck, root: '/' }) } })
 }
 
-const body = (read: string): string[] => ['task measure', '  take s, like shape', '  like number', `  send back, read ${read}`, '']
+// a signature with no body, as every bind task is (a stub). `like shape <arguments>` is the type as written
+const body = (shape: string): string[] => ['task measure', `  take s, like ${shape}`, '  like number', '']
 
 // the type with no find: a warning in a host description, and the parameter's type erased
-const before = build(body('s/size').join('\n'), '@term/bind')
+const before = build(body('shape').join('\n'), '@term/bind')
 ok('a host description builds an unknown type with a warning', before.ok && before.notes.some(note => note.includes('"shape"')), JSON.stringify(before))
-ok('the same file outside one is refused', !build(body('s/size').join('\n'), '@term/base').ok)
+ok('the same file outside one is refused', !build(body('shape').join('\n'), '@term/base').ok)
 ok('the compiler names @term/bind a host description', describesHost('@term/bind'))
 ok('and not @term/base', !describesHost('@term/base'))
 
 // the found form: the type changes, nothing that runs does
-const found = build(['load @app/shapes', '  find shape', '', ...body('s/size')].join('\n'), '@term/bind')
+const found = build(['load @app/shapes', '  find shape', '', ...body('shape')].join('\n'), '@term/bind')
 ok('the find builds', found.ok, JSON.stringify(found))
 ok('and changes the emitted type', before.ok && found.ok && before.ts !== found.ts)
 ok('a find of the form is a type-only change', typeOnly(before, found, ['shape']) === undefined, String(typeOnly(before, found, ['shape'])))
 ok('but not one that answers a name not found', typeOnly(before, found, ['other']) !== undefined)
 
-// a find that makes a new error: the found form has no `weight`, which the unbound type let through
-const weightBefore = build(body('s/weight').join('\n'), '@term/bind')
-const weightAfter = build(['load @app/shapes', '  find shape', '', ...body('s/weight')].join('\n'), '@term/bind')
+// a find that makes a new error: its relative load reaches no file, which fails the build at the load. (A form found
+// with the wrong number of type arguments, or found twice, builds today, so neither can stand for an error here)
+const weightBefore = build(body('shape').join('\n'), '@term/bind')
+const weightAfter = build(['load ./no-such-module', '  find shape', '', ...body('shape')].join('\n'), '@term/bind')
 const weightWhy = typeOnly(weightBefore, weightAfter, ['shape'])
 ok('a find that adds an error is refused', weightBefore.ok && weightWhy !== undefined && weightWhy.startsWith('does not build after'), `${String(weightWhy)} ${JSON.stringify(weightBefore).slice(0, 200)}`)
 
 // a find through a module that does not define the name: a new diagnostic
-const stale = build(['load @app/other', '  find shape', '', ...body('s/size')].join('\n'), '@term/bind')
+const stale = build(['load @app/other', '  find shape', '', ...body('shape')].join('\n'), '@term/bind')
 ok('a find from a module that lacks the name is refused', typeOnly(before, stale, ['shape']) !== undefined, String(typeOnly(before, stale, ['shape'])))
 
 // rule 2: the file's own platform tree, then shared/, then outside the package

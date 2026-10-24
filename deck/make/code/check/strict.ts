@@ -30,11 +30,11 @@ export function ambiguousRefused(): boolean {
 }
 
 // THE GRADUAL SEAM'S SWITCH: whether an `unknown` must be narrowed before it flows into a typed place (check/seam.tree).
-// ON BY DEFAULT since 2026-10-23 (D1, note/project/term/decisions-2026-10/seam/, once its census read 0 in every
-// package). TERM_UNKNOWN_SEAM=0 turns it off, kept so a person can bisect a regression without a code change (the
-// parent spec's §4: a switch that goes on by default keeps its variable as an OFF switch). TERM_UNKNOWN_SEAM=1 still
-// means on. test/check/seam-default.ts
-let seam = process.env.TERM_UNKNOWN_SEAM !== '0'
+// Off until the decision (note/project/term/decisions-2026-10/decisions-2026-10.md, D1), on for a census with
+// TERM_UNKNOWN_SEAM=1. The flip to on by default (seam-0008, `!== '0'`, TERM_UNKNOWN_SEAM=0 the off switch) was built
+// and reverted on 2026-10-23: the full gate with it on failed 24 suites the node-only census never built (browser,
+// webview and checker programs, seam log 2026-10-23). test/check/seam-default.ts holds the flip once it is made
+let seam = process.env.TERM_UNKNOWN_SEAM === '1'
 
 export function setUnknownSeam(value: boolean): void {
   seam = value
