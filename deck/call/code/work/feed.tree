@@ -1,22 +1,48 @@
 load @term/call/work/home
   find root, name project-root
 
+load @term/base/maybe
+  find maybe
+
 # `term feed` -- refused. The development server is `term boot` (`term boot moon`, the default, or `dev` /
 # `development`), and production is `term boot star` (`prod` / `production`). The word `feed` belongs to the readers
 # (`@term/mill/feed`, the cursors under every format grammar), and the command says where the server went rather than starting it (2026-10-05).
+#
+# The takes are read (decision cli-in-term/017 part 1): the entry, port and env the retired line named make the
+# refusal's `next` the `term boot` line that replaces it. Each is a maybe, absent when the line did not name it.
 #
 # Ported from deck/call/code/feed.ts (cli-in-term-0004).
 
 dock load
   load <@term/call/code/feed>, name feed-module
 
+# the ask of refuseFeed: an option the line did not name reaches it as undefined, so those fields are host values
+# (feed-text-given, feed-number-given)
 form feed-ask
   link root, like text
+  link entry, like dynamic
+  link port, like dynamic
+  link env, like dynamic
+
+# an option as a TypeScript handler reads it: its value when the line named it, else undefined. The argument is always
+# a local, so the text may read it twice. Named for this file: a bind of one name in two modules of one port is one
+# bind (traps.md, 0103)
+bind feed-text-given
+  take given, like maybe, like text
+  like dynamic
+  case node
+    text <($given.form === "some" ? $given.value : undefined)>
+
+bind feed-number-given
+  take given, like maybe, like number
+  like dynamic
+  case node
+    text <($given.form === "some" ? $given.value : undefined)>
 
 task feed
-  take entry, like text
-  take port, like number
-  take env, like text
+  take entry, like maybe, like text
+  take port, like maybe, like number
+  take env, like maybe, like text
 
   like void
 
@@ -25,3 +51,6 @@ task feed
   call feed-module/refuseFeed
     make feed-ask
       bind root, read root
+      bind entry, feed-text-given(entry)
+      bind port, feed-number-given(port)
+      bind env, feed-text-given(env)

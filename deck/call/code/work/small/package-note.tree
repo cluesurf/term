@@ -1,14 +1,23 @@
 # `term note`: what a package says about itself, read from its deck.tree. Prints the way the output standard's
 # Key-values card does: one `deck` item, the name as its subject and the version as a fact, the description as its
 # message, license and authors as fields, and the dependencies as a list (section 14). Ported from call/code/note.ts
-# (term-cli-in-term-0061). The original also took a `deck` it never read; the port takes only the root.
+# (term-cli-in-term-0061). The `deck` it takes names the package to read, none for the project's own: found the way
+# `load <deck>` finds it from the project root, through resolvePackagePath (decision cli-in-term/017 part 2).
 
 load @term/base/list
   find join
 
+load @term/base/maybe
+  find maybe
+  find some
+  find none
+
 dock load
   load <@cluesurf/deck.tree>, name deck-tree-module
     mark async
+  load <@term/make/code/resolve>, name resolve-module
+  load <node:fs>, name node-file
+  load <node:path>, name node-path
   load <@term/call/code/output>, name output
   load <global:Error>, name host-error
   load <global:String>, name host-string
@@ -104,14 +113,86 @@ task note-package
   counts/push(output/count(manifest/link/length, <dependencies>, <dependency>))
   output/close-run(make(counted-close, bind(verdict, <{full-name} read>), bind(counts, counts)))
 
+# the entry `load <deck>` reaches from the project root: the link dir, the in-tree packages, then the stdlib, each
+# through resolvePackagePath (make/code/resolve.ts). The empty text when it reaches none
+bind note-package-entry
+  take resolving, like dynamic
+  take root, like text
+  take deck, like text
+  like text
+  case node
+    text <<((from) => ($resolving.linkResolver($root)($deck, from) ?? $resolving.siblingResolver()?.($deck, from) ?? $resolving.stdlibResolver()?.($deck, from))?.file ?? "")($root + "/deck.tree")>>
+
+# the full name a folder's deck.tree declares, the empty text when it has none or it cannot be read as a manifest
+task manifest-name
+  take dir, like text
+  like text
+  mark private
+
+  fork test, not(holds(node-file/exists-sync(<{dir}/deck.tree>)))
+    hold
+      back <>
+  save named, <>
+  fork
+    mark unsafe
+    save manifest, deck-tree-module/load-manifest(make(load-ask, bind(dir, dir)))
+    save named, <{manifest/name}>
+    fork test, holds(manifest/host)
+      hold
+        save named, <@{manifest/host}/{manifest/name}>
+  halt take
+    take error
+    save named, <>
+  back named
+
+# the package's folder: the nearest folder above its entry whose deck.tree declares the name. Not the nearest deck.tree
+# alone (findProjectRoot): the stdlib's code root holds a module named deck.tree, which is no manifest. The empty text
+# when none does
+task package-folder
+  take entry, like text
+  take deck, like text
+  like text
+  mark private
+
+  save dir, <{node-path/dirname(entry)}>
+  walk test
+    hook test, true
+    hook hold
+      fork test, is-equal(manifest-name(dir), deck)
+        hold
+          back dir
+      save parent, <{node-path/dirname(dir)}>
+      fork test, is-equal(parent, dir)
+        hold
+          back <>
+      save dir, parent
+  back <>
+
 task call-note
   take root, like text
+  take deck
+    like maybe, like text
+    fall make none
   like void
 
   output/open-run(make(plain-open, bind(verb, <note>), bind(root, root)))
   fork
     mark unsafe
-    note-package(root)
+    sift deck
+      case some
+        save entry, note-package-entry(resolve-module, root, value)
+        save dir, <>
+        fork test, is-unequal(entry, <>)
+          hold
+            save dir, package-folder(entry, value)
+        fork test, is-equal(dir, <>)
+          hold
+            output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no package named {value} here>)))
+            output/close-run(make(next-close, bind(verdict, <No package to read>), bind(next, <term note, for this package>)))
+          miss
+            note-package(dir)
+      case none
+        note-package(root)
   halt take
     take error
     output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, message-of(error))))

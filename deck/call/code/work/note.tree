@@ -7,16 +7,19 @@ load @term/call/work/small/package-note
 # `term note [deck]` -- what a package says about itself, read from its deck.tree.
 #
 # The verb hands the run to the handler, the small lane's port of deck/call/code/note.ts (work/small/package-note.tree
-# `call-note`), which reads the manifest and prints through the output library. line.ts passed the hook's `deck`
-# too, and callNote never read it, so the port takes the root alone. It prints nothing of its own, catches nothing
+# `call-note`), which reads the manifest and prints through the output library. The `deck` slot names the package to
+# read, none for the project's own (decision cli-in-term/017 part 2). It prints nothing of its own, catches nothing
 # and never exits: a throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term, part 2).
+
+load @term/base/maybe
+  find maybe
 
 task note
   mark async
-  take deck, like text
+  take deck, like maybe, like text
 
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  call-note(root)
+  call-note(root, deck)

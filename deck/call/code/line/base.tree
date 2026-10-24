@@ -782,14 +782,14 @@ hook term
   hook feed
     # Entry .tree module (defaults to deck.tree boot)
     slot entry
-      like text
+      like maybe, like text
     # Port to serve on
     take port
       code p
-      like number
+      like maybe, like number
     # Target env
     take env
-      like text
+      like maybe, like text
     task feed
 
   # Run the long-lived compiler worker (shared warm analyzer)
@@ -841,7 +841,7 @@ hook term
   hook note
     # Package to inspect
     slot deck
-      like text
+      like maybe, like text
     task note
 
   # Format .tree files into canonical layout

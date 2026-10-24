@@ -10,8 +10,8 @@
 // The driver line that hands `boot` its page directory or dev URL is NOT an input: it differs between a dev build and
 // a release of the same binary surface, and a dev URL must not make two identical natives incompatible.
 import { createHash } from 'node:crypto'
-import { spawnSync } from 'node:child_process'
 import { TONE_ALPHABET } from '@cluesurf/save/canon/mark'
+import { askTool } from '@term/call/code/work/small/tool-asking'
 
 import * as port from '@term/call/code/runtime-frame'
 
@@ -75,7 +75,8 @@ export function toolchainOf(target: string): string {
   }
 
   // kotlinc prints its version on stderr and exits 0, swiftc and rustc print on stdout, so both are read
-  const run = spawnSync(command[0], command[1], { encoding: 'utf8' })
+  // through work/small/tool-asking.tree: swiftc --version leaves a folder in TMPDIR, so it is asked in one it removes
+  const run = askTool(command[0], command[1], 0) as { stdout?: string; stderr?: string; error?: Error }
   const line =
     run.error === undefined
       ? (`${run.stdout ?? ''}\n${run.stderr ?? ''}`.split('\n').find(l => l.trim())?.trim() ?? 'none')

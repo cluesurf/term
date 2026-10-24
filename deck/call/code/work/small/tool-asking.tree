@@ -1,0 +1,23 @@
+# A toolchain asked a question (`swiftc --version`, `rustc --version`, `kotlinc -version`), with TMPDIR at a folder
+# made for the one call and removed once it returns. Apple's swift driver leaves an empty TemporaryDirectory.XXXXXX
+# (holding a `.keep-directory`) in TMPDIR on every `swiftc --version`, and the CLI asks it on every `term show tools`,
+# every Apple cask build's tool check and every runtime stamp (term-cli-in-term-0178). The one helper for show.ts,
+# runtime-version.ts and their ports, work/tool/show-command.tree and work/self/runtime-stamp.tree.
+
+# spawnSync's answer (stdout, stderr, status, error), the command's temporary files kept in a folder of its own. A
+# timeout of 0 is none
+bind asked-tool
+  take command, like text
+  take arguments, like list, like text
+  take timeout, like number
+  like dynamic
+  case node
+    text <<(() => { const askFs = process.getBuiltinModule("node:fs"); const askFolder = askFs.mkdtempSync(process.getBuiltinModule("node:path").join(process.getBuiltinModule("node:os").tmpdir(), "term-ask-")); try { return process.getBuiltinModule("node:child_process").spawnSync($command, $arguments, { encoding: "utf8", env: { ...process.env, TMPDIR: askFolder, TMP: askFolder, TEMP: askFolder }, ...($timeout > 0 ? { timeout: $timeout } : {}) }) } finally { askFs.rmSync(askFolder, { recursive: true, force: true }) } })()>>
+
+task ask-tool
+  take command, like text
+  take arguments, like list, like text
+  take timeout, like number
+  like dynamic
+
+  back asked-tool(command, arguments, timeout)

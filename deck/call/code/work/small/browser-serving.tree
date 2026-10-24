@@ -19,6 +19,12 @@ load ./home-folder
 
 load @term/base/list
   find contains
+  find join
+
+load @term/base/maybe
+  find maybe
+  find some
+  find none
 
 dock load
   load <node:fs>, name node-file
@@ -123,15 +129,48 @@ task state
       save states/{key}, fresh
   back states/get(key)
 
-# `term feed`: the development server is `term boot`, and this says so
+# `term feed`: the development server is `term boot`, and this says so. The entry, port and env the retired line
+# named make the `next` the exact `term boot` line that replaces it (decision cli-in-term/017 part 1), each part only
+# when given; with none, the `next` names the two modes. Each is none when left out, so a caller passing the root
+# alone reads as before
 task refuse-feed
   take root, like text
+  take entry
+    like maybe, like text
+    fall make none
+  take port
+    like maybe, like number
+    fall make none
+  take env
+    like maybe, like text
+    fall make none
   like void
 
+  save parts, make list
+  parts/push <term boot moon>
+  sift entry
+    case some
+      parts/push value
+    case none
+      save nothing, 0
+  sift port
+    case some
+      parts/push <-p {value}>
+    case none
+      save nothing, 0
+  sift env
+    case some
+      parts/push <--env {value}>
+    case none
+      save nothing, 0
+  save next, <term boot, which is term boot moon (development), or term boot star (production)>
+  fork test, is-above(parts/length, 1)
+    hold
+      save next, join(parts, < >)
   save facts, make list
   output/open-run(make(boot-open, bind(verb, <feed>), bind(root, root), bind(facts, facts)))
   output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <The development server is term boot, and term feed no longer starts it>)))
-  save host-process/exit-code, output/close-run(make(refuse-close, bind(verdict, <Nothing was started>), bind(failure, <usage>), bind(next, <term boot, which is term boot moon (development), or term boot star (production)>)))
+  save host-process/exit-code, output/close-run(make(refuse-close, bind(verdict, <Nothing was started>), bind(failure, <usage>), bind(next, next)))
 
 # ctrl-c, answered from the opening item on, the port checks and the cold build included: the server and the watcher
 # closed when they were started, then the run closed, `Stopped` with the uptime or `Not started`

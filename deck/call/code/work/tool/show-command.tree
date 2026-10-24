@@ -23,10 +23,12 @@ load ../context/name-context
 load ../need/running-install
   find find-install-root
 
+load ../small/tool-asking
+  find ask-tool
+
 dock load
   load <@term/make/code/show>, name banner-module
   load <@term/call/code/output>, name output
-  load <node:child_process>, name node-child
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <node:os>, name node-os
@@ -86,15 +88,6 @@ bind tool-thrown-message
   like text
   case node
     text <($problem instanceof Error ? $problem.message : String($problem))>
-
-# one tool asked for its version: its run, with a 30 second limit
-bind tool-ask-version
-  take child, like dynamic
-  take name, like text
-  take args, like list, like text
-  like dynamic
-  case node
-    text <$child.spawnSync($name, $args, \{ encoding: "utf8", timeout: 30000 \})>
 
 # the first line that names a version, from stdout or stderr (`java -version` and `kotlinc -version` print on stderr),
 # or the word `found`; undefined when the tool is not there or will not answer
@@ -228,7 +221,8 @@ task tool-version
       hold
         save args, one/args
         halt
-  back tool-version-said(tool-ask-version(node-child, name, args))
+  # in a temporary folder of its own: swiftc --version leaves one in TMPDIR (term-cli-in-term-0178)
+  back tool-version-said(ask-tool(name, args, 30000))
 
 task show-tools
   take json, like boolean

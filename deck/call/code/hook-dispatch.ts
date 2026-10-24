@@ -75,7 +75,41 @@ export type Dispatch =
       globals: Record<string, ArgValue>
       route: DockRoute // the matched command, for arg order + help
     }
-  | { ok: false; error: string; command: string[] }
+  | { ok: false; error: string; command: string[]; refusal: UsageRefusal }
+
+// A USAGE REFUSAL AS DATA (decision cli-in-term/016 part 2): what `error` says, for a console that words it its own
+// way. `choice` holds every take whose value is outside its choices, in the order the takes are declared, `missing`
+// the slots given a value against the route's required ones, `other` the rest (an unknown flag or command, an
+// unexpected argument, a number or boolean that is not one), its text the `error`
+export type ChoiceRefusal = { take: string; given: string; choices: string[] }
+
+export type UsageRefusal =
+  | { kind: 'choice'; refused: ChoiceRefusal[] }
+  | { kind: 'missing'; got: number; need: number; takes: string[] }
+  | { kind: 'other'; text: string }
+
+function refusedWith(command: string[], error: string): Dispatch {
+  return { ok: false, command, error, refusal: { kind: 'other', text: error } }
+}
+
+// the required takes a line left out, as a refusal: the slots given a value against the route's required slots, and
+// every required take not given. Undefined when none is missing
+function missingOf(takes: DockTake[], args: Record<string, ArgValue>): UsageRefusal | undefined {
+  const missing = takes.filter(take => take.required && args[take.name] === undefined)
+
+  if (missing.length === 0) {
+    return undefined
+  }
+
+  const slots = takes.filter(take => take.positional)
+
+  return {
+    kind: 'missing',
+    got: slots.filter(take => args[take.name] !== undefined).length,
+    need: slots.filter(take => take.required).length,
+    takes: missing.map(take => take.name),
+  }
+}
 
 // the take a flag word names among these takes: by its name, any of its long aliases, or its short letter. The
 // first match wins, so a command's own take shadows an ancestor's of the same name
@@ -111,6 +145,8 @@ export function dispatch(
   const command: string[] = []
   // the takes of every hook above the command, the nearest first: the program's, then each group's on the way down
   let above: DockTake[] = program ? [...program.takes] : []
+  // the same takes in the order they are declared, the program's first: the order a choice refusal lists them in
+  let aboveDeclared: DockTake[] = [...above]
 
   let i = 0
 
@@ -130,6 +166,7 @@ export function dispatch(
 
     if (current) {
       above = [...current.takes, ...above]
+      aboveDeclared = [...aboveDeclared, ...current.takes]
     }
 
     current = next
@@ -139,14 +176,7 @@ export function dispatch(
   }
 
   if (!current) {
-    return {
-      ok: false,
-      error:
-        argv.length === 0
-          ? 'no command given'
-          : `unknown command "${argv[0]}"`,
-      command,
-    }
+    return refusedWith(command, argv.length === 0 ? 'no command given' : `unknown command "${argv[0]}"`)
   }
 
   // A PASSING COMMAND (`mark pass`, decision cli-in-term/008 part 2) hands every word after its path to another
@@ -274,13 +304,12 @@ export function dispatch(
     if (!known.has(key)) {
       const listed = own.map(take => take.name)
 
-      return {
-        ok: false,
+      return refusedWith(
         command,
-        error: `unknown flag "${key.length === 1 ? `-${key}` : `--${key}`}"${
+        `unknown flag "${key.length === 1 ? `-${key}` : `--${key}`}"${
           listed.length > 0 ? `. The flags are ${listed.map(name => `--${name}`).join(', ')}` : ''
         }`,
-      }
+      )
     }
   }
 
@@ -318,27 +347,44 @@ export function dispatch(
 
   // a positional no slot was left to hold is an error too, rather than a word dropped
   if (posCursor < positionals.length && posCursor < dashedAt) {
+    return refusedWith(command, `unexpected argument "${positionals[posCursor]}"`)
+  }
+
+  // CHOICES FIRST, EVERY ONE: a value outside its take's choices is collected for each take, in the order the takes
+  // are declared (the program's, then each group's on the way down, then the command's own), as yargs listed one
+  // `Argument:` line each (decision cli-in-term/016 part 2). `error` stays the first one's text
+  const outside = (take: DockTake): boolean => {
+    const value = args[take.name]
+
+    return typeof value === 'string' && take.choices !== undefined && !take.choices.includes(value)
+  }
+  const first = reachable.find(outside)
+
+  if (first !== undefined) {
+    // a command's own take of an ancestor's name (`back`) stands at the ancestor's place, as yargs read the two as one
+    // option
+    const declared = [
+      ...aboveDeclared.map(take => own.find(mine => mine.name === take.name) ?? take),
+      ...own.filter(mine => !aboveDeclared.some(take => take.name === mine.name)),
+    ]
+    const refused = declared.filter(outside).map(take => ({ take: take.name, given: String(args[take.name]), choices: take.choices ?? [] }))
+    // yargs counted the slots and the required flags before it read a choice, so a line that leaves one out is refused
+    // for that first; `error` stays the choice's, as it always was
+    const missing = missingOf(own, args)
+
     return {
       ok: false,
       command,
-      error: `unexpected argument "${positionals[posCursor]}"`,
+      error: `--${first.name} must be one of: ${(first.choices ?? []).join(', ')} (got "${String(args[first.name])}")`,
+      refusal: missing ?? { kind: 'choice', refused },
     }
   }
 
-  // coerce by declared type, validate choices, then apply defaults, for the command's takes and every ancestor's
+  // coerce by declared type, then apply defaults, for the command's takes and every ancestor's
   for (const take of reachable) {
     const value = args[take.name]
 
     if (value !== undefined && typeof value === 'string') {
-      // choices / enum validation
-      if (take.choices && !take.choices.includes(value)) {
-        return {
-          ok: false,
-          command,
-          error: `--${take.name} must be one of: ${take.choices.join(', ')} (got "${value}")`,
-        }
-      }
-
       // type coercion, which refuses a value that is not the type. `--times x` for a `like number` take reached the
       // task as the text `x`, and `--loud yes` as false (guides: applications/command-line, 2026-10-03)
       const kind = kindOf(take)
@@ -348,21 +394,13 @@ export function dispatch(
         const whole = kind === 'number'
 
         if (value.trim() === '' || Number.isNaN(n) || (whole && !Number.isInteger(n))) {
-          return {
-            ok: false,
-            command,
-            error: `--${take.name} takes ${whole ? 'a whole number' : 'a number'}, not "${value}"`,
-          }
+          return refusedWith(command, `--${take.name} takes ${whole ? 'a whole number' : 'a number'}, not "${value}"`)
         }
 
         args[take.name] = n
       } else if (kind === 'boolean') {
         if (value !== 'true' && value !== 'false') {
-          return {
-            ok: false,
-            command,
-            error: `--${take.name} is true or false, not "${value}"`,
-          }
+          return refusedWith(command, `--${take.name} is true or false, not "${value}"`)
         }
 
         args[take.name] = value === 'true'
@@ -488,6 +526,11 @@ export type RunInput = {
   /** write a line to stdout / stderr (injectable for tests) */
   out?: (line: string) => void
   err?: (line: string) => void
+  /**
+   * a usage refusal, as data, for a console that words it its own way: given, every refusal of the line goes here
+   * instead of the two lines printed below, and its answer is the exit code (decision cli-in-term/016 part 2)
+   */
+  refuse?: (refusal: UsageRefusal) => number
 }
 
 /**
@@ -654,6 +697,10 @@ export async function runCommandLine(input: RunInput): Promise<number> {
   const hit = dispatch(routes, argv)
 
   if (!hit.ok) {
+    if (input.refuse) {
+      return input.refuse(hit.refusal)
+    }
+
     err(`${name}: ${hit.error}`)
     err(`run \`${name} --help\` to see the commands`)
 
@@ -681,6 +728,12 @@ export async function runCommandLine(input: RunInput): Promise<number> {
   )
 
   if (missing.length > 0) {
+    const refusal = missingOf(hit.route.takes, hit.args)
+
+    if (input.refuse && refusal) {
+      return input.refuse(refusal)
+    }
+
     for (const take of missing) {
       err(
         `${name} ${hit.command.join(' ')}: missing required <${take.name}>${

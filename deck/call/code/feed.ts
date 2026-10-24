@@ -18,14 +18,25 @@ import { closeRun, failRun, field, location, openRun, report, showPath } from '@
 import { ANY_HOME } from '@term/call/code/home'
 import { readTree } from '@term/deck/code/package/read'
 
-// `term feed`: the development server is `term boot`, and this says so
-export function refuseFeed(input: { root: string }): void {
+// `term feed`: the development server is `term boot`, and this says so. The entry, port and env the retired line
+// named make the `next` the exact `term boot` line that replaces it (decision cli-in-term/017 part 1), each part only
+// when given; with none, the `next` names the two modes
+export function refuseFeed(input: { root: string; entry?: string; port?: number; env?: string }): void {
+  const parts = [
+    input.entry,
+    input.port === undefined ? undefined : `-p ${input.port}`,
+    input.env === undefined ? undefined : `--env ${input.env}`,
+  ].filter((part): part is string => part !== undefined)
+
   openRun({ verb: 'feed', root: input.root })
   report({ glyph: 'failed', kind: 'problem', subject: 'The development server is term boot, and term feed no longer starts it' })
   process.exitCode = closeRun({
     verdict: 'Nothing was started',
     failure: 'usage',
-    next: 'term boot, which is term boot moon (development), or term boot star (production)',
+    next:
+      parts.length > 0
+        ? ['term boot moon', ...parts].join(' ')
+        : 'term boot, which is term boot moon (development), or term boot star (production)',
   })
 }
 

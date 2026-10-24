@@ -109,7 +109,9 @@ const DECKS: Record<string, string[]> = {
 // Beside such a port goes `<name>-run.ts`, which `make:line` bundles: the routes as data, each command's task as the
 // port's export, and the start of the run handed to `work/dispatch.tree`'s `start-line` and `fail-line`, the way
 // `term boot` writes a console's `run.mjs` (boot-plan.tree `cli-run-text`). The parsing of a command's own flags and
-// the call of its task are still hook-dispatch.ts's `runCommandLine`, until the switch (term-cli-in-term-0013).
+// the call of its task are still hook-dispatch.ts's `runCommandLine`, until the switch (term-cli-in-term-0013). A usage
+// refusal comes back from it as data and `refuse-line` words it as yargs did (decision cli-in-term/016 part 4); every
+// other console's entry (boot-plan.tree `cli-run-text`) keeps hook-dispatch's own two lines.
 // Undefined when the module declares no hook; a task some route names that the port does not export is an error
 function runEntry(name: string, content: string, program: Parameters<typeof commandRoutes>[0]): { text: string } | { missing: string[] } | undefined {
   const routes = commandRoutes(program)
@@ -147,7 +149,7 @@ function runEntry(name: string, content: string, program: Parameters<typeof comm
       `// THE RUN ENTRY of the Term console ${name}, written by task/port-build.ts beside its port (term-cli-in-term-0012).`,
       '// Generated: edit the console or port-build, never this file.',
       `import * as line from './${name.split('/').pop()!.replace(/\.tree$/, '')}'`,
-      "import { failLine, startLine } from '@term/call/code/work/dispatch'",
+      "import { failLine, refuseLine, startLine } from '@term/call/code/work/dispatch'",
       "import { runCommandLine } from '@term/call/code/hook-dispatch'",
       '',
       `const routes = ${data}`,
@@ -164,7 +166,7 @@ function runEntry(name: string, content: string, program: Parameters<typeof comm
       '  }',
       '} else {',
       '  try {',
-      "    const code = await runCommandLine({ name: 'term', routes, argv: start.words, resolve: task => tasks[task] as ((...values: unknown[]) => unknown) | undefined })",
+      "    const code = await runCommandLine({ name: 'term', routes, argv: start.words, resolve: task => tasks[task] as ((...values: unknown[]) => unknown) | undefined, refuse: refuseLine })",
       '',
       '    if (code !== 0) {',
       '      process.exit(code)',

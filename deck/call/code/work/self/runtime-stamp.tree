@@ -15,10 +15,12 @@ load @term/call/runtime-frame
   find not-hex
   find tone-of, name tone-in-alphabet
 
+load ../small/tool-asking
+  find ask-tool
+
 dock load
   load <@cluesurf/save/canon/mark>, name tone-mark
   load <node:crypto>, name node-crypto
-  load <node:child_process>, name node-child
 
 # ---- the host's values ----
 
@@ -69,9 +71,6 @@ form runtime-stamp
   # the same digest in the tone alphabet, eight groups of eight, what a person reads
   link tone, like text
 
-form spawn-ask
-  link encoding, like text
-
 # the native compiler's version line for each compiler asked this process
 host toolchains, make hash
 
@@ -114,20 +113,16 @@ task toolchain-of
     hold
       save command, <kotlinc>
       save flag, <-version>
+  # a get on a typed hash answers the bare value, never a maybe (traps.md): test has, then the get is the value
   fork test, toolchains/has(command)
     hold
-      save known, toolchains/get(command)
-      sift known
-        case some
-          link known-line
-          back known-line
-        case none
-          save nothing-known, 0
+      back toolchains/get(command)
 
   # kotlinc prints its version on stderr and exits 0, swiftc and rustc print on stdout, so both are read
   save args, make list
   args/push(flag)
-  save run, node-child/spawn-sync(command, args, make(spawn-ask, bind(encoding, <utf8>)))
+  # in a temporary folder of its own: swiftc --version leaves one in TMPDIR (term-cli-in-term-0178)
+  save run, ask-tool(command, args, 0)
   save line, stamp-first-line(run)
   save toolchains/{command}, line
   back line

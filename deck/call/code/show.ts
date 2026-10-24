@@ -9,13 +9,13 @@
 // - `--back json` was accepted and changed nothing.
 // - an argument it does not know is refused, exit 2. It printed the toolchain as though none had been given.
 
-import { spawnSync } from 'child_process'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { infoText } from '@term/make/code/show'
 import { showKink } from '@term/call/code/kink'
 import { showContext } from '@term/call/code/context'
+import { askTool } from '@term/call/code/work/small/tool-asking'
 import { closeRun, field, location, openRun, printData, report, showPath } from '@term/call/code/output'
 
 export async function callShow(input: {
@@ -125,7 +125,8 @@ const TOOLS: { backend: string; name: string; args: string[] }[] = [
 // question before it builds anything (call/code/cask.ts)
 export function toolVersion(name: string): string | undefined {
   const tool = TOOLS.find(one => one.name === name)
-  const run = spawnSync(name, tool?.args ?? ['--version'], { encoding: 'utf8', timeout: 30_000 })
+  // through work/small/tool-asking.tree: swiftc --version leaves a folder in TMPDIR, so it is asked in one it removes
+  const run = askTool(name, tool?.args ?? ['--version'], 30_000) as { stdout?: string; stderr?: string; status: number | null; error?: Error }
   // the first line that names a version, from stdout or stderr: `java -version` and `kotlinc -version` print on
   // stderr
   const said = `${run.stdout ?? ''}\n${run.stderr ?? ''}`
