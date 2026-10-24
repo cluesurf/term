@@ -38,9 +38,9 @@ const writesReport = child(
 )
 
 describe('term hunt fails closed', () => {
-  it('passes only when every check ran on at least one input', () => {
+  it('passes only when every check ran on at least one input', async () => {
     const { root, files } = project()
-    const result = huntSeedCompiler({ root, resolve: none, files, runs: 5, seeds: 2, fuzzEntry: writesReport })
+    const result = await huntSeedCompiler({ root, resolve: none, files, runs: 5, seeds: 2, fuzzEntry: writesReport })
 
     expect(result.unrun).toEqual([])
     expect(result.corpus.files).toBe(1)
@@ -51,9 +51,9 @@ describe('term hunt fails closed', () => {
     expect(renderHunt(result)).toMatch(/hunt CLEAN: 1 file\(s\) read, 10 fuzz run\(s\), 4 backend\(s\) emitted/)
   })
 
-  it('fails when no file was read', () => {
+  it('fails when no file was read', async () => {
     const { root } = project()
-    const result = huntSeedCompiler({ root, resolve: none, files: [], runs: 5, seeds: 1, fuzzEntry: writesReport })
+    const result = await huntSeedCompiler({ root, resolve: none, files: [], runs: 5, seeds: 1, fuzzEntry: writesReport })
 
     expect(result.ok).toBe(false)
     expect(result.findings).toBe(0)
@@ -62,17 +62,17 @@ describe('term hunt fails closed', () => {
     expect(renderHunt(result)).not.toMatch(/CLEAN/)
   })
 
-  it('fails when a glob names a directory with no .tree files', () => {
+  it('fails when a glob names a directory with no .tree files', async () => {
     const { root } = project()
-    const result = huntSeedCompiler({ root, resolve: none, glob: 'missing', runs: 5, seeds: 1, fuzzEntry: writesReport })
+    const result = await huntSeedCompiler({ root, resolve: none, glob: 'missing', runs: 5, seeds: 1, fuzzEntry: writesReport })
 
     expect(result.ok).toBe(false)
     expect(result.unrun.join('\n')).toMatch(/no \.tree files read under missing/)
   })
 
-  it('fails when the fuzz child exits non-zero', () => {
+  it('fails when the fuzz child exits non-zero', async () => {
     const { root, files } = project()
-    const result = huntSeedCompiler({
+    const result = await huntSeedCompiler({
       root, resolve: none, files, runs: 5, seeds: 1,
       fuzzEntry: child("process.stderr.write('Cannot find module fuzz-campaign.ts'); process.exit(3)"),
     })
@@ -83,17 +83,17 @@ describe('term hunt fails closed', () => {
     expect(renderHunt(result)).toMatch(/NOTHING FUZZED/)
   })
 
-  it('fails when the fuzz child exits 0 but writes no report', () => {
+  it('fails when the fuzz child exits 0 but writes no report', async () => {
     const { root, files } = project()
-    const result = huntSeedCompiler({ root, resolve: none, files, runs: 5, seeds: 1, fuzzEntry: child('') })
+    const result = await huntSeedCompiler({ root, resolve: none, files, runs: 5, seeds: 1, fuzzEntry: child('') })
 
     expect(result.ok).toBe(false)
     expect(result.unrun.join('\n')).toMatch(/wrote no report/)
   })
 
-  it('fails when the fuzz command cannot start', () => {
+  it('fails when the fuzz command cannot start', async () => {
     const { root, files } = project()
-    const result = huntSeedCompiler({
+    const result = await huntSeedCompiler({
       root, resolve: none, files, runs: 5, seeds: 1,
       fuzzEntry: { command: path.join(root, 'no-such-binary'), args: [] },
     })
@@ -102,9 +102,9 @@ describe('term hunt fails closed', () => {
     expect(result.unrun.join('\n')).toMatch(/could not start/)
   })
 
-  it('fails when the campaigns executed zero runs', () => {
+  it('fails when the campaigns executed zero runs', async () => {
     const { root, files } = project()
-    const result = huntSeedCompiler({
+    const result = await huntSeedCompiler({
       root, resolve: none, files, runs: 5, seeds: 1,
       fuzzEntry: child(
         "require('fs').writeFileSync(process.argv[1], JSON.stringify({runs: 0, crashes: [], codesSeen: [], corpusGrew: 0}))",
@@ -115,17 +115,17 @@ describe('term hunt fails closed', () => {
     expect(result.unrun.join('\n')).toMatch(/executed zero runs/)
   })
 
-  it('fails when asked for zero seeds', () => {
+  it('fails when asked for zero seeds', async () => {
     const { root, files } = project()
-    const result = huntSeedCompiler({ root, resolve: none, files, runs: 5, seeds: 0, fuzzEntry: writesReport })
+    const result = await huntSeedCompiler({ root, resolve: none, files, runs: 5, seeds: 0, fuzzEntry: writesReport })
 
     expect(result.ok).toBe(false)
     expect(result.unrun.join('\n')).toMatch(/nothing was fuzzed/)
   })
 
-  it('reports a hang, with the input that hung, as a finding', () => {
+  it('reports a hang, with the input that hung, as a finding', async () => {
     const { root, files } = project()
-    const result = huntSeedCompiler({
+    const result = await huntSeedCompiler({
       root, resolve: none, files, runs: 5, seeds: 1, fuzzTimeoutSec: 1,
       fuzzEntry: child("require('fs').writeFileSync(process.argv[2], 'task loop'); for (;;) {}"),
     })
@@ -136,9 +136,9 @@ describe('term hunt fails closed', () => {
     expect(renderHunt(result)).toMatch(/hunt FOUND 1 issue/)
   })
 
-  it('reports a crash signature from a campaign as a finding', () => {
+  it('reports a crash signature from a campaign as a finding', async () => {
     const { root, files } = project()
-    const result = huntSeedCompiler({
+    const result = await huntSeedCompiler({
       root, resolve: none, files, runs: 5, seeds: 1,
       fuzzEntry: child(
         "require('fs').writeFileSync(process.argv[1], JSON.stringify({runs: 5, crashes: [{input: 'x', error: 'TypeError: boom\\n  at y', generation: 0}], codesSeen: [], corpusGrew: 0}))",
@@ -152,9 +152,9 @@ describe('term hunt fails closed', () => {
     expect(renderHunt(result)).toMatch(/TypeError: boom\n\s+\| x/)
   })
 
-  it('a watchdog that fires before the first input is a run that did not happen, not a hang', () => {
+  it('a watchdog that fires before the first input is a run that did not happen, not a hang', async () => {
     const { root, files } = project()
-    const result = huntSeedCompiler({
+    const result = await huntSeedCompiler({
       root, resolve: none, files, runs: 5, seeds: 1, fuzzTimeoutSec: 1,
       fuzzEntry: child('for (;;) {}'),
     })
@@ -164,9 +164,9 @@ describe('term hunt fails closed', () => {
     expect(result.unrun.join('\n')).toMatch(/watchdog fired before the campaign wrote its first input/)
   })
 
-  it('runs the real fuzz campaign from source', () => {
+  it('runs the real fuzz campaign from source', async () => {
     const { root, files } = project()
-    const result = huntSeedCompiler({ root, resolve: none, files, runs: 20, seeds: 1, fuzzTimeoutSec: 120 })
+    const result = await huntSeedCompiler({ root, resolve: none, files, runs: 20, seeds: 1, fuzzTimeoutSec: 120 })
 
     expect(result.unrun).toEqual([])
     expect(result.fuzz.seedsRun).toBe(1)
@@ -224,9 +224,9 @@ describe('crashes are shrunk', () => {
     expect(minimizeCrash('task answer\n  like number\n  back 42\n')).toBe('task answer\n  like number\n  back 42\n')
   })
 
-  it('and the hunt reports the shrunk program, saying what it was shrunk from', () => {
+  it('and the hunt reports the shrunk program, saying what it was shrunk from', async () => {
     const { root, files } = project()
-    const result = huntSeedCompiler({
+    const result = await huntSeedCompiler({
       root, resolve: none, files, runs: 5, seeds: 1,
       fuzzEntry: child(
         "require('fs').writeFileSync(process.argv[1], JSON.stringify({runs: 5, crashes: [{input: 'a\\nx\\nb', error: 'TypeError: boom\\n  at y', generation: 0}], codesSeen: [], corpusGrew: 0, shrunk: [{signature: 'TypeError: boom', input: 'x', from: 'a\\nx\\nb'}]}))",
@@ -237,9 +237,9 @@ describe('crashes are shrunk', () => {
     expect(renderHunt(result)).toMatch(/TypeError: boom {2}\(shrunk from 3 lines to 1\)\n\s+\| x/)
   })
 
-  it('and a campaign the watchdog stops while it shrinks keeps the crash it found, unshrunk, beside the hang', () => {
+  it('and a campaign the watchdog stops while it shrinks keeps the crash it found, unshrunk, beside the hang', async () => {
     const { root, files } = project()
-    const result = huntSeedCompiler({
+    const result = await huntSeedCompiler({
       root, resolve: none, files, runs: 5, seeds: 1, fuzzTimeoutSec: 1,
       fuzzEntry: child(
         "const fs = require('fs'); fs.writeFileSync(process.argv[1], JSON.stringify({runs: 5, crashes: [{input: 'a\\nx', error: 'TypeError: boom', generation: 0}], codesSeen: [], corpusGrew: 0})); fs.writeFileSync(process.argv[2], 'x'); for (;;) {}",
@@ -256,9 +256,9 @@ describe('crashes are shrunk', () => {
 // The compile budget is held: on the corpus, the fastest of each file's three compiles, and on every fuzzed input,
 // timed twice. `perfBudgetMs` was taken and never read until 2026-10-05
 describe('the compile budget', () => {
-  it('fails a corpus file whose every compile is over it', () => {
+  it('fails a corpus file whose every compile is over it', async () => {
     const { root, files } = project()
-    const result = huntSeedCompiler({ root, resolve: none, files, runs: 5, seeds: 1, perfBudgetMs: 0, fuzzEntry: writesReport })
+    const result = await huntSeedCompiler({ root, resolve: none, files, runs: 5, seeds: 1, perfBudgetMs: 0, fuzzEntry: writesReport })
     const perf = result.corpus.violations.filter(v => v.violation.oracle === 'perf')
 
     expect(perf).toHaveLength(1)
@@ -266,18 +266,18 @@ describe('the compile budget', () => {
     expect(result.ok).toBe(false)
   })
 
-  it('passes it when the corpus compiles inside it', () => {
+  it('passes it when the corpus compiles inside it', async () => {
     const { root, files } = project()
-    const result = huntSeedCompiler({ root, resolve: none, files, runs: 5, seeds: 1, perfBudgetMs: 60_000, fuzzEntry: writesReport })
+    const result = await huntSeedCompiler({ root, resolve: none, files, runs: 5, seeds: 1, perfBudgetMs: 60_000, fuzzEntry: writesReport })
 
     expect(result.corpus.violations).toEqual([])
     expect(result.ok).toBe(true)
   })
 
-  it('hands it to each fuzz campaign, and a slow input it reports is a finding', () => {
+  it('hands it to each fuzz campaign, and a slow input it reports is a finding', async () => {
     const { root, files } = project()
     // the budget is the sixth argument after `-e`, and this child reports it back as the slow input's time
-    const result = huntSeedCompiler({
+    const result = await huntSeedCompiler({
       root, resolve: none, files, runs: 5, seeds: 1, perfBudgetMs: 60_000,
       fuzzEntry: child(
         "require('fs').writeFileSync(process.argv[1], JSON.stringify({runs: 5, crashes: [], codesSeen: [], corpusGrew: 0, slow: [{input: 'slow one', ms: Number(process.argv[6]) + 1}]}))",

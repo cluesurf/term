@@ -184,8 +184,28 @@ bind hunt-json
   case node
     text <JSON.stringify($value)>
 
-# one campaign as a child, under the watchdog: the entry's own args, then the campaign's
+# The campaigns' guard (term-cli-in-term-0178, decision 0203): on SIGTERM or SIGINT the running child is killed, and
+# once it is gone the work folder is removed and the process leaves 143 or 130. A hunt stopped from outside leaves no
+# child running and nothing in the temporary folder. The campaigns run without blocking so the hooks can run at all:
+# under spawnSync a signal waited for the child to finish, and the orphaned child kept writing into the folder
+bind hunt-guard
+  take work, like text
+  like dynamic
+  case node
+    text <(() =\> \{ const huntGuard = \{ child: undefined, off: undefined \}; const huntStop = (huntSignal) =\> \{ const huntFinish = () =\> \{ process.getBuiltinModule("node:fs").rmSync($work, \{ recursive: true, force: true \}); process.exit(huntSignal === "SIGINT" ? 130 : 143) \}; const huntRunning = huntGuard.child; if (huntRunning && huntRunning.exitCode === null && huntRunning.signalCode === null) \{ huntRunning.once("exit", huntFinish); huntRunning.kill("SIGKILL") \} else \{ huntFinish() \} \}; process.once("SIGTERM", huntStop); process.once("SIGINT", huntStop); huntGuard.off = () =\> \{ process.off("SIGTERM", huntStop); process.off("SIGINT", huntStop) \}; return huntGuard \})()>
+
+# the campaigns are over: the guard's hooks taken off
+bind hunt-guard-release
+  take guard, like dynamic
+  like void
+  case node
+    text <void $guard.off()>
+
+# One campaign as a child, under the watchdog: the entry's own args, then the campaign's. Answers what spawnSync
+# answered (error, with code ETIMEDOUT when the watchdog fired, status, signal, stderr), and the guard holds the child
+# while it runs
 bind hunt-spawn
+  take guard, like dynamic
   take entry, like dynamic
   take report-out, like text
   take probe-file, like text
@@ -197,7 +217,7 @@ bind hunt-spawn
   take root, like text
   like dynamic
   case node
-    text <process.getBuiltinModule("node:child_process").spawnSync($entry.command, [...$entry.args, $report-out, $probe-file, String($runs), String($seed), $corpus-file, String($budget)], \{ timeout: $timeout-sec * 1000, encoding: "utf8", cwd: $root \})>
+    text <new Promise((huntDone) =\> \{ const huntChild = process.getBuiltinModule("node:child_process").spawn($entry.command, [...$entry.args, $report-out, $probe-file, String($runs), String($seed), $corpus-file, String($budget)], \{ cwd: $root, stdio: ["ignore", "ignore", "pipe"] \}); $guard.child = huntChild; let huntErr = ""; let huntTimedOut = false; huntChild.stderr.setEncoding("utf8"); huntChild.stderr.on("data", (huntChunk) =\> \{ huntErr += huntChunk \}); const huntTimer = setTimeout(() =\> \{ huntTimedOut = true; huntChild.kill("SIGTERM") \}, $timeout-sec * 1000); huntChild.on("error", (huntError) =\> \{ clearTimeout(huntTimer); $guard.child = undefined; huntDone(\{ error: huntError, status: null, signal: null, stderr: huntErr \}) \}); huntChild.on("close", (huntStatus, huntSignal) =\> \{ clearTimeout(huntTimer); $guard.child = undefined; huntDone(huntTimedOut ? \{ error: Object.assign(new Error("the watchdog fired"), \{ code: "ETIMEDOUT" \}), status: null, signal: huntSignal, stderr: huntErr \} : \{ error: undefined, status: huntStatus, signal: huntSignal, stderr: huntErr \}) \}) \})>
 
 bind hunt-hung
   take child, like dynamic
@@ -499,6 +519,7 @@ task collect-report
 task hunt-seed-compiler
   take ask, like dynamic
   like hunt-result
+  mark async
 
   host root, hunt-text-of(hunt-field(ask, <root>))
   host resolve, hunt-field(ask, <resolve>)
@@ -585,6 +606,7 @@ task hunt-seed-compiler
           host work, hunt-fs/mkdtemp-sync(hunt-path/join(hunt-os/tmpdir(), <term-hunt->))
           host corpus-file, hunt-path/join(work, <corpus.json>)
           hunt-fs/write-file-sync(corpus-file, hunt-json(extra-seeds))
+          host guard, hunt-guard(work)
 
           save seed, 0
           walk test
@@ -593,7 +615,7 @@ task hunt-seed-compiler
               save seed, add(seed, 1)
               host report-out, hunt-path/join(work, <report-{seed}.json>)
               host probe-file, hunt-path/join(work, <probe-{seed}.tree>)
-              host child, hunt-spawn(entry, report-out, probe-file, runs, seed, corpus-file, budget, timeout-sec, root)
+              host child, wait hunt-spawn(guard, entry, report-out, probe-file, runs, seed, corpus-file, budget, timeout-sec, root)
 
               fork test, hunt-hung(child)
                 hold
@@ -645,6 +667,7 @@ task hunt-seed-compiler
               save total-crashes, add(total-crashes, collect-report(report, found, slow))
 
           # the campaigns' scratch: every report and probe is read by now (term-cli-in-term-0178)
+          hunt-guard-release(guard)
           hunt-fs/rm-sync(work, make(hunt-remove, bind(recursive, true), bind(force, true)))
 
           fork test, and(is-above(seeds-run, 0), is-equal(fuzz-runs, 0))

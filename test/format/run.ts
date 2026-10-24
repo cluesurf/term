@@ -421,6 +421,19 @@ function rules(): void {
     ok('lean: ...and formatting it again changes nothing', format({ file: 'w.tree', text: once }, { lean: true }) === once)
   }
 
+  // a lean part under a call written `name(<x>)` keeps its parentheses, inline and on a line of its own however wide:
+  // the meaning check does not compare `leanShaped`, and without them a label-or-call refusal (decision 009) would
+  // turn into the label (term-compiler-0069)
+  {
+    const inline = format({ file: 'l.tree', text: 'task run\n  back greet(name(<x>))\n' }, { lean: true })
+    const long = `<${'x'.repeat(90)}>`
+    const wide = format({ file: 'l.tree', text: `task run\n  back greet(name(${long}))\n` }, { lean: true })
+
+    ok('lean: a call-shaped part under a call keeps its parentheses, `greet(name(<x>))`', inline.includes('back greet(name(<x>))\n'), inline)
+    ok('lean: ...and on its own line when the call stacks', wide.includes(`\n      name(${long})\n`), wide)
+    ok('lean: ...and formatting it again changes nothing', format({ file: 'l.tree', text: wide }, { lean: true }) === wide)
+  }
+
   // a path after a call is written back as it was, never as the braces the parser holds it in
   {
     const path = format({ file: 'p.tree', text: 'task t\n  log greeting()/text\n  log greet(<ada>)/text\n  log <{greet(who)/count} left>\n' }, { lean: true })

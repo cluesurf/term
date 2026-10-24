@@ -54,9 +54,11 @@ form seek-ask
   link format, like text
   link fix, like boolean
 
+# `file` is a host value: the path when the line named one, else undefined, which callMold labels `stdin` (input.file
+# ?? 'stdin'), as line.ts handed argv.file on
 form mold-ask
   link root, like text
-  link file, like text
+  link file, like dynamic
   link pack, like boolean
   link json, like boolean
   link keep, like boolean
@@ -66,6 +68,15 @@ form mold-ask
   link lines, like boolean
   link code, like boolean
   link canonical, like boolean
+
+# an option as line.ts handed it to a TypeScript handler: its value when the line named it, else undefined (an absent
+# argv.<x>). The argument is always a local, so the text may read it twice. Named for this file (a bind of one name
+# in two modules of one port is one bind, traps.md 0103)
+bind inspect-text-given
+  take given, like maybe, like text
+  like dynamic
+  case node
+    text <($given.form === "some" ? $given.value : undefined)>
 
 # `term view [path]`: check a document in the view role and print what it uses
 task view
@@ -124,7 +135,7 @@ task seek
 # `term mold [file]`: shape Term data, long or compact or JSON
 task mold
   mark async
-  take file, like text
+  take file, like maybe, like text
   take pack, like boolean
   take json, like boolean
   take keep, like boolean
@@ -144,7 +155,7 @@ task mold
     call mold-module/callMold
       make mold-ask
         bind root, read root
-        bind file, read file
+        bind file, inspect-text-given(file)
         bind pack, read pack
         bind json, read json
         bind keep, read keep

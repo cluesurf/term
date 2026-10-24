@@ -6,12 +6,12 @@
 //
 // Run: npx tsx test/compile/lean-label-or-call.ts (from deck/term/deck/term)
 
-import { mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { transformSync } from 'esbuild'
 import { compile } from '@term/make/code/compile/compile'
+import { tempDir } from '../temp'
 
 let pass = 0
 let fail = 0
@@ -26,7 +26,8 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const folder = mkdtempSync(join(tmpdir(), 'term-label-or-call-'))
+// removed when the process ends (test/temp.ts), term-cli-in-term-0178
+const folder = tempDir('term-label-or-call-')
 let count = 0
 
 const head = `task name

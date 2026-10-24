@@ -1,17 +1,6 @@
 load @term/call/work/home
   find root, name project-root
 
-load @term/call/work/tint
-  find log-good
-  find log-fail
-  find log-step
-  find log-warn
-  find fade
-  find name, name tint-name
-  find bold
-  find mark
-  find format-error
-
 # `term work` -- the long-lived compiler worker, and the shared diagnostic printer.
 #
 # `work` hosts the warm incremental analyzer over HTTP so the language server, `term feed` and the CLI share one warm
@@ -30,56 +19,106 @@ load @term/base/file
 load @term/base/text
   find split
 
+load @term/base/maybe
+  find maybe
+
 dock load
-  load <@term/call/code/dev/daemon>, name daemon-module
   load <@term/make/code/parser/diagnostic>, name diagnostic-module
-  load <node:process>, name node-process
+  # line.ts's three work branches (line.ts:1248-1276), docked as every verb file docks today (decision cli-in-term/005
+  # part 2, 013 part 1). Each answers a promise: every call into them is awaited
+  load <@term/call/code/work>, name worker-module
+    mark async
+  load <@term/call/code/compose-work>, name compose-worker-module
+    mark async
+  load <@term/call/code/cask>, name cask-worker-module
+    mark async
 
-# the port the worker listens on when none is given
-# `worker-port`, not `default-port`: `feed` declares the dev server's default under that name, and a package
-# has one namespace for both.
-host worker-port, code 5179
-
-form daemon-ask
+# The asks of the three branches. An option the line did not name reaches its handler as undefined, as line.ts
+# handed argv.<x> on, so those fields are host values (work-text-given, work-number-given)
+form worker-call-ask
   link root, like text
-  link port, like number
-  link env, like text
+  link port, like dynamic
+  link env, like dynamic
 
-# `term work`: start the worker and stay up
+form compose-worker-ask
+  link root, like text
+  link target, like text
+  link entry, like dynamic
+
+form cask-worker-ask
+  link root, like text
+  link target, like text
+  link page, like dynamic
+  link entry, like dynamic
+  link port, like dynamic
+
+# an option as line.ts handed it to a TypeScript handler: its value when the line named it, else undefined (an absent
+# argv.<x>). The argument is always a local, so the text may read it twice. Named for this file: a bind of one name
+# in two modules of one port is one bind (traps.md, 0103), and make.tree's option-given takes a text
+bind work-text-given
+  take given, like maybe, like text
+  like dynamic
+  case node
+    text <($given.form === "some" ? $given.value : undefined)>
+
+bind work-number-given
+  take given, like maybe, like number
+  like dynamic
+  case node
+    text <($given.form === "some" ? $given.value : undefined)>
+
+# the option's text, the empty text when the line did not name it (line.ts's truth test on argv.target)
+bind work-text-of
+  take given, like maybe, like text
+  like text
+  case node
+    text <($given.form === "some" ? $given.value : "")>
+
+# `term work`: line.ts's work handler, its branches in its order. --target compose or compose-android develops a
+# Compose app, any other target a cask, else the compiler worker starts. Every take a handler reads with ?? is a maybe,
+# as line.ts handed argv.<x> on absent (decision cli-in-term/008 part 1). No catch or exit of its own: a throw
+# reaches dispatch.tree fail-line, as it reached line.ts's own (decision 005 part 2)
 task work
   mark async
-  take port, like number
-  take env, like text
+  take port, like maybe, like number
+  take env, like maybe, like text
+  take target, like maybe, like text
+  take page, like maybe, like text
+  take entry, like maybe, like text
 
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  log-step <Starting compiler worker...>
+  save target-word, work-text-of(target)
 
-  save chosen
-    fork test
-      is-above port, code 0
-      hold
-        read port
-      miss
-        read worker-port
-  fork
-    mark unsafe
-    save daemon
-      call daemon-module/startDaemon
-        make daemon-ask
+  # a Compose app (live-reload): no WebView to swap a page in, so each edit is a new build, relaunched where it was
+  fork test, is-equal(target-word, <compose>)
+    hold
+      compose-worker-module/workCompose(make(compose-worker-ask, bind(root, read root), bind(target, read target-word), bind(entry, work-text-given(entry))))
+      back
+  fork test, is-equal(target-word, <compose-android>)
+    hold
+      compose-worker-module/workCompose(make(compose-worker-ask, bind(root, read root), bind(target, read target-word), bind(entry, work-text-given(entry))))
+      back
+
+  # any other target is a cask: its page on a dev server with hot swaps, the app pointed at it
+  fork test, is-above(target-word/length, 0)
+    hold
+      call cask-worker-module/workCask
+        make cask-worker-ask
           bind root, read root
-          bind port, read chosen
-          bind env, read env
-    call log-good, text <compiler worker on http://localhost:{{chosen}}>
-    call log-step
-      call fade
-        text <  POST /analyze with a file and its text, for diagnostics. ctrl-c to stop.>
-  halt take
-    take error
-    log-fail format-error error
-    node-process/exit code 1
+          bind target, read target-word
+          bind page, work-text-given(page)
+          bind entry, work-text-given(entry)
+          bind port, work-number-given(port)
+      back
+
+  call worker-module/callWork
+    make worker-call-ask
+      bind root, read root
+      bind port, work-number-given(port)
+      bind env, work-text-given(env)
 
 # the source lines of a diagnostic's file, for the frame's context. An empty list when the file cannot be read,
 # because a diagnostic that cannot show its line is still worth printing.

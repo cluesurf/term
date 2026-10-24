@@ -76,7 +76,8 @@ export async function callHunt(input: {
   const files = existsSync(dir) ? findTreeFiles(dir, [], 'node') : []
   const roleOf = projectRoleOf(root)
 
-  const result = huntSeedCompiler({
+  // awaited: the campaigns run without blocking, so a SIGTERM can stop the child and remove its folder (0178)
+  const result = await huntSeedCompiler({
     root,
     resolve: projectResolver(root, 'node', root),
     files,

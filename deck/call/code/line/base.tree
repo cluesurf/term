@@ -512,7 +512,7 @@ hook term
     hook wash
       # Unused for this many days (default 90)
       take days
-        like number
+        like maybe, like number
       # Remove them, rather than list them
       take commit
         like boolean
@@ -698,13 +698,13 @@ hook term
       like text
     # Profile CPU hotspots of a .tree file
     take cpu
-      like text
+      like maybe, like text
     # Profile memory use of a .tree file
     take memory
-      like text
+      like maybe, like text
     # Show the top-N hottest functions (with --cpu)
     take top
-      like number
+      like maybe, like number
     # Output JSON instead of table
     take json
       like boolean
@@ -716,7 +716,7 @@ hook term
       like text
     # Fail if any benchmark regresses by more than N%
     take fail-on-regression
-      like number
+      like maybe, like number
     # Output comparison as markdown
     take markdown
       like boolean
@@ -797,21 +797,21 @@ hook term
     # Port to serve on
     take port
       code p
-      like number
+      like maybe, like number
     # Target env
     take env
-      like text
+      like maybe, like text
     # Develop a native app: a cask (its page on a dev server with hot swaps, the app pointed at it), or `compose` /
     # `compose-android` (rebuilt and relaunched on each edit, on the screen it was on)
     take target
-      like text
+      like maybe, like text
     # The page entry of the cask app (default face/base.tree)
     take page
-      like text
+      like maybe, like text
     # The entry of the app (default cask.tree; for a Compose or UIKit target, the file the boot line of deck.tree
     # names, else app.tree)
     take entry
-      like text
+      like maybe, like text
     task work
 
   # Clean build artifacts
@@ -916,7 +916,7 @@ hook term
     # A data file, long or compact (.tree or .line), a stream with --lines, or a .json file (stdin when
     # absent)
     slot file
-      like text
+      like maybe, like text
     # Compact form, one entry per line
     take pack
       like boolean

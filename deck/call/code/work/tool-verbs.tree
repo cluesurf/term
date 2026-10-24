@@ -1,13 +1,19 @@
 load @term/call/work/home
   find root, name project-root
 
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
 # The remaining verbs: `term time`, `term hold`, `term zone` and `term mark`. `mark` is a forwarder like `zone`.
 #
 # `zone` is the one that CANNOT be more than this. It slices the argument vector at `zone` and hands everything
 # after it to the zone console untouched, because a zone invocation carries a `--` separating the zone path from
 # the command to run, plus flags that mean something to that console and nothing here. Re-parsing them would
-# swallow the wrong ones. Term cannot read the process argument vector or find the console beside the running
-# binary, so the verb docks the module that can.
+# swallow the wrong ones, so the hook is `mark pass` and its `rest` holds them verbatim. Term cannot find the
+# console beside the running binary, so the verb docks the module that can.
 #
 # Ported from deck/call/code/{time,hold,zone}.ts (cli-in-term-0004).
 
@@ -16,9 +22,6 @@ dock load
   load <@term/call/code/hold>, name hold-module
   load <@term/call/code/zone>, name zone-module
   load <@term/call/code/mark>, name mark-module
-  # the process argument vector `zone` and `mark` hand over whole (traps.md: <global:process>, never <node:process>,
-  # for anything that may use the process object as `this`)
-  load <global:process>, name host-process
 
 form time-ask
   link root, like text
@@ -27,12 +30,28 @@ form time-ask
   link json, like boolean
   link save, like text
   link compare, like text
-  link failOnRegression, like number
+  link failOnRegression, like dynamic
   link markdown, like boolean
   link history, like text
-  link cpu, like text
-  link memory, like text
-  link top, like number
+  link cpu, like dynamic
+  link memory, like dynamic
+  link top, like dynamic
+
+# an option as line.ts handed it to a TypeScript handler: its value when the line named it, else undefined (an absent
+# argv.<x>). callTime reads these four with ?? or != null (cpu ?? memory, top ?? 15, failOnRegression != null), so
+# an empty fill would be a given value. The argument is always a local, so the text may read it twice. Named for
+# this file (a bind of one name in two modules of one port is one bind, traps.md 0103)
+bind tool-text-given
+  take given, like maybe, like text
+  like dynamic
+  case node
+    text <($given.form === "some" ? $given.value : undefined)>
+
+bind tool-number-given
+  take given, like maybe, like number
+  like dynamic
+  case node
+    text <($given.form === "some" ? $given.value : undefined)>
 
 form hold-ask
   link root, like text
@@ -67,12 +86,12 @@ task time
   take json, like boolean
   take save, like text
   take compare, like text
-  take fail-on-regression, like number
+  take fail-on-regression, like maybe, like number
   take markdown, like boolean
   take history, like text
-  take cpu, like text
-  take memory, like text
-  take top, like number
+  take cpu, like maybe, like text
+  take memory, like maybe, like text
+  take top, like maybe, like number
 
   like void
 
@@ -87,12 +106,12 @@ task time
       bind json, read json
       bind save, read save
       bind compare, read compare
-      bind failOnRegression, read fail-on-regression
+      bind failOnRegression, tool-number-given(fail-on-regression)
       bind markdown, read markdown
       bind history, read history
-      bind cpu, read cpu
-      bind memory, read memory
-      bind top, read top
+      bind cpu, tool-text-given(cpu)
+      bind memory, tool-text-given(memory)
+      bind top, tool-number-given(top)
     wait true
 
 # `term hold [paths..]`: the proof gate -- every file compiles, no claim is open, every tier-0 obligation is proven or
@@ -126,14 +145,28 @@ task hold
       bind report, read report
     wait true
 
-# `term zone ...`: the whole zone console, under one command, with its arguments handed over untouched. As line.ts
-# does, `callZone` is handed the WHOLE process argument vector and slices it at `zone` itself: the route's `rest` is
-# what the dispatcher kept, and it has already read words a zone invocation means for the zone console. No catch or
-# exit of its own: a throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term)
+# the words a forwarding command hands on: its own word, then every word the line wrote after it, as the dispatcher
+# kept them (a passing hook's slot, decision cli-in-term/008 part 2). callZone and callMark slice after their word,
+# as they sliced line.ts's process argument vector, so the head word stands first and a later word that happens to
+# be `zone` or `mark` stays in the rest
+task forwarded-words
+  take head, like text
+  take rest, like list, like text
+
+  like list, like text
+
+  save words, make list
+  push(words, head)
+  walk rest
+    take word
+    push(words, word)
+  back words
+
+# `term zone ...`: the whole zone console, under one command, with its arguments handed over untouched: the hook's
+# `rest` is every word after `zone`, kept verbatim (`mark pass`). No catch or exit of its own: a throw reaches
+# dispatch.tree `fail-line` (decision 005 of cli-in-term)
 task zone
   mark async
-
-  # the hook's take, bound by name; the words are read whole from the process instead
   take rest
     like list
       like text
@@ -142,16 +175,15 @@ task zone
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
+  save words, forwarded-words(<zone>, rest)
   call zone-module/callZone
-    make zone-ask, bind(root, read root), bind argv, host-process/argv
+    make zone-ask, bind(root, read root), bind(argv, read words)
     wait true
 
 # `term mark ...`: the benchmark runner in the Term repository's deck/mark/, booted there with its arguments
-# untouched. `callMark` is handed the whole process argument vector and slices it after `mark`, as line.ts does
+# untouched (`mark pass`, as `zone`)
 task mark
   mark async
-
-  # the hook's take, bound by name; the words are read whole from the process instead
   take rest
     like list
       like text
@@ -159,6 +191,7 @@ task mark
   like void
 
   save root, call project-root
+  save words, forwarded-words(<mark>, rest)
   call mark-module/callMark
-    make mark-ask, bind(root, read root), bind argv, host-process/argv
+    make mark-ask, bind(root, read root), bind(argv, read words)
     wait true

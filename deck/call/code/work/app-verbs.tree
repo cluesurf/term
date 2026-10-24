@@ -118,7 +118,8 @@ task walk
     node-process/exit code 1
 
 # `term cast [entry]`: build a server-rendered app into something deployable. Cloudflare is the one target, and
-# anything else is named rather than ignored.
+# callCast names anything else rather than ignoring it (`There is no cast target named <x>`, exit 2), so the target
+# goes to it as the line gave it, the route's default `cloudflare` when absent, as line.ts handed argv.target on
 task cast
   mark async
   take entry, like text
@@ -128,25 +129,13 @@ task cast
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  save chosen
-    fork test
-      is-equal target, <>
-      hold
-        text <cloudflare>
-      miss
-        read target
-  fork test
-    is-unequal chosen, <cloudflare>
-    hold
-      log-fail <Unknown cast target: {{chosen}}. The one target is cloudflare.>
-      node-process/exit code 1
   fork
     mark unsafe
     call cast-module/callCast
       make cast-ask
         bind root, read root
         bind entry, read entry
-        bind target, read chosen
+        bind target, read target
       wait true
   halt take
     take error
@@ -204,10 +193,21 @@ form self-toss-ask
   link root, like text
   link mark, like text
 
+# `days` is a host value: the number when the line named --days, else undefined, which callSelfWash reads as its
+# 90-day default (days ?? WASH_DAYS), as line.ts handed argv.days on
 form self-wash-ask
   link root, like text
-  link days, like number
+  link days, like dynamic
   link commit, like boolean
+
+# a number option as line.ts handed it to a TypeScript handler: its value when the line named it, else undefined.
+# The argument is always a local, so the text may read it twice. Named for this file (a bind of one name in two
+# modules of one port is one bind, traps.md 0103)
+bind app-number-given
+  take given, like maybe, like number
+  like dynamic
+  case node
+    text <($given.form === "some" ? $given.value : undefined)>
 
 form bind-ask
   link root, like text
@@ -456,7 +456,7 @@ task self-toss
 # `term self wash`: the versions nothing has used, removed only with --commit
 task self-wash
   mark async
-  take days, like number
+  take days, like maybe, like number
   take commit, like boolean
 
   like void
@@ -468,7 +468,7 @@ task self-wash
     call self-module/callSelfWash
       make self-wash-ask
         bind root, read root
-        bind days, read days
+        bind days, app-number-given(days)
         bind commit, read commit
       wait true
   halt take
