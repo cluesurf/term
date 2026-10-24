@@ -23,12 +23,15 @@ load @term/base/maybe
 load @term/make/compile/node
   find dock-route
   find dock-take
+  find statement
 
 # the emitted-identifier mapping, which this port exports as `toCamel` for a generated run entry (dock.mjs)
 load @term/make/compile/ts-names
   find to-camel
 
 load @term/call/work/hook/parsing
+  find dispatch
+  find command-routes
   find program-of
   find passing-start
   find parse-line
@@ -150,6 +153,28 @@ task camel-name
   take name, like text
   like text
   back to-camel(name)
+
+# WHAT dock.mjs EXPORTS BESIDE THE RUN. This port is bundled as host/dock.mjs (term-cli-in-term-0225), which every
+# console `term boot` writes imports for runCommandLine and toCamel, and which a TypeScript caller of the dispatcher
+# also reads as hook-dispatch.ts exported it: dispatch, commandRoutes, programOf, passingStart, renderHelp,
+# renderUsage. A port emits only the loaded tasks something calls, so this task calls each, and the port exports them
+# by their own names. Nothing calls it
+task dispatcher-surface
+  take routes, like list, like dock-route
+  take program, like list, like statement
+  take argv, like list, like text
+  like list, like dynamic
+  save kept, no-values()
+  kept/push dispatch(routes, argv)
+  kept/push command-routes(program)
+  kept/push program-of(routes)
+  kept/push passing-start(routes, argv)
+  kept/push render-usage(<>, routes)
+  back kept
+
+task no-values
+  like list, like dynamic
+  back make list
 
 # the takes a bound call is handed, in its parameters' order: each parameter takes the take of its own name, and one no
 # take names takes the take at its position; with no parameter names recorded, the takes in their order

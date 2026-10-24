@@ -9,7 +9,7 @@
 # given to the host (the code watcher, the signal handlers, a bundle's write) read it. The memos of every build in this
 # process and `last-boot-units` are the module's own, as the original's module constants were.
 #
-# Docked: the compiler (compile/compile, compile/separate, compile/native), the command routes (hook-dispatch.ts), the
+# Docked: the compiler (compile/compile, compile/separate, compile/native), the
 # toolchain home (home.ts), the manifest reader (manifest-name.ts), the output run (output.ts), the development server
 # (feed.ts, imported when it runs, as the original did) and esbuild. The resolver, deck finder, role readers, unit names
 # and the tree watcher are the build lane's ports, the process's compile cache and the remote cache the cache lane's
@@ -26,6 +26,11 @@ load @term/call/boot-plan
 
 load @term/base/maybe
   find maybe
+
+# the command routes of a compiled program, the Term dispatcher's (work/hook/parsing.tree), where hook-dispatch.ts was
+# docked until term-cli-in-term-0224
+load @term/call/work/hook/parsing
+  find command-routes
 
 load @term/make/term/hash
   find hash-text
@@ -134,7 +139,6 @@ dock load
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/separate>, name separate-module
   load <@term/make/code/compile/native>, name native-module
-  load <@term/call/code/hook-dispatch>, name dispatch-module
   # an inherited method (on, exit) is reached only through the global (traps.md)
   load <global:process>, name host-process
   load <global:Date>, name host-date
@@ -491,14 +495,6 @@ bind boot-routes-json
   like text
   case node
     text <JSON.stringify($routes, (key, value) =\> (key === "span" ? undefined : value))>
-
-bind boot-bundle-dispatch
-  take esbuild, like dynamic
-  take entry, like text
-  take outfile, like text
-  like void
-  case node
-    text <void $esbuild.buildSync(\{ entryPoints: [$entry], outfile: $outfile, bundle: true, format: "esm", platform: "node", packages: "external" \})>
 
 bind boot-link-folder
   take target, like text
@@ -1166,7 +1162,7 @@ task unit-plan
   fork test, boot-module-shell(listed)
     hold
       back make(boot-plan, bind(state, <whole>), bind(cli-routes, boot-no-value()), bind(key, <>), bind(banner, <>), bind(write, boot-no-value()))
-  save cli-routes, dispatch-module/commandRoutes(boot-route-input(built))
+  save cli-routes, command-routes(boot-route-input(built))
   save prelude, native-module/nativePrelude(built/natives, run/env, read-boot-runtime)
   save lines, make list
   lines/push(<units>)
@@ -1203,7 +1199,7 @@ task whole-plan
       back failed-plan()
   # a program whose top level declares `hook` commands is a command-line tool: a dispatching run entry instead of the
   # server harness, and none of the SSR client machinery
-  save cli-routes, dispatch-module/commandRoutes(result/program)
+  save cli-routes, command-routes(result/program)
   save cli, is-above(boot-size(cli-routes), 0)
   # for an SSR server (the node host), the browser CLIENT bundle the rendered page loads, the styles, the asset
   # manifest and the reload id. Only a program that wraps its pages in the document shell gets them
@@ -1380,8 +1376,10 @@ task write-plan
   back boot-apply(plan/write, dir)
 
 # the dispatch engine, placed beside the app so the generated entry and the compiler share ONE implementation of
-# parsing, help and execution. The published CLI ships it prebuilt as `host/dock.mjs`; a source checkout builds it
-# from hook-dispatch.ts. Refreshed every build: it is milliseconds, and a stale copy after an upgrade is a real bug
+# parsing, help and execution: the install's `host/dock.mjs`, the Term dispatcher (work/hook/running.tree) as make:line
+# and a release bundle it. Copied, never built here: a source checkout has it from make:line (term-cli-in-term-0225,
+# where an esbuild over hook-dispatch.ts stood). Refreshed every build: it is milliseconds, and a stale copy after an
+# upgrade is a real bug
 task place-dispatch
   take run, like boot-run
   take out, like text
@@ -1391,22 +1389,7 @@ task place-dispatch
   save here, node-path/join(find-install-root(), <host>)
   save shipped, node-path/join(here, <dock.mjs>)
   save target, node-path/join(out, <dock.mjs>)
-  fork test, node-file/exists-sync(shipped)
+  fork test, not(node-file/exists-sync(shipped))
     hold
-      node-file/copy-file-sync(shipped, target)
-    miss
-      # the original's two places, beside its module from source and under `deck/` from the bundle in `host/`, read
-      # from the install's host/ (decision 006), then the package's own source under the link/ walk's root
-      save candidates, make list
-      candidates/push(node-path/join(here, <hook-dispatch.ts>))
-      candidates/push(node-path/join(here, <../deck/call/code/hook-dispatch.ts>))
-      candidates/push(node-path/join(run/install-root, <deck/call/code/hook-dispatch.ts>))
-      save source, node-path/join(here, <../deck/call/code/hook-dispatch.ts>)
-      save found, false
-      walk candidates
-        take candidate
-        fork test, and(not(found), node-file/exists-sync(candidate))
-          hold
-            save source, candidate
-            save found, true
-      boot-bundle-dispatch(esbuild-module, source, target)
+      halt <The dispatcher {shipped} is missing: run make:line in the toolchain, or install a release>
+  node-file/copy-file-sync(shipped, target)

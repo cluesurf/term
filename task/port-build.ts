@@ -64,7 +64,8 @@ import { nativePrelude } from '@term/make/code/compile/native'
 import { projectResolver } from '@term/call/code/make'
 import { projectLeanOf } from '@term/call/code/role-of'
 import { projectHome } from '@term/call/code/home'
-import { commandRoutes, toCamel } from '@term/call/code/hook-dispatch'
+import { toCamel } from '@term/make/code/compile/typescript'
+import type { DockRoute, Program } from '@term/make/code/compile/node'
 // THE LINE LOCK (note/project/term/decision/002-make-line-lock.md): one port-build or make:line at a time, since this
 // compiles with whatever compiler is half edited in the working tree. Under make:line the token it passes down says
 // the lock is ours already. Loaded by its path from this file, and skipped where it is absent: test/call/port-build-skip.ts
@@ -104,6 +105,28 @@ const DECKS: Record<string, string[]> = {
   call: ['code/work/*/**', 'code/work/*', 'code/line', 'code/browser', 'code/*'],
 }
 
+// THE CLI COMMAND ROUTES of a program: every top-level `hook` (lowered to a dock statement), each bound call carrying
+// its task's parameter names. hook-dispatch.ts's `commandRoutes`, written out here so port-build builds on a fresh
+// clone before any port exists; work/hook/parsing.tree `command-routes` is its port, paired by tmp/self-host/pairs/
+// hook-parse.ts (term-cli-in-term-0224)
+function commandRoutes(program: Program): DockRoute[] {
+  const params = new Map<string, string[]>()
+
+  for (const s of program) {
+    if (s.form === 'function') {
+      params.set(s.name, s.params.map(p => p.name))
+    }
+  }
+
+  const named = (route: DockRoute): DockRoute => ({
+    ...route,
+    calls: route.calls.map(call => (params.has(call.name) ? { ...call, params: params.get(call.name) } : call)),
+    children: route.children.map(named),
+  })
+
+  return program.flatMap(s => (s.form === 'dock' ? [named(s.route)] : []))
+}
+
 // THE RUN ENTRY (term-cli-in-term-0012). A module whose top level declares `hook` commands is a console, and its port
 // alone runs nothing: no Term program can read its own hooks, so the route tree is known only here, from the compile.
 // Beside such a port goes `<name>-run.ts`, which `make:line` bundles: the routes as data, each command's task as the
@@ -111,11 +134,13 @@ const DECKS: Record<string, string[]> = {
 // console's own `start-console`, `fail-console` and `refuse-console`, so the entry imports the console's port alone and
 // ships one copy of the dispatch closure and one run state (decision cli-in-term/018 part 3), the way
 // `term boot` writes a console's `run.mjs` (boot-plan.tree `cli-run-text`). The parsing of a command's own flags and
-// the call of its task are still hook-dispatch.ts's `runCommandLine`, until the switch (term-cli-in-term-0013). A usage
-// refusal comes back from it as data and `refuse-line` words it as yargs did (decision cli-in-term/016 part 4); every
-// other console's entry (boot-plan.tree `cli-run-text`) keeps hook-dispatch's own two lines.
+// the call of its task are the Term dispatcher's `run-command-line` (work/hook/running.tree, decision cli-in-term/018
+// part 2, term-cli-in-term-0224), imported from its own port: it holds no state the console's closure holds, so the
+// second import ships no second run state. A usage refusal comes back from it as data and `refuse-line` words it as
+// yargs did (decision cli-in-term/016 part 4); every other console's entry (boot-plan.tree `cli-run-text`) keeps the
+// dispatcher's own two lines.
 // Undefined when the module declares no hook; a task some route names that the port does not export is an error
-function runEntry(name: string, content: string, program: Parameters<typeof commandRoutes>[0]): { text: string } | { missing: string[] } | undefined {
+function runEntry(name: string, content: string, program: Program): { text: string } | { missing: string[] } | undefined {
   const routes = commandRoutes(program)
 
   if (routes.length === 0) {
@@ -153,7 +178,7 @@ function runEntry(name: string, content: string, program: Parameters<typeof comm
       `// THE RUN ENTRY of the Term console ${name}, written by task/port-build.ts beside its port (term-cli-in-term-0012).`,
       '// Generated: edit the console or port-build, never this file.',
       `import * as line from './${name.split('/').pop()!.replace(/\.tree$/, '')}'`,
-      "import { runCommandLine } from '@term/call/code/hook-dispatch'",
+      "import { runCommandLine } from '@term/call/code/work/hook/running'",
       '',
       `const routes = ${data}`,
       '',

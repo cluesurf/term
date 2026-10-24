@@ -4,32 +4,39 @@
 # recorded (for reporting "you depend on X because A -> B -> X"). This is the graph the advisory matcher runs over.
 #
 # Ported from deck/scan/code/graph.ts (term-cli-in-term-0093). The lockfile and manifest readers and the name and
-# version spellings are @cluesurf/deck.tree's, docked. A lock entry, a manifest and a node are the original's host
-# records, read and built through binds named for this module (a field named by a Term word, `code` or `link`, is
+# version spellings are @term/deck's ports, loaded (term-cli-in-term-0237). A lock entry, a manifest and a node are
+# read as host records, read and built through binds named for this module (a field named by a Term word, `code` or `link`, is
 # read by a bind, never a path). The original's breadth-first queue is a list read by an index, which is its
 # `shift` in the same order.
 
-dock load
-  load <@cluesurf/deck.tree>, name deck-tree-module
-    mark async
+# the lockfile and manifest readers and the name and version spellings, @term/deck's ports (term-cli-in-term-0237),
+# where the package manager's faces were docked
+load @term/deck/package/lockfile-reading
+  find load-lockfile
+
+load @term/deck/package/manifest-reading
+  find load-manifest
+
+load @term/deck/package/grammar-reading
+  find make-grammars
+
+load @term/deck/package/registry-naming
+  find to-registry-name
+  find to-tree-name
+
+load @term/deck/version
+  find show-code
+
+load @term/base/maybe
+  find maybe
+  find some
+  find none
 
 load @term/base/list
   find list
 
 load @term/base/hash
   find hash
-
-bind graph-asked-dir
-  take value, like text
-  like dynamic
-  case node
-    text <<({ dir: $value })>>
-
-bind graph-asked-name
-  take value, like text
-  like dynamic
-  case node
-    text <<({ name: $value })>>
 
 bind graph-has-no-decks
   take lockfile, like dynamic
@@ -101,8 +108,7 @@ task tree-name-of
   like text
   mark private
 
-  host asked, graph-asked-name(name)
-  back deck-tree-module/to-tree-name(asked)
+  back to-tree-name(name)
 
 # the graph of the project rooted at `root`: empty when there is no lockfile (nothing pinned to audit). Direct
 # dependencies come from the manifest's `link`, transitive edges from each lock entry's `link`. A manifest that will
@@ -111,8 +117,17 @@ task read-dependency-graph
   take root, like text
   like list, like dynamic
 
-  host lock-asked, graph-asked-dir(root)
-  host lockfile, deck-tree-module/load-lockfile(lock-asked)
+  host grammars, make-grammars()
+  # the lockfile, or nothing when there is none, as the face answered undefined (saved before the sift: a sift on a
+  # call's answer tests the type's own tag)
+  host loaded, load-lockfile(root, grammars)
+  save lockfile, graph-nothing()
+  sift loaded
+    case some
+      link found
+      save lockfile, found
+    case none
+      save lockfile, graph-nothing()
   fork test, graph-has-no-decks(lockfile)
     hold
       back make list
@@ -120,8 +135,7 @@ task read-dependency-graph
   save manifest, graph-nothing()
   fork
     mark unsafe
-    host manifest-asked, graph-asked-dir(root)
-    save manifest, deck-tree-module/load-manifest(manifest-asked)
+    save manifest, load-manifest(root, grammars)
   halt take
     # the original's .catch(() => undefined)
     take unread
@@ -134,7 +148,7 @@ task read-dependency-graph
   walk graph-decks(lockfile)
     take entry
     host tree-name, tree-name-of(graph-name(entry))
-    host shown, deck-tree-module/show-code(graph-code(entry))
+    host shown, show-code(graph-code(entry))
     version-of/set(tree-name, shown)
     save edges, make list
     walk graph-links(entry)
@@ -201,7 +215,7 @@ task read-dependency-graph
         save trail, path-of/get(name)
       miss
         trail/push(name)
-    host registry, deck-tree-module/to-registry-name(graph-asked-name(name))
+    host registry, to-registry-name(name)
     host direct, or(direct-names/has(name), not(has-manifest))
     nodes/push(graph-node(name, registry, version, direct, trail))
 

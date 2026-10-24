@@ -1,5 +1,6 @@
 # The manifest, a role file and the lockfile, read THROUGH THE MILL (mill-self-hosting-0005): the deck grammar in
-# `deck/mill/code/tree/deck`, inlined at build time into deck/deck/code/grammar.ts, run by the mill executor
+# `deck/mill/code/tree/deck`, baked by `pnpm term:grammar-bundle` into ./deck-grammar-text.tree and
+# ./lock-grammar-text.tree (decision term/mill/003, term-cli-in-term-0241), run by the mill executor
 # (compile/mill-running.tree) over the parsed file, and the record built from the captures. No hand-rolled extraction:
 # when a reader and the mill disagree, the mill is right. Every refusal names the line it is about.
 #
@@ -7,7 +8,8 @@
 #   - the two grammars were read once per process into module variables. Here they are a `manifest-grammars` record,
 #     `mark shared`, that the caller makes once with `make-grammars()` and hands to every read, which fills each grammar
 #     the first time it is asked for (self-host spec 4.8: module state is a record the driver threads)
-#   - the grammar texts are still deck/deck/code/grammar.ts's constants, docked, until its port (term-cli-in-term-0080)
+#   - the grammar texts are the baked modules' tasks, loaded, where deck/deck/code/grammar.ts's constants were docked:
+#     code, compiled with the port, and browser-safe, so no file is read at run time
 #   - a role file's `expand` is a task handed in, as the original's was a function (spec 4.9)
 #   - a match is the executor's `hash` of captures; a site it never filled reads as no captures, as the original's
 #     `fields.get(site) ?? []` did
@@ -77,8 +79,13 @@ load ./lockfile-shape
 load ./registry-naming
   find scope-name
 
+load ./deck-grammar-text
+  find deck-grammar-text
+
+load ./lock-grammar-text
+  find lock-grammar-text
+
 dock load
-  load <@term/deck/code/grammar>, name deck-grammar-text
   load <global:Number>, name host-number
 
 # the deck and lockfile grammars, each read the first time it is asked for
@@ -112,14 +119,6 @@ task grammar-of
       halt <the inlined deck grammar does not parse; rerun `pnpm run make:grammar`>
   back read-mine-grammar(parsed/tree)
 
-# the generated module's constant, by its name
-task grammar-text
-  take name, like text
-  like text
-  mark private
-
-  back deck-grammar-text/{name}
-
 task deck-grammar
   take grammars, like manifest-grammars
   like hash, like text, like list, like mine-rule
@@ -130,7 +129,7 @@ task deck-grammar
       link known
       back known
     case none
-      save read, grammar-of(grammar-text(<DECK_GRAMMAR>))
+      save read, grammar-of(deck-grammar-text())
       save grammars/deck, make(some, read)
       back read
 
@@ -144,7 +143,7 @@ task lock-grammar
       link known
       back known
     case none
-      save read, grammar-of(grammar-text(<LOCK_GRAMMAR>))
+      save read, grammar-of(lock-grammar-text())
       save grammars/lock, make(some, read)
       back read
 

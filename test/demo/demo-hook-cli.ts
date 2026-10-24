@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { compile } from '@term/make/code/compile/compile'
-import { commandRoutes, dispatch, renderHelp } from '@term/call/code/hook-dispatch'
+import { commandRoutes, dispatch, renderHelp } from '@term/call/code/work/hook/parsing'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 

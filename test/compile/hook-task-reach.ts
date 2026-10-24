@@ -14,7 +14,8 @@ import { pathToFileURL } from 'node:url'
 import { transformSync } from 'esbuild'
 import { compile } from '@term/make/code/compile/compile'
 import type { Source } from '@term/make/code/compile/load'
-import { commandRoutes, runCommandLine, toCamel } from '@term/call/code/hook-dispatch'
+import { commandRoutes } from '@term/call/code/work/hook/parsing'
+import { runCommandLine, toCamel } from '@term/call/code/work/hook/running'
 
 let pass = 0
 let fail = 0

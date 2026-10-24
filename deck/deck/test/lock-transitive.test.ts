@@ -4,39 +4,48 @@
 // `1.2.0..2.0.0`, did not parse at all. And the graph is resolved in declared order, never in the order the
 // registries answer (code/resolve.ts `resolveLinks`). A fake registry, its answers delayed at will, so nothing is
 // fetched.
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 type Published = Record<string, Record<string, Record<string, string>>>
 
 // each deck's versions and, per version, its links; and how long each deck's metadata takes to arrive
 const registry: { published: Published; delay: Record<string, number> } = { published: {}, delay: {} }
 
-vi.mock('../code/package/fetch', async () => {
-  const actual = await vi.importActual<typeof import('../code/package/fetch')>('../code/package/fetch')
+// The registry answers at the URL the resolution port asks: registry-fetching.tree, which the port loads
+// (term-cli-in-term-0233, where it docked the face package/fetch.ts this file used to mock), reads the host's global
+// fetch at every call. A deck's metadata arrives after its delay; one not published is a 404 whose status text names it
+const realFetch = globalThis.fetch
 
-  return {
-    ...actual,
-    fetchPackageMeta: async (input: { name: string }) => {
-      await new Promise(done => setTimeout(done, registry.delay[input.name] ?? 0))
+globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+  const at = String(url)
+  const found = /^https:\/\/registry\.fake\/+(.+)$/.exec(at)
 
-      const versions = registry.published[input.name]
-
-      if (!versions) {
-        throw new Error(`${input.name} is not published`)
-      }
-
-      return {
-        name: input.name,
-        versions: Object.fromEntries(
-          Object.entries(versions).map(([version, dependencies]) => [
-            version,
-            { name: input.name, version, dependencies, dist: { tarball: `https://fake/${input.name}/${version}`, integrity: `sha-${version}`, shasum: '' } },
-          ]),
-        ),
-      }
-    },
+  if (!found) {
+    return realFetch(url, init)
   }
-})
+
+  const name = found[1]!
+
+  await new Promise(done => setTimeout(done, registry.delay[name] ?? 0))
+
+  const versions = registry.published[name]
+
+  if (!versions) {
+    return new Response('', { status: 404, statusText: `${name} is not published` })
+  }
+
+  const meta = {
+    name,
+    versions: Object.fromEntries(
+      Object.entries(versions).map(([version, dependencies]) => [
+        version,
+        { name, version, dependencies, dist: { tarball: `https://fake/${name}/${version}`, integrity: `sha-${version}`, shasum: '' } },
+      ]),
+    ),
+  }
+
+  return new Response(JSON.stringify(meta), { status: 200 })
+}) as typeof fetch
 
 const { resolve, buildLockfile } = await import('../code/package/resolve')
 const { makeDefaultFetchConfig } = await import('../code/package/fetch')
@@ -57,9 +66,17 @@ const versionOf = (resolution: { decks: Map<string, { name: string; code: never 
   return deck ? showCode(deck.code) : undefined
 }
 
+// The resolution port keeps registry-fetching.tree's metadata cache (5 minutes) in its own copy, which no TypeScript
+// caller can reach to clear, so each test reads the clock 10 minutes later than the one before it and never reads
+// another test's registry
+const NOW = Date.now.bind(Date)
+let shift = 0
+
 beforeEach(() => {
   registry.published = {}
   registry.delay = {}
+  shift += 600_000
+  Date.now = () => NOW() + shift
 })
 
 describe('a second load over a lockfile', () => {

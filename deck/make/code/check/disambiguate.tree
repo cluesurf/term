@@ -130,8 +130,8 @@ task file-of
 # ---- the names a statement binds (the original's `boundIn`) ----
 
 # Every name bound inside a node: a let and a view's `save`, a walk's item and index, every parameter list's names
-# (a task's, a closure's, a component's, a binding's, a function type's named parameters), and a case arm's renamed
-# fields. Through every field but `span`, `type`, `result`, `declared` and `generics`, nested tasks included. A SET:
+# (a task's, a closure's, a component's, a binding's, a function type's named parameters), a case arm's renamed
+# fields, and a guard's caught binder. Through every field but `span`, `type`, `result`, `declared` and `generics`, nested tasks included. A SET:
 # its order is never read
 task skipped-keys
   like list, like text
@@ -179,6 +179,15 @@ task bound-of
           walk arm/binds
             take bound
             save out, add-text(out, bound)
+      # a guard's caught binder (`halt take` / `take refused`), a local of its task as a parameter is
+      # (term-compiler-0073: read as a top-level `refused` three files define, line/base.tree was refused)
+      case guard
+        sift catch
+          case some
+            link clause
+            save out, add-text(out, clause/name)
+          case none
+            save nothing, 0
       miss
         save nothing, 0
   walk reached/expressions

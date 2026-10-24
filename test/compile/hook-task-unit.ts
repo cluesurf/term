@@ -13,7 +13,7 @@ import { join } from 'node:path'
 import { compileSeparate } from '@term/make/code/compile/separate'
 import { CompileCache } from '@term/make/code/compile/cache'
 import { projectResolver } from '@term/call/code/make'
-import { commandRoutes } from '@term/call/code/hook-dispatch'
+import { commandRoutes } from '@term/call/code/work/hook/parsing'
 import type { DockRoute, Program } from '@term/make/code/types'
 
 let pass = 0

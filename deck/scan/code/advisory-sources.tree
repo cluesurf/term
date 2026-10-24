@@ -9,18 +9,31 @@
 # Ported from deck/scan/code/advisory.ts (term-cli-in-term-0094). A source is the record advisory-source, a name and
 # an async gather closure taking the nodes, as the original's AdvisorySource; a gathering and an advisory are host
 # records built in binds named for this module, in the original's key order. The files are read through
-# node:fs/promises, docked; the bulk service is @cluesurf/deck.tree's auditDependencies, docked. The ecosystem has
+# node:fs/promises, docked; the bulk service is @term/deck's advisory-audit port, loaded. The ecosystem has
 # no default here: the face passes `term` where the caller left it out.
 
 dock load
   load <node:fs/promises>, name fs-promise
     mark async
   load <node:path>, name node-path
-  load <@cluesurf/deck.tree>, name deck-tree-module
-    mark async
 
 load ./osv-reading
   find from-osv-feed
+
+# the bulk service and the registry name, @term/deck's ports (term-cli-in-term-0237), where the package manager's
+# faces were docked
+load @term/deck/package/advisory-audit
+  find audit-dependencies
+
+load @term/deck/package/registry-naming
+  find to-registry-name
+
+load @term/deck/package/grammar-reading
+  find make-grammars
+
+load @term/base/maybe
+  find maybe
+  find none
 
 load @term/base/list
   find list
@@ -86,18 +99,6 @@ bind sources-all-native
   like boolean
   case node
     text <<$items.every(sourcesItem => typeof sourcesItem === "object" && sourcesItem !== null && "packageName" in sourcesItem && "ranges" in sourcesItem)>>
-
-bind sources-asked-root
-  take root, like text
-  like dynamic
-  case node
-    text <<({ root: $root })>>
-
-bind sources-asked-name
-  take value, like dynamic
-  like dynamic
-  case node
-    text <<({ name: $value })>>
 
 bind sources-available
   take result, like dynamic
@@ -227,16 +228,16 @@ task gather-registry
   like dynamic
   mark private
 
-  host asked, sources-asked-root(root)
-  host result, deck-tree-module/audit-dependencies(asked)
+  # no fetch config, so the port's default, as the face passed none
+  host no-config, make none
+  host result, audit-dependencies(root, no-config, make-grammars())
   fork test, not(sources-available(result))
     hold
       back sources-unavailable()
   save advisories, make list
   walk sources-audited(result)
     take item
-    host name-asked, sources-asked-name(sources-item-name(item))
-    host registry, deck-tree-module/to-registry-name(name-asked)
+    host registry, to-registry-name(sources-item-name(item))
     host severity, registry-severity(sources-lower-severity(item))
     advisories/push(sources-registry-advisory(item, registry, severity))
 

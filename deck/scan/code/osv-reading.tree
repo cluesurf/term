@@ -6,11 +6,13 @@
 # Ported from deck/scan/code/osv.ts (term-cli-in-term-0094). An OSV record, its parts and the Advisory and windows
 # built from it are host records, read and built through binds named for this module, in the original's key order
 # (a window opened by `introduced: 0` keeps an `introduced` key holding undefined, as the original's did). The
-# registry name is @cluesurf/deck.tree's, docked. The ecosystem has no default here: the face passes `term` where
+# registry name is @term/deck's registry-naming port, loaded. The ecosystem has no default here: the face passes `term` where
 # the caller left it out, as the original's default parameter did. The OsvRecord type stays TypeScript (the face).
 
-dock load
-  load <@cluesurf/deck.tree>, name deck-tree-module
+# the registry name, @term/deck's registry-naming port (term-cli-in-term-0237), where the package manager's face was
+# docked
+load @term/deck/package/registry-naming
+  find to-registry-name
 
 load @term/base/list
   find list
@@ -180,12 +182,6 @@ bind osv-nothing
   case node
     text <undefined>
 
-bind osv-asked-name
-  take value, like dynamic
-  like dynamic
-  case node
-    text <<({ name: $value })>>
-
 # OSV ecosystem names are case-sensitive ("npm", "PyPI"); they are compared ignoring case, and a missing ecosystem
 # matches (some private feeds omit it)
 task matches-ecosystem
@@ -318,8 +314,7 @@ task package-name-of
     host name, osv-package-name(affected)
     fork test, osv-truthy(name)
       hold
-        host asked, osv-asked-name(name)
-        back deck-tree-module/to-registry-name(asked)
+        back to-registry-name(name)
 
   back osv-nothing()
 

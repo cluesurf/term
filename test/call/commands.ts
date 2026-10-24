@@ -26,7 +26,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import type { DockRoute } from '@term/make/code/compile/node'
-import { commandRoutes, programOf } from '@term/call/code/hook-dispatch'
+import { commandRoutes, programOf } from '@term/call/code/work/hook/parsing'
 import { projectResolver } from '@term/call/code/make'
 import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import { LINE } from './cli'
@@ -47,7 +47,10 @@ function consoleRoutes(): { program?: DockRoute; commands: DockRoute[] } {
     throw new Error(`deck/call/code/line/base.tree does not compile: ${result.diagnostics.slice(0, 3).map(d => d.message).join('; ')}`)
   }
 
-  return programOf(commandRoutes(result.program))
+  // the port answers the program as a maybe (work/hook/parsing.tree `console-program`)
+  const split = programOf(commandRoutes(result.program))
+
+  return split.program.form === 'some' ? { program: split.program.value, commands: split.commands } : { commands: split.commands }
 }
 
 const ROUTES = consoleRoutes()

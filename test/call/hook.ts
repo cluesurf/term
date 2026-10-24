@@ -2,12 +2,9 @@
 // positionals, the bound task). Run: npx tsx test/call/hook.ts
 
 import { compile } from '@term/make/code/compile/compile'
-import {
-  commandRoutes,
-  dispatch,
-  programOf,
-  runCommandLine,
-} from '@term/call/code/hook-dispatch'
+// the Term dispatcher (work/hook/parsing.tree and running.tree), the ports of hook-dispatch.ts (term-cli-in-term-0225)
+import { commandRoutes, dispatch, programOf } from '@term/call/code/work/hook/parsing'
+import { runCommandLine } from '@term/call/code/work/hook/running'
 import { projectResolver } from '@term/call/code/make'
 
 let pass = 0

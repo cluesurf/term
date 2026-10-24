@@ -23,8 +23,10 @@
 //                            (work/need/version-dispatch.tree)
 //   term/host/need-hand.mjs  the slow half of that: installs a needed version, prints a refusal. Loaded only then
 //                            (work/need/choice-report.tree)
-//   term/host/line.js        the CLI, every pure-JS dependency (chalk) BUNDLED
-//   term/host/dock.mjs       the hook dispatcher, chalk bundled
+//   term/host/line.js        the CLI (the console's run entry), every pure-JS dependency BUNDLED; no chalk and no
+//                            yargs since stage 1 (decisions cli-in-term/014 and 018)
+//   term/host/dock.mjs       the hook dispatcher every booted console imports: the Term port work/hook/running.tree
+//                            (runCommandLine, toCamel), term-cli-in-term-0225
 //   term/host/build-worker.mjs, term/host/separate-worker.mjs
 //                            the build pools' worker entries (work/workers/file-worker.tree, unit-worker.tree)
 //   term/package.json        the name and version `--version` and the build cache key read
@@ -310,7 +312,8 @@ async function bundle(into: string, step: (done: number) => void = () => {}): Pr
   // as host/line.js since the switch (term-cli-in-term-0013, 0199)
   await build({ ...common, entryPoints: ['deck/call/host/port/code/line/base-run.ts'], outfile: path.join(into, 'host', 'line.js') })
   step(1)
-  await build({ ...common, entryPoints: ['deck/call/code/hook-dispatch.ts'], outfile: path.join(into, 'host', 'dock.mjs') })
+  // the hook dispatcher's port, the dispatcher every console `term boot` writes imports (decision cli-in-term/018 part 2)
+  await build({ ...common, entryPoints: ['deck/call/host/port/code/work/hook/running.ts'], outfile: path.join(into, 'host', 'dock.mjs') })
   step(2)
   // the version dispatch and its slow half, the need ports make:line bundles (integrate 0068, term-cli-in-term-0218)
   await build({ ...common, entryPoints: ['deck/call/host/port/code/work/need/version-dispatch.ts'], outfile: path.join(into, 'host', 'need.mjs') })
