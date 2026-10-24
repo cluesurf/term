@@ -24,6 +24,8 @@ load @term/base/maybe
 
 load @term/base/text
   find ends-with
+  find last-index-of
+  find substring
 
 load ../parser/diagnostic
   find span
@@ -2676,15 +2678,37 @@ task bind-expression
           save given/alias, make none
         case none
           save nothing, 0
-      sift rebind-form(binding, name, written-alias)
-        case some
-          link bound
-          save given/name, bound
-        case none
-          save nothing, 0
+      save given/name, rebind-construction(binding, name, written-alias)
     miss
       save nothing, 0
   back given
+
+# A QUALIFIED CONSTRUCTION NAMES ITS FORM BEFORE THE SLASH. `make resolution/file` builds the case `file` of the form
+# `resolution`, so where that form is split by file (`resolution__in0_1`) the owner follows the rename and the case
+# keeps its name, or the checker read an owner no form has: 'expected resolution__in0_1, found resolution/file'
+# (term-compiler-0074, test/compile/split-form-qualified.ts). A bare name is rebound whole
+task rebind-construction
+  take binding, like form-binding
+  take name, like text
+  take alias, like maybe, like text
+  like text
+  mark private
+
+  save slash, last-index-of(name, </>)
+  fork test, is-above(slash, 0)
+    hold
+      sift rebind-form(binding, substring(name, 0, slash), alias)
+        case some
+          link bound
+          back <{bound}{substring(name, slash)}>
+        case none
+          back name
+  sift rebind-form(binding, name, alias)
+    case some
+      link bound
+      back bound
+    case none
+      back name
 
 task bind-statement
   take one, like statement

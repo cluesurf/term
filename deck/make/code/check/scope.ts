@@ -483,7 +483,7 @@ function rewrite(
   }
 
   if (record.form === 'record' && typeof record.name === 'string') {
-    record.name = rebind(record.name, here, alias) ?? record.name
+    record.name = rebindConstruction(record.name, name => rebind(name, here, alias))
   }
 
   if (record.form === 'throw' && typeof record.raise === 'string') {
@@ -506,6 +506,23 @@ function rewrite(
       rewrite(value, here, rebind, isTask)
     }
   }
+}
+
+// A QUALIFIED CONSTRUCTION NAMES ITS FORM BEFORE THE SLASH. `make resolution/file` builds the case `file` of the form
+// `resolution`, so where that form is split by file (`resolution__in0_1`) the owner follows the rename and the case
+// keeps its name, or the checker read an owner no form has and typed the construction as itself: 'expected
+// resolution__in0_1, found resolution/file' (deck/make/code/deck/resolve.tree beside deck/deck's resolution.tree,
+// term-compiler-0074, test/compile/split-form-qualified.ts). A bare name is rebound whole
+function rebindConstruction(name: string, rebind: (name: string) => string | undefined): string {
+  const slash = name.lastIndexOf('/')
+
+  if (slash <= 0) {
+    return rebind(name) ?? name
+  }
+
+  const owner = rebind(name.slice(0, slash))
+
+  return owner === undefined ? name : `${owner}${name.slice(slash)}`
 }
 
 // the name a call's callee is written as, when it is a bare variable, else `''` (which no group or task has)
