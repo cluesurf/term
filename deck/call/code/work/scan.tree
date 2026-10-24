@@ -4,19 +4,20 @@ load @term/call/work/home
 # `term scan <file>` -- type-check one file and report its diagnostics (the verifier). `--fix` writes the sure
 # fixes into the file and scans again.
 #
-# The verb takes its hook's arguments and hands them to the shipped handler (deck/call/code/scan.ts `callScan`),
-# which checks the file and prints through the output library. It prints nothing of its own, catches nothing and
-# never exits: a throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term, part 2). `--back`, the program's
-# option, reaches it as line.ts passed it: the hook declares a `back` of its own (cli-in-term-0011).
+# The verb takes its hook's arguments and hands them to the tool lane's port of scan.ts `callScan`
+# (work/tool/scan-command.tree `call-scan`, loaded since term-cli-in-term-0069), which checks the file and prints
+# through the output library. It prints nothing of its own, catches nothing and never exits: a throw reaches
+# dispatch.tree `fail-line` (decision 005 of cli-in-term, part 2). `--back`, the program's option, reaches it as
+# line.ts passed it: the hook declares a `back` of its own (cli-in-term-0011).
+
+load @term/call/work/tool/scan-command
+  find call-scan
 
 form scan-ask
   link root, like text
   link file, like text
   link fix, like boolean
   link back, like text
-
-dock load
-  load <@term/call/code/scan>, name scan-module
 
 task scan
   mark async
@@ -28,10 +29,9 @@ task scan
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  call scan-module/callScan
+  call call-scan
     make scan-ask
       bind root, read root
       bind file, read file
       bind fix, read fix
       bind back, read back
-    wait true

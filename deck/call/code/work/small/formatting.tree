@@ -6,18 +6,26 @@
 # Through the terminal output library: a `change` item per file rewritten, a failed `check` item per file `--check`
 # finds unformatted, each parse error a Problem item with its frame. `--list`'s formatted source is data, on stdout.
 #
-# The formatter is the compiler's (make/code/analyze.ts), the walk of the paths call/code/files.ts and each file's role
-# and `mark lean` call/code/role-of.ts, all docked until their own ports land. The role readers are host functions
-# the role-of module makes per project, called through `call`.
+# The formatter is the compiler's (make/code/analyze.ts), docked. The walk of the paths and each file's role and
+# `mark lean` are the build lane's ports (work/build/tree-gathering.tree, role-reading.tree), where files.ts and
+# role-of.ts were docked until term-cli-in-term-0069. The role readers are host functions the build lane's faces make
+# per project, called through `call`.
+
+load @term/call/work/build/tree-gathering
+  find collect-tree-files
+
+load @term/call/work/build/role-reading
+  find make-role-reader
+
+load @term/call/work/build/host-faces
+  find face-role-reader
+  find face-lean-reader
 
 dock load
   load <node:fs/promises>, name fs-promise
     mark async
   load <node:path>, name node-path
   load <@term/make/code/analyze>, name analyze-module
-  load <@term/call/code/files>, name files-module
-    mark async
-  load <@term/call/code/role-of>, name role-module
   load <@term/call/code/output>, name output
 
 form form-open
@@ -86,7 +94,7 @@ task call-form
   take list, like boolean
   like void
 
-  save files, files-module/collect-tree-files(paths, root)
+  save files, collect-tree-files(paths, root)
   save mode, <>
   fork test, check
     hold
@@ -122,8 +130,9 @@ task format-files
   save problems, make list
   # each file's role and `mark lean`, as the build reads them: a lean file's layout is checked against the program the
   # build compiles, and a `mill` or `view` file gets no call parentheses (format-rules.md, rule 3)
-  save role-of, role-module/project-role-of(root)
-  save lean-of, role-module/project-lean-of(root)
+  save reader, make-role-reader(root)
+  save role-of, face-role-reader(reader)
+  save lean-of, face-lean-reader(reader)
   walk files
     take file
     save text, fs-promise/read-file(file, <utf-8>)

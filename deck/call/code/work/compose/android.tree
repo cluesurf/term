@@ -54,6 +54,13 @@ load ./toolchain
 load ../workers/kotlin-compiler
   find kotlinc
 
+# the build's resolver: the build lane's port, where make.ts was docked (term-cli-in-term-0069)
+load ../build/project-resolving
+  find make-project-resolver
+
+load ../build/host-faces
+  find face-project-resolver
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
@@ -63,7 +70,6 @@ dock load
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/native>, name native-module
   load <@term/make/code/compile/kotlin>, name kotlin-module
-  load <@term/call/code/make>, name make-module
 
 form android-source
   link file, like text
@@ -700,7 +706,7 @@ task build-compose-android
   # deck/site/code/dom/native/toolkit/runtime/compose-android/native-view.kt (the shared Compose runtime and the
   # Android host)
   save entry, entry-file(ask/file, work, name, text)
-  save resolve, make-module/project-resolver(ask/root, <compose-android>)
+  save resolve, face-project-resolver(make-project-resolver(ask/root, <compose-android>))
   save stages, make list
   save term-started, now-ms()
   save result, compile-module/compile(make(android-source, bind(file, entry), bind(text, text)), make(android-options, bind(resolve, resolve), bind(env, <compose-android>), bind(cache, ask/cache)))

@@ -103,7 +103,7 @@ bind set-member
   case node
     text <(($record)[$key] = $value, undefined)>
 
-bind member
+bind scope-member
   take record, like dynamic
   take key, like text
   like dynamic
@@ -111,7 +111,7 @@ bind member
     text <($record)[$key]>
 
 # each key and value of a host record as a two-element list, in its key order
-bind entries-of
+bind scope-entries-of
   take record, like dynamic
   like list, like dynamic
   case node
@@ -165,7 +165,7 @@ bind dashed
     text <$value.replace(/_/g, "-")>
 
 # AN ERROR A PERSON CAN ACT ON: `expected` keeps failRun from reporting it as a crash, and `usage` is its exit
-bind refuse
+bind scope-refuse
   take message, like text
   like void
   case node
@@ -376,7 +376,7 @@ task access-lists
   save given, empty-record()
   fork test, is-record(lists)
     hold
-      walk entries-of(lists)
+      walk scope-entries-of(lists)
         take entry
         save access, entry/0
         save items, entry/1
@@ -387,10 +387,10 @@ task access-lists
             fork test, is-above(allowed/length, 0)
               hold
                 save has, <It has {ticked(allowed, < and >)}>
-            refuse(<{file}: `{name}` has no `{access}` list. {has}>)
+            scope-refuse(<{file}: `{name}` has no `{access}` list. {has}>)
         fork test, not(is-text-list(items))
           hold
-            refuse(<{file}: `{name}` `{access}` is a list of text, each a pattern>)
+            scope-refuse(<{file}: `{name}` `{access}` is a list of text, each a pattern>)
         # a pattern is compiled into the dispatcher as text, where these mean something else, and no path or name
         # needs them
         walk items
@@ -401,12 +401,12 @@ task access-lists
               fork test, is-equal(item, <>)
                 hold
                   save held, <an empty pattern>
-              refuse(<{file}: `{name}` `{access}` holds {held}, and a pattern is not empty and holds no `\<`, `\>`, `\{`, `\}` or line break>)
+              scope-refuse(<{file}: `{name}` `{access}` holds {held}, and a pattern is not empty and holds no `\<`, `\>`, `\{`, `\}` or line break>)
         set-member(given, access, items)
     miss
       fork test, and(not(is-null(lists)), not(is-absent(lists)))
         hold
-          refuse(<{file}: `{name}` is `host {name}` with its access lists beneath, not a value>)
+          scope-refuse(<{file}: `{name}` is `host {name}` with its access lists beneath, not a value>)
   back given
 
 # the app's scope.tree read, or an empty scope (which denies every capability) when it has none. A file that is not
@@ -431,28 +431,28 @@ task read-scope
   save read, host-module/read-data-text(source)
   fork test, not(read/ok)
     hold
-      refuse(<{file} is not a data file: {messages-of(read/diagnostics)}>)
+      scope-refuse(<{file} is not a data file: {messages-of(read/diagnostics)}>)
 
   save expanded, host-module/expand-data(read/data, file)
   fork test, not(expanded/ok)
     hold
-      refuse(<{file}: {messages-of(expanded/diagnostics)}>)
+      scope-refuse(<{file}: {messages-of(expanded/diagnostics)}>)
 
   # the dock call `host-module/to-json-value` is emitted as `toJSONValue`, which the module does not export
   save value, json-value-of(host-module, expanded/data)
   fork test, not(is-record(value))
     hold
-      refuse(<{file} holds a {kind-name(value)}; a scope is `host` entries, one per capability>)
+      scope-refuse(<{file} holds a {kind-name(value)}; a scope is `host` entries, one per capability>)
 
   save known, capabilities()
-  walk entries-of(value)
+  walk scope-entries-of(value)
     take entry
     save name, entry/0
     save lists, entry/1
-    save capability, member(known, dashed(name))
+    save capability, scope-member(known, dashed(name))
     fork test, not(is-truthy(capability))
       hold
-        refuse(<{file} names `{name}`, which is not a capability. There are {ticked(keys-of(known), <, >)}>)
+        scope-refuse(<{file} names `{name}`, which is not a capability. There are {ticked(keys-of(known), <, >)}>)
     save given, access-lists(file, name, capability, lists)
     save scope/{name}, given
 
@@ -480,7 +480,7 @@ task capability-of
   like dynamic
 
   save real, real-file(file)
-  walk entries-of(capabilities())
+  walk scope-entries-of(capabilities())
     take entry
     fork test, pattern-holds(entry/1/module, real)
       hold
@@ -518,7 +518,7 @@ task check-scope
     take name
     fork test, not(read/scope/has(name))
       hold
-        save held, member(known, name)
+        save held, scope-member(known, name)
         save what, held/what
         push(lines, <`{name}` ({what}), reached through {reached/get(name)}>)
         push(grants, <host {name}>)
@@ -534,4 +534,4 @@ task check-scope
   fork test, node-fs/exists-sync(read/file)
     hold
       save missing, <its scope.tree does not name {them}>
-  refuse(<This app reaches {join(lines, <; >)}, and {missing}. An app may reach only what its scope names: add {join(grants, <, >)} to {read/file}, with the access lists the capability takes>)
+  scope-refuse(<This app reaches {join(lines, <; >)}, and {missing}. An app may reach only what its scope names: add {join(grants, <, >)} to {read/file}, with the access lists the capability takes>)

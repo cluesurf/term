@@ -78,8 +78,13 @@ load @term/call/work/self/skill-writing
   find call-self-skill
   find skill-ask
 
+# `term show`, and the version `term self skill` writes, run the tool lane's port of show.ts
+# (work/tool/show-command.tree), since term-cli-in-term-0069
+load @term/call/work/tool/show-command
+  find call-show
+  find term-version
+
 dock load
-  load <@term/call/code/show>, name show-module
   load <node:process>, name node-process
 
 form test-ask
@@ -286,7 +291,7 @@ task self-skill
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  save version, call show-module/termVersion
+  save version, term-version()
   fork
     mark unsafe
     call call-self-skill
@@ -497,31 +502,29 @@ task show
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  save version, call show-module/termVersion
+  save version, term-version()
   fork
     mark unsafe
     sift what
       case none
-        call show-module/callShow
+        call call-show
           make show-toolchain-ask
             bind root, read root
             bind version, read version
             bind back, read back
-          wait true
       case some
         link asked
         sift name
           case none
-            call show-module/callShow
+            call call-show
               make show-what-ask
                 bind root, read root
                 bind what, read asked
                 bind budget, read budget
                 bind version, read version
                 bind back, read back
-              wait true
           case some
-            call show-module/callShow
+            call call-show
               make show-name-ask
                 bind root, read root
                 bind what, read asked
@@ -529,7 +532,6 @@ task show
                 bind budget, read budget
                 bind version, read version
                 bind back, read back
-              wait true
   halt take
     take error
     log-fail format-error error

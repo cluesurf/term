@@ -34,6 +34,11 @@ load ../build/host-faces
 load ../cache/compile-store
   find project-cache-dir
 
+# the native build: the native lane's port of native-build.ts (work/native/building.tree), where it was docked until
+# term-cli-in-term-0069
+load ../native/building
+  find build-native
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
@@ -43,7 +48,6 @@ dock load
   load <@term/make/code/compile/rust>, name rust-module
   load <@term/make/code/compile/swift>, name swift-module
   load <@term/make/code/compile/kotlin>, name kotlin-module
-  load <@term/call/code/native-build>, name native-build
 
 # the backends this command runs a project's tests on (the original's NATIVE_TEST_ENVS)
 task native-test-envs
@@ -363,7 +367,7 @@ task run-native-test-file
   save prelude, host-text(native-module/native-prelude(result/program, env, runtime-reader(), emitted))
   # built as `term make --emit <env> --build` builds a program, with the same main, so a test runs on the 1 GiB stack
   # thread a program runs on, under the same driver for an async or raising entry
-  save built, native-build/build-native(make(build-ask, bind(source, <{prelude}\n{emitted}>), bind(target, env), bind(folder, work), bind(name, <term-test>), bind(entry, report-name())))
+  save built, build-native(make(build-ask, bind(source, <{prelude}\n{emitted}>), bind(target, env), bind(folder, work), bind(name, <term-test>), bind(entry, report-name())))
   fork test, not(is-truthy(built/ok))
     hold
       save none, make list

@@ -17,6 +17,20 @@ load @term/call/work/output/printer
   find count
   find field
 
+# the build's resolver and the project's home: the build and small lanes' ports, where make.ts and home.ts were docked
+# (term-cli-in-term-0069)
+load @term/call/work/build/project-resolving
+  find make-project-resolver
+
+load @term/call/work/build/host-faces
+  find face-project-resolver
+
+load @term/call/work/build/tree-finding
+  find resolve-tree-file
+
+load @term/call/work/small/home-folder
+  find project-home
+
 dock load
   load <@term/make/code/parser/tree>, name tree-parsing
   load <@term/make/code/parser/narrow>, name narrowing
@@ -26,8 +40,6 @@ dock load
   load <@term/make/code/check/lean-export>, name lean-exporting
   load <@term/make/code/check/lean-run>, name lean-running
   load <@term/make/code/compile/native>, name native-env
-  load <@term/call/code/make>, name file-resolving
-  load <@term/call/code/home>, name home-finding
   load <node:fs>, name host-fs
   load <node:path>, name host-path
 
@@ -62,16 +74,27 @@ bind load-targets
   case node
     text <$reading.millLoadTargets(\{ file: $file, text: $text \})>
 
-# where a load leads: a relative one by its path, a package one through the resolver; the empty text for nowhere
-bind load-target-file
-  take resolving, like dynamic
+# where a package load leads, through the resolver; the empty text for nowhere
+bind resolved-target-file
   take resolver, like dynamic
-  take paths, like dynamic
   take file, like text
   take target, like text
   like text
   case node
-    text <<(($target.startsWith(".") ? $resolving.resolveTreeFile($paths.resolve($paths.dirname($file), $target)) : $target ? $resolver($target, $file)?.file : undefined) ?? "")>>
+    text <<(($target ? $resolver($target, $file)?.file : undefined) ?? "")>>
+
+# where a load leads: a relative one by its path, a package one through the resolver; the empty text for nowhere
+task load-target
+  take resolver, like dynamic
+  take file, like text
+  take target, like text
+  like text
+  mark private
+
+  fork test, starts-relative(target)
+    hold
+      back resolve-tree-file(host-path/resolve(host-path/dirname(file), target))
+  back resolved-target-file(resolver, file, target)
 
 bind starts-relative
   take target, like text
@@ -299,7 +322,7 @@ task visit
   save own, read-of(order, file)
   walk own/loads
     take target
-    save found, load-target-file(file-resolving, resolver, host-path, file, target)
+    save found, load-target(resolver, file, target)
     fork test, is-unequal(found, <>)
       hold
         visit(order, root, resolver, found)
@@ -322,7 +345,7 @@ task hold-lean
   walk files
     take file
     reads/push read-file(file)
-  save resolver, native-env/with-native-env(<node>, file-resolving/project-resolver(root))
+  save resolver, native-env/with-native-env(<node>, face-project-resolver(make-project-resolver(root)))
   save order, make(join-order, bind(order, make list), bind(seen, make list), bind(dropped, make list), bind(read, reads))
   walk reads
     take one
@@ -370,7 +393,10 @@ task hold-lean
       back make(hold-lean, bind(missing, missing), bind(claims, declined), bind(dropped, order/dropped), bind(diagnostics, no-diagnostics), bind(ok, false))
 
   save diagnostics, exported-diagnostics(exported)
-  save file, home-finding/project-home(root, <lean>, <hold.lean>)
+  save parts, make list
+  parts/push(<lean>)
+  parts/push(<hold.lean>)
+  save file, project-home(root, parts)
   make-folder(host-fs, host-path/dirname(file))
   host-fs/write-file-sync(file, exported-lean(exported))
 

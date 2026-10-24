@@ -70,6 +70,18 @@ load ./native-value
   find last-lines
   find is-nullish
 
+# the build's resolver and the app's scope: the build and context lanes' ports, where make.ts and scope.ts were docked
+# (term-cli-in-term-0069). app-scope's binds are named for their module (`scope-refuse`), so its one-argument refusal
+# never meets host-value.tree's two-argument `refuse` (traps.md, cli-in-term-0034)
+load ../build/project-resolving
+  find make-project-resolver
+
+load ../build/host-faces
+  find face-project-resolver
+
+load ../context/app-scope
+  find check-scope
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
@@ -80,11 +92,6 @@ dock load
   load <@term/make/code/compile/load>, name load-module
   load <@term/make/code/compile/native>, name native-module
   load <@term/make/code/compile/swift>, name swift-emit
-  # scope.ts, whose port is work/context/app-scope.tree, DOCKED: a load of it puts its one-argument `bind refuse`
-  # beside work/cask/host-value.tree's two-argument one, and a bind is not bound by import, so every call here took
-  # the wrong one (traps.md, cli-in-term-0034)
-  load <@term/call/code/scope>, name scope-module
-  load <@term/call/code/make>, name make-module
   load <@term/call/code/output>, name output
 
 form iphone-source
@@ -182,7 +189,7 @@ task program-source
   mark private
 
   save text, <{node-fs/read-file-sync(entry, <utf8>)}>
-  save resolve, make-module/project-resolver(root, <ios>)
+  save resolve, face-project-resolver(make-project-resolver(root, <ios>))
   save source, make(iphone-source, bind(file, entry), bind(text, text))
 
   # the app's scope first (app-scope): every capability its modules reach is one its scope.tree names, as a Compose
@@ -194,7 +201,7 @@ task program-source
     walk collected/sources
       take one, like dynamic
       files/push(<{one/file}>)
-    scope-module/check-scope(make(iphone-scope, bind(root, root), bind(files, files)))
+    check-scope(make(iphone-scope, bind(root, root), bind(files, files)))
   halt take
     take problem
     refuse(<scope: {message-of(problem)}>, <usage>)

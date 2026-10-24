@@ -32,19 +32,14 @@ load @term/call/work/cask/command
   find work-cask
   find work-ask, name cask-work-ask
 
+# line.ts's compiler worker branch (line.ts:1248-1276), the small lane's port of work.ts `callWork`
+# (work/small/worker-start.tree `call-work`, since term-cli-in-term-0069): the port is left out as none (5179) and an
+# env left out as the empty text (node)
+load @term/call/work/small/worker-start
+  find call-work
+
 dock load
   load <@term/make/code/parser/diagnostic>, name diagnostic-module
-  # line.ts's compiler worker branch (line.ts:1248-1276), docked as every verb file docks today (decision
-  # cli-in-term/005 part 2, 013 part 1). It answers a promise: every call into it is awaited
-  load <@term/call/code/work>, name worker-module
-    mark async
-
-# The ask of the worker branch. An option the line did not name reaches its handler as undefined, as line.ts
-# handed argv.<x> on, so those fields are host values (work-text-given, work-number-given)
-form worker-call-ask
-  link root, like text
-  link port, like dynamic
-  link env, like dynamic
 
 # an option as line.ts handed it to a TypeScript handler: its value when the line named it, else undefined (an absent
 # argv.<x>). The argument is always a local, so the text may read it twice. Named for this file: a bind of one name
@@ -114,11 +109,7 @@ task work
           bind port, work-number-given(port)
       back
 
-  call worker-module/callWork
-    make worker-call-ask
-      bind root, read root
-      bind port, work-number-given(port)
-      bind env, work-text-given(env)
+  call-work(root, port, work-text-of(env))
 
 # the source lines of a diagnostic's file, for the frame's context. An empty list when the file cannot be read,
 # because a diagnostic that cannot show its line is still worth printing.

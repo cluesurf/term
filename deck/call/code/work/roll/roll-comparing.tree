@@ -33,8 +33,14 @@ load @term/call/work/context/reaching
   find reach-at-line
   find site-file-of
 
+# the deck finder: the build lane's port, where deck-of.ts was docked (term-cli-in-term-0069)
+load @term/call/work/build/deck-finding
+  find make-deck-finder
+
+load @term/call/work/build/host-faces
+  find face-deck-finder
+
 dock load
-  load <@term/call/code/deck-of>, name deck-of-module
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <node:child_process>, name node-child
@@ -163,7 +169,7 @@ task own-host
   take root, like text
   like text
 
-  back roll-deck-name(deck-of-module/project-deck-of(), node-path/join(root, <deck.tree>))
+  back roll-deck-name(face-deck-finder(make-deck-finder()), node-path/join(root, <deck.tree>))
 
 # every task of the project's own deck with the native modules it can reach, as `reach`, sorted. A dependency's task
 # is left as it is: what a deck the project loads can do is that deck's roll, and its tasks are reached through the
@@ -173,7 +179,7 @@ task add-reach
   take root, like text
   like void
 
-  save base, roll-deck-root(deck-of-module/project-deck-of(), node-path/join(root, <deck.tree>), root)
+  save base, roll-deck-root(face-deck-finder(make-deck-finder()), node-path/join(root, <deck.tree>), root)
   save host, own-host(root)
   save graph, make-reach-graph(root)
   # the host roll's task entries (seam decision 004)

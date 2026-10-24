@@ -3,8 +3,9 @@
 # reply. Part 3 of the port of deck/call/code/cask-generate.ts (cli-in-term-0031): its `releaseLines`, `dropLines`,
 # `dispatchText`, `scopedCommands` and `scopeText`.
 #
-# The app's scope and the capability table are deck/call/code/scope.ts, docked until that file is ported: the scope is
-# its `Scope`, a host map from each capability to its access lists, and `CAPABILITIES` the host table.
+# The app's scope and the capability table are the context lane's port of deck/call/code/scope.ts
+# (work/context/app-scope.tree, loaded since term-cli-in-term-0069): the scope is a map from each capability to its
+# access lists, and `capabilities()` the host table scope.ts held as `CAPABILITIES`.
 
 load @term/base/list
   find list
@@ -48,8 +49,12 @@ load ./signatures
 load ./shim
   find with-lines
 
+# a task of this file is named capability-of too, so the port's is found under a name of its own
+load ../context/app-scope
+  find capability-of, name scope-capability
+  find capabilities, name scope-capabilities
+
 dock load
-  load <@term/call/code/scope>, name scope-module
   load <node:path>, name node-path
 
 # one argument a scoped task names, and the access it needs
@@ -165,7 +170,7 @@ task capability-of
   take file, like text
   like text
 
-  save found, scope-module/capabilityOf(file)
+  save found, scope-capability(file)
   fork test, is-null(found)
     hold
       back <>
@@ -190,7 +195,8 @@ task scoped-commands
     fork test, is-equal(capability, <>)
       hold
         turn next
-    save tasks, scope-module/CAPABILITIES/{capability}/tasks
+    save table, scope-capabilities()
+    save tasks, table/{capability}/tasks
     fork test, is-null(tasks)
       hold
         turn next
@@ -383,7 +389,8 @@ task capability-kind
   take capability, like text
   like text
 
-  back scope-module/CAPABILITIES/{capability}/kind
+  save table, scope-capabilities()
+  back table/{capability}/kind
 
 # whether a pattern of any access this command checks starts with `variable`
 task is-named

@@ -101,6 +101,14 @@ load ../bundle/unit-writing
   find write-unit-bundle
   find unit-ask
 
+# the home folder and a manifest's values: the small lane's ports, where home.ts and manifest-name.ts were docked
+# (term-cli-in-term-0069)
+load ../small/home-folder
+  find project-home
+
+load ../small/manifest-file
+  find manifest-value-of
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
@@ -109,8 +117,6 @@ dock load
   load <@term/make/code/compile/separate>, name separate-module
   load <@term/make/code/compile/native>, name native-module
   load <@term/call/code/hook-dispatch>, name dispatch-module
-  load <@term/call/code/home>, name home-module
-  load <@term/call/code/manifest-name>, name manifest-module
   load <@term/call/code/output>, name output
   # an inherited method (on, exit) is reached only through the global (traps.md)
   load <global:process>, name host-process
@@ -592,6 +598,33 @@ task word-of
       back make(some, given)
   back make none
 
+# the parts of a path under the project's home, as home.ts `projectHome(root, ...parts)` took them: `first`, then
+# `second` when it is not empty
+task boot-parts
+  take first, like text
+  take second, like text
+  like list, like text
+  mark private
+
+  save parts, make list
+  parts/push(first)
+  fork test, is-unequal(second, <>)
+    hold
+      parts/push(second)
+  back parts
+
+# a maybe's text, the empty text for none (manifest-name.ts `manifestValueOf` answered undefined)
+task value-or-empty
+  take given, like maybe, like text
+  like text
+  mark private
+
+  sift given
+    case some
+      back value
+    case none
+      back <>
+
 task text-of
   take value, like unknown
   like text
@@ -775,7 +808,7 @@ task boot-found
       fields/push(output/field(<names>, boot-comma-joined(loaded)))
       output/report(make(counted-item, bind(glyph, <info>), bind(verb, <load>), bind(subject, <environment>), bind(counts, counts), bind(fields, fields)))
   # warm the local cache from a remote (Tier 5) before compiling, so a cold machine or CI reuses shared artifacts
-  save cache-dir, home-module/projectHome(project-root, <cache>)
+  save cache-dir, project-home(project-root, boot-parts(<cache>, <>))
   fork test, boot-truthy(input/remote)
     hold
       # a remote-cache failure must never fail the build
@@ -826,7 +859,7 @@ task bin-name-for
   save deck-file, node-path/join(base-dir, <deck.tree>)
   fork test, node-file/exists-sync(deck-file)
     hold
-      save deck, text-of(manifest-module/manifestValueOf(deck-file, <deck>))
+      save deck, value-or-empty(manifest-value-of(deck-file, <deck>))
       fork test, is-unequal(boot-last-segment(deck), <>)
         hold
           back bin-name-of(deck)
@@ -1246,7 +1279,7 @@ task bundle-plan
   parts/push(plan/key)
   save key, hash-text(boot-joined(parts))
   # the boot cache always holds the bundler's input. The bundle goes there too, unless `--out` names a folder for it
-  save cached, home-module/projectHome(run/project-root, <boot>, key)
+  save cached, project-home(run/project-root, boot-parts(<boot>, key))
   save out, cached
   save fields, make list
   fork test, out-given

@@ -3,9 +3,10 @@
 # the files that failed, the open claims, the tier-0 obligations against the baseline (`hold.json`), the TRUST LEDGER
 # (what the proofs rest on that nothing here proves) and what the kernel did with the tasks. It prints nothing.
 #
-# What the gate decides without a build is hold-plan.tree, loaded. The compiler, the build's reading of a file and the
-# project's resolver, cache, decks and roles are docked; a compile's answer is a host value, read as the original read
-# it. `found` is the caller's host record { compile, obligations }, or nothing.
+# What the gate decides without a build is hold-plan.tree, loaded. The compiler is docked; the build's reading of a file
+# and the project's resolver, cache, decks and roles are the build, workers and cache lanes' ports, where make.ts,
+# cache-store.ts, deck-of.ts and role-of.ts were docked until term-cli-in-term-0069. A compile's answer is a host value,
+# read as the original read it. `found` is the caller's host record { compile, obligations }, or nothing.
 
 load @term/call/hold-plan
   find obligation-key
@@ -19,14 +20,31 @@ load @term/call/hold-plan
 load @term/call/work/output/diagnostic-report
   find render-diagnostic
 
+load @term/call/work/build/project-resolving
+  find make-project-resolver
+
+load @term/call/work/build/deck-finding
+  find make-deck-finder
+
+load @term/call/work/build/role-reading
+  find make-role-reader
+
+load @term/call/work/build/host-faces
+  find face-project-resolver
+  find face-deck-finder
+  find face-role-reader
+  find face-lean-reader
+
+load @term/call/work/workers/source-faces
+  find face-buildable
+
+load @term/call/work/cache/compile-store
+  find project-cache
+
 dock load
   load <@term/make/code/compile/compile>, name compiling
   load <@term/make/code/compile/native>, name native-env
   load <@term/make/code/check/facts>, name fact-finding
-  load <@term/call/code/make>, name building
-  load <@term/call/code/cache-store>, name cache-storing
-  load <@term/call/code/deck-of>, name deck-finding
-  load <@term/call/code/role-of>, name role-finding
   load <node:fs>, name host-fs
   load <node:path>, name host-path
   load <global:JSON>, name host-json
@@ -381,11 +399,12 @@ task hold-project
   take found, like dynamic
   like hold-summary
 
-  save resolve, native-env/with-native-env(<node>, building/project-resolver(root))
-  save cache, cache-storing/project-cache(root)
-  save deck-of, deck-finding/project-deck-of()
-  save role-of, role-finding/project-role-of(root)
-  save lean-of, role-finding/project-lean-of(root)
+  save resolve, native-env/with-native-env(<node>, face-project-resolver(make-project-resolver(root)))
+  save cache, project-cache(root)
+  save deck-of, face-deck-finder(make-deck-finder())
+  save reader, make-role-reader(root)
+  save role-of, face-role-reader(reader)
+  save lean-of, face-lean-reader(reader)
   save options, hold-compile-options(resolve, cache, deck-of, role-of, lean-of)
 
   save failed, make list
@@ -409,7 +428,7 @@ task hold-project
   walk files
     take file
     save rel, host-path/relative(root, file)
-    save unit, building/buildable(file, host-fs/read-file-sync(file, <utf8>), hold-role-at(role-of, file))
+    save unit, face-buildable(file, host-fs/read-file-sync(file, <utf8>), hold-role-at(role-of, file))
     fork test, hold-has-faults(unit)
       hold
         failed/push rel

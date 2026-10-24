@@ -19,6 +19,18 @@ load @term/call/work/hold/lean-check
   find hold-lean
   find lean-claim
 
+# the role readers and the project's home: the build and small lanes' ports, where role-of.ts and home.ts were docked
+# (term-cli-in-term-0069)
+load @term/call/work/build/role-reading
+  find make-role-reader
+
+load @term/call/work/build/host-faces
+  find face-role-reader
+  find face-lean-reader
+
+load @term/call/work/small/home-folder
+  find project-home
+
 dock load
   load <@term/make/code/parser/tree>, name tree-parsing
   load <@term/make/code/parser/narrow>, name narrowing
@@ -28,8 +40,6 @@ dock load
   load <@term/make/code/compile/host>, name data-reading
   load <@term/make/code/check/law-english>, name law-wording
   load <@term/deck/code/package/read>, name tree-reading
-  load <@term/call/code/role-of>, name role-reading
-  load <@term/call/code/home>, name home-finding
   load <node:fs>, name host-fs
   load <node:path>, name host-path
   load <node:child_process>, name host-child
@@ -545,8 +555,9 @@ task hold-report
         fork test, is-equal(entry-proofs(entry)/length, 0)
           hold
             problems/push <laws.tree: {manifest-entry-name(entry)} names nothing that proves it>
-  save role-of, role-reading/project-role-of(root)
-  save lean-of, role-reading/project-lean-of(root)
+  save reader, make-role-reader(root)
+  save role-of, face-role-reader(reader)
+  save lean-of, face-lean-reader(reader)
 
   save definitions, report-new-map()
   save sentences, report-new-map()
@@ -704,7 +715,10 @@ task hold-report
   lines/push <>
   save page, page-lines(lines)
 
-  save file, home-finding/project-home(root, <report>, <hold.txt>)
+  save parts, make list
+  parts/push(<report>)
+  parts/push(<hold.txt>)
+  save file, project-home(root, parts)
   make-folder-of(host-fs, host-path/dirname(file))
   host-fs/write-file-sync(file, page)
 

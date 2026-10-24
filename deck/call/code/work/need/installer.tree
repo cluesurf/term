@@ -46,8 +46,12 @@ load @term/call/work/self/version-keeper
   find releases
   find report-loaded
 
+# the user's home and the front's folder: the small lane's port, where home.ts was docked (term-cli-in-term-0069)
+load @term/call/work/small/home-folder
+  find user-home
+  find front-dir
+
 dock load
-  load <@term/call/code/home>, name home-module
   load <@term/call/code/output>, name output
   load <node:fs>, name node-file
   load <node:os>, name node-os
@@ -413,7 +417,7 @@ task install-term
       save host, url-host(registry)
       put-variable(<TERM_RELEASE_REGISTRY>, <oci://{host}/cluesurf/term>)
 
-  save home, home-module/user-home()
+  save home, user-home(make list)
   save flags, make empty-flags
   output/set-output(flags, <>)
   output/open-run(make(load-open, bind(verb, <load>), bind(root, home), bind(subject, output/show-path(home)), bind(tool, <term.surf/load>)))
@@ -444,7 +448,7 @@ task install-term
   link-front(version)
 
   # the front's folder, the one put on PATH: `call/` (home.ts `frontDir`)
-  save bin, home-module/front-dir(home)
+  save bin, front-dir(home)
   save windows, is-equal(host-process/platform, <win32>)
   save front-name, <term>
   fork test, windows

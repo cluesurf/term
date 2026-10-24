@@ -8,21 +8,24 @@ load @term/call/work/home
 # oracle (the tolerant parser never throws), a performance budget, and hang-safe structure-aware fuzzing with a
 # child-process watchdog. It exits non-zero on any finding and whenever a check did not run, so it can gate a build.
 #
-# The verb is line.ts's `hunt` command: the hook's takes, line.ts's argument mapping, then the docked `callHunt`
-# (deck/call/code/hunt.ts), which owns the file walk, the role-aware read, the fuzz child's command line (this same
-# CLI with `__hunt-fuzz-campaign`, which dispatch.tree `start-line` answers) and the run's output and exit. No print,
-# catch or exit of its own: a throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term).
+# The verb is line.ts's `hunt` command: the hook's takes, line.ts's argument mapping, then the tool lane's port of
+# hunt.ts `callHunt` (work/tool/hunt-command.tree `call-hunt`, loaded since term-cli-in-term-0069), which owns the
+# file walk, the role-aware read, the fuzz child's command line (this same CLI with `__hunt-fuzz-campaign`, which
+# dispatch.tree `start-line` answers) and the run's output and exit. No print, catch or exit of its own: a throw
+# reaches dispatch.tree `fail-line` (decision 005 of cli-in-term).
 
 load @term/base/maybe
   find maybe
   find some
   find none
 
+load @term/call/work/tool/hunt-command
+  find call-hunt
+
 dock load
-  load <@term/call/code/hunt>, name hunt-module
   load <global:JSON>, name host-json
 
-# line.ts passed yargs's answer, where a flag left out is absent, and `callHunt` reads `glob`, `runs`, `seeds`,
+# line.ts passed yargs's answer, where a flag left out is absent, and `call-hunt` reads `glob`, `runs`, `seeds`,
 # `fuzzTimeout` and `budget` as "use the default" only when absent. Each is a maybe (decision cli-in-term/008
 # part 1), so the ask is built as JSON from the given ones only: `--runs 0` is passed as 0
 task hunt
@@ -58,7 +61,7 @@ task hunt
         save text, entry
       miss
         save text, <{text},{entry}>
-  wait hunt-module/callHunt(host-json/parse(<\{{text}\}>))
+  call-hunt(host-json/parse(<\{{text}\}>))
 
 # a text as a JSON string
 task quoted

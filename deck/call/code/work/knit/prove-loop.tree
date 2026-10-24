@@ -88,8 +88,14 @@ load @term/call/work/output/printer
   find field
   find count
 
+load @term/call/work/build/role-reading
+  find make-role-reader
+
+load @term/call/work/build/host-faces
+  find face-role-reader
+  find face-lean-reader
+
 dock load
-  load <@term/call/code/role-of>, name role-finding
   load <node:fs>, name host-fs
   load <node:path>, name host-path
   load <global:process>, name host-process
@@ -567,33 +573,21 @@ task check-of
   save project, state/project
   back check-instances(make(instance-ask, bind(project, project), bind(required, input/required), bind(laws, state/library), bind(role-of, role-reader(project)), bind(lean-of, lean-reader(project))))
 
-bind role-reader-of
-  take finder, like dynamic
-  take project, like text
-  like dynamic
-  case node
-    text <$finder.projectRoleOf($project)>
-
-bind lean-reader-of
-  take finder, like dynamic
-  take project, like text
-  like dynamic
-  case node
-    text <$finder.projectLeanOf($project)>
-
+# the project's role and lean readers as host functions, as role-of.ts `projectRoleOf` and `projectLeanOf` answered
+# them: the build lane's port, where role-of.ts was docked (term-cli-in-term-0069)
 task role-reader
   take project, like text
   like dynamic
   mark private
 
-  back role-reader-of(role-finding, project)
+  back face-role-reader(make-role-reader(project))
 
 task lean-reader
   take project, like text
   like dynamic
   mark private
 
-  back lean-reader-of(role-finding, project)
+  back face-lean-reader(make-role-reader(project))
 
 # ---- the loop ----
 

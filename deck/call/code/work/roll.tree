@@ -7,17 +7,18 @@ load @term/call/work/home
 # RECOMPUTED FROM SOURCE, so it is never stale. It prints as a tree; `--json` prints the same shape `term make`
 # writes to host/roll.json, and `--diff <before>` what changed since a roll file or a git ref.
 #
-# The verb is line.ts's `roll` command: the hook's takes, line.ts's argument mapping, then the docked `callRoll`
-# (deck/call/code/roll.ts), which opens and closes its own run. No print, catch or exit of its own: a throw reaches
-# dispatch.tree `fail-line` (decision 005 of cli-in-term).
+# The verb is line.ts's `roll` command: the hook's takes, line.ts's argument mapping, then the roll lane's port of
+# roll.ts `callRoll` (work/roll/roll-command.tree `call-roll`, loaded since term-cli-in-term-0069), which opens and
+# closes its own run. No print, catch or exit of its own: a throw reaches dispatch.tree `fail-line` (decision 005 of
+# cli-in-term).
 
 load @term/base/maybe
   find maybe
 
-dock load
-  load <@term/call/code/roll>, name roll-verb-module
+load @term/call/work/roll/roll-command
+  find call-roll
 
-# what `callRoll` takes without `--diff`. NOT `roll-ask` or `show-ask`: Term names are package-global, and
+# what `call-roll` takes without `--diff`. NOT `roll-ask` or `show-ask`: Term names are package-global, and
 # base-verbs.tree declares a `show-ask` of its own
 form roll-whole-ask
   link root, like text
@@ -27,8 +28,8 @@ form roll-whole-ask
   link host, like text
   link path, like boolean
 
-# what `callRoll` takes with `--diff`: callRoll tests `diff !== undefined`, so the field is only there when given
-# (the take is a maybe, decision cli-in-term/008 part 1: `--diff ""` is given)
+# what `call-roll` takes with `--diff`: it tests `diff !== undefined`, so the field is only there when given (the take
+# is a maybe, decision cli-in-term/008 part 1: `--diff ""` is given)
 form roll-diff-ask
   link root, like text
   link kind, like text
@@ -63,7 +64,7 @@ task roll
       save json, true
   sift diff
     case none
-      call roll-verb-module/callRoll
+      call call-roll
         make roll-whole-ask
           bind root, read root
           bind kind, read kind
@@ -71,9 +72,8 @@ task roll
           bind private, read only-private
           bind host, read only-host
           bind path, read show-path
-        wait true
     case some
-      call roll-verb-module/callRoll
+      call call-roll
         make roll-diff-ask
           bind root, read root
           bind kind, read kind
@@ -82,4 +82,3 @@ task roll
           bind host, read only-host
           bind path, read show-path
           bind diff, read value
-        wait true

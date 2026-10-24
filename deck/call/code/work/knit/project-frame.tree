@@ -26,9 +26,16 @@ load @term/call/work/knit/law-library
   find how-to-state
   find mark-line
 
+# the role readers: the build lane's port, where role-of.ts was docked (term-cli-in-term-0069)
+load @term/call/work/build/role-reading
+  find make-role-reader
+
+load @term/call/work/build/host-faces
+  find face-role-reader
+  find face-lean-reader
+
 dock load
   load <@term/make/code/check/law-english>, name law-reading
-  load <@term/call/code/role-of>, name role-reading
   load <node:fs>, name host-fs
   load <node:path>, name host-path
   load <node:url>, name host-url
@@ -442,8 +449,9 @@ task laws-of
   take project, like text
   like laws-read
 
-  save role-of, role-reading/project-role-of(project)
-  save lean-of, role-reading/project-lean-of(project)
+  save reader, make-role-reader(project)
+  save role-of, face-role-reader(reader)
+  save lean-of, face-lean-reader(reader)
   save laws, make list
   save errors, make list
   walk tree-files(project)

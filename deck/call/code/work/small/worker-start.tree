@@ -2,7 +2,8 @@
 # HTTP, so the language server, `term feed` and the CLI share one warm compiler instead of each starting cold. It stays
 # alive until interrupted. Prints as a service (section 11 of note/project/term/output/standard.md): a `start` item
 # with its address, then a `Stopped` closing item with its uptime on ctrl-c. Ported from call/code/work.ts
-# (term-cli-in-term-0061). The daemon is call/code/dev/daemon.ts, docked until its own port (lane serve) lands.
+# (term-cli-in-term-0061). The daemon is lane serve's port of call/code/dev/daemon.ts (work/serve/compile-daemon.tree),
+# loaded since term-cli-in-term-0069.
 #
 # THE DAEMON IS HELD BY THE MODULE for the ctrl-c handler, which the original closed over: a task handed to the host
 # as a callback cannot close over a local, so the handler reads the daemon the last `call-work` started.
@@ -10,8 +11,10 @@
 load @term/base/maybe
   find maybe
 
+load @term/call/work/serve/compile-daemon
+  find start-daemon
+
 dock load
-  load <@term/call/code/dev/daemon>, name daemon-module
   load <@term/call/code/output>, name output
   # the global, not node:process: `on` is inherited from EventEmitter, and a builtin's namespace holds own fields only
   load <global:process>, name host-process
@@ -86,7 +89,7 @@ task start-worker
   like void
   mark private
 
-  save daemon, daemon-module/start-daemon(make(daemon-ask, bind(root, root), bind(port, port), bind(env, env)))
+  save daemon, start-daemon(make(daemon-ask, bind(root, root), bind(port, port), bind(env, env)))
   save slot, <daemon>
   save running/{slot}, daemon
   save fields, make list

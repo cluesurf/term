@@ -29,15 +29,23 @@ load @term/call/work/tint
 # runs.
 #
 # Ported from deck/call/code/{view,seek,mold,boot}.ts (cli-in-term-0004). `boot` now runs the boot lane's port
-# (work/boot/boot-running.tree), loaded since term-cli-in-term-0066.
+# (work/boot/boot-running.tree), loaded since term-cli-in-term-0066, and `view`, `seek` and `mold` the inspect and
+# tool lanes' ports (work/inspect/viewing.tree, work/tool/seek-command.tree, work/inspect/molding.tree), since
+# term-cli-in-term-0069.
 
 load @term/call/work/boot/boot-running
   find call-boot
 
+load @term/call/work/inspect/viewing
+  find call-view
+
+load @term/call/work/tool/seek-command
+  find call-seek
+
+load @term/call/work/inspect/molding
+  find call-mold
+
 dock load
-  load <@term/call/code/view>, name view-module
-  load <@term/call/code/seek>, name seek-module
-  load <@term/call/code/mold>, name mold-module
   load <node:process>, name node-process
   # the process argument vector `boot` reads the words after `--` from, as line.ts did (traps.md: <global:process>)
   load <global:process>, name host-process
@@ -57,7 +65,7 @@ form seek-ask
   link format, like text
   link fix, like boolean
 
-# `file` is a host value: the path when the line named one, else undefined, which callMold labels `stdin` (input.file
+# `file` is a host value: the path when the line named one, else undefined, which call-mold labels `stdin` (input.file
 # ?? 'stdin'), as line.ts handed argv.file on
 form mold-ask
   link root, like text
@@ -94,13 +102,12 @@ task view
   save root, call project-root
   fork
     mark unsafe
-    call view-module/callView
+    call call-view
       make view-ask
         bind root, read root
         bind path, read path
         bind find, read find
         bind back, read back
-      wait true
   halt take
     take error
     log-fail format-error error
@@ -121,7 +128,7 @@ task seek
   save root, call project-root
   fork
     mark unsafe
-    call seek-module/callSeek
+    call call-seek
       make seek-ask
         bind root, read root
         bind audit, read audit
@@ -129,7 +136,6 @@ task seek
         bind sarif, read sarif
         bind format, read format
         bind fix, read fix
-      wait true
   halt take
     take error
     log-fail format-error error
@@ -155,7 +161,7 @@ task mold
   save root, call project-root
   fork
     mark unsafe
-    call mold-module/callMold
+    call call-mold
       make mold-ask
         bind root, read root
         bind file, inspect-text-given(file)
@@ -168,7 +174,6 @@ task mold
         bind lines, read lines
         bind code, read code
         bind canonical, read canonical
-      wait true
   halt take
     take error
     log-fail format-error error

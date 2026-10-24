@@ -84,10 +84,13 @@ load @term/call/work/need/version-install
 load @term/call/work/need/running-install
   find find-install-root
 
+# the user's home: the small lane's port, where home.ts was docked (term-cli-in-term-0069)
+load @term/call/work/small/home-folder
+  find user-home
+
 dock load
   load <@cluesurf/deck.tree>, name deck-tree
   load <@term/deck/code/code>, name deck-code
-  load <@term/call/code/home>, name home-module
   load <@term/call/code/output>, name output
   load <node:fs>, name node-file
   load <node:path>, name node-path
@@ -792,7 +795,7 @@ task choose-version-here
       link why
       back make(refuse, bind(reason, why))
     case none
-      back choose-with(read/request, home-module/user-home(), running)
+      back choose-with(read/request, user-home(make list), running)
 
 # the version a choice runs or installs, none for a refusal (or a range the releases resolve)
 task version-of-choice
@@ -1023,7 +1026,7 @@ task call-self-update
 
       # a range default follows on its own; an exact one is named, because it now holds the default back
       save message, make list
-      save fallback, default-request(home-module/user-home())
+      save fallback, default-request(user-home(make list))
       save asked, fallback/request
       sift asked
         case some
@@ -1051,7 +1054,7 @@ task call-self-back
     case some
       link found
       save front, text-in-or(front-version(), found/version)
-      save previous, previous-version(installed-versions(home-module/user-home()), front)
+      save previous, previous-version(installed-versions(user-home(make list)), front)
 
       fork test, is-equal(previous, <>)
         hold
@@ -1071,7 +1074,7 @@ task call-self-list
 
   open-self(input/root, <list>)
 
-  save home, home-module/user-home()
+  save home, user-home(make list)
   save held, what-runs()
   save running, running-version(held)
   save installed, installed-versions(home)
@@ -1179,7 +1182,7 @@ task call-self-find
   save route, route-of()
   save transport, deck-tree/transport-for(make(transport-ask, bind(host, route/registry/host)))
   save platform, deck-tree/current-platform()
-  save installed, installed-versions(home-module/user-home())
+  save installed, installed-versions(user-home(make list))
   save indexes, make list
   walk versions
     take version
@@ -1273,7 +1276,7 @@ task call-self-pick
       back
     case some
       link hold
-      save home, home-module/user-home()
+      save home, user-home(make list)
       save request, make(need-request, bind(source, <default>), bind(text, range), bind(hold, hold))
       save choice, choose-with(make(some, request), home, running-version(what-runs()))
       sift choice
@@ -1406,7 +1409,7 @@ task call-self-show
 
   save held, what-runs()
   save running, running-version(held)
-  save home, home-module/user-home()
+  save home, user-home(make list)
   save flagged, keeper-truth(input/flag)
   save flag-text, keeper-text-or(input/flag, <>)
   save argv, make list
@@ -1603,9 +1606,9 @@ task call-self-toss
     case none
       save nothing-held, 0
 
-  node-file/rm-sync(home-module/user-home(<code>, version), make(removal-ask, bind(recursive, true), bind(force, true)))
+  node-file/rm-sync(user-home(home-parts(<code>, version)), make(removal-ask, bind(recursive, true), bind(force, true)))
   save fields, make list
-  fields/push(at-field(home-module/user-home(<code>, version)))
+  fields/push(at-field(user-home(home-parts(<code>, version))))
   output/report(make(keeper-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <toss>), bind(subject, <term {version}>), bind(fields, fields)))
   close-done(<Removed {version}>)
 
@@ -1623,7 +1626,7 @@ task call-self-wash
       open-facts/push(<--commit>)
   output/open-run(make(keeper-open, bind(verb, <self>), bind(root, input/root), bind(subject, <wash>), bind(facts, open-facts)))
 
-  save home, home-module/user-home()
+  save home, user-home(make list)
   save held, what-runs()
   save running, running-version(held)
   save kept, kept-here(home, running)
@@ -1654,7 +1657,7 @@ task call-self-wash
     facts/push(used-text(used))
     fork test, commit
       hold
-        node-file/rm-sync(home-module/user-home(<code>, version), make(removal-ask, bind(recursive, true), bind(force, true)))
+        node-file/rm-sync(user-home(home-parts(<code>, version)), make(removal-ask, bind(recursive, true), bind(force, true)))
         output/report(make(keeper-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <wash>), bind(subject, <term {version}>), bind(facts, facts)))
       miss
         facts/push(<would be removed>)
@@ -1668,3 +1671,24 @@ task call-self-wash
       output/close-run(make(keeper-close, bind(verdict, verdict), bind(counts, counts), bind(done, false), bind(next, <term self wash --commit>)))
     miss
       output/close-run(make(keeper-close, bind(verdict, verdict), bind(counts, counts), bind(done, and(commit, is-above(washed, 0)))))
+
+# the parts of a path under a home, as home.ts took them as arguments (`userHome('code', version)`): each given one,
+# in order. An empty part is left out, as one `join` of them all leaves it out
+task home-parts
+  take first, like text, fall <>
+  take second, like text, fall <>
+  take third, like text, fall <>
+  like list, like text
+  mark private
+
+  save parts, make list
+  fork test, is-unequal(first, <>)
+    hold
+      parts/push(first)
+  fork test, is-unequal(second, <>)
+    hold
+      parts/push(second)
+  fork test, is-unequal(third, <>)
+    hold
+      parts/push(third)
+  back parts

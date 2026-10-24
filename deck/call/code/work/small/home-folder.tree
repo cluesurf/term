@@ -36,7 +36,10 @@ dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
   load <node:os>, name node-os
-  load <node:process>, name node-process
+  # the global, not a namespace of node:process: that namespace is built from every property of process at the first
+  # import, some of them costly getters, about 3 ms on every start (traps.md 0041), and this module is on the start of
+  # host/need.mjs and host/line.js
+  load <global:process>, name host-process
 
 form folder-ask
   link recursive, like boolean
@@ -345,7 +348,7 @@ task link-back
     mark unsafe
     # a junction on Windows needs no privilege and takes an absolute target; elsewhere a relative link survives the
     # home folder itself being moved
-    fork test, is-equal(node-process/platform, <win32>)
+    fork test, is-equal(host-process/platform, <win32>)
       hold
         node-file/symlink-sync(to, from, <junction>)
       miss

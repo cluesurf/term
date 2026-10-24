@@ -92,14 +92,25 @@ load ../self/page-update
   find stamp-update-key
   find stamp-ask, name key-stamp-ask
 
+# the build's resolver, the app's scope and a tool's version: the build, context and tool lanes' ports, where make.ts,
+# scope.ts and show.ts were docked (term-cli-in-term-0069)
+load ../build/project-resolving
+  find make-project-resolver
+
+load ../build/host-faces
+  find face-project-resolver
+
+load ../context/app-scope
+  find check-scope
+
+load ../tool/show-command
+  find tool-version
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <global:process>, name host-process
   load <@term/make/code/compile/load>, name load-module
-  load <@term/call/code/make>, name make-module
-  load <@term/call/code/scope>, name scope-module
-  load <@term/call/code/show>, name show-module
   load <@term/call/code/output>, name output
 
 # whether makeCask opened the run it prints into, so it closes only its own: the original's module variable `owned`,
@@ -342,7 +353,7 @@ task closure-of
   mark private
 
   save source, make(source-ask, bind(file, file), bind(text, node-fs/read-file-sync(file, <utf8>)))
-  save collected, load-module/collect-modules(source, make-module/project-resolver(root, env))
+  save collected, load-module/collect-modules(source, face-project-resolver(make-project-resolver(root, env)))
   walk collected/sources
     take one, like dynamic
     files/push(<{one/file}>)
@@ -359,7 +370,7 @@ task check-cask-scope
   save files, make list
   closure-of(root, page, <webview>, files)
   closure-of(root, entry, cask-program-env(target), files)
-  scope-module/check-scope(make(scope-ask, bind(root, root), bind(files, files)))
+  check-scope(make(scope-ask, bind(root, root), bind(files, files)))
 
 # the bridge generated for the page, its dispatcher beside the cask entry, and its item
 task generate-and-report
@@ -473,7 +484,7 @@ task make-cask
   save missing, make list
   walk cask-tools(target, host-process/platform)
     take tool, like text
-    fork test, is-absent(show-module/tool-version(tool))
+    fork test, is-absent(tool-version(tool))
       hold
         missing/push(tool)
   fork test, is-above(missing/length, 0)

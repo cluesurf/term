@@ -14,10 +14,13 @@ load @term/call/cask-plan
 load ./host-value
   find value-or
 
+# the name a manifest declares: the small lane's port, where manifest-name.ts was docked (term-cli-in-term-0069)
+load ../small/manifest-file
+  find manifest-name-of
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
-  load <@term/call/code/manifest-name>, name manifest-module
 
 # an app's name and bundle identifier
 form app-identity
@@ -54,7 +57,8 @@ task app-identity
   save declared, node-path/basename(root)
   fork test, node-fs/exists-sync(manifest)
     hold
-      save declared, value-or(manifest-module/manifest-name-of(manifest), declared)
+      save named, manifest-name-of(manifest)
+      save declared, named/unwrap-or(declared)
   save words, app-words-of(declared)
   back
     make app-identity

@@ -31,15 +31,29 @@ load ../../lint-words
   find ambiguous-message
   find lint-verdict
 
+# the files, the role and lean readers, the manifest's name and the resolver: the build and small lanes' ports, where
+# files.ts, role-of.ts, manifest-name.ts and make.ts were docked (term-cli-in-term-0069)
+load @term/call/work/build/tree-gathering
+  find collect-tree-files
+
+load @term/call/work/build/role-reading
+  find make-role-reader
+
+load @term/call/work/build/project-resolving
+  find make-project-resolver
+
+load @term/call/work/build/host-faces
+  find face-role-reader
+  find face-lean-reader
+  find face-project-resolver
+
+load @term/call/manifest-read
+  find manifest-name
+
 dock load
   load <@cluesurf/deck.tree>, name deck-tree-module
   load <@term/make/code/analyze>, name analyze-module
   load <@term/make/code/compile/mill-run>, name mill-run-module
-  load <@term/call/code/files>, name files-module
-    mark async
-  load <@term/call/code/role-of>, name role-module
-  load <@term/call/code/manifest-name>, name manifest-name-module
-  load <@term/call/code/make>, name make-module
   load <@term/call/code/output>, name output
   load <node:fs/promises>, name fs-promise
     mark async
@@ -288,6 +302,20 @@ task top-groups
 
 # ---- findings that need the filesystem ----
 
+# whether this text declares no package name, so it is not a manifest (manifest-name.ts `manifestName` answered
+# undefined)
+task names-no-deck
+  take text, like text
+  take file, like text
+  like boolean
+  mark private
+
+  sift manifest-name(text, file)
+    case some
+      back false
+    case none
+      back true
+
 # L055 manifest-inert: a manifest field the grammar accepts and the writer keeps, which no tool reads. No `--fix`,
 # because the line may record an intent, and deleting it is the author's call
 task inert-manifest-fields
@@ -296,7 +324,7 @@ task inert-manifest-fields
   like list, like finding
 
   save out, make list
-  fork test, is-absent(manifest-name-module/manifest-name(text, file))
+  fork test, names-no-deck(text, file)
     hold
       back out
   walk top-groups(text, file)
@@ -332,7 +360,7 @@ task manifest-findings
   like list, like fixed-finding
 
   save out, make list
-  fork test, is-absent(manifest-name-module/manifest-name(text, file))
+  fork test, names-no-deck(text, file)
     hold
       back out
   # the old spellings the manifest reader answers, host values (seam decision 004)
@@ -478,7 +506,7 @@ task call-lint
 
   save root, input/root
   save paths, input/paths
-  save files, files-module/collect-tree-files(paths, root)
+  save files, collect-tree-files(paths, root)
   save fixing, is-truthy(input/fix)
   save facts, make list
   fork test, fixing
@@ -498,8 +526,9 @@ task call-lint
       back
   # the role and `mark lean` each file's role rule gives it, as the build reads them: without these a lean file is
   # milled as longhand and linted as a program the build never compiles
-  save role-of, role-module/project-role-of(root)
-  save lean-of, role-module/project-lean-of(root)
+  save reader, make-role-reader(root)
+  save role-of, face-role-reader(reader)
+  save lean-of, face-lean-reader(reader)
   save total-findings, 0
   save total-errors, 0
   save total-fixed, 0
@@ -507,7 +536,7 @@ task call-lint
   # every finding of every file, drawn together at the end so they sort by path, line and column (section 12)
   save found, make list
   # the build's own resolver, so an ambiguity is reported exactly where the build would resolve one
-  save resolve, make-module/project-resolver(root)
+  save resolve, face-project-resolver(make-project-resolver(root))
   walk files
     take file
     save text, fs-promise/read-file(file, <utf-8>)

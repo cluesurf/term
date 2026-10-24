@@ -13,15 +13,22 @@ load ./host-value
   find nothing
   find unit-above
   find refuse
+  find is-truthy
 
 dock load
   load <node:fs>, name node-fs
   load <node:os>, name node-os
   load <node:path>, name node-path
   load <node:child_process>, name node-child
+  load <@term/make/code/resolve>, name resolve-module
 
 form text-read
   link encoding, like text
+
+# `spawnSync`'s options for the swift script: its answer as a text, room for the flags of a large package graph
+form flags-run
+  link encoding, like text
+  link max-buffer, like number
 
 # the Android SDK's tools a cask build runs, by path
 form android-tool-set
@@ -60,8 +67,8 @@ task read-runtime
   back nothing()
 
 # The swift flags the stdlib's standard stack needs (swift-nio, Hummingbird), written by task/term/native/swift.sh
-# into the native cache. Read when present; an app whose closure never reaches the asynchronous file or server modules
-# builds without them. The path is the script's own convention, so the two cannot disagree.
+# into the native cache. Absent, there are none; an app whose closure never reaches the asynchronous file or server
+# modules builds without them. The path is the script's own convention, so the two cannot disagree.
 task swift-flags
   like list, like text
 
@@ -71,15 +78,45 @@ task swift-flags
   fork test, not(node-fs/exists-sync(file))
     hold
       back flags
-  # read as utf8 the host answers a text (seam decision 004)
-  save text, like text
-    node-fs/read-file-sync(file, <utf8>)
+  save text, checked-flags(file)
   walk text/split(<\n>)
     take line, like text
     fork test, is-above(line/length, 0)
       hold
         flags/push(line)
   back flags
+
+# The flags file as task/term/native/swift.sh `flags` answers it whenever the script is beside the stdlib: it trusts the
+# cache only whole (every module map and folder the flags name, and a stamp written last) and rebuilds it otherwise. A
+# purge of TMPDIR left a flags file naming 111 module maps that were gone, and 7 swift suites failed
+# (term-cli-in-term-0217). A script that fails answers no flags; with no script the file is read as it is
+task checked-flags
+  take file, like text
+  like text
+  mark private
+
+  save stdlib, resolve-module/stdlib-base()
+  save script, <>
+  fork test, is-truthy(stdlib)
+    hold
+      save script, node-path/join(stdlib, <../../../../../..>, <task/term/native/swift.sh>)
+  fork test, or(is-equal(script, <>), not(node-fs/exists-sync(script)))
+    hold
+      # read as utf8 the host answers a text (seam decision 004)
+      save kept, like text
+        node-fs/read-file-sync(file, <utf8>)
+      back kept
+  save args, make list
+  args/push(script)
+  args/push(<flags>)
+  save said, node-child/spawn-sync(<bash>, args, make(flags-run, bind(encoding, <utf8>), bind(max-buffer, 67108864)))
+  fork test, is-equal(said/status, 0)
+    hold
+      # the script's stdout, read as utf8 (seam decision 004)
+      save answered, like text
+        read said/stdout
+      back answered
+  back <>
 
 # where the Android SDK and the Kotlin standard library are on this machine, or why the build cannot go on
 task android-tools

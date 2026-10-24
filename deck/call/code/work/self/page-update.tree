@@ -22,8 +22,11 @@ load @term/base/list
   find list
   find contains
 
+# the user's home: the small lane's port, where home.ts was docked (term-cli-in-term-0069)
+load @term/call/work/small/home-folder
+  find user-home
+
 dock load
-  load <@term/call/code/home>, name home-module
   load <node:crypto>, name node-crypto
   load <node:fs>, name node-file
   load <node:path>, name node-path
@@ -183,7 +186,10 @@ task update-key-path
   take identifier, like text
   like text
 
-  back home-module/user-home(<update>, <{identifier}.pem>)
+  save parts, make list
+  parts/push(<update>)
+  parts/push(<{identifier}.pem>)
+  back user-home(parts)
 
 # The app's update key: read when it exists, made once when it does not. Never overwritten, because every installed
 # copy of the app trusts only this key, and a new one would orphan them all. `key-file` overrides where it lives (a

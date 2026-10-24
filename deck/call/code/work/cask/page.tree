@@ -19,12 +19,18 @@ load ./host-value
 load ./toolchain
   find read-runtime
 
+# the build's resolver: the build lane's port, where make.ts was docked (term-cli-in-term-0069)
+load ../build/project-resolving
+  find make-project-resolver
+
+load ../build/host-faces
+  find face-project-resolver
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/native>, name native-module
-  load <@term/call/code/make>, name make-module
 
 # what `buildPage` is asked: the app's root, the page entry, the line of TypeScript that calls what the page exports,
 # the directory the page lands in, its title, and where the intermediate TypeScript goes
@@ -215,7 +221,7 @@ task build-page
       bind text, node-fs/read-file-sync(page, <utf8>)
   save options
     make compile-options
-      bind resolve, make-module/project-resolver(ask/root, <webview>)
+      bind resolve, face-project-resolver(make-project-resolver(ask/root, <webview>))
       bind env, <webview>
   save result, compile-module/compile(source, options)
   fork test, not(result/ok)

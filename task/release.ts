@@ -20,7 +20,9 @@
 //                            bin\term.exe beside it, task/launcher/term.go, for winget, which puts only an .exe on PATH)
 //   term/host/need.mjs       the first module: which version runs here (note/project/term/term-versions.md). It
 //                            imports line.js in-process when the answer is this version, else hands over
+//                            (work/need/version-dispatch.tree)
 //   term/host/need-hand.mjs  the slow half of that: installs a needed version, prints a refusal. Loaded only then
+//                            (work/need/choice-report.tree)
 //   term/host/line.js        the CLI, every pure-JS dependency (chalk) BUNDLED
 //   term/host/dock.mjs       the hook dispatcher, chalk bundled
 //   term/host/build-worker.mjs, term/host/separate-worker.mjs
@@ -310,9 +312,10 @@ async function bundle(into: string, step: (done: number) => void = () => {}): Pr
   step(1)
   await build({ ...common, entryPoints: ['deck/call/code/hook-dispatch.ts'], outfile: path.join(into, 'host', 'dock.mjs') })
   step(2)
-  await build({ ...common, entryPoints: ['deck/call/code/need-run.ts'], outfile: path.join(into, 'host', 'need.mjs') })
+  // the version dispatch and its slow half, the need ports make:line bundles (integrate 0068, term-cli-in-term-0218)
+  await build({ ...common, entryPoints: ['deck/call/host/port/code/work/need/version-dispatch.ts'], outfile: path.join(into, 'host', 'need.mjs') })
   step(3)
-  await build({ ...common, entryPoints: ['deck/call/code/need-hand.ts'], outfile: path.join(into, 'host', 'need-hand.mjs') })
+  await build({ ...common, entryPoints: ['deck/call/host/port/code/work/need/choice-report.ts'], outfile: path.join(into, 'host', 'need-hand.mjs') })
   step(4)
   // the build pools' worker entries, the Term ports make:line bundles beside line.js (integrate 0066, decision 003):
   // a pool starts host/build-worker.mjs or host/separate-worker.mjs, and without them it falls back to a sequential build

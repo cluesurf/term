@@ -3,17 +3,18 @@ load @term/call/work/home
 
 # `term lint [paths..]` -- lint `.tree` files for style and correctness. `--fix` applies the autofixes in place.
 #
-# The verb takes its hook's arguments and hands them to the shipped handler (deck/call/code/lint.ts `callLint`),
-# which lints the files and prints through the output library. It prints nothing of its own, catches nothing and
-# never exits: a throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term, part 2).
+# The verb takes its hook's arguments and hands them to the inspect lane's port of lint.ts `callLint`
+# (work/inspect/linting.tree `call-lint`, loaded since term-cli-in-term-0069), which lints the files and prints
+# through the output library. It prints nothing of its own, catches nothing and never exits: a throw reaches
+# dispatch.tree `fail-line` (decision 005 of cli-in-term, part 2).
+
+load @term/call/work/inspect/linting
+  find call-lint
 
 form lint-ask
   link root, like text
   link paths, like list, like text
   link fix, like boolean
-
-dock load
-  load <@term/call/code/lint>, name lint-verb-module
 
 task lint
   mark async
@@ -24,9 +25,8 @@ task lint
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  call lint-verb-module/callLint
+  call call-lint
     make lint-ask
       bind root, read root
       bind paths, read paths
       bind fix, read fix
-    wait true

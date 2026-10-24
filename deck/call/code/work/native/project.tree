@@ -42,15 +42,16 @@ load ./native-value
   find byte-length
   find first-lines
 
+# one program's emitted source: the context lane's port of emit.ts (work/context/emission.tree), where it was docked
+# until term-cli-in-term-0069
+load ../context/emission
+  find emit-program
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <global:process>, name host-process
   load <@term/deck/code/package/read>, name read-module
-  # emit.ts, whose port is work/context/emission.tree, DOCKED: a load of it puts its task `read-runtime` beside
-  # work/cask/toolchain.tree's (reached through building.tree), and a value reference to a task two files define
-  # (`bind read-runtime, read-runtime`) is then an unknown name (traps.md, cli-in-term-0034)
-  load <@term/call/code/emit>, name emit-module
   load <@term/call/code/output>, name output
 
 form tree-source
@@ -261,7 +262,7 @@ task call-make-native
     take file, like text
     save started, now-ms()
     save relative, <{node-path/relative(root, file)}>
-    save emitted, emit-module/emit-program(make(program-emit, bind(root, root), bind(file, file), bind(target, env)))
+    save emitted, emit-program(make(program-emit, bind(root, root), bind(file, file), bind(target, env)))
 
     fork test, not(is-truthy(emitted/ok))
       hold

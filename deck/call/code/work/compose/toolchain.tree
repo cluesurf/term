@@ -19,11 +19,12 @@ load ../cask/host-value
   find raise-error
   find now-ms
 
-# scope.ts DOCKED, not a load of work/context/app-scope.tree: that port's one-argument `refuse` bind and
-# host-value.tree's two-argument one meet in one program, and the build binds app-scope's calls to the other
-# (type-mismatch "refuse needs failure"). The integrate may swap it once binds are scoped by import
+# the app's scope: the context lane's port of scope.ts, loaded since term-cli-in-term-0069, whose binds are named for
+# their module (`scope-refuse`), so its one-argument refusal never meets host-value.tree's two-argument `refuse`
+load ../context/app-scope
+  find check-scope
+
 dock load
-  load <@term/call/code/scope>, name scope-module
   load <node:fs>, name node-fs
   load <node:os>, name node-os
   load <node:path>, name node-path
@@ -249,7 +250,7 @@ task refused-scope
     walk collected/sources
       take one, like dynamic
       files/push(one/file)
-    scope-module/check-scope(make(scope-ask, bind(root, scope/root), bind(files, files)))
+    check-scope(make(scope-ask, bind(root, scope/root), bind(files, files)))
   halt take
     take problem
     back message-of(problem)

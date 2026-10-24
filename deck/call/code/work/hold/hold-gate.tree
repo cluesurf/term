@@ -54,12 +54,35 @@ load @term/call/work/output/printer
   find problem-of
   find report-problems
 
+# the build's walk, reader and resolver, the role reader, the compiler's version and the project's home: the build,
+# workers, cache and small lanes' ports, where make.ts, files.ts, role-of.ts, cache-store.ts and home.ts were docked
+# until term-cli-in-term-0069
+load @term/call/work/build/tree-finding
+  find find-tree-files
+
+load @term/call/work/build/tree-gathering
+  find collect-tree-files
+
+load @term/call/work/build/role-reading
+  find make-role-reader
+
+load @term/call/work/build/project-resolving
+  find make-project-resolver
+
+load @term/call/work/build/host-faces
+  find face-role-reader
+  find face-project-resolver
+
+load @term/call/work/workers/source-faces
+  find face-buildable
+
+load @term/call/work/cache/compile-store
+  find compiler-version
+
+load @term/call/work/small/home-folder
+  find project-home
+
 dock load
-  load <@term/call/code/make>, name tree-finding
-  load <@term/call/code/files>, name file-collecting
-  load <@term/call/code/role-of>, name role-reading
-  load <@term/call/code/cache-store>, name version-reading
-  load <@term/call/code/home>, name home-finding
   load <node:fs>, name host-fs
   load <node:path>, name host-path
   load <global:process>, name host-process
@@ -173,19 +196,20 @@ bind nothing-yet
 
 # ---- the cross-backend differential ----
 
-# the differential's ask, in the original's key order; each file read as the build reads it
+# the differential's ask, in the original's key order; each file read as the build reads it (`buildable` is the
+# workers lane's face-buildable, the shape make.ts `buildable` answered)
 bind cross-ask
   take cache, like dynamic
-  take building, like dynamic
+  take resolve, like dynamic
+  take buildable, like dynamic
   take roles, like dynamic
-  take version, like dynamic
+  take version, like text
   take files, like list, like text
-  take root, like text
   take force, like dynamic
   take disk, like dynamic
   like dynamic
   case node
-    text <<((read) => ({ files: $files, resolve: $building.projectResolver($root, "node", $root), cache: $cache, version: $version.compilerVersion(), cross: true, force: $force, read }))((file) => { const source = $disk.readFileSync(file, "utf8"); const made = $building.buildable(file, source, $roles(file)); return "text" in made ? made.text : source })>>
+    text <<((read) => ({ files: $files, resolve: $resolve, cache: $cache, version: $version, cross: true, force: $force, read }))((crossFile_) => { const crossSource_ = $disk.readFileSync(crossFile_, "utf8"); const crossMade_ = $buildable(crossFile_, crossSource_, $roles(crossFile_)); return "text" in crossMade_ ? crossMade_.text : crossSource_ })>>
 
 bind outcome-report
   take outcome, like dynamic
@@ -353,7 +377,9 @@ task obligation-cache-for
   fork test, memory
     hold
       back memory-obligation-cache()
-  back disk-obligation-cache(home-finding/project-home(root, <hold>))
+  save parts, make list
+  parts/push(<hold>)
+  back disk-obligation-cache(project-home(root, parts))
 
 task flag
   take value, like maybe, like boolean
@@ -380,10 +406,9 @@ task call-hold
   save files, make list
   fork test, is-above(input/paths/length, 0)
     hold
-      save files, wait file-collecting/collect-tree-files(input/paths, root)
+      save files, collect-tree-files(input/paths, root)
     miss
-      save skipped, make list
-      save files, tree-finding/find-tree-files(root, skipped, <node>)
+      save files, find-tree-files(root, <node>, root)
 
   save facts, make list
   fork test, commit
@@ -543,7 +568,9 @@ task call-hold
         case none
           save force, force
       save cache, obligation-cache-for(memory, root)
-      save result, hold-incremental(cross-ask(cache, tree-finding, role-reading/project-role-of(root), version-reading, files, root, force, host-fs))
+      save resolve, face-project-resolver(make-project-resolver(root, <node>, root))
+      save roles, face-role-reader(make-role-reader(root))
+      save result, hold-incremental(cross-ask(cache, resolve, face-buildable, roles, compiler-version(), files, force, host-fs))
       walk cross-outcomes(result)
         take outcome
         fork test, outcome-failed(outcome)

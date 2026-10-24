@@ -24,10 +24,17 @@ load ../boot/boot-running
   find call-boot
   find boot-ask
 
+# the user's home and the toolchain's environment: the small lane's port, where home.ts was docked
+# (term-cli-in-term-0069)
+load ../small/home-folder
+  find user-home
+  find legacy-user-home
+  find kept-at
+  find read-env
+
 dock load
   load <@cluesurf/deck.tree>, name deck-tree-module
     mark async
-  load <@term/call/code/home>, name home-module
   load <@term/call/code/output>, name output
   load <node:fs>, name node-fs
   load <node:fs/promises>, name fs-promise
@@ -69,6 +76,14 @@ bind list-or-empty
     text <($value ?? [])>
 
 # `value?.trim()`
+# an environment variable as home.ts `env` answered it: its value, or undefined when it is not set. Named for this file
+# (a bind of one name in two modules of one port is one bind, traps.md 0103)
+bind publish-env-of
+  take given, like maybe, like text
+  like dynamic
+  case node
+    text <<((envMaybe_) => (envMaybe_.form === "some" ? envMaybe_.value : undefined))($given)>>
+
 bind trim-maybe
   take value, like dynamic
   like dynamic
@@ -446,11 +461,11 @@ task read-index-token
   like dynamic
   mark private
 
-  save from-env, trim-maybe(home-module/env(<TOKEN>))
+  save from-env, trim-maybe(publish-env-of(read-env(<TOKEN>)))
   fork test, is-truthy(from-env)
     hold
       back from-env
-  save file, home-module/kept-at(home-module/user-home(<auth>), home-module/legacy-user-home(<auth>))
+  save file, kept-at(user-home(home-parts(<auth>)), legacy-user-home(home-parts(<auth>)))
   save token, nothing()
   fork
     mark unsafe
@@ -479,7 +494,7 @@ task load-publish-keypair
   take input, like dynamic
   like dynamic
 
-  save file, home-module/kept-at(home-module/user-home(<key>), home-module/legacy-user-home(<key>))
+  save file, kept-at(user-home(home-parts(<key>)), legacy-user-home(home-parts(<key>)))
   save pair, nothing()
   save found, false
   fork
@@ -761,3 +776,24 @@ task call-host
   halt take
     take error
     output/fail-run(error, input/root)
+
+# the parts of a path under a home, as home.ts took them as arguments (`userHome('code', version)`): each given one,
+# in order. An empty part is left out, as one `join` of them all leaves it out
+task home-parts
+  take first, like text, fall <>
+  take second, like text, fall <>
+  take third, like text, fall <>
+  like list, like text
+  mark private
+
+  save parts, make list
+  fork test, is-unequal(first, <>)
+    hold
+      parts/push(first)
+  fork test, is-unequal(second, <>)
+    hold
+      parts/push(second)
+  fork test, is-unequal(third, <>)
+    hold
+      parts/push(third)
+  back parts

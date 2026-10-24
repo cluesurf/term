@@ -52,9 +52,13 @@ load @term/call/work/need/version-choice
   find front-of
   find installed-versions
 
+# the user's home and the front's folder: the small lane's port, where home.ts was docked (term-cli-in-term-0069)
+load @term/call/work/small/home-folder
+  find user-home
+  find user-front-dir
+
 dock load
   load <@cluesurf/deck.tree>, name deck-tree
-  load <@term/call/code/home>, name home-module
   load <node:fs>, name node-file
   load <node:fs/promises>, name file-promise
   load <node:path>, name node-path
@@ -552,7 +556,7 @@ task install-file
   take version, like text
   like text
 
-  back home-module/user-home(<code>, version, <install.tree>)
+  back user-home(home-parts(<code>, version, <install.tree>))
 
 # Point the front (call/term) at a version, atomically: a new link beside it, renamed over the old one. ON WINDOWS
 # call\term.cmd is a one-line shim instead (need-files.tree `front-shim-text`)
@@ -567,7 +571,7 @@ task link-front
       save name, <term.cmd>
   # `call/`, or `bin/` while Windows holds it (home.ts `frontDir`). Either is one level under the home, so the link and
   # the shim reach the version by the same `..`
-  save front, node-path/join(home-module/front-dir(), name)
+  save front, node-path/join(user-front-dir(), name)
   save id, random-id(node-crypto)
   save next, <{front}.{id}>
   node-file/mkdir-sync(node-path/dirname(front), make(folder-ask, bind(recursive, true)))
@@ -582,7 +586,7 @@ task link-front
 task front-version
   like maybe, like text
 
-  back front-of(home-module/user-home())
+  back front-of(user-home(make list))
 
 # When a command last ran on a version, or when it was installed if never: the host's Date, or undefined
 task last-used
@@ -590,7 +594,7 @@ task last-used
   like dynamic
 
   save files, make list
-  files/push(home-module/user-home(<code>, version, <used>))
+  files/push(user-home(home-parts(<code>, version, <used>)))
   files/push(install-file(version))
   walk files
     take file
@@ -678,7 +682,7 @@ task unpack
   like shared-count
   mark private
 
-  save code, home-module/user-home(<code>)
+  save code, user-home(home-parts(<code>))
   save target, node-path/join(code, version)
   save id, random-id(node-crypto)
   save staging, node-path/join(code, <.{version}.{id}>)
@@ -690,7 +694,7 @@ task unpack
     mark unsafe
     node-file/write-file-sync(archive, bytes)
     save others, make list
-    walk installed-versions(home-module/user-home())
+    walk installed-versions(user-home(make list))
       take other
       others/push(node-path/join(code, other, <term>))
     save shared, extract-shared(make(extract-ask, bind(archive, archive), bind(into, staging), bind(others, others)))
@@ -944,9 +948,9 @@ task with-install-lock
   mark private
 
   save version, input/version
-  save lock, home-module/user-home(<code>, <.{version}.lock>)
+  save lock, user-home(home-parts(<code>, <.{version}.lock>))
   save started, host-date/now()
-  node-file/mkdir-sync(home-module/user-home(<code>), make(folder-ask, bind(recursive, true)))
+  node-file/mkdir-sync(user-home(home-parts(<code>)), make(folder-ask, bind(recursive, true)))
 
   walk test
     hook test, true
@@ -990,3 +994,24 @@ task with-install-lock
     raise-again(problem)
   node-file/rm-sync(lock, make(remove-ask, bind(recursive, true), bind(force, true)))
   back answer
+
+# the parts of a path under a home, as home.ts took them as arguments (`userHome('code', version)`): each given one,
+# in order. An empty part is left out, as one `join` of them all leaves it out
+task home-parts
+  take first, like text, fall <>
+  take second, like text, fall <>
+  take third, like text, fall <>
+  like list, like text
+  mark private
+
+  save parts, make list
+  fork test, is-unequal(first, <>)
+    hold
+      parts/push(first)
+  fork test, is-unequal(second, <>)
+    hold
+      parts/push(second)
+  fork test, is-unequal(third, <>)
+    hold
+      parts/push(third)
+  back parts

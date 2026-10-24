@@ -62,8 +62,13 @@ const readRuntime = (file: string): string | undefined =>
   existsSync(file) ? readFileSync(file, 'utf8') : undefined
 
 // The swift flags the stdlib's standard stack needs (swift-nio, Hummingbird), written by task/term/native/swift.sh
-// into the native cache. Read when present; an app whose closure never reaches the asynchronous file or server
+// into the native cache. Absent, there are none; an app whose closure never reaches the asynchronous file or server
 // modules builds without them. The path is the script's own convention, so the two cannot disagree.
+//
+// Present, they are answered by that script (`flags`) whenever it is beside the stdlib, which trusts the cache only
+// whole (every module map and folder the flags name, and a stamp written last) and rebuilds it otherwise: a purge of
+// TMPDIR left a flags file naming 111 module maps that were gone, and 7 swift suites failed (term-cli-in-term-0217).
+// A script that fails answers no flags
 export function swiftFlags(): string[] {
   const cache = process.env.TERM_NATIVE_CACHE ?? path.join(process.env.TMPDIR ?? tmpdir(), 'term-native')
   const file = path.join(cache, 'swift', 'flags.txt')
@@ -72,7 +77,18 @@ export function swiftFlags(): string[] {
     return []
   }
 
-  return readFileSync(file, 'utf8').split('\n').filter(line => line.length > 0)
+  const stdlib = stdlibBase()
+  const script = stdlib ? path.join(stdlib, '../../../../../..', 'task/term/native/swift.sh') : ''
+  let text = ''
+
+  if (script && existsSync(script)) {
+    const said = spawnSync('bash', [script, 'flags'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+    text = said.status === 0 ? said.stdout : ''
+  } else {
+    text = readFileSync(file, 'utf8')
+  }
+
+  return text.split('\n').filter(line => line.length > 0)
 }
 
 // the app's name and bundle identifier from its manifest: `deck @term/blog` is `Blog` and `surf.term.blog`

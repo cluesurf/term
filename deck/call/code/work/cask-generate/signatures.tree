@@ -44,12 +44,18 @@ load ./paths
   find real-of
   find import-path-of
 
+# the build's resolver: the build lane's port, where make.ts was docked (term-cli-in-term-0069)
+load ../build/project-resolving
+  find make-project-resolver
+
+load ../build/host-faces
+  find face-project-resolver
+
 dock load
   load <@term/make/code/parser/tree>, name parser
   load <@term/make/code/compile/mill>, name mill-module
   load <@term/make/code/compile/template>, name template-module
   load <@term/make/code/compile/load>, name load-module
-  load <@term/call/code/make>, name make-module
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <global:Array>, name host-array
@@ -135,7 +141,7 @@ task imported-names
   like list, like bridge-import
 
   save found, make list
-  save collected, load-module/collectModules(source-of(file), make-module/projectResolver(term, <node>))
+  save collected, load-module/collectModules(source-of(file), face-project-resolver(make-project-resolver(term, <node>)))
   save scope, collected/scope
   fork test, is-null(scope)
     hold

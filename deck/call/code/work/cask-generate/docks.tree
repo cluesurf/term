@@ -40,9 +40,15 @@ load ./signatures
   find items-of
   find source-of
 
+# the build's resolver: the build lane's port, where make.ts was docked (term-cli-in-term-0069)
+load ../build/project-resolving
+  find make-project-resolver
+
+load ../build/host-faces
+  find face-project-resolver
+
 dock load
   load <@term/make/code/compile/load>, name load-module
-  load <@term/call/code/make>, name make-module
   load <node:fs>, name node-fs
   load <node:path>, name node-path
 
@@ -90,7 +96,7 @@ task docked-modules
   take root, like text
   like bridge-docks
 
-  save collected, load-module/collectModules(source-of(page), make-module/projectResolver(root, <node>))
+  save collected, load-module/collectModules(source-of(page), face-project-resolver(make-project-resolver(root, <node>)))
   save found, no-modules()
   save orphans, make list
   save never-cross, list-never-cross()

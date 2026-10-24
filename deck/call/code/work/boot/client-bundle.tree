@@ -41,13 +41,16 @@ load ../cache/compile-store
   find process-parse
   find compiler-version
 
+# the home folder: the small lane's port, where home.ts was docked (term-cli-in-term-0069)
+load ../small/home-folder
+  find project-home
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
   load <esbuild>, name esbuild-module
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/native>, name native-module
-  load <@term/call/code/home>, name home-module
   load <@term/call/code/output>, name output
   load <global:Date>, name host-date
   load <global:global>, name host-global
@@ -301,7 +304,10 @@ task bundle-compiled
       output/report(make(cached-item, bind(glyph, <skipped>), bind(verb, <build>), bind(subject, <client bundle>), bind(duration, subtract(host-date/now(), started)), bind(facts, facts), bind(fields, fields)))
     miss
       # bundle once into the shared cache dir (keyed by content), then copy into the app's build output
-      save cache-out, home-module/projectHome(opts/project-root, <client>, key)
+      save client-parts, make list
+      client-parts/push(<client>)
+      client-parts/push(key)
+      save cache-out, project-home(opts/project-root, client-parts)
       save cache-file, node-path/join(cache-out, <boot.js>)
       save cache-map, node-path/join(cache-out, <import-map.json>)
       fork test, not(node-file/exists-sync(cache-file))

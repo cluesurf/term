@@ -12,18 +12,24 @@ load @term/base/maybe
 # `zone` is the one that CANNOT be more than this. It slices the argument vector at `zone` and hands everything
 # after it to the zone console untouched, because a zone invocation carries a `--` separating the zone path from
 # the command to run, plus flags that mean something to that console and nothing here. Re-parsing them would
-# swallow the wrong ones, so the hook is `mark pass` and its `rest` holds them verbatim. Term cannot find the
-# console beside the running binary, so the verb docks the module that can.
+# swallow the wrong ones, so the hook is `mark pass` and its `rest` holds them verbatim. The console is found beside
+# the running toolchain by the small lane's port (work/small/console-forwarding.tree), which finds the CLI itself
+# (decision cli-in-term/006): `call-zone` and `call-mark` take the root and the words, as zone.ts and mark.ts did.
 #
-# Ported from deck/call/code/{time,hold,zone}.ts (cli-in-term-0004).
+# Ported from deck/call/code/{time,hold,zone}.ts (cli-in-term-0004). `time`, `zone` and `mark` run the tool and small
+# lanes' ports since term-cli-in-term-0069.
+
+load @term/call/work/tool/time-command
+  find call-time
+
+load @term/call/work/small/console-forwarding
+  find call-zone
+  find call-mark
 
 dock load
-  load <@term/call/code/time>, name time-module
   # hold.ts, docked until the output lane goes live: lane hold's port (work/hold/hold-gate.tree) prints through
   # work/output/printer.tree, which the console configures only from 0069 on (decision term-cli-in-term-0210)
   load <@term/call/code/hold>, name hold-module
-  load <@term/call/code/zone>, name zone-module
-  load <@term/call/code/mark>, name mark-verb-module
 
 form time-ask
   link root, like text
@@ -40,7 +46,7 @@ form time-ask
   link top, like dynamic
 
 # an option as line.ts handed it to a TypeScript handler: its value when the line named it, else undefined (an absent
-# argv.<x>). callTime reads these four with ?? or != null (cpu ?? memory, top ?? 15, failOnRegression != null), so
+# argv.<x>). call-time reads these four with ?? or != null (cpu ?? memory, top ?? 15, failOnRegression != null), so
 # an empty fill would be a given value. The argument is always a local, so the text may read it twice. Named for
 # this file (a bind of one name in two modules of one port is one bind, traps.md 0103)
 bind tool-text-given
@@ -68,18 +74,6 @@ form hold-ask
   link lean, like boolean
   link report, like boolean
 
-form zone-ask
-  link root, like text
-  link argv
-    like list
-      like text
-
-form mark-ask
-  link root, like text
-  link argv
-    like list
-      like text
-
 # `term time [filter]`: run the benchmarks, or profile one file with --cpu / --memory
 task time
   mark async
@@ -100,7 +94,7 @@ task time
   # the project root is READ, not taken: a hook has no `root` argument to pass. No tint, catch or exit of its own: a
   # throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term)
   save root, call project-root
-  call time-module/callTime
+  call call-time
     make time-ask
       bind root, read root
       bind filter, read filter
@@ -114,7 +108,6 @@ task time
       bind cpu, tool-text-given(cpu)
       bind memory, tool-text-given(memory)
       bind top, tool-number-given(top)
-    wait true
 
 # `term hold [paths..]`: the proof gate -- every file compiles, no claim is open, every tier-0 obligation is proven or
 # baselined. The parameters stand in the hook's order (paths, cross, commit, cache, force, json, lean, report)
@@ -148,9 +141,9 @@ task hold
     wait true
 
 # the words a forwarding command hands on: its own word, then every word the line wrote after it, as the dispatcher
-# kept them (a passing hook's slot, decision cli-in-term/008 part 2). callZone and callMark slice after their word,
-# as they sliced line.ts's process argument vector, so the head word stands first and a later word that happens to
-# be `zone` or `mark` stays in the rest
+# kept them (a passing hook's slot, decision cli-in-term/008 part 2). call-zone and call-mark slice after their word,
+# as zone.ts and mark.ts sliced line.ts's process argument vector, so the head word stands first and a later word
+# that happens to be `zone` or `mark` stays in the rest
 task forwarded-words
   take head, like text
   take rest, like list, like text
@@ -178,9 +171,7 @@ task zone
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
   save words, forwarded-words(<zone>, rest)
-  call zone-module/callZone
-    make zone-ask, bind(root, read root), bind(argv, read words)
-    wait true
+  call-zone(root, words)
 
 # `term mark ...`: the benchmark runner in the Term repository's deck/mark/, booted there with its arguments
 # untouched (`mark pass`, as `zone`)
@@ -194,6 +185,4 @@ task mark
 
   save root, call project-root
   save words, forwarded-words(<mark>, rest)
-  call mark-verb-module/callMark
-    make mark-ask, bind(root, read root), bind(argv, read words)
-    wait true
+  call-mark(root, words)

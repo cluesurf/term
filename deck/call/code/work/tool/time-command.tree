@@ -23,6 +23,27 @@ load @term/make/time/profile
   find format-cpu-result
   find format-memory-result
 
+# the build's file walk, reader and resolver, the role reader and the home folder: the build, workers and small lanes'
+# ports, where make.ts, role-of.ts and home.ts were docked (term-cli-in-term-0069)
+load @term/call/work/build/tree-finding
+  find find-tree-files
+
+load @term/call/work/build/role-reading
+  find make-role-reader
+
+load @term/call/work/build/project-resolving
+  find make-project-resolver
+
+load @term/call/work/build/host-faces
+  find face-role-reader
+  find face-project-resolver
+
+load @term/call/work/workers/source-faces
+  find face-buildable
+
+load @term/call/work/small/home-folder
+  find project-home
+
 dock load
   load <@term/make/code/time/runner>, name runner-module
   load <@term/make/code/time/execute>, name execute-module
@@ -30,9 +51,6 @@ dock load
   load <@term/make/code/time/cpu>, name cpu-module
   load <@term/make/code/time/memory>, name memory-module
   load <@term/make/code/compile/native>, name native-module
-  load <@term/call/code/make>, name make-module
-  load <@term/call/code/role-of>, name role-module
-  load <@term/call/code/home>, name home-module
   load <@term/call/code/output>, name output
   load <node:fs/promises>, name fs-promise
     mark async
@@ -341,6 +359,20 @@ task stop-with
   output/report(make(time-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject)))
   time-exit(output/close-run(make(time-close, bind(verdict, verdict))))
 
+# the parts of a path under the project's home `time` folder: `time`, then `last` when it is not empty (home.ts
+# `projectHome(root, 'time', ...)` took them as arguments)
+task time-parts
+  take last, like text
+  like list, like text
+  mark private
+
+  save parts, make list
+  parts/push(<time>)
+  fork test, is-unequal(last, <>)
+    hold
+      parts/push(last)
+  back parts
+
 # a saved baseline (`term time --save <name>`), or the run stops with exit 1 naming the file it looked for
 task read-baseline
   take root, like text
@@ -348,7 +380,7 @@ task read-baseline
   like list, like dynamic
   mark private
 
-  save where, home-module/project-home(root, <time>, <{name}.json>)
+  save where, project-home(root, time-parts(<{name}.json>))
   save results, make list
   save read, false
   fork
@@ -374,7 +406,7 @@ task show-history
   like void
   mark private
 
-  save history-dir, home-module/project-home(root, <time>, <history>)
+  save history-dir, project-home(root, time-parts(<history>))
   save shown, false
   fork
     mark unsafe
@@ -423,7 +455,7 @@ task run-profile
       save target, input/cpu
   save file-path, node-path/resolve(root, target)
   # profiling compiles the file, and it has to compile it the way the build does
-  save resolve, native-module/with-native-env(<node>, make-module/project-resolver(root))
+  save resolve, native-module/with-native-env(<node>, face-project-resolver(make-project-resolver(root)))
   save facts, make list
   fork test, cpu
     hold
@@ -505,8 +537,8 @@ task call-time
       back
 
   # the same resolver `term make` uses, so a benchmark file's imports resolve the way its build does
-  save resolve, native-module/with-native-env(<node>, make-module/project-resolver(root))
-  save roles, role-module/project-role-of(root)
+  save resolve, native-module/with-native-env(<node>, face-project-resolver(make-project-resolver(root)))
+  save roles, face-role-reader(make-role-reader(root))
 
   fork
     mark unsafe
@@ -524,10 +556,7 @@ task call-time
       hold
         files/push(node-path/resolve(root, input/file))
       miss
-        save none-ignored, make list
-        # the files the build walk answers, host values (seam decision 004)
-        save tree-files, like list, like dynamic
-          make-module/find-tree-files(root, none-ignored, <node>)
+        save tree-files, find-tree-files(root, <node>, root)
         walk tree-files
           take found
           fork test, not(found/starts-with(link))
@@ -541,7 +570,7 @@ task call-time
     save all-results, make list
     walk files
       take file
-      save unit, make-module/buildable(file, fs-promise/read-file(file, <utf-8>), time-call-role(roles, file))
+      save unit, face-buildable(file, fs-promise/read-file(file, <utf-8>), time-call-role(roles, file))
       save relative, node-path/relative(root, file)
       # a grammar that cannot generate a reader holds no benchmark, and `term make` reports why
       fork test, time-has-faults(unit)
@@ -587,7 +616,7 @@ task call-time
 
     fork test, time-given(input/save)
       hold
-        save dir, home-module/project-home(root, <time>)
+        save dir, project-home(root, time-parts(<>))
         fs-promise/mkdir(dir, time-folder-ask())
         save saved, node-path/join(dir, <{input/save}.json>)
         fs-promise/write-file(saved, time-suite-json(suite-module, suite))

@@ -37,13 +37,19 @@ load ./toolchain
 load ../workers/kotlin-compiler
   find kotlinc
 
+# the build's resolver: the build lane's port, where make.ts was docked (term-cli-in-term-0069)
+load ../build/project-resolving
+  find make-project-resolver
+
+load ../build/host-faces
+  find face-project-resolver
+
 dock load
   load <node:path>, name node-path
   load <node:child_process>, name node-child
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/native>, name native-module
   load <@term/make/code/compile/kotlin>, name kotlin-module
-  load <@term/call/code/make>, name make-module
 
 form desktop-source
   link file, like text
@@ -115,7 +121,7 @@ task build-compose
   save name, ask/name
   save text, ask/text
   save entry, entry-file(ask/file, dir, name, text)
-  save resolve, make-module/project-resolver(ask/root, <compose>)
+  save resolve, face-project-resolver(make-project-resolver(ask/root, <compose>))
   save term-started, now-ms()
   save result, compile-module/compile(make(desktop-source, bind(file, entry), bind(text, text)), make(desktop-options, bind(resolve, resolve), bind(env, <compose>), bind(cache, ask/cache)))
   stages/push(stage-entry(<term>, subtract(now-ms(), term-started)))

@@ -470,23 +470,30 @@ let package = Package(
 
   // the SwiftPM scratch directory is SHARED between runs, so the swift-nio and Hummingbird graph is resolved and
   // built once rather than once per run (a cold resolve is minutes)
-  const scratch = join(tmpdir(), 'term-native', 'swift', 'server-roundtrip')
+  const scratch = join(process.env.TERM_NATIVE_CACHE ?? join(tmpdir(), 'term-native'), 'swift', 'server-roundtrip')
   const exe = join(scratch, 'debug', 'server')
 
+  const build = (): void => {
+    execFileSync('swift', ['build', '--package-path', dir, '--scratch-path', scratch, '--product', 'server'], { stdio: 'pipe' })
+  }
+
   try {
-    execFileSync(
-      'swift',
-      [
-        'build',
-        '--package-path',
-        dir,
-        '--scratch-path',
-        scratch,
-        '--product',
-        'server',
-      ],
-      { stdio: 'pipe' },
-    )
+    try {
+      build()
+    } catch (first) {
+      // TMPDIR is purged file by file, and a scratch that lost files fails with a missing module map, header or
+      // precompiled module. That one is reset and built from nothing once; the program's own errors fail as they are
+      // (term-cli-in-term-0217)
+      const said = first as { stderr?: Buffer; stdout?: Buffer }
+      const text = `${String(said.stdout ?? '')}${String(said.stderr ?? '')}`
+
+      if (!/not found|No such file|missing required module|module cache path/.test(text)) {
+        throw first
+      }
+
+      execFileSync('swift', ['package', 'reset', '--package-path', dir, '--scratch-path', scratch], { stdio: 'pipe' })
+      build()
+    }
   } catch (e) {
     fail++
 

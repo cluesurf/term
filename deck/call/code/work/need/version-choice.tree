@@ -53,10 +53,14 @@ load @term/call/need-choose
   find pin-holds
   find choose-for
 
+# the user's home and the front's folder: the small lane's port, where home.ts was docked until term-cli-in-term-0069.
+# It reads the process through <global:process>, never a namespace of <node:process>, which costs about 3 ms to build
+# at load, a 15 percent slower start on this path (traps.md)
+load @term/call/work/small/home-folder
+  find user-home
+  find front-dir
+
 dock load
-  # call/code/home.ts, docked: its port work/small/home-folder.tree docks <node:process>, whose namespace costs about
-  # 3 ms to build at load, a 15 percent slower start on this path (traps.md)
-  load <@term/call/code/home>, name home-module
   load <node:fs>, name node-file
   load <node:path>, name node-path
   load <global:process>, name host-process
@@ -367,7 +371,7 @@ task current-world
 
   save env, host-process/env
   save cwd, host-process/cwd()
-  save home, home-module/user-home()
+  save home, user-home(make list)
   back make(need-world, bind(argv, input/argv), bind(env, env), bind(cwd, cwd), bind(home, home), bind(running, input/running))
 
 # every installed version, newest first: the directories under code/ that hold an install.tree
@@ -474,9 +478,9 @@ task front-of
     mark unsafe
     fork test, is-equal(host-process/platform, <win32>)
       hold
-        save shown, node-file/read-file-sync(node-path/join(home-module/front-dir(home), <term.cmd>), <utf8>)
+        save shown, node-file/read-file-sync(node-path/join(front-dir(home), <term.cmd>), <utf8>)
       miss
-        save shown, node-file/readlink-sync(node-path/join(home-module/front-dir(home), <term>))
+        save shown, node-file/readlink-sync(node-path/join(front-dir(home), <term>))
   halt take
     take problem
     back make none

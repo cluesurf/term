@@ -12,9 +12,15 @@
 # Ported from call/code/view.ts (term-cli-in-term-0056). The view gate (compile/view), the role reader and the output
 # library are docked until their own ports land; a document's forms are host values, `dynamic` here.
 
+# the role reader: the build lane's port, where role-of.ts was docked (term-cli-in-term-0069)
+load @term/call/work/build/role-reading
+  find make-role-reader
+
+load @term/call/work/build/host-faces
+  find face-role-reader
+
 dock load
   load <@term/make/code/compile/view>, name view-gate
-  load <@term/call/code/role-of>, name view-roles
   load <@term/call/code/output>, name view-output
   load <node:fs>, name view-fs
   load <node:path>, name view-path
@@ -359,7 +365,7 @@ task call-view
 
   # With no path, the documents are the files `role.tree` gives the `view` role, the same ones `term make` builds as
   # documents. A path given is checked as written: that is the caller saying what is a document
-  save role-of, view-roles/projectRoleOf(root)
+  save role-of, face-role-reader(make-role-reader(root))
   save files, make list
   fork test, not(view-truthy(asked))
     hold
