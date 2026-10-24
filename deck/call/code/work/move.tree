@@ -12,26 +12,20 @@ load @term/call/work/small/version-move
 # manifest and prints through the output library. It prints nothing of its own, catches nothing and never exits: a
 # throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term, part 2).
 
-# line.ts passed `argv.target` and `argv.level`, absent when not named, and callMove names an absent target `that` in
-# its refusal where an empty one names nothing. The hook hands an absent argument over as the empty text, so the
-# empty text is none here
-task given
-  take value, like text
+# line.ts passed `argv.target` and `argv.level`, absent when not named. The level is a maybe (decision cli-in-term/008
+# part 1) and reaches call-move as given; the target is required, so it is always some
 
-  like maybe, like text
-
-  fork test, is-equal(value, <>)
-    hold
-      back make none
-  back make(some, value)
+load @term/base/maybe
+  find maybe
+  find some
 
 task bump-code
   mark async
   take target, like text
-  take level, like text
+  take level, like maybe, like text
 
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  call-move(root, given(target), given(level))
+  call-move(root, make(some, target), level)

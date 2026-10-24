@@ -638,13 +638,13 @@ hook term
   hook mind
     # A fact to remember (omit to recall)
     slot fact
-      like text
+      like maybe, like text
     # A short name for the fact
     take name
-      like text
+      like maybe, like text
     # The kind of fact
     take kind
-      like text
+      like maybe, like text
       pick <decision>
       pick <convention>
       pick <constraint>
@@ -652,10 +652,10 @@ hook term
       pick <note>
     # Recall only facts matching this query
     take find
-      like text
+      like maybe, like text
     # Forget the fact with this name
     take forget
-      like text
+      like maybe, like text
     # Response format
     take back
       like text
@@ -834,7 +834,7 @@ hook term
       need true
     # Bump level: 1=major, 2=minor, 3=patch, or a word (rc, beta) for a pre-release
     slot level
-      like text
+      like maybe, like text
     task bump-code
 
   # Show package info
@@ -899,7 +899,7 @@ hook term
     # What changed in what each task can reach and raise since a roll file (term roll --json > before.json)
     # or a git ref. A task that gained a native module is a warning, so --strict makes it a gate
     take diff
-      like text
+      like maybe, like text
     # Response format
     take back
       like text
@@ -1023,10 +1023,10 @@ hook term
       like list, like text
     # The run's name (default: knit- and the time)
     take name
-      like text
+      like maybe, like text
     # Where the run is written (default: tmp/knit/<name>)
     take out
-      like text
+      like maybe, like text
     # The model that writes the proofs
     take model
       like text
@@ -1099,11 +1099,11 @@ hook term
     # `kink` for what a diagnostic means, `name` for one name of the project with what surrounds it; omit
     # for the toolchain version and platform
     slot what
-      like text
+      like maybe, like text
     # With `kink`: a diagnostic's name or code (type-mismatch, 0007, L019), every one when left out. With
     # `name`: the task, form or mask to show
     slot name
-      like text
+      like maybe, like text
     # With `name`: the most tokens the answer may take, roughly four characters each (default 4000)
     take budget
       like number

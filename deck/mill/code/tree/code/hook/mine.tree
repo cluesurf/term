@@ -111,6 +111,11 @@ mine hook-slot
               site pick
             mine term
               site pick
+        # `mark pass` under a command's last slot: its words become another program's at the command's first
+        # positional (decision cli-in-term/012 part 2). The form the hook rule reads `mark pass` through, so no
+        # second reader; routeOf refuses it anywhere but a last `like list, like text` slot, and any other word
+        mine form, like mark-note
+          site note
         mine form, like note
           site note
         mine form, like drop

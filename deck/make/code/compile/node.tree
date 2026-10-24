@@ -337,6 +337,12 @@ form expression
     link site
       like text
       need false
+    # beside `lean-names`, one per argument: the lean label was written CALL-SHAPED, its head straight before its own
+    # parentheses (`name(<x>)`), which the mill otherwise reads as `name <x>` (check/disambiguate `label-or-call`,
+    # term/compiler decision 009). Read before the labels nest, and not carried past it
+    link lean-shaped
+      like list, like boolean
+      need false
   case array
     link items, like list, like expression
     link span, like span
@@ -1345,6 +1351,11 @@ form dock-take
     need false
   # a `slot` under a hook: bound by position, never a flag (decision term/003 part 1)
   link positional
+    like boolean
+    need false
+  # a last list slot marked `mark pass`: the command's flags halt at its first positional, and every word from there on
+  # is another program's, verbatim (decision cli-in-term/012 part 2). The same name as `dock-route` `passes`
+  link passes
     like boolean
     need false
   link choices

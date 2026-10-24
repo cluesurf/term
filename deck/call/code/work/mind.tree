@@ -12,31 +12,26 @@ load @term/call/work/small/memory
 # (decision 005 of cli-in-term, part 2).
 #
 # line.ts passed every option as yargs gave it, absent when not named, and callMind tells two of them apart from the
-# empty text: any `forget` forgets, and an absent `name` names the fact after itself. The hook hands an absent
-# option over as the empty text, so the empty text is none here. `--back` (`response`) is the program's option, and
-# the hook declares a `back` of its own so the dispatcher hands it here too, as yargs gave it to both (cli-in-term-0011).
+# empty text: any `forget` forgets, and an absent `name` names the fact after itself. The hook's options are maybes
+# (decision cli-in-term/008 part 1), so they reach call-mind as given. `--back` (`response`) is the program's option
+# with a default, and the hook declares a `back` of its own so the dispatcher hands it here too, as yargs gave it to
+# both (cli-in-term-0011)
 
-task given
-  take value, like text
-
-  like maybe, like text
-
-  fork test, is-equal(value, <>)
-    hold
-      back make none
-  back make(some, value)
+load @term/base/maybe
+  find maybe
+  find some
 
 task mind
   mark async
-  take fact, like text
-  take name, like text
-  take kind, like text
-  take find, like text
-  take forget, like text
+  take fact, like maybe, like text
+  take name, like maybe, like text
+  take kind, like maybe, like text
+  take find, like maybe, like text
+  take forget, like maybe, like text
   take back, like text
 
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  call-mind(root, given(fact), given(name), given(kind), given(find), given(forget), given(back))
+  call-mind(root, fact, name, kind, find, forget, make(some, back))

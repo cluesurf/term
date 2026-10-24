@@ -768,6 +768,7 @@ form diagnostic-name
   case missing-wait, text <missing-wait>
   case inspect-generic, text <inspect-generic>
   case dock-member-spelling, text <dock-member-spelling>
+  case label-or-call, text <label-or-call>
 
 # a name's catalog entry. `fix` is the default actionable hint, so every error says how to resolve it
 task entry-of
@@ -985,6 +986,10 @@ task entry-of
     # (check/dock-member-spelling.tree, term/compiler decision 010)
     case dock-member-spelling
       back error-entry(0x43, <this member of a docked module could be spelled two ways>, <write the export's own name, with no `-`: `crypto/randomUUID`, `host/toJsonValue`>)
+    # in a lean file, a call-shaped part under a call, `greet(name(<x>))`, whose head is a parameter of the callee and
+    # also names a task: it reads as a call and ran as the label (check/disambiguate.tree, term/compiler decision 009)
+    case label-or-call
+      back error-entry(0x44, <this part is both the callee's argument and a call of a task of that name>, <write the label `name \<x\>` for the argument, or `call name(\<x\>)` for the call>)
 
 # every name, in catalog order, for a tool that walks them all (a text form cannot list its cases)
 task diagnostic-names
@@ -1059,3 +1064,4 @@ task diagnostic-names
       make missing-wait
       make inspect-generic
       make dock-member-spelling
+      make label-or-call

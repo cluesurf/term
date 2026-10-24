@@ -42,6 +42,8 @@ form lean-label
   link at, like number
   link written, like text
   link name, like text
+  # written call-shaped, `name(<x>)`, rather than `name <x>` (decision 009)
+  link shaped, like boolean
 
 # The builtins a bare head folds to an operator, the way the mill folds them (`foldBuiltin` in compile/mint-bridge):
 # `subtract a, b` is `a - b`, never a call to a task named `subtract`. A nested one rebuilt here has to fold the
@@ -69,6 +71,7 @@ task lean-labels
       save written-names, texts-of-names(node)
       save aliases, texts-of-aliases(node)
       save flags, flags-of(node)
+      save shapes, shaped-of(node)
       walk args
         take arg
         take at
@@ -85,6 +88,7 @@ task lean-labels
                 bind at, at
                 bind written, written
                 bind name, called
+                bind shaped, flag-at(shapes, at)
             push(out, label)
     miss
       back out
@@ -129,6 +133,7 @@ task lean-calls-nested
             take arg
             push(names-out, <>)
       save flags-out, flags-of(node)
+      save shapes-out, shaped-of(node)
       save aliases-out, texts-of-aliases(node)
       save args-out, make list
       save rewritten, 0
@@ -150,11 +155,17 @@ task lean-calls-nested
             set(aliases-out, at, <>)
         set(names-out, at, <>)
         set(flags-out, at, false)
+        fork test, is-above(shapes-out/length, at)
+          hold
+            set(shapes-out, at, false)
         save rewritten, add(rewritten, 1)
         push(args-out, nested(arg, called, written, imported))
       save node/args, args-out
       save node/names, names-out
       save node/lean-names, flags-out
+      fork test, is-above(shapes-out/length, 0)
+        hold
+          save node/lean-shaped, shapes-out
       fork test, is-above(aliases-out/length, 0)
         hold
           save node/lean-aliases, aliases-out
@@ -488,6 +499,22 @@ task flags-of
   sift node
     case call
       walk lean-names
+        take one
+        push(out, one)
+    miss
+      back out
+  back out
+
+# which lean labels were written call-shaped, `name(<x>)` (compile/node.tree `lean-shaped`)
+task shaped-of
+  take node, like expression
+  like list, like boolean
+  mark private
+
+  save out, make list
+  sift node
+    case call
+      walk lean-shaped
         take one
         push(out, one)
     miss

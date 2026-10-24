@@ -15,9 +15,11 @@
 #
 # THREE THINGS ARE NOT OBVIOUS AND ARE WHY THIS IS NOT SHORTER.
 #
-# A VARIADIC COMMAND CARRIES A CHILD COMMAND LINE. `term zone call npm run dev` has `npm run dev` in its trailing
-# take, and `npm`'s own flags must not be read as this command's. So for a variadic route, flag parsing stops at
-# the first bare token, and everything after it is raw.
+# FLAGS INTERLEAVE WITH POSITIONALS, AND A SLOT MARKED `mark pass` CARRIES A CHILD COMMAND LINE (decision
+# cli-in-term/012). `term knit a --law x b` is spec [a, b], law [x]: a list slot alone does not stop flag parsing.
+# `zone call npm run dev -- --port 3` has `npm run dev -- --port 3` in its last slot, marked `mark pass`, and `npm`'s
+# own flags must not be read as this command's. So for a route with a passing slot, flag parsing stops at the first
+# bare token, and everything after it, `--` included, is raw.
 #
 # A TAKE ALREADY FILLED BY A FLAG DOES NOT CONSUME A POSITIONAL. Otherwise `zone call --sort dev node script.js`
 # spends `node` on the already-set `sort` slot and mis-binds the command name. The cursor only advances when a
@@ -110,7 +112,8 @@ task name-for-short
         back one/name
   back letter
 
-# does any take of this route collect the rest?
+# does a slot of this route pass (`mark pass`, decision cli-in-term/012 part 2), so its flags halt at the first
+# positional? A list slot alone no longer halts them
 task is-variadic
   take takes, like list, like dock-take
 
@@ -119,7 +122,7 @@ task is-variadic
   walk takes
     take site, name one
     fork test
-      read one/variadic
+      read one/passes
       hold
         back true
   back false

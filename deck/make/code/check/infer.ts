@@ -3231,6 +3231,10 @@ function checkProgram(
         node.leanNames.unshift(false)
       }
 
+      if (node.leanShaped) {
+        node.leanShaped.unshift(false)
+      }
+
       return
     }
 
@@ -3254,6 +3258,10 @@ function checkProgram(
 
     if (node.leanNames) {
       node.leanNames.unshift(false)
+    }
+
+    if (node.leanShaped) {
+      node.leanShaped.unshift(false)
     }
   }
 
@@ -3424,6 +3432,7 @@ function checkProgram(
       delete record.args
       delete record.names
       delete record.leanNames
+      delete record.leanShaped
       delete record.lean
       record.form = 'record'
       record.name = callee
@@ -3491,6 +3500,7 @@ function checkProgram(
 
       delete node.names
       delete node.leanNames
+      delete node.leanShaped
       delete node.lean
 
       return
@@ -3718,6 +3728,7 @@ function checkProgram(
 
       node.names = names
       delete node.leanNames
+      delete node.leanShaped
       delete node.lean
     }
     const ordered: (Expression | undefined)[] = signature.params.map(

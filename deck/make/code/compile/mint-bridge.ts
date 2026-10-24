@@ -1043,6 +1043,7 @@ function expressionOf(
         // `''` for a positional argument (compile/node.ts, `names`)
         const names = written.map(entry => entry.name ?? '')
         const leanNames = written.map(entry => entry.lean === true)
+        const leanShaped = written.map(entry => entry.shaped === true)
 
         const folded = foldBuiltin(bridge, plainName(callee), args, span)
 
@@ -1069,6 +1070,7 @@ function expressionOf(
                   span,
                   ...(names.some(Boolean) ? { names } : {}),
                   ...(leanNames.some(Boolean) ? { leanNames } : {}),
+                  ...(leanShaped.some(Boolean) ? { leanShaped } : {}),
                   lean: true,
                   ...(propagate ? { propagate: true } : {}),
                   ...(background ? { background: true } : {}),
@@ -1648,7 +1650,8 @@ function isLean(bridge: Bridge, rule: string): boolean {
 // positional argument stays before it. `callOf` invented this ordering for `bind`; the lean partition shares it.
 // `lean` marks a label that came from a PROPERTY HEAD rather than an explicit `bind`: the checker refuses to
 // drop the first kind and treats the second as documentation, as it always did.
-type Written = { at: number; expr: Expression; name: string | undefined; lean?: boolean }
+// `shaped`: a lean label written call-shaped, `name(<x>)` (compile/node.tree `lean-shaped`, decision 009)
+type Written = { at: number; expr: Expression; name: string | undefined; lean?: boolean; shaped?: boolean }
 
 // The lean partition of a construct's `seed` captures. A capture that is itself a bare-head call with a plain
 // name is a NAMED argument: the head is the label and its own arguments are the value, built as an ARRAY so the
@@ -1732,6 +1735,7 @@ function leanArguments(
           name: plainName(head),
           expr: { form: 'array', items, span: spanOf(seed) },
           lean: true,
+          shaped: seed.node?.kind === 'group' && opensParen(seed.node.nodes[0]),
         })
         continue
       }
@@ -1925,6 +1929,7 @@ function callOf(bridge: Bridge, value: Form): Expression | undefined {
   // this an explicit `call` under lean had labels the checker could not tell apart from `bind`s, so one on a
   // native callee (`call diagnostic-module/renderKink`) was dropped as documentation, in silence
   const leanNames = written.map(entry => entry.lean === true)
+  const leanShaped = written.map(entry => entry.shaped === true)
 
   // the arithmetic and comparison builtins lower to an operator, not a call: they have no definition to bind to
   const folded = foldBuiltin(bridge, name, args, span)
@@ -1978,6 +1983,7 @@ function callOf(bridge: Bridge, value: Form): Expression | undefined {
           span,
           ...(names.some(Boolean) ? { names } : {}),
           ...(leanNames.some(Boolean) ? { leanNames } : {}),
+          ...(leanShaped.some(Boolean) ? { leanShaped } : {}),
           ...(isLean(bridge, 'call') ? { lean: true } : {}),
           ...(propagate ? { propagate: true } : {}),
           ...(background ? { background: true } : {}),
@@ -4722,7 +4728,9 @@ function routeOf(
       ? formsAt(take, 'take')
       : [take],
   )
-  const takes = takeList.map(take => {
+  // every `mark pass` written under a take or slot, by the take's place: checked once the takes are read
+  const slotPasses: { index: number; at: Form }[] = []
+  const takes = takeList.map((take, takeIndex) => {
     const type = typeOf(bridge, firstAt(take, 'like'))
     // `slot <name>` under a hook mints as a `hook-slot` form INTO THE TAKE SITE, so slots and takes keep their source
     // order, which is the task's argument order (decision term/003 part 1, cli-in-term-0010)
@@ -4740,7 +4748,30 @@ function routeOf(
         `\`many\` is retired: a take collects every word left when its type is a list. Write \`take ${wordAt(take, 'name') ?? 'x'}, like list, like text\``,
       )
     }
-    const note = leadingNote(take) ?? wordAt(firstAt(take, 'note'), 'text')
+    // A `mark <word>` under a slot arrives in its `note` site holding a WORD (hook/mine.tree `hook-slot`, note/mine.tree
+    // `mark-note`), where help is a text literal, so the help is the first note that is not a word, as for a hook.
+    // `mark pass` is the one mark a slot takes (decision cli-in-term/012 part 2); any other word would be read by nothing
+    const takeNotes = formsAt(take, 'note')
+    const note = leadingNote(take) ?? wordAt(takeNotes.find(one => firstAt(one, 'text')?.kind !== 'word'), 'text')
+    const takeMarks = takeNotes.flatMap(one => {
+      const word = firstAt(one, 'text')
+
+      return word?.kind === 'word' ? [{ at: one, word: word.value as string }] : []
+    })
+
+    for (const mark of takeMarks) {
+      if (mark.word === 'pass') {
+        slotPasses.push({ index: takeIndex, at: mark.at })
+      } else {
+        refuse(
+          bridge,
+          mark.at,
+          `\`mark ${mark.word}\` is not read under a ${positional ? 'slot' : 'take'}: \`mark pass\` under a command's last slot is the one mark there (decision cli-in-term/012)`,
+        )
+      }
+    }
+
+    const passing = !isRoute && positional && takeMarks.some(mark => mark.word === 'pass')
     const short = wordAt(take, 'code')
     // every long alias in source order: `take ride, name watch` first, then each `name <word>` line (decision term/003
     // part 2). The alias site holds forms of kind `name`
@@ -4821,6 +4852,8 @@ function routeOf(
       // with it (a `many` on a `like text` handed a list to a task that declared text)
       ...(isListType(type) && !repeatable ? { variadic: true } : {}),
       ...(positional ? { positional: true } : {}),
+      // `mark pass` on the slot: the command's flags halt at its first positional (decision cli-in-term/012 part 2)
+      ...(passing ? { passes: true } : {}),
       ...(choices.length > 0 ? { choices } : {}),
       span: spanOf(take),
     }
@@ -4843,7 +4876,9 @@ function routeOf(
         step,
         head === 'slot'
           ? 'a `slot` under a hook carries `like`, `need`, `bind`, `pick` and its note, nothing else: a positional has no flag to shorten or rename, so no `code` and no `name`'
-          : `this \`${head ?? step.form}\` line under a command is not read, so it would be dropped`,
+          : head === 'take' && writesMarkPass(step.node)
+            ? '`mark pass` is read under a command\'s last slot, `like list, like text`, never under a `take` (decision cli-in-term/012): a flag has no words of another program to hand on'
+            : `this \`${head ?? step.form}\` line under a command is not read, so it would be dropped`,
       )
     }
   }
@@ -4897,6 +4932,39 @@ function routeOf(
         bridge,
         value,
         '`mark pass` makes a hook hand its words to another console: it has exactly one slot, `like list, like text`, and no take and no nested hook',
+      )
+    }
+  }
+
+  // A SLOT MARKED `mark pass` HALTS THE COMMAND'S FLAGS AT ITS FIRST POSITIONAL (decision cli-in-term/012 part 2): every
+  // word from there on is another program's. It is read only under a command's LAST slot, typed `like list, like text`,
+  // the only slot so marked, under a hook that is not itself `mark pass` (which already hands on every word). Anywhere
+  // else it would be read by nothing, so it is refused, naming the rule
+  const lastSlot = takes.reduce((last, take, index) => (take.positional ? index : last), -1)
+
+  for (const { index, at: mark } of slotPasses) {
+    const marked = takes[index]
+    const element = marked?.type?.kind === 'array' ? marked.type.element : undefined
+    const listOfText = element !== undefined && JSON.stringify(element) === JSON.stringify(typeOfWord('text'))
+    const why = isRoute
+      ? 'a URL route has no command line'
+      : !marked?.positional
+        ? 'it is never under a `take`'
+        : index !== lastSlot
+          ? 'this slot is not the hook\'s last'
+          : !listOfText
+            ? 'this slot is not `like list, like text`'
+            : slotPasses.length > 1
+              ? 'only one slot of a hook may pass'
+              : passes
+                ? 'the hook is itself `mark pass`, which already hands on every word'
+                : undefined
+
+    if (why !== undefined) {
+      refuse(
+        bridge,
+        mark,
+        `\`mark pass\` is read under a command's last slot, \`like list, like text\`, the only one so marked, under a hook that does not pass (decision cli-in-term/012): ${why}`,
       )
     }
   }
@@ -5795,6 +5863,24 @@ function applyAliases(
 // The line the grammar stopped on, rendered as words. Without this a refusal names the file and nothing else,
 // which for a 40-line `form` is not a lead, and for a source string a suite wrote inline there is no file to go
 // and look at. Two levels: the node's own words, then the head word of each child.
+// does a line under this node read `mark pass`? The take rule does not read a `mark`, so a take that writes one falls
+// to a hook's flow whole, and the refusal names the rule it broke (decision cli-in-term/012) by looking at the lines
+function writesMarkPass(node: Node | undefined): boolean {
+  if (node?.kind !== 'group') {
+    return false
+  }
+
+  const [first, second] = node.nodes
+  const word = (one: Node | undefined): string =>
+    one?.kind === 'group' ? outlineOf(one.nodes[0]) : outlineOf(one)
+
+  if (first?.kind === 'name' && outlineOf(first) === 'mark' && word(second) === 'pass') {
+    return true
+  }
+
+  return node.nodes.some(child => writesMarkPass(child))
+}
+
 function outlineOf(node: Node | undefined): string {
   if (!node) {
     return '(nothing)'

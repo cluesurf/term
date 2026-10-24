@@ -11,6 +11,9 @@ load @term/call/work/home
 # (deck/call/code/roll.ts), which opens and closes its own run. No print, catch or exit of its own: a throw reaches
 # dispatch.tree `fail-line` (decision 005 of cli-in-term).
 
+load @term/base/maybe
+  find maybe
+
 dock load
   load <@term/call/code/roll>, name roll-module
 
@@ -25,6 +28,7 @@ form roll-whole-ask
   link path, like boolean
 
 # what `callRoll` takes with `--diff`: callRoll tests `diff !== undefined`, so the field is only there when given
+# (the take is a maybe, decision cli-in-term/008 part 1: `--diff ""` is given)
 form roll-diff-ask
   link root, like text
   link kind, like text
@@ -45,7 +49,7 @@ task roll
   take only-private, like boolean
   take only-host, like text
   take show-path, like boolean
-  take diff, like text
+  take diff, like maybe, like text
   take back, like text
 
   like void
@@ -57,8 +61,8 @@ task roll
   fork test, is-equal(back, <json>)
     hold
       save json, true
-  fork test, is-equal(diff, <>)
-    hold
+  sift diff
+    case none
       call roll-module/callRoll
         make roll-whole-ask
           bind root, read root
@@ -68,7 +72,7 @@ task roll
           bind host, read only-host
           bind path, read show-path
         wait true
-    miss
+    case some
       call roll-module/callRoll
         make roll-diff-ask
           bind root, read root
@@ -77,5 +81,5 @@ task roll
           bind private, read only-private
           bind host, read only-host
           bind path, read show-path
-          bind diff, read diff
+          bind diff, read value
         wait true

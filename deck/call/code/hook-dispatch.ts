@@ -191,13 +191,12 @@ export function dispatch(
   const args: Record<string, ArgValue> = {}
   const positionals: string[] = []
 
-  // a variadic command (`view call npm run dev`) carries a child command
-  // line in its trailing take. Once the child's argv begins, its own
-  // flags (`node -e`, `npm --version`) must NOT be read as this
-  // command's flags. So for a variadic route, flag parsing stops at the
-  // first bare token (or a literal `--`), and everything after is raw
-  // positional. A non-variadic command keeps interspersed flags.
-  const variadic = current.takes.some(take => take.variadic)
+  // FLAGS INTERLEAVE WITH POSITIONALS up to a literal `--` (decision cli-in-term/012 part 1, yargs' default): `knit a
+  // --law x b` is spec [a, b], law [x], whether or not the command has a list slot. A command whose last slot is
+  // `mark pass` (`zone call node -e x`) carries another program's line instead: from its first positional on, every
+  // word is that program's, verbatim and in order, `--` included (part 2). `passingStart` says where, the same rule
+  // the help strip reads
+  const passFrom = passingStart(routes, argv)
   let raw = false
   // how many positionals came before a literal `--`: a word after it that no slot holds is the task's to read from the
   // process (`term boot x.tree -- list` hands `list` to the booted program, work/inspect-verbs.tree words-after-dashes),
@@ -206,6 +205,12 @@ export function dispatch(
 
   while (i < argv.length) {
     const token = argv[i]!
+
+    // another program's words begin: each is a positional as written, the passing slot's
+    if (i >= passFrom) {
+      positionals.push(...argv.slice(i))
+      break
+    }
 
     // a literal `--` ends option parsing: the remainder is verbatim
     if (token === '--') {
@@ -257,12 +262,6 @@ export function dispatch(
     } else {
       positionals.push(token)
       i++
-
-      // first bare token of a variadic command: the child's argv starts
-      // here, so stop reading its flags as ours
-      if (variadic && !raw) {
-        raw = true
-      }
     }
   }
 
@@ -514,10 +513,22 @@ function shownName(name: string): string {
   return process.env.TERM_LINE_NAME || name
 }
 
-// Where the console's own words end: just past the path of a passing command (`mark pass`), or the whole line when
-// the bare words reach none. The descent skips flag words, as the help walk does, so `--help zone` still names zone
-function passingCut(commands: DockRoute[], argv: string[]): number {
+// WHERE A LINE'S PASSING WORDS BEGIN, the one rule `dispatch` and `runCommandLine`'s help strip both read, so the two
+// agree on every word: from here on each word is another program's, kept verbatim (`--`, `--help` and unknown flags
+// included), or `argv.length` when nothing passes.
+//
+// - A passing COMMAND (`mark pass` on the hook, decision cli-in-term/008 part 2): just past its path.
+// - A command whose last slot passes (`mark pass` on the slot, decision cli-in-term/012 part 2): its first positional.
+//   Before it, a flag consumes its value by its take's type as `dispatch` reads it (`-t dev` takes `dev`, a boolean flag
+//   takes only `true` or `false`, `--help` and `-h` stand alone), and a `--` is consumed, so the word after it begins.
+//
+// The descent skips flag words, as the help walk does, so `--help zone` still names zone
+export function passingStart(routes: DockRoute[], argv: string[]): number {
+  const { program, commands } = programOf(routes)
   let level = commands
+  let current: DockRoute | undefined
+  let above: DockTake[] = program ? [...program.takes] : []
+  let end = 0
 
   for (let at = 0; at < argv.length; at++) {
     const token = argv[at]!
@@ -536,7 +547,45 @@ function passingCut(commands: DockRoute[], argv: string[]): number {
       return at + 1
     }
 
+    if (current) {
+      above = [...current.takes, ...above]
+    }
+
+    current = next
     level = next.children
+    end = at + 1
+  }
+
+  if (!current || !current.takes.some(take => take.passes)) {
+    return argv.length
+  }
+
+  const reachable = [...current.takes, ...above]
+
+  for (let at = end; at < argv.length; at++) {
+    const token = argv[at]!
+
+    if (token === '--') {
+      return at + 1
+    }
+
+    if (!token.startsWith('-') || token.length === 1) {
+      return at
+    }
+
+    const isLong = token.startsWith('--')
+    const body = token.slice(isLong ? 2 : 1)
+
+    if (token === '--help' || token === '-h' || body.includes('=') || (isLong && body.startsWith('no-'))) {
+      continue
+    }
+
+    const value = argv[at + 1]
+    const flag = kindOf(takeNamed(reachable, body, !isLong)) === 'boolean'
+
+    if (value !== undefined && !value.startsWith('-') && (!flag || value === 'true' || value === 'false')) {
+      at++
+    }
   }
 
   return argv.length
@@ -552,12 +601,13 @@ export async function runCommandLine(input: RunInput): Promise<number> {
   const { commands } = programOf(routes)
   // strip help flags anywhere in the line, remembering that help was
   // asked for. `view code save --help` renders the save command's help.
-  // Only BEFORE a passing command's path: every word after it is another
-  // console's (`term zone --help` is zone's help, decision cli-in-term/008)
+  // Only BEFORE the line's passing words (`passingStart`): every word after a passing command's path is another
+  // console's (`term zone --help` is zone's help, decision cli-in-term/008), and so is every word from a passing slot's
+  // first positional on (`zone call node --help` is node's, decision cli-in-term/012)
   // A literal `--` ends the console's words the same way, as it ends option parsing (`term boot x.tree -- --help`
   // hands `--help` to the booted program, as yargs did)
   const dashes = argv.indexOf('--')
-  const cut = Math.min(passingCut(commands, argv), dashes === -1 ? argv.length : dashes)
+  const cut = Math.min(passingStart(routes, argv), dashes === -1 ? argv.length : dashes)
   const head = argv.slice(0, cut)
   const wantHelp = head.some(a => a === '--help' || a === '-h')
   const bare = [...head.filter(a => a !== '--help' && a !== '-h'), ...argv.slice(cut)]

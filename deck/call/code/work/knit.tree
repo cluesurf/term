@@ -9,22 +9,28 @@ load @term/call/work/home
 # and the run folder have been checked. No print, catch or exit of its own: a throw reaches dispatch.tree `fail-line`
 # (decision 005 of cli-in-term). The loop itself is lane knit's port (cli-in-term 0044 to 0046).
 
+load @term/base/maybe
+  find maybe
+  find some
+  find none
+
 dock load
   load <@term/call/code/knit>, name knit-module
   load <global:JSON>, name host-json
 
 # The parameters are the hook's takes by name, in its order. line.ts passed yargs's answer, where `--name` and `--out`
-# left out are absent and `callKnit` then makes its own (`knit-` and the time, `tmp/knit/<name>`); the hook hands a
-# left-out text over as the empty text, so the ask is built as JSON without the empty ones. `model`, `effort`, `cap`,
-# `rounds`, `turns`, `minutes`, `max-tokens`, `lean` and `example` always arrive, with the hook's defaults
+# left out are absent and `callKnit` then makes its own (`knit-` and the time, `tmp/knit/<name>`): the two are maybes
+# (decision cli-in-term/008 part 1), so the ask is built as JSON from the given ones only. `--spec-file` and `--port`
+# are read for truth alone, so the empty text is their absence. `model`, `effort`, `cap`, `rounds`, `turns`,
+# `minutes`, `max-tokens`, `lean` and `example` always arrive, with the hook's defaults
 task knit
   mark async
   take spec, like list, like text
   take spec-file, like text
   take port, like text
   take law, like list, like text
-  take name, like text
-  take out, like text
+  take name, like maybe, like text
+  take out, like maybe, like text
   take model, like text
   take effort, like text
   take cap, like number
@@ -51,10 +57,10 @@ task knit
   save entries, make list
   entries/push <"root":{quoted(root)}>
   entries/push <"spec":{quoted(words)}>
-  text-entry(entries, <specFile>, spec-file)
-  text-entry(entries, <port>, port)
-  text-entry(entries, <name>, name)
-  text-entry(entries, <out>, out)
+  entries/push <"specFile":{quoted(spec-file)}>
+  entries/push <"port":{quoted(port)}>
+  maybe-entry(entries, <name>, name)
+  maybe-entry(entries, <out>, out)
   entries/push <"laws":{host-json/stringify(law)}>
   entries/push <"model":{quoted(model)}>
   entries/push <"effort":{quoted(effort)}>
@@ -82,13 +88,15 @@ task quoted
   like text
   back host-json/stringify(value)
 
-# an entry of the ask for a text that was given: the hook's empty text is a flag left out
-task text-entry
+# an entry of the ask for a text that was given, left out when none
+task maybe-entry
   mark private
   take entries, like list, like text
   take name, like text
-  take value, like text
+  take given, like maybe, like text
   like void
-  fork test, is-unequal(value, <>)
-    hold
+  sift given
+    case some
       entries/push <"{name}":{quoted(value)}>
+    case none
+      save nothing, 0

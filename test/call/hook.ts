@@ -293,8 +293,6 @@ hook tool
   }
 
   const repeat = commandRoutes(repeatBuilt.program)
-  // (a command with a list slot stops reading flags at its first bare word, the variadic rule above, so the flags come
-  // first here)
   const laws = dispatch(repeat, ['knit', '--law', 'one', '--law=two', 'a', 'spec'])
   expect('a list option collects every occurrence in order', laws.ok && laws.args.law, ['one', 'two'])
   expect('and the positionals still go to the list slot', laws.ok && laws.args.spec, ['a', 'spec'])
@@ -313,6 +311,138 @@ hook tool
     err: () => undefined,
   })
   expect('a list option left out reaches the task as the empty list', handed[0], [['x'], []])
+
+  // FLAGS INTERLEAVE WITH POSITIONALS up to `--` (decision cli-in-term/012 part 1): a list slot alone no longer stops
+  // flag parsing, as yargs read `knit [spec..]` and `lint [paths..]`
+  const between = dispatch(repeat, ['knit', 'a', '--law', 'x', 'b'])
+  expect('knit a --law x b: spec [a, b], law [x]', between.ok && [between.args.spec, between.args.law], [['a', 'b'], ['x']])
+  const after = dispatch(repeat, ['knit', 'a', 'b', '--law', 'x'])
+  expect('knit a b --law x: spec [a, b], law [x]', after.ok && [after.args.spec, after.args.law], [['a', 'b'], ['x']])
+  const LINT = `task lint
+  take paths, like list, like text
+  take fix, like boolean
+  send back
+    code 0
+
+hook tool
+  hook lint
+    slot paths
+      like list, like text
+    take fix
+      like boolean
+    task lint
+`
+  const lintBuilt = compile({ file: 'lint.tree', text: LINT }, {})
+
+  if (!lintBuilt.ok) {
+    console.log('FAIL compile lint', JSON.stringify(lintBuilt.diagnostics.slice(0, 3)))
+    process.exit(1)
+  }
+
+  const lint = commandRoutes(lintBuilt.program)
+  const fixing = dispatch(lint, ['lint', 'a', '--fix', 'b'])
+  expect('lint a --fix b: paths [a, b], fix true', fixing.ok && [fixing.args.paths, fixing.args.fix], [['a', 'b'], true])
+  const odd = dispatch(lint, ['lint', '--', '-odd'])
+  expect('lint -- -odd: a positional starting with - is written after --', odd.ok && odd.args.paths, ['-odd'])
+
+  // A LAST LIST SLOT MARKED `mark pass` (decision cli-in-term/012 part 2) halts the command's flags at its first
+  // positional: from there every word is the child's, verbatim, `--` and `--help` included
+  const CHILD = `task call
+  take sort, like text
+  take name, like text
+  take list, like list, like text
+  send back
+    code 0
+
+task load
+  take spot, like text
+  take main, like text
+  take list, like list, like text
+  take over, like boolean
+  send back
+    code 0
+
+hook zone
+  hook call
+    take sort
+      code t
+      like text
+      bind <>
+    slot name
+      like text
+      need true
+    slot list
+      mark pass
+      like list, like text
+    task call
+  hook load
+    slot spot
+      like text
+      bind <>
+    slot main
+      like text
+      need true
+    slot list
+      mark pass
+      like list, like text
+    take over
+      like boolean
+      bind code false
+    task load
+`
+  const childBuilt = compile({ file: 'child.tree', text: CHILD }, {})
+
+  if (!childBuilt.ok) {
+    console.log('FAIL compile child', JSON.stringify(childBuilt.diagnostics.slice(0, 3)))
+    process.exit(1)
+  }
+
+  const child = commandRoutes(childBuilt.program)
+  const called = dispatch(child, ['call', '-t', 'dev', 'node', '-e', 'x', '--', '--port', '3'])
+  expect(
+    'call -t dev node -e x -- --port 3: sort dev, name node, list [-e, x, --, --port, 3]',
+    called.ok && [called.args.sort, called.args.name, called.args.list],
+    ['dev', 'node', ['-e', 'x', '--', '--port', '3']],
+  )
+  const plain = dispatch(child, ['call', 'node', '-e', 'x'])
+  expect('call node -e x: name node, list [-e, x]', plain.ok && [plain.args.name, plain.args.list], ['node', ['-e', 'x']])
+  const dashedFirst = dispatch(child, ['call', '--', 'node', '-e', 'x'])
+  expect('a -- before the first positional is consumed', dashedFirst.ok && [dashedFirst.args.name, dashedFirst.args.list], ['node', ['-e', 'x']])
+  const npm = dispatch(child, ['call', 'npm', 'run', 'dev', '--', '--port', '3'])
+  expect('a -- after the halt reaches the child', npm.ok && npm.args.list, ['run', 'dev', '--', '--port', '3'])
+  const over = dispatch(child, ['load', '--over', 'dev', 'node', '-e', 'x'])
+  expect(
+    'load --over dev node -e x: over true, spot dev, main node, list [-e, x]',
+    over.ok && [over.args.over, over.args.spot, over.args.main, over.args.list],
+    [true, 'dev', 'node', ['-e', 'x']],
+  )
+  const late = dispatch(child, ['load', 'dev', '--over', 'node'])
+  expect('a flag after the first positional is the child\'s: main --over', late.ok && [late.args.main, late.args.list, late.args.over], ['--over', ['node'], false])
+
+  const childHanded: unknown[][] = []
+  const childShown: string[] = []
+  const childCode = await runCommandLine({
+    name: 'zone',
+    routes: child,
+    argv: ['call', 'node', '--help'],
+    resolve: () => (...args: unknown[]) => {
+      childHanded.push(args)
+      return 0
+    },
+    out: line => childShown.push(line),
+    err: line => childShown.push(line),
+  })
+  expect('call node --help hands list [--help] to the task and prints no help', [childCode, childHanded[0], childShown], [0, ['', 'node', ['--help']], []])
+  childShown.length = 0
+  const ownHelp = await runCommandLine({
+    name: 'zone',
+    routes: child,
+    argv: ['call', '-t', 'dev', '--help'],
+    resolve: () => () => 0,
+    out: line => childShown.push(line),
+    err: line => childShown.push(line),
+  })
+  expect('--help before the first positional is the command\'s help', [ownHelp, childShown[0]?.startsWith('zone call')], [0, true])
 
   // A PASSING COMMAND (`mark pass`, decision cli-in-term/008 part 2): every word after its path reaches its one slot
   // verbatim, `--help`, `--` and unknown or global flags included; words before it are still the console's

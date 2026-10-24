@@ -1,6 +1,9 @@
 load @term/base/environment
   find variable
 
+load @term/base/maybe
+  find maybe
+
 load @term/call/work/home
   find root, name project-root
 
@@ -487,13 +490,13 @@ form show-name-ask
 # `term show [what] [name]`: the toolchain's version and platform, the project's version (`mark`), the native
 # toolchains (`tools`), what a diagnostic means (`kink`), or one name of the project sized to `--budget` (`name`).
 #
-# The hook hands an absent text over as an empty one, and `callShow` tells "no `what`" and "no `name`" by their
-# absence, so the ask leaves out each one that is empty rather than passing it empty. An absent `--budget` arrives as
-# 0, which the context reader already takes as its default
+# `callShow` tells "no `what`" and "no `name`" by their absence, so both are maybes (decision cli-in-term/008
+# part 1) and the ask leaves out each one that is none: `term show ""` names nothing, where `term show` is the
+# toolchain. An absent `--budget` arrives as 0, which the context reader already takes as its default
 task show
   mark async
-  take what, like text
-  take name, like text
+  take what, like maybe, like text
+  take name, like maybe, like text
   take budget, like number
   take back, like text
 
@@ -504,37 +507,36 @@ task show
   save version, call show-module/termVersion
   fork
     mark unsafe
-    fork test
-      is-equal read(what), <>
-      hold
+    sift what
+      case none
         call show-module/callShow
           make show-toolchain-ask
             bind root, read root
             bind version, read version
             bind back, read back
           wait true
-        send back
-    fork test
-      is-equal read(name), <>
-      hold
-        call show-module/callShow
-          make show-what-ask
-            bind root, read root
-            bind what, read what
-            bind budget, read budget
-            bind version, read version
-            bind back, read back
-          wait true
-        send back
-    call show-module/callShow
-      make show-name-ask
-        bind root, read root
-        bind what, read what
-        bind name, read name
-        bind budget, read budget
-        bind version, read version
-        bind back, read back
-      wait true
+      case some
+        link asked
+        sift name
+          case none
+            call show-module/callShow
+              make show-what-ask
+                bind root, read root
+                bind what, read asked
+                bind budget, read budget
+                bind version, read version
+                bind back, read back
+              wait true
+          case some
+            call show-module/callShow
+              make show-name-ask
+                bind root, read root
+                bind what, read asked
+                bind name, read value
+                bind budget, read budget
+                bind version, read version
+                bind back, read back
+              wait true
   halt take
     take error
     log-fail format-error error

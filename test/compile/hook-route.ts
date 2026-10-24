@@ -277,6 +277,79 @@ const routePass = compile(
 const routePassMessages = routePass.ok ? [] : routePass.diagnostics.map(d => d.message)
 ok('mark pass under a URL route is refused', routePassMessages.some(m => m.includes('mark pass')), routePassMessages.join(' | '))
 
+// A LAST LIST SLOT MARKED `mark pass` (decision cli-in-term/012 part 2): the take says `passes`, in the JSON too, the
+// mark is not the slot's help, and a list slot without it does not pass
+const SLOT_PASSING = `hook zone
+  hook call
+    take sort
+      code t
+      like text
+      bind <>
+    slot name
+      like text
+      need true
+    # the command's own arguments
+    slot list
+      mark pass
+      like list, like text
+    task call
+  hook form
+    slot paths
+      like list, like text
+    task call
+
+task call
+  take sort, like text
+  take name, like text
+  take list, like list, like text
+  like text
+
+  send back, read name
+`
+const slotPassing = compile({ file: '/gate/code/line/base.tree', text: SLOT_PASSING }, asCall)
+ok('a console with a passing slot compiles', slotPassing.ok, slotPassing.ok ? '' : slotPassing.diagnostics.map(d => d.message).join(' | '))
+const slotDock = (slotPassing.ok ? slotPassing.program : []).find((s): s is Dock => s.form === 'dock')
+const callRoute = slotDock?.route.children.find(child => child.path === 'call')
+const listSlot = callRoute?.takes.find(take => take.name === 'list')
+ok('mark pass on the last slot sets passes on that take', listSlot?.passes === true && listSlot.positional === true, JSON.stringify(listSlot))
+ok('the other takes do not pass', callRoute?.takes.filter(take => take.passes).length === 1)
+ok('the slot mark is not the slot\'s help', listSlot?.note === 'the command\'s own arguments', JSON.stringify(listSlot?.note))
+ok('the hook itself does not pass', callRoute?.passes === undefined)
+ok(
+  'a list slot without the mark does not pass',
+  slotDock?.route.children.find(child => child.path === 'form')?.takes[0]?.passes === undefined,
+)
+const slotJson = slotDock ? statementJson(['span', 'type'], slotDock) : ''
+ok(
+  'passes reaches the take JSON once',
+  slotJson.includes('{"name":"list","required":false,"note":"the command\'s own arguments","variadic":true,"positional":true,"passes":true}') &&
+    slotJson.split('"passes":true').length === 2,
+  slotJson,
+)
+
+const slotPassRefused = (lines: string, want: string, name: string, hookMark = ''): void => {
+  const found = refusals(`hook tool
+  hook call
+${hookMark}${lines}
+    task call
+
+task call
+  take rest, like list, like text
+  like text
+
+  send back, <z>
+`)
+  ok(name, found.some(m => m.includes(want)), found.join(' | '))
+}
+
+slotPassRefused('    slot rest\n      mark pass\n      like list, like text\n    slot last, like text', 'not the hook\'s last', 'mark pass on a slot that is not the last is refused')
+slotPassRefused('    slot rest\n      mark pass\n      like text', 'not `like list, like text`', 'mark pass on a slot that is not a list of text is refused')
+slotPassRefused('    slot rest\n      mark pass\n      like list, like number', 'not `like list, like text`', 'mark pass on a list of numbers is refused')
+slotPassRefused('    slot first\n      mark pass\n      like list, like text\n    slot rest\n      mark pass\n      like list, like text', 'only one slot', 'mark pass on two slots is refused')
+slotPassRefused('    slot rest\n      mark pass\n      like list, like text', 'itself `mark pass`', 'mark pass on a slot under a passing hook is refused', '    mark pass\n')
+slotPassRefused('    slot rest\n      mark async\n      like list, like text', '`mark async` is not read under a slot', 'another mark word on a slot is refused')
+slotPassRefused('    take rest\n      mark pass\n      like list, like text', 'mark pass', 'mark pass under a take is refused')
+
 // A MAYBE TAKE OR SLOT CAN BE ABSENT (decision cli-in-term/008 part 1): its route keeps the whole `maybe` type with
 // its item, and `need true`, a `bind` default or a maybe of a list is refused, naming the take
 const maybeConsole = (lines: string, param: string): string => `load @term/base/maybe

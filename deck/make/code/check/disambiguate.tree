@@ -45,6 +45,7 @@ load ../compile/node
   find dock-send
   find dock-take
   find expression
+  find expression-span
   find field-value
   find function-param
   find statement
@@ -1474,6 +1475,10 @@ task nested-labels
     take one
     fork test, and(check-params, has-text(params, one/written))
       hold
+        # written call-shaped and naming a task too: it reads as a call and runs as the label (decision 009)
+        fork test, and(one/shaped, is-callable(state, one/name))
+          hold
+            refuse-label-or-call(state, node, one/at, one/written)
         turn next
     fork test, is-callable(state, one/name)
       hold
@@ -1481,6 +1486,68 @@ task nested-labels
   save done, lean-calls-nested(node, chosen)
   save state/nested, add(state/nested, done/rewritten)
   back done/node
+
+# A CALL-SHAPED LABEL THAT ALSO NAMES A TASK (term/compiler decision 009). `greet(name(<x>))` under a `greet` that takes
+# `name`, beside a task `name`: the label reading won and answered `x` where the writer meant the call. Each reading
+# is legal and the parentheses are the only sign of intent, so the build refuses it and names both spellings
+task refuse-label-or-call
+  take state, like walk-state
+  take node, like expression
+  take at, like number
+  take written, like text
+  mark private
+
+  save called, <>
+  save shown, <...>
+  save where, make none
+  sift node
+    case call
+      save called, callee-name(callee)
+      fork test, is-below(at, args/length)
+        hold
+          save arg, get(args, at)
+          save arg-span, expression-span(arg)
+          save where, make(some, arg-span)
+          save shown, label-value-text(arg)
+    miss
+      save nothing, 0
+  sift where
+    case some
+      link place
+      save message, <"{written}({shown})" under "{called}" is {called}'s argument "{written}", and also a call of the task "{written}": write the label  {written} {shown}  for the argument, or  call {written}({shown})  for the call>
+      save input
+        make diagnostic-input
+          bind file, state/file
+          bind span, place
+          bind message, make(some, message)
+      save kind, make label-or-call
+      push(state/diagnostics, diagnose(kind, input))
+    case none
+      save nothing, 0
+
+# the value of a lean label as written, for a message: a text or a name as such, anything else `...`
+task label-value-text
+  take arg, like expression
+  like text
+  mark private
+
+  sift arg
+    case array
+      fork test, is-unequal(items/length, 1)
+        hold
+          back <...>
+      walk items
+        take item
+        sift item
+          case string
+            back <\<{value}\>>
+          case variable
+            back name
+          miss
+            back <...>
+    miss
+      back <...>
+  back <...>
 
 # A LEAN LABEL NAMING A TASK, READ AS THE NESTED CALL IT IS, before anything is renamed. Only under a call to a task the
 # program defines or binds, whose parameters are therefore known. A construction's labels are its fields, and a field
