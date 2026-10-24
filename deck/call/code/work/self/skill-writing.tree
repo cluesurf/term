@@ -15,8 +15,16 @@ load @term/base/list
 load @term/base/text
   find contains, name text-contains
 
+load @term/call/work/output/printer
+  find close-run
+  find field
+  find location
+  find open-run
+  find print-data
+  find report
+  find show-path
+
 dock load
-  load <@term/call/code/output>, name output
   load <node:fs>, name node-file
   load <node:path>, name node-path
   load <global:process>, name host-process
@@ -210,7 +218,7 @@ task call-self-skill
       fork test, is-equal(shown, <>)
         hold
           save shown, file
-      output/print-data(skill-json-line(shown, state))
+      print-data(skill-json-line(shown, state))
       fork test, is-equal(state, <kept>)
         hold
           skill-exit-code(1)
@@ -218,14 +226,14 @@ task call-self-skill
 
   save facts, make list
   facts/push(<skill>)
-  output/open-run(make(skill-open, bind(verb, <self>), bind(root, root), bind(facts, facts)))
+  open-run(make(skill-open, bind(verb, <self>), bind(root, root), bind(facts, facts)))
 
   fork test, is-equal(state, <kept>)
     hold
       save kept-fields, make list
-      kept-fields/push(output/location(output/show-path(file, root)))
-      output/report(make(skill-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is a skill file here that term did not write, so it is left as it is>), bind(fields, kept-fields)))
-      output/close-run(make(skill-close, bind(verdict, <Skill not written>), bind(next, <move that file aside and run term self skill again>)))
+      kept-fields/push(location(show-path(file, root)))
+      report(make(skill-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is a skill file here that term did not write, so it is left as it is>), bind(fields, kept-fields)))
+      close-run(make(skill-close, bind(verdict, <Skill not written>), bind(next, <move that file aside and run term self skill again>)))
       back
 
   fork test, is-unequal(state, <current>)
@@ -235,12 +243,12 @@ task call-self-skill
         hold
           save glyph, <added>
       save fields, make list
-      fields/push(output/location(output/show-path(file, root)))
-      fields/push(output/field(<version>, input/version))
-      output/report(make(skill-item, bind(glyph, glyph), bind(kind, <change>), bind(subject, <Skill {state}>), bind(fields, fields)))
+      fields/push(location(show-path(file, root)))
+      fields/push(field(<version>, input/version))
+      report(make(skill-item, bind(glyph, glyph), bind(kind, <change>), bind(subject, <Skill {state}>), bind(fields, fields)))
 
   fork test, is-equal(state, <current>)
     hold
-      output/close-run(make(skill-close, bind(verdict, <The skill is current>)))
+      close-run(make(skill-close, bind(verdict, <The skill is current>)))
     miss
-      output/close-run(make(skill-close, bind(verdict, <The skill is {state}>)))
+      close-run(make(skill-close, bind(verdict, <The skill is {state}>)))

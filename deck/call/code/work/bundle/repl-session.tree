@@ -21,6 +21,14 @@ load ../build/project-resolving
 load ../build/host-faces
   find face-project-resolver
 
+load @term/call/work/output/printer
+  find close-run
+  find fail-run
+  find field
+  find open-run
+  find print-data
+  find report
+
 dock load
   load <node:fs>, name node-file
   load <node:os>, name node-system
@@ -29,7 +37,6 @@ dock load
   load <node:readline>, name node-readline
   load <esbuild>, name esbuild-module
   load <@term/make/code/compile/compile>, name compile-module
-  load <@term/call/code/output>, name output
   load <global:process>, name host-process
 
 # ---- the session ----
@@ -392,11 +399,11 @@ task flush-walk
   save kind, repl-kind-of(answer)
   fork test, is-equal(kind, <value>)
     hold
-      output/printData(<{repl-text-of(answer)}\n>)
+      print-data(<{repl-text-of(answer)}\n>)
       back void
   fork test, is-equal(kind, <definition>)
     hold
-      output/printData(<added {repl-text-of(answer)}\n>)
+      print-data(<added {repl-text-of(answer)}\n>)
       back void
   fork test, and(is-equal(kind, <error>), repl-has-diagnostics(answer))
     hold
@@ -407,7 +414,7 @@ task flush-walk
       back void
   fork test, is-equal(kind, <error>)
     hold
-      output/report(make(run-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <run>), bind(subject, repl-capital(repl-text-of(answer)))))
+      report(make(run-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <run>), bind(subject, repl-capital(repl-text-of(answer)))))
 
 bind repl-kind-of
   take answer, like dynamic
@@ -451,8 +458,8 @@ task report-diagnostic
   save fields, make list
   fork test, repl-truthy(diagnostic/hint)
     hold
-      fields/push(output/field(<next>, diagnostic/hint))
-  output/report(make(diagnostic-item, bind(glyph, glyph), bind(kind, <problem>), bind(verb, <check>), bind(subject, repl-capital(first)), bind(facts, facts), bind(message, rest), bind(fields, fields)))
+      fields/push(field(<next>, diagnostic/hint))
+  report(make(diagnostic-item, bind(glyph, glyph), bind(kind, <problem>), bind(verb, <check>), bind(subject, repl-capital(first)), bind(facts, facts), bind(message, rest), bind(fields, fields)))
 
 bind repl-is-warning
   take diagnostic, like dynamic
@@ -468,10 +475,10 @@ task call-walk
   like void
   mark async
 
-  output/openRun(make(open-ask, bind(verb, <walk>), bind(root, input/root), bind(subject, <Term REPL>)))
+  open-run(make(open-ask, bind(verb, <walk>), bind(root, input/root), bind(subject, <Term REPL>)))
   save said, make list
   said/push(<A definition is task, form or load. Finish a multi-line block with a blank line.>)
-  output/report(make(said-item, bind(glyph, <info>), bind(verb, <walk>), bind(subject, <Type a definition to add it, an expression to evaluate it, or exit>), bind(message, said)))
+  report(make(said-item, bind(glyph, <info>), bind(verb, <walk>), bind(subject, <Type a definition to add it, an expression to evaluate it, or exit>), bind(message, said)))
   # the project the session was started in, as `term make` resolves it: its own files by a relative path and its
   # linked decks as well as the standard library
   save repl, make-repl(face-project-resolver(make-project-resolver(input/root, <node>, input/root)), node-path/join(input/root, <repl.tree>))
@@ -526,15 +533,15 @@ task call-walk
         task
           take error, like dynamic
           like void
-          output/report(make(caught-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, repl-caught-subject(error))))
+          report(make(caught-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, repl-caught-subject(error))))
       save done
         task
           like void
-          output/printData(<bye\n>)
-          host-process/exit(output/closeRun(make(ended-close, bind(verdict, <Session ended>))))
+          print-data(<bye\n>)
+          host-process/exit(close-run(make(ended-close, bind(verdict, <Session ended>))))
       save failed
         task
           take error, like dynamic
           like void
-          host-process/exit(output/failRun(error, input/root))
+          host-process/exit(fail-run(error, input/root))
       repl-finish(run/work, flush, caught, done, failed)

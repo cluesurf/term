@@ -65,8 +65,9 @@ load @term/base/terminal
 
 # THE RUN (term-cli-in-term-0012), below the dispatcher: what `deck/call/code/line.ts`'s `main()` did around yargs,
 # for the console, which `make:line` bundles as `host/line.js` since term-cli-in-term-0013. The parsing of a command's own flags and the call of its task are
-# still `hook-dispatch.ts`'s (`runCommandLine`, docked through the run entry port-build writes), and the
-# output library and the homes are their TypeScript modules: each dock below is one thing to port. The banner is
+# still `hook-dispatch.ts`'s (`runCommandLine`, docked through the run entry port-build writes). The run is configured
+# and failed through the output lane's printer (work/output/printer.tree), the one printer every verb prints through
+# since term-cli-in-term-0069 (decision term-cli-in-term-0210), and the homes are the small lane's. The banner is
 # banner.tree, loaded above (term-cli-in-term-0197).
 # the help a `--help` prints, in Term (term-cli-in-term-0141)
 load @term/call/work/help
@@ -92,8 +93,15 @@ load @term/call/work/tool/show-command
 load @term/call/work/tool/hunt-command
   find run-hunt-fuzz-child
 
+load @term/call/work/output/printer
+  find close-run
+  find fail-run
+  find open-run
+  find print-data
+  find report
+  find set-output
+
 dock load
-  load <@term/call/code/output>, name output-module
   load <node:os>, name host-os
   load <node:path>, name host-path
   load <global:process>, name host-process
@@ -500,11 +508,11 @@ task usage-failure
     fall make list
   like number
   save version, term-version()
-  output-module/setOutput(host-json/parse(<\{\}>), version)
+  set-output(host-json/parse(<\{\}>), version)
   save root, text-or-empty(host-process/cwd())
-  output-module/openRun(make open-ask, verb(<term>), root(root))
-  output-module/report(make usage-item, glyph(<failed>), kind(<problem>), verb(<term>), subject(capitalize(message)), message(lines))
-  save code, output-module/closeRun(make usage-close, verdict(<The command line was not understood>), next(next), failure(<usage>))
+  open-run(make open-ask, verb(<term>), root(root))
+  report(make usage-item, glyph(<failed>), kind(<problem>), verb(<term>), subject(capitalize(message)), message(lines))
+  save code, close-run(make usage-close, verdict(<The command line was not understood>), next(next), failure(<usage>))
   back code
 
 # a value outside its take's choices, and a usage refusal of the dispatcher: hook-dispatch.ts `ChoiceRefusal` and
@@ -783,12 +791,12 @@ task start-line
         hold
           back done-with(refuse-choices(refused))
 
-  output-module/setOutput(host-json/parse(<\{{json}\}>), version)
+  set-output(host-json/parse(<\{{json}\}>), version)
 
   # `term` alone answers with the list of commands: data on stdout
   fork test, is-equal(first, <>)
     hold
-      output-module/printData(banner-text(uses-color()))
+      print-data(banner-text(uses-color()))
       back done-with(0)
   sift route-for(commands, bare)
     case none
@@ -842,5 +850,5 @@ task fail-line
   take error, like unknown
   like number
   save root, text-or-empty(host-process/cwd())
-  back output-module/failRun(error, root)
+  back fail-run(error, root)
 

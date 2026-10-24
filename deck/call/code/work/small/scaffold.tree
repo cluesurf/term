@@ -31,11 +31,18 @@ load @term/base/list
   find join
   find contains
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find location
+  find open-run
+  find report
+  find show-path
+
 dock load
   load <node:fs/promises>, name fs-promise
     mark async
   load <node:path>, name node-path
-  load <@term/call/code/output>, name output
   load <global:Error>, name host-error
   load <global:String>, name host-string
 
@@ -136,7 +143,7 @@ task close-nothing
   like void
   mark private
 
-  output/close-run(make(nothing-close, bind(verdict, <Nothing written>)))
+  close-run(make(nothing-close, bind(verdict, <Nothing written>)))
 
 # write one file unless something is already there: `written`, `kept`, or the failure's message
 task write-new
@@ -200,17 +207,17 @@ task write-scaffold
           hold
             save facts, make list
             facts/push(<already here, left as it was>)
-            output/report(make(kept-item, bind(glyph, <info>), bind(verb, <keep>), bind(subject, one/file), bind(facts, facts)))
+            report(make(kept-item, bind(glyph, <info>), bind(verb, <keep>), bind(subject, one/file), bind(facts, facts)))
           miss
             save written, add(written, 1)
-            output/report(make(added-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, one/file)))
+            report(make(added-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, one/file)))
       save counts, make list
-      counts/push(output/count(written, <files>, <file>))
+      counts/push(count(written, <files>, <file>))
       save next, <term boot>
       fork test, named
         hold
           save next, <cd {project} && term boot>
-      output/close-run(make(ready-close, bind(verdict, <{label} is ready>), bind(counts, counts), bind(next, next), bind(done, true)))
+      close-run(make(ready-close, bind(verdict, <{label} is ready>), bind(counts, counts), bind(next, next), bind(done, true)))
 
 task report-failure
   take message, like text
@@ -219,7 +226,7 @@ task report-failure
 
   save said, make list
   said/push(message)
-  output/report(make(problem-said, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <The project could not be written>), bind(message, said)))
+  report(make(problem-said, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <The project could not be written>), bind(message, said)))
   close-nothing()
 
 # `root` is the folder the command ran in, `name` the project's name or the empty text
@@ -236,8 +243,8 @@ task call-wake
       save target, node-path/resolve(root, project)
   # the deck's name is the folder's own name, never the path that reached it: `term wake ~/work/demo` names it `demo`
   save label, node-path/basename(target)
-  save shown, output/show-path(target)
-  output/open-run(make(wake-open, bind(verb, <wake>), bind(root, root), bind(subject, shown)))
+  save shown, show-path(target)
+  open-run(make(wake-open, bind(verb, <wake>), bind(root, root), bind(subject, shown)))
 
   fork
     mark unsafe
@@ -246,8 +253,8 @@ task call-wake
     fork test, contains(existing, <deck.tree>)
       hold
         save fields, make list
-        fields/push(output/location(<{shown}/deck.tree>))
-        output/report(make(problem-at, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <A deck.tree is already here>), bind(fields, fields)))
+        fields/push(location(<{shown}/deck.tree>))
+        report(make(problem-at, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <A deck.tree is already here>), bind(fields, fields)))
         close-nothing()
       miss
         write-scaffold(target, label, project, named)

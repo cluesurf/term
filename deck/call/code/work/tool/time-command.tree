@@ -44,6 +44,17 @@ load @term/call/work/workers/source-faces
 load @term/call/work/small/home-folder
   find project-home
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find field
+  find location
+  find open-run
+  find print-data
+  find problem-of
+  find report
+  find show-path
+
 dock load
   load <@term/make/code/time/runner>, name runner-module
   load <@term/make/code/time/execute>, name execute-module
@@ -51,7 +62,6 @@ dock load
   load <@term/make/code/time/cpu>, name cpu-module
   load <@term/make/code/time/memory>, name memory-module
   load <@term/make/code/compile/native>, name native-module
-  load <@term/call/code/output>, name output
   load <node:fs/promises>, name fs-promise
     mark async
   load <node:path>, name node-path
@@ -170,6 +180,14 @@ bind time-memory-ask
   like dynamic
   case node
     text <<({ text: $text, file: $file, resolve: $resolve, root: $root, name: $name })>>
+
+# the printer's problem-of as the record time-skipped-item reads it from (`$output.problemOf`), as it read the output
+# module's
+bind time-printer-face
+  take making, like dynamic
+  like dynamic
+  case node
+    text <(\{ problemOf: $making \})>
 
 bind time-append
   take list, like list, like dynamic
@@ -335,7 +353,7 @@ task one-field
   mark private
 
   save out, make list
-  out/push(output/field(key, value))
+  out/push(field(key, value))
   back out
 
 task one-count
@@ -346,7 +364,7 @@ task one-count
   mark private
 
   save out, make list
-  out/push(output/count(amount, many, one))
+  out/push(count(amount, many, one))
   back out
 
 # a failed problem item, the run closed with a verdict, and the process ended with what closing answered
@@ -356,8 +374,8 @@ task stop-with
   like void
   mark private
 
-  output/report(make(time-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject)))
-  time-exit(output/close-run(make(time-close, bind(verdict, verdict))))
+  report(make(time-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject)))
+  time-exit(close-run(make(time-close, bind(verdict, verdict))))
 
 # the parts of a path under the project's home `time` folder: `time`, then `last` when it is not empty (home.ts
 # `projectHome(root, 'time', ...)` took them as arguments)
@@ -394,10 +412,10 @@ task read-baseline
   fork test, not(read)
     hold
       save fields, make list
-      fields/push(output/field(<looked>, output/show-path(where, root)))
-      fields/push(output/field(<next>, <term time --save {name}>))
-      output/report(make(time-problem-fields, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no baseline named {name}>), bind(fields, fields)))
-      time-exit(output/close-run(make(time-close, bind(verdict, <Nothing compared>))))
+      fields/push(field(<looked>, show-path(where, root)))
+      fields/push(field(<next>, <term time --save {name}>))
+      report(make(time-problem-fields, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no baseline named {name}>), bind(fields, fields)))
+      time-exit(close-run(make(time-close, bind(verdict, <Nothing compared>))))
   back results
 
 task show-history
@@ -424,7 +442,7 @@ task show-history
     save shown, true
     fork test, is-equal(entries/length, 0)
       hold
-        output/report(make(time-verb-item, bind(glyph, <warning>), bind(verb, <history>), bind(subject, <There is no history for {name}>)))
+        report(make(time-verb-item, bind(glyph, <warning>), bind(verb, <history>), bind(subject, <There is no history for {name}>)))
       miss
         # the history is data: one line per run, oldest first
         save lines, make list
@@ -433,13 +451,13 @@ task show-history
         walk entries
           take entry, like dynamic
           lines/push(time-history-line(entry))
-        output/print-data(<{time-joined-lines(lines)}\n>)
+        print-data(<{time-joined-lines(lines)}\n>)
   halt take
     take error, like dynamic
     save shown, false
   fork test, not(shown)
     hold
-      output/report(make(time-verb-fields, bind(glyph, <warning>), bind(verb, <history>), bind(subject, <There is no history yet>), bind(fields, one-field(<looked>, output/show-path(history-dir, root)))))
+      report(make(time-verb-fields, bind(glyph, <warning>), bind(verb, <history>), bind(subject, <There is no history yet>), bind(fields, one-field(<looked>, show-path(history-dir, root)))))
 
 # profile one file: CPU hotspots (V8 --cpu-prof) or memory (heap delta)
 task run-profile
@@ -462,7 +480,7 @@ task run-profile
       facts/push(<cpu>)
     miss
       facts/push(<memory>)
-  output/open-run(make(profile-open, bind(verb, <profile>), bind(root, root), bind(subject, target), bind(facts, facts)))
+  open-run(make(profile-open, bind(verb, <profile>), bind(root, root), bind(subject, target), bind(facts, facts)))
 
   save there, false
   fork
@@ -474,8 +492,8 @@ task run-profile
     save there, false
   fork test, not(there)
     hold
-      output/report(make(time-problem-fields, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no file {target}>), bind(fields, one-field(<looked>, output/show-path(file-path, root)))))
-      time-exit(output/close-run(make(time-close, bind(verdict, <Nothing profiled>))))
+      report(make(time-problem-fields, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no file {target}>), bind(fields, one-field(<looked>, show-path(file-path, root)))))
+      time-exit(close-run(make(time-close, bind(verdict, <Nothing profiled>))))
 
   save text, fs-promise/read-file(file-path, <utf-8>)
   save relative, node-path/relative(root, file-path)
@@ -487,12 +505,12 @@ task run-profile
     fork test, cpu
       hold
         save result, wait cpu-module/run-cpu-profile(time-profile-ask(text, relative, resolve, root, name, input/top))
-        output/print-data(<\n{format-cpu-result(result)}\n\n>)
-        output/close-run(make(time-close, bind(verdict, <CPU profile complete>)))
+        print-data(<\n{format-cpu-result(result)}\n\n>)
+        close-run(make(time-close, bind(verdict, <CPU profile complete>)))
       miss
         save result, wait memory-module/run-memory-profile(time-memory-ask(text, relative, resolve, root, name))
-        output/print-data(<\n{format-memory-result(result)}\n\n>)
-        output/close-run(make(time-close, bind(verdict, <Memory profile complete>)))
+        print-data(<\n{format-memory-result(result)}\n\n>)
+        close-run(make(time-close, bind(verdict, <Memory profile complete>)))
   halt take
     take error, like dynamic
     fork test, time-is-compile-failure(execute-module, error)
@@ -503,10 +521,10 @@ task run-profile
           save shown-text, text
           fork test, is-unequal(diagnostic/file, relative)
             hold
-              output/report(output/problem-of(diagnostic, root))
+              report(problem-of(diagnostic, root))
               turn next
-          output/report(output/problem-of(diagnostic, root, shown-text))
-        time-exit(output/close-run(make(time-close-counts, bind(verdict, <Nothing profiled>), bind(counts, one-count(diagnostics/length, <errors>, <error>)))))
+          report(problem-of(diagnostic, root, shown-text))
+        time-exit(close-run(make(time-close-counts, bind(verdict, <Nothing profiled>), bind(counts, one-count(diagnostics/length, <errors>, <error>)))))
     stop-with(time-thrown-message(error), <Nothing profiled>)
 
 task call-time
@@ -527,13 +545,13 @@ task call-time
   fork test, time-given(input/compare)
     hold
       facts/push(<--compare {input/compare}>)
-  output/open-run(make(time-open, bind(verb, <time>), bind(root, root), bind(facts, facts)))
+  open-run(make(time-open, bind(verb, <time>), bind(root, root), bind(facts, facts)))
 
   # `--history` alone reads the saved runs and runs nothing
   fork test, and(time-given(input/history), and(not(time-given(input/save)), not(time-given(input/compare))))
     hold
       show-history(root, input/history)
-      output/close-run(make(time-close, bind(verdict, <History shown>)))
+      close-run(make(time-close, bind(verdict, <History shown>)))
       back
 
   # the same resolver `term make` uses, so a benchmark file's imports resolve the way its build does
@@ -591,8 +609,8 @@ task call-time
         save diagnostics, time-diagnostics(problem)
         walk diagnostics
           take diagnostic, like dynamic
-          output/report(time-skipped-item(output, time-place(unit, diagnostic), root))
-        output/report(make(time-counted-warning, bind(glyph, <warning>), bind(verb, <time>), bind(subject, <{relative} did not compile, and its benchmarks did not run>), bind(counts, one-count(diagnostics/length, <errors>, <error>))))
+          report(time-skipped-item(time-printer-face(problem-of), time-place(unit, diagnostic), root))
+        report(make(time-counted-warning, bind(glyph, <warning>), bind(verb, <time>), bind(subject, <{relative} did not compile, and its benchmarks did not run>), bind(counts, one-count(diagnostics/length, <errors>, <error>))))
       fork test, not(compiled)
         hold
           turn next
@@ -604,15 +622,15 @@ task call-time
 
     fork test, is-equal(all-results/length, 0)
       hold
-        output/report(make(time-problem-fields, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no benchmark to run>), bind(fields, one-field(<next>, <define a zero-argument task named time-...>))))
-        time-exit(output/close-run(make(time-close, bind(verdict, <Nothing benchmarked>))))
+        report(make(time-problem-fields, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no benchmark to run>), bind(fields, one-field(<next>, <define a zero-argument task named time-...>))))
+        time-exit(close-run(make(time-close, bind(verdict, <Nothing benchmarked>))))
 
     save suite, suite-module/build-suite(all-results)
     fork test, time-given(input/json)
       hold
-        output/print-data(<{time-suite-json(suite-module, suite)}\n>)
+        print-data(<{time-suite-json(suite-module, suite)}\n>)
       miss
-        output/print-data(<\n{format-table(all-results)}\n\n>)
+        print-data(<\n{format-table(all-results)}\n\n>)
 
     fork test, time-given(input/save)
       hold
@@ -620,7 +638,7 @@ task call-time
         fs-promise/mkdir(dir, time-folder-ask())
         save saved, node-path/join(dir, <{input/save}.json>)
         fs-promise/write-file(saved, time-suite-json(suite-module, suite))
-        output/report(make(time-done-item, bind(glyph, <done>), bind(verb, <save>), bind(subject, <Baseline {input/save}>), bind(fields, one-of-location(output/location(output/show-path(saved, root))))))
+        report(make(time-done-item, bind(glyph, <done>), bind(verb, <save>), bind(subject, <Baseline {input/save}>), bind(fields, one-of-location(location(show-path(saved, root))))))
         save history-dir, node-path/join(dir, <history>)
         fs-promise/mkdir(history-dir, time-folder-ask())
         fs-promise/write-file(node-path/join(history-dir, <{time-now()}.json>), time-history-entry(suite-module, suite))
@@ -632,11 +650,11 @@ task call-time
         save comparison, compare-results(all-results, baseline)
         fork test, time-given(input/markdown)
           hold
-            output/print-data(<{format-markdown(comparison, time-platform(suite))}\n>)
+            print-data(<{format-markdown(comparison, time-platform(suite))}\n>)
           miss
-            output/print-data(<\n{format-comparison(comparison, false)}\n>)
-        compared/push(output/count(comparison/improvements, <improvements>, <improvement>))
-        compared/push(output/count(comparison/regressions, <regressions>, <regression>))
+            print-data(<\n{format-comparison(comparison, false)}\n>)
+        compared/push(count(comparison/improvements, <improvements>, <improvement>))
+        compared/push(count(comparison/regressions, <regressions>, <regression>))
         save gated, false
         fork test, time-present(input/fail-on-regression)
           hold
@@ -649,26 +667,26 @@ task call-time
             fork test, gated
               hold
                 save glyph, <failed>
-                fields/push(output/field(<budget>, <{input/fail-on-regression}%>))
+                fields/push(field(<budget>, <{input/fail-on-regression}%>))
             save plural, <s>
             fork test, is-equal(comparison/regressions, 1)
               hold
                 save plural, <>
-            output/report(make(time-compare-item, bind(glyph, glyph), bind(kind, <problem>), bind(verb, <compare>), bind(subject, <{comparison/regressions} benchmark{plural} regressed against {input/compare}>), bind(fields, fields)))
+            report(make(time-compare-item, bind(glyph, glyph), bind(kind, <problem>), bind(verb, <compare>), bind(subject, <{comparison/regressions} benchmark{plural} regressed against {input/compare}>), bind(fields, fields)))
         fork test, gated
           hold
-            time-exit(output/close-run(make(time-close-counts, bind(verdict, <A regression is past the {input/fail-on-regression}% threshold>), bind(counts, one-count(all-results/length, <benchmarks>, <benchmark>)))))
+            time-exit(close-run(make(time-close-counts, bind(verdict, <A regression is past the {input/fail-on-regression}% threshold>), bind(counts, one-count(all-results/length, <benchmarks>, <benchmark>)))))
 
     fork test, time-given(input/history)
       hold
         show-history(root, input/history)
 
     save counts, make list
-    counts/push(output/count(all-results/length, <benchmarks>, <benchmark>))
+    counts/push(count(all-results/length, <benchmarks>, <benchmark>))
     walk compared
       take one, like dynamic
       counts/push(one)
-    output/close-run(make(time-close-counts, bind(verdict, <Benchmarks complete>), bind(counts, counts)))
+    close-run(make(time-close-counts, bind(verdict, <Benchmarks complete>), bind(counts, counts)))
   halt take
     take error, like dynamic
     stop-with(time-thrown-message(error), <Benchmarks did not complete>)

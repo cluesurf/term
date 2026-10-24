@@ -58,6 +58,17 @@ load ../native/building
   find build-through-rust
   find run-built
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find field
+  find location
+  find open-run
+  find print-data
+  find report
+  find report-problems
+  find show-path
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
@@ -69,7 +80,6 @@ dock load
   load <@term/make/code/compile/hvm>, name hvm-module
   load <@term/make/code/compile/wgsl>, name wgsl-module
   load <@term/make/code/parser/diagnostic>, name diagnostic-module
-  load <@term/call/code/output>, name output
 
 # ---- the host values Term has no word for ----
 
@@ -600,13 +610,13 @@ task fail-usage
   like void
   mark private
 
-  output/report(failed-item(subject))
+  report(failed-item(subject))
   save closing
     make close-ask
       bind verdict, <Nothing emitted>
       bind next, next
       bind failure, <usage>
-  host-process/exit(output/close-run(closing))
+  host-process/exit(close-run(closing))
 
 # a refusal drawn, every problem or every message, and the run closed with exit 1
 task fail-refused
@@ -617,7 +627,7 @@ task fail-refused
 
   fork test, is-truthy(emitted/problems)
     hold
-      output/report-problems(emitted/problems, root)
+      report-problems(emitted/problems, root)
     miss
       walk emitted/errors
         take error
@@ -627,14 +637,14 @@ task fail-refused
             bind kind, <problem>
             bind verb, <check>
             bind subject, capitalized(error)
-        output/report(item)
+        report(item)
   save counts, make list
-  push(counts, output/count(emitted/errors/length, <errors>, <error>))
+  push(counts, count(emitted/errors/length, <errors>, <error>))
   save closing
     make close-ask
       bind verdict, <Refused, nothing written>
       bind counts, counts
-  host-process/exit(output/close-run(closing))
+  host-process/exit(close-run(closing))
 
 # a build that failed: its first line the subject, the next 29 quoted
 task fail-built
@@ -660,7 +670,7 @@ task fail-built
           bind verb, <build>
           bind subject, get(lines, 0)
           bind quote, quote
-      output/report(item)
+      report(item)
     miss
       save item
         make item-ask
@@ -668,12 +678,12 @@ task fail-built
           bind kind, <problem>
           bind verb, <build>
           bind subject, get(lines, 0)
-      output/report(item)
+      report(item)
   save closing
     make close-ask
       bind verdict, <Not built for {target}>
       bind failure, <failure>
-  host-process/exit(output/close-run(closing))
+  host-process/exit(close-run(closing))
 
 # the command a built program runs, each part with a space quoted
 task command-line
@@ -703,7 +713,7 @@ task write-source
 
   fork test, not(is-truthy(out))
     hold
-      output/print-data(source)
+      print-data(source)
       save facts, make list
       push(facts, <stdout>)
       save item
@@ -714,7 +724,7 @@ task write-source
           bind duration, subtract(now-ms(), started)
           bind bytes, byte-length(source)
           bind facts, facts
-      output/report(item)
+      report(item)
     miss
       save at, node-path/resolve(root, out)
       save folder
@@ -723,7 +733,7 @@ task write-source
       node-fs/mkdir-sync(node-path/dirname(at), folder)
       node-fs/write-file-sync(at, source)
       save fields, make list
-      push(fields, output/location(output/show-path(at, root)))
+      push(fields, location(show-path(at, root)))
       save item
         make item-ask
           bind glyph, <done>
@@ -732,11 +742,11 @@ task write-source
           bind duration, subtract(now-ms(), started)
           bind bytes, byte-length(source)
           bind fields, fields
-      output/report(item)
+      report(item)
   save closing
     make close-ask
       bind verdict, <Emitted {subject}>
-  output/close-run(closing)
+  close-run(closing)
 
 # the source with its line feed at the end
 task ended
@@ -792,13 +802,13 @@ task call-through-rust
   save target, input/target
   fork test, not(is-truthy(input/file))
     hold
-      output/report(failed-item(<There is no file to emit>))
+      report(failed-item(<There is no file to emit>))
       save closing
         make close-ask
           bind verdict, <Nothing emitted>
           bind next, <term make --emit {target} \<file.tree\> [--run]>
           bind failure, <usage>
-      host-process/exit(output/close-run(closing))
+      host-process/exit(close-run(closing))
 
   save started, now-ms()
   save asked
@@ -863,7 +873,7 @@ task call-through-rust
           node-fs/mkdir-sync(node-path/dirname(out), making)
           node-fs/write-file-sync(out, ir)
           save fields, make list
-          push(fields, output/location(output/show-path(out, input/root)))
+          push(fields, location(show-path(out, input/root)))
           save item
             make item-ask
               bind glyph, <done>
@@ -872,9 +882,9 @@ task call-through-rust
               bind duration, subtract(now-ms(), started)
               bind bytes, byte-length(ir)
               bind fields, fields
-          output/report(item)
+          report(item)
         miss
-          output/print-data(ir)
+          print-data(ir)
           save facts, make list
           push(facts, <stdout>)
           save item
@@ -885,11 +895,11 @@ task call-through-rust
               bind duration, subtract(now-ms(), started)
               bind bytes, byte-length(ir)
               bind facts, facts
-          output/report(item)
+          report(item)
       save closing
         make close-ask
           bind verdict, <Emitted llvm>
-      output/close-run(closing)
+      close-run(closing)
     miss
       finish-built(built, target, input, started)
 
@@ -903,7 +913,7 @@ task finish-built
   mark private
 
   save fields, make list
-  push(fields, output/location(output/show-path(built/artifact, input/root)))
+  push(fields, location(show-path(built/artifact, input/root)))
   save item
     make item-ask
       bind glyph, <done>
@@ -911,7 +921,7 @@ task finish-built
       bind subject, target
       bind duration, subtract(now-ms(), started)
       bind fields, fields
-  output/report(item)
+  report(item)
 
   fork test, not(is-truthy(input/run))
     hold
@@ -919,12 +929,12 @@ task finish-built
         make close-ask
           bind verdict, <Built {target}>
           bind next, command-line(built/command)
-      output/close-run(closing)
+      close-run(closing)
     miss
       save closing
         make close-ask
           bind verdict, <Built {target}, running>
-      output/close-run(closing)
+      close-run(closing)
       host-process/exit(run-built(built/command))
 
 # one file per module, each written only when its text changed, and `units.txt` naming the files of this program
@@ -967,11 +977,11 @@ task write-units
         save changed, add(changed, 1)
 
   save counts, make list
-  push(counts, output/count(count-files, <files>, <file>))
-  push(counts, output/count(changed, <written>, <written>))
+  push(counts, count(count-files, <files>, <file>))
+  push(counts, count(changed, <written>, <written>))
   save fields, make list
-  push(fields, output/location(output/show-path(folder, input/root)))
-  push(fields, output/field(<main>, files/main))
+  push(fields, location(show-path(folder, input/root)))
+  push(fields, field(<main>, files/main))
   save item
     make item-ask
       bind glyph, <done>
@@ -980,11 +990,11 @@ task write-units
       bind duration, subtract(now-ms(), started)
       bind counts, counts
       bind fields, fields
-  output/report(item)
+  report(item)
   save closing
     make close-ask
       bind verdict, <Emitted {input/target}>
-  output/close-run(closing)
+  close-run(closing)
 
 # node, rust, swift or kotlin: the program's source, or one file per module, or built and run
 task call-native
@@ -1006,19 +1016,19 @@ task call-native
       push(named, <llvm>)
       push(named, <wasm>)
       save fields, make list
-      push(fields, output/field(<targets>, join(named, <, >)))
+      push(fields, field(<targets>, join(named, <, >)))
       save item
         make item-ask
           bind glyph, <failed>
           bind kind, <problem>
           bind subject, <There is no target named {target}>
           bind fields, fields
-      output/report(item)
+      report(item)
       save closing
         make close-ask
           bind verdict, <Nothing emitted>
           bind failure, <usage>
-      host-process/exit(output/close-run(closing))
+      host-process/exit(close-run(closing))
 
   fork test, not(is-truthy(input/file))
     hold
@@ -1107,7 +1117,7 @@ task call-emit
       bind verb, <make>
       bind root, input/root
       bind facts, facts
-  output/open-run(opening)
+  open-run(opening)
 
   fork test, is-fragment-target(input/target)
     hold

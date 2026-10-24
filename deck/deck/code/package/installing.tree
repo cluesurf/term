@@ -7,11 +7,14 @@
 #   - every mill read takes the grammars record last, so `install`, `add-dependency` and `remove-dependency` take it
 #   - `host-scope-registries` answers a hash (scope to registry) where the original answered an object, and the fetch
 #     config, a host value the docked readers share, takes the routes merged over its own as the original's spread
-#   - the lockfile, the workspaces, the toolchain pin, the fetch config and the name rules (lock.ts, workspace.ts,
-#     oci/need.ts, fetch.ts, name.ts, store.ts) are docked until their lanes port them. The lockfile and the workspace
-#     manifests they answer are read into the port's shapes (`code-of-host`, `hold-of-host`), and a workspace is a
-#     `workspace-deck` of the manifest's name, version and links, all the resolution reads of it
-#   - the toolchain pin is passed on as the host's answer: the count's `need` is the record `pinNeed` answered
+#   - the lockfile, the workspaces, the toolchain pin, the fetch config, the store and the name rules are their ports,
+#     loaded (term-cli-in-term-0233, where the faces lock.ts, workspace.ts, oci/need.ts, fetch.ts, store.ts and name.ts
+#     were docked): lockfile-reading, workspace-finding, toolchain-pin, registry-fetching, file-store, registry-naming.
+#     The fetch config is handed on with its scope routes an object (`installing-object-routes`, what the face
+#     fetch.ts did), the shape oci-route-of and the resolution read. `verify-install` takes no grammars record, so it
+#     reads the lockfile with one of its own
+#   - the toolchain pin is passed on as the host's answer: the count's `need` is the record `pin-need` answered. An
+#     OCI refusal while pinning is oci-failure (decision 007), passed on as raised
 
 load @term/base/list
   find list
@@ -44,9 +47,31 @@ load ./lockfile-shape
 
 load ./grammar-reading
   find manifest-grammars
+  find make-grammars
 
 load ./manifest-reading
   find load-manifest
+
+load ./lockfile-reading
+  find load-lockfile
+  find save-lockfile
+
+load ./workspace-finding
+  find find-workspaces
+
+load ./registry-fetching
+  find make-default-fetch-config
+
+load ./file-store
+  find init-store
+
+load ./registry-naming
+  find normalize-registry
+  find parse-scope
+  find root-scope
+
+load ../oci/toolchain-pin
+  find pin-need
 
 load ./manifest-text
   find write-manifest
@@ -66,12 +91,6 @@ dock load
     mark async
   load <node:fs>, name node-fs
   load <node:path>, name node-path
-  load <@term/deck/code/package/fetch>, name deck-fetch
-  load <@term/deck/code/package/store>, name deck-store
-  load <@term/deck/code/package/lock>, name deck-lock
-  load <@term/deck/code/package/workspace>, name deck-workspace
-  load <@term/deck/code/oci/need>, name oci-need
-  load <@term/deck/code/package/name>, name deck-name
 
 # what `install` answers: how many decks it installed, and the toolchain pin when the manifest asks for one
 form install-answer
@@ -85,28 +104,6 @@ form verify-answer
   link missing, like list, like text
   link outdated, like list, like text
 
-form folder-ask
-  link dir, like text
-
-form root-ask
-  link root, like text
-
-form scope-ask
-  link name, like text
-
-form need-ask
-  link need, like dynamic
-  link previous
-    like dynamic
-    need false
-  link offline
-    like dynamic
-    need false
-
-form lock-save-ask
-  link dir, like text
-  link lockfile, like lockfile
-
 # whether a host value is truthy, as the original's `if (x)` read it
 bind is-present
   take value, like dynamic
@@ -114,12 +111,19 @@ bind is-present
   case node
     text <Boolean($value)>
 
-# a hold's open part: the host's number, or `-1` where it left it out
-bind part-or-open
-  take value, like dynamic
-  like number
+# the port's fetch config with its scope routes an object, the shape the face package/fetch.ts handed on and
+# oci-route-of reads (`Object.fromEntries` over the hash)
+bind installing-object-routes
+  take config, like dynamic
+  like dynamic
   case node
-    text <($value ?? -1)>
+    text <<({ ...$config, scopeRegistries: Object.fromEntries($config.scopeRegistries) })>>
+
+# what a host call is given for a parameter left out
+bind installing-nothing
+  like dynamic
+  case node
+    text <undefined>
 
 # a host text, or the empty text where it left it out
 bind text-or-blank
@@ -136,14 +140,6 @@ bind routes-over
   case node
     text <Object.assign(\{\}, $base, Object.fromEntries($more))>
 
-# the host's items as a list, so they can be walked
-task host-items
-  take items, like list, like dynamic
-  like list, like dynamic
-  mark private
-
-  back items
-
 # a host `Code` (prerelease and build absent when there are none) as version.tree's `code`
 task code-of-host
   take host, like dynamic
@@ -151,86 +147,6 @@ task code-of-host
   mark private
 
   back make(code, bind(major, host/major), bind(minor, host/minor), bind(patch, host/patch), bind(prerelease, text-or-blank(host/prerelease)), bind(build, text-or-blank(host/build)))
-
-# a host `CodeHold` as version.tree's `code-hold`
-task hold-of-host
-  take host, like dynamic
-  like code-hold
-  mark private
-
-  save form, text-or-blank(host/form)
-  fork test, is-equal(form, <exact>)
-    hold
-      back make(exact, bind(code, code-of-host(host/code)))
-  fork test, is-equal(form, <wild>)
-    hold
-      back make(wild, bind(major, host/major), bind(minor, part-or-open(host/minor)), bind(patch, part-or-open(host/patch)))
-  fork test, is-equal(form, <band>)
-    hold
-      back make(band, bind(base, code-of-host(host/base)), bind(head, code-of-host(host/head)))
-  save members, make list
-  walk host-items(host/list)
-    take member
-    members/push(hold-of-host(member))
-  back make(test, bind(list, members))
-
-# a host lockfile as the port's
-task lockfile-of-host
-  take host, like dynamic
-  like lockfile
-  mark private
-
-  save decks, make list
-  walk host-items(host/decks)
-    take entry
-    save links, make list
-    walk host-items(entry/link)
-      take one
-      links/push(make(lock-link, bind(name, one/name), bind(code, one/code)))
-    save shaped, make(lock-entry, bind(name, entry/name), bind(code, code-of-host(entry/code)), bind(hash, entry/hash), bind(site, entry/site), bind(link, links))
-    fork test, is-present(entry/key)
-      hold
-        save shaped/key, entry/key
-    decks/push(shaped)
-  save out, make(lockfile, bind(version, host/version), bind(decks, decks))
-  fork test, is-present(host/need)
-    hold
-      save need, make(lock-need, bind(name, host/need/name), bind(code, code-of-host(host/need/code)), bind(hash, host/need/hash))
-      save out/need, make(some, need)
-  back out
-
-# the project's lockfile, when there is one that reads
-task load-lockfile
-  take dir, like text
-  like maybe, like lockfile
-  mark private
-
-  save host, wait deck-lock/load-lockfile(make(folder-ask, bind(dir, dir)))
-  fork test, is-present(host)
-    hold
-      save shaped, lockfile-of-host(host)
-      back make(some, shaped)
-  back make none
-
-# the decks of the project's workspaces, by name: what the resolution reads of each, its name, version, links and folder
-task workspaces-of
-  take root, like text
-  like hash, like text, like workspace-deck
-  mark private
-
-  save found, wait deck-workspace/find-workspaces(make(root-ask, bind(root, root)))
-  save out, make hash
-  walk host-items(found/keys())
-    take name
-    save host, found/get(name)
-    save links, make list
-    walk host-items(host/link)
-      take one
-      links/push(make(deck-link, bind(name, one/name), bind(mark, hold-of-host(one/mark))))
-    save manifest, make(deck-manifest, bind(host, text-or-blank(host/host)), bind(name, host/name), bind(mark, code-of-host(host/mark)), bind(link, links))
-    save folder, text-or-blank(host/dir)
-    out/set(name, make(workspace-deck, bind(manifest, manifest), bind(dir, make(some, folder))))
-  back out
 
 # The scope to registry routes a manifest declares: its `base` lines, and its `host` groups, where every link in a
 # group names the scope it routes. The routes are this project's alone and are never stored anywhere else. One scope
@@ -245,19 +161,19 @@ task host-scope-registries
     fork test, or(is-equal(entry/scope, <>), is-equal(entry/registry, <>))
       hold
         halt <base {entry/scope}: a base line names a scope and a registry, `base alice, \<ghcr.io/alice/term\>`>
-    save registry, deck-name/normalize-registry(entry/registry)
+    save registry, normalize-registry(entry/registry)
     route-once(routes, entry/scope, registry)
 
   walk manifest/host-link
     take group
     walk group/link
       take one
-      save parsed, deck-name/parse-scope(make(scope-ask, bind(name, one/name)))
-      save scope, deck-name/root-scope(parsed/scope)
+      save parsed, parse-scope(one/name)
+      save scope, root-scope(parsed/scope)
       fork test, not(is-present(scope))
         hold
           halt <host {group/registry}: {one/name} has no scope, so it cannot be routed to a registry>
-      save registry, deck-name/normalize-registry(group/registry)
+      save registry, normalize-registry(group/registry)
       route-once(routes, scope, registry)
   back routes
 
@@ -284,12 +200,13 @@ task install
   take grammars, like manifest-grammars
   like install-answer
 
-  save config, deck-fetch/make-default-fetch-config()
+  save made, make-default-fetch-config()
+  save config, installing-object-routes(made)
   fork test, offline
     hold
       save config/offline, true
 
-  wait deck-store/init-store()
+  init-store()
 
   # step 1: read the manifest
   save loaded, load-manifest(root, grammars)
@@ -311,10 +228,10 @@ task install
   save manifest/link, links
 
   # step 2: the workspaces
-  save workspaces, workspaces-of(root)
+  save workspaces, find-workspaces(root, grammars)
 
   # step 3: the lockfile
-  save lock, load-lockfile(root)
+  save lock, load-lockfile(root, grammars)
 
   # step 4: clean when asked
   fork test, clean
@@ -342,19 +259,16 @@ task install
   sift loaded/need
     case some
       link asked
-      save ask, make(need-ask, bind(need, asked))
+      save earlier-pin, installing-nothing()
       sift previous
         case some
           link earlier
-          save ask/previous, earlier
+          save earlier-pin, earlier
         case none
           save nothing, 0
-      fork test, offline
-        hold
-          save ask/offline, true
       # the host's pin answer, a record of the original's shape (seam decision 004)
       save pin-answer, like dynamic
-        wait oci-need/pin-need(ask)
+        pin-need(asked, earlier-pin, offline)
       save need, make(some, pin-answer)
     case none
       save nothing, 0
@@ -385,7 +299,7 @@ task install
       save written/need, make(some, pin)
     case none
       save nothing, 0
-  wait deck-lock/save-lockfile(make(lock-save-ask, bind(dir, root), bind(lockfile, written)))
+  save-lockfile(root, written)
 
   # the count goes back to the caller, which prints it as a fact of its run
   save count, 0
@@ -470,8 +384,10 @@ task verify-install
 
   save missing, make list
   save outdated, make list
-  # saved before the sift: a sift on a call's answer tests the type's own tag (self-host traps T008)
-  save lock, load-lockfile(root)
+  # saved before the sift: a sift on a call's answer tests the type's own tag (self-host traps T008). The face held
+  # one grammar record for the process, and verify-install is not handed one, so it reads with its own
+  save grammars, make-grammars()
+  save lock, load-lockfile(root, grammars)
   sift lock
     case none
       missing/push(<lock.tree not found>)

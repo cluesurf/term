@@ -32,8 +32,14 @@ load ../small/home-folder
   find kept-at
   find read-env
 
+load @term/call/work/output/printer
+  find close-run
+  find field
+  find open-run
+  find report
+  find show-path
+
 dock load
-  load <@term/call/code/output>, name output
   load <node:crypto>, name node-crypto
   load <node:child_process>, name child-process
   load <node:fs>, name node-fs
@@ -437,12 +443,12 @@ task toss
 
   fork test, not(node-fs/exists-sync(file))
     hold
-      output/report(make(fields-item, bind(glyph, <info>), bind(verb, <toss>), bind(subject, <no token on this machine>), bind(fields, one-field(output/field(<token>, output/show-path(file))))))
-      output/close-run(make(plain-close, bind(verdict, <Nothing to forget>)))
+      report(make(fields-item, bind(glyph, <info>), bind(verb, <toss>), bind(subject, <no token on this machine>), bind(fields, one-field(field(<token>, show-path(file))))))
+      close-run(make(plain-close, bind(verdict, <Nothing to forget>)))
       back
   fs-promise/rm(file)
-  output/report(make(change-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <toss>), bind(subject, <the term.surf token on this machine>), bind(fields, one-field(output/field(<token>, output/show-path(file))))))
-  output/close-run(make(said-close, bind(verdict, <Logged out on this machine>), bind(done, true), bind(message, one-text(<The token still works until it is revoked at https://term.surf/settings/tokens.>))))
+  report(make(change-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <toss>), bind(subject, <the term.surf token on this machine>), bind(fields, one-field(field(<token>, show-path(file))))))
+  close-run(make(said-close, bind(verdict, <Logged out on this machine>), bind(done, true), bind(message, one-text(<The token still works until it is revoked at https://term.surf/settings/tokens.>))))
 
 # The saved token, asked about before any browser opens. True when the run is over: the token works, or could not be
 # checked and is kept. False when there is none, or term.surf refused it, and a login must follow
@@ -470,21 +476,21 @@ task keeps-login
   fork test, held/ok
     hold
       save who, who-of-user(member(held/value, <user>))
-      save fields, one-field(output/field(<token>, output/show-path(file)))
+      save fields, one-field(field(<token>, show-path(file)))
       save expires, member(held/value, <expires_at>)
       fork test, is-truthy(expires)
         hold
-          fields/push(output/field(<expires>, expires))
-      output/report(make(fields-item, bind(glyph, <done>), bind(verb, <check>), bind(subject, <this machine is logged in as {who}>), bind(fields, fields)))
-      output/close-run(make(next-close, bind(verdict, <Logged in as {who}>), bind(next, <term bind --again, to log in as someone else>)))
+          fields/push(field(<expires>, expires))
+      report(make(fields-item, bind(glyph, <done>), bind(verb, <check>), bind(subject, <this machine is logged in as {who}>), bind(fields, fields)))
+      close-run(make(next-close, bind(verdict, <Logged in as {who}>), bind(next, <term bind --again, to log in as someone else>)))
       back true
   fork test, is-equal(held/status, 401)
     hold
-      output/report(make(fields-item, bind(glyph, <info>), bind(verb, <check>), bind(subject, <the saved token no longer works, so this logs in again>), bind(fields, one-field(output/field(<token>, output/show-path(file))))))
+      report(make(fields-item, bind(glyph, <info>), bind(verb, <check>), bind(subject, <the saved token no longer works, so this logs in again>), bind(fields, one-field(field(<token>, show-path(file))))))
       back false
   # offline, or an API that does not answer this yet: the token stays, and nothing opens
-  output/report(make(warning-item, bind(glyph, <warning>), bind(verb, <check>), bind(subject, <the saved token could not be checked, and is kept>), bind(message, one-text(held/reason)), bind(fields, one-field(output/field(<token>, output/show-path(file))))))
-  output/close-run(make(next-close, bind(verdict, <Logged in, unchecked>), bind(next, <term bind --again, to log in anew>)))
+  report(make(warning-item, bind(glyph, <warning>), bind(verb, <check>), bind(subject, <the saved token could not be checked, and is kept>), bind(message, one-text(held/reason)), bind(fields, one-field(field(<token>, show-path(file))))))
+  close-run(make(next-close, bind(verdict, <Logged in, unchecked>), bind(next, <term bind --again, to log in anew>)))
   back true
 
 # write the token alone, readable by this user only, in a directory only this user can enter
@@ -600,17 +606,17 @@ task log-in
       fork test, started/ok
         hold
           save subject, <term.surf did not send a login address>
-      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <start>), bind(subject, subject)))
-      output/close-run(make(failure-close, bind(verdict, <Not logged in>), bind(failure, <environment>)))
+      report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <start>), bind(subject, subject)))
+      close-run(make(failure-close, bind(verdict, <Not logged in>), bind(failure, <environment>)))
       back
   save url, <{started/value/url}>
-  output/report(make(fields-item, bind(glyph, <info>), bind(verb, <open>), bind(subject, <the Google login in your browser>), bind(fields, one-field(output/field(<url>, url)))))
+  report(make(fields-item, bind(glyph, <info>), bind(verb, <open>), bind(subject, <the Google login in your browser>), bind(fields, one-field(field(<url>, url)))))
   open-browser(url)
   save landed, wait-for(open/landing)
   fork test, is-unequal(landed/error, <>)
     hold
-      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <login>), bind(subject, landed/error)))
-      output/close-run(make(failure-close, bind(verdict, <Not logged in>), bind(failure, <environment>)))
+      report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <login>), bind(subject, landed/error)))
+      close-run(make(failure-close, bind(verdict, <Not logged in>), bind(failure, <environment>)))
       back
   save sent, make list
   sent/push(pair-of(<code>, landed/code))
@@ -624,29 +630,29 @@ task log-in
       fork test, verified/ok
         hold
           save subject, <term.surf did not send a token>
-      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <verify>), bind(subject, subject)))
-      output/close-run(make(failure-close, bind(verdict, <Not logged in>), bind(failure, <environment>)))
+      report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <verify>), bind(subject, subject)))
+      close-run(make(failure-close, bind(verdict, <Not logged in>), bind(failure, <environment>)))
       back
   keep(user-home(home-parts(<auth>)), member(verified/value, <token>))
   save who, who-of-user(member(verified/value, <user>))
   save fields, make list
-  fields/push(output/field(<token>, output/show-path(user-home(home-parts(<auth>)))))
-  fields/push(output/field(<name>, member-text(verified/value, <name>)))
+  fields/push(field(<token>, show-path(user-home(home-parts(<auth>)))))
+  fields/push(field(<name>, member-text(verified/value, <name>)))
   save expires, member(verified/value, <expires_at>)
   fork test, is-truthy(expires)
     hold
-      fields/push(output/field(<expires>, expires))
-  output/report(make(change-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <bind>), bind(subject, <this machine to {who}>), bind(fields, fields)))
+      fields/push(field(<expires>, expires))
+  report(make(change-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <bind>), bind(subject, <this machine to {who}>), bind(fields, fields)))
   fork test, is-truthy(login-env-of(read-env(<TOKEN>)))
     hold
-      output/report(make(plain-item, bind(glyph, <warning>), bind(verb, <check>), bind(subject, <TERM_TOKEN is set, and term host reads it before this file>)))
-  output/close-run(make(done-next-close, bind(verdict, <Logged in as {who}>), bind(done, true), bind(next, <term host>)))
+      report(make(plain-item, bind(glyph, <warning>), bind(verb, <check>), bind(subject, <TERM_TOKEN is set, and term host reads it before this file>)))
+  close-run(make(done-next-close, bind(verdict, <Logged in as {who}>), bind(done, true), bind(next, <term host>)))
 
 task call-bind
   take input, like dynamic
   like void
 
-  output/open-run(make(subject-open, bind(verb, <bind>), bind(root, input/root), bind(subject, <term.surf>)))
+  open-run(make(subject-open, bind(verb, <bind>), bind(root, input/root), bind(subject, <term.surf>)))
   save file, kept-at(user-home(home-parts(<auth>)), legacy-user-home(home-parts(<auth>)))
   fork test, is-truthy(input/toss)
     hold
@@ -661,8 +667,8 @@ task call-bind
   save base, index-base(given-text)
   fork test, not(is-safe(base))
     hold
-      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <check>), bind(subject, <{base} is not https, so no token is fetched from it>)))
-      output/close-run(make(failure-close, bind(verdict, <Not logged in>), bind(failure, <usage>)))
+      report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <check>), bind(subject, <{base} is not https, so no token is fetched from it>)))
+      close-run(make(failure-close, bind(verdict, <Not logged in>), bind(failure, <usage>)))
       back
   fork test, not(is-truthy(input/again))
     hold

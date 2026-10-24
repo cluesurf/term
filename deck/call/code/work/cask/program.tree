@@ -33,6 +33,9 @@ load ../build/project-resolving
 load ../build/host-faces
   find face-project-resolver
 
+load @term/call/work/output/printer
+  find run-tool
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
@@ -44,7 +47,6 @@ dock load
   load <@term/make/code/compile/rust>, name rust-module-emit
   load <@term/make/code/compile/kotlin>, name kotlin-module-emit
   load <@term/make/code/resolve>, name resolve-module
-  load <@term/call/code/output>, name output
 
 form program-source
   link file, like text
@@ -251,7 +253,7 @@ task build-program
       args/push(<-o>)
       args/push(ask/exe)
       args/push(file)
-      output/run-tool(<xcrun>, args)
+      run-tool(<xcrun>, args)
     miss
       save args, make list
       walk swift-flags()
@@ -265,7 +267,7 @@ task build-program
       args/push(<-o>)
       args/push(ask/exe)
       args/push(file)
-      output/run-tool(<swiftc>, args)
+      run-tool(<swiftc>, args)
 
   save native-parts, make list
   native-parts/push(prelude)
@@ -328,7 +330,7 @@ task build-rust-program
       build-args/push(<build>)
       build-args/push(<--release>)
       build-args/push(<--quiet>)
-      output/run-tool(<cargo>, build-args, make(tool-place, bind(cwd, project)))
+      run-tool(<cargo>, build-args, make(tool-place, bind(cwd, project)))
       save crate, ask/crate
       save exe-name, crate
       fork test, is-equal(ask/target, <windows>)
@@ -346,7 +348,7 @@ task build-rust-program
       save check-args, make list
       check-args/push(<check>)
       check-args/push(<--quiet>)
-      output/run-tool(<cargo>, check-args, make(tool-place, bind(cwd, project)))
+      run-tool(<cargo>, check-args, make(tool-place, bind(cwd, project)))
   back
     make rust-built
       bind project, project
@@ -436,7 +438,7 @@ task build-android-program
   kotlin-args/push(<-Xno-call-assertions>)
   kotlin-args/push(<-Xno-receiver-assertions>)
   kotlin-args/push(file)
-  output/run-tool(<kotlinc>, kotlin-args)
+  run-tool(<kotlinc>, kotlin-args)
 
   save found, make list
   class-files(classes, found)
@@ -454,7 +456,7 @@ task build-android-program
     take one, like text
     dex-args/push(one)
   dex-args/push(tools/stdlib)
-  output/run-tool(node-path/join(tools/build-tools, <d8>), dex-args)
+  run-tool(node-path/join(tools/build-tools, <d8>), dex-args)
 
   save native-parts, make list
   native-parts/push(prelude)

@@ -107,7 +107,9 @@ const DECKS: Record<string, string[]> = {
 // THE RUN ENTRY (term-cli-in-term-0012). A module whose top level declares `hook` commands is a console, and its port
 // alone runs nothing: no Term program can read its own hooks, so the route tree is known only here, from the compile.
 // Beside such a port goes `<name>-run.ts`, which `make:line` bundles: the routes as data, each command's task as the
-// port's export, and the start of the run handed to `work/dispatch.tree`'s `start-line` and `fail-line`, the way
+// port's export, and the start of the run handed to `work/dispatch.tree`'s `start-line` and `fail-line` through the
+// console's own `start-console`, `fail-console` and `refuse-console`, so the entry imports the console's port alone and
+// ships one copy of the dispatch closure and one run state (decision cli-in-term/018 part 3), the way
 // `term boot` writes a console's `run.mjs` (boot-plan.tree `cli-run-text`). The parsing of a command's own flags and
 // the call of its task are still hook-dispatch.ts's `runCommandLine`, until the switch (term-cli-in-term-0013). A usage
 // refusal comes back from it as data and `refuse-line` words it as yargs did (decision cli-in-term/016 part 4); every
@@ -135,7 +137,9 @@ function runEntry(name: string, content: string, program: Parameters<typeof comm
 
   walk(routes)
 
-  const missing = [...tasks].filter(([, camel]) => !new RegExp(`^export (async )?function ${camel}\\(`, 'm').test(content)).map(([task]) => task)
+  // the run entry's own three calls, tasks of the console (decision cli-in-term/018 part 3), checked like the routes'
+  const own: Array<[string, string]> = ['start-console', 'refuse-console', 'fail-console'].map(task => [task, toCamel(task)])
+  const missing = [...tasks, ...own].filter(([, camel]) => !new RegExp(`^export (async )?function ${camel}\\(`, 'm').test(content)).map(([task]) => task)
 
   if (missing.length > 0) {
     return { missing }
@@ -149,7 +153,6 @@ function runEntry(name: string, content: string, program: Parameters<typeof comm
       `// THE RUN ENTRY of the Term console ${name}, written by task/port-build.ts beside its port (term-cli-in-term-0012).`,
       '// Generated: edit the console or port-build, never this file.',
       `import * as line from './${name.split('/').pop()!.replace(/\.tree$/, '')}'`,
-      "import { failLine, refuseLine, startLine } from '@term/call/code/work/dispatch'",
       "import { runCommandLine } from '@term/call/code/hook-dispatch'",
       '',
       `const routes = ${data}`,
@@ -158,7 +161,7 @@ function runEntry(name: string, content: string, program: Parameters<typeof comm
       ...entries,
       '}',
       '',
-      'const start = startLine(routes, process.argv.slice(2))',
+      'const start = line.startConsole(routes, process.argv.slice(2))',
       '',
       'if (start.done) {',
       '  if (start.exit !== 0) {',
@@ -166,18 +169,83 @@ function runEntry(name: string, content: string, program: Parameters<typeof comm
       '  }',
       '} else {',
       '  try {',
-      "    const code = await runCommandLine({ name: 'term', routes, argv: start.words, resolve: task => tasks[task] as ((...values: unknown[]) => unknown) | undefined, refuse: refuseLine })",
+      "    const code = await runCommandLine({ name: 'term', routes, argv: start.words, resolve: task => tasks[task] as ((...values: unknown[]) => unknown) | undefined, refuse: line.refuseConsole })",
       '',
       '    if (code !== 0) {',
       '      process.exit(code)',
       '    }',
       '  } catch (error) {',
-      '    process.exit(failLine(error))',
+      '    process.exit(line.failConsole(error))',
       '  }',
       '}',
       '',
     ].join('\n'),
   }
+}
+
+// THE PRINTER'S RUN (decision term-cli-in-term-0240). A port is emitted whole, with its own copy of every module it
+// loads, so the run a port prints through is ITS copy of work/output/printer.tree, and since 0221 that state is a plain
+// module `host` again (decision cli-in-term/018 part 3). A caller outside the port (a pair spec) that opens a run
+// through a separate printer import opens a run the port never sees, so every port whose closure holds the printer
+// exports the printer's open-run, close-run, set-output and is-run-open. The emitter exports every function it keeps,
+// and keeps only what a root reaches, so a module that reaches the printer without all four compiles once more with
+// printerKeeper's text after its own: tasks of the module (roots) that call the four. Its names are aliased, so no name
+// the module defines or imports is shadowed. The source on disk is never changed
+const PRINTER = 'deck/call/code/work/output/printer.tree'
+const PRINTER_TASKS = ['openRun', 'closeRun', 'setOutput', 'isRunOpen']
+
+// is-run-open is one comparison, and the simplifier inlines it into every caller, so it is kept as a task of the
+// module (port-printer-is-run-open, a root) and exported under the printer's name by printerExports. The return is
+// spelled the way the module's own mode reads it
+function printerKeeper(lean: boolean): string {
+  return [
+    '',
+    '',
+    '# written by task/port-build.ts, never in the source (decision term-cli-in-term-0240): the printer run tasks a',
+    '# caller of this port drives',
+    'load @term/call/work/output/printer',
+    '  find open-run, name port-printer-open-run',
+    '  find close-run, name port-printer-close-run',
+    '  find set-output, name port-printer-set-output',
+    '  find is-run-open, name port-printer-run-open',
+    '',
+    'task port-printer-run',
+    '  take input, like dynamic',
+    '  take flags, like dynamic',
+    '  take tool-version, like text',
+    '  like void',
+    '  call port-printer-set-output',
+    '    read flags',
+    '    read tool-version',
+    '  call port-printer-open-run',
+    '    read input',
+    '  call port-printer-close-run',
+    '    read input',
+    '',
+    'task port-printer-is-run-open',
+    '  like boolean',
+    ...(lean ? ['  back port-printer-run-open()'] : ['  send back', '    call port-printer-run-open']),
+    '',
+  ].join('\n')
+}
+
+// the port's text with the printer's is-run-open exported by its own name when the simplifier inlined it away
+function printerExports(content: string): string {
+  if (!/^export function portPrinterIsRunOpen\(/m.test(content) || /^export (async )?function isRunOpen\(/m.test(content)) {
+    return content
+  }
+
+  return `${content}\n// the printer's is-run-open, kept by port-build (decision term-cli-in-term-0240)\nexport { portPrinterIsRunOpen as isRunOpen }\n`
+}
+
+// whether a module's port reaches the printer and leaves one of its four run tasks out (the printer's own port keeps
+// every task it defines)
+function needsPrinterKeeper(name: string, program: Array<{ span?: { file?: string } }>, typescript: string): boolean {
+  if (name === PRINTER || !program.some(statement => statement.span?.file?.endsWith(`/${PRINTER}`))) {
+    return false
+  }
+
+  return PRINTER_TASKS.some(task => !new RegExp(`^export (async )?function ${task}\\(`, 'm').test(typescript))
 }
 
 // a subtree written `<dir>/*/**` takes every directory directly in `<dir>`, each whole, and no file of `<dir>` itself
@@ -670,10 +738,20 @@ async function main(): Promise<void> {
       // compiles it again from the text as it now is
       let result: ReturnType<typeof compile> | undefined
       let changed: string | undefined
+      // THE PRINTER'S RUN (decision term-cli-in-term-0240): set once the first compile shows the printer in the closure
+      // without all four of its run tasks, and the module compiles again with printerKeeper's text after its own
+      let keep = false
 
       for (let attempt = 1; ; attempt++) {
         openWindow()
-        result = compile({ file, text }, { resolve, leanOf, library: true })
+        result = compile({ file, text: keep ? `${text}${printerKeeper(leanOf(file) === true)}` : text }, { resolve, leanOf, library: true })
+
+        if (!keep && result.ok && needsPrinterKeeper(name, result.program, result.typescript)) {
+          keep = true
+          closeWindow()
+          attempt--
+          continue
+        }
 
         const read = closeWindow()
 
@@ -716,7 +794,7 @@ async function main(): Promise<void> {
         continue
       }
 
-      const content = portContent(result.program, result.typescript)
+      const content = printerExports(portContent(result.program, result.typescript))
       // only the CLI's own consoles get a run entry: a hook module elsewhere (deck/test/code/fixture/hunt-cli.tree, a
       // test fixture whose hooks name tasks it never defines) is a library like any other port
       const run = basename(root) === 'call' ? runEntry(name, content, result.program) : undefined

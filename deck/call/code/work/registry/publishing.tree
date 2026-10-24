@@ -32,10 +32,19 @@ load ../small/home-folder
   find kept-at
   find read-env
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find fail-run
+  find field
+  find location
+  find open-run
+  find print-data
+  find report
+
 dock load
   load <@cluesurf/deck.tree>, name deck-tree-module
     mark async
-  load <@term/call/code/output>, name output
   load <node:fs>, name node-fs
   load <node:fs/promises>, name fs-promise
     mark async
@@ -420,7 +429,7 @@ task push-log
   like void
   mark private
 
-  output/report(make(debug-item, bind(glyph, <info>), bind(verb, <push>), bind(subject, sentence(message)), bind(level, <debug>)))
+  report(make(debug-item, bind(glyph, <info>), bind(verb, <push>), bind(subject, sentence(message)), bind(level, <debug>)))
 
 # The registry a package publishes to: `--registry` when given, else the package's own `base` line for its scope, else
 # the scope's default (`@term`'s built in, any other `ghcr.io/<scope>`). Every one must be OCI.
@@ -558,9 +567,9 @@ task announce
   save sent, is-equal(ping/form, <sent>)
   fork test, sent
     hold
-      output/report(make(facts-item, bind(glyph, <done>), bind(verb, <ping>), bind(subject, <package index>), bind(facts, ping-facts(text-or-empty(ping/outcome), text-or-empty(ping/publisher), is-truthy(token)))))
+      report(make(facts-item, bind(glyph, <done>), bind(verb, <ping>), bind(subject, <package index>), bind(facts, ping-facts(text-or-empty(ping/outcome), text-or-empty(ping/publisher), is-truthy(token)))))
     miss
-      output/report(make(warning-item, bind(glyph, <warning>), bind(verb, <ping>), bind(subject, <package index>), bind(facts, one-text(<{ping/form}>)), bind(message, one-text(sentence(ping/reason)))))
+      report(make(warning-item, bind(glyph, <warning>), bind(verb, <ping>), bind(subject, <package index>), bind(facts, one-text(<{ping/form}>)), bind(message, one-text(sentence(ping/reason)))))
   back sent
 
 # `--trust` / `--untrust`: sign a new key set for the scope with this machine's key
@@ -573,17 +582,17 @@ task rotate-key-set
   save keypair, load-publish-keypair(make(mint-ask, bind(mint, false)))
   fork test, not(is-truthy(keypair))
     hold
-      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <sign>), bind(subject, <There is no signing key on this machine, so it cannot sign a new key set>)))
-      output/close-run(make(next-failure-close, bind(verdict, <The key set was not changed>), bind(next, <term host, once, to publish and make a key>), bind(failure, <environment>)))
+      report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <sign>), bind(subject, <There is no signing key on this machine, so it cannot sign a new key set>)))
+      close-run(make(next-failure-close, bind(verdict, <The key set was not changed>), bind(next, <term host, once, to publish and make a key>), bind(failure, <environment>)))
       back
   save started, now-ms()
   save transport, deck-tree-module/transport-for(make(host-ask, bind(host, route/registry/host)))
   save rotated, deck-tree-module/rotate-keys(make(rotate-ask, bind(transport, transport), bind(repository, route/keys-repository), bind(scope, route/scope), bind(keypair, keypair), bind(add, given-list(input/trust)), bind(remove, given-list(input/untrust))))
-  save counts, one-field(output/count(rotated/keys/length, <keys>, <key>))
+  save counts, one-field(count(rotated/keys/length, <keys>, <key>))
   save facts, one-text(<generation {rotated/sequence}>)
-  save fields, one-field(output/field(<ref>, <{route/registry/host}/{route/keys-repository}:keys>))
-  output/report(make(rotate-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <rotate>), bind(subject, <key set of {route/scope}>), bind(duration, subtract(now-ms(), started)), bind(counts, counts), bind(facts, facts), bind(fields, fields)))
-  output/close-run(make(plain-close, bind(verdict, <Key set rotated>)))
+  save fields, one-field(field(<ref>, <{route/registry/host}/{route/keys-repository}:keys>))
+  report(make(rotate-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <rotate>), bind(subject, <key set of {route/scope}>), bind(duration, subtract(now-ms(), started)), bind(counts, counts), bind(facts, facts), bind(fields, fields)))
+  close-run(make(plain-close, bind(verdict, <Key set rotated>)))
 
 # `--ping`: announce the version the registry already holds, and build and push nothing. A rebuild cannot repeat a
 # push that landed, because a build carries its own time, so it is a new digest under a write-once tag
@@ -599,27 +608,27 @@ task ping-held
   save held, wait transport/get-manifest(make(held-ask, bind(repository, route/repository/name), bind(reference, version)))
   fork test, not(is-truthy(held))
     hold
-      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <ping>), bind(subject, <{name}@{version} is not published at {route/registry/host}/{route/repository/name}>)))
-      output/close-run(make(next-failure-close, bind(verdict, <Nothing was announced>), bind(next, <term host>), bind(failure, <usage>)))
+      report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <ping>), bind(subject, <{name}@{version} is not published at {route/registry/host}/{route/repository/name}>)))
+      close-run(make(next-failure-close, bind(verdict, <Nothing was announced>), bind(next, <term host>), bind(failure, <usage>)))
       back
   fork test, not(is-truthy(keypair))
     hold
-      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <ping>), bind(subject, <There is no signing key on this machine, so it cannot claim the version>)))
-      output/close-run(make(failure-close, bind(verdict, <Nothing was announced>), bind(failure, <environment>)))
+      report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <ping>), bind(subject, <There is no signing key on this machine, so it cannot claim the version>)))
+      close-run(make(failure-close, bind(verdict, <Nothing was announced>), bind(failure, <environment>)))
       back
-  output/report(make(read-item, bind(glyph, <info>), bind(verb, <read>), bind(subject, <{name}@{version}>), bind(fields, one-field(output/field(<digest>, held/digest)))))
+  report(make(read-item, bind(glyph, <info>), bind(verb, <read>), bind(subject, <{name}@{version}>), bind(fields, one-field(field(<digest>, held/digest)))))
   # the index checks the signer against the scope's key set, so it must exist and hold this key: created on the
   # scope's first use, a refusal when this key is not a member
   save keys, deck-tree-module/ensure-publisher(make(publisher-ask, bind(transport, deck-tree-module/transport-for(make(host-ask, bind(host, route/registry/host)))), bind(repository, route/keys-repository), bind(scope, route/scope), bind(keypair, keypair)))
   fork test, is-truthy(keys/created)
     hold
-      output/report(make(located-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <create>), bind(subject, <key set of {route/scope}>), bind(fields, one-field(output/field(<ref>, <{route/registry/host}/{route/keys-repository}>)))))
+      report(make(located-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <create>), bind(subject, <key set of {route/scope}>), bind(fields, one-field(field(<ref>, <{route/registry/host}/{route/keys-repository}>)))))
   save sent, announce(make(announce-ask, bind(route, route), bind(digest, held/digest), bind(keypair, keypair)))
   fork test, sent
     hold
-      output/close-run(make(plain-close, bind(verdict, <Announced {name}@{version}>)))
+      close-run(make(plain-close, bind(verdict, <Announced {name}@{version}>)))
     miss
-      output/close-run(make(failure-close, bind(verdict, <The index did not take it>), bind(failure, <environment>)))
+      close-run(make(failure-close, bind(verdict, <The index did not take it>), bind(failure, <environment>)))
 
 # the dry run: build the artifact with an existing key or a throwaway one, upload nothing, print its manifest
 task build-dry
@@ -640,23 +649,23 @@ task build-dry
   save artifact, built/artifact
   save target, <{route/registry/host}/{route/repository/name}:{artifact/config/tag}>
   save counts, make list
-  counts/push(output/count(release/files/length, <files>, <file>))
-  counts/push(output/count(release/closure/length, <objects>, <object>))
-  counts/push(output/count(artifact/packed, <packed>))
-  counts/push(output/count(artifact/files/packs/length, <packs>, <pack>))
-  counts/push(output/count(artifact/loose, <loose>))
+  counts/push(count(release/files/length, <files>, <file>))
+  counts/push(count(release/closure/length, <objects>, <object>))
+  counts/push(count(artifact/packed, <packed>))
+  counts/push(count(artifact/files/packs/length, <packs>, <pack>))
+  counts/push(count(artifact/loose, <loose>))
   save fields, make list
-  fields/push(output/field(<commit>, release/commit))
-  fields/push(output/field(<digest>, artifact/digest))
-  output/report(make(build-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <{name}@{version}>), bind(duration, subtract(now-ms(), started)), bind(bytes, artifact/manifest/length), bind(counts, counts), bind(fields, fields)))
+  fields/push(field(<commit>, release/commit))
+  fields/push(field(<digest>, artifact/digest))
+  report(make(build-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <{name}@{version}>), bind(duration, subtract(now-ms(), started)), bind(bytes, artifact/manifest/length), bind(counts, counts), bind(fields, fields)))
   save said, <There is no term.surf token (TERM_TOKEN or the auth file), so the ping would be anonymous.>
   fork test, is-truthy(read-index-token())
     hold
       save said, <A term.surf token was found, so the ping would credit the version to its account.>
-  output/report(make(message-item, bind(glyph, <info>), bind(verb, <ping>), bind(subject, <package index>), bind(message, one-text(said))))
-  output/close-run(make(facts-close, bind(verdict, <Dry run, nothing uploaded>), bind(facts, one-text(target))))
+  report(make(message-item, bind(glyph, <info>), bind(verb, <ping>), bind(subject, <package index>), bind(message, one-text(said))))
+  close-run(make(facts-close, bind(verdict, <Dry run, nothing uploaded>), bind(facts, one-text(target))))
   # the manifest itself is the data a dry run is asked for: stdout, as it is
-  output/print-data(manifest-data(artifact/manifest))
+  print-data(manifest-data(artifact/manifest))
 
 # the publish: mint a key on first use, push, and announce the version to the index
 task push-version
@@ -674,18 +683,18 @@ task push-version
   save result, deck-tree-module/publish-to-oci(merged(common, asked))
   fork test, is-truthy(result/unchanged)
     hold
-      output/report(make(skip-item, bind(glyph, <skipped>), bind(verb, <push>), bind(subject, <{name}@{version}>), bind(duration, subtract(now-ms(), started)), bind(facts, one-text(<already published>)), bind(fields, one-field(output/field(<digest>, result/digest)))))
+      report(make(skip-item, bind(glyph, <skipped>), bind(verb, <push>), bind(subject, <{name}@{version}>), bind(duration, subtract(now-ms(), started)), bind(facts, one-text(<already published>)), bind(fields, one-field(field(<digest>, result/digest)))))
       # the index may still lack it: the first ping can fail (a private package) after the push landed, and this is
       # the run that follows the fix
       announce(make(announce-ask, bind(route, route), bind(digest, result/digest), bind(keypair, keypair)))
-      output/close-run(make(plain-close, bind(verdict, <Already published, nothing moved>)))
+      close-run(make(plain-close, bind(verdict, <Already published, nothing moved>)))
       back
   save counts, make list
-  counts/push(output/count(result/blobs/uploaded, <blobs>, <blob>, result/blobs/total))
-  counts/push(output/count(result/layers, <layers>, <layer>))
-  output/report(make(build-item, bind(glyph, <done>), bind(verb, <push>), bind(subject, <{result/reference}>), bind(duration, subtract(now-ms(), started)), bind(bytes, result/bytes/uploaded), bind(counts, counts), bind(fields, one-field(output/field(<manifest>, <{result/manifest-size} B>)))))
+  counts/push(count(result/blobs/uploaded, <blobs>, <blob>, result/blobs/total))
+  counts/push(count(result/layers, <layers>, <layer>))
+  report(make(build-item, bind(glyph, <done>), bind(verb, <push>), bind(subject, <{result/reference}>), bind(duration, subtract(now-ms(), started)), bind(bytes, result/bytes/uploaded), bind(counts, counts), bind(fields, one-field(field(<manifest>, <{result/manifest-size} B>)))))
   announce(make(announce-ask, bind(route, route), bind(digest, result/digest), bind(keypair, keypair)))
-  output/close-run(make(plain-close, bind(verdict, <Published {name}@{version}>)))
+  close-run(make(plain-close, bind(verdict, <Published {name}@{version}>)))
 
 task publish
   take input, like dynamic
@@ -700,8 +709,8 @@ task publish
       # each a Problem item, `at` the manifest (section 12)
       walk errors
         take err
-        output/report(make(located-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <check>), bind(subject, sentence(err)), bind(fields, one-field(output/location(<deck.tree>)))))
-      output/close-run(make(counted-close, bind(verdict, <Nothing was published>), bind(counts, one-field(output/count(errors/length, <errors>, <error>)))))
+        report(make(located-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <check>), bind(subject, sentence(err)), bind(fields, one-field(location(<deck.tree>)))))
+      close-run(make(counted-close, bind(verdict, <Nothing was published>), bind(counts, one-field(count(errors/length, <errors>, <error>)))))
       back
   save name, package-name(text-or-empty(manifest/host), manifest/name)
   save version, deck-tree-module/show-code(manifest/mark)
@@ -709,8 +718,8 @@ task publish
   # `pnpm term:release`, and a source artifact under it would make every install fail
   fork test, is-released(name)
     hold
-      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <check>), bind(subject, <{name} is released with pnpm term:release, not published with term host>)))
-      output/close-run(make(failure-close, bind(verdict, <Nothing was published>), bind(failure, <usage>)))
+      report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <check>), bind(subject, <{name} is released with pnpm term:release, not published with term host>)))
+      close-run(make(failure-close, bind(verdict, <Nothing was published>), bind(failure, <usage>)))
       back
   save route, route-of(name, input/registry, manifest)
   fork test, or(is-truthy(input/trust), is-truthy(input/untrust))
@@ -769,13 +778,13 @@ task call-host
       fork test, is-truthy(input/ping)
         hold
           facts/push(<--ping>)
-  output/open-run(make(facts-open, bind(verb, <host>), bind(root, input/root), bind(facts, facts)))
+  open-run(make(facts-open, bind(verb, <host>), bind(root, input/root), bind(facts, facts)))
   fork
     mark unsafe
     publish(input)
   halt take
     take error
-    output/fail-run(error, input/root)
+    fail-run(error, input/root)
 
 # the parts of a path under a home, as home.ts took them as arguments (`userHome('code', version)`): each given one,
 # in order. An empty part is left out, as one `join` of them all leaves it out

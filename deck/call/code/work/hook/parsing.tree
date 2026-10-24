@@ -1,0 +1,1297 @@
+# The parse of a console's command line, over its route tree: hook-dispatch.ts's `programOf`, `dispatch`,
+# `passingStart`, `renderHelp`, `renderUsage` and `commandRoutes`, with the helpers they share (`takeNamed`,
+# `maybeItem`, `kindOf`, `missingOf`). Pure: it reads nothing from the environment, and the argv comes in as a list.
+# term-cli-in-term-0223, decision cli-in-term/018 part 2 (the first of three parts: runCommandLine is the second).
+#
+# The mill lowers a console's `hook` tree to `dock` route statements (path = command name, takes = flags and slots,
+# calls/0 = the bound task, children = subcommands). This walks that tree against an argv: it descends the matching
+# subcommands, reads `--flag value`, `--flag=value`, `-f value`, `--no-flag` and bare boolean flags, binds the
+# positionals to the command's slots in order, coerces by type, checks choices, applies defaults, and answers the
+# task with its arguments, the console's global values apart.
+#
+# A CONSOLE IS ONE PROGRAM HOOK (decision term/003 part 3): `hook term` holds every command as a nested hook, and its
+# takes are the global options. A hook's takes reach every hook nested in it: an ancestor's flag is accepted anywhere
+# after the command, and its value is the console's (`globals`), never a task's argument.
+#
+# ARGUMENT VALUES ARE TYPED HERE. hook-dispatch.ts held them in one record of `string | boolean | number | string[]`;
+# here an argument is a `line-arg`, its value an `arg-value` of four cases, kept in a list in the order the record's
+# keys took (a key set again keeps its place, a key removed leaves it), so every backend reads one order. `parse-line`
+# answers them typed, for the run (term-cli-in-term-0224). `dispatch` answers hook-dispatch.ts's own shape, a host
+# record, for a TypeScript caller and the pair. The binds (`hook-*`) are where JavaScript's own reading is the
+# behavior kept: the record and its key order, Number(), padEnd and length in UTF-16 units, JSON's quoting, and the
+# reads of a `need false` list that must not write the empty list into the route.
+#
+# THREE THINGS ARE NOT OBVIOUS, as in the original. Flags interleave with positionals up to a literal `--` (decision
+# cli-in-term/012 part 1). A slot already filled by its flag does not consume a positional. A last slot marked
+# `mark pass`, and a command marked `mark pass`, hand the rest of the line to another program verbatim
+# (`passing-start`, the one rule the parse and the help strip both read).
+#
+# Not loaded from work/dispatch.tree, though it holds route-named, task-for and is-passing too: its closure is the
+# whole of term's console (the printer, help, completion, the base lane), and this file is what every console and
+# every booted app ships as dock.mjs (term-cli-in-term-0225). dispatch.tree loads these from here instead, once it is
+# next edited (log.md, term-cli-in-term-0223).
+
+load @term/base/text
+  find starts-with
+  find substring
+  find index-of
+  find char-count
+  find contains
+
+load @term/base/list
+  find join
+
+load @term/base/maybe
+  find maybe
+  find some
+  find none
+
+load @term/make/compile/node
+  find dock-route
+  find dock-take
+  find dock-call
+  find dock-literal
+  find statement
+  find type
+
+# ---- the forms ----
+
+# one argument's value, as the line gave it or the coercion made it
+form arg-value
+  case arg-text
+    link given, like text
+  case arg-flag
+    link on, like boolean
+  case arg-number
+    link amount, like number
+  case arg-list
+    link items, like list, like text
+
+# a take's name and its value
+form line-arg
+  link name, like text
+  link value, like arg-value
+
+# a value outside its take's choices (hook-dispatch.ts `ChoiceRefusal`)
+form choice-refusal
+  link take, like text
+  link given, like text
+  link choices, like list, like text
+
+# A USAGE REFUSAL AS DATA (decision cli-in-term/016 part 2, hook-dispatch.ts `UsageRefusal`): `choice` holds every take
+# whose value is outside its choices, in the order the takes are declared, `missing` the slots given a value against
+# the route's required ones, `other` the rest, its text the error
+form usage-refusal
+  mark tag, name kind
+  case choice
+    link refused, like list, like choice-refusal
+  case missing
+    link got, like number
+    link need, like number
+    link takes, like list, like text
+  case other
+    link text, like text
+
+# a console's routes, split: the program hook, when there is one, and the commands
+form console-program
+  link program, like maybe, like dock-route
+  link commands, like list, like dock-route
+
+# a line read against the routes. `called` is the bound task's name, the empty text when the route binds none; a
+# refused line holds its `error` and `refusal`, an accepted one its `route`
+form parsed-line
+  link ok, like boolean
+  link error, like text
+  link command, like list, like text
+  link called, like text
+  link args, like list, like line-arg
+  link globals, like list, like line-arg
+  link route, like maybe, like dock-route
+  link refusal, like maybe, like usage-refusal
+
+# ---- the host record dispatch answers ----
+
+# a key and its value, as one entry of a host record
+bind hook-entry
+  take key, like text
+  take value, like dynamic
+  like dynamic
+  case node
+    text <[$key, $value]>
+
+# a host record of its entries, in order
+bind hook-record
+  take entries, like list, like dynamic
+  like dynamic
+  case node
+    text <Object.fromEntries($entries)>
+
+# a text as JSON spells it, which is how the help shows a text default
+bind hook-quoted
+  take value, like text
+  like text
+  case node
+    text <JSON.stringify($value)>
+
+# the length of a text in UTF-16 units, as the original measured a flag's name to give it one dash or two
+bind hook-unit-length
+  take value, like text
+  like number
+  case node
+    text <$value.length>
+
+# a word read as a number by JavaScript's Number(), NaN for a word that is no number or is only blanks (the
+# original's `value.trim() === ''`, JavaScript's own blanks: Term's trim strips another set)
+bind hook-number-word
+  take word, like text
+  like number
+  case node
+    text <($word.trim() === "" ? NaN : Number($word))>
+
+# a named type's arguments, the empty list when it has none, without writing it into the type
+bind hook-type-args
+  take named, like type
+  like list, like type
+  case node
+    text <($named.args ?? [])>
+
+# a take's long aliases and its choices, the empty list for one it has not, read without writing the empty list into
+# the take (a `need false` list read in Term is written back, traps T003)
+bind hook-aliases
+  take flag, like dock-take
+  like list, like text
+  case node
+    text <($flag.aliases ?? [])>
+
+bind hook-choices
+  take flag, like dock-take
+  like list, like text
+  case node
+    text <($flag.choices ?? [])>
+
+# a route with new calls and children, every other field as it was, the ones it left out still left out: a copy
+# made with `make` would write every `need false` field it lacks
+bind hook-route-with
+  take route, like dock-route
+  take calls, like list, like dock-call
+  take children, like list, like dock-route
+  like dock-route
+  case node
+    text <(\{ ...$route, calls: $calls, children: $children \})>
+
+# names in the order a JavaScript record lists them as keys: the array indexes first, ascending, then the rest as
+# they were set
+bind hook-key-order
+  take names, like list, like text
+  like list, like text
+  case node
+    text <Object.keys(Object.fromEntries($names.map((name_) =\> [name_, 0])))>
+
+# the task an accepted line names, as the original's record holds it: undefined when the route binds none
+bind hook-task-value
+  take called, like text
+  like dynamic
+  case node
+    text <($called === "" ? undefined : $called)>
+
+# a text padded with spaces to a width counted in UTF-16 units, as the original's padEnd
+bind hook-pad
+  take value, like text
+  take width, like number
+  like text
+  case node
+    text <$value.padEnd($width)>
+
+bind hook-is-whole
+  take amount, like number
+  like boolean
+  case node
+    text <Number.isInteger($amount)>
+
+bind hook-is-nan
+  take amount, like number
+  like boolean
+  case node
+    text <Number.isNaN($amount)>
+
+# ---- lists of arguments ----
+
+# the value of the argument of this name, or none
+task arg-of
+  take args, like list, like line-arg
+  take name, like text
+  like maybe, like arg-value
+  walk args
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        back make(some, one/value)
+  back make none
+
+task has-arg
+  take args, like list, like line-arg
+  take name, like text
+  like boolean
+  save held, arg-of(args, name)
+  sift held
+    case some
+      back true
+    case none
+      back false
+
+# the arguments with this one set: in its place when it was set before, else last, as a record key is
+task put-arg
+  take args, like list, like line-arg
+  take name, like text
+  take value, like arg-value
+  like list, like line-arg
+  save written, make list
+  save found, false
+  walk args
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        save found, true
+        save entry, make line-arg, name(name), value(value)
+        written/push entry
+      miss
+        written/push one
+  fork test, not(found)
+    hold
+      save entry, make line-arg, name(name), value(value)
+      written/push entry
+  back written
+
+# the arguments without the one of this name
+task drop-arg
+  take args, like list, like line-arg
+  take name, like text
+  like list, like line-arg
+  save kept, make list
+  walk args
+    take one
+    fork test, is-unequal(one/name, name)
+      hold
+        kept/push one
+  back kept
+
+task text-arg
+  take given, like text
+  like arg-value
+  back make arg-text, given(given)
+
+task flag-arg
+  take on, like boolean
+  like arg-value
+  back make arg-flag, on(on)
+
+# a value as the host holds it: a text, a boolean, a number or a list of texts
+task host-value-of
+  take value, like arg-value
+  like dynamic
+  sift value
+    case arg-text
+      link word
+      back word
+    case arg-flag
+      link state
+      back state
+    case arg-number
+      link figure
+      back figure
+    case arg-list
+      link words
+      back words
+
+# the arguments as one host record, keyed by name in their order
+task host-args-of
+  take args, like list, like line-arg
+  like dynamic
+  save entries, make list
+  walk args
+    take one
+    entries/push hook-entry(one/name, host-value-of(one/value))
+  back hook-record(entries)
+
+# ---- small readers ----
+
+task takes-joined
+  take first, like list, like dock-take
+  take second, like list, like dock-take
+  like list, like dock-take
+  save joined, make list
+  walk first
+    take one
+    joined/push one
+  walk second
+    take one
+    joined/push one
+  back joined
+
+task has-word
+  take words, like list, like text
+  take word, like text
+  like boolean
+  walk words
+    take one
+    fork test, is-equal(one, word)
+      hold
+        back true
+  back false
+
+# the words of a list from this index on
+task words-from
+  take words, like list, like text
+  take start, like number
+  like list, like text
+  save rest, make list
+  walk words
+    take one
+    take at
+    fork test, is-minimum(at, start)
+      hold
+        rest/push one
+  back rest
+
+# no route and no take yet, typed, so a local that later holds one is a maybe of a route or a take
+task no-route
+  like maybe, like dock-route
+  back make none
+
+task no-take
+  like maybe, like dock-take
+  back make none
+
+# the route whose path is this token, among the ones at this level
+task route-named
+  take routes, like list, like dock-route
+  take token, like text
+  like maybe, like dock-route
+  walk routes
+    take one
+    fork test, is-equal(one/path, token)
+      hold
+        back make(some, one)
+  back make none
+
+# the task a route binds: its first call's name, the empty text when it has none
+task task-for
+  take route, like dock-route
+  like text
+  save calls, route/calls
+  fork test, is-above(calls/length, 0)
+    hold
+      back calls/0/name
+  back <>
+
+# the take of exactly this name
+task take-by-name
+  take takes, like list, like dock-take
+  take name, like text
+  like maybe, like dock-take
+  walk takes
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        back make(some, one)
+  back make none
+
+# a take's own type's kind, the empty text when it has no type
+task type-kind
+  take flag, like dock-take
+  like text
+  sift flag/type
+    case some
+      back value/kind
+    case none
+      back <>
+
+# does any take of the route pass (`mark pass` on its last slot)?
+task has-passing-slot
+  take takes, like list, like dock-take
+  like boolean
+  walk takes
+    take one
+    fork test, one/passes
+      hold
+        back true
+  back false
+
+# ---- the program ----
+
+# THE PROGRAM a console's routes are. A console file has one top-level hook, the program, whose nested hooks are the
+# commands and whose takes are the global options. Anything else has no program: its top-level hooks are the commands
+task program-of
+  take routes, like list, like dock-route
+  like console-program
+  fork test, is-equal(routes/length, 1)
+    hold
+      save only, routes/0
+      fork test, is-above(only/children/length, 0)
+        hold
+          back make console-program, program(make(some, only)), commands(only/children)
+  back make console-program, program(make none), commands(routes)
+
+# the takes of the program hook, the empty list when there is none
+task program-takes
+  take split, like console-program
+  like list, like dock-take
+  save takes, make list
+  sift split/program
+    case some
+      link held
+      save takes, held/takes
+    case none
+      save nothing, 0
+  back takes
+
+# the take a flag word names among these takes: by its name, any of its long aliases, or its short letter. The first
+# match wins, so a command's own take shadows an ancestor's of the same name. No take has the empty text for a letter
+task take-named
+  take takes, like list, like dock-take
+  take word, like text
+  take short, like boolean
+  like maybe, like dock-take
+  walk takes
+    take one
+    fork test, short
+      hold
+        fork test, and(is-unequal(word, <>), is-equal(one/short, word))
+          hold
+            back make(some, one)
+      miss
+        # read into a local, never handed to the call: a `need false` list handed on is written into the take
+        save aliases, hook-aliases(one)
+        fork test, or(is-equal(one/name, word), has-word(aliases, word))
+          hold
+            back make(some, one)
+  back make none
+
+# A MAYBE TAKE (`like maybe, like number`, decision cli-in-term/008 part 1) can be absent: its route's type is the named
+# `maybe` with its item as the one argument. A given word is read by the ITEM's kind
+task maybe-item
+  take flag, like dock-take
+  like maybe, like type
+  sift flag/type
+    case some
+      link whole
+      sift whole
+        case named
+          link name
+          # the type's arguments, read without writing the empty list into the route when it has none
+          save items, hook-type-args(whole)
+          fork test, and(is-equal(name, <maybe>), is-above(items/length, 0))
+            hold
+              back make(some, items/0)
+          back make none
+        miss
+          back make none
+    case none
+      back make none
+
+# the kind a take's word is read as: a maybe take's item's, else its own type's, the empty text when it has none
+task kind-of
+  take flag, like dock-take
+  like text
+  save found, maybe-item(flag)
+  sift found
+    case some
+      link item
+      back item/kind
+    case none
+      back type-kind(flag)
+
+# kind-of of a take that may not be there
+task kind-of-found
+  take found, like maybe, like dock-take
+  like text
+  sift found
+    case some
+      link flag
+      back kind-of(flag)
+    case none
+      back <>
+
+# the required takes a line left out, as a refusal: the slots given a value against the route's required slots, and
+# every required take not given. None when nothing is missing
+task missing-of
+  take takes, like list, like dock-take
+  take args, like list, like line-arg
+  like maybe, like usage-refusal
+  save lacking, make list
+  save got, 0
+  save need, 0
+  walk takes
+    take one
+    save given, has-arg(args, one/name)
+    fork test, and(one/required, not(given))
+      hold
+        lacking/push one/name
+    fork test, one/positional
+      hold
+        fork test, given
+          hold
+            save got, add(got, 1)
+        fork test, one/required
+          hold
+            save need, add(need, 1)
+  fork test, is-equal(lacking/length, 0)
+    hold
+      back make none
+  save refusal, make missing, got(got), need(need), takes(lacking)
+  back make(some, refusal)
+
+# ---- where the passing words begin ----
+
+# WHERE A LINE'S PASSING WORDS BEGIN, the one rule the parse and the help strip both read: from here on each word is
+# another program's, verbatim (`--`, `--help` and unknown flags included), or the line's length when nothing passes.
+#
+# - A passing COMMAND (`mark pass` on the hook, decision cli-in-term/008 part 2): just past its path.
+# - A command whose last slot passes (`mark pass` on the slot, decision cli-in-term/012 part 2): its first positional.
+#   Before it, a flag consumes its value by its take's type, `--help` and `-h` stand alone, and a `--` is consumed.
+#
+# The descent skips flag words, as the help walk does, so `--help zone` still names zone
+task passing-start
+  take routes, like list, like dock-route
+  take argv, like list, like text
+  like number
+  save split, program-of(routes)
+  save level, split/commands
+  save current, no-route()
+  save above, program-takes(split)
+  save count, argv/length
+  save end, 0
+  save at, 0
+  save going, true
+  walk test
+    hook test, and(going, is-below(at, count))
+    hook hold
+      save token, argv/{at}
+      fork test, starts-with(token, <->)
+        hold
+          save at, add(at, 1)
+        miss
+          save stepped, route-named(level, token)
+          sift stepped
+            case none
+              save going, false
+            case some
+              link found
+              fork test, found/passes
+                hold
+                  back add(at, 1)
+              sift current
+                case some
+                  link held
+                  save above, takes-joined(held/takes, above)
+                case none
+                  save nothing, 0
+              save current, make(some, found)
+              save level, found/children
+              save end, add(at, 1)
+              save at, add(at, 1)
+  sift current
+    case none
+      back count
+    case some
+      link command-route
+      back passing-after(argv, end, takes-joined(command-route/takes, above), has-passing-slot(command-route/takes))
+
+# the second half of passing-start: past the command's path, the first positional of a command whose last slot passes
+task passing-after
+  take argv, like list, like text
+  take end, like number
+  take reachable, like list, like dock-take
+  take passes, like boolean
+  like number
+  save count, argv/length
+  fork test, not(passes)
+    hold
+      back count
+  save at, end
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save token, argv/{at}
+      fork test, is-equal(token, <-->)
+        hold
+          back add(at, 1)
+      fork test, or(not(starts-with(token, <->)), is-equal(token, <->))
+        hold
+          back at
+      save long, starts-with(token, <-->)
+      save body, substring(token, 1)
+      fork test, long
+        hold
+          save body, substring(token, 2)
+      save alone, or(is-equal(token, <--help>), is-equal(token, <-h>))
+      save inline, contains(body, <=>)
+      save negated, and(long, starts-with(body, <no->))
+      fork test, not(or(alone, or(inline, negated)))
+        hold
+          save next-at, add(at, 1)
+          fork test, is-below(next-at, count)
+            hold
+              save value, argv/{next-at}
+              save flag, is-equal(kind-of-found(take-named(reachable, body, not(long))), <boolean>)
+              save worded, or(not(flag), or(is-equal(value, <true>), is-equal(value, <false>)))
+              fork test, and(not(starts-with(value, <->)), worded)
+                hold
+                  save at, add(at, 1)
+      save at, add(at, 1)
+  back count
+
+# ---- the parse ----
+
+# a refused line, of the `other` kind: its text is the error
+task refused-with
+  take command, like list, like text
+  take error, like text
+  like parsed-line
+  save refusal, make other, text(error)
+  back make parsed-line, ok(false), error(error), command(command), called(<>), args(make list), globals(make list), route(make none), refusal(make(some, refusal))
+
+# resolve an argv (without the node and script words) against the command routes
+task parse-line
+  take routes, like list, like dock-route
+  take argv, like list, like text
+  like parsed-line
+  save split, program-of(routes)
+  save level, split/commands
+  save current, no-route()
+  save command, make list
+  # the takes of every hook above the command, the nearest first: the program's, then each group's on the way down
+  save above, program-takes(split)
+  # the same takes in the order they are declared, the program's first: the order a choice refusal lists them in
+  save above-declared, program-takes(split)
+  save count, argv/length
+  save at, 0
+  save going, true
+
+  # descend subcommands while the next bare token names one
+  walk test
+    hook test, and(going, is-below(at, count))
+    hook hold
+      save token, argv/{at}
+      fork test, starts-with(token, <->)
+        hold
+          save going, false
+        miss
+          save stepped, route-named(level, token)
+          sift stepped
+            case none
+              save going, false
+            case some
+              link found
+              sift current
+                case some
+                  link held
+                  save above, takes-joined(held/takes, above)
+                  save above-declared, takes-joined(above-declared, held/takes)
+                case none
+                  save nothing, 0
+              save current, make(some, found)
+              command/push found/path
+              save level, found/children
+              save at, add(at, 1)
+
+  sift current
+    case none
+      fork test, is-equal(count, 0)
+        hold
+          back refused-with(command, <no command given>)
+      back refused-with(command, <unknown command "{argv/0}">)
+    case some
+      link chosen
+      back parse-command(routes, argv, at, command, chosen, above, above-declared)
+
+# a flag word to the take it names, by name, long alias or short letter; a word no take names is kept as written
+task key-of
+  take reachable, like list, like dock-take
+  take word, like text
+  take short, like boolean
+  like text
+  save found, take-named(reachable, word, short)
+  sift found
+    case some
+      link named
+      back named/name
+    case none
+      back word
+
+# A LIST TAKE IS A REPEATABLE OPTION (decision cli-in-term/010): `--law a --law b` collects `[a, b]` in line order. A
+# list slot is the rest of the words instead, and is never named by a flag here
+task repeats
+  take reachable, like list, like dock-take
+  take key, like text
+  like boolean
+  save named, take-by-name(reachable, key)
+  sift named
+    case some
+      link found
+      back and(not(found/positional), is-equal(type-kind(found), <array>))
+    case none
+      back false
+
+# the arguments with a flag's word set: appended to a repeatable option's list, else the take's one value
+task set-arg
+  take args, like list, like line-arg
+  take reachable, like list, like dock-take
+  take key, like text
+  take word, like text
+  like list, like line-arg
+  fork test, repeats(reachable, key)
+    hold
+      save items, make list
+      save before-arg, arg-of(args, key)
+      sift before-arg
+        case some
+          link held
+          sift held
+            case arg-list
+              link before
+              walk before
+                take one
+                items/push one
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+      items/push word
+      back put-arg(args, key, make(arg-list, bind(items, items)))
+  back put-arg(args, key, text-arg(word))
+
+# is the argument of this take a text outside the take's choices? A take with no choices allows anything
+task is-outside
+  take args, like list, like line-arg
+  take flag, like dock-take
+  like boolean
+  save choices, hook-choices(flag)
+  fork test, is-equal(choices/length, 0)
+    hold
+      back false
+  save found, arg-of(args, flag/name)
+  sift found
+    case some
+      link held
+      sift held
+        case arg-text
+          link word
+          back not(has-word(choices, word))
+        miss
+          back false
+    case none
+      back false
+
+# the text an argument holds, the empty text for any other value
+task arg-text-of
+  take args, like list, like line-arg
+  take name, like text
+  like text
+  save found, arg-of(args, name)
+  sift found
+    case some
+      link held
+      sift held
+        case arg-text
+          link word
+          back word
+        miss
+          back <>
+    case none
+      back <>
+
+# a take's default as an argument value
+task fallback-arg
+  take literal, like dock-literal
+  like arg-value
+  sift literal
+    case text
+      link word
+      back text-arg(word)
+    case number
+      link figure
+      back make(arg-number, bind(amount, figure))
+    case flag
+      link state
+      back flag-arg(state)
+
+# the parse of a command's own words, once the descent found it
+task parse-command
+  take routes, like list, like dock-route
+  take argv, like list, like text
+  take start, like number
+  take command, like list, like text
+  take current, like dock-route
+  take above, like list, like dock-take
+  take above-declared, like list, like dock-take
+  like parsed-line
+
+  # A PASSING COMMAND (`mark pass`, decision cli-in-term/008 part 2) hands every word after its path to another
+  # console untouched: its one list slot takes them verbatim, and nothing is parsed here
+  fork test, current/passes
+    hold
+      save handed, make list
+      fork test, is-above(current/takes/length, 0)
+        hold
+          save slot, current/takes/0
+          save entry, make line-arg, name(slot/name), value(make(arg-list, bind(items, words-from(argv, start))))
+          handed/push entry
+      back make parsed-line, ok(true), error(<>), command(command), called(task-for(current)), args(handed), globals(make list), route(make(some, current)), refusal(make none)
+
+  # every take a flag may name here: the command's own first, so one shadows an ancestor's of the same name
+  save own, current/takes
+  save reachable, takes-joined(own, above)
+  save args, make list
+  save positionals, make list
+
+  # FLAGS INTERLEAVE WITH POSITIONALS up to a literal `--` (decision cli-in-term/012 part 1). From `passing-start` on,
+  # every word is another program's, verbatim
+  save pass-from, passing-start(routes, argv)
+  save raw, false
+  save count, argv/length
+  # how many positionals came before a literal `--`: a word after it that no slot holds is the task's to read
+  save dashed-at, add(count, 1)
+  save at, start
+  save going, true
+
+  walk test
+    hook test, and(going, is-below(at, count))
+    hook hold
+      save token, argv/{at}
+      fork test, is-minimum(at, pass-from)
+        hold
+          save rest, words-from(argv, at)
+          walk rest
+            take word
+            positionals/push word
+          save going, false
+        miss
+          fork test, is-equal(token, <-->)
+            hold
+              fork test, not(raw)
+                hold
+                  save dashed-at, positionals/length
+              save raw, true
+              save at, add(at, 1)
+            miss
+              save long, and(not(raw), starts-with(token, <-->))
+              save short, and(and(not(raw), not(long)), and(starts-with(token, <->), is-above(char-count(token), 1)))
+              fork test, or(long, short)
+                hold
+                  save body, substring(token, 1)
+                  fork test, long
+                    hold
+                      save body, substring(token, 2)
+                  save equals, index-of(body, <=>)
+                  fork test, and(long, starts-with(body, <no->))
+                    hold
+                      # boolean negation: `--no-cache` sets cache to false, through an alias too
+                      save args, put-arg(args, key-of(reachable, substring(body, 3), false), flag-arg(false))
+                      save at, add(at, 1)
+                    miss
+                      fork test, is-minimum(equals, 0)
+                        hold
+                          save key, key-of(reachable, substring(body, 0, equals), short)
+                          save args, set-arg(args, reachable, key, substring(body, add(equals, 1)))
+                          save at, add(at, 1)
+                        miss
+                          save key, key-of(reachable, body, short)
+                          # a boolean flag stands alone, and takes the next word only when it is `true` or `false`
+                          save flag, is-equal(kind-of-found(take-by-name(reachable, key)), <boolean>)
+                          save taken, false
+                          save next-at, add(at, 1)
+                          fork test, is-below(next-at, count)
+                            hold
+                              save value, argv/{next-at}
+                              save worded, or(not(flag), or(is-equal(value, <true>), is-equal(value, <false>)))
+                              fork test, and(not(starts-with(value, <->)), worded)
+                                hold
+                                  save args, set-arg(args, reachable, key, value)
+                                  save taken, true
+                          fork test, taken
+                            hold
+                              save at, add(at, 2)
+                            miss
+                              save args, put-arg(args, key, flag-arg(true))
+                              save at, add(at, 1)
+                miss
+                  positionals/push token
+                  save at, add(at, 1)
+
+  # A FLAG NO TAKE NAMES IS AN ERROR, an ancestor's take known here too. The first is named in the order the
+  # original's record listed its keys: a key that is an array index (`-2` is the key `2`) before the rest
+  save known, make list
+  walk reachable
+    take one
+    known/push one/name
+  save keys, make list
+  walk args
+    take one
+    keys/push one/name
+  save ordered, hook-key-order(keys)
+  walk ordered
+    take key
+    fork test, not(has-word(known, key))
+      hold
+        save dashes, <-->
+        fork test, is-equal(hook-unit-length(key), 1)
+          hold
+            save dashes, <->
+        save listed, make list
+        walk own
+          take mine
+          listed/push <--{mine/name}>
+        save tail, <>
+        fork test, is-above(listed/length, 0)
+          hold
+            save tail, <. The flags are {join(listed, <, >)}>
+        back refused-with(command, <unknown flag "{dashes}{key}"{tail}>)
+
+  # POSITIONALS BIND TO SLOTS ONLY, in order (decision term/003 part 1). A slot filled by its flag does not consume a
+  # positional, and the cursor moves only when a positional is taken. A list slot takes every word left
+  save cursor, 0
+  walk own
+    take one
+    fork test, one/positional
+      hold
+        fork test, one/variadic
+          hold
+            fork test, not(has-arg(args, one/name))
+              hold
+                save args, put-arg(args, one/name, make(arg-list, bind(items, words-from(positionals, cursor))))
+            save cursor, positionals/length
+          miss
+            fork test, not(has-arg(args, one/name))
+              hold
+                fork test, is-below(cursor, positionals/length)
+                  hold
+                    save args, put-arg(args, one/name, text-arg(positionals/{cursor}))
+                    save cursor, add(cursor, 1)
+
+  # a positional no slot was left to hold is an error too, rather than a word dropped
+  fork test, and(is-below(cursor, positionals/length), is-below(cursor, dashed-at))
+    hold
+      save extra, positionals/{cursor}
+      back refused-with(command, <unexpected argument "{extra}">)
+
+  # CHOICES FIRST, EVERY ONE (decision cli-in-term/016 part 2): each take whose value is outside its choices, in the
+  # order the takes are declared, and the error is the first one's text
+  save first, no-take()
+  walk reachable
+    take one
+    fork test, is-outside(args, one)
+      hold
+        sift first
+          case none
+            save first, make(some, one)
+          case some
+            save nothing, 0
+  sift first
+    case some
+      link outside
+      # a command's own take of an ancestor's name stands at the ancestor's place, as yargs read the two as one option
+      save declared, make list
+      walk above-declared
+        take one
+        save shadow, take-by-name(own, one/name)
+        sift shadow
+          case some
+            link mine
+            declared/push mine
+          case none
+            declared/push one
+      save declared-names, make list
+      walk above-declared
+        take one
+        declared-names/push one/name
+      walk own
+        take mine
+        fork test, not(has-word(declared-names, mine/name))
+          hold
+            declared/push mine
+      save refused, make list
+      walk declared
+        take one
+        fork test, is-outside(args, one)
+          hold
+            save entry, make(choice-refusal, bind(take, one/name), bind(given, arg-text-of(args, one/name)), bind(choices, hook-choices(one)))
+            refused/push entry
+      # yargs counted the slots and the required flags before it read a choice, so a line that leaves one out is
+      # refused for that first; the error stays the choice's
+      save refusal, make(choice, bind(refused, refused))
+      save left-out, missing-of(own, args)
+      sift left-out
+        case some
+          link lacking
+          save refusal, lacking
+        case none
+          save nothing, 0
+      save error, <--{outside/name} must be one of: {join(hook-choices(outside), <, >)} (got "{arg-text-of(args, outside/name)}")>
+      back make parsed-line, ok(false), error(error), command(command), called(<>), args(make list), globals(make list), route(make none), refusal(make(some, refusal))
+    case none
+      save nothing, 0
+
+  # coerce by declared type, then apply defaults, for the command's takes and every ancestor's
+  walk reachable
+    take one
+    save kind, kind-of(one)
+    save given-arg, arg-of(args, one/name)
+    sift given-arg
+      case some
+        link held
+        sift held
+          case arg-text
+            link word
+            fork test, or(is-equal(kind, <number>), is-equal(kind, <float>))
+              hold
+                save whole, is-equal(kind, <number>)
+                save figure, hook-number-word(word)
+                save bad, hook-is-nan(figure)
+                fork test, and(whole, not(hook-is-whole(figure)))
+                  hold
+                    save bad, true
+                fork test, bad
+                  hold
+                    save wanted, <a number>
+                    fork test, whole
+                      hold
+                        save wanted, <a whole number>
+                    back refused-with(command, <--{one/name} takes {wanted}, not "{word}">)
+                save args, put-arg(args, one/name, make(arg-number, bind(amount, figure)))
+            fork test, is-equal(kind, <boolean>)
+              hold
+                fork test, and(is-unequal(word, <true>), is-unequal(word, <false>))
+                  hold
+                    back refused-with(command, <--{one/name} is true or false, not "{word}">)
+                save args, put-arg(args, one/name, flag-arg(is-equal(word, <true>)))
+          miss
+            save nothing, 0
+      case none
+        save nothing, 0
+    # the default when nothing was given
+    fork test, not(has-arg(args, one/name))
+      hold
+        sift one/fallback
+          case some
+            link literal
+            save args, put-arg(args, one/name, fallback-arg(literal))
+          case none
+            save nothing, 0
+
+  # an ancestor's value is the console's, never the task's: a name the command declares itself stays the command's
+  save globals, make list
+  save mine, make list
+  walk own
+    take one
+    mine/push one/name
+  walk above
+    take one
+    save global-arg, arg-of(args, one/name)
+    sift global-arg
+      case some
+        link held
+        save globals, put-arg(globals, one/name, held)
+        fork test, not(has-word(mine, one/name))
+          hold
+            save args, drop-arg(args, one/name)
+      case none
+        save nothing, 0
+
+  back make parsed-line, ok(true), error(<>), command(command), called(task-for(current)), args(args), globals(globals), route(make(some, current)), refusal(make none)
+
+# hook-dispatch.ts's `dispatch`: the parse, answered in its own shape, a host record. Accepted: `ok`, `command`,
+# `task` (left out when the route binds none), `args`, `globals` and `route`. Refused: `ok`, `command`, `error` and
+# `refusal`
+task dispatch
+  take routes, like list, like dock-route
+  take argv, like list, like text
+  like dynamic
+  save parsed, parse-line(routes, argv)
+  save entries, make list
+  entries/push hook-entry(<ok>, parsed/ok)
+  entries/push hook-entry(<command>, parsed/command)
+  fork test, parsed/ok
+    hold
+      entries/push hook-entry(<task>, hook-task-value(parsed/called))
+      entries/push hook-entry(<args>, host-args-of(parsed/args))
+      entries/push hook-entry(<globals>, host-args-of(parsed/globals))
+      sift parsed/route
+        case some
+          link chosen
+          entries/push hook-entry(<route>, chosen)
+        case none
+          save nothing, 0
+    miss
+      entries/push hook-entry(<error>, parsed/error)
+      sift parsed/refusal
+        case some
+          link refusal
+          entries/push hook-entry(<refusal>, refusal)
+        case none
+          save nothing, 0
+  back hook-record(entries)
+
+# ---- help and usage ----
+
+# `--help` text for a command from its route: its path and note, its takes, its subcommands
+task render-help
+  take route, like dock-route
+  take name
+    like text
+    fall <term>
+  take parents
+    like list, like text
+    fall make list
+  like text
+  save path, make list
+  path/push name
+  walk parents
+    take one
+    path/push one
+  path/push route/path
+  save full, join(path, < >)
+  save lines, make list
+  save headline, full
+  fork test, is-unequal(route/note, <>)
+    hold
+      save headline, <{full} - {route/note}>
+  lines/push headline
+
+  fork test, is-above(route/takes/length, 0)
+    hold
+      lines/push <>
+      lines/push <options:>
+      walk route/takes
+        take one
+        save flag, <--{one/name}>
+        fork test, is-unequal(one/short, <>)
+          hold
+            save flag, <{flag}, -{one/short}>
+        save meta, make list
+        # a maybe take by its item (decision cli-in-term/008: `--runs` is a number)
+        save kind, kind-of(one)
+        fork test, is-unequal(kind, <>)
+          hold
+            meta/push kind
+        fork test, one/required
+          hold
+            meta/push <required>
+        sift one/fallback
+          case some
+            link literal
+            meta/push <default {literal-json(literal)}>
+          case none
+            save nothing, 0
+        save choices, hook-choices(one)
+        fork test, is-above(choices/length, 0)
+          hold
+            meta/push <one of {join(choices, <|>)}>
+        fork test, one/variadic
+          hold
+            meta/push <variadic>
+        save suffix, <>
+        fork test, is-above(meta/length, 0)
+          hold
+            save suffix, <  ({join(meta, <, >)})>
+        lines/push <  {hook-pad(flag, 22)} {one/note}{suffix}>
+
+  fork test, is-above(route/children/length, 0)
+    hold
+      lines/push <>
+      lines/push <subcommands:>
+      walk route/children
+        take child
+        lines/push <  {hook-pad(child/path, 22)} {child/note}>
+
+  back join(lines, <\n>)
+
+# a take's default as JSON spells it
+task literal-json
+  take literal, like dock-literal
+  like text
+  sift literal
+    case text
+      link word
+      back hook-quoted(word)
+    case number
+      link figure
+      back <{figure}>
+    case flag
+      link state
+      back <{state}>
+
+# the program-level usage: one line per top-level command
+task render-usage
+  take name, like text
+  take routes, like list, like dock-route
+  like text
+  save lines, make list
+  lines/push <usage: {name} \<command\> [options]>
+  lines/push <>
+  lines/push <commands:>
+  walk routes
+    take one
+    lines/push <  {hook-pad(one/path, 22)} {one/note}>
+  lines/push <>
+  lines/push <run `{name} \<command\> --help` for a command's options>
+  back join(lines, <\n>)
+
+# ---- the routes of a program ----
+
+# each function's parameter names, by its name; a later function of a name replaces an earlier one
+task function-params
+  take program, like list, like statement
+  like hash, like text, like list, like text
+  save found, make hash
+  walk program
+    take one
+    sift one
+      case function
+        link fn-name
+        link fn-params
+        save names, make list
+        walk fn-params
+          take param
+          names/push param/name
+        save found/{fn-name}, names
+      miss
+        save nothing, 0
+  back found
+
+# a route with each bound call carrying its task's parameter names, its children likewise
+task named-route
+  take route, like dock-route
+  take params, like hash, like text, like list, like text
+  like dock-route
+  save calls, make list
+  walk route/calls
+    take one
+    fork test, params/has(one/name)
+      hold
+        save entry, make dock-call, name(one/name), args(one/args), params(params/get(one/name)), span(one/span)
+        calls/push entry
+      miss
+        calls/push one
+  save children, make list
+  walk route/children
+    take child
+    children/push named-route(child, params)
+  back hook-route-with(route, calls, children)
+
+# the CLI command routes of a program: every top-level `hook` (lowered to a dock statement). Each bound call carries its
+# task's parameter names, so a command hands each take to the parameter of the same name
+task command-routes
+  take program, like list, like statement
+  like list, like dock-route
+  save params, function-params(program)
+  save routes, make list
+  walk program
+    take one
+    sift one
+      case dock
+        link docked
+        routes/push named-route(docked, params)
+      miss
+        save nothing, 0
+  back routes

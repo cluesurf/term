@@ -6,8 +6,8 @@
 #
 # Ported from call/code/lint.ts (term-cli-in-term-0055). lint-words.tree holds the decisions beside the parser and the
 # rules, loaded, and so is the one parser (parser/tree). The rules (analyze), the mill's span reader, the files walk,
-# the role readers, the project resolver, the manifest name and @cluesurf/deck.tree's manifest spellings are docked
-# until their own ports land, and every item prints through the output library, docked.
+# the role readers, the project resolver and the manifest name are docked until their own ports land, the manifest
+# spellings are @term/deck's spelling port, and every item prints through the output library.
 
 load @term/base/list
   find get
@@ -50,11 +50,21 @@ load @term/call/work/build/host-faces
 load @term/call/manifest-read
   find manifest-name
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find open-run
+  find report
+  find report-problems
+
+# the manifest's old spellings, @term/deck's spelling port (term-cli-in-term-0236), where the package
+# manager's face was docked
+load @term/deck/package/spelling
+  find manifest-spellings
+
 dock load
-  load <@cluesurf/deck.tree>, name deck-tree-module
   load <@term/make/code/analyze>, name analyze-module
   load <@term/make/code/compile/mill-run>, name mill-run-module
-  load <@term/call/code/output>, name output
   load <node:fs/promises>, name fs-promise
     mark async
   load <node:path>, name node-path
@@ -154,10 +164,6 @@ form fixed-finding
   link severity, like text
   link span, like stretch
   link fix, like edit
-
-form spelling-ask
-  link text, like text
-  link file, like text
 
 form analysis-ask
   link file, like text
@@ -363,9 +369,7 @@ task manifest-findings
   fork test, names-no-deck(text, file)
     hold
       back out
-  # the old spellings the manifest reader answers, host values (seam decision 004)
-  save spellings, like list, like dynamic
-    deck-tree-module/manifest-spellings(make(spelling-ask, bind(text, text), bind(file, file)))
+  save spellings, manifest-spellings(text, file)
   walk spellings
     take found
     save span, make(stretch, bind(start, make(place, bind(line, found/line), bind(column, found/column))), bind(end, make(place, bind(line, found/line), bind(column, found/end))))
@@ -513,16 +517,16 @@ task call-lint
     hold
       facts/push(<--fix>)
   save opening, make list
-  opening/push(output/count(files/length, <files>, <file>))
-  output/open-run(make(counted-open, bind(verb, <lint>), bind(root, root), bind(counts, opening), bind(facts, facts)))
+  opening/push(count(files/length, <files>, <file>))
+  open-run(make(counted-open, bind(verb, <lint>), bind(root, root), bind(counts, opening), bind(facts, facts)))
   fork test, is-equal(files/length, 0)
     hold
       save said, make list
       fork test, is-above(paths/length, 0)
         hold
           said/push(<Looked in {paths/join(<, >)}.>)
-      output/report(make(message-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no .tree file to lint>), bind(message, said)))
-      output/close-run(make(plain-close, bind(verdict, <Nothing to lint>)))
+      report(make(message-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no .tree file to lint>), bind(message, said)))
+      close-run(make(plain-close, bind(verdict, <Nothing to lint>)))
       back
   # the role and `mark lean` each file's role rule gives it, as the build reads them: without these a lean file is
   # milled as longhand and linted as a program the build never compiles
@@ -576,23 +580,23 @@ task call-lint
             hold
               save hinted, true
           found/push(make(problem-entry, bind(diagnostic, diagnostic), bind(text, shown)))
-  output/report-problems(found, root)
+  report-problems(found, root)
   fork test, is-above(total-fixed, 0)
     hold
       save fixed-counts, make list
-      fixed-counts/push(output/count(total-fixed, <fixes>, <fix>))
-      output/report(make(counted-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <fix>), bind(subject, <findings fixed in place>), bind(counts, fixed-counts)))
+      fixed-counts/push(count(total-fixed, <fixes>, <fix>))
+      report(make(counted-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <fix>), bind(subject, <findings fixed in place>), bind(counts, fixed-counts)))
   save warnings, subtract(total-findings, total-errors)
   save counts, make list
   fork test, is-above(total-errors, 0)
     hold
-      counts/push(output/count(total-errors, <errors>, <error>))
+      counts/push(count(total-errors, <errors>, <error>))
   fork test, is-above(warnings, 0)
     hold
-      counts/push(output/count(warnings, <warnings>, <warning>))
+      counts/push(count(warnings, <warnings>, <warning>))
   # the closing glyph is the worst finding's: an error fails the run (exit 1), warnings alone do not (1 under --strict)
   fork test, and(hinted, not(fixing))
     hold
-      output/close-run(make(next-close, bind(verdict, lint-verdict(total-findings)), bind(counts, counts), bind(next, <term lint --fix>)))
+      close-run(make(next-close, bind(verdict, lint-verdict(total-findings)), bind(counts, counts), bind(next, <term lint --fix>)))
     miss
-      output/close-run(make(counted-close, bind(verdict, lint-verdict(total-findings)), bind(counts, counts)))
+      close-run(make(counted-close, bind(verdict, lint-verdict(total-findings)), bind(counts, counts)))

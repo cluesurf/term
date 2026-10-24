@@ -2,8 +2,7 @@
 # one `change` item `old → new`, and the closing verdict. Ported from call/code/move.ts (term-cli-in-term-0060);
 # work/move.tree was an earlier conversion of an older move (no pre-release, no usage refusal).
 #
-# The manifest is read, bumped and written by @cluesurf/deck.tree, docked (decision cli-in-term/002). Every call into it
-# is awaited, as the one asynchronous one (`loadManifest`) was; the rest answer at once.
+# The manifest is read, bumped and written by @term/deck's ports, loaded (term-cli-in-term-0236).
 
 load @term/base/maybe
   find maybe
@@ -15,13 +14,31 @@ load @term/base/text
 load @term/base/list
   find get
 
+load @term/call/work/output/printer
+  find close-run
+  find open-run
+  find report
+
+# the manifest read and written, and its version moved, by @term/deck's ports (term-cli-in-term-0236), where the package
+# manager's faces were docked
+load @term/deck/package/manifest-reading
+  find load-manifest
+
+load @term/deck/package/manifest-text
+  find write-manifest
+
+load @term/deck/package/grammar-reading
+  find make-grammars
+
+load @term/deck/version
+  find show-code
+  find bump-code
+  find bump-prerelease
+
 dock load
   load <node:fs/promises>, name fs-promise
     mark async
   load <node:path>, name node-path
-  load <@cluesurf/deck.tree>, name deck-tree-module
-    mark async
-  load <@term/call/code/output>, name output
   load <global:Error>, name host-error
   load <global:String>, name host-string
 
@@ -64,20 +81,6 @@ form done-close
 
 form plain-close
   link verdict, like text
-
-form load-ask
-  link dir, like text
-
-form bump-ask
-  link code, like dynamic
-  link level, like number
-
-form prerelease-ask
-  link code, like dynamic
-  link id, like text
-
-form write-ask
-  link manifest, like dynamic
 
 task usage
   like text
@@ -145,7 +148,7 @@ task close-usage
   like void
   mark private
 
-  output/close-run(make(usage-close, bind(verdict, <Nothing moved>), bind(next, usage()), bind(failure, <usage>)))
+  close-run(make(usage-close, bind(verdict, <Nothing moved>), bind(next, usage()), bind(failure, <usage>)))
 
 # the manifest read, its version moved by `level` and written back, and the change reported
 task move-version
@@ -154,8 +157,8 @@ task move-version
   like void
   mark private
 
-  save manifest, deck-tree-module/load-manifest(make(load-ask, bind(dir, root)))
-  save old-code, deck-tree-module/show-code(manifest/mark)
+  save manifest, load-manifest(root, make-grammars())
+  save old-code, show-code(manifest/mark)
   save new-code, manifest/mark
   fork test, or(is-equal(level, <1>), or(is-equal(level, <2>), is-equal(level, <3>)))
     hold
@@ -166,17 +169,17 @@ task move-version
       fork test, is-equal(level, <2>)
         hold
           save number-level, 2
-      save new-code, deck-tree-module/bump-code(make(bump-ask, bind(code, manifest/mark), bind(level, number-level)))
+      save new-code, bump-code(manifest/mark, number-level)
     miss
-      save new-code, deck-tree-module/bump-prerelease(make(prerelease-ask, bind(code, manifest/mark), bind(id, level)))
+      save new-code, bump-prerelease(manifest/mark, level)
   save manifest/mark, new-code
-  save new-text, deck-tree-module/show-code(new-code)
-  save text, deck-tree-module/write-manifest(make(write-ask, bind(manifest, manifest)))
+  save new-text, show-code(new-code)
+  save text, write-manifest(manifest)
   fs-promise/write-file(node-path/join(root, <deck.tree>), text, <utf-8>)
   save facts, make list
   facts/push(<{old-code} → {new-text}>)
-  output/report(make(change-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <change>), bind(subject, <mark>), bind(facts, facts)))
-  output/close-run(make(done-close, bind(verdict, <Version is {new-text}>), bind(done, true)))
+  report(make(change-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <change>), bind(subject, <mark>), bind(facts, facts)))
+  close-run(make(done-close, bind(verdict, <Version is {new-text}>), bind(done, true)))
 
 # `target` names the manifest field that moves: `mark`, the version. `code` is its old spelling (the version was
 # `code <...>` until `code` came to name the code root), still taken so a script written against it works
@@ -186,7 +189,7 @@ task call-move
   take level, like maybe, like text
   like void
 
-  output/open-run(make(move-open, bind(verb, <move>), bind(root, root)))
+  open-run(make(move-open, bind(verb, <move>), bind(root, root)))
   save named, <that>
   save known, false
   sift target
@@ -198,7 +201,7 @@ task call-move
       save known, false
   fork test, not(known)
     hold
-      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is nothing named {named} to move>)))
+      report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is nothing named {named} to move>)))
       close-usage()
     miss
       save moved-by, level-of(level)
@@ -213,7 +216,7 @@ task call-move
               save shown, <undefined>
           save said, make list
           said/push(<1, 2 or 3 moves the major, minor or patch, and a word such as rc starts or moves a pre-release>)
-          output/report(make(problem-said, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <{shown} is not a part of the version>), bind(message, said)))
+          report(make(problem-said, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <{shown} is not a part of the version>), bind(message, said)))
           close-usage()
         miss
           fork
@@ -223,5 +226,5 @@ task call-move
             take error
             save said, make list
             said/push(message-of(error))
-            output/report(make(failed-change, bind(glyph, <failed>), bind(verb, <change>), bind(subject, <mark>), bind(message, said)))
-            output/close-run(make(plain-close, bind(verdict, <Version not moved>)))
+            report(make(failed-change, bind(glyph, <failed>), bind(verb, <change>), bind(subject, <mark>), bind(message, said)))
+            close-run(make(plain-close, bind(verdict, <Version not moved>)))

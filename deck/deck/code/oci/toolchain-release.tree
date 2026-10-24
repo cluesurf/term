@@ -29,8 +29,9 @@
 #   - configs, manifests and indexes are built in binds in the original's key order, so their bytes and digests are
 #     the original's; the transport is the caller's host record, called with the original's one record per method
 #   - every OciError is a halt of oci-failure (decision 007); signatures are object/id-signing.tree's, the route
-#     oci-routing.tree's oci-route-of over fetch.ts's default config (docked, through its face package/fetch.ts since
-#     term-cli-in-term-0115: the routes stay an object, as oci-route-of reads them)
+#     oci-routing.tree's oci-route-of over registry-fetching.tree's default config, loaded (term-cli-in-term-0233),
+#     its routes made an object as oci-route-of reads them (`release-object-routes`, what the face package/fetch.ts
+#     did)
 
 load ./oci-failure
   find oci-failure
@@ -47,9 +48,19 @@ load ../object/id-signing
   find sign-id
   find verify-id
 
+load ../package/registry-fetching
+  find make-default-fetch-config
+
 dock load
   load <global:process>, name host-process
-  load <@term/deck/code/package/fetch>, name fetch-module
+
+# the fetch config with its scope routes an object, as oci-route-of reads them and the face package/fetch.ts handed
+# them on (`Object.fromEntries` over the port's hash)
+bind release-object-routes
+  take config, like dynamic
+  like dynamic
+  case node
+    text <<({ ...$config, scopeRegistries: Object.fromEntries($config.scopeRegistries) })>>
 
 bind payload-nothing
   like dynamic
@@ -361,7 +372,8 @@ task release-route
   take env, like dynamic
   like dynamic
 
-  save config, fetch-module/make-default-fetch-config()
+  save made, make-default-fetch-config()
+  save config, release-object-routes(made)
   save override, payload-override(env, host-process)
   save scope, payload-scope-of(package-name)
   fork test, payload-truthy(override)

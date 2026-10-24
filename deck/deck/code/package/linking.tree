@@ -11,9 +11,11 @@
 #     settles to what it raised and when, and the first failure IN TIME is raised, as the original's `Promise.all`
 #     raised it. It is raised once the whole chunk has settled, where the original raised at once and left the rest of
 #     the chunk running: the files written are the same
-#   - the store, hash, fetch and OCI readers (store.ts, hash.ts, fetch.ts, oci/client.ts, oci/install.ts,
-#     oci/reference.ts) are docked until their lanes port them, and the fetch config passes through them as the host
-#     value it is
+#   - the store, hash, fetch and OCI readers are their ports, loaded (term-cli-in-term-0233, where the faces store.ts,
+#     hash.ts, fetch.ts, oci/client.ts, oci/install.ts and oci/reference.ts were docked): file-store, content-hash,
+#     registry-fetching, oci-routing, version-installing, oci-address. The fetch config is the caller's host value, its
+#     scope routes an object as oci-route-of reads them, and registry-fetching is handed it with the routes a hash
+#     (`linking-fetch-config`, what the face did). An OCI refusal is oci-failure (decision 007), passed on as raised
 #   - a digest, a directory entry's kind and the `tar` run are host binds, each the original's own expression
 #   - every mill read takes the grammars record last: `dev-link` and `register-global-link` read the deck's manifest
 #     through manifest-reading.tree's `load-manifest`
@@ -52,16 +54,39 @@ load ./grammar-reading
 load ./manifest-reading
   find load-manifest
 
+load ./config-shape
+  find fetch-config
+
+load ./file-store
+  find init-store
+  find get-file-path
+  find get-store-root
+
+load ./content-hash
+  find hash-buffer
+
+load ./registry-fetching
+  find fetch-tarball
+
+load ../oci/oci-routing
+  find oci-route-of
+  find transport-for
+  find trust-dir
+  find local-store
+  find store-transport
+
+load ../oci/version-installing
+  find read-oci-version
+  find install-oci-version
+
+load ../oci/oci-address
+  find is-oci-registry
+  find parse-pinned-reference
+
 dock load
   load <node:fs/promises>, name fs-promise
     mark async
   load <node:path>, name node-path
-  load <@term/deck/code/package/store>, name deck-store
-  load <@term/deck/code/package/hash>, name deck-hash
-  load <@term/deck/code/package/fetch>, name deck-fetch
-  load <@term/deck/code/oci/client>, name oci-client
-  load <@term/deck/code/oci/install>, name oci-install
-  load <@term/deck/code/oci/reference>, name oci-reference
   load <global:Promise>, name host-promise
   load <global:String>, name host-string
   load <global:console>, name host-console
@@ -79,24 +104,7 @@ form force-ask
 form listing-ask
   link with-file-types, like boolean
 
-form tarball-ask
-  link url, like text
-  link config, like dynamic
-
-form hash-ask
-  link data, like dynamic
-
-form store-path-ask
-  link hash, like text
-
-form route-ask
-  link name, like text
-  link config, like dynamic
-
-form transport-ask
-  link host, like text
-  link offline, like boolean
-
+# what an OCI read of a pinned version expects: its digest, its signer when the lockfile names one, its version
 form expect-pin
   link digest, like text
   link key
@@ -104,30 +112,19 @@ form expect-pin
     need false
   link version, like text
 
-form oci-version-ask
-  link transport, like dynamic
-  link repository, like text
-  link package, like text
-  link reference, like text
-  link scope, like text
-  link keys-repository, like text
-  link host, like text
-  link trust-dir, like text
-  link expect, like expect-pin
-  link warn
-    like task
-      take message, like text
-      like void
+# the caller's fetch config with its scope routes a hash, as registry-fetching reads them (the face package/fetch.ts's
+# toPort): an object's entries, or the hash a port handed on
+bind linking-fetch-config
+  take config, like dynamic
+  like fetch-config
+  case node
+    text <<((linkingConfig_) => ({ ...linkingConfig_, scopeRegistries: linkingConfig_.scopeRegistries instanceof Map ? linkingConfig_.scopeRegistries : new Map(Object.entries(linkingConfig_.scopeRegistries ?? {})) }))($config)>>
 
-form oci-install-ask
-  link transport, like dynamic
-  link repository, like text
-  link version, like dynamic
-  link dest, like text
-  link local, like dynamic
-  link cache
-    like dynamic
-    need false
+# what a host call is given for a parameter left out
+bind linking-nothing
+  like dynamic
+  case node
+    text <undefined>
 
 # an install settled: whether it went through, what it raised, and when (the host's clock in nanoseconds)
 form settled-install
@@ -298,7 +295,7 @@ task install-oci
   mark private
 
   save code-text, show-code(resolved/code)
-  save pinned-reference, oci-reference/parse-pinned-reference(resolved/site)
+  save pinned-reference, parse-pinned-reference(resolved/site)
   save digest, pinned-reference/digest
 
   fork test, and(not(is-equal(resolved/hash, <>)), not(is-equal(resolved/hash, digest)))
@@ -323,36 +320,26 @@ task install-oci
 
   fork test, not(done)
     hold
-      save route, oci-client/oci-route-of(make(route-ask, bind(name, resolved/name), bind(config, config)))
+      save route, oci-route-of(resolved/name, config)
       fork test, not(is-present(route))
         hold
           halt <lock.tree pins {resolved/name} to {resolved/site}, but its scope is not routed to an oci:// registry>
 
       save host, route/registry/host
-      save transport, oci-client/transport-for(make(transport-ask, bind(host, host), bind(offline, config/offline)))
+      save transport, transport-for(host, config/offline)
       save expect, make(expect-pin, bind(digest, digest), bind(version, code-text))
       fork test, not(is-equal(resolved/key, <>))
         hold
           save expect/key, resolved/key
-      save asked
-        make oci-version-ask
-          bind transport, transport
-          bind repository, route/repository/name
-          bind package, resolved/name
-          bind reference, digest
-          bind scope, route/scope
-          bind keys-repository, route/keys-repository
-          bind host, host
-          bind trust-dir, oci-client/trust-dir()
-          bind expect, expect
-          bind warn, warn-indented
-      save version, wait oci-install/read-oci-version(asked)
+      save trusted-at, trust-dir()
+      save version, read-oci-version(transport, route/repository/name, resolved/name, digest, route/scope, route/keys-repository, host, trusted-at, expect, linking-nothing(), warn-indented)
 
-      save install, make(oci-install-ask, bind(transport, transport), bind(repository, route/repository/name), bind(version, version), bind(dest, deck-dir), bind(local, oci-client/local-store()))
+      save objects, local-store()
+      save cache, linking-nothing()
       fork test, not(is-present(config/offline))
         hold
-          save install/cache, oci-client/store-transport(host)
-      wait oci-install/install-oci-version(install)
+          save cache, store-transport(host)
+      install-oci-version(transport, route/repository/name, version, deck-dir, objects, cache, linking-nothing())
 
       fs-promise/mkdir(node-path/dirname(marker), make(folder-ask, bind(recursive, true)))
       fs-promise/write-file(marker, <{digest}\n>)
@@ -380,8 +367,8 @@ task link-to-store
         fork test, is-file-entry(entry)
           hold
             save data, fs-promise/read-file(full-path)
-            save hash-text, wait deck-hash/hash-buffer(make(hash-ask, bind(data, data)))
-            save store-path, deck-store/get-file-path(make(store-path-ask, bind(hash, hash-text)))
+            save hash-text, hash-buffer(data)
+            save store-path, get-file-path(hash-text)
             fs-promise/mkdir(node-path/dirname(store-path), make(folder-ask, bind(recursive, true)))
             fork test, not(can-reach(store-path))
               hold
@@ -422,14 +409,15 @@ task install-resolved
   save code-text, show-code(resolved/code)
   save deck-dir, deck-folder(seed-dir, resolved/name, code-text)
 
-  fork test, oci-reference/is-oci-registry(resolved/site)
+  fork test, is-oci-registry(resolved/site)
     hold
       install-oci(resolved, seed-dir, deck-dir, config)
     miss
       # skipped when installed already, and for a workspace deck (no tarball)
       fork test, and(not(can-reach(deck-dir)), not(is-equal(resolved/site, <>)))
         hold
-          save tarball, wait deck-fetch/fetch-tarball(make(tarball-ask, bind(url, resolved/site), bind(config, config)))
+          save fetching, linking-fetch-config(config)
+          save tarball, fetch-tarball(resolved/site, fetching)
           # The registry declares the digest algorithm in the integrity prefix (`sha256-…` or `sha512-…`), so it is
           # verified with THAT algorithm, in hex or base64 (npm writes base64, the base.surf registry hex)
           fork test, not(is-equal(resolved/hash, <>))
@@ -531,7 +519,7 @@ task link-packages
 
   fs-promise/mkdir(link-dir, make(folder-ask, bind(recursive, true)))
   fs-promise/mkdir(seed-dir, make(folder-ask, bind(recursive, true)))
-  wait deck-store/init-store()
+  init-store()
 
   # install each resolved deck to the store, `concurrency` at a time
   save decks, make list
@@ -643,7 +631,7 @@ task global-link-path
   like text
   mark private
 
-  back node-path/join(deck-store/get-store-root(), <link>, full-name)
+  back node-path/join(get-store-root(), <link>, full-name)
 
 # register the package at `package-dir` in the global link registry, keyed by its manifest name. Answers the full name
 task register-global-link
@@ -669,7 +657,7 @@ task unregister-global-link
 task list-global-links
   like list, like text
 
-  save root, node-path/join(deck-store/get-store-root(), <link>)
+  save root, node-path/join(get-store-root(), <link>)
   save names, make list
   fork
     mark unsafe

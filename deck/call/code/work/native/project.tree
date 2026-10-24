@@ -15,6 +15,7 @@
 
 load @term/base/list
   find list
+  find get
   find join
   find sort
   find contains
@@ -30,7 +31,6 @@ load ../build/tree-finding
 
 load ../cask/host-value
   find is-truthy
-  find value-or
   find now-ms
 
 load ./building
@@ -47,16 +47,24 @@ load ./native-value
 load ../context/emission
   find emit-program
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find field
+  find location
+  find open-run
+  find report
+  find report-problems
+  find show-path
+
+# the tree reader: @term/deck's tree-reading port (term-cli-in-term-0234, where its face package/read.ts was docked)
+load @term/deck/package/tree-reading
+  find read-tree
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <global:process>, name host-process
-  load <@term/deck/code/package/read>, name read-module
-  load <@term/call/code/output>, name output
-
-form tree-source
-  link file, like text
-  link text, like text
 
 form native-folder
   link recursive, like boolean
@@ -172,22 +180,21 @@ task defines-entry
   take file, like text
   like boolean
 
-  # the host reader's answer and its forms (seam decision 004)
-  save read, like dynamic
-    read-module/read-tree(make(tree-source, bind(file, file), bind(text, node-fs/read-file-sync(file, <utf8>))))
-  fork test, not(is-truthy(read/ok))
+  save read, read-tree(file, node-fs/read-file-sync(file, <utf8>))
+  fork test, not(read/ok)
     hold
       back false
   save names, entry-names()
-  save forms, like list, like dynamic
-    read/forms
-  walk forms
-    take form, like dynamic
+  walk read/forms
+    take form
     fork test, is-unequal(<{form/head}>, <task>)
       hold
         turn next
     save terms, form/terms
-    save first, value-or(terms/0, <>)
+    save first, <>
+    fork test, is-above(terms/length, 0)
+      hold
+        save first, get(terms, 0)
     fork test, not(contains(names, <{first}>))
       hold
         turn next
@@ -195,11 +202,8 @@ task defines-entry
       hold
         turn next
     save takes, false
-    # the host tree's child forms (seam decision 004)
-    save children, like list, like dynamic
-      form/forms
-    walk children
-      take one, like dynamic
+    walk form/forms
+      take one
       fork test, is-equal(<{one/head}>, <take>)
         hold
           save takes, true
@@ -233,25 +237,25 @@ task call-make-native
   fork test, is-truthy(input/build)
     hold
       facts/push(<--build>)
-  output/open-run(make(native-open, bind(verb, <make>), bind(root, root), bind(facts, facts)))
+  open-run(make(native-open, bind(verb, <make>), bind(root, root), bind(facts, facts)))
 
   save envs, project-envs()
   fork test, not(contains(envs, <{input/env}>))
     hold
       save fields, make list
-      fields/push(output/field(<backends>, join(envs, <, >)))
-      output/report(make(native-problem-fields, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no backend named {input/env}>), bind(fields, fields)))
-      host-process/exit(output/close-run(make(native-close, bind(verdict, <Nothing built>), bind(failure, <usage>))))
+      fields/push(field(<backends>, join(envs, <, >)))
+      report(make(native-problem-fields, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no backend named {input/env}>), bind(fields, fields)))
+      host-process/exit(close-run(make(native-close, bind(verdict, <Nothing built>), bind(failure, <usage>))))
 
   save env, <{input/env}>
   save programs, project-programs(root, env)
-  save count, programs/length
+  save program-count, programs/length
 
-  fork test, is-equal(count, 0)
+  fork test, is-equal(program-count, 0)
     hold
       save named, join(entry-names(), <`, `>)
-      output/report(make(native-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <No file of the project defines `{named}` taking nothing, so there is no program to build>)))
-      host-process/exit(output/close-run(make(native-close-next, bind(verdict, <Nothing built>), bind(next, <term make --emit {env} \<file.tree\> --main \<task\>>), bind(failure, <failure>))))
+      report(make(native-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <No file of the project defines `{named}` taking nothing, so there is no program to build>)))
+      host-process/exit(close-run(make(native-close-next, bind(verdict, <Nothing built>), bind(next, <term make --emit {env} \<file.tree\> --main \<task\>>), bind(failure, <failure>))))
 
   save host, node-path/join(root, <host>, env)
   save written, 0
@@ -269,12 +273,12 @@ task call-make-native
         save failed, add(failed, 1)
         fork test, is-truthy(emitted/problems)
           hold
-            output/report-problems(emitted/problems, root)
+            report-problems(emitted/problems, root)
           miss
             walk emitted/errors
               take error, like text
-              output/report(make(native-check, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <check>), bind(subject, capital-first(error))))
-        output/report(make(native-step, bind(glyph, <failed>), bind(verb, <emit>), bind(subject, relative), bind(duration, subtract(now-ms(), started))))
+              report(make(native-check, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <check>), bind(subject, capital-first(error))))
+        report(make(native-step, bind(glyph, <failed>), bind(verb, <emit>), bind(subject, relative), bind(duration, subtract(now-ms(), started))))
         turn next
 
     save stem, node-path/join(host, without-tree(relative))
@@ -293,8 +297,8 @@ task call-make-native
     fork test, not(build)
       hold
         save fields, make list
-        fields/push(output/location(output/show-path(out, root)))
-        output/report(make(native-emitted, bind(glyph, <done>), bind(verb, <emit>), bind(subject, relative), bind(duration, subtract(now-ms(), started)), bind(bytes, byte-length(source)), bind(fields, fields)))
+        fields/push(location(show-path(out, root)))
+        report(make(native-emitted, bind(glyph, <done>), bind(verb, <emit>), bind(subject, relative), bind(duration, subtract(now-ms(), started)), bind(bytes, byte-length(source)), bind(fields, fields)))
         turn next
 
     save asked
@@ -309,32 +313,32 @@ task call-make-native
       hold
         save failed, add(failed, 1)
         save reason, <{built/reason}>
-        output/report(make(native-said, bind(glyph, <failed>), bind(verb, <build>), bind(subject, relative), bind(duration, subtract(now-ms(), started)), bind(message, first-lines(reason, 20))))
+        report(make(native-said, bind(glyph, <failed>), bind(verb, <build>), bind(subject, relative), bind(duration, subtract(now-ms(), started)), bind(message, first-lines(reason, 20))))
         turn next
 
     save placed, make list
     save artifact, <{built/artifact}>
-    placed/push(output/location(output/show-path(artifact, root)))
-    output/report(make(native-placed, bind(glyph, <done>), bind(verb, <build>), bind(subject, relative), bind(duration, subtract(now-ms(), started)), bind(fields, placed)))
+    placed/push(location(show-path(artifact, root)))
+    report(make(native-placed, bind(glyph, <done>), bind(verb, <build>), bind(subject, relative), bind(duration, subtract(now-ms(), started)), bind(fields, placed)))
 
   save counts, make list
-  counts/push(output/count(written, <written>))
+  counts/push(count(written, <written>))
   fork test, is-above(failed, 0)
     hold
-      counts/push(output/count(failed, <failed>))
+      counts/push(count(failed, <failed>))
   save done-word, <Emitted>
   fork test, build
     hold
       save done-word, <Built>
   save noun, <programs>
-  fork test, is-equal(count, 1)
+  fork test, is-equal(program-count, 1)
     hold
       save noun, <program>
-  save made, subtract(count, failed)
-  save verdict, <{done-word} {made} of {count} {noun} for {env}>
+  save made, subtract(program-count, failed)
+  save verdict, <{done-word} {made} of {program-count} {noun} for {env}>
 
   fork test, is-above(failed, 0)
     hold
-      host-process/exit(output/close-run(make(native-close-failed, bind(verdict, verdict), bind(counts, counts), bind(failure, <failure>))))
+      host-process/exit(close-run(make(native-close-failed, bind(verdict, verdict), bind(counts, counts), bind(failure, <failure>))))
 
-  output/close-run(make(native-close-counts, bind(verdict, verdict), bind(counts, counts)))
+  close-run(make(native-close-counts, bind(verdict, verdict), bind(counts, counts)))

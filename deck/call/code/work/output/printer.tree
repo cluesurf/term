@@ -253,6 +253,9 @@ form output-state
   link ticking, like boolean
   link steps, like hash, like text, like step-time
 
+# THE RUN STATE. A port is emitted whole, with its own copy of every module it loads (cli-in-term traps.md), so one run
+# state holds only while one port reaches this module: the console's run entry imports line/base.tree's port alone, and
+# starts, refuses and fails the run through its tasks (decision cli-in-term/018 part 3)
 host state
   make output-state
     options(make-options())
@@ -1409,7 +1412,7 @@ task source-lines
 task problem-of
   take found, like diagnostic
   take root, like text
-  take text, like dynamic
+  take text, like dynamic, fall no-value()
   like event
 
   save line, add(found/span/start/line, 1)
@@ -1458,8 +1461,10 @@ task report-problem
 # a batch of diagnostics as section 12 prints them: sorted by path, line and column, one caused by an earlier one
 # hidden, and past the standard's cap one `… n more problems` item. A line with no diagnostic behind it (`faults`) is
 # a problem item of its own, after them
+# `entries` are the callers' records, `{ diagnostic, text }`, read as the original read them (each port names its own
+# record of the two, term-cli-in-term-0069)
 task report-problems
-  take entries, like list, like problem-entry
+  take entries, like list, like dynamic
   take root, like text
   take faults
     like list, like text

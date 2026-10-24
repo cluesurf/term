@@ -5,10 +5,16 @@
 # What the install answers is a host object read by its fields, each tested by the host's truth (`Boolean`), as the
 # original's `need?.pin` and `need.kept` tested them.
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find field
+  find open-run
+  find report
+
 dock load
   load <@cluesurf/deck.tree>, name deck-tree-module
     mark async
-  load <@term/call/code/output>, name output
   load <global:Error>, name host-error
   load <global:String>, name host-string
   load <global:Boolean>, name host-boolean
@@ -91,28 +97,28 @@ task install-dependencies
 
   save installed, deck-tree-module/install(make(install-ask, bind(root, root), bind(clean, clean), bind(offline, offline)))
   save counts, make list
-  counts/push(output/count(installed/decks, <decks>, <deck>))
+  counts/push(count(installed/decks, <decks>, <deck>))
   save took, subtract(host-date/now(), started)
-  output/report(make(installed-item, bind(glyph, <done>), bind(verb, <install>), bind(subject, <Dependencies>), bind(duration, took), bind(counts, counts)))
+  report(make(installed-item, bind(glyph, <done>), bind(verb, <install>), bind(subject, <Dependencies>), bind(duration, took), bind(counts, counts)))
   # the toolchain the manifest's `need` asks for, pinned in lock.tree beside the decks
   save need, installed/need
   fork test, and(holds(need), holds(need/pin))
     hold
       save shown, deck-tree-module/show-code(need/pin/code)
       save fields, make list
-      fields/push(output/field(<hash>, need/pin/hash))
+      fields/push(field(<hash>, need/pin/hash))
       save facts, make list
       fork test, holds(need/kept)
         hold
           facts/push(<kept>)
-          output/report(make(pin-kept-item, bind(glyph, <skipped>), bind(verb, <pin>), bind(subject, <term {shown}>), bind(facts, facts), bind(fields, fields)))
+          report(make(pin-kept-item, bind(glyph, <skipped>), bind(verb, <pin>), bind(subject, <term {shown}>), bind(facts, facts), bind(fields, fields)))
         miss
-          output/report(make(pin-changed-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <pin>), bind(subject, <term {shown}>), bind(facts, facts), bind(fields, fields)))
+          report(make(pin-changed-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <pin>), bind(subject, <term {shown}>), bind(facts, facts), bind(fields, fields)))
     miss
       fork test, and(holds(need), holds(need/reason))
         hold
-          output/report(make(warning-item, bind(glyph, <warning>), bind(verb, <pin>), bind(subject, need/reason)))
-  output/close-run(make(plain-close, bind(verdict, <Dependencies installed>)))
+          report(make(warning-item, bind(glyph, <warning>), bind(verb, <pin>), bind(subject, need/reason)))
+  close-run(make(plain-close, bind(verdict, <Dependencies installed>)))
 
 task call-load
   take root, like text
@@ -127,7 +133,7 @@ task call-load
   fork test, offline
     hold
       facts/push(<--offline>)
-  output/open-run(make(load-open, bind(verb, <load>), bind(root, root), bind(facts, facts)))
+  open-run(make(load-open, bind(verb, <load>), bind(root, root), bind(facts, facts)))
   save started, host-date/now()
   fork
     mark unsafe
@@ -138,5 +144,5 @@ task call-load
     save said, make list
     said/push(message-of(error))
     save took, subtract(host-date/now(), started)
-    output/report(make(failed-item, bind(glyph, <failed>), bind(verb, <install>), bind(subject, <Dependencies>), bind(duration, took), bind(message, said)))
-    output/close-run(make(plain-close, bind(verdict, <Dependencies not installed>)))
+    report(make(failed-item, bind(glyph, <failed>), bind(verb, <install>), bind(subject, <Dependencies>), bind(duration, took), bind(message, said)))
+    close-run(make(plain-close, bind(verdict, <Dependencies not installed>)))

@@ -14,8 +14,13 @@ load @term/base/maybe
 load @term/call/work/serve/compile-daemon
   find start-daemon
 
+load @term/call/work/output/printer
+  find close-run
+  find field
+  find open-run
+  find report
+
 dock load
-  load <@term/call/code/output>, name output
   # the global, not node:process: `on` is inherited from EventEmitter, and a builtin's namespace holds own fields only
   load <global:process>, name host-process
   load <global:Error>, name host-error
@@ -79,7 +84,7 @@ task stop-on-interrupt
     hold
       save daemon, running/get(<daemon>)
       daemon/close()
-  host-process/exit(output/close-run(make(stopped-close, bind(verdict, <Stopped>), bind(failure, <interrupted>), bind(uptime, true))))
+  host-process/exit(close-run(make(stopped-close, bind(verdict, <Stopped>), bind(failure, <interrupted>), bind(uptime, true))))
 
 task start-worker
   take root, like text
@@ -93,9 +98,9 @@ task start-worker
   save slot, <daemon>
   save running/{slot}, daemon
   save fields, make list
-  fields/push(output/field(<route>, <POST /analyze \{file, text\}, answers diagnostics>))
+  fields/push(field(<route>, <POST /analyze \{file, text\}, answers diagnostics>))
   save took, subtract(host-date/now(), started)
-  output/report(make(start-item, bind(glyph, <done>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, <http://localhost:{port}>), bind(duration, took), bind(fields, fields)))
+  report(make(start-item, bind(glyph, <done>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, <http://localhost:{port}>), bind(duration, took), bind(fields, fields)))
   host-process/on(<SIGINT>, stop-on-interrupt)
 
 # `port` left out is 5179, `env` left out (the empty text) is node
@@ -111,7 +116,7 @@ task call-work
       save target, <node>
   save facts, make list
   facts/push(target)
-  output/open-run(make(work-open, bind(verb, <work>), bind(root, root), bind(facts, facts)))
+  open-run(make(work-open, bind(verb, <work>), bind(root, root), bind(facts, facts)))
   save started, host-date/now()
   save chosen, 5179
   sift port
@@ -127,5 +132,5 @@ task call-work
     take error
     save said, make list
     said/push(message-of(error))
-    output/report(make(failed-item, bind(glyph, <failed>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, <The compiler worker did not start>), bind(message, said)))
-    output/close-run(make(plain-close, bind(verdict, <Not started>)))
+    report(make(failed-item, bind(glyph, <failed>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, <The compiler worker did not start>), bind(message, said)))
+    close-run(make(plain-close, bind(verdict, <Not started>)))

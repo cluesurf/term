@@ -18,6 +18,7 @@ load @term/call/draft-mark
 
 load @term/base/text
   find split
+  find trim
   find substring
   find index-of
   find last-index-of
@@ -35,13 +36,18 @@ load @term/base/maybe
 load ./home-folder
   find home-posix
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find open-run
+  find report
+
 dock load
   load <node:child_process>, name child
   load <node:fs>, name node-file
   load <node:path>, name node-path
   load <node:process>, name node-process
   load <global:Number>, name host-number
-  load <@term/call/code/output>, name output
 
 form process-row
   link pid, like number
@@ -62,6 +68,12 @@ form service-row
 
 form run-ask
   link encoding, like text
+
+# a run on a short leash: `lsof`, the last resort, can block in the kernel on a mount that stopped answering
+form leashed-ask
+  link encoding, like text
+  link timeout, like number
+  link kill-signal, like text
 
 form open-ask
   link verb, like text
@@ -437,8 +449,10 @@ task names-browser-env
 
 # Every running `term feed` and `term work`, the verb, and the project its working folder is in. They run no
 # `run.mjs`, so bare `halt` did not see them. A service's project is where it was started, which the process table does
-# not say and `lsof` does
+# not say and the kernel does. `here` is the real folder of the project asking, or the empty text outside one, where no
+# project is looked up: only a service working inside `here` can belong to it, so no other folder is ever read
 task services
+  take here, like text
   like list, like service-row
   mark private
 
@@ -449,32 +463,111 @@ task services
     save verb, verb-of(one/command)
     fork test, and(is-unequal(verb, <>), is-unequal(one/pid, own))
       hold
-        save project, project-of-cwd(one/pid)
+        save project, project-of-cwd(one/pid, here)
         out/push(make(service-row, bind(pid, one/pid), bind(verb, verb), bind(project, project)))
   back out
 
-# the project holding a process's working folder, or nothing where `lsof` cannot say
+# The project holding a process's working folder, when that folder is `here` or inside it, else nothing. The kernel
+# answers the folder as its real path, so a folder outside `here` has no project that is `here`, and it is not read:
+# a working folder on a network share that stopped answering would hold the walk up to its deck.tree in the kernel
 task project-of-cwd
   take pid, like number
+  take here, like text
   like maybe, like text
+  mark private
+
+  fork test, is-equal(here, <>)
+    hold
+      back make none
+  save cwd, cwd-of(pid)
+  fork test, is-equal(cwd, <>)
+    hold
+      back make none
+  fork test, or(is-equal(cwd, here), cwd/starts-with(<{here}/>))
+    hold
+      back project-of(cwd)
+  back make none
+
+task platform-name
+  like text
+  mark private
+
+  back node-process/platform
+
+# A process's working folder as the kernel holds it, or the empty text where it cannot say. Never `lsof` first: it
+# stats every mount, and a hard network mount that stopped answering (traps: /Volumes/Data) holds it in the kernel,
+# where no signal reaches it. Linux reads the /proc link. macOS asks proc_pidinfo for the folder's path through the
+# system's perl, the one program on every Mac that can make the call (PROC_PIDVNODEPATHINFO, flavor 9, of the
+# proc_info call, 336: the path sits 152 bytes into the answer, after the folder's vnode_info). `lsof` only where
+# neither can run, and on a short leash
+task cwd-of
+  take pid, like number
+  like text
+  mark private
+
+  save platform, platform-name()
+  fork test, is-equal(platform, <linux>)
+    hold
+      back linux-cwd(pid)
+  fork test, and(is-equal(platform, <darwin>), node-file/exists-sync(</usr/bin/perl>))
+    hold
+      back darwin-cwd(pid)
+  back lsof-cwd(pid)
+
+task linux-cwd
+  take pid, like number
+  like text
   mark private
 
   fork
     mark unsafe
-    save text, child/exec-sync(<lsof -a -p {pid} -d cwd -Fn>, make(run-ask, bind(encoding, <utf8>)))
+    save found, node-file/readlink-sync(</proc/{pid}/cwd>)
+    back found
+  halt take
+    take error
+    back <>
+
+task darwin-cwd
+  take pid, like number
+  like text
+  mark private
+
+  save script, <<my $b = "\0" x 2352; syscall(336, 2, $ARGV[0] + 0, 9, 0, $b, 2352) == 2352 or exit 1; print unpack("Z*", substr($b, 152, 1024));>>
+  save args, make list
+  args/push(<-e>)
+  args/push(script)
+  args/push(<{pid}>)
+  fork
+    mark unsafe
+    save found, child/exec-file-sync(</usr/bin/perl>, args, make(run-ask, bind(encoding, <utf8>)))
+    back found
+  halt take
+    take error
+    back <>
+
+task leash
+  like leashed-ask
+  mark private
+
+  back make(leashed-ask, bind(encoding, <utf8>), bind(timeout, 3000), bind(kill-signal, <SIGKILL>))
+
+task lsof-cwd
+  take pid, like number
+  like text
+  mark private
+
+  fork
+    mark unsafe
+    save text, child/exec-sync(<lsof -a -p {pid} -d cwd -Fn>, leash())
     walk split(text, <\n>)
       take line
       fork test, line/starts-with(<n>)
         hold
-          save cwd, substring(line, 1)
-          fork test, is-equal(cwd, <>)
-            hold
-              back make none
-          back project-of(cwd)
-    back make none
+          back substring(line, 1)
+    back <>
   halt take
     take error
-    back make none
+    back <>
 
 # the folder holding the nearest deck.tree, from `from` up, or nothing outside a project
 task project-of
@@ -510,19 +603,177 @@ task read-port-pids
         out/push(pid)
   back out
 
-task pids-on-port
+# a line's words, split at spaces
+task words-of
+  take line, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk split(line, < >)
+    take word
+    fork test, is-unequal(word, <>)
+      hold
+        out/push(word)
+  back out
+
+# the digits a text starts with, or the empty text
+task leading-digits
+  take value, like text
+  like text
+  mark private
+
+  save points, split(value, <>)
+  save at, 0
+  walk test
+    hook test, and(is-below(at, points/length), is-digit-code(point-code(points, at)))
+    hook hold
+      save at, add(at, 1)
+  back points-text(points, 0, at)
+
+# the pid of netstat's `process:pid` column (the name may hold spaces, so it is the first word after the state that
+# ends in a colon and digits), or -1
+task netstat-pid
+  take words, like list, like text
+  like number
+  mark private
+
+  save at, 6
+  walk test
+    hook test, is-below(at, words/length)
+    hook hold
+      save word, get(words, at)
+      save colon, last-index-of(word, <:>)
+      fork test, is-minimum(colon, 0)
+        hold
+          save digits, substring(word, add(colon, 1))
+          fork test, and(is-unequal(digits, <>), is-equal(leading-digits(digits), digits))
+            hold
+              back host-number-of(digits)
+      save at, add(at, 1)
+  back -1
+
+# The listeners on a port in `netstat -anv -p tcp`: a row whose state is LISTEN and whose local address ends in
+# `.<port>`, by its pid. Nothing when a listening row names no pid (a netstat without the column), so the caller asks
+# elsewhere
+task read-netstat-pids
+  take text, like text
+  take port, like number
+  like maybe, like list, like number
+
+  save out, make list
+  save suffix, <.{port}>
+  walk split(text, <\n>)
+    take line
+    save words, words-of(line)
+    fork test, is-below(words/length, 7)
+      hold
+        turn next
+    save proto, get(words, 0)
+    save local, get(words, 3)
+    save state, get(words, 5)
+    fork test, and(proto/starts-with(<tcp>), and(is-equal(state, <LISTEN>), local/ends-with(suffix)))
+      hold
+        save pid, netstat-pid(words)
+        fork test, is-above(pid, 0)
+          hold
+            push-new(out, pid)
+          miss
+            back make none
+  back make(some, out)
+
+# The listeners on a port in `ss -Hltnp`, by every `pid=` the rows name. Nothing when a row names none (another user's
+# socket, which only root sees), so the caller asks elsewhere
+task read-ss-pids
+  take text, like text
+  like maybe, like list, like number
+
+  save out, make list
+  save rows, 0
+  walk split(text, <\n>)
+    take line
+    fork test, is-equal(trim(line), <>)
+      hold
+        turn next
+    save rows, add(rows, 1)
+    save parts, split(line, <pid=>)
+    save at, 1
+    walk test
+      hook test, is-below(at, parts/length)
+      hook hold
+        save digits, leading-digits(get(parts, at))
+        fork test, is-unequal(digits, <>)
+          hold
+            push-new(out, host-number-of(digits))
+        save at, add(at, 1)
+  fork test, and(is-above(rows, 0), is-equal(out/length, 0))
+    hold
+      back make none
+  back make(some, out)
+
+task netstat-pids
+  take port, like number
+  like maybe, like list, like number
+  mark private
+
+  fork
+    mark unsafe
+    save text, child/exec-sync(<netstat -anv -p tcp>, make(run-ask, bind(encoding, <utf8>)))
+    back read-netstat-pids(text, port)
+  halt take
+    take error
+    back make none
+
+task ss-pids
+  take port, like number
+  like maybe, like list, like number
+  mark private
+
+  fork
+    mark unsafe
+    save text, child/exec-sync(<ss -Hltnp sport = :{port}>, make(run-ask, bind(encoding, <utf8>)))
+    back read-ss-pids(text)
+  halt take
+    take error
+    back make none
+
+task lsof-pids
   take port, like number
   like list, like number
   mark private
 
   fork
     mark unsafe
-    save text, child/exec-sync(<lsof -nP -iTCP:{port} -sTCP:LISTEN -t>, make(run-ask, bind(encoding, <utf8>)))
+    save text, child/exec-sync(<lsof -nP -iTCP:{port} -sTCP:LISTEN -t>, leash())
     back read-port-pids(text)
   halt take
     # lsof exits non-zero when nothing is listening
     take error
     back make list
+
+# The process ids listening on a TCP port, from the kernel's socket table: `netstat -anv` on macOS, `ss` on Linux,
+# neither of which reads a mount. `lsof` stats every mount, and a hard network mount that stopped answering
+# (traps: /Volumes/Data) holds it in the kernel past any signal, so it is only the last resort, on a short leash
+task pids-on-port
+  take port, like number
+  like list, like number
+  mark private
+
+  save platform, platform-name()
+  save found, make none
+  fork test, is-equal(platform, <darwin>)
+    hold
+      save found, netstat-pids(port)
+  fork test, is-equal(platform, <linux>)
+    hold
+      save found, ss-pids(port)
+  sift found
+    case some
+      link pids
+      back pids
+    case none
+      save asked, true
+  back lsof-pids(port)
 
 # SIGTERM a pid, answering false when it is already gone
 task stop-pid
@@ -552,6 +803,107 @@ task real-folder
     take error
     back folder
 
+# whether a path is a mount point of the list or inside one
+task is-on-mount
+  take path, like text
+  take mounts, like list, like text
+  like boolean
+  mark private
+
+  walk mounts
+    take point
+    fork test, or(is-equal(path, point), path/starts-with(<{point}/>))
+      hold
+        back true
+  back false
+
+# The mount points of network file systems (SMB, NFS, AFP, WebDAV, sshfs) in `mount`'s table, read without asking any
+# of them: a macOS row is `<what> on <point> (<type>, ...)`, a Linux one `<what> on <point> type <type> (...)`
+task read-remote-mounts
+  take text, like text
+  like list, like text
+
+  save remote, make list
+  remote/push(<smbfs>)
+  remote/push(<nfs>)
+  remote/push(<nfs4>)
+  remote/push(<afpfs>)
+  remote/push(<webdav>)
+  remote/push(<cifs>)
+  remote/push(<smb3>)
+  remote/push(<fuse.sshfs>)
+  remote/push(<osxfuse>)
+  remote/push(<macfuse>)
+  save out, make list
+  walk split(text, <\n>)
+    take line
+    save on, index-of(line, < on >)
+    fork test, is-below(on, 0)
+      hold
+        turn next
+    save rest, substring(line, add(on, 4))
+    save point, <>
+    save kind, <>
+    save typed, index-of(rest, < type >)
+    fork test, is-minimum(typed, 0)
+      hold
+        save point, substring(rest, 0, typed)
+        save kind, get(words-of(substring(rest, add(typed, 6))), 0)
+      miss
+        save open, last-index-of(rest, < (>)
+        fork test, is-minimum(open, 0)
+          hold
+            save point, substring(rest, 0, open)
+            save inner, substring(rest, add(open, 2))
+            save comma, index-of(inner, <,>)
+            save kind, inner
+            fork test, is-minimum(comma, 0)
+              hold
+                save kind, substring(inner, 0, comma)
+            fork test, kind/ends-with(<)>)
+              hold
+                save kind, substring(kind, 0, subtract(char-count(kind), 1))
+    fork test, and(is-unequal(point, <>), contains(remote, kind))
+      hold
+        out/push(point)
+  back out
+
+# the network mounts `here` is not on: a folder on one is never read, since a share that stopped answering holds
+# every read of it in the kernel
+task other-remote-mounts
+  take here, like text
+  like list, like text
+  mark private
+
+  save mounts, make list
+  fork
+    mark unsafe
+    save text, child/exec-sync(<mount>, make(run-ask, bind(encoding, <utf8>)))
+    save mounts, read-remote-mounts(text)
+  halt take
+    take error
+    save mounts, make list
+  save out, make list
+  walk mounts
+    take point
+    fork test, not(or(is-equal(here, point), here/starts-with(<{point}/>)))
+      hold
+        out/push(point)
+  back out
+
+# whether a boot's project is `here`, never resolving a project on a network mount `here` is not on
+task is-boot-of
+  take project, like text
+  take here, like text
+  take remotes, like list, like text
+  like boolean
+  mark private
+
+  fork test, is-on-mount(project, remotes)
+    hold
+      back false
+  back is-equal(real-folder(project), here)
+
 # a number not already in the list, pushed
 task push-new
   take list, like list, like number
@@ -571,7 +923,7 @@ task report-item
   like void
   mark private
 
-  output/report(make(item-ask, bind(glyph, glyph), bind(kind, kind), bind(verb, verb), bind(subject, subject)))
+  report(make(item-ask, bind(glyph, glyph), bind(kind, kind), bind(verb, verb), bind(subject, subject)))
 
 task report-stop
   take subject, like text
@@ -581,7 +933,7 @@ task report-stop
 
   save facts, make list
   facts/push(<pid {pid}>)
-  output/report(make(fact-item-ask, bind(glyph, <done>), bind(kind, <lifecycle>), bind(verb, <stop>), bind(subject, subject), bind(facts, facts)))
+  report(make(fact-item-ask, bind(glyph, <done>), bind(kind, <lifecycle>), bind(verb, <stop>), bind(subject, subject), bind(facts, facts)))
 
 task close-halt
   take verdict, like text
@@ -592,8 +944,8 @@ task close-halt
   mark private
 
   save counts, make list
-  counts/push(output/count(stopped, noun, one))
-  output/close-run(make(close-ask, bind(verdict, verdict), bind(counts, counts)))
+  counts/push(count(stopped, noun, one))
+  close-run(make(close-ask, bind(verdict, verdict), bind(counts, counts)))
 
 # `term halt -p 2400,2401` stops the apps on those ports; bare `term halt` (no ports) stops this project's term boot
 # instances, or every one outside a project. Each process stopped is a `stop` lifecycle item, its pid a fact
@@ -608,7 +960,7 @@ task call-halt
       walk ports
         take port
         facts/push(<:{port}>)
-      output/open-run(make(open-ask, bind(verb, <halt>), bind(root, root), bind(facts, facts)))
+      open-run(make(open-ask, bind(verb, <halt>), bind(root, root), bind(facts, facts)))
       save stopped, 0
       # a program a `term boot` started is stopped through its boot, as bare `halt` does
       save owner, make hash
@@ -668,11 +1020,15 @@ task halt-project
       facts/push(<this project's term boot>)
     miss
       facts/push(<every term boot>)
-  output/open-run(make(open-ask, bind(verb, <halt>), bind(root, root), bind(facts, facts)))
+  open-run(make(open-ask, bind(verb, <halt>), bind(root, root), bind(facts, facts)))
   save targets, make list
+  save remotes, make list
+  fork test, inside
+    hold
+      save remotes, other-remote-mounts(here)
   walk boots()
     take one
-    fork test, or(not(inside), is-equal(real-folder(one/project), here))
+    fork test, or(not(inside), is-boot-of(one/project, here, remotes))
       hold
         push-new(targets, one/target)
   save stopped, 0
@@ -684,7 +1040,7 @@ task halt-project
         report-stop(<term boot>, pid)
   # the project's browser server and `term work` too, by where each was started; outside a project, every one
   save running, make list
-  walk services()
+  walk services(here)
     take one
     fork test, not(contains(targets, one/pid))
       hold

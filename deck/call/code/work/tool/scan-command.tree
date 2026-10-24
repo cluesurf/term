@@ -29,11 +29,19 @@ load @term/call/work/build/host-faces
 load @term/call/work/workers/source-faces
   find face-buildable
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find field
+  find open-run
+  find print-data
+  find report
+  find report-problems
+
 dock load
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/fix>, name fix-module
   load <@term/make/code/resolve>, name resolving-module
-  load <@term/call/code/output>, name output
   load <node:fs>, name node-fs
   load <node:path>, name node-path
 
@@ -307,15 +315,15 @@ task call-scan
     hold
       fork test, json
         hold
-          output/print-data(<{scan-not-found(input/file)}\n>)
+          print-data(<{scan-not-found(input/file)}\n>)
           scan-exit-one()
         miss
-          output/open-run(make(scan-open, bind(verb, <scan>), bind(root, root), bind(facts, facts)))
+          open-run(make(scan-open, bind(verb, <scan>), bind(root, root), bind(facts, facts)))
           # relative to the working folder, the way the file was named
           save fields, make list
-          fields/push(output/field(<looked>, scan-or(node-path/relative(root, file), file)))
-          output/report(make(scan-problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no such file>), bind(fields, fields)))
-          output/close-run(make(scan-close, bind(verdict, <Nothing scanned>)))
+          fields/push(field(<looked>, scan-or(node-path/relative(root, file), file)))
+          report(make(scan-problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no such file>), bind(fields, fields)))
+          close-run(make(scan-close, bind(verdict, <Nothing scanned>)))
       back
 
   save one, scan-once(root, file)
@@ -355,22 +363,25 @@ task call-scan
       walk diagnostics
         take d, like dynamic
         shaped/push(scan-json-diagnostic(node-path, root, d, fixes-for(root, file, d, one)))
-      output/print-data(<{scan-json-answer(result/ok, shaped, fixing, applied, refused)}\n>)
+      print-data(<{scan-json-answer(result/ok, shaped, fixing, applied, refused)}\n>)
       fork test, not(scan-truthy(result/ok))
         hold
           scan-exit-one()
       back
 
   # the working folder is the subject, the file a fact
-  output/open-run(make(scan-open, bind(verb, <scan>), bind(root, root), bind(facts, facts)))
+  open-run(make(scan-open, bind(verb, <scan>), bind(root, root), bind(facts, facts)))
   walk applied
     take fix, like dynamic
-    output/report(make(scan-change, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <fix>), bind(subject, fix/title)))
+    report(make(scan-change, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <fix>), bind(subject, fix/title)))
   walk refused
     take refusal, like dynamic
     save fields, make list
-    fields/push(output/field(<why>, refusal/reason))
-    output/report(make(scan-refused, bind(glyph, <warning>), bind(kind, <problem>), bind(verb, <fix>), bind(subject, <Not applied: {refusal/fix/title}>), bind(fields, fields)))
+    # the fixer's reason, a host value (seam decision 004)
+    save reason, like dynamic
+      read refusal/reason
+    fields/push(field(<why>, reason))
+    report(make(scan-refused, bind(glyph, <warning>), bind(kind, <problem>), bind(verb, <fix>), bind(subject, <Not applied: {refusal/fix/title}>), bind(fields, fields)))
 
   # each diagnostic a Problem item with its frame; the run fails on any error
   save problems, make list
@@ -385,7 +396,7 @@ task call-scan
     fork test, is-equal(d/severity, <error>)
       hold
         save errors, add(errors, 1)
-  output/report-problems(problems, root)
+  report-problems(problems, root)
   save warnings, subtract(diagnostics/length, errors)
   save sure-count, 0
   fork test, not(fixing)
@@ -395,13 +406,13 @@ task call-scan
   save counts, make list
   fork test, is-above(applied/length, 0)
     hold
-      counts/push(output/count(applied/length, <fixes applied>, <fix applied>))
+      counts/push(count(applied/length, <fixes applied>, <fix applied>))
   fork test, is-above(errors, 0)
     hold
-      counts/push(output/count(errors, <errors>, <error>))
+      counts/push(count(errors, <errors>, <error>))
   fork test, is-above(warnings, 0)
     hold
-      counts/push(output/count(warnings, <warnings>, <warning>))
+      counts/push(count(warnings, <warnings>, <warning>))
   save verdict, <{input/file} does not check>
   fork test, scan-truthy(result/ok)
     hold
@@ -412,6 +423,6 @@ task call-scan
       fork test, is-equal(sure-count, 1)
         hold
           save which, <the one sure fix>
-      output/close-run(make(scan-close-next, bind(verdict, verdict), bind(counts, counts), bind(next, <term scan {input/file} --fix, which applies {which}>)))
+      close-run(make(scan-close-next, bind(verdict, verdict), bind(counts, counts), bind(next, <term scan {input/file} --fix, which applies {which}>)))
       back
-  output/close-run(make(scan-close-counts, bind(verdict, verdict), bind(counts, counts)))
+  close-run(make(scan-close-counts, bind(verdict, verdict), bind(counts, counts)))

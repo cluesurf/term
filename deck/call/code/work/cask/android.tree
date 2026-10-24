@@ -23,11 +23,13 @@ load ./toolchain
 load ../native/declaration
   find permission-lines
 
+load @term/call/work/output/printer
+  find run-tool
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <node:child_process>, name node-child
-  load <@term/call/code/output>, name output
 
 form android-folder
   link recursive, like boolean
@@ -104,21 +106,21 @@ task assemble-apk
   link/push(manifest)
   link/push(<-A>)
   link/push(ask/assets)
-  output/run-tool(node-path/join(tools/build-tools, <aapt2>), link)
+  run-tool(node-path/join(tools/build-tools, <aapt2>), link)
   # classes.dex at the top of the archive. `zip` stores the path as given, so it is added from its own directory
   save zip, make list
   zip/push(<-q>)
   zip/push(<-j>)
   zip/push(unsigned)
   zip/push(ask/dex)
-  output/run-tool(<zip>, zip)
+  run-tool(<zip>, zip)
   save align, make list
   align/push(<-f>)
   align/push(<-p>)
   align/push(<4>)
   align/push(unsigned)
   align/push(aligned)
-  output/run-tool(node-path/join(tools/build-tools, <zipalign>), align)
+  run-tool(node-path/join(tools/build-tools, <zipalign>), align)
 
   save home, <>
   fork test, has-variable(<HOME>)
@@ -162,7 +164,7 @@ task assemble-apk
   sign/push(<--out>)
   sign/push(apk)
   sign/push(aligned)
-  output/run-tool(node-path/join(tools/build-tools, <apksigner>), sign)
+  run-tool(node-path/join(tools/build-tools, <apksigner>), sign)
   back apk
 
 # an Android device or emulator adb can see, or the reason there is none
@@ -191,7 +193,7 @@ task launch-on-android
   install/push(<install>)
   install/push(<-r>)
   install/push(ask/apk)
-  output/run-tool(tools/adb, install)
+  run-tool(tools/adb, install)
   save start, make list
   start/push(<-s>)
   start/push(ask/serial)
@@ -205,4 +207,4 @@ task launch-on-android
     start/push(<--es>)
     start/push(<{entry/0}>)
     start/push(<{entry/1}>)
-  output/run-tool(tools/adb, start)
+  run-tool(tools/adb, start)

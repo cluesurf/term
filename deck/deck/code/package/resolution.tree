@@ -11,9 +11,11 @@
 #     so every lookup settles before the first failure in order is raised, as the original's `Promise.allSettled`
 #   - a failure the lookup raised is passed on as that very error (an awaited `Promise.reject`), so a registry's own
 #     refusal reaches the caller unchanged
-#   - the registry and OCI readers (fetch.ts, oci/client.ts, oci/install.ts, oci/reference.ts) are docked until their
-#     lanes port them, and the fetch config passes through them as the host value it is. A version the registry's list
-#     answers is a host `Code` and is read into version.tree's `code`
+#   - the registry and OCI readers are their ports, loaded (term-cli-in-term-0233, where the faces fetch.ts,
+#     oci/client.ts, oci/install.ts and oci/reference.ts were docked): registry-fetching, oci-routing,
+#     version-installing, oci-address. The fetch config is the caller's host value, its scope routes an object as
+#     oci-route-of reads them, and registry-fetching is handed it with the routes a hash (`resolving-fetch-config`,
+#     what the face did). An OCI refusal is oci-failure (decision 007), passed on as raised
 #   - a workspace deck is a `workspace-deck`: its manifest, and the folder it lives in when there is one (the original
 #     read `dir` off the manifest object by reflection)
 
@@ -55,14 +57,44 @@ load ./lockfile-shape
 load ./manifest-text
   find write-code-hold
 
+load ./config-shape
+  find fetch-config
+
+load ./registry-fetching
+  find fetch-package-meta
+  find get-version-list
+  find get-version-meta
+
+load ../oci/oci-routing
+  find oci-route-of
+  find transport-for
+  find trust-dir
+
+load ../oci/version-installing
+  find list-oci-versions
+  find read-oci-version
+
+load ../oci/oci-address
+  find tag-of-version
+  find pinned-reference
+
 dock load
-  load <@term/deck/code/package/fetch>, name deck-fetch
-  load <@term/deck/code/oci/client>, name oci-client
-  load <@term/deck/code/oci/install>, name oci-install
-  load <@term/deck/code/oci/reference>, name oci-reference
-  load <global:Object>, name host-object
   load <global:Promise>, name host-promise
   load <global:console>, name host-console
+
+# the caller's fetch config with its scope routes a hash, as registry-fetching reads them (the face package/fetch.ts's
+# toPort): an object's entries, or the hash a port handed on
+bind resolving-fetch-config
+  take config, like dynamic
+  like fetch-config
+  case node
+    text <<((resolvingConfig_) => ({ ...resolvingConfig_, scopeRegistries: resolvingConfig_.scopeRegistries instanceof Map ? resolvingConfig_.scopeRegistries : new Map(Object.entries(resolvingConfig_.scopeRegistries ?? {})) }))($config)>>
+
+# what a host call is given for a parameter left out
+bind resolving-nothing
+  like dynamic
+  case node
+    text <undefined>
 
 form resolved-deck
   link name, like text
@@ -119,56 +151,9 @@ form looked
     need false
   link error, like unknown
 
-# what the docked registry readers are asked
-form meta-ask
-  link name, like text
-  link config, like dynamic
-
-form version-ask
-  link meta, like dynamic
-  link code, like text
-
-form route-ask
-  link name, like text
-  link config, like dynamic
-
-form transport-ask
-  link host, like text
-  link offline, like boolean
-
-form tags-ask
-  link transport, like dynamic
-  link repository, like text
-
+# what an OCI read of a version expects: the version its tag names
 form expect-version
   link version, like text
-
-form oci-version-ask
-  link transport, like dynamic
-  link repository, like text
-  link package, like text
-  link reference, like text
-  link scope, like text
-  link keys-repository, like text
-  link host, like text
-  link trust-dir, like text
-  link expect, like expect-version
-  link warn
-    like task
-      take message, like text
-      like void
-
-form pinned-ask
-  link repository, like dynamic
-  link digest, like text
-
-# a host `Code` (prerelease and build absent when there are none) as version.tree's `code`
-task code-of-host
-  take host, like dynamic
-  like code
-  mark private
-
-  back make(code, bind(major, host/major), bind(minor, host/minor), bind(patch, host/patch), bind(prerelease, text-or-empty(host/prerelease)), bind(build, text-or-empty(host/build)))
 
 task text-or-empty
   take value, like unknown
@@ -237,8 +222,8 @@ task look-up-oci
   mark private
 
   save host, route/registry/host
-  save transport, oci-client/transport-for(make(transport-ask, bind(host, host), bind(offline, config/offline)))
-  save tags, wait oci-install/list-oci-versions(make(tags-ask, bind(transport, transport), bind(repository, route/repository/name)))
+  save transport, transport-for(host, config/offline)
+  save tags, list-oci-versions(transport, route/repository/name)
   save versions, make list
   walk host-items(tags)
     take tag
@@ -254,19 +239,10 @@ task look-up-oci
     hold
       halt <No version of {link/name} matches constraint ({versions/length} published at {transport/label}/{route/repository/name})>
   save code-text, show-code(best/code)
-  save asked
-    make oci-version-ask
-      bind transport, transport
-      bind repository, route/repository/name
-      bind package, link/name
-      bind reference, oci-reference/tag-of-version(code-text)
-      bind scope, route/scope
-      bind keys-repository, route/keys-repository
-      bind host, host
-      bind trust-dir, oci-client/trust-dir()
-      bind expect, make(expect-version, bind(version, code-text))
-      bind warn, warn-indented
-  save version, wait oci-install/read-oci-version(asked)
+  save best-tag, tag-of-version(code-text)
+  save trusted-at, trust-dir()
+  save expect, make(expect-version, bind(version, code-text))
+  save version, read-oci-version(transport, route/repository/name, link/name, best-tag, route/scope, route/keys-repository, host, trusted-at, expect, resolving-nothing(), warn-indented)
   save links, make hash
   save follow, make list
   walk host-items(version/config/link)
@@ -278,7 +254,7 @@ task look-up-oci
       bind name, link/name
       bind code, best/code
       bind hash, version/digest
-      bind site, oci-reference/pinned-reference(make(pinned-ask, bind(repository, route/repository), bind(digest, version/digest)))
+      bind site, pinned-reference(route/repository, version/digest)
       bind link, links
   fork test, not(is-equal(text-or-empty(version/config/key), <>))
     hold
@@ -338,35 +314,34 @@ task look-up
       save nothing, 0
 
   # a scope on an `oci://` registry resolves over its tag list and its signed configs
-  save route, oci-client/oci-route-of(make(route-ask, bind(name, link/name), bind(config, config)))
+  save route, oci-route-of(link/name, config)
   fork test, route
     hold
       back look-up-oci(link, config, route)
 
-  save meta, wait deck-fetch/fetch-package-meta(make(meta-ask, bind(name, link/name), bind(config, config)))
-  save versions, make list
-  walk host-items(deck-fetch/get-version-list(make(version-ask, bind(meta, meta), bind(code, <>))))
-    take listed
-    versions/push(code-of-host(listed))
+  save fetching, resolving-fetch-config(config)
+  save meta, fetch-package-meta(link/name, fetching)
+  save versions, get-version-list(meta)
   save best, pick-best-code(versions, link/mark)
   fork test, not(best/found)
     hold
       halt <No version of {link/name} matches constraint>
   save code-text, show-code(best/code)
-  save version-meta, deck-fetch/get-version-meta(make(version-ask, bind(meta, meta), bind(code, code-text)))
-  fork test, not(version-meta)
-    hold
+  save found-meta, get-version-meta(meta, code-text)
+  sift found-meta
+    case none
       halt <Version metadata not found for {link/name}@{code-text}>
-  save dep-links, make hash
-  save follow, make list
-  walk host-items(host-object/entries(version-meta/dependencies))
-    take entry
-    save dep-name, entry/0
-    save dep-hold, entry/1
-    dep-links/set(dep-name, dep-hold)
-    follow/push(make(deck-link, bind(name, dep-name), bind(mark, parse-code-hold(dep-hold))))
-  save deck, make(resolved-deck, bind(name, link/name), bind(code, best/code), bind(hash, version-meta/integrity), bind(site, version-meta/tarball), bind(link, dep-links))
-  back make(found, bind(key, <{link/name}@{code-text}>), bind(deck, deck), bind(links, follow))
+    case some
+      link version-meta
+      save dep-links, make hash
+      save follow, make list
+      walk version-meta/dependencies/keys()
+        take dep-name
+        save dep-hold, version-meta/dependencies/get(dep-name)
+        dep-links/set(dep-name, dep-hold)
+        follow/push(make(deck-link, bind(name, dep-name), bind(mark, parse-code-hold(dep-hold))))
+      save deck, make(resolved-deck, bind(name, link/name), bind(code, best/code), bind(hash, version-meta/integrity), bind(site, version-meta/tarball), bind(link, dep-links))
+      back make(found, bind(key, <{link/name}@{code-text}>), bind(deck, deck), bind(links, follow))
 
 # one lookup, settled: its answer, or what it raised
 task look-settled

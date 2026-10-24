@@ -60,9 +60,13 @@ load @term/call/work/cask/command
   find make-cask
   find cask-ask
 
+load @term/call/work/output/printer
+  find close-run
+  find open-run
+  find report
+
 dock load
   load <node:process>, name node-process
-  load <@term/call/code/output>, name output-module
   # the global, for process.exitCode: a namespace import of node:process cannot be written (traps.md, 0041)
   load <global:process>, name host-process
 
@@ -246,9 +250,9 @@ task make
       save named, option-text(file)
       save facts, make list
       push(facts, named)
-      output-module/openRun(make(file-refusal-open, bind(verb, <make>), bind(root, read root), bind(facts, read facts)))
-      output-module/report(make(file-refusal-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <term make builds the whole project, and {named} is one file>)))
-      save host-process/exit-code, output-module/closeRun(make(file-refusal-close, bind(verdict, <Nothing built>), bind(next, <term make --emit \<backend\> {named}, or term make>), bind(failure, <usage>)))
+      open-run(make(file-refusal-open, bind(verb, <make>), bind(root, read root), bind(facts, read facts)))
+      report(make(file-refusal-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <term make builds the whole project, and {named} is one file>)))
+      save host-process/exit-code, close-run(make(file-refusal-close, bind(verdict, <Nothing built>), bind(next, <term make --emit \<backend\> {named}, or term make>), bind(failure, <usage>)))
       back
 
   fork

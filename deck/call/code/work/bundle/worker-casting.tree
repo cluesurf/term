@@ -42,13 +42,22 @@ load ../build/host-faces
 load ../cache/compile-store
   find project-cache
 
+load @term/call/work/output/printer
+  find close-run
+  find fail-run
+  find field
+  find location
+  find open-run
+  find report
+  find report-problems
+  find show-path
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
   load <esbuild>, name esbuild-module
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/native>, name native-module
-  load <@term/call/code/output>, name output
   load <global:Date>, name host-date
 
 # ---- does `boot` hand back a fetch handler ----
@@ -372,20 +381,20 @@ task call-cast
   save started, host-date/now()
   save facts, make list
   facts/push(target)
-  output/openRun(make(open-ask, bind(verb, <cast>), bind(root, input/root), bind(facts, facts)))
+  open-run(make(open-ask, bind(verb, <cast>), bind(root, input/root), bind(facts, facts)))
   fork test, is-unequal(target, <cloudflare>)
     hold
       save fields, make list
-      fields/push(output/field(<next>, <term cast --target cloudflare>))
-      output/report(make(fielded-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no cast target named {target}>), bind(fields, fields)))
-      output/closeRun(make(refused-close, bind(verdict, <Nothing cast>), bind(failure, <usage>)))
+      fields/push(field(<next>, <term cast --target cloudflare>))
+      report(make(fielded-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no cast target named {target}>), bind(fields, fields)))
+      close-run(make(refused-close, bind(verdict, <Nothing cast>), bind(failure, <usage>)))
       back void
   fork
     mark unsafe
     cast-worker(input, started)
   halt take
     take error
-    output/failRun(error, input/root)
+    fail-run(error, input/root)
 
 task cast-worker
   take input, like cast-ask
@@ -408,9 +417,9 @@ task cast-worker
       fork test, cast-truthy(entry)
         hold
           save subject, <The entry file does not exist>
-          fields/push(output/location(output/showPath(cast-text-of(entry), input/root)))
-      output/report(make(fielded-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject), bind(fields, fields)))
-      output/closeRun(make(plain-close, bind(verdict, <Nothing cast>)))
+          fields/push(location(show-path(cast-text-of(entry), input/root)))
+      report(make(fielded-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject), bind(fields, fields)))
+      close-run(make(plain-close, bind(verdict, <Nothing cast>)))
       back void
   save entry-file, cast-text-of(entry)
   save app-dir, find-app-dir(entry-file)
@@ -430,27 +439,27 @@ task cast-worker
   # 1. compile the SSR entry for the cloudflare env
   save source, make(compile-source, bind(file, entry-file), bind(text, node-file/read-file-sync(entry-file, <utf8>)))
   save result, compile-module/compile(source, make(compile-options, bind(resolve, resolve), bind(cache, cache), bind(env, env)))
-  save shown, output/showPath(entry-file, input/root)
+  save shown, show-path(entry-file, input/root)
   save build-facts, make list
   build-facts/push(<cloudflare>)
   fork test, not(result/ok)
     hold
-      output/reportProblems(problem-entries(result/diagnostics), input/root)
-      output/report(make(build-item, bind(glyph, <failed>), bind(verb, <build>), bind(subject, shown), bind(duration, subtract(host-date/now(), started)), bind(facts, build-facts)))
-      output/closeRun(make(plain-close, bind(verdict, <Cast failed>)))
+      report-problems(problem-entries(result/diagnostics), input/root)
+      report(make(build-item, bind(glyph, <failed>), bind(verb, <build>), bind(subject, shown), bind(duration, subtract(host-date/now(), started)), bind(facts, build-facts)))
+      close-run(make(plain-close, bind(verdict, <Cast failed>)))
       back void
   # the Worker's default export is what `boot` returns, so a `boot` that returns nothing casts to a Worker with no
   # `fetch`, and the first request is where that showed (guides: commands/cast, 2026-10-04). Refused here instead
   fork test, not(returns-handler(result/program))
     hold
       save fields, make list
-      fields/push(output/location(<{shown}{cast-boot-line(result/program)}>))
-      fields/push(output/field(<next>, <end boot with `back host(route, port)`>))
-      output/report(make(fielded-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <`boot` returns no fetch handler, so the Worker would have none>), bind(fields, fields)))
-      output/report(make(build-item, bind(glyph, <failed>), bind(verb, <build>), bind(subject, shown), bind(duration, subtract(host-date/now(), started)), bind(facts, build-facts)))
-      output/closeRun(make(plain-close, bind(verdict, <Nothing cast>)))
+      fields/push(location(<{shown}{cast-boot-line(result/program)}>))
+      fields/push(field(<next>, <end boot with `back host(route, port)`>))
+      report(make(fielded-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <`boot` returns no fetch handler, so the Worker would have none>), bind(fields, fields)))
+      report(make(build-item, bind(glyph, <failed>), bind(verb, <build>), bind(subject, shown), bind(duration, subtract(host-date/now(), started)), bind(facts, build-facts)))
+      close-run(make(plain-close, bind(verdict, <Nothing cast>)))
       back void
-  output/report(make(build-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, shown), bind(duration, subtract(host-date/now(), started)), bind(facts, build-facts)))
+  report(make(build-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, shown), bind(duration, subtract(host-date/now(), started)), bind(facts, build-facts)))
   # 2. the browser client bundle and styles the SSR page loads (served from build/ via the Worker's ASSETS binding).
   # Same pipeline as the node SSR build, content hashes included: a Worker cannot read `build/asset-manifest.json`, so
   # the manifest is baked into the bundle below, as the import map is
@@ -505,6 +514,6 @@ task cast-worker
   lines/push(<>)
   save index-ts, node-path/join(work-dir, <index.ts>)
   node-file/write-file-sync(index-ts, cast-joined-lines(lines))
-  output/report(make(write-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, output/showPath(app-mjs, input/root))))
-  output/report(make(write-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, output/showPath(index-ts, input/root))))
-  output/closeRun(make(next-close, bind(verdict, <Cast to a Cloudflare Worker>), bind(next, <wrangler deploy>)))
+  report(make(write-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, show-path(app-mjs, input/root))))
+  report(make(write-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, show-path(index-ts, input/root))))
+  close-run(make(next-close, bind(verdict, <Cast to a Cloudflare Worker>), bind(next, <wrangler deploy>)))

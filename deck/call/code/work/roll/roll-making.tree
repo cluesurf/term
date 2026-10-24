@@ -50,11 +50,13 @@ load @term/call/work/workers/source-faces
 load @term/call/work/cache/compile-store
   find project-cache
 
+load @term/call/work/output/printer
+  find print-profile
+
 dock load
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/separate>, name separate-module
   load <@term/make/code/compile/roll>, name roll-module
-  load <@term/call/code/output>, name output
   load <node:fs>, name node-fs
   load <node:path>, name node-path
 
@@ -400,7 +402,7 @@ task project-roll
   save roll, roll-done(merger)
   fork test, profile
     hold
-      output/print-profile(<roll pass: {subtract(roll-now(), started-at)} ms over {labels/length} units>)
+      print-profile(<roll pass: {subtract(roll-now(), started-at)} ms over {labels/length} units>)
   back
     make project-roll-answer
       bind roll, roll

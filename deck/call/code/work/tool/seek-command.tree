@@ -25,10 +25,19 @@ load @term/scan/upgrade-fixing
   find plan-upgrades
   find apply-upgrades, name apply-manifest-upgrades
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find fail-run
+  find field
+  find location
+  find open-run
+  find print-data
+  find report
+
 dock load
   load <@cluesurf/deck.tree>, name deck-tree-module
     mark async
-  load <@term/call/code/output>, name output
   load <node:fs/promises>, name fs-promise
     mark async
 
@@ -95,6 +104,15 @@ bind seek-upgrade-facts
   like list, like text
   case node
     text <<[`${$upgrade.from} → ${$upgrade.to}`]>>
+
+# the printer's field and location as the record seek-finding-item reads them from (`$output.field`,
+# `$output.location`), as it read the output module's
+bind seek-printer-face
+  take fielding, like dynamic
+  take locating, like dynamic
+  like dynamic
+  case node
+    text <(\{ field: $fielding, location: $locating \})>
 
 # a finding's Problem item: a vulnerable dependency under `audit`, a code finding under `check` with its place. Its
 # glyph is ✗ when the finding alone fails the `low` threshold, else ▲
@@ -175,33 +193,33 @@ task call-seek
       run-audit(input)
       back
 
-  output/open-run(make(seek-open, bind(verb, <seek>), bind(root, root)))
+  open-run(make(seek-open, bind(verb, <seek>), bind(root, root)))
   fork
     mark unsafe
     save result, deck-tree-module/verify-install(seek-root-ask(root))
     fork test, seek-given(result/ok)
       hold
-        output/close-run(make(seek-close, bind(verdict, <Every package is installed>)))
+        close-run(make(seek-close, bind(verdict, <Every package is installed>)))
         back
     save missing, result/missing
     save outdated, result/outdated
     walk missing
       take one, like dynamic
-      output/report(make(seek-package, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <missing>), bind(subject, one)))
+      report(make(seek-package, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <missing>), bind(subject, one)))
     walk outdated
       take one, like dynamic
-      output/report(make(seek-package, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <outdated>), bind(subject, one)))
+      report(make(seek-package, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <outdated>), bind(subject, one)))
     save counts, make list
     fork test, is-above(missing/length, 0)
       hold
-        counts/push(output/count(missing/length, <missing>))
+        counts/push(count(missing/length, <missing>))
     fork test, is-above(outdated/length, 0)
       hold
-        counts/push(output/count(outdated/length, <outdated>))
-    output/close-run(make(seek-close-next, bind(verdict, <Packages are not installed as declared>), bind(counts, counts), bind(next, <term load>)))
+        counts/push(count(outdated/length, <outdated>))
+    close-run(make(seek-close-next, bind(verdict, <Packages are not installed as declared>), bind(counts, counts), bind(next, <term load>)))
   halt take
     take error, like dynamic
-    output/fail-run(error, root)
+    fail-run(error, root)
 
 # `term seek --audit`: installed dependency versions against the advisory database and, with `--code`, the static
 # rules over the project's own `.tree` sources. Reports as items, JSON, or SARIF, and with `--fix` rewrites the manifest
@@ -218,7 +236,7 @@ task run-audit
   fork test, seek-given(input/code)
     hold
       facts/push(<--code>)
-  output/open-run(make(seek-open-facts, bind(verb, <seek>), bind(root, root), bind(facts, facts)))
+  open-run(make(seek-open-facts, bind(verb, <seek>), bind(root, root), bind(facts, facts)))
 
   fork
     mark unsafe
@@ -230,16 +248,16 @@ task run-audit
         fs-promise/write-file(input/sarif, to-sarif-json(result, seek-sarif-options(root)), <utf-8>)
         save written-facts, make list
         written-facts/push(<SARIF 2.1.0>)
-        output/report(make(seek-fact-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, input/sarif), bind(facts, written-facts)))
+        report(make(seek-fact-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, input/sarif), bind(facts, written-facts)))
 
     # the report the user asked for, on stdout; the human view stays on stderr
     fork test, is-equal(format, <json>)
       hold
-        output/print-data(<{to-json(result)}\n>)
+        print-data(<{to-json(result)}\n>)
       miss
         fork test, is-equal(format, <sarif>)
           hold
-            output/print-data(<{to-sarif-json(result, seek-sarif-options(root))}\n>)
+            print-data(<{to-sarif-json(result, seek-sarif-options(root))}\n>)
           miss
             report-findings(result)
 
@@ -257,14 +275,14 @@ task run-audit
             save plural, <>
         save verdict, <{found} security finding{plural}>
     save counts, make list
-    counts/push(output/count(result/dependency-count, <dependencies>, <dependency>))
+    counts/push(count(result/dependency-count, <dependencies>, <dependency>))
     fork test, seek-given(result/file-count)
       hold
-        counts/push(output/count(result/file-count, <files>, <file>))
-    output/close-run(make(seek-close-counts, bind(verdict, verdict), bind(counts, counts)))
+        counts/push(count(result/file-count, <files>, <file>))
+    close-run(make(seek-close-counts, bind(verdict, verdict), bind(counts, counts)))
   halt take
     take error, like dynamic
-    output/fail-run(error, root)
+    fail-run(error, root)
 
 task report-findings
   take result, like dynamic
@@ -275,13 +293,13 @@ task report-findings
   walk unavailable
     take source, like dynamic
     save fields, make list
-    fields/push(output/field(<source>, source))
-    output/report(make(seek-field-item, bind(glyph, <warning>), bind(verb, <fetch>), bind(subject, <An advisory source was unavailable and was skipped>), bind(fields, fields)))
+    fields/push(field(<source>, source))
+    report(make(seek-field-item, bind(glyph, <warning>), bind(verb, <fetch>), bind(subject, <An advisory source was unavailable and was skipped>), bind(fields, fields)))
   save findings, result/findings
   walk findings
     take finding, like dynamic
     save fails, fails-threshold(seek-one-finding(result, finding), <low>)
-    output/report(seek-finding-item(fails, output, result, finding))
+    report(seek-finding-item(fails, seek-printer-face(field, location), result, finding))
 
 task apply-upgrades
   take root, like text
@@ -292,7 +310,7 @@ task apply-upgrades
   save upgrades, plan-upgrades(seek-dependency-findings(result))
   fork test, is-equal(seek-length(upgrades), 0)
     hold
-      output/report(make(seek-plain, bind(glyph, <info>), bind(verb, <fix>), bind(subject, <No dependency upgrade to apply>)))
+      report(make(seek-plain, bind(glyph, <info>), bind(verb, <fix>), bind(subject, <No dependency upgrade to apply>)))
       back
   save done, apply-manifest-upgrades(root, upgrades, true)
   # the upgrades the manifest writer answers, host values (seam decision 004)
@@ -300,13 +318,13 @@ task apply-upgrades
     read done/applied
   fork test, is-equal(applied/length, 0)
     hold
-      output/report(make(seek-plain, bind(glyph, <warning>), bind(verb, <fix>), bind(subject, <Upgrades were computed but no manifest line matched, so nothing was written>)))
+      report(make(seek-plain, bind(glyph, <warning>), bind(verb, <fix>), bind(subject, <Upgrades were computed but no manifest line matched, so nothing was written>)))
       back
   walk applied
     take upgrade, like dynamic
-    output/report(make(seek-change, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <update>), bind(subject, upgrade/name), bind(facts, seek-upgrade-facts(upgrade))))
+    report(make(seek-change, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <update>), bind(subject, upgrade/name), bind(facts, seek-upgrade-facts(upgrade))))
   save counts, make list
-  counts/push(output/count(applied/length, <upgrades>, <upgrade>))
+  counts/push(count(applied/length, <upgrades>, <upgrade>))
   save fields, make list
-  fields/push(output/field(<next>, <term load, then open a PR with the updated deck.tree and lock.tree>))
-  output/report(make(seek-written, bind(glyph, <done>), bind(verb, <write>), bind(subject, <deck.tree>), bind(counts, counts), bind(fields, fields)))
+  fields/push(field(<next>, <term load, then open a PR with the updated deck.tree and lock.tree>))
+  report(make(seek-written, bind(glyph, <done>), bind(verb, <write>), bind(subject, <deck.tree>), bind(counts, counts), bind(fields, fields)))

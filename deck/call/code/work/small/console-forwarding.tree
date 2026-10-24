@@ -29,6 +29,12 @@ load @term/call/work/need/running-install
   find find-install-root
   find find-running-cli
 
+load @term/call/work/output/printer
+  find close-run
+  find field
+  find open-run
+  find report
+
 dock load
   load <node:child_process>, name child-process
   load <node:fs>, name node-file
@@ -36,7 +42,6 @@ dock load
   load <node:process>, name node-process
   load <node:events>, name node-events
     mark async
-  load <@term/call/code/output>, name output
   load <global:Object>, name host-object
 
 form plain-open
@@ -141,9 +146,9 @@ task exit-missing
   save message, make list
   message/push(said)
   save fields, make list
-  fields/push(output/field(<next>, next))
-  output/report(make(missing-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject), bind(message, message), bind(fields, fields)))
-  node-process/exit(output/close-run(make(failure-close, bind(verdict, verdict), bind(failure, <environment>))))
+  fields/push(field(<next>, next))
+  report(make(missing-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject), bind(message, message), bind(fields, fields)))
+  node-process/exit(close-run(make(failure-close, bind(verdict, verdict), bind(failure, <environment>))))
 
 # the child's ending is this process's: its signal raised here, else its exit code (0 when it has none)
 task follow-child
@@ -197,7 +202,7 @@ task call-zone
   like void
 
   save entry, find-console(root)
-  output/open-run(make(plain-open, bind(verb, <zone>), bind(root, root)))
+  open-run(make(plain-open, bind(verb, <zone>), bind(root, root)))
   fork test, is-equal(entry, <>)
     hold
       exit-missing(<There is no zone console here>, <Zone is its own package, @term/zone, and its command is zone. It is not beside this CLI and not linked into this project.>, <term link @term/zone, or run bin/zone from a checkout>, <Nothing forwarded>)
@@ -205,7 +210,7 @@ task call-zone
   # run closes when the console exits, with its exit code, which is the console's own
   save message, make list
   message/push(<This forwards for the callers that have not moved.>)
-  output/report(make(forward-item, bind(glyph, <warning>), bind(verb, <zone>), bind(subject, <The command is zone now>), bind(message, message)))
+  report(make(forward-item, bind(glyph, <warning>), bind(verb, <zone>), bind(subject, <The command is zone now>), bind(message, message)))
   save rest, after-verb(argv, <zone>, false)
   save args, make list
   args/push(find-running-cli())
@@ -335,7 +340,7 @@ task call-mark
   save suite, find-suite(root)
   fork test, is-equal(suite, <>)
     hold
-      output/open-run(make(plain-open, bind(verb, <mark>), bind(root, root)))
+      open-run(make(plain-open, bind(verb, <mark>), bind(root, root)))
       exit-missing(<There is no benchmark suite here>, <It is the deck/mark/ directory of the Term repository (deck/term/deck/term/deck/mark in the cluesurf checkout), and this CLI was not started from inside one or installed from one.>, <node \<checkout\>/deck/term/deck/term/host/line.js mark>, <Nothing benchmarked>)
   # the whole process argument vector, sliced after `mark`; the ported console hands over only what followed the verb,
   # which has no `mark` in it, and then it is the vector itself

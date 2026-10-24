@@ -36,9 +36,19 @@ load ./roll-comparing
   find roll-before
   find compare-rolls
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find field
+  find location
+  find open-run
+  find output-options
+  find print-data
+  find report
+  find report-problems
+
 dock load
   load <@term/make/code/compile/roll>, name roll-module
-  load <@term/call/code/output>, name output
 
 # ---- the host values Term has no word for ----
 
@@ -201,7 +211,7 @@ task close-plain
   like void
   mark private
 
-  output/close-run(make(roll-verdict, bind(verdict, verdict)))
+  close-run(make(roll-verdict, bind(verdict, verdict)))
 
 task call-roll
   take input, like dynamic
@@ -212,7 +222,7 @@ task call-roll
   fork test, roll-given(input/kind)
     hold
       facts/push(input/kind)
-  output/open-run(make(roll-open, bind(verb, <roll>), bind(root, root), bind(facts, facts)))
+  open-run(make(roll-open, bind(verb, <roll>), bind(root, root), bind(facts, facts)))
 
   save made, project-roll(root, roll-nothing())
   save roll, made/roll
@@ -233,8 +243,8 @@ task call-roll
   fork test, and(kind-given, not(is-roll-kind(input/kind, declared)))
     hold
       save fields, make list
-      fields/push(output/field(<kinds>, kinds-field(declared)))
-      output/report(make(roll-problem-fields, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no roll kind named {input/kind}>), bind(fields, fields)))
+      fields/push(field(<kinds>, kinds-field(declared)))
+      report(make(roll-problem-fields, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no roll kind named {input/kind}>), bind(fields, fields)))
       close-plain(<Nothing rolled>)
       back
 
@@ -296,19 +306,19 @@ task call-roll
   # whole answer
   fork test, roll-given(input/json)
     hold
-      output/print-data(<{roll-pretty(roll)}\n>)
+      print-data(<{roll-pretty(roll)}\n>)
     miss
       fork test, or(not(kind-given), is-above(shown/length, 0))
         hold
-          output/print-data(<{roll-module/show-roll(roll, input/kind, roll-show-options(input/path))}\n>)
+          print-data(<{roll-module/show-roll(roll, input/kind, roll-show-options(input/path))}\n>)
 
   # a file that did not compile is not on the roll: its problems, then a ▲ item naming what is missing, so the
   # roll still answers and says it is partial
-  output/report-problems(problems, root)
+  report-problems(problems, root)
 
   fork test, is-above(failed/length, 0)
     hold
-      output/report(make(roll-warning-message, bind(glyph, <warning>), bind(verb, <roll>), bind(subject, failed-subject(failed/length)), bind(message, one-word(failed/join(<, >)))))
+      report(make(roll-warning-message, bind(glyph, <warning>), bind(verb, <roll>), bind(subject, failed-subject(failed/length)), bind(message, one-word(failed/join(<, >)))))
 
   # one rule for the closing counts: they count what was printed. A kind counts its own entries, after `--host` and
   # `--private`; with no kind the three totals of the whole (filtered) roll
@@ -320,15 +330,15 @@ task call-roll
   fork test, kind-given
     hold
       save noun, roll-noun-of(input/kind)
-      counts/push(output/count(shown/length, noun/many, noun/one))
+      counts/push(count(shown/length, noun/many, noun/one))
     miss
       save exceptions, roll/exception
       save tasks, roll/task
       save docks, roll/dock
-      counts/push(output/count(exceptions/length, <exceptions>, <exception>))
-      counts/push(output/count(tasks/length, <tasks>, <task>))
-      counts/push(output/count(docks/length, <routes>, <route>))
-  output/close-run(make(roll-verdict-counts, bind(verdict, verdict), bind(counts, counts)))
+      counts/push(count(exceptions/length, <exceptions>, <exception>))
+      counts/push(count(tasks/length, <tasks>, <task>))
+      counts/push(count(docks/length, <routes>, <route>))
+  close-run(make(roll-verdict-counts, bind(verdict, verdict), bind(counts, counts)))
 
 # a change item: its glyph, its subject and its fields
 form roll-change
@@ -349,7 +359,7 @@ task report-change
   like void
   mark private
 
-  output/report(make(roll-change, bind(glyph, glyph), bind(kind, <change>), bind(subject, subject), bind(fields, fields)))
+  report(make(roll-change, bind(glyph, glyph), bind(kind, <change>), bind(subject, subject), bind(fields, fields)))
 
 task report-plain-change
   take glyph, like text
@@ -357,7 +367,7 @@ task report-plain-change
   like void
   mark private
 
-  output/report(make(roll-change-plain, bind(glyph, glyph), bind(kind, <change>), bind(subject, subject)))
+  report(make(roll-change-plain, bind(glyph, glyph), bind(kind, <change>), bind(subject, subject)))
 
 # `--diff <before>`: the roll now against the roll at `before` (roll-comparing.tree). Each task that changed what it can
 # reach or raise is an item, a gained reach a warning, so `--strict` fails a change that widened what code can do
@@ -392,11 +402,11 @@ task roll-diff-run
       link error
       fork test, json
         hold
-          output/print-data(<{roll-flat(roll-no-before(error))}\n>)
+          print-data(<{roll-flat(roll-no-before(error))}\n>)
           roll-fail-exit()
           back
-      output/report(make(roll-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, error)))
-      output/close-run(make(roll-verdict-next, bind(verdict, <Nothing compared>), bind(next, <term roll --json \> before.json, before the change, then term roll --diff before.json>)))
+      report(make(roll-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, error)))
+      close-run(make(roll-verdict-next, bind(verdict, <Nothing compared>), bind(next, <term roll --json \> before.json, before the change, then term roll --diff before.json>)))
       back
     case found
       link old
@@ -419,8 +429,8 @@ task run-diff
 
   fork test, json
     hold
-      output/print-data(<{roll-flat(diff)}\n>)
-      fork test, and(is-above(gains, 0), roll-is-strict(output/output-options()))
+      print-data(<{roll-flat(diff)}\n>)
+      fork test, and(is-above(gains, 0), roll-is-strict(output-options()))
         hold
           roll-fail-exit()
       back
@@ -432,9 +442,9 @@ task run-diff
       hold
         save glyph, <warning>
     save fields, make list
-    fields/push(output/location(one/site))
-    fields/push(output/field(<reach>, listed-or(one/reach, <no native module>)))
-    fields/push(output/field(<raise>, listed-or(one/halt, <nothing>)))
+    fields/push(location(one/site))
+    fields/push(field(<reach>, listed-or(one/reach, <no native module>)))
+    fields/push(field(<raise>, listed-or(one/halt, <nothing>)))
     report-change(glyph, <New task {one/name}>, fields)
 
   walk diff/tasks/changed
@@ -444,29 +454,29 @@ task run-diff
       hold
         save glyph, <warning>
     save fields, make list
-    fields/push(output/location(one/site))
+    fields/push(location(one/site))
     fork test, is-above(one/reach/added/length, 0)
       hold
-        fields/push(output/field(<reaches now>, listed-or(one/reach/added, <>)))
+        fields/push(field(<reaches now>, listed-or(one/reach/added, <>)))
     fork test, is-above(one/reach/removed/length, 0)
       hold
-        fields/push(output/field(<reaches no longer>, listed-or(one/reach/removed, <>)))
+        fields/push(field(<reaches no longer>, listed-or(one/reach/removed, <>)))
     fork test, is-above(one/halt/added/length, 0)
       hold
-        fields/push(output/field(<raises now>, listed-or(one/halt/added, <>)))
+        fields/push(field(<raises now>, listed-or(one/halt/added, <>)))
     fork test, is-above(one/halt/removed/length, 0)
       hold
-        fields/push(output/field(<raises no longer>, listed-or(one/halt/removed, <>)))
+        fields/push(field(<raises no longer>, listed-or(one/halt/removed, <>)))
     save moved, roll-async-moved(one)
     fork test, is-unequal(moved, <>)
       hold
-        fields/push(output/field(<async>, moved))
+        fields/push(field(<async>, moved))
     report-change(glyph, <{one/name} changed what it can do>, fields)
 
   walk diff/tasks/removed
     take one
     save fields, make list
-    fields/push(output/location(one/site))
+    fields/push(location(one/site))
     report-change(<removed>, <Task {one/name} is gone>, fields)
 
   walk diff/exceptions/added
@@ -487,10 +497,10 @@ task run-diff
     save fields, make list
     fork test, is-above(route/halt/added/length, 0)
       hold
-        fields/push(output/field(<raises now>, listed-or(route/halt/added, <>)))
+        fields/push(field(<raises now>, listed-or(route/halt/added, <>)))
     fork test, is-above(route/halt/removed/length, 0)
       hold
-        fields/push(output/field(<raises no longer>, listed-or(route/halt/removed, <>)))
+        fields/push(field(<raises no longer>, listed-or(route/halt/removed, <>)))
     report-change(<changed>, <Route {route/name} changed what it can raise>, fields)
 
   # a deck the project loads, counted rather than listed: its tasks are reached through the project's own, above
@@ -500,26 +510,26 @@ task run-diff
 
   fork test, not(diff/reach)
     hold
-      output/report(make(roll-warning, bind(glyph, <warning>), bind(verb, <roll>), bind(subject, <{before-name} was written before tasks carried their reach, so only raises are compared>)))
+      report(make(roll-warning, bind(glyph, <warning>), bind(verb, <roll>), bind(subject, <{before-name} was written before tasks carried their reach, so only raises are compared>)))
 
-  output/report-problems(problems, root)
+  report-problems(problems, root)
 
   fork test, or(is-above(failed/length, 0), is-above(before-failed, 0))
     hold
       save subject, <Files that did not compile are not compared: {failed/length} now, {before-failed} before>
       fork test, is-above(failed/length, 0)
         hold
-          output/report(make(roll-warning-message, bind(glyph, <warning>), bind(verb, <roll>), bind(subject, subject), bind(message, one-word(failed/join(<, >)))))
+          report(make(roll-warning-message, bind(glyph, <warning>), bind(verb, <roll>), bind(subject, subject), bind(message, one-word(failed/join(<, >)))))
         miss
-          output/report(make(roll-warning, bind(glyph, <warning>), bind(verb, <roll>), bind(subject, subject)))
+          report(make(roll-warning, bind(glyph, <warning>), bind(verb, <roll>), bind(subject, subject)))
 
   save tasks, diff/tasks
   save routes, diff/routes
   save changes, add(add(add(tasks/added/length, tasks/changed/length), tasks/removed/length), add(add(diff/exceptions/added/length, diff/exceptions/removed/length), add(add(add(routes/added/length, routes/removed/length), routes/changed/length), diff/decks/length)))
 
   save counts, make list
-  counts/push(output/count(tasks/added/length, <tasks added>, <task added>))
-  counts/push(output/count(tasks/changed/length, <tasks changed>, <task changed>))
-  counts/push(output/count(tasks/removed/length, <tasks removed>, <task removed>))
-  counts/push(output/count(gains, <gained a native module>, <gained a native module>))
-  output/close-run(make(roll-verdict-counts, bind(verdict, diff-verdict(changes, before-name)), bind(counts, counts)))
+  counts/push(count(tasks/added/length, <tasks added>, <task added>))
+  counts/push(count(tasks/changed/length, <tasks changed>, <task changed>))
+  counts/push(count(tasks/removed/length, <tasks removed>, <task removed>))
+  counts/push(count(gains, <gained a native module>, <gained a native module>))
+  close-run(make(roll-verdict-counts, bind(verdict, diff-verdict(changes, before-name)), bind(counts, counts)))

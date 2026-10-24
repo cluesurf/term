@@ -11,6 +11,7 @@
 load @term/base/list
   find list
   find contains
+  find copy
 
 load @term/base/hash
   find hash

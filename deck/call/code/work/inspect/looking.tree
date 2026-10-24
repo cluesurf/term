@@ -29,11 +29,19 @@ load @term/call/work/build/host-faces
   find face-project-resolver
   find face-deck-finder
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find field
+  find open-run
+  find print-data
+  find report
+  find report-problems
+
 dock load
   load <@term/make/code/inspect>, name inspect-module
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/host>, name data-module
-  load <@term/call/code/output>, name output
   load <node:fs>, name node-fs
   load <node:path>, name node-path
 
@@ -227,13 +235,13 @@ task look-data
       walk expanded/diagnostics
         take diagnostic
         problems/push(make(problem-entry, bind(diagnostic, diagnostic), bind(text, entry/text)))
-      output/report-problems(problems, root)
-      output/close-run(make(plain-close, bind(verdict, <The data file does not read>)))
+      report-problems(problems, root)
+      close-run(make(plain-close, bind(verdict, <The data file does not read>)))
       back
   save keys, data-module/data-keys(expanded/data)
   fork test, is-truthy(input/json)
     hold
-      output/print-data(<{json-pretty(json-value-of(data-module, expanded/data))}\n>)
+      print-data(<{json-pretty(json-value-of(data-module, expanded/data))}\n>)
     miss
       fork test, is-truthy(input/csv)
         hold
@@ -242,7 +250,7 @@ task look-data
           walk keys
             take key
             lines/push(<{cell(key/path)},{cell(key/kind)},{cell(key/value)}>)
-          output/print-data(<{lines/join(<\n>)}\n>)
+          print-data(<{lines/join(<\n>)}\n>)
         miss
           save path-width, 4
           save kind-width, 4
@@ -259,10 +267,10 @@ task look-data
           walk keys
             take key
             lines/push(<  {pad-end(key/path, path-width)}  {pad-end(key/kind, kind-width)}  {key/value}>)
-          output/print-data(<{lines/join(<\n>)}\n>)
+          print-data(<{lines/join(<\n>)}\n>)
   save facts, make list
   facts/push(<data>)
-  output/close-run(make(facts-close, bind(verdict, <{keys/length} key{plural-s(keys/length)} listed>), bind(facts, facts)))
+  close-run(make(facts-close, bind(verdict, <{keys/length} key{plural-s(keys/length)} listed>), bind(facts, facts)))
 
 task call-look
   take input, like dynamic
@@ -277,11 +285,11 @@ task call-look
   fork test, is-truthy(input/kind)
     hold
       facts/push(input/kind)
-  output/open-run(make(facts-open, bind(verb, <look>), bind(root, root), bind(facts, facts)))
+  open-run(make(facts-open, bind(verb, <look>), bind(root, root), bind(facts, facts)))
   fork test, not(is-truthy(target))
     hold
-      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <Name a module to look at>)))
-      output/close-run(make(usage-close, bind(verdict, <Nothing to look at>), bind(next, <term look \<module\> [--json|--csv] [--kind form|task]>), bind(failure, <usage>)))
+      report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <Name a module to look at>)))
+      close-run(make(usage-close, bind(verdict, <Nothing to look at>), bind(next, <term look \<module\> [--json|--csv] [--kind form|task]>), bind(failure, <usage>)))
       back
   save resolve, face-project-resolver(make-project-resolver(root))
   # a package path resolves through the project resolver; otherwise it is a file on disk
@@ -291,8 +299,8 @@ task call-look
       save entry, resolve-with(resolve, target, root)
       fork test, not(is-truthy(entry))
         hold
-          output/report(make(fields-problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <resolve>), bind(subject, <{target} does not resolve>), bind(fields, one-of(output/field(<why>, <the package may not be linked>)))))
-          output/close-run(make(next-close, bind(verdict, <Nothing to look at>), bind(next, <term link>)))
+          report(make(fields-problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <resolve>), bind(subject, <{target} does not resolve>), bind(fields, one-of(field(<why>, <the package may not be linked>)))))
+          close-run(make(next-close, bind(verdict, <Nothing to look at>), bind(next, <term link>)))
           back
     miss
       save file, node-path/resolve(root, target)
@@ -306,8 +314,8 @@ task call-look
         save read, false
       fork test, not(read)
         hold
-          output/report(make(verb-problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <read>), bind(subject, <There is no file {target}>)))
-          output/close-run(make(plain-close, bind(verdict, <Nothing to look at>)))
+          report(make(verb-problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <read>), bind(subject, <There is no file {target}>)))
+          close-run(make(plain-close, bind(verdict, <Nothing to look at>)))
           back
   # a data file has no forms or tasks: list its keys instead, a path per row
   fork test, data-module/is-data-file(entry)
@@ -341,7 +349,7 @@ task call-look
       fork test, is-above(errors, 0)
         hold
           # listed from its source all the same, which is still the answer to "what does it offer", and said so
-          output/report(make(check-item, bind(glyph, <warning>), bind(verb, <check>), bind(subject, <The module does not compile, so its signatures are as written>), bind(counts, one-of(output/count(errors, <errors>, <error>))), bind(fields, one-of(output/field(<next>, <term scan {target}>)))))
+          report(make(check-item, bind(glyph, <warning>), bind(verb, <check>), bind(subject, <The module does not compile, so its signatures are as written>), bind(counts, one-of(count(errors, <errors>, <error>))), bind(fields, one-of(field(<next>, <term scan {target}>)))))
   save listed, inspection/offered
   save modules, inspection/offered-modules
   fork test, is-truthy(input/all)
@@ -359,13 +367,13 @@ task call-look
             filtered/push(one)
   fork test, is-truthy(input/json)
     hold
-      output/print-data(<{json-text-of(inspect-module, filtered)}\n>)
+      print-data(<{json-text-of(inspect-module, filtered)}\n>)
     miss
       fork test, is-truthy(input/csv)
         hold
-          output/print-data(<{inspect-module/to-csv(filtered)}\n>)
+          print-data(<{inspect-module/to-csv(filtered)}\n>)
         miss
-          output/print-data(<{inspect-module/to-table(filtered)}\n>)
+          print-data(<{inspect-module/to-table(filtered)}\n>)
   # the counts are of what was LISTED: they counted every task while `--kind form` listed forms
   save forms, 0
   save tasks, 0
@@ -379,9 +387,9 @@ task call-look
         save tasks, add(tasks, 1)
   fork test, is-truthy(inspection/load-diagnostics)
     hold
-      output/report(make(counted-item, bind(glyph, <warning>), bind(verb, <resolve>), bind(subject, <Some imports did not resolve>), bind(counts, one-of(output/count(inspection/load-diagnostics, <unresolved>, <unresolved>)))))
+      report(make(counted-item, bind(glyph, <warning>), bind(verb, <resolve>), bind(subject, <Some imports did not resolve>), bind(counts, one-of(count(inspection/load-diagnostics, <unresolved>, <unresolved>)))))
   save counts, make list
-  counts/push(output/count(modules, <modules>, <module>))
-  counts/push(output/count(forms, <forms>, <form>))
-  counts/push(output/count(tasks, <tasks>, <task>))
-  output/close-run(make(counted-close, bind(verdict, <{filtered/length} name{plural-s(filtered/length)} listed>), bind(counts, counts)))
+  counts/push(count(modules, <modules>, <module>))
+  counts/push(count(forms, <forms>, <form>))
+  counts/push(count(tasks, <tasks>, <task>))
+  close-run(make(counted-close, bind(verdict, <{filtered/length} name{plural-s(filtered/length)} listed>), bind(counts, counts)))

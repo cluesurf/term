@@ -79,13 +79,23 @@ load ../cache/compile-store
   find project-cache
   find project-cache-dir
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find fail-run
+  find field
+  find location
+  find open-run
+  find output-options
+  find report
+  find report-problems
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
   # an inherited method (once) is reached only through the global (traps.md)
   load <global:process>, name host-process
   load <@term/make/code/compile/reach>, name reach-module
-  load <@term/call/code/output>, name output
 
 # ---- what the output library is handed ----
 
@@ -383,7 +393,7 @@ task call-test
     test-project(input)
   halt take
     take problem
-    output/fail-run(problem, input/root)
+    fail-run(problem, input/root)
 
 task test-project
   take input, like dynamic
@@ -408,11 +418,11 @@ task test-project
   fork test, is-truthy(input/filter)
     hold
       facts/push(host-text(input/filter))
-  output/open-run(make(open-ask, bind(verb, <test>), bind(root, input/root), bind(facts, facts)))
+  open-run(make(open-ask, bind(verb, <test>), bind(root, input/root), bind(facts, facts)))
   fork test, not(has-test-script)
     hold
-      output/report(make(item-ask, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no deck.tree here, and package.json has no test script>)))
-      output/close-run(make(close-ask, bind(verdict, <Nothing to test>), bind(next, <term wake, to make a Term project here>)))
+      report(make(item-ask, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no deck.tree here, and package.json has no test script>)))
+      close-run(make(close-ask, bind(verdict, <Nothing to test>), bind(next, <term wake, to make a Term project here>)))
       back
   save args, make list
   args/push(<run>)
@@ -424,11 +434,11 @@ task test-project
   # the package's own test script: its output quoted under the `run` item when it failed or under --verbose (section
   # 15), or passed through untouched under --raw
   save started, now-ms()
-  save options, output/output-options()
+  save options, output-options()
   save ran, run-script(args, input/root, is-truthy(options/raw))
   save passed, is-equal(ran/code, 0)
   save quote, ran/lines
-  save after, output/output-options()
+  save after, output-options()
   fork test, and(passed, not(is-truthy(after/verbose)))
     hold
       save quote, make list
@@ -438,8 +448,8 @@ task test-project
     hold
       save glyph, <done>
       save verdict, <Tests passed>
-  output/report(make(item-ask, bind(glyph, glyph), bind(verb, <run>), bind(subject, <pnpm {join(args, < >)}>), bind(duration, subtract(now-ms(), started)), bind(exit, ran/code), bind(quote, quote)))
-  output/close-run(make(close-ask, bind(verdict, verdict)))
+  report(make(item-ask, bind(glyph, glyph), bind(verb, <run>), bind(subject, <pnpm {join(args, < >)}>), bind(duration, subtract(now-ms(), started)), bind(exit, ran/code), bind(quote, quote)))
+  close-run(make(close-ask, bind(verdict, verdict)))
 
 # ---- collecting ----
 
@@ -601,7 +611,7 @@ task run-round
       save tally/broken, add(tally/broken, 1)
       save message, make list
       message/push(message-of(problem))
-      output/report(make(item-ask, bind(glyph, <failed>), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(message, message)))
+      report(make(item-ask, bind(glyph, <failed>), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(message, message)))
   close-session(context/session)
   back make(round-totals, bind(pass, tally/pass), bind(fail, tally/fail), bind(proved, tally/proved), bind(broken, tally/broken), bind(skipped, tally/skipped), bind(controls, tally/controls))
 
@@ -630,7 +640,7 @@ task run-file
       fork test, verdict/broken
         hold
           save tally/broken, add(tally/broken, 1)
-          output/report-problems(problems-of(verdict/others, file, source), context/root)
+          report-problems(problems-of(verdict/others, file, source), context/root)
         miss
           fork test, verdict/held
             hold
@@ -643,7 +653,7 @@ task run-file
           save glyph, <done>
       save facts, make list
       facts/push(verdict/fact)
-      output/report(make(item-ask, bind(glyph, glyph), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(facts, facts)))
+      report(make(item-ask, bind(glyph, glyph), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(facts, facts)))
       back
   # the file's snapshots, held to or recorded. A store that cannot be read is the file's failure, never an empty
   # store, which would fail every snapshot as unwritten
@@ -655,7 +665,7 @@ task run-file
       save tally/broken, add(tally/broken, 1)
       save facts, make list
       facts/push(why)
-      output/report(make(item-ask, bind(glyph, <failed>), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(facts, facts)))
+      report(make(item-ask, bind(glyph, <failed>), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(facts, facts)))
       back
     case snapshots
       link kept
@@ -724,10 +734,10 @@ task run-file
       fork test, not(is-truthy(diagnostics))
         hold
           save diagnostics, make list
-      output/report-problems(problems-of(diagnostics, file, ran/text), context/root)
+      report-problems(problems-of(diagnostics, file, ran/text), context/root)
       save facts, make list
       facts/push(failure-fact(host-text(ran/failure)))
-      output/report(make(item-ask, bind(glyph, <failed>), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(facts, facts)))
+      report(make(item-ask, bind(glyph, <failed>), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(facts, facts)))
       back
   save total, ran/results/length
   save held, 0
@@ -743,19 +753,19 @@ task run-file
       save tally/proved, add(tally/proved, 1)
       save facts, make list
       facts/push(<proofs checked>)
-      output/report(make(item-ask, bind(glyph, <done>), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(facts, facts)))
+      report(make(item-ask, bind(glyph, <done>), bind(verb, <test>), bind(subject, rel), bind(duration, subtract(now-ms(), started)), bind(facts, facts)))
       back
   save tally/pass, add(tally/pass, held)
   save tally/fail, add(tally/fail, missed)
   save counts, make list
-  counts/push(output/count(total, <tests>, <test>))
-  counts/push(output/count(held, <passed>))
+  counts/push(count(total, <tests>, <test>))
+  counts/push(count(held, <passed>))
   fork test, is-above(missed, 0)
     hold
-      counts/push(output/count(missed, <failed>))
+      counts/push(count(missed, <failed>))
   fork test, recorded
     hold
-      counts/push(output/count(written, <snapshots written>, <snapshot written>))
+      counts/push(count(written, <snapshots written>, <snapshot written>))
   save glyph, <done>
   fork test, is-above(missed, 0)
     hold
@@ -764,7 +774,7 @@ task run-file
   fork test, is-above(printed/length, 0)
     hold
       save item/quote, printed
-  output/report(item)
+  report(item)
   # each test that did not hold is a Problem of its own, under the verb `case` (section 9)
   walk ran/results
     take one, like dynamic
@@ -783,17 +793,17 @@ task report-case
   save at-line, is-truthy(one/line)
   fork test, at-line
     hold
-      fields/push(output/location(<{rel}:{host-text(one/line)}>))
+      fields/push(location(<{rel}:{host-text(one/line)}>))
     miss
-      fields/push(output/field(<in>, rel))
+      fields/push(field(<in>, rel))
   fork test, is-truthy(one/error)
     hold
-      fields/push(output/field(<why>, host-text(one/error)))
+      fields/push(field(<why>, host-text(one/error)))
   save case-item, make(item-ask, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <case>), bind(subject, case-subject(host-text(one/label))), bind(duration, one/ms), bind(fields, fields))
   fork test, at-line
     hold
       save case-item/place, make(case-place, bind(path, rel), bind(line, one/line), bind(column, 1))
-  output/report(case-item)
+  report(case-item)
 
 # ---- the run ----
 
@@ -830,8 +840,8 @@ task run-seed-tests
     hold
       facts/push(<watching>)
   save counts, make list
-  counts/push(output/count(files/length, <files>, <file>))
-  output/open-run(make(open-ask, bind(verb, <test>), bind(root, root), bind(counts, counts), bind(facts, facts)))
+  counts/push(count(files/length, <files>, <file>))
+  open-run(make(open-ask, bind(verb, <test>), bind(root, root), bind(counts, counts), bind(facts, facts)))
   # a backend this command does not run on, and one whose toolchain this machine does not have, are said before
   # anything is built. The toolchain is asked after the backend is known to be one this command runs on
   save env, text-or-empty(input/env)
@@ -846,19 +856,19 @@ task run-seed-tests
       save refusal, env-refusal(env, native-envs, update, missing-tools(native))
   fork test, is-unequal(refusal/subject, <>)
     hold
-      output/report(make(item-ask, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, refusal/subject)))
+      report(make(item-ask, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, refusal/subject)))
       save closing, make(close-ask, bind(verdict, <Nothing was tested>), bind(failure, refusal/failure))
       fork test, is-unequal(refusal/next, <>)
         hold
           save closing/next, refusal/next
-      set-exit-code(output/close-run(closing))
+      set-exit-code(close-run(closing))
       back
   fork test, and(is-equal(files/length, 0), not(ride))
     hold
       # a zero is data (section 6): the run says what it looked for and found none
       save message, make list
       message/push(<No file under code/ or test/ holds a test, a hold or a rule.>)
-      output/close-run(make(close-ask, bind(verdict, <No tests to run>), bind(message, message)))
+      close-run(make(close-ask, bind(verdict, <No tests to run>), bind(message, message)))
       back
   # the same role and lean readers `term make` compiles with, so a lean grammar's tests read it lean
   save reader, make-role-reader(root)
@@ -886,18 +896,18 @@ task run-seed-tests
         hold
           save message, make list
           message/push(<No test's phrase or name holds "{chosen}".>)
-          set-exit-code(output/close-run(make(close-ask, bind(verdict, <No test matched>), bind(failure, <usage>), bind(message, message))))
+          set-exit-code(close-run(make(close-ask, bind(verdict, <No test matched>), bind(failure, <usage>), bind(message, message))))
           back
       save verdict, <Tests passed>
       fork test, round-failed(first)
         hold
           save verdict, <Test run failed>
-      output/close-run(make(close-ask, bind(verdict, verdict), bind(counts, totals-counts(first))))
+      close-run(make(close-ask, bind(verdict, verdict), bind(counts, totals-counts(first))))
       back
   # WATCH (`term test --ride`): after an edit, the test files whose closure holds a file that moved run again, and no
   # other. A test file added or removed, or a round whose closure the session cannot see (compiled whole, or on a
   # native backend), runs every file again. The run never closes until ctrl-c
-  output/report(make(item-ask, bind(glyph, round-glyph(first)), bind(verb, <test>), bind(subject, <every file>), bind(counts, totals-counts(first))))
+  report(make(item-ask, bind(glyph, round-glyph(first)), bind(verb, <test>), bind(subject, <every file>), bind(counts, totals-counts(first))))
   host-process/once(<SIGINT>, stop-watching)
   save on-change
     task
@@ -922,7 +932,7 @@ task stop-watching
   like void
   mark private
 
-  host-process/exit(output/close-run(make(close-ask, bind(verdict, <Stopped>), bind(failure, <interrupted>), bind(uptime, true))))
+  host-process/exit(close-run(make(close-ask, bind(verdict, <Stopped>), bind(failure, <interrupted>), bind(uptime, true))))
 
 # after an edit: the files again, which of them the edit reaches, and a round over those
 task watch-round
@@ -948,4 +958,4 @@ task watch-round
     hold
       back
   save totals, run-round(context, reached)
-  output/report(make(item-ask, bind(glyph, round-glyph(totals)), bind(verb, <test>), bind(subject, round-subject(reached/length, files/length)), bind(counts, totals-counts(totals))))
+  report(make(item-ask, bind(glyph, round-glyph(totals)), bind(verb, <test>), bind(subject, round-subject(reached/length, files/length)), bind(counts, totals-counts(totals))))

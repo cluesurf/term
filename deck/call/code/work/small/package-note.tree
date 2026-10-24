@@ -12,13 +12,34 @@ load @term/base/maybe
   find some
   find none
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find field
+  find make-item
+  find open-run
+  find report
+
+# a row of the item's list: the output library's own, since the item `make-item` answers is the printer's event
+# (term-cli-in-term-0069), where the output module took any record
+load @term/call/work/item/event
+  find list-entry
+
+# the manifest and its version, read by @term/deck's ports (term-cli-in-term-0236), where the package
+# manager's faces were docked
+load @term/deck/package/manifest-reading
+  find load-manifest
+
+load @term/deck/package/grammar-reading
+  find make-grammars
+
+load @term/deck/version
+  find show-code
+
 dock load
-  load <@cluesurf/deck.tree>, name deck-tree-module
-    mark async
   load <@term/make/code/resolve>, name resolve-module
   load <node:fs>, name node-file
   load <node:path>, name node-path
-  load <@term/call/code/output>, name output
   load <global:Error>, name host-error
   load <global:String>, name host-string
   load <global:Boolean>, name host-boolean
@@ -26,9 +47,6 @@ dock load
 form plain-open
   link verb, like text
   link root, like text
-
-form load-ask
-  link dir, like text
 
 form deck-item-ask
   link glyph, like text
@@ -38,9 +56,6 @@ form deck-item-ask
   link message, like list, like text
   link fields, like list, like dynamic
 
-form list-entry
-  link label, like text
-  link detail, like text
 
 form counted-close
   link verdict, like text
@@ -80,7 +95,7 @@ task note-package
   like void
   mark private
 
-  save manifest, deck-tree-module/load-manifest(make(load-ask, bind(dir, root)))
+  save manifest, load-manifest(root, make-grammars())
   save full-name, <{manifest/name}>
   fork test, holds(manifest/host)
     hold
@@ -88,30 +103,30 @@ task note-package
   save fields, make list
   fork test, holds(manifest/lock)
     hold
-      fields/push(output/field(<license>, manifest/lock))
+      fields/push(field(<license>, manifest/lock))
   fork test, and(holds(manifest/mind), is-above(manifest/mind/length, 0))
     hold
       save names, make list
       walk manifest/mind
         take author
         names/push(<{author/name}>)
-      fields/push(output/field(<authors>, join(names, <, >)))
+      fields/push(field(<authors>, join(names, <, >)))
   save facts, make list
-  facts/push(<{deck-tree-module/show-code(manifest/mark)}>)
+  facts/push(show-code(manifest/mark))
   save message, make list
   fork test, holds(manifest/head)
     hold
       message/push(<{manifest/head}>)
-  save item, output/make-item(make(deck-item-ask, bind(glyph, <info>), bind(verb, <deck>), bind(subject, full-name), bind(facts, facts), bind(message, message), bind(fields, fields)))
+  save item, make-item(make(deck-item-ask, bind(glyph, <info>), bind(verb, <deck>), bind(subject, full-name), bind(facts, facts), bind(message, message), bind(fields, fields)))
   save entries, make list
   walk manifest/link
     take dependency
     entries/push(make(list-entry, bind(label, <{dependency/name}>), bind(detail, <>)))
   save item/entries, entries
-  output/report(item)
+  report(item)
   save counts, make list
-  counts/push(output/count(manifest/link/length, <dependencies>, <dependency>))
-  output/close-run(make(counted-close, bind(verdict, <{full-name} read>), bind(counts, counts)))
+  counts/push(count(manifest/link/length, <dependencies>, <dependency>))
+  close-run(make(counted-close, bind(verdict, <{full-name} read>), bind(counts, counts)))
 
 # the entry `load <deck>` reaches from the project root: the link dir, the in-tree packages, then the stdlib, each
 # through resolvePackagePath (make/code/resolve.ts). The empty text when it reaches none
@@ -135,7 +150,7 @@ task manifest-name
   save named, <>
   fork
     mark unsafe
-    save manifest, deck-tree-module/load-manifest(make(load-ask, bind(dir, dir)))
+    save manifest, load-manifest(dir, make-grammars())
     save named, <{manifest/name}>
     fork test, holds(manifest/host)
       hold
@@ -175,7 +190,7 @@ task call-note
     fall make none
   like void
 
-  output/open-run(make(plain-open, bind(verb, <note>), bind(root, root)))
+  open-run(make(plain-open, bind(verb, <note>), bind(root, root)))
   fork
     mark unsafe
     sift deck
@@ -187,13 +202,13 @@ task call-note
             save dir, package-folder(entry, value)
         fork test, is-equal(dir, <>)
           hold
-            output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no package named {value} here>)))
-            output/close-run(make(next-close, bind(verdict, <No package to read>), bind(next, <term note, for this package>)))
+            report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no package named {value} here>)))
+            close-run(make(next-close, bind(verdict, <No package to read>), bind(next, <term note, for this package>)))
           miss
             note-package(dir)
       case none
         note-package(root)
   halt take
     take error
-    output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, message-of(error))))
-    output/close-run(make(next-close, bind(verdict, <No package to read>), bind(next, <term wake, to make a package here>)))
+    report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, message-of(error))))
+    close-run(make(next-close, bind(verdict, <No package to read>), bind(next, <term wake, to make a package here>)))

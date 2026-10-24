@@ -27,11 +27,18 @@ load @term/base/list
 load @term/base/maybe
   find maybe
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find field
+  find open-run
+  find report
+  find show-path
+
 dock load
   load <node:path>, name node-path
   load <node:fs/promises>, name fs-promise
     mark async
-  load <@term/call/code/output>, name output
   load <global:Error>, name host-error
   load <global:String>, name host-string
 
@@ -175,7 +182,7 @@ task report-removed
   like void
   mark private
 
-  output/report(make(change-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <remove>), bind(subject, subject)))
+  report(make(change-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <remove>), bind(subject, subject)))
 
 # Each of `folders` that is there under `root` removed, one `remove` item apiece, and how many there were. A folder
 # shows as itself with a slash, or, when `whole` is true, as its whole path shown
@@ -197,7 +204,7 @@ task remove-each
       save shown, <{folder}/>
       fork test, whole
         hold
-          save shown, <{output/show-path(full)}/>
+          save shown, <{show-path(full)}/>
       report-removed(shown)
       save cleaned, add(cleaned, 1)
     halt take
@@ -213,8 +220,8 @@ task close-counted
   mark private
 
   save counts, make list
-  counts/push(output/count(cleaned, <directories>, <directory>))
-  output/close-run(make(counted-close, bind(verdict, verdict), bind(counts, counts), bind(done, is-above(cleaned, 0))))
+  counts/push(count(cleaned, <directories>, <directory>))
+  close-run(make(counted-close, bind(verdict, verdict), bind(counts, counts), bind(done, is-above(cleaned, 0))))
 
 task close-cleaned
   take verdict, like text
@@ -255,16 +262,16 @@ task wash-tail
     fs-promise/rm(log-folder, make(rm-ask, bind(recursive, true), bind(force, true)))
     fork test, existed
       hold
-        report-removed(<{output/show-path(log-folder, root)}/>)
-        output/close-run(make(done-close, bind(verdict, <Logs cleared>), bind(done, true)))
+        report-removed(<{show-path(log-folder, root)}/>)
+        close-run(make(done-close, bind(verdict, <Logs cleared>), bind(done, true)))
       miss
-        output/close-run(make(done-close, bind(verdict, <No logs to clear>), bind(done, false)))
+        close-run(make(done-close, bind(verdict, <No logs to clear>), bind(done, false)))
   halt take
     take error
     save message, make list
     message/push(error-text(error))
-    output/report(make(message-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <The logs could not be removed>), bind(message, message)))
-    output/close-run(make(plain-close, bind(verdict, <Logs not cleared>)))
+    report(make(message-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <The logs could not be removed>), bind(message, message)))
+    close-run(make(plain-close, bind(verdict, <Logs not cleared>)))
 
 # `term wash`: the build's output removed, one `remove` change item per directory that was there
 task call-wash
@@ -288,16 +295,16 @@ task call-wash
   fork test, and(given, is-truthy-word(washed))
     hold
       facts/push(washed)
-  output/open-run(make(wash-open, bind(verb, <wash>), bind(root, root), bind(facts, facts)))
+  open-run(make(wash-open, bind(verb, <wash>), bind(root, root), bind(facts, facts)))
   fork test, and(given, is-renamed-word(word))
     hold
-      output/report(make(warning-item, bind(glyph, <warning>), bind(verb, <wash>), bind(subject, <term wash {word} is term wash {washed} now>)))
+      report(make(warning-item, bind(glyph, <warning>), bind(verb, <wash>), bind(subject, <term wash {word} is term wash {washed} now>)))
   # `deck` is the build output, the same as no target, `tail` the logs, `boot` what boot and cast write, `base` the
   # machine-wide module cache. Any other word is refused
   fork test, and(given, not(contains(wash-targets(), washed)))
     hold
-      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is nothing named {washed} to wash>)))
-      output/close-run(make(usage-close, bind(verdict, <Nothing removed>), bind(next, <term wash, or term wash deck, tail, boot or base>), bind(failure, <usage>)))
+      report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is nothing named {washed} to wash>)))
+      close-run(make(usage-close, bind(verdict, <Nothing removed>), bind(next, <term wash, or term wash deck, tail, boot or base>), bind(failure, <usage>)))
       back
   # the machine-wide cache of parsed modules, which every project shares and the next build of any of them fills
   # again, with the separate build's units beside them. Not a project's, so it needs no deck.tree. The installed decks
@@ -315,9 +322,9 @@ task call-wash
   fork test, not(is-there(node-path/join(root, <deck.tree>)))
     hold
       save fields, make list
-      fields/push(output/field(<looked>, output/show-path(root)))
-      output/report(make(looked-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no deck.tree here, so nothing here is a build to wash>), bind(fields, fields)))
-      output/close-run(make(next-close, bind(verdict, <Nothing removed>), bind(next, <term wash, in the folder that holds the deck.tree>)))
+      fields/push(field(<looked>, show-path(root)))
+      report(make(looked-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no deck.tree here, so nothing here is a build to wash>), bind(fields, fields)))
+      close-run(make(next-close, bind(verdict, <Nothing removed>), bind(next, <term wash, in the folder that holds the deck.tree>)))
       back
   fork test, and(given, is-equal(word, <tail>))
     hold

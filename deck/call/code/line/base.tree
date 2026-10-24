@@ -78,9 +78,18 @@ load @term/call/work/base-verbs
   find base-status
   find base-tag
 
-# `base project`, which no verb file binds yet (work/dispatch.tree says why it is there)
+# `base project`, which no verb file binds yet (work/dispatch.tree says why it is there), and the three calls the run
+# entry makes, reached through tasks of this file (start-console, at the end)
 load @term/call/work/dispatch
   find base-project
+  find start-line
+  find fail-line
+  find refuse-line
+  find line-start
+  find usage-refusal
+
+load @term/make/compile/node
+  find dock-route
 
 load @term/call/work/deck-verbs
   find load
@@ -1210,3 +1219,30 @@ task mark-bench
   like void
   call mark-verb
     read rest
+
+# THE RUN ENTRY'S THREE CALLS (decision cli-in-term/018 part 3). The run entry port-build writes beside this port
+# imports this port alone, so the run is started, refused and failed through the same copy of work/dispatch and of
+# the printer that every verb prints through: one run state. A bare `find` is dropped by the emitter (a found task
+# nothing calls is left out of the program), so each is a task of this file.
+task start-console
+  take routes, like list, like dock-route
+  take words, like list, like text
+  like line-start
+  send back
+    call start-line
+      read routes
+      read words
+
+task refuse-console
+  take refusal, like usage-refusal
+  like number
+  send back
+    call refuse-line
+      read refusal
+
+task fail-console
+  take error, like unknown
+  like number
+  send back
+    call fail-line
+      read error

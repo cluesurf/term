@@ -6,6 +6,7 @@ load @term/base/list
 
 load @term/base/maybe
   find maybe
+  find some
 
 # The remaining verbs: `term time`, `term hold`, `term zone` and `term mark`. `mark` is a forwarder like `zone`.
 #
@@ -16,8 +17,8 @@ load @term/base/maybe
 # the running toolchain by the small lane's port (work/small/console-forwarding.tree), which finds the CLI itself
 # (decision cli-in-term/006): `call-zone` and `call-mark` take the root and the words, as zone.ts and mark.ts did.
 #
-# Ported from deck/call/code/{time,hold,zone}.ts (cli-in-term-0004). `time`, `zone` and `mark` run the tool and small
-# lanes' ports since term-cli-in-term-0069.
+# Ported from deck/call/code/{time,hold,zone}.ts (cli-in-term-0004). `time`, `hold`, `zone` and `mark` run the tool,
+# hold and small lanes' ports since term-cli-in-term-0069.
 
 load @term/call/work/tool/time-command
   find call-time
@@ -26,10 +27,12 @@ load @term/call/work/small/console-forwarding
   find call-zone
   find call-mark
 
-dock load
-  # hold.ts, docked until the output lane goes live: lane hold's port (work/hold/hold-gate.tree) prints through
-  # work/output/printer.tree, which the console configures only from 0069 on (decision term-cli-in-term-0210)
-  load <@term/call/code/hold>, name hold-module
+# lane hold's port of hold.ts `callHold` (work/hold/hold-gate.tree), which prints through work/output/printer.tree: live
+# since term-cli-in-term-0069, when dispatch.tree configures that printer (decision term-cli-in-term-0210). Its ask
+# is found under a name of its own: this file's `hold-ask` was the TypeScript handler's
+load @term/call/work/hold/hold-gate
+  find call-hold
+  find hold-ask, name gate-ask
 
 form time-ask
   link root, like text
@@ -60,19 +63,6 @@ bind tool-number-given
   like dynamic
   case node
     text <($given.form === "some" ? $given.value : undefined)>
-
-form hold-ask
-  link root, like text
-  link paths
-    like list
-      like text
-  link cross, like boolean
-  link cache, like boolean
-  link force, like boolean
-  link json, like boolean
-  link commit, like boolean
-  link lean, like boolean
-  link report, like boolean
 
 # `term time [filter]`: run the benchmarks, or profile one file with --cpu / --memory
 task time
@@ -127,18 +117,20 @@ task hold
   # the project root is READ, not taken: a hook has no `root` argument to pass. No tint, catch or exit of its own: a
   # throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term)
   save root, call project-root
-  call hold-module/callHold
-    make hold-ask
-      bind root, read root
-      bind paths, read paths
-      bind cross, read cross
-      bind cache, read cache
-      bind force, read force
-      bind json, read json
-      bind commit, read commit
-      bind lean, read lean
-      bind report, read report
-    wait true
+  # every flag arrives, with the hook's default when the line left it out, as line.ts handed yargs's answer on: each is
+  # given (`some`) to the gate, whose ask reads a flag left out as false
+  save asked
+    make gate-ask
+      bind root, root
+      bind paths, paths
+      bind cross, make(some, cross)
+      bind cache, make(some, cache)
+      bind force, make(some, force)
+      bind json, make(some, json)
+      bind commit, make(some, commit)
+      bind lean, make(some, lean)
+      bind report, make(some, report)
+  call-hold(asked)
 
 # the words a forwarding command hands on: its own word, then every word the line wrote after it, as the dispatcher
 # kept them (a passing hook's slot, decision cli-in-term/008 part 2). call-zone and call-mark slice after their word,

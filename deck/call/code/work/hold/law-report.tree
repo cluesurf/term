@@ -31,6 +31,10 @@ load @term/call/work/build/host-faces
 load @term/call/work/small/home-folder
   find project-home
 
+# the tree reader: @term/deck's tree-reading port (term-cli-in-term-0234, where its face package/read.ts was docked)
+load @term/deck/package/tree-reading
+  find read-tree
+
 dock load
   load <@term/make/code/parser/tree>, name tree-parsing
   load <@term/make/code/parser/narrow>, name narrowing
@@ -39,7 +43,6 @@ dock load
   load <@term/make/code/compile/mill>, name milling
   load <@term/make/code/compile/host>, name data-reading
   load <@term/make/code/check/law-english>, name law-wording
-  load <@term/deck/code/package/read>, name tree-reading
   load <node:fs>, name host-fs
   load <node:path>, name host-path
   load <node:child_process>, name host-child
@@ -92,14 +95,12 @@ bind contracts-of
   case node
     text <<((parsed) => { if (!parsed.ok) return 0; const count = node => node.kind === "group" ? (["have", "must", "down"].includes($running.headWord(node) ?? "") ? 1 : 0) + node.nodes.reduce((sum, child) => sum + count(child), 0) : 0; return $narrow.groupsOf(parsed.tree.nodes).filter(group => $running.headWord(group) === "task").reduce((sum, group) => sum + group.nodes.reduce((inner, child) => inner + count(child), 0), 0) })($parsing.parse({ file: $file, text: $text }))>>
 
-# the `deck` line's first term of a project's deck.tree, the empty text for none
+# the `deck` line's first term of a project's deck.tree as the tree reader read it, the empty text for none
 bind deck-name
-  take reading, like dynamic
-  take file, like text
-  take text, like text
+  take answer, like dynamic
   like text
   case node
-    text <<((read) => (read.ok ? read.forms.find(form => form.head === "deck") : undefined)?.terms[0] ?? "")($reading.readTree({ file: $file, text: $text }))>>
+    text <<((deckRead_) => (deckRead_.ok ? deckRead_.forms.find(deckForm_ => deckForm_.head === "deck") : undefined)?.terms[0] ?? "")($answer)>>
 
 # the commit the project is at, read-only, `uncommitted` when its files differ from it
 bind commit-at
@@ -531,7 +532,8 @@ task project-name
   save file, host-path/join(root, <deck.tree>)
   fork test, host-fs/exists-sync(file)
     hold
-      save named, deck-name(tree-reading, file, host-fs/read-file-sync(file, <utf8>))
+      save manifest-read, read-tree(file, host-fs/read-file-sync(file, <utf8>))
+      save named, deck-name(manifest-read)
       fork test, is-unequal(named, <>)
         hold
           back named

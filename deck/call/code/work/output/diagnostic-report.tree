@@ -14,9 +14,12 @@ load @term/make/parser/diagnostic
 load @term/base/terminal
   find uses-color
 
+load @term/call/work/output/printer
+  find report-problem
+  find report-problems
+
 dock load
   load <node:fs>, name host-fs
-  load <@term/call/code/output>, name output
 
 # whether the caller handed a text in: report.ts tests `text !== undefined`, so an empty text is a text
 bind handed-in
@@ -70,7 +73,7 @@ task print-diagnostic
   take given, like dynamic
   like void
 
-  output/reportProblem(diagnostic, report-folder(), given)
+  report-problem(diagnostic, report-folder(), given)
 
 # every diagnostic as Problem items, sorted, capped and caused-by problems hidden by the output library: `for-file`'s
 # text goes with the diagnostics of its file, the rest are read from disk
@@ -83,7 +86,7 @@ task print-diagnostics
   walk diagnostics
     take one
     entries/push(report-entry(one, for-file))
-  output/reportProblems(entries, report-folder())
+  report-problems(entries, report-folder())
 
 # one entry of reportProblems: the diagnostic, and `held`'s text when it is the diagnostic's file
 bind report-entry

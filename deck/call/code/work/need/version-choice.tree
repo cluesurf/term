@@ -15,9 +15,10 @@
 #   5  the front, call/term                         else the newest version installed under code/
 #   6  the running term itself                      a Homebrew or source copy, with nothing installed
 #
-# THE SHAPES ARE THE ORIGINAL'S. A request's `hold` and its pin's `code` are @term/deck's own (code.ts, docked, which
-# parses them), because `term self` hands them on to that package. They are turned into version.tree's shapes only to
-# ask need-choose.tree. An optional field is a need-false maybe, so it is left out where the original left it out.
+# THE SHAPES ARE THE ORIGINAL'S. A request's `hold` and its pin's `code` are @term/deck's own, because `term self`
+# hands them on to that package: version.tree parses them, and `choice-deck-hold` and `choice-deck-code` write them in
+# the shape the face code.ts answered (term-cli-in-term-0234, where code.ts was docked). They are turned into
+# version.tree's shapes again only to ask need-choose.tree. An optional field is a need-false maybe, so it is left out where the original left it out.
 #
 # THE PARSER READS EVERY FILE, through deck/deck/code/package/tree-reading.tree. A cheap test on the text decides only
 # whether to parse at all: a file with no line starting `need` cannot hold one. That test and the line it reports are
@@ -37,6 +38,8 @@ load @term/base/text
 load @term/deck/version
   find code
   find code-hold
+  find parse-code
+  find parse-code-hold
 
 load @term/deck/package/tree-reading
   find tree-form
@@ -65,7 +68,6 @@ dock load
   load <node:path>, name node-path
   load <global:process>, name host-process
   load <global:Date>, name host-date
-  load <@term/deck/code/code>, name deck-code
 
 # ---- the host's values, read as the original read them ----
 
@@ -104,6 +106,24 @@ bind iso-now
   like text
   case node
     text <new Date().toISOString()>
+
+# a parsed version.tree `code` in @term/deck's shape, as the face code.ts answered parseCode: `prerelease` always
+# (undefined when there is none), `build` only when there is one
+bind choice-deck-code
+  take value, like code
+  like dynamic
+  case node
+    text <<((choiceCode_) => ({ major: choiceCode_.major, minor: choiceCode_.minor, patch: choiceCode_.patch, prerelease: choiceCode_.prerelease === "" ? undefined : choiceCode_.prerelease, ...(choiceCode_.build !== "" ? { build: choiceCode_.build } : {}) }))($value)>>
+
+# a parsed version.tree `code-hold` in @term/deck's shape, as the face code.ts answered parseCodeHold: a wildcard's
+# open part left out, a band's head parsed when the range was written `a..b` and built (a prerelease only when there
+# is one, never a build) for a caret or tilde
+bind choice-deck-hold
+  take parsed, like code-hold
+  take written, like text
+  like dynamic
+  case node
+    text <<((choiceHold_, choiceText_) => { const choiceParsed_ = (c_) => ({ major: c_.major, minor: c_.minor, patch: c_.patch, prerelease: c_.prerelease === "" ? undefined : c_.prerelease, ...(c_.build !== "" ? { build: c_.build } : {}) }); const choiceBuilt_ = (c_) => ({ major: c_.major, minor: c_.minor, patch: c_.patch, ...(c_.prerelease !== "" ? { prerelease: c_.prerelease } : {}) }); const choiceWild_ = (h_) => ({ form: "wild", major: h_.major, ...(h_.minor >= 0 ? { minor: h_.minor } : {}), ...(h_.patch >= 0 ? { patch: h_.patch } : {}) }); return choiceHold_.form === "exact" ? { form: "exact", code: choiceParsed_(choiceHold_.code) } : choiceHold_.form === "wild" ? choiceWild_(choiceHold_) : choiceHold_.form === "band" ? { form: "band", base: choiceParsed_(choiceHold_.base), head: choiceText_.includes("..") ? choiceParsed_(choiceHold_.head) : choiceBuilt_(choiceHold_.head) } : { form: "test", list: choiceHold_.list.map(choiceWild_) } })($parsed, $written)>>
 
 # ---- the shapes ----
 
@@ -512,7 +532,8 @@ task hold-of
   save parsed, <>
   fork
     mark unsafe
-    save parsed, deck-code/parse-code-hold(range)
+    save hold-read, parse-code-hold(range)
+    save parsed, choice-deck-hold(hold-read, range)
   halt take
     take problem
     save where, <TERM_VERSION={range}>
@@ -570,7 +591,8 @@ task pin-in-lock
         fork test, or(or(is-equal(name, <>), is-equal(pinned, <>)), or(is-equal(hash, <>), not(is-version(pinned))))
           hold
             back make none
-        back make(some, make(lock-pin, bind(name, name), bind(code, deck-code/parse-code(pinned)), bind(hash, hash)))
+        save pinned-code, parse-code(pinned)
+        back make(some, make(lock-pin, bind(name, name), bind(code, choice-deck-code(pinned-code)), bind(hash, hash)))
   back make none
 
 # the first top-level form with this head
@@ -648,7 +670,8 @@ task need-in-file
       save parsed, <>
       fork
         mark unsafe
-        save parsed, deck-code/parse-code-hold(range)
+        save hold-read, parse-code-hold(range)
+        save parsed, choice-deck-hold(hold-read, range)
       halt take
         take problem
         back make(need-refused, bind(reason, <{file}:{line}: mark \<{range}\> is not a version or a range>))

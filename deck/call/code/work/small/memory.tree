@@ -39,10 +39,17 @@ load @term/base/text
 load @term/base/list
   find get
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find location
+  find open-run
+  find print-data
+  find report
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
-  load <@term/call/code/output>, name output
   load <global:JSON>, name host-json
   load <global:String>, name host-string
   load <global:process>, name host-process
@@ -273,24 +280,24 @@ task call-forget
       sift gone
         case some
           link one
-          output/print-data(<{host-json/stringify(make(forgot-record, bind(ok, true), bind(name, one/name)))}\n>)
+          print-data(<{host-json/stringify(make(forgot-record, bind(ok, true), bind(name, one/name)))}\n>)
           save host-process/exit-code, 0
         case none
-          output/print-data(<{host-json/stringify(make(forgot-record, bind(ok, false), bind(name, name)))}\n>)
+          print-data(<{host-json/stringify(make(forgot-record, bind(ok, false), bind(name, name)))}\n>)
           save host-process/exit-code, 1
     miss
-      output/open-run(make(mind-open, bind(verb, <mind>), bind(root, root)))
+      open-run(make(mind-open, bind(verb, <mind>), bind(root, root)))
       sift gone
         case some
           link one
           save facts, make list
           facts/push(one/kind)
           facts/push(one/description)
-          output/report(make(fact-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <remove>), bind(subject, one/name), bind(facts, facts)))
-          output/close-run(make(done-close, bind(verdict, <Forgotten>), bind(done, true)))
+          report(make(fact-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <remove>), bind(subject, one/name), bind(facts, facts)))
+          close-run(make(done-close, bind(verdict, <Forgotten>), bind(done, true)))
         case none
-          output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no fact named {name}>)))
-          output/close-run(make(next-close, bind(verdict, <Nothing forgotten>), bind(next, <term mind, to list the names>)))
+          report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no fact named {name}>)))
+          close-run(make(next-close, bind(verdict, <Nothing forgotten>), bind(next, <term mind, to list the names>)))
 
 task call-remember
   take root, like text
@@ -307,13 +314,13 @@ task call-remember
       sift saved/replaced
         case some
           link was
-          output/print-data(<{host-json/stringify(make(replaced-record, bind(ok, true), bind(name, saved/name), bind(kind, saved/kind), bind(file, saved/file), bind(replaced, was)))}\n>)
+          print-data(<{host-json/stringify(make(replaced-record, bind(ok, true), bind(name, saved/name), bind(kind, saved/kind), bind(file, saved/file), bind(replaced, was)))}\n>)
         case none
-          output/print-data(<{host-json/stringify(make(saved-record, bind(ok, true), bind(name, saved/name), bind(kind, saved/kind), bind(file, saved/file)))}\n>)
+          print-data(<{host-json/stringify(make(saved-record, bind(ok, true), bind(name, saved/name), bind(kind, saved/kind), bind(file, saved/file)))}\n>)
     miss
-      output/open-run(make(mind-open, bind(verb, <mind>), bind(root, root)))
+      open-run(make(mind-open, bind(verb, <mind>), bind(root, root)))
       save fields, make list
-      fields/push(output/location(saved/file))
+      fields/push(location(saved/file))
       save verdict, <Remembered>
       # a name already used replaces its fact: a `change` naming what it was, never an `add` like a new one
       sift saved/replaced
@@ -322,13 +329,13 @@ task call-remember
           save facts, make list
           facts/push(saved/kind)
           facts/push(<was: {was}>)
-          output/report(make(placed-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <change>), bind(subject, saved/name), bind(facts, facts), bind(fields, fields)))
+          report(make(placed-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <change>), bind(subject, saved/name), bind(facts, facts), bind(fields, fields)))
           save verdict, <Replaced>
         case none
           save facts, make list
           facts/push(saved/kind)
-          output/report(make(placed-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, saved/name), bind(facts, facts), bind(fields, fields)))
-      output/close-run(make(plain-close, bind(verdict, verdict)))
+          report(make(placed-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, saved/name), bind(facts, facts), bind(fields, fields)))
+      close-run(make(plain-close, bind(verdict, verdict)))
 
 task call-recall
   take root, like text
@@ -351,14 +358,14 @@ task call-recall
       walk facts
         take one
         records/push(make(fact-record, bind(name, one/name), bind(kind, one/kind), bind(description, one/description), bind(body, one/body), bind(file, node-path/relative(root, one/file))))
-      output/print-data(<{host-json/stringify(make(facts-record, bind(ok, true), bind(facts, records)))}\n>)
+      print-data(<{host-json/stringify(make(facts-record, bind(ok, true), bind(facts, records)))}\n>)
     miss
       # each fact one `recall` item: its description as the subject, its kind and name as facts
       save opening, make list
       fork test, is-unequal(asked, <>)
         hold
           opening/push(asked)
-      output/open-run(make(mind-open-facts, bind(verb, <mind>), bind(root, root), bind(facts, opening)))
+      open-run(make(mind-open-facts, bind(verb, <mind>), bind(root, root), bind(facts, opening)))
       walk facts
         take one
         save subject, one/description
@@ -368,10 +375,10 @@ task call-recall
         save item-facts, make list
         item-facts/push(one/kind)
         item-facts/push(one/name)
-        output/report(make(recall-item, bind(glyph, <info>), bind(verb, <recall>), bind(subject, subject), bind(facts, item-facts)))
+        report(make(recall-item, bind(glyph, <info>), bind(verb, <recall>), bind(subject, subject), bind(facts, item-facts)))
       save counts, make list
-      counts/push(output/count(facts/length, <facts>, <fact>))
-      output/close-run(make(counted-close, bind(verdict, recall-verdict(facts/length, query)), bind(counts, counts)))
+      counts/push(count(facts/length, <facts>, <fact>))
+      close-run(make(counted-close, bind(verdict, recall-verdict(facts/length, query)), bind(counts, counts)))
 
 # `fact` to remember (with its `name` and `kind`), `find` to recall by, `forget` the name to forget, `response` the
 # response format, the original's `back` (`json` answers records; `back` is the word that returns here)

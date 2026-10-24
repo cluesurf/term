@@ -36,12 +36,23 @@ load @term/call/work/boot/entry-finding
 load @term/call/work/boot/port-probing
   find port-is-free
 
+load @term/call/work/output/printer
+  find close-run
+  find fail-run
+  find field
+  find location
+  find open-run
+  find report
+  find show-path
+
+# the tree reader: @term/deck's tree-reading port (term-cli-in-term-0234, where its face package/read.ts was docked)
+load @term/deck/package/tree-reading
+  find read-tree
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
   load <node:timers>, name timers
-  load <@term/deck/code/package/read>, name read-module
-  load <@term/call/code/output>, name output
   load <global:process>, name host-process
   load <global:Date>, name host-date
 
@@ -117,10 +128,6 @@ form server-ask
 form watch-ask
   link recursive, like boolean
 
-form tree-ask
-  link file, like text
-  link text, like text
-
 # the one server this process runs, read by the ctrl-c handler, the watcher and the timer
 host states, make hash
 
@@ -174,9 +181,9 @@ task refuse-feed
     hold
       save next, join(parts, < >)
   save facts, make list
-  output/open-run(make(boot-open, bind(verb, <feed>), bind(root, root), bind(facts, facts)))
-  output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <The development server is term boot, and term feed no longer starts it>)))
-  save host-process/exit-code, output/close-run(make(refuse-close, bind(verdict, <Nothing was started>), bind(failure, <usage>), bind(next, next)))
+  open-run(make(boot-open, bind(verb, <feed>), bind(root, root), bind(facts, facts)))
+  report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <The development server is term boot, and term feed no longer starts it>)))
+  save host-process/exit-code, close-run(make(refuse-close, bind(verdict, <Nothing was started>), bind(failure, <usage>), bind(next, next)))
 
 # ctrl-c, answered from the opening item on, the port checks and the cold build included: the server and the watcher
 # closed when they were started, then the run closed, `Stopped` with the uptime or `Not started`
@@ -191,7 +198,7 @@ task stop-on-interrupt
       one/watcher/close()
       one/server/close()
       save verdict, <Stopped>
-  host-process/exit(output/close-run(make(interrupted-close, bind(verdict, verdict), bind(failure, <interrupted>), bind(uptime, one/started))))
+  host-process/exit(close-run(make(interrupted-close, bind(verdict, verdict), bind(failure, <interrupted>), bind(uptime, one/started))))
 
 # a page entry with a `boot` task that nothing calls: the shell calls it once the module loads. Read by the parser,
 # never a pattern (note/project/term/one-parser.md): `task boot` is a form headed `task` whose first term, or else
@@ -226,7 +233,7 @@ task flush-pending
     save took, subtract(host-date/now(), begun)
     save facts, make list
     facts/push(result/type)
-    output/report(make(reload-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <reload>), bind(subject, <{output/show-path(changed, one/root)} changed>), bind(duration, took), bind(facts, facts)))
+    report(make(reload-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <reload>), bind(subject, <{show-path(changed, one/root)} changed>), bind(duration, took), bind(facts, facts)))
   save one/pending, make list
 
 # one change the watcher saw: a `.tree` file of the project's own, not under a toolchain home or a host/ folder, added
@@ -282,7 +289,7 @@ task serve-browser-development
       save facts, make list
       facts/push(<development>)
       facts/push(<browser>)
-      output/open-run(make(boot-open, bind(verb, <boot>), bind(root, root), bind(facts, facts)))
+      open-run(make(boot-open, bind(verb, <boot>), bind(root, root), bind(facts, facts)))
   save one, state()
   save one/root, root
   host-process/on(<SIGINT>, stop-on-interrupt)
@@ -291,7 +298,7 @@ task serve-browser-development
     serve(root, entry, port, env)
   halt take
     take error
-    output/fail-run(error, root)
+    fail-run(error, root)
 
 task serve
   take root, like text
@@ -309,11 +316,11 @@ task serve
       save subject, <There is no entry: none was given and deck.tree has no `boot \<path\>`>
       fork test, is-unequal(path, <>)
         hold
-          fields/push(output/location(output/show-path(path, root)))
+          fields/push(location(show-path(path, root)))
           save subject, <The entry file does not exist>
-      output/report(make(missing-entry-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject), bind(fields, fields)))
+      report(make(missing-entry-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject), bind(fields, fields)))
       # an entry the command line or the manifest owed: wrong usage, exit 2, as `term boot` ends on the same miss
-      output/close-run(make(failure-close, bind(verdict, <Not started>), bind(failure, <usage>)))
+      close-run(make(failure-close, bind(verdict, <Not started>), bind(failure, <usage>)))
     miss
       serve-entry(root, path, port, env)
 
@@ -352,9 +359,9 @@ task serve-entry
   fork test, and(named, not(port-is-free(port)))
     hold
       save fields, make list
-      fields/push(output/field(<next>, <term halt -p {port}, or term boot -p \<another port\>>))
-      output/report(make(port-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <Port {port} is in use>), bind(fields, fields)))
-      output/close-run(make(failure-close, bind(verdict, <Not started>), bind(failure, <environment>)))
+      fields/push(field(<next>, <term halt -p {port}, or term boot -p \<another port\>>))
+      report(make(port-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <Port {port} is in use>), bind(fields, fields)))
+      close-run(make(failure-close, bind(verdict, <Not started>), bind(failure, <environment>)))
     miss
       walk test
         hook test, and(not(named), and(not(port-is-free(port)), is-below(port, 5273)))
@@ -373,7 +380,7 @@ task start-server
 
   # a page entry with a `boot` task that nothing calls: the shell calls it. A `hook` table boots itself. A file that
   # does not parse calls nothing here, and the build says why
-  save read, read-module/read-tree(make(tree-ask, bind(file, entry), bind(text, node-file/read-file-sync(entry, <utf8>))))
+  save read, read-tree(entry, node-file/read-file-sync(entry, <utf8>))
   save defined, false
   save hooked, false
   fork test, read/ok
@@ -398,6 +405,6 @@ task start-server
   save facts, make list
   facts/push(<hot reload>)
   save took, subtract(host-date/now(), started)
-  output/report(make(start-item, bind(glyph, <done>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, <http://localhost:{port}>), bind(duration, took), bind(facts, facts)))
+  report(make(start-item, bind(glyph, <done>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, <http://localhost:{port}>), bind(duration, took), bind(facts, facts)))
   # stay alive until interrupted, then close the watcher and the server (stop-on-interrupt)
   save one/started, true

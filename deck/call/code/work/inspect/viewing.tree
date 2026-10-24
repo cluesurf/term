@@ -19,9 +19,17 @@ load @term/call/work/build/role-reading
 load @term/call/work/build/host-faces
   find face-role-reader
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find field
+  find open-run
+  find print-data
+  find report
+  find report-problems
+
 dock load
   load <@term/make/code/compile/view>, name view-gate
-  load <@term/call/code/output>, name view-output
   load <node:fs>, name view-fs
   load <node:path>, name view-path
 
@@ -53,7 +61,7 @@ bind view-role-other
   take role, like dynamic
   like boolean
   case node
-    text <($role !== null && $role !== "view")>
+    text <($role != null && $role !== "view")>
 
 bind view-names-sorted
   take fs, like dynamic
@@ -316,9 +324,9 @@ task uses-of
     save values, view-member(one, key)
     fork test, is-above(values/length, 0)
       hold
-        fields/push(view-output/field(key, values/join(<, >)))
-  fields/push(view-output/field(<node>, <{view-member(one, <node>)}>))
-  fields/push(view-output/field(<deep>, <{view-member(one, <deep>)}>))
+        fields/push(field(key, values/join(<, >)))
+  fields/push(field(<node>, <{view-member(one, <node>)}>))
+  fields/push(field(<deep>, <{view-member(one, <deep>)}>))
   back fields
 
 task document-plural
@@ -350,7 +358,7 @@ task call-view
   fork test, view-truthy(view-member(input, <find>))
     hold
       facts/push(<--find>)
-  view-output/openRun(make(view-open, bind(verb, <view>), bind(root, root), bind(facts, facts)))
+  open-run(make(view-open, bind(verb, <view>), bind(root, root), bind(facts, facts)))
 
   fork test, not(view-fs/existsSync(target))
     hold
@@ -358,9 +366,9 @@ task call-view
       fork test, view-truthy(asked)
         hold
           save shown, asked
-      view-output/report(make(view-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <read>), bind(subject, <There is no path {shown}>)))
+      report(make(view-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <read>), bind(subject, <There is no path {shown}>)))
       # a path that is not there is the caller's mistake, exit 2 as it always was
-      view-output/closeRun(make(view-usage-close, bind(verdict, <Nothing to check>), bind(failure, <usage>)))
+      close-run(make(view-usage-close, bind(verdict, <Nothing to check>), bind(failure, <usage>)))
       back
 
   # With no path, the documents are the files `role.tree` gives the `view` role, the same ones `term make` builds as
@@ -394,15 +402,15 @@ task call-view
             fork test, is-equal(shown, <>)
               hold
                 save shown, file
-            view-output/report(make(view-warning, bind(glyph, <warning>), bind(verb, <check>), bind(subject, <role.tree gives {shown} the {role} role, so term make builds it as {role}>)))
+            report(make(view-warning, bind(glyph, <warning>), bind(verb, <check>), bind(subject, <role.tree gives {shown} the {role} role, so term make builds it as {role}>)))
 
   fork test, is-equal(files/length, 0)
     hold
       fork test, view-truthy(asked)
         hold
-          view-output/closeRun(make(view-close, bind(verdict, <No .tree file here>)))
+          close-run(make(view-close, bind(verdict, <No .tree file here>)))
         miss
-          view-output/closeRun(make(view-next-close, bind(verdict, <No document here>), bind(next, <give the documents the view role in role.tree, or name their folder: term view page>)))
+          close-run(make(view-next-close, bind(verdict, <No document here>), bind(next, <give the documents the view role in role.tree, or name their folder: term view page>)))
       back
 
   save looks, view-no-items()
@@ -426,7 +434,7 @@ task call-view
         turn next
     looks/push(look-at(name, view-member(checked, <file>)))
 
-  view-output/reportProblems(problems, root)
+  report-problems(problems, root)
 
   fork test, view-truthy(view-member(input, <find>))
     hold
@@ -435,21 +443,21 @@ task call-view
       walk looks
         take one, like dynamic
         printed/push(<{view-trim-newlines(view-member(one, <manifest>))}\n>)
-      view-output/printData(printed/join(<>))
+      print-data(printed/join(<>))
     miss
       fork test, is-equal(view-member(input, <back>), <json>)
         hold
-          view-output/printData(<{view-json(looks)}\n>)
+          print-data(<{view-json(looks)}\n>)
         miss
           # what each document uses is an item of the run, its uses as fields at the body column
           walk looks
             take one, like dynamic
-            view-output/report(make(view-read, bind(glyph, <done>), bind(verb, <read>), bind(subject, view-member(one, <file>)), bind(fields, uses-of(one))))
+            report(make(view-read, bind(glyph, <done>), bind(verb, <read>), bind(subject, view-member(one, <file>)), bind(fields, uses-of(one))))
 
   save verdict, <{looks/length} {document-plural(looks/length)} read>
   fork test, is-above(failed, 0)
     hold
       save verdict, <{failed} {document-plural(failed)} did not read>
   save counts, view-no-items()
-  counts/push(view-output/count(files/length, <files>, <file>))
-  view-output/closeRun(make(view-counted-close, bind(verdict, verdict), bind(counts, counts)))
+  counts/push(count(files/length, <files>, <file>))
+  close-run(make(view-counted-close, bind(verdict, verdict), bind(counts, counts)))

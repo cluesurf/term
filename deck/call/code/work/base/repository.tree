@@ -39,6 +39,16 @@ load @term/call/base-words
   find missing-subject
   find status-lines
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find field
+  find is-run-open
+  find location
+  find open-run
+  find print-data
+  find report
+
 dock load
   load <@cluesurf/save/repo/repo>, name repo-module
   load <@cluesurf/save/base/mark>, name mark-module
@@ -53,7 +63,6 @@ dock load
   load <@cluesurf/save/tree/parse>, name tree-parse-module
   load <@cluesurf/save/tree/format>, name tree-format-module
   load <@cluesurf/save/diff/change>, name change-module
-  load <@term/call/code/output>, name output
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <global:process>, name host-process
@@ -517,15 +526,15 @@ task refuse
   take extra, like dynamic
   like void
 
-  fork test, not(output/is-run-open())
+  fork test, not(is-run-open())
     hold
-      output/open-run(make(open-plain, bind(verb, <base>), bind(root, host-process/cwd())))
-  output/report(make(refusal-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject), bind(message, extra/message), bind(fields, extra/fields)))
+      open-run(make(open-plain, bind(verb, <base>), bind(root, host-process/cwd())))
+  report(make(refusal-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject), bind(message, extra/message), bind(fields, extra/fields)))
   save verdict, extra/verdict
   fork test, repo-is-absent(verdict)
     hold
       save verdict, <Nothing was done>
-  save code, output/close-run(make(close-refusal, bind(verdict, verdict), bind(next, extra/next), bind(failure, extra/failure)))
+  save code, close-run(make(close-refusal, bind(verdict, verdict), bind(next, extra/next), bind(failure, extra/failure)))
   host-process/exit(code)
 
 task refuse-plainly
@@ -545,7 +554,7 @@ task print-lines
     hold
       save joined, repo-joined-lines(lines)
       save ending, repo-line-break()
-      output/print-data(<{joined}{ending}>)
+      print-data(<{joined}{ending}>)
 
 # a value as base-words reads it: its kind, the value written as text, and a reference's target. Anything that is not
 # a base Value is its text alone, with no kind
@@ -635,7 +644,7 @@ task need
   fork test, repo-is-absent(held)
     hold
       save looked, node-path/join(root, base-home())
-      refuse(<There is no repository here>, make(refusal-fields-next, bind(fields, one-dynamic(output/field(<looked>, looked))), bind(next, <term base init, in the directory to track>)))
+      refuse(<There is no repository here>, make(refusal-fields-next, bind(fields, one-dynamic(field(<looked>, looked))), bind(next, <term base init, in the directory to track>)))
   back held
 
 # A commit PREFIX expanded to a full hash, the way git does: `log` prints a shortened hash, and without this every hash
@@ -685,7 +694,7 @@ task call-base-log
   fork test, repo-is-truthy(asked)
     hold
       push(facts, asked)
-  output/open-run(make(open-facts, bind(verb, <log>), bind(root, root), bind(facts, facts)))
+  open-run(make(open-facts, bind(verb, <log>), bind(root, root), bind(facts, facts)))
   save repo, need(root)/repo
   save branches, make list
   fork test, repo-is-truthy(asked)
@@ -695,7 +704,7 @@ task call-base-log
       save branches, repo/branches()
   fork test, is-equal(branches/length, 0)
     hold
-      output/close-run(make(close-counts, bind(verdict, <No branches yet>), bind(counts, one-dynamic(output/count(0, <branches>, <branch>)))))
+      close-run(make(close-counts, bind(verdict, <No branches yet>), bind(counts, one-dynamic(count(0, <branches>, <branch>)))))
       back
   save lines, make list
   save commits, 0
@@ -715,9 +724,9 @@ task call-base-log
           save commits, add(commits, 1)
   print-lines(lines)
   save counts, make list
-  push(counts, output/count(branches/length, <branches>, <branch>))
-  push(counts, output/count(commits, <commits>, <commit>))
-  output/close-run(make(close-counts, bind(verdict, <Log listed>), bind(counts, counts)))
+  push(counts, count(branches/length, <branches>, <branch>))
+  push(counts, count(commits, <commits>, <commit>))
+  close-run(make(close-counts, bind(verdict, <Log listed>), bind(counts, counts)))
 
 # what changed between two commits, as field-level changes
 task call-base-diff
@@ -731,7 +740,7 @@ task call-base-diff
   fork test, not(repo-is-absent(asked-from))
     hold
       save fact, <{asked-from} → {asked-to}>
-  output/open-run(make(open-facts, bind(verb, <diff>), bind(root, root), bind(facts, one-text(fact))))
+  open-run(make(open-facts, bind(verb, <diff>), bind(root, root), bind(facts, one-text(fact))))
   save repo, need(root)/repo
   save to, resolve-commit(repo, asked-to)
   save from, repo-nothing()
@@ -756,7 +765,7 @@ task call-base-diff
   fork test, is-above(changes/length, 0)
     hold
       save verdict, <Changes listed>
-  output/close-run(make(close-counts, bind(verdict, verdict), bind(counts, one-dynamic(output/count(changes/length, <changes>, <change>)))))
+  close-run(make(close-counts, bind(verdict, verdict), bind(counts, one-dynamic(count(changes/length, <changes>, <change>)))))
 
 # one record as of a commit, in canonical form
 task call-base-show
@@ -765,7 +774,7 @@ task call-base-show
 
   save root, input/root
   save mark, input/mark
-  output/open-run(make(open-subject-facts, bind(verb, <show>), bind(root, root), bind(subject, mark), bind(facts, one-dynamic(input/commit))))
+  open-run(make(open-subject-facts, bind(verb, <show>), bind(root, root), bind(subject, mark), bind(facts, one-dynamic(input/commit))))
   save repo, need(root)/repo
   save at, resolve-commit(repo, input/commit)
   save found, repo/record-at(at, mark)
@@ -775,7 +784,7 @@ task call-base-show
   # both, and in this order: the readable half teaches the record model, the canonical half is what is HASHED
   save fields, found/fields
   print-lines(show-lines(<{mark}>, <{found/type}>, shown-fields(fields), canon-module/canonicalize-record(found)))
-  output/close-run(make(close-counts, bind(verdict, <Record shown>), bind(counts, one-dynamic(output/count(repo-size-of(fields), <fields>, <field>)))))
+  close-run(make(close-counts, bind(verdict, <Record shown>), bind(counts, one-dynamic(count(repo-size-of(fields), <fields>, <field>)))))
 
 # whether a repository is coherent, and what it holds
 task call-base-check
@@ -783,7 +792,7 @@ task call-base-check
   like void
 
   save root, input/root
-  output/open-run(make(open-plain, bind(verb, <check>), bind(root, root)))
+  open-run(make(open-plain, bind(verb, <check>), bind(root, root)))
   save held, need(root)
   save repo, held/repo
   save fsck, repo/fsck()
@@ -799,10 +808,10 @@ task call-base-check
   fork test, is-above(missing/length, 0)
     hold
       # a list shows 10 entries and counts the rest (section 14)
-      output/report(make(problem-message-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, missing-subject(missing/length)), bind(message, missing-message(missing))))
-      output/close-run(make(close-counts, bind(verdict, <The repository is not coherent>), bind(counts, one-dynamic(output/count(missing/length, <missing>)))))
+      report(make(problem-message-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, missing-subject(missing/length)), bind(message, missing-message(missing))))
+      close-run(make(close-counts, bind(verdict, <The repository is not coherent>), bind(counts, one-dynamic(count(missing/length, <missing>)))))
       back
-  output/close-run(make(close-counts, bind(verdict, <No missing chunks>), bind(counts, one-dynamic(output/count(0, <missing>)))))
+  close-run(make(close-counts, bind(verdict, <No missing chunks>), bind(counts, one-dynamic(count(0, <missing>)))))
 
 # every record at a commit, by mark and form
 task call-base-list
@@ -810,7 +819,7 @@ task call-base-list
   like void
 
   save root, input/root
-  output/open-run(make(open-facts, bind(verb, <list>), bind(root, root), bind(facts, one-dynamic(input/commit))))
+  open-run(make(open-facts, bind(verb, <list>), bind(root, root), bind(facts, one-dynamic(input/commit))))
   save repo, need(root)/repo
   save dataset, repo/checkout(resolve-commit(repo, input/commit))
   save marks, make list
@@ -823,7 +832,7 @@ task call-base-list
     save record, repo-map-get(dataset, mark)
     push(lines, <{mark}  {record/type}>)
   print-lines(lines)
-  output/close-run(make(close-counts, bind(verdict, <Records listed>), bind(counts, one-dynamic(output/count(repo-size-of(dataset), <records>, <record>)))))
+  close-run(make(close-counts, bind(verdict, <Records listed>), bind(counts, one-dynamic(count(repo-size-of(dataset), <records>, <record>)))))
 
 # This repository's uuid, minting one if it predates the file. Persisted rather than derived from the directory's name,
 # which a rename or a move would change, orphaning a projection's watermark. Written once and never changed
@@ -849,20 +858,20 @@ task call-base-init
   like void
 
   save root, input/root
-  output/open-run(make(open-plain, bind(verb, <init>), bind(root, root)))
+  open-run(make(open-plain, bind(verb, <init>), bind(root, root)))
   save home, node-path/join(root, base-home())
   save home-name, base-home()
   fork test, node-fs/exists-sync(home)
     hold
-      refuse(<This is already a repository>, make(refusal-fields, bind(fields, one-dynamic(output/field(<found>, <{home-name}/>)))))
+      refuse(<This is already a repository>, make(refusal-fields, bind(fields, one-dynamic(field(<found>, <{home-name}/>)))))
   node-fs/mkdir-sync(home, make(folder-ask, bind(recursive, true)))
   save ending, repo-line-break()
   node-fs/write-file-sync(node-path/join(home, <chunk.json>), <\{\}{ending}>)
   node-fs/write-file-sync(node-path/join(home, <ref.json>), <\{\}{ending}>)
   save minted, <{mark-module/mint-mark()}>
   node-fs/write-file-sync(node-path/join(home, <repository>), <{minted}{ending}>)
-  output/report(make(change-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, <{home-name}/>)))
-  output/close-run(make(close-verdict, bind(verdict, <An empty repository was made>)))
+  report(make(change-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, <{home-name}/>)))
+  close-run(make(close-verdict, bind(verdict, <An empty repository was made>)))
 
 # every `.tree` record under one folder, in the order the folder lists them, a folder's records where it stands
 task folder-records
@@ -891,11 +900,11 @@ task folder-records
     halt take
       take error
       # named, and fatal: a commit that silently skipped a file it could not read would record a DELETION
-      refuse(repo-capitalized(repo-message-of(error)), make(refusal-fields, bind(fields, one-dynamic(output/location(node-path/relative(root, full))))))
+      refuse(repo-capitalized(repo-message-of(error)), make(refusal-fields, bind(fields, one-dynamic(location(node-path/relative(root, full))))))
     # checked HERE, where the file's name is still known
     fork test, repo-is-absent(node/mark)
       hold
-        refuse(<This record has no mark line, so it has no identity>, make(refusal-fields, bind(fields, one-dynamic(output/location(node-path/relative(root, full))))))
+        refuse(<This record has no mark line, so it has no identity>, make(refusal-fields, bind(fields, one-dynamic(location(node-path/relative(root, full))))))
     push(records, node)
   back records
 
@@ -918,7 +927,7 @@ task call-base-status
 
   save root, input/root
   save branch, input/branch
-  output/open-run(make(open-facts, bind(verb, <status>), bind(root, root), bind(facts, one-dynamic(branch))))
+  open-run(make(open-facts, bind(verb, <status>), bind(root, root), bind(facts, one-dynamic(branch))))
   save repo, need(root)/repo
   save now, working-records(root)
   save head, repo/head(branch)
@@ -956,10 +965,10 @@ task call-base-status
       save plural, <>
   save folder, record-folder()
   save counts, make list
-  push(counts, output/count(added/length, <new>))
-  push(counts, output/count(changed/length, <changed>))
-  push(counts, output/count(gone/length, <removed>))
-  output/close-run(make(close-counts, bind(verdict, <{size} record{plural} in {folder}/>), bind(counts, counts)))
+  push(counts, count(added/length, <new>))
+  push(counts, count(changed/length, <changed>))
+  push(counts, count(gone/length, <removed>))
+  close-run(make(close-counts, bind(verdict, <{size} record{plural} in {folder}/>), bind(counts, counts)))
 
 # each refusal of a commit its own item, the record it is about as its subject
 task report-diagnostics
@@ -972,11 +981,13 @@ task report-diagnostics
     hold
       walk diagnostics
         take one, like dynamic
-        save mark, one/mark
+        # the engine's answer, a host value (seam decision 004)
+        save mark, like dynamic
+          read one/mark
         fork test, repo-is-absent(mark)
           hold
             save mark, <(dataset)>
-        output/report(make(problem-fields-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <{one/message}>), bind(fields, one-dynamic(output/field(<mark>, mark)))))
+        report(make(problem-fields-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <{one/message}>), bind(fields, one-dynamic(field(<mark>, mark)))))
 
 task report-conflicts
   take conflicts, like dynamic
@@ -987,7 +998,7 @@ task report-conflicts
     hold
       walk conflicts
         take one, like dynamic
-        output/report(make(problem-message-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <A conflict>), bind(message, one-text(repo-json-text(one)))))
+        report(make(problem-message-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <A conflict>), bind(message, one-text(repo-json-text(one)))))
 
 # commit the working files onto a branch
 task call-base-commit
@@ -996,7 +1007,7 @@ task call-base-commit
 
   save root, input/root
   save branch, input/branch
-  output/open-run(make(open-facts, bind(verb, <commit>), bind(root, root), bind(facts, one-dynamic(branch))))
+  open-run(make(open-facts, bind(verb, <commit>), bind(root, root), bind(facts, one-dynamic(branch))))
   save held, need(root)
   save repo, held/repo
   save next, working-records(root)
@@ -1010,13 +1021,13 @@ task call-base-commit
     hold
       report-diagnostics(done)
       report-conflicts(done/conflicts)
-      output/close-run(make(close-verdict, bind(verdict, <The commit was refused>)))
+      close-run(make(close-verdict, bind(verdict, <The commit was refused>)))
       back
   save-repository(held)
   # the hash is what a script captures, so it is data
   save ending, repo-line-break()
-  output/print-data(<{done/commit}{ending}>)
-  output/close-run(make(close-counts, bind(verdict, <Committed onto {branch}>), bind(counts, one-dynamic(output/count(repo-size-of(next), <records>, <record>)))))
+  print-data(<{done/commit}{ending}>)
+  close-run(make(close-counts, bind(verdict, <Committed onto {branch}>), bind(counts, one-dynamic(count(repo-size-of(next), <records>, <record>)))))
 
 # write a commit's records back out as `.tree` files under `record/`
 task call-base-checkout
@@ -1024,7 +1035,7 @@ task call-base-checkout
   like void
 
   save root, input/root
-  output/open-run(make(open-facts, bind(verb, <write>), bind(root, root), bind(facts, one-dynamic(input/commit))))
+  open-run(make(open-facts, bind(verb, <write>), bind(root, root), bind(facts, one-dynamic(input/commit))))
   save repo, need(root)/repo
   save at, resolve-commit(repo, input/commit)
   save dataset, repo/checkout(at)
@@ -1037,7 +1048,7 @@ task call-base-checkout
     node-fs/mkdir-sync(into, make(folder-ask, bind(recursive, true)))
     node-fs/write-file-sync(node-path/join(into, <{entry/0}.tree>), tree-format-module/format-tree(node))
   save folder, record-folder()
-  output/close-run(make(close-counts, bind(verdict, <Records written into {folder}/>), bind(counts, one-dynamic(output/count(repo-size-of(dataset), <records>, <record>)))))
+  close-run(make(close-counts, bind(verdict, <Records written into {folder}/>), bind(counts, one-dynamic(count(repo-size-of(dataset), <records>, <record>)))))
 
 # merge one branch into another; conflicts are RETURNED, so a person decides
 task call-base-merge
@@ -1047,7 +1058,7 @@ task call-base-merge
   save root, input/root
   save into, input/into
   save from, input/from
-  output/open-run(make(open-subject, bind(verb, <merge>), bind(root, root), bind(subject, <{from} into {into}>)))
+  open-run(make(open-subject, bind(verb, <merge>), bind(root, root), bind(subject, <{from} into {into}>)))
   save held, need(root)
   save repo, held/repo
   save meta, make(commit-meta, bind(author, input/author), bind(time, repo-now()), bind(message, <merge {from} into {into}>))
@@ -1056,16 +1067,16 @@ task call-base-merge
     hold
       save conflicts, done/conflicts
       report-conflicts(conflicts)
-      output/close-run(make(close-counts, bind(verdict, <The merge stopped on conflicts>), bind(counts, one-dynamic(output/count(conflicts/length, <conflicts>, <conflict>)))))
+      close-run(make(close-counts, bind(verdict, <The merge stopped on conflicts>), bind(counts, one-dynamic(count(conflicts/length, <conflicts>, <conflict>)))))
       back
   save-repository(held)
   fork test, repo-is-truthy(done/already-up-to-date)
     hold
-      output/close-run(make(close-verdict, bind(verdict, <{into} already has {from}>)))
+      close-run(make(close-verdict, bind(verdict, <{into} already has {from}>)))
       back
   save ending, repo-line-break()
-  output/print-data(<{done/commit}{ending}>)
-  output/close-run(make(close-verdict, bind(verdict, <Merged {from} into {into}>)))
+  print-data(<{done/commit}{ending}>)
+  close-run(make(close-verdict, bind(verdict, <Merged {from} into {into}>)))
 
 # name a commit, so it can be cited
 task call-base-tag
@@ -1075,7 +1086,7 @@ task call-base-tag
   save root, input/root
   save name, input/name
   save branch, input/branch
-  output/open-run(make(open-subject, bind(verb, <tag>), bind(root, root), bind(subject, name)))
+  open-run(make(open-subject, bind(verb, <tag>), bind(root, root), bind(subject, name)))
   save held, need(root)
   save repo, held/repo
   save at, repo-nothing()
@@ -1092,8 +1103,8 @@ task call-base-tag
       refuse-plainly(<A tag named {name} already exists>)
   save-repository(held)
   save ending, repo-line-break()
-  output/print-data(<{name} -\> {at}{ending}>)
-  output/close-run(make(close-verdict, bind(verdict, <Tagged {name}>)))
+  print-data(<{name} -\> {at}{ending}>)
+  close-run(make(close-verdict, bind(verdict, <Tagged {name}>)))
 
 # a projected cell as a person reads it, the value and not only its kind
 task cell
@@ -1110,7 +1121,7 @@ task call-base-export
 
   save root, input/root
   save out, input/out
-  output/open-run(make(open-facts, bind(verb, <export>), bind(root, root), bind(facts, one-dynamic(input/commit))))
+  open-run(make(open-facts, bind(verb, <export>), bind(root, root), bind(facts, one-dynamic(input/commit))))
   save repo, need(root)/repo
   save at, resolve-commit(repo, input/commit)
   save files, 0
@@ -1122,8 +1133,8 @@ task call-base-export
     node-fs/write-file-sync(full, entry/bytes)
     save files, add(files, 1)
     save bytes, add(bytes, repo-byte-length(entry/bytes))
-  output/report(make(written-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, out), bind(bytes, bytes), bind(counts, one-dynamic(output/count(files, <files>, <file>)))))
-  output/close-run(make(close-verdict, bind(verdict, <Exported to {out}>)))
+  report(make(written-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, out), bind(bytes, bytes), bind(counts, one-dynamic(count(files, <files>, <file>)))))
+  close-run(make(close-verdict, bind(verdict, <Exported to {out}>)))
 
 # the schema a commit's records imply, or a refusal: a form is a table, a field a column
 task inferred-projection
@@ -1193,19 +1204,19 @@ task apply-projection
   save done, repo-awaited(projector/apply(ask))
   fork test, not(repo-is-truthy(done/applied))
     hold
-      output/close-run(make(close-verdict, bind(verdict, <Already serving {at}>)))
+      close-run(make(close-verdict, bind(verdict, <Already serving {at}>)))
       back
   save counts, make list
-  push(counts, output/count(done/writes, <statements>, <statement>))
+  push(counts, count(done/writes, <statements>, <statement>))
   fork test, not(repo-is-absent(forms))
     hold
-      push(counts, output/count(forms/length, <tables created>, <table created>))
+      push(counts, count(forms/length, <tables created>, <table created>))
   save fact, <from empty>
   fork test, repo-is-truthy(from)
     hold
       save fact, <from {repo-first-units(from, 20)}>
-  output/report(make(projected-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, repository), bind(counts, counts), bind(facts, one-text(fact))))
-  output/close-run(make(close-verdict, bind(verdict, <Serving {at}>)))
+  report(make(projected-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, repository), bind(counts, counts), bind(facts, one-text(fact))))
+  close-run(make(close-verdict, bind(verdict, <Serving {at}>)))
 
 # What a projection would write for a commit, and on `--write` write it. With no `--mapping` the schema is INFERRED
 # from the records and writing creates the tables; with one, an existing schema is adopted and nothing is created.
@@ -1225,7 +1236,7 @@ task call-base-project
   save facts, make list
   push(facts, input/commit)
   push(facts, how)
-  output/open-run(make(open-facts, bind(verb, <project>), bind(root, root), bind(facts, facts)))
+  open-run(make(open-facts, bind(verb, <project>), bind(root, root), bind(facts, facts)))
   save repo, need(root)/repo
   save at, resolve-commit(repo, input/commit)
   save dataset, repo/checkout(at)
@@ -1241,7 +1252,7 @@ task call-base-project
   save rows, projector-module/rows-for(make(rows-ask, bind(mapping, mapping), bind(dataset, dataset)))
   fork test, is-equal(repo-size-of(rows), 0)
     hold
-      output/close-run(make(close-counts, bind(verdict, <This mapping produces no rows for that commit>), bind(counts, one-dynamic(output/count(0, <rows>, <row>)))))
+      close-run(make(close-counts, bind(verdict, <This mapping produces no rows for that commit>), bind(counts, one-dynamic(count(0, <rows>, <row>)))))
       back
   save total, 0
   save lines, make list
@@ -1262,12 +1273,12 @@ task call-base-project
       push(lines, line)
   print-lines(lines)
   save tally, make list
-  push(tally, output/count(total, <rows>, <row>))
-  push(tally, output/count(repo-size-of(rows), <tables>, <table>))
+  push(tally, count(total, <rows>, <row>))
+  push(tally, count(repo-size-of(rows), <tables>, <table>))
   save into, input/into
   fork test, repo-is-absent(into)
     hold
-      output/close-run(make(close-counts-next, bind(verdict, <Nothing was written>), bind(counts, tally), bind(next, <term base project \<commit\> --into \<url\>, to write it into Postgres>)))
+      close-run(make(close-counts-next, bind(verdict, <Nothing was written>), bind(counts, tally), bind(next, <term base project \<commit\> --into \<url\>, to write it into Postgres>)))
       back
   fork test, not(repo-is-truthy(input/commit-write))
     hold
@@ -1275,7 +1286,7 @@ task call-base-project
       fork test, not(repo-is-absent(forms))
         hold
           save said, <--write creates the tables.>
-      output/close-run(make(close-counts-message-next, bind(verdict, <Nothing was written>), bind(counts, tally), bind(message, one-text(said)), bind(next, <add --write, to write them into the database at --into>)))
+      close-run(make(close-counts-message-next, bind(verdict, <Nothing was written>), bind(counts, tally), bind(message, one-text(said)), bind(next, <add --write, to write them into the database at --into>)))
       back
   save repository, input/repository
   fork test, repo-is-absent(repository)
@@ -1283,7 +1294,7 @@ task call-base-project
       save repository, repository-name(root)
   fork test, not(mark-module/is-mark(repository))
     hold
-      refuse(<--repository must be a uuid version 4>, make(refusal-message-fields, bind(message, one-text(<A projection's bookkeeping is keyed by one.>)), bind(fields, one-dynamic(output/field(<gave>, repository)))))
+      refuse(<--repository must be a uuid version 4>, make(refusal-message-fields, bind(message, one-text(<A projection's bookkeeping is keyed by one.>)), bind(fields, one-dynamic(field(<gave>, repository)))))
   save pool, open-postgres(into)
   save failed, false
   save problem, repo-nothing()

@@ -82,6 +82,13 @@ load ../build/host-faces
 load ../context/app-scope
   find check-scope
 
+load @term/call/work/output/printer
+  find close-run
+  find location
+  find open-run
+  find report
+  find show-path
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
@@ -92,7 +99,6 @@ dock load
   load <@term/make/code/compile/load>, name load-module
   load <@term/make/code/compile/native>, name native-module
   load <@term/make/code/compile/swift>, name swift-emit
-  load <@term/call/code/output>, name output
 
 form iphone-source
   link file, like text
@@ -224,7 +230,7 @@ task program-source
         case some
           save named, value
         case none
-          save shown, output/show-path(entry, root)
+          save shown, show-path(entry, root)
           refuse(<{shown} has no `boot` task, which is what a UIKit app starts at>, <usage>)
 
   save start, start-line(swift, named)
@@ -352,7 +358,7 @@ task make-uikit
   save entry, <{value-or(find-entry(root, input/entry), node-path/join(root, value-or(input/entry, <app.tree>)))}>
   save opened, make list
   opened/push(<--target uikit>)
-  output/open-run(make(iphone-open, bind(verb, <make>), bind(root, root), bind(facts, opened)))
+  open-run(make(iphone-open, bind(verb, <make>), bind(root, root), bind(facts, opened)))
 
   fork test, is-unequal(<{host-process/platform}>, <darwin>)
     hold
@@ -367,7 +373,7 @@ task make-uikit
 
   fork test, not(node-fs/exists-sync(entry))
     hold
-      save shown, output/show-path(entry, root)
+      save shown, show-path(entry, root)
       refuse(<There is no app entry at {shown}: a UIKit app is a program with a `boot` task, named by the `boot` line of deck.tree (--entry names another file)>, <usage>)
 
   save identity, uikit-identity(root)
@@ -397,8 +403,8 @@ task make-uikit
       bind usage, apple-usage(source)
   node-fs/write-file-sync(node-path/join(project-dir, <project.pbxproj>), xcode-project(asked))
   save wrote, make list
-  wrote/push(output/location(output/show-path(project-dir, root)))
-  output/report(make(iphone-wrote, bind(glyph, <done>), bind(verb, <write>), bind(subject, <Xcode project>), bind(fields, wrote)))
+  wrote/push(location(show-path(project-dir, root)))
+  report(make(iphone-wrote, bind(glyph, <done>), bind(verb, <write>), bind(subject, <Xcode project>), bind(fields, wrote)))
 
   save archive, node-path/join(out, <{name}.xcarchive>)
   node-fs/rm-sync(archive, make(iphone-remove, bind(recursive, true), bind(force, true)))
@@ -430,9 +436,9 @@ task make-uikit
       save facts, make list
       facts/push(<unsigned>)
       save fields, make list
-      fields/push(output/location(output/show-path(archive, root)))
-      output/report(make(iphone-built, bind(glyph, <done>), bind(verb, <build>), bind(subject, <uikit>), bind(duration, subtract(now-ms(), started)), bind(facts, facts), bind(fields, fields)))
-      output/close-run(make(iphone-close, bind(verdict, <Built for an iPhone, unsigned>), bind(next, <sign in at Xcode → Settings → Accounts and make an Apple Distribution certificate, then term make --target uikit --team \<id\>>)))
+      fields/push(location(show-path(archive, root)))
+      report(make(iphone-built, bind(glyph, <done>), bind(verb, <build>), bind(subject, <uikit>), bind(duration, subtract(now-ms(), started)), bind(facts, facts), bind(fields, fields)))
+      close-run(make(iphone-close, bind(verdict, <Built for an iPhone, unsigned>), bind(next, <sign in at Xcode → Settings → Accounts and make an Apple Distribution certificate, then term make --target uikit --team \<id\>>)))
       back make(iphone-made, bind(app, archive))
 
   # signed for the team: Xcode makes or fetches the ad hoc profile for the phones registered to it
@@ -464,27 +470,27 @@ task make-uikit
   save ipa, node-path/join(exported, <{name}.ipa>)
   fork test, not(node-fs/exists-sync(ipa))
     hold
-      save shown, output/show-path(exported, root)
+      save shown, show-path(exported, root)
       refuse(<the export wrote no {name}.ipa in {shown}>, <>)
 
   save facts, make list
   facts/push(<signed ad hoc for {team}>)
   save fields, make list
-  fields/push(output/location(output/show-path(ipa, root)))
-  output/report(make(iphone-built, bind(glyph, <done>), bind(verb, <build>), bind(subject, <uikit>), bind(duration, subtract(now-ms(), started)), bind(facts, facts), bind(fields, fields)))
+  fields/push(location(show-path(ipa, root)))
+  report(make(iphone-built, bind(glyph, <done>), bind(verb, <build>), bind(subject, <uikit>), bind(duration, subtract(now-ms(), started)), bind(facts, facts), bind(fields, fields)))
 
   save link, input/link
   fork test, is-truthy(link)
     hold
       save page, write-install-page(name, identifier, version, without-trailing-slash(<{link}>), exported)
       save placed, make list
-      placed/push(output/location(output/show-path(page, root)))
-      output/report(make(iphone-wrote, bind(glyph, <done>), bind(verb, <write>), bind(subject, <install page>), bind(fields, placed)))
+      placed/push(location(show-path(page, root)))
+      report(make(iphone-wrote, bind(glyph, <done>), bind(verb, <write>), bind(subject, <install page>), bind(fields, placed)))
 
   save next, <term make --target uikit --link \<https url\> also writes the install page>
   fork test, is-truthy(link)
     hold
-      save shown, output/show-path(exported, root)
+      save shown, show-path(exported, root)
       save next, <serve {shown} at {link}, then open it in Safari on the phone>
-  output/close-run(make(iphone-close, bind(verdict, <iPhone app built and signed>), bind(next, next)))
+  close-run(make(iphone-close, bind(verdict, <iPhone app built and signed>), bind(next, next)))
   back make(iphone-made, bind(app, ipa))

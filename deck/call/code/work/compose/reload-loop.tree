@@ -52,6 +52,12 @@ load ../workers/kotlin-compiler
 load ../boot/entry-finding
   find find-entry
 
+load @term/call/work/output/printer
+  find close-run
+  find follow-child
+  find open-run
+  find report
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
@@ -60,7 +66,6 @@ dock load
   load <global:process>, name host-process
   load <@term/make/code/compile/cache>, name cache-module
   load <@term/make/code/compile/load>, name load-module
-  load <@term/call/code/output>, name output
 
 # what the loop is started with: the app folder, the target, the entry `--entry` names, what the desktop app's
 # environment adds (a test runs it headless with TERM_WINDOW_AWAY=1), and the callback told every event
@@ -788,10 +793,10 @@ task work-compose
   save target, ask/target
   save facts, make list
   facts/push(<--target {target}>)
-  output/open-run(make(work-open, bind(verb, <work>), bind(root, root), bind(facts, facts)))
+  open-run(make(work-open, bind(verb, <work>), bind(root, root), bind(facts, facts)))
   save message, make list
   message/push(<Edit a .tree file and the app is rebuilt and relaunched on the screen it was on. Ctrl-C stops.>)
-  output/report(make(work-start-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, name), bind(message, message)))
+  report(make(work-start-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, name), bind(message, message)))
 
   save on-event
     task
@@ -802,7 +807,7 @@ task work-compose
 
   await-value(interrupted())
   await-value(call-with(work/stop, nothing()))
-  host-process/exit(output/close-run(make(work-close, bind(verdict, <Stopped>), bind(failure, <interrupted>), bind(uptime, true))))
+  host-process/exit(close-run(make(work-close, bind(verdict, <Stopped>), bind(failure, <interrupted>), bind(uptime, true))))
 
 # one event of the loop as an item: a build with where its time went stage by stage, a failure with the running app
 # kept, and a launch with the app's lines followed under its name
@@ -819,7 +824,7 @@ task show-event
       walk event/stages
         take entry, like dynamic
         facts/push(stage-fact(entry))
-      output/report(make(work-built-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, target), bind(duration, event/duration), bind(facts, facts)))
+      report(make(work-built-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, target), bind(duration, event/duration), bind(facts, facts)))
       back
   fork test, is-equal(kind, <failed>)
     hold
@@ -830,9 +835,9 @@ task show-event
       save message, make list
       message/push(<{event/reason}>)
       message/push(<The running app is kept.>)
-      output/report(make(work-failed-item, bind(glyph, <failed>), bind(verb, verb), bind(subject, target), bind(message, message)))
+      report(make(work-failed-item, bind(glyph, <failed>), bind(verb, verb), bind(subject, target), bind(message, message)))
       back
   fork test, is-equal(kind, <launch>)
     hold
-      output/report(make(work-launch-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, <{name} #{event/generation}>)))
-      output/follow-child(event/child, name)
+      report(make(work-launch-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, <{name} #{event/generation}>)))
+      follow-child(event/child, name)

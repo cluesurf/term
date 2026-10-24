@@ -65,13 +65,15 @@ load ./manifest-shape
   find deck-base
   find deck-need
 
+load ./registry-naming
+  find scope-name
+
 dock load
   load <node:fs/promises>, name fs-promise
     mark async
   load <node:path>, name node-path
   load <global:Promise>, name host-promise
   load <global:Number>, name host-number
-  load <@term/deck/code/package/name>, name deck-name
 
 # the first bare word, as `terms[0]`
 task first-term
@@ -358,7 +360,7 @@ task parse-manifest-by-hand
         save registry, written-registry
       case none
         save nothing, 0
-    bases/push(make(deck-base, bind(scope, deck-name/scope-name(scope-word)), bind(registry, registry)))
+    bases/push(make(deck-base, bind(scope, scope-name(scope-word)), bind(registry, registry)))
 
   # `hook <name>, task <task>`
   save hooks, make hash

@@ -34,13 +34,17 @@ load ./entry-layout
   find enforce-budget
   find is-shared-kind
 
+# the package store's folders: @term/deck's file-store port (term-cli-in-term-0234, where its face package/store.ts was
+# docked)
+load @term/deck/package/file-store
+  find get-base-dir
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
   load <@term/make/code/compile/cache>, name compile-cache-module
   load <@term/make/code/compile/cache-scope.generated>, name cache-scope-module
   load <@term/make/code/compile/load>, name parse-module
-  load <@term/deck/code/package/store>, name store-module
 
 form folder-ask
   link recursive, like boolean
@@ -636,7 +640,7 @@ task cache-home
       link home
       back home
     case none
-      back store-module/get-base-dir()
+      back get-base-dir()
 
 # the project-local cache directory
 task project-cache-dir

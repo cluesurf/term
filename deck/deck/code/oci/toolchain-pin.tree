@@ -15,9 +15,20 @@
 #     its `offline` given always
 #   - a need, a pin and an answer are the original's host records (an answer's `pin` and `reason` present only when
 #     set); the transport is the caller's host value
-#   - versions are parsed, compared, matched and shown by code.ts (the face over version.tree, docked so the
-#     callers' shapes stay); release-route is toolchain-release.tree's (oci/release.ts was docked until
-#     term-cli-in-term-0115 loaded the port); transport-for is oci-routing.tree's
+#   - versions are parsed, compared, matched and shown by version.tree, loaded (term-cli-in-term-0233, where code.ts,
+#     its face, was docked). A caller's code or hold may come in the face's shape (a part it leaves out absent, where
+#     version.tree writes `""` or `-1`), so each is read into version.tree's shape first (`pin-port-code`,
+#     `pin-port-hold`, what code.ts did); a pin made here carries version.tree's `code`. release-route is
+#     toolchain-release.tree's (oci/release.ts was docked until term-cli-in-term-0115 loaded the port); transport-for
+#     is oci-routing.tree's
+
+load ../version
+  find code
+  find code-hold
+  find parse-code
+  find show-code
+  find compare-code
+  find code-match
 
 load ./oci-routing
   find transport-for
@@ -25,8 +36,19 @@ load ./oci-routing
 load ./toolchain-release
   find release-route
 
-dock load
-  load <@term/deck/code/code>, name code-module
+# a code in version.tree's shape, a part the caller left out written as nothing (code.ts toPort)
+bind pin-port-code
+  take value, like dynamic
+  like code
+  case node
+    text <<((pinOne_) => ({ major: pinOne_.major, minor: pinOne_.minor, patch: pinOne_.patch, prerelease: pinOne_.prerelease ?? "", build: pinOne_.build ?? "" }))($value)>>
+
+# a hold in version.tree's shape, a wildcard's open part `-1` (code.ts toPortHold)
+bind pin-port-hold
+  take hold, like dynamic
+  like code-hold
+  case node
+    text <<((pinHold_) => { const pinCode_ = (pinC_) => ({ major: pinC_.major, minor: pinC_.minor, patch: pinC_.patch, prerelease: pinC_.prerelease ?? "", build: pinC_.build ?? "" }); const pinWalk_ = (pinH_) => pinH_.form === "exact" ? { form: "exact", code: pinCode_(pinH_.code) } : pinH_.form === "wild" ? { form: "wild", major: pinH_.major, minor: pinH_.minor ?? -1, patch: pinH_.patch ?? -1 } : pinH_.form === "band" ? { form: "band", base: pinCode_(pinH_.base), head: pinCode_(pinH_.head) } : { form: "test", list: pinH_.list.map(pinWalk_) }; return pinWalk_(pinHold_) })($hold)>>
 
 bind pin-list-tags
   take transport, like dynamic
@@ -36,11 +58,11 @@ bind pin-list-tags
     text <<$transport.listTags({ repository: $repository })>>
 
 bind pin-newest-first
-  take module, like dynamic
+  take order, like dynamic
   take tags, like dynamic
   like list, like text
   case node
-    text <<$tags.filter(tag => /^\d+\.\d+\.\d+$/.test(tag)).sort((a, b) => $module.compareCode($module.parseCode(b), $module.parseCode(a)))>>
+    text <<$tags.filter(pinTag_ => /^\d+\.\d+\.\d+$/.test(pinTag_)).sort($order)>>
 
 bind pin-get-manifest
   take transport, like dynamic
@@ -94,7 +116,16 @@ task released-versions
   like list, like text
 
   save tags, wait pin-list-tags(transport, repository)
-  back pin-newest-first(code-module, tags)
+  back pin-newest-first(order-newest, tags)
+
+# two release tags, the newer first: the sort the original handed the tags (`compareCode(parseCode(b), parseCode(a))`)
+task order-newest
+  take a, like text
+  take b, like text
+  like number
+  mark private
+
+  back compare-code(parse-code(b), parse-code(a))
 
 # the newest version in a list (newest first) that a request accepts, or none
 task newest-matching
@@ -102,9 +133,10 @@ task newest-matching
   take hold, like dynamic
   like dynamic
 
+  save wanted, pin-port-hold(hold)
   walk versions
     take version
-    fork test, code-module/code-match(code-module/parse-code(version), hold)
+    fork test, code-match(parse-code(version), wanted)
       hold
         back version
   back pin-nothing()
@@ -121,7 +153,9 @@ task pin-satisfies
   fork test, not(is-equal(pin/name, need/name))
     hold
       back false
-  back pin-truthy(code-module/code-match(pin/code, need/mark))
+  save pinned, pin-port-code(pin/code)
+  save wanted, pin-port-hold(need/mark)
+  back code-match(pinned, wanted)
 
 # a project's `need` pinned: the previous pin kept while it satisfies the request, otherwise the newest released
 # version in the range resolved and its index digest read. Offline, an unsatisfied request keeps no pin rather than
@@ -165,11 +199,12 @@ task pin-need
     hold
       back pin-refused(<{name}@{version} is listed and could not be read>)
 
-  back pin-made(name, code-module/parse-code(version), index/digest)
+  back pin-made(name, parse-code(version), index/digest)
 
 # a pin as one line a person reads: `@term/code 2.6.4 (sha256:...)`
 task show-pin
   take pin, like dynamic
   like text
 
-  back <{pin/name} {code-module/show-code(pin/code)} ({pin/hash})>
+  save shown, pin-port-code(pin/code)
+  back <{pin/name} {show-code(shown)} ({pin/hash})>

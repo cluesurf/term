@@ -7,7 +7,7 @@
 #
 # Ported from deck/call/code/show.ts (term-cli-in-term-0058). `term show kink` is kink-showing.tree, `term show name`
 # work/context/name-context.tree. The info text is make/banner.tree, loaded (term-cli-in-term-0197), the output library is docked, and the
-# manifest reader (@cluesurf/deck.tree) is imported only when `show mark` reads one, as the original did. `callShow`,
+# manifest reader is @term/deck's manifest-reading port, loaded (term-cli-in-term-0236). `callShow`,
 # `termVersion` and `toolVersion` keep their names and shapes; `toolVersion` answers undefined for a tool that is not
 # there, as before.
 
@@ -34,8 +34,27 @@ load @term/make/banner
 load @term/base/terminal
   find uses-color
 
+# the project's manifest and its version, @term/deck's ports (term-cli-in-term-0236), where a bind imported
+# the package manager's faces at run time
+load @term/deck/package/manifest-reading
+  find load-manifest
+
+load @term/deck/package/grammar-reading
+  find make-grammars
+
+load @term/deck/version
+  find show-code
+
+load @term/call/work/output/printer
+  find close-run
+  find field
+  find location
+  find open-run
+  find print-data
+  find report
+  find show-path
+
 dock load
-  load <@term/call/code/output>, name output
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <node:os>, name node-os
@@ -82,26 +101,6 @@ bind tool-manifest-version
   like text
   case node
     text <<(() => { try { const read = JSON.parse($fs.readFileSync($file, "utf8")); return String(read.version ?? "0.0.0") } catch { return "0.0.0" } })()>>
-
-# the manifest reader, imported when it is needed
-bind tool-deck-tree
-  like dynamic
-  case node
-    text <(await import("@cluesurf/deck.tree"))>
-
-bind tool-load-manifest
-  take reader, like dynamic
-  take dir, like text
-  like dynamic
-  case node
-    text <(await $reader.loadManifest(\{ dir: $dir \}))>
-
-bind tool-show-code
-  take reader, like dynamic
-  take mark, like dynamic
-  like text
-  case node
-    text <$reader.showCode($mark)>
 
 bind tool-thrown-message
   take problem, like dynamic
@@ -259,13 +258,13 @@ task show-tools
         save width, tool-name-units(one/name)
   fork test, json
     hold
-      output/print-data(<{tool-tools-json(found)}\n>)
+      print-data(<{tool-tools-json(found)}\n>)
       back
   save lines, make list
   walk found
     take one, like dynamic
     lines/push(tool-tool-line(one, width))
-  output/print-data(lines/join(<>))
+  print-data(lines/join(<>))
 
 # the deck.tree in `from` or the nearest folder above it, or the empty text
 task nearest-manifest
@@ -297,40 +296,39 @@ task show-mark
   save manifest, nearest-manifest(root)
   fork test, is-equal(manifest, <>)
     hold
-      output/open-run(make(show-open, bind(verb, <show>), bind(root, root)))
+      open-run(make(show-open, bind(verb, <show>), bind(root, root)))
       save fields, make list
-      fields/push(output/field(<looked>, output/show-path(root)))
-      output/report(make(show-problem-fields, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no deck.tree here or above>), bind(fields, fields)))
-      output/close-run(make(show-close-next, bind(verdict, <No version to show>), bind(next, <term wake, to make a project here>)))
+      fields/push(field(<looked>, show-path(root)))
+      report(make(show-problem-fields, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no deck.tree here or above>), bind(fields, fields)))
+      close-run(make(show-close-next, bind(verdict, <No version to show>), bind(next, <term wake, to make a project here>)))
       back
 
-  save reader, tool-deck-tree()
   save shown, <>
   save failed, false
   save problem, <>
   fork
     mark unsafe
-    save read, tool-load-manifest(reader, node-path/dirname(manifest))
-    save shown, tool-show-code(reader, read/mark)
+    save read, load-manifest(node-path/dirname(manifest), make-grammars())
+    save shown, show-code(read/mark)
   halt take
     take error, like dynamic
     save failed, true
     save problem, tool-thrown-message(error)
   fork test, failed
     hold
-      output/open-run(make(show-open, bind(verb, <show>), bind(root, root)))
+      open-run(make(show-open, bind(verb, <show>), bind(root, root)))
       save fields, make list
-      fields/push(output/location(output/show-path(manifest)))
+      fields/push(location(show-path(manifest)))
       save message, make list
       message/push(problem)
-      output/report(make(show-problem-message, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <The deck.tree could not be read>), bind(fields, fields), bind(message, message)))
-      output/close-run(make(show-close, bind(verdict, <No version to show>)))
+      report(make(show-problem-message, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <The deck.tree could not be read>), bind(fields, fields), bind(message, message)))
+      close-run(make(show-close, bind(verdict, <No version to show>)))
       back
   fork test, json
     hold
-      output/print-data(<{tool-mark-json(shown)}\n>)
+      print-data(<{tool-mark-json(shown)}\n>)
     miss
-      output/print-data(<{shown}\n>)
+      print-data(<{shown}\n>)
 
 task call-show
   take input, like dynamic
@@ -344,9 +342,9 @@ task call-show
     hold
       fork test, json
         hold
-          output/print-data(<{tool-platform-json(node-os, input/version)}\n>)
+          print-data(<{tool-platform-json(node-os, input/version)}\n>)
         miss
-          output/print-data(info-text(uses-color(), tool-shown-version(input/version), node-os/platform(), node-os/arch(), tool-node-version(), node-os/homedir()))
+          print-data(info-text(uses-color(), tool-shown-version(input/version), node-os/platform(), node-os/arch(), tool-node-version(), node-os/homedir()))
       back
 
   fork test, is-equal(what, <tools>)
@@ -368,9 +366,9 @@ task call-show
 
   fork test, and(is-unequal(what, <mark>), is-unequal(what, <code>))
     hold
-      output/open-run(make(show-open, bind(verb, <show>), bind(root, root)))
-      output/report(make(show-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is nothing named {what} to show>)))
-      output/close-run(make(show-close-usage, bind(verdict, <Nothing shown>), bind(next, <term show, term show mark, term show tools, term show kink or term show name>), bind(failure, <usage>)))
+      open-run(make(show-open, bind(verb, <show>), bind(root, root)))
+      report(make(show-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is nothing named {what} to show>)))
+      close-run(make(show-close-usage, bind(verdict, <Nothing shown>), bind(next, <term show, term show mark, term show tools, term show kink or term show name>), bind(failure, <usage>)))
       back
 
   show-mark(root, json)

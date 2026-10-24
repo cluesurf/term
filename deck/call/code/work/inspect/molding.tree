@@ -11,10 +11,17 @@
 # Ported from call/code/mold.ts (term-cli-in-term-0056). The data reader (compile/host), the tree/code codec
 # (compile/host-code) and the output library are docked until their own ports land.
 
+load @term/call/work/output/printer
+  find close-run
+  find open-run
+  find print-bytes
+  find print-data
+  find report
+  find report-problems
+
 dock load
   load <@term/make/code/compile/host-code>, name mold-code
   load <@term/make/code/compile/host>, name mold-data
-  load <@term/call/code/output>, name mold-output
   load <node:fs>, name mold-fs
   load <node:path>, name mold-path
   load <node:zlib>, name mold-zlib
@@ -160,8 +167,8 @@ task refuse-data
   walk diagnostics
     take diagnostic, like dynamic
     problems/push(make(mold-problem-entry, bind(diagnostic, diagnostic), bind(text, text)))
-  mold-output/reportProblems(problems, root)
-  mold-output/closeRun(make(mold-close, bind(verdict, <The data does not read>)))
+  report-problems(problems, root)
+  close-run(make(mold-close, bind(verdict, <The data does not read>)))
 
 task call-mold
   take input, like dynamic
@@ -192,13 +199,13 @@ task call-mold
   save facts, make list
   facts/push(mold-or(named, <stdin>))
   facts/push(shape)
-  mold-output/openRun(make(mold-open, bind(verb, <mold>), bind(root, root), bind(facts, facts)))
+  open-run(make(mold-open, bind(verb, <mold>), bind(root, root), bind(facts, facts)))
 
   # binary on a terminal draws garbage and can leave it in a strange state: `tree/code` goes to a pipe or a file
   fork test, and(mold-truthy(input/code), mold-stdout-terminal(mold-process))
     hold
-      mold-output/report(make(mold-problem-said, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <write>), bind(subject, <tree/code is bytes, and standard output is a terminal>), bind(message, mold-one(<send it to a file or a pipe: term mold x.tree --code \> x.code>))))
-      mold-output/closeRun(make(mold-close, bind(verdict, <Nothing to mold>)))
+      report(make(mold-problem-said, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <write>), bind(subject, <tree/code is bytes, and standard output is a terminal>), bind(message, mold-one(<send it to a file or a pipe: term mold x.tree --code \> x.code>))))
+      close-run(make(mold-close, bind(verdict, <Nothing to mold>)))
       back
 
   save raw, mold-nothing()
@@ -216,8 +223,8 @@ task call-mold
     save read-ok, false
   fork test, not(read-ok)
     hold
-      mold-output/report(make(mold-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <read>), bind(subject, <{mold-or(named, <Standard input>)} could not be read>)))
-      mold-output/closeRun(make(mold-close, bind(verdict, <Nothing to mold>)))
+      report(make(mold-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <read>), bind(subject, <{mold-or(named, <Standard input>)} could not be read>)))
+      close-run(make(mold-close, bind(verdict, <Nothing to mold>)))
       back
 
   save text, mold-utf8(raw)
@@ -231,8 +238,8 @@ task call-mold
       fork test, not(mold-truthy(decoded/ok))
         hold
           save problem, decoded/problem
-          mold-output/report(make(mold-problem-said, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <read>), bind(subject, <The input is not valid tree/code ({problem/name})>), bind(message, mold-one(<{problem/message}, at byte {problem/at}>))))
-          mold-output/closeRun(make(mold-close, bind(verdict, <The data does not read>)))
+          report(make(mold-problem-said, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <read>), bind(subject, <The input is not valid tree/code ({problem/name})>), bind(message, mold-one(<{problem/message}, at byte {problem/at}>))))
+          close-run(make(mold-close, bind(verdict, <The data does not read>)))
           back
       save data, mold-decoded-data(decoded/values)
     miss
@@ -249,8 +256,8 @@ task call-mold
             save problem-text, mold-thrown-message(error)
           fork test, not(parsed-ok)
             hold
-              mold-output/report(make(mold-problem-said, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <read>), bind(subject, <The input is not JSON>), bind(message, mold-one(problem-text))))
-              mold-output/closeRun(make(mold-close, bind(verdict, <The data does not read>)))
+              report(make(mold-problem-said, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <read>), bind(subject, <The input is not JSON>), bind(message, mold-one(problem-text))))
+              close-run(make(mold-close, bind(verdict, <The data does not read>)))
               back
         miss
           fork test, mold-truthy(input/lines)
@@ -263,7 +270,7 @@ task call-mold
                   back
               fork test, mold-truthy(input/check)
                 hold
-                  mold-output/closeRun(make(mold-close, bind(verdict, <The data reads>)))
+                  close-run(make(mold-close, bind(verdict, <The data reads>)))
                   back
               save data, stream/data
             miss
@@ -279,7 +286,7 @@ task call-mold
                     hold
                       refuse-data(checked/diagnostics, text, root)
                       back
-                  mold-output/closeRun(make(mold-close, bind(verdict, <The data reads>)))
+                  close-run(make(mold-close, bind(verdict, <The data reads>)))
                   back
               # `--trees` keeps the anchors as written; the default expands them, so the output is plain data
               fork test, mold-truthy(input/trees)
@@ -296,7 +303,7 @@ task call-mold
 
   fork test, mold-truthy(input/check)
     hold
-      mold-output/closeRun(make(mold-close, bind(verdict, <The data reads>)))
+      close-run(make(mold-close, bind(verdict, <The data reads>)))
       back
 
   fork test, mold-truthy(input/code)
@@ -314,20 +321,20 @@ task call-mold
         save problem-text, mold-thrown-message(error)
       fork test, not(encoded-ok)
         hold
-          mold-output/report(make(mold-problem-said, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <write>), bind(subject, <The data cannot be written as tree/code>), bind(message, mold-one(problem-text))))
-          mold-output/closeRun(make(mold-close, bind(verdict, <The data does not encode>)))
+          report(make(mold-problem-said, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <write>), bind(subject, <The data cannot be written as tree/code>), bind(message, mold-one(problem-text))))
+          close-run(make(mold-close, bind(verdict, <The data does not encode>)))
           back
-      mold-output/printBytes(bytes)
+      print-bytes(bytes)
     miss
       fork test, mold-truthy(input/json)
         hold
           save keep, input/keep
-          mold-output/printData(<{mold-to-json(mold-data, data, keep)}\n>)
+          print-data(<{mold-to-json(mold-data, data, keep)}\n>)
         miss
           fork test, mold-truthy(input/pack)
             hold
-              mold-output/printData(mold-data/writeCompact(data, anchors))
+              print-data(mold-data/writeCompact(data, anchors))
             miss
-              mold-output/printData(mold-data/writeLong(data, anchors))
+              print-data(mold-data/writeLong(data, anchors))
 
-  mold-output/closeRun(make(mold-close, bind(verdict, <Molded>)))
+  close-run(make(mold-close, bind(verdict, <Molded>)))

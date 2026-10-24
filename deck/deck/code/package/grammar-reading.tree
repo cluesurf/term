@@ -74,9 +74,11 @@ load ./lockfile-shape
   find lock-need
   find lockfile
 
+load ./registry-naming
+  find scope-name
+
 dock load
   load <@term/deck/code/grammar>, name deck-grammar-text
-  load <@term/deck/code/package/name>, name deck-name
   load <global:Number>, name host-number
 
 # the deck and lockfile grammars, each read the first time it is asked for
@@ -641,7 +643,7 @@ task parse-manifest-mill
   walk matches-at(fields, <base>)
     take each-base
     save scope-text, text-or-empty(word-at-site(each-base, <scope>))
-    bases/push(make(deck-base, bind(scope, deck-name/scope-name(scope-text)), bind(registry, text-or-empty(word-at-site(each-base, <registry>)))))
+    bases/push(make(deck-base, bind(scope, scope-name(scope-text)), bind(registry, text-or-empty(word-at-site(each-base, <registry>)))))
 
   save hooks, make hash
   walk matches-at(fields, <hook>)

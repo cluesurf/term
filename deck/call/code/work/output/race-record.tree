@@ -23,11 +23,15 @@ load @term/base/ordering
 load @term/call/work/small/home-folder
   find project-home
 
+# the 8x8 tone shape: @term/deck's tone-path port (term-cli-in-term-0234, where its face object/tone.ts was docked)
+load @term/deck/object/tone-path
+  find hex-to-tone
+  find dash-in-eights
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
   load <node:zlib>, name node-zlib
-  load <@term/deck/code/object/tone>, name tone
 
 bind is-array
   take value, like dynamic
@@ -163,7 +167,7 @@ task tone-digest
   take value, like dynamic
   like text
 
-  back tone/dash-in-eights(tone/hex-to-tone(sha256-hex(stable-text(value))))
+  back dash-in-eights(hex-to-tone(sha256-hex(stable-text(value))))
 
 # JSON with object keys sorted, so the same value always hashes the same
 task stable-text

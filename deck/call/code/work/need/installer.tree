@@ -51,8 +51,17 @@ load @term/call/work/small/home-folder
   find user-home
   find front-dir
 
+load @term/call/work/output/printer
+  find close-run
+  find field
+  find location
+  find open-run
+  find print-data
+  find report
+  find set-output
+  find show-path
+
 dock load
-  load <@term/call/code/output>, name output
   load <node:fs>, name node-file
   load <node:os>, name node-os
   load <node:path>, name node-path
@@ -419,14 +428,14 @@ task install-term
 
   save home, user-home(make list)
   save flags, make empty-flags
-  output/set-output(flags, <>)
-  output/open-run(make(load-open, bind(verb, <load>), bind(root, home), bind(subject, output/show-path(home)), bind(tool, <term.surf/load>)))
+  set-output(flags, <>)
+  open-run(make(load-open, bind(verb, <load>), bind(root, home), bind(subject, show-path(home)), bind(tool, <term.surf/load>)))
 
   save asked, trimmed-or-absent(<TERM_LOAD_VERSION>)
   fork test, and(host-truth(asked), not(is-version(asked)))
     hold
-      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <load>), bind(subject, <TERM_LOAD_VERSION={asked} is not a version: write it as 1.2.3>)))
-      output/close-run(make(plain-close, bind(verdict, <Nothing was installed>), bind(failure, <usage>)))
+      report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <load>), bind(subject, <TERM_LOAD_VERSION={asked} is not a version: write it as 1.2.3>)))
+      close-run(make(plain-close, bind(verdict, <Nothing was installed>), bind(failure, <usage>)))
       back
 
   save version, asked
@@ -436,13 +445,13 @@ task install-term
       save version, newest-release(listed)
   fork test, not(host-truth(version))
     hold
-      output/close-run(make(plain-close, bind(verdict, <Nothing was installed>), bind(failure, <environment>)))
+      close-run(make(plain-close, bind(verdict, <Nothing was installed>), bind(failure, <environment>)))
       back
 
   save loaded, load-version(make(load-ask, bind(version, version)))
   fork test, not(report-loaded(loaded))
     hold
-      output/close-run(make(plain-close, bind(verdict, <Nothing was installed>), bind(failure, <environment>)))
+      close-run(make(plain-close, bind(verdict, <Nothing was installed>), bind(failure, <environment>)))
       back
 
   link-front(version)
@@ -456,8 +465,8 @@ task install-term
       save front-name, <term.cmd>
   save base-name, node-path/basename(bin)
   save link-fields, make list
-  link-fields/push(output/location(output/show-path(node-path/join(bin, front-name))))
-  output/report(make(link-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <link>), bind(subject, <{base-name}/term to {version}>), bind(fields, link-fields)))
+  link-fields/push(location(show-path(node-path/join(bin, front-name))))
+  report(make(link-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <link>), bind(subject, <{base-name}/term to {version}>), bind(fields, link-fields)))
 
   save here-on-path, on-path(variable-or-empty(<PATH>), node-path/delimiter, bin, windows)
   save automatic, true
@@ -475,45 +484,45 @@ task install-term
     fork test, is-equal(one/state, <added>)
       hold
         save added-fields, make list
-        added-fields/push(output/field(<line>, one/line))
-        output/report(make(added-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <path>), bind(subject, one/shown), bind(fields, added-fields)))
+        added-fields/push(field(<line>, one/line))
+        report(make(added-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <path>), bind(subject, one/shown), bind(fields, added-fields)))
       miss
         fork test, is-equal(one/state, <moved>)
           hold
             save moved-facts, make list
             save now-front, front-posix()
             moved-facts/push(<now {now-front}>)
-            output/report(make(moved-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <path>), bind(subject, one/shown), bind(facts, moved-facts)))
+            report(make(moved-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <path>), bind(subject, one/shown), bind(facts, moved-facts)))
           miss
             save there-facts, make list
             there-facts/push(<already there>)
-            output/report(make(there-item, bind(glyph, <skipped>), bind(verb, <path>), bind(subject, one/shown), bind(facts, there-facts)))
+            report(make(there-item, bind(glyph, <skipped>), bind(verb, <path>), bind(subject, one/shown), bind(facts, there-facts)))
 
   walk other-terms(bin)
     take other
     save other-fields, make list
-    other-fields/push(output/location(output/show-path(other/file)))
+    other-fields/push(location(show-path(other/file)))
     fork test, is-unequal(other/remove, <>)
       hold
-        other-fields/push(output/field(<next>, other/remove))
+        other-fields/push(field(<next>, other/remove))
     save said, make list
     said/push(<A terminal runs whichever term comes first on its PATH. Remove the other to have one.>)
     save other-version, other/version
-    output/report(make(warning-item, bind(glyph, <warning>), bind(verb, <path>), bind(subject, <another term is on PATH, {other-version}>), bind(message, said), bind(fields, other-fields)))
+    report(make(warning-item, bind(glyph, <warning>), bind(verb, <path>), bind(subject, <another term is on PATH, {other-version}>), bind(message, said), bind(fields, other-fields)))
 
   # THIS shell's PATH is its own, and a child cannot change it. The line that does is data, on stdout, so
   # `eval "$(curl -fsSL https://term.surf/load | sh)"` runs it in the shell that asked
   save captured, stdout-captured()
   fork test, and(not(here-on-path), not(windows))
     hold
-      output/print-data(refresh-line(node-path/basename(variable-or-empty(<SHELL>)), bin))
+      print-data(refresh-line(node-path/basename(variable-or-empty(<SHELL>)), bin))
 
   fork test, here-on-path
     hold
-      output/close-run(make(next-close, bind(verdict, <term {version} is installed>), bind(done, true), bind(next, <term --help>)))
+      close-run(make(next-close, bind(verdict, <term {version} is installed>), bind(done, true), bind(next, <term --help>)))
     miss
       save closing, make list
       closing/push(closing-message(automatic, windows, captured))
-      output/close-run(make(message-close, bind(verdict, <term {version} is installed>), bind(done, true), bind(message, closing)))
+      close-run(make(message-close, bind(verdict, <term {version} is installed>), bind(done, true), bind(message, closing)))
 
 tick install-term()

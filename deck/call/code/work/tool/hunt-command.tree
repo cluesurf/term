@@ -37,8 +37,15 @@ load @term/call/work/build/host-faces
 load @term/call/work/workers/source-faces
   find face-buildable
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find field
+  find open-run
+  find print-data
+  find report
+
 dock load
-  load <@term/call/code/output>, name output
   load <node:fs>, name node-fs
   load <node:path>, name node-path
 
@@ -112,6 +119,15 @@ bind hunt-pretty
   like text
   case node
     text <JSON.stringify($value, null, 2)>
+
+# the printer's count and field as the record the item binds read them from (`$output.count`, `$output.field`), as
+# they read the output module's
+bind hunt-printer-face
+  take counting, like dynamic
+  take fielding, like dynamic
+  like dynamic
+  case node
+    text <(\{ count: $counting, field: $fielding \})>
 
 bind hunt-open-ask
   take root, like text
@@ -191,7 +207,7 @@ task call-hunt
 
   fork test, hunt-given(input/json)
     hold
-      output/print-data(<{hunt-pretty(result)}\n>)
+      print-data(<{hunt-pretty(result)}\n>)
       save code, 1
       fork test, hunt-given(result/ok)
         hold
@@ -200,9 +216,10 @@ task call-hunt
 
   # the run is opened after the hunt: the fuzz children inherit this process's stderr while they run
   save counts, make list
-  counts/push(output/count(files/length, <files>, <file>))
-  output/open-run(hunt-open-ask(root, counts, started))
-  walk hunt-items(output, result)
+  counts/push(count(files/length, <files>, <file>))
+  open-run(hunt-open-ask(root, counts, started))
+  save face, hunt-printer-face(count, field)
+  walk hunt-items(face, result)
     take item, like dynamic
-    output/report(item)
-  hunt-exit(output/close-run(hunt-close-ask(output, result)))
+    report(item)
+  hunt-exit(close-run(hunt-close-ask(face, result)))

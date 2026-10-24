@@ -21,12 +21,19 @@ load @term/call/work/build/host-faces
   find face-role-reader
   find face-lean-reader
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find open-run
+  find print-data
+  find report
+  find report-problems
+
 dock load
   load <node:fs/promises>, name fs-promise
     mark async
   load <node:path>, name node-path
   load <@term/make/code/analyze>, name analyze-module
-  load <@term/call/code/output>, name output
 
 form form-open
   link verb, like text
@@ -104,16 +111,16 @@ task call-form
         hold
           save mode, <--list>
   save counts, make list
-  counts/push(output/count(files/length, <files>, <file>))
+  counts/push(count(files/length, <files>, <file>))
   save facts, make list
   fork test, is-unequal(mode, <>)
     hold
       facts/push(mode)
-  output/open-run(make(form-open, bind(verb, <form>), bind(root, root), bind(counts, counts), bind(facts, facts)))
+  open-run(make(form-open, bind(verb, <form>), bind(root, root), bind(counts, counts), bind(facts, facts)))
   fork test, is-equal(files/length, 0)
     hold
-      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no .tree file to format>)))
-      output/close-run(make(plain-close, bind(verdict, <Nothing to format>)))
+      report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no .tree file to format>)))
+      close-run(make(plain-close, bind(verdict, <Nothing to format>)))
     miss
       format-files(root, files, check, list)
 
@@ -156,7 +163,7 @@ task format-files
             facts/push(<data that could not be read>)
           miss
             facts/push(<could not be parsed>)
-        output/report(make(broken-item, bind(glyph, <failed>), bind(verb, <form>), bind(subject, relative), bind(facts, facts)))
+        report(make(broken-item, bind(glyph, <failed>), bind(verb, <form>), bind(subject, relative), bind(facts, facts)))
         walk errors
           take diagnostic
           problems/push(make(problem-of, bind(diagnostic, diagnostic), bind(text, text)))
@@ -168,15 +175,15 @@ task format-files
     save changed, add(changed, 1)
     fork test, list
       hold
-        output/print-data(formatted)
+        print-data(formatted)
       miss
         fork test, check
           hold
-            output/report(make(check-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <check>), bind(subject, <{relative} is not formatted>)))
+            report(make(check-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, <check>), bind(subject, <{relative} is not formatted>)))
           miss
             fs-promise/write-file(file, formatted, <utf-8>)
-            output/report(make(change-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <change>), bind(subject, relative)))
-  output/report-problems(problems, root)
+            report(make(change-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <change>), bind(subject, relative)))
+  report-problems(problems, root)
   save noun, <changed>
   fork test, check
     hold
@@ -186,11 +193,11 @@ task format-files
         hold
           save noun, <printed>
   save counted, make list
-  counted/push(output/count(changed, noun))
+  counted/push(count(changed, noun))
   fork test, is-above(broken, 0)
     hold
-      counted/push(output/count(broken, <unreadable>))
-      output/close-run(make(counted-close, bind(verdict, <Some files could not be read>), bind(counts, counted)))
+      counted/push(count(broken, <unreadable>))
+      close-run(make(counted-close, bind(verdict, <Some files could not be read>), bind(counts, counted)))
     miss
       fork test, and(check, is-above(changed, 0))
         hold
@@ -198,7 +205,7 @@ task format-files
           fork test, is-equal(changed, 1)
             hold
               save need, < needs>
-          output/close-run(make(next-close, bind(verdict, <{changed} file{need} formatting>), bind(counts, counted), bind(next, <term form>)))
+          close-run(make(next-close, bind(verdict, <{changed} file{need} formatting>), bind(counts, counted), bind(next, <term form>)))
         miss
           # `--list` writes nothing, so it must not say it formatted anything (guides: commands/form, 2026-10-04)
           save verdict, <All files already formatted>
@@ -214,4 +221,4 @@ task format-files
                       save plural, <>
                   save verdict, <Formatted {changed} file{plural}>
           # files rewritten is work done; `--list` only showed what it would write, and closes `·`
-          output/close-run(make(done-close, bind(verdict, verdict), bind(counts, counted), bind(done, and(is-above(changed, 0), not(list)))))
+          close-run(make(done-close, bind(verdict, verdict), bind(counts, counted), bind(done, and(is-above(changed, 0), not(list)))))

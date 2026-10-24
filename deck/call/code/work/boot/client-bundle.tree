@@ -45,13 +45,18 @@ load ../cache/compile-store
 load ../small/home-folder
   find project-home
 
+load @term/call/work/output/printer
+  find count
+  find location
+  find report
+  find report-problems
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
   load <esbuild>, name esbuild-module
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/compile/native>, name native-module
-  load <@term/call/code/output>, name output
   load <global:Date>, name host-date
   load <global:global>, name host-global
 
@@ -226,7 +231,7 @@ task build-client-bundle
     save message, make list
     message/push(boot-thrown-message(error))
     message/push(<The server still renders every page, without the client taking over.>)
-    output/report(make(thrown-item, bind(glyph, <warning>), bind(verb, <build>), bind(subject, <client bundle>), bind(duration, subtract(host-date/now(), started)), bind(message, message)))
+    report(make(thrown-item, bind(glyph, <warning>), bind(verb, <build>), bind(subject, <client bundle>), bind(duration, subtract(host-date/now(), started)), bind(message, message)))
 
 task bundle-client
   take opts, like client-ask
@@ -246,13 +251,13 @@ task bundle-client
     hold
       bundle-compiled(opts, result, started)
     miss
-      output/reportProblems(problem-entries(result/diagnostics), opts/project-root)
+      report-problems(problem-entries(result/diagnostics), opts/project-root)
       # a warning, not a failure: the server still renders every page, only without the client taking over
       save counts, make list
-      counts/push(output/count(result/diagnostics/length, <errors>, <error>))
+      counts/push(count(result/diagnostics/length, <errors>, <error>))
       save message, make list
       message/push(<The server still renders every page, without the client taking over.>)
-      output/report(make(refused-item, bind(glyph, <warning>), bind(verb, <build>), bind(subject, <client bundle>), bind(duration, subtract(host-date/now(), started)), bind(counts, counts), bind(message, message)))
+      report(make(refused-item, bind(glyph, <warning>), bind(verb, <build>), bind(subject, <client bundle>), bind(duration, subtract(host-date/now(), started)), bind(counts, counts), bind(message, message)))
 
 task bundle-compiled
   take opts, like client-ask
@@ -300,8 +305,8 @@ task bundle-compiled
       save facts, make list
       facts/push(<cached>)
       save fields, make list
-      fields/push(output/location(<build/boot.js>))
-      output/report(make(cached-item, bind(glyph, <skipped>), bind(verb, <build>), bind(subject, <client bundle>), bind(duration, subtract(host-date/now(), started)), bind(facts, facts), bind(fields, fields)))
+      fields/push(location(<build/boot.js>))
+      report(make(cached-item, bind(glyph, <skipped>), bind(verb, <build>), bind(subject, <client bundle>), bind(duration, subtract(host-date/now(), started)), bind(facts, facts), bind(fields, fields)))
     miss
       # bundle once into the shared cache dir (keyed by content), then copy into the app's build output
       save client-parts, make list
@@ -330,5 +335,5 @@ task bundle-compiled
           node-file/copy-file-sync(cache-map, map-file)
       node-file/write-file-sync(stamp-file, key)
       save fields, make list
-      fields/push(output/location(<build/boot.js>))
-      output/report(make(built-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <client bundle>), bind(duration, subtract(host-date/now(), started)), bind(fields, fields)))
+      fields/push(location(<build/boot.js>))
+      report(make(built-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <client bundle>), bind(duration, subtract(host-date/now(), started)), bind(fields, fields)))

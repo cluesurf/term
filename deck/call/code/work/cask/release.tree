@@ -23,10 +23,15 @@ load ../self/page-update
   find publish-update
   find publish-ask, name update-ask
 
+load @term/call/work/output/printer
+  find field
+  find location
+  find report
+  find show-path
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
-  load <@term/call/code/output>, name output
 
 form release-folder
   link recursive, like boolean
@@ -90,8 +95,8 @@ task stamp-runtime-version
   # the tone code is an identifier of 64 characters, a field value that wraps on its own line rather than a fact that
   # leaves the clock alone on the facts line
   save fields, make list
-  fields/push(output/field(<version>, version/tone))
-  output/report(make(stamp-item, bind(glyph, <info>), bind(verb, <stamp>), bind(subject, <runtime version>), bind(fields, fields)))
+  fields/push(field(<version>, version/tone))
+  report(make(stamp-item, bind(glyph, <info>), bind(verb, <stamp>), bind(subject, <runtime version>), bind(fields, fields)))
   back version
 
 # `--publish`: the page that was just built, as an update for exactly the runtime version that was just stamped, so a
@@ -116,8 +121,8 @@ task publish-built
   save facts, make list
   facts/push(channel)
   save fields, make list
-  fields/push(output/location(output/show-path(published/file)))
-  output/report
+  fields/push(location(show-path(published/file)))
+  report
     make publish-item
       bind glyph, <added>
       bind kind, <change>

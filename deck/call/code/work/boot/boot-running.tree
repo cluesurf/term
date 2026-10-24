@@ -109,6 +109,24 @@ load ../small/home-folder
 load ../small/manifest-file
   find manifest-value-of
 
+# development in a browser: the small lane's port of feed.ts `serveBrowserDevelopment`, where it was imported at run
+# time until term-cli-in-term-0069
+load ../small/browser-serving
+  find serve-browser-development
+
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find fail-run
+  find field
+  find follow-child
+  find is-run-open
+  find location
+  find open-run
+  find report
+  find report-problems
+  find show-path
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
@@ -117,7 +135,6 @@ dock load
   load <@term/make/code/compile/separate>, name separate-module
   load <@term/make/code/compile/native>, name native-module
   load <@term/call/code/hook-dispatch>, name dispatch-module
-  load <@term/call/code/output>, name output
   # an inherited method (on, exit) is reached only through the global (traps.md)
   load <global:process>, name host-process
   load <global:Date>, name host-date
@@ -509,15 +526,6 @@ bind boot-plain-error
   case node
     text <(() =\> \{ throw new Error($message) \})()>
 
-# the development server, loaded when a browser boot in development runs and not before
-bind boot-serve-browser
-  take root, like text
-  take entry, like dynamic
-  take port, like dynamic
-  take env, like dynamic
-  like void
-  case node
-    text <(await (await import("@term/call/code/feed")).serveBrowserDevelopment(\{ root: $root, entry: $entry, port: $port, env: $env \}))>
 
 bind boot-spawn-inherit
   take run, like text
@@ -625,6 +633,18 @@ task value-or-empty
     case none
       back <>
 
+# a port the line named, or none: feed.ts read `input.port` as undefined when it was not given
+task port-of
+  take value, like unknown
+  like maybe, like number
+  mark private
+
+  sift value
+    case number
+      back make(some, value)
+    miss
+      back make none
+
 task text-of
   take value, like unknown
   like text
@@ -677,7 +697,7 @@ task finish
 
   fork test, run/owned
     hold
-      back output/closeRun(make(closing, bind(verdict, verdict)))
+      back close-run(make(closing, bind(verdict, verdict)))
   back 0
 
 task finish-uptime
@@ -688,7 +708,7 @@ task finish-uptime
 
   fork test, run/owned
     hold
-      back output/closeRun(make(closing-uptime, bind(verdict, verdict), bind(uptime, true)))
+      back close-run(make(closing-uptime, bind(verdict, verdict), bind(uptime, true)))
   back 0
 
 task finish-stopped
@@ -699,7 +719,7 @@ task finish-stopped
 
   fork test, run/owned
     hold
-      back output/closeRun(make(closing-stopped, bind(verdict, <Stopped>), bind(uptime, true), bind(failure, failure)))
+      back close-run(make(closing-stopped, bind(verdict, <Stopped>), bind(uptime, true), bind(failure, failure)))
   back 0
 
 task call-boot
@@ -708,7 +728,7 @@ task call-boot
   mark async
 
   # a run of its own, unless one is open: `term host` builds a package's console inside its own run
-  save owned, not(output/isRunOpen())
+  save owned, not(is-run-open())
   # the mode, read once: a word that is not a mode is the entry
   save mode, <>
   save entry, input/entry
@@ -728,7 +748,7 @@ task call-boot
   # development in a browser is the hot-reloading module server, which was `term feed`. It opens its own run
   fork test, and(is-equal(mode, <development>), and(is-equal(text-of(input/env), <browser>), and(not(boot-truthy(input/out)), owned)))
     hold
-      boot-serve-browser(input/root, entry, input/port, input/env)
+      serve-browser-development(input/root, text-of(entry), port-of(input/port), text-of(input/env), true)
     miss
       fork test, owned
         hold
@@ -737,14 +757,14 @@ task call-boot
           fork test, boot-truthy(input/out)
             hold
               facts/push(<--out>)
-          output/openRun(make(opening, bind(verb, <boot>), bind(root, input/root), bind(facts, facts)))
+          open-run(make(opening, bind(verb, <boot>), bind(root, input/root), bind(facts, facts)))
       save asked, make(boot-ask, bind(root, input/root), bind(mode, input/mode), bind(entry, entry), bind(env, input/env), bind(port, input/port), bind(remote, input/remote), bind(remote-token, input/remote-token), bind(args, input/args), bind(out, input/out))
       fork
         mark unsafe
         boot-entry(asked, owned)
       halt take
         take error
-        output/failRun(error, input/root)
+        fail-run(error, input/root)
 
 task boot-entry
   take input, like boot-ask
@@ -768,12 +788,12 @@ task boot-entry
       save subject, <No entry was given, and deck.tree names none>
       fork test, is-unequal(entry, <>)
         hold
-          fields/push(output/field(<looked>, output/showPath(entry, cwd)))
+          fields/push(field(<looked>, show-path(entry, cwd)))
           save subject, <The entry is not there>
-      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject), bind(fields, fields)))
+      report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject), bind(fields, fields)))
       fork test, owned
         hold
-          output/closeRun(make(closing-usage, bind(verdict, <Nothing was booted>), bind(failure, <usage>), bind(next, <term boot \<file.tree\>, or a `boot \<path\>` line in deck.tree>)))
+          close-run(make(closing-usage, bind(verdict, <Nothing was booted>), bind(failure, <usage>), bind(next, <term boot \<file.tree\>, or a `boot \<path\>` line in deck.tree>)))
 
 task boot-found
   take input, like boot-ask
@@ -802,11 +822,11 @@ task boot-found
   fork test, is-above(loaded/length, 0)
     hold
       save counts, make list
-      counts/push(output/count(loaded/length, <variables>, <variable>))
+      counts/push(count(loaded/length, <variables>, <variable>))
       save fields, make list
-      fields/push(output/location(<bind/host/base.tree>))
-      fields/push(output/field(<names>, boot-comma-joined(loaded)))
-      output/report(make(counted-item, bind(glyph, <info>), bind(verb, <load>), bind(subject, <environment>), bind(counts, counts), bind(fields, fields)))
+      fields/push(location(<bind/host/base.tree>))
+      fields/push(field(<names>, boot-comma-joined(loaded)))
+      report(make(counted-item, bind(glyph, <info>), bind(verb, <load>), bind(subject, <environment>), bind(counts, counts), bind(fields, fields)))
   # warm the local cache from a remote (Tier 5) before compiling, so a cold machine or CI reuses shared artifacts
   save cache-dir, project-home(project-root, boot-parts(<cache>, <>))
   fork test, boot-truthy(input/remote)
@@ -819,10 +839,10 @@ task boot-found
         fork test, is-above(pulled, 0)
           hold
             save counts, make list
-            counts/push(output/count(pulled, <artifacts>, <artifact>))
+            counts/push(count(pulled, <artifacts>, <artifact>))
             save facts, make list
             facts/push(remote)
-            output/report(make(remote-item, bind(glyph, <done>), bind(verb, <pull>), bind(subject, <build cache>), bind(counts, counts), bind(facts, facts)))
+            report(make(remote-item, bind(glyph, <done>), bind(verb, <pull>), bind(subject, <build cache>), bind(counts, counts), bind(facts, facts)))
       halt take
         take problem
         save ignored, problem
@@ -898,8 +918,8 @@ task boot-built
         hold
           # `--out`: the bundle is the product. Nothing runs
           save fields, make list
-          fields/push(output/location(output/showPath(node-path/dirname(made/run), run/cwd)))
-          output/report(make(written-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, <run.mjs, app.mjs and dock.mjs>), bind(fields, fields)))
+          fields/push(location(show-path(node-path/dirname(made/run), run/cwd)))
+          report(make(written-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, <run.mjs, app.mjs and dock.mjs>), bind(fields, fields)))
           finish(run, <{run/bin-name} built, not run>)
         miss
           fork test, made/cli
@@ -941,23 +961,23 @@ task run-server
         fork test, is-above(pushed, 0)
           hold
             save counts, make list
-            counts/push(output/count(pushed, <artifacts>, <artifact>))
+            counts/push(count(pushed, <artifacts>, <artifact>))
             save facts, make list
             facts/push(remote)
-            output/report(make(remote-item, bind(glyph, <done>), bind(verb, <push>), bind(subject, <build cache>), bind(counts, counts), bind(facts, facts)))
+            report(make(remote-item, bind(glyph, <done>), bind(verb, <push>), bind(subject, <build cache>), bind(counts, counts), bind(facts, facts)))
       halt take
         take problem
         save ignored, problem
   # the server child, spawned from the APP dir; its lines tagged with the deck's name and ADAPTED (section 15)
   save spawned, host-date/now()
   save run/child, boot-spawn-server(run-path, run/server-cwd)
-  output/followChild(run/child, run/bin-name)
+  follow-child(run/child, run/bin-name)
   # `start` once the port takes a connection. Bounded, so a server slow to listen still gets its line, and skipped
   # when the child stopped instead
   save started, listening(run/port, run/child)
   fork test, started
     hold
-      output/report(make(timed-lifecycle-item, bind(glyph, <done>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, run/address), bind(duration, subtract(host-date/now(), spawned))))
+      report(make(timed-lifecycle-item, bind(glyph, <done>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, run/address), bind(duration, subtract(host-date/now(), spawned))))
       serve(run)
     miss
       fork test, boot-child-alive(run/child)
@@ -969,7 +989,7 @@ task run-server
           save code, boot-exited-code(run/child)
           fork test, boot-truthy(code)
             hold
-              output/report(make(exit-item, bind(glyph, <failed>), bind(kind, <lifecycle>), bind(verb, <exit>), bind(subject, <code {boot-number(code)}>), bind(exit, boot-number(code))))
+              report(make(exit-item, bind(glyph, <failed>), bind(kind, <lifecycle>), bind(verb, <exit>), bind(subject, <code {boot-number(code)}>), bind(exit, boot-number(code))))
           finish-uptime(run, <Done>)
 
 # restart the server on a freshly-built entry: the old process waited out to its EXIT (releasing the port) before the
@@ -985,7 +1005,7 @@ task restart
     hold
       boot-stop-child(run/child)
   save run/child, boot-spawn-server(next, run/server-cwd)
-  output/followChild(run/child, run/bin-name)
+  follow-child(run/child, run/bin-name)
 
 # one rebuild of the dev loop: a failed rebuild prints its problems and leaves the running server up
 task rebuild
@@ -1000,7 +1020,7 @@ task rebuild
     case some
       link next
       restart(run, next/run)
-      output/report(make(timed-lifecycle-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <reload>), bind(subject, <{name} changed>), bind(duration, subtract(host-date/now(), started))))
+      report(make(timed-lifecycle-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <reload>), bind(subject, <{name} changed>), bind(duration, subtract(host-date/now(), started))))
     case none
       save nothing, 0
 
@@ -1015,7 +1035,7 @@ task shut-down
     take stop
     boot-call(stop)
   boot-kill-quietly(run/child)
-  output/report(make(lifecycle-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <stop>), bind(subject, run/address)))
+  report(make(lifecycle-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <stop>), bind(subject, run/address)))
   host-process/exit(finish-stopped(run, failure))
 
 task serve
@@ -1054,7 +1074,7 @@ task serve
       run/stops/push(close)
       save said, make list
       said/push(<An edit rebuilds and reloads. Ctrl-C stops.>)
-      output/report(make(said-lifecycle-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <watch>), bind(subject, <app code and styles>), bind(message, said)))
+      report(make(said-lifecycle-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <watch>), bind(subject, <app code and styles>), bind(message, said)))
   host-process/on
     <SIGINT>
     task
@@ -1080,7 +1100,7 @@ task serve
           save code, boot-exited-code(run/child)
       fork test, boot-truthy(code)
         hold
-          output/report(make(exit-item, bind(glyph, <failed>), bind(kind, <lifecycle>), bind(verb, <exit>), bind(subject, <code {boot-number(code)}>), bind(exit, boot-number(code))))
+          report(make(exit-item, bind(glyph, <failed>), bind(kind, <lifecycle>), bind(verb, <exit>), bind(subject, <code {boot-number(code)}>), bind(exit, boot-number(code))))
       finish-uptime(run, <Stopped>)
 
 # ---- one build ----
@@ -1097,10 +1117,10 @@ task report-failed
   walk diagnostics
     take diagnostic
     entries/push(make(problem-entry, bind(diagnostic, diagnostic)))
-  output/reportProblems(entries, run/cwd)
+  report-problems(entries, run/cwd)
   save counts, make list
-  counts/push(output/count(diagnostics/length, <errors>, <error>))
-  output/report(make(build-item, bind(glyph, <failed>), bind(verb, <build>), bind(subject, shown-entry(run)), bind(duration, subtract(host-date/now(), started)), bind(counts, counts)))
+  counts/push(count(diagnostics/length, <errors>, <error>))
+  report(make(build-item, bind(glyph, <failed>), bind(verb, <build>), bind(subject, shown-entry(run)), bind(duration, subtract(host-date/now(), started)), bind(counts, counts)))
 
 task failed-plan
   like boot-plan
@@ -1253,9 +1273,9 @@ task bundle-plan
   fork test, and(out-given, not(cli))
     hold
       save fields, make list
-      fields/push(output/location(output/showPath(run/entry, cwd)))
+      fields/push(location(show-path(run/entry, cwd)))
       # a subject is a sentence and starts capitalized, so it leads with the word, not the flag (guides: commands/boot)
-      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <An `--out` folder holds a command-line program, and this entry declares no `hook` commands>), bind(fields, fields)))
+      report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <An `--out` folder holds a command-line program, and this entry declares no `hook` commands>), bind(fields, fields)))
       back make none
   # native `case node` templates call `require(...)`: node bundles get a real one, ANCHORED AT THE PROJECT, NOT THE
   # BUNDLE (boot-plan.tree `node-banner`). Browser bundles get none
@@ -1289,7 +1309,7 @@ task bundle-plan
       fork test, is-equal(shown, <>)
         hold
           save shown, <.>
-      fields/push(output/location(shown))
+      fields/push(location(shown))
   save bundle, node-path/join(out, <app.mjs>)
   # what the bundle inlined, each source with its hash: a kept bundle is reused only while every one still holds it
   save listed, node-path/join(cached, <inputs.json>)
@@ -1307,7 +1327,7 @@ task bundle-plan
     hold
       save facts, make list
       facts/push(<cached>)
-      output/report(make(step-item, bind(glyph, <skipped>), bind(verb, <build>), bind(subject, shown-entry(run)), bind(duration, subtract(host-date/now(), started)), bind(facts, facts), bind(fields, fields)))
+      report(make(step-item, bind(glyph, <skipped>), bind(verb, <build>), bind(subject, shown-entry(run)), bind(duration, subtract(host-date/now(), started)), bind(facts, facts), bind(fields, fields)))
     miss
       node-file/mkdir-sync(cached, make(folder-ask, bind(recursive, true)))
       node-file/mkdir-sync(out, make(folder-ask, bind(recursive, true)))
@@ -1327,7 +1347,7 @@ task bundle-plan
       save bundled, bundle-docks(dock-root, entry-file, cached, boot-joined(banners), platform)
       node-file/write-file-sync(bundle, bundled/text)
       node-file/write-file-sync(listed, boot-inlined-json(bundled/inlined))
-      output/report(make(built-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, shown-entry(run)), bind(duration, subtract(host-date/now(), started)), bind(fields, fields)))
+      report(make(built-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, shown-entry(run)), bind(duration, subtract(host-date/now(), started)), bind(fields, fields)))
   # the CLI install's node_modules linked next to the bundle, so ESM resolves the external bare specifiers. Not for
   # `--out`: a shipped bundle resolves through the package that carries it
   save bundle-modules, node-path/join(out, <node_modules>)

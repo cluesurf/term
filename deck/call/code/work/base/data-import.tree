@@ -24,10 +24,18 @@ load ./repository
   find need
   find save-repository
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find field
+  find location
+  find open-run
+  find print-data
+  find report
+
 dock load
   load <@cluesurf/save/bridge/from-data>, name from-data-module
   load <@cluesurf/save/diff/diff>, name diff-module
-  load <@term/call/code/output>, name output
   load <node:fs>, name node-fs
   load <node:path>, name node-path
 
@@ -297,14 +305,14 @@ task call-base-import
   save facts, make list
   push(facts, form)
   push(facts, branch)
-  output/open-run(make(import-open, bind(verb, <import>), bind(root, root), bind(subject, source), bind(facts, facts)))
+  open-run(make(import-open, bind(verb, <import>), bind(root, root), bind(subject, source), bind(facts, facts)))
   # neither, or both: without one of them every row would get a fresh mark and a second import would duplicate
   # every record silently. A flag the command line owed: wrong usage, exit 2 (section 18)
   fork test, is-equal(lift-is-absent(key), lift-is-absent(mark))
     hold
       save fields, make list
-      push(fields, output/field(<--key>, <the column identifies a row in the source; the mark is found or created against it, so a re-import updates>))
-      push(fields, output/field(<--mark>, <the column already holds a uuid version 4, and it is used as the mark>))
+      push(fields, field(<--key>, <the column identifies a row in the source; the mark is found or created against it, so a re-import updates>))
+      push(fields, field(<--mark>, <the column already holds a uuid version 4, and it is used as the mark>))
       refuse(<Say where the mark comes from, with exactly one of --key and --mark>, make(usage-refusal, bind(failure, <usage>), bind(fields, fields), bind(verdict, <The command line was not understood>)))
   save held, need(root)
   save repo, held/repo
@@ -318,13 +326,13 @@ task call-base-import
       walk found
         take row, like dynamic
         push(rows, row)
-      output/report(make(read-item, bind(glyph, <done>), bind(verb, <read>), bind(subject, node-path/basename(file)), bind(counts, one-of(output/count(found/length, <rows>, <row>)))))
+      report(make(read-item, bind(glyph, <done>), bind(verb, <read>), bind(subject, node-path/basename(file)), bind(counts, one-of(count(found/length, <rows>, <row>)))))
     halt take
       take error
-      refuse(lift-message-of(error), make(fields-refusal, bind(fields, one-of(output/location(file)))))
+      refuse(lift-message-of(error), make(fields-refusal, bind(fields, one-of(location(file)))))
   fork test, is-equal(rows/length, 0)
     hold
-      output/close-run(make(import-close-counts, bind(verdict, <Nothing to import>), bind(counts, one-of(output/count(0, <rows>, <row>)))))
+      close-run(make(import-close-counts, bind(verdict, <Nothing to import>), bind(counts, one-of(count(0, <rows>, <row>)))))
       back
   save head, repo/head(branch)
   save existing, lift-new-map()
@@ -356,11 +364,11 @@ task call-base-import
   fork test, is-equal(changes/length, 0)
     hold
       save counts, make list
-      push(counts, output/count(rows/length, <rows>, <row>))
-      push(counts, output/count(0, <changes>, <change>))
+      push(counts, count(rows/length, <rows>, <row>))
+      push(counts, count(0, <changes>, <change>))
       save said, make list
       push(said, <Every record is already what the source says.>)
-      output/close-run(make(import-close-counts-message, bind(verdict, <Nothing changed>), bind(counts, counts), bind(message, said)))
+      close-run(make(import-close-counts-message, bind(verdict, <Nothing changed>), bind(counts, counts), bind(message, said)))
       back
   save message, input/message
   fork test, lift-is-absent(message)
@@ -374,17 +382,19 @@ task call-base-import
         hold
           walk diagnostics
             take one, like dynamic
-            save at, one/mark
+            # the engine's answer, a host value (seam decision 004)
+            save at, like dynamic
+              read one/mark
             fork test, lift-is-absent(at)
               hold
                 save at, <(dataset)>
-            output/report(make(diagnostic-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, one/message), bind(fields, one-of(output/field(<mark>, at)))))
-      output/close-run(make(import-close, bind(verdict, <The commit was refused>)))
+            report(make(diagnostic-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, one/message), bind(fields, one-of(field(<mark>, at)))))
+      close-run(make(import-close, bind(verdict, <The commit was refused>)))
       back
   save-repository(held)
   # the commit hash is what a script captures, so it is data
   save ending, lift-line-break()
-  output/print-data(<{done/commit}{ending}>)
+  print-data(<{done/commit}{ending}>)
   save plural, <s>
   fork test, is-equal(records/length, 1)
     hold
@@ -394,9 +404,9 @@ task call-base-import
     hold
       save column, mark
   save tallies, make list
-  push(tallies, output/count(lifted/minted, <new>))
-  push(tallies, output/count(lifted/reused, <matched>))
+  push(tallies, count(lifted/minted, <new>))
+  push(tallies, count(lifted/reused, <matched>))
   save said, make list
   push(said, <by {column}>)
-  output/report(make(committed-item, bind(glyph, <done>), bind(verb, <commit>), bind(subject, <{records/length} {form} record{plural}>), bind(counts, tallies), bind(facts, said)))
-  output/close-run(make(import-close-counts, bind(verdict, <Imported onto {branch}>), bind(counts, one-of(output/count(changes/length, <changes>, <change>)))))
+  report(make(committed-item, bind(glyph, <done>), bind(verb, <commit>), bind(subject, <{records/length} {form} record{plural}>), bind(counts, tallies), bind(facts, said)))
+  close-run(make(import-close-counts, bind(verdict, <Imported onto {branch}>), bind(counts, one-of(count(changes/length, <changes>, <change>)))))

@@ -12,8 +12,11 @@
 # TWO INSTALLS OF ONE VERSION AT ONCE are serialized by a lock directory beside the version, made with one atomic
 # `mkdir`. The second waits, then finds the first one's result.
 #
-# The registry is @cluesurf/deck.tree's, docked (decision cli-in-term/002); its answers are host values read by their
-# fields. What this module answers keeps the original's shapes: a field the original left out is a need-false maybe.
+# The registry is @term/deck's ports, loaded (term-cli-in-term-0235, where @cluesurf/deck.tree's faces were docked):
+# toolchain-release, toolchain-pin, oci-routing and key-trust. Their answers are host values read by their fields. A
+# registry refusal is oci-failure (decision 007), whose message is its pinned note, so a caught failure is said by its
+# `thing` (`install-message-of`). What this module answers keeps the original's shapes: a field the original left out
+# is a need-false maybe.
 
 load @term/base/list
   find list
@@ -57,8 +60,24 @@ load @term/call/work/small/home-folder
   find user-home
   find user-front-dir
 
+# the registry: @term/deck's ports
+load @term/deck/oci/toolchain-release
+  find release-route
+  find read-release
+  find current-platform
+
+load @term/deck/oci/toolchain-pin
+  find released-versions
+  find newest-matching
+
+load @term/deck/oci/oci-routing
+  find transport-for
+  find trust-dir
+
+load @term/deck/oci/key-trust
+  find trusted-keys
+
 dock load
-  load <@cluesurf/deck.tree>, name deck-tree
   load <node:fs>, name node-file
   load <node:fs/promises>, name file-promise
   load <node:path>, name node-path
@@ -90,19 +109,20 @@ bind nothing
   case node
     text <undefined>
 
-# a failure's message as the original printed one: an Error's message, else the value as text
-bind message-of
+# a failure's message as the original printed one: an Error's message, else the value as text. An oci-failure is said
+# by its `thing`, the original OciError's message (decision 007): its own message is the pinned note
+bind install-message-of
   take problem, like dynamic
   like text
   case node
-    text <($problem instanceof Error ? $problem.message : String($problem))>
+    text <<((installProblem_) => (installProblem_?.form === "oci-failure" ? String(installProblem_.link?.thing ?? "") : installProblem_ instanceof Error ? installProblem_.message : String(installProblem_)))($problem)>>
 
-# `(error as Error).message` written into a template
-bind message-field
+# `(error as Error).message` written into a template, an oci-failure's by its `thing` (decision 007)
+bind install-message-field
   take problem, like dynamic
   like text
   case node
-    text <String($problem.message)>
+    text <<((installProblem_) => (installProblem_?.form === "oci-failure" ? String(installProblem_.link?.thing ?? "") : String(installProblem_.message)))($problem)>>
 
 # a caught failure, raised again as it was
 bind raise-again
@@ -169,34 +189,6 @@ task tar-path
   back node-path/join(root, <System32>, <tar.exe>)
 
 # ---- the shapes ----
-
-form route-ask
-  link package, like text
-
-form host-ask
-  link host, like dynamic
-
-form versions-ask
-  link transport, like dynamic
-  link repository, like dynamic
-
-form release-ask
-  link transport, like dynamic
-  link repository, like dynamic
-  link package, like text
-  link version, like text
-  link platform, like text
-
-form keys-ask
-  link transport, like dynamic
-  link repository, like dynamic
-  link scope, like dynamic
-  link host, like dynamic
-  link trust-dir, like dynamic
-
-form matching-ask
-  link versions, like dynamic
-  link hold, like dynamic
 
 form manifest-ask
   link repository, like dynamic
@@ -393,15 +385,15 @@ task filled
 task route-of
   like dynamic
 
-  back deck-tree/release-route(make(route-ask, bind(package, release-package())))
+  back release-route(release-package(), nothing())
 
 # every released version, newest first
 task list-releases
   like dynamic
 
   save route, route-of()
-  save transport, deck-tree/transport-for(make(host-ask, bind(host, route/registry/host)))
-  back wait deck-tree/released-versions(make(versions-ask, bind(transport, transport), bind(repository, route/repository/name)))
+  save transport, transport-for(route/registry/host, false)
+  back released-versions(transport, route/repository/name)
 
 # One release, verified in full: the index, the platform's manifest, the signature over the layer, and the signer in the
 # scope's key set
@@ -410,12 +402,13 @@ task verify-release
   like verified
 
   save route, route-of()
-  save transport, deck-tree/transport-for(make(host-ask, bind(host, route/registry/host)))
+  save transport, transport-for(route/registry/host, false)
   save answer, not-verified(<>)
   fork
     mark unsafe
-    save release, wait deck-tree/read-release(make(release-ask, bind(transport, transport), bind(repository, route/repository/name), bind(package, release-package()), bind(version, input/version), bind(platform, input/platform)))
-    save trusted, wait deck-tree/trusted-keys(make(keys-ask, bind(transport, transport), bind(repository, route/keys-repository), bind(scope, route/scope), bind(host, route/registry/host), bind(trust-dir, deck-tree/trust-dir())))
+    save release, read-release(transport, route/repository/name, release-package(), input/version, input/platform)
+    save trusted-at, trust-dir()
+    save trusted, trusted-keys(transport, route/keys-repository, route/scope, route/registry/host, trusted-at, nothing())
     save scope, route/scope
     fork test, not(host-truth(trusted))
       hold
@@ -435,7 +428,7 @@ task verify-release
             save answer, make(verified, bind(ok, true), bind(layer, make(some, layer)), bind(size, release/size), bind(config, release/config), bind(keys, make(some, keys)))
   halt take
     take problem
-    save answer, not-verified(message-of(problem))
+    save answer, not-verified(install-message-of(problem))
   back answer
 
 # Install a version: an exact one, or the newest release in a range. `expect` is a lock.tree pin's index digest, which
@@ -447,7 +440,7 @@ task load-version
   save platform, input/platform
   fork test, is-nullish(platform)
     hold
-      save platform, deck-tree/current-platform()
+      save platform, current-platform()
   fork test, not(host-truth(platform))
     hold
       save os, host-process/platform
@@ -455,7 +448,7 @@ task load-version
       back not-loaded(<No release is built for {os}-{arch}>)
 
   save route, route-of()
-  save transport, deck-tree/transport-for(make(host-ask, bind(host, route/registry/host)))
+  save transport, transport-for(route/registry/host, false)
   save version, <>
   fork test, host-truth(input/version)
     hold
@@ -470,17 +463,17 @@ task load-version
       save unread, <>
       fork
         mark unsafe
-        save versions, wait deck-tree/released-versions(make(versions-ask, bind(transport, transport), bind(repository, route/repository/name)))
+        save versions, released-versions(transport, route/repository/name)
       halt take
         take problem
         save host, route/registry/host
         save name, route/repository/name
-        save said, message-field(problem)
+        save said, install-message-field(problem)
         save unread, <the releases at {host}/{name} could not be read: {said}>
       fork test, is-unequal(unread, <>)
         hold
           back not-loaded(unread)
-      save newest, deck-tree/newest-matching(make(matching-ask, bind(versions, versions), bind(hold, input/hold)))
+      save newest, newest-matching(versions, input/hold)
       fork test, not(host-truth(newest))
         hold
           save tail, <>

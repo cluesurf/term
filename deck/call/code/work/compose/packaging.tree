@@ -36,12 +36,18 @@ load ./android
 load ../boot/entry-finding
   find find-entry
 
+load @term/call/work/output/printer
+  find close-run
+  find location
+  find open-run
+  find report
+  find show-path
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <node:child_process>, name node-child
   load <global:process>, name host-process
-  load <@term/call/code/output>, name output
 
 form package-folder
   link recursive, like boolean
@@ -195,11 +201,11 @@ task make-compose
   save entry, value-or(find-entry(root, ask/entry), node-path/join(root, named))
   save facts, make list
   facts/push(<--target {target}>)
-  output/open-run(make(make-open, bind(verb, <make>), bind(root, root), bind(facts, facts)))
+  open-run(make(make-open, bind(verb, <make>), bind(root, root), bind(facts, facts)))
 
   fork test, not(node-fs/exists-sync(entry))
     hold
-      refuse(<There is no app entry at {output/show-path(entry, root)}: a Compose app is a program with a `boot` task, named by the `boot` line of deck.tree (--entry names another file)>, <usage>)
+      refuse(<There is no app entry at {show-path(entry, root)}: a Compose app is a program with a `boot` task, named by the `boot` line of deck.tree (--entry names another file)>, <usage>)
 
   save identity, compose-identity-of(root)
   save name, identity/name
@@ -234,9 +240,9 @@ task make-compose
           link built-apk
           node-fs/copy-file-sync(built-apk, apk)
       save fields, make list
-      fields/push(output/location(output/show-path(apk, root)))
-      output/report(make(make-built-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <compose-android>), bind(duration, subtract(now-ms(), started)), bind(fields, fields)))
-      output/close-run(make(make-close, bind(verdict, <Android app built>)))
+      fields/push(location(show-path(apk, root)))
+      report(make(make-built-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <compose-android>), bind(duration, subtract(now-ms(), started)), bind(fields, fields)))
+      close-run(make(make-close, bind(verdict, <Android app built>)))
       back make(made-app, bind(app, apk))
 
   save desktop
@@ -263,9 +269,9 @@ task make-compose
       link built-main
       save app, package-compose-desktop(make(package-ask, bind(jar, built-jar), bind(classpath, built-classpath), bind(main, built-main), bind(name, name), bind(out, out)))
   save fields, make list
-  fields/push(output/location(output/show-path(app, root)))
-  output/report(make(make-built-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <compose>), bind(duration, subtract(now-ms(), started)), bind(fields, fields)))
-  output/close-run(make(make-close, bind(verdict, <Desktop app built>)))
+  fields/push(location(show-path(app, root)))
+  report(make(make-built-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <compose>), bind(duration, subtract(now-ms(), started)), bind(fields, fields)))
+  close-run(make(make-close, bind(verdict, <Desktop app built>)))
   back make(made-app, bind(app, app))
 
 # a tool run with its output kept, for its failure to name

@@ -30,9 +30,15 @@ load @term/call/kink-find
 load ../inspect/linting
   find manifest-catalog
 
+load @term/call/work/output/printer
+  find close-run
+  find field
+  find open-run
+  find print-data
+  find report
+
 dock load
   load <@term/make/code/lint/lint>, name lint-module
-  load <@term/call/code/output>, name output
 
 # ---- the host values Term has no word for ----
 
@@ -160,13 +166,13 @@ task show-kink
           walk all
             take one
             shaped/push(tool-kink-json(one))
-          output/print-data(<{tool-json-text(shaped)}\n>)
+          print-data(<{tool-json-text(shaped)}\n>)
         miss
           save lines, make list
           walk all
             take one
             lines/push(listed(one))
-          output/print-data(lines/join(<>))
+          print-data(lines/join(<>))
       back
 
   save query, tool-as-text(input/query)
@@ -176,23 +182,23 @@ task show-kink
       link found
       fork test, json
         hold
-          output/print-data(<{tool-json-text(tool-kink-json(found))}\n>)
+          print-data(<{tool-json-text(tool-kink-json(found))}\n>)
         miss
-          output/print-data(shown(found))
+          print-data(shown(found))
     case none
       save near, nearest(tool-lower(query), kink-names(all))
       fork test, json
         hold
-          output/print-data(<{tool-json-text(tool-not-found(query, near))}\n>)
+          print-data(<{tool-json-text(tool-not-found(query, near))}\n>)
           tool-exit-one()
           back
-      output/open-run(make(kink-open, bind(verb, <show>), bind(root, input/root)))
+      open-run(make(kink-open, bind(verb, <show>), bind(root, input/root)))
       save subject, <There is no diagnostic named {query}>
       fork test, is-unequal(near, <>)
         hold
           save fields, make list
-          fields/push(output/field(<near>, near))
-          output/report(make(kink-problem-near, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject), bind(fields, fields)))
+          fields/push(field(<near>, near))
+          report(make(kink-problem-near, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject), bind(fields, fields)))
         miss
-          output/report(make(kink-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject)))
-      output/close-run(make(kink-close, bind(verdict, <Nothing shown>), bind(next, <term show kink, which lists every name and code>)))
+          report(make(kink-problem, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject)))
+      close-run(make(kink-close, bind(verdict, <Nothing shown>), bind(next, <term show kink, which lists every name and code>)))

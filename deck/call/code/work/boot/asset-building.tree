@@ -14,11 +14,16 @@ load @term/make/term/hash
 load @term/base/text
   find ends-with
 
+load @term/call/work/output/printer
+  find count
+  find location
+  find report
+  find report-problems
+
 dock load
   load <node:fs>, name node-file
   load <node:path>, name node-path
   load <@term/make/code/compile/compile>, name style-compiler
-  load <@term/call/code/output>, name output
   load <global:global>, name host-global
 
 form folder-ask
@@ -176,10 +181,10 @@ task write-manifest
         boot-record-put(map, logical, hashed)
   node-file/write-file-sync(manifest-file, boot-record-json(map))
   save counts, make list
-  counts/push(output/count(boot-record-size(map), <assets>, <asset>))
+  counts/push(count(boot-record-size(map), <assets>, <asset>))
   save fields, make list
-  fields/push(output/location(<build/asset-manifest.json>))
-  output/report(make(manifest-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, <asset manifest>), bind(counts, counts), bind(fields, fields)))
+  fields/push(location(<build/asset-manifest.json>))
+  report(make(manifest-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, <asset manifest>), bind(counts, counts), bind(fields, fields)))
 
 # the dev live-reload build id: the client polls `/base/__id` and reloads when it changes. Bumped on boot and on every
 # hot style rebuild. A timestamp is enough (monotonic and unique). A failed write never fails the build
@@ -232,7 +237,7 @@ task build-style
         walk result/diagnostics
           take diagnostic
           problems/push(make(style-problem, bind(diagnostic, diagnostic), bind(text, text)))
-        output/reportProblems(problems, app-dir)
+        report-problems(problems, app-dir)
     fork test, and(result/ok, boot-is-defined(result/css))
       hold
         node-file/write-file-sync(node-path/join(out-dir, boot-css-name(name)), result/css)
@@ -266,7 +271,7 @@ task watch-styles
               like void
               build-styles(app-dir)
               write-build-id(app-dir)
-              output/report(make(reload-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <reload>), bind(subject, <styles>)))
+              report(make(reload-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <reload>), bind(subject, <styles>)))
             60
   back
     task

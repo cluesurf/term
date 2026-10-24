@@ -6,10 +6,14 @@
 # A deck or a constraint left out is the empty text, which the original's `!input.deck` and `input.constraint ?`
 # read the same as one left out.
 
+load @term/call/work/output/printer
+  find close-run
+  find open-run
+  find report
+
 dock load
   load <@cluesurf/deck.tree>, name deck-tree-module
     mark async
-  load <@term/call/code/output>, name output
   load <global:Error>, name host-error
   load <global:String>, name host-string
 
@@ -84,8 +88,8 @@ task report-failed
 
   save said, make list
   said/push(message-of(error))
-  output/report(make(failed-item, bind(glyph, <failed>), bind(verb, verb), bind(subject, deck), bind(message, said)))
-  output/close-run(make(plain-close, bind(verdict, verdict)))
+  report(make(failed-item, bind(glyph, <failed>), bind(verb, verb), bind(subject, deck), bind(message, said)))
+  close-run(make(plain-close, bind(verdict, verdict)))
 
 # the constraint goes on as the text, the empty text for none: addDependency reads it by truth, so '' is undefined
 task add-dependency
@@ -100,8 +104,8 @@ task add-dependency
   fork test, is-unequal(constraint, <>)
     hold
       facts/push(constraint)
-  output/report(make(change-facts-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, deck), bind(facts, facts)))
-  output/close-run(make(done-close, bind(verdict, <Added {deck}>), bind(done, true)))
+  report(make(change-facts-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, deck), bind(facts, facts)))
+  close-run(make(done-close, bind(verdict, <Added {deck}>), bind(done, true)))
 
 task call-save
   take root, like text
@@ -109,11 +113,11 @@ task call-save
   take constraint, like text
   like void
 
-  output/open-run(make(plain-open, bind(verb, <save>), bind(root, root)))
+  open-run(make(plain-open, bind(verb, <save>), bind(root, root)))
   fork test, is-equal(deck, <>)
     hold
-      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no deck to add>)))
-      output/close-run(make(usage-close, bind(verdict, <Nothing added>), bind(next, <term save \<deck\> [mark]>), bind(failure, <usage>)))
+      report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no deck to add>)))
+      close-run(make(usage-close, bind(verdict, <Nothing added>), bind(next, <term save \<deck\> [mark]>), bind(failure, <usage>)))
     miss
       fork
         mark unsafe
@@ -129,19 +133,19 @@ task remove-dependency
   mark private
 
   deck-tree-module/remove-dependency(make(remove-ask, bind(root, root), bind(name, deck)))
-  output/report(make(change-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <remove>), bind(subject, deck)))
-  output/close-run(make(done-close, bind(verdict, <Removed {deck}>), bind(done, true)))
+  report(make(change-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <remove>), bind(subject, deck)))
+  close-run(make(done-close, bind(verdict, <Removed {deck}>), bind(done, true)))
 
 task call-toss
   take root, like text
   take deck, like text
   like void
 
-  output/open-run(make(plain-open, bind(verb, <toss>), bind(root, root)))
+  open-run(make(plain-open, bind(verb, <toss>), bind(root, root)))
   fork test, is-equal(deck, <>)
     hold
-      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no deck to remove>)))
-      output/close-run(make(usage-close, bind(verdict, <Nothing removed>), bind(next, <term toss \<deck\>>), bind(failure, <usage>)))
+      report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no deck to remove>)))
+      close-run(make(usage-close, bind(verdict, <Nothing removed>), bind(next, <term toss \<deck\>>), bind(failure, <usage>)))
     miss
       fork
         mark unsafe

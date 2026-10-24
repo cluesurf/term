@@ -12,7 +12,8 @@
 # test file (call/code/snapshot-keep.tree).
 #
 # Ported from deck/call/code/test-preprocess.ts (term-cli-in-term-0021): preprocessTests, readable, carriesTests and
-# everything under them. The data reader (@term/deck/code/read) and the text escape (compile/host) are docked.
+# everything under them. The data reader is @term/deck's tree-reading port (term-cli-in-term-0234, where its face
+# package/read.ts was docked), and the text escape (compile/host) is docked.
 
 load @term/base/list
   find list
@@ -30,8 +31,10 @@ load @term/call/work/preprocess/condition-reading
   find conjuncts
   find save-of
 
+load @term/deck/package/tree-reading
+  find read-tree
+
 dock load
-  load <@term/deck/code/package/read>, name data-reading-module
   load <@term/make/code/compile/host>, name host-text-module
 
 # a guard's lines, each with the source line it came from
@@ -58,10 +61,6 @@ form placed-point
 
 form placed-diagnostic
   link diagnostic, like dynamic
-  link text, like text
-
-form data-ask
-  link file, like text
   link text, like text
 
 # the type a sampled `take` samples as: `number`, `text`, `boolean`, a `list` of its one item, or `refused` with what
@@ -964,7 +963,7 @@ task sampled-test
         walk group
           take n, like number
           texts/push(rewrite-cut(lines/{n}, 2))
-        save read, data-reading-module/read-tree(make(data-ask, bind(file, <take.tree>), bind(text, rewrite-joined(texts))))
+        save read, read-tree(<take.tree>, rewrite-joined(texts))
         save taken-form, data-read-form(read)
         save named, form-first-term(taken-form)
         save name, <value>

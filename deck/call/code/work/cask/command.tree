@@ -106,12 +106,26 @@ load ../context/app-scope
 load ../tool/show-command
   find tool-version
 
+# the page's dev server: lane serve's port of dev/server.ts, where it was imported at run time
+load ../serve/dev-serving
+  find start-dev-server
+
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find field
+  find follow-child
+  find is-run-open
+  find location
+  find open-run
+  find report
+  find show-path
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <global:process>, name host-process
   load <@term/make/code/compile/load>, name load-module
-  load <@term/call/code/output>, name output
 
 # whether makeCask opened the run it prints into, so it closes only its own: the original's module variable `owned`,
 # kept for the life of the process
@@ -287,11 +301,6 @@ form child-ask
   link stdio, like list, like text
 
 # esbuild-free: the dev server, loaded when `term work --target` runs and not before
-bind load-dev-server
-  like dynamic
-  case node
-    text <(await import("@term/call/code/dev/server"))>
-
 # until the child process closes
 bind child-closed
   take child, like dynamic
@@ -398,19 +407,19 @@ task report-bridge
     hold
       save glyph, <warning>
   save counts, make list
-  counts/push(output/count(generated/carried, <commands>, <command>))
+  counts/push(count(generated/carried, <commands>, <command>))
   fork test, is-above(refused, 0)
     hold
-      counts/push(output/count(refused, <refused>))
-  counts/push(output/count(generated/written, <written>))
-  output/report(make(counted-item, bind(glyph, glyph), bind(verb, <build>), bind(subject, <bridge>), bind(counts, counts)))
+      counts/push(count(refused, <refused>))
+  counts/push(count(generated/written, <written>))
+  report(make(counted-item, bind(glyph, glyph), bind(verb, <build>), bind(subject, <bridge>), bind(counts, counts)))
 
 task report-page
   take bytes, like number
   take started, like number
   like void
 
-  output/report(make(sized-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <page>), bind(duration, subtract(now-ms(), started)), bind(bytes, bytes)))
+  report(make(sized-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <page>), bind(duration, subtract(now-ms(), started)), bind(bytes, bytes)))
 
 task report-program
   take started, like number
@@ -420,7 +429,7 @@ task report-program
 
   save facts, make list
   facts/push(target)
-  output/report(make(timed-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <program>), bind(duration, subtract(now-ms(), started)), bind(facts, facts)))
+  report(make(timed-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <program>), bind(duration, subtract(now-ms(), started)), bind(facts, facts)))
 
 # a launch on a device or simulator when one is there, or a skipped `launch` item saying why not
 task launch-on
@@ -435,12 +444,12 @@ task launch-on
   fork test, has-key(found, <missing>)
     hold
       save fields, make list
-      fields/push(output/field(<reason>, found/missing))
-      output/report(make(fielded-item, bind(glyph, <skipped>), bind(verb, <launch>), bind(subject, where), bind(fields, fields)))
+      fields/push(field(<reason>, found/missing))
+      report(make(fielded-item, bind(glyph, <skipped>), bind(verb, <launch>), bind(subject, where), bind(fields, fields)))
       send back
   save started, now-ms()
   launch(found)
-  output/report(make(launched-item, bind(glyph, <done>), bind(verb, <launch>), bind(subject, where), bind(duration, subtract(now-ms(), started))))
+  report(make(launched-item, bind(glyph, <done>), bind(verb, <launch>), bind(subject, where), bind(duration, subtract(now-ms(), started))))
 
 # the app's place as the build's last item, and the run closed when makeCask opened it
 task finish-cask
@@ -450,12 +459,12 @@ task finish-cask
   like void
 
   save fields, make list
-  fields/push(output/location(output/show-path(app, root)))
-  output/report(make(fielded-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, <app>), bind(fields, fields)))
+  fields/push(location(show-path(app, root)))
+  report(make(fielded-item, bind(glyph, <done>), bind(verb, <write>), bind(subject, <app>), bind(fields, fields)))
   fork test, owns-run()
     hold
       set-owned(false)
-      output/close-run(make(run-close, bind(verdict, verdict)))
+      close-run(make(run-close, bind(verdict, verdict)))
 
 task make-cask
   take input, like cask-ask
@@ -464,12 +473,12 @@ task make-cask
 
   save target, input/target
   # a run of its own, unless one is open: `term work --target` holds the run and builds the cask inside it
-  set-owned(not(output/is-run-open()))
+  set-owned(not(is-run-open()))
   fork test, owns-run()
     hold
       save facts, make list
       facts/push(<--target {target}>)
-      output/open-run(make(run-open, bind(verb, <make>), bind(root, input/root), bind(facts, facts)))
+      open-run(make(run-open, bind(verb, <make>), bind(root, input/root), bind(facts, facts)))
 
   save targets, cask-targets()
   fork test, not(contains(targets, target))
@@ -608,14 +617,14 @@ task make-cask
   sign-bundle(make(sign-ask, bind(app, bundle/app), bind(identity, input/sign)))
   save signed-facts, make list
   signed-facts/push(<{value-or(input/sign, <ad hoc>)}>)
-  output/report(make(signed-item, bind(glyph, <done>), bind(verb, <sign>), bind(subject, name), bind(facts, signed-facts)))
+  report(make(signed-item, bind(glyph, <done>), bind(verb, <sign>), bind(subject, name), bind(facts, signed-facts)))
 
   fork test, is-truthy(input/dmg)
     hold
       save dmg, make-dmg(make(dmg-ask, bind(app, bundle/app), bind(name, name), bind(out, out)))
       save dmg-fields, make list
-      dmg-fields/push(output/location(output/show-path(dmg, root)))
-      output/report(make(fielded-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <disk image>), bind(fields, dmg-fields)))
+      dmg-fields/push(location(show-path(dmg, root)))
+      report(make(fielded-item, bind(glyph, <done>), bind(verb, <build>), bind(subject, <disk image>), bind(fields, dmg-fields)))
 
   finish-cask(root, bundle/app, <{name} built for {target}>)
   back make(cask-made, bind(app, bundle/app))
@@ -724,9 +733,9 @@ task make-rust-cask
       save facts, make list
       facts/push(target)
       save fields, make list
-      fields/push(output/field(<reason>, <This is not a {target} box, so the executable is built there.>))
-      fields/push(output/location(output/show-path(program/project, root)))
-      output/report
+      fields/push(field(<reason>, <This is not a {target} box, so the executable is built there.>))
+      fields/push(location(show-path(program/project, root)))
+      report
         make skipped-item
           bind glyph, <skipped>
           bind verb, <build>
@@ -827,17 +836,16 @@ task work-cask
   save target, input/target
   save page, node-path/resolve(root, value-or(input/page, default-page()))
   save port, value-or(input/port, 5179)
-  save dev, load-dev-server()
   save started, now-ms()
-  save server, dev/start-dev-server(make(dev-ask, bind(root, root), bind(entry, page), bind(port, port), bind(env, <webview>), bind(boot, true)))
+  save server, start-dev-server(make(dev-ask, bind(root, root), bind(entry, page), bind(port, port), bind(env, <webview>), bind(boot, true)))
   save url, <http://localhost:{server/port}/>
   # a service (section 11): the dev server's `start` item, the cask built inside this run, `Stopped` at the end
   save open-facts, make list
   open-facts/push(<--target {target}>)
-  output/open-run(make(run-open, bind(verb, <work>), bind(root, root), bind(facts, open-facts)))
+  open-run(make(run-open, bind(verb, <work>), bind(root, root), bind(facts, open-facts)))
   save start-fields, make list
-  start-fields/push(output/field(<page>, output/show-path(page, root)))
-  output/report
+  start-fields/push(field(<page>, show-path(page, root)))
+  report
     make lifecycle-item
       bind glyph, <done>
       bind kind, <lifecycle>
@@ -874,7 +882,7 @@ task work-cask
         save name, app-identity(root)/name
         save said, make list
         said/push(<Edit a .tree file and the page swaps in place. Close the window to stop.>)
-        output/report(make(said-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, name), bind(message, said)))
+        report(make(said-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, name), bind(message, said)))
         # spawned, not run synchronously: the dev server lives in this process and a blocking wait would starve it.
         # The app's lines are ADAPTED (section 15), each an item tagged with the app's name, or passed through under --raw
         save stdio, make list
@@ -882,18 +890,18 @@ task work-cask
         stdio/push(<pipe>)
         stdio/push(<pipe>)
         save child, spawn-app(node-path/join(made/app, <Contents/MacOS>, name), stdio)
-        output/follow-child(child, name)
+        follow-child(child, name)
         child-closed(child)
-        output/close-run(make(run-stopped, bind(verdict, <Stopped>), bind(uptime, true)))
+        close-run(make(run-stopped, bind(verdict, <Stopped>), bind(uptime, true)))
       miss
         save said, make list
         said/push(<The app is loading the dev server. Ctrl-C stops the server.>)
-        output/report(make(said-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, <device>), bind(message, said)))
+        report(make(said-item, bind(glyph, <info>), bind(kind, <lifecycle>), bind(verb, <start>), bind(subject, <device>), bind(message, said)))
         host-process/once
           <SIGINT>
           task
             like void
-            host-process/exit(output/close-run(make(run-interrupted, bind(verdict, <Stopped>), bind(failure, <interrupted>), bind(uptime, true))))
+            host-process/exit(close-run(make(run-interrupted, bind(verdict, <Stopped>), bind(failure, <interrupted>), bind(uptime, true))))
         wait-forever()
   halt take
     take problem

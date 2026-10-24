@@ -7,10 +7,16 @@
 # docked (decision cli-in-term/002), and every item prints through the output library, docked. Each task takes the
 # original's input record as it is, so a caller passes what it passed before.
 
+load @term/call/work/output/printer
+  find close-run
+  find field
+  find open-run
+  find report
+  find show-path
+
 dock load
   load <@cluesurf/deck.tree>, name deck-tree-module
     mark async
-  load <@term/call/code/output>, name output
   load <node:fs>, name node-fs
   load <node:fs/promises>, name fs-promise
     mark async
@@ -127,8 +133,8 @@ task refused
   fork test, host-error/prototype/is-prototype-of(error)
     hold
       save subject, error/message
-  output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject)))
-  output/close-run(make(plain-close, bind(verdict, verdict)))
+  report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, subject)))
+  close-run(make(plain-close, bind(verdict, verdict)))
 
 # no argument: register the current package in the global link registry, so any project can later `term link
 # <name>` to use this working copy
@@ -138,8 +144,8 @@ task register-link
   mark private
 
   save full-name, deck-tree-module/register-global-link(make(register-ask, bind(package-dir, root)))
-  output/report(make(change-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, full-name), bind(facts, one-of(<global link>))))
-  output/close-run(make(next-done-close, bind(verdict, <{full-name} is registered>), bind(next, <term link {full-name}, in the project that uses it>), bind(done, true)))
+  report(make(change-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, full-name), bind(facts, one-of(<global link>))))
+  close-run(make(next-done-close, bind(verdict, <{full-name} is registered>), bind(next, <term link {full-name}, in the project that uses it>), bind(done, true)))
 
 task link-deck
   take root, like dynamic
@@ -151,8 +157,8 @@ task link-deck
   save consumed, deck-tree-module/consume-global-link(make(consume-ask, bind(root, root), bind(name, deck)))
   fork test, is-truthy(consumed)
     hold
-      output/report(make(change-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, deck), bind(facts, one-of(<from the global registry>))))
-      output/close-run(make(done-close, bind(verdict, <{deck} is linked>), bind(done, true)))
+      report(make(change-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, deck), bind(facts, one-of(<from the global registry>))))
+      close-run(make(done-close, bind(verdict, <{deck} is linked>), bind(done, true)))
       back
   # otherwise the argument is a path to a local package
   save package-dir, node-path/resolve(deck)
@@ -167,12 +173,12 @@ task link-deck
     save present, false
   fork test, not(present)
     hold
-      output/report(make(looked-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <{deck} is not in the global link registry and is not a local package>), bind(fields, one-of(output/field(<looked>, output/show-path(manifest))))))
-      output/close-run(make(next-close, bind(verdict, <Not linked>), bind(next, <term link, inside {deck}, to register it>)))
+      report(make(looked-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <{deck} is not in the global link registry and is not a local package>), bind(fields, one-of(field(<looked>, show-path(manifest))))))
+      close-run(make(next-close, bind(verdict, <Not linked>), bind(next, <term link, inside {deck}, to register it>)))
       back
   deck-tree-module/dev-link(make(dev-link-ask, bind(root, root), bind(package-dir, package-dir)))
-  output/report(make(change-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, deck), bind(facts, one-of(output/show-path(package-dir)))))
-  output/close-run(make(done-close, bind(verdict, <{deck} is linked>), bind(done, true)))
+  report(make(change-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, deck), bind(facts, one-of(show-path(package-dir)))))
+  close-run(make(done-close, bind(verdict, <{deck} is linked>), bind(done, true)))
 
 task call-link
   take input, like dynamic
@@ -182,7 +188,7 @@ task call-link
   save deck, input/deck
   fork test, not(is-truthy(deck))
     hold
-      output/open-run(make(plain-open, bind(verb, <link>), bind(root, root), bind(facts, one-of(<global>))))
+      open-run(make(plain-open, bind(verb, <link>), bind(root, root), bind(facts, one-of(<global>))))
       fork
         mark unsafe
         register-link(root)
@@ -190,7 +196,7 @@ task call-link
         take error
         refused(error, <Not registered>)
       back
-  output/open-run(make(plain-open, bind(verb, <link>), bind(root, root), bind(facts, one-of(deck))))
+  open-run(make(plain-open, bind(verb, <link>), bind(root, root), bind(facts, one-of(deck))))
   fork
     mark unsafe
     link-deck(root, deck)
@@ -205,8 +211,8 @@ task unlink-deck
   mark private
 
   deck-tree-module/dev-unlink(make(unlink-ask, bind(root, root), bind(name, deck)))
-  output/report(make(change-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <remove>), bind(subject, deck), bind(facts, one-of(<link>))))
-  output/close-run(make(done-close, bind(verdict, <{deck} is unlinked>), bind(done, true)))
+  report(make(change-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <remove>), bind(subject, deck), bind(facts, one-of(<link>))))
+  close-run(make(done-close, bind(verdict, <{deck} is unlinked>), bind(done, true)))
 
 task call-unlink
   take input, like dynamic
@@ -218,11 +224,11 @@ task call-unlink
   fork test, is-truthy(deck)
     hold
       facts/push(deck)
-  output/open-run(make(plain-open, bind(verb, <unlink>), bind(root, root), bind(facts, facts)))
+  open-run(make(plain-open, bind(verb, <unlink>), bind(root, root), bind(facts, facts)))
   fork test, not(is-truthy(deck))
     hold
-      output/report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <Name the deck to unlink>)))
-      output/close-run(make(usage-close, bind(verdict, <Nothing unlinked>), bind(next, <term link --toss \<deck\>>), bind(failure, <usage>)))
+      report(make(problem-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <Name the deck to unlink>)))
+      close-run(make(usage-close, bind(verdict, <Nothing unlinked>), bind(next, <term link --toss \<deck\>>), bind(failure, <usage>)))
       back
   # a name with no link is said to have none, not reported as unlinked
   # `path.join(root, 'link', ...parts)`, one part at a time: join normalizes the whole, so the two agree
@@ -232,8 +238,8 @@ task call-unlink
     save linked, node-path/join(linked, part)
   fork test, not(is-anything-at(linked))
     hold
-      output/report(make(looked-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no link named {deck}>), bind(fields, one-of(output/field(<looked>, output/show-path(linked, root))))))
-      output/close-run(make(plain-close, bind(verdict, <Nothing unlinked>)))
+      report(make(looked-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <There is no link named {deck}>), bind(fields, one-of(field(<looked>, show-path(linked, root))))))
+      close-run(make(plain-close, bind(verdict, <Nothing unlinked>)))
       back
   fork
     mark unsafe

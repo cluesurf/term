@@ -51,6 +51,13 @@ load ../build/host-faces
   find face-role-reader
   find face-lean-reader
 
+load @term/call/work/output/printer
+  find close-run
+  find field
+  find open-run
+  find print-data
+  find report
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
@@ -64,7 +71,6 @@ dock load
   load <@term/make/code/parser/narrow>, name narrow-module
   load <@term/make/code/parser/tree>, name tree-module
   load <@term/make/code/resolve>, name resolve-module
-  load <@term/call/code/output>, name output
 
 # ---- the host values Term has no word for ----
 
@@ -705,18 +711,18 @@ task show-context
         make run-ask
           bind verb, <show>
           bind root, input/root
-      output/open-run(opening)
+      open-run(opening)
       save item
         make item-ask
           bind glyph, <failed>
           bind kind, <problem>
           bind subject, <Which name? term show name \<task, form or mask\>>
-      output/report(item)
+      report(item)
       save closing
         make close-ask
           bind verdict, <Nothing shown>
           bind failure, <usage>
-      output/close-run(closing)
+      close-run(closing)
       back
 
   save budget, 4000
@@ -733,31 +739,31 @@ task show-context
             make missing-name
               bind error, <not-found>
               bind name, input/query
-          output/print-data(<{json-of(missing)}\n>)
+          print-data(<{json-of(missing)}\n>)
           set-exit-code(1)
           back
       save opening
         make run-ask
           bind verb, <show>
           bind root, input/root
-      output/open-run(opening)
+      open-run(opening)
       save fields, make list
-      push(fields, output/field(<looked>, <every .tree file of the project, the standard library and link/>))
+      push(fields, field(<looked>, <every .tree file of the project, the standard library and link/>))
       save item
         make item-ask
           bind glyph, <failed>
           bind kind, <problem>
           bind subject, <No task, form or mask is named {input/query} here or in what the project can load>
           bind fields, fields
-      output/report(item)
+      report(item)
       save closing
         make close-ask
           bind verdict, <Nothing shown>
-      output/close-run(closing)
+      close-run(closing)
       back
 
   fork test, is-truthy(input/json)
     hold
-      output/print-data(<{json-of(slice)}\n>)
+      print-data(<{json-of(slice)}\n>)
     miss
-      output/print-data(render-context(slice))
+      print-data(render-context(slice))

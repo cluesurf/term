@@ -26,8 +26,13 @@
 # The decisions and the words are call/code/self-words.tree. Resolution is work/need/version-choice.tree and the one
 # install path work/need/version-install.tree, both loaded. It prints through call/code/output.ts, DOCKED: every other
 # verb prints through that one run, and a port's own copy of the printer would hold a second, empty run (traps.md).
-# @cluesurf/deck.tree (manifests, lockfiles, the registry) is docked (decision 002). A verb's input is the original's
-# record, each optional field read as the original read it (by truth, or by `??`).
+# Manifests, lockfiles, versions and the registry are @term/deck's ports, loaded (term-cli-in-term-0235, where
+# @cluesurf/deck.tree's faces and code.ts were docked): manifest-reading, manifest-text, lockfile-reading, version.tree,
+# toolchain-release, toolchain-pin, oci-routing. A manifest and a lockfile are read and written in the ports' shapes,
+# with one grammar record (`keeper-grammars`); a hold this verb parses is version.tree's, and a request's hold or pin,
+# which version-choice.tree keeps in @term/deck's own shape, is read into version.tree's (`keeper-port-hold`,
+# `keeper-port-code`) before version.tree compares or shows it. A verb's input is the original's record, each optional
+# field read as the original read it (by truth, or by `??`).
 
 load @term/base/list
   find list
@@ -88,10 +93,50 @@ load @term/call/work/need/running-install
 load @term/call/work/small/home-folder
   find user-home
 
+load @term/call/work/output/printer
+  find close-run
+  find count
+  find field
+  find location
+  find open-run
+  find report
+  find show-path
+
+# versions, manifests, lockfiles and the registry: @term/deck's ports
+load @term/deck/version
+  find code
+  find code-hold
+  find parse-code
+  find parse-code-hold
+  find show-code
+  find compare-code
+  find code-match
+
+load @term/deck/package/grammar-reading
+  find manifest-grammars
+  find make-grammars
+
+load @term/deck/package/manifest-reading
+  find load-manifest
+
+load @term/deck/package/manifest-text
+  find write-manifest
+
+load @term/deck/package/lockfile-reading
+  find load-lockfile
+  find save-lockfile
+
+load @term/deck/oci/toolchain-release
+  find current-platform
+  find read-release-index
+
+load @term/deck/oci/toolchain-pin
+  find pin-need
+
+load @term/deck/oci/oci-routing
+  find transport-for
+
 dock load
-  load <@cluesurf/deck.tree>, name deck-tree
-  load <@term/deck/code/code>, name deck-code
-  load <@term/call/code/output>, name output
   load <node:fs>, name node-file
   load <node:path>, name node-path
   load <global:process>, name host-process
@@ -266,6 +311,20 @@ bind keeper-pinned-lock
   case node
     text <(\{ ...($lock ?? \{ version: 1, decks: [] \}), need: $pin \})>
 
+# a code in version.tree's shape, a part @term/deck's own shape left out written as nothing (code.ts toPort)
+bind keeper-port-code
+  take value, like dynamic
+  like code
+  case node
+    text <<((keeperCode_) => ({ major: keeperCode_.major, minor: keeperCode_.minor, patch: keeperCode_.patch, prerelease: keeperCode_.prerelease ?? "", build: keeperCode_.build ?? "" }))($value)>>
+
+# a hold in version.tree's shape, a wildcard's open part `-1` (code.ts toPortHold)
+bind keeper-port-hold
+  take given, like dynamic
+  like code-hold
+  case node
+    text <<((keeperHold_) => { const keeperCode_ = (keeperC_) => ({ major: keeperC_.major, minor: keeperC_.minor, patch: keeperC_.patch, prerelease: keeperC_.prerelease ?? "", build: keeperC_.build ?? "" }); const keeperWalk_ = (keeperH_) => keeperH_.form === "exact" ? { form: "exact", code: keeperCode_(keeperH_.code) } : keeperH_.form === "wild" ? { form: "wild", major: keeperH_.major, minor: keeperH_.minor ?? -1, patch: keeperH_.patch ?? -1 } : keeperH_.form === "band" ? { form: "band", base: keeperCode_(keeperH_.base), head: keeperCode_(keeperH_.head) } : { form: "test", list: keeperH_.list.map(keeperWalk_) }; return keeperWalk_(keeperHold_) })($given)>>
+
 # `input.mark`, a field named by a reserved word
 bind keeper-mark-of
   take input, like dynamic
@@ -379,28 +438,6 @@ form keeper-close
     like dynamic
     need false
 
-form transport-ask
-  link host, like dynamic
-
-form index-ask
-  link transport, like dynamic
-  link repository, like dynamic
-  link version, like text
-
-form dir-ask
-  link dir, like text
-
-form manifest-write
-  link manifest, like dynamic
-
-form lock-write
-  link dir, like text
-  link lockfile, like dynamic
-
-form pin-ask
-  link need, like dynamic
-  link previous, like dynamic
-
 form removal-ask
   link recursive, like boolean
   link force, like boolean
@@ -420,7 +457,7 @@ task open-self
   like void
   mark private
 
-  output/open-run(make(keeper-open, bind(verb, <self>), bind(root, root), bind(subject, subject)))
+  open-run(make(keeper-open, bind(verb, <self>), bind(root, root), bind(subject, subject)))
 
 # a `failed` problem item
 task tell-failed
@@ -429,7 +466,7 @@ task tell-failed
   like void
   mark private
 
-  output/report(make(keeper-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, verb), bind(subject, subject)))
+  report(make(keeper-item, bind(glyph, <failed>), bind(kind, <problem>), bind(verb, verb), bind(subject, subject)))
 
 task close-failed
   take verdict, like text
@@ -437,7 +474,7 @@ task close-failed
   like void
   mark private
 
-  output/close-run(make(keeper-close, bind(verdict, verdict), bind(failure, failure)))
+  close-run(make(keeper-close, bind(verdict, verdict), bind(failure, failure)))
 
 task close-failed-next
   take verdict, like text
@@ -446,21 +483,21 @@ task close-failed-next
   like void
   mark private
 
-  output/close-run(make(keeper-close, bind(verdict, verdict), bind(failure, failure), bind(next, next)))
+  close-run(make(keeper-close, bind(verdict, verdict), bind(failure, failure), bind(next, next)))
 
 task close-plain
   take verdict, like text
   like void
   mark private
 
-  output/close-run(make(keeper-close, bind(verdict, verdict)))
+  close-run(make(keeper-close, bind(verdict, verdict)))
 
 task close-done
   take verdict, like text
   like void
   mark private
 
-  output/close-run(make(keeper-close, bind(verdict, verdict), bind(done, true)))
+  close-run(make(keeper-close, bind(verdict, verdict), bind(done, true)))
 
 task close-done-next
   take verdict, like text
@@ -468,7 +505,7 @@ task close-done-next
   like void
   mark private
 
-  output/close-run(make(keeper-close, bind(verdict, verdict), bind(done, true), bind(next, next)))
+  close-run(make(keeper-close, bind(verdict, verdict), bind(done, true), bind(next, next)))
 
 # a file's `at` field
 task at-field
@@ -476,7 +513,7 @@ task at-field
   like dynamic
   mark private
 
-  back output/location(output/show-path(file))
+  back location(show-path(file))
 
 # ---- maybes ----
 
@@ -703,15 +740,15 @@ task report-loaded
     hold
       save facts, make list
       facts/push(<installed already>)
-      output/report(make(keeper-item, bind(glyph, <skipped>), bind(verb, <load>), bind(subject, <term {version}>), bind(facts, facts)))
+      report(make(keeper-item, bind(glyph, <skipped>), bind(verb, <load>), bind(subject, <term {version}>), bind(facts, facts)))
       back true
 
   save platform, keeper-text(loaded/platform)
   save fields, make list
-  fields/push(output/field(<layer>, loaded/layer))
-  fields/push(output/field(<signed>, loaded/keys))
+  fields/push(field(<layer>, loaded/layer))
+  fields/push(field(<signed>, loaded/keys))
   fields/push(at-field(install-file(version)))
-  output/report(make(keeper-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <load>), bind(subject, <term {version} for {platform}>), bind(duration, loaded/duration), bind(bytes, loaded/bytes), bind(facts, shared-facts(loaded/shared)), bind(fields, fields)))
+  report(make(keeper-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <load>), bind(subject, <term {version} for {platform}>), bind(duration, loaded/duration), bind(bytes, loaded/bytes), bind(facts, shared-facts(loaded/shared)), bind(fields, fields)))
   back true
 
 # loadVersion, its answer handed on as the host value it is
@@ -731,7 +768,7 @@ task hold-or-refuse
   save hold, keeper-nothing()
   fork
     mark unsafe
-    save hold, deck-tree/parse-code-hold(range)
+    save hold, parse-code-hold(range)
   halt take
     take problem
     tell-failed(<self>, <{range} is not a version or a range: write 2.8.0, 2.8.x or 2.x.x>)
@@ -837,11 +874,12 @@ task pin-fields
   save pin, request/pin
   sift pin
     case none
-      fields/push(output/field(<pin>, <none: term load or term self need pins it>))
+      fields/push(field(<pin>, <none: term load or term self need pins it>))
       back fields
     case some
       link pinned
-      save version, keeper-text(deck-tree/show-code(pinned/code))
+      save pinned-code, keeper-port-code(pinned/code)
+      save version, show-code(pinned-code)
       save asked-text, request/text
       save state, <not installed>
       fork test, not(request-pin-holds(request))
@@ -853,7 +891,7 @@ task pin-fields
               save state, <installed>
       # the pin's file is always lock.tree beside the deck.tree named above it, so it is said rather than given a
       # second `at`
-      fields/push(output/field(<pin>, <{version} in lock.tree, {state}>))
+      fields/push(field(<pin>, <{version} in lock.tree, {state}>))
       back fields
 
 # The versions `wash` never removes, each with why: the front, the running copy, the default's answer, and this
@@ -880,7 +918,8 @@ task kept-here
       sift pin
         case some
           link pinned
-          save pinned-version, keeper-text(deck-tree/show-code(pinned/code))
+          save pinned-code, keeper-port-code(pinned/code)
+          save pinned-version, show-code(pinned-code)
         case none
           save nothing-pinned, 0
       save here-version, text-in(version-of-choice(choose-with(make(some, given), home, running)))
@@ -922,7 +961,7 @@ task compare-versions
   like number
   mark private
 
-  back deck-code/compare-code(deck-tree/parse-code(a), deck-tree/parse-code(b))
+  back compare-code(parse-code(a), parse-code(b))
 
 # ---- check, update, back ----
 
@@ -941,7 +980,7 @@ task call-self-check
       link found
       save platform, found/platform
     case none
-      save platform, deck-tree/current-platform()
+      save platform, current-platform()
 
   fork test, not(keeper-truth(platform))
     hold
@@ -970,7 +1009,7 @@ task call-self-check
       # a release exists for this version and is signed, but these bytes were not installed from it by term.surf/load
       save message, make list
       message/push(check-message(held-by(held)))
-      output/report(make(keeper-item, bind(glyph, <info>), bind(verb, <check>), bind(subject, <{package}@{version} for {shown-platform} is released and signed by {keys}>), bind(message, message)))
+      report(make(keeper-item, bind(glyph, <info>), bind(verb, <check>), bind(subject, <{package}@{version} for {shown-platform} is released and signed by {keys}>), bind(message, message)))
       close-plain(<The release verifies>)
     case some
       link found
@@ -981,9 +1020,9 @@ task call-self-check
           close-failed(<This install is not the release>, <environment>)
         miss
           save fields, make list
-          fields/push(output/field(<layer>, layer))
-          fields/push(output/field(<signed>, keys))
-          output/report(make(keeper-item, bind(glyph, <done>), bind(verb, <check>), bind(subject, <{package}@{version} for {shown-platform}>), bind(fields, fields)))
+          fields/push(field(<layer>, layer))
+          fields/push(field(<signed>, keys))
+          report(make(keeper-item, bind(glyph, <done>), bind(verb, <check>), bind(subject, <{package}@{version} for {shown-platform}>), bind(fields, fields)))
           close-plain(<This install is the signed release>)
 
 task call-self-update
@@ -1011,7 +1050,7 @@ task call-self-update
       save newest-text, keeper-text(newest)
       fork test, is-maximum(compare-versions(newest-text, front), 0)
         hold
-          output/report(make(keeper-item, bind(glyph, <info>), bind(verb, <update>), bind(subject, <{package}@{front} is the newest release>)))
+          report(make(keeper-item, bind(glyph, <info>), bind(verb, <update>), bind(subject, <{package}@{front} is the newest release>)))
           close-plain(<Already up to date>)
           back
 
@@ -1022,7 +1061,7 @@ task call-self-update
           back
 
       link-front(newest-text)
-      output/report(make(keeper-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <front>), bind(subject, <call/term {front} to {newest-text}>)))
+      report(make(keeper-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <front>), bind(subject, <call/term {front} to {newest-text}>)))
 
       # a range default follows on its own; an exact one is named, because it now holds the default back
       save message, make list
@@ -1031,14 +1070,16 @@ task call-self-update
       sift asked
         case some
           link given
-          fork test, not(deck-tree/code-match(deck-tree/parse-code(newest-text), given/hold))
+          save newest-code, parse-code(newest-text)
+          save given-hold, keeper-port-hold(given/hold)
+          fork test, not(code-match(newest-code, given-hold))
             hold
               save default-text, given/text
               message/push(<The default is {default-text} (term self pick), so outside a project term {default-text} still runs, not {newest-text}.>)
         case none
           save nothing-asked, 0
 
-      output/close-run(make(keeper-close, bind(verdict, <Updated to {newest-text}>), bind(message, message), bind(done, true), bind(next, <term self back, to return to the previous version>)))
+      close-run(make(keeper-close, bind(verdict, <Updated to {newest-text}>), bind(message, message), bind(done, true), bind(next, <term self back, to return to the previous version>)))
 
 task call-self-back
   take input, like root-ask
@@ -1063,7 +1104,7 @@ task call-self-back
           back
 
       link-front(previous)
-      output/report(make(keeper-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <front>), bind(subject, <call/term {front} to {previous}>)))
+      report(make(keeper-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <front>), bind(subject, <call/term {front} to {previous}>)))
       close-done-next(<Back on {previous}>, <term self update, to move forward again>)
 
 # ---- list, find ----
@@ -1105,7 +1146,7 @@ task call-self-list
       hold
         facts/push(<runs here>)
     facts/push(used-text(last-used(version)))
-    output/report(make(keeper-item, bind(glyph, <info>), bind(verb, <list>), bind(subject, <term {version}>), bind(facts, facts)))
+    report(make(keeper-item, bind(glyph, <info>), bind(verb, <list>), bind(subject, <term {version}>), bind(facts, facts)))
 
   save install, held-install(held)
   save total, installed/length
@@ -1122,7 +1163,7 @@ task call-self-list
           facts/push(<runs here>)
       save fields, make list
       fields/push(at-field(payload-root()))
-      output/report(make(keeper-item, bind(glyph, <info>), bind(verb, <list>), bind(subject, <term {running}>), bind(facts, facts), bind(fields, fields)))
+      report(make(keeper-item, bind(glyph, <info>), bind(verb, <list>), bind(subject, <term {running}>), bind(facts, facts), bind(fields, fields)))
     case some
       save nothing-held, 0
 
@@ -1143,9 +1184,9 @@ task call-self-list
       closing-facts/push(<no default: the front runs>)
   fork test, is-equal(total, 0)
     hold
-      output/close-run(make(keeper-close, bind(verdict, verdict), bind(facts, closing-facts), bind(next, <term self load \<version\>>)))
+      close-run(make(keeper-close, bind(verdict, verdict), bind(facts, closing-facts), bind(next, <term self load \<version\>>)))
     miss
-      output/close-run(make(keeper-close, bind(verdict, verdict), bind(facts, closing-facts)))
+      close-run(make(keeper-close, bind(verdict, verdict), bind(facts, closing-facts)))
 
 task call-self-find
   take input, like find-ask
@@ -1175,18 +1216,18 @@ task call-self-find
   save versions, make list
   walk keeper-texts(listed)
     take version
-    fork test, or(not(ranged), deck-tree/code-match(deck-tree/parse-code(version), hold))
+    fork test, or(not(ranged), code-match(parse-code(version), hold))
       hold
         versions/push(version)
 
   save route, route-of()
-  save transport, deck-tree/transport-for(make(transport-ask, bind(host, route/registry/host)))
-  save platform, deck-tree/current-platform()
+  save transport, transport-for(route/registry/host, false)
+  save platform, current-platform()
   save installed, installed-versions(user-home(make list))
   save indexes, make list
   walk versions
     take version
-    save index, wait deck-tree/read-release-index(make(index-ask, bind(transport, transport), bind(repository, route/repository/name), bind(version, version)))
+    save index, read-release-index(transport, route/repository/name, version)
     indexes/push(index)
   save shown, 0
 
@@ -1207,8 +1248,8 @@ task call-self-find
     save fields, make list
     fork test, and(all, keeper-truth(index))
       hold
-        fields/push(output/field(<platforms>, keeper-platforms(index)))
-    output/report(make(keeper-item, bind(glyph, <info>), bind(verb, <find>), bind(subject, <term {version}>), bind(facts, facts), bind(fields, fields)))
+        fields/push(field(<platforms>, keeper-platforms(index)))
+    report(make(keeper-item, bind(glyph, <info>), bind(verb, <find>), bind(subject, <term {version}>), bind(facts, facts), bind(fields, fields)))
 
   save verdict, <{shown} releases>
   fork test, is-equal(shown, 1)
@@ -1232,9 +1273,9 @@ task call-self-find
   closing-facts/push(<{registry-host}/{repository}>)
   fork test, is-above(shown, 0)
     hold
-      output/close-run(make(keeper-close, bind(verdict, verdict), bind(facts, closing-facts), bind(next, <term self load \<version\>>)))
+      close-run(make(keeper-close, bind(verdict, verdict), bind(facts, closing-facts), bind(next, <term self load \<version\>>)))
     miss
-      output/close-run(make(keeper-close, bind(verdict, verdict), bind(facts, closing-facts)))
+      close-run(make(keeper-close, bind(verdict, verdict), bind(facts, closing-facts)))
 
 # ---- load, pick, need ----
 
@@ -1261,7 +1302,7 @@ task call-self-load
       fork test, keeper-truth(loaded/fresh)
         hold
           save verdict, <Installed {version}>
-      output/close-run(make(keeper-close, bind(verdict, verdict), bind(done, loaded/fresh), bind(next, <term +{version} \<command\>, or term self pick {version}>)))
+      close-run(make(keeper-close, bind(verdict, verdict), bind(done, loaded/fresh), bind(next, <term +{version} \<command\>, or term self pick {version}>)))
 
 task call-self-pick
   take input, like range-ask
@@ -1295,7 +1336,7 @@ task call-self-pick
       node-file/write-file-sync(file, need-tree-text(range))
       save fields, make list
       fields/push(at-field(file))
-      output/report(make(keeper-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <pick>), bind(subject, <the default is {range}>), bind(fields, fields)))
+      report(make(keeper-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <pick>), bind(subject, <the default is {range}>), bind(fields, fields)))
       save runs, text-shown(version-of-choice(choose-with(make(some, request), home, running-version(what-runs()))))
       close-done(<term {runs} runs outside a project>)
 
@@ -1320,8 +1361,17 @@ task call-self-need
       close-failed-next(<Nothing was changed>, <usage>, <term self pick \<range\>, for the default outside a project>)
     case some
       link dir
-      save manifest, wait deck-tree/load-manifest(make(dir-ask, bind(dir, dir)))
-      save lockfile, wait deck-tree/load-lockfile(make(dir-ask, bind(dir, dir)))
+      save grammars, make-grammars()
+      save manifest, load-manifest(dir, grammars)
+      # the lockfile as the original held it: the record, or nothing where there is none
+      save lockfile, keeper-nothing()
+      save read-lock, load-lockfile(dir, grammars)
+      sift read-lock
+        case some
+          link locked
+          save lockfile, locked
+        case none
+          save no-lock, 0
       save manifest-file, node-path/join(dir, <deck.tree>)
       save lock-file, node-path/join(dir, <lock.tree>)
 
@@ -1333,18 +1383,18 @@ task call-self-need
               back
 
           keeper-drop-need(manifest)
-          node-file/write-file-sync(manifest-file, deck-tree/write-manifest(make(manifest-write, bind(manifest, manifest))))
+          node-file/write-file-sync(manifest-file, write-manifest(manifest))
           save removed-fields, make list
           removed-fields/push(at-field(manifest-file))
-          output/report(make(keeper-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <need>), bind(subject, chain), bind(fields, removed-fields)))
+          report(make(keeper-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <need>), bind(subject, chain), bind(fields, removed-fields)))
 
           fork test, keeper-truth(keeper-need-of(lockfile))
             hold
               keeper-drop-need(lockfile)
-              wait deck-tree/save-lockfile(make(lock-write, bind(dir, dir), bind(lockfile, lockfile)))
+              save-lockfile(dir, lockfile)
               save pin-fields-removed, make list
               pin-fields-removed/push(at-field(lock-file))
-              output/report(make(keeper-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <pin>), bind(subject, chain), bind(fields, pin-fields-removed)))
+              report(make(keeper-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <pin>), bind(subject, chain), bind(fields, pin-fields-removed)))
 
           close-done(<This project runs the default now>)
           back
@@ -1362,7 +1412,8 @@ task call-self-need
         case some
           link hold
           save need, keeper-need(chain, hold)
-          save pinned, wait deck-tree/pin-need(make(pin-ask, bind(need, need), bind(previous, keeper-need-of(lockfile))))
+          save previous, keeper-need-of(lockfile)
+          save pinned, pin-need(need, previous, false)
           save pin, pinned/pin
 
           fork test, not(keeper-truth(pin))
@@ -1371,7 +1422,8 @@ task call-self-need
               close-failed-next(<Nothing was changed>, <environment>, <term self find>)
               back
 
-          save version, keeper-text(deck-tree/show-code(pin/code))
+          save pin-code, keeper-port-code(pin/code)
+          save version, show-code(pin-code)
           save loaded, load-release(make(load-ask, bind(version, version), bind(expect, pin/hash)))
           fork test, not(report-loaded(loaded))
             hold
@@ -1379,13 +1431,13 @@ task call-self-need
               back
 
           keeper-put-need(manifest, need)
-          node-file/write-file-sync(manifest-file, deck-tree/write-manifest(make(manifest-write, bind(manifest, manifest))))
+          node-file/write-file-sync(manifest-file, write-manifest(manifest))
           save need-fields, make list
           need-fields/push(at-field(manifest-file))
-          output/report(make(keeper-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <need>), bind(subject, <{chain}, mark \<{range}\>>), bind(fields, need-fields)))
+          report(make(keeper-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <need>), bind(subject, <{chain}, mark \<{range}\>>), bind(fields, need-fields)))
 
           save next-lock, keeper-pinned-lock(lockfile, pin)
-          wait deck-tree/save-lockfile(make(lock-write, bind(dir, dir), bind(lockfile, next-lock)))
+          save-lockfile(dir, next-lock)
           save kept, keeper-truth(pinned/kept)
           save glyph, <changed>
           save pin-facts, make list
@@ -1394,9 +1446,9 @@ task call-self-need
               save glyph, <skipped>
               pin-facts/push(<kept>)
           save pin-fields-made, make list
-          pin-fields-made/push(output/field(<hash>, pin/hash))
+          pin-fields-made/push(field(<hash>, pin/hash))
           pin-fields-made/push(at-field(lock-file))
-          output/report(make(keeper-item, bind(glyph, glyph), bind(kind, <change>), bind(verb, <pin>), bind(subject, <{chain} {version}>), bind(facts, pin-facts), bind(fields, pin-fields-made)))
+          report(make(keeper-item, bind(glyph, glyph), bind(kind, <change>), bind(verb, <pin>), bind(subject, <{chain} {version}>), bind(facts, pin-facts), bind(fields, pin-fields-made)))
           close-done-next(<This project runs term {version}>, <commit deck.tree and lock.tree>)
 
 # ---- show ----
@@ -1458,9 +1510,9 @@ task call-self-show
       save asked-text, asked/text
       project-facts/push(<need {chain}, mark \<{asked-text}\>>)
       save file, text-in(asked/file)
-      save shown-file, output/show-path(file)
+      save shown-file, show-path(file)
       save line, number-in(asked/line)
-      project-fields/push(output/location(<{shown-file}:{line}>))
+      project-fields/push(location(<{shown-file}:{line}>))
       walk pin-fields(asked, home)
         take pin-field
         project-fields/push(pin-field)
@@ -1486,7 +1538,7 @@ task call-self-show
     fork test, step/hit
       hold
         save glyph, <done>
-    output/report(make(keeper-item, bind(glyph, glyph), bind(verb, <show>), bind(subject, step/rule), bind(facts, step/facts), bind(fields, step/fields)))
+    report(make(keeper-item, bind(glyph, glyph), bind(verb, <show>), bind(subject, step/rule), bind(facts, step/facts), bind(fields, step/fields)))
     fork test, step/hit
       hold
         halt
@@ -1515,7 +1567,7 @@ task call-self-show
               save rule, <6  the running copy>
         miss
           save nothing-ran, 0
-      output/report(make(keeper-item, bind(glyph, <done>), bind(verb, <show>), bind(subject, rule), bind(facts, make list)))
+      report(make(keeper-item, bind(glyph, <done>), bind(verb, <show>), bind(subject, rule), bind(facts, make list)))
     case some
       save nothing-asked, 0
 
@@ -1543,7 +1595,7 @@ task call-self-show
       facts/push(by-fact(chosen-by, asked-text, asked))
       save fields, make list
       fields/push(at-field(at))
-      output/report(make(keeper-item, bind(glyph, <info>), bind(verb, <show>), bind(subject, <term {chosen-version}>), bind(facts, facts), bind(fields, fields)))
+      report(make(keeper-item, bind(glyph, <info>), bind(verb, <show>), bind(subject, <term {chosen-version}>), bind(facts, facts), bind(fields, fields)))
       close-plain(<term {chosen-version} runs here>)
     case load
       link loading-version
@@ -1552,7 +1604,7 @@ task call-self-show
       link loading-request
       save loading-asked, loading-request/text
       save wanted, text-in-or(loading-version, loading-asked)
-      output/close-run(make(keeper-close, bind(verdict, <term {wanted} is needed here and not installed: the next command installs it>), bind(next, <term self load {wanted}, to install it now>)))
+      close-run(make(keeper-close, bind(verdict, <term {wanted} is needed here and not installed: the next command installs it>), bind(next, <term self load {wanted}, to install it now>)))
     case refuse
       close-failed(<Nothing would run here>, <usage>)
 
@@ -1609,7 +1661,7 @@ task call-self-toss
   node-file/rm-sync(user-home(home-parts(<code>, version)), make(removal-ask, bind(recursive, true), bind(force, true)))
   save fields, make list
   fields/push(at-field(user-home(home-parts(<code>, version))))
-  output/report(make(keeper-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <toss>), bind(subject, <term {version}>), bind(fields, fields)))
+  report(make(keeper-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <toss>), bind(subject, <term {version}>), bind(fields, fields)))
   close-done(<Removed {version}>)
 
 task call-self-wash
@@ -1624,7 +1676,7 @@ task call-self-wash
   fork test, commit
     hold
       open-facts/push(<--commit>)
-  output/open-run(make(keeper-open, bind(verb, <self>), bind(root, input/root), bind(subject, <wash>), bind(facts, open-facts)))
+  open-run(make(keeper-open, bind(verb, <self>), bind(root, input/root), bind(subject, <wash>), bind(facts, open-facts)))
 
   save home, user-home(make list)
   save held, what-runs()
@@ -1643,7 +1695,7 @@ task call-self-wash
         # information, not a skipped step: a plan that only lists closes `·`, the glyph of a run that changed nothing
         save keep-facts, make list
         keep-facts/push(reason)
-        output/report(make(keeper-item, bind(glyph, <info>), bind(verb, <keep>), bind(subject, <term {version}>), bind(facts, keep-facts)))
+        report(make(keeper-item, bind(glyph, <info>), bind(verb, <keep>), bind(subject, <term {version}>), bind(facts, keep-facts)))
         turn next
       case none
         save nothing-kept, 0
@@ -1658,19 +1710,19 @@ task call-self-wash
     fork test, commit
       hold
         node-file/rm-sync(user-home(home-parts(<code>, version)), make(removal-ask, bind(recursive, true), bind(force, true)))
-        output/report(make(keeper-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <wash>), bind(subject, <term {version}>), bind(facts, facts)))
+        report(make(keeper-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <wash>), bind(subject, <term {version}>), bind(facts, facts)))
       miss
         facts/push(<would be removed>)
-        output/report(make(keeper-item, bind(glyph, <info>), bind(verb, <wash>), bind(subject, <term {version}>), bind(facts, facts)))
+        report(make(keeper-item, bind(glyph, <info>), bind(verb, <wash>), bind(subject, <term {version}>), bind(facts, facts)))
 
   save counts, make list
-  counts/push(output/count(washed, <versions>, <version>))
+  counts/push(count(washed, <versions>, <version>))
   save verdict, wash-verdict(washed, days, keeper-true(input/commit))
   fork test, and(is-above(washed, 0), not(commit))
     hold
-      output/close-run(make(keeper-close, bind(verdict, verdict), bind(counts, counts), bind(done, false), bind(next, <term self wash --commit>)))
+      close-run(make(keeper-close, bind(verdict, verdict), bind(counts, counts), bind(done, false), bind(next, <term self wash --commit>)))
     miss
-      output/close-run(make(keeper-close, bind(verdict, verdict), bind(counts, counts), bind(done, and(commit, is-above(washed, 0)))))
+      close-run(make(keeper-close, bind(verdict, verdict), bind(counts, counts), bind(done, and(commit, is-above(washed, 0)))))
 
 # the parts of a path under a home, as home.ts took them as arguments (`userHome('code', version)`): each given one,
 # in order. An empty part is left out, as one `join` of them all leaves it out

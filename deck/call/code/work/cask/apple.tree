@@ -25,11 +25,13 @@ load ./bundle
 load ../native/declaration
   find apple-usage
 
+load @term/call/work/output/printer
+  find run-tool
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
   load <node:child_process>, name node-child
-  load <@term/call/code/output>, name output
 
 form apple-folder
   link recursive, like boolean
@@ -166,7 +168,7 @@ task simulator
       boot-args/push(<simctl>)
       boot-args/push(<boot>)
       boot-args/push(udid)
-      output/run-tool(<xcrun>, boot-args)
+      run-tool(<xcrun>, boot-args)
   back make(found-simulator, bind(udid, udid))
 
 # a `simctl` step whose failure is not the build's: its output and exit are ignored
@@ -197,13 +199,13 @@ task launch-on-simulator
   install/push(<install>)
   install/push(ask/udid)
   install/push(ask/app)
-  output/run-tool(<xcrun>, install)
+  run-tool(<xcrun>, install)
   save launch, make list
   launch/push(<simctl>)
   launch/push(<launch>)
   launch/push(ask/udid)
   launch/push(ask/identifier)
-  output/run-tool(<xcrun>, launch)
+  run-tool(<xcrun>, launch)
 
 # the `.app` layout AppKit expects, so the process gets a Dock icon and a menu bar of its own
 task assemble-bundle
@@ -237,13 +239,13 @@ task sign-bundle
   sign/push(<--sign>)
   sign/push(value-or(ask/identity, <->))
   sign/push(ask/app)
-  output/run-tool(<codesign>, sign)
+  run-tool(<codesign>, sign)
   save verify, make list
   verify/push(<--verify>)
   verify/push(<--deep>)
   verify/push(<--strict>)
   verify/push(ask/app)
-  output/run-tool(<codesign>, verify)
+  run-tool(<codesign>, verify)
 
 # a `.dmg` holding the app, the way a macOS download ships
 task make-dmg
@@ -264,5 +266,5 @@ task make-dmg
   args/push(<UDZO>)
   args/push(<-quiet>)
   args/push(dmg)
-  output/run-tool(<hdiutil>, args)
+  run-tool(<hdiutil>, args)
   back dmg
