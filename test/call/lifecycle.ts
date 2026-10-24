@@ -16,11 +16,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { manifestValueOf } from '@term/call/code/manifest-name'
 import { tempDir } from '../temp'
+import { LINE } from './cli'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
-const TERM = join(HERE, '../..')
-// TERM_LINE points at another bundle, as in exit-codes.ts
-const LINE = process.env.TERM_LINE ?? join(TERM, 'host/line.js')
 
 let pass = 0
 let fail = 0
@@ -269,7 +266,7 @@ ok('`test` runs a test file and counts it', /Tests passed[\s\S]*?\b1 test\b[\s\S
 //
 // It defaulted to `deck/base/code`, the compiler's own stdlib, which a user project does not have: it read nothing
 // and said CLEAN with exit 0. Its fuzzing half spawned `npx tsx host/fuzz-campaign.ts`, a file that exists only in
-// source, so from host/line.js no fuzz input ever ran and the report still said `no crashes, no hangs`.
+// source, so from the built CLI no fuzz input ever ran and the report still said `no crashes, no hangs`.
 const hunt = (...argv: string[]) =>
   spawnSync('node', [LINE, 'hunt', ...argv], { cwd: root, encoding: 'utf8', timeout: 300000 })
 

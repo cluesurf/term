@@ -3,18 +3,10 @@
 
 import { execFileSync } from 'node:child_process'
 import { writeFileSync, readFileSync, existsSync } from 'node:fs'
-import { join, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { tempDir } from '../temp'
+import { LINE } from './cli'
 
-const SEED_ROOT = join(
-  dirname(fileURLToPath(import.meta.url)),
-  '..',
-  '..',
-)
-
-const LINE = join(SEED_ROOT, 'deck', 'call', 'code', 'line.ts')
-const TSCONFIG = join(SEED_ROOT, 'tsconfig.json')
 
 let pass = 0
 let fail = 0
@@ -35,13 +27,11 @@ function seed(
   cwd: string,
 ): { stdout: string; status: number } {
   try {
-    // run from the temp workspace (so the CLI's `root` is the temp dir), but point tsx at the seed tsconfig so the
-    // `@cluesurf/*` path mappings still resolve (they are relative to the tsconfig's own directory)
-    const stdout = execFileSync('npx', ['tsx', LINE, ...args], {
+    // run from the temp workspace, so the CLI's `root` is the temp dir
+    const stdout = execFileSync('node', [LINE, ...args], {
       cwd,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
-      env: { ...process.env, TSX_TSCONFIG_PATH: TSCONFIG },
     })
 
     return { stdout, status: 0 }

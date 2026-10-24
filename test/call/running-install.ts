@@ -1,9 +1,9 @@
 // work/need/running-install.tree finds the running toolchain by one walk (decision 006 of term-cli-in-term,
 // term-cli-in-term-0156). Each case runs in its own node process, because the answer is held once per process:
 //   - the port unbundled (deck/call/host/port/.../running-install.ts under tsx) answers this package, deck/term/deck/term
-//   - the port bundled into <t>/term/host/line.js beside <t>/term/deck/base/code answers <t>/term and
-//     <t>/term/host/line.js, also started through a symlinked file and through a symlinked folder
-//   - a bundle under a folder with no marker answers through argv[1] (the install's host/line.js that imported it)
+//   - the port bundled into <t>/term/<LINE_IN_INSTALL> beside <t>/term/deck/base/code answers <t>/term and
+//     <t>/term/<LINE_IN_INSTALL>, also started through a symlinked file and through a symlinked folder
+//   - a bundle under a folder with no marker answers through argv[1] (the install's built CLI that imported it)
 //   - the same bundle answers through TERM_STDLIB, and a pin with no code/ in it is passed over
 //   - nothing found answers the empty text for both
 //   - the answer is held: a TERM_STDLIB set after the first call changes nothing
@@ -16,6 +16,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { buildSync } from 'esbuild'
 import { tempDir } from '../temp'
+import { LINE_IN_INSTALL } from './cli'
 
 const TERM = realpathSync(process.cwd())
 const PORT = join(TERM, 'deck/call/host/port/code/work/need/running-install.ts')
@@ -80,30 +81,30 @@ function check(name: string, got: Answer, root: string, cli: string): void {
   const t = fresh()
   const probe = join(t, 'probe.mts')
   writeFileSync(probe, PROBE(pathToFileURL(PORT).href))
-  check('the port unbundled', run([TSX, probe]), TERM, join(TERM, 'host/line.js'))
+  check('the port unbundled', run([TSX, probe]), TERM, join(TERM, LINE_IN_INSTALL))
 }
 
-// 2. bundled into the payload's host/line.js, run directly, through a symlinked file and a symlinked folder
+// 2. bundled into the payload's built CLI, run directly, through a symlinked file and a symlinked folder
 {
   const t = fresh()
   const root = payload(t)
-  const line = join(root, 'host/line.js')
+  const line = join(root, LINE_IN_INSTALL)
   bundle(line)
-  check('bundled in host/line.js', run([line]), root, line)
+  check(`bundled in ${LINE_IN_INSTALL}`, run([line]), root, line)
   symlinkSync(line, join(t, 'linked.js'))
   check('bundled, started through a symlinked file', run([join(t, 'linked.js')]), root, line)
   symlinkSync(root, join(t, 'alias'))
-  check('bundled, started through a symlinked folder', run([join(t, 'alias/host/line.js')]), root, line)
+  check('bundled, started through a symlinked folder', run([join(t, 'alias', LINE_IN_INSTALL)]), root, line)
 }
 
-// 3. a bundle under a folder with no marker, imported by the install's host/line.js: found through argv[1]
+// 3. a bundle under a folder with no marker, imported by the install's built CLI: found through argv[1]
 {
   const t = fresh()
   const root = payload(t)
   mkdirSync(join(t, 'away'))
   const away = join(t, 'away/bundle.mjs')
   bundle(away)
-  const line = join(root, 'host/line.js')
+  const line = join(root, LINE_IN_INSTALL)
   writeFileSync(line, `await import(${JSON.stringify(pathToFileURL(away).href)})\n`)
   check('a bundle outside the install, through argv[1]', run([line]), root, line)
 }
@@ -115,7 +116,7 @@ function check(name: string, got: Answer, root: string, cli: string): void {
   mkdirSync(join(t, 'away'))
   const away = join(t, 'away/bundle.mjs')
   bundle(away)
-  check('a bundle outside the install, through TERM_STDLIB', run([away], { TERM_STDLIB: join(root, 'deck/base') }), root, join(root, 'host/line.js'))
+  check('a bundle outside the install, through TERM_STDLIB', run([away], { TERM_STDLIB: join(root, 'deck/base') }), root, join(root, LINE_IN_INSTALL))
   check('a pin with no code/ in it, nothing else', run([away], { TERM_STDLIB: join(t, 'away') }), '', '')
   check('nothing found', run([away]), '', '')
 }

@@ -29,6 +29,9 @@ load @term/make/compile/target-source
 load @term/call/work/need/running-install
   find find-install-root
 
+load @term/call/work/output/diagnostic-report
+  find render-diagnostic
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
@@ -44,7 +47,6 @@ dock load
   load <@term/call/code/boot>, name boot-module
   load <@term/call/code/deck-of>, name deck-module
   load <@term/call/code/role-of>, name role-module
-  load <@term/call/code/report>, name report-module
   load <@term/call/code/output>, name output
   load <@term/call/code/native-build>, name native-build
 
@@ -259,6 +261,11 @@ form close-ask
 form folder-make
   link recursive, like boolean
 
+# a scratch folder removed whole (the IR-only build's, term-cli-in-term-0178)
+form llvm-folder-remove
+  link recursive, like boolean
+  link force, like boolean
+
 # what the native builds are asked
 form native-ask
   link source, like text
@@ -316,7 +323,7 @@ task refused
   save errors, make list
   walk diagnostics
     take diagnostic
-    push(errors, report-module/render-diagnostic(diagnostic, text-shown(diagnostic, file, text)))
+    push(errors, render-diagnostic(diagnostic, text-shown(diagnostic, file, text)))
   save problems, make list
   walk diagnostics
     take diagnostic
@@ -813,13 +820,18 @@ task call-through-rust
           bind build, not(ir-only)
       save built, native-build/build-through-rust(rust)
 
+  # the IR-only folder is scratch, removed once the IR is read or the build refused (term-cli-in-term-0178)
   fork test, not(built/ok)
     hold
+      fork test, ir-only
+        hold
+          node-fs/rm-sync(folder, make(llvm-folder-remove, bind(recursive, true), bind(force, true)))
       fail-built(built/reason, target)
 
   fork test, ir-only
     hold
       save ir, node-fs/read-file-sync(built/artifact, <utf8>)
+      node-fs/rm-sync(folder, make(llvm-folder-remove, bind(recursive, true), bind(force, true)))
       fork test, is-truthy(input/out)
         hold
           save out, node-path/resolve(input/root, input/out)

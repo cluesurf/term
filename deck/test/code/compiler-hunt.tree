@@ -62,6 +62,11 @@ form hunt-crashes
 form hunt-hang
   link input, like text
 
+# the campaigns' scratch folder removed whole (term-cli-in-term-0178)
+form hunt-remove
+  link recursive, like boolean
+  link force, like boolean
+
 form hunt-result
   link corpus, like corpus-audit
   # the backends the backend-emit oracle drove (emit only, nothing built or run)
@@ -638,6 +643,9 @@ task hunt-seed-compiler
               save seeds-run, add(seeds-run, 1)
               save fuzz-runs, add(fuzz-runs, hunt-runs-of(report))
               save total-crashes, add(total-crashes, collect-report(report, found, slow))
+
+          # the campaigns' scratch: every report and probe is read by now (term-cli-in-term-0178)
+          hunt-fs/rm-sync(work, make(hunt-remove, bind(recursive, true), bind(force, true)))
 
           fork test, and(is-above(seeds-run, 0), is-equal(fuzz-runs, 0))
             hold

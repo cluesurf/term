@@ -1,20 +1,24 @@
 # The terminal a program writes to: whether standard output is one, and text painted in one of the eight ANSI colors
-# when it is. Color is off when output is not a terminal (a pipe, a file) and whenever NO_COLOR is set to anything
-# (no-color.org), the same rule on every backend, so a log redirected to a file never holds escape codes.
+# when it is. Whether a stream takes color is one rule on every backend (`takes-color`), chalk's in chalk's order
+# (decision 014 of note/project/term/cli-in-term): FORCE_COLOR set wins (`0` or `false` off, any other value on),
+# then NO_COLOR set to anything is off (no-color.org), a stream that is not a terminal (a pipe, a file) is off,
+# TERM=dumb is off, and anything else is on. So a log redirected to a file never holds escape codes.
 
 mark stable
 
 load @term/base/environment
   find has-variable
+  find variable
 
 load @term/base/text/unicode
   find rune-to-text
 
-# whether standard output is a terminal
+# whether standard output is a terminal. On node the descriptor is asked, as chalk asks it, never process.stdout,
+# which a worker thread holds as a pipe to its parent whatever the descriptor is
 bind is-terminal
   like boolean
   case node
-    text <(process.stdout.isTTY === true)>
+    text <process.getBuiltinModule('node:tty').isatty(1)>
   case browser
     text <false>
   case rust
@@ -25,16 +29,119 @@ bind is-terminal
   case kotlin
     text <(System.console() != null)>
 
-# whether painted text should carry color: a terminal, and NO_COLOR unset
+# whether standard error is a terminal. Kotlin's console is one answer for both streams
+bind is-error-terminal
+  like boolean
+  case node
+    text <process.getBuiltinModule('node:tty').isatty(2)>
+  case browser
+    text <false>
+  case rust
+    text <std::io::IsTerminal::is_terminal(&std::io::stderr())>
+  case swift
+    load <Foundation>
+    text <(isatty(STDERR_FILENO) != 0)>
+  case kotlin
+    text <(System.console() != null)>
+
+# whether the program has a process environment to read. A page has none (its variables are local storage), and no
+# terminal either, so it never takes color
+bind has-environment
+  like boolean
+  case node
+    text <true>
+  case browser
+    text <false>
+  case rust
+    text <true>
+  case swift
+    text <true>
+  case kotlin
+    text <true>
+
+# the rule itself, on what it reads: whether the stream is a terminal, whether FORCE_COLOR is set and to what, whether
+# NO_COLOR is set, and TERM. Never the program's arguments
+task decide-color
+  take terminal, like boolean
+  take forced, like boolean
+  take force, like text
+  take muted, like boolean
+  take kind, like text
+  like boolean
+  fork test
+    hook test
+      read forced
+    hook hold
+      fork test
+        hook test
+          call is-equal
+            read force
+            text <0>
+        hook hold
+          send back, false
+      fork test
+        hook test
+          call is-equal
+            read force
+            text <false>
+        hook hold
+          send back, false
+      send back, true
+  fork test
+    hook test
+      read muted
+    hook hold
+      send back, false
+  fork test
+    hook test
+      call not
+        read terminal
+    hook hold
+      send back, false
+  fork test
+    hook test
+      call is-equal
+        read kind
+        text <dumb>
+    hook hold
+      send back, false
+  send back, true
+
+# whether text written to a stream should carry color, given whether that stream is a terminal, by the environment
+task takes-color
+  take terminal, like boolean
+  like boolean
+  fork test
+    hook test
+      call not
+        call has-environment
+    hook hold
+      send back, false
+  send back
+    call decide-color
+      read terminal
+      call has-variable
+        text <FORCE_COLOR>
+      call variable
+        text <FORCE_COLOR>
+      call has-variable
+        text <NO_COLOR>
+      call variable
+        text <TERM>
+
+# whether text written to standard output should carry color
 task uses-color
   like boolean
   send back
-    call and
+    call takes-color
       call is-terminal
-      call is-equal
-        call has-variable
-          text <NO_COLOR>
-        false
+
+# whether text written to standard error should carry color
+task uses-error-color
+  like boolean
+  send back
+    call takes-color
+      call is-error-terminal
 
 # the ANSI foreground code for a color name, or -1 for a name that is not one of the eight
 task color-code

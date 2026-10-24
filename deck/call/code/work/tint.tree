@@ -12,22 +12,41 @@
 # `\e` (0x1B) was added to the lexer and to `unescapeText` for this, and `terminal` support needs it on every
 # backend too.
 #
-# NO COLOUR DETECTION YET. chalk turns itself off when stdout is not a terminal; this does not, because Term has no
-# way to ask whether it is. That is a real difference, written here rather than discovered in a log file full of
-# escape codes, and it is the next thing this module needs.
+# WHETHER TO COLOUR is @term/base/terminal's `uses-color`, chalk's rules (decision 014 of note/project/term/cli-in-term):
+# FORCE_COLOR wins, then NO_COLOR, not a terminal, TERM=dumb. A span is coloured only when the stream it is written to
+# takes colour: standard output for every span, and standard error for `log-fail`'s marker, which is printed there.
 
 load @term/base/console
   find log
   find error, name log-error
 
-# one span of coloured text, closed again so nothing leaks into the next line
+load @term/base/terminal
+  find uses-color
+  find uses-error-color
+
+# one span of coloured text, closed again so nothing leaks into the next line, when standard output takes colour
 task colour
   take code, like text
   take text, like text
 
   like text
 
-  back <\e[{{code}}m{{text}}\e[0m>
+  fork test, uses-color()
+    hold
+      back <\e[{{code}}m{{text}}\e[0m>
+  back read text
+
+# one span of coloured text for standard error, when standard error takes colour
+task error-colour
+  take code, like text
+  take text, like text
+
+  like text
+
+  fork test, uses-error-color()
+    hold
+      back <\e[{{code}}m{{text}}\e[0m>
+  back read text
 
 task good
   take text, like text
@@ -106,7 +125,7 @@ task log-fail
 
   like void
 
-  save marker, fail <  fail >
+  save marker, error-colour <31>, <  fail >
   log-error <{{marker}}{{text}}>
 
 task log-step

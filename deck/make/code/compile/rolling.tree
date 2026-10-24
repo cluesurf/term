@@ -477,15 +477,49 @@ task type-text
   like text
   mark private
 
-  back strip-suffixes(strip-suffixes(show-type(of), false), true)
+  back strip-forms(strip-suffixes(strip-suffixes(show-type(of), false), true))
 
-# a task's name as written: a name split by file (`concat__in0_1`) or by arity (`add-event-listener__3__0`)
+# every `__form\b` taken out: a form named like a task is renamed apart as a type (`node__form`, check/elaborate.ts
+# `kindsApart`, and a form named like a case, check/scope.ts), and the roll writes it as its author did (term-compiler-0070)
+task strip-forms
+  take value, like text
+  like text
+  mark private
+
+  save suffix, <__form>
+  save parts, make list
+  save at, 0
+  save copied, 0
+  walk test
+    hook test, is-below(at, value/length)
+    hook hold
+      save end, add(at, suffix/length)
+      save bounded, false
+      fork test, starts-with(substring(value, at, value/length), suffix)
+        hold
+          save bounded, true
+          fork test, is-below(end, value/length)
+            hold
+              save bounded, is-equal(is-word-code(char-code-at(value, end)), false)
+      fork test, bounded
+        hold
+          push(parts, substring(value, copied, at))
+          save copied, end
+          save at, end
+        miss
+          save at, add(at, 1)
+  push(parts, substring(value, copied, value/length))
+  back join(parts, <>)
+
+# a task's name as written: a name split by file (`concat__in0_1`) or by arity (`add-event-listener__3__0`), in
+# either order, since a text form's generated task is split by file and then by type (`to-text__in0_5__1__0`, which
+# the file strip alone left as `to-text__in0_5`, term-compiler-0070), and a form's `__form` (an exception's name)
 task written-name
   take name, like text
   like text
   mark private
 
-  back strip-end-suffix(strip-end-suffix(name, false), true)
+  back strip-forms(strip-end-suffix(strip-end-suffix(strip-end-suffix(name, false), true), false))
 
 # names as written, each once, in their order: an exception two decks (or two files) declare is split by file
 # (`absence__in0_1`), and the roll writes it as its author did, the deck telling the two apart (seam-0016)

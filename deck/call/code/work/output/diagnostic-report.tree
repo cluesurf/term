@@ -1,0 +1,94 @@
+# A compiler diagnostic drawn and printed for the CLI, ported from call/code/report.ts (term-cli-in-term-0196, decision
+# 014 part 2 of note/project/term/cli-in-term).
+#
+# The frame is parser/diagnostic.tree's `render-kink`, loaded: a red `kink <message>` header, the keyword lines and the
+# source line with its caret, read from the diagnostic's file unless the caller hands the text in. Its colour is
+# @term/base/terminal's `uses-color`, chalk's rules for standard output, where report.ts asked `chalk.level > 0`.
+# Printing goes through call/code/output.ts, docked, the one run a command prints through: a port is emitted whole, so
+# a loaded copy of the output lane would hold a second, empty run (cli-in-term traps, printer.tree).
+
+load @term/make/parser/diagnostic
+  find diagnostic
+  find render-kink
+
+load @term/base/terminal
+  find uses-color
+
+dock load
+  load <node:fs>, name host-fs
+  load <@term/call/code/output>, name output
+
+# whether the caller handed a text in: report.ts tests `text !== undefined`, so an empty text is a text
+bind handed-in
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value !== undefined)>
+
+# a text cut at every line feed as JavaScript cuts it (an empty text is one empty line). The line feed is written by
+# code: a \n inside a bind's text is a real line break in the emitted string
+bind cut-lines
+  take value, like text
+  like list, like text
+  case node
+    text <$value.split(String.fromCharCode(10))>
+
+bind report-folder
+  like text
+  case node
+    text <process.cwd()>
+
+# the source lines of a diagnostic's file: the text handed in, else the file as it is on disk, else none
+task diagnostic-lines
+  take diagnostic, like diagnostic
+  take given, like dynamic
+  like list, like text
+  mark private
+
+  fork test, handed-in(given)
+    hold
+      back cut-lines(given)
+  fork
+    mark unsafe
+    save content, host-fs/read-file-sync(diagnostic/file, <utf8>)
+    back cut-lines(content)
+  halt take
+    take problem
+    back make list
+
+# ONE diagnostic as its kink frame, coloured when standard output takes colour (no trailing newline)
+task render-diagnostic
+  take diagnostic, like diagnostic
+  take given, like dynamic
+  like text
+
+  back render-kink(diagnostic, diagnostic-lines(diagnostic, given), uses-color())
+
+# a diagnostic as a Problem item of the run in progress, on stderr, its paths shown from the working directory
+task print-diagnostic
+  take diagnostic, like diagnostic
+  take given, like dynamic
+  like void
+
+  output/reportProblem(diagnostic, report-folder(), given)
+
+# every diagnostic as Problem items, sorted, capped and caused-by problems hidden by the output library: `for-file`'s
+# text goes with the diagnostics of its file, the rest are read from disk
+task print-diagnostics
+  take diagnostics, like list, like diagnostic
+  take for-file, like dynamic
+  like void
+
+  save entries, make list
+  walk diagnostics
+    take one
+    entries/push(report-entry(one, for-file))
+  output/reportProblems(entries, report-folder())
+
+# one entry of reportProblems: the diagnostic, and `held`'s text when it is the diagnostic's file
+bind report-entry
+  take one, like dynamic
+  take held, like dynamic
+  like dynamic
+  case node
+    text <(\{ diagnostic: $one, text: $held && $one.file === $held.file ? $held.text : undefined \})>

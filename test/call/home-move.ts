@@ -15,8 +15,8 @@ import { join } from 'node:path'
 import { frontDir, settle, settleFront } from '@term/call/code/home'
 import { GITIGNORE } from '@term/call/code/wake-text'
 import { tempDir } from '../temp'
+import { LINE } from './cli'
 
-const LINE = join(import.meta.dirname, '..', '..', 'host', 'line.js')
 
 let pass = 0
 let fail = 0
@@ -170,7 +170,7 @@ if (existsSync(LINE)) {
   ok('   and its front, bin/ to call/', existsSync(join(current, 'call', 'term')) && lstatSync(join(current, 'bin')).isSymbolicLink())
   ok('   the old PATH entry still reaches the front, through both links', readFileSync(join(old, 'bin', 'term'), 'utf8') === '#!/bin/sh\n')
 } else {
-  console.log('skip  the CLI moves the user folder: host/line.js is not built (pnpm run make:line)')
+  console.log(`skip  the CLI moves the user folder: ${LINE} is not built (pnpm run make:line)`)
 }
 
 console.log(`\nhome-move: ${pass} pass, ${fail} fail`)

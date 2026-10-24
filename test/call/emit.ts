@@ -1,7 +1,7 @@
 // `term make --emit <node|rust|swift|kotlin> <file.tree> --out <path>`: one program, one backend, one source file.
 // Run: npx tsx test/call/emit.ts   (EMIT_KOTLIN=1 also builds and runs the Kotlin output, which takes ~20s)
 //
-// Runs the BUILT CLI (host/line.js), so it is the command a person types that is under test, not the function behind
+// Runs the BUILT CLI (test/call/cli.ts), so it is the command a person types that is under test, not the function behind
 // it. For each backend: the output names the program's tasks, and where the toolchain is installed it is BUILT with a
 // small `main` appended and RUN, and must print the right answer. A program that does not check is REFUSED: non-zero
 // exit, the diagnostic on stderr, and no file written.
@@ -10,9 +10,9 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tempDir } from '../temp'
+import { LINE } from './cli'
 
 const TERM = process.cwd()
-const LINE = join(TERM, 'host/line.js')
 const ESBUILD = join(TERM, 'node_modules/.bin/esbuild')
 
 let pass = 0

@@ -12,9 +12,9 @@ import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
 import { tempDir } from '../temp'
+import { LINE } from './cli'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
-const LINE = process.env.TERM_LINE ?? join(HERE, '../../host/line.js')
 const MESH = join(HERE, '../../../../../../mesh')
 
 let pass = 0

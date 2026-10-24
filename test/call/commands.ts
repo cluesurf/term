@@ -4,10 +4,13 @@
 //
 //   STRUCTURE from `term --help` and `term <verb> --help`. Which verbs exist and which subcommands hang off them is
 //   the CLI's own answer, so the page cannot describe a verb that does not exist or miss one that does.
-//   TEXT from the `.command('name', 'description')` literals in deck/call/code/line.ts. yargs HARD-WRAPS its help at
-//   80 columns and ignores COLUMNS, breaking mid-word ('the veri' / 'fier') and at spaces ('(--audit' / 'for the')
-//   indistinguishably, so a description rejoined from the printed output is corrupted either way. The literal is the
-//   whole sentence.
+//   TEXT from the console's ROUTES (deck/call/code/line/base.tree, read through commandRoutes as term:cli-drift reads
+//   it): each hook's note is its command's sentence, each take's note its option's. Help HARD-WRAPS at 80 columns,
+//   breaking mid-word ('the veri' / 'fier') and at spaces ('(--audit' / 'for the') indistinguishably, so a description
+//   rejoined from the printed output is corrupted either way. The note is the whole sentence. Until 0193 the text
+//   came from line.ts's `.command` and `.option` literals, which the console replaces (decision cli-in-term/013).
+//
+// So the page reads the same from host/line.js and from the console (TERM_LINE, test/call/cli.ts).
 //
 // Neither is hand-written, which is the point: a hand-kept command reference is wrong the first time somebody adds a
 // flag, and wrong silently.
@@ -21,11 +24,33 @@
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { compile } from '@term/make/code/compile/compile'
+import type { DockRoute } from '@term/make/code/compile/node'
+import { commandRoutes, programOf } from '@term/call/code/hook-dispatch'
+import { projectResolver } from '@term/call/code/make'
+import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
+import { LINE } from './cli'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
-const LINE = join(TERM, 'host/line.js')
 const PAGE = join(TERM, '../../../../note/project/term/commands.md')
+const CONSOLE = join(TERM, 'deck/call/code/line/base.tree')
+
+// the console's routes, as `term make` reads the file: its program (the global options) and its commands
+function consoleRoutes(): { program?: DockRoute; commands: DockRoute[] } {
+  const result = compile(
+    { file: CONSOLE, text: readFileSync(CONSOLE, 'utf8') },
+    { resolve: projectResolver(TERM), roleOf: projectRoleOf(TERM), leanOf: projectLeanOf(TERM) },
+  )
+
+  if (!result.ok) {
+    throw new Error(`deck/call/code/line/base.tree does not compile: ${result.diagnostics.slice(0, 3).map(d => d.message).join('; ')}`)
+  }
+
+  return programOf(commandRoutes(result.program))
+}
+
+const ROUTES = consoleRoutes()
 
 function help(argv: string[]): string {
   try {
@@ -108,7 +133,7 @@ function options(text: string, verb: string): string[] {
       const flags = flag[1]!.trim()
       const long = /--([\w-]+)/.exec(flags)?.[1]
       const note =
-        (long ? OPTION_NOTE.get(`${verb}|${long}`) : undefined) ??
+        (long ? (OPTION_NOTE.get(`${verb}|${long}`) ?? OPTION_NOTE.get(`*|${long}`)) : undefined) ??
         flag[2]!.trim().replace(/\s+/g, ' ')
 
       out.push(`\`${flags}\` ${note}`)
@@ -118,16 +143,23 @@ function options(text: string, verb: string): string[] {
   return out
 }
 
-// the complete description text, from the `.command('signature', 'description')` literals. Keyed by the full
-// signature so a subcommand name reused under two verbs (`list`, `show`, `check`) does not collide.
+// the complete description of every command, keyed by its path (`make`, `self find`), from its hook's note
 function notes(): Map<string, string> {
-  const source = readFileSync(join(TERM, 'deck/call/code/line.ts'), 'utf8')
   const out = new Map<string, string>()
+  const walk = (route: DockRoute, parent?: string): void => {
+    const path = parent ? `${parent} ${route.path}` : route.path
 
-  for (const match of source.matchAll(
-    /\.command\(\s*(['"])([^'"]+)\1\s*,\s*(['"])([^'"]*)\3/gs,
-  )) {
-    out.set(match[2]!.trim().replace(/\s+/g, ' '), match[4]!.trim())
+    if (route.note) {
+      out.set(path, route.note.trim())
+    }
+
+    for (const kid of route.children ?? []) {
+      walk(kid, path)
+    }
+  }
+
+  for (const route of ROUTES.commands) {
+    walk(route)
   }
 
   return out
@@ -135,66 +167,50 @@ function notes(): Map<string, string> {
 
 const NOTE = notes()
 
-// option descriptions, from the `.option('name', { description: '...' })` literals, for the same reason: yargs
-// truncates them in the printed help.
+// option descriptions, from each take's note, for the same reason: help truncates them.
 //
 // Keyed by VERB AND OPTION, never by option alone. Two verbs define `--trees` with entirely different meanings
 // ("compile .tree even when package.json owns make" on `make`, "keep tree anchors instead of expanding them" on
 // `mold`), and a global key silently documented one with the other's sentence. A wrong description is worse than a
-// truncated one, because nothing about it looks wrong.
-//
-// Each `.option(` belongs to the builder of the nearest `.command('<verb>'` above it, which is how the CLI is
-// written, so that is how they are paired.
-function optionNotes(verbs: Set<string>): Map<string, string> {
-  const source = readFileSync(join(TERM, 'deck/call/code/line.ts'), 'utf8')
+// truncated one, because nothing about it looks wrong. A take is keyed by its name and by each of its other names
+// (`--ride` and `--watch`). The program's takes, the global options every verb prints, are keyed under `*`.
+function optionNotes(): Map<string, string> {
   const out = new Map<string, string>()
-
-  // where each verb's builder starts
-  const starts: { at: number; verb: string }[] = []
-
-  for (const match of source.matchAll(/\.command\(\s*(['"])([^'"]+)\1/g)) {
-    const verb = match[2]!.trim().split(/\s+/)[0]!
-
-    if (verbs.has(verb)) {
-      starts.push({ at: match.index!, verb })
+  const add = (owner: string, route: DockRoute): void => {
+    for (const take of route.takes) {
+      if (take.note) {
+        for (const name of [take.name, ...(take.aliases ?? [])]) {
+          out.set(`${owner}|${name}`, take.note.trim())
+        }
+      }
     }
   }
 
-  for (const match of source.matchAll(
-    /\.option\(\s*(['"])([^'"]+)\1\s*,\s*\{[\s\S]*?description:\s*(['"])((?:[^'"\\]|\\.)*)\3/g,
-  )) {
-    let owner: string | undefined
+  if (ROUTES.program) {
+    add('*', ROUTES.program)
+  }
 
-    for (const start of starts) {
-      if (start.at < match.index!) {
-        owner = start.verb
-      } else {
-        break
-      }
-    }
-
-    if (owner) {
-      out.set(`${owner}|${match[2]!}`, match[4]!.replace(/\\'/g, "'").trim())
-    }
+  for (const route of ROUTES.commands) {
+    add(route.path, route)
   }
 
   return out
 }
 
-
-// the written description for a command, falling back to what help printed if the literal cannot be found (a
-// command built some other way, or one whose description is a template rather than a literal)
-function noteFor(command: Command): string {
-  const signature = command.args
-    ? `${command.name} ${command.args}`
-    : command.name
-
-  return NOTE.get(signature) ?? command.note
+// the written description for a command (its path: `make`, `self find`), falling back to what help printed when its
+// hook has no note
+function noteFor(command: Command, parent?: string): string {
+  return NOTE.get(parent ? `${parent} ${command.name}` : command.name) ?? command.note
 }
 
 const root = help([])
 const verbs = commands(root, 'term')
-const OPTION_NOTE = optionNotes(new Set(verbs.map(v => v.name)))
+const OPTION_NOTE = optionNotes()
+
+// verbs whose options the page does not list, each because the two CLIs answer its --help differently by decision:
+// the shipped CLI answers `term fill --help` with the completion script (a yargs quirk), the console with fill's help
+// page (decision cli-in-term/011). fill has no option of its own, so the page loses nothing and reads the same from both
+const OWN_HELP_ONLY = new Set(['fill'])
 
 const body: string[] = [
   '# Commands',
@@ -217,13 +233,13 @@ const body: string[] = [
 for (const verb of verbs) {
   const text = help([verb.name])
   const subs = commands(text, `term ${verb.name}`)
-  const flags = options(text, verb.name)
+  const flags = OWN_HELP_ONLY.has(verb.name) ? [] : options(text, verb.name)
 
   body.push(`## ${verb.name}`, '', `\`term ${verb.name}${verb.args ? ` ${verb.args}` : ''}\``, '', noteFor(verb), '')
 
   if (subs.length > 0) {
     body.push('| subcommand | what |', '| --- | --- |')
-    body.push(...subs.map(s => `| \`${s.name}${s.args ? ` ${s.args}` : ''}\` | ${noteFor(s)} |`))
+    body.push(...subs.map(s => `| \`${s.name}${s.args ? ` ${s.args}` : ''}\` | ${noteFor(s, verb.name)} |`))
     body.push('')
   }
 

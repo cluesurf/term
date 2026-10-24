@@ -9,6 +9,7 @@ import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { bootMode } from '@term/call/code/boot'
 import { tempDir } from '../temp'
+import { LINE } from './cli'
 
 let pass = 0
 let fail = 0
@@ -38,7 +39,7 @@ ok('nothing names neither', bootMode().mode === undefined && bootMode().entry ==
 ok('a mode alone names no entry', bootMode('star').mode === 'production' && bootMode('star').entry === undefined)
 
 // the command itself, through the built CLI: a command-line program booted into a folder, in each mode
-const line = join(import.meta.dirname, '..', '..', 'host', 'line.js')
+const line = LINE
 const root = realpathSync(tempDir('boot-mode-'))
 mkdirSync(join(root, 'code'), { recursive: true })
 writeFileSync(join(root, 'deck.tree'), `deck @probe/boot-mode\n  mark <0.0.2>\n  boot ./code/base.tree\n`)

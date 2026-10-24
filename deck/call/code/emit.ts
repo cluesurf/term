@@ -23,7 +23,7 @@
 
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { compile } from '@term/make/code/compile/compile'
 import {
   EMIT_TARGETS,
@@ -299,13 +299,19 @@ export function callEmit(input: {
     const folder = irOnly ? path.join(tmpdir(), `term-llvm-${process.pid}`) : path.resolve(input.root, input.out ?? path.join('host', target))
     const built = buildThroughRust({ source: emitted.source, target, folder, name, build: !irOnly, ...(input.main ? { entry: input.main } : {}) })
 
+    // the IR-only folder is scratch, removed once the IR is read or the build refused (term-cli-in-term-0178)
     if (!built.ok) {
+      if (irOnly) {
+        rmSync(folder, { recursive: true, force: true })
+      }
+
       report({ glyph: 'failed', kind: 'problem', verb: 'build', subject: built.reason.split('\n')[0]!, ...(built.reason.includes('\n') ? { quote: built.reason.split('\n').slice(1, 30) } : {}) })
       process.exit(closeRun({ verdict: `Not built for ${target}`, failure: 'failure' }))
     }
 
     if (irOnly) {
       const ir = readFileSync(built.artifact, 'utf8')
+      rmSync(folder, { recursive: true, force: true })
 
       if (input.out) {
         const out = path.resolve(input.root, input.out)

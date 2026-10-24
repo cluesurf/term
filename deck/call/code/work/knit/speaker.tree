@@ -1,7 +1,8 @@
 # `term knit`'s one door to the Claude API, ported from call/code/knit-model.ts (term-cli-in-term-0044). The key is
-# read from the environment only when the loop asks for a speaker, and the raw-HTTP Messages client
-# (deck/make/code/code/api-client.ts `streamMessage`, docked: it is outside the Term package) is imported only then,
-# so `term` starts, and every other verb runs, with no key set (note/project/term/assurance/prove-loop).
+# read from the environment only when the loop asks for a speaker, so `term` starts, and every other verb runs, with
+# no key set (note/project/term/assurance/prove-loop). The raw-HTTP Messages client is message-stream.tree
+# `stream-message`, the port of the book agent's api-client.ts `streamMessage` (term-cli-in-term-0198): the CLI no
+# longer imports that file, which sits outside the Term package.
 #
 # The request body is the Messages API's own record, snake_case on the wire, so it is built as a host value. The turn
 # that comes back is a Term record; its content blocks and usage are passed back UNCHANGED, thinking blocks included.
@@ -12,10 +13,8 @@ load @term/base/maybe
 load @term/base/list
   find contains
 
-# a promise a bind hands out is awaited through `Promise.resolve`, a dock call (a bind is never awaited itself)
-dock load
-  load <global:Promise>, name host-promise
-    mark async
+load @term/call/work/knit/message-stream
+  find stream-message
 
 # ---- the request ----
 
@@ -182,19 +181,14 @@ bind environment-key
   case node
     text <(process.env.ANTHROPIC_API_KEY ?? "")>
 
-# the Messages client, imported only when a speaker is made
-bind load-messages-client
-  like dynamic
-  case node
-    text <import("@/../../../make/code/code/api-client")>
-
-bind stream-one-message
-  take client, like dynamic
+# what one turn asks of the Messages client: four retries, and a stream that broke after it was billed is thrown
+# rather than retried, so the cap prices the retry first
+bind message-ask
   take key, like text
   take request, like request-body
   like dynamic
   case node
-    text <$client.streamMessage(\{ apiKey: $key, body: $request.body, betas: $request.betas, retries: 4, retryBroken: false \})>
+    text <(\{ apiKey: $key, body: $request.body, betas: $request.betas, retries: 4, retryBroken: false \})>
 
 bind ask-system
   take asked, like dynamic
@@ -238,7 +232,6 @@ task claude-speaker
   fork test, is-equal(key, <>)
     hold
       raise-knit-setup(<ANTHROPIC_API_KEY is not set, so the loop cannot reach the model>, <set ANTHROPIC_API_KEY, or run it under a zone that holds the key: zone load \<zone\> -- term knit ...>)
-  save client, host-promise/resolve(load-messages-client())
   save ask
     task
       take asked, like dynamic
@@ -248,8 +241,7 @@ task claude-speaker
       save message, make none
       fork
         mark unsafe
-        save pending, stream-one-message(client, key, request)
-        save streamed, host-promise/resolve(pending)
+        save streamed, stream-message(message-ask(key, request))
         save message, make(some, streamed)
       halt take
         take problem

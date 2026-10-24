@@ -628,6 +628,27 @@ task lean-locked
       link line
       back not(same-line(kid-line, written-line(make(some, parent))))
 
+# IN A LEAN FILE A PART UNDER A CALL WRITTEN `f(...)` KEEPS ITS PARENTHESES on a line: it may be a label the checker
+# refuses as label-or-call (decision 009), which only the parentheses say, and the meaning check no longer compares them
+# (format/meanings.tree drops `leanShaped`, term-compiler-0069). `greet(name(<x>))` stays, never `greet(name <x>)`
+task lean-shaped-kid
+  take group, like node
+  take kid, like node
+  take options, like layout-options
+  like boolean
+  mark private
+
+  fork test, not(and(is-true(options/lean), is-call(group)))
+    hold
+      back false
+  fork test, not(is-group-node(kid))
+    hold
+      back false
+  fork test, is-below(nodes-of(kid)/length, 2)
+    hold
+      back false
+  back opens-paren(node-at(nodes-of(kid), 0))
+
 load ../parser/tree
   find root-node
 
@@ -991,7 +1012,8 @@ task flatten
       save kids, kids-of(value)
       walk kids
         take kid
-        push(args, flatten(kid, forced-closed(value, at), get(places, at), options, false))
+        save kid-closed, or(forced-closed(value, at), lean-shaped-kid(value, kid, options))
+        push(args, flatten(kid, kid-closed, get(places, at), options, false))
         save at, add(at, 1)
       # `host(route, port)` is a call to a task named `host`, and `host route, port` is the constant
       save closed, and(not(bare), or(nested, printed-closed(value, in-value, options)))
@@ -1270,7 +1292,7 @@ task closes-a-word
       miss
         turn next
     save forced, forced-closed(group, i)
-    save shut, or(forced, printed-closed(kid, get(places, i), options))
+    save shut, or(or(forced, printed-closed(kid, get(places, i), options)), lean-shaped-kid(group, kid, options))
     save word, not(is-call(kid))
     # a value word over one part is the longhand's own argument spelling, `read(a)`, `code(1)`
     save value-word, and(has-text(value-words(), head-name(kid)), is-equal(nodes-of(kid)/length, 2))
@@ -2025,6 +2047,25 @@ task format-group
       fork test, not(is-group-node(first))
         hold
           append-lines(lines, comment-lines(first, indent, options))
+    case none
+      save nothing, 0
+  # a lean part under a call written `f(...)` keeps that spelling on its own line however wide (lean-shaped-kid): stacked,
+  # it would lose the parentheses and with them a label-or-call refusal. A comment inside it stacks as before
+  sift parent
+    case some
+      link above
+      fork test, lean-shaped-kid(above, group, options)
+        hold
+          save quiet, true
+          walk kids-of(group)
+            take inner
+            fork test, has-comment(inner)
+              hold
+                save quiet, false
+          fork test, quiet
+            hold
+              push(lines, <{indent}{flatten(group, true, in-value, options, false)}>)
+              back lines
     case none
       save nothing, 0
   # a group opening a BLOCK grammar scope (`role note` over its lines) is its opener's line, and the scope's text

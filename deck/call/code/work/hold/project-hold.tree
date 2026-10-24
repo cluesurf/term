@@ -16,6 +16,9 @@ load @term/call/hold-plan
   find reasons-of
   find reason-count
 
+load @term/call/work/output/diagnostic-report
+  find render-diagnostic
+
 dock load
   load <@term/make/code/compile/compile>, name compiling
   load <@term/make/code/compile/native>, name native-env
@@ -24,7 +27,6 @@ dock load
   load <@term/call/code/cache-store>, name cache-storing
   load <@term/call/code/deck-of>, name deck-finding
   load <@term/call/code/role-of>, name role-finding
-  load <@term/call/code/report>, name diagnostic-rendering
   load <node:fs>, name host-fs
   load <node:path>, name host-path
   load <global:JSON>, name host-json
@@ -52,13 +54,13 @@ bind framed-problem
   case node
     text <($diagnostic.file === $file ? $unit.place($diagnostic) : \{ diagnostic: $diagnostic, text: undefined \})>
 
-bind placed-render
+# a diagnostic placed against the lines as written, { diagnostic, text }
+bind placed-problem
   take unit, like dynamic
-  take renderer, like dynamic
   take diagnostic, like dynamic
-  like text
+  like dynamic
   case node
-    text <<((at) => $renderer.renderDiagnostic(at.diagnostic, at.text))($unit.place($diagnostic))>>
+    text <$unit.place($diagnostic)>
 
 bind hold-compile-options
   take resolve, like dynamic
@@ -453,7 +455,10 @@ task hold-project
           take failure
           save diagnostic, failure-diagnostic(failure)
           save key, obligation-key(rel, failure-task(failure), failure-origin(failure), failure-ordinal(failure))
-          failures/push make(hold-failure, bind(key, key), bind(message, diagnostic-message(diagnostic)), bind(render, placed-render(unit, diagnostic-rendering, diagnostic)))
+          save message, diagnostic-message(diagnostic)
+          save placed, placed-problem(unit, diagnostic)
+          save drawn, render-diagnostic(placed/diagnostic, placed/text)
+          failures/push make(hold-failure, bind(key, key), bind(message, message), bind(render, drawn))
           found-obligation-set(found, key, framed-problem(unit, diagnostic, file))
 
     # the trust ledger, from what this file owns

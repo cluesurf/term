@@ -1,7 +1,7 @@
 // `term hold --lean`: the second checker from the CLI (call/code/hold-lean.ts, note/project/term/proof/lean-export/).
 // Run: npx tsx test/call/hold-lean.ts   (Lean at TERM_LEAN, else on the PATH)
 //
-// Through the built CLI (host/line.js), on the notes demo (test/assurance/notes):
+// Through the built CLI (test/call/cli.ts), on the notes demo (test/assurance/notes):
 //   - with Lean: every one of the demo's claims (29 on 2026-10-21) prints `lean <claim> checked`, none rests on an axiom, the total says
 //     29 of 29, the Lean file is under the project's home, `--json` carries the same verdicts, and it exits 0
 //   - with a planted wrong proof (law 1 by the empty shelf's evidence, planted into the exported Lean file and handed to
@@ -15,6 +15,7 @@ import { join } from 'node:path'
 import { exportLean, joinSources, plantLean } from '@term/make/code/check/lean-export'
 import { findLean } from '@term/make/code/check/lean-run'
 import { projectHome } from '@term/call/code/home'
+import { LINE } from './cli'
 
 let pass = 0
 let fail = 0
@@ -30,7 +31,6 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 const TERM = new URL('../../', import.meta.url).pathname
-const LINE = join(TERM, 'host/line.js')
 const NOTES = join(TERM, 'test/assurance/notes')
 const TMP = join(TERM, 'tmp/hold-lean')
 // the demo's claims, as the exporter reads them from the two files that state them (29 on 2026-10-21)

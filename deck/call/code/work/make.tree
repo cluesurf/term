@@ -1,6 +1,12 @@
 load @term/call/work/home
   find root, name project-root
 
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
 load @term/call/work/tint
   find log-good
   find log-fail
@@ -27,6 +33,22 @@ dock load
   load <@term/call/code/role-of>, name role-module
   load <@term/call/code/remote-cache>, name remote-module
   load <node:process>, name node-process
+  # line.ts's other make branches (line.ts:821-904), docked as every verb file docks today (decision cli-in-term/013
+  # part 1). Their ports exist, and integrates 0065 and 0067 swap each dock for one: work/context/emission.tree
+  # call-emit, native/project.tree call-make-native, compose/packaging.tree make-compose, native/iphone.tree
+  # make-uikit, cask/command.tree make-cask
+  load <@term/call/code/emit>, name emit-module
+  load <@term/call/code/make-native>, name native-module
+  # makeCompose, makeUikit and makeCask answer promises: every call into these three is awaited
+  load <@term/call/code/compose>, name compose-module
+    mark async
+  load <@term/call/code/uikit>, name uikit-module
+    mark async
+  load <@term/call/code/cask>, name cask-module
+    mark async
+  load <@term/call/code/output>, name output-module
+  # the global, for process.exitCode: a namespace import of node:process cannot be written (traps.md, 0041)
+  load <global:process>, name host-process
 
 form make-ask
   link root, like text
@@ -41,19 +63,194 @@ form remote-ask
   link endpoint, like text
   link token, like text
 
-# `term make`: compile every `.tree` in the project
+# The asks of the docked branches. An option the line did not name reaches its handler as undefined, as line.ts
+# handed argv.<x> on, so those fields are host values (option-given)
+form emit-call-ask
+  link root, like text
+  link file, like dynamic
+  link target, like dynamic
+  link out, like dynamic
+  link units, like boolean
+  link build, like boolean
+  link run, like boolean
+  link main, like dynamic
+
+form native-call-ask
+  link root, like text
+  link env, like dynamic
+  link build, like boolean
+
+form compose-call-ask
+  link root, like text
+  link target, like text
+  link entry, like dynamic
+
+form uikit-call-ask
+  link root, like text
+  link entry, like dynamic
+  link team, like dynamic
+  link link, like dynamic
+
+form cask-call-ask
+  link root, like text
+  link target, like text
+  link page, like dynamic
+  link entry, like dynamic
+  link url, like dynamic
+  link sign, like dynamic
+  link dmg, like boolean
+  link publish, like dynamic
+  link channel, like dynamic
+
+# a file named without --emit (line.ts:888-895)
+form file-refusal-open
+  link verb, like text
+  link root, like text
+  link facts, like list, like text
+
+form file-refusal-item
+  link glyph, like text
+  link kind, like text
+  link subject, like text
+
+form file-refusal-close
+  link verdict, like text
+  link next, like text
+  link failure, like text
+
+# an option as line.ts handed it to a TypeScript handler: its value when the line named it, else undefined (an absent
+# argv.<x>). The argument is always a local, so the text may read it twice
+bind option-given
+  take given, like maybe, like text
+  like dynamic
+  case node
+    text <($given.form === "some" ? $given.value : undefined)>
+
+# whether the line named the option (line.ts: argv.<x> !== undefined, the empty text included)
+bind option-named
+  take given, like maybe, like text
+  like boolean
+  case node
+    text <($given.form === "some")>
+
+# the option's text, the empty text when the line did not name it (line.ts's truth test on argv.target)
+bind option-text
+  take given, like maybe, like text
+  like text
+  case node
+    text <($given.form === "some" ? $given.value : "")>
+
+# `term make [file]`: line.ts's make handler, its branches in its order. --emit writes one program, --env every
+# program for one backend, --target compose or compose-android a Compose app, uikit an iPhone app, any other target
+# a cask, a file without --emit is refused as usage, else the project is compiled. Every take of the hook arrives
+# here (decision cli-in-term/013): `file`, `emit`, `env` and each text option a handler reads with ?? are maybes, as
+# line.ts handed argv.<x> on absent (decision cli-in-term/008 part 1). A throw from a docked branch reaches
+# dispatch.tree fail-line, as it reached line.ts's own (decision 005 part 2)
 task make
   mark async
+  take file, like maybe, like text
+  take emit, like maybe, like text
+  take out, like maybe, like text
+  take units, like boolean
+  take env, like maybe, like text
+  take build, like boolean
+  take run, like boolean
+  take main, like maybe, like text
   take ride, like boolean
   take separate, like boolean
   take merged, like boolean
   take explain, like boolean
   take trees, like boolean
+  take target, like maybe, like text
+  take team, like maybe, like text
+  take link, like maybe, like text
+  take page, like maybe, like text
+  take entry, like maybe, like text
+  take url, like maybe, like text
+  take sign, like maybe, like text
+  take dmg, like boolean
+  take publish, like maybe, like text
+  take channel, like maybe, like text
 
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
+
+  fork test, option-named(emit)
+    hold
+      call emit-module/callEmit
+        make emit-call-ask
+          bind root, read root
+          bind file, option-given(file)
+          bind target, option-given(emit)
+          bind out, option-given(out)
+          bind units, read units
+          bind build, read build
+          bind run, read run
+          bind main, option-given(main)
+      back
+
+  # every program of the project for one backend (call/code/make-native.ts)
+  fork test, option-named(env)
+    hold
+      call native-module/callMakeNative
+        make native-call-ask
+          bind root, read root
+          bind env, option-given(env)
+          bind build, read build
+      back
+
+  save target-word, option-text(target)
+
+  # a Compose app: its views drawn by Compose, packaged for the desktop with its own JVM or as an APK
+  fork test, is-equal(target-word, <compose>)
+    hold
+      compose-module/makeCompose(make(compose-call-ask, bind(root, read root), bind(target, read target-word), bind(entry, option-given(entry))))
+      back
+  fork test, is-equal(target-word, <compose-android>)
+    hold
+      compose-module/makeCompose(make(compose-call-ask, bind(root, read root), bind(target, read target-word), bind(entry, option-given(entry))))
+      back
+
+  # an iPhone app drawn by UIKit: an Xcode project, signed ad hoc into an .ipa when there is a team to sign for
+  fork test, is-equal(target-word, <uikit>)
+    hold
+      call uikit-module/makeUikit
+        make uikit-call-ask
+          bind root, read root
+          bind entry, option-given(entry)
+          bind team, option-given(team)
+          bind link, option-given(link)
+      back
+
+  # any other target is a native app cask
+  fork test, is-above(target-word/length, 0)
+    hold
+      call cask-module/makeCask
+        make cask-call-ask
+          bind root, read root
+          bind target, read target-word
+          bind page, option-given(page)
+          bind entry, option-given(entry)
+          bind url, option-given(url)
+          bind sign, option-given(sign)
+          bind dmg, read dmg
+          bind publish, option-given(publish)
+          bind channel, option-given(channel)
+      back
+
+  # a file is built alone only with --emit. Named without it, it is refused as usage, naming --emit
+  fork test, option-named(file)
+    hold
+      save named, option-text(file)
+      save facts, make list
+      push(facts, named)
+      output-module/openRun(make(file-refusal-open, bind(verb, <make>), bind(root, read root), bind(facts, read facts)))
+      output-module/report(make(file-refusal-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <term make builds the whole project, and {named} is one file>)))
+      save host-process/exit-code, output-module/closeRun(make(file-refusal-close, bind(verdict, <Nothing built>), bind(next, <term make --emit \<backend\> {named}, or term make>), bind(failure, <usage>)))
+      back
+
   fork
     mark unsafe
     call make-module/callMake

@@ -18,7 +18,7 @@
  * built CLI spawned a fuzz campaign at a path that only exists in source.
  */
 
-import { readFileSync, existsSync, mkdtempSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { readFileSync, existsSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -256,6 +256,9 @@ export function huntSeedCompiler(input: {
       fuzzRuns += report.runs
       collect(report)
     }
+
+    // the campaigns' scratch: every report and probe is read by now (term-cli-in-term-0178)
+    rmSync(work, { recursive: true, force: true })
 
     if (seedsRun > 0 && fuzzRuns === 0) {
       unrun.push('fuzzing: the campaigns finished but executed zero runs')

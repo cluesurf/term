@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { tempDir } from '../temp'
+import { LINE } from './cli'
 
 let pass = 0
 let fail = 0
@@ -26,7 +27,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 const here = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
-const line = join(here, 'host', 'line.js')
+const line = LINE
 const fixture = join(here, 'test', 'call', 'test-dock-fixture')
 
 // the fixture copied to a project of its own, its package installed in its node_modules as npm would
@@ -35,7 +36,7 @@ cpSync(fixture, root, { recursive: true })
 mkdirSync(join(root, 'node_modules'), { recursive: true })
 cpSync(join(root, 'vendor', 'probe-dock-package'), join(root, 'node_modules', 'probe-dock-package'), { recursive: true })
 
-// TERM_TEST_DOCK_CLI: the node arguments that start another CLI, space-separated, in place of host/line.js (a saved
+// TERM_TEST_DOCK_CLI: the node arguments that start another CLI, space-separated, in place of the CLI test/call/cli.ts names (a saved
 // line.js, or the tsx loader and deck/call/code/line.ts)
 const cli = process.env.TERM_TEST_DOCK_CLI ? process.env.TERM_TEST_DOCK_CLI.split(' ') : [line]
 

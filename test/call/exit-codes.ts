@@ -8,10 +8,8 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { tempDir } from '../temp'
+import { LINE } from './cli'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
-// TERM_LINE points at another bundle, so a change can be tried without replacing the CLI a running gate uses
-const LINE = process.env.TERM_LINE ?? join(HERE, '../../host/line.js')
 
 let pass = 0
 let fail = 0

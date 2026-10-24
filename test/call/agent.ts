@@ -5,15 +5,12 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { applyFixes } from '@term/make/code/fix'
 import { diagnosticNames } from '@term/make/code/parser/diagnostic'
 import { lintCatalog } from '@term/make/code/lint/lint'
 import { tempDir } from '../temp'
+import { LINE } from './cli'
 
-const TERM_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
-const LINE = join(TERM_ROOT, 'deck', 'call', 'code', 'line.ts')
-const TSCONFIG = join(TERM_ROOT, 'tsconfig.json')
 
 let pass = 0
 let fail = 0
@@ -28,14 +25,13 @@ function expect(name: string, cond: boolean, detail?: unknown): void {
   }
 }
 
-// the CLI, from source, in `cwd`: its stdout and exit status
+// the built CLI (test/call/cli.ts), in `cwd`: its stdout and exit status
 function term(args: string[], cwd: string): { stdout: string; status: number } {
   try {
-    const stdout = execFileSync('npx', ['tsx', LINE, ...args], {
+    const stdout = execFileSync('node', [LINE, ...args], {
       cwd,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
-      env: { ...process.env, TSX_TSCONFIG_PATH: TSCONFIG },
     })
 
     return { stdout, status: 0 }

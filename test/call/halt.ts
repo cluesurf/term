@@ -10,9 +10,8 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { tempDir } from '../temp'
+import { LINE } from './cli'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
-const LINE = process.env.TERM_LINE ?? join(HERE, '../../host/line.js')
 
 let pass = 0
 let fail = 0

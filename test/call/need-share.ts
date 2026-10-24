@@ -9,6 +9,7 @@ import { join } from 'node:path'
 
 import { extractShared, readFileList, writeFileList } from '@term/call/code/need-load'
 import { tempDir } from '../temp'
+import { LINE_IN_INSTALL } from './cli'
 
 let pass = 0
 let fail = 0
@@ -45,8 +46,8 @@ function payload(name: string, files: Record<string, string>, executable: string
 }
 
 const common = { 'deck/base/code/list.tree': 'task size\n', 'bin/term': '#!/bin/sh\n' }
-const old = payload('old', { ...common, 'host/line.js': 'old cli', 'package.json': '2.6.4', 'deck/base/code/text.tree': 'aaaa', 'bin/tool': 'x' }, ['bin/term'])
-const fresh = payload('new', { ...common, 'host/line.js': 'new cli', 'package.json': '2.6.6', 'deck/base/code/text.tree': 'bbbb', 'bin/tool': 'x', 'deck/base/code/time.tree': 'task now\n' }, ['bin/term', 'bin/tool'])
+const old = payload('old', { ...common, [LINE_IN_INSTALL]: 'old cli', 'package.json': '2.6.4', 'deck/base/code/text.tree': 'aaaa', 'bin/tool': 'x' }, ['bin/term'])
+const fresh = payload('new', { ...common, [LINE_IN_INSTALL]: 'new cli', 'package.json': '2.6.6', 'deck/base/code/text.tree': 'bbbb', 'bin/tool': 'x', 'deck/base/code/time.tree': 'task now\n' }, ['bin/term', 'bin/tool'])
 
 const listed = readFileList(join(root, 'stage', 'new', 'term', 'hash.tree'))
 ok('the list names every file once, not itself', listed?.size === 7 && !listed.has('hash.tree'), JSON.stringify([...(listed?.keys() ?? [])]))
@@ -66,7 +67,7 @@ const ino = (dir: string, path: string) => statSync(join(dir, 'term', path)).ino
 
 ok('the same file is linked', ino(oldDir, 'deck/base/code/list.tree') === ino(newDir, 'deck/base/code/list.tree'))
 ok('   and so is a second one', ino(oldDir, 'bin/term') === ino(newDir, 'bin/term'))
-ok('a changed file is not', ino(oldDir, 'host/line.js') !== ino(newDir, 'host/line.js') && readFileSync(join(newDir, 'term', 'host', 'line.js'), 'utf8') === 'new cli')
+ok('a changed file is not', ino(oldDir, LINE_IN_INSTALL) !== ino(newDir, LINE_IN_INSTALL) && readFileSync(join(newDir, 'term', 'host', 'line.js'), 'utf8') === 'new cli')
 ok('   nor one of the same size with other bytes', readFileSync(join(newDir, 'term', 'deck', 'base', 'code', 'text.tree'), 'utf8') === 'bbbb')
 ok('   nor one with another mode', ino(oldDir, 'bin/tool') !== ino(newDir, 'bin/tool') && (statSync(join(newDir, 'term', 'bin', 'tool')).mode & 0o777) === 0o755)
 ok('a file only the new version has is extracted', readFileSync(join(newDir, 'term', 'deck', 'base', 'code', 'time.tree'), 'utf8') === 'task now\n')

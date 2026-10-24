@@ -55,6 +55,7 @@ form test-ask
   link case, like text
   link env, like text
   link ride, like boolean
+  link update, like boolean
 
 form cast-ask
   link root, like text
@@ -77,6 +78,8 @@ task test
   take case, like text
   take env, like text
   take ride, like boolean
+  # write what each `want snapshot` sees, instead of comparing against it (line.ts:1010)
+  take update, like boolean
 
   like void
 
@@ -92,6 +95,7 @@ task test
         bind case, read case
         bind env, read env
         bind ride, read ride
+        bind update, read update
       wait true
   halt take
     take error

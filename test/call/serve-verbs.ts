@@ -25,10 +25,8 @@ import { createServer } from 'node:net'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { tempDir } from '../temp'
+import { LINE } from './cli'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
-const TERM = join(HERE, '../..')
-const LINE = join(TERM, 'host/line.js')
 
 let pass = 0
 let fail = 0

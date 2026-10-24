@@ -9,8 +9,8 @@ import type { AddressInfo } from 'node:net'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tempDir } from '../temp'
+import { LINE } from './cli'
 
-const LINE = join(import.meta.dirname, '..', '..', 'host', 'line.js')
 
 let pass = 0
 let fail = 0

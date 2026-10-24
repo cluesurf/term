@@ -2,7 +2,7 @@
 // decision note/project/term/proof/lean-export/decision/001-laws-manifest.md).
 // Run: npx tsx test/call/hold-report.ts
 //
-// Through the built CLI (host/line.js):
+// Through the built CLI (test/call/cli.ts):
 //   - the notes demo (test/assurance/notes, its laws.tree naming 7 laws): every law holds, each row carries its English
 //     from the Term form (a rule through law-english.ts, a mark from the mark, tier 0 from its count), the top line
 //     says 7 laws hold, the page is written under the project's home as printed, and it exits 0
@@ -14,6 +14,7 @@ import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { projectHome } from '@term/call/code/home'
+import { LINE } from './cli'
 
 let pass = 0
 let fail = 0
@@ -29,7 +30,6 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 const TERM = new URL('../../', import.meta.url).pathname
-const LINE = join(TERM, 'host/line.js')
 const ASSURANCE = join(TERM, 'test/assurance')
 
 function hold(dir: string, args: string[] = []): { status: number | null; out: string; stdout: string } {

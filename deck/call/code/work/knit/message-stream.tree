@@ -1,0 +1,708 @@
+# One Messages API request, streamed and accumulated whole: `term knit`'s raw-HTTP client, ported from the book
+# agent's deck/make/code/code/api-client.ts lines 506 to 734 (`applyStreamEvent`, `streamOnce`, `readStream`,
+# `streamMessage`), term-cli-in-term-0198, decision 014 part 4. Ported, not docked: the Term CLI never reaches into
+# another project's source by a path climbing out of its package (a lone Term checkout cannot build it), and that file
+# pulls TerminalDisplay and chalk into host/line.js.
+#
+# It is the shape of the SDK's `stream(...).finalMessage()`: the request is sent with `stream: true`, every server-sent
+# event is applied to one message, and the message comes back as the non-streaming API would return it: every content
+# block whole and in order (thinking blocks with their signatures, so they can be passed back unchanged),
+# `stop_reason`, `stop_details`, and `usage` with the cache fields. Lines are buffered across chunks. A 429, a 408, a
+# 409, a 5xx, an overload or a dropped connection is retried with backoff, honoring `retry-after`; any other refusal is
+# thrown with the API's own message.
+#
+# The message is the API's own record, snake_case on the wire with fields this module never names, so it is a host
+# value and every write into it is a bind. The failures are the original's `MessageRequestError`, one host class, so a
+# caller (speaker.tree `raise-knit-request`) reads `message` and `brokenUsage` off them as before.
+
+load @term/base/text
+  find starts-with
+
+dock load
+  load <global:global>, name stream-global
+  # a promise a bind hands out is awaited through `Promise.resolve`, a dock call (a bind is never awaited itself)
+  load <global:Promise>, name stream-promise
+    mark async
+
+# ---- host values ----
+
+bind stream-nothing
+  like dynamic
+  case node
+    text <undefined>
+
+bind stream-is-truthy
+  take value, like dynamic
+  like boolean
+  case node
+    text <Boolean($value)>
+
+# `value && typeof value === "object"`
+bind stream-is-object
+  take value, like dynamic
+  like boolean
+  case node
+    text <(Boolean($value) && typeof $value === "object")>
+
+bind stream-field
+  take value, like dynamic
+  take name, like text
+  like dynamic
+  case node
+    text <($value)[$name]>
+
+bind stream-set-field
+  take value, like dynamic
+  take name, like text
+  take given, like dynamic
+  like void
+  case node
+    text <void (($value)[$name] = $given)>
+
+# a value's `type` when it is a text, else the empty text, which no case below names (the original compared with ===)
+bind stream-type-of
+  take value, like dynamic
+  like text
+  case node
+    text <(typeof ($value).type === "string" ? ($value).type : "")>
+
+# the key the partial input of the block at `event.index` is kept under
+bind stream-index-key
+  take event, like dynamic
+  like text
+  case node
+    text <String(($event).index)>
+
+bind stream-parse-json
+  take json, like text
+  like dynamic
+  case node
+    text <JSON.parse($json)>
+
+bind stream-empty-record
+  like dynamic
+  case node
+    text <(\{\})>
+
+bind stream-raise
+  take problem, like dynamic
+  like void
+  case node
+    text <<(() => { throw $problem })()>>
+
+# ---- the failure ----
+
+# the original's `MessageRequestError`: one class, so a caught failure is told from a host one by `instanceof`
+bind stream-failure-class
+  like dynamic
+  case node
+    text <<(class MessageRequestError extends Error { constructor(message_, status_, retryable_) { super(message_); this.status = status_; this.retryable = retryable_ } })>>
+
+host failure-class, stream-failure-class()
+
+bind stream-new-failure
+  take shape, like dynamic
+  take message, like text
+  take status, like number
+  take retryable, like boolean
+  like dynamic
+  case node
+    text <new ($shape)($message, $status, $retryable)>
+
+bind stream-is-failure
+  take shape, like dynamic
+  take value, like dynamic
+  like boolean
+  case node
+    text <(($value) instanceof ($shape))>
+
+bind stream-is-type-error
+  take value, like dynamic
+  like boolean
+  case node
+    text <(($value) instanceof TypeError)>
+
+# `error.usage`, read off whatever was thrown (`null` and `undefined` answer undefined)
+bind stream-usage-of
+  take problem, like dynamic
+  like dynamic
+  case node
+    text <($problem)?.usage>
+
+task request-failure
+  take message, like text
+  take status, like number
+  take retryable, like boolean
+  like dynamic
+  mark private
+
+  back stream-new-failure(failure-class, message, status, retryable)
+
+# ---- one event ----
+
+# `message_start`: every field of the message but its content, and a copy of its usage
+bind stream-start-message
+  take message, like dynamic
+  take event, like dynamic
+  like void
+  case node
+    text <<void (({ content: content_, ...rest_ }) => { Object.assign($message, rest_); $message.usage = { ...($event.message?.usage ?? {}) } })($event.message ?? {})>>
+
+# `{ ...(event.content_block ?? {}) }`
+bind stream-block-copy
+  take event, like dynamic
+  like dynamic
+  case node
+    text <<({ ...(($event).content_block ?? {}) })>>
+
+# `message.content[event.index]`
+bind stream-block-at
+  take message, like dynamic
+  take event, like dynamic
+  like dynamic
+  case node
+    text <($message).content[($event).index]>
+
+bind stream-place-block
+  take message, like dynamic
+  take event, like dynamic
+  take block, like dynamic
+  like void
+  case node
+    text <void (($message).content[($event).index] = $block)>
+
+bind stream-delta-of
+  take event, like dynamic
+  like dynamic
+  case node
+    text <<(($event).delta ?? {})>>
+
+# `block[name] = String(block[name] ?? "") + added`, the text and thinking deltas
+bind stream-append-field
+  take block, like dynamic
+  take name, like text
+  take added, like dynamic
+  like void
+  case node
+    text <<void (($block)[$name] = String(($block)[$name] ?? "") + $added)>>
+
+# `delta.partial_json ?? ""`, as the text it adds
+bind stream-json-part
+  take delta, like dynamic
+  like text
+  case node
+    text <<("" + (($delta).partial_json ?? ""))>>
+
+bind stream-append-citation
+  take block, like dynamic
+  take delta, like dynamic
+  like void
+  case node
+    text <<void (($block).citations = [...(($block).citations ?? []), ($delta).citation])>>
+
+# `value && name in value`, which throws as the original did on a value `in` cannot read
+bind stream-holds-key
+  take value, like dynamic
+  take name, like text
+  like boolean
+  case node
+    text <(Boolean($value) && ($name in ($value)))>
+
+bind stream-merge-usage
+  take message, like dynamic
+  take event, like dynamic
+  like void
+  case node
+    text <<void (($message).usage = { ...($message).usage, ...(($event).usage ?? {}) })>>
+
+# `${event.error?.<name> ?? fallback}`
+bind stream-error-part
+  take event, like dynamic
+  take name, like text
+  take fallback, like text
+  like text
+  case node
+    text <<`${($event).error?.[$name] ?? $fallback}`>>
+
+# `event.error?.type` when it is a text, else the empty text
+bind stream-error-type
+  take event, like dynamic
+  like text
+  case node
+    text <<(typeof ($event).error?.type === "string" ? ($event).error.type : "")>>
+
+# apply one server-sent event to the message being built, and answer the partial tool inputs as they stand after it
+task apply-stream-event
+  take message, like dynamic
+  take event, like dynamic
+  take partial, like hash, like text, like text
+  like hash, like text, like text
+
+  save kind, stream-type-of(event)
+  fork test, is-equal(kind, <message_start>)
+    hold
+      stream-start-message(message, event)
+      back partial
+  fork test, is-equal(kind, <content_block_start>)
+    hold
+      save block, stream-block-copy(event)
+      save block-kind, stream-type-of(block)
+      # a tool's input arrives as JSON text in deltas: it starts empty, never as the `{}` placeholder
+      fork test, or(is-equal(block-kind, <tool_use>), is-equal(block-kind, <server_tool_use>))
+        hold
+          save started, stream-index-key(event)
+          save partial/{started}, <>
+      stream-place-block(message, event, block)
+      back partial
+  fork test, is-equal(kind, <content_block_delta>)
+    hold
+      save open, stream-block-at(message, event)
+      save delta, stream-delta-of(event)
+      fork test, not(stream-is-truthy(open))
+        hold
+          back partial
+      save delta-kind, stream-type-of(delta)
+      fork test, is-equal(delta-kind, <text_delta>)
+        hold
+          stream-append-field(open, <text>, stream-field(delta, <text>))
+          back partial
+      fork test, is-equal(delta-kind, <thinking_delta>)
+        hold
+          stream-append-field(open, <thinking>, stream-field(delta, <thinking>))
+          back partial
+      fork test, is-equal(delta-kind, <signature_delta>)
+        hold
+          stream-set-field(open, <signature>, stream-field(delta, <signature>))
+          back partial
+      fork test, is-equal(delta-kind, <input_json_delta>)
+        hold
+          save growing, stream-index-key(event)
+          save before, <>
+          fork test, partial/has(growing)
+            hold
+              save before, partial/get(growing)
+          save added, stream-json-part(delta)
+          save partial/{growing}, <{before}{added}>
+          back partial
+      fork test, is-equal(delta-kind, <citations_delta>)
+        hold
+          stream-append-citation(open, delta)
+      back partial
+  fork test, is-equal(kind, <content_block_stop>)
+    hold
+      save closed, stream-block-at(message, event)
+      save stopped, stream-index-key(event)
+      fork test, and(stream-is-truthy(closed), partial/has(stopped))
+        hold
+          save json, partial/get(stopped)
+          fork test, is-equal(json, <>)
+            hold
+              stream-set-field(closed, <input>, stream-empty-record())
+            miss
+              stream-set-field(closed, <input>, stream-parse-json(json))
+          # `remove` is emitted as a call of no native method on a typed hash; `delete` is the native map's own
+          partial/delete(stopped)
+      back partial
+  fork test, is-equal(kind, <message_delta>)
+    hold
+      save given, stream-field(event, <delta>)
+      fork test, stream-holds-key(given, <stop_reason>)
+        hold
+          stream-set-field(message, <stop_reason>, stream-field(given, <stop_reason>))
+      fork test, stream-holds-key(given, <stop_details>)
+        hold
+          stream-set-field(message, <stop_details>, stream-field(given, <stop_details>))
+      fork test, stream-holds-key(given, <stop_sequence>)
+        hold
+          stream-set-field(message, <stop_sequence>, stream-field(given, <stop_sequence>))
+      # the final usage: output tokens, and any field the start did not carry
+      stream-merge-usage(message, event)
+      back partial
+  fork test, is-equal(kind, <error>)
+    hold
+      save error-kind, stream-error-type(event)
+      save named, stream-error-part(event, <type>, <error>)
+      save said, stream-error-part(event, <message>, <the stream reported an error>)
+      save retryable, or(is-equal(error-kind, <overloaded_error>), is-equal(error-kind, <api_error>))
+      stream-raise(request-failure(<{named}: {said}>, 0, retryable))
+  # ping, message_stop and anything newer
+  back partial
+
+# ---- the stream ----
+
+bind stream-new-decoder
+  like dynamic
+  case node
+    text <new TextDecoder()>
+
+bind stream-new-message
+  like dynamic
+  case node
+    text <<({ content: [], usage: {} })>>
+
+# `reader.read()`, a promise of `{ value, done }`
+bind stream-read
+  take reader, like dynamic
+  like dynamic
+  case node
+    text <($reader).read()>
+
+bind stream-is-done
+  take chunk, like dynamic
+  like boolean
+  case node
+    text <Boolean(($chunk).done)>
+
+bind stream-decode
+  take decoder, like dynamic
+  take chunk, like dynamic
+  like text
+  case node
+    text <<($decoder).decode(($chunk).value, { stream: true })>>
+
+# the UTF-16 index of the first line feed, or -1 (the buffer is cut in the units it was searched in)
+bind stream-line-end
+  take buffer, like text
+  like number
+  case node
+    text <($buffer).indexOf(String.fromCharCode(10))>
+
+bind stream-units-before
+  take buffer, like text
+  take at, like number
+  like text
+  case node
+    text <($buffer).slice(0, $at)>
+
+bind stream-units-after
+  take buffer, like text
+  take at, like number
+  like text
+  case node
+    text <($buffer).slice($at + 1)>
+
+bind stream-drop-return
+  take line, like text
+  like text
+  case node
+    text <<($line).replace(/\r$/, "")>>
+
+# `line.slice(5).trim()`: what follows `data:`, trimmed as JavaScript trims
+bind stream-data-of
+  take line, like text
+  like text
+  case node
+    text <($line).slice(5).trim()>
+
+# `message.stop_reason == null`: message_start carries `stop_reason: null`, only message_delta sets it
+bind stream-unstopped
+  take message, like dynamic
+  like boolean
+  case node
+    text <(($message).stop_reason == null)>
+
+bind stream-drop-holes
+  take message, like dynamic
+  like void
+  case node
+    text <<void (($message).content = ($message).content.filter(block_ => block_ !== undefined))>>
+
+task take-event-line
+  take line, like text
+  take message, like dynamic
+  take partial, like hash, like text, like text
+  like hash, like text, like text
+  mark private
+
+  fork test, not(starts-with(line, <data:>))
+    hold
+      back partial
+  save data, stream-data-of(line)
+  fork test, or(is-equal(data, <>), is-equal(data, <[DONE]>))
+    hold
+      back partial
+  back apply-stream-event(message, stream-parse-json(data), partial)
+
+task read-event-stream
+  take reader, like dynamic
+  take decoder, like dynamic
+  take message, like dynamic
+  like dynamic
+  mark private
+
+  save partial, no-partials()
+  save buffer, <>
+  save done, false
+  walk test
+    hook test, not(done)
+    hook hold
+      save chunk, stream-promise/resolve(stream-read(reader))
+      fork test, stream-is-done(chunk)
+        hold
+          save done, true
+        miss
+          save decoded, stream-decode(decoder, chunk)
+          save buffer, <{buffer}{decoded}>
+          save at, stream-line-end(buffer)
+          walk test
+            hook test, is-minimum(at, 0)
+            hook hold
+              save line, stream-drop-return(stream-units-before(buffer, at))
+              save partial, take-event-line(line, message, partial)
+              save buffer, stream-units-after(buffer, at)
+              save at, stream-line-end(buffer)
+  save partial, take-event-line(buffer, message, partial)
+  fork test, stream-unstopped(message)
+    hold
+      stream-raise(request-failure(<The stream ended before the message did>, 0, true))
+  stream-drop-holes(message)
+  back message
+
+# no tool input begun yet, typed so the texts are keyed by text (a `make hash` local is typed by its first write)
+task no-partials
+  like hash, like text, like text
+  mark private
+
+  back make hash
+
+# ---- one request ----
+
+# POST, the version and key headers, the betas when there are any, and the body asked to stream
+bind stream-request-init
+  take key, like dynamic
+  take body, like dynamic
+  take betas, like dynamic
+  like dynamic
+  case node
+    text <<({ method: "POST", headers: { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": $key, ...($betas.length > 0 ? { "anthropic-beta": $betas.join(",") } : {}) }, body: JSON.stringify({ ...$body, stream: true }) })>>
+
+bind stream-messages-url
+  take base, like dynamic
+  like text
+  case node
+    text <<`${$base}/messages`>>
+
+bind stream-is-ok
+  take response, like dynamic
+  like boolean
+  case node
+    text <Boolean(($response).ok)>
+
+bind stream-status
+  take response, like dynamic
+  like number
+  case node
+    text <($response).status>
+
+# `response.text()`, a promise
+bind stream-body-text
+  take response, like dynamic
+  like dynamic
+  case node
+    text <($response).text()>
+
+bind stream-first-units
+  take text, like text
+  take most, like number
+  like text
+  case node
+    text <($text).slice(0, $most)>
+
+# `Number(retry-after)` when finite, else undefined: an absent header is `Number(null)`, 0, as the original read it
+bind stream-retry-after
+  take response, like dynamic
+  like dynamic
+  case node
+    text <<((after_) => (Number.isFinite(after_) ? after_ : undefined))(Number(($response).headers.get("retry-after")))>>
+
+bind stream-reader-of
+  take response, like dynamic
+  like dynamic
+  case node
+    text <($response).body?.getReader()>
+
+bind stream-key-count
+  take message, like dynamic
+  like number
+  case node
+    text <Object.keys(($message).usage).length>
+
+task stream-once
+  take key, like dynamic
+  take body, like dynamic
+  take betas, like dynamic
+  take base, like dynamic
+  like dynamic
+  mark private
+
+  save response, wait stream-global/fetch(stream-messages-url(base), stream-request-init(key, body, betas))
+  fork test, not(stream-is-ok(response))
+    hold
+      save said, stream-promise/resolve(stream-body-text(response))
+      save status, stream-status(response)
+      save retryable, or(or(is-equal(status, 429), is-equal(status, 408)), or(is-equal(status, 409), is-minimum(status, 500)))
+      save cut, stream-first-units(said, 2000)
+      save failure, request-failure(<API request failed ({status}): {cut}>, status, retryable)
+      stream-set-field(failure, <after>, stream-retry-after(response))
+      stream-raise(failure)
+  save reader, stream-reader-of(response)
+  fork test, not(stream-is-truthy(reader))
+    hold
+      stream-raise(request-failure(<The response body is not readable>, 0, true))
+  save decoder, stream-new-decoder()
+  save message, stream-new-message()
+  fork
+    mark unsafe
+    save read, read-event-stream(reader, decoder, message)
+    back read
+  halt take
+    take problem
+    # a stream that broke after it started was billed for what it read and wrote: say how much, so a caller that
+    # counts spend counts it
+    fork test, and(stream-is-object(problem), is-above(stream-key-count(message), 0))
+      hold
+        stream-set-field(problem, <usage>, stream-field(message, <usage>))
+    stream-raise(problem)
+  back message
+
+# ---- the retries ----
+
+# one attempt: the message, or what was thrown
+form message-try
+  link failed, like boolean
+  link problem, like dynamic
+  link answer, like dynamic
+
+bind stream-retries-of
+  take input, like dynamic
+  like number
+  case node
+    text <(($input).retries ?? 4)>
+
+bind stream-betas-of
+  take input, like dynamic
+  like dynamic
+  case node
+    text <(($input).betas ?? [])>
+
+bind stream-base-of
+  take input, like dynamic
+  like dynamic
+  case node
+    text <(($input).baseUrl ?? "https://api.anthropic.com/v1")>
+
+bind stream-refuses-broken
+  take input, like dynamic
+  like boolean
+  case node
+    text <(($input).retryBroken === false)>
+
+# `{ ...message, broken_usage: broken }`
+bind stream-with-broken
+  take message, like dynamic
+  take broken, like list, like dynamic
+  like dynamic
+  case node
+    text <<({ ...($message), broken_usage: $broken })>>
+
+# 2, 4, 8 ... seconds, at most a minute
+bind stream-backoff
+  take attempt, like number
+  like number
+  case node
+    text <Math.min(60000, 2000 * 2 ** $attempt)>
+
+bind stream-seconds
+  take after, like dynamic
+  like number
+  case node
+    text <(($after) * 1000)>
+
+bind stream-is-defined
+  take value, like dynamic
+  like boolean
+  case node
+    text <(($value) !== undefined)>
+
+# `(input.wait ?? sleep)(ms)`, a promise
+bind stream-pause
+  take input, like dynamic
+  take ms, like number
+  like dynamic
+  case node
+    text <<(($input).wait ?? ((ms_) => new Promise(wake_ => setTimeout(wake_, ms_))))($ms)>>
+
+task try-message-stream
+  take input, like dynamic
+  like message-try
+  mark private
+
+  fork
+    mark unsafe
+    save message, stream-once(stream-field(input, <apiKey>), stream-field(input, <body>), stream-betas-of(input), stream-base-of(input))
+    back make(message-try, bind(failed, false), bind(problem, stream-nothing()), bind(answer, message))
+  halt take
+    take problem
+    back make(message-try, bind(failed, true), bind(problem, problem), bind(answer, stream-nothing()))
+
+# one request, retried on what the API says may be retried, up to `retries` times, waiting 2, 4, 8 ... seconds (at
+# most a minute) or what `retry-after` asks. `input` is the original's record: `apiKey`, `body`, and optionally `betas`,
+# `retries` (4), `baseUrl`, `wait` (a task of milliseconds, a test's clock) and `retryBroken` (false: a stream that
+# broke after it started, and was billed, is thrown with its usage rather than retried, so a caller that caps spend can
+# price the retry before it is sent)
+task stream-message
+  take input, like dynamic
+  like dynamic
+  mark async
+
+  save retries, stream-retries-of(input)
+  # the usage of attempts that broke partway, billed and not part of the message returned
+  save broken, no-usages()
+  save attempt, 0
+  walk test
+    hook test, true
+    hook hold
+      save tried, try-message-stream(input)
+      fork test, not(tried/failed)
+        hold
+          fork test, is-above(broken/length, 0)
+            hold
+              back stream-with-broken(tried/answer, broken)
+          back tried/answer
+      save problem, tried/problem
+      save usage, stream-usage-of(problem)
+      save billed, stream-is-truthy(usage)
+      fork test, billed
+        hold
+          broken/push(usage)
+      save known, stream-is-failure(failure-class, problem)
+      save retryable, false
+      fork test, known
+        hold
+          save retryable, stream-is-truthy(stream-field(problem, <retryable>))
+        miss
+          # a dropped connection reaches here as a TypeError from fetch
+          save retryable, stream-is-type-error(problem)
+      fork test, or(or(not(retryable), is-minimum(attempt, retries)), and(billed, stream-refuses-broken(input)))
+        hold
+          fork test, stream-is-object(problem)
+            hold
+              stream-set-field(problem, <brokenUsage>, broken)
+          stream-raise(problem)
+      save after, stream-nothing()
+      fork test, known
+        hold
+          save after, stream-field(problem, <after>)
+      save ms, stream-backoff(attempt)
+      fork test, stream-is-defined(after)
+        hold
+          save ms, stream-seconds(after)
+      stream-promise/resolve(stream-pause(input, ms))
+      save attempt, add(attempt, 1)
+  back stream-nothing()
+
+task no-usages
+  like list, like dynamic
+  mark private
+
+  back make list

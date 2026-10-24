@@ -78,7 +78,9 @@ task chunk-record
   back pairs-value(pairs)
 
 # Adjacent literal pieces of a template mean the same thing however they are split, and a span (and `privateNote`, a
-# span under its own name) is position, not meaning: both are taken out before comparing
+# span under its own name) is position, not meaning: both are taken out before comparing. So is `leanShaped`, which
+# records whether a lean call was written `f(...)`: it is layout, read only by decision 009's label-or-call refusal,
+# and a call that stacks under rule 5 can never keep its parentheses
 task merge-parts
   take value, like roll-value
   like roll-value
@@ -99,7 +101,7 @@ task merge-parts
       walk pairs
         take pair
         save key, pair/key
-        fork test, or(is-equal(key, <span>), is-equal(key, <privateNote>))
+        fork test, or(is-equal(key, <span>), or(is-equal(key, <privateNote>), is-equal(key, <leanShaped>)))
           hold
             turn next
         sift pair/value

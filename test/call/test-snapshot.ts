@@ -10,6 +10,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tempDir } from '../temp'
+import { LINE } from './cli'
 
 let pass = 0
 let fail = 0
@@ -24,7 +25,7 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const line = join(process.cwd(), 'host', 'line.js')
+const line = LINE
 const root = realpathSync(tempDir('test-snapshot-'))
 mkdirSync(join(root, 'code'), { recursive: true })
 mkdirSync(join(root, 'test'), { recursive: true })

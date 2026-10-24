@@ -103,12 +103,14 @@ bind repl-has-resolver
   case node
     text <Boolean($resolve)>
 
-# import the module and call its eval wrapper, the answer awaited as `await run()` awaited it
+# import the module and call its eval wrapper, the answer awaited as `await run()` awaited it, then the module's folder
+# removed however the evaluation ends (term-cli-in-term-0178)
 bind repl-evaluate
   take href, like text
+  take folder, like text
   like dynamic
   case node
-    text <import($href).then((module) =\> (module.seedReplEval ? module.seedReplEval() : undefined))>
+    text <import($href).then((module) =\> (module.seedReplEval ? module.seedReplEval() : undefined)).finally(() =\> process.getBuiltinModule("node:fs").rmSync($folder, \{ recursive: true, force: true \}))>
 
 # a runtime value to a readable line
 bind repl-display
@@ -228,7 +230,7 @@ task run-program
   save file, node-path/join(dir, <repl.mjs>)
   node-file/write-file-sync(file, transformed/code)
   save address, node-address/pathToFileURL(file)
-  save value, wait repl-evaluate(address/href)
+  save value, wait repl-evaluate(address/href, dir)
   back value
 
 # ---- the session on a terminal or a pipe ----

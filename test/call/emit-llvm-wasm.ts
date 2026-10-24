@@ -6,9 +6,9 @@
 
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { tempDir } from '../temp'
+import { LINE } from './cli'
 
 let pass = 0
 let fail = 0
@@ -23,7 +23,6 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const LINE = join(dirname(fileURLToPath(import.meta.url)), '../../host/line.js')
 const have = (tool: string): boolean => spawnSync('which', [tool], { encoding: 'utf8' }).status === 0
 
 if (!have('rustc')) {

@@ -62,6 +62,13 @@ bind pool-worker-build
   case node
     text <(\{ entryPoints: [$source], outfile: $out, bundle: true, platform: "node", format: "esm", tsconfig: $tsconfig, external: ["@term/call/code/build-parallel", "@term/call/code/build-separate-parallel"], banner: \{ js: "import \{ createRequire as __seedCreateRequire \} from 'module'; const require = __seedCreateRequire(import.meta.url);" \} \})>
 
+# the file removed when this process ends: a worker bundle is the process's alone (term-cli-in-term-0178)
+bind pool-remove-at-exit
+  take bundled, like text
+  like void
+  case node
+    text <void process.once("exit", () =\> process.getBuiltinModule("node:fs").rmSync($bundled, \{ force: true \}))>
+
 # this process's id
 bind pool-pid
   like number
@@ -110,6 +117,7 @@ task bundle-worker
       pool-throw(<parallel build unavailable: could not locate {name}.ts or tsconfig.json>)
   save out, node-path/join(node-system/tmpdir(), <term-{name}-{pool-pid()}.mjs>)
   esbuild-module/build-sync(pool-worker-build(source, out, tsconfig))
+  pool-remove-at-exit(out)
   back out
 
 # the per-file worker, bundled once per process

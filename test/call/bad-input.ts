@@ -18,24 +18,31 @@
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { compile } from '@term/make/code/compile/compile'
+import { commandRoutes, programOf } from '@term/call/code/hook-dispatch'
+import { projectResolver } from '@term/call/code/make'
+import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import { tempDir } from '../temp'
+import { LINE } from './cli'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
-const LINE = join(TERM, 'host/line.js')
 
-// the verbs, read from the CLI's own table so a new one is covered the day it is added
+// the verbs, read from the console's own routes (deck/call/code/line/base.tree through commandRoutes, as
+// term:cli-drift reads it), so a new one is covered the day it is added, on host/line.js and on the console alike.
+// Until 0193 they came from line.ts's COMMANDS table, which the console replaces (decision cli-in-term/013)
 function verbs(): string[] {
-  const text = readFileSync(join(TERM, 'deck/call/code/line.ts'), 'utf8')
-  const at = text.indexOf('const COMMANDS = [')
+  const file = join(TERM, 'deck/call/code/line/base.tree')
+  const result = compile(
+    { file, text: readFileSync(file, 'utf8') },
+    { resolve: projectResolver(TERM), roleOf: projectRoleOf(TERM), leanOf: projectLeanOf(TERM) },
+  )
 
-  if (at < 0) {
-    throw new Error('COMMANDS table not found in deck/call/code/line.ts')
+  if (!result.ok) {
+    throw new Error(`deck/call/code/line/base.tree does not compile: ${result.diagnostics.slice(0, 3).map(d => d.message).join('; ')}`)
   }
 
-  const block = text.slice(at, text.indexOf(']', at) + 1)
-
-  return [...new Set([...block.matchAll(/'([a-z-]+)'/g)].map(m => m[1]!))].sort()
+  return [...new Set(programOf(commandRoutes(result.program)).commands.map(route => route.path))].sort()
 }
 
 // a stack frame, a raw runtime error class, or a bare errno

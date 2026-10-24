@@ -10,10 +10,8 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tempDir } from '../temp'
+import { LINE } from './cli'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
-// TERM_LINE points at another bundle, so a change can be tried without replacing the CLI a running gate uses
-const LINE = process.env.TERM_LINE ?? join(HERE, '../../host/line.js')
 // small enough that the big file's compile cannot fit, big enough for a small file's
 const HEAP_MB = process.env.WORKER_HEAP_TEST_MB ?? '256'
 // tasks in the big file: its parse and check grow with it, far past HEAP_MB

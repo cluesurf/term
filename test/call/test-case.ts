@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tempDir } from '../temp'
+import { LINE } from './cli'
 
 let pass = 0
 let fail = 0
@@ -22,7 +23,7 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const line = join(process.cwd(), 'host', 'line.js')
+const line = LINE
 
 // a project whose only file is one control, built and tested
 function control(text: string): { code: number | null; out: string } {

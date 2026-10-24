@@ -9,9 +9,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { tempDir } from '../temp'
+import { LINE } from './cli'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
-const LINE = process.env.TERM_LINE ?? join(HERE, '../../host/line.js')
 const MESH = join(HERE, '../../../../../../mesh')
 
 type Page = {

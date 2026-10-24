@@ -1,5 +1,5 @@
 import { createInterface } from 'node:readline'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -115,15 +115,21 @@ async function run(typescript: string): Promise<unknown> {
     format: 'esm',
   }).code
 
+  // the module's folder is removed once its answer is in, however the evaluation ends (term-cli-in-term-0178)
   const dir = mkdtempSync(join(tmpdir(), 'seed-repl-'))
-  const file = join(dir, 'repl.mjs')
-  writeFileSync(file, js)
 
-  const module = (await import(pathToFileURL(file).href)) as {
-    seedReplEval?: () => unknown
+  try {
+    const file = join(dir, 'repl.mjs')
+    writeFileSync(file, js)
+
+    const module = (await import(pathToFileURL(file).href)) as {
+      seedReplEval?: () => unknown
+    }
+
+    return await (module.seedReplEval ? module.seedReplEval() : undefined)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
-
-  return module.seedReplEval ? module.seedReplEval() : undefined
 }
 
 // a runtime value to a readable line

@@ -8,7 +8,7 @@
 // pulls esbuild (used here only to bundle the worker) into its own bundle.
 
 import path from 'node:path'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { Worker } from 'node:worker_threads'
 import { cpus, tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -95,6 +95,9 @@ export function bundleWorker(name: string): string {
       js: "import { createRequire as __seedCreateRequire } from 'module'; const require = __seedCreateRequire(import.meta.url);",
     },
   })
+  // the bundle is this process's alone (its pid is in the name): removed when the process ends, so no build leaves one
+  // in the temporary folder (term-cli-in-term-0178)
+  process.once('exit', () => rmSync(out, { force: true }))
 
   return out
 }

@@ -1,0 +1,132 @@
+# Whether a stream takes color reads the same on every backend: chalk's rules in chalk's order (decision 014 of
+# note/project/term/cli-in-term), FORCE_COLOR first, then NO_COLOR, whether the stream is a terminal, and TERM=dumb.
+# The rule is held on its inputs (`decide-color`), so no test writes the environment. Held by `pnpm term:base-gate`
+# (BG_MATCH=test/terminal.tree).
+
+load @term/base/terminal
+  find decide-color
+  find uses-color
+  find uses-error-color
+
+# decide-color takes: terminal, FORCE_COLOR set, FORCE_COLOR's value, NO_COLOR set, TERM
+
+test <a terminal takes color>
+  want hold
+    call is-equal
+      call decide-color
+        true
+        false
+        text <>
+        false
+        text <xterm-256color>
+      true
+
+test <a terminal with no TERM takes color>
+  want hold
+    call is-equal
+      call decide-color
+        true
+        false
+        text <>
+        false
+        text <>
+      true
+
+test <a stream that is not a terminal takes none>
+  want hold
+    call is-equal
+      call decide-color
+        false
+        false
+        text <>
+        false
+        text <xterm-256color>
+      false
+
+test <TERM=dumb takes none>
+  want hold
+    call is-equal
+      call decide-color
+        true
+        false
+        text <>
+        false
+        text <dumb>
+      false
+
+test <NO_COLOR set to anything takes none>
+  want hold
+    call is-equal
+      call decide-color
+        true
+        false
+        text <>
+        true
+        text <xterm-256color>
+      false
+
+test <FORCE_COLOR=1 colors a stream that is not a terminal>
+  want hold
+    call is-equal
+      call decide-color
+        false
+        true
+        text <1>
+        false
+        text <xterm-256color>
+      true
+
+test <FORCE_COLOR wins over TERM=dumb and NO_COLOR>
+  want hold
+    call is-equal
+      call decide-color
+        false
+        true
+        text <3>
+        true
+        text <dumb>
+      true
+
+test <FORCE_COLOR=0 turns a terminal off>
+  want hold
+    call is-equal
+      call decide-color
+        true
+        true
+        text <0>
+        false
+        text <xterm-256color>
+      false
+
+test <FORCE_COLOR=false turns a terminal off>
+  want hold
+    call is-equal
+      call decide-color
+        true
+        true
+        text <false>
+        false
+        text <xterm-256color>
+      false
+
+test <FORCE_COLOR set empty is on>
+  want hold
+    call is-equal
+      call decide-color
+        false
+        true
+        text <>
+        false
+        text <>
+      true
+
+# the gate captures every backend's output through a pipe, so neither stream is a terminal there, and a page has none
+test <output captured through a pipe takes no color>
+  want hold
+    call and
+      call is-equal
+        call uses-color
+        false
+      call is-equal
+        call uses-error-color
+        false
