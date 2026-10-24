@@ -2,8 +2,8 @@
 # `seek` run, one item per missing or outdated package, one Problem item per security finding, and a closing verdict.
 # `--format json` and `--format sarif` are DATA on stdout.
 #
-# Ported from deck/call/code/seek.ts (term-cli-in-term-0059). The install check (@cluesurf/deck.tree) and the output
-# library are docked; the scan deck is its Term ports (scan-running, scan-reporting, sarif-writing, upgrade-fixing,
+# Ported from deck/call/code/seek.ts (term-cli-in-term-0059). The install check is @term/deck's installing port
+# (term-cli-in-term-0236) and the output library is loaded; the scan deck is its Term ports (scan-running, scan-reporting, sarif-writing, upgrade-fixing,
 # loaded since term-cli-in-term-0116, positional). `callSeek(input)` takes the original's record. A finding's item,
 # which carries a different set of fields for a dependency and for a code finding, is made by a bind field for field
 # as the original wrote it.
@@ -35,9 +35,12 @@ load @term/call/work/output/printer
   find print-data
   find report
 
+# the install check, @term/deck's installing port (term-cli-in-term-0236), where the package manager's face was
+# docked
+load @term/deck/package/installing
+  find verify-install
+
 dock load
-  load <@cluesurf/deck.tree>, name deck-tree-module
-    mark async
   load <node:fs/promises>, name fs-promise
     mark async
 
@@ -54,12 +57,6 @@ bind seek-format
   like text
   case node
     text <($value ?? "human")>
-
-bind seek-root-ask
-  take root, like text
-  like dynamic
-  case node
-    text <<({ root: $root })>>
 
 bind seek-code-given
   take code, like dynamic
@@ -196,7 +193,7 @@ task call-seek
   open-run(make(seek-open, bind(verb, <seek>), bind(root, root)))
   fork
     mark unsafe
-    save result, deck-tree-module/verify-install(seek-root-ask(root))
+    save result, verify-install(root)
     fork test, seek-given(result/ok)
       hold
         close-run(make(seek-close, bind(verdict, <Every package is installed>)))

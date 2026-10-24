@@ -3,8 +3,8 @@
 # (a name that is not registered, a folder that is not a package), so it ends the run as a failed item and exit 1,
 # never as a bug in Term.
 #
-# Ported from call/code/link.ts (term-cli-in-term-0053). The link registry and the links are @cluesurf/deck.tree's,
-# docked (decision cli-in-term/002), and every item prints through the output library, docked. Each task takes the
+# Ported from call/code/link.ts (term-cli-in-term-0053). The link registry and the links are @term/deck's linking
+# port, loaded (term-cli-in-term-0236), and every item prints through the output library. Each task takes the
 # original's input record as it is, so a caller passes what it passed before.
 
 load @term/call/work/output/printer
@@ -14,9 +14,18 @@ load @term/call/work/output/printer
   find report
   find show-path
 
+# the link registry and the links, @term/deck's linking port (term-cli-in-term-0236), where the package
+# manager's faces were docked
+load @term/deck/package/linking
+  find register-global-link
+  find consume-global-link
+  find dev-link
+  find dev-unlink
+
+load @term/deck/package/grammar-reading
+  find make-grammars
+
 dock load
-  load <@cluesurf/deck.tree>, name deck-tree-module
-    mark async
   load <node:fs>, name node-fs
   load <node:fs/promises>, name fs-promise
     mark async
@@ -81,21 +90,6 @@ form usage-close
   link next, like text
   link failure, like text
 
-form register-ask
-  link package-dir, like dynamic
-
-form consume-ask
-  link root, like dynamic
-  link name, like dynamic
-
-form dev-link-ask
-  link root, like dynamic
-  link package-dir, like text
-
-form unlink-ask
-  link root, like dynamic
-  link name, like dynamic
-
 task one-of
   take value, like dynamic
   like list, like dynamic
@@ -143,7 +137,7 @@ task register-link
   like void
   mark private
 
-  save full-name, deck-tree-module/register-global-link(make(register-ask, bind(package-dir, root)))
+  save full-name, register-global-link(root, make-grammars())
   report(make(change-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, full-name), bind(facts, one-of(<global link>))))
   close-run(make(next-done-close, bind(verdict, <{full-name} is registered>), bind(next, <term link {full-name}, in the project that uses it>), bind(done, true)))
 
@@ -154,7 +148,7 @@ task link-deck
   mark private
 
   # first the global registry by name (the npm-link consume step)
-  save consumed, deck-tree-module/consume-global-link(make(consume-ask, bind(root, root), bind(name, deck)))
+  save consumed, consume-global-link(root, deck)
   fork test, is-truthy(consumed)
     hold
       report(make(change-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, deck), bind(facts, one-of(<from the global registry>))))
@@ -176,7 +170,7 @@ task link-deck
       report(make(looked-item, bind(glyph, <failed>), bind(kind, <problem>), bind(subject, <{deck} is not in the global link registry and is not a local package>), bind(fields, one-of(field(<looked>, show-path(manifest))))))
       close-run(make(next-close, bind(verdict, <Not linked>), bind(next, <term link, inside {deck}, to register it>)))
       back
-  deck-tree-module/dev-link(make(dev-link-ask, bind(root, root), bind(package-dir, package-dir)))
+  dev-link(root, package-dir, make-grammars())
   report(make(change-item, bind(glyph, <added>), bind(kind, <change>), bind(verb, <add>), bind(subject, deck), bind(facts, one-of(show-path(package-dir)))))
   close-run(make(done-close, bind(verdict, <{deck} is linked>), bind(done, true)))
 
@@ -210,7 +204,7 @@ task unlink-deck
   like void
   mark private
 
-  deck-tree-module/dev-unlink(make(unlink-ask, bind(root, root), bind(name, deck)))
+  dev-unlink(root, deck)
   report(make(change-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <remove>), bind(subject, deck), bind(facts, one-of(<link>))))
   close-run(make(done-close, bind(verdict, <{deck} is unlinked>), bind(done, true)))
 

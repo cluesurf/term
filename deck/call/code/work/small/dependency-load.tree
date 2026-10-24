@@ -1,9 +1,9 @@
 # `term load`: install the project's dependencies, and pin the toolchain the manifest's `need` asks for in lock.tree
 # beside them (note/project/term/term-versions.md). Ported from call/code/load.ts (term-cli-in-term-0061). The install
-# is @cluesurf/deck.tree's, docked (decision cli-in-term/002), and the items print through the output library, docked.
+# is @term/deck's installing port, loaded, and the items print through the output library.
 #
-# What the install answers is a host object read by its fields, each tested by the host's truth (`Boolean`), as the
-# original's `need?.pin` and `need.kept` tested them.
+# The toolchain pin the install answers is a host object read by its fields, each tested by the host's truth
+# (`Boolean`), as the original's `need?.pin` and `need.kept` tested them.
 
 load @term/call/work/output/printer
   find close-run
@@ -12,9 +12,23 @@ load @term/call/work/output/printer
   find open-run
   find report
 
+# the install and the version, @term/deck's ports (term-cli-in-term-0236), where the package manager's faces were
+# docked
+load @term/deck/package/installing
+  find install
+
+load @term/deck/package/grammar-reading
+  find make-grammars
+
+load @term/deck/version
+  find code
+  find show-code
+
+load @term/deck/oci/oci-failure
+  find is-oci-failure
+  find oci-failure-message
+
 dock load
-  load <@cluesurf/deck.tree>, name deck-tree-module
-    mark async
   load <global:Error>, name host-error
   load <global:String>, name host-string
   load <global:Boolean>, name host-boolean
@@ -24,11 +38,6 @@ form load-open
   link verb, like text
   link root, like text
   link facts, like list, like text
-
-form install-ask
-  link root, like text
-  link clean, like boolean
-  link offline, like boolean
 
 form installed-item
   link glyph, like text
@@ -73,6 +82,11 @@ task message-of
   like text
   mark private
 
+  # a registry's refusal is oci-failure, whose own message is its pinned note: said by its `thing`, the original
+  # OciError's message (decision 007)
+  fork test, is-oci-failure(error)
+    hold
+      back oci-failure-message(error)
   # `error instanceof Error`
   fork test, host-error/prototype/is-prototype-of(error)
     hold
@@ -87,6 +101,22 @@ task holds
 
   back host-boolean/call(<>, value)
 
+# a version part the pin left out, the empty text, as version.tree's `code` writes it
+bind pin-part-text
+  take value, like dynamic
+  like text
+  case node
+    text <($value ?? "")>
+
+# the pin's version, a host record (the toolchain pin is passed on as the host's answer, installing.tree), in
+# version.tree's shape: a prerelease or build the record leaves out is the empty text, as code.ts's face made it
+task pin-code
+  take value, like dynamic
+  like code
+  mark private
+
+  back make(code, bind(major, value/major), bind(minor, value/minor), bind(patch, value/patch), bind(prerelease, pin-part-text(value/prerelease)), bind(build, pin-part-text(value/build)))
+
 task install-dependencies
   take root, like text
   take clean, like boolean
@@ -95,7 +125,7 @@ task install-dependencies
   like void
   mark private
 
-  save installed, deck-tree-module/install(make(install-ask, bind(root, root), bind(clean, clean), bind(offline, offline)))
+  save installed, install(root, clean, offline, make-grammars())
   save counts, make list
   counts/push(count(installed/decks, <decks>, <deck>))
   save took, subtract(host-date/now(), started)
@@ -104,7 +134,7 @@ task install-dependencies
   save need, installed/need
   fork test, and(holds(need), holds(need/pin))
     hold
-      save shown, deck-tree-module/show-code(need/pin/code)
+      save shown, show-code(pin-code(need/pin/code))
       save fields, make list
       fields/push(field(<hash>, need/pin/hash))
       save facts, make list

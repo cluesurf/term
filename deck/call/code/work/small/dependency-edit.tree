@@ -1,7 +1,6 @@
 # `term save <deck> [mark]` and `term toss <deck>`: add a dependency to the manifest, accepting the versions `mark`
 # names (`0.x.x` without), or remove one. Ported from call/code/save.ts and call/code/toss.ts (term-cli-in-term-0061).
-# The manifest is changed by @cluesurf/deck.tree, docked (decision cli-in-term/002), and every item prints through the
-# output library, docked until its own port (lane output) lands.
+# The manifest is changed by @term/deck's installing port, loaded, and every item prints through the output library.
 #
 # A deck or a constraint left out is the empty text, which the original's `!input.deck` and `input.constraint ?`
 # read the same as one left out.
@@ -11,9 +10,21 @@ load @term/call/work/output/printer
   find open-run
   find report
 
+# the manifest changed and the project loaded again by @term/deck's installing port (term-cli-in-term-0236), where
+# the package manager's faces were docked. This file's own verbs are save-dependency and toss-dependency: a task
+# of the file named like an imported task's original name shadows it on TypeScript (traps.md, 0012)
+load @term/deck/package/installing
+  find add-dependency
+  find remove-dependency
+
+load @term/deck/package/grammar-reading
+  find make-grammars
+
+load @term/deck/oci/oci-failure
+  find is-oci-failure
+  find oci-failure-message
+
 dock load
-  load <@cluesurf/deck.tree>, name deck-tree-module
-    mark async
   load <global:Error>, name host-error
   load <global:String>, name host-string
 
@@ -57,21 +68,17 @@ form done-close
 form plain-close
   link verdict, like text
 
-form add-ask
-  link root, like text
-  link name, like text
-  link constraint, like text
-
-form remove-ask
-  link root, like text
-  link name, like text
-
 # the message of a failure the host raised, as the original printed it: an Error's message, else the value as text
 task message-of
   take error, like dynamic
   like text
   mark private
 
+  # a registry's refusal is oci-failure, whose own message is its pinned note: said by its `thing`, the original
+  # OciError's message (decision 007)
+  fork test, is-oci-failure(error)
+    hold
+      back oci-failure-message(error)
   # `error instanceof Error`
   fork test, host-error/prototype/is-prototype-of(error)
     hold
@@ -92,14 +99,14 @@ task report-failed
   close-run(make(plain-close, bind(verdict, verdict)))
 
 # the constraint goes on as the text, the empty text for none: addDependency reads it by truth, so '' is undefined
-task add-dependency
+task save-dependency
   take root, like text
   take deck, like text
   take constraint, like text
   like void
   mark private
 
-  deck-tree-module/add-dependency(make(add-ask, bind(root, root), bind(name, deck), bind(constraint, constraint)))
+  add-dependency(root, deck, constraint, make-grammars())
   save facts, make list
   fork test, is-unequal(constraint, <>)
     hold
@@ -121,18 +128,18 @@ task call-save
     miss
       fork
         mark unsafe
-        add-dependency(root, deck, constraint)
+        save-dependency(root, deck, constraint)
       halt take
         take error
         report-failed(<add>, deck, error, <{deck} was not added>)
 
-task remove-dependency
+task toss-dependency
   take root, like text
   take deck, like text
   like void
   mark private
 
-  deck-tree-module/remove-dependency(make(remove-ask, bind(root, root), bind(name, deck)))
+  remove-dependency(root, deck, make-grammars())
   report(make(change-item, bind(glyph, <removed>), bind(kind, <change>), bind(verb, <remove>), bind(subject, deck)))
   close-run(make(done-close, bind(verdict, <Removed {deck}>), bind(done, true)))
 
@@ -149,7 +156,7 @@ task call-toss
     miss
       fork
         mark unsafe
-        remove-dependency(root, deck)
+        toss-dependency(root, deck)
       halt take
         take error
         report-failed(<remove>, deck, error, <{deck} was not removed>)

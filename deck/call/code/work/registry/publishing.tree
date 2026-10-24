@@ -5,8 +5,8 @@
 # account in the package index (note/project/term/registry/19-package-index.md).
 #
 # Ported from call/code/host.ts (term-cli-in-term-0053). The decisions that are not the registry, the key or the
-# terminal are host-words.tree's, loaded. The registry, the key set and the index are @cluesurf/deck.tree's, docked
-# (decision cli-in-term/002), `term boot` is the boot lane's port, the user-level home is docked until its port lands, and every item
+# terminal are host-words.tree's, loaded. The registry, the key set and the index are @term/deck's ports, loaded
+# (term-cli-in-term-0236), `term boot` is the boot lane's port, the user-level home is docked until its port lands, and every item
 # prints through the output library, docked. Each task takes the original's input record as it is, so a caller passes
 # what it passed before.
 
@@ -42,9 +42,60 @@ load @term/call/work/output/printer
   find print-data
   find report
 
+# the manifest, the version, the registry route, the key set, the artifact and the index: @term/deck's ports
+# (term-cli-in-term-0236), where the package manager's faces were docked. A registry's refusal is the ports'
+# oci-failure (decision cli-in-term/007), whose message is its `thing`
+load @term/deck/package/manifest-reading
+  find load-manifest
+  find validate-manifest
+
+load @term/deck/package/manifest-text
+  find write-code-hold
+
+load @term/deck/package/grammar-reading
+  find make-grammars
+
+load @term/deck/version
+  find show-code
+
+load @term/deck/package/registry-naming
+  find normalize-registry
+
+load @term/deck/package/registry-fetching
+  find make-default-fetch-config
+
+load @term/deck/package/installing
+  find host-scope-registries
+
+load @term/deck/oci/oci-address
+  find is-oci-registry
+
+load @term/deck/oci/oci-routing
+  find oci-route-of
+  find transport-for
+
+load @term/deck/oci/key-trust
+  find ensure-publisher
+  find rotate-keys
+
+load @term/deck/oci/oci-publishing
+  find build-oci-artifact
+  find publish-to-oci
+
+load @term/deck/oci/index-announcing
+  find ping-index
+
+load @term/deck/oci/oci-failure
+  find is-oci-failure
+  find oci-failure-message
+
+load @term/deck/object/id-signing
+  find generate-keypair
+
+load @term/deck/object/local-store
+  find local-object-store
+
 dock load
-  load <@cluesurf/deck.tree>, name deck-tree-module
-    mark async
   load <node:fs>, name node-fs
   load <node:fs/promises>, name fs-promise
     mark async
@@ -157,14 +208,6 @@ bind record-of
   case node
     text <Object.fromEntries($entries)>
 
-# `{ ...first, ...second }`
-bind merged
-  take first, like dynamic
-  take second, like dynamic
-  like dynamic
-  case node
-    text <(\{ ...$first, ...$second \})>
-
 # the fetch config `--registry` names: that registry, and no scope routes
 bind flag-config
   take registry, like dynamic
@@ -172,13 +215,30 @@ bind flag-config
   case node
     text <(\{ registry: $registry, scopeRegistries: \{\} \})>
 
-# the default fetch config with the manifest's own scope routes over its defaults
+# the default fetch config with the manifest's own scope routes over its defaults. Both route sets are hashes (a Map)
+# where the faces answered objects, and the route reads the config's routes by key, so each is an object here
 bind scoped-config
   take defaults, like dynamic
   take scoped, like dynamic
   like dynamic
   case node
-    text <(\{ ...$defaults, scopeRegistries: \{ ...$defaults.scopeRegistries, ...$scoped \} \})>
+    text <(\{ ...$defaults, scopeRegistries: \{ ...Object.fromEntries($defaults.scopeRegistries), ...Object.fromEntries($scoped) \} \})>
+
+# the host's own environment and fetch, which the index ping reads, as the face handed them
+bind publish-env
+  like dynamic
+  case node
+    text <process.env>
+
+bind publish-fetch
+  like dynamic
+  case node
+    text <fetch>
+
+bind publish-clock
+  like dynamic
+  case node
+    text <(() =\> new Date())>
 
 # what every build of the artifact shares. `package` and `link` are the library's own keys
 bind common-of
@@ -234,56 +294,9 @@ bind refuse
 
 # ---- what the library is asked ----
 
-form dir-ask
-  link dir, like dynamic
-
-form manifest-ask
-  link manifest, like dynamic
-
-form hold-ask
-  link hold, like dynamic
-
-form host-ask
-  link host, like dynamic
-
-form route-ask
-  link name, like text
-  link config, like dynamic
-
 form held-ask
   link repository, like dynamic
   link reference, like dynamic
-
-form rotate-ask
-  link transport, like dynamic
-  link repository, like dynamic
-  link scope, like dynamic
-  link keypair, like dynamic
-  link add, like list, like dynamic
-  link remove, like list, like dynamic
-
-form publisher-ask
-  link transport, like dynamic
-  link repository, like dynamic
-  link scope, like dynamic
-  link keypair, like dynamic
-
-form push-ask
-  link transport, like dynamic
-  link repository, like dynamic
-  link scope, like dynamic
-  link keys-repository, like dynamic
-  link keypair, like dynamic
-  link log, like dynamic
-
-form keypair-ask
-  link keypair, like dynamic
-
-form ping-ask
-  link repository, like dynamic
-  link digest, like dynamic
-  link token, like dynamic
-  link keypair, like dynamic
 
 form announce-ask
   link route, like dynamic
@@ -443,10 +456,10 @@ task route-of
   save flag, nothing()
   fork test, not(is-absent(registry))
     hold
-      save flag, deck-tree-module/normalize-registry(registry)
+      save flag, normalize-registry(registry)
   fork test, not(is-absent(flag))
     hold
-      fork test, not(deck-tree-module/is-oci-registry(flag))
+      fork test, not(is-oci-registry(flag))
         hold
           refuse(<--registry must be an OCI registry, \<host\>/\<namespace\>. The custom https registry is retired (note/project/term/registry/18-oci-registry-default.md)>)
   save config, nothing()
@@ -454,10 +467,10 @@ task route-of
     hold
       save config, flag-config(flag)
     miss
-      save defaults, deck-tree-module/make-default-fetch-config()
-      save scoped, deck-tree-module/host-scope-registries(make(manifest-ask, bind(manifest, manifest)))
+      save defaults, make-default-fetch-config()
+      save scoped, host-scope-registries(manifest)
       save config, scoped-config(defaults, scoped)
-  save route, deck-tree-module/oci-route-of(make(route-ask, bind(name, name), bind(config, config)))
+  save route, oci-route-of(name, config)
   # an UNSCOPED package has no scope to pick a registry by: said so, with where to put one
   fork test, not(is-truthy(route))
     hold
@@ -519,7 +532,7 @@ task load-publish-keypair
   fork test, not(is-truthy(input/mint))
     hold
       back nothing()
-  save made, deck-tree-module/generate-keypair()
+  save made, generate-keypair()
   fs-promise/mkdir(node-path/dirname(file), key-folder-options())
   fs-promise/write-file(file, json-pretty(made), key-file-options())
   back made
@@ -563,7 +576,7 @@ task announce
   like boolean
 
   save token, read-index-token()
-  save ping, deck-tree-module/ping-index(make(ping-ask, bind(repository, input/route/repository), bind(digest, input/digest), bind(token, token), bind(keypair, input/keypair)))
+  save ping, ping-index(input/route/repository, input/digest, token, input/keypair, publish-env(), publish-fetch(), publish-clock())
   save sent, is-equal(ping/form, <sent>)
   fork test, sent
     hold
@@ -586,8 +599,8 @@ task rotate-key-set
       close-run(make(next-failure-close, bind(verdict, <The key set was not changed>), bind(next, <term host, once, to publish and make a key>), bind(failure, <environment>)))
       back
   save started, now-ms()
-  save transport, deck-tree-module/transport-for(make(host-ask, bind(host, route/registry/host)))
-  save rotated, deck-tree-module/rotate-keys(make(rotate-ask, bind(transport, transport), bind(repository, route/keys-repository), bind(scope, route/scope), bind(keypair, keypair), bind(add, given-list(input/trust)), bind(remove, given-list(input/untrust))))
+  save transport, transport-for(route/registry/host, false)
+  save rotated, rotate-keys(transport, route/keys-repository, route/scope, keypair, given-list(input/trust), given-list(input/untrust))
   save counts, one-field(count(rotated/keys/length, <keys>, <key>))
   save facts, one-text(<generation {rotated/sequence}>)
   save fields, one-field(field(<ref>, <{route/registry/host}/{route/keys-repository}:keys>))
@@ -604,7 +617,7 @@ task ping-held
   mark private
 
   save keypair, load-publish-keypair(make(mint-ask, bind(mint, false)))
-  save transport, deck-tree-module/transport-for(make(host-ask, bind(host, route/registry/host)))
+  save transport, transport-for(route/registry/host, false)
   save held, wait transport/get-manifest(make(held-ask, bind(repository, route/repository/name), bind(reference, version)))
   fork test, not(is-truthy(held))
     hold
@@ -619,7 +632,7 @@ task ping-held
   report(make(read-item, bind(glyph, <info>), bind(verb, <read>), bind(subject, <{name}@{version}>), bind(fields, one-field(field(<digest>, held/digest)))))
   # the index checks the signer against the scope's key set, so it must exist and hold this key: created on the
   # scope's first use, a refusal when this key is not a member
-  save keys, deck-tree-module/ensure-publisher(make(publisher-ask, bind(transport, deck-tree-module/transport-for(make(host-ask, bind(host, route/registry/host)))), bind(repository, route/keys-repository), bind(scope, route/scope), bind(keypair, keypair)))
+  save keys, ensure-publisher(transport-for(route/registry/host, false), route/keys-repository, route/scope, keypair)
   fork test, is-truthy(keys/created)
     hold
       report(make(located-item, bind(glyph, <changed>), bind(kind, <change>), bind(verb, <create>), bind(subject, <key set of {route/scope}>), bind(fields, one-field(field(<ref>, <{route/registry/host}/{route/keys-repository}>)))))
@@ -642,9 +655,10 @@ task build-dry
   save keypair, load-publish-keypair(make(mint-ask, bind(mint, false)))
   fork test, not(is-truthy(keypair))
     hold
-      save keypair, deck-tree-module/generate-keypair()
+      save keypair, generate-keypair()
   save started, now-ms()
-  save built, deck-tree-module/build-oci-artifact(merged(common, make(keypair-ask, bind(keypair, keypair))))
+  # the chunking is the port's own when none is given, as the face passed none
+  save built, build-oci-artifact(common/dir, common/package, common/version, common/target, common/link, common/local, keypair, common/author, common/time, common/message, nothing(), common/annotations, common/include)
   save release, built/release
   save artifact, built/artifact
   save target, <{route/registry/host}/{route/repository/name}:{artifact/config/tag}>
@@ -678,9 +692,9 @@ task push-version
 
   save keypair, load-publish-keypair(make(mint-ask, bind(mint, true)))
   save started, now-ms()
-  save transport, deck-tree-module/transport-for(make(host-ask, bind(host, route/registry/host)))
-  save asked, make(push-ask, bind(transport, transport), bind(repository, route/repository), bind(scope, route/scope), bind(keys-repository, route/keys-repository), bind(keypair, keypair), bind(log, push-log))
-  save result, deck-tree-module/publish-to-oci(merged(common, asked))
+  save transport, transport-for(route/registry/host, false)
+  # no chunking, concurrency or referrer choice is given, so each is the port's own, as the face passed none
+  save result, publish-to-oci(common/dir, common/package, common/version, common/target, common/link, transport, route/repository, route/scope, route/keys-repository, common/local, keypair, common/author, common/time, common/message, nothing(), common/annotations, common/include, nothing(), nothing(), push-log)
   fork test, is-truthy(result/unchanged)
     hold
       report(make(skip-item, bind(glyph, <skipped>), bind(verb, <push>), bind(subject, <{name}@{version}>), bind(duration, subtract(now-ms(), started)), bind(facts, one-text(<already published>)), bind(fields, one-field(field(<digest>, result/digest)))))
@@ -702,8 +716,8 @@ task publish
   mark private
 
   save root, input/root
-  save manifest, deck-tree-module/load-manifest(make(dir-ask, bind(dir, root)))
-  save errors, deck-tree-module/validate-manifest(make(manifest-ask, bind(manifest, manifest)))
+  save manifest, load-manifest(root, make-grammars())
+  save errors, validate-manifest(manifest)
   fork test, is-above(errors/length, 0)
     hold
       # each a Problem item, `at` the manifest (section 12)
@@ -713,7 +727,7 @@ task publish
       close-run(make(counted-close, bind(verdict, <Nothing was published>), bind(counts, one-field(count(errors/length, <errors>, <error>)))))
       back
   save name, package-name(text-or-empty(manifest/host), manifest/name)
-  save version, deck-tree-module/show-code(manifest/mark)
+  save version, show-code(manifest/mark)
   # A RELEASED name is not a source package: `@term/code` is the toolchain, published per platform by
   # `pnpm term:release`, and a source artifact under it would make every install fail
   fork test, is-released(name)
@@ -742,11 +756,11 @@ task publish
           # the fields callBoot was not handed are undefined, as they were
           call-boot(make(boot-ask, bind(root, root), bind(mode, nothing()), bind(entry, entry), bind(env, nothing()), bind(port, nothing()), bind(remote, nothing()), bind(remote-token, nothing()), bind(args, nothing()), bind(out, node-path/join(root, <host>, <line>))))
           include/push(<host/line>)
-  save local, deck-tree-module/local-object-store()
+  save local, local-object-store()
   save links, make list
   walk manifest/link
     take dependency
-    links/push(link-of(dependency/name, deck-tree-module/write-code-hold(make(hold-ask, bind(hold, dependency/mark)))))
+    links/push(link-of(dependency/name, write-code-hold(dependency/mark)))
   # the package's source repository, which GHCR reads to LINK the package to it: `site` in deck.tree wins, else the
   # git remote the package directory pushes to
   save source, nothing()
@@ -784,7 +798,13 @@ task call-host
     publish(input)
   halt take
     take error
-    fail-run(error, input/root)
+    # a registry's refusal is said by its message, `thing`, as the face's OciError said it: the raised carrier's own
+    # message is oci-failure's pinned note (decision cli-in-term/007)
+    fork test, is-oci-failure(error)
+      hold
+        fail-run(oci-failure-message(error), input/root)
+      miss
+        fail-run(error, input/root)
 
 # the parts of a path under a home, as home.ts took them as arguments (`userHome('code', version)`): each given one,
 # in order. An empty part is left out, as one `join` of them all leaves it out
