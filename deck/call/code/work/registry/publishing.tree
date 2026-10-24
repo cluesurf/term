@@ -6,7 +6,7 @@
 #
 # Ported from call/code/host.ts (term-cli-in-term-0053). The decisions that are not the registry, the key or the
 # terminal are host-words.tree's, loaded. The registry, the key set and the index are @cluesurf/deck.tree's, docked
-# (decision cli-in-term/002), `term boot` and the user-level home are docked until their own ports land, and every item
+# (decision cli-in-term/002), `term boot` is the boot lane's port, the user-level home is docked until its port lands, and every item
 # prints through the output library, docked. Each task takes the original's input record as it is, so a caller passes
 # what it passed before.
 
@@ -19,10 +19,13 @@ load ../../host-words
   find unrouted
   find remote-source
 
+# `term boot`, the boot lane's port, since term-cli-in-term-0068
+load ../boot/boot-running
+  find call-boot
+  find boot-ask
+
 dock load
   load <@cluesurf/deck.tree>, name deck-tree-module
-    mark async
-  load <@term/call/code/boot>, name boot-module
     mark async
   load <@term/call/code/home>, name home-module
   load <@term/call/code/output>, name output
@@ -265,11 +268,6 @@ form announce-ask
 
 form mint-ask
   link mint, like boolean
-
-form boot-ask
-  link root, like dynamic
-  link entry, like text
-  link out, like text
 
 # ---- what is printed ----
 
@@ -717,7 +715,8 @@ task publish
       fork test, node-fs/exists-sync(entry)
         hold
           # built inside this run: callBoot reports its own `build` item into it rather than opening another
-          boot-module/call-boot(make(boot-ask, bind(root, root), bind(entry, entry), bind(out, node-path/join(root, <host>, <line>))))
+          # the fields callBoot was not handed are undefined, as they were
+          call-boot(make(boot-ask, bind(root, root), bind(mode, nothing()), bind(entry, entry), bind(env, nothing()), bind(port, nothing()), bind(remote, nothing()), bind(remote-token, nothing()), bind(args, nothing()), bind(out, node-path/join(root, <host>, <line>))))
           include/push(<host/line>)
   save local, deck-tree-module/local-object-store()
   save links, make list

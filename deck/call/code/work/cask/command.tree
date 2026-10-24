@@ -86,6 +86,12 @@ load ../cask-generate/bridge
   find generate-bridge
   find bridge-ask
 
+# the self lane's port of update.ts, since term-cli-in-term-0068. Its ask is found under a name of its own: ./release's
+# `stamp-ask` is the runtime version's
+load ../self/page-update
+  find stamp-update-key
+  find stamp-ask, name key-stamp-ask
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
@@ -94,7 +100,6 @@ dock load
   load <@term/call/code/make>, name make-module
   load <@term/call/code/scope>, name scope-module
   load <@term/call/code/show>, name show-module
-  load <@term/call/code/update>, name update-module
   load <@term/call/code/output>, name output
 
 # whether makeCask opened the run it prints into, so it closes only its own: the original's module variable `owned`,
@@ -188,10 +193,6 @@ form source-ask
 form scope-ask
   link root, like text
   link files, like list, like text
-
-form key-ask
-  link identifier, like text
-  link into, like text
 
 form cask-folder
   link recursive, like boolean
@@ -569,7 +570,7 @@ task make-cask
   # the usage strings its device capabilities need, now that the program is known, before the bundle is signed
   declare-usage(make(usage-ask, bind(plist, plist), bind(native, program/native)))
   save stamped, stamp-runtime-version(make(stamp-ask, bind(target, target), bind(native, program/native), bind(into, bundle/resources)))
-  update-module/stamp-update-key(make(key-ask, bind(identifier, identifier), bind(into, bundle/resources)))
+  stamp-update-key(make(key-stamp-ask, bind(identifier, identifier), bind(into, bundle/resources)))
   publish-built
     make publish-ask
       bind publish, input/publish
@@ -665,7 +666,7 @@ task make-rust-cask
         bind crate, crate-of(name)
         bind target, target
   save stamped, stamp-runtime-version(make(stamp-ask, bind(target, target), bind(native, program/native), bind(into, bundle/resources)))
-  update-module/stamp-update-key(make(key-ask, bind(identifier, app-identity(root)/identifier), bind(into, bundle/resources)))
+  stamp-update-key(make(key-stamp-ask, bind(identifier, app-identity(root)/identifier), bind(into, bundle/resources)))
   publish-built
     make publish-ask
       bind publish, ask/publish
@@ -773,7 +774,7 @@ task make-android-cask
 
   # into the assets before they are packaged, so the app reads it from its own APK
   save stamped, stamp-runtime-version(make(stamp-ask, bind(target, <android>), bind(native, program/native), bind(into, assets)))
-  update-module/stamp-update-key(make(key-ask, bind(identifier, identifier), bind(into, assets)))
+  stamp-update-key(make(key-stamp-ask, bind(identifier, identifier), bind(into, assets)))
   publish-built
     make publish-ask
       bind publish, ask/publish

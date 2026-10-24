@@ -8,16 +8,18 @@ load @term/call/work/home
 # registration by name, and failing that treats the argument as a path to a local package. `--toss` removes the
 # deck's link instead.
 #
-# The verb takes its hook's arguments and hands them to the shipped handlers (deck/call/code/link.ts `callLink`
-# and `callUnlink`), which print through the output library. It prints nothing of its own, catches nothing and never
-# exits: a throw reaches dispatch.tree `fail-line` (decision 005 of cli-in-term, part 2).
+# The verb takes its hook's arguments and hands them to the registry lane's handlers (work/registry/linking.tree
+# `call-link` and `call-unlink`, ports of link.ts since term-cli-in-term-0068), which print through the output library.
+# It prints nothing of its own, catches nothing and never exits: a throw reaches dispatch.tree `fail-line` (decision 005
+# of cli-in-term, part 2).
+
+load @term/call/work/registry/linking
+  find call-link
+  find call-unlink
 
 form link-ask
   link root, like text
   link deck, like text
-
-dock load
-  load <@term/call/code/link>, name link-module
 
 task link
   mark async
@@ -31,14 +33,12 @@ task link
   fork test
     read toss
     hold
-      call link-module/callUnlink
+      call call-unlink
         make link-ask
           bind root, read root
           bind deck, read deck
-        wait true
       send back
-  call link-module/callLink
+  call call-link
     make link-ask
       bind root, read root
       bind deck, read deck
-    wait true

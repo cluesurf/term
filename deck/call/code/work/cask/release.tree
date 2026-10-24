@@ -12,11 +12,20 @@ load ./host-value
   find is-truthy
   find value-or
 
+# the self lane's ports of runtime-version.ts and update.ts, since term-cli-in-term-0068. page-update's ask is found
+# under a name of its own: this file's `publish-ask` is what `--publish` is asked
+load ../self/runtime-stamp
+  find runtime-version
+  find toolchain-of
+  find runtime-ask
+
+load ../self/page-update
+  find publish-update
+  find publish-ask, name update-ask
+
 dock load
   load <node:fs>, name node-fs
   load <node:path>, name node-path
-  load <@term/call/code/runtime-version>, name version-module
-  load <@term/call/code/update>, name update-module
   load <@term/call/code/output>, name output
 
 form release-folder
@@ -25,12 +34,6 @@ form release-folder
 form version-source
   link name, like text
   link text, like text
-
-form version-ask
-  link target, like text
-  link minimum, like text
-  link toolchain, like text
-  link sources, like list, like version-source
 
 form stamp-ask
   link target, like text
@@ -57,14 +60,6 @@ form publish-ask
   link platform, like text
   link runtime-version, like text
 
-form update-ask
-  link page, like text
-  link out, like text
-  link identifier, like text
-  link platform, like text
-  link runtime-version, like text
-  link channel, like dynamic
-
 form publish-item
   link glyph, like text
   link kind, like text
@@ -84,12 +79,12 @@ task stamp-runtime-version
   save sources, make list
   sources/push(make(version-source, bind(name, <program>), bind(text, ask/native)))
   save asked
-    make version-ask
+    make runtime-ask
       bind target, target
       bind minimum, minimum-of(target)
-      bind toolchain, version-module/toolchain-of(target)
+      bind toolchain, toolchain-of(target)
       bind sources, sources
-  save version, version-module/runtime-version(asked)
+  save version, runtime-version(asked)
   node-fs/mkdir-sync(ask/into, make(release-folder, bind(recursive, true)))
   node-fs/write-file-sync(node-path/join(ask/into, <runtime-version>), <{version/hex}\n>)
   # the tone code is an identifier of 64 characters, a field value that wraps on its own line rather than a fact that
@@ -117,7 +112,7 @@ task publish-built
       bind platform, ask/platform
       bind runtime-version, ask/runtime-version
       bind channel, channel
-  save published, update-module/publish-update(asked)
+  save published, publish-update(asked)
   save facts, make list
   facts/push(channel)
   save fields, make list

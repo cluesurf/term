@@ -10,8 +10,8 @@
 #      every profile alone
 #
 # IT PRINTS THROUGH THE ONE OUTPUT LIBRARY, as one `load` run. That library is call/code/output.ts, DOCKED, not its port
-# work/output/printer.tree: `releases` and `reportLoaded` are still self.ts's, docked, and print through output.ts's
-# run, which a port's own copy of the run never sees (traps.md). Both move together when self.ts is ported.
+# work/output/printer.tree: `releases` and `report-loaded` are work/self/version-keeper.tree's (self.ts's port, since
+# term-cli-in-term-0068), which prints through output.ts too, so the run they report into is this one.
 #
 # What the installer decides beside the registry, the files and the shell is call/code/load-words.tree.
 # TERM_LOAD_REGISTRY=<http(s)://host> reads releases from another registry (the end-to-end test's loopback one).
@@ -42,10 +42,13 @@ load @term/call/work/need/version-install
   find load-version
   find link-front
 
+load @term/call/work/self/version-keeper
+  find releases
+  find report-loaded
+
 dock load
   load <@term/call/code/home>, name home-module
   load <@term/call/code/output>, name output
-  load <@term/call/code/self>, name self-module
   load <node:fs>, name node-file
   load <node:os>, name node-os
   load <node:path>, name node-path
@@ -103,13 +106,13 @@ bind stdout-captured
   case node
     text <!process.stdout.isTTY>
 
-# `(await releases())?.[0]`: the newest release, or undefined when the registry could not be read (self.ts reports why)
+# `(await releases())?.[0]`: the newest of the releases, or undefined when the registry could not be read (releases
+# reports why)
 bind newest-release
-  take selves, like dynamic
+  take listed, like dynamic
   like dynamic
   case node
-    text <(await $selves.releases())?.[0]>
-
+    text <($listed)?.[0]>
 # this process's environment with the next Path in TERM_NEXT_PATH, for PowerShell to read: `{ ...process.env, ... }`
 bind next-path-env
   take next, like text
@@ -425,14 +428,15 @@ task install-term
   save version, asked
   fork test, is-nullish(asked)
     hold
-      save version, newest-release(self-module)
+      save listed, releases()
+      save version, newest-release(listed)
   fork test, not(host-truth(version))
     hold
       output/close-run(make(plain-close, bind(verdict, <Nothing was installed>), bind(failure, <environment>)))
       back
 
   save loaded, load-version(make(load-ask, bind(version, version)))
-  fork test, not(self-module/report-loaded(loaded))
+  fork test, not(report-loaded(loaded))
     hold
       output/close-run(make(plain-close, bind(verdict, <Nothing was installed>), bind(failure, <environment>)))
       back

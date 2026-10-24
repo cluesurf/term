@@ -38,8 +38,11 @@ load @term/call/work/tint
 load @term/call/work/workers/file-pool
   find compile-project-parallel
 
+# `term base import` runs the base lane's port (work/base/data-import.tree), since term-cli-in-term-0068
+load @term/call/work/base/data-import
+  find call-base-import
+
 dock load
-  load <@term/call/code/base-import>, name base-import-module
   load <node:process>, name node-process
 
 form import-ask
@@ -74,7 +77,7 @@ task base-import
   save root, call project-root
   fork
     mark unsafe
-    call base-import-module/callBaseImport
+    call call-base-import
       make import-ask
         bind root, read root
         bind source, read source
@@ -84,7 +87,6 @@ task base-import
         bind branch, read branch
         bind author, read author
         bind message, read message
-      wait true
   halt take
     take error
     log-fail format-error error

@@ -77,12 +77,15 @@ load @term/call/work/completion
   find complete-line
   find print-completions
 
+# `term base project`, the base lane's port (work/base/repository.tree), since term-cli-in-term-0068
+load @term/call/work/base/repository
+  find call-base-project
+
 dock load
   load <@term/call/code/home>, name home-module
   load <@term/call/code/output>, name output-module
   load <@term/call/code/show>, name show-module
   load <@term/call/code/hunt>, name hunt-module
-  load <@term/call/code/base>, name base-module
   load <node:os>, name host-os
   load <node:path>, name host-path
   load <global:process>, name host-process
@@ -798,7 +801,7 @@ task text-entry
 # `term base project <commit>`: what a projection would write, and with --into --write, write it. The one command no
 # verb file binds (work/base-verbs.tree has the other thirteen), so it is here until a verb item moves it there.
 # line.ts left `mapping`, `into` and `repository` out when they were not given, and callBaseProject reads an absent
-# mapping as "work the schema out", so the ask is built without the empty ones. A throw ends the run as every
+# mapping as "work the schema out" (call-base-project reads it the same), so the ask is built without the empty ones. A throw ends the run as every
 # command's does (`fail-line`)
 task base-project
   take commit, like text
@@ -822,7 +825,7 @@ task base-project
         save json, entry
       miss
         save json, <{json},{entry}>
-  wait base-module/callBaseProject(host-json/parse(<\{{json}\}>))
+  call-base-project(host-json/parse(<\{{json}\}>))
 
 # A command's task threw: the run ends through the output library, exit 1, or 70 for a bug in Term (line.ts's
 # yargs `fail` and `main().catch`)

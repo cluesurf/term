@@ -23,10 +23,11 @@ type Page = {
 type Launched = { newPage: () => Promise<Page>; close: () => Promise<void> }
 type Chromium = { launch: (o: { headless: boolean }) => Promise<Launched> }
 
-// Launch Chromium with its `playwright-artifacts-*` folder in a temporary folder of this test's own. Playwright makes
-// that folder with mkdtemp under os.tmpdir() at launch and does not always remove it by the time close() answers, so
-// it was left in the gate's folder on every run (term-cli-in-term-0215). os.tmpdir() reads TMPDIR on every call, so
-// TMPDIR names a tempDir for the launch alone, which test/temp.ts removes when the process ends, however it ends.
+// Launch Chromium with its `playwright-artifacts-*` and profile folders in a temporary folder of this test's own.
+// Playwright makes them with mkdtemp under os.tmpdir() at launch and removes them only when the browser process exits,
+// so a close that times out into a kill, or a run stopped mid-visit, leaves them, and run outside the gate they land in
+// the system temp folder (term-cli-in-term-0215). os.tmpdir() reads TMPDIR on every call, so TMPDIR names a tempDir
+// for the launch alone, which test/temp.ts removes when the process ends, however it ends.
 async function launchOwned(browser: Chromium): Promise<Launched> {
   const before = process.env.TMPDIR
   process.env.TMPDIR = tempDir('term-page-status-browser-')

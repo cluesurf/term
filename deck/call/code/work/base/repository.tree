@@ -254,6 +254,14 @@ bind repo-message-of
   case node
     text <($error instanceof Error ? $error.message : String($error))>
 
+# a caught value's `message`, as the original's `error.message` read it: through a bind, since in a closure that reaches
+# @term/deck/package/tree-reading the caught value is typed `exception`, which has no `message` (term-cli-in-term-0068)
+bind repo-error-message
+  take error, like dynamic
+  like dynamic
+  case node
+    text <$error.message>
+
 bind repo-capitalized
   take value, like text
   like text
@@ -1132,7 +1140,7 @@ task inferred-projection
     save said, <Could not work out a schema: {repo-message-of(error)}>
     fork test, repo-is-mixed-field(infer-module, error)
       hold
-        save said, <{error/message}>
+        save said, <{repo-error-message(error)}>
     refuse-plainly(said)
   back inferred
 

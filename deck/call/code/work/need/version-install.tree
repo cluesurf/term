@@ -60,7 +60,7 @@ dock load
   load <node:path>, name node-path
   load <node:child_process>, name node-child
   load <node:crypto>, name node-crypto
-  load <node:timers/promises>, name node-timers
+  load <node:timers/promises>, name timer-promises
   load <global:process>, name host-process
   load <global:Date>, name host-date
 
@@ -978,7 +978,7 @@ task with-install-lock
             hold
               save package, release-package()
               back not-loaded(<another install of {package}@{version} has held {lock} for five minutes>)
-          wait node-timers/set-timeout(250)
+          wait timer-promises/set-timeout(250)
 
   save answer, not-loaded(<>)
   fork

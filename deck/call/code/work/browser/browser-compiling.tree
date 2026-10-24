@@ -26,18 +26,23 @@
 # so both reach one module and one snapshot. Docked too, as still
 # TypeScript or as the compiler's own modules: compile/compile, compile/load, compile/native, compile/emit-target,
 # resolve, parser/diagnostic. The deck finder and the role readers are the build lane's ports (term-cli-in-term-0214),
-# which read through the same `fs` alias.
+# which read through the same `fs` alias. They are faced here as the host functions the compiler takes, not through
+# build/host-faces.tree: that module also faces the explain store, whose cache lane docks node:os, node:process and
+# the package store, none of which a browser bundle can hold.
+
+load @term/base/maybe
+  find maybe
 
 load ../build/deck-finding
+  find deck-finder
   find make-deck-finder
+  find find-deck
 
 load ../build/role-reading
+  find role-reader
   find make-role-reader
-
-load ../build/host-faces
-  find face-deck-finder
-  find face-role-reader
-  find face-lean-reader
+  find role-of
+  find lean-of
 
 dock load
   load <@term/make/code/compile/compile>, name compiling-module
@@ -432,6 +437,52 @@ task issue-of
   back worker-issue-other(diagnostic, diagnostic-module/render-kink(diagnostic, lines-of(diagnostic/file), false))
 
 # exported so a test can drive the worker under Node, with the snapshot mounted by `mount-files` instead of fetched
+# a deck finder as `(file) => { name, root } | undefined`, as build/host-faces.tree faces it
+task browser-deck-face
+  take finder, like deck-finder
+  like dynamic
+  mark private
+
+  back
+    task
+      take file, like text
+      like dynamic
+      sift find-deck(finder, file)
+        case some
+          link place
+          back place
+        case none
+          back worker-nothing()
+
+# a role reader as `(file) => role | undefined`
+task browser-role-face
+  take reader, like role-reader
+  like dynamic
+  mark private
+
+  back
+    task
+      take file, like text
+      like dynamic
+      sift role-of(reader, file)
+        case some
+          link role
+          back role
+        case none
+          back worker-nothing()
+
+# a role reader as `(file) => whether its rule carries mark lean`
+task browser-lean-face
+  take reader, like role-reader
+  like dynamic
+  mark private
+
+  back
+    task
+      take file, like text
+      like boolean
+      back lean-of(reader, file)
+
 task compile-all
   take id, like number
   take text, like text
@@ -452,14 +503,14 @@ task compile-all
   save lines, worker-lines(text)
   save output, worker-new-record()
   save warned, worker-new-map()
-  save deck-of, face-deck-finder(make-deck-finder())
+  save deck-face, browser-deck-face(make-deck-finder())
   save reader, make-role-reader(</explore>)
-  save role-of, face-role-reader(reader)
-  save lean-of, face-lean-reader(reader)
+  save role-face, browser-role-face(reader)
+  save lean-face, browser-lean-face(reader)
 
   walk worker-emit-targets(target-module)
     take target, like text
-    save options, make(compile-options, bind(resolve, resolver-for(target, stdlib)), bind(parsed, state/parsed), bind(env, target), bind(deck-of, deck-of), bind(role-of, role-of), bind(lean-of, lean-of))
+    save options, make(compile-options, bind(resolve, resolver-for(target, stdlib)), bind(parsed, state/parsed), bind(env, target), bind(deck-of, deck-face), bind(role-of, role-face), bind(lean-of, lean-face))
     save result, compiling-module/compile(make(entry-source, bind(file, entry-file()), bind(text, text)), options)
 
     # the first target to refuse speaks for all four: a check error is the program's, not the backend's

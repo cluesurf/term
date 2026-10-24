@@ -114,6 +114,15 @@ bind lift-message-of
   case node
     text <($error instanceof Error ? $error.message : String($error))>
 
+# a caught value's `message`, as the original's `error.message` read it: through a bind, since in a closure that reaches
+# @term/deck/package/tree-reading (machine.tree's) the caught value is typed `exception`, which has no `message`
+# (term-cli-in-term-0068)
+bind lift-error-message
+  take error, like dynamic
+  like dynamic
+  case node
+    text <$error.message>
+
 bind lift-parse-json-rows
   take module, like dynamic
   take text, like dynamic
@@ -335,7 +344,7 @@ task call-base-import
     save said, <Could not lift the rows: {lift-message-of(error)}>
     fork test, lift-is-bad-row(from-data-module, error)
       hold
-        save said, <{error/message}>
+        save said, <{lift-error-message(error)}>
     refuse(said, lift-empty-record())
   # applied ON TOP of what is there, so importing one form leaves every other form alone
   save next, lift-copy-map(existing)

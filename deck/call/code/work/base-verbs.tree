@@ -21,10 +21,24 @@ load @term/call/work/tint
 # `base-engine.ts` and stays TypeScript. So what is Term here is the fourteen verbs -- their arguments, their
 # defaults, their error handling and their exit codes -- over a docked library.
 #
-# Ported from deck/call/code/base.ts (cli-in-term-0004).
+# Ported from deck/call/code/base.ts (cli-in-term-0004). The verbs run the base lane's port (work/base/repository.tree)
+# since term-cli-in-term-0068.
+
+load @term/call/work/base/repository
+  find call-base-init
+  find call-base-check
+  find call-base-log
+  find call-base-status
+  find call-base-diff
+  find call-base-show
+  find call-base-list
+  find call-base-commit
+  find call-base-checkout
+  find call-base-merge
+  find call-base-export
+  find call-base-tag
 
 dock load
-  load <@term/call/code/base>, name base-module
   load <node:process>, name node-process
 
 form root-ask
@@ -92,7 +106,7 @@ task base-init
   save root, call project-root
   fork
     mark unsafe
-    call base-module/callBaseInit, make(root-ask, bind root, read root), wait true
+    call-base-init(make(root-ask, bind(root, root)))
   halt take
     take error
     fail-with error
@@ -106,7 +120,7 @@ task base-check
   save root, call project-root
   fork
     mark unsafe
-    call base-module/callBaseCheck, make(root-ask, bind root, read root), wait true
+    call-base-check(make(root-ask, bind(root, root)))
   halt take
     take error
     fail-with error
@@ -122,9 +136,8 @@ task base-log
   save root, call project-root
   fork
     mark unsafe
-    call base-module/callBaseLog
+    call call-base-log
       make branch-ask, bind(root, read root), bind branch, read branch
-      wait true
   halt take
     take error
     fail-with error
@@ -140,9 +153,8 @@ task base-status
   save root, call project-root
   fork
     mark unsafe
-    call base-module/callBaseStatus
+    call call-base-status
       make branch-ask, bind(root, read root), bind branch, read branch
-      wait true
   halt take
     take error
     fail-with error
@@ -159,9 +171,8 @@ task base-diff
   save root, call project-root
   fork
     mark unsafe
-    call base-module/callBaseDiff
+    call call-base-diff
       make diff-ask, bind(root, read root), bind(to, read to), bind from, read from
-      wait true
   halt take
     take error
     fail-with error
@@ -178,12 +189,11 @@ task base-show
   save root, call project-root
   fork
     mark unsafe
-    call base-module/callBaseShow
+    call call-base-show
       make show-ask
         bind root, read root
         bind commit, read commit
         bind mark, read mark
-      wait true
   halt take
     take error
     fail-with error
@@ -199,9 +209,8 @@ task base-list
   save root, call project-root
   fork
     mark unsafe
-    call base-module/callBaseList
+    call call-base-list
       make commit-ask, bind(root, read root), bind commit, read commit
-      wait true
   halt take
     take error
     fail-with error
@@ -219,13 +228,12 @@ task base-commit
   save root, call project-root
   fork
     mark unsafe
-    call base-module/callBaseCommit
+    call call-base-commit
       make base-make-ask
         bind root, read root
         bind branch, read branch
         bind author, read author
         bind message, read message
-      wait true
   halt take
     take error
     fail-with error
@@ -241,9 +249,8 @@ task base-checkout
   save root, call project-root
   fork
     mark unsafe
-    call base-module/callBaseCheckout
+    call call-base-checkout
       make commit-ask, bind(root, read root), bind commit, read commit
-      wait true
   halt take
     take error
     fail-with error
@@ -261,13 +268,12 @@ task base-merge
   save root, call project-root
   fork
     mark unsafe
-    call base-module/callBaseMerge
+    call call-base-merge
       make merge-ask
         bind root, read root
         bind from, read from
         bind into, read into
         bind author, read author
-      wait true
   halt take
     take error
     fail-with error
@@ -284,12 +290,11 @@ task base-export
   save root, call project-root
   fork
     mark unsafe
-    call base-module/callBaseExport
+    call call-base-export
       make export-ask
         bind root, read root
         bind commit, read commit
         bind out, read out
-      wait true
   halt take
     take error
     fail-with error
@@ -307,13 +312,12 @@ task base-tag
   save root, call project-root
   fork
     mark unsafe
-    call base-module/callBaseTag
+    call call-base-tag
       make tag-ask
         bind root, read root
         bind name, read name
         bind commit, read commit
         bind branch, read branch
-      wait true
   halt take
     take error
     fail-with error

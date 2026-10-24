@@ -50,6 +50,15 @@ bind is-truthy
   case node
     text <Boolean($value)>
 
+# a caught value's `message`, as the original's `${error.message}` read it. Read through a bind: in a closure that also
+# reaches @term/deck/package/tree-reading (version-keeper's, app-verbs's), the caught value is typed `exception`, which
+# has no `message`, and `error/message` is refused (term-cli-in-term-0068)
+bind caught-message
+  take problem, like dynamic
+  like dynamic
+  case node
+    text <$problem.message>
+
 bind is-null
   take value, like dynamic
   like boolean
@@ -402,7 +411,7 @@ task post
             save answered, make(posted, bind(ok, false), bind(value, nothing()), bind(reason, <{base}{path} answered without a result>), bind(status, nothing()))
   halt take
     take error
-    save answered, make(posted, bind(ok, false), bind(value, nothing()), bind(reason, <{base} could not be reached: {error/message}>), bind(status, nothing()))
+    save answered, make(posted, bind(ok, false), bind(value, nothing()), bind(reason, <{base} could not be reached: {caught-message(error)}>), bind(status, nothing()))
   back answered
 
 # forget the token on this machine. Revoking it is term.surf's, and the message says where

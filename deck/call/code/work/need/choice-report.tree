@@ -2,7 +2,7 @@
 # command cannot simply run, bundled on its own so the fast half stays small. Ported from call/code/need-hand.ts
 # (term-cli-in-term-0041), whole. Two jobs, both printed through the output library like every other command's lines:
 #
-#   load    install the version resolution asked for, verified (need-load.ts, docked), with one `load` item
+#   load    install the version resolution asked for, verified (version-install.tree), with one `load` item
 #   refuse  say why nothing ran, in one sentence naming the fix, and exit non-zero
 #
 # It never runs the command itself. The choice and the install's answer are the host objects need.ts and need-load.ts
@@ -25,8 +25,14 @@ load @term/call/work/output/printer
   find field
   find show-path
 
+# the install, version-install.tree (need-load.ts's port), since term-cli-in-term-0068. Its ask is found under a name of
+# its own: this file's `load-ask` is loadNeeded's input
+load @term/call/work/need/version-install
+  find load-version
+  find shared-facts
+  find load-ask, name version-load-ask
+
 dock load
-  load <@term/call/code/need-load>, name need-loading
   load <global:process>, name host-process
 
 # ---- the host's values, read as the original read them ----
@@ -160,17 +166,6 @@ form done-close
   link verdict, like text
   link done, like boolean
 
-# loadVersion's input: the choice's own fields, handed on as they came (a host value bound to a maybe would be read as
-# a boxed one)
-form version-ask
-  link version
-    like dynamic
-    need false
-  link hold, like dynamic
-  link expect
-    like dynamic
-    need false
-
 # ---- the arguments ----
 
 # a flag's value, `--name value` or `--name=value`, the joined spelling first; none when neither is there
@@ -302,8 +297,9 @@ task load-needed
       close-run(make(next-close, bind(verdict, <Nothing ran>), bind(failure, <environment>), bind(next, <term self load {asked}>)))
       back <>
 
-  save asking, make(version-ask, bind(version, choice/version), bind(hold, choice/hold), bind(expect, choice/expect))
-  save loaded, wait need-loading/load-version(asking)
+  # the choice's own fields, handed on as they came (a host value bound to a maybe would be read as a boxed one)
+  save asking, make(version-load-ask, bind(version, choice/version), bind(hold, choice/hold), bind(expect, choice/expect))
+  save loaded, load-release(asking)
 
   fork test, not(host-truth(loaded/ok))
     hold
@@ -322,10 +318,19 @@ task load-needed
   fork test, host-truth(loaded/bytes)
     hold
       save bytes, make(some, loaded/bytes)
-  save shared, need-loading/shared-facts(loaded/shared)
+  save shared, shared-facts(loaded/shared)
   report(make(loaded-item, bind(glyph, <done>), bind(verb, <load>), bind(subject, <term {version} for {platform}>), bind(duration, loaded/duration), bind(bytes, bytes), bind(facts, shared), bind(fields, fields)))
   close-run(make(done-close, bind(verdict, <Running term {version}>), bind(done, true)))
   back version
+
+# loadVersion's answer handed on as the host value it is: a need-false field is its value or undefined there, and this
+# file reads each one as the original read need-load.ts's answer
+task load-release
+  take ask, like version-load-ask
+  like dynamic
+  mark private
+
+  back load-version(ask)
 
 # Print why nothing ran
 task refuse-need
