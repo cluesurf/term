@@ -60,6 +60,7 @@ import { createHash } from 'node:crypto'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { compile } from '@term/make/code/compile/compile'
+import { collectModules, makeParseMemo, type ParseMemo, type WalkMemo } from '@term/make/code/compile/load'
 import { nativePrelude } from '@term/make/code/compile/native'
 import { projectResolver } from '@term/call/code/make'
 import { projectLeanOf } from '@term/call/code/role-of'
@@ -213,11 +214,12 @@ function runEntry(name: string, content: string, program: Program): { text: stri
 // module `host` again (decision cli-in-term/018 part 3). A caller outside the port (a pair spec) that opens a run
 // through a separate printer import opens a run the port never sees, so every port whose closure holds the printer
 // exports the printer's open-run, close-run, set-output and is-run-open. The emitter exports every function it keeps,
-// and keeps only what a root reaches, so a module that reaches the printer without all four compiles once more with
-// printerKeeper's text after its own: tasks of the module (roots) that call the four. Its names are aliased, so no name
-// the module defines or imports is shadowed. The source on disk is never changed
+// and keeps only what a root reaches, so a module whose import closure holds the printer compiles with printerKeeper's
+// text after its own: tasks of the module (roots) that call the four. Its names are aliased, so no name the module
+// defines or imports is shadowed. The source on disk is never changed. The closure is read off the import walk before
+// the compile (holdsPrinter), never off a first compile: compiling to find out, then again with the keeper, cost a
+// second compile and a discarded TypeScript emit for every such module, 230 s of a 752 s full build (term-cli-in-term-0252)
 const PRINTER = 'deck/call/code/work/output/printer.tree'
-const PRINTER_TASKS = ['openRun', 'closeRun', 'setOutput', 'isRunOpen']
 
 // is-run-open is one comparison, and the simplifier inlines it into every caller, so it is kept as a task of the
 // module (port-printer-is-run-open, a root) and exported under the printer's name by printerExports. The return is
@@ -263,14 +265,21 @@ function printerExports(content: string): string {
   return `${content}\n// the printer's is-run-open, kept by port-build (decision term-cli-in-term-0240)\nexport { portPrinterIsRunOpen as isRunOpen }\n`
 }
 
-// whether a module's port reaches the printer and leaves one of its four run tasks out (the printer's own port keeps
-// every task it defines)
-function needsPrinterKeeper(name: string, program: Array<{ span?: { file?: string } }>, typescript: string): boolean {
-  if (name === PRINTER || !program.some(statement => statement.span?.file?.endsWith(`/${PRINTER}`))) {
+// whether a module's import closure holds the printer (the printer's own port keeps every task it defines). The walk is
+// the compile's own (collectModules), sharing its parse memo and walk memo, so its reads are the compile's reads,
+// nothing is parsed twice, and the compile's walk keeps each module's part (a kept part still resolves its loads again)
+function holdsPrinter(
+  name: string,
+  source: { file: string; text: string },
+  resolve: Parameters<typeof collectModules>[1],
+  parsed: ParseMemo,
+  walked: WalkMemo,
+): boolean {
+  if (name === PRINTER) {
     return false
   }
 
-  return PRINTER_TASKS.some(task => !new RegExp(`^export (async )?function ${task}\\(`, 'm').test(typescript))
+  return collectModules(source, resolve, parsed, undefined, walked).sources.some(unit => unit.file.endsWith(`/${PRINTER}`))
 }
 
 // a subtree written `<dir>/*/**` takes every directory directly in `<dir>`, each whole, and no file of `<dir>` itself
@@ -763,20 +772,16 @@ async function main(): Promise<void> {
       // compiles it again from the text as it now is
       let result: ReturnType<typeof compile> | undefined
       let changed: string | undefined
-      // THE PRINTER'S RUN (decision term-cli-in-term-0240): set once the first compile shows the printer in the closure
-      // without all four of its run tasks, and the module compiles again with printerKeeper's text after its own
-      let keep = false
-
       for (let attempt = 1; ; attempt++) {
         openWindow()
-        result = compile({ file, text: keep ? `${text}${printerKeeper(leanOf(file) === true)}` : text }, { resolve, leanOf, library: true })
-
-        if (!keep && result.ok && needsPrinterKeeper(name, result.program, result.typescript)) {
-          keep = true
-          closeWindow()
-          attempt--
-          continue
-        }
+        // one parse and one walk per module of the closure, shared by the printer's walk and the compile, as compile
+        // makes a parse memo per call
+        const parsed = makeParseMemo()
+        const walked: WalkMemo = new Map()
+        // THE PRINTER'S RUN (decision term-cli-in-term-0240): a closure that holds the printer compiles with
+        // printerKeeper's text after the module's own
+        const keep = holdsPrinter(name, { file, text }, resolve, parsed, walked)
+        result = compile({ file, text: keep ? `${text}${printerKeeper(leanOf(file) === true)}` : text }, { resolve, leanOf, library: true, parsed, walked })
 
         const read = closeWindow()
 
