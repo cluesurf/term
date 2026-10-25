@@ -304,10 +304,14 @@ task tokenize
             save size, hit-size
             save text, from-runes(runes/slice(pos, add(pos, size)))
 
-            # a closing run only consumes as many braces as the matching opener pushed
+            # a closing run only consumes as many braces as the matching opener pushed, and never more than the run
+            # it matched: `{{{y}` closes a `{{{` with one `}`, and reading three would run past the end of the text
             fork test, and(is-close-brace(hit-kind), is-above(braces/length, 0))
               hold
-                save size, char-count-of(get(braces, subtract(braces/length, 1)))
+                save opened, char-count-of(get(braces, subtract(braces/length, 1)))
+                fork test, is-below(opened, hit-size)
+                  hold
+                    save size, opened
                 save run, to-runes(read(text))
                 save text, from-runes(run/slice(0, size))
 

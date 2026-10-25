@@ -171,6 +171,40 @@ for (const file of sample) {
   ok(`deterministic: ${label}`, twice.ok && printTree(twice.tree) === printTree(first.tree))
 }
 
+// NEVER THROWS, FIXED: inputs the seeded sweep once landed on and threw, held here so they stay covered whatever
+// the file set does to the sweep's walk. `{{{y}` closes a `{{{` with one `}`: the tokenizer took the opener's
+// count (3) for the run and read past the end of the text (term-compiler-0075). Each must give a result, and an
+// unclosed one must say so with a diagnostic rather than an ok.
+const FIXED_NEVER_THROWS: Array<{ text: string; unclosed: boolean }> = [
+  { text: '{{{y}', unclosed: true },
+  { text: '{{y}', unclosed: true },
+  { text: '{{{{y}}', unclosed: true },
+  { text: '{{{y}}', unclosed: true },
+  { text: 'a {{{y}', unclosed: true },
+  { text: 'a <{{{y}>', unclosed: true },
+  { text: '{{{y}}}', unclosed: false },
+  {
+    text: 'a {{a}}{{b}}\n  c\n  {{x}}{{y}}\n{{d}} a\n{{w}}-{{m}} f {or}{{{why}}}\n  {{v}}/{{o}}\n',
+    unclosed: false,
+  },
+]
+
+for (const { text, unclosed } of FIXED_NEVER_THROWS) {
+  const label = JSON.stringify(text)
+
+  try {
+    const result = parse({ file: 'fixed.tree', text })
+
+    ok(`fixed ${label} returns a tree`, !result.ok || Boolean(result.tree))
+
+    if (unclosed) {
+      ok(`fixed ${label} reports a diagnostic`, !result.ok && result.diagnostics.length > 0)
+    }
+  } catch (error) {
+    ok(`fixed ${label} does not throw`, false, (error as Error).message)
+  }
+}
+
 // NEVER THROWS: mutations of real files, deterministic from the seed
 const next = rng(20260830)
 const fuzzTargets = sample.filter((_, i) => i % 3 === 0)
