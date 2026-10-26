@@ -18,6 +18,8 @@ load @term/mill/tree/code/take/mint
 
 load @term/base/lang
   find code-bind
+load @term/base/bind
+  find bind
 
 mint bind, like code-bind
   case seed

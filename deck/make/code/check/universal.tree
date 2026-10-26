@@ -19,8 +19,10 @@
 #   - what is still TypeScript in holds.ts (the linear translation, the polynomial facts, the product goals, the
 #     memoized linear prover and the definitions' unfolding) is handed in as `hold-calls`, each a task the face builds
 #   - a node's spread copy is `shallow-copy`, the bind check/unfolding.tree uses, so a rebuilt node keeps every field
-#   - `made.filter(other => other !== instance)` asks object identity, and an instance can be the same object twice
-#     (a hypothesis whose binders it does not read), so `same-node` asks the host's `===`
+#   - `made.filter(other => other !== instance)` asked object identity. Each instance is carried with its index in
+#     `made` (`instance-ways`), and the rest is every other index, the same on every backend (D011 rule 7). They differ
+#     only where one object stood at two indexes of `made`, which happens only when the hypotheses hold one expression
+#     with no binders twice: the original dropped both copies, the port drops the one it splits
 
 load @term/base/list
   find list
@@ -209,21 +211,6 @@ bind js-text
     text <($value.truncatingRemainder(dividingBy: 1) == 0 && abs($value) \< 1e15 ? String(Int64($value)) : String($value))>
   case kotlin
     text <(if ($value % 1.0 == 0.0 && Math.abs($value) \< 1e15) $value.toLong().toString() else $value.toString())>
-
-bind same-node
-  take a, like expression
-  take b, like expression
-  like boolean
-  case node
-    text <($a === $b)>
-  case browser
-    text <($a === $b)>
-  case rust
-    text <std::ptr::eq(&$a, &$b)>
-  case swift
-    text <($a === $b)>
-  case kotlin
-    text <($a === $b)>
 
 # a copy of a node holding every field it holds, as the original's spread made one
 bind shallow-copy
@@ -2314,8 +2301,10 @@ task reads-focus
           back true
   back false
 
+# an instance, its index in the list `by-cases` was given, and the ways it may hold
 form instance-ways
   link instance, like expression
+  link index, like number
   link ways, like list, like way
 
 # PROOF BY CASES. An instance that is a disjunction says one of its disjuncts holds: each way it may hold is taken in
@@ -2339,6 +2328,7 @@ task by-cases
   save every, instance-ways-list()
   walk made
     take instance
+    take instance-at
     save ways, way-list()
     walk disjuncts(instance)
       take d
@@ -2348,6 +2338,7 @@ task by-cases
     save one-instance
       make instance-ways
         bind instance, instance
+        bind index, instance-at
         bind ways, ways
     push(every, one-instance)
   save relevant, instance-ways-list()
@@ -2374,10 +2365,12 @@ task by-cases
       fork test, not(contradictory(state, calls, both-facts(known, one-way/facts)))
         hold
           push(ways, one-way)
+    # every instance but the one split, by its index in `made`
     save rest, expressions()
     walk made
       take other
-      fork test, not(same-node(other, entry/instance))
+      take other-at
+      fork test, is-unequal(other-at, entry/index)
         hold
           push(rest, other)
     # no way left: the facts contradict a true disjunction, so this case cannot happen and holds vacuously

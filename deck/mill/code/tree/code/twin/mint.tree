@@ -15,6 +15,8 @@ load @term/mill/tree/code/seed/mint
 
 load @term/mill/tree/code/tool/flow/mint
   find flow
+load @term/make/compile/node
+  find twin
 
 # The binds for a twin's sites. A site with a `mine` half and no `mint` bind parses and then vanishes with no error,
 # so the two land together. See mine.tree beside this file.

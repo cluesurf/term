@@ -4,17 +4,32 @@
 // `mint <x>, like <form>` must name a form a loaded stdlib module declares. The `host` and `mill` roles are the ones
 // this gate holds to zero; the others are reported, and their count is the measure of the self-hosting mill's
 // distance (see note/term/stdlib-gaps.md). The `host` grammar is also held to the data reader: the same five heads
-// and the same six literals. The `deck` role (the manifest) and the `note` role (documents, its forms generated into seed/code/book.tree by `pnpm term:mill-forms`) were made correct and held on 2026-08-29. Run: npx tsx test/compile/mill-grammar.ts
+// and the same six literals. The `deck` role (the manifest) and the `note` role (documents, its forms generated into seed/code/book.tree by `pnpm term:mill-forms`) were made correct and held on 2026-08-29.
+// Since module-scope-0006 it also holds decision 003 of note/project/term/module-scope: every form a grammar hands to
+// Term is reached by a find (rule 2), and every matcher kind and rule a grammar names resolves in its role's load
+// closure (rule 3), with a case for each refused and accepted. Run: npx tsx test/compile/mill-grammar.ts
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
-import { parse } from '@term/make/code/parser/tree'
 import type { Node } from '@term/make/code/parser/tree'
 import type { GroupNode } from '@term/make/code/parser/narrow'
 import { parse, renderHead } from '@term/make/code/parser/tree'
-import { millDeclared } from '@term/make/code/compile/mill-check'
-import { checkMillSource } from '@term/make/code/compile/compile'
+import {
+  checkMillDefinition,
+  isMatcherKind,
+  millDeclared,
+  millDeclaredForms,
+  millFormReferences,
+  millLoadTargets,
+} from '@term/make/code/compile/mill-check'
+import type { MillClosure, MillContext, MillLoad } from '@term/make/code/compile/mill-check'
+import { loadRoleGrammar } from '@term/make/code/compile/mill-load'
+import { collectModules, makeParseMemo } from '@term/make/code/compile/load'
+import { withNativeEnv } from '@term/make/code/compile/native'
+import { mill } from '@term/make/code/compile/mill'
+import { expandTemplates } from '@term/make/code/compile/template'
 import { projectResolver } from '@term/call/code/make'
+import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 
 let pass = 0
 let fail = 0
@@ -155,9 +170,122 @@ const resolveSource = (target: string, from: string): { file: string; text: stri
   return found ? { file: found, text: readFileSync(found, 'utf8') } : undefined
 }
 
+// each `load` the file writes, resolved in order through the build's resolver, as compile.ts checkMillSource does
+function resolvedLoads(source: { file: string; text: string }): MillLoad[] {
+  return millLoadTargets(source).map(target => {
+    let found: { file: string; text: string } | undefined
+
+    try {
+      found = target ? resolveSource(target, source.file) : undefined
+    } catch {
+      found = undefined
+    }
+
+    return found ? { target, found } : { target }
+  })
+}
+
+// DECISION 003 (note/project/term/module-scope/decision/003-grammar-files-reference-only-forms.md). Rule 2 needs the
+// definers of a form: every top-level `form` and `mask` of the modules @term/mill's build reaches, as the scope census
+// (task/term/scope-census.ts) counts them: the package's own files outside `native/` loaded through one entry, once
+// per env, read by mill-check's own reader and named by the load path that reaches each, so a refusal names the find
+// to add. A name no reached module defines (a mint-bridge tag such as `make fork-roll`) is no reference. Rule 3 needs
+// each file's closure: the rules of every role whose loaded grammar holds the file, intersected
+const DECKS = join(TERM, 'deck')
+const MILL_CODE = join(TERM, 'deck/mill/code')
+const formDefiners = new Map<string, Set<string>>()
+const memo = makeParseMemo()
+const buildRoleOf = projectRoleOf(TERM)
+const buildLeanOf = projectLeanOf(TERM)
+const millPortable = walk(MILL_CODE).filter(
+  file => !relative(MILL_CODE, file).split('/').includes('native') && !/^(mark|note) draft\s*$/m.test(readFileSync(file, 'utf8')),
+)
+const loadPathOf = (file: string): string => {
+  const [pkg, ...rest] = relative(DECKS, file).replace(/\.tree$/, '').split('/')
+
+  return `@term/${pkg}/${(rest[0] === 'code' ? rest.slice(1) : rest).join('/')}`
+}
+
+for (const env of ['node', 'browser', 'macos', 'android', 'rust'] as const) {
+  const entry = {
+    file: join(TERM, 'deck/mill/mill-grammar-entry.tree'),
+    text: millPortable.map(file => `load ./${relative(join(TERM, 'deck/mill'), file).replace(/\.tree$/, '')}`).join('\n'),
+  }
+  const { sources } = collectModules(entry, withNativeEnv(env, projectResolver(TERM, env)), memo)
+
+  for (const source of sources) {
+    if (source.file === entry.file || source.file.startsWith(`${MILL}/`) || !source.text || millDeclaredForms(source).length === 0) {
+      continue
+    }
+
+    // what the file defines is what the code mill builds of it, as the census reads it (task/term/scope-census.ts
+    // `typeDefiners`): a `form` head the mill reads as something else (`form base / form rule` in text/css/form.tree is
+    // an expression) defines nothing
+    const parsedSource = memo(source)
+    const built = parsedSource.ok
+      ? mill(expandTemplates(parsedSource.tree), source.file, buildRoleOf(source.file) ?? undefined, buildLeanOf(source.file))
+      : undefined
+
+    for (const one of built?.ok ? built.program : []) {
+      const name =
+        one.form === 'record-type' || one.form === 'mask'
+          ? one.name
+          : one.form === 'native' && (one as { kind?: unknown }).kind === 'type'
+            ? one.alias
+            : undefined
+
+      if (name) {
+        formDefiners.set(name, (formDefiners.get(name) ?? new Set()).add(loadPathOf(source.file)))
+      }
+    }
+  }
+}
+
+const closures = new Map<string, MillClosure[]>()
+
+for (const role of readdirSync(MILL).sort()) {
+  if (!existsSync(join(MILL, role, 'mine.tree')) && !existsSync(join(MILL, role, 'mint.tree'))) {
+    continue
+  }
+
+  const grammar = loadRoleGrammar(MILL, role)
+  const closure: MillClosure = { mine: new Set(grammar.mine.keys()), mint: new Set(grammar.mint.keys()) }
+
+  for (const file of grammar.files) {
+    closures.set(file, [...(closures.get(file) ?? []), closure])
+  }
+}
+
+function closureOf(file: string): MillClosure | undefined {
+  const all = closures.get(file)
+
+  if (!all) {
+    return undefined
+  }
+
+  const both = (pick: (c: MillClosure) => ReadonlySet<string>) =>
+    new Set([...pick(all[0]!)].filter(name => all.every(c => pick(c).has(name))))
+
+  return { mine: both(c => c.mine), mint: both(c => c.mint) }
+}
+
+const contextOf = (file: string): MillContext => ({
+  formDefiners: name => [...(formDefiners.get(name) ?? [])].sort(),
+  closure: closureOf(file),
+})
+
+// what decision 003's rules add over the four checks. Rule 2 is held wherever the four checks are. Rule 3 is held in
+// the host and mill roles, as the decision says, and REPORTED in the others: a fix there changes what that role's
+// grammar reads (a dead `mine number`, the book grammar's sub-grammars never loaded), which is its own item
+// (term-module-scope-0006's log entry names it), never a side effect of a find
+const RULE_3_HELD = new Set(['host', 'mill'])
+const isRule3 = (what: string): boolean => what.startsWith('matches ') || what.startsWith('mints a case ')
+const owed: Problem[] = []
+
 for (const file of files) {
   const text = readFileSync(file, 'utf8')
-  const checked = checkMillSource({ file, text }, resolveSource)
+  const loads = resolvedLoads({ file, text })
+  const checked = checkMillDefinition({ file, text }, true, loads)
 
   if (!checked.parsed) {
     problems.push({ file, what: `does not parse: ${checked.diagnostics[0]?.message ?? ''}` })
@@ -168,6 +296,12 @@ for (const file of files) {
 
   for (const problem of checked.problems) {
     problems.push({ file, what: problem.what })
+  }
+
+  for (const problem of checkMillDefinition({ file, text }, true, loads, contextOf(file)).problems.slice(checked.problems.length)) {
+    const held = !isRule3(problem.what) || RULE_3_HELD.has(relative(MILL, file).split('/')[0] ?? '')
+    const into = held ? problems : owed
+    into.push({ file, what: problem.what })
   }
 }
 
@@ -326,6 +460,65 @@ for (const role of ['code', 'deck', 'note', 'test', 'view', 'host', 'mill']) {
   )
 }
 
+// DECISION 003's rules, each refused without what it owes and accepted with it, on sources written here
+const FORMS = { file: '/fixture/forms.tree', text: 'form thing\n  link x, like text\n' }
+const GRAMMAR = { file: '/fixture/thing-mint.tree', text: 'mint thing\n  case x\n' }
+const fixtureContext: MillContext = {
+  formDefiners: name => (name === 'thing' ? ['@fixture/forms'] : []),
+  closure: { mine: new Set(['a', 'b']), mint: new Set(['a', 'b']) },
+}
+
+function fixtureProblems(text: string, loads: MillLoad[]): string[] {
+  return checkMillDefinition({ file: '/fixture/check.tree', text }, true, loads, fixtureContext).problems.map(p => p.what)
+}
+
+const MAKE_THING = 'mint a\n  case x\n  hook make\n    make thing\n      bind x, read x\n'
+const formsLoad = (): MillLoad[] => [{ target: '@fixture/forms', found: FORMS }]
+const withoutFind = fixtureProblems(`load @fixture/forms\n\n${MAKE_THING}`, formsLoad())
+ok(
+  'rule 2: a "hook make / make F" of a form no find reaches is refused, naming its module',
+  withoutFind.length === 1 && withoutFind[0]!.includes('"thing"') && withoutFind[0]!.includes('@fixture/forms'),
+  withoutFind.join(' | '),
+)
+ok(
+  'rule 2: the same make with "find F" under the load of its module is accepted',
+  fixtureProblems(`load @fixture/forms\n  find thing\n\n${MAKE_THING}`, formsLoad()).length === 0,
+)
+ok(
+  'rule 2: a "mint N, like F" is held the same way: a find of F reaches it',
+  fixtureProblems('load @fixture/forms\n  find thing\n\nmint a, like thing\n  case x\n', formsLoad()).length === 0 &&
+    millFormReferences(
+      { file: '/fixture/check.tree', text: 'load @fixture/forms\n  find thing\n\nmint a, like thing\n  case x\n' },
+      formsLoad(),
+    ).every(ref => ref.found),
+)
+ok(
+  'rule 2: a find of a grammar rule that shares the form\'s name reaches no form',
+  fixtureProblems(`load @fixture/thing-mint\n  find thing\n\n${MAKE_THING}`, [{ target: '@fixture/thing-mint', found: GRAMMAR }])
+    .some(what => what.includes('"thing"')),
+)
+ok(
+  'rule 2: a make of a name no module defines is a mint tag, not a reference',
+  fixtureProblems('mint a\n  case x\n  hook make\n    make some-tag\n', []).length === 0,
+)
+
+const kindProblems = fixtureProblems('mine a\n  mine any\n    mine number\n      site x\n', [])
+ok('rule 3: a matcher kind the mine reader does not know is refused', kindProblems.length === 1 && kindProblems[0]!.includes('mine number'), kindProblems.join(' | '))
+ok(
+  'rule 3: every kind the mine reader knows is accepted',
+  ['term', 'text', 'code', 'path', 'node', 'word', 'open', 'maybe', 'case', 'list', 'any', 'form'].every(isMatcherKind) &&
+    fixtureProblems('mine a\n  mine any\n    mine code\n      site x\n    mine form, like b\n      site y\n', []).length === 0,
+)
+ok(
+  'rule 3: a "mine form, like R" naming no rule of the closure is refused',
+  fixtureProblems('mine a\n  mine form, like nowhere\n    site x\n', []).some(what => what.includes('like nowhere')),
+)
+ok(
+  'rule 3: a "case X, mint Y" naming no mint rule of the closure is refused, and one naming a rule is accepted',
+  fixtureProblems('mint a\n  case x, mint nowhere\n', []).some(what => what.includes('mint nowhere')) &&
+    fixtureProblems('mint a\n  case x, mint b\n', []).length === 0,
+)
+
 const byRole = new Map<string, number>()
 
 for (const p of rest) {
@@ -340,6 +533,22 @@ console.log(
 
 if (process.env.MILL_ALL) {
   for (const p of rest) {
+    console.log(`      ${relative(MILL, p.file)}: ${p.what}`)
+  }
+}
+
+const owedByRole = new Map<string, number>()
+
+for (const p of owed) {
+  owedByRole.set(roleOf(p.file), (owedByRole.get(roleOf(p.file)) ?? 0) + 1)
+}
+
+console.log(
+  `${owed.length} rule 3 findings in the roles it does not hold yet (${[...owedByRole].map(([role, count]) => `${role} ${count}`).join(', ')}); MILL_OWED=1 lists them`,
+)
+
+if (process.env.MILL_OWED) {
+  for (const p of owed) {
     console.log(`      ${relative(MILL, p.file)}: ${p.what}`)
   }
 }

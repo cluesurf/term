@@ -32,6 +32,10 @@ load @term/base/lang
   find code-weld
   find code-link
   find code-have
+load @term/base/take
+  find take
+load @term/base/seed
+  find seed
 
 mint rule-hold, like code-hold
   case name

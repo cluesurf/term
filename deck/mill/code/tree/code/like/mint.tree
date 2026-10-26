@@ -30,6 +30,8 @@ load @term/mill/tree/code/take/mint
 
 load @term/mill/tree/code/task/mint
   find task
+load @term/base/like
+  find like
 
 mint or
   case like

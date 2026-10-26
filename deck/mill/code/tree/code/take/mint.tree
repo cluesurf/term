@@ -30,6 +30,8 @@ load @term/mill/tree/code/take/name/mint
 
 load @term/base/lang
   find take-value
+load @term/base/take
+  find take
 
 mint take
   case name

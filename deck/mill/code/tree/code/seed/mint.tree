@@ -33,6 +33,8 @@ load @term/mill/tree/code/like/mint
 
 load @term/base/lang
   find seed-def
+load @term/base/seed
+  find seed-text
 
 mint seed
   case call

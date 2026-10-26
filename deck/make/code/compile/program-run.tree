@@ -1,0 +1,187 @@
+mark draft
+
+# One run of `compileProgram` as data: what it is handed, and every value one of its five phases (gate, types, proofs,
+# warnings, emit) hands a later one, each named once. The Term form of compile/compile.ts's `ProgramRun` (decision 031
+# of term/self-host/change/001, item 0260), field for field and in its order. Every Term part of the compile.ts split
+# (program-gate, program-types, program-proofs, program-warnings, program-emit and the driver) loads it from here and
+# none declares it again. The phases write it in place, so it is `mark shared`. A field a later phase fills starts
+# empty.
+#
+# Where the TypeScript field has no Term form yet, the field is `like unknown`, and the line above it names the module
+# whose port gives it one: `obligations` (check/holds.ts `Tally`) and `wake` (compile/wake.ts `WakeGroup`, item 0247).
+# Where the TypeScript shape is a host shape, the field is the Term one its readers already take: the import scope is
+# compile/import-scope.tree's list of `file-scope`, a set of names is a hash of them to `true`, the twin choices are
+# ir/selection.tree's `task-choice` list, and the roll is compile/rolling.tree's list of `roll-kind`.
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+
+load ./node
+  find statement
+  find twin
+
+load ./import-scope
+  find file-scope
+
+load ./rolling
+  find roll-kind
+  find roll-deck
+
+load ./view-lower
+  find runtime-bound
+
+load ../ir/cover
+  find cover-target
+
+load ../ir/selection
+  find task-choice
+
+load ../check/private
+  find overload-group
+
+# which roll a run builds: none, the whole one after every check, or the fast one once the program is typed
+# (TypeScript's `wantRoll`: undefined or false, true, `fast`)
+form roll-wanted
+  mark text
+  case no-roll
+  case whole-roll
+  case fast-roll
+
+# the closure's twins and the choice of implementation for this target (TypeScript's `selected`)
+form twin-selection
+  link twins, like list, like twin
+  link choices, like list, like task-choice
+  link expose
+    like boolean
+    need false
+
+# a task the kernel declined or checked statement by statement, and why
+form task-reason
+  link name, like text
+  link reason, like text
+
+# what the kernel did with this file's own tasks (CompileResult's `kernel`)
+form program-kernel
+  link proven, like number
+  link commands, like number
+  link declined, like list, like task-reason
+  link statementwise, like list, like task-reason
+
+form program-run
+  mark shared
+  # ---- the input (TypeScript's `ProgramInput`) ----
+  link program, like list, like statement
+  link file, like text
+  # the entry's public surface, as a set of names
+  link roots
+    like hash, like text, like boolean
+    need false
+  link merged
+    like boolean
+    need false
+  # per-module mode: the URL each file's module is served at. The emitter spells it `modulesURL` (an acronym word is
+  # upper-cased), where TypeScript's field is `modulesUrl`, so a face copies it across by hand
+  link modules-url
+    like task
+      take file, like text
+      like text
+    need false
+  link optimize
+    like boolean
+    need false
+  link env
+    like text
+    need false
+  link tree-shake
+    like boolean
+    need false
+  link want-roll, like roll-wanted
+  # the deck a file belongs to, if the build knows one
+  link deck-of
+    like task
+      take file, like text
+      like maybe, like roll-deck
+    need false
+  # what each module imports by name
+  link scope
+    like list, like file-scope
+    need false
+  link selected
+    like twin-selection
+    need false
+  link library
+    like boolean
+    need false
+  # the file whose names are kept where two files define one, when that is not `file`
+  link naming
+    like text
+    need false
+  # the files whose modules are emitted, when not every file's, as a set of names
+  link emit-only
+    like hash, like text, like boolean
+    need false
+  # the render runtime's own file, as the build's resolver finds it
+  link render-file
+    like text
+    need false
+  link cover
+    like cover-target
+    need false
+  # ---- what the phases hand on ----
+  # the certificate checker's refusals before this compile, so it reports its own
+  link uncertified-before, like number
+  # the docks the route lowering replaced, kept for the roll alone (gate)
+  link page-docks
+    like list, like statement
+    need false
+  # the type-name pass's diagnostics, refused or, in a host description, warned (gate)
+  link type-name-diagnostics, like list, like diagnostic
+  # the file is in a deck that describes a host's API (gate)
+  link describes-host, like boolean
+  # the warnings of the literal, pattern and bind checks (gate)
+  link literal-warnings, like list, like diagnostic
+  link pattern-warnings, like list, like diagnostic
+  link bind-warnings, like list, like diagnostic
+  # the `find`s that name nothing their module defines, refused or warned (gate)
+  link stale-finds, like list, like diagnostic
+  # the overload groups as the gate left them (check/overload.ts keeps them as module state)
+  link overload-groups, like list, like overload-group
+  # the render runtime names as the build bound them, and the ones it renamed (gate)
+  link runtime-names, like list, like runtime-bound
+  link renamed-runtime, like list, like text
+  # the checker's warnings (types)
+  link check-warnings, like list, like diagnostic
+  # the claims left open (proofs)
+  link open-claims, like list, like text
+  # the tier-0 tally (proofs). check/holds.ts `Tally` until check/holds ports
+  link obligations, like unknown
+  # the kernel's verdict on this file's own tasks (proofs)
+  link kernel, like program-kernel
+  # the provers' and totality's warnings (proofs)
+  link hold-warnings, like list, like diagnostic
+  link totality-warnings, like list, like diagnostic
+  # every warning of the build (warnings)
+  link warnings, like list, like diagnostic
+  # the roll, when one was asked for or a separate unit lists its own (warnings)
+  link roll
+    like list, like roll-kind
+    need false
+  # what wakes the hive (warnings). compile/wake.ts `WakeGroup` list until item 0247 ports it
+  link wake
+    like unknown
+    need false
+
+# the phases, in the order they run (TypeScript's `ProgramPhase`)
+form program-phase
+  mark text
+  case gate
+  case types
+  case proofs
+  case warnings
+  case emit

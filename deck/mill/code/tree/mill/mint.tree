@@ -3,6 +3,7 @@ load @term/base/mill
   find mill-mine
   find mill-mint
   find mill-mill
+  find mill-mill-bind
 
 mint mill
   case mine, mint mill-mine

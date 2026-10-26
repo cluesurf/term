@@ -22,6 +22,8 @@ load @term/base/lang
   find dock-seed
   find dock-send
   find dock-hook
+load @term/make/compile/node
+  find dock-call
 
 mint dock
   case dock, mint dock-def

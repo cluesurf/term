@@ -37,6 +37,17 @@ load @term/mill/tree/code/walk/mint
 
 load @term/mill/tree/code/save/mint
   find save
+load @term/base/view
+  find view-def
+  find view-element
+  find view-text
+  find view-slot
+  find view-fork
+  find view-walk
+  find view-save
+load @term/make/compile/node
+  find view-node
+  find view-attribute
 
 mint view
   case view, mint view-def

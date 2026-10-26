@@ -472,22 +472,6 @@ bind starts-vowel
   case kotlin
     text <("aeiou".contains($value.firstOrNull() ?: ' '))>
 
-# is this statement one of the program's own, by identity
-bind same-statement
-  take a, like statement
-  take b, like statement
-  like boolean
-  case node
-    text <($a === $b)>
-  case browser
-    text <($a === $b)>
-  case rust
-    text <false>
-  case swift
-    text <false>
-  case kotlin
-    text <false>
-
 # ---- small makers ----
 
 task facts
@@ -2679,12 +2663,19 @@ task constant-table-lengths
       back facts()
   save touched, texts()
   save stack, block-handles(program)
+  # beside each handle on the stack, whether it is one of the program's own top-level statements: the first handles
+  # are, every child pushed later is not (D011 rule 7, where the original asked `program.some(s => s === node)`)
+  save tops, make list
+  walk program
+    take s
+    push(tops, true)
   save seen, fresh-node-seen()
   save scalar, scalar-kind-list()
   walk test
     hook test, is-above(stack/length, 0)
     hook hold
       save handle, stack/pop()
+      save at-top, tops/pop()
       fork test, not(node-seen-first(seen, handle))
         hold
           turn next
@@ -2702,18 +2693,9 @@ task constant-table-lengths
             # a let of the same name elsewhere is a different binding, and shadows the table where it is in scope
             case let
               link let-name
-              fork test, tables/has(let-name)
+              fork test, and(tables/has(let-name), not(at-top))
                 hold
-                  save top, false
-                  walk program
-                    take s
-                    fork test, same-statement(s, node)
-                      hold
-                        save top, true
-                        halt
-                  fork test, not(top)
-                    hold
-                      add-text(touched, let-name)
+                  add-text(touched, let-name)
             miss
               save nothing, 0
         case expression-handle
@@ -2787,6 +2769,7 @@ task constant-table-lengths
       walk node-children(handle, skip-plain())
         take child
         push(stack, child)
+        push(tops, false)
   save out, facts()
   walk order
     take name

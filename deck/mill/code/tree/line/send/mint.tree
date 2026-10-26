@@ -1,3 +1,5 @@
+load @term/make/compile/node
+  find dock-send
 
 mint dock-send
   case name
