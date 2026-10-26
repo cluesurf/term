@@ -44,6 +44,45 @@ import type {
 import { booleanType, dynamicType, floatType, numberType, stringType, unitType, unknownType } from '@term/make/code/compile/node'
 import { showType } from '@term/make/code/compile/type-text'
 
+// a type whose every value-argument expression is a fresh copy, rebuilt through array, map, function and named. A type
+// holding no value arguments comes back as the same object, so the common case allocates nothing
+function unshareValueArgs(type: Type): Type {
+  switch (type.kind) {
+    case 'array': {
+      const element = unshareValueArgs(type.element)
+
+      return element === type.element ? type : { ...type, element }
+    }
+    case 'map': {
+      const key = unshareValueArgs(type.key)
+      const value = unshareValueArgs(type.value)
+
+      return key === type.key && value === type.value ? type : { ...type, key, value }
+    }
+    case 'function': {
+      const params = type.params.map(unshareValueArgs)
+      const result = unshareValueArgs(type.result)
+      const same = result === type.result && params.every((param, at) => param === type.params[at])
+
+      return same ? type : { ...type, params, result }
+    }
+    case 'named': {
+      const args = type.args?.map(unshareValueArgs)
+      const argsSame = !args || args.every((arg, at) => arg === type.args![at])
+
+      if (!type.valueArgs?.length) {
+        return argsSame ? type : { ...type, args }
+      }
+
+      const valueArgs = type.valueArgs.map(arg => structuredClone(arg))
+
+      return args ? { ...type, args, valueArgs } : { ...type, valueArgs }
+    }
+    default:
+      return type
+  }
+}
+
 // the type environment: a name to its scheme
 type Env = Map<string, Scheme>
 
@@ -4320,6 +4359,12 @@ function checkProgram(
   const zonkGeneric = (type: Type, names: Map<number, string>): Type =>
     zonkGenericType(type, names, sub)
 
+  // the final pass writes a task's result and parameter types through this, so each holds value-argument expressions
+  // of its own: unification hands back another node's `valueArgs` (a dependent type's index), and one expression object
+  // at two places is sharing before the simplifier (D011 rule 8, finding/checked-sharing.md site 3)
+  const zonkWritten = (type: Type, names: Map<number, string>): Type =>
+    unshareValueArgs(zonkGeneric(type, names))
+
   reportHoles()
 
   // final pass: record fully resolved types (cross-function constraints from call sites are now known)
@@ -4331,7 +4376,7 @@ function checkProgram(
       (only === undefined || statement.name === only)
     ) {
       const signature = functions.get(statement.name)!
-      statement.result = zonkGeneric(
+      statement.result = zonkWritten(
         signature.result,
         signature.genericNames,
       )
@@ -4341,7 +4386,7 @@ function checkProgram(
         // statement. Fall back to the param's own milled type rather than crashing on a missing signature slot.
         const slot = signature.params[i]
         param.type = slot
-          ? zonkGeneric(slot, signature.genericNames)
+          ? zonkWritten(slot, signature.genericNames)
           : (param.type ?? unknownType())
       })
       // deep-resolve every expression's inferred type, so later passes (monomorphization, native codegen) see
