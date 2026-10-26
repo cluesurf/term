@@ -312,6 +312,16 @@ task tokenize
                 fork test, is-below(opened, hit-size)
                   hold
                     save size, opened
+                # a shorter run still closes the interpolation, so the rest of the line reads on, and says so once
+                fork test, is-above(opened, hit-size)
+                  hold
+                    save input
+                      make diagnostic-input
+                        bind file, source/file
+                        bind span, span-of(line, column, add(column, hit-size))
+                        bind message, make(some, <this run of \} is shorter than the run of \{ that opened the interpolation>)
+                        bind hint, make(some, <close it with as many `\}` as opened it, or write `\\\{` for a literal brace>)
+                    push(found, diagnose(make(syntax-error), input))
                 save run, to-runes(read(text))
                 save text, from-runes(run/slice(0, size))
 
