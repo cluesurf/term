@@ -343,6 +343,11 @@ form expression
     link lean-shaped
       like list, like boolean
       need false
+    # the `inspect-form` call a `print(x)` became (check/infer.ts, where it is set), so a second inference pass types
+    # it as text
+    link printed
+      like boolean
+      need false
   case array
     link items, like list, like expression
     link span, like span

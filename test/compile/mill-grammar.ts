@@ -30,6 +30,7 @@ import { mill } from '@term/make/code/compile/mill'
 import { expandTemplates } from '@term/make/code/compile/template'
 import { projectResolver } from '@term/call/code/make'
 import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
+import { declaresDraft } from '@term/call/code/draft'
 
 let pass = 0
 let fail = 0
@@ -198,7 +199,7 @@ const memo = makeParseMemo()
 const buildRoleOf = projectRoleOf(TERM)
 const buildLeanOf = projectLeanOf(TERM)
 const millPortable = walk(MILL_CODE).filter(
-  file => !relative(MILL_CODE, file).split('/').includes('native') && !/^(mark|note) draft\s*$/m.test(readFileSync(file, 'utf8')),
+  file => !relative(MILL_CODE, file).split('/').includes('native') && !declaresDraft(readFileSync(file, 'utf8')),
 )
 const loadPathOf = (file: string): string => {
   const [pkg, ...rest] = relative(DECKS, file).replace(/\.tree$/, '').split('/')

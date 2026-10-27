@@ -822,6 +822,7 @@ task json-of-expression
       link f11
       link f12
       link f13
+      link f14
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"call">)
@@ -892,6 +893,9 @@ task json-of-expression
             take one
             push(parts-17, flag-json(one))
           push(members, <"leanShaped":[{join(parts-17, <,>)}]>)
+      fork test, and(enters(skip-keys, <printed>), f14)
+        hold
+          push(members, <"printed":{flag-json(f14)}>)
     case array
       link f1
       link f2

@@ -116,40 +116,6 @@ bind deep-copy-expression
   case kotlin
     text <$value>
 
-# A folded literal as the original built it, `{ ...folded, form: folded.kind, span }`: the fold's own `kind` rides on the
-# expression, first, and the key order is the original's. Natively the plain literal, which has no such key
-bind folded-integer
-  take value, like number
-  take at, like span
-  take plain, like expression
-  like expression
-  case node
-    text <(\{ kind: "integer", value: $value, form: "integer", span: $at \} as never)>
-  case browser
-    text <(\{ kind: "integer", value: $value, form: "integer", span: $at \} as never)>
-  case rust
-    text <$plain>
-  case swift
-    text <$plain>
-  case kotlin
-    text <$plain>
-
-bind folded-boolean
-  take value, like boolean
-  take at, like span
-  take plain, like expression
-  like expression
-  case node
-    text <(\{ kind: "boolean", value: $value, form: "boolean", span: $at \} as never)>
-  case browser
-    text <(\{ kind: "boolean", value: $value, form: "boolean", span: $at \} as never)>
-  case rust
-    text <$plain>
-  case swift
-    text <$plain>
-  case kotlin
-    text <$plain>
-
 load ../parser/diagnostic
   find span
 
@@ -354,18 +320,20 @@ task folded-expression
   like expression
   mark private
 
+  # the plain literal on every backend: the retired simplify.ts also carried the fold's own `kind` on node and browser,
+  # an undeclared field dropped by decision 035
   fork test, is-equal(found/kind, <integer>)
     hold
       save plain
         make expression/integer
           bind value, found/whole
           bind span, at
-      back folded-integer(found/whole, at, plain)
+      back plain
   save plain
     make expression/boolean
       bind value, found/truth
       bind span, at
-  back folded-boolean(found/truth, at, plain)
+  back plain
 
 task is-integer-of
   take node, like expression
