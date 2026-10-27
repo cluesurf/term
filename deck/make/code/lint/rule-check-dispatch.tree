@@ -1,0 +1,535 @@
+# The lint driver: walk the type-checked AST exactly once and dispatch every enabled rule per node, so N rules cost
+# one traversal (the ESLint/Ruff visitor-multiplexing model). Findings are returned with their fixes attached, ready
+# for the language server to render and apply. See plans/19-format-and-lint.
+#
+# Ported from lint/lint.ts (item term-self-host-001-0078), which stays as a thin face keeping `lint`, `RULES`,
+# `lintCatalog` and `applyFixes` for its callers. The decisions:
+#   - a rule was a TypeScript object holding `check` and `checkSource` closures. Here it is `driven-rule`, a case per
+#     kind of rule (spec.md section 4.9): a rule ported to lint/rule-check.tree by its name, L040 (data-grammar, whose
+#     visitor is silent: a data file never reaches the AST walk) and L044 (line-layout, lint/layout-check.tree)
+#   - a rule's context held its own severity, the shared sets and a memo the rules wrote. The sets and the memo are one
+#     `lint-facts`, made once per call, whose two caches are `mark shared`, so a whole-program analysis a rule needs is
+#     still computed at most once
+#   - `report` and `slice` are `report-into` and lint-lines' `slice-span`, and the config is lint-lines' `lint-setting`
+#   - L044's meaning check (format/meaning.ts `programOf`) is a dock, named for its module (decision 031 section 3)
+#   - the plugin seam (a caller's own rule list) is not carried: plugin rules stop loading by decision 029, and the
+#     face's `rules` parameter is read by nothing until REMOVE batch 2 drops it with lint/seed-rule.ts
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+
+load ../parser/diagnostic
+  find span
+  find severity
+
+load ../parser/tree
+  find root-node
+  find parse
+
+load ../parser/token
+  find token-source
+
+load ../compile/node
+  find statement
+
+load ./rule-check
+  find ported-rule
+  find rule-meta
+  find rule-report
+  find rule-fix
+  find lint-facts
+  find raise-cache
+  find tell-cache
+  find meta-of
+  find check-statement
+  find check-expression
+  find check-source
+  find reads-source
+
+load ./lint-lines
+  find lint-finding
+  find text-edit
+  find lint-setting
+  find lint-target
+  find configured-severity
+  find suppressed-lines
+  find is-turned-off
+  find setting-line-findings
+  find line-rule-entries
+  find reassigned-names
+  find referenced-names
+  find duplicate-loads
+  find lint-targets
+  find slice-span
+
+load ./layout-check
+  find line-layout-reports
+
+dock load
+  load <@term/make/code/format/meaning>, name rule-check-dispatch-meaning
+
+# ---- the rules ----
+
+# a rule the driver runs: one ported to lint/rule-check.tree, by its name, or one of the two whose work is elsewhere
+form driven-rule
+  case by-name
+    link ported, like ported-rule
+  # L040: a data file never reaches the AST walk, so the driver finds nothing for it (the analysis reports it)
+  case data-grammar-rule
+  # L044: lint/layout-check.tree, over the concrete tree, in a lean file only
+  case line-layout-rule
+
+# a rule as the driver runs it on one call: its metadata and the severity the config gave it
+form enabled-rule
+  link rule, like driven-rule
+  link meta, like rule-meta
+  link severity, like severity
+
+# a finding `term show kink` lists: the node and source rules, then the line rules
+form catalog-entry
+  link code, like text
+  link name, like text
+  link severity, like severity
+  link docs, like text
+  link fixable, like boolean
+
+task add-named
+  take out, like list, like driven-rule
+  take rule, like ported-rule
+  mark private
+
+  save made
+    make by-name
+      bind ported, rule
+  out/push(made)
+
+# the default rule set, in the order its findings come out, keyed by stable code for config and suppression
+task list-driven-rules
+  like list, like driven-rule
+
+  save out, make list
+  add-named(out, make kebab-names)
+  add-named(out, make no-redundant-arithmetic)
+  add-named(out, make prefer-host-for-constant)
+  add-named(out, make no-empty-block)
+  add-named(out, make no-constant-condition)
+  add-named(out, make no-self-comparison)
+  add-named(out, make no-unused-load)
+  add-named(out, make no-duplicate-branch-condition)
+  add-named(out, make no-self-assignment)
+  add-named(out, make no-unreachable-code)
+  add-named(out, make no-identical-branches)
+  add-named(out, make no-duplicate-case)
+  add-named(out, make no-constant-binary-expression)
+  add-named(out, make no-duplicate-keys)
+  add-named(out, make no-double-negation)
+  add-named(out, make no-boolean-literal-comparison)
+  add-named(out, make prefer-direct-return)
+  add-named(out, make no-useless-concat)
+  add-named(out, make no-redundant-continue)
+  add-named(out, make no-else-return)
+  add-named(out, make no-duplicate-load)
+  add-named(out, make no-negated-condition)
+  add-named(out, make no-lonely-if)
+  add-named(out, make consistent-return)
+  add-named(out, make no-useless-return)
+  add-named(out, make no-redundant-boolean)
+  add-named(out, make no-redundant-conditional)
+  add-named(out, make no-negated-equality)
+  add-named(out, make prefer-is-empty)
+  add-named(out, make no-empty-fork-case)
+  add-named(out, make no-duplicate-map-key)
+  out/push(make data-grammar-rule)
+  add-named(out, make prefer-sift)
+  add-named(out, make prefer-single-brace)
+  out/push(make line-layout-rule)
+  add-named(out, make note-metadata)
+  add-named(out, make redundant-wait)
+  add-named(out, make tell-missing)
+  add-named(out, make tell-of-failure)
+  add-named(out, make tell-reveals)
+  add-named(out, make unhandled-raise)
+  back out
+
+task meta-made
+  take name, like text
+  take code, like text
+  take level, like severity
+  take docs, like text
+  take fixable, like boolean
+  like rule-meta
+  mark private
+
+  back
+    make rule-meta
+      bind name, name
+      bind code, code
+      bind severity, level
+      bind docs, docs
+      bind fixable, fixable
+
+# a rule's name, code, default severity, one-line documentation and whether it offers a fix
+task driven-meta
+  take rule, like driven-rule
+  like rule-meta
+
+  sift rule
+    case by-name
+      link named
+      back meta-of(named)
+    case data-grammar-rule
+      back meta-made(<data-grammar>, <L040>, make(error), <a data file that breaks a rule of the data grammar>, false)
+    case line-layout-rule
+      back meta-made(<line-layout>, <L044>, make(warning), <in a lean file, a line is written the way `term form` writes it (format-rules.md, the five rules)>, true)
+
+# the default rule set's metadata, in order
+task list-lint-rules
+  like list, like rule-meta
+
+  save out, make list
+  walk list-driven-rules()
+    take rule
+    out/push(driven-meta(rule))
+  back out
+
+# EVERY lint finding the driver can report, one entry each: the AST and source rules, then the line rules (the line
+# length the formatter keeps, a tab, trailing whitespace) and the run of blank lines, which are about layout rather
+# than structure and so are not node rules. `term show kink L019` reads this, so a code printed by `term lint` can
+# always be looked up. The manifest findings (L050 to L055) need the file system and are listed beside their check,
+# in call/code/lint.ts
+task list-lint-catalog
+  like list, like catalog-entry
+
+  save out, make list
+  walk list-lint-rules()
+    take meta
+    save entry
+      make catalog-entry
+        bind code, meta/code
+        bind name, meta/name
+        bind severity, meta/severity
+        bind docs, meta/docs
+        bind fixable, meta/fixable
+    out/push(entry)
+  walk line-rule-entries()
+    take line-rule
+    save entry
+      make catalog-entry
+        bind code, line-rule/code
+        bind name, line-rule/name
+        bind severity, make warning
+        bind docs, line-rule/message
+        bind fixable, false
+    out/push(entry)
+  back out
+
+# ---- one call ----
+
+# the severity a rule runs at: the configured one, else its own. `configured` is `off`, a severity, or empty
+task chosen-severity
+  take configured, like text
+  take given, like severity
+  like severity
+  mark private
+
+  fork test, is-equal(configured, <error>)
+    hold
+      back make error
+  fork test, is-equal(configured, <warning>)
+    hold
+      back make warning
+  fork test, is-equal(configured, <info>)
+    hold
+      back make info
+  back given
+
+task setting-lean
+  take setting, like lint-setting
+  like boolean
+  mark private
+
+  save given, setting/lean
+  sift given
+    case some
+      link chosen
+      back chosen
+    case none
+      back false
+
+task edit-of
+  take at, like span
+  take written, like text
+  like text-edit
+  mark private
+
+  back
+    make text-edit
+      bind span, at
+      bind text, written
+
+# a finding of `one`'s, unless its line turns the rule's code off (`# lint off Lxxx` on the line above the node)
+task report-into
+  take findings, like list, like lint-finding
+  take one, like enabled-rule
+  take off, like hash, like number, like hash, like text, like boolean
+  take message, like text
+  take at, like span
+  take offered, like maybe, like text-edit
+  mark private
+
+  fork test, is-turned-off(off, at/start/line, one/meta/code)
+    hold
+      back
+  sift offered
+    case some
+      link edit
+      save fixed
+        make lint-finding
+          bind rule, one/meta/name
+          bind code, one/meta/code
+          bind severity, one/severity
+          bind message, message
+          bind span, at
+          bind fix, make(some, edit)
+      findings/push(fixed)
+    case none
+      save plain
+        make lint-finding
+          bind rule, one/meta/name
+          bind code, one/meta/code
+          bind severity, one/severity
+          bind message, message
+          bind span, at
+      findings/push(plain)
+
+# a ported rule's reports: a fix that copies source text is sliced here, in UTF-16 units as the parser's columns
+# count, and a `put-where` fix is offered only where the source at its span reads what the rule expected
+task report-ported
+  take findings, like list, like lint-finding
+  take one, like enabled-rule
+  take off, like hash, like number, like hash, like text, like boolean
+  take lines, like list, like text
+  take reports, like list, like rule-report
+  mark private
+
+  walk reports
+    take report
+    save offered, make none
+    save given, report/fix
+    sift given
+      case some
+        link fix
+        sift fix
+          case put
+            link put-span
+            link put-text
+            save edit, edit-of(put-span, put-text)
+            save offered, make(some, edit)
+          case put-where
+            link where-span
+            link where-text
+            link where-written
+            fork test, is-equal(slice-span(lines, where-span), where-written)
+              hold
+                save edit, edit-of(where-span, where-text)
+                save offered, make(some, edit)
+          case copy
+            link copy-at
+            link copy-from
+            link copy-prefix
+            save copied, slice-span(lines, copy-from)
+            save edit, edit-of(copy-at, <{copy-prefix}{copied}>)
+            save offered, make(some, edit)
+      case none
+        save nothing, 0
+    report-into(findings, one, off, report/message, report/span, offered)
+
+# L044's reports: only a fix that writes a text is offered
+task report-layout
+  take findings, like list, like lint-finding
+  take one, like enabled-rule
+  take off, like hash, like number, like hash, like text, like boolean
+  take reports, like list, like rule-report
+  mark private
+
+  walk reports
+    take report
+    save offered, make none
+    save given, report/fix
+    sift given
+      case some
+        link fix
+        sift fix
+          case put
+            link put-span
+            link put-text
+            save edit, edit-of(put-span, put-text)
+            save offered, make(some, edit)
+          miss
+            save nothing, 0
+      case none
+        save nothing, 0
+    report-into(findings, one, off, report/message, report/span, offered)
+
+# what format/meaning.ts's `programOf` answers: the program's meaning, absent (`undefined`) when the text does not mill
+form meaning-held
+  link meaning
+    like maybe, like text
+    need false
+
+# the answer as the dock gives it, unread. Read back as `meaning-held`, its absent field is `none`
+form meaning-given
+  link meaning, like dynamic
+
+task held-meaning
+  take given, like dynamic
+  like meaning-held
+  mark private
+
+  back given
+
+# L044's meaning check: a layout is offered as a fix only when the program means the same after it
+task lint-dispatch-meaning
+  take tree, like root-node
+  take file, like text
+  take lean, like boolean
+  like maybe, like text
+  mark private
+
+  save given
+    make meaning-given
+      bind meaning, rule-check-dispatch-meaning/program-of(tree, file, lean)
+  save held, held-meaning(given)
+  back held/meaning
+
+# whether an enabled rule reads the concrete tree and the source, so the driver parses only when one does
+task reads-tree
+  take one, like enabled-rule
+  like boolean
+  mark private
+
+  save rule, one/rule
+  sift rule
+    case by-name
+      link named
+      back reads-source(named)
+    case line-layout-rule
+      back true
+    miss
+      back false
+
+# every finding over one milled program: the node rules over ONE walk, then the rules that read the concrete tree,
+# then the line rules and the run of blank lines, each code as configured
+task lint-program
+  take program, like list, like statement
+  take file, like text
+  take source, like text
+  take setting, like lint-setting
+  like list, like lint-finding
+
+  save findings, make list
+  save off, suppressed-lines(setting)
+  save lean, setting-lean(setting)
+  save lines, split(source, <\n>)
+
+  save enabled, make list
+  walk list-driven-rules()
+    take rule
+    save meta, driven-meta(rule)
+    save configured, configured-severity(setting, meta/code)
+    fork test, is-unequal(configured, <off>)
+      hold
+        save one
+          make enabled-rule
+            bind rule, rule
+            bind meta, meta
+            bind severity, chosen-severity(configured, meta/severity)
+        enabled/push(one)
+
+  # what the ported rules read beyond their node, once per call: every name written somewhere (prefer-host-for-constant),
+  # every name read, a closure's body included (no-unused-load), the native modules loaded more than once
+  # (no-duplicate-load), and the two caches a whole-program rule fills on first use
+  save facts
+    make lint-facts
+      bind referenced, referenced-names(program)
+      bind duplicate-loads, duplicate-loads(program)
+      bind reassigned, reassigned-names(program)
+      bind program, program
+      bind raises
+        make raise-cache
+          bind filled, false
+          bind sets, make hash
+      bind tells
+        make tell-cache
+          bind filled, false
+          bind decides, false
+          bind root-of, make hash
+          bind reachable, make hash
+          bind told, make hash
+
+  # ONE walk that hands each node to every enabled rule, so N rules cost one traversal
+  walk lint-targets(program)
+    take target
+    walk enabled
+      take one
+      save rule, one/rule
+      sift rule
+        case by-name
+          link named
+          save reports, make list
+          sift target
+            case statement
+              link held-statement
+              save reports, check-statement(named, held-statement, facts)
+            case expression
+              link held-expression
+              save reports, check-expression(named, held-expression, facts)
+          report-ported(findings, one, off, lines, reports)
+        miss
+          save nothing, 0
+
+  # the rules about how a line is WRITTEN read the concrete tree, once per file. Parsed only when one is enabled, and
+  # skipped when the source does not parse (the program could not have milled either)
+  save wanted, false
+  walk enabled
+    take one
+    fork test, reads-tree(one)
+      hold
+        save wanted, true
+  fork test, wanted
+    hold
+      save written
+        make token-source
+          bind file, file
+          bind text, source
+      save parsed, parse(written)
+      fork test, parsed/ok
+        hold
+          save tree, parsed/tree
+          walk enabled
+            take one
+            save rule, one/rule
+            sift rule
+              case by-name
+                link named
+                fork test, reads-source(named)
+                  hold
+                    report-ported(findings, one, off, lines, check-source(named, tree, source, lean, program))
+              case line-layout-rule
+                fork test, lean
+                  hold
+                    report-layout(findings, one, off, line-layout-reports(tree, source, file, lint-dispatch-meaning))
+              miss
+                save nothing, 0
+
+  # the line rules and the run of blank lines, each code as configured
+  walk setting-line-findings(source, setting)
+    take line-found
+    findings/push(line-found)
+  back findings

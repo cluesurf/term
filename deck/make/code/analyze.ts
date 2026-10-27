@@ -2,28 +2,20 @@
 // every downstream view over that single parse: the concrete tree (for formatting and trivia), the milled AST (for
 // linting and type checking), the merged diagnostics, and lazy `format`/`lint`/`check` closures. This is what the
 // language server drives: one parse, then format + lint + compile all read the same result. See plans/19-format-and-lint.
+//
+// The analysis is Term, analyzer.tree (item term-self-host-001-0045): the parse, the kind of file, the suppressions and
+// the four lazy answers, each kind's closures held as one case of `analysis-held`. This face keeps the `Analysis` shape
+// its callers read, a closure per answer over the held case, and converts at the boundary: a role of `null` is absent,
+// the program's `maybe` is `null` when there is none, and a lint config's `lean` is handed on only when the caller
+// wrote the key, and its severities as a table.
 
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import type { RootNode } from '@term/make/code/parser/narrow'
-import { groupsOf } from '@term/make/code/parser/narrow'
-import { parseTolerant } from '@term/make/code/parser/tree'
-import { expandTemplates } from '@term/make/code/compile/template'
-import { mill } from '@term/make/code/compile/mill'
-import { checkView, lowerView } from '@term/make/code/compile/view'
 import type { ViewCatalog } from '@term/make/code/compile/view-catalog'
-import { compileProgram } from '@term/make/code/compile/compile'
-import { format, formatTree } from '@term/make/code/format/format'
-import { lint, applyFixes } from '@term/make/code/lint/lint'
 import type { LintConfig } from '@term/make/code/lint/lint'
 import type { Finding } from '@term/make/code/lint/rule'
 import type { Program } from '@term/make/code/compile/node'
-import {
-  expandData,
-  formatData,
-  isDataTree,
-  readData,
-} from '@term/make/code/compile/host'
-import { lintData } from '@term/make/code/lint/rules/data-grammar'
+import * as port from '@term/make/code/analyzer'
 
 export type Analysis = {
   tree: RootNode
@@ -42,48 +34,12 @@ export type Analysis = {
   check(): Diagnostic[]
 }
 
-// gather inline lint suppressions from the tree's comment trivia: a `# lint off Lxxx` comment disables that rule on
-// the following line. Walks the CST so the formatter and linter share the same comment source.
-function suppressions(tree: RootNode): Map<number, Set<string>> {
-  const map = new Map<number, Set<string>>()
-
-  const visit = (group: {
-    comments?: {
-      text: string
-      span: { start: { line: number } }
-    }[]
-    nodes: unknown[]
-  }) => {
-    for (const comment of group.comments ?? []) {
-      const found = /lint\s+off\s+([A-Za-z0-9]+)/.exec(comment.text)
-
-      if (found) {
-        const line = comment.span.start.line + 1
-
-        if (!map.has(line)) {
-          map.set(line, new Set())
-        }
-
-        map.get(line)!.add(found[1]!)
-      }
-    }
-
-    for (const child of group.nodes) {
-      if (
-        child &&
-        typeof child === 'object' &&
-        (child as { kind?: string }).kind === 'group'
-      ) {
-        visit(child as never)
-      }
-    }
+// the severities cross as a table of code to severity, the shape the lint driver reads (item 0078)
+function askedOf(config: LintConfig): port.LintAsked {
+  return {
+    severity: config.severity === undefined ? undefined : new Map(Object.entries(config.severity)),
+    lean: 'lean' in config ? { form: 'some', value: config.lean } : { form: 'none' },
   }
-
-  for (const group of groupsOf(tree.nodes)) {
-    visit(group)
-  }
-
-  return map
 }
 
 export function analyze(
@@ -102,129 +58,17 @@ export function analyze(
     catalog?: ViewCatalog
   },
 ): Analysis {
-  const { tree, diagnostics } = parseTolerant(source)
-
-  // the `view` role: the sandboxed document dialect. Same gate the compiler and `term view` call, so the editor
-  // cannot be more permissive than a save. Its canonical layout is the ordinary tree formatter's, because a
-  // document IS tree syntax. See note/project/term/view/.
-  if (options?.role === 'view') {
-    const read = checkView(source, { catalog: options.catalog })
-    const program = read.ok ? lowerView(read.file) : null
-
-    return {
-      tree,
-      kind: 'view',
-      program,
-      diagnostics: [...diagnostics, ...(read.ok ? [] : read.diagnostics)],
-      format: () => (diagnostics.length ? source.text : formatTree(tree, { role: 'view' })),
-      lint: () => [],
-      fix: () => source.text,
-      // the gate already ran, so there is nothing left to check separately. A document has no type checker of its
-      // own: what it may say is decided by the grammar, the catalog and the caps, all of them inside `checkView`.
-      check: () => (read.ok ? [] : read.diagnostics),
-    }
-  }
-
-  // a mill DEFINITION (the `mill` role): a grammar, not a program. The code lint rules are about programs and say
-  // nothing true about a `mine` rule, so there are none, and its layout is the ordinary tree formatter's. What a
-  // mill definition owes is checked by compile/mill-check.ts, which needs a resolver this entry does not have.
-  if (options?.role === 'mill') {
-    return {
-      tree,
-      kind: 'mill',
-      program: null,
-      diagnostics,
-      // a grammar is returned as written (format/format.ts isGrammar)
-      format: () => (diagnostics.length ? source.text : format(source, { role: 'mill' })),
-      lint: () => [],
-      fix: () => source.text,
-      check: () => diagnostics,
-    }
-  }
-
-  // a data file (the host dialect, see code/compile/host.ts) has no program: it is read by the data reader, its
-  // canonical layout is the data writer's, and its lint findings are the grammar's rules
-  if (diagnostics.length === 0 && isDataTree(tree)) {
-    return analyzeData(source, tree)
-  }
-
-  const built = mill(
-    expandTemplates(tree),
-    source.file,
-    options?.role ?? undefined,
-    options?.lean ?? false,
-  )
-  const program = built.ok ? built.program : null
-  const all = [...diagnostics, ...(built.ok ? [] : built.diagnostics)]
-  const suppress = suppressions(tree)
+  const made = port.analyze(source, options?.role ?? undefined, options?.lean ?? false, options?.catalog)
+  const held = made.held
 
   return {
-    tree,
-    kind: 'code',
-    program,
-    diagnostics: all,
-    // the layout, held to the file's own milled program (format/format.ts formatReport)
-    format: () =>
-      diagnostics.length ? source.text : format(source, { lean: options?.lean ?? false, role: options?.role ?? null }),
-    // a file that does not mill still gets the rules that read its TEXT and TREE (L053, the line rules), over an
-    // empty program, which no program rule finds anything in: those are the rules whose fix is what makes it mill,
-    // an old `note unsafe` guard among them (2026-10-06)
-    lint: (config: LintConfig = {}) =>
-      lint(program ?? [], source.file, source.text, {
-        lean: options?.lean ?? false,
-        ...config,
-        suppress,
-      }),
-    fix: (config: LintConfig = {}) => {
-      const findings = lint(program ?? [], source.file, source.text, {
-        lean: options?.lean ?? false,
-        ...config,
-        suppress,
-      })
-
-      const fixed = applyFixes(source.text, findings)
-      // re-parse + format the fixed text so the layout is normalized (a fix may leave odd spacing)
-      const reparsed = parseTolerant({ file: source.file, text: fixed })
-
-      return reparsed.diagnostics.length
-        ? fixed
-        : format({ file: source.file, text: fixed }, { lean: options?.lean ?? false, role: options?.role ?? null })
-    },
-    check: () => {
-      if (!program) {
-        return all
-      }
-
-      const result = compileProgram(program, source.file)
-
-      return result.ok ? result.warnings : result.diagnostics
-    },
-  }
-}
-
-function analyzeData(
-  source: { file: string; text: string },
-  tree: RootNode,
-): Analysis {
-  const read = readData(tree, source.file)
-  const expanded = read.ok ? expandData(read.data, source.file) : undefined
-  const diagnostics = read.ok
-    ? expanded && !expanded.ok
-      ? expanded.diagnostics
-      : []
-    : read.diagnostics
-  const findings = () => lintData(tree, source.file)
-
-  return {
-    tree,
-    kind: 'data',
-    program: null,
-    diagnostics,
-    // a file the reader refuses is left as written: a layout pass must never rewrite what it cannot read
-    format: () =>
-      diagnostics.length ? source.text : formatData(tree, source.file),
-    lint: findings,
-    fix: () => (diagnostics.length ? source.text : formatData(tree, source.file)),
-    check: () => diagnostics,
+    tree: made.tree as unknown as RootNode,
+    kind: made.kind,
+    program: made.program.form === 'some' ? (made.program.value as Program) : null,
+    diagnostics: made.diagnostics,
+    format: () => port.applyFormat(held),
+    lint: (config: LintConfig = {}) => port.applyLint(held, askedOf(config)) as Finding[],
+    fix: (config: LintConfig = {}) => port.applyFix(held, askedOf(config)),
+    check: () => port.applyCheck(held),
   }
 }

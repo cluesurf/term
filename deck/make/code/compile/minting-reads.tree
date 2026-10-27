@@ -1,0 +1,741 @@
+# The mint bridge, part 1 of 8 (decision 033 section 2): what every lowering reads. The mint state each lowering
+# threads, the readers of a minted value, the constant sets, a node's outline, the names a file defines, and the
+# reflective walks over a built program.
+#
+# Ported from compile/mint-bridge.ts (self-hosting, item 0272), which stays as the face until part 8. The decisions:
+#   - the original's `Bridge` is `mint-state`, `mark shared` since every lowering writes it (traps T019). Its sets are
+#     hashes of text to true, its `walks` counter a shared `walk-count` so a nested body's copy counts on, and it
+#     carries `flow`, the statement half's lowering, set by part 3 before any lowering (decision 033 section 4)
+#   - a reader takes a `maybe` where the original took `Minted | undefined`
+#   - a constant set is a task answering whether a word is in it, named for the set
+#   - names-in-file and tasks-in-file answer a hash of text to true, the original's `Set`
+#   - reads-variable reads through compile/node-reach.tree (spec section 4.10): every expression the value holds, types
+#     included, but never through a field named `span` or `type`, as the original's reflective walk
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/text
+  find split
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/tree
+  find node
+  find root-node
+
+load ../parser/diagnostic
+  find span
+  find position
+  find diagnostic
+
+load ./node
+  find expression
+  find statement
+  find type
+  find twin
+
+load ./node-reach
+  find reach-expression
+
+load ./mill-running
+  find minted
+  find mine-rule
+  find mint-rule
+  find word-of
+  find head-word
+
+load ./templates
+  find span-of-whole
+
+# ---- the mint state ----
+
+# how many `walk size` loops the file has minted so far, shared by every copy a nested body makes
+form walk-count
+  mark shared
+  link count, like number
+
+# a `save` that declared a name its own value reads: the new local's fresh name
+form shadow
+  link from, like text
+  link to, like text
+
+# the grammar a program is read with: its mine and mint rules, and the mine rules marked `mark lean`
+form mint-grammar
+  link mine, like hash, like text, like list, like mine-rule
+  link mint, like hash, like text, like mint-rule
+  link lean, like hash, like text, like boolean
+
+# what every lowering of one file reads and writes (the original's `Bridge`)
+form mint-state
+  mark shared
+  link file, like text
+  # the file's role: `site` reads every `hook` as a URL route, `call` as a CLI command
+  link role
+    like maybe, like text
+    need false
+  # `mark lean` on the file's role rule
+  link lean, like boolean
+  link diagnostics, like list, like diagnostic
+  # the form a nested `task` belongs to
+  link owner
+    like maybe, like text
+    need false
+  # what `self` is typed as inside that form
+  link self-type
+    like maybe, like type
+    need false
+  # the names already bound in the body being built, so a second `save` of one is an assignment
+  link declared, like hash, like text, like boolean
+  # every other local name in scope (a closure's parameters, a walk's item and index, an arm's names, a caught name)
+  link bound, like hash, like text, like boolean
+  link shadowed
+    like maybe, like shadow
+    need false
+  # the count behind the fresh names, 0 before the first
+  link shadows, like number
+  # inside a task's or a closure's body, as opposed to the top level of the file
+  link in-body, like boolean
+  # the file defines or imports a task named `host`
+  link host-task, like boolean
+  # every name the file defines or imports (names-in-file)
+  link named, like hash, like text, like boolean
+  # the top-level tasks the file defines itself (tasks-in-file)
+  link own-tasks, like hash, like text, like boolean
+  # the owning form's type parameters
+  link owner-params
+    like maybe, like list, like text
+    need false
+  # `find X, name Y`: Y is a local synonym for X
+  link aliases, like hash, like text, like text
+  link grammar, like mint-grammar
+  # the file's `twin` declarations
+  link twins, like list, like twin
+  link walks, like walk-count
+  # the statement half's lowering, which a closure's body calls (decision 033 section 4). Part 3 sets it before any
+  # lowering, to a closure over this state: a field typed as a task taking the state itself is refused (the state would
+  # stand in a non-positive position), so the task takes the values alone
+  link flow
+    like task
+      take values, like list, like minted
+      like list, like statement
+
+# a fresh state for one file, as millByGrammar builds it, its flow not yet set
+task new-mint-state
+  take file, like text
+  take role, like maybe, like text
+  take lean, like boolean
+  take tree, like root-node
+  take grammar, like mint-grammar
+  like mint-state
+
+  save named, names-in-file(tree)
+  back
+    make mint-state
+      bind file, file
+      bind role, role
+      bind lean, lean
+      bind diagnostics, make list
+      bind declared, make hash
+      bind bound, make hash
+      bind shadows, 0
+      bind in-body, false
+      bind host-task, named/has(<host>)
+      bind named, named
+      bind own-tasks, tasks-in-file(tree)
+      bind aliases, make hash
+      bind grammar, grammar
+      bind twins, make list
+      bind walks
+        make walk-count
+          bind count, 0
+      bind flow, no-flow
+
+# the flow a state holds until part 3 sets its own: no statements
+task no-flow
+  take values, like list, like minted
+  like list, like statement
+  mark private
+
+  back make list
+
+# ---- reading a minted value ----
+
+task is-form
+  take value, like maybe, like minted
+  like boolean
+
+  sift value
+    case some
+      link one
+      sift one
+        case form
+          back true
+        miss
+          back false
+    case none
+      back false
+
+# the values a form holds at a field, none for anything else
+task at
+  take value, like maybe, like minted
+  take field, like text
+  like list, like minted
+
+  sift value
+    case some
+      link one
+      sift one
+        case form
+          link form-name
+          link form-fields
+          fork test, form-fields/has(field)
+            hold
+              back form-fields/get(field)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back make list
+
+task first-at
+  take value, like maybe, like minted
+  take field, like text
+  like maybe, like minted
+
+  save found, at(value, field)
+  fork test, is-above(found/length, 0)
+    hold
+      save first, get(found, 0)
+      back make(some, first)
+  back make none
+
+task forms-at
+  take value, like maybe, like minted
+  take field, like text
+  like list, like minted
+
+  save out, make list
+  walk at(value, field)
+    take one
+    fork test, is-form(make(some, one))
+      hold
+        push(out, one)
+  back out
+
+# `need false` mints as a form carrying the word, not as the word itself
+task need-word
+  take value, like maybe, like minted
+  like maybe, like text
+
+  save found, first-at(value, <need>)
+  sift text-of(found)
+    case some
+      link known
+      back make(some, known)
+    case none
+      back word-at(found, <name>)
+
+# a `fall <value>` carries its value in a `seed` field, not directly
+task fall-value
+  take value, like maybe, like minted
+  like maybe, like minted
+
+  save found, at(value, <seed>)
+  fork test, is-above(found/length, 0)
+    hold
+      save first, get(found, 0)
+      back make(some, first)
+  back value
+
+# the plain text of a value that is a word or a literal
+task text-of
+  take value, like maybe, like minted
+  like maybe, like text
+
+  sift value
+    case some
+      link one
+      sift one
+        case word
+          link word-value
+          back make(some, word-value)
+        case text
+          link text-value
+          back make(some, text-value)
+        case number
+          link number-value
+          save written, <{number-value}>
+          back make(some, written)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back make none
+
+task word-at
+  take value, like maybe, like minted
+  take field, like text
+  like maybe, like text
+
+  back text-of(first-at(value, field))
+
+task has-word
+  take value, like maybe, like minted
+  take field, like text
+  take word, like text
+  like boolean
+
+  walk at(value, field)
+    take one
+    sift text-of(make(some, one))
+      case some
+        link known
+        fork test, is-equal(known, word)
+          hold
+            back true
+      case none
+        save nothing, 0
+    sift word-at(make(some, one), <text>)
+      case some
+        link inner
+        fork test, is-equal(inner, word)
+          hold
+            back true
+      case none
+        save nothing, 0
+  back false
+
+# where a value sits: its own span, else its node's whole span, else the zero span
+task span-of
+  take value, like maybe, like minted
+  like span
+
+  sift value
+    case some
+      link one
+      save own, make none
+      save held, make none
+      sift one
+        case word
+          link word-value
+          link word-span
+          link word-node
+          save own, word-span
+          save held, word-node
+        case text
+          link text-value
+          link text-span
+          link text-node
+          save own, text-span
+          save held, text-node
+        case number
+          link number-value
+          link number-decimal
+          link number-span
+          link number-node
+          save own, number-span
+          save held, number-node
+        case form
+          link form-name
+          link form-fields
+          link form-span
+          link form-node
+          save own, form-span
+          save held, form-node
+      sift own
+        case some
+          link known
+          back known
+        case none
+          sift held
+            case some
+              link whole
+              back span-of-whole(whole)
+            case none
+              save nothing, 0
+    case none
+      save nothing, 0
+  back zero-span()
+
+task zero-span
+  like span
+  mark private
+
+  back
+    make span
+      bind start, zero-position()
+      bind end, zero-position()
+
+task zero-position
+  like position
+  mark private
+
+  back
+    make position
+      bind line, 0
+      bind column, 0
+
+# ---- the constant sets ----
+
+# every head `mine flow` lists as a statement (mill/code/tree/code/tool/flow/mine.tree), none of which can be a bare-head
+# call
+task is-flow-head
+  take word, like text
+  like boolean
+
+  back is-one-of(word, <hold call save send back fork sift halt bust walk turn fuse rest note read free make move host>)
+
+# the three walk modes
+task is-walk-mode
+  take word, like text
+  like boolean
+
+  back is-one-of(word, <list size test>)
+
+# the heads a `walk test` lets stand directly under it besides its body
+task is-walk-test-part
+  take word, like text
+  like boolean
+
+  back is-one-of(word, <hook must down bind take>)
+
+# the marks a task takes
+task is-task-mark
+  take word, like text
+  like boolean
+
+  back is-one-of(word, <async private roam open unsafe deprecated>)
+
+# the marks that belong to a file
+task is-file-mark
+  take word, like text
+  like boolean
+
+  back is-one-of(word, <draft stable unstable>)
+
+# the marks a form takes
+task is-form-mark
+  take word, like text
+  like boolean
+
+  back is-one-of(word, <text prop shared tag deprecated sole hide>)
+
+# the width aliases of `number` whose range a literal argument is held to
+task is-width-word
+  take word, like text
+  like boolean
+
+  back is-one-of(word, <u8 u16 u32 u64 i8 i16 i32 i64>)
+
+# the arms a `fork test` reads, by the word after `hook`
+task is-fork-test-arm
+  take word, like text
+  like boolean
+
+  back is-one-of(word, <test hold step miss else fall>)
+
+# the type parameter a mask's default task is generic over
+task mask-self
+  like text
+
+  back <w>
+
+# whether `word` is one of the space-separated words of `words`
+task is-one-of
+  take word, like text
+  take words, like text
+  like boolean
+  mark private
+
+  walk split(words, < >)
+    take one
+    fork test, is-equal(one, word)
+      hold
+        back true
+  back false
+
+# ---- the parse tree ----
+
+# the node a list holds at an index, none past its end
+task node-at
+  take kids, like list, like node
+  take index, like number
+  like maybe, like node
+  mark private
+
+  fork test, and(is-minimum(index, 0), is-below(index, kids/length))
+    hold
+      save found, get(kids, index)
+      back make(some, found)
+  back make none
+
+task word-of-at
+  take kids, like list, like node
+  take index, like number
+  like maybe, like text
+  mark private
+
+  sift node-at(kids, index)
+    case some
+      link found
+      back word-of(found)
+    case none
+      back make none
+
+task head-word-is
+  take one, like node
+  take word, like text
+  like boolean
+  mark private
+
+  sift one
+    case group
+      sift head-word(one)
+        case some
+          link known
+          back is-equal(known, word)
+        case none
+          back false
+    miss
+      back false
+
+# the top-level `task x` names of the file, read off the parse tree before anything mints
+task tasks-in-file
+  take tree, like root-node
+  like hash, like text, like boolean
+
+  save names, make hash
+  sift tree
+    case root
+      walk nodes
+        take group
+        fork test, head-word-is(group, <task>)
+          hold
+            sift group
+              case group
+                link group-nodes
+                sift word-of-at(group-nodes, 1)
+                  case some
+                    link word
+                    save names/{word}, true
+                  case none
+                    save nothing, 0
+              miss
+                save nothing, 0
+  back names
+
+# the names the file defines or imports that a body line may call: `task x` and `view x` at the top level, and `find x`
+# (or a `find y, name x`) under a `load`
+task names-in-file
+  take tree, like root-node
+  like hash, like text, like boolean
+
+  save names, make hash
+  sift tree
+    case root
+      walk nodes
+        take group
+        sift group
+          case group
+            link group-nodes
+            fork test, or(head-word-is(group, <task>), head-word-is(group, <view>))
+              hold
+                add-word(names, word-of-at(group-nodes, 1))
+                turn next
+            fork test, not(head-word-is(group, <load>))
+              hold
+                turn next
+            walk group-nodes
+              take child
+              fork test, not(head-word-is(child, <find>))
+                hold
+                  turn next
+              sift child
+                case group
+                  link child-nodes
+                  # `find x, name y` imports x under the local name y, so only the alias counts
+                  save alias, make none
+                  walk child-nodes
+                    take part
+                    fork test, head-word-is(part, <name>)
+                      hold
+                        save alias, make(some, part)
+                        halt
+                  sift alias
+                    case some
+                      link named
+                      sift named
+                        case group
+                          link named-nodes
+                          add-word(names, word-of-at(named-nodes, 1))
+                        miss
+                          save nothing, 0
+                    case none
+                      add-word(names, word-of-at(child-nodes, 1))
+                miss
+                  save nothing, 0
+          miss
+            save nothing, 0
+  back names
+
+task add-word
+  take names, like hash, like text, like boolean
+  take word, like maybe, like text
+  mark private
+
+  sift word
+    case some
+      link known
+      save names/{known}, true
+    case none
+      save nothing, 0
+
+# ---- outlines ----
+
+# the text of a name's or a text literal's parts, an interpolation written `{}`
+task parts-text
+  take parts, like list, like node
+  like text
+  mark private
+
+  save out, <>
+  walk parts
+    take part
+    sift part
+      case chunk
+        link chunk-text
+        save out, <{out}{chunk-text}>
+      miss
+        save out, <{out}\{\}>
+  back out
+
+# The line the grammar stopped on, rendered as words: the node's own words, then the head word of each child
+task outline-of
+  take value, like maybe, like node
+  like text
+
+  sift value
+    case some
+      link one
+      back outline-node(one)
+    case none
+      back <(nothing)>
+
+task outline-node
+  take one, like node
+  like text
+  mark private
+
+  sift one
+    case name
+      back parts-text(parts)
+    case text
+      save inner, parts-text(parts)
+      back <\<{inner}\>>
+    case group
+      save words, make list
+      save kids, make list
+      walk nodes
+        take child
+        sift child
+          case group
+            link child-nodes
+            push(kids, outline-of(node-at(child-nodes, 0)))
+          miss
+            push(words, outline-node(child))
+      save said, join(words, < >)
+      fork test, is-above(kids/length, 0)
+        hold
+          save under, join(kids, < >)
+          back <{said} \> {under}>
+      back said
+    miss
+      back one/kind
+
+# does a line under this node read `mark pass`? The take rule does not read a `mark`, so a take that writes one falls to
+# a hook's flow whole
+task writes-mark-pass
+  take value, like maybe, like node
+  like boolean
+
+  sift value
+    case some
+      link one
+      sift one
+        case group
+          save first, node-at(nodes, 0)
+          save second, node-at(nodes, 1)
+          fork test, and(is-name-node(first), and(is-equal(outline-of(first), <mark>), is-equal(head-outline(second), <pass>)))
+            hold
+              back true
+          walk nodes
+            take child
+            fork test, writes-mark-pass(make(some, child))
+              hold
+                back true
+          back false
+        miss
+          back false
+    case none
+      back false
+
+task is-name-node
+  take value, like maybe, like node
+  like boolean
+  mark private
+
+  sift value
+    case some
+      link one
+      sift one
+        case name
+          back true
+        miss
+          back false
+    case none
+      back false
+
+# a group's first child's outline, any other node's own
+task head-outline
+  take value, like maybe, like node
+  like text
+  mark private
+
+  sift value
+    case some
+      link one
+      sift one
+        case group
+          back outline-of(node-at(nodes, 0))
+        miss
+          back outline-of(value)
+    case none
+      back outline-of(value)
+
+# ---- the reflective walks ----
+
+# does a built expression read the variable `name` anywhere in it, through every field but `span` and `type`
+task reads-variable
+  take value, like expression
+  take name, like text
+  like boolean
+
+  save skip, make list
+  push(skip, <span>)
+  push(skip, <type>)
+  save reached, reach-expression(value, skip)
+  walk reached/expressions
+    take one
+    sift one
+      case variable
+        link variable-name
+        fork test, is-equal(variable-name, name)
+          hold
+            back true
+      miss
+        save nothing, 0
+  back false

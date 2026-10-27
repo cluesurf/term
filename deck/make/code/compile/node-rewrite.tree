@@ -39,6 +39,10 @@ load ./import-scope
   find scope-of
   find targets-of
 
+load ./node-reach
+  find reach-expression
+  find reach-statements
+
 load ./node
   find binding
   find closure-param
@@ -54,6 +58,7 @@ load ./node
   find with-type
   find field-value
   find form-extend
+  find match-case
   find statement
   find type
   find view-node
@@ -153,6 +158,30 @@ form rewrite-rule
   # module scope: a construction of a case two modules' forms share, told its owner where its file says which
   case shared-cases
     link sharing, like case-sharing
+  # every free reference to the local `from`, read or written, renamed `to` (compile/minting-reads.tree `rename-local`).
+  # A closure or a task whose parameter is `from`, a walk binding it as its item or index, a match arm binding it and a
+  # handler catching it start a scope where `from` is that binding, and the walk stops there (the scope guard)
+  case rename-local
+    link from, like text
+    link to, like text
+  # every reference written with an alias of the file's (`find x, name y`, mapped alias to target): a variable, a
+  # construction and a named type take the imported name and keep the alias, and a lean call whose label is an alias
+  # notes the target in `lean-aliases`, its label left as written (compile/minting-reads.tree `apply-aliases`)
+  case apply-aliases
+    link aliases, like hash, like text, like text
+  # a local named like an alias's target, whose scope reads an alias of that target, takes a fresh name
+  # `<name>__<n>` with every use of it: a `let` with the statements after it in its block, a closure's parameter and a
+  # walk's item or index with their body (compile/minting-reads.tree `free-alias-targets`). Asked before the walk enters
+  # a statement, a closure or the rest of a block, in the order a reflective walk meets them, so the names number alike
+  case free-alias-targets
+    link aliases, like hash, like text, like text
+    link targets, like hash, like text, like boolean
+    link fresh, like fresh-count
+
+# the fresh names a rewrite has made so far, shared by every step of one walk
+form fresh-count
+  mark shared
+  link count, like number
 
 # ---- module scope's data (check/scope) ----
 
@@ -253,11 +282,62 @@ task rewrite-block
   like list, like statement
   mark private
 
+  fork test, steps-blocks(rule)
+    hold
+      back rewrite-stepped(block, rule)
   save out, make list
   walk block
     take one
     push(out, rewrite-statement(one, rule))
   back out
+
+# whether a rule is asked of the rest of a block before each statement in it
+task steps-blocks
+  take rule, like rewrite-rule
+  like boolean
+  mark private
+
+  sift rule
+    case free-alias-targets
+      back true
+    miss
+      back false
+
+# a block whose rule is asked, before each statement, of that statement and every one after it (`step-block`), and
+# then rewrites the statement as handed back
+task rewrite-stepped
+  take block, like list, like statement
+  take rule, like rewrite-rule
+  like list, like statement
+  mark private
+
+  save rest, make list
+  walk block
+    take one
+    push(rest, one)
+  save out, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, rest/length)
+    hook hold
+      save rest, step-block(rest, at, rule)
+      push(out, rewrite-statement(get(rest, at), rule))
+      save at, add(at, 1)
+  back out
+
+# what a rule does to a block from the statement at `at` on, before that statement is rewritten
+task step-block
+  take block, like list, like statement
+  take at, like number
+  take rule, like rewrite-rule
+  like list, like statement
+  mark private
+
+  sift rule
+    case free-alias-targets
+      back freed-block(block, at, aliases, targets, fresh)
+    miss
+      back block
 
 task rewrite-maybe-block
   take block, like maybe, like list, like statement
@@ -317,6 +397,9 @@ task rewrite-expression
   take rule, like rewrite-rule
   like expression
 
+  fork test, stops-at-expression(value, rule)
+    hold
+      back value
   save given, rule-before(value, rule)
   sift given
     case template
@@ -417,6 +500,10 @@ task rewrite-statement
   take rule, like rewrite-rule
   like statement
 
+  fork test, stops-at-statement(one, rule)
+    hold
+      back one
+  save one, rule-statement-before(one, rule)
   sift one
     case let
       save one/init, rewrite-expression(init, rule)
@@ -458,7 +545,18 @@ task rewrite-statement
       save cases-out, make list
       walk cases
         take arm
-        save arm/body, rewrite-block(arm/body, rule)
+        fork test, not(stops-at-arm(arm, rule))
+          hold
+            save arm/body, rewrite-block(arm/body, rule)
+            fork test, enters-arm-types(rule)
+              hold
+                sift arm/type
+                  case some
+                    link arm-type
+                    save written-arm, rewrite-type(arm-type, rule)
+                    save arm/type, make(some, written-arm)
+                  case none
+                    save nothing, 0
         push(cases-out, arm)
       save one/cases, cases-out
       sift otherwise
@@ -491,9 +589,11 @@ task rewrite-statement
       sift catch
         case some
           link clause
-          enter-catch(rule, clause/name)
-          save clause/body, rewrite-block(clause/body, rule)
-          leave-catch(rule)
+          fork test, not(stops-at-catch(clause/name, rule))
+            hold
+              enter-catch(rule, clause/name)
+              save clause/body, rewrite-block(clause/body, rule)
+              leave-catch(rule)
           save one/catch, make(some, clause)
         case none
           save nothing, 0
@@ -764,11 +864,17 @@ task rewrites-types
       back true
     case shared-cases
       back true
+    # mint-bridge.ts's renameLocal walked every key but `span`, `type` and `binding`, and applyAliases every key
+    case rename-local
+      back true
+    case apply-aliases
+      back true
     miss
       back false
 
 # whether a rule enters a field named `type`: check/scope.ts's `bindSharedCases` walked every key but `span` and
-# `type`, its other two walks every key but `span`
+# `type`, its other two walks every key but `span`, and mint-bridge.ts's renameLocal every key but `span`, `type` and
+# `binding`
 task enters-type-key
   take rule, like rewrite-rule
   like boolean
@@ -777,8 +883,281 @@ task enters-type-key
   sift rule
     case shared-cases
       back false
+    case rename-local
+      back false
     miss
       back true
+
+# whether a rule enters the type a match arm tests for: mint-bridge.ts's applyAliases walked every key
+task enters-arm-types
+  take rule, like rewrite-rule
+  like boolean
+  mark private
+
+  sift rule
+    case apply-aliases
+      back true
+    miss
+      back false
+
+# ---- the scope guard ----
+
+# whether the walk stops at this expression, handing it back as it was with nothing inside it rewritten: a closure
+# whose parameter is the name a `rename-local` renames binds that name anew, so nothing under it is the local
+task stops-at-expression
+  take given, like expression
+  take rule, like rewrite-rule
+  like boolean
+  mark private
+
+  sift rule
+    case rename-local
+      sift given
+        case closure
+          walk params
+            take param
+            fork test, is-equal(param/name, from)
+              hold
+                back true
+          back false
+        miss
+          back false
+    miss
+      back false
+
+# whether the walk stops at this statement, handing it back as it was: a task whose parameter is the renamed name, and
+# a walk binding it as its item or index (its iterable too, as mint-bridge.ts's renameLocal left it)
+task stops-at-statement
+  take one, like statement
+  take rule, like rewrite-rule
+  like boolean
+  mark private
+
+  sift rule
+    case rename-local
+      sift one
+        case function
+          walk params
+            take param
+            fork test, is-equal(param/name, from)
+              hold
+                back true
+          back false
+        case for-each
+          fork test, is-equal(item, from)
+            hold
+              back true
+          fork test, is-equal(index, from)
+            hold
+              back true
+          back false
+        miss
+          back false
+    miss
+      back false
+
+# whether the walk leaves a match arm as it was: an arm whose `link` names bind the renamed name
+task stops-at-arm
+  take arm, like match-case
+  take rule, like rewrite-rule
+  like boolean
+  mark private
+
+  sift rule
+    case rename-local
+      walk arm/binds
+        take bound-name
+        fork test, is-equal(bound-name, from)
+          hold
+            back true
+      back false
+    miss
+      back false
+
+# whether the walk leaves a handler as it was: one catching its exception by the renamed name
+task stops-at-catch
+  take name, like text
+  take rule, like rewrite-rule
+  like boolean
+  mark private
+
+  sift rule
+    case rename-local
+      back is-equal(name, from)
+    miss
+      back false
+
+# ---- what a rule does before the walk enters ----
+
+# what a rule does to one statement BEFORE its blocks and expressions: a walk's item or index named like an alias's
+# target, whose body reads an alias of it, takes a fresh name there and in the body
+task rule-statement-before
+  take one, like statement
+  take rule, like rewrite-rule
+  like statement
+  mark private
+
+  sift rule
+    case free-alias-targets
+      sift one
+        case for-each
+          fork test, targets/has(item)
+            hold
+              fork test, reads-alias(reach-statements(body, reach-skip())/expressions, aliases, item)
+                hold
+                  save to, fresh-name(item, fresh)
+                  save one/body, rename-in-block(body, item, to)
+                  save one/item, to
+          sift one
+            case for-each
+              fork test, targets/has(index)
+                hold
+                  fork test, reads-alias(reach-statements(body, reach-skip())/expressions, aliases, index)
+                    hold
+                      save index-to, fresh-name(index, fresh)
+                      save one/body, rename-in-block(body, index, index-to)
+                      save one/index, index-to
+            miss
+              save nothing, 0
+          back one
+        miss
+          back one
+    miss
+      back one
+
+# a closure's parameter named like an alias's target, whose body reads an alias of it, takes a fresh name there and in
+# the body, each parameter in order
+task freed-closure
+  take given, like expression
+  take aliases, like hash, like text, like text
+  take targets, like hash, like text, like boolean
+  take fresh, like fresh-count
+  like expression
+  mark private
+
+  sift given
+    case closure
+      save written-body, body
+      save params-out, make list
+      walk params
+        take param
+        fork test, targets/has(param/name)
+          hold
+            fork test, reads-alias(reach-statements(written-body, reach-skip())/expressions, aliases, param/name)
+              hold
+                save to, fresh-name(param/name, fresh)
+                save written-body, rename-in-block(written-body, param/name, to)
+                save param/name, to
+        push(params-out, param)
+      save given/params, params-out
+      save given/body, written-body
+      back given
+    miss
+      back given
+
+# the `let` at `at` named like an alias's target, whose value or the statements after it read an alias of that
+# target, takes a fresh name, and so does every use of it in the statements after it
+task freed-block
+  take block, like list, like statement
+  take at, like number
+  take aliases, like hash, like text, like text
+  take targets, like hash, like text, like boolean
+  take fresh, like fresh-count
+  like list, like statement
+  mark private
+
+  save one, get(block, at)
+  sift one
+    case let
+      fork test, not(targets/has(name))
+        hold
+          back block
+      save rest, make list
+      walk block
+        take later
+        take place
+        fork test, is-above(place, at)
+          hold
+            push(rest, later)
+      save reads, reads-alias(reach-expression(init, reach-skip())/expressions, aliases, name)
+      fork test, not(reads)
+        hold
+          save reads, reads-alias(reach-statements(rest, reach-skip())/expressions, aliases, name)
+      fork test, not(reads)
+        hold
+          back block
+      save to, fresh-name(name, fresh)
+      save renamed, rename-in-block(rest, name, to)
+      save one/name, to
+      save out, make list
+      walk block
+        take earlier
+        take place
+        fork test, is-below(place, at)
+          hold
+            push(out, earlier)
+      push(out, one)
+      walk renamed
+        take later
+        push(out, later)
+      back out
+    miss
+      back block
+
+# every free use of the local `from` in a block, `to`
+task rename-in-block
+  take block, like list, like statement
+  take from, like text
+  take to, like text
+  like list, like statement
+  mark private
+
+  save rule
+    make rename-local
+      bind from, from
+      bind to, to
+  back rewrite-block(block, rule)
+
+# a name taken fresh: `<name>__<n>`, counting on from every one made before it
+task fresh-name
+  take name, like text
+  take fresh, like fresh-count
+  like text
+  mark private
+
+  save fresh/count, add(fresh/count, 1)
+  back <{name}__{fresh/count}>
+
+# the fields a reflective walk of mint-bridge.ts's never descends into
+task reach-skip
+  like list, like text
+  mark private
+
+  save skip, make list
+  push(skip, <span>)
+  push(skip, <type>)
+  back skip
+
+# do these expressions read a variable written with an alias of `target`
+task reads-alias
+  take reached, like list, like expression
+  take aliases, like hash, like text, like text
+  take target, like text
+  like boolean
+  mark private
+
+  walk reached
+    take one
+    sift one
+      case variable
+        fork test, aliases/has(name)
+          hold
+            fork test, is-equal(get-or-default(aliases, name, <>), target)
+              hold
+                back true
+      miss
+        save nothing, 0
+  back false
 
 # a guard's handler binds its caught exception to `name` for the handler's body
 task enter-catch
@@ -1149,6 +1528,8 @@ task rule-type
       back apart-type(given, apart)
     case bind-forms
       back bind-type(given, binding)
+    case apply-aliases
+      back aliased-type(given, aliases)
     miss
       back given
 
@@ -1183,6 +1564,10 @@ task rule-expression
       back bind-expression(given, binding)
     case shared-cases
       back share-expression(given, sharing)
+    case rename-local
+      back renamed-variable(given, from, to)
+    case apply-aliases
+      back aliased-expression(given, aliases)
     miss
       back given
 
@@ -1196,6 +1581,89 @@ task rule-before
   sift rule
     case specialize-calls
       back specialized-call(given, rule)
+    case free-alias-targets
+      back freed-closure(given, aliases, targets, fresh)
+    miss
+      back given
+
+# ---- a local renamed, and the file's aliases (compile/minting-reads.tree) ----
+
+# a read or write of the local `from`, `to`
+task renamed-variable
+  take given, like expression
+  take from, like text
+  take to, like text
+  like expression
+  mark private
+
+  sift given
+    case variable
+      fork test, is-equal(name, from)
+        hold
+          save given/name, to
+      back given
+    miss
+      back given
+
+# a reference written with an alias takes the imported name, the alias kept so binding sends it to the import even where
+# the file defines the imported name itself: a variable, and a construction (form binding sends `make chart-element`
+# to the file its `find` named). A lean call's label that is an alias may be a nested call of the import: the targets
+# are noted beside the labels, `<>` for a label that is no alias and for no label, the labels left as written
+task aliased-expression
+  take given, like expression
+  take aliases, like hash, like text, like text
+  like expression
+  mark private
+
+  sift given
+    case variable
+      fork test, aliases/has(name)
+        hold
+          save given/alias, name
+          save given/name, get-or-default(aliases, name, name)
+      back given
+    case record
+      fork test, aliases/has(name)
+        hold
+          save given/alias, make(some, name)
+          save given/name, get-or-default(aliases, name, name)
+      back given
+    case call
+      fork test, lean
+        hold
+          save hits, false
+          save mapped, make list
+          walk names
+            take label
+            fork test, is-equal(label, <>)
+              hold
+                push(mapped, <>)
+              miss
+                fork test, aliases/has(label)
+                  hold
+                    save hits, true
+                push(mapped, get-or-default(aliases, label, <>))
+          fork test, hits
+            hold
+              save given/lean-aliases, mapped
+      back given
+    miss
+      back given
+
+# `like chart-element` written with an alias, kept for form binding the same way
+task aliased-type
+  take given, like type
+  take aliases, like hash, like text, like text
+  like type
+  mark private
+
+  sift given
+    case named
+      fork test, aliases/has(name)
+        hold
+          save given/alias, make(some, name)
+          save given/name, get-or-default(aliases, name, name)
+      back given
     miss
       back given
 

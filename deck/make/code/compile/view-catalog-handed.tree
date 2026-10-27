@@ -1,0 +1,285 @@
+mark draft
+
+# What compile/view.ts's callers hand the document reader, made into what compile/view-document.tree reads: the
+# catalog's sets, the graph's templates, the gate's options, and the answer as the callers hold it.
+#
+# Ported from compile/view.ts (item term-self-host-001-0079), which stays as a thin face keeping the types its callers
+# hold. The decisions:
+#   - a caller's catalog holds `Set`s and `Map`s (compile/view-catalog.ts `ViewCatalog`). They are read here as hashes:
+#     a set of names answers `keys()` and `has` as a hash of its members does, the way analyzer.tree reads its
+#     suppressions (item 0045). The members come out as lists in their insertion order, as the face's spread did
+#   - a query's `size` is absent or a number, a `need false` field, and becomes the reader's `maybe`
+#   - a caller's template is read the same way: `holes` absent is an empty table, and `sites` a set made a list
+#   - the answer leaves `file` out when the document was refused, as the face did
+#   - the refused heads are a table made here, in the order the original's map held them
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/tree
+  find node
+  find root-node
+
+load ../parser/token
+  find token-source
+
+load ../parser/diagnostic
+  find diagnostic
+
+load ./catalog-read
+  find catalog-query
+  find catalog-field
+
+load ./templates
+  find tree-template
+  find template-hole
+
+load ./view-cap
+  find view-caps
+  find make-view-caps
+
+load ./view-document
+  find view-catalog
+  find view-file
+  find view-result
+  find view-refused-heads
+  find read-view
+  find check-view
+
+# ---- what a caller hands ----
+
+# a field of a query: the predicates its index answers (a set) and whether it sorts
+form handed-field
+  link hold, like hash, like text, like boolean
+  link sort, like boolean
+
+form handed-query
+  link name, like text
+  link back, like text
+  link size
+    like maybe, like float
+    need false
+  link site, like hash, like text, like handed-field
+
+# the four closed vocabularies, three sets of names and a table of queries
+form handed-catalog
+  link view, like hash, like text, like boolean
+  link call, like hash, like text, like boolean
+  link load, like hash, like text, like boolean
+  link task, like hash, like text, like handed-query
+
+# a template as compile/template.ts holds one
+form handed-template
+  link params, like list, like text
+  link holes
+    like maybe, like hash, like text, like template-hole
+    need false
+  link sites
+    like maybe, like hash, like text, like boolean
+    need false
+  link body, like list, like node
+
+# the gate's options, each absent when not given
+form handed-check
+  link catalog
+    like maybe, like handed-catalog
+    need false
+  link caps
+    like maybe, like view-caps
+    need false
+  link tree
+    like maybe, like root-node
+    need false
+  link templates
+    like maybe, like hash, like text, like handed-template
+    need false
+  link lean
+    like maybe, like boolean
+    need false
+
+# what the reader answers, as a caller holds it: the file only when the document was read
+form handed-result
+  link ok, like boolean
+  link file
+    like maybe, like view-file
+    need false
+  link diagnostics, like list, like diagnostic
+
+# ---- the boundary ----
+
+task members-of
+  take names, like hash, like text, like boolean
+  like list, like text
+  mark private
+
+  save out, make list
+  walk names/keys()
+    take name
+    out/push(name)
+  back out
+
+task catalog-of
+  take handed, like handed-catalog
+  like view-catalog
+  mark private
+
+  save task, make hash
+  walk handed/task/keys()
+    take name
+    save query, handed/task/get(name)
+    save site, make hash
+    walk query/site/keys()
+      take field-name
+      save shape, query/site/get(field-name)
+      save field
+        make catalog-field
+          bind hold, members-of(shape/hold)
+          bind sort, shape/sort
+      site/set(field-name, field)
+    save size, query/size
+    save made
+      make catalog-query
+        bind name, query/name
+        bind back, query/back
+        bind size, size
+        bind site, site
+    task/set(name, made)
+  back
+    make view-catalog
+      bind view, members-of(handed/view)
+      bind call, members-of(handed/call)
+      bind load, members-of(handed/load)
+      bind task, task
+
+task maybe-catalog
+  take given, like maybe, like handed-catalog
+  like maybe, like view-catalog
+  mark private
+
+  sift given
+    case some
+      link handed
+      save made, catalog-of(handed)
+      back make(some, made)
+    case none
+      back make none
+
+# a caller's template as compile/template.ts hands one to the expander
+task template-of
+  take handed, like handed-template
+  like tree-template
+  mark private
+
+  save holes, make hash
+  save given-holes, handed/holes
+  sift given-holes
+    case some
+      link table
+      save holes, table
+    case none
+      save nothing, 0
+  save given-sites, handed/sites
+  sift given-sites
+    case some
+      link names
+      save listed, members-of(names)
+      back
+        make tree-template
+          bind params, handed/params
+          bind holes, holes
+          bind sites, make(some, listed)
+          bind body, handed/body
+    case none
+      back
+        make tree-template
+          bind params, handed/params
+          bind holes, holes
+          bind body, handed/body
+
+task result-of
+  take read, like view-result
+  like handed-result
+  mark private
+
+  fork test, read/ok
+    hold
+      save file, read/file
+      back
+        make handed-result
+          bind ok, true
+          bind file, make(some, file)
+          bind diagnostics, read/diagnostics
+  back
+    make handed-result
+      bind ok, false
+      bind diagnostics, read/diagnostics
+
+# ---- the entries the face hands on ----
+
+# A word the dialect refuses where a STATEMENT or a BODY NODE is expected, and what to say instead
+task refused-head-table
+  like hash, like text, like text
+
+  save out, make hash
+  walk view-refused-heads()
+    take one
+    out/set(one/word, one/why)
+  back out
+
+# one document read against the catalog a caller holds (absent: no name is checked), the caps (absent: the defaults)
+# and the lean surface
+task read-handed-view
+  take tree, like root-node
+  take file, like text
+  take options, like handed-check
+  like handed-result
+
+  save caps, make-view-caps()
+  save given-caps, options/caps
+  sift given-caps
+    case some
+      link known
+      save caps, known
+    case none
+      save nothing, 0
+  save lean, false
+  save given-lean, options/lean
+  sift given-lean
+    case some
+      link chosen
+      save lean, chosen
+    case none
+      save nothing, 0
+  save catalog, maybe-catalog(options/catalog)
+  back result-of(read-view(tree, file, catalog, caps, lean))
+
+# the one gate the compiler, `term view` and a save path call
+task check-handed-view
+  take source, like token-source
+  take options, like handed-check
+  like handed-result
+
+  save templates, make hash
+  save given-templates, options/templates
+  sift given-templates
+    case some
+      link table
+      walk table/keys()
+        take name
+        save made, template-of(table/get(name))
+        templates/set(name, made)
+    case none
+      save nothing, 0
+  save lean, false
+  save given-lean, options/lean
+  sift given-lean
+    case some
+      link chosen
+      save lean, chosen
+    case none
+      save nothing, 0
+  save catalog, maybe-catalog(options/catalog)
+  back result-of(check-view(source, catalog, options/caps, options/tree, templates, lean))

@@ -11,6 +11,10 @@
 #   - the config crosses as two tasks: a code's configured severity (`off`, a severity, or empty for none) and whether a
 #     line suppresses a code
 #   - the names come back as lists in the order a `Set` would hold them, and the face makes the sets
+#
+# Since item term-self-host-001-0078 the dispatch is Term too, lint/rule-check-dispatch.tree, and the config crosses as
+# one `lint-setting` record (`setting-line-findings`). `line-findings` keeps its two tasks for the reference copy of the
+# face the pair runs, and both answer through one `line-findings-by`.
 
 load @term/base/list
   find list
@@ -566,9 +570,67 @@ task line-finding
               bind line, line
               bind column, stop
 
+# the driver's config, as a TypeScript caller and the analysis hand it: each code's severity as set (`off` or a
+# severity), the codes each line turns off (a line's own `# lint off` comment, read by the analysis), and the file's
+# `mark lean`. Each is absent when the caller gave none
+form lint-setting
+  link severity
+    like maybe, like hash, like text, like text
+    need false
+  link suppress
+    like maybe, like hash, like number, like hash, like text, like boolean
+    need false
+  link lean
+    like maybe, like boolean
+    need false
+
+# a code's severity as configured: `off`, a severity, or empty when none is set
+task configured-severity
+  take setting, like lint-setting
+  take code, like text
+  like text
+
+  save given, setting/severity
+  sift given
+    case some
+      link table
+      fork test, table/has(code)
+        hold
+          back table/get(code)
+    case none
+      save nothing, 0
+  back <>
+
+# the codes each line turns off, an empty table when none
+task suppressed-lines
+  take setting, like lint-setting
+  like hash, like number, like hash, like text, like boolean
+
+  save given, setting/suppress
+  sift given
+    case some
+      link table
+      back table
+    case none
+      save nothing, 0
+  back make hash
+
+# whether line `line` turns `code` off
+task is-turned-off
+  take off, like hash, like number, like hash, like text, like boolean
+  take line, like number
+  take code, like text
+  like boolean
+
+  fork test, off/has(line)
+    hold
+      save codes, off/get(line)
+      back codes/has(code)
+  back false
+
 # the findings about how each line is written, line rule by line rule and line by line, then the runs of blank lines.
 # `configured` answers a code's severity as set (`off`, a severity, or empty), and `suppressed` whether a line turns a
-# code off
+# code off. Both are asked up front, each line for each of the four codes, since both only read
 task line-findings
   take source, like text
   take configured
@@ -582,29 +644,69 @@ task line-findings
       like boolean
   like list, like lint-finding
 
+  save codes, make list
+  push(codes, <L019>)
+  push(codes, <L020>)
+  push(codes, <L029>)
+  push(codes, <L030>)
+  save off, make hash
+  walk split(source, <\n>)
+    take line
+    take at
+    save turned, make hash
+    walk codes
+      take code
+      fork test, suppressed(at, code)
+        hold
+          turned/set(code, true)
+    off/set(at, turned)
+  back line-findings-by(source, configured(<L019>), configured(<L020>), configured(<L029>), configured(<L030>), off)
+
+# the line findings under a `lint-setting`
+task setting-line-findings
+  take source, like text
+  take setting, like lint-setting
+  like list, like lint-finding
+
+  save long, configured-severity(setting, <L019>)
+  save tabs, configured-severity(setting, <L020>)
+  save trailing, configured-severity(setting, <L029>)
+  save blanks, configured-severity(setting, <L030>)
+  back line-findings-by(source, long, tabs, trailing, blanks, suppressed-lines(setting))
+
+# the line findings, given the four codes' configured severities (`off`, a severity, or empty) and the codes each line
+# turns off
+task line-findings-by
+  take source, like text
+  take long, like text
+  take tabs, like text
+  take trailing, like text
+  take blanks-configured, like text
+  take off, like hash, like number, like hash, like text, like boolean
+  like list, like lint-finding
+  mark private
+
   save out, make list
   save lines, split(source, <\n>)
 
   # L019, the line-length limit the formatter keeps
-  save long, configured(<L019>)
   fork test, is-unequal(long, <off>)
     hold
       walk lines
         take line
         take at
         save size, unit-length(line)
-        fork test, and(is-above(size, 84), is-equal(suppressed(at, <L019>), false))
+        fork test, and(is-above(size, 84), is-equal(is-turned-off(off, at, <L019>), false))
           hold
             push(out, line-finding(<max-line-length>, <L019>, long, <this line is longer than 84 characters; wrap it>, at, 84, size))
 
   # L020, a tab
-  save tabs, configured(<L020>)
   fork test, is-unequal(tabs, <off>)
     hold
       walk lines
         take line
         take at
-        fork test, and(contains(line, <\t>), is-equal(suppressed(at, <L020>), false))
+        fork test, and(contains(line, <\t>), is-equal(is-turned-off(off, at, <L020>), false))
           hold
             save units, units-of(line)
             save tab, 0
@@ -615,7 +717,6 @@ task line-findings
             push(out, line-finding(<no-tabs>, <L020>, tabs, <this line uses a tab; indent with two spaces>, at, tab, units/length))
 
   # L029, trailing whitespace
-  save trailing, configured(<L029>)
   fork test, is-unequal(trailing, <off>)
     hold
       walk lines
@@ -623,12 +724,11 @@ task line-findings
         take at
         save size, unit-length(line)
         save kept, trimmed-end-length(line)
-        fork test, and(and(is-above(size, 0), is-unequal(kept, size)), is-equal(suppressed(at, <L029>), false))
+        fork test, and(and(is-above(size, 0), is-unequal(kept, size)), is-equal(is-turned-off(off, at, <L029>), false))
           hold
             push(out, line-finding(<no-trailing-whitespace>, <L029>, trailing, <this line has trailing whitespace>, at, kept, size))
 
   # L030, more than two blank lines in a row: reported once, at the third
-  save blanks-configured, configured(<L030>)
   fork test, is-unequal(blanks-configured, <off>)
     hold
       save blanks, 0
@@ -638,7 +738,7 @@ task line-findings
         fork test, is-blank(line)
           hold
             save blanks, add(blanks, 1)
-            fork test, and(is-equal(blanks, 3), is-equal(suppressed(at, <L030>), false))
+            fork test, and(is-equal(blanks, 3), is-equal(is-turned-off(off, at, <L030>), false))
               hold
                 push(out, line-finding(<no-multiple-empty-lines>, <L030>, blanks-configured, <more than two consecutive blank lines>, at, 0, 0))
           miss

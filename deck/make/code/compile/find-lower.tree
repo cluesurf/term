@@ -80,14 +80,17 @@ form find-problem
     like maybe, like span
     need false
 
-# where lowered code sits: the span and node of the find it came from, so a diagnostic on a form this pass made
-# points at the find
+# where lowered code sits: the span, node and child index of the find it came from, so a diagnostic on a form this
+# pass made points at the find, and the mint bridge orders it where the find stood (decision 033 section 3)
 form find-origin
   link span
     like maybe, like span
     need false
   link node
     like maybe, like node
+    need false
+  link at
+    like maybe, like number
     need false
 
 task lower-finds
@@ -147,6 +150,7 @@ task lower-value
       link form-fields
       link form-span
       link form-node
+      link form-at
       save fields, make hash
       save changed, false
       walk form-fields/keys()
@@ -164,6 +168,7 @@ task lower-value
           bind fields, fields
           bind span, form-span
           bind node, form-node
+          bind at, form-at
       fork test, is-equal(form-name, <find-query>)
         hold
           save lowered, lower-query(here, problems)
@@ -269,15 +274,18 @@ task origin-of
       link form-fields
       link form-span
       link form-node
+      link form-at
       back
         make find-origin
           bind span, form-span
           bind node, form-node
+          bind at, form-at
     miss
       back
         make find-origin
           bind span, make none
           bind node, make none
+          bind at, make none
 
 task word-at
   take origin, like find-origin
@@ -290,6 +298,7 @@ task word-at
       bind value, value
       bind span, origin/span
       bind node, origin/node
+      bind at, origin/at
 
 task text-at
   take origin, like find-origin
@@ -302,6 +311,7 @@ task text-at
       bind value, value
       bind span, origin/span
       bind node, origin/node
+      bind at, origin/at
 
 task number-at
   take origin, like find-origin
@@ -315,6 +325,7 @@ task number-at
       bind decimal, false
       bind span, origin/span
       bind node, origin/node
+      bind at, origin/at
 
 task form-at
   take origin, like find-origin
@@ -329,6 +340,7 @@ task form-at
       bind fields, fields
       bind span, origin/span
       bind node, origin/node
+      bind at, origin/at
 
 # no values: an argument position cannot say `make list` before a comma
 task none-of

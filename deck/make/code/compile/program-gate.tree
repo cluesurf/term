@@ -452,31 +452,21 @@ task is-module-kind
 # a task of the program by this name
 task defines-task
   take program, like list, like statement
-  take name, like text
+  take wanted, like text
   like boolean
   mark private
 
+  # the arm reads the function's own fields by their names, so the name asked for is not called `name`
   walk program
     take one
     sift one
       case function
-        fork test, is-equal(name, name-of(one))
+        fork test, is-equal(wanted, name)
           hold
             back true
       miss
         turn next
   back false
-
-task name-of
-  take one, like statement
-  like text
-  mark private
-
-  sift one
-    case function
-      back name
-    miss
-      back <>
 
 # the render runtime's tasks the prune pins: the names' fields in their declared order, then the support
 task zone-render-runtime
@@ -553,8 +543,34 @@ task dropped-docks
 
 # ---- the stale finds ----
 
+# a module's source as the check reads it: its text, none for a path that is not there
+task read-gate-source
+  take want, like text
+  like read-source
+  mark private
+
+  fork test, gate-file-exists(want)
+    hold
+      save content, gate-file-read(want)
+      back
+        make read-source
+          bind file, want
+          bind text, make(some, content)
+  back
+    make read-source
+      bind file, want
+
 # every `find` naming something the module it loads defines: the check asks for the sources it needs, and each is read
-# here, none for a path that is not there, until it asks for nothing more
+# here, none for a path that is not there, until it asks for nothing more.
+#
+# The check is asked once with nothing read, which answers most programs. When it wants a source, every file the
+# import scope names (each find's targets and each bear, every file it can want) is read at once, and the check asked
+# again, so it runs about twice and not once per file. check/finds.ts keeps what it built from the program and from
+# each source across the loop's calls, keyed by the list the loop appends to. A Term value has no such identity, so
+# check/finds.tree builds both again on every call, and asked once per file the @term/bind closure took 198 s for
+# node/tls/tls-options.tree where the original took 1.5 s (item 0264). The answer is the same, since the check reads only
+# the sources it reaches, in its own order, whatever else it is handed. The loop below still reads a want outside the
+# scope, one at a time, as the original did
 task stale-finds-of
   take program, like list, like statement
   take file, like text
@@ -562,6 +578,25 @@ task stale-finds-of
   like list, like diagnostic
 
   save sources, make list
+  save first, check-finds(program, file, scopes, sources)
+  fork test, is-equal(first/wants/length, 0)
+    hold
+      back first/diagnostics
+  save seen, make hash
+  save listed, make list
+  walk scopes
+    take scope
+    walk scope/finds
+      take entry
+      walk entry/targets
+        take target
+        add-file(seen, listed, target)
+    walk scope/bears
+      take borne
+      add-file(seen, listed, borne)
+  walk listed
+    take want
+    sources/push(read-gate-source(want))
   save found, make list
   save done, false
   walk test
@@ -575,19 +610,7 @@ task stale-finds-of
           turn next
       walk answer/wants
         take want
-        fork test, gate-file-exists(want)
-          hold
-            save content, gate-file-read(want)
-            save present
-              make read-source
-                bind file, want
-                bind text, make(some, content)
-            sources/push(present)
-          miss
-            save absent
-              make read-source
-                bind file, want
-            sources/push(absent)
+        sources/push(read-gate-source(want))
   back found
 
 # ---- the gate ----

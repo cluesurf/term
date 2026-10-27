@@ -1,0 +1,698 @@
+# The one analysis of a file the editor drives. Parses the text exactly once (tolerantly), and holds every view over
+# that one parse: the concrete tree (for layout and trivia), the milled program (for lint and checking), the merged
+# diagnostics, and the four lazy answers, `format`, `lint`, `fix` and `check`. See plans/19-format-and-lint.
+#
+# Ported from analyze.ts (item term-self-host-001-0045), which stays as the face and keeps the `Analysis` shape its
+# callers read. The decisions:
+#   - the original's four closures per kind of file are `analysis-held`, a form with a case per kind holding exactly
+#     what that kind's closures captured, run by `apply-format`, `apply-lint`, `apply-fix` and `apply-check` (spec.md
+#     section 4.9, the `kernel-closure` pattern). The four closures of one kind capture one environment, so one case
+#     stands for all four
+#   - what is Term is loaded (the tolerant parse, the data reader, the layout, the lint driver, the fixes), and what is
+#     not is a dock named for its module (decision 031 section 3): compile/template, compile/mill, compile/view,
+#     compile/compile, format/format (its `format` hands the meaning check to format/meaning.ts) and
+#     lint/rules/data-grammar. The lint driver, lint/rule-check-dispatch.tree, was a dock of lint/lint.ts until item 0078
+#   - parser/narrow.ts's `groupsOf` is a sift on the node's kind (decision 031 section 5)
+#   - the suppressions are a hash of line to a hash of code to `true`, lint-lines' `lint-setting` table, and the
+#     severities a hash of code to severity, which the face makes of the caller's record
+#   - `/lint\s+off\s+([A-Za-z0-9]+)/` is written out by character over the comment's code points: `\s` is JavaScript's
+#     whitespace (compile/main-entry `whitespace-code`), and neither it nor the code's characters is ever astral
+#   - the role is handed on as the face was given it, absent included (`null` reaches here as absent), and so is the
+#     view catalog. A lint config's `lean`, when the caller wrote the key, wins over the file's, as the original's spread
+#     let it
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/hash
+  find hash
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load ./parser/tree
+  find node
+  find root-node
+  find comment
+  find parse-tolerant
+
+load ./parser/token
+  find token-source
+
+load ./parser/diagnostic
+  find diagnostic
+
+load ./compile/host-data
+  find is-data-tree
+  find read-data
+  find expand-data
+  find format-data
+
+load ./format/layout
+  find layout-options
+  find format-tree
+
+load ./lint/lint-lines
+  find lint-finding
+  find lint-setting
+  find apply-fixes
+
+load ./lint/rule-check-dispatch
+  find lint-program
+
+load ./compile/main-entry
+  find whitespace-code
+
+dock load
+  load <@term/make/code/compile/template>, name analyzer-template
+  load <@term/make/code/compile/mill>, name analyzer-mill
+  load <@term/make/code/compile/view>, name analyzer-view
+  load <@term/make/code/compile/compile>, name analyzer-compile
+  load <@term/make/code/format/format>, name analyzer-format
+  load <@term/make/code/lint/rules/data-grammar>, name analyzer-data-grammar
+
+# ---- what the docks are handed and answer ----
+
+# what compile/view.ts's `checkView` is handed: the catalog, absent when the caller gave none
+form view-asked
+  link catalog, like dynamic
+
+# what `checkView` answers. `file` is read only when `ok`, and `diagnostics` only when not
+form view-answer
+  link ok, like boolean
+  link file, like dynamic
+  link diagnostics, like list, like diagnostic
+
+# what compile/mill.ts's `mill` answers. `program` is read only when `ok`, and `diagnostics` only when not
+form mill-answer
+  link ok, like boolean
+  link program, like dynamic
+  link diagnostics, like list, like diagnostic
+
+# what compile/compile.ts's `compileProgram` answers, as far as a check reads it
+form compile-answer
+  link ok, like boolean
+  link warnings, like list, like diagnostic
+  link diagnostics, like list, like diagnostic
+
+# format/format.ts's options for a mill definition: the role alone
+form mill-format-asked
+  link role, like text
+
+# format/format.ts's options for a program: the file's lean flag and role
+form code-format-asked
+  link lean, like boolean
+  link role, like dynamic
+
+# a lint config as the caller gave it: the per-rule severities (absent for none), and `lean` when the caller wrote
+# that key
+form lint-asked
+  link severity
+    like maybe, like hash, like text, like text
+    need false
+  link lean, like maybe, like dynamic
+
+# ---- the analysis ----
+
+form analysis-kind
+  mark text
+  case code
+  case data
+  case view
+  case mill
+
+# the closures, one case per kind of file, each holding what that kind's four closures captured
+form analysis-held
+  case view-held
+    link written, like text
+    link tree, like root-node
+    link parsed, like list, like diagnostic
+    link viewed, like view-answer
+  case mill-held
+    link source, like token-source
+    link parsed, like list, like diagnostic
+  case code-held
+    link source, like token-source
+    link parsed, like list, like diagnostic
+    link all, like list, like diagnostic
+    link program, like maybe, like dynamic
+    link lean, like boolean
+    link role, like dynamic
+    link suppress, like hash, like number, like hash, like text, like boolean
+  case data-held
+    link source, like token-source
+    link tree, like root-node
+    link diagnostics, like list, like diagnostic
+
+form analysis
+  link tree, like root-node
+  link kind, like analysis-kind
+  link program, like maybe, like dynamic
+  link diagnostics, like list, like diagnostic
+  link held, like analysis-held
+
+# ---- small pieces ----
+
+task joined
+  take first, like list, like diagnostic
+  take second, like list, like diagnostic
+  like list, like diagnostic
+  mark private
+
+  save out, make list
+  walk first
+    take one
+    out/push(one)
+  walk second
+    take one
+    out/push(one)
+  back out
+
+task no-diagnostics
+  like list, like diagnostic
+  mark private
+
+  back make list
+
+task no-findings
+  like list, like lint-finding
+  mark private
+
+  back make list
+
+task rune-at
+  take runes, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  fork test, is-below(at, runes/length)
+    hold
+      back get(runes, at)
+  back -1
+
+task is-code-rune
+  take code, like number
+  like boolean
+  mark private
+
+  fork test, and(is-minimum(code, 48), is-maximum(code, 57))
+    hold
+      back true
+  fork test, and(is-minimum(code, 65), is-maximum(code, 90))
+    hold
+      back true
+  back and(is-minimum(code, 97), is-maximum(code, 122))
+
+# does `word` (lowercase ASCII) start at `at`?
+task word-at
+  take runes, like list, like number
+  take at, like number
+  take word, like text
+  like boolean
+  mark private
+
+  save letters, to-runes(word)
+  save index, 0
+  walk letters
+    take letter
+    fork test, is-unequal(rune-at(runes, add(at, index)), letter)
+      hold
+        back false
+    save index, add(index, 1)
+  back true
+
+# how many whitespace characters run from `at`
+task space-run
+  take runes, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  save end, at
+  walk test
+    hook test, whitespace-code(rune-at(runes, end))
+    hook hold
+      save end, add(end, 1)
+  back subtract(end, at)
+
+# the code `/lint\s+off\s+([A-Za-z0-9]+)/` captures in a comment's text, at the leftmost place it matches
+task suppressed-code
+  take text, like text
+  like maybe, like text
+  mark private
+
+  save runes, to-runes(text)
+  save start, 0
+  walk test
+    hook test, is-below(start, runes/length)
+    hook hold
+      fork test, word-at(runes, start, <lint>)
+        hold
+          save at, add(start, 4)
+          save gap, space-run(runes, at)
+          fork test, and(is-above(gap, 0), word-at(runes, add(at, gap), <off>))
+            hold
+              save at, add(add(at, gap), 3)
+              save gap, space-run(runes, at)
+              fork test, is-above(gap, 0)
+                hold
+                  save at, add(at, gap)
+                  save captured, make list
+                  walk test
+                    hook test, is-code-rune(rune-at(runes, at))
+                    hook hold
+                      captured/push(rune-at(runes, at))
+                      save at, add(at, 1)
+                  fork test, is-above(captured/length, 0)
+                    hold
+                      save rule-code, from-runes(captured)
+                      back make(some, rule-code)
+      save start, add(start, 1)
+  back make none
+
+task comments-of
+  take group, like node
+  like list, like comment
+  mark private
+
+  save none-yet, make list
+  sift group
+    case group
+      sift comments
+        case some
+          link written
+          back written
+        case none
+          back none-yet
+    miss
+      back none-yet
+
+task nodes-of
+  take group, like node
+  like list, like node
+  mark private
+
+  save none-yet, make list
+  sift group
+    case group
+      back nodes
+    miss
+      back none-yet
+
+task is-group
+  take one, like node
+  like boolean
+  mark private
+
+  sift one
+    case group
+      back true
+    miss
+      back false
+
+# a `# lint off Lxxx` comment turns that rule off on the line after it. Each group's comments, then the groups it holds
+task visit-suppressions
+  take group, like node
+  take lines, like hash, like number, like hash, like text, like boolean
+  mark private
+
+  walk comments-of(group)
+    take one
+    sift suppressed-code(one/text)
+      case some
+        link rule-code
+        save line, add(one/span/start/line, 1)
+        save codes, make hash
+        fork test, lines/has(line)
+          hold
+            save codes, lines/get(line)
+        codes/set(rule-code, true)
+        lines/set(line, codes)
+      case none
+        save nothing, 0
+  walk nodes-of(group)
+    take child
+    fork test, is-group(child)
+      hold
+        visit-suppressions(child, lines)
+
+# Gather inline lint suppressions from the tree's comment trivia, by the line they turn off. Walks the concrete tree, so
+# the formatter and the linter read one comment source
+task suppressions
+  take tree, like root-node
+  like hash, like number, like hash, like text, like boolean
+
+  save lines, make hash
+  sift tree
+    case root
+      walk nodes
+        take group
+        fork test, is-group(group)
+          hold
+            visit-suppressions(group, lines)
+  back lines
+
+# ---- the docks, typed ----
+
+task view-checked
+  take source, like token-source
+  take catalog, like dynamic
+  like view-answer
+  mark private
+
+  save asked
+    make view-asked
+      bind catalog, catalog
+  back analyzer-view/check-view(source, asked)
+
+task milled
+  take tree, like root-node
+  take file, like text
+  take role, like dynamic
+  take lean, like boolean
+  like mill-answer
+  mark private
+
+  save expanded, analyzer-template/expand-templates(tree)
+  back analyzer-mill/mill(expanded, file, role, lean)
+
+task compiled
+  take program, like dynamic
+  take file, like text
+  like compile-answer
+  mark private
+
+  back analyzer-compile/compile-program(program, file)
+
+task code-formatted
+  take source, like token-source
+  take lean, like boolean
+  take role, like dynamic
+  like text
+  mark private
+
+  save asked
+    make code-format-asked
+      bind lean, lean
+      bind role, role
+  back analyzer-format/format(source, asked)
+
+task mill-formatted
+  take source, like token-source
+  like text
+  mark private
+
+  save asked
+    make mill-format-asked
+      bind role, <mill>
+  back analyzer-format/format(source, asked)
+
+task view-formatted
+  take tree, like root-node
+  like text
+  mark private
+
+  save no-stack, make list
+  save options
+    make layout-options
+      bind wrap, make none
+      bind stack, no-stack
+      bind calls, make none
+      bind lean, make none
+      bind role, make(some, <view>)
+      bind dialect, make none
+  back format-tree(tree, options)
+
+task linted
+  take program, like dynamic
+  take source, like token-source
+  take config, like lint-setting
+  like list, like lint-finding
+  mark private
+
+  back lint-program(program, source/file, source/text, config)
+
+task data-linted
+  take tree, like root-node
+  take file, like text
+  like list, like lint-finding
+  mark private
+
+  back analyzer-data-grammar/lint-data(tree, file)
+
+# ---- the analysis ----
+
+task analyze-data
+  take source, like token-source
+  take tree, like root-node
+  like analysis
+  mark private
+
+  save data-read, read-data(tree, source/file)
+  save diagnostics, data-read/diagnostics
+  fork test, data-read/ok
+    hold
+      save expanded, expand-data(data-read/file, source/file)
+      save diagnostics, no-diagnostics()
+      fork test, not(expanded/ok)
+        hold
+          save diagnostics, expanded/diagnostics
+  back
+    make analysis
+      bind tree, tree
+      bind kind, make data
+      bind program, make none
+      bind diagnostics, diagnostics
+      bind held
+        make data-held
+          bind source, source
+          bind tree, tree
+          bind diagnostics, diagnostics
+
+# One parse, then every view of it. `role` is the role a project's `role.tree` gives the file (absent for none),
+# `lean` the `mark lean` on that rule, and `catalog` the view catalog a `view` document is read against
+task analyze
+  take source, like token-source
+  take role, like dynamic
+  take lean, like boolean
+  take catalog, like dynamic
+  like analysis
+
+  save parsed, parse-tolerant(source)
+  save tree, parsed/tree
+  save diagnostics, parsed/diagnostics
+  # the `view` role: the sandboxed document dialect, through the one gate the compiler and `term view` call, so the
+  # editor cannot be more permissive than a save. A document IS tree syntax, so its layout is the tree formatter's
+  fork test, is-equal(role, <view>)
+    hold
+      save viewed, view-checked(source, catalog)
+      save program, make none
+      save refused, no-diagnostics()
+      fork test, viewed/ok
+        hold
+          save lowered, analyzer-view/lower-view(viewed/file)
+          save program, make(some, lowered)
+        miss
+          save refused, viewed/diagnostics
+      back
+        make analysis
+          bind tree, tree
+          bind kind, make view
+          bind program, program
+          bind diagnostics, joined(diagnostics, refused)
+          bind held
+            make view-held
+              bind written, source/text
+              bind tree, tree
+              bind parsed, diagnostics
+              bind viewed, viewed
+  # a mill DEFINITION: a grammar, not a program. No code lint rule says anything true about a `mine` rule, and what a
+  # mill definition owes is checked by compile/mill-check, which needs a resolver this entry does not have
+  fork test, is-equal(role, <mill>)
+    hold
+      back
+        make analysis
+          bind tree, tree
+          bind kind, make mill
+          bind program, make none
+          bind diagnostics, diagnostics
+          bind held
+            make mill-held
+              bind source, source
+              bind parsed, diagnostics
+  # a data file (the host dialect) has no program: the data reader reads it, the data writer lays it out, and its
+  # findings are the grammar's rules
+  fork test, and(is-equal(diagnostics/length, 0), is-data-tree(tree))
+    hold
+      back analyze-data(source, tree)
+  save built, milled(tree, source/file, role, lean)
+  save program, make none
+  save all, diagnostics
+  fork test, built/ok
+    hold
+      save built-program, built/program
+      save program, make(some, built-program)
+    miss
+      save all, joined(diagnostics, built/diagnostics)
+  back
+    make analysis
+      bind tree, tree
+      bind kind, make code
+      bind program, program
+      bind diagnostics, all
+      bind held
+        make code-held
+          bind source, source
+          bind parsed, diagnostics
+          bind all, all
+          bind program, program
+          bind lean, lean
+          bind role, role
+          bind suppress, suppressions(tree)
+
+# ---- the four closures ----
+
+# the canonical layout. A file that does not parse is left as written
+task apply-format
+  take held, like analysis-held
+  like text
+
+  sift held
+    case view-held
+      fork test, is-above(parsed/length, 0)
+        hold
+          back written
+      back view-formatted(tree)
+    case mill-held
+      fork test, is-above(parsed/length, 0)
+        hold
+          back source/text
+      back mill-formatted(source)
+    case code-held
+      fork test, is-above(parsed/length, 0)
+        hold
+          back source/text
+      back code-formatted(source, lean, role)
+    case data-held
+      fork test, is-above(diagnostics/length, 0)
+        hold
+          back source/text
+      back format-data(tree, source/file)
+
+# the config the lint driver is handed: the file's lean flag, the caller's config over it, and the suppressions over
+# both
+task lint-config
+  take asked, like lint-asked
+  take lean, like boolean
+  take suppress, like hash, like number, like hash, like text, like boolean
+  like lint-setting
+  mark private
+
+  save chosen, lean
+  sift asked/lean
+    case some
+      link given
+      save chosen, given
+    case none
+      save nothing, 0
+  back
+    make lint-setting
+      bind severity, asked/severity
+      bind suppress, make(some, suppress)
+      bind lean, make(some, chosen)
+
+# the lint rules over the milled program. A file that does not mill still gets the rules that read its text and tree
+# (L053, the line rules), over an empty program, which no program rule finds anything in
+task code-findings
+  take source, like token-source
+  take program, like maybe, like dynamic
+  take lean, like boolean
+  take suppress, like hash, like number, like hash, like text, like boolean
+  take asked, like lint-asked
+  like list, like lint-finding
+  mark private
+
+  save config, lint-config(asked, lean, suppress)
+  sift program
+    case some
+      link milled-program
+      back linted(milled-program, source, config)
+    case none
+      save empty, make list
+      back linted(empty, source, config)
+
+task apply-lint
+  take held, like analysis-held
+  take asked, like lint-asked
+  like list, like lint-finding
+
+  sift held
+    case code-held
+      back code-findings(source, program, lean, suppress, asked)
+    case data-held
+      back data-linted(tree, source/file)
+    miss
+      back no-findings()
+
+# lint, apply every fix, and lay the result out: the whole auto-fix in one call. A fixed text that no longer parses is
+# returned as fixed
+task apply-fix
+  take held, like analysis-held
+  take asked, like lint-asked
+  like text
+
+  sift held
+    case view-held
+      back written
+    case mill-held
+      back source/text
+    case code-held
+      save findings, code-findings(source, program, lean, suppress, asked)
+      save fixed, apply-fixes(source/text, findings)
+      save again
+        make token-source
+          bind file, source/file
+          bind text, fixed
+      save reparsed, parse-tolerant(again)
+      fork test, is-above(reparsed/diagnostics/length, 0)
+        hold
+          back fixed
+      back code-formatted(again, lean, role)
+    case data-held
+      fork test, is-above(diagnostics/length, 0)
+        hold
+          back source/text
+      back format-data(tree, source/file)
+
+# the full type check over the milled program: parse and mill are not repeated
+task apply-check
+  take held, like analysis-held
+  like list, like diagnostic
+
+  sift held
+    case view-held
+      fork test, viewed/ok
+        hold
+          back no-diagnostics()
+      back viewed/diagnostics
+    case mill-held
+      back parsed
+    case code-held
+      sift program
+        case some
+          link milled-program
+          save result, compiled(milled-program, source/file)
+          fork test, result/ok
+            hold
+              back result/warnings
+          back result/diagnostics
+        case none
+          back all
+    case data-held
+      back diagnostics
