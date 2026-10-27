@@ -2037,95 +2037,25 @@ task small-body
     miss
       back make none
 
-# a node's identity, so a node two places share is counted once, as the original's `seen` set counted it. Natively a
-# value is its own copy, so nothing is shared and every one counts
-bind node-identity
-  take value, like expression
-  like number
-  case node
-    text <__termIdentity($value)>
-  case browser
-    text <__termIdentity($value)>
-  case rust
-    text <-1>
-  case swift
-    text <-1>
-  case kotlin
-    text <(-1L)>
-
-bind statement-identity
-  take value, like statement
-  like number
-  case node
-    text <__termIdentity($value)>
-  case browser
-    text <__termIdentity($value)>
-  case rust
-    text <-1>
-  case swift
-    text <-1>
-  case kotlin
-    text <(-1L)>
-
-bind part-identity
-  take value, like template-part
-  like number
-  case node
-    text <__termIdentity($value)>
-  case browser
-    text <__termIdentity($value)>
-  case rust
-    text <-1>
-  case swift
-    text <-1>
-  case kotlin
-    text <(-1L)>
-
-# whether an identity is new to `seen`, marking it: -1 (no identity) is always new
-task first-sight
-  take seen, like hash, like number, like boolean
-  take id, like number
-  like boolean
-  mark private
-
-  fork test, is-below(id, 0)
-    hold
-      back true
-  fork test, seen/has(id)
-    hold
-      back false
-  save seen/{id}, true
-  back true
-
-# the size of an expression as the original counted it: every object with a `form` outside a type, each counted once
-# however many places share it (its expressions, the statements of its closures, and its template parts)
+# the size of an expression: every object with a `form` outside a type, counted at every place it stands (its
+# expressions, the statements of its closures, and its template parts). The original counted a node two places share
+# once, by object identity; every place counts here, on every backend (D011 rule 1, Diverges 2)
 task expression-size
   take value, like expression
   like number
   mark private
 
   save reached-of, reach-expression(value, skip-keys())
-  save seen, make hash
   save count, 0
   walk reached-of/expressions
     take one
-    fork test, first-sight(seen, node-identity(one))
-      hold
-        save count, add(count, 1)
-        sift one
-          case template
-            walk parts
-              take part
-              fork test, first-sight(seen, part-identity(part))
-                hold
-                  save count, add(count, 1)
-          miss
-            save nothing, 0
-  walk reached-of/statements
-    take one
-    fork test, first-sight(seen, statement-identity(one))
-      hold
-        save count, add(count, 1)
+    save count, add(count, 1)
+    sift one
+      case template
+        save count, add(count, parts/length)
+      miss
+        save nothing, 0
+  save count, add(count, reached-of/statements/length)
   back count
 
 task type-has-variable
