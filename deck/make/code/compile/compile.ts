@@ -18,52 +18,34 @@ import {
   sideFile as sideFilePort,
 } from '@term/make/code/compile/side-files'
 import type { Maybe, MillChecked } from '@term/make/code/compile/side-files'
+import {
+  deckHomes as deckHomesPort,
+  deckNames as deckNamesPort,
+  programGate as programGatePort,
+} from '@term/make/code/compile/program-gate'
+import type { ProgramRun as GateRun } from '@term/make/code/compile/program-gate'
 import type { WakeGroup } from '@term/make/code/compile/wake'
 import { resolve } from '@term/make/code/check/resolve'
-import { citedRules } from '@term/make/code/check/cite-roots'
 import { check } from '@term/make/code/check/infer'
 import { checkAsyncArguments, resolveAsync } from '@term/make/code/check/async-resolve'
 import { checkMissingWaits } from '@term/make/code/check/missing-wait'
-import { pendingValues } from '@term/make/code/check/pending'
 import { asyncSlots } from '@term/make/code/check/async-slots'
 import { checkDockShadow } from '@term/make/code/check/dock-shadow'
 import { checkDockMemberSpelling } from '@term/make/code/check/dock-member-spelling'
 import { checkBuiltinShadow } from '@term/make/code/check/builtin-shadow'
-import {
-  disambiguateOverloads,
-  overloadGroups,
-  runtimeBound,
-} from '@term/make/code/check/overload'
-import { extendForms } from '@term/make/code/check/extend'
+import { overloadGroups, runtimeBound } from '@term/make/code/check/overload'
 import { frameText } from '@term/make/code/compile/frames'
-import { bindFormsByImport } from '@term/make/code/check/scope'
-import { fillMaskDefaults } from '@term/make/code/check/mask-defaults'
-import {
-  checkPrivateFinds,
-  checkPrivateReferences,
-  warnPrivateNotes,
-} from '@term/make/code/check/private'
+import { warnPrivateNotes } from '@term/make/code/check/private'
 import { checkHiddenMakes } from '@term/make/code/check/hide'
 import { checkSoleGenerics, checkSoleUses } from '@term/make/code/check/sole'
 import { checkSoleEarned } from '@term/make/code/check/sole-earned'
 import { checkTells } from '@term/make/code/check/tell'
 import { checkRaiseBounds } from '@term/make/code/check/effects'
 import { checkMissingBacks } from '@term/make/code/check/returns'
-import { checkTypeNames } from '@term/make/code/check/type-names'
-import { checkLiterals } from '@term/make/code/check/literals'
 import { checkLoweredMembers } from '@term/make/code/check/lowered'
-import { checkPatterns } from '@term/make/code/check/patterns'
-import { checkConstants } from '@term/make/code/check/constants'
-import { checkBindTargets } from '@term/make/code/check/binds'
-import { checkBodilessCalls } from '@term/make/code/check/bodiless'
-import { checkFinds } from '@term/make/code/check/finds'
-import type { ReadSource } from '@term/make/code/check/finds'
-import { existsSync, readFileSync } from 'node:fs'
-import { checkDuplicateTasks } from '@term/make/code/check/duplicates'
 import { warnDeprecated } from '@term/make/code/check/deprecated'
 import { checkLostWrites, warnLostCollectionWrites } from '@term/make/code/check/lost-writes'
 import { checkTextForms } from '@term/make/code/check/text-forms'
-import { checkRouteMethods } from '@term/make/code/check/routes'
 import { copyForViews, checkLoweredViews } from '@term/make/code/check/views'
 import { checkSupervision } from '@term/make/code/check/supervise'
 import { buildRoll } from '@term/make/code/compile/roll'
@@ -71,7 +53,6 @@ import type { Roll } from '@term/make/code/compile/roll'
 import { elaborateReport } from '@term/make/code/check/elaborate'
 import { checkHolds } from '@term/make/code/check/holds'
 import type { Tally } from '@term/make/code/check/holds'
-import { checkTraits } from '@term/make/code/check/traits'
 import { checkCallsOutsideTasks, checkEffects } from '@term/make/code/check/effects'
 import { checkerSwitches, unknownSeamOn } from '@term/make/code/check/strict'
 import { inferStrict } from '@term/make/code/check/strict'
@@ -104,10 +85,6 @@ import {
 // is the `await-outside` field of the one `checker-switches` record check/strict.ts holds (check/checker-switches.tree,
 // item term-self-host-001-0261)
 
-// EVERY `find` NAMES SOMETHING ITS MODULE DEFINES (check/finds.tree), with each module source it needs read here,
-// which is IO: the check asks for the first source the program does not answer for and it has not been handed, and
-// this reads it (none for a file that does not exist) and asks again, so the files read are the ones it needs, in
-// the order it needs them
 // AN `inspect` IS WALKED BY THE TYPE ITS ARGUMENT HAD WHERE IT WAS WRITTEN (term/base-v1 decision 001). The checked
 // type is kept on the call as its `into`, so inlining a small task, which puts the caller's argument in place of its
 // parameter (`show(value)` with `value` unknown, called with `5`), leaves the walk the one its source said
@@ -201,23 +178,6 @@ function relativePath(root: string, file: string): string {
   return file.startsWith(base) ? file.slice(base.length) : file
 }
 
-function staleFindsOf(program: Program, file: string, scope: ImportScope | undefined): Diagnostic[] {
-  const scopes = scopeList(scope)
-  const sources: ReadSource[] = []
-
-  for (;;) {
-    const answer = checkFinds(program, file, scopes, sources)
-
-    if (answer.wants.length === 0) {
-      return answer.diagnostics
-    }
-
-    for (const want of answer.wants) {
-      sources.push(existsSync(want) ? { file: want, text: readFileSync(want, 'utf8') } : { file: want })
-    }
-  }
-}
-
 // the build's resolver as compile/side-files.tree takes it: none where it finds nothing
 function resolverTask(
   resolve: ((path: string, from: string) => Source | undefined) | undefined,
@@ -248,89 +208,38 @@ export function awaitsOutsideTasks(): boolean {
   return checkerSwitches.awaitOutside
 }
 
+// the build's deck lookup as compile/program-gate.tree takes it: none where the build knows no deck for a file, and for
+// every file when it knows none at all
+function deckTask(
+  deckOf?: (file: string) => { name: string; root: string } | undefined,
+): (file: string) => Maybe<{ name: string; root: string }> {
+  return file => {
+    const deck = deckOf?.(file)
+
+    return deck ? { form: 'some', value: { name: deck.name, root: deck.root } } : { form: 'none' }
+  }
+}
+
 // the deck the build knows each file by, for every file the privacy checks may ask about: the compile's own, each
-// statement's and each file in the import scope
+// statement's and each file in the import scope (compile/program-gate.tree `deck-homes`)
 function deckHomes(
   program: Program,
   scope: ImportScope | undefined,
   file: string,
-  deckOf?: (file: string) => { root: string } | undefined,
+  deckOf?: (file: string) => { name: string; root: string } | undefined,
 ): { file: string; root: string }[] {
-  if (!deckOf) {
-    return []
-  }
-
-  const files = new Set([file, ...program.flatMap(s => (s.span.file !== undefined ? [s.span.file] : [])), ...(scope?.keys() ?? [])])
-  const out: { file: string; root: string }[] = []
-
-  for (const one of files) {
-    const deck = deckOf(one)
-
-    if (deck) {
-      out.push({ file: one, root: deck.root })
-    }
-  }
-
-  return out
+  return deckHomesPort(program, scopeList(scope), file, deckTask(deckOf))
 }
 
 // the deck each file of a program belongs to, by name, as form extension and the tell check take it (check/extend.tree,
 // check/tell.tree): the compile's own file and every statement's, which is every file a raise's `host` is read from
+// (compile/program-gate.tree `deck-names`)
 function deckNames(
   program: Program,
   file: string,
-  deckOf?: (file: string) => { name: string } | undefined,
+  deckOf?: (file: string) => { name: string; root: string } | undefined,
 ): { file: string; name: string }[] {
-  if (!deckOf) {
-    return []
-  }
-
-  const out: { file: string; name: string }[] = []
-
-  for (const one of new Set([file, ...program.flatMap(s => (s.span.file !== undefined ? [s.span.file] : []))])) {
-    const deck = deckOf(one)
-
-    if (deck) {
-      out.push({ file: one, name: deck.name })
-    }
-  }
-
-  return out
-}
-
-// every task a `hook` route names or calls: its own `task` and `call` lines, its methods', its nested hooks' and its
-// children's, as the import binding left the names
-function routeTaskNames(program: Program): Set<string> {
-  const names = new Set<string>()
-  const visit = (route: DockRoute): void => {
-    for (const call of route.calls) {
-      names.add(call.name)
-    }
-
-    for (const method of route.methods ?? []) {
-      for (const call of method.calls) {
-        names.add(call.name)
-      }
-    }
-
-    for (const hook of route.hooks ?? []) {
-      for (const call of hook.calls) {
-        names.add(call.name)
-      }
-    }
-
-    for (const child of route.children ?? []) {
-      visit(child)
-    }
-  }
-
-  for (const statement of program) {
-    if (statement.form === 'dock') {
-      visit(statement.route)
-    }
-  }
-
-  return names
+  return deckNamesPort(program, file, deckTask(deckOf))
 }
 
 // the terminating tasks, or none when the analysis fails: a crash there must cost proofs, never pass one
@@ -366,14 +275,11 @@ function provenByKernel(program: Program, discharged: Set<string>): Set<string> 
   return out
 }
 import { findUnused } from '@term/make/code/check/unused'
-import { pruneToReachable } from '@term/make/code/ir/prune'
 import { simplify } from '@term/make/code/ir/simplify'
 import { coverProgram } from '@term/make/code/ir/cover'
 import type { CoverTarget } from '@term/make/code/ir/cover'
 import { passDictionaries } from '@term/make/code/ir/dictionary'
 import { lowerViews } from '@term/make/code/compile/view-lower'
-import { lowerRoutes } from '@term/make/code/compile/route-lower'
-import { renderNames, renderSupport } from '@term/make/code/compile/render-names'
 import { emitTypeScript } from '@term/make/code/compile/typescript'
 import { emitModules } from '@term/make/code/compile/modules'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
@@ -383,34 +289,13 @@ import type { Resolver } from '@term/make/code/compile/load'
 import type { CompileCache } from '@term/make/code/compile/cache'
 import { contentHash } from '@term/make/code/compile/cache'
 import type {
-  DockRoute,
   Program,
   Statement,
   Twin,
 } from '@term/make/code/compile/node'
 import { checkTwins } from '@term/make/code/check/twin'
-import { applyTwins, exposeTwins, guardTask, twinTask } from '@term/make/code/ir/twin'
+import { exposeTwins, twinChoiceList } from '@term/make/code/ir/twin'
 import type { TwinChoices } from '@term/make/code/ir/twin'
-
-// the render runtime's task names, asked of compile/render-names once
-const RENDER = renderNames()
-const RENDER_SUPPORT = renderSupport()
-
-// The packages that DESCRIBE a host's API rather than implement anything: @term/bind, 3,091 files transcribed from
-// TypeScript's lib.d.ts, Node's typings and Rust's documentation. Their types are the host's (`or`, `index`, `maybe`
-// as an optional marker, `path-like`), which Term has no forms for, and 1,635 of the files name one. In these files an
-// unknown type name (check/type-names.ts) and a `find` the module lacks (check/finds.ts) are WARNINGS, so the count
-// shows on every build and a later pass can declare them; everywhere else both refuse the build. Named here, once,
-// rather than guessed from content, and never extended to a package that implements anything
-const HOST_DESCRIPTIONS = new Set(['@term/bind'])
-
-// The render-runtime helpers that `lowerViews` (compile/view-lower.ts)
-// synthesizes calls to when it lowers a `zone` component. Because that
-// lowering runs after the reachability prune, these must be pinned as roots
-// whenever a program contains a zone, or they get shaken out and dangle. The
-// prune follows references, so pinning the render helpers keeps the dom
-// primitives (set-attribute, append, ...) they call, transitively.
-const ZONE_RENDER_RUNTIME: string[] = [...Object.values(RENDER), ...RENDER_SUPPORT]
 
 export type CompileResult =
   | {
@@ -987,7 +872,7 @@ export type ProgramRun = ProgramInput & {
   pageDocks?: Statement[]
   // the type-name pass's diagnostics, refused or (in a host description) warned (gate)
   typeNameDiagnostics: Diagnostic[]
-  // the file is in a deck that describes a host's API (HOST_DESCRIPTIONS, gate)
+  // the file is in a deck that describes a host's API, @term/bind (gate, compile/program-gate.tree)
   describesHost: boolean
   // the warnings of the literal, pattern and bind checks (gate)
   literalWarnings: Diagnostic[]
@@ -1142,299 +1027,81 @@ export function runProgram(
   return programEmit(run)
 }
 
-// STEPS 1 TO 10, THE GATE: module scope, routes, form extension, the checks of the program as written, the overloads,
-// the twins, the names and the shake. Undefined hands the run on
+// STEPS 1 TO 10, THE GATE: module scope for forms, routes, form extension, the checks of the program as written, the
+// overloads, the twins, the names and the shake. Undefined hands the run on. The gate is Term, compile/program-gate.tree
+// (item term-self-host-001-0264): this face hands it the run in its Term form, writes back what the gate wrote, adds
+// the roots it added, and keeps check/overload.ts's two tables, module state the phases after it read, as the binding
+// left them
 export function programGate(run: ProgramRun): CompileResult | undefined {
   const { file, roots, env, treeShake, deckOf, scope, selected, naming, emitOnly, renderFile } = run
+  const scopes = scopeList(scope)
+  const rootTable = new Map<string, boolean>([...(roots ?? [])].map(name => [name, true]))
+  // the run as compile/program-run.tree declares it: the sets as hashes, the import scope and the twin choices in their
+  // Term shapes, the deck lookup answering a maybe. The fields the gate neither reads nor writes are handed as they are
+  const termRun = {
+    ...run,
+    roots: rootTable,
+    modulesURL: run.modulesUrl,
+    wantRoll: run.wantRoll === 'fast' ? 'fast_roll' : run.wantRoll ? 'whole_roll' : 'no_roll',
+    deckOf: deckTask(deckOf),
+    scope: scopes,
+    selected: selected && { twins: selected.twins, choices: twinChoiceList(selected.choices), expose: selected.expose },
+    emitOnly: emitOnly && new Map([...emitOnly].map(one => [one, true])),
+  } as unknown as GateRun
+  const answer = programGatePort(termRun, {
+    hasRoots: roots !== undefined,
+    treeShake: treeShake ?? false,
+    env: env ?? '',
+    hasEnv: env !== undefined,
+    naming: naming ?? file,
+    renderFile: renderFile ?? '',
+    scopes,
+    deckOf: deckTask(deckOf),
+    scoped: emitOnly !== undefined,
+    emitOnly: [...(emitOnly ?? [])],
+    hasSelected: selected !== undefined,
+    expose: selected?.expose ?? false,
+    twins: selected?.twins ?? [],
+    choices: selected ? twinChoiceList(selected.choices) : [],
+  })
+  const written = termRun as unknown as ProgramRun
 
-  // module scope for forms: a form two files define is split by file, and every reference bound by its file's import,
-  // before anything below reads a form by name (module-scope-0003, check/scope.ts)
-  const formScope = bindFormsByImport(run.program, scopeList(scope), naming ?? file)
+  run.program = written.program
 
-  if (formScope.diagnostics.length) {
-    return { ok: false, diagnostics: formScope.diagnostics }
+  if (written.pageDocks !== undefined) {
+    run.pageDocks = written.pageDocks
   }
 
-  run.program = formScope.program
+  run.typeNameDiagnostics = written.typeNameDiagnostics
+  run.describesHost = written.describesHost
+  run.literalWarnings = written.literalWarnings
+  run.patternWarnings = written.patternWarnings
+  run.bindWarnings = written.bindWarnings
+  run.staleFinds = written.staleFinds
+  run.runtimeNames = written.runtimeNames
+  run.renamedRuntime = written.renamedRuntime
+  run.overloadGroups = written.overloadGroups
 
-  // a mask's default tasks, given to each form this build emits that wears the mask and leaves them out
-  run.program = fillMaskDefaults(run.program, emitOnly !== undefined, [...(emitOnly ?? [])])
-
-  // ROUTE TABLES LOWER HERE, before names are bound and checked (native-navigation-0002). The lowering used to run
-  // inside the TypeScript emitter alone, after the checker, so Swift, Kotlin and Rust got no `route` and no `boot` (a
-  // native app could not use a `hook` table), the dispatcher's parameters were never typed, and the helpers it calls
-  // could be shaken out first. Lowered here, every backend receives a checked dispatcher, and the route runtime it
-  // calls arrives through compile/load.ts's injection. The two functions are the app's entry: nothing in the program
-  // calls them, the platform does, so they are roots
-  // a page route's `task get` was counted and emitted nothing, so it is refused first (check/routes.ts)
-  const routeMethods = checkRouteMethods(run.program, file)
-
-  if (routeMethods.length) {
-    return { ok: false, diagnostics: routeMethods }
+  // the roots the gate added, after the ones the run had, in the order it added them
+  for (const name of rootTable.keys()) {
+    roots?.add(name)
   }
 
-  const routed = lowerRoutes(run.program, env ?? 'node')
-  // the docks the lowering replaced, kept for the roll alone: the program no longer holds them, and the roll's dock
-  // walk is how the hive's wake tells a page route and `routes-of` answers it (seam-0018, seam-0025)
+  // check/overload.ts's tables, as the binding left them, once it ran
+  if (answer.bound.form === 'some') {
+    overloadGroups.clear()
+    runtimeBound.clear()
 
-  if (routed !== run.program) {
-    const kept = new Set(routed)
-
-    run.pageDocks = run.program.filter(s => s.form === 'dock' && !kept.has(s))
-    run.program = routed
-    roots?.add('route')
-    roots?.add('boot')
-  }
-
-  // form extension: resolve every `form x` that is `like <base>` with children into an ordinary record, and finish
-  // every `halt <form>` raise, before any name is bound. See code/check/extend.ts.
-  const extended = extendForms(run.program, file, deckNames(run.program, file, deckOf))
-
-  if (extended.diagnostics.length) {
-    return { ok: false, diagnostics: extended.diagnostics }
-  }
-
-  run.program = extended.program
-
-  // every type a task or form of this file names is one the program has, read before seeding turns an unknown name
-  // into a hole (check/type-names.ts)
-  run.typeNameDiagnostics = checkTypeNames(run.program, file)
-  run.describesHost = HOST_DESCRIPTIONS.has(deckOf?.(file)?.name ?? '')
-
-  if (run.typeNameDiagnostics.length && !run.describesHost) {
-    return { ok: false, diagnostics: run.typeNameDiagnostics }
-  }
-
-  // every number literal is one the backends can hold, and one past 2^53 is refused on a JavaScript build, where it is
-  // not the number written, and warned of on a native one (check/literals.ts)
-  const literals = checkLiterals(run.program, file, env ?? 'node')
-
-  if (literals.errors.length) {
-    return { ok: false, diagnostics: literals.errors }
-  }
-
-  run.literalWarnings = literals.warnings
-
-  // every `make pattern, <...>` literal read by the stdlib's own pattern reader: refused when it is not a pattern,
-  // warned when it lands on the backtracking tier (check/patterns.ts)
-  const patterns = checkPatterns(run.program, file)
-
-  if (patterns.errors.length) {
-    return { ok: false, diagnostics: patterns.errors }
-  }
-
-  run.patternWarnings = patterns.warnings
-
-  // a `host` inside a task is written once (check/constants.ts)
-  const constantDiagnostics = checkConstants(run.program, file)
-
-  if (constantDiagnostics.length) {
-    return { ok: false, diagnostics: constantDiagnostics }
-  }
-
-  // a shared bind has a case for every backend, or the build stops at the bind (check/binds.ts). Whether a called bind
-  // has a case for the backend being emitted is asked again of the program actually emitted (call/code/emit.ts)
-  const bindChecks = checkBindTargets(run.program, file, '')
-
-  if (bindChecks.errors.length) {
-    return { ok: false, diagnostics: bindChecks.errors }
-  }
-
-  run.bindWarnings = bindChecks.warnings
-
-  // a call reaches a task something in the build defines, not only a declaration (check/bodiless.ts)
-  const bodilessCalls = checkBodilessCalls(run.program, file)
-
-  if (bodilessCalls.length) {
-    return { ok: false, diagnostics: bodilessCalls }
-  }
-
-  // arity overloading: rename same-name / different-arity functions (and their calls) to unique `name__<arity>` names,
-  // so everything downstream sees one definition per name. See code/check/overload.ts. It refuses two bodied
-  // definitions of one name from two files that a call's own imports do not tell apart (native-dom-0031)
-  // `mark private`: a `find` of a name private to the file it names is refused, before overloads rename anything,
-  // so the found name is compared as written (check/private.ts)
-  const privateFinds = checkPrivateFinds(run.program, scopeList(scope), deckHomes(run.program, scope, file, deckOf))
-
-  if (privateFinds.length) {
-    return { ok: false, diagnostics: privateFinds }
-  }
-
-  // every `find` names something the module it loads defines, before overloads rename anything (check/finds.ts)
-  run.staleFinds = staleFindsOf(run.program, file, scope)
-
-  if (run.staleFinds.length && !run.describesHost) {
-    return { ok: false, diagnostics: run.staleFinds }
-  }
-
-  // trait checking: coherence, instance completeness and trait-bound existence. BEFORE the duplicate tasks, because a
-  // form that wears one mask twice also defines each of its tasks twice, and that was all the build said: the
-  // `duplicate-instance` it is had no turn to be reported (test/check/traits.ts, 2026-10-05). It reads only masks,
-  // instances and bounds, so nothing below changes what it sees
-  const traitDiagnostics = checkTraits(run.program, file)
-
-  if (traitDiagnostics.length) {
-    return { ok: false, diagnostics: traitDiagnostics }
-  }
-
-  // one file defines a task once per parameter list (check/duplicates.ts)
-  const duplicateTasks = checkDuplicateTasks(run.program, file)
-
-  if (duplicateTasks.length) {
-    return { ok: false, diagnostics: duplicateTasks }
-  }
-
-  // a ticked call used as a value is the pending job: `spawn` of the call, a `handle` of its answer (check/pending.ts).
-  // Before overloads and names are bound, so the inserted `spawn` binds as a written one does
-  const pending = pendingValues(run.program, file)
-
-  if (pending.diagnostics.length) {
-    return { ok: false, diagnostics: pending.diagnostics }
-  }
-
-  run.program = pending.program
-
-  const ambiguities = disambiguateOverloads(run.program, scope, naming ?? file, ZONE_RENDER_RUNTIME, renderFile ?? '')
-
-  if (ambiguities.length) {
-    return { ok: false, diagnostics: ambiguities }
-  }
-
-  // the tasks a `hook` route names or calls (`task make` under a console's `hook build`), as the binding above bound
-  // them: the run looks each up among the module's exports by that name, and no call in the program reaches it, so
-  // the shake and the simplifier left it out and the command had no task (term-compiler-0034)
-  if (roots) {
-    for (const name of routeTaskNames(run.program)) {
-      roots.add(name)
+    for (const group of answer.bound.value.groups) {
+      overloadGroups.set(group.name, group.members)
     }
 
-    // an entry task the arity pass renamed apart (`front-dir` at two arities is `front-dir__0` and `front-dir__1`, a typed
-    // group's member `<name>__<n>__<k>`) is still the entry's public surface: the roots held only the written name, so
-    // the shake and the simplifier left every arity out (term-compiler-0036)
-    for (const statement of run.program) {
-      if (statement.form === 'function' && statement.span.file === file) {
-        const written = /^(.+?)__\d+(?:__\d+)?$/.exec(statement.name)?.[1]
-
-        if (written !== undefined && roots.has(written)) {
-          roots.add(statement.name)
-        }
-      }
+    for (const pair of answer.bound.value.runtime) {
+      runtimeBound.set(pair.name, pair.bound)
     }
   }
 
-  // the render runtime names as the build bound them (a name two files define is split by file, D020): the view
-  // lowering, the prune's pins and the checker's lowered copy all use these
-  run.runtimeNames = [...runtimeBound].map(([name, bound]) => ({ name, bound }))
-  // the ones the build renamed (render's `make-text`, when the entry defines a `make-text` too, is `make-text__in0_0`):
-  // the lowering calls them, nothing written does, so the simplifier would take a forwarder of them for dead
-  run.renamedRuntime = run.runtimeNames.filter(p => p.bound !== p.name).map(p => p.bound)
-
-  // the chosen implementations, BEFORE names are bound, so the twins and the dispatch are checked like any task
-  if (selected) {
-    if (selected.expose) {
-      // and kept: nothing calls them, so dead-code removal would take them back out
-      for (const twin of exposeTwins(run.program, selected.twins)) {
-        roots?.add(twinTask(twin.of, twin.name))
-        roots?.add(guardTask(twin.of, twin.name))
-        roots?.add(twin.of)
-      }
-    }
-
-    const refused = applyTwins(run.program, selected.twins, selected.choices, env, file)
-
-    if (refused.length) {
-      return { ok: false, diagnostics: refused }
-    }
-  }
-
-  // hole-filling: bind names to definitions
-  const resolveDiagnostics = resolve(run.program, file)
-
-  if (resolveDiagnostics.length) {
-    return { ok: false, diagnostics: resolveDiagnostics }
-  }
-
-  // `mark private`: a call to, or a value reference of, a task private to another file. After the resolver, so a
-  // local that shares the name is bound to itself and never refused (check/private.ts)
-  const privateReferences = checkPrivateReferences(
-    run.program,
-    file,
-    [...overloadGroups].map(([name, members]) => ({ name, members })),
-    deckHomes(run.program, scope, file, deckOf),
-  )
-
-  if (privateReferences.length) {
-    return { ok: false, diagnostics: privateReferences }
-  }
-
-  // tree-shaking (opt-in): once names are bound, drop the imported definitions
-  // the entry never uses, so the expensive check / elaborate passes below run
-  // only on the reachable program. Needs `roots` (the entry's public surface)
-  // to know the starting points. See code/ir/prune.ts.
-  if (treeShake && roots) {
-    // every member of a typed overload group is a root: calls target the first member until the checker picks one
-    // by argument type, and the pick must still exist then
-    for (const members of overloadGroups.values()) {
-      for (const member of members) {
-        roots.add(member)
-      }
-    }
-
-    // the hive's entry points are called by the generated wake chain, which nothing in the source references
-    for (const name of ['hive-wake', 'hive-wake-typed', 'hive-tell']) {
-      if (run.program.some(s => s.form === 'function' && s.name === name)) {
-        roots.add(name)
-      }
-    }
-
-    // a lowered `inspect` calls debug's scalar texts from its walker, and a `print` debug's line writer, which no
-    // source names (term/base-v1 decision 001). Kept whenever the program loads debug.tree
-    if (run.program.some(s => s.form === 'function' && s.name === 'inspect' && /(^|\/)base\/code\/debug\.tree$/.test(s.span.file ?? ''))) {
-      for (const name of ['show-text', 'show-integer', 'show-decimal', 'show-flag', 'write-debug-line']) {
-        roots.add(name)
-      }
-    }
-
-    // View lowering (further below) rewrites `zone` components into calls to
-    // the render runtime (element / text / attribute / dynamic / event /
-    // append / show / each / ...). That lowering runs AFTER this prune, so the
-    // helpers are not yet referenced by the still-unlowered zones and would be
-    // pruned as unreachable, then dangle at runtime. When the program contains
-    // any zone, pin the render-runtime helpers as roots so they, and
-    // transitively the dom primitives they call, survive the shake.
-    let pruneRoots = roots
-
-    if (run.program.some(statement => statement.form === 'view')) {
-      pruneRoots = new Set(roots)
-
-      for (const helper of ZONE_RENDER_RUNTIME) {
-        pruneRoots.add(helper)
-        pruneRoots.add(runtimeBound.get(helper) ?? helper)
-      }
-    }
-
-    // A CALL INTO NATIVE CODE RAISES `failure` IN EVERY PROGRAM, shaken or not (term/compiler decision 001). The raise
-    // sets count it only when the program holds the form (check/effects.ts), and the shake dropped it unless some code
-    // named it, so whether a guard around a native call had to cover `failure` turned on unrelated code. A program
-    // that docks a module keeps the form whenever its closure has it, which is what the unshaken build sees
-    if (run.program.some(s => s.form === 'native' && s.kind !== 'type') && run.program.some(s => s.form === 'record-type' && s.name === 'failure')) {
-      pruneRoots = new Set([...pruneRoots, 'failure'])
-    }
-
-    // a rule only CITED by a kept rule is referenced by no call, and must survive the shake (check/cite-roots.ts)
-    const cited = citedRules(run.program, [...pruneRoots])
-
-    if (cited.length > 0) {
-      pruneRoots = new Set([...pruneRoots, ...cited])
-    }
-
-    run.program = pruneToReachable(run.program, [...pruneRoots])
-  }
-
-  // the overload groups as the gate leaves them, which the phases after it read as module state
-  run.overloadGroups = [...overloadGroups].map(([name, members]) => ({ name, members: [...members] }))
-
-  return undefined
+  return answer.refused.form === 'some' ? { ok: false, diagnostics: answer.refused.value as Diagnostic[] } : undefined
 }
 
 // STEPS 11 TO 14, THE TYPES: claims filled, the checker, the stamps, the affine checks, async resolution, and the fast
@@ -1738,7 +1405,7 @@ export function programWarnings(run: ProgramRun): CompileResult | undefined {
     ...checkDockShadow(run.program),
     // a task named like one of the compiler's own words, which no call reaches by that name (check/builtin-shadow.ts)
     ...checkBuiltinShadow(run.program, file),
-    // a host description's undeclared types and imports, counted rather than refused (HOST_DESCRIPTIONS)
+    // a host description's undeclared types and imports, counted rather than refused (`describesHost`)
     ...(run.describesHost ? [...run.typeNameDiagnostics, ...run.staleFinds].map(d => ({ ...d, severity: 'warning' as const })) : []),
   ].map(d => (d.span.file !== undefined && d.span.file !== d.file ? { ...d, file: d.span.file } : d))
 

@@ -42,6 +42,11 @@ function choiceOf(choice: TwinChoice): Choice {
   return { form: 'size', of: choice.of, below: choice.below, small: choiceOf(choice.then), large: choiceOf(choice.else) }
 }
 
+// the choices as ir/selection.tree takes them, one per task in the record's order (compile/program-gate.tree too)
+export function twinChoiceList(choices: TwinChoices): { task: string; choice: Choice }[] {
+  return Object.entries(choices).map(([task, choice]) => ({ task, choice: choiceOf(choice) }))
+}
+
 // the program the port answers, written into the one the caller handed (on TypeScript it is the same list)
 function writeBack(program: Program, answered: Program): void {
   if (answered !== program) {
@@ -68,7 +73,7 @@ export function applyTwins(
   const answer = applyTwinsIn(
     program,
     twins,
-    Object.entries(choices).map(([task, choice]) => ({ task, choice: choiceOf(choice) })),
+    twinChoiceList(choices),
     env ?? '',
     file,
   )

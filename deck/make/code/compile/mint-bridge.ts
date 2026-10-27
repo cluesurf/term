@@ -4802,7 +4802,7 @@ function routeOf(
     // literal at all and is refused, never dropped
     const loneWord = fallbackBind && !fallbackValue ? wordAt(fallbackBind, 'name') : undefined
 
-    if (loneWord !== undefined && loneWord !== 'true' && loneWord !== 'false') {
+    if (fallbackBind && loneWord !== undefined && loneWord !== 'true' && loneWord !== 'false') {
       refuse(
         bridge,
         fallbackBind,
