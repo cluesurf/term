@@ -1,0 +1,71 @@
+# tree/code for the compiler: @term/host's code.tree, the one codec, reached by compile/host-code.ts, the face that
+# keeps the reference's TypeScript API (decision 041 of note/project/term/self-host/change/001-finish-self-host). Each
+# task hands its arguments to code.tree as they are: the face converts the compiler's `Data` to `data` and back, and a
+# `code-defect` to `TreeCodeError`.
+
+load @term/host/code/base
+  find data
+
+load @term/host/code/code
+  find to-code-with
+  find code-frame
+  find code-header
+  find open-code
+  find code-more
+  find take-code-frame
+  find code-reader
+
+# the one blank: a field-less case is a single value on TypeScript, and the face builds `void` with it
+task blank-data
+  like data
+  back make blank
+
+task encode-code
+  take items, like list, like data
+  take pack, like boolean
+  take above, like number
+  take end, like boolean
+  take compress
+    like task
+      take plain, like bytes
+      like bytes
+  like bytes
+  back to-code-with(items, pack, above, end, compress)
+
+task encode-code-frame
+  take item, like data
+  take pack, like boolean
+  take above, like number
+  take compress
+    like task
+      take plain, like bytes
+      like bytes
+  like bytes
+  back code-frame(item, pack, above, compress)
+
+task encode-code-header
+  like bytes
+  back code-header()
+
+task open-code-reader
+  take input, like bytes
+  take depth, like number
+  take frame, like number
+  like code-reader
+  back open-code(input, depth, frame)
+
+task code-reader-more
+  take reader, like code-reader
+  like boolean
+  back code-more(reader)
+
+task read-code-frame
+  take reader, like code-reader
+  take unpack, like boolean
+  take decompress
+    like task
+      take packed, like bytes
+      take size, like number
+      like bytes
+  like data
+  back take-code-frame(reader, unpack, decompress)

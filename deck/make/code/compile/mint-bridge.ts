@@ -3010,52 +3010,58 @@ function loopOf(
     // loops shared one counter, the outer step moved the inner one, and the outer loop never ended (guides:
     // language/loops, 2026-10-03). The body still reads it as `i`, which shadows the outer `i` as it should
     const name = inScope(bridge, item) ? `${item}-walk-${ordinal}` : item
-    const counter: Expression = { form: 'variable', name, span }
+    // Every place the counter, the bound, the step and zero stand gets a node of its own, built by a task called once
+    // per place (D011 rule 8, item 0195): one object at two places is one node on TypeScript and two natively (traps
+    // T049). The `span` object may stay shared, since it is not a place
+    const counter = (): Expression => ({ form: 'variable', name, span })
 
     // the head is read ONCE, before the first turn, as a counted loop means. Written into the condition it was called
     // again every turn: `char-count` rebuilt the text's character array per character, and the prover could not read
-    // a measure off a native call it has to treat as different each time. A name or a literal is left in place. The
-    // name is unique by the walk's ordinal, so two walks in one scope never declare it twice
+    // a measure off a native call it has to treat as different each time. A name or a literal is left in place, a copy
+    // of it at each place (it shares nothing within itself). The name is unique by the walk's ordinal, so two walks in
+    // one scope never declare it twice
     const steady = to.form === 'variable' || to.form === 'integer'
     const headName = `walk-head-${ordinal}`
-    const bound: Expression = steady ? to : { form: 'variable', name: headName, span }
+    const bound = (): Expression => (steady ? structuredClone(to) : { form: 'variable', name: headName, span })
 
     // a step that is not a literal is read once too, and the condition follows its sign
     const stepName = `walk-step-${ordinal}`
-    const stepping: Expression = literal !== undefined || by.form === 'variable' ? by : { form: 'variable', name: stepName, span }
-    const zero: Expression = { form: 'integer', value: 0, span }
-    const below: Expression = { form: 'binary', op: '<', left: counter, right: bound, span }
-    const above: Expression = { form: 'binary', op: '>', left: counter, right: bound, span }
+    const stepInPlace = literal !== undefined || by.form === 'variable'
+    const stepping = (): Expression => (stepInPlace ? structuredClone(by) : { form: 'variable', name: stepName, span })
+    const zero = (): Expression => ({ form: 'integer', value: 0, span })
+    const below = (): Expression => ({ form: 'binary', op: '<', left: counter(), right: bound(), span })
+    const above = (): Expression => ({ form: 'binary', op: '>', left: counter(), right: bound(), span })
     const cond: Expression =
       literal === undefined
         ? {
             form: 'binary',
             op: '||',
-            left: { form: 'binary', op: '&&', left: { form: 'binary', op: '>', left: stepping, right: zero, span }, right: below, span },
-            right: { form: 'binary', op: '&&', left: { form: 'binary', op: '<', left: stepping, right: zero, span }, right: above, span },
+            left: { form: 'binary', op: '&&', left: { form: 'binary', op: '>', left: stepping(), right: zero(), span }, right: below(), span },
+            right: { form: 'binary', op: '&&', left: { form: 'binary', op: '<', left: stepping(), right: zero(), span }, right: above(), span },
             span,
           }
         : literal > 0
-          ? below
-          : above
+          ? below()
+          : above()
 
     const flow = scopedFlow(bridge, at(next, 'flow'), [item])
-    const advance: Statement = {
+    // the step, built fresh at each use: the end of the body and before every `continue` of this loop
+    const advance = (): Statement => ({
       form: 'assign',
-      target: counter,
+      target: counter(),
       op: '=',
-      value: { form: 'binary', op: '+', left: counter, right: stepping, span },
+      value: { form: 'binary', op: '+', left: counter(), right: stepping(), span },
       span,
-    }
+    })
 
     return [
       ...(steady ? [] : [{ form: 'let', name: headName, init: to, mutable: false, span } as Statement]),
-      ...(stepping === by ? [] : [{ form: 'let', name: stepName, init: by, mutable: false, span } as Statement]),
+      ...(stepInPlace ? [] : [{ form: 'let', name: stepName, init: by, mutable: false, span } as Statement]),
       { form: 'let', name, init: from, mutable: true, span },
       {
       form: 'while',
       cond,
-      body: [...advancedBeforeContinue(name === item ? flow : renameLocal(flow, item, name), advance, label), advance],
+      body: [...advancedBeforeContinue(name === item ? flow : renameLocal(flow, item, name), advance, label), advance()],
       ...contract,
       span,
       },
@@ -3076,14 +3082,15 @@ function loopOf(
 // past that step: a walk that turned next on any turn counted the same number forever (guides: language/loops,
 // 2026-10-04). Every `continue` that belongs to THIS loop steps the counter first: an unnamed one in its own body, and
 // one naming this loop (`turn next, name outer`) from however deep a nested loop it sits in. An unnamed one inside a
-// nested loop belongs to that loop and is left alone.
-function advancedBeforeContinue(body: Statement[], advance: Statement, label?: string, nested = false): Statement[] {
+// nested loop belongs to that loop and is left alone. `advance` builds the step afresh for each `continue`, so no two
+// copies share a node (item 0195).
+function advancedBeforeContinue(body: Statement[], advance: () => Statement, label?: string, nested = false): Statement[] {
   const inner = (statements: Statement[], deeper = nested): Statement[] => advancedBeforeContinue(statements, advance, label, deeper)
 
   return body.flatMap((statement): Statement[] => {
     switch (statement.form) {
       case 'continue':
-        return (statement.label === undefined ? !nested : statement.label === label) ? [structuredClone(advance), statement] : [statement]
+        return (statement.label === undefined ? !nested : statement.label === label) ? [advance(), statement] : [statement]
       case 'if':
         return [
           {

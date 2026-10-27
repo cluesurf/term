@@ -37,10 +37,12 @@ import * as lowering from '@term/make/code/compile/find-lower'
 // came from, so a consumer's diagnostic points at the line in the file, and the CST `node` itself, so a built AST
 // node can point back at the exact surface syntax it was read from (mint-bridge-0001). An integer literal is a
 // number while that is exact, and a bigint read from its own text past 2^53, where the parsed number has already
-// rounded to a different integer.
+// rounded to a different integer. `at` is the node's index among the nodes the mine enumerated it from (a group's
+// children, or the root's nodes at the top level), which the bridge orders by instead of the node's identity
+// (decision 033 section 3). A minted value carries the `at` of the capture it came from.
 export type MillCapture =
-  | { kind: 'word'; value: string; span?: Span; node?: Node }
-  | { kind: 'text'; value: string; span?: Span; node?: Node }
+  | { kind: 'word'; value: string; span?: Span; node?: Node; at?: number }
+  | { kind: 'text'; value: string; span?: Span; node?: Node; at?: number }
   | {
       kind: 'number'
       // a bigint only for an integer past 2^53, where a number would round to a different value
@@ -48,6 +50,7 @@ export type MillCapture =
       decimal: boolean
       span?: Span
       node?: Node
+      at?: number
     }
   | {
       kind: 'match'
@@ -55,6 +58,7 @@ export type MillCapture =
       match: MillMatch
       span?: Span
       node?: Node
+      at?: number
     }
 
 // one rule's fill: site name -> the captures that landed there, in order
@@ -151,14 +155,15 @@ export function readMintGrammar(tree: RootNode): MintGrammar {
 // A minted value keeps the CST node it was built from (and that node's extent), so the bridge that turns these
 // into compiler AST nodes can carry an exact span onto every one of them.
 export type Minted =
-  | { kind: 'word'; value: string; span?: Span; node?: Node }
-  | { kind: 'text'; value: string; span?: Span; node?: Node }
+  | { kind: 'word'; value: string; span?: Span; node?: Node; at?: number }
+  | { kind: 'text'; value: string; span?: Span; node?: Node; at?: number }
   | {
       kind: 'number'
       value: number | bigint
       decimal: boolean
       span?: Span
       node?: Node
+      at?: number
     }
   | {
       kind: 'form'
@@ -166,6 +171,7 @@ export type Minted =
       fields: Record<string, Minted[]>
       span?: Span
       node?: Node
+      at?: number
     }
 
 // a minted form's fields as the `Record` the bridge reads. The port hands back the same list wherever minting was
@@ -200,11 +206,21 @@ function mintedValue(value: port.Minted, seen: WeakMap<object, unknown>): Minted
     fields[name] = mintedOf(list, seen)
   }
 
-  const out: Minted = { kind: 'form', form: value.form, fields, span: value.span, node: value.node as Node | undefined }
+  const out: Minted = {
+    kind: 'form',
+    form: value.form,
+    fields,
+    span: value.span,
+    node: value.node as Node | undefined,
+    ...(value.at === undefined ? {} : { at: value.at }),
+  }
   seen.set(value, out)
 
   return out
 }
+
+const maybeAt = (at: number | undefined): port.Maybe<number> =>
+  at === undefined ? { form: 'none' } : { form: 'some', value: at }
 
 export function runMint(
   mints: MintGrammar,
@@ -212,10 +228,12 @@ export function runMint(
   match: MillMatch,
   // the CST node this match was read from: it becomes the built form's own node, so the bridge can span it
   node?: Node,
+  // that node's index among the nodes the mine enumerated it from (the capture's at): the built form's own at
+  at?: number,
 ): Minted[] {
   const from: port.Maybe<never> = node ? { form: 'some', value: node as never } : { form: 'none' }
 
-  return mintedOf(port.runMint(mints, name, match as never, from), new WeakMap())
+  return mintedOf(port.runMint(mints, name, match as never, from, maybeAt(at)), new WeakMap())
 }
 
 // what the lowering of a find could not do: a code and a message, at the span of the find (decision 005)
@@ -230,9 +248,10 @@ export function runCodeMint(
   name: string,
   match: MillMatch,
   node?: Node,
+  at?: number,
 ): { values: Minted[]; problems: FindProblem[] } {
   const from: port.Maybe<never> = node ? { form: 'some', value: node as never } : { form: 'none' }
-  const lowered = lowering.lowerFinds(port.runMint(mints, name, match as never, from) as never)
+  const lowered = lowering.lowerFinds(port.runMint(mints, name, match as never, from, maybeAt(at)) as never)
 
   return { values: mintedOf(lowered.values as never, new WeakMap()), problems: lowered.problems as FindProblem[] }
 }

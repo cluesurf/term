@@ -1,5 +1,3 @@
-mark draft
-
 # THE GATE of `compileProgram`, steps 1 to 10: module scope for forms, mask defaults, routes, form extension, the checks
 # of the program as written (type names, literals, patterns, constants, binds, bodiless calls, private finds, stale
 # finds, traits, duplicate tasks, pending values), the overloads, the roots a hook route and an entry's renamed arities
@@ -168,9 +166,12 @@ form gate-given
   # whether only some files' modules are emitted, and those files
   link scoped, like boolean
   link emit-only, like list, like text
-  # whether a twin selection was given, and whether it exposes the twins
+  # whether a twin selection was given, whether it exposes the twins, and its twins and choices (empty for none). The
+  # run's own `selected` is `need false`, so it is handed in filled here, as the env is
   link has-selected, like boolean
   link expose, like boolean
+  link twins, like list, like twin
+  link choices, like list, like task-choice
 
 # the overload groups and the render runtime names as the binding left them, which check/overload.ts keeps as module
 # state
@@ -640,7 +641,11 @@ task program-gate
       back refusal(extended/diagnostics, no-bound())
   save run/program, extended/program
 
-  # every type a task or form of this file names is one the program has. In a deck that describes a host's API it warns
+  # every type a task or form of this file names is one the program has. In a deck that describes a host's API it warns.
+  # @term/bind is the one such deck: 3,091 files transcribed from TypeScript's lib.d.ts, Node's typings and Rust's
+  # documentation, whose types are the host's (`or`, `index`, `path-like`), which Term has no forms for. There an
+  # unknown type name and a `find` its module lacks are warnings, counted on every build; everywhere else both refuse.
+  # Named once, never guessed from content, and never extended to a package that implements anything
   save run/type-name-diagnostics, check-type-names(run/program, file)
   save described, false
   sift deck-of(file)
@@ -801,10 +806,9 @@ task program-gate
   # the chosen implementations, before names are bound
   fork test, given/has-selected
     hold
-      save selected, run/selected
       fork test, given/expose
         hold
-          save exposed, expose-twins(run/program, selected/twins)
+          save exposed, expose-twins(run/program, given/twins)
           save run/program, exposed/program
           fork test, given/has-roots
             hold
@@ -814,7 +818,7 @@ task program-gate
                 add-root(run, guard-task(one/of, one/name))
                 add-root(run, one/of)
       save twin-env, given/env
-      save chosen, apply-twins(run/program, selected/twins, selected/choices, twin-env, file)
+      save chosen, apply-twins(run/program, given/twins, given/choices, twin-env, file)
       save run/program, chosen/program
       fork test, is-above(chosen/diagnostics/length, 0)
         hold

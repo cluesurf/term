@@ -40,8 +40,11 @@ load ./templates
 
 # ---- the values ----
 
-# one capture: a word or a literal, or a nested rule's match to be minted. Each keeps the span of the node it came from
-# and the node itself
+# one capture: a word or a literal, or a nested rule's match to be minted. Each keeps the span of the node it came from,
+# the node itself, and `at`, the node's index in the list of nodes the mine enumerated it from (a group's children, or
+# the root's nodes for a top-level capture). The mint bridge orders call arguments, record children, body steps and
+# top-level captures by `at`, never by the node's identity (D011, decision 033 section 3). A minted value carries the
+# `at` of the capture it was minted from
 form mill-capture
   mark tag, name kind
   case word
@@ -50,12 +53,18 @@ form mill-capture
       like maybe, like span
       need false
     link node, like node
+    link at
+      like maybe, like number
+      need false
   case text
     link value, like text
     link span
       like maybe, like span
       need false
     link node, like node
+    link at
+      like maybe, like number
+      need false
   case number
     # a bigint for an integer past 2^53 (see the header)
     link value, like float
@@ -64,6 +73,9 @@ form mill-capture
       like maybe, like span
       need false
     link node, like node
+    link at
+      like maybe, like number
+      need false
   case match
     link rule, like text
     link match, like hash, like text, like list, like mill-capture
@@ -71,6 +83,9 @@ form mill-capture
       like maybe, like span
       need false
     link node, like node
+    link at
+      like maybe, like number
+      need false
 
 form mine-rule
   mark tag, name kind
@@ -166,6 +181,9 @@ form minted
     link node
       like maybe, like node
       need false
+    link at
+      like maybe, like number
+      need false
   case text
     link value, like text
     link span
@@ -173,6 +191,9 @@ form minted
       need false
     link node
       like maybe, like node
+      need false
+    link at
+      like maybe, like number
       need false
   case number
     link value, like float
@@ -183,6 +204,9 @@ form minted
     link node
       like maybe, like node
       need false
+    link at
+      like maybe, like number
+      need false
   case form
     link form, like text
     link fields, like hash, like text, like list, like minted
@@ -191,6 +215,9 @@ form minted
       need false
     link node
       like maybe, like node
+      need false
+    link at
+      like maybe, like number
       need false
 
 # an integer literal as a number while that is exact, and past 2^53 as a bigint read from its own text, where the
@@ -833,6 +860,7 @@ task capture-all
 task word-capture
   take word, like text
   take one, like node
+  take at, like number
   like mill-capture
   mark private
 
@@ -841,6 +869,7 @@ task word-capture
       bind value, word
       bind span, span-of-node(one)
       bind node, one
+      bind at, make(some, at)
 
 task rule-word
   take rule, like mine-rule
@@ -941,7 +970,7 @@ task splice
       save end, match-sequence(grammar, rest-rules, spliced, 0, after)
       fork test, and(is-unequal(end, -1), is-minimum(end, extras/length))
         hold
-          capture(into, rule-site, word-capture(word, one))
+          capture(into, rule-site, word-capture(word, one, cursor))
           capture-all(into, inner)
           capture-all(into, after)
           back add(add(cursor, 1), subtract(end, extras/length))
@@ -979,7 +1008,7 @@ task match-rule
                   fork test, or(is-equal(inner, -1), is-below(inner, kids-of(one)/length))
                     hold
                       back -1
-                  capture(into, term-site, word-capture(wanted, one))
+                  capture(into, term-site, word-capture(wanted, one, at))
                   back next-at
               save one-word, word-of(one)
               sift one-word
@@ -987,7 +1016,7 @@ task match-rule
                   link known
                   fork test, and(is-equal(known, wanted), is-equal(term-children/length, 0))
                     hold
-                      capture(into, term-site, word-capture(wanted, one))
+                      capture(into, term-site, word-capture(wanted, one, at))
                       back next-at
                 case none
                   save nothing, 0
@@ -1002,7 +1031,7 @@ task match-rule
               sift word-of(one)
                 case some
                   link known
-                  capture(into, term-site, word-capture(known, one))
+                  capture(into, term-site, word-capture(known, one, at))
                   back next-at
                 case none
                   back -1
@@ -1021,6 +1050,7 @@ task match-rule
                   bind value, written
                   bind span, span-of-node(one)
                   bind node, one
+                  bind at, make(some, at)
               capture(into, text-site, made)
               back next-at
           back -1
@@ -1035,7 +1065,7 @@ task match-rule
           sift phrase-of(one)
             case some
               link phrase
-              capture(into, path-site, word-capture(phrase, one))
+              capture(into, path-site, word-capture(phrase, one, at))
               back next-at
             case none
               back -1
@@ -1051,17 +1081,17 @@ task match-rule
               link whole
               link written
               save exact, exact-integer(whole, written)
-              capture(into, code-site, number-capture(exact, false, one))
+              capture(into, code-site, number-capture(exact, false, one, at))
               back next-at
             case radix
               link whole
               link written
               save exact, exact-integer(whole, written)
-              capture(into, code-site, number-capture(exact, false, one))
+              capture(into, code-site, number-capture(exact, false, one, at))
               back next-at
             case decimal
               link fraction
-              capture(into, code-site, number-capture(fraction, true, one))
+              capture(into, code-site, number-capture(fraction, true, one, at))
               back next-at
             miss
               back -1
@@ -1090,7 +1120,7 @@ task match-rule
                   save written, known
                 case none
                   save nothing, 0
-              capture(into, word-site, word-capture(written, one))
+              capture(into, word-site, word-capture(written, one, at))
               back next-at
             case group
               fork test, is-unequal(nodes/length, 1)
@@ -1099,7 +1129,7 @@ task match-rule
               sift word-of(one)
                 case some
                   link known
-                  capture(into, word-site, word-capture(known, one))
+                  capture(into, word-site, word-capture(known, one, at))
                   back next-at
                 case none
                   back -1
@@ -1124,7 +1154,7 @@ task match-rule
               fork test, or(is-equal(inner, -1), is-below(inner, kids-of(one)/length))
                 hold
                   back -1
-              capture(into, open-site, word-capture(head, one))
+              capture(into, open-site, word-capture(head, one, at))
               back next-at
             case none
               back -1
@@ -1186,6 +1216,7 @@ task match-rule
               bind match, inner
               bind span, span-of-node(one)
               bind node, one
+              bind at, make(some, at)
           capture(into, form-site, made)
           back next
         case none
@@ -1206,6 +1237,7 @@ task number-capture
   take value, like float
   take decimal, like boolean
   take one, like node
+  take at, like number
   like mill-capture
   mark private
 
@@ -1215,6 +1247,7 @@ task number-capture
       bind decimal, decimal
       bind span, span-of-node(one)
       bind node, one
+      bind at, make(some, at)
 
 # run a grammar's start rule over a whole parse tree (the root's groups)
 task run-mine
@@ -1508,9 +1541,11 @@ task run-mint
   take name, like text
   take match, like hash, like text, like list, like mill-capture
   take from, like maybe, like node
+  # the index of `from` among the nodes it was enumerated from, the `at` of the capture `match` came from
+  take from-at, like maybe, like number
   like list, like minted
 
-  back mint-in(mints, name, match, 0, from, empty-memo())
+  back mint-in(mints, name, match, 0, from, from-at, empty-memo())
 
 task minted-of
   take value, like mill-capture
@@ -1522,31 +1557,37 @@ task minted-of
       link word-value
       link word-span
       link word-node
+      link word-at
       back
         make word
           bind value, word-value
           bind span, word-span
           bind node, make(some, word-node)
+          bind at, word-at
     case text
       link text-value
       link text-span
       link text-node
+      link text-at
       back
         make text
           bind value, text-value
           bind span, text-span
           bind node, make(some, text-node)
+          bind at, text-at
     case number
       link number-value
       link number-decimal
       link number-span
       link number-node
+      link number-at
       back
         make number
           bind value, number-value
           bind decimal, number-decimal
           bind span, number-span
           bind node, make(some, number-node)
+          bind at, number-at
     case match
       # never reached: a match is minted, never passed through
       link match-rule-name
@@ -1577,6 +1618,7 @@ task mint-in
   # the number of the match's place (`place-of`), 0 for the match `run-mint` was handed
   take id, like number
   take from, like maybe, like node
+  take from-at, like maybe, like number
   take memo, like mint-memo
   like list, like minted
   mark private
@@ -1618,6 +1660,7 @@ task mint-in
               link cap-match
               link cap-span
               link cap-node
+              link cap-at
               save sub, cap-rule
               sift one-case/mint
                 case some
@@ -1625,7 +1668,7 @@ task mint-in
                   save sub, named-sub
                 case none
                   save nothing, 0
-              walk mint-in(mints, sub, cap-match, cap-id, make(some, cap-node), memo)
+              walk mint-in(mints, sub, cap-match, cap-id, make(some, cap-node), cap-at, memo)
                 take one
                 push(values, one)
             miss
@@ -1637,7 +1680,7 @@ task mint-in
     case some
       link make-rule
       save out, make list
-      push(out, build-make(make-rule, by-case, from))
+      push(out, build-make(make-rule, by-case, from, from-at))
       back remember(memo, id, name, out)
     case none
       save nothing, 0
@@ -1653,7 +1696,7 @@ task mint-in
         turn next
     walk by-case/get(case-name)
       take value
-      push(out, widened(value, from))
+      push(out, widened(value, from, from-at))
   back remember(memo, id, name, out)
 
 task minted-table
@@ -1678,10 +1721,11 @@ task remember
   save memo/known/{id}, for-match
   back value
 
-# a form value takes the extent of the node it was passed through, and that node
+# a form value takes the extent of the node it was passed through, that node, and its index
 task widened
   take value, like minted
   take from, like maybe, like node
+  take from-at, like maybe, like number
   like minted
   mark private
 
@@ -1699,6 +1743,7 @@ task widened
               bind fields, form-fields
               bind span, make(some, whole)
               bind node, from
+              bind at, from-at
         miss
           back value
     case none
@@ -1708,6 +1753,7 @@ task build-make
   take rule, like mint-make
   take by-case, like hash, like text, like list, like minted
   take from, like maybe, like node
+  take from-at, like maybe, like number
   like minted
   mark private
 
@@ -1719,7 +1765,7 @@ task build-make
       case some
         link nested
         save built, make list
-        push(built, build-make(nested, by-case, from))
+        push(built, build-make(nested, by-case, from, from-at))
         save fields/{bind-name}, built
       case none
         save read-name, one-bind/read
@@ -1742,3 +1788,4 @@ task build-make
       bind fields, fields
       bind span, at-span
       bind node, from
+      bind at, from-at

@@ -1,28 +1,36 @@
 # tree/code, the encoded form of Term data, in Term, so a Term program encodes and decodes it on every backend. The
-# spec is note/term/host/10-code.md, and the compiler's reference codec (deck/make/code/compile/host-code.ts) writes the
-# same bytes: test/compile/host-code-term.ts holds the two to each other on every fixture and a few thousand generated
-# values.
+# spec is note/project/term/host/10-code.md. This is the one codec: the compiler's compile/host-code.ts is a face over
+# it (decision 041 of note/project/term/self-host/change/001-finish-self-host), and every name, message and byte
+# position below is the one the reference codec gave (tmp/retired/make/host-code.ts), held by the pair
+# tmp/self-host/pairs/host-code.ts and by test/compile/host-code-term.ts.
 #
 #   to-code       one value, canonical: the header and one plain frame
 #   to-code-all   several values, a frame each, the way a stream is written
+#   to-code-with  several values, each frame packed by a compressor when that makes it smaller, and the end marker
+#   code-frame    one frame without the header, the unit a stream writer appends. code-header is the header
 #   from-code     every value of a stream. Anything that is not canonical tree/code raises `code-defect`
+#   open-code, code-more, take-code-frame   the same, one frame at a time, so each frame's tables are dropped before
+#                 the next is read. `from-code-with` reads a whole stream with a decompressor and limits
 #
-# The names follow `to-json` and `from-json` beside them.
+# The names follow `to-json` and `from-json` beside them. A Zstandard frame needs a decompressor, handed in as a task
+# (`unpack` says one was given): a Term app usually gets compression from its transport instead.
 #
-# A Zstandard frame is read by the reference codec and the CLI. Here it raises `code-defect` with `no-decompressor`:
-# a Term app gets compression from its transport (`Content-Encoding: zstd`), over canonical bytes.
-#
-# An integer is carried in the signed 64-bit range here, the range a number holds on Rust, Swift and Kotlin.
+# An integer is carried at any width, as the format says (10-code.md). It reads to the number the backend holds:
+# exactly in the signed 64-bit range of Rust, Swift and Kotlin, and on TypeScript, whose number is a double, the
+# nearest double, as JavaScript's Number(bigint) rounds. Past the 64-bit range only a double holds it, so there the
+# native backends refuse it as `too-large`: the model's limit, not the format's.
 
 load @term/base/bytes
   find from-text, name bytes-of-text
   find to-text, name text-of-bytes
   find to-byte-list
   find from-byte-list
+  find to-hex
 
 load @term/base/bit
   find bitwise-and
   find bitwise-or
+  find bitwise-not
   find shift-left
   find shift-right
 
@@ -40,6 +48,9 @@ load @term/base/float/64
   find f32-from-bytes
   find f64-fits-f32
 
+load @term/base/text
+  find substring
+
 load @term/base/list
   find list
 
@@ -53,8 +64,8 @@ load ./base
   find data
   find data-entry
 
-# bytes that are not canonical tree/code, or a value tree/code cannot carry. `problem` is the name the reference codec
-# gives the same defect (`truncated`, `non-canonical`, `bad-text`, ...), `at` the byte it was found at
+# bytes that are not canonical tree/code, or a value tree/code cannot carry. `problem` is the defect's name
+# (`truncated`, `non-canonical`, `bad-text`, ...), `at` the byte it was found at, `reason` the message
 form code-defect
   like mismatch
     bind note, <Not tree/code>
@@ -62,11 +73,15 @@ form code-defect
     link at, like number
     link reason, like text
 
+# a stream being read, or one frame of it. `ended` once the end marker is read
 form code-reader
   mark shared
   link input, like list, like number
   link at, like number
   link end, like number
+  link depth-limit, like number
+  link frame-limit, like number
+  link ended, like boolean
 
 # a frame's tables as the decoder holds them: by index to read a reference, by value to refuse a repeat. One object,
 # since every task the decoder hands it to adds to it
@@ -85,6 +100,12 @@ form code-tables
 
 # 2^53: a whole decimal at or past it is written as a double
 host whole-limit, 9007199254740992.0
+
+# 2^63: past it no 64-bit integer holds a value, so only a double (TypeScript's number) can
+host wide-limit, 9223372036854775808.0
+
+# 2^53 - 1, the largest count or length the reader takes
+host count-limit, 9007199254740991
 
 task refuse-code
   mark private
@@ -154,27 +175,436 @@ task utf8-length
   save raw, to-byte-list(bytes-of-text(value))
   back raw/length
 
+# the index, in UTF-16 units, of the first lone surrogate in a text, or -1. Only a TypeScript text can hold one
+bind lone-surrogate-at
+  take value, like text
+  like number
+  case node
+    text <(function (codeText) \{ for (let codeAt = 0; codeAt \< codeText.length; codeAt++) \{ const codeUnit = codeText.charCodeAt(codeAt); if (codeUnit \>= 0xd800 && codeUnit \<= 0xdbff) \{ const codeNext = codeText.charCodeAt(codeAt + 1); if (!(codeNext \>= 0xdc00 && codeNext \<= 0xdfff)) return codeAt; codeAt++ \} else if (codeUnit \>= 0xdc00 && codeUnit \<= 0xdfff) return codeAt \} return -1 \})($value)>
+  case browser
+    text <(function (codeText) \{ for (let codeAt = 0; codeAt \< codeText.length; codeAt++) \{ const codeUnit = codeText.charCodeAt(codeAt); if (codeUnit \>= 0xd800 && codeUnit \<= 0xdbff) \{ const codeNext = codeText.charCodeAt(codeAt + 1); if (!(codeNext \>= 0xdc00 && codeNext \<= 0xdfff)) return codeAt; codeAt++ \} else if (codeUnit \>= 0xdc00 && codeUnit \<= 0xdfff) return codeAt \} return -1 \})($value)>
+  case rust
+    text <(-1i64)>
+  case swift
+    text <(-1)>
+  case kotlin
+    text <(-1L)>
+
+# whether a number is a double here (TypeScript): 2^53 + 1 has no double, so a bitwise or of 1 into 2^53 is lost
+task number-is-double
+  mark private
+  like boolean
+  save probe, to-number(whole-limit)
+  back is-equal(bitwise-or(probe, 1), probe)
+
+# a byte as two lowercase hex digits
+task hex-of-byte
+  mark private
+  take one, like number
+  like text
+  save raw, make list
+  raw/push(one)
+  back to-hex(from-byte-list(raw))
+
+# U+FEFF, the byte order mark, made from its bytes after a letter so no decoder takes it for a mark
+task byte-order-mark
+  mark private
+  like text
+  save raw, make list
+  raw/push(97)
+  raw/push(239)
+  raw/push(187)
+  raw/push(191)
+  back substring(text-of-bytes(from-byte-list(raw)), 1)
+
+# the text UTF-8 bytes spell, every byte kept: a leading U+FEFF stays a character, where a platform decoder may take
+# it for a byte order mark and drop it
+task text-of-utf8
+  mark private
+  take raw, like list, like number
+  like text
+  save marks, <>
+  save from, 0
+  walk test
+    hook test, and(is-minimum(subtract(raw/length, from), 3), and(is-equal(raw/{from}, 239), and(is-equal(raw/{add(from, 1)}, 187), is-equal(raw/{add(from, 2)}, 191))))
+    hook hold
+      save marks, <{marks}{byte-order-mark()}>
+      save from, add(from, 3)
+  fork test, is-equal(from, 0)
+    hold
+      back text-of-bytes(from-byte-list(raw))
+  save rest, make list
+  save k, from
+  walk test
+    hook test, is-below(k, raw/length)
+    hook hold
+      rest/push(raw/{k})
+      save k, add(k, 1)
+  back <{marks}{text-of-bytes(from-byte-list(rest))}>
+
+# a text cut to its first 40 UTF-16 units, with `...` after, as a message quotes it. A character that would reach past
+# the 40th unit is left out whole
+task clip-text
+  mark private
+  take value, like text
+  like text
+  save raw, to-byte-list(bytes-of-text(value))
+  save units, 0
+  save cut, -1
+  save k, 0
+  walk test
+    hook test, is-below(k, raw/length)
+    hook hold
+      save one, raw/{k}
+      fork test, or(is-below(one, 128), is-minimum(one, 192))
+        hold
+          save width, 1
+          fork test, is-minimum(one, 240)
+            hold
+              save width, 2
+          fork test, and(is-below(cut, 0), is-above(add(units, width), 40))
+            hold
+              save cut, k
+          save units, add(units, width)
+      save k, add(k, 1)
+  fork test, is-maximum(units, 40)
+    hold
+      back value
+  save kept, make list
+  save k, 0
+  walk test
+    hook test, is-below(k, cut)
+    hook hold
+      kept/push(raw/{k})
+      save k, add(k, 1)
+  back <{text-of-utf8(kept)}...>
+
+# ---- integers of any width, as base-128 digits, least significant first ----
+
+# the digits with a small number added
+task digits-add
+  mark private
+  take digits, like list, like number
+  take more, like number
+  like list, like number
+  save out, make list
+  save carry, more
+  walk digits
+    take one
+    save sum, add(one, carry)
+    out/push(bitwise-and(sum, 127))
+    save carry, shift-right(sum, 7)
+  walk test
+    hook test, is-above(carry, 0)
+    hook hold
+      out/push(bitwise-and(carry, 127))
+      save carry, shift-right(carry, 7)
+  back out
+
+# the digits with a small number taken away, never below zero
+task digits-subtract
+  mark private
+  take digits, like list, like number
+  take less, like number
+  like list, like number
+  save out, make list
+  save borrow, less
+  walk digits
+    take one
+    save left, subtract(one, borrow)
+    save borrow, 0
+    walk test
+      hook test, is-below(left, 0)
+      hook hold
+        save left, add(left, 128)
+        save borrow, add(borrow, 1)
+    out/push(left)
+  back out
+
+# how many bits the number the digits spell needs: 0 for zero
+task digits-bits
+  mark private
+  take digits, like list, like number
+  like number
+  save top, subtract(digits/length, 1)
+  walk test
+    hook test, and(is-above(top, 0), is-equal(digits/{top}, 0))
+    hook hold
+      save top, subtract(top, 1)
+  save high, digits/{top}
+  save size, 0
+  walk test
+    hook test, is-above(high, 0)
+    hook hold
+      save size, add(size, 1)
+      save high, shift-right(high, 1)
+  back add(multiply(top, 7), size)
+
+# bit `at` of the number the digits spell
+task digits-bit
+  mark private
+  take digits, like list, like number
+  take at, like number
+  like number
+  save slot, divide(at, 7)
+  fork test, is-minimum(slot, digits/length)
+    hold
+      back 0
+  back bitwise-and(shift-right(digits/{slot}, subtract(at, multiply(slot, 7))), 1)
+
+# the number the digits spell, when it has 53 bits or fewer: exact on every backend
+task digits-value
+  mark private
+  take digits, like list, like number
+  like number
+  save value, 0
+  save k, subtract(digits/length, 1)
+  walk test
+    hook test, is-minimum(k, 0)
+    hook hold
+      save value, add(multiply(value, 128), digits/{k})
+      save k, subtract(k, 1)
+  back value
+
+# the number the digits spell, written in decimal, exactly
+task digits-decimal
+  mark private
+  take digits, like list, like number
+  like text
+  save rest, make list
+  walk digits
+    take one
+    rest/push(one)
+  save out, <>
+  save going, true
+  walk test
+    hook test, going
+    hook hold
+      save remainder, 0
+      save nonzero, false
+      save k, subtract(rest/length, 1)
+      walk test
+        hook test, is-minimum(k, 0)
+        hook hold
+          save current, add(multiply(remainder, 128), rest/{k})
+          save quotient, divide(current, 10)
+          save remainder, subtract(current, multiply(quotient, 10))
+          rest/set(k, quotient)
+          fork test, is-above(quotient, 0)
+            hold
+              save nonzero, true
+          save k, subtract(k, 1)
+      save out, <{remainder}{out}>
+      save going, nonzero
+  back out
+
+# 2^power as a decimal: exact, and infinity past the largest double
+task power-of-two
+  mark private
+  take power, like number
+  like float
+  save value, 1.0
+  save k, 0
+  walk test
+    hook test, is-below(k, power)
+    hook hold
+      save value, multiply(value, 2.0)
+      save k, add(k, 1)
+  back value
+
+# the number the digits spell, negated when `negative`: exact where the backend's number holds it, and on TypeScript
+# the nearest double, rounded once (half to even), as Number(bigint) rounds. Past the 64-bit range a native backend
+# refuses it, at `at`
+task number-of-digits
+  mark private
+  take digits, like list, like number
+  take negative, like boolean
+  take at, like number
+  like number
+  save bits, digits-bits(digits)
+  fork test, is-maximum(bits, 53)
+    hold
+      save small, digits-value(digits)
+      fork test, negative
+        hold
+          back subtract(0, small)
+      back small
+  # the top 53 bits, then what is below them
+  save below, subtract(bits, 53)
+  save high, 0
+  save k, subtract(bits, 1)
+  walk test
+    hook test, is-minimum(k, below)
+    hook hold
+      save high, add(multiply(high, 2), digits-bit(digits, k))
+      save k, subtract(k, 1)
+  save low-zero, true
+  save k, 0
+  walk test
+    hook test, and(low-zero, is-below(k, below))
+    hook hold
+      fork test, is-equal(digits-bit(digits, k), 1)
+        hold
+          save low-zero, false
+      save k, add(k, 1)
+  # 2^63 itself fits once negated: the smallest 64-bit number
+  save fits, or(is-maximum(bits, 63), and(negative, and(is-equal(bits, 64), low-zero)))
+  fork test, fits
+    hold
+      save low, 0
+      save k, subtract(below, 1)
+      walk test
+        hook test, is-minimum(k, 0)
+        hook hold
+          save low, add(multiply(low, 2), digits-bit(digits, k))
+          save k, subtract(k, 1)
+      # bitwise, so TypeScript rounds the exact sum once and a native backend never overflows
+      fork test, not(negative)
+        hold
+          back bitwise-or(shift-left(high, below), low)
+      fork test, is-equal(low, 0)
+        hold
+          back shift-left(subtract(0, high), below)
+      back bitwise-or(shift-left(bitwise-not(high), below), subtract(shift-left(1, below), low))
+  fork test, not(number-is-double())
+    hold
+      refuse-code(<too-large>, at, <an integer of {bits} bits, past the 64-bit range a number holds here>)
+        halt kink
+  # a double: the top 53 bits, and a stand-in below them that rounds the way the rest does (its first bit, and
+  # whether any bit after it is set)
+  save round, digits-bit(digits, subtract(below, 1))
+  save sticky, false
+  save k, 0
+  walk test
+    hook test, and(not(sticky), is-below(k, subtract(below, 1)))
+    hook hold
+      fork test, is-equal(digits-bit(digits, k), 1)
+        hold
+          save sticky, true
+      save k, add(k, 1)
+  save stand-in, 0.0
+  fork test, and(is-equal(round, 0), sticky)
+    hold
+      save stand-in, power-of-two(subtract(below, 2))
+  fork test, and(is-equal(round, 1), not(sticky))
+    hold
+      save stand-in, power-of-two(subtract(below, 1))
+  fork test, and(is-equal(round, 1), sticky)
+    hold
+      save stand-in, multiply(3.0, power-of-two(subtract(below, 2)))
+  save whole, add(multiply(to-decimal(high), power-of-two(below)), stand-in)
+  fork test, negative
+    hold
+      back to-number(subtract(0.0, whole))
+  back to-number(whole)
+
+# the digits of what an integer's head carries: the value itself, or -1 - value for a negative one. Exact for any
+# number the backend holds
+task integer-digits
+  mark private
+  take value, like number
+  like list, like number
+  save digits, make list
+  save magnitude, absolute(to-decimal(value))
+  # past 2^63 only a double holds it, so its digits are read by halving the double, which is exact
+  fork test, is-above(magnitude, wide-limit)
+    hold
+      save rest, magnitude
+      walk test
+        hook test, is-above(rest, 0.0)
+        hook hold
+          save part, truncate(divide(rest, 128.0))
+          digits/push(to-number(subtract(rest, multiply(part, 128.0))))
+          save rest, part
+      fork test, is-below(value, 0)
+        hold
+          back digits-subtract(digits, 1)
+      back digits
+  save rest, value
+  fork test, is-minimum(value, 0)
+    hold
+      walk test
+        hook test, is-above(rest, 0)
+        hook hold
+          digits/push(bitwise-and(rest, 127))
+          save rest, shift-right(rest, 7)
+      back digits
+  # -1 - value has, digit for digit, the complement of the two's-complement digits of value
+  walk test
+    hook test, is-unequal(rest, -1)
+    hook hold
+      digits/push(subtract(127, bitwise-and(rest, 127)))
+      save rest, shift-right(rest, 7)
+  back digits
+
 # ---- encoding ----
 
 task to-code
   take item, like data
   like bytes
-  save out, make list
-  put-header(out)
-  put-frame(out, item)
-    halt kink
-  back from-byte-list(out)
+  save items, make list
+  items/push(item)
+  back
+    to-code-with(items, false, 256, false, keep-plain)
+      halt kink
 
 task to-code-all
   take items, like list, like data
+  like bytes
+  back
+    to-code-with(items, false, 256, false, keep-plain)
+      halt kink
+
+# several values, a frame each. A frame of `above` bytes or more is stored as Zstandard when `pack` and that makes it
+# smaller, counting the extra length it carries. `end` writes the end-of-stream byte
+task to-code-with
+  take items, like list, like data
+  take pack, like boolean
+  take above, like number
+  take end, like boolean
+  take compress
+    like task
+      take plain, like bytes
+      like bytes
   like bytes
   save out, make list
   put-header(out)
   walk items
     take item
-    put-frame(out, item)
+    put-frame(out, item, pack, above, compress)
       halt kink
+  fork test, end
+    hold
+      out/push(0)
   back from-byte-list(out)
+
+# one frame, without a header: the unit a stream writer appends
+task code-frame
+  take item, like data
+  take pack, like boolean
+  take above, like number
+  take compress
+    like task
+      take plain, like bytes
+      like bytes
+  like bytes
+  save out, make list
+  put-frame(out, item, pack, above, compress)
+    halt kink
+  back from-byte-list(out)
+
+task code-header
+  like bytes
+  save out, make list
+  put-header(out)
+  back from-byte-list(out)
+
+# the compressor of a write that packs nothing
+task keep-plain
+  mark private
+  take plain, like bytes
+  like bytes
+  back plain
 
 task put-header
   mark private
@@ -190,12 +620,32 @@ task put-frame
   mark private
   take out, like list, like number
   take item, like data
+  take pack, like boolean
+  take above, like number
+  take compress
+    like task
+      take plain, like bytes
+      like bytes
   like number
   save body, make list
   save texts, make hash
   save shapes, make hash
   put-value(body, item, texts, shapes)
     halt kink
+  fork test, and(pack, is-minimum(body/length, above))
+    hold
+      save packed, to-byte-list(compress(from-byte-list(body)))
+      save size, make list
+      put-varint(size, body/length)
+      fork test, is-below(add(packed/length, size/length), body/length)
+        hold
+          out/push(2)
+          put-varint(out, add(size/length, packed/length))
+          put-varint(out, body/length)
+          walk packed
+            take one
+            out/push(one)
+          back 0
   out/push(1)
   put-varint(out, body/length)
   walk body
@@ -219,11 +669,13 @@ task put-value
   sift item
     case number
       put-integer(out, value)
+        halt kink
     case decimal
       put-decimal(out, value)
         halt kink
     case text
       put-text(out, value, texts)
+        halt kink
     case flag
       fork test, value
         hold
@@ -245,7 +697,7 @@ task put-value
       put-hash(out, entries, texts, shapes)
         halt kink
     case graft
-      refuse-code(<unencodable>, 0, <an unexpanded fuse {name}: expand the anchors before encoding>)
+      refuse-code(<unencodable>, 0, <an unexpanded `fuse {name}`: expand the anchors before encoding>)
         halt kink
   back 0
 
@@ -283,6 +735,7 @@ task put-hash
       walk entries
         take entry
         put-text(out, entry/name, texts)
+          halt kink
       shapes/set(name, shapes/size)
   walk entries
     take entry
@@ -308,6 +761,12 @@ task put-text
     hold
       put-head(out, 3, texts/get(value))
     miss
+      # UTF-8 cannot carry a lone surrogate, and a platform encoder would write U+FFFD in its place
+      save lone, lone-surrogate-at(value)
+      fork test, is-minimum(lone, 0)
+        hold
+          refuse-code(<unencodable>, 0, <a text holds a lone surrogate at {lone}, which UTF-8 cannot carry>)
+            halt kink
       save raw, to-byte-list(bytes-of-text(value))
       put-head(out, 2, raw/length)
       walk raw
@@ -318,16 +777,32 @@ task put-text
           texts/set(value, texts/size)
   back 0
 
+# an integer by sign: 0 and up in major 0, below 0 in major 1 as -1 - value. Within 2^53 by plain arithmetic, past it
+# by its digits, so the head carries the value exactly on every backend
 task put-integer
   mark private
   take out, like list, like number
   take value, like number
   like number
-  fork test, is-minimum(value, 0)
+  save whole, to-decimal(value)
+  fork test, or(not(is-finite(whole)), is-unequal(truncate(whole), whole))
     hold
-      put-head(out, 0, value)
-    miss
-      put-head(out, 1, subtract(subtract(0, value), 1))
+      refuse-code(<unencodable>, 0, <{value} is an integer value that is not whole>)
+        halt kink
+  fork test, and(is-maximum(value, count-limit), is-minimum(value, subtract(0, count-limit)))
+    hold
+      fork test, is-minimum(value, 0)
+        hold
+          put-head(out, 0, value)
+        miss
+          put-head(out, 1, subtract(subtract(0, value), 1))
+      back 0
+  save major, 0
+  fork test, is-below(value, 0)
+    hold
+      save major, 1
+  out/push(add(multiply(major, 32), 28))
+  put-digits(out, digits-subtract(integer-digits(value), 28))
   back 0
 
 # whether a decimal is negative zero: zero, with the sign bit set
@@ -356,13 +831,14 @@ task put-decimal
   like number
   fork test, not(is-finite(value))
     hold
-      refuse-code(<unencodable>, 0, <a decimal that is not finite: tree/text has no spelling for it>)
+      refuse-code(<unencodable>, 0, <{value} is not a value Term data holds: tree/text has no spelling for it>)
         halt kink
   save signed, is-negative-zero(value)
   fork test, and(is-small-whole(value), not(signed))
     hold
       out/push(229)
       put-integer(out, to-number(value))
+        halt kink
       back 0
   fork test, and(f64-fits-f32(value), not(signed))
     hold
@@ -407,17 +883,90 @@ task put-varint
   out/push(rest)
   back 0
 
+# the varint of a number given as its digits
+task put-digits
+  mark private
+  take out, like list, like number
+  take digits, like list, like number
+  like number
+  save top, subtract(digits/length, 1)
+  walk test
+    hook test, and(is-above(top, 0), is-equal(digits/{top}, 0))
+    hook hold
+      save top, subtract(top, 1)
+  save k, 0
+  walk test
+    hook test, is-below(k, top)
+    hook hold
+      out/push(bitwise-or(digits/{k}, 128))
+      save k, add(k, 1)
+  out/push(digits/{top})
+  back 0
+
 # ---- decoding ----
 
 task from-code
   take input, like bytes
   like list, like data
+  back
+    from-code-with(input, 256, 67108864, false, keep-packed)
+      halt kink
+
+# every value of a stream, with a decompressor for its Zstandard frames (`unpack` says one was given) and the limits
+# on nesting and on what a compressed frame may hold
+task from-code-with
+  take input, like bytes
+  take depth, like number
+  take frame, like number
+  take unpack, like boolean
+  take decompress
+    like task
+      take packed, like bytes
+      take size, like number
+      like bytes
+  like list, like data
+  save reader
+    open-code(input, depth, frame)
+      halt kink
+  save out, make list
+  save going
+    code-more(reader)
+      halt kink
+  walk test
+    hook test, going
+    hook hold
+      save value
+        take-code-frame(reader, unpack, decompress)
+          halt kink
+      out/push(value)
+      save going
+        code-more(reader)
+          halt kink
+  back out
+
+# the decompressor of a read that has none
+task keep-packed
+  mark private
+  take packed, like bytes
+  take size, like number
+  like bytes
+  back packed
+
+# a stream's reader, its header read
+task open-code
+  take input, like bytes
+  take depth, like number
+  take frame, like number
+  like code-reader
   save all, to-byte-list(input)
   save reader
     make code-reader
       bind input, all
       bind at, 0
       bind end, all/length
+      bind depth-limit, depth
+      bind frame-limit, frame
+      bind ended, false
   fork test, is-below(all/length, 4)
     hold
       refuse-code(<not-tree-code>, 0, <the input does not start with the tree/code header (d3 54 52)>)
@@ -432,68 +981,125 @@ task from-code
       refuse-code(<unknown-version>, 3, <tree/code version {version}, and this decoder reads version 1>)
         halt kink
   save reader/at, 4
-  save out, make list
-  save ended, false
-  walk test
-    hook test, and(not(ended), is-below(reader/at, reader/end))
-    hook hold
-      save kind
-        take-byte(reader)
-          halt kink
-      fork test, is-equal(kind, 0)
-        hold
-          fork test, is-below(reader/at, reader/end)
-            hold
-              refuse-code(<frame-length>, reader/at, <bytes follow the end of the stream>)
-                halt kink
-          save ended, true
-        miss
-          take-frame(reader, kind, out)
-            halt kink
-  back out
+  back reader
 
-task take-frame
-  mark private
+# whether a frame follows. The end marker is read here: bytes after it are refused
+task code-more
   take reader, like code-reader
-  take kind, like number
-  take out, like list, like data
-  like number
-  save start, subtract(reader/at, 1)
-  fork test, is-equal(kind, 2)
+  like boolean
+  fork test, or(reader/ended, is-minimum(reader/at, reader/end))
     hold
-      refuse-code(<no-decompressor>, start, <a Zstandard frame: a Term app decodes plain frames, and its transport decompresses>)
-        halt kink
-  fork test, is-unequal(kind, 1)
+      back false
+  save at, reader/at
+  fork test, is-equal(reader/input/{at}, 0)
     hold
-      refuse-code(<unknown-tag>, start, <a frame kind of {kind}>)
+      save reader/at, add(at, 1)
+      fork test, is-below(reader/at, reader/end)
+        hold
+          refuse-code(<frame-length>, reader/at, <bytes follow the end of the stream>)
+            halt kink
+      save reader/ended, true
+      back false
+  back true
+
+# the next frame's value. Its tables are its own, dropped when it is read
+task take-code-frame
+  take reader, like code-reader
+  take unpack, like boolean
+  take decompress
+    like task
+      take packed, like bytes
+      take size, like number
+      like bytes
+  like data
+  save kind-at, reader/at
+  save kind
+    take-byte(reader)
+      halt kink
+  fork test, and(is-unequal(kind, 1), is-unequal(kind, 2))
+    hold
+      refuse-code(<unknown-tag>, kind-at, <0x{hex-of-byte(kind)} is not a frame kind>)
         halt kink
   save length
-    take-varint(reader)
+    take-count(reader)
       halt kink
   save left, subtract(reader/end, reader/at)
   fork test, is-above(length, left)
     hold
       refuse-code(<truncated>, reader/at, <the frame says {length} bytes and {left} are left>)
         halt kink
+  save start, reader/at
+  save reader/at, add(start, length)
   save frame
     make code-reader
       bind input, reader/input
-      bind at, reader/at
-      bind end, add(reader/at, length)
+      bind at, start
+      bind end, add(start, length)
+      bind depth-limit, reader/depth-limit
+      bind frame-limit, reader/frame-limit
+      bind ended, false
+  fork test, is-equal(kind, 1)
+    hold
+      back
+        take-frame-value(frame)
+          halt kink
+  # a Zstandard frame: the size it unpacks to, then the packed bytes
+  save size
+    take-count(frame)
+      halt kink
+  fork test, is-above(size, frame/frame-limit)
+    hold
+      refuse-code(<too-large>, frame/at, <a compressed frame says it holds {size} bytes, past the limit of {frame/frame-limit}>)
+        halt kink
+  fork test, not(unpack)
+    hold
+      refuse-code(<no-decompressor>, frame/at, <a Zstandard frame, and no decompressor was given>)
+        halt kink
+  save packed, make list
+  save k, frame/at
+  walk test
+    hook test, is-below(k, frame/end)
+    hook hold
+      packed/push(frame/input/{k})
+      save k, add(k, 1)
+  save frame/at, frame/end
+  save plain, to-byte-list(decompress(from-byte-list(packed), size))
+  fork test, is-unequal(plain/length, size)
+    hold
+      refuse-code(<frame-length>, frame/at, <a compressed frame says {size} bytes and holds {plain/length}>)
+        halt kink
+  save unpacked
+    make code-reader
+      bind input, plain
+      bind at, 0
+      bind end, plain/length
+      bind depth-limit, reader/depth-limit
+      bind frame-limit, reader/frame-limit
+      bind ended, false
+  back
+    take-frame-value(unpacked)
+      halt kink
+
+# one frame's value, and nothing after it
+task take-frame-value
+  mark private
+  take frame, like code-reader
+  like data
   save tables
     make code-tables
       bind texts, make list
       bind known, make hash
       bind shapes, make list
       bind shaped, make hash
-  out/push(take-value(frame, tables, 0))
+  save value
+    take-value(frame, tables, 0)
+      halt kink
   fork test, is-below(frame/at, frame/end)
     hold
       save past, subtract(frame/end, frame/at)
       refuse-code(<frame-length>, frame/at, <the frame holds {past} bytes past its value>)
         halt kink
-  save reader/at, frame/end
-  back 0
+  back value
 
 task take-byte
   mark private
@@ -508,51 +1114,77 @@ task take-byte
   save reader/at, add(at, 1)
   back one
 
-task take-varint
+# a varint's digits as read, the shortest form only: one of more than one byte never ends in a zero group
+task take-varint-digits
   mark private
   take reader, like code-reader
-  like number
+  like list, like number
   save start, reader/at
-  save value, 0
-  save shift, 0
+  save digits, make list
   save last, 128
-  save count, 0
   walk test
     hook test, is-minimum(last, 128)
     hook hold
       save last
         take-byte(reader)
           halt kink
-      save count, add(count, 1)
-      fork test, is-above(count, 9)
-        hold
-          refuse-code(<too-large>, start, <a varint past the 64-bit range this decoder carries>)
-            halt kink
-      save value, bitwise-or(value, shift-left(bitwise-and(last, 127), shift))
-      save shift, add(shift, 7)
-  fork test, and(is-above(count, 1), is-equal(last, 0))
+      digits/push(bitwise-and(last, 127))
+  fork test, and(is-above(digits/length, 1), is-equal(last, 0))
     hold
       refuse-code(<non-canonical>, start, <a varint is longer than it needs to be>)
         halt kink
-  back value
+  back digits
 
+# a length (of a frame, or what a compressed frame holds), which must be a safe number
+task take-count
+  mark private
+  take reader, like code-reader
+  like number
+  save digits
+    take-varint-digits(reader)
+      halt kink
+  fork test, is-above(digits-bits(digits), 53)
+    hold
+      refuse-code(<too-large>, reader/at, <a length of {digits-decimal(digits)}>)
+        halt kink
+  back digits-value(digits)
+
+# a head's digits: the minor when it is under 28, else 28 and the varint after it
+task take-head-digits
+  mark private
+  take reader, like code-reader
+  take minor, like number
+  take at, like number
+  like list, like number
+  fork test, is-below(minor, 28)
+    hold
+      save small, make list
+      small/push(minor)
+      back small
+  fork test, is-unequal(minor, 28)
+    hold
+      refuse-code(<unknown-tag>, at, <minor {minor} is not defined>)
+        halt kink
+  save extra
+    take-varint-digits(reader)
+      halt kink
+  back digits-add(extra, 28)
+
+# a count, which must be a safe number
 task take-head
   mark private
   take reader, like code-reader
   take minor, like number
   take at, like number
   like number
-  fork test, is-below(minor, 28)
-    hold
-      back minor
-  fork test, is-unequal(minor, 28)
-    hold
-      refuse-code(<unknown-tag>, at, <minor {minor} is not defined>)
-        halt kink
-  save extra
-    take-varint(reader)
+  save digits
+    take-head-digits(reader, minor, at)
       halt kink
-  back add(28, extra)
+  fork test, is-above(digits-bits(digits), 53)
+    hold
+      refuse-code(<too-large>, at, <a count of {digits-decimal(digits)}>)
+        halt kink
+  back digits-value(digits)
 
 task take-value
   mark private
@@ -560,9 +1192,9 @@ task take-value
   take tables, like code-tables
   take depth, like number
   like data
-  fork test, is-above(depth, 256)
+  fork test, is-above(depth, reader/depth-limit)
     hold
-      refuse-code(<too-deep>, reader/at, <values nest deeper than 256>)
+      refuse-code(<too-deep>, reader/at, <values nest deeper than {reader/depth-limit}>)
         halt kink
   save at, reader/at
   save first
@@ -575,16 +1207,28 @@ task take-value
       back
         take-simple(reader, tables, minor, at, depth)
           halt kink
+  fork test, is-equal(major, 0)
+    hold
+      save digits
+        take-head-digits(reader, minor, at)
+          halt kink
+      save positive
+        number-of-digits(digits, false, at)
+          halt kink
+      back number-data(positive)
+  fork test, is-equal(major, 1)
+    hold
+      save digits
+        take-head-digits(reader, minor, at)
+          halt kink
+      save negative
+        number-of-digits(digits-add(digits, 1), true, at)
+          halt kink
+      back number-data(negative)
   save n
     take-head(reader, minor, at)
       halt kink
   save left, subtract(reader/end, reader/at)
-  fork test, is-equal(major, 0)
-    hold
-      back number-data(n)
-  fork test, is-equal(major, 1)
-    hold
-      back number-data(subtract(subtract(0, n), 1))
   fork test, is-equal(major, 2)
     hold
       back
@@ -609,12 +1253,16 @@ task take-value
       walk test
         hook test, is-below(k, n)
         hook hold
-          items/push(take-value(reader, tables, add(depth, 1)))
+          save item
+            take-value(reader, tables, add(depth, 1))
+              halt kink
+          items/push(item)
           save k, add(k, 1)
       back array-data(items)
   fork test, is-equal(major, 5)
     hold
-      fork test, is-above(multiply(n, 2), left)
+      # n * 2 > left, without the product: n can be 2^53 - 1
+      fork test, is-above(n, divide(left, 2))
         hold
           refuse-code(<truncated>, at, <a map of {n} keys, and {left} bytes are left>)
             halt kink
@@ -631,7 +1279,7 @@ task take-value
       back
         take-entries(reader, tables, tables/shapes/{n}, depth)
           halt kink
-  refuse-code(<unknown-tag>, at, <a tag of {first}>)
+  refuse-code(<unknown-tag>, at, <0x{hex-of-byte(first)} is not a tag>)
     halt kink
   back make blank
 
@@ -647,16 +1295,17 @@ task take-text
     hold
       refuse-code(<truncated>, at, <a text of {n} bytes, and {left} are left>)
         halt kink
+  save text-at, reader/at
   save raw
     take-bytes(reader, n)
       halt kink
-  save value, text-of-bytes(raw)
-  # UTF-8 that does not read back to the same bytes was not valid UTF-8: the platform decoder replaced something
   save written, to-byte-list(raw)
+  save value, text-of-utf8(written)
+  # UTF-8 that does not read back to the same bytes was not valid UTF-8: the platform decoder replaced something
   save again, to-byte-list(bytes-of-text(value))
   fork test, is-unequal(again/length, n)
     hold
-      refuse-code(<bad-text>, at, <a text is not valid UTF-8>)
+      refuse-code(<bad-text>, text-at, <a text is not valid UTF-8>)
         halt kink
   save k, 0
   walk test
@@ -664,14 +1313,14 @@ task take-text
     hook hold
       fork test, is-unequal(again/{k}, written/{k})
         hold
-          refuse-code(<bad-text>, at, <a text is not valid UTF-8>)
+          refuse-code(<bad-text>, text-at, <a text is not valid UTF-8>)
             halt kink
       save k, add(k, 1)
   fork test, is-unequal(value, <>)
     hold
       fork test, tables/known/has(value)
         hold
-          refuse-code(<non-canonical>, at, <"{value}" is written again where a reference to it belongs>)
+          refuse-code(<non-canonical>, at, <"{clip-text(value)}" is written again where a reference to it belongs>)
             halt kink
       tables/texts/push(value)
       tables/known/set(value, true)
@@ -700,7 +1349,7 @@ task take-shape
         case text
           fork test, seen/has(value)
             hold
-              refuse-code(<repeated-key>, key-at, <"{value}" is a key twice in one shape>)
+              refuse-code(<repeated-key>, key-at, <"{clip-text(value)}" is a key twice in one shape>)
                 halt kink
           seen/set(value, true)
           keys/push(value)
@@ -765,7 +1414,10 @@ task take-simple
       back make blank
   fork test, is-equal(minor, 3)
     hold
-      save value, f64-from-bytes(take-bytes(reader, 8))
+      save raw
+        take-bytes(reader, 8)
+          halt kink
+      save value, f64-from-bytes(raw)
       fork test, not(is-finite(value))
         hold
           refuse-code(<unknown-tag>, at, <a decimal that is not finite, which Term data does not hold>)
@@ -777,7 +1429,10 @@ task take-simple
       back decimal-data(value)
   fork test, is-equal(minor, 4)
     hold
-      save value, f32-from-bytes(take-bytes(reader, 4))
+      save raw
+        take-bytes(reader, 4)
+          halt kink
+      save value, f32-from-bytes(raw)
       fork test, not(is-finite(value))
         hold
           refuse-code(<unknown-tag>, at, <a decimal that is not finite, which Term data does not hold>)
@@ -789,22 +1444,52 @@ task take-simple
       back decimal-data(value)
   fork test, is-equal(minor, 5)
     hold
-      save inner
-        take-value(reader, tables, add(depth, 1))
+      back
+        take-whole(reader, tables, at, depth)
           halt kink
-      sift inner
-        case number
-          link integer
-          save whole, to-decimal(integer)
-          fork test, is-minimum(absolute(whole), whole-limit)
-            hold
-              refuse-code(<non-canonical>, at, <a whole decimal holds an integer past 2^53>)
-                halt kink
-          back decimal-data(whole)
-        miss
-          refuse-code(<non-canonical>, at, <a whole decimal holds something other than an integer>)
-            halt kink
   refuse-code(<unknown-tag>, at, <simple {minor} is not defined in tree/code version 1>)
+    halt kink
+  back make blank
+
+# simple 5, a whole decimal: an integer value under 2^53 in size. The inner value is read as take-value reads it, and
+# an integer one by its digits, so one of any width is refused here as what it is, never as too large
+task take-whole
+  mark private
+  take reader, like code-reader
+  take tables, like code-tables
+  take at, like number
+  take depth, like number
+  like data
+  fork test, is-above(add(depth, 1), reader/depth-limit)
+    hold
+      refuse-code(<too-deep>, reader/at, <values nest deeper than {reader/depth-limit}>)
+        halt kink
+  save inner-at, reader/at
+  save first
+    take-byte(reader)
+      halt kink
+  save major, shift-right(first, 5)
+  fork test, is-below(major, 2)
+    hold
+      save digits
+        take-head-digits(reader, bitwise-and(first, 31), inner-at)
+          halt kink
+      fork test, is-equal(major, 1)
+        hold
+          save digits, digits-add(digits, 1)
+      fork test, is-above(digits-bits(digits), 53)
+        hold
+          refuse-code(<non-canonical>, at, <a whole decimal holds something other than an integer under 2^53>)
+            halt kink
+      save whole, to-decimal(digits-value(digits))
+      fork test, is-equal(major, 1)
+        hold
+          back decimal-data(subtract(0.0, whole))
+      back decimal-data(whole)
+  save reader/at, inner-at
+  take-value(reader, tables, add(depth, 1))
+    halt kink
+  refuse-code(<non-canonical>, at, <a whole decimal holds something other than an integer under 2^53>)
     halt kink
   back make blank
 

@@ -80,6 +80,7 @@ import type { ParseMemo, WalkMemo } from '@term/make/code/compile/load'
 import { projectHome } from '@term/call/code/home'
 import type { DockRoute, Program } from '@term/make/code/compile/node'
 import { readPin, stage0Path, STAGE0_SOURCES } from './stage0'
+import { shelvedText } from './port-shelved'
 
 // the compile closure port-build calls, from stage0 or (under --stage-check) the working tree
 type Compiler = {
@@ -579,7 +580,7 @@ function sourceOf(file: string): string | undefined {
     }
   })
 
-  return text === undefined || /^(mark|note) draft\s*$/m.test(text.slice(0, 2000)) ? undefined : text
+  return text === undefined || shelvedText(text) ? undefined : text
 }
 
 // test/call/port-race.ts only: with TERM_PORT_BUILD_HOLD=<dir>, the first compile of the run writes `<dir>/held` (the
@@ -724,8 +725,8 @@ async function main(): Promise<void> {
       const text = untraced(() => readFileSync(file, 'utf8'))
 
       // `mark draft` (or the old `note draft`) shelves a file out of every build, this one included, and out of the
-      // progress total, which counts what is compiled or skipped
-      if (/^(mark|note) draft\s*$/m.test(text.slice(0, 2000))) {
+      // progress total, which counts what is compiled or skipped. The marker counts anywhere in the file (port-shelved.ts)
+      if (shelvedText(text)) {
         continue
       }
 

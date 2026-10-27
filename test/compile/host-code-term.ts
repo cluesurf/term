@@ -1,7 +1,10 @@
-// tree/code in Term (`@term/host` code.tree) against the compiler's reference codec (compile/host-code.ts): the same
-// value gives the same bytes from both, each reads the other's bytes back to the same value, and a stream that is not
-// canonical tree/code is refused by both with the same name. The reference is the oracle. Compiles a probe entry that
-// links the stdlib and the package, runs the emitted module. Run: npx tsx test/compile/host-code-term.ts
+// tree/code in Term (`@term/host` code.tree) against the reference codec it replaced (tmp/retired/make/host-code.ts,
+// the TypeScript codec compile/host-code.ts was before it became a face over code.tree, decision 041 of
+// note/project/term/self-host/change/001-finish-self-host): the same value gives the same bytes from both, each reads
+// the other's bytes back to the same value, and a stream that is not canonical tree/code is refused by both with the
+// same name, message and byte position. The reference is the oracle, except where decision 041 diverges: a text's
+// leading U+FEFF, which the reference dropped as a byte order mark and Term keeps. Compiles a probe entry that links
+// the stdlib and the package, runs the emitted module. Run: npx tsx test/compile/host-code-term.ts
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -14,7 +17,7 @@ import { projectDeckOf } from '@term/call/code/deck-of'
 import { nativePrelude, withNativeEnv } from '@term/make/code/compile/native'
 import type { Data } from '@term/make/code/compile/host'
 import { expandData, readDataText, writeLong } from '@term/make/code/compile/host'
-import { decodeTree, encodeTree } from '@term/make/code/compile/host-code'
+import { decodeTree, encodeTree } from '../../tmp/retired/make/host-code'
 
 let pass = 0
 let fail = 0
@@ -172,15 +175,25 @@ async function main(): Promise<void> {
 
   const mod = await import(pathToFileURL(out).href)
 
-  // the problem a stream is refused with, by Term
-  const refusal = (stream: Uint8Array): string => {
+  // the problem a stream is refused with, by Term: its name, and its byte and message after it
+  const refused = (stream: Uint8Array): { name: string; full: string } => {
     try {
       mod.recode(stream)
 
-      return 'accepted'
+      return { name: 'accepted', full: 'accepted' }
     } catch (error) {
-      return (error as { link?: { problem?: string } }).link?.problem ?? String(error)
+      const link = (error as { link?: { problem?: string; at?: number; reason?: string } }).link
+
+      return link?.problem ? { name: link.problem, full: `${link.problem} @${link.at}: ${link.reason}` } : { name: String(error), full: String(error) }
     }
+  }
+  const refusal = (stream: Uint8Array): string => refused(stream).name
+
+  // the same, by the reference
+  const referenceRefused = (stream: Uint8Array): { name: string; full: string } => {
+    const decoded = decodeTree(stream)
+
+    return decoded.ok ? { name: 'accepted', full: 'accepted' } : { name: decoded.problem.name, full: `${decoded.problem.name} @${decoded.problem.at}: ${decoded.problem.message}` }
   }
 
   // ---- the worked example of 10-code.md ----
@@ -257,16 +270,40 @@ async function main(): Promise<void> {
     [`${H} 01 06 a2 41 61 60 00 01`, 'repeated-key'],
     [`${H} 01 03 a1 00 00`, 'unknown-tag'],
     [`${H} 02 03 05 00 00`, 'no-decompressor'],
+    [`${H} 05 01 e0`, 'unknown-tag'],
+    [`${H} 01 03 e5 41 61`, 'non-canonical'],
+    [`${H} 01 03 e5 e5 01`, 'non-canonical'],
+    [`${H} 01 03 e3 3f f0`, 'truncated'],
+    [`${H} 01 05 e4 3f 80 00 00`, 'non-canonical'],
+    [`${H} 01 0a 81 81 81 81 81 81 81 81 81 e0`, 'accepted'],
+    [`${H} 01 0a 9c ff ff ff ff ff ff ff ff 01`, 'too-large'],
+    [`${H} 01 09 bc e3 ff ff ff ff ff ff 0f`, 'truncated'],
+    [`${H} 01 ${'ff '.repeat(8)}7f e0`, 'too-large'],
+    [`${H} 01 04 43 ed a0 80`, 'bad-text'],
   ]
 
   for (const [stream, want] of cases) {
-    const reference = decodeTree(bytes(stream))
-    const named = reference.ok ? 'accepted' : reference.problem.name
+    const term = refused(bytes(stream))
+    const reference = referenceRefused(bytes(stream))
 
-    ok(`${stream.slice(0, 40)}: refused as ${want}, by both`, refusal(bytes(stream)) === want && named === want, `term ${refusal(bytes(stream))}, reference ${named}`)
+    ok(`${stream.slice(0, 40)}: refused as ${want}, by both, at the same byte with the same message`, term.name === want && reference.name === want && term.full === reference.full, `\n      term      ${term.full}\n      reference ${reference.full}`)
   }
 
   ok('a canonical stream with an end marker is accepted by Term', refusal(bytes(`${H} 01 01 e0 00`)) === 'accepted')
+
+  // an integer of any width, as the format says (10-code.md): past 2^53 Term reads the nearest double, as the reference
+  for (const body of ['1c ff ff ff ff ff ff ff ff ff 01', '3c ff ff ff ff ff ff ff ff ff 01', '1c 80 80 80 80 80 80 80 80 80 80 01']) {
+    const stream = bytes(`${H} 01 ${(bytes(body).length).toString(16).padStart(2, '0')} ${body}`)
+    const reference = decodeTree(stream)
+    const term = refused(stream)
+
+    ok(`an integer past 64 bits (${body.slice(0, 14)}...) reads as the reference reads it`, reference.ok && term.name === 'accepted' && hex(mod.recode(stream)) === hex(encodeTree(reference.values)), term.full)
+  }
+
+  // decision 041: a text's leading U+FEFF is a character, kept, where the reference dropped it as a byte order mark
+  const marked = bytes(`${H} 01 05 44 ef bb bf 61`)
+
+  ok('a leading U+FEFF in a text is kept: decode then encode gives back the same bytes', hex(mod.recode(marked)) === hex(marked), hex(mod.recode(marked)))
 
   console.log('')
   console.log(`host-code-term: ${pass} pass, ${fail} fail`)
