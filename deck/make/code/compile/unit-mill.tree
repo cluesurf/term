@@ -78,15 +78,14 @@ form view-check
   link templates, like hash, like text, like dynamic
   link lean, like dynamic
 
-# what `checkView` answers: the document read, or what refused it
+# what `checkView` answers: the document read, or what refused it. `diagnostics` is read only when `ok` is false,
+# where checkView always writes it, so it is no `need false` list (one would be defaulted, written into the answer)
 form view-read
   link ok, like boolean
   link file
     like dynamic
     need false
-  link diagnostics
-    like list, like diagnostic
-    need false
+  link diagnostics, like list, like diagnostic
 
 # one module milled, as the face reads it: the program (and, from the mill, the twins), or what stopped it
 form unit-milled

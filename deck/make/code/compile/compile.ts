@@ -6,15 +6,12 @@
 
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
-import { noteMetadataSites } from '@term/make/code/check/note-metadata'
-import { definesTask, keywordCandidates } from '@term/make/code/check/keyword-import'
+import type { Template } from '@term/make/code/compile/template'
 import {
-  expandTemplates,
-  collectTemplates,
-} from '@term/make/code/compile/template'
-import type { Template, TemplateProblem } from '@term/make/code/compile/template'
-import { mill } from '@term/make/code/compile/mill'
-import { checkView, lowerView } from '@term/make/code/compile/view'
+  entryWarnings as entryWarningsPort,
+  graphTemplates as graphTemplatesPort,
+  millUnit as millUnitPort,
+} from '@term/make/code/compile/unit-mill'
 import {
   checkMillSource as checkMillPort,
   isLookStylesheet as isLookPort,
@@ -383,7 +380,6 @@ import type { ModuleEmit } from '@term/make/code/compile/modules'
 import { collectModules, makeParseMemo, platformRefusals, scopeList } from '@term/make/code/compile/load'
 import type { ImportScope, ParseMemo, Source, WalkMemo } from '@term/make/code/compile/load'
 import type { Resolver } from '@term/make/code/compile/load'
-import { hashText } from '@term/make/code/term/hash'
 import type { CompileCache } from '@term/make/code/compile/cache'
 import { contentHash } from '@term/make/code/compile/cache'
 import type {
@@ -861,34 +857,13 @@ export function buildGraph(
 
 // Every `tree` template the graph defines, gathered before any module mills, so a module's `fuse` can instantiate one
 // an import defines, and the fingerprint of the modules that define them (`templateKey`, '' when none does), which
-// joins the mill key of a module that can expand one. Shared by `compile` and compile/separate.ts
+// joins the mill key of a module that can expand one. Shared by `compile` and compile/separate.ts. The answer is
+// compile/unit-mill.tree's (item term-self-host-001-0263)
 export function graphTemplates(
   sources: { file: string; text: string }[],
   parsed: ParseMemo,
 ): { templates: Map<string, Template>; templateKey: string } {
-  const templates = new Map<string, Template>()
-
-  let templateText = ''
-
-  for (const unit of sources) {
-    if (!/(^|\n)tree\s/.test(unit.text)) {
-      continue
-    }
-
-    const tree = parsed(unit)
-
-    if (!tree.ok) {
-      continue
-    }
-
-    templateText += unit.text
-
-    for (const [name, template] of collectTemplates(tree.tree)) {
-      templates.set(name, template)
-    }
-  }
-
-  return { templates, templateKey: templates.size ? hashText(templateText) : '' }
+  return graphTemplatesPort(sources, parsed)
 }
 
 // The warnings about the ENTRY file's own spelling, which a build gives once, for the file it was asked to build.
@@ -901,46 +876,9 @@ export function entryWarnings(
   parsed: ParseMemo,
   templates?: Map<string, Template>,
 ): Diagnostic[] {
-  const entryTree = parsed(source)
-
-  if (!entryTree.ok) {
-    return []
-  }
-
-  // a `site` the entry's fuse beams nothing into: the mill went on without it (`millUnit`), and it is said here once
-  const fuseProblems: TemplateProblem[] = []
-
-  if (/\bfuse\b/.test(source.text)) {
-    expandTemplates(entryTree.tree, templates, undefined, fuseProblems)
-  }
-
-  const emptySites = fuseProblems
-    .filter(p => p.code === 'empty-site')
-    .map(p => diagnose(p.code, { file: source.file, span: { ...p.span, file: source.file }, message: p.message }))
-
-  return emptySites.concat(noteMetadataSites(entryTree.tree, source.text)
-    .filter(site => site.word !== 'private')
-    .map(site =>
-      diagnose('note-metadata', {
-        file: source.file,
-        span: { ...site.span, file: source.file },
-        message: `\`note ${site.word}\` is the old spelling of \`mark ${site.word}\``,
-      }),
-    )
-    // and a `find read` with no `name`, which `read(path)` never reaches (check/keyword-import.ts). Only a TASK by
-    // that name in a module the entry loads: `find text` for `like text` imports a form, which is reached. Read
-    // off the modules' trees, because the program has already dropped a task nothing reaches
-    .concat(
-      keywordCandidates(entryTree.tree)
-        .filter(site => sources.some(unit => unit.file !== source.file && definesTask(parsed(unit), site.word)))
-        .map(site =>
-          diagnose('keyword-import', {
-            file: source.file,
-            span: { ...site.span, file: source.file },
-            message: `\`find ${site.word}\` is never reached by that name: \`${site.word}(...)\` is Term's own word, read before any import`,
-          }),
-        ),
-    ))
+  // the empty fuse sites, the `note` metadata and the unreached `find`s, in compile/unit-mill.tree (item
+  // term-self-host-001-0263)
+  return entryWarningsPort(source, sources, parsed, templates as Map<string, Template>)
 }
 
 // One module milled, through the mill cache when there is one. The merged build (`compile`) and the separate one
@@ -990,41 +928,11 @@ function millUnit(
 ):
   | { ok: true; program: Program; twins?: Twin[] }
   | { ok: false; diagnostics: Diagnostic[] } {
-  const parsed = parseOf(unit)
-
-  if (!parsed.ok) {
-    return { ok: false, diagnostics: parsed.diagnostics }
-  }
-
-  // expand phase: tree/fuse templates (including those imported from other modules), so injected code goes through
-  // the mill, resolver, and type checker. A document gets this too, which is where its macros go.
-  // the `view` role: the sandboxed document dialect. Four statement heads, none of which declares anything the
-  // author wrote. `checkView` is the ONE gate the compiler, `term view` and a save path all call, so the three
-  // cannot answer differently about what a document may say. It is handed the tree already parsed and the whole
-  // graph's templates, so a document is parsed once and a macro imported from another module expands.
-  if (role === 'view') {
-    const read = checkView(unit, { tree: parsed.tree, templates, lean })
-
-    if (!read.ok) {
-      return { ok: false, diagnostics: read.diagnostics }
-    }
-
-    return { ok: true, program: lowerView(read.file) }
-  }
-
-  // a fuse that does not fit its template is refused at the fuse: a hole left out, a value too many, a name the
-  // template does not take, a value of the wrong kind (compile/template.ts)
-  const fuseProblems: TemplateProblem[] = []
-  const expanded = expandTemplates(parsed.tree, templates, undefined, fuseProblems)
-
-  // an empty site is a warning, which the entry's build reports (`entryWarnings`) and never stops the mill
-  const fuseErrors = fuseProblems.filter(p => p.code !== 'empty-site')
-
-  if (fuseErrors.length) {
-    return { ok: false, diagnostics: fuseErrors.map(p => diagnose(p.code, { file: unit.file, span: p.span, message: p.message })) }
-  }
-
-  return mill(expanded, unit.file, role, lean)
+  // the parse, a document's view check, the template expansion and the mill, in compile/unit-mill.tree (item
+  // term-self-host-001-0263). The role and the lean flag are handed on as they came, absent included
+  return millUnitPort(unit, parseOf, templates as Map<string, Template>, role, lean) as
+    | { ok: true; program: Program; twins?: Twin[] }
+    | { ok: false; diagnostics: Diagnostic[] }
 }
 
 // What `compileProgram` is handed: the milled program and how to build it. The Term form of the same record is
