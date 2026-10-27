@@ -1,0 +1,934 @@
+mark draft
+
+# THE GATE of `compileProgram`, steps 1 to 10: module scope for forms, mask defaults, routes, form extension, the checks
+# of the program as written (type names, literals, patterns, constants, binds, bodiless calls, private finds, stale
+# finds, traits, duplicate tasks, pending values), the overloads, the roots a hook route and an entry's renamed arities
+# need, the twins, the names, the private references and the shake. It writes the run in place and answers the refusal
+# that stops the compile, or none to hand the run on to the types.
+#
+# Ported from compile/compile.ts's `programGate`, `deckHomes`, `deckNames`, `routeTaskNames` and `staleFindsOf` (item
+# 0264 of term/self-host/change/001, decision 031 part D), which stay as the face. The decisions:
+#   - every pass it runs is Term already, and is loaded by its `.tree` name (decision 031 section 3): check/overload.ts,
+#     check/resolve.ts and ir/twin.ts are faces over check/disambiguate.tree, check/resolving.tree and
+#     ir/selection.tree, so this calls those. check/overload.ts's two tables are module state the checker reads after
+#     the gate, so the answer carries what the binding made (`bound`) and the face writes the tables from it
+#   - what the run holds as `need false` and the gate reads is handed in filled, in `gate-given`, with a flag where the
+#     original told absent from given: the roots, the env (`node` for the route lowering and the literals where it is
+#     absent, the empty text for the twins), the twin selection and the files emitted
+#   - no statement is compared by identity (decision 011, decision 034). The route lowering drops every route dock and
+#     keeps every other statement in its order ahead of what it adds, so the docks it dropped are found by walking the
+#     program beside the lowered list, a dock kept only when the lowered statement at the same step is the same dock
+#     by node-json's text (`dropped-docks`). The lowering changed the program exactly when one was dropped
+#   - `staleFindsOf`'s reads go through `@term/base/file/blocking` (spec.md section 4.23)
+#   - the original's two patterns are written out: an entry task's written name before `__<n>` or `__<n>__<k>` at its
+#     end (`/^(.+?)__\d+(?:__\d+)?$/`, the shortest name that leaves such an end), and a statement of
+#     `base/code/debug.tree` (`/(^|\/)base\/code\/debug\.tree$/`)
+#   - the render runtime the prune pins is `render-names`' fields in their declared order, then `render-support`, as
+#     `Object.values` read the record
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-code-at
+  find char-count
+  find ends-with
+  find index-of
+  find substring
+
+load @term/base/file/blocking
+  find read, name gate-file-read
+  find exists, name gate-file-exists
+
+load ../parser/diagnostic
+  find diagnostic
+
+load ./node
+  find statement
+  find statement-span
+  find dock-route
+  find dock-call
+  find native-kind
+  find binding
+  find twin
+
+load ./import-scope
+  find file-scope
+
+load ./program-run
+  find program-run
+
+load ./node-json
+  find statement-json
+
+load ./rolling
+  find roll-deck
+
+load ./view-lower
+  find runtime-bound
+
+load ./render-names
+  find render-names
+  find render-support
+
+load ./route-lower
+  find lower-routes
+
+load ../check/scope
+  find bind-forms-by-import
+
+load ../check/mask-defaults
+  find fill-mask-defaults
+
+load ../check/routes
+  find check-route-methods
+
+load ../check/extend
+  find extend-forms
+  find deck-name
+
+load ../check/type-names
+  find check-type-names
+
+load ../check/literals
+  find check-literals
+
+load ../check/patterns
+  find check-patterns
+
+load ../check/constants
+  find check-constants
+
+load ../check/binds
+  find check-bind-targets
+
+load ../check/bodiless
+  find check-bodiless-calls
+
+load ../check/private
+  find check-private-finds
+  find check-private-references
+  find deck-home
+  find overload-group
+
+load ../check/finds
+  find check-finds
+  find read-source
+
+load ../check/traits
+  find check-traits
+
+load ../check/duplicates
+  find check-duplicate-tasks
+
+load ../check/pending
+  find pending-values
+
+load ../check/disambiguate
+  find disambiguate
+
+load ../check/resolving
+  find resolve-program
+
+load ../check/cite-roots
+  find cited-rules
+
+load ../ir/selection
+  find apply-twins
+  find expose-twins
+  find twin-task
+  find guard-task
+  find task-choice
+
+load ../ir/prune
+  find prune-to-reachable
+
+# what the run holds as `need false` and the gate reads, filled by the face, with whether the original had it
+form gate-given
+  # the run has roots (`run.roots` given): without them nothing is added to them and nothing is shaken
+  link has-roots, like boolean
+  link tree-shake, like boolean
+  # the env as given, the empty text when absent, and whether it was given
+  link env, like text
+  link has-env, like boolean
+  # the file whose names are kept where two files define one: the run's `naming`, else its `file`
+  link naming, like text
+  link render-file, like text
+  # the import scope as the ported passes take it, empty for none
+  link scopes, like list, like file-scope
+  # the deck the build knows a file by, none for every file when the build knows none
+  link deck-of
+    like task
+      take file, like text
+      like maybe, like roll-deck
+  # whether only some files' modules are emitted, and those files
+  link scoped, like boolean
+  link emit-only, like list, like text
+  # whether a twin selection was given, and whether it exposes the twins
+  link has-selected, like boolean
+  link expose, like boolean
+
+# the overload groups and the render runtime names as the binding left them, which check/overload.ts keeps as module
+# state
+form gate-bound
+  link groups, like list, like overload-group
+  link runtime, like list, like runtime-bound
+
+# the refusal that stops the compile, or none; and what the binding made, once it ran
+form gate-answer
+  link refused, like maybe, like list, like diagnostic
+  link bound, like maybe, like gate-bound
+
+# ---- small helpers ----
+
+task refusal
+  take found, like list, like diagnostic
+  take bound, like maybe, like gate-bound
+  like gate-answer
+  mark private
+
+  back
+    make gate-answer
+      bind refused, make(some, found)
+      bind bound, bound
+
+task no-bound
+  like maybe, like gate-bound
+  mark private
+
+  back make none
+
+task add-root
+  take run, like program-run
+  take name, like text
+  mark private
+
+  save run/roots/{name}, true
+
+# a file once, in the order first met
+task add-file
+  take seen, like hash, like text, like boolean
+  take files, like list, like text
+  take file, like text
+  mark private
+
+  fork test, not(seen/has(file))
+    hold
+      save seen/{file}, true
+      files/push(file)
+
+# ---- the decks a program's files belong to ----
+
+# the compile's own file and every statement's, in the order first met
+task program-files
+  take program, like list, like statement
+  take file, like text
+  like list, like text
+  mark private
+
+  save seen, make hash
+  save files, make list
+  add-file(seen, files, file)
+  walk program
+    take one
+    save at, statement-span(one)
+    sift at/file
+      case some
+        link written
+        add-file(seen, files, written)
+      case none
+        turn next
+  back files
+
+# the deck root each file the privacy checks may ask about belongs to: the compile's own, each statement's and each
+# file of the import scope
+task deck-homes
+  take program, like list, like statement
+  take scopes, like list, like file-scope
+  take file, like text
+  take deck-of
+    like task
+      take file, like text
+      like maybe, like roll-deck
+  like list, like deck-home
+
+  save seen, make hash
+  save files, make list
+  walk program-files(program, file)
+    take one
+    add-file(seen, files, one)
+  walk scopes
+    take scope
+    add-file(seen, files, scope/file)
+  save out, make list
+  walk files
+    take one
+    sift deck-of(one)
+      case some
+        link deck
+        save home
+          make deck-home
+            bind file, one
+            bind root, deck/root
+        out/push(home)
+      case none
+        turn next
+  back out
+
+# the deck each file of a program belongs to, by name, as form extension and the tell check take it: the compile's own
+# file and every statement's
+task deck-names
+  take program, like list, like statement
+  take file, like text
+  take deck-of
+    like task
+      take file, like text
+      like maybe, like roll-deck
+  like list, like deck-name
+
+  save out, make list
+  walk program-files(program, file)
+    take one
+    sift deck-of(one)
+      case some
+        link deck
+        save named
+          make deck-name
+            bind file, one
+            bind name, deck/name
+        out/push(named)
+      case none
+        turn next
+  back out
+
+# ---- the roots ----
+
+task add-calls
+  take run, like program-run
+  take calls, like list, like dock-call
+  mark private
+
+  walk calls
+    take call
+    add-root(run, call/name)
+
+# every task a `hook` route names or calls: its own `task` and `call` lines, its methods', its nested hooks' and its
+# children's, as the import binding left the names, added to the roots in the order met
+task add-route-tasks
+  take run, like program-run
+  take route, like dock-route
+  mark private
+
+  add-calls(run, route/calls)
+  walk route/methods
+    take method
+    add-calls(run, method/calls)
+  walk route/hooks
+    take hook
+    add-calls(run, hook/calls)
+  walk route/children
+    take child
+    add-route-tasks(run, child)
+
+# whether `text` from `at` is `__<digits>` or `__<digits>__<digits>` to its end
+task is-arity-end
+  take text, like text
+  take at, like number
+  like boolean
+  mark private
+
+  save end, char-count(text)
+  save i, at
+  save parts, 0
+  walk test
+    hook test, is-below(i, end)
+    hook hold
+      fork test, is-equal(parts, 2)
+        hold
+          back false
+      fork test, is-minimum(add(i, 1), end)
+        hold
+          back false
+      fork test, not(is-equal(char-code-at(text, i), 95))
+        hold
+          back false
+      fork test, not(is-equal(char-code-at(text, add(i, 1)), 95))
+        hold
+          back false
+      save i, add(i, 2)
+      save digits, 0
+      walk test
+        hook test, and(is-below(i, end), and(is-minimum(char-code-at(text, i), 48), is-maximum(char-code-at(text, i), 57)))
+        hook hold
+          save i, add(i, 1)
+          save digits, add(digits, 1)
+      fork test, is-equal(digits, 0)
+        hold
+          back false
+      save parts, add(parts, 1)
+  back is-above(parts, 0)
+
+# the name an arity pass renamed apart was written as: what stands before `__<n>` or `__<n>__<k>` at its end, the
+# shortest such, or none
+task written-name
+  take name, like text
+  like maybe, like text
+  mark private
+
+  save at, index-of(name, <__>, 1)
+  walk test
+    hook test, is-minimum(at, 1)
+    hook hold
+      save rest, substring(name, at)
+      fork test, is-arity-end(rest, 0)
+        hold
+          save written, substring(name, 0, at)
+          back make(some, written)
+      save at, index-of(name, <__>, add(at, 1))
+  back make none
+
+# a statement of the stdlib's debug module
+task is-debug-file
+  take file, like text
+  like boolean
+  mark private
+
+  back or(is-equal(file, <base/code/debug.tree>), ends-with(file, </base/code/debug.tree>))
+
+# the resolver's own global scope and every task: what the whole-program path hands it
+task global-scope-none
+  like maybe, like hash, like text, like binding
+  mark private
+
+  back make none
+
+task only-none
+  like maybe, like text
+  mark private
+
+  back make none
+
+# the hive's entry points, called by the generated wake chain, which nothing in the source references
+task hive-entries
+  like list, like text
+  mark private
+
+  save out, make list
+  out/push(<hive-wake>)
+  out/push(<hive-wake-typed>)
+  out/push(<hive-tell>)
+  back out
+
+# what a lowered `inspect` and `print` call of debug's, which no source names
+task debug-entries
+  like list, like text
+  mark private
+
+  save out, make list
+  out/push(<show-text>)
+  out/push(<show-integer>)
+  out/push(<show-decimal>)
+  out/push(<show-flag>)
+  out/push(<write-debug-line>)
+  back out
+
+# a native binding of a module, not of a type
+task is-module-kind
+  take kind, like native-kind
+  like boolean
+  mark private
+
+  sift kind
+    case type
+      back false
+    miss
+      back true
+
+# a task of the program by this name
+task defines-task
+  take program, like list, like statement
+  take name, like text
+  like boolean
+  mark private
+
+  walk program
+    take one
+    sift one
+      case function
+        fork test, is-equal(name, name-of(one))
+          hold
+            back true
+      miss
+        turn next
+  back false
+
+task name-of
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case function
+      back name
+    miss
+      back <>
+
+# the render runtime's tasks the prune pins: the names' fields in their declared order, then the support
+task zone-render-runtime
+  like list, like text
+  mark private
+
+  save names, render-names()
+  save out, make list
+  out/push(names/element)
+  out/push(names/text)
+  out/push(names/dynamic)
+  out/push(names/attribute)
+  out/push(names/bind-attribute)
+  out/push(names/event)
+  out/push(names/show)
+  out/push(names/each)
+  out/push(names/each-keyed)
+  out/push(names/dynamic-view)
+  out/push(names/gate)
+  out/push(names/mount)
+  out/push(names/portal)
+  out/push(names/raise)
+  out/push(names/integers)
+  walk render-support()
+    take one
+    out/push(one)
+  back out
+
+# ---- the route lowering's dropped docks ----
+
+task is-dock
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case dock
+      back true
+    miss
+      back false
+
+# The docks the route lowering dropped, in program order. The lowering keeps every statement that is no route, in its
+# order, ahead of what it adds, and drops only docks: so walking the program beside the lowered list, a statement that
+# is no dock is the next kept one, and a dock is kept exactly when the lowered statement at that step is a dock with
+# its node-json text (a route and a kept dock never share one, since whether a dock is a route is read off its text)
+task dropped-docks
+  take program, like list, like statement
+  take routed, like list, like statement
+  like list, like statement
+  mark private
+
+  save out, make list
+  save skip, make list
+  save j, 0
+  walk program
+    take one
+    fork test, not(is-dock(one))
+      hold
+        save j, add(j, 1)
+        turn next
+    save kept, false
+    fork test, is-below(j, routed/length)
+      hold
+        save there, get(routed, j)
+        fork test, is-dock(there)
+          hold
+            save kept, is-equal(statement-json(skip, one), statement-json(skip, there))
+    fork test, kept
+      hold
+        save j, add(j, 1)
+      miss
+        out/push(one)
+  back out
+
+# ---- the stale finds ----
+
+# every `find` naming something the module it loads defines: the check asks for the sources it needs, and each is read
+# here, none for a path that is not there, until it asks for nothing more
+task stale-finds-of
+  take program, like list, like statement
+  take file, like text
+  take scopes, like list, like file-scope
+  like list, like diagnostic
+
+  save sources, make list
+  save found, make list
+  save done, false
+  walk test
+    hook test, not(done)
+    hook hold
+      save answer, check-finds(program, file, scopes, sources)
+      fork test, is-equal(answer/wants/length, 0)
+        hold
+          save found, answer/diagnostics
+          save done, true
+          turn next
+      walk answer/wants
+        take want
+        fork test, gate-file-exists(want)
+          hold
+            save content, gate-file-read(want)
+            save present
+              make read-source
+                bind file, want
+                bind text, make(some, content)
+            sources/push(present)
+          miss
+            save absent
+              make read-source
+                bind file, want
+            sources/push(absent)
+  back found
+
+# ---- the gate ----
+
+task program-gate
+  take run, like program-run
+  take given, like gate-given
+  like gate-answer
+
+  save file, run/file
+  save deck-of, given/deck-of
+  save route-env, given/env
+  fork test, not(given/has-env)
+    hold
+      save route-env, <node>
+
+  # module scope for forms: a form two files define is split by file, and every reference bound by its file's import,
+  # before anything below reads a form by name
+  save form-scope, bind-forms-by-import(run/program, given/scopes, given/naming)
+  fork test, is-above(form-scope/diagnostics/length, 0)
+    hold
+      back refusal(form-scope/diagnostics, no-bound())
+  save run/program, form-scope/program
+
+  # a mask's default tasks, given to each form this build emits that wears the mask and leaves them out
+  save run/program, fill-mask-defaults(run/program, given/scoped, given/emit-only)
+
+  # a page route's `task get` was counted and emitted nothing, so it is refused before the routes lower
+  save route-methods, check-route-methods(run/program, file)
+  fork test, is-above(route-methods/length, 0)
+    hold
+      back refusal(route-methods, no-bound())
+
+  # ROUTE TABLES LOWER HERE, before names are bound and checked. The docks the lowering replaced are kept for the roll
+  # alone, and the dispatcher and the boot are roots
+  save routed, lower-routes(run/program, route-env)
+  save page-docks, dropped-docks(run/program, routed)
+  fork test, is-above(page-docks/length, 0)
+    hold
+      save run/page-docks, page-docks
+      save run/program, routed
+      fork test, given/has-roots
+        hold
+          add-root(run, <route>)
+          add-root(run, <boot>)
+
+  # form extension, before any name is bound
+  save extended, extend-forms(run/program, file, deck-names(run/program, file, deck-of))
+  fork test, is-above(extended/diagnostics/length, 0)
+    hold
+      back refusal(extended/diagnostics, no-bound())
+  save run/program, extended/program
+
+  # every type a task or form of this file names is one the program has. In a deck that describes a host's API it warns
+  save run/type-name-diagnostics, check-type-names(run/program, file)
+  save described, false
+  sift deck-of(file)
+    case some
+      link deck
+      save described, is-equal(deck/name, <@term/bind>)
+    case none
+      save described, false
+  save run/describes-host, described
+  fork test, and(is-above(run/type-name-diagnostics/length, 0), not(described))
+    hold
+      back refusal(run/type-name-diagnostics, no-bound())
+
+  # every number literal is one the backends can hold
+  save literals, check-literals(run/program, file, route-env)
+  fork test, is-above(literals/errors/length, 0)
+    hold
+      back refusal(literals/errors, no-bound())
+  save run/literal-warnings, literals/warnings
+
+  # every `make pattern, <...>` literal read by the stdlib's own pattern reader
+  save patterns, check-patterns(run/program, file)
+  fork test, is-above(patterns/errors/length, 0)
+    hold
+      back refusal(patterns/errors, no-bound())
+  save run/pattern-warnings, patterns/warnings
+
+  # a `host` inside a task is written once
+  save constants, check-constants(run/program, file)
+  fork test, is-above(constants/length, 0)
+    hold
+      back refusal(constants, no-bound())
+
+  # a shared bind has a case for every backend
+  save bind-checks, check-bind-targets(run/program, file, <>)
+  fork test, is-above(bind-checks/errors/length, 0)
+    hold
+      back refusal(bind-checks/errors, no-bound())
+  save run/bind-warnings, bind-checks/warnings
+
+  # a call reaches a task something in the build defines
+  save bodiless, check-bodiless-calls(run/program, file)
+  fork test, is-above(bodiless/length, 0)
+    hold
+      back refusal(bodiless, no-bound())
+
+  # `mark private`: a `find` of a name private to the file it names, before overloads rename anything
+  save private-finds, check-private-finds(run/program, given/scopes, deck-homes(run/program, given/scopes, file, deck-of))
+  fork test, is-above(private-finds/length, 0)
+    hold
+      back refusal(private-finds, no-bound())
+
+  # every `find` names something the module it loads defines, before overloads rename anything
+  save run/stale-finds, stale-finds-of(run/program, file, given/scopes)
+  fork test, and(is-above(run/stale-finds/length, 0), not(described))
+    hold
+      back refusal(run/stale-finds, no-bound())
+
+  # trait checking, before the duplicate tasks
+  save traits, check-traits(run/program, file)
+  fork test, is-above(traits/length, 0)
+    hold
+      back refusal(traits, no-bound())
+
+  # one file defines a task once per parameter list
+  save duplicates, check-duplicate-tasks(run/program, file)
+  fork test, is-above(duplicates/length, 0)
+    hold
+      back refusal(duplicates, no-bound())
+
+  # a ticked call used as a value is the pending job, before overloads and names are bound
+  save pending, pending-values(run/program, file)
+  fork test, is-above(pending/diagnostics/length, 0)
+    hold
+      back refusal(pending/diagnostics, no-bound())
+  save run/program, pending/program
+
+  # arity overloading and module scope for tasks. Its tables are module state of check/overload.ts, written by the face
+  # from `bound`, here as tables of their own
+  save runtime, zone-render-runtime()
+  save answer, disambiguate(run/program, given/scopes, runtime, given/render-file, given/naming)
+  save run/program, answer/program
+  save group-table, make hash
+  walk answer/groups
+    take group
+    save group-table/{group/name}, group/members
+  save bound-table, make hash
+  walk answer/runtime
+    take pair
+    save bound-table/{pair/name}, pair/bound
+  save groups, make list
+  walk group-table/entries()
+    take entry
+    save made
+      make overload-group
+        bind name, entry/first
+        bind members, entry/second
+    groups/push(made)
+  save runtime-names, make list
+  walk bound-table/entries()
+    take entry
+    save made
+      make runtime-bound
+        bind name, entry/first
+        bind bound, entry/second
+    runtime-names/push(made)
+  save made-bound
+    make gate-bound
+      bind groups, groups
+      bind runtime, runtime-names
+  save bound, make(some, made-bound)
+  fork test, is-above(answer/diagnostics/length, 0)
+    hold
+      back refusal(answer/diagnostics, bound)
+
+  # the tasks a `hook` route names or calls, and an entry task the arity pass renamed apart, are roots
+  fork test, given/has-roots
+    hold
+      walk run/program
+        take one
+        sift one
+          case dock
+            add-route-tasks(run, route)
+          miss
+            turn next
+      walk run/program
+        take one
+        sift one
+          case function
+            sift span/file
+              case some
+                link written-file
+                fork test, is-equal(written-file, file)
+                  hold
+                    sift written-name(name)
+                      case some
+                        link written
+                        fork test, run/roots/has(written)
+                          hold
+                            add-root(run, name)
+                      case none
+                        turn next
+              case none
+                turn next
+          miss
+            turn next
+
+  # the render runtime names as the build bound them, and the ones it renamed
+  save run/runtime-names, runtime-names
+  save renamed, make list
+  walk runtime-names
+    take pair
+    fork test, is-unequal(pair/bound, pair/name)
+      hold
+        renamed/push(pair/bound)
+  save run/renamed-runtime, renamed
+
+  # the chosen implementations, before names are bound
+  fork test, given/has-selected
+    hold
+      save selected, run/selected
+      fork test, given/expose
+        hold
+          save exposed, expose-twins(run/program, selected/twins)
+          save run/program, exposed/program
+          fork test, given/has-roots
+            hold
+              walk exposed/twins
+                take one
+                add-root(run, twin-task(one/of, one/name))
+                add-root(run, guard-task(one/of, one/name))
+                add-root(run, one/of)
+      save twin-env, given/env
+      save chosen, apply-twins(run/program, selected/twins, selected/choices, twin-env, file)
+      save run/program, chosen/program
+      fork test, is-above(chosen/diagnostics/length, 0)
+        hold
+          back refusal(chosen/diagnostics, bound)
+
+  # hole-filling: bind names to definitions
+  save no-scope, global-scope-none()
+  save every-task, only-none()
+  save resolved, resolve-program(run/program, file, group-table, no-scope, every-task)
+  fork test, is-above(resolved/length, 0)
+    hold
+      back refusal(resolved, bound)
+
+  # `mark private`: a call to, or a value reference of, a task private to another file
+  save private-references, check-private-references(run/program, file, groups, deck-homes(run/program, given/scopes, file, deck-of))
+  fork test, is-above(private-references/length, 0)
+    hold
+      back refusal(private-references, bound)
+
+  # tree-shaking: drop the definitions the entry never reaches
+  fork test, and(given/tree-shake, given/has-roots)
+    hold
+      walk groups
+        take group
+        walk group/members
+          take member
+          add-root(run, member)
+      walk hive-entries()
+        take name
+        fork test, defines-task(run/program, name)
+          hold
+            add-root(run, name)
+      save loads-debug, false
+      walk run/program
+        take one
+        sift one
+          case function
+            fork test, is-equal(name, <inspect>)
+              hold
+                sift span/file
+                  case some
+                    link debug-file
+                    fork test, is-debug-file(debug-file)
+                      hold
+                        save loads-debug, true
+                  case none
+                    turn next
+          miss
+            turn next
+      fork test, loads-debug
+        hold
+          walk debug-entries()
+            take name
+            add-root(run, name)
+
+      # the roots, the render runtime when a view is there, `failure` when a native call is, and the rules a kept rule
+      # cites, each once, in the order first met
+      save prune-roots, make hash
+      walk run/roots/entries()
+        take entry
+        save prune-roots/{entry/first}, true
+      save has-view, false
+      save docks-native, false
+      save has-failure, false
+      walk run/program
+        take one
+        sift one
+          case view
+            save has-view, true
+          case native
+            sift kind
+              case some
+                link native-kind
+                fork test, is-module-kind(native-kind)
+                  hold
+                    save docks-native, true
+              case none
+                save docks-native, true
+          case record-type
+            fork test, is-equal(name, <failure>)
+              hold
+                save has-failure, true
+          miss
+            turn next
+      fork test, has-view
+        hold
+          walk runtime
+            take helper
+            save prune-roots/{helper}, true
+            save pinned, helper
+            fork test, bound-table/has(helper)
+              hold
+                save pinned, bound-table/get(helper)
+            save prune-roots/{pinned}, true
+      fork test, and(docks-native, has-failure)
+        hold
+          save failure-name, <failure>
+          save prune-roots/{failure-name}, true
+      save root-list, make list
+      walk prune-roots/entries()
+        take entry
+        root-list/push(entry/first)
+      save cited, cited-rules(run/program, root-list)
+      walk cited
+        take name
+        fork test, not(prune-roots/has(name))
+          hold
+            save prune-roots/{name}, true
+            root-list/push(name)
+      save run/program, prune-to-reachable(run/program, root-list)
+
+  # the overload groups as the gate leaves them, which the phases after it read as module state
+  save run/overload-groups, groups
+  back
+    make gate-answer
+      bind refused, make none
+      bind bound, bound

@@ -221,7 +221,8 @@ task with-owner-renamed
 # reaches the output (a TypeScript tag, a printed record). Then each reference is bound: a named type, a raise, a method
 # and a mask instance can only mean the form; a construction means the case where its file defines that case's form or
 # imports it, the form where its file defines or imports the form, and otherwise whichever's fields the construction
-# names, the case where that does not decide
+# names, the case where that does not decide. A form with cases (a union) or a mask is never built by its own name, so
+# a construction of that name is always the case, as the checker reads it in the entry file (term-self-host-001-0294)
 task separate-case-names
   take program, like list, like statement
   take scopes, like list, like file-scope
@@ -296,6 +297,7 @@ task separate-case-names
     save in-entry, false
     save form-files, make list
     save form-fields, make list
+    save constructible, false
     walk form/indices
       take i
       save defining, get(program, i)
@@ -308,6 +310,9 @@ task separate-case-names
           push(form-files, home)
       sift defining
         case record-type
+          fork test, is-equal(variants/length, 0)
+            hold
+              save constructible, true
           walk fields
             take field
             fork test, not(has-text(form-fields, field/name))
@@ -318,6 +323,12 @@ task separate-case-names
     fork test, in-entry
       hold
         turn next
+    # a union or a mask is never built by its own name: no file's construction means it and no field fits it, so
+    # compile/node-rewrite.tree `means-form` answers the case for every construction of the name
+    fork test, not(constructible)
+      hold
+        save form-files, make list
+        save form-fields, make list
     save renamed, <{form/name}__form>
     walk form/indices
       take i

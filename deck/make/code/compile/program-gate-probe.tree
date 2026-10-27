@@ -1,0 +1,31 @@
+mark draft
+
+load ../check/disambiguate
+  find disambiguate
+
+load ../ir/selection
+  find apply-twins
+
+load ./node
+  find statement
+  find twin
+
+load ./import-scope
+  find file-scope
+
+load ./rolling
+  find roll-deck
+
+
+task probe-gate
+  take program, like list, like statement
+  take scopes, like list, like file-scope
+  take twins, like list, like twin
+  like list, like statement
+
+  save names, make list
+  names/push(<a>)
+  save answer, disambiguate(program, scopes, names, <>, <>)
+  save choices, make list
+  save chosen, apply-twins(answer/program, twins, choices, <>, <>)
+  back chosen/program

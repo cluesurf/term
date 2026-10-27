@@ -11,9 +11,11 @@
 #     Term `number` cannot hold one, so the capture's value is typed `float` and holds whatever the bind gave: the
 #     port only stores it, and the mint bridge reads it. Natively it is the parsed number
 #   - a minted form's fields are a `hash`, which the face writes as the `Record` the bridge reads
-#   - the mint memo was keyed by the match object. It is keyed here by its identity on TypeScript
-#     (`match-identity`), and natively, where a value has none, there is no memo: minting is a pure function of the
-#     rule and the match, so the answers are the same either way and only the time differs
+#   - the original's mint memo was keyed by the match object. It is keyed here by the match's place, the path of site
+#     names and indexes from the match `run-mint` was handed, on every backend (D011 rule 1: identity is a place).
+#     One place is one match, so a hit is always the original's hit. A match captured under two sites has two places
+#     and is minted twice, which costs time and never changes an answer, since minting is a pure function of the rule
+#     and the match
 
 load @term/base/list
   find list
@@ -207,21 +209,6 @@ bind exact-integer
     text <Double($value)>
   case kotlin
     text <($value.toDouble())>
-
-# a match's identity, for the mint memo; -1 natively, where there is none and so no memo
-bind match-identity
-  take value, like hash, like text, like list, like mill-capture
-  like number
-  case node
-    text <__termIdentity($value)>
-  case browser
-    text <__termIdentity($value)>
-  case rust
-    text <-1>
-  case swift
-    text <-1>
-  case kotlin
-    text <(-1L)>
 
 # ---- reading the tree ----
 
@@ -1481,18 +1468,40 @@ task read-make
 
 # ---- minting ----
 
+# what each match minted, by the match's place and then the mint's name. A place is numbered: 0 is the match
+# `run-mint` was handed, and a capture's is the number `places` gives its parent's number, site and index
 form mint-memo
   mark shared
   link known, like hash, like number, like hash, like text, like list, like minted
+  link places, like hash, like text, like number
 
 task empty-memo
   like mint-memo
   mark private
 
   save known, make hash
+  save places, make hash
   back
     make mint-memo
       bind known, known
+      bind places, places
+
+# the number of the place a capture holds: the `k`th of `site` in the match at place `parent`
+task place-of
+  take memo, like mint-memo
+  take parent, like number
+  take site, like text
+  take k, like number
+  like number
+  mark private
+
+  save key, <{parent} {site} {k}>
+  fork test, memo/places/has(key)
+    hold
+      back memo/places/get(key)
+  save number, add(memo/places/size, 1)
+  save memo/places/{key}, number
+  back number
 
 task run-mint
   take mints, like hash, like text, like mint-rule
@@ -1501,7 +1510,7 @@ task run-mint
   take from, like maybe, like node
   like list, like minted
 
-  back mint-in(mints, name, match, from, empty-memo())
+  back mint-in(mints, name, match, 0, from, empty-memo())
 
 task minted-of
   take value, like mill-capture
@@ -1565,13 +1574,14 @@ task mint-in
   take mints, like hash, like text, like mint-rule
   take name, like text
   take match, like hash, like text, like list, like mill-capture
+  # the number of the match's place (`place-of`), 0 for the match `run-mint` was handed
+  take id, like number
   take from, like maybe, like node
   take memo, like mint-memo
   like list, like minted
   mark private
 
-  save id, match-identity(match)
-  fork test, and(is-unequal(id, -1), memo/known/has(id))
+  fork test, memo/known/has(id)
     hold
       save for-match, memo/known/get(id)
       fork test, for-match/has(name)
@@ -1597,8 +1607,11 @@ task mint-in
     save values, make list
     fork test, match/has(site)
       hold
+        save k, 0
         walk match/get(site)
           take cap
+          save cap-id, place-of(memo, id, site, k)
+          save k, add(k, 1)
           sift cap
             case match
               link cap-rule
@@ -1612,7 +1625,7 @@ task mint-in
                   save sub, named-sub
                 case none
                   save nothing, 0
-              walk mint-in(mints, sub, cap-match, make(some, cap-node), memo)
+              walk mint-in(mints, sub, cap-match, cap-id, make(some, cap-node), memo)
                 take one
                 push(values, one)
             miss
@@ -1657,9 +1670,6 @@ task remember
   like list, like minted
   mark private
 
-  fork test, is-equal(id, -1)
-    hold
-      back value
   save for-match, minted-table()
   fork test, memo/known/has(id)
     hold

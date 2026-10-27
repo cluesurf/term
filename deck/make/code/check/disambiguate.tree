@@ -274,6 +274,8 @@ form walk-state
   link bound-names, like list, like text
   link bound-params, like list, like list, like text
   link constructions, like list, like text
+  # every method's own name (`set` for list's `set`), which a call names even where a form shares it
+  link method-names, like list, like text
   # a method's siblings, each method of its form by its method name (the last of a name standing): the task it is, how
   # many arguments it takes at least and at most; and the names the program's plain tasks have
   link sibling-names, like list, like text
@@ -321,6 +323,7 @@ task new-walk-state
       bind bound-names, make list
       bind bound-params, make list
       bind constructions, make list
+      bind method-names, make list
       bind sibling-names, make list
       bind sibling-targets, make list
       bind sibling-required, make list
@@ -1580,7 +1583,11 @@ task nest-under-task
   save no-params, make list
   fork test, and(not(has-text(state/definition-names, called)), not(has-text(state/bound-names, called)))
     hold
-      fork test, has-text(state/constructions, called)
+      # A METHOD NAME IS A CALL, even where a form shares it (as check/infer.ts reads it): `set(xs, at, f(x))` is the
+      # list method, and a `form set` anywhere in the program (rolling.tree's closure has one) left its label `f`
+      # unnested, so once `f` was renamed apart by arity or by file the checker refused it as a property of `set`
+      # (term-self-host-001-0294)
+      fork test, and(has-text(state/constructions, called), not(has-text(state/method-names, called)))
         hold
           back node
       back nested-labels(state, node, no-params, false)
@@ -1683,6 +1690,12 @@ task nest-lean-labels
           take param
           push(these, param/name)
         push(state/definition-params, these)
+        sift method
+          case some
+            link owner
+            push(state/method-names, owner/name)
+          case none
+            save nothing, 0
       case bind
         push(state/bound-names, name)
         save these, make list

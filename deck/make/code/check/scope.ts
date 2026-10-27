@@ -63,7 +63,8 @@ function typeParameters(statement: Statement): Set<string> {
 // which reaches the output (a TypeScript tag, a printed record). Then each reference is bound: a named type, a raise, a
 // method and a mask instance can only mean the form; a construction means the case where its file defines that case's
 // form or imports it, the form where its file defines or imports the form, and otherwise whichever's fields the
-// construction names, the case where that does not decide
+// construction names, the case where that does not decide. A union or a mask is never built by its own name, so there
+// the construction is always the case
 function separateCaseNames(program: Program, scope: ImportScope | undefined, entry?: string): void {
   type Owner = { file: string; form: string; fields: string[] }
   const cases = new Map<string, Owner[]>()
@@ -123,6 +124,10 @@ function separateCaseNames(program: Program, scope: ImportScope | undefined, ent
     const formFields = new Set(defining.flatMap(d => (d.form === 'record-type' ? d.fields.map(f => f.name) : [])))
     const caseFiles = new Set(owners.map(o => o.file))
     const caseForms = new Set(owners.map(o => o.form))
+    // a union or a mask is never built by its own name, so a construction of the name is the case, in every file and
+    // whichever file is the entry (term-self-host-001-0294: ir/selection.tree's `make twin-choice` meant
+    // parser/diagnostic.tree's case, and once selection was not the entry its own union `twin-choice` took it)
+    const constructible = defining.some(d => d.form === 'record-type' && d.variants.length === 0)
 
     defining.forEach(d => (d.name = renamed))
 
@@ -138,6 +143,7 @@ function separateCaseNames(program: Program, scope: ImportScope | undefined, ent
     }
     // whether a construction in `file` naming `fields` means the form
     const meansForm = (file: string | undefined, fields: string[]): boolean => {
+      if (!constructible) return false
       if (file && caseFiles.has(file)) return false
       if (file && formFiles.has(file)) return true
       if ([...caseForms].some(form => [...reaches(file, form)].some(f => caseFiles.has(f)))) return false
