@@ -11,10 +11,16 @@
 // It must be imported BEFORE the compiler, so a read a compiler module makes while it loads is in the trace too: ESM
 // evaluates imports in order, and port-build.ts imports this first.
 //
-// SOUNDNESS. A compiler may cache across compiles in one process, so a module's output can depend on a file another
-// module's compile read. Each module is therefore keyed by EVERY observation the process made up to the end of its own
-// compile, never only its own. A read the trace cannot describe (a file descriptor, `openSync`, a stream) marks the
-// process UNTRACKABLE from that point on, and an untrackable module is never skipped.
+// SOUNDNESS (decision 038 of note/project/term/self-host/change/001-finish-self-host/decision/). Each module is keyed
+// by the observations ITS OWN compile made (beginModule / endModule), every one of them, a repeat of an observation an
+// earlier module made first included, so a file read while building module k is no key of module k + 1. That holds
+// only while no in-memory cache carries one module's reads into another, and the decision lists every cache of the
+// stage0 bundle that could: port-build makes the resolver, the role reader and the parse and walk memos per module, and
+// the one cache it cannot reach, resolve.ts `codeRootCache` (keyed by a deck.tree's mtime, which it stats on every
+// call), is attributed here: a stat that sees a file also records that file's read. Whatever the process observed
+// OUTSIDE every module (stage0 loading, port-build between modules) is a key of every later module. A read the trace
+// cannot describe (a file descriptor, `openSync`, a stream) marks the process UNTRACKABLE from that point on, and an
+// untrackable module is never skipped.
 //
 // It also keeps, per compile, the `.tree` sources that compile read (openWindow / closeWindow), which port-build
 // checks again just before it writes the port, so a run never writes output of a source that has since changed.
@@ -136,11 +142,63 @@ function note(op: string, path: unknown): void {
     return
   }
 
+  touch(op, at)
+
+  // THE STAT-KEYED CACHE (decision 038): resolve.ts `codeRootOf` stats `<dir>/deck.tree` on every call and reads it
+  // only when its mtime moved, so a module served from that cache shows the stat and never the read. Any stat that sees
+  // a file stands for the read behind it
+  if ((op === 'stat' || op === 'lstat') && seen.get(`${op}\0${at}`)?.startsWith('f:')) {
+    touch('read', at)
+  }
+}
+
+// one observation, written down the first time the process makes it, and a key of the module being built (or of every
+// later module, outside one) every time
+function touch(op: string, at: string): void {
   const key = `${op}\0${at}`
 
   if (!seen.has(key)) {
     seen.set(key, observe(op, at))
   }
+
+  ;(own ?? outside).add(key)
+}
+
+// THE KEY OF ONE MODULE (decision 038): what its own compile observed, and what the process observed outside any
+// module, which every module after it carries
+let own: Set<string> | undefined
+const outside = new Set<string>()
+
+export function beginModule(): void {
+  own = new Set()
+}
+
+// the module's keys: its own observations, everything observed outside a module so far, and UNTRACKABLE once the
+// process has made a read it cannot describe. Each is checked again now, and one that no longer sees what the process
+// first saw (a file changed while the run went on) gives UNTRACKABLE, so the entry can never claim a file's old content
+// for an output built from its new one. Such a module alone is marked: the process stays trackable for the others
+export function endModule(): string[] {
+  const keys = new Set([...outside, ...(own ?? [])])
+  own = undefined
+
+  for (const key of keys) {
+    if (key === UNTRACKABLE) {
+      continue
+    }
+
+    const cut = key.indexOf('\0')
+
+    if (observe(key.slice(0, cut), key.slice(cut + 1)) !== seen.get(key)) {
+      keys.add(UNTRACKABLE)
+      break
+    }
+  }
+
+  if (seen.has(UNTRACKABLE)) {
+    keys.add(UNTRACKABLE)
+  }
+
+  return [...keys]
 }
 
 // THE SOURCES OF ONE COMPILE (term-cli-in-term-0151), for port-build's check at write time. While a window is open,

@@ -1,0 +1,134 @@
+# THE CHECKER'S SWITCHES, as one record (spec.md 4.8 and decision 031 section 4 of term/self-host/change/001, item
+# 0261). Each decides what the checker refuses, so a unit checked with one set is never an answer for another:
+#
+#   await-outside  an un-awaited, un-ticked call to an async task outside every task is refused, naming `tick`
+#                  (check/effects.tree `check-calls-outside-tasks`). On since 2026-10-03, and no variable turns it off:
+#                  the await migration compiles under both settings, through `setAwaitOutsideTasks`
+#   seam           the gradual seam (check/seam.tree): an `unknown` is narrowed before it flows into a typed place. Off,
+#                  on with TERM_UNKNOWN_SEAM=1 (decisions-2026-10 D1)
+#   strict         the unconstrained-parameter refusal, and the ambiguous one with it. Off, on with TERM_INFER_STRICT=1
+#                  (decisions-2026-10 D10)
+#   ambiguous      a call several same-arity definitions fit equally is refused. On, off with TERM_INFER_AMBIGUOUS=0
+#                  (D10, decided 2026-10-07)
+#   widths         each call into a width-typed parameter owes `low <= value <= high` as a tier-0 obligation. Off, on
+#                  with TERM_WIDTH_RANGES=1 (decisions-2026-10 D12)
+#
+# One run holds one record and hands it down, so it is `mark shared`. Until the compile driver is Term, the faces
+# check/strict.ts and check/width-range.ts hold the one instance (compile/compile.ts reads its await switch there), and
+# each reader's own port takes the record as a parameter.
+
+load @term/base/list
+  find list
+
+load @term/base/environment
+  find variable
+  find has-variable
+
+form checker-switches
+  mark shared
+  link await-outside, like boolean
+  link seam, like boolean
+  link strict, like boolean
+  link ambiguous, like boolean
+  link widths, like boolean
+
+# the range of one width alias of `number`, its bounds as decimal digits, since `u64` and `i64` pass the safe integers
+form width-limit
+  link width, like text
+  link low, like text
+  link high, like text
+
+# whether the environment variable is set to exactly this text
+task variable-reads
+  take name, like text
+  take value, like text
+  like boolean
+  mark private
+
+  fork test, has-variable(name)
+    hold
+      save held, variable(name)
+      back is-equal(held, value)
+  back false
+
+# the switches a process starts with, from its environment, each at its default when its variable is unset
+task switches-from-env
+  like checker-switches
+
+  save seam, variable-reads(<TERM_UNKNOWN_SEAM>, <1>)
+  save strict, variable-reads(<TERM_INFER_STRICT>, <1>)
+  save ambiguous-off, variable-reads(<TERM_INFER_AMBIGUOUS>, <0>)
+  save widths, variable-reads(<TERM_WIDTH_RANGES>, <1>)
+  save made
+    make checker-switches
+      bind await-outside, true
+      bind seam, seam
+      bind strict, strict
+      bind ambiguous, not(ambiguous-off)
+      bind widths, widths
+  back made
+
+# whether a call several same-arity definitions fit equally is refused: on by default, or under the strict switch
+task refuses-ambiguous
+  take switches, like checker-switches
+  like boolean
+
+  fork test, switches/ambiguous
+    hold
+      back true
+  back switches/strict
+
+# THE SWITCHES AS ONE KEY PART, for every compile cache. The await switch is on by default and keyed as it always was,
+# so a key with the others off is the key before they existed. A switch left out of the key let a census under it
+# read answers stored without it, and count less than it should. `ambiguous` is keyed as set, not as refused
+task switch-key
+  take switches, like checker-switches
+  like text
+
+  save key, <>
+  fork test, switches/await-outside
+    hold
+      save key, <await-outside>
+  fork test, switches/seam
+    hold
+      save key, <{key}+seam>
+  fork test, switches/strict
+    hold
+      save key, <{key}+strict>
+  fork test, switches/ambiguous
+    hold
+      save key, <{key}+ambiguous>
+  fork test, switches/widths
+    hold
+      save key, <{key}+widths>
+  back key
+
+task limit-of
+  take width, like text
+  take low, like text
+  take high, like text
+  like width-limit
+  mark private
+
+  save made
+    make width-limit
+      bind width, width
+      bind low, low
+      bind high, high
+  back made
+
+# the range of each width alias of `number`, in the original's order. `u64` stops at the 64-bit signed limit, the range
+# a `number` has
+task width-limits
+  like list, like width-limit
+
+  save limits, make list
+  limits/push(limit-of(<u8>, <0>, <255>))
+  limits/push(limit-of(<u16>, <0>, <65535>))
+  limits/push(limit-of(<u32>, <0>, <4294967295>))
+  limits/push(limit-of(<u64>, <0>, <9223372036854775807>))
+  limits/push(limit-of(<i8>, <-128>, <127>))
+  limits/push(limit-of(<i16>, <-32768>, <32767>))
+  limits/push(limit-of(<i32>, <-2147483648>, <2147483647>))
+  limits/push(limit-of(<i64>, <-9223372036854775808>, <9223372036854775807>))
+  back limits

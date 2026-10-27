@@ -321,7 +321,7 @@ task folded-expression
   mark private
 
   # the plain literal on every backend: the retired simplify.ts also carried the fold's own `kind` on node and browser,
-  # an undeclared field dropped by decision 035
+  # an undeclared field dropped by decision 037 (term/self-host/change/001)
   fork test, is-equal(found/kind, <integer>)
     hold
       save plain

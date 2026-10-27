@@ -23,6 +23,11 @@
 // process had made of the disk by the end of its compile (task/port-trace.ts: each read's content hash, each existence,
 // stat and directory listing), and its output's hash. A module is skipped only when all of them still hold and its
 // output on disk is that output. Anything missing, unreadable or untrackable compiles. `--full` compiles everything.
+// Since decision 038 (term-self-host-001-0288) the observations are THE MODULE'S OWN: what its compile and its prelude
+// observed, each one every time it was made, plus what the process observed outside any module, never the running
+// total of the process. So an edit rebuilds the modules that read the file and no other. Every cache that could carry
+// one module's reads into another is made per module here (the resolver, the role reader, the parse and walk memos) or
+// attributed by the trace (port-trace.ts SOUNDNESS).
 //
 //   npx tsx task/port-build.ts            build every port, report what changed
 //   npx tsx task/port-build.ts --check    write nothing, exit 1 if any port's output is missing or stale
@@ -52,43 +57,88 @@
 // row that never holds (UNTRACKABLE): never skipped, so it compiles next time, while `--verify` still has the text and
 // the output its build wrote. A module this run reached and left unwritten (MOVED, FAIL) keeps its old entry the same
 // way, a FAIL marked `failed` so `--verify` never calls its port current.
+//
+// STAGE0 (term-self-host-001-0018, decision 036 of note/project/term/self-host/change/001-finish-self-host/decision/).
+// Every port compiles with STAGE0, a frozen bundle of the compile closure (task/stage0.ts), never with the working
+// tree's compiler, and the compiler fingerprint is stage0's id, so an edit to a compiler `.tree` rebuilds only the
+// ports whose own text or imports changed, and a half-edited compiler cannot break the build that would rebuild it.
+// Only `pnpm run stage0:pin` changes stage0. A pin whose bundle is missing fails here with that command.
+//
+//   npx tsx task/port-build.ts --stage-check   then STEP 2: every port compiled again with the working tree's
+//                                         compiler (stage1, which now resolves to the ports step 1 wrote) into
+//                                         tmp/self-host/stage-check/, each output compared byte for byte with step
+//                                         1's, the first differing line of each named. Exit 1 on any difference. The
+//                                         line lock is freed before step 2, which writes nothing a build reads
 
 // FIRST, before the compiler loads: the trace must see every read a compiler module makes, including while it loads
-import { closeWindow, observations, observationCount, observe, openWindow, real, setRecording, sha, untraced, UNTRACKABLE } from './port-trace'
+import { beginModule, closeWindow, endModule, observations, observe, openWindow, real, setRecording, sha, untraced, UNTRACKABLE } from './port-trace'
 import traced, { writeSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { basename, dirname, join, relative, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { compile } from '@term/make/code/compile/compile'
-import { collectModules, makeParseMemo, type ParseMemo, type WalkMemo } from '@term/make/code/compile/load'
-import { nativePrelude } from '@term/make/code/compile/native'
-import { projectResolver } from '@term/call/code/make'
-import { projectLeanOf } from '@term/call/code/role-of'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import type { ParseMemo, WalkMemo } from '@term/make/code/compile/load'
 import { projectHome } from '@term/call/code/home'
-import { toCamel } from '@term/make/code/compile/typescript'
 import type { DockRoute, Program } from '@term/make/code/compile/node'
+import { readPin, stage0Path, STAGE0_SOURCES } from './stage0'
+
+// the compile closure port-build calls, from stage0 or (under --stage-check) the working tree
+type Compiler = {
+  compile: typeof import('@term/make/code/compile/compile').compile
+  collectModules: typeof import('@term/make/code/compile/load').collectModules
+  makeParseMemo: typeof import('@term/make/code/compile/load').makeParseMemo
+  nativePrelude: typeof import('@term/make/code/compile/native').nativePrelude
+  projectResolver: typeof import('@term/call/code/make').projectResolver
+  projectLeanOf: typeof import('@term/call/code/role-of').projectLeanOf
+  toCamel: typeof import('@term/make/code/compile/typescript').toCamel
+}
 // THE LINE LOCK (note/project/term/decision/002-make-line-lock.md): one port-build or make:line at a time, since this
 // compiles with whatever compiler is half edited in the working tree. Under make:line the token it passes down says
 // the lock is ours already. Loaded by its path from this file, and skipped where it is absent: test/call/port-build-skip.ts
 // runs a copy of this script in a temporary tree of its own, which no other build shares
 const LINE_LOCK = new URL('../../../../task/term/line-lock.ts', import.meta.url)
 
-async function holdLineLock(by: string): Promise<void> {
+// the lock held for this process, which `--stage-check` frees before its step 2. Undefined where there is no lock
+async function holdLineLock(by: string): Promise<{ free: () => void } | undefined> {
   if (!untraced(() => existsSync(LINE_LOCK))) {
-    return
+    return undefined
   }
 
   // a CommonJS module (it says why): its exports are the default, and named too where node's lexer finds them
-  type Lock = { holdForProcess: (term: string, by: string) => unknown }
+  type Lock = { holdForProcess: (term: string, by: string) => { free: () => void } }
   const loaded = (await import(LINE_LOCK.href)) as Partial<Lock> & { default?: Lock }
   const lock = loaded.holdForProcess ? (loaded as Lock) : loaded.default!
-  lock.holdForProcess(TERM, by)
+  return lock.holdForProcess(TERM, by)
 }
 
 const { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } = real
 
 // run from the Term package root, the way every script under task/ is
 const TERM = process.cwd()
+
+// the stdlib every port loads is the working tree's. The compiler finds it by walking up from its own file, and
+// stage0's file sits under the user home, so it is named here (the same folder the walk finds from deck/make)
+process.env.TERM_STDLIB ??= join(TERM, 'deck', 'base')
+
+// STAGE0: the pinned bundle, loaded here, at the top, so its reads while it loads are in the trace as the compiler's
+// always were. `--verify` compiles nothing and loads nothing
+async function loadStage0(): Promise<{ id: string; compiler: Compiler }> {
+  const command = `pnpm --dir ${TERM} run stage0:pin`
+  const pin = readPin()
+
+  if (!pin) {
+    throw new Error(`stage0 is not pinned (no task/stage0.json). Pin it, which bundles the working tree's compiler: ${command}`)
+  }
+
+  const file = stage0Path(pin.id, 'compile.mjs')
+
+  if (!untraced(() => existsSync(file) && sha(readFileSync(file)) === pin.id)) {
+    throw new Error(`stage0 ${pin.id} is not installed at ${file}. Pin it again from this working tree: ${command}`)
+  }
+
+  return { id: pin.id, compiler: (await import(pathToFileURL(file).href)) as Compiler }
+}
+
+const stage0 = process.argv.includes('--verify') ? undefined : await loadStage0()
 
 // the toolchain LIBRARIES whose ports TypeScript imports, each with the code subtrees it ports. Of `@term/call`,
 // `code/browser` is the browser compiler's in-memory disk, and `code/work/item` is a library, the terminal output
@@ -141,7 +191,7 @@ function commandRoutes(program: Program): DockRoute[] {
 // yargs did (decision cli-in-term/016 part 4); every other console's entry (boot-plan.tree `cli-run-text`) keeps the
 // dispatcher's own two lines.
 // Undefined when the module declares no hook; a task some route names that the port does not export is an error
-function runEntry(name: string, content: string, program: Program): { text: string } | { missing: string[] } | undefined {
+function runEntry(name: string, content: string, program: Program, toCamel: Compiler['toCamel']): { text: string } | { missing: string[] } | undefined {
   const routes = commandRoutes(program)
 
   if (routes.length === 0) {
@@ -271,9 +321,10 @@ function printerExports(content: string): string {
 function holdsPrinter(
   name: string,
   source: { file: string; text: string },
-  resolve: Parameters<typeof collectModules>[1],
+  resolve: Parameters<Compiler['collectModules']>[1],
   parsed: ParseMemo,
   walked: WalkMemo,
+  collectModules: Compiler['collectModules'],
 ): boolean {
   if (name === PRINTER) {
     return false
@@ -361,11 +412,12 @@ const full = process.argv.includes('--full')
 // `--explain`: a `  skip  <path>` line per module skipped, which test/call/port-build-skip.ts reads
 const explain = process.argv.includes('--explain')
 
-// raised whenever what a manifest entry means changes, so an older manifest is read as no manifest
-const SCHEMA = 1
+// raised whenever what a manifest entry means changes, so an older manifest is read as no manifest. 2: an entry's
+// reads are its own compile's observations (decision 038), no longer the process's running total
+const SCHEMA = 2
 
 // one module's last good build. `reads` are ranges [from, to) of rows of the manifest's `table`, each row an
-// observation `[op\0path, what it saw]`: every observation the building process had made by the end of this compile
+// observation `[op\0path, what it saw]`: every observation this module's own compile made (decision 038)
 // `run`: the hash of the console's run entry written beside it, for a module that declares hooks (THE RUN ENTRY)
 // `failed`: a later build of the module failed and wrote nothing, so the port on disk is this entry's (THE MANIFEST
 // LOSES NO ROW)
@@ -386,12 +438,12 @@ function readManifest(path: string): Manifest | undefined {
   }
 }
 
-// THE COMPILER, as content: every file esbuild's bundle of this script reaches through tsconfig.json's paths (the
-// compiler, the CLI modules it calls, the ported modules it is built from, and this script with its prelude splice),
-// which is the code tsx runs here, since make:line bundles the same graph the same way. Beside it the nearest lockfile
-// (the packages left external), the tsconfig, Node, and every TERM_ / SEED_ / NODE_ variable. Undefined when any of it
-// cannot be read, and then nothing is skipped
-async function fingerprint(): Promise<string | undefined> {
+// THE COMPILER, as content: stage0's id (the sha256 of the bundle every port compiles with, STAGE0 above), and every
+// file esbuild's bundle of this script reaches through tsconfig.json's paths, which since stage0 is this script with
+// its prelude splice, the trace and the home paths, never the working tree's compiler (it is loaded by a path esbuild
+// does not follow). Beside them the nearest lockfile, the tsconfig, Node, and every TERM_ / SEED_ / NODE_ variable.
+// Undefined when any of it cannot be read, and then nothing is skipped
+async function fingerprint(stage0Id: string): Promise<string | undefined> {
   try {
     const { build } = await import('esbuild')
     const result = await build({
@@ -408,10 +460,13 @@ async function fingerprint(): Promise<string | undefined> {
     })
     const hash = createHash('sha256')
 
-    hash.update(`schema ${SCHEMA}\nnode ${process.version} ${process.platform} ${process.arch}\n`)
+    hash.update(`schema ${SCHEMA}\nstage0 ${stage0Id}\nnode ${process.version} ${process.platform} ${process.arch}\n`)
 
+    // the line lock's own variables are left out: they say who holds the lock, never what a compile writes, and
+    // make:line hands down a fresh random TERM_LINE_LOCK token every run, which made every make:line a full rebuild
+    // (traps.md T-0018b)
     for (const name of Object.keys(process.env).sort()) {
-      if (/^(TERM|SEED|NODE)_/.test(name)) {
+      if (/^(TERM|SEED|NODE)_/.test(name) && !/^TERM_LINE_LOCK(_BY)?$/.test(name)) {
         hash.update(`env ${name}=${process.env[name]}\n`)
       }
     }
@@ -468,7 +523,11 @@ function ranges(indexes: number[]): [number, number][] {
 // @term/base/json's own dock already brought in: one file under two spellings, written twice, `const json` declared
 // twice, which esbuild refuses while `term make` (which writes no prelude) passes. So a shim is keyed by the FILE it
 // opens (device and inode), and a second path to a file already given reads as empty
-export function portContent(program: Parameters<typeof nativePrelude>[0], typescript: string): string {
+export function portContent(
+  program: Parameters<Compiler['nativePrelude']>[0],
+  typescript: string,
+  nativePrelude: Compiler['nativePrelude'] = stage0!.compiler.nativePrelude,
+): string {
   const given = new Set<string>()
   // through the TRACED `fs`: what the prelude reads is an input of the output like any file the compile read
   const prelude = nativePrelude(program, 'node', path => {
@@ -604,12 +663,10 @@ async function main(): Promise<void> {
   setRecording(false)
 
   // `--verify` writes nothing, so it waits for no one
-  if (!verify) {
-    await holdLineLock(`port-build${only === undefined ? '' : ` --only ${only}`}`)
-  }
+  const lock = verify ? undefined : await holdLineLock(`port-build${only === undefined ? '' : ` --only ${only}`}`)
 
   const manifestPath = projectHome(TERM, 'port-build.json')
-  const print = verify ? undefined : await fingerprint()
+  const print = stage0 === undefined ? undefined : await fingerprint(stage0.id)
   // the last manifest, whose entries this run keeps where it writes none of its own; under `--full` none is skipped
   const previous = print === undefined ? undefined : readManifest(manifestPath)
   const old = full ? undefined : previous
@@ -713,10 +770,12 @@ async function main(): Promise<void> {
     }
   }
 
-  for (const { root, files } of plan) {
-    const resolve = projectResolver(root)
-    const leanOf = projectLeanOf(root)
+  const { compile, collectModules, makeParseMemo, projectResolver, projectLeanOf, toCamel } = stage0!.compiler
 
+  // the keys of each module written this run (decision 038), turned into rows of the manifest's table when it is written
+  const freshKeys = new Map<string, string[]>()
+
+  for (const { root, files } of plan) {
     for (const { file } of files) {
       // the modules finished before this one, told as it starts: every way out of the turn below is a `continue`
       tell()
@@ -772,15 +831,22 @@ async function main(): Promise<void> {
       // compiles it again from the text as it now is
       let result: ReturnType<typeof compile> | undefined
       let changed: string | undefined
+      // THE MODULE'S OWN KEY (decision 038): from here to its port's text, everything observed is this module's
+      beginModule()
       for (let attempt = 1; ; attempt++) {
         openWindow()
+        // the resolver and the role reader keep what they read (projectResolver's readCache and resolveMemo,
+        // projectRuleOf's byPackage and byFile), so each is made per compile: shared, a module served from them would
+        // show none of the reads its output rests on (decision 038), and a second attempt would read the old text
+        const resolve = projectResolver(root)
+        const leanOf = projectLeanOf(root)
         // one parse and one walk per module of the closure, shared by the printer's walk and the compile, as compile
         // makes a parse memo per call
         const parsed = makeParseMemo()
         const walked: WalkMemo = new Map()
         // THE PRINTER'S RUN (decision term-cli-in-term-0240): a closure that holds the printer compiles with
         // printerKeeper's text after the module's own
-        const keep = holdsPrinter(name, { file, text }, resolve, parsed, walked)
+        const keep = holdsPrinter(name, { file, text }, resolve, parsed, walked, collectModules)
         result = compile({ file, text: keep ? `${text}${printerKeeper(leanOf(file) === true)}` : text }, { resolve, leanOf, library: true, parsed, walked })
 
         const read = closeWindow()
@@ -806,6 +872,7 @@ async function main(): Promise<void> {
       }
 
       if (changed !== undefined) {
+        endModule()
         left.set(name, false)
         moved++
         console.log(`  MOVED ${name}  (${relative(TERM, changed)} changed while it compiled, ${ATTEMPTS} times: its port is left as it was, run port-build again)`)
@@ -813,6 +880,7 @@ async function main(): Promise<void> {
       }
 
       if (!result.ok) {
+        endModule()
         left.set(name, true)
         failed++
         console.log(`  FAIL  ${name}`)
@@ -827,7 +895,9 @@ async function main(): Promise<void> {
       const content = printerExports(portContent(result.program, result.typescript))
       // only the CLI's own consoles get a run entry: a hook module elsewhere (deck/test/code/fixture/hunt-cli.tree, a
       // test fixture whose hooks name tasks it never defines) is a library like any other port
-      const run = basename(root) === 'call' ? runEntry(name, content, result.program) : undefined
+      const run = basename(root) === 'call' ? runEntry(name, content, result.program, toCamel) : undefined
+      // the module's key ends with its prelude's reads
+      const keys = endModule()
 
       if (run && 'missing' in run) {
         left.set(name, true)
@@ -837,12 +907,14 @@ async function main(): Promise<void> {
         continue
       }
 
-      // the key of this output: every observation this process has made so far, since a compiler may cache across
-      // the modules of one run, so this output can rest on a file an earlier module's compile read
+      // the key of this output: the observations of its own compile (decision 038). `reads` is filled from `keys`
+      // when the manifest is written, as rows of its table
       const entry: Entry | undefined =
-        print === undefined
-          ? undefined
-          : { text: textHash, fingerprint: print, out: sha(content), reads: [[0, observationCount()]], ...(run ? { run: sha(run.text) } : {}) }
+        print === undefined ? undefined : { text: textHash, fingerprint: print, out: sha(content), reads: [], ...(run ? { run: sha(run.text) } : {}) }
+
+      if (entry) {
+        freshKeys.set(name, keys)
+      }
       const existing = untraced(() => (existsSync(outPath) ? readFileSync(outPath, 'utf8') : undefined))
       const existingRun = run ? untraced(() => (existsSync(runPath) ? readFileSync(runPath, 'utf8') : undefined)) : undefined
 
@@ -890,7 +962,7 @@ async function main(): Promise<void> {
 
     const table = observations()
     const at = new Map(table.map(([key], index) => [key, index]))
-    const modules: Record<string, Entry> = { ...fresh }
+    const modules: Record<string, Entry> = {}
     const reached = new Set([...plan.flatMap(one => one.files.map(({ file }) => relative(TERM, file)))])
     const keep: Record<string, Entry> = { ...carried }
 
@@ -913,6 +985,18 @@ async function main(): Promise<void> {
       }
 
       return [[index, index + 1]]
+    }
+
+    // this run's entries, each by the rows of its own keys (decision 038); an untrackable one by the row that never
+    // holds
+    for (const [name, entry] of Object.entries(fresh)) {
+      const keys = freshKeys.get(name) ?? [UNTRACKABLE]
+      const rows = keys.map(key => at.get(key))
+
+      modules[name] = {
+        ...entry,
+        reads: keys.includes(UNTRACKABLE) || rows.some(row => row === undefined) ? never() : ranges(rows as number[]),
+      }
     }
 
     for (const [name, entry] of Object.entries(keep)) {
@@ -964,6 +1048,123 @@ async function main(): Promise<void> {
   )
 
   if (failed > 0 || stale > 0 || moved > 0) {
+    process.exitCode = 1
+  }
+
+  if (stageCheck && !check) {
+    if (process.exitCode === 1) {
+      console.log('term port-build --stage-check: step 2 not run, step 1 did not build every port')
+      return
+    }
+
+    await stageTwo(plan, lock)
+  }
+}
+
+const stageCheck = process.argv.includes('--stage-check')
+
+// STEP 2 of `--stage-check` (decision 030 §1, 036): every chosen module compiled again with the working tree's
+// compiler, which resolves to the ports step 1 just wrote (stage1), into `tmp/self-host/stage-check/`, and held byte
+// for byte against step 1's port and run entry. The ports on disk are hashed while the lock is still held, then the
+// lock is freed: step 2 writes only its scratch folder, and what it compares against is in memory
+async function stageTwo(plan: { root: string; files: { file: string; text: string }[] }[], lock: { free: () => void } | undefined): Promise<void> {
+  setRecording(false)
+
+  const hashOf = (path: string): string | undefined => (existsSync(path) ? sha(readFileSync(path)) : undefined)
+  const stageOne = new Map<string, { out?: string; run?: string }>()
+
+  for (const { root, files } of plan) {
+    for (const { file } of files) {
+      const outPath = portPath(root, file)
+      stageOne.set(file, { out: hashOf(outPath), run: hashOf(outPath.replace(/\.ts$/, '-run.ts')) })
+    }
+  }
+
+  lock?.free()
+
+  // the working tree's modules, by specifiers esbuild cannot follow, so the fingerprint never reaches them
+  const working: Record<string, unknown> = {}
+
+  for (const specifier of Object.keys(STAGE0_SOURCES)) {
+    Object.assign(working, (await import(specifier)) as Record<string, unknown>)
+  }
+
+  const c = working as Compiler
+  const scratch = join(TERM, 'tmp', 'self-host', 'stage-check')
+  let same = 0
+  let differ = 0
+  let failed = 0
+
+  // the first line where two texts differ, 1-based, with both lines
+  const firstDifference = (a: string, b: string): string => {
+    const left = a.split('\n')
+    const right = b.split('\n')
+
+    for (let line = 0; line < Math.max(left.length, right.length); line++) {
+      if (left[line] !== right[line]) {
+        return `line ${line + 1}\n          stage0: ${(left[line] ?? '<end>').slice(0, 160)}\n          stage1: ${(right[line] ?? '<end>').slice(0, 160)}`
+      }
+    }
+
+    return 'no line differs (a byte at the end)'
+  }
+
+  for (const { root, files } of plan) {
+    const resolve = c.projectResolver(root)
+    const leanOf = c.projectLeanOf(root)
+
+    for (const { file } of files) {
+      const name = relative(TERM, file)
+      const text = sourceOf(file)
+
+      if (text === undefined) {
+        continue
+      }
+
+      const parsed = c.makeParseMemo()
+      const walked: WalkMemo = new Map()
+      const keep = holdsPrinter(name, { file, text }, resolve, parsed, walked, c.collectModules)
+      const result = c.compile({ file, text: keep ? `${text}${printerKeeper(leanOf(file) === true)}` : text }, { resolve, leanOf, library: true, parsed, walked })
+
+      if (!result.ok) {
+        failed++
+        console.log(`  FAIL   ${name}  (stage1 cannot compile it: ${result.diagnostics[0]?.name ?? ''} ${result.diagnostics[0]?.message ?? ''})`)
+        continue
+      }
+
+      const content = printerExports(portContent(result.program, result.typescript, c.nativePrelude))
+      const run = basename(root) === 'call' ? runEntry(name, content, result.program, c.toCamel) : undefined
+      const runText = run && 'text' in run ? run.text : undefined
+      const outPath = join(scratch, relative(TERM, portPath(root, file)))
+
+      mkdirSync(dirname(outPath), { recursive: true })
+      writeFileSync(outPath, content)
+
+      if (runText !== undefined) {
+        writeFileSync(outPath.replace(/\.ts$/, '-run.ts'), runText)
+      }
+
+      const one = stageOne.get(file)!
+      const portSame = one.out === sha(content)
+      const runSame = one.run === (runText === undefined ? undefined : sha(runText))
+
+      if (portSame && runSame) {
+        same++
+        continue
+      }
+
+      differ++
+
+      const stagePath = portPath(root, file)
+      const which = portSame ? stagePath.replace(/\.ts$/, '-run.ts') : stagePath
+      const theirs = existsSync(which) ? readFileSync(which, 'utf8') : ''
+      console.log(`  DIFFER ${name}  (${portSame ? 'its run entry' : 'its port'}, ${firstDifference(theirs, portSame ? (runText ?? '') : content)})`)
+    }
+  }
+
+  console.log(`term port-build --stage-check: step 2 ${same} same, ${differ} differ, ${failed} failed (stage1 output in ${relative(TERM, scratch)})`)
+
+  if (differ > 0 || failed > 0) {
     process.exitCode = 1
   }
 }

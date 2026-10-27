@@ -166,6 +166,9 @@ form hold-state
   link is, like induction-state
   link host, like hold-host
   link program, like list, like statement
+  # the task whose body is being checked, none for a top-level hold: set by elaborating-main.tree around
+  # `check-task`, read by the three questions of elaborating-theorems.tree (decision 035)
+  link within, like maybe, like statement
   link diagnostics, like list, like unknown
   link discharged, like list, like span
 
@@ -523,7 +526,7 @@ task decide-by-table
       fork test, is-equal(c/sides/length, 0)
         hold
           save universal-count, 0
-          sift enclosing-theorem(hs/program, statement)
+          sift enclosing-theorem(hs/within)
             case some
               link theorem
               sift theorem
@@ -783,7 +786,7 @@ task check-hold
   save program, hs/program
   save goal, hold-goal(statement)
   # the theorem's universal hypotheses at the terms this goal and its guards name are equations true on this path
-  save instances, universal-instances(ts, program, statement, scope, ctx, given)
+  save instances, universal-instances(ts, hs/within, statement, scope, ctx, given)
   save assumptions, make list
   walk given
     take a
@@ -867,19 +870,19 @@ task check-hold
       # an induction over a theorem with UNIVERSAL hypotheses is the surface prover's (check/universal.tree, its
       # instances of each hypothesis at the step), whatever the goal's shape: an order goal or a conjunction of them
       # too, which the kernel's guard-only order check refused as not established (term-proof-0008)
-      fork test, and(is-fold, in-universal-theorem(program, statement))
+      fork test, and(is-fold, in-universal-theorem(hs/within))
         hold
           back
       fork test, and(is-fold, is-equal(is-order-goal(goal), false))
         hold
-          fork test, number-fold-over-functions(ts, program, statement, host/calls-itself)
+          fork test, number-fold-over-functions(ts, program, statement, hs/within, host/calls-itself)
             hold
               back
       sift op
         case both
           fork test, and(is-fold, has-arg)
             hold
-              sift rule-guards(program, statement)
+              sift rule-guards(hs/within)
                 case some
                   link guards
                   fork test, host/check-fold-order(goal, arg, guards)
@@ -961,7 +964,7 @@ task check-hold
           fork test, is-equal(by-induction, false)
             hold
               save by-deep, multi-induction(is, left, right, op, scope, ctx, extra, cited, assumptions, true)
-          save guards, rule-guards(program, statement)
+          save guards, rule-guards(hs/within)
           save by-order, false
           fork test, and(is-equal(by-induction, false), is-equal(by-deep, false))
             hold

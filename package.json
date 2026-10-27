@@ -29,6 +29,8 @@
     "host": "pnpm run make && pnpm publish --access public",
     "install:all": "pnpm install && (cd deck/deck && pnpm install) && (cd deck/mill && pnpm install) && (cd deck/base && pnpm install) && (cd deck/flow && pnpm install --ignore-workspace)",
     "make:port": "pnpm exec tsx task/port-build.ts",
+    "stage0:pin": "pnpm exec tsx task/stage0.ts pin",
+    "stage0:show": "pnpm exec tsx task/stage0.ts show",
     "make:load": "pnpm run make:port && pnpm exec tsx task/make-load.ts",
     "bind": "node host/line.js bind",
     "release": "pnpm exec tsx task/release.ts",

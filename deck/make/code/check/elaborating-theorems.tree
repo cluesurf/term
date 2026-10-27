@@ -5,7 +5,10 @@
 # theorem's universal hypotheses instantiated at the terms the goal and its guards name (`universal-instances`).
 #
 # Ported from check/elaborate.ts (self-hosting, 2026-10-06), whose closures these were. The decisions:
-#   - the original found the hold BY IDENTITY (`only === hold`), which is a host bind, `same-statement`
+#   - the original found the hold BY IDENTITY (`only === hold`), walking every task of the program. The hold state
+#     names the task being checked instead (`within`, decision 035 of term/self-host/change/001-finish-self-host), so
+#     each of the three asks only that task, and asks whether its one bare step is a `hold` statement: the only hold
+#     `check-commands` can reach in such a task is the one being checked
 #   - `appliesRecursion` asked whether a task's body calls itself by reading every key of every node, which the face
 #     still answers (`calls-itself`, handed in)
 #   - a bare `catch` is an `attempt`, as in the other parts
@@ -61,21 +64,6 @@ load ./elaborating-proof
   find lemma-state
   find lemma
   find lemma-rule
-
-bind same-statement
-  take a, like statement
-  take b, like statement
-  like boolean
-  case node
-    text <($a === $b)>
-  case browser
-    text <($a === $b)>
-  case rust
-    text <std::ptr::eq(&$a, &$b)>
-  case swift
-    text <false>
-  case kotlin
-    text <($a === $b)>
 
 task some-value
   take given, like kernel-value
@@ -151,104 +139,124 @@ task only-cond
     miss
       halt <not a guard>
 
-# the theorem whose body is, past its pure lets and through single-branch guards, this hold alone
+# whether a statement is a `hold`: the one a task's bare body narrows to is the hold being checked (decision 035)
+task is-hold-statement
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case hold
+      back true
+    miss
+      back false
+
+# the theorem whose body is, past its pure lets and through single-branch guards, the hold being checked alone.
+# `within` is the task being checked, none for a top-level hold
 task enclosing-theorem
-  take program, like list, like statement
-  take hold, like statement
+  take within, like maybe, like statement
   like maybe, like statement
 
-  walk program
-    take fn
-    sift fn
-      case function
-        link body
-        link theorem
-        fork test, is-unequal(theorem, true)
-          hold
-            turn next
-        save steps, bare-body(body)
-        walk test
-          hook test, is-equal(steps/length, 1)
-          hook hold
-            save only, get(steps, 0)
-            fork test, same-statement(only, hold)
-              hold
-                back make(some, fn)
-            sift only-branch(only)
-              case some
-                link inner
-                save steps, inner
-              case none
-                halt
-      miss
-        turn next
+  sift within
+    case some
+      link fn
+      sift fn
+        case function
+          link body
+          link theorem
+          fork test, is-unequal(theorem, true)
+            hold
+              back make none
+          save steps, bare-body(body)
+          walk test
+            hook test, is-equal(steps/length, 1)
+            hook hold
+              save only, get(steps, 0)
+              fork test, is-hold-statement(only)
+                hold
+                  back make(some, fn)
+              sift only-branch(only)
+                case some
+                  link inner
+                  save steps, inner
+                case none
+                  halt
+        miss
+          back make none
+    case none
+      back make none
   back make none
 
 task in-universal-theorem
-  take program, like list, like statement
-  take hold, like statement
+  take within, like maybe, like statement
   like boolean
 
-  walk program
-    take fn
-    sift fn
-      case function
-        link body
-        link universals
-        save count, 0
-        walk universals
-          take u
-          save count, add(count, 1)
-        fork test, is-equal(count, 0)
-          hold
-            turn next
-        save steps, bare-body(body)
-        walk test
-          hook test, is-equal(steps/length, 1)
-          hook hold
-            save only, get(steps, 0)
-            fork test, same-statement(only, hold)
-              hold
-                back true
-            sift only-branch(only)
-              case some
-                link inner
-                save steps, inner
-              case none
-                halt
-      miss
-        turn next
+  sift within
+    case some
+      link fn
+      sift fn
+        case function
+          link body
+          link universals
+          save count, 0
+          walk universals
+            take u
+            save count, add(count, 1)
+          fork test, is-equal(count, 0)
+            hold
+              back false
+          save steps, bare-body(body)
+          walk test
+            hook test, is-equal(steps/length, 1)
+            hook hold
+              save only, get(steps, 0)
+              fork test, is-hold-statement(only)
+                hold
+                  back true
+              sift only-branch(only)
+                case some
+                  link inner
+                  save steps, inner
+                case none
+                  halt
+        miss
+          back false
+    case none
+      back false
   back false
 
-# the guards on the way down to this hold, in any task, none when no task holds it so
+# the guards on the way down to the hold being checked in the task `within` names, none when that task does not hold
+# it so (or no task does)
 task rule-guards
-  take program, like list, like statement
-  take hold, like statement
+  take within, like maybe, like statement
   like maybe, like list, like expression
 
-  walk program
-    take fn
-    sift fn
-      case function
-        link body
-        save steps, bare-body(body)
-        save guards, make list
-        walk test
-          hook test, is-equal(steps/length, 1)
-          hook hold
-            save only, get(steps, 0)
-            fork test, same-statement(only, hold)
-              hold
-                back make(some, guards)
-            sift only-branch(only)
-              case some
-                link inner
-                push(guards, only-cond(only))
-                save steps, inner
-              case none
-                halt
-      miss
-        turn next
+  sift within
+    case some
+      link fn
+      sift fn
+        case function
+          link body
+          save steps, bare-body(body)
+          save guards, make list
+          walk test
+            hook test, is-equal(steps/length, 1)
+            hook hold
+              save only, get(steps, 0)
+              fork test, is-hold-statement(only)
+                hold
+                  back make(some, guards)
+              sift only-branch(only)
+                case some
+                  link inner
+                  push(guards, only-cond(only))
+                  save steps, inner
+                case none
+                  halt
+        miss
+          back make none
+    case none
+      back make none
   back make none
 
 # a comparison, or a conjunction of comparisons: what `checkFoldOrder` inducts over
@@ -387,6 +395,7 @@ task number-fold-over-functions
   take ts, like term-state
   take program, like list, like statement
   take hold, like statement
+  take within, like maybe, like statement
   take calls-itself
     like task
       take statement, like statement
@@ -405,7 +414,7 @@ task number-fold-over-functions
         halt
     miss
       back false
-  sift enclosing-theorem(program, hold)
+  sift enclosing-theorem(within)
     case some
       link fn
       sift fn
@@ -778,7 +787,7 @@ task binder-candidates
 # when its sides type alike. One whose instances would pass 512 is skipped whole
 task universal-instances
   take ts, like term-state
-  take program, like list, like statement
+  take within, like maybe, like statement
   take statement, like statement
   take scope, like hash, like text, like number
   take ctx, like context
@@ -788,7 +797,7 @@ task universal-instances
   save st, ts/st
   save out, make list
   save theorem-statement, statement
-  sift enclosing-theorem(program, statement)
+  sift enclosing-theorem(within)
     case some
       link found
       save theorem-statement, found

@@ -1,0 +1,576 @@
+# A FILE THAT IS NOT A PROGRAM, answered whole: a look stylesheet, a data file or a mill definition. compile/compile.ts
+# asks `side-file` first and loads and builds the file as a program only when it answers none.
+#
+# Ported from compile/compile.ts's `sideFile`, `isLookStylesheet`, `compileData` and `checkMillSource` (item 0262 of
+# term/self-host/change/001, decision 031 part B), which stay as the face. The decisions:
+#   - the build's readers are handed in, each asked where the original asked it: a task answering the role a project
+#     gives the file (the empty text where none does, asked once a file is no look sheet), a task asking whether its
+#     role carries `mark lean` (asked only for a `host` file), and the
+#     resolver as a task answering none where the original's answered undefined. `resolving` says whether there is
+#     one, since without it the three mill checks that need it are skipped
+#   - parser/narrow.ts's `groupsOf` is a `kind` test over the root's nodes (decision 031 section 5)
+#   - a data file's module text writes the value as `JSON.stringify(toJsonValue(value), null, 2)` wrote it, here in
+#     Term (`data-json`): snake keys, a repeated key keeping its first place and its last value, the keys that are
+#     array indexes first in ascending order as a JavaScript object orders them, a whole number past 2^53 as text,
+#     a decimal that is not finite as null, and a text escaped as JSON escapes it, a lone surrogate included. The data grammar admits only keys that start with a letter,
+#     so the index, repeat and `__proto__` rules guard keys it does not write today
+#   - a resolver that raises finds nothing, as the original's `catch` did
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-at
+  find char-count
+  find char-code-at
+  find split
+
+load ../parser/tree
+  find node
+  find parse
+
+load ../parser/token
+  find token-source
+
+load ../parser/diagnostic
+  find diagnostic
+
+load ./look-css
+  find check-look
+  find compile-look-css
+  find head-name
+
+load ./look-table
+  find compile-look-table
+  find style-table-text
+
+load ./host-data
+  find host-value
+  find host-entry
+  find is-data-file
+  find read-data-text
+  find expand-data
+  find host-snake
+
+load ./mill-check
+  find mill-load
+  find mill-checked
+  find mill-load-targets
+  find check-mill-definition
+
+# what a side file compiles to
+form side-answer
+  # a look stylesheet: the static CSS, and the style tables of the light and the dark scheme
+  case look-sheet
+    link css, like text
+    link style, like text
+    link style-dark, like text
+  # a data file: the module whose default export is its value
+  case data-module
+    link typescript, like text
+  # a mill definition that owes nothing more
+  case mill-sound
+  # what refuses any of the three
+  case side-refused
+    link diagnostics, like list, like diagnostic
+
+# ---- which kind of file ----
+
+# a .tree whose top-level groups are all `face` / `tone` / `base` rules compiles to a static stylesheet, not a program.
+# Shared by the merged and separate build paths so both route look files to the CSS backend. A file that holds nodes
+# and no group at all is one too, as `every` over no groups is true
+task is-look-stylesheet
+  take source, like token-source
+  like boolean
+
+  save looked, parse(source)
+  fork test, not(looked/ok)
+    hold
+      back false
+  save tree, looked/tree
+  sift tree
+    case root
+      fork test, is-equal(nodes/length, 0)
+        hold
+          back false
+      walk nodes
+        take one
+        fork test, is-equal(one/kind, <group>)
+          hold
+            save name, head-name(one)
+            fork test, is-equal(name, <face>)
+              hold
+                turn next
+            fork test, is-equal(name, <tone>)
+              hold
+                turn next
+            fork test, is-equal(name, <base>)
+              hold
+                turn next
+            back false
+  back true
+
+# ---- the three answers ----
+
+task look-answer
+  take source, like token-source
+  like side-answer
+  mark private
+
+  # a sheet that does not parse, or a `tint` that is not a CSS color, is refused rather than written: the browser
+  # drops a rule it cannot read without a word (guides: applications/web/styles, 2026-10-04)
+  save refused, check-look(source)
+  fork test, is-above(refused/length, 0)
+    hold
+      back
+        make side-refused
+          bind diagnostics, refused
+  save css, compile-look-css(source)
+  save style, style-table-text(compile-look-table(source))
+  save style-dark, style-table-text(compile-look-table(source, <dark>))
+  back
+    make look-sheet
+      bind css, css
+      bind style, style
+      bind style-dark, style-dark
+
+# the last segment of a path, as `split('/').pop()` gives it
+task file-name-of
+  take file, like text
+  like text
+  mark private
+
+  save parts, split(file, </>)
+  back get(parts, subtract(parts/length, 1))
+
+# a data file to a TypeScript module: `export default <json>`. The value is also exported as `data`, so a Term program
+# that loads the module through the per-module path has a name to find
+task compile-data
+  take source, like token-source
+  take lean, like boolean
+  like side-answer
+
+  save read, read-data-text(source, lean)
+  fork test, not(read/ok)
+    hold
+      back
+        make side-refused
+          bind diagnostics, read/diagnostics
+  save expanded, expand-data(read/file, source/file)
+  fork test, not(expanded/ok)
+    hold
+      back
+        make side-refused
+          bind diagnostics, expanded/diagnostics
+  save json, data-json(expanded/value, <>)
+  save named, file-name-of(source/file)
+  save typescript, <// Term data, from {named}. Keys are snake case, anchors are expanded.\nconst data = {json} as const\n\nexport default data\n>
+  back
+    make data-module
+      bind typescript, typescript
+
+# one `load`'s answer, through the resolver: an empty target and a resolver that raises find nothing
+task mill-load-of
+  take target, like text
+  take from, like text
+  take resolve
+    like task
+      take path, like text
+      take origin, like text
+      like maybe, like token-source
+  like mill-load
+  mark private
+
+  save bare
+    make mill-load
+      bind target, target
+  fork test, is-equal(target, <>)
+    hold
+      back bare
+  fork
+    mark unsafe
+    save found, resolve(target, from)
+    sift found
+      case some
+        link source
+        back
+          make mill-load
+            bind target, target
+            bind found, make(some, source)
+      case none
+        back bare
+  halt take
+    take problem
+    back bare
+  back bare
+
+# A MILL DEFINITION HELD TO WHAT IT OWES (compile/mill-check.tree), with its loads resolved here, each `load` the file
+# writes, in order, through the build's resolver. Without a resolver (`resolving` false) the three checks that need
+# one are skipped. test/compile/mill-grammar.ts calls this through the face
+task check-mill-source
+  take source, like token-source
+  take resolving, like boolean
+  take resolve
+    like task
+      take path, like text
+      take origin, like text
+      like maybe, like token-source
+  like mill-checked
+
+  save resolved, make list
+  fork test, resolving
+    hold
+      walk mill-load-targets(source)
+        take target
+        resolved/push(mill-load-of(target, source/file, resolve))
+  back check-mill-definition(source, resolving, resolved)
+
+# A FILE THAT IS NOT A PROGRAM, answered whole, or none for a program, which the caller goes on to load and build
+task side-file
+  take source, like token-source
+  take role-of
+    like task
+      take file, like text
+      like text
+  take lean-of
+    like task
+      take file, like text
+      like boolean
+  take resolving, like boolean
+  take resolve
+    like task
+      take path, like text
+      take origin, like text
+      like maybe, like token-source
+  like maybe, like side-answer
+
+  # a look stylesheet is not a normal compile target: it goes to the static-CSS backend, which answers the emitted
+  # stylesheet instead of TypeScript (compile/look-css.tree)
+  fork test, is-look-stylesheet(source)
+    hold
+      save look, look-answer(source)
+      back make(some, look)
+  # a data file (the host dialect: `host` / `list` / `mesh` / `tree` / `fuse` and literals, no code) compiles to a
+  # module whose default export is the value as a JSON literal (compile/host-data.tree, note/term/host/)
+  save role, role-of(source/file)
+  save data, is-equal(role, <host>)
+  fork test, and(not(data), is-equal(role, <>))
+    hold
+      save data, is-data-file(source)
+  fork test, data
+    hold
+      # the lean surface for data: only ever under the mark, since the content rule does not know it
+      save lean, false
+      fork test, is-equal(role, <host>)
+        hold
+          save lean, lean-of(source/file)
+      save answer, compile-data(source, lean)
+      back make(some, answer)
+  # a mill DEFINITION (the `mill` role, deck/mill/role.tree): a dialect's `mine` and `mint` rules, which the toolchain
+  # reads as a grammar and nothing runs. Held to what such a file owes and never milled as code
+  fork test, is-equal(role, <mill>)
+    hold
+      save checked, check-mill-source(source, resolving, resolve)
+      fork test, is-above(checked/diagnostics/length, 0)
+        hold
+          save refused
+            make side-refused
+              bind diagnostics, checked/diagnostics
+          back make(some, refused)
+      back make(some, make mill-sound)
+  back make none
+
+# ---- the data as JSON ----
+
+# `String(n)` for a whole number
+bind side-number-text
+  take value, like number
+  like text
+  case node
+    text <String($value)>
+  case browser
+    text <String($value)>
+  case rust
+    text <$value.to_string()>
+  case swift
+    text <String($value)>
+  case kotlin
+    text <$value.toString()>
+
+# a float as JSON writes it: the host's shortest text, null when it is not finite
+bind side-float-json
+  take value, like float
+  like text
+  case node
+    text <(Number.isFinite($value) ? String($value) : "null")>
+  case browser
+    text <(Number.isFinite($value) ? String($value) : "null")>
+  case rust
+    text <(if $value.is_finite() \{ $value.to_string() \} else \{ String::from("null") \})>
+  case swift
+    text <($value.isFinite ? String($value) : "null")>
+  case kotlin
+    text <(if ($value.isFinite()) $value.toString() else "null")>
+
+# the UTF-16 units a text holds
+bind side-unit-count
+  take value, like text
+  like number
+  case node
+    text <$value.length>
+  case browser
+    text <$value.length>
+  case rust
+    text <($value.encode_utf16().count() as i64)>
+  case swift
+    text <$value.utf16.count>
+  case kotlin
+    text <($value.length.toLong())>
+
+task hex-four
+  take code, like number
+  like text
+  mark private
+
+  save digits, <0123456789abcdef>
+  save out, <>
+  save rest, code
+  save left, 4
+  walk test
+    hook test, is-above(left, 0)
+    hook hold
+      save digit, modulo(rest, 16)
+      save out, <{char-at(digits, digit)}{out}>
+      save rest, divide(subtract(rest, digit), 16)
+      save left, subtract(left, 1)
+  back out
+
+# a text as a JSON string literal, escaped as `JSON.stringify` escapes it: the quote and the backslash, the five short
+# control escapes, every other control character and a lone surrogate as `\u` and four lowercase hex digits
+task json-quote
+  take given, like text
+  like text
+
+  save out, <">
+  save at, 0
+  save size, char-count(given)
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one, char-at(given, at)
+      save at, add(at, 1)
+      # a character past U+FFFF is two units, never escaped
+      fork test, is-above(side-unit-count(one), 1)
+        hold
+          save out, <{out}{one}>
+          turn next
+      save code, char-code-at(one, 0)
+      fork test, is-equal(code, 34)
+        hold
+          save out, <{out}\\">
+          turn next
+      fork test, is-equal(code, 92)
+        hold
+          save out, <{out}\\\\>
+          turn next
+      fork test, is-equal(code, 8)
+        hold
+          save out, <{out}\\b>
+          turn next
+      fork test, is-equal(code, 12)
+        hold
+          save out, <{out}\\f>
+          turn next
+      fork test, is-equal(code, 10)
+        hold
+          save out, <{out}\\n>
+          turn next
+      fork test, is-equal(code, 13)
+        hold
+          save out, <{out}\\r>
+          turn next
+      fork test, is-equal(code, 9)
+        hold
+          save out, <{out}\\t>
+          turn next
+      fork test, is-below(code, 32)
+        hold
+          save out, <{out}\\u{hex-four(code)}>
+          turn next
+      fork test, and(is-minimum(code, 55296), is-maximum(code, 57343))
+        hold
+          save out, <{out}\\u{hex-four(code)}>
+          turn next
+      save out, <{out}{one}>
+  back <{out}">
+
+# whether a key is an array index, which a JavaScript object lists first, in ascending order: the canonical decimal of
+# a whole number below 2^32 - 1
+task is-index-key
+  take key, like text
+  like boolean
+  mark private
+
+  save size, char-count(key)
+  fork test, or(is-equal(size, 0), is-above(size, 10))
+    hold
+      back false
+  fork test, and(is-above(size, 1), is-equal(char-at(key, 0), <0>))
+    hold
+      back false
+  save value, 0
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save code, char-code-at(key, at)
+      fork test, or(is-below(code, 48), is-above(code, 57))
+        hold
+          back false
+      save value, add(multiply(value, 10), subtract(code, 48))
+      save at, add(at, 1)
+  back is-below(value, 4294967295)
+
+task index-value
+  take key, like text
+  like number
+  mark private
+
+  save value, 0
+  save at, 0
+  save size, char-count(key)
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save value, add(multiply(value, 10), subtract(char-code-at(key, at), 48))
+      save at, add(at, 1)
+  back value
+
+# a hash's keys in the order a JavaScript object holds them: snake case, a repeated key in its first place, the array
+# indexes first, ascending. `__proto__` sets the object's prototype and is no key of its own
+task json-keys
+  take entries, like list, like host-entry
+  like list, like text
+  mark private
+
+  save plain, make list
+  save indexes, make list
+  walk entries
+    take entry
+    save key, host-snake(entry/name)
+    fork test, is-equal(key, <__proto__>)
+      hold
+        turn next
+    save seen, false
+    walk plain
+      take one
+      fork test, is-equal(one, key)
+        hold
+          save seen, true
+    walk indexes
+      take one
+      fork test, is-equal(one, key)
+        hold
+          save seen, true
+    fork test, seen
+      hold
+        turn next
+    fork test, is-index-key(key)
+      hold
+        # in ascending order: before the first greater one
+        save placed, make list
+        save put, false
+        walk indexes
+          take one
+          fork test, and(not(put), is-below(index-value(key), index-value(one)))
+            hold
+              placed/push(key)
+              save put, true
+          placed/push(one)
+        fork test, not(put)
+          hold
+            placed/push(key)
+        save indexes, placed
+      miss
+        plain/push(key)
+  save keys, make list
+  walk indexes
+    take one
+    keys/push(one)
+  walk plain
+    take one
+    keys/push(one)
+  back keys
+
+# the value under a key: the last entry whose snake key it is
+task json-value-at
+  take entries, like list, like host-entry
+  take key, like text
+  like host-value
+  mark private
+
+  save found, make blank
+  walk entries
+    take entry
+    fork test, is-equal(host-snake(entry/name), key)
+      hold
+        save found, entry/base
+  back found
+
+# THE VALUE AS `JSON.stringify(toJsonValue(value), null, 2)` WRITES IT, at the indentation `pad`
+task data-json
+  take value, like host-value
+  take pad, like text
+  like text
+
+  save inner, <{pad}  >
+  sift value
+    case hash
+      link entries
+      save keys, json-keys(entries)
+      fork test, is-equal(keys/length, 0)
+        hold
+          back <\{\}>
+      save parts, make list
+      walk keys
+        take key
+        save held, json-value-at(entries, key)
+        parts/push(<{inner}{json-quote(key)}: {data-json(held, inner)}>)
+      back <\{\n{join(parts, <,\n>)}\n{pad}\}>
+    case list
+      link items
+      fork test, is-equal(items/length, 0)
+        hold
+          back <[]>
+      save parts, make list
+      walk items
+        take item
+        parts/push(<{inner}{data-json(item, inner)}>)
+      back <[\n{join(parts, <,\n>)}\n{pad}]>
+    case text
+      link said
+      back json-quote(said)
+    case number
+      link whole
+      # past 2^53 a JSON number loses digits, so it travels as text. Compared, never negated: arithmetic past the safe
+      # integers raises `excess`
+      fork test, or(is-above(whole, 9007199254740991), is-below(whole, -9007199254740991))
+        hold
+          back json-quote(side-number-text(whole))
+      back side-number-text(whole)
+    case decimal
+      link real
+      back side-float-json(real)
+    case flag
+      link on
+      fork test, on
+        hold
+          back <true>
+      back <false>
+    miss
+      back <null>

@@ -24,6 +24,7 @@ import { exceptionForm } from '@term/make/code/check/extend'
 
 const EXCEPTION_FORM = exceptionForm()
 import { hashText } from '@term/make/code/term/hash'
+import { programJson, statementJson } from '@term/make/code/compile/node-json'
 
 // What the whole-program analyses found about each task of a checked unit, with every body in hand. A stub carries
 // its own task's share (`stubFacts`, `stubWrites`, `stubRaises`), because a dependent has the stub and not the body,
@@ -91,14 +92,13 @@ export function stubKnown(program: Program): StubKnown {
 // its signature's raise bounds, a parameter's default, a constant's value (folded into a dependent's text at compile
 // time) and the facts above, so an edit to any of them replayed a dependent built against the old one
 // `portable` writes each deck's root as a token (compile/separate.ts `portableBy`), so the same surface has the same
-// fingerprint in every clone of the repository
+// fingerprint in every clone of the repository. The text is node-json's declared form, the node's identity (decision 034)
 export function surfaceHash(surface: Program, portable: (text: string) => string = text => text): string {
-  return hashText(portable(JSON.stringify(surface, withoutSpans)))
+  return hashText(portable(programJson(WITHOUT_SPANS, surface as never)))
 }
 
-function withoutSpans(key: string, value: unknown): unknown {
-  return key === 'span' ? undefined : typeof value === 'bigint' ? `${value}n` : value
-}
+// the keys a fingerprint leaves out at every depth: a span is provenance, never identity
+const WITHOUT_SPANS = ['span']
 
 // EACH DEFINITION OF A SURFACE, AS THE NAME-LEVEL CUTOFF READS IT (compile/names.tree): the names it can be reached by,
 // the names it mentions, and its fingerprint. A dependent's key holds the fingerprints of the definitions it reaches by
@@ -125,7 +125,7 @@ export function nameDefs(surface: Program, portable: (text: string) => string = 
 
     walk(record)
 
-    return { gives: givesOf(record), reads: [...reads], print: hashText(portable(JSON.stringify(record, withoutSpans))) }
+    return { gives: givesOf(record), reads: [...reads], print: hashText(portable(statementJson(WITHOUT_SPANS, statement as never))) }
   })
 }
 

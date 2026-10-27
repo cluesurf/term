@@ -1,0 +1,398 @@
+# ONE MODULE MILLED, and what a build gathers before any module mills: every `tree` template the graph defines and
+# their fingerprint, and the warnings about the entry file's own spelling. Shared by the merged build
+# (compile/compile.ts `compile`) and the separate one (compile/separate.ts), so a module mills one way whichever path
+# asked for it.
+#
+# Ported from compile/compile.ts's `graphTemplates`, `entryWarnings` and `millUnit` (item 0263 of
+# term/self-host/change/001, decision 031 part C), which stay as the face. `milledModule` stays in the face too, as
+# the `cache.milledUnit` wrapper, until cache.ts is Term (decision 031 section 6). The decisions:
+#   - compile/template.ts, compile/view.ts and compile/mill.ts have no port, so each is a dock named for its module
+#     (decision 031 section 3). A template is a host value this module holds by name and never reads. What a view
+#     check and a mill answer is read through the forms below, which name the fields the face reads
+#   - the build's parse memo is handed in as a task, as the face's closure is
+#   - `(^|\n)tree\s` and `\bfuse\b` are written out by character (traps.md T024): `\s` is JavaScript's whitespace,
+#     Unicode spaces among it, and a word character is an ASCII letter, a digit or `_`
+#   - `expandTemplates` writes the problems it meets into the list it is handed, a host array on TypeScript, the one
+#     backend these docks have. The enumerations it is handed are an empty table, which it reads as it reads none
+#   - the role and the lean flag are handed on to the docks as the build gave them, absent included
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/hash
+  find hash
+
+load @term/base/text
+  find char-code-at
+  find index-of
+  find starts-with
+
+load ../parser/tree
+  find parse-result
+  find root-node
+
+load ../parser/token
+  find token-source
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnostic-name
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../term/hash
+  find hash-text
+
+load ../check/note-metadata
+  find note-metadata-sites
+
+load ../check/keyword-import
+  find keyword-candidates
+  find defines-task
+
+dock load
+  load <@term/make/code/compile/template>, name unit-mill-template
+  load <@term/make/code/compile/view>, name unit-mill-view
+  load <@term/make/code/compile/mill>, name unit-mill-milling
+
+# a problem `expandTemplates` meets at a `fuse`, as compile/template.ts writes it
+form fuse-problem
+  link code, like diagnostic-name
+  link message, like text
+  link span, like span
+
+# every `tree` template the graph defines, by name, and the fingerprint of the modules that define them (`<>` when none
+# does), which joins the mill key of a module that can expand one
+form graph-template-set
+  link templates, like hash, like text, like dynamic
+  link template-key, like text
+
+# what compile/view.ts's `checkView` is handed: the document already parsed and the whole graph's templates
+form view-check
+  link tree, like root-node
+  link templates, like hash, like text, like dynamic
+  link lean, like dynamic
+
+# what `checkView` answers: the document read, or what refused it
+form view-read
+  link ok, like boolean
+  link file
+    like dynamic
+    need false
+  link diagnostics
+    like list, like diagnostic
+    need false
+
+# one module milled, as the face reads it: the program (and, from the mill, the twins), or what stopped it
+form unit-milled
+  link ok, like boolean
+  link program
+    like dynamic
+    need false
+  link diagnostics
+    like list, like diagnostic
+    need false
+
+# ---- empty tables, typed ----
+
+task no-templates
+  like hash, like text, like dynamic
+  mark private
+
+  back make hash
+
+task no-enumerations
+  like hash, like text, like list, like text
+  mark private
+
+  back make hash
+
+task no-problems
+  like list, like fuse-problem
+  mark private
+
+  back make list
+
+# ---- the text tests ----
+
+# JavaScript's `\s`: the ASCII spaces and line ends, and the Unicode spaces
+task is-space-code
+  take code, like number
+  like boolean
+  mark private
+
+  fork test, and(is-minimum(code, 9), is-maximum(code, 13))
+    hold
+      back true
+  fork test, or(is-equal(code, 32), is-equal(code, 160))
+    hold
+      back true
+  fork test, or(is-equal(code, 5760), and(is-minimum(code, 8192), is-maximum(code, 8202)))
+    hold
+      back true
+  fork test, or(is-equal(code, 8232), is-equal(code, 8233))
+    hold
+      back true
+  fork test, or(is-equal(code, 8239), or(is-equal(code, 8287), or(is-equal(code, 12288), is-equal(code, 65279))))
+    hold
+      back true
+  back false
+
+# a word character of JavaScript's `\b`: an ASCII letter, a digit or `_`
+task is-word-code
+  take code, like number
+  like boolean
+  mark private
+
+  fork test, and(is-minimum(code, 48), is-maximum(code, 57))
+    hold
+      back true
+  fork test, and(is-minimum(code, 65), is-maximum(code, 90))
+    hold
+      back true
+  fork test, and(is-minimum(code, 97), is-maximum(code, 122))
+    hold
+      back true
+  back is-equal(code, 95)
+
+# `/(^|\n)tree\s/`: a line that starts `tree` and a space
+task writes-tree-head
+  take text, like text
+  like boolean
+  mark private
+
+  fork test, starts-with(text, <tree>)
+    hold
+      fork test, is-space-code(char-code-at(text, 4))
+        hold
+          back true
+  save at, index-of(text, <\ntree>)
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      fork test, is-space-code(char-code-at(text, add(at, 5)))
+        hold
+          back true
+      save at, index-of(text, <\ntree>, add(at, 1))
+  back false
+
+# `/\bfuse\b/`: `fuse` with no word character either side
+task writes-fuse
+  take text, like text
+  like boolean
+
+  save at, index-of(text, <fuse>)
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      save before-word, false
+      fork test, is-above(at, 0)
+        hold
+          save before-word, is-word-code(char-code-at(text, subtract(at, 1)))
+      fork test, and(not(before-word), not(is-word-code(char-code-at(text, add(at, 4)))))
+        hold
+          back true
+      save at, index-of(text, <fuse>, add(at, 1))
+  back false
+
+# ---- the graph ----
+
+# every entry of `found` set into `into`, in its order: a name already there keeps its place and takes the new value
+task merge-templates
+  take into, like hash, like text, like dynamic
+  take found, like hash, like text, like dynamic
+  like hash, like text, like dynamic
+  mark private
+
+  walk found/entries()
+    take entry
+    save into/{entry/first}, entry/second
+  back into
+
+# Every `tree` template the graph defines, gathered before any module mills, so a module's `fuse` can instantiate one
+# an import defines, and the fingerprint of the modules that define them
+task graph-templates
+  take sources, like list, like token-source
+  take parsed
+    like task
+      take unit, like token-source
+      like parse-result
+  like graph-template-set
+
+  save templates, no-templates()
+  save template-text, <>
+  walk sources
+    take unit
+    fork test, not(writes-tree-head(unit/text))
+      hold
+        turn next
+    save tree, parsed(unit)
+    fork test, not(tree/ok)
+      hold
+        turn next
+    save template-text, <{template-text}{unit/text}>
+    save templates, merge-templates(templates, unit-mill-template/collect-templates(tree/tree))
+  save key, <>
+  fork test, is-above(templates/length(), 0)
+    hold
+      save key, hash-text(template-text)
+  back
+    make graph-template-set
+      bind templates, templates
+      bind template-key, key
+
+# ---- the entry's own warnings ----
+
+# a diagnostic at a span of the entry, the span carrying its file
+task entry-diagnostic
+  take name, like diagnostic-name
+  take file, like text
+  take at, like span
+  take message, like text
+  like diagnostic
+  mark private
+
+  save placed, at
+  save placed/file, make(some, file)
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, placed
+      bind message, make(some, message)
+  back diagnose(name, input)
+
+# The warnings about the ENTRY file's own spelling, which a build gives once, for the file it was asked to build: a
+# `site` the entry's fuse beams nothing into, `note <word>` written as metadata (the old spelling of `mark <word>`,
+# `note private` keeping its own older warning), and a `find read` with no `name`, which `read(path)` never reaches.
+# `templates` is the graph's table, or nothing
+task entry-warnings
+  take source, like token-source
+  take sources, like list, like token-source
+  take parsed
+    like task
+      take unit, like token-source
+      like parse-result
+  take templates, like hash, like text, like dynamic
+  like list, like diagnostic
+
+  save out, make list
+  save entry, parsed(source)
+  fork test, not(entry/ok)
+    hold
+      back out
+  # a `site` the entry's fuse beams nothing into: the mill went on without it (`mill-unit`), and it is said here once
+  save problems, no-problems()
+  fork test, writes-fuse(source/text)
+    hold
+      save ignored, unit-mill-template/expand-templates(entry/tree, templates, no-enumerations(), problems)
+  walk problems
+    take problem
+    fork test, is-equal(problem/code, make empty-site)
+      hold
+        out/push(entry-diagnostic(problem/code, source/file, problem/span, problem/message))
+  walk note-metadata-sites(entry/tree, source/text)
+    take site
+    fork test, is-equal(site/word, <private>)
+      hold
+        turn next
+    save old-spelling, make note-metadata
+    out/push(entry-diagnostic(old-spelling, source/file, site/span, <`note {site/word}` is the old spelling of `mark {site/word}`>))
+  # only a TASK by that name in a module the entry loads: `find text` for `like text` imports a form, which is
+  # reached. Read off the modules' trees, because the program has already dropped a task nothing reaches
+  walk keyword-candidates(entry/tree)
+    take site
+    save defined, false
+    walk sources
+      take unit
+      fork test, is-equal(unit/file, source/file)
+        hold
+          turn next
+      save unit-tree, parsed(unit)
+      fork test, defines-task(unit-tree, site/word)
+        hold
+          save defined, true
+          halt
+    fork test, defined
+      hold
+        save unreached, make keyword-import
+        out/push(entry-diagnostic(unreached, source/file, site/span, <`find {site/word}` is never reached by that name: `{site/word}(...)` is Term's own word, read before any import>))
+  back out
+
+# ---- one module ----
+
+task refused-unit
+  take found, like list, like diagnostic
+  like unit-milled
+  mark private
+
+  back
+    make unit-milled
+      bind ok, false
+      bind diagnostics, found
+
+# a document checked, and lowered to its program
+task view-milled
+  take viewed, like view-read
+  like unit-milled
+  mark private
+
+  fork test, not(viewed/ok)
+    hold
+      back refused-unit(viewed/diagnostics)
+  save lowered, unit-mill-view/lower-view(viewed/file)
+  back
+    make unit-milled
+      bind ok, true
+      bind program, lowered
+
+# parse, expand templates, and mill one module into a program, or the diagnostics that stopped it
+task mill-unit
+  take unit, like token-source
+  take parsed
+    like task
+      take unit, like token-source
+      like parse-result
+  take templates, like hash, like text, like dynamic
+  take role, like dynamic
+  take lean, like dynamic
+  like unit-milled
+
+  save read, parsed(unit)
+  fork test, not(read/ok)
+    hold
+      back refused-unit(read/diagnostics)
+  # the `view` role: the sandboxed document dialect. `checkView` is the ONE gate the compiler, `term view` and a save
+  # path all call, handed the tree already parsed and the whole graph's templates
+  fork test, is-equal(role, <view>)
+    hold
+      save asked
+        make view-check
+          bind tree, read/tree
+          bind templates, templates
+          bind lean, lean
+      back view-milled(unit-mill-view/check-view(unit, asked))
+  # a fuse that does not fit its template is refused at the fuse. An empty site is a warning, which the entry's build
+  # reports (`entry-warnings`) and never stops the mill
+  save problems, no-problems()
+  save expanded, unit-mill-template/expand-templates(read/tree, templates, no-enumerations(), problems)
+  save errors, make list
+  walk problems
+    take problem
+    fork test, is-equal(problem/code, make empty-site)
+      hold
+        turn next
+    save input
+      make diagnostic-input
+        bind file, unit/file
+        bind span, problem/span
+        bind message, make(some, problem/message)
+    errors/push(diagnose(problem/code, input))
+  fork test, is-above(errors/length, 0)
+    hold
+      back refused-unit(errors)
+  back unit-mill-milling/mill(expanded, unit/file, role, lean)

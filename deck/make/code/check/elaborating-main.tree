@@ -11,10 +11,16 @@
 #     (check/facts.ts walks, from a task with a stub's carried body spread over its own), and the trace a
 #     `TERM_KERNEL_TRACE` run prints
 #   - a stub's reports are dropped by truncating the face's own lists, in place, as `length =` did
+#   - the hold state names the task being checked (`within`, decision 035 of
+#     term/self-host/change/001-finish-self-host): some while `check-task` runs, none otherwise and for the top-level
+#     holds, where the original found the task by walking the program for the hold object
 
 load @term/base/list
   find list
   find get
+
+load @term/base/maybe
+  find maybe
 
 load @term/base/text
   find starts-with
@@ -336,6 +342,7 @@ task check-program
   save ts, ms/ts
   save st, ts/st
   save data, ts/data
+  save ms/hs/within, make none
   save claims, make hash
   walk program
     take one
@@ -468,7 +475,9 @@ task check-program
         ms/host/enter-task(statement, is-stub)
         save diagnostic-count, ms/hs/diagnostics/length
         save discharged-count, ms/hs/discharged/length
+        save ms/hs/within, make(some, statement)
         save outcome, check-task(ms, statement, is-stub, statements, scope, ctx, remaining, name, add(generics/length, params/length))
+        save ms/hs/within, make none
         fork test, and(is-unequal(outcome/kind, <ok>), is-equal(is-stub, false))
           hold
             fork test, is-unequal(outcome/kind, <decline>)

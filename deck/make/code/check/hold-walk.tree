@@ -2669,16 +2669,14 @@ task constant-table-lengths
   walk program
     take s
     push(tops, true)
-  save seen, fresh-node-seen()
   save scalar, scalar-kind-list()
+  # every place is walked, a node two places share once at each (decision 035 rule 5): a visit only adds names to
+  # `touched`, so a second visit can drop a table length and never make a wrong one
   walk test
     hook test, is-above(stack/length, 0)
     hook hold
       save handle, stack/pop()
       save at-top, tops/pop()
-      fork test, not(node-seen-first(seen, handle))
-        hold
-          turn next
       sift handle
         case statement-handle
           sift node
@@ -2798,34 +2796,6 @@ task scalar-kind-list
   push(out, <unit>)
   push(out, <bytes>)
   back out
-
-bind fresh-node-seen
-  like unknown
-  case node
-    text <new Set()>
-  case browser
-    text <new Set()>
-  case rust
-    text <std::rc::Rc::new(()) as std::rc::Rc\<dyn std::any::Any\>>
-  case swift
-    text <(NSMutableSet() as Any)>
-  case kotlin
-    text <(java.util.IdentityHashMap\<Any, Boolean\>() as Any)>
-
-bind node-seen-first
-  take seen, like unknown
-  take handle, like node-handle
-  like boolean
-  case node
-    text <($seen.has($handle.node) ? false : ($seen.add($handle.node), true))>
-  case browser
-    text <($seen.has($handle.node) ? false : ($seen.add($handle.node), true))>
-  case rust
-    text <true>
-  case swift
-    text <true>
-  case kotlin
-    text <true>
 
 # a task's promised constant length, `must back/length == K`, which its own check proves
 task promised-length

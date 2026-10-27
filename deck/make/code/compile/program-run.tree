@@ -1,5 +1,3 @@
-mark draft
-
 # One run of `compileProgram` as data: what it is handed, and every value one of its five phases (gate, types, proofs,
 # warnings, emit) hands a later one, each named once. The Term form of compile/compile.ts's `ProgramRun` (decision 031
 # of term/self-host/change/001, item 0260), field for field and in its order. Every Term part of the compile.ts split

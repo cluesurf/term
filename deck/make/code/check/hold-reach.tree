@@ -7,8 +7,9 @@
 # Each of these was a reflective walk in the original, over `unknown`: a stack of whatever it was handed, popped last
 # first, descending every field but `type`, `span` and `binding`, and never visiting one object twice. Here each is a
 # typed walk over node handles: `node-children` (compile/node-children.tree) is the descent the original's default made,
-# in the same order, and a handle's node is remembered by the host's identity, so a node two parents share is still met
-# once. Popped from the same end, the handles come out in the order the original's objects did.
+# in the same order, and every place is visited, so a node two parents share is met at each (decision 035 rule 5, D011
+# rule 1: the original met it once, by object identity). Popped from the same end, the handles come out in the order
+# the original's objects did.
 #
 # Ported from check/holds.ts (self-hosting, 2026-10-06), part four. The decisions:
 #   - the walk's sets are hashes of flags, and a set the original left out (`fresh`, `params`, `constants`, `scalars`)
@@ -128,38 +129,6 @@ form hold-walk
   link params, like hash, like text, like boolean
   link constants, like hash, like text, like boolean
   link scalars, like hash, like text, like boolean
-
-# ---- identity ----
-
-# a set of nodes by identity, which the original's `seen` was
-bind fresh-seen
-  like unknown
-  case node
-    text <new Set()>
-  case browser
-    text <new Set()>
-  case rust
-    text <std::rc::Rc::new(()) as std::rc::Rc\<dyn std::any::Any\>>
-  case swift
-    text <(NSMutableSet() as Any)>
-  case kotlin
-    text <(java.util.IdentityHashMap\<Any, Boolean\>() as Any)>
-
-# is this the first time the handle's node is met: remembered if so
-bind seen-first
-  take seen, like unknown
-  take handle, like node-handle
-  like boolean
-  case node
-    text <($seen.has($handle.node) ? false : ($seen.add($handle.node), true))>
-  case browser
-    text <($seen.has($handle.node) ? false : ($seen.add($handle.node), true))>
-  case rust
-    text <true>
-  case swift
-    text <true>
-  case kotlin
-    text <true>
 
 # ---- small makers ----
 
@@ -516,14 +485,10 @@ task scalar-locals
   save order, texts()
   save disqualified, texts()
   save stack, block-handles(body)
-  save seen, fresh-seen()
   walk test
     hook test, is-above(stack/length, 0)
     hook hold
       save handle, stack/pop()
-      fork test, not(seen-first(seen, handle))
-        hold
-          turn next
       sift handle
         case statement-handle
           sift node
@@ -700,14 +665,10 @@ task reaches-lists
   walk start
     take one
     push(stack, one)
-  save seen, fresh-seen()
   walk test
     hook test, is-above(stack/length, 0)
     hook hold
       save handle, stack/pop()
-      fork test, not(seen-first(seen, handle))
-        hold
-          turn next
       sift handle
         case expression-handle
           save call, node
@@ -778,14 +739,10 @@ task only-keeps-lengths
   walk start
     take one
     push(stack, one)
-  save seen, fresh-seen()
   walk test
     hook test, is-above(stack/length, 0)
     hook hold
       save handle, stack/pop()
-      fork test, not(seen-first(seen, handle))
-        hold
-          turn next
       sift handle
         case statement-handle
           sift node
@@ -1124,14 +1081,10 @@ task push-targets
 
   save out, texts()
   save stack, block-handles(body)
-  save seen, fresh-seen()
   walk test
     hook test, is-above(stack/length, 0)
     hook hold
       save handle, stack/pop()
-      fork test, not(seen-first(seen, handle))
-        hold
-          turn next
       sift handle
         case statement-handle
           sift node
@@ -1162,14 +1115,10 @@ task body-only-pushes
 
   save count, 0
   save stack, block-handles(body)
-  save seen, fresh-seen()
   walk test
     hook test, is-above(stack/length, 0)
     hook hold
       save handle, stack/pop()
-      fork test, not(seen-first(seen, handle))
-        hold
-          turn next
       sift handle
         case statement-handle
           sift node
@@ -1206,14 +1155,10 @@ task writes-through-member
   like boolean
 
   save stack, block-handles(body)
-  save seen, fresh-seen()
   walk test
     hook test, is-above(stack/length, 0)
     hook hold
       save handle, stack/pop()
-      fork test, not(seen-first(seen, handle))
-        hold
-          turn next
       sift handle
         case statement-handle
           sift node
@@ -1240,14 +1185,10 @@ task exits-early
   like boolean
 
   save stack, block-handles(body)
-  save seen, fresh-seen()
   walk test
     hook test, is-above(stack/length, 0)
     hook hold
       save handle, stack/pop()
-      fork test, not(seen-first(seen, handle))
-        hold
-          turn next
       sift handle
         case statement-handle
           sift node
@@ -1508,14 +1449,10 @@ task closures-in
   save out, make list
   save stack, handles()
   push(stack, expression-handle-of(expression))
-  save seen, fresh-seen()
   walk test
     hook test, is-above(stack/length, 0)
     hook hold
       save handle, stack/pop()
-      fork test, not(seen-first(seen, handle))
-        hold
-          turn next
       sift handle
         case expression-handle
           sift node
@@ -1545,14 +1482,10 @@ task direction-of
   save ups, 0
   save downs, 0
   save stack, block-handles(body)
-  save seen, fresh-seen()
   walk test
     hook test, is-above(stack/length, 0)
     hook hold
       save handle, stack/pop()
-      fork test, not(seen-first(seen, handle))
-        hold
-          turn next
       sift handle
         case statement-handle
           save s, node

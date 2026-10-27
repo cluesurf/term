@@ -9,7 +9,7 @@
 // asks of its theorem), -induction, -holds (one hold) and -main (the loop over the tasks). The kernel is
 // check/judging.tree, called through `kernel-call` and the `attempt` steps wherever the original caught its errors.
 //
-// This face keeps what reads a node by reflection or by identity, what is `JSON.stringify` in key order, and what
+// This face keeps what reads a node by reflection or by identity, what compares node-json text, and what
 // another session's modules answer, and hands each in as a task: `collectNumberLiteralValues`, `kindsApart`,
 // `sameValueArgs`, `carriedBodies`, `callsItself`, `containsMemberWrite`, `readsMember`, `etaPair`, check/facts.ts
 // (a face with an identity cache), check/unfold.ts's table, check/induct.ts (the product prover's budget) and
@@ -66,6 +66,7 @@ import {
   writtenNames,
 } from '@term/make/code/check/facts'
 import { integerText } from '@term/make/code/compile/type-text'
+import { expressionJson } from '@term/make/code/compile/node-json'
 
 const TYPE0: Term = { tag: 'type', level: litLevel(0) }
 
@@ -81,13 +82,14 @@ function sameValueArgs(
   a: Expression[] | undefined,
   b: Expression[] | undefined,
 ): boolean {
+  // node-json's declared form, the node's identity (decision 034)
   const text = (e: Expression[] | undefined): string =>
-    JSON.stringify(e ?? [], (key, value) =>
-      key === 'span' || key === 'type' || key === 'binding' || key === 'site' ? undefined : value,
-    )
+    `[${(e ?? []).map(one => expressionJson(AS_WRITTEN, one as never)).join(',')}]`
 
   return text(a) === text(b)
 }
+
+const AS_WRITTEN = ['span', 'type', 'binding', 'site']
 
 // thrown to abandon checking a construct the effect layer cannot represent yet (distinct from a real type error,
 // which surfaces as the kernel's TypeError). A declined function is left to the surface checker and counted, with

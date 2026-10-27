@@ -31,7 +31,9 @@ import { hashText } from '@term/make/code/term/hash'
 // errors the source no longer had before the key was read. lean-0034 is keying this on the build itself.
 // '9': an integer literal past 2^53 mills to an exact bigint instead of a rounded number, so a unit cached at '8'
 // may hold a literal that names a different integer than its text.
-export const CACHE_EPOCH = '9'
+// '10': every unit key, name key and surface hash is node-json's declared form, not `JSON.stringify` (decision 034,
+// item term-self-host-001-0282), so every stored key changes once.
+export const CACHE_EPOCH = '10'
 
 // A cached entry, or nothing. A CORRUPT ENTRY IS A MISS, never a crash: the store writes atomically, but a
 // full disk, a killed process on a filesystem that does not honour the rename, or a half-synced network share

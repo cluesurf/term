@@ -12,6 +12,7 @@ import { collectUsedClasses } from '@term/make/code/compile/used-classes'
 import { Database, LOW } from '@term/make/code/compile/query'
 import type { Durability, Cx } from '@term/make/code/compile/query'
 import { hashText } from '@term/make/code/term/hash'
+import { programJson, statementJson, twinJson, typeJson } from '@term/make/code/compile/node-json'
 import type { MilledUnit } from '@term/make/code/compile/cache'
 import type {
   Program,
@@ -34,15 +35,26 @@ export type MergedProgram =
 // two milled programs are equal when their STRUCTURE is, ignoring spans. A comment-only or reformatting edit shifts
 // every span but changes no AST, so it must backdate (leave dependents green). Spans are provenance for diagnostics,
 // carried beside the value, never compared as a dependency target (the Salsa rule).
+// The text compared is node-json's declared form, the node's identity (decision 034), with spans in the skip list. A failed
+// unit's diagnostics are stored records, not nodes, and keep `JSON.stringify` (decision 039)
+const WITHOUT_SPANS = ['span']
+
 function withoutSpans(_key: string, value: unknown): unknown {
   return _key === 'span' ? undefined : value
 }
 
+function milledKey(unit: MilledUnit): string {
+  if (!unit.ok) {
+    return `diagnostics:${JSON.stringify(unit.diagnostics, withoutSpans)}`
+  }
+
+  const twins = (unit.twins ?? []).map(twin => twinJson(WITHOUT_SPANS, twin as never))
+
+  return `program:${programJson(WITHOUT_SPANS, unit.program as never)}|twins:[${twins.join(',')}]`
+}
+
 function milledEquals(a: MilledUnit, b: MilledUnit): boolean {
-  return (
-    hashText(JSON.stringify(a, withoutSpans)) ===
-    hashText(JSON.stringify(b, withoutSpans))
-  )
+  return hashText(milledKey(a)) === hashText(milledKey(b))
 }
 
 export class QueryCompiler {
@@ -158,12 +170,7 @@ export class QueryCompiler {
     return cx.query(`signature:${name}`, async c => {
       const fn = (await this.functions(c, files)).get(name)
 
-      return fn
-        ? structureKey({
-            params: fn.params.map(p => p.type),
-            result: fn.result,
-          })
-        : ''
+      return fn ? signatureKey(fn) : ''
     })
   }
 
@@ -183,7 +190,7 @@ export class QueryCompiler {
         }
 
         return {
-          bodyKey: structureKey(fn.body),
+          bodyKey: statementsKey(fn.body),
           refs: [...collectCallRefs(fn.body)].sort(),
         }
       },
@@ -250,7 +257,7 @@ export class QueryCompiler {
     return cx.query(
       `source:${name}`,
       async c => functionDefs(await this.merged(c, files)).get(name),
-      (a, b) => structureKey(a) === structureKey(b),
+      (a, b) => definitionKey(a) === definitionKey(b),
     )
   }
 
@@ -283,7 +290,7 @@ export class QueryCompiler {
         return { def: clone, diagnostics }
       },
       (a, b) =>
-        structureKey(a.def) === structureKey(b.def) &&
+        definitionKey(a.def) === definitionKey(b.def) &&
         a.diagnostics.length === b.diagnostics.length,
     )
   }
@@ -300,7 +307,7 @@ export class QueryCompiler {
             ? { ...statement, body: [] }
             : statement,
         ),
-      (a, b) => structureKey(a) === structureKey(b),
+      (a, b) => statementsKey(a) === statementsKey(b),
     )
   }
 
@@ -350,7 +357,7 @@ export class QueryCompiler {
         return { def: clone, diagnostics }
       },
       (a, b) =>
-        structureKey(a.def) === structureKey(b.def) &&
+        definitionKey(a.def) === definitionKey(b.def) &&
         a.diagnostics.length === b.diagnostics.length,
     )
   }
@@ -423,9 +430,22 @@ function functionDefs(program: Program): Map<string, FunctionDef> {
   return map
 }
 
-// span-free structural fingerprint (spans are provenance, never a dependency target)
-function structureKey(value: unknown): string {
-  return hashText(JSON.stringify(value, withoutSpans))
+// span-free structural fingerprints (spans are provenance, never a dependency target), in node-json's declared form
+// (decision 034): of statements, of one definition (none is the empty text) and of a signature's types
+function statementsKey(statements: Statement[]): string {
+  return hashText(programJson(WITHOUT_SPANS, statements as never))
+}
+
+function definitionKey(def: FunctionDef | undefined): string {
+  return def ? hashText(statementJson(WITHOUT_SPANS, def as never)) : ''
+}
+
+function signatureKey(fn: FunctionDef): string {
+  const typeText = (type: unknown): string => (type === undefined ? 'null' : typeJson(WITHOUT_SPANS, type as never))
+  const params = fn.params.map(p => typeText(p.type)).join(',')
+  const result = fn.result === undefined ? '' : `,"result":${typeText(fn.result)}`
+
+  return hashText(`{"params":[${params}]${result}}`)
 }
 
 // the function names CALLED in a body (a `call` whose callee is a bare name). Not locals / params / member calls.

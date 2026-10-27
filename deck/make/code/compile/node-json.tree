@@ -76,6 +76,7 @@ load ./node
   find dock-component
   find dock-hook
   find value-branch
+  find twin
 
 load ../parser/diagnostic
   find span
@@ -114,6 +115,14 @@ task type-json
   like text
 
   back json-of-type(skip, node)
+
+# a twin as JSON (decision 039)
+task twin-json
+  take skip, like list, like text
+  take node, like twin
+  like text
+
+  back json-of-twin(skip, node)
 
 # a whole program as JSON
 task program-json
@@ -3388,4 +3397,55 @@ task json-of-value-branch
   fork test, enters(skip-keys, <value>)
     hold
       push(members, <"value":{json-of-expression(skip-keys, subject/value)}>)
+  back <\{{join(members, <,>)}\}>
+
+task json-of-twin
+  take skip-keys, like list, like text
+  take subject, like twin
+  like text
+  mark private
+
+  save members, make list
+  fork test, enters(skip-keys, <of>)
+    hold
+      push(members, <"of":{json-quote(subject/of)}>)
+  fork test, enters(skip-keys, <name>)
+    hold
+      push(members, <"name":{json-quote(subject/name)}>)
+  fork test, enters(skip-keys, <params>)
+    hold
+      push(members, <"params":{json-of-text-list(subject/params)}>)
+  fork test, enters(skip-keys, <have>)
+    hold
+      push(members, <"have":{json-of-expression-list(skip-keys, subject/have)}>)
+  fork test, enters(skip-keys, <test>)
+    hold
+      push(members, <"test":{json-of-expression-list(skip-keys, subject/test)}>)
+  fork test, enters(skip-keys, <ease>)
+    hold
+      push(members, <"ease":{json-of-text-list(subject/ease)}>)
+  fork test, enters(skip-keys, <cost>)
+    hold
+      save held-100, subject/cost
+      sift held-100
+        case some
+          link inner
+          push(members, <"cost":{json-of-expression(skip-keys, inner)}>)
+        case none
+          save ignored, true
+  fork test, enters(skip-keys, <knobs>)
+    hold
+      push(members, <"knobs":{json-of-closure-param-list(skip-keys, subject/knobs)}>)
+  fork test, enters(skip-keys, <platform>)
+    hold
+      push(members, <"platform":{json-of-text-list(subject/platform)}>)
+  fork test, enters(skip-keys, <trust>)
+    hold
+      push(members, <"trust":{flag-json(subject/trust)}>)
+  fork test, enters(skip-keys, <body>)
+    hold
+      push(members, <"body":{json-of-statement-list(skip-keys, subject/body)}>)
+  fork test, enters(skip-keys, <span>)
+    hold
+      push(members, <"span":{json-of-span(skip-keys, subject/span)}>)
   back <\{{join(members, <,>)}\}>
