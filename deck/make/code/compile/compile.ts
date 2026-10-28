@@ -29,11 +29,16 @@ import type {
   ProgramRun as WarningsRun,
   WakeGroup as WakeGroupTerm,
 } from '@term/make/code/compile/program-warnings'
+import {
+  emitTypescript as emitTypescriptPort,
+  entryFormAliases as entryFormAliasesPort,
+  programEmit as programEmitPort,
+} from '@term/make/code/compile/program-emit'
+import type { PendingEmit, ProgramRun as EmitRun } from '@term/make/code/compile/program-emit'
 import type { RollKind, RollValue } from '@term/make/code/compile/rolling'
 import type { WakeEntry, WakeGroup } from '@term/make/code/compile/wake'
 import { resolve } from '@term/make/code/check/resolve'
 import { overloadGroups, runtimeBound } from '@term/make/code/check/overload'
-import { checkLoweredMembers } from '@term/make/code/check/lowered'
 import type { Roll, RollEntry } from '@term/make/code/compile/roll'
 import type { Tally } from '@term/make/code/check/holds'
 import { checkerSwitches, unknownSeamOn } from '@term/make/code/check/strict'
@@ -90,13 +95,7 @@ function deckTask(
   }
 }
 
-import { simplify } from '@term/make/code/ir/simplify'
-import { coverProgram } from '@term/make/code/ir/cover'
 import type { CoverTarget } from '@term/make/code/ir/cover'
-import { passDictionaries } from '@term/make/code/ir/dictionary'
-import { lowerViews } from '@term/make/code/compile/view-lower'
-import { emitTypeScript, toPascal } from '@term/make/code/compile/typescript'
-import { emitModules } from '@term/make/code/compile/modules'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
 import { collectModules, makeParseMemo, platformRefusals, scopeList } from '@term/make/code/compile/load'
 import type { ImportScope, ParseMemo, Source, WalkMemo } from '@term/make/code/compile/load'
@@ -1073,182 +1072,109 @@ function plainWakeGroup(group: WakeGroupTerm): WakeGroup {
   }
 }
 
-// STEPS 22 TO 25, THE EMIT: the internal marks, coverage, the dictionaries, the emit, the simplifier and the result
+// STEPS 22 TO 25, THE EMIT: the internal marks, coverage, the dictionaries, the emit, the simplifier and the result. The
+// emit is Term, compile/program-emit.tree (item term-self-host-001-0268): this face hands it the run in its Term form
+// and what Term cannot read off the run, writes back the program the probes were written into, and builds the result
+// from the pending emit it answers, the one builder for the per-module, the raw and the optimized results
 export function programEmit(run: ProgramRun): CompileResult {
-  const { program, file, roots, modulesUrl, optimize, env, library, naming, emitOnly, cover } = run
-  const { runtimeNames, renamedRuntime, warnings, openClaims, obligations, kernel, roll, wake } = run
+  const { deckOf, scope, selected, emitOnly, roots, modulesUrl, optimize, env, naming, file, cover } = run
+  // the run as compile/program-run.tree declares it, as the gate's face hands it
+  const termRun = {
+    ...run,
+    roots: roots && new Map<string, boolean>([...roots].map(name => [name, true])),
+    modulesURL: run.modulesUrl,
+    wantRoll: run.wantRoll === 'fast' ? 'fast_roll' : run.wantRoll ? 'whole_roll' : 'no_roll',
+    deckOf: deckTask(deckOf),
+    scope: scopeList(scope),
+    selected: selected && { twins: selected.twins, choices: twinChoiceList(selected.choices), expose: selected.expose },
+    emitOnly: emitOnly && new Map([...emitOnly].map(one => [one, true])),
+    roll: undefined,
+    wake: undefined,
+  } as unknown as EmitRun
+  const answer = programEmitPort(termRun, {
+    hasRoots: roots !== undefined,
+    roots: [...(roots ?? [])],
+    cover: cover ? { form: 'some', value: cover } : { form: 'none' },
+    hasModules: modulesUrl !== undefined,
+    // the emitter spells an acronym word upper case (compile/program-run.tree `modules-url`)
+    modulesURL: modulesUrl,
+    scoped: emitOnly !== undefined,
+    home: naming ?? file,
+    emitOnly,
+    raw: optimize === false,
+    env: env ?? '',
+    // whether a `let` is a host global, which an absent text and an empty one cannot say in Term (ir/simplify.ts)
+    foreign: (statement: Statement) => statement.form === 'let' && statement.foreign !== undefined,
+  } as never)
 
-  // every function outside the public surface is marked `internal`: every call it receives is in this program. Only
-  // when the roots are known, so a compile that names none leaves every function callable from outside
-  if (roots) {
-    for (const node of program) {
-      if (node.form === 'function' && !roots.has(node.name)) {
-        node.internal = true
-      }
-    }
+  run.program = (termRun as unknown as ProgramRun).program
+
+  if (answer.refused.form === 'some') {
+    return { ok: false, diagnostics: answer.refused.value as Diagnostic[] }
   }
 
-  // COVERAGE PROBES, after every check above (purity, raise sets, async inference and twin admission never see one) and
-  // before the simplifier (an inlined body keeps the keys it was written with). Spec: term/decisions-2026-10/coverage
-  const coverKeys = cover ? coverProgram(program, cover) : undefined
-  const covering = coverKeys ? { cover: coverKeys } : {}
-
-  // trait-instance dictionary passing: thread a trait's instance through every trait-bounded generic call so generic
-  // trait-method dispatch resolves to concrete code. This is the JavaScript-family lowering (records of functions); the
-  // native backends instead keep trait calls in native form and emit traits / protocols / interfaces. So the dictionary
-  // pass feeds ONLY the TypeScript emit, on a clone, leaving the returned program (and every native backend that emits
-  // from it) with trait calls intact. It runs at all only when the program actually has trait-bounded generics, so the
-  // stdlib and all non-trait code pay nothing. See code/ir/dictionary.ts.
-  const hasTraitGenerics =
-    program.some(s => s.form === 'mask') &&
-    program.some(
-      s =>
-        s.form === 'function' &&
-        s.generics.some(g => g.need !== undefined),
-    )
-
-  let tsProgram = program
-
-  if (hasTraitGenerics) {
-    // Each statement's origin rides along on its span, which `structuredClone` copies, so the clone needs no
-    // fixup. The map this replaced needed an index-paired loop here, and would have misattributed an entire module
-    // had the clone ever reordered.
-    const cloned = structuredClone(program)
-
-    tsProgram = passDictionaries(cloned)
-  }
-
-  // a statement the build made rather than read (a trait's dictionary) has no file, and per-module emit puts it in a
-  // module of its own that a separate unit, emitting only its own files, never wrote: the unit's module imported
-  // `traitDictScorerPlayer` from a file nothing made (guides: types/masks, 2026-10-05). In a unit it belongs to the
-  // unit, so it goes in the unit's module, which is the only one that reads it
-  if (emitOnly) {
-    const home = naming ?? file
-
-    for (const statement of tsProgram) {
-      statement.span.file ??= home
-    }
-  }
-
-  // per-module mode: emit one ESM module per source file from the checked (pre-simplify) program, so module boundaries
-  // survive (no cross-module forwarder inlining). The dev server serves these lazily. See code/compile/modules.ts.
-  if (modulesUrl) {
-    return {
-      ok: true,
-      program: tsProgram,
-      typescript: '',
-      modules: emitModules(tsProgram, modulesUrl, emitOnly, runtimeNames),
-      ...covering,
-      warnings,
-      ...(openClaims.length ? { openClaims } : {}),
-      obligations,
-      kernel,
-      uncertified: uncertifiedCount() - run.uncertifiedBefore,
-      ...(roll ? { roll } : {}),
-    }
-  }
-
-  // the editor path keeps the un-optimized program: navigation / find-references need every original call site, which
-  // forwarder-inlining and specialization would collapse. The emitted TS is irrelevant there, so build it from the
-  // checked program as-is.
-  if (optimize === false) {
-    return {
-      ok: true,
-      // keep the original program (views intact) for the editor's navigation /
-      // find-references; lower only the copy that feeds the TS emitter.
-      program,
-      typescript: emitTypeScript(lowerViews(program, runtimeNames)),
-      ...covering,
-      warnings,
-      ...(openClaims.length ? { openClaims } : {}),
-      obligations,
-      kernel,
-      uncertified: uncertifiedCount() - run.uncertifiedBefore,
-      ...(roll ? { roll } : {}),
-    }
-  }
-
-  // IR pass: simplify (forwarder inlining + constant folding + algebraic identities). Entry-module roots are preserved
-  // even if unreferenced; only internal (imported) pass-through wrappers are inlined away. The returned program (which
-  // the native backends emit from) keeps native trait calls; the TypeScript string is built from the dictionary clone.
-  //
-  // A program with a `view` is lowered after this pass into calls of the render runtime under their bound names, and a
-  // `view` counts only the plain names, so a renamed runtime name is a root too (beat-term-0055, review 0045)
-  const simplifyRoots =
-    roots && renamedRuntime.length > 0 && program.some(statement => statement.form === 'view')
-      ? new Set([...roots, ...renamedRuntime])
-      : roots
-  const optimized = simplify(program, simplifyRoots)
-  const tsOptimized = hasTraitGenerics
-    ? simplify(tsProgram, simplifyRoots)
-    : optimized
-
-  // View lowering: rewrite every `view` into a plain `function` over the render
-  // runtime (+ component calls / slots), so every backend emits components as
-  // ordinary functions with no view-specific codegen. Runs last, after simplify,
-  // exactly where the view emit used to happen. See code/compile/view-lower.ts.
-  const loweredProgram = lowerViews(optimized, runtimeNames)
-  const loweredTs = hasTraitGenerics
-    ? lowerViews(tsOptimized, runtimeNames)
-    : loweredProgram
-
-  // a member call on a list or a map that no native backend lowers, refused on Rust, Swift and Kotlin before anything is
-  // emitted, where it used to be written as a host call for the toolchain to refuse (check/lowered.ts)
-  const unlowered = checkLoweredMembers(loweredProgram, file, env ?? '')
-
-  if (unlowered.length) {
-    return { ok: false, diagnostics: unlowered }
-  }
-
-  const result = {
-    ok: true as const,
-    program: loweredProgram,
-    ...covering,
-    warnings,
-    ...(openClaims.length ? { openClaims } : {}),
-    obligations,
-    kernel,
-    uncertified: uncertifiedCount() - run.uncertifiedBefore,
-    ...(roll ? { roll } : {}),
-    // what wakes the hive, computed once above: the TypeScript getter below and every native driver
-    // (`emitRust(result.program, { wake: result.wake })`) read this one value (term/hive decision 002)
-    wake,
-  }
-
-  // THE TYPESCRIPT IS BUILT WHEN IT IS FIRST READ. A Rust, Swift or Kotlin build emits from `program` and never reads
-  // it, and it was a quarter of every native compile: `emitTypeScript` and its arithmetic facts, 1,241 ms of 5,408
-  // compiling the idiom gate's 48 programs to Rust twice (`tmp/prof-compile.ts`, 2026-10-05). It reads the program and
-  // writes nothing back, which `tmp/ts-lazy-check.ts` holds: every native emission is the same whether the TypeScript
-  // was built before it or not at all. Enumerable, so a spread or `JSON.stringify` of the result still carries it
-  let typescript: string | undefined
-
-  Object.defineProperty(result, 'typescript', {
-    enumerable: true,
-    get: () =>
-      (typescript ??= `${emitTypeScript(loweredTs, { env, wake, ...(library ? { library: true } : {}) })}${entryFormAliases(loweredTs, file)}`),
-  })
-
-  return result as typeof result & { typescript: string }
+  return emitResult(run, (answer.pending as { form: 'some'; value: PendingEmit }).value)
 }
 
-// THE ENTRY'S RENAMED RECORD FORM IS EXPORTED BY ITS WRITTEN NAME TOO (decision 045). check/scope renames an entry's
-// record form named like some case `<name>__form`, as it renames a loaded one, so a construction binds alike whichever
-// file is the entry. The emitter writes the renamed name, and a face imports the form by the name it was written with
-// (`TwinChoice`, never `TwinChoiceForm`), so each such form gets a type alias under that name. Nothing else in the
-// program can be named so: every definition of the name was renamed, and a case is written inside its union's type
-export function entryFormAliases(program: Program, file: string): string {
-  const lines: string[] = []
+// THE RESULT OF A PENDING EMIT, in the order the original spelled each: the per-module result carries the modules and
+// an empty TypeScript, the raw one its TypeScript emitted at once, and the optimized one the hive's wake and its
+// TypeScript built when it is first read.
+//
+// THE TYPESCRIPT IS BUILT WHEN IT IS FIRST READ. A Rust, Swift or Kotlin build emits from `program` and never reads
+// it, and it was a quarter of every native compile: `emitTypeScript` and its arithmetic facts, 1,241 ms of 5,408
+// compiling the idiom gate's 48 programs to Rust twice (`tmp/prof-compile.ts`, 2026-10-05). It reads the program and
+// writes nothing back, which `tmp/ts-lazy-check.ts` holds: every native emission is the same whether the TypeScript
+// was built before it or not at all. Enumerable, so a spread or `JSON.stringify` of the result still carries it
+function emitResult(run: ProgramRun, pending: PendingEmit): CompileResult {
+  const { env, library, warnings, openClaims, obligations, kernel, roll, wake } = run
+  const options = { env, wake, ...(library ? { library: true } : {}) }
+  const result: Record<string, unknown> = { ok: true, program: pending.program }
 
-  for (const statement of program) {
-    if (statement.form !== 'record-type' || statement.span.file !== file || statement.variants.length > 0 || !statement.name.endsWith('__form')) {
-      continue
-    }
-
-    const params = statement.params ?? []
-    const heads = params.length ? `<${params.map(param => `${toPascal(param)} = any`).join(', ')}>` : ''
-    const args = params.length ? `<${params.map(param => toPascal(param)).join(', ')}>` : ''
-    lines.push(`export type ${toPascal(statement.name.slice(0, -'__form'.length))}${heads} = ${toPascal(statement.name)}${args}`)
+  if (pending.kind === 'modules_emit') {
+    result.typescript = ''
+    result.modules = (pending.modules as { form: 'some'; value: Map<string, ModuleEmit> }).value
   }
 
-  return lines.length ? `\n${lines.join('\n')}\n` : ''
+  if (pending.kind === 'raw_emit') {
+    result.typescript = emitTypescriptPort(pending, options)
+  }
+
+  if (pending.cover.form === 'some') {
+    result.cover = pending.cover.value
+  }
+
+  result.warnings = warnings
+
+  if (openClaims.length) {
+    result.openClaims = openClaims
+  }
+
+  result.obligations = obligations
+  result.kernel = kernel
+  result.uncertified = uncertifiedCount() - run.uncertifiedBefore
+
+  if (roll) {
+    result.roll = roll
+  }
+
+  if (pending.kind === 'optimized_emit') {
+    // what wakes the hive, computed once in the warnings: the TypeScript getter below and every native driver
+    // (`emitRust(result.program, { wake: result.wake })`) read this one value (term/hive decision 002)
+    result.wake = wake
+
+    let typescript: string | undefined
+
+    Object.defineProperty(result, 'typescript', {
+      enumerable: true,
+      get: () => (typescript ??= emitTypescriptPort(pending, options)),
+    })
+  }
+
+  return result as CompileResult
+}
+
+// THE ENTRY'S RENAMED RECORD FORM IS EXPORTED BY ITS WRITTEN NAME TOO (decision 045), in compile/program-emit.tree
+// (item term-self-host-001-0268)
+export function entryFormAliases(program: Program, file: string): string {
+  return entryFormAliasesPort(program, file)
 }
