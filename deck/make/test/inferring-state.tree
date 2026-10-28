@@ -1,0 +1,222 @@
+note <the infer state's helpers on hand inputs: ordinal, instantiate, assigns-name and body-raises (check/inferring-state.tree)>
+
+load ../code/check/inferring-state
+  find ordinal
+  find instantiate
+  find assigns-name
+  find body-raises
+  find task-signature
+  find generic-bound
+
+load ../code/check/substitution
+  find new-substitution
+  find fresh-type
+
+load ../code/compile/node
+  find statement
+  find expression
+  find type
+  find statement-branch
+  find catch-clause
+
+load ../code/parser/diagnostic
+  find span
+  find position
+
+load @term/base/list
+  find list
+  find join
+
+# one span for every hand-made node
+task here
+  like span
+
+  save at
+    make position
+      bind line, 1
+      bind column, 1
+  save made
+    make span
+      bind start, at
+      bind end, at
+  back made
+
+task variable-of
+  take name, like text
+  like expression
+
+  save made
+    make expression/variable
+      bind name, name
+      bind span, here()
+  back made
+
+task one-of
+  like expression
+
+  save made
+    make expression/integer
+      bind value, 1
+      bind span, here()
+  back made
+
+# `save <name>, 1`
+task assign-of
+  take name, like text
+  like statement
+
+  save made
+    make statement/assign
+      bind target, variable-of(name)
+      bind op, make set
+      bind value, one-of()
+      bind span, here()
+  back made
+
+# `call <name>()`
+task call-of
+  take name, like text
+  like statement
+
+  save called
+    make expression/call
+      bind callee, variable-of(name)
+      bind args, make list
+      bind span, here()
+  save made
+    make statement/expression
+      bind expr, called
+      bind span, here()
+  back made
+
+# `halt <form>`, or `halt <text>` when the form is empty
+task raise-of
+  take form-name, like text
+  like statement
+
+  save message
+    make expression/string
+      bind value, <boom>
+      bind span, here()
+  save made
+    make statement/throw
+      bind value, message
+      bind span, here()
+      bind raise, form-name
+  back made
+
+test <ordinal: st, nd and rd but for eleven to thirteen of each hundred>
+  host shown, make list
+  shown/push(ordinal(0))
+  shown/push(ordinal(1))
+  shown/push(ordinal(2))
+  shown/push(ordinal(3))
+  shown/push(ordinal(4))
+  shown/push(ordinal(11))
+  shown/push(ordinal(12))
+  shown/push(ordinal(13))
+  shown/push(ordinal(21))
+  shown/push(ordinal(102))
+  shown/push(ordinal(111))
+  shown/push(ordinal(113))
+  shown/push(ordinal(1023))
+  want hold, is-equal(join(shown, <,>), <0th,1st,2nd,3rd,4th,11th,12th,13th,21st,102nd,111th,113th,1023rd>)
+
+test <assigns-name: a save anywhere under the body, a branch included, and only of that name>
+  host inner, make list
+  inner/push(assign-of(<x>))
+  host branch
+    make statement-branch
+      bind cond, variable-of(<go>)
+      bind body, inner
+  host branches, make list
+  branches/push(branch)
+  host forked
+    make statement/if
+      bind branches, branches
+      bind span, here()
+  host body, make list
+  body/push(call-of(<f>))
+  body/push(forked)
+  want hold, assigns-name(body, <x>)
+  want hold, is-equal(assigns-name(body, <y>), false)
+  want hold, is-equal(assigns-name(body, <go>), false)
+
+test <body-raises: its own raises, its callees' sets, a handler's raises, never a nested guarded body's>
+  host sets, make hash
+  host of-f, make list
+  of-f/push(<conflict>)
+  of-f/push(<excess>)
+  sets/set(<f>, of-f)
+  host guarded, make list
+  guarded/push(raise-of(<absence>))
+  host handler, make list
+  handler/push(raise-of(<>))
+  host caught
+    make catch-clause
+      bind name, <problem>
+      bind body, handler
+      bind span, here()
+  host nested
+    make statement/guard
+      bind body, guarded
+      bind catch, make(some, caught)
+      bind span, here()
+  host body, make list
+  body/push(raise-of(<excess>))
+  body/push(call-of(<f>))
+  body/push(call-of(<g>))
+  body/push(nested)
+  want hold, is-equal(join(body-raises(body, sets), <,>), <excess,conflict,failure>)
+
+test <instantiate: a plain signature as it is, a generic one freshened with its bound>
+  host sub, new-substitution()
+  host generic, fresh-type(sub)
+  host params, make list
+  params/push(generic)
+  host bound
+    make generic-bound
+      bind id, 0
+      bind mask, <addition>
+  host bounds, make list
+  bounds/push(bound)
+  host generics, make list
+  generics/push(0)
+  host names, make list
+  names/push(<a>)
+  host signature
+    make task-signature
+      bind generics, generics
+      bind generic-names, make hash
+      bind bounds, bounds
+      bind params, params
+      bind result, generic
+      bind min-args, 1
+      bind names, names
+      bind fallbacks, make list
+      bind positional, make list
+      bind optional, make list
+      bind holes, make list
+  host made, instantiate(signature, sub)
+  host first, made/params/get(0)
+  want hold, is-equal(first/kind, <variable>)
+  want hold, is-equal(sub/next, 2)
+  want hold, is-equal(made/bounds/length, 1)
+  want hold, is-equal(made/bounds/get(0)/mask, <addition>)
+  want hold, is-equal(made/min-args, 1)
+  host plain
+    make task-signature
+      bind generics, make list
+      bind generic-names, make hash
+      bind bounds, make list
+      bind params, params
+      bind result, generic
+      bind min-args, 1
+      bind names, names
+      bind fallbacks, make list
+      bind positional, make list
+      bind optional, make list
+      bind holes, make list
+  host kept, instantiate(plain, sub)
+  want hold, is-equal(sub/next, 2)
+  want hold, is-equal(kept/bounds/length, 0)

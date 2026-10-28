@@ -1,0 +1,1005 @@
+# THE COMPILE DRIVER: one entry's closure loaded, its cache key, its build (every module milled, merged, the entry's
+# roots, the run of the five phases, the entry's own warnings and the twins checked), and `compileProgram` as the five
+# phases in order (gate, types, proofs, warnings, emit) over one `program-input` record. It answers what the result is
+# built from; the face builds the result.
+#
+# Ported from compile/compile.ts's `compile`, `loadGraph`, `graphKeyOf`, `buildGraph`, `startRun` and `runProgram`
+# (item 0269 of term/self-host/change/001, decision 031 part I), which stay as the face. The decisions:
+#   - the five phases are loaded by their `.tree` names, and the one `program-run` of compile/program-run.tree is made
+#     here once and handed through all five (decision 031 section 2), so no phase's run is converted from TypeScript and
+#     back between phases
+#   - what a phase reads that the run cannot hold as Term reads it (a host function, a host set, node identity, the
+#     checker's switches) comes in `driver-given`, as each phase's own given did, and what compile reads of its options
+#     comes in `compile-reading`. Both are filled by the face
+#   - the modules with no port yet are docks, each named for its module (decision 031 section 3): compile/load (the
+#     import walk, the platform refusals, the scope list), compile/cache (the memoized text hash), check/twin (the twin
+#     refusals) and check/refine (the certificate checker's refusal count)
+#   - check/overload.ts's two tables are module state the checker reads after the gate: the face's `keep-bound` writes
+#     them from what the binding made, right after the gate, as the gate's face did
+#   - the two closures of compile/cache.ts stay in the face (decision 031 section 6): `milled` hands a module milled
+#     through the mill cache, and the face wraps `build-graph` in `cache.output`
+#   - the twins in the graph key are written as JSON here (`choice-json`), field for field as the original's
+#     `JSON.stringify` of the caller's record (decision 034 section 6: an options object, not a node), and a mutant's key
+#     takes `@term/base/random`'s number where the original took `Math.random()` (decision 031 section 7).
+#     @term/base/json is not loaded: its `from-text` beside every text form's generated `from-text` made a call to one
+#     of those ambiguous in this closure
+#   - the entry points of the key are sorted by `ordering/from-texts` (code points), the original's `sort()` (UTF-16
+#     units): the two agree on every name that is a Term identifier
+
+load @term/base/list
+  find list
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find last-index-of
+  find substring
+  find replace-all
+
+load @term/base/ordering
+  find from-texts
+
+load @term/base/random
+  find number, name random-number
+
+load ../parser/diagnostic
+  find diagnostic
+
+load ../parser/token
+  find token-source
+
+load ../parser/tree
+  find parse-result
+
+load ./node
+  find statement
+  find expression
+  find twin
+
+load ./import-scope
+  find file-scope
+
+load ./rolling
+  find roll-deck
+
+load ./program-run
+  find program-run
+  find roll-wanted
+  find program-kernel
+
+load ./unit-mill
+  find graph-templates
+  find entry-warnings
+
+load ./program-gate
+  find program-gate
+  find gate-given
+  find gate-bound
+
+load ./program-types
+  find program-types
+  find types-given
+
+load ./program-proofs
+  find program-proofs
+  find proofs-given
+
+load ./program-warnings
+  find program-warnings
+  find warnings-given
+
+load ./program-emit
+  find program-emit
+  find emit-given
+  find pending-emit
+
+load ../ir/cover
+  find cover-target
+
+load ../ir/selection
+  find task-choice
+  find twin-choice
+
+load ../check/checker-switches
+  find checker-switches
+
+dock load
+  load <@term/make/code/compile/load>, name program-driver-load
+  load <@term/make/code/compile/cache>, name program-driver-cache
+  load <@term/make/code/check/twin>, name program-driver-twin
+  load <@term/make/code/check/refine>, name program-driver-refine
+
+# ---- what the driver is handed ----
+
+# WHAT `compileProgram` IS HANDED, as Term holds it: the milled program and how to build it. A set is a list of its
+# names in its order, a field the original left absent comes with a flag saying whether it was given, and the host
+# values the phases take as they are (the per-module URL, the emitted files' set, the build's deck lookup) are in
+# `driver-given`
+form program-input
+  link program, like list, like statement
+  link file, like text
+  # the entry's public surface, in its order, and whether there is one at all
+  link has-roots, like boolean
+  link roots, like list, like text
+  link merged, like boolean
+  # per-module mode
+  link has-modules, like boolean
+  # the editor path: `optimize: false`
+  link raw, like boolean
+  # the env as given, `<>` when absent, and whether it was given
+  link env, like text
+  link has-env, like boolean
+  link tree-shake, like boolean
+  link want-roll, like roll-wanted
+  # what each module imports by name, empty for none
+  link scopes, like list, like file-scope
+  # the twin selection, when one was given
+  link has-selected, like boolean
+  link expose, like boolean
+  link twins, like list, like twin
+  link choices, like list, like task-choice
+  link library, like boolean
+  # the file whose names are kept where two files define one: the run's `naming`, else its `file`
+  link naming, like text
+  # the files whose modules are emitted (a separate unit), when not every file's, and whether that was given
+  link scoped, like boolean
+  link emit-only, like list, like text
+  # the render runtime's own file, `<>` when the build found none
+  link render-file, like text
+  link cover, like maybe, like cover-target
+
+# WHAT THE DRIVER READS THAT THE RUN CANNOT HOLD AS TERM READS IT, filled by the face
+form driver-given
+  # the deck the build knows a file by, none for every file when the build knows none
+  link deck-of
+    like task
+      take file, like text
+      like maybe, like roll-deck
+  # the build's own deck lookup as the roll takes it (compile/roll.ts `DeckOf`), absent when the build has none
+  link host-deck-of, like dynamic
+  # the per-module URL and the emitted files' set, as the per-module emit takes them
+  link modules-url, like dynamic
+  link emit-only, like dynamic
+  # the checker's switches, the one record check/strict.ts holds
+  link switches, like checker-switches
+  # writes check/overload.ts's two tables from what the binding made
+  link keep-bound
+    like task
+      take bound, like gate-bound
+      like boolean
+  # whether two nodes are one (the roll's supervision walk)
+  link same-node
+    like task
+      take left, like expression
+      take right, like expression
+      like boolean
+  # whether a statement is a `let` of a host global (ir/simplify.ts `foreign`)
+  link foreign
+    like task
+      take given, like statement
+      like boolean
+
+# what the five phases came to: the refusal that stops the compile, the fast roll, or what the result is built from;
+# the run as the last phase left it, and how many linear refutations the certificate checker refused during it
+form driver-answer
+  link refused, like maybe, like list, like diagnostic
+  link roll, like maybe, like dynamic
+  link pending, like maybe, like pending-emit
+  link run, like program-run
+  link uncertified, like number
+
+# WHAT COMPILE READS OF ITS OPTIONS, filled by the face (compile.ts `readingOf`)
+form compile-reading
+  # the build's resolver, as the import walk takes it and as a task answering the source it finds
+  link has-resolve, like boolean
+  link resolve, like dynamic
+  link resolve-source
+    like task
+      take path, like text
+      take origin, like text
+      like maybe, like token-source
+  # the build's parse memo, the import scan through the build cache (or none), and the walk memo
+  link parsed
+    like task
+      take unit, like token-source
+      like parse-result
+  link scan-of, like dynamic
+  link walked, like dynamic
+  # the role and lean a file is read with, `<>` and false when none names it
+  link role-of
+    like task
+      take file, like text
+      like text
+  link lean-of
+    like task
+      take file, like text
+      like boolean
+  link has-env, like boolean
+  link env, like text
+  link modules, like boolean
+  link raw, like boolean
+  # tree-shaking as given, and whether it was
+  link has-tree-shake, like boolean
+  link tree-shake, like boolean
+  link entry-points, like list, like text
+  link roll, like boolean
+  link roll-only, like boolean
+  link roll-fast, like boolean
+  # the twin choices, in the caller's record's order, and the two other twin options
+  link choices, like list, like task-choice
+  link expose, like boolean
+  link adjusted, like boolean
+  link adjust
+    like task
+      take twins, like list, like twin
+      like list, like twin
+  # coverage: `true` (the entry file alone), or a target
+  link cover-whole, like boolean
+  link cover, like maybe, like cover-target
+  link library, like boolean
+  # one module milled through the mill cache, with the graph's templates and their fingerprint
+  link milled
+    like task
+      take unit, like token-source
+      take templates, like hash, like text, like dynamic
+      take template-key, like text
+      like driver-milled
+
+# one module milled, as compile.ts's `milledModule` answers it
+form driver-milled
+  link ok, like boolean
+  link program
+    like list, like statement
+    need false
+  link twins
+    like list, like twin
+    need false
+  link diagnostics
+    like list, like diagnostic
+    need false
+
+# what the import walk answers (compile/load.ts `collectModules`)
+form driver-collected
+  link sources, like list, like token-source
+  link diagnostics, like list, like diagnostic
+  link scope, like dynamic
+
+# THE GRAPH A COMPILE BUILDS: the entry's closure, read once, and what the cache key and the build take from it
+form compile-graph
+  link sources, like list, like token-source
+  link scopes, like list, like file-scope
+  # what a coverage build measures
+  link cover, like maybe, like cover-target
+  # the effective tree-shaking flag
+  link tree-shake, like boolean
+
+# the closure, or the load errors that refuse it
+form graph-loaded
+  link refused, like maybe, like list, like diagnostic
+  link graph, like compile-graph
+
+# what the build came to: a refusal (a module that does not mill, the five phases', the twins'), or the phases'
+# answer with the entry's own warnings and the twins the result carries
+form graph-built
+  link refused, like maybe, like list, like diagnostic
+  link answer, like maybe, like driver-answer
+  link warnings, like list, like diagnostic
+  link twins, like maybe, like list, like twin
+
+# check/holds.ts's empty tally, the run's `obligations` until the proofs fill it
+form driver-tally
+  link total, like number
+  link proven, like number
+  link failed, like list, like unknown
+
+# ---- small helpers ----
+
+task as-collected
+  take value, like dynamic
+  like driver-collected
+  mark private
+
+  back value
+
+task as-scopes
+  take value, like dynamic
+  like list, like file-scope
+  mark private
+
+  back value
+
+task as-diagnostics
+  take value, like dynamic
+  like list, like diagnostic
+  mark private
+
+  back value
+
+# the closure's twins, deep-copied, as the original's `structuredClone`. Natively a value is already a copy
+bind driver-copy-twins
+  take value, like list, like twin
+  like list, like twin
+  case node
+    text <structuredClone($value)>
+  case browser
+    text <structuredClone($value)>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+task push-all
+  take into, like list, like diagnostic
+  take found, like list, like diagnostic
+  mark private
+
+  walk found
+    take one
+    push(into, one)
+
+# the statement, filed under the module it was read from
+task filed-in
+  take one, like statement
+  take unit-file, like text
+  like statement
+  mark private
+
+  sift one
+    case let
+      save one/span/file, make(some, unit-file)
+    case assign
+      save one/span/file, make(some, unit-file)
+    case expression
+      save one/span/file, make(some, unit-file)
+    case if
+      save one/span/file, make(some, unit-file)
+    case while
+      save one/span/file, make(some, unit-file)
+    case match
+      save one/span/file, make(some, unit-file)
+    case for-each
+      save one/span/file, make(some, unit-file)
+    case break
+      save one/span/file, make(some, unit-file)
+    case continue
+      save one/span/file, make(some, unit-file)
+    case return
+      save one/span/file, make(some, unit-file)
+    case exit
+      save one/span/file, make(some, unit-file)
+    case debug
+      save one/span/file, make(some, unit-file)
+    case probe
+      save one/span/file, make(some, unit-file)
+    case guard
+      save one/span/file, make(some, unit-file)
+    case throw
+      save one/span/file, make(some, unit-file)
+    case hold
+      save one/span/file, make(some, unit-file)
+    case function
+      save one/span/file, make(some, unit-file)
+    case record-type
+      save one/span/file, make(some, unit-file)
+    case mask
+      save one/span/file, make(some, unit-file)
+    case instance
+      save one/span/file, make(some, unit-file)
+    case native
+      save one/span/file, make(some, unit-file)
+    case bind
+      save one/span/file, make(some, unit-file)
+    case view
+      save one/span/file, make(some, unit-file)
+    case dock
+      save one/span/file, make(some, unit-file)
+    case roll
+      save one/span/file, make(some, unit-file)
+    case tell
+      save one/span/file, make(some, unit-file)
+  back one
+
+# ---- the five phases ----
+
+# A RUN AT ITS START: the input, and every later field empty. A field the original's input left absent is written only
+# when it was given, so the run holds what the original's did
+task start-run
+  take input, like program-input
+  like program-run
+
+  save kernel
+    make program-kernel
+      bind proven, 0
+      bind commands, 0
+      bind declined, make list
+      bind statementwise, make list
+  save tally
+    make driver-tally
+      bind total, 0
+      bind proven, 0
+      bind failed, make list
+  save run
+    make program-run
+      bind program, input/program
+      bind file, input/file
+      bind want-roll, input/want-roll
+      bind uncertified-before, program-driver-refine/uncertified-count()
+      bind type-name-diagnostics, make list
+      bind describes-host, false
+      bind literal-warnings, make list
+      bind pattern-warnings, make list
+      bind bind-warnings, make list
+      bind stale-finds, make list
+      bind overload-groups, make list
+      bind runtime-names, make list
+      bind renamed-runtime, make list
+      bind check-warnings, make list
+      bind open-claims, make list
+      bind obligations, tally
+      bind kernel, kernel
+      bind hold-warnings, make list
+      bind totality-warnings, make list
+      bind warnings, make list
+  fork test, input/has-roots
+    hold
+      save root-table, make hash
+      walk input/roots
+        take root-name
+        save root-table/{root-name}, true
+      save run/roots, root-table
+  fork test, input/merged
+    hold
+      save run/merged, true
+  fork test, input/library
+    hold
+      save run/library, true
+  fork test, input/scoped
+    hold
+      save emitted, make hash
+      walk input/emit-only
+        take emitted-file
+        save emitted/{emitted-file}, true
+      save run/emit-only, emitted
+  back run
+
+# the run's roots, in the order its set holds them
+task roots-of
+  take run, like program-run
+  like list, like text
+  mark private
+
+  save names, make list
+  walk run/roots/entries()
+    take entry
+    push(names, entry/first)
+  back names
+
+task driver-refusal
+  take run, like program-run
+  take found, like list, like diagnostic
+  like driver-answer
+  mark private
+
+  back
+    make driver-answer
+      bind refused, make(some, found)
+      bind roll, make none
+      bind pending, make none
+      bind run, run
+      bind uncertified, 0
+
+# THE FIVE PHASES IN ORDER, each answering early with a refusal (or the fast roll), or handing the run on
+task run-program
+  take input, like program-input
+  take given, like driver-given
+  like driver-answer
+
+  save run, start-run(input)
+  save deck-of, given/deck-of
+
+  # the gate. check/overload.ts's tables are written as the binding left them, once it ran, refused or not
+  save gate-in
+    make gate-given
+      bind has-roots, input/has-roots
+      bind tree-shake, input/tree-shake
+      bind env, input/env
+      bind has-env, input/has-env
+      bind naming, input/naming
+      bind render-file, input/render-file
+      bind scopes, input/scopes
+      bind deck-of, deck-of
+      bind scoped, input/scoped
+      bind emit-only, input/emit-only
+      bind has-selected, input/has-selected
+      bind expose, input/expose
+      bind twins, input/twins
+      bind choices, input/choices
+  save gated, program-gate(run, gate-in)
+  sift gated/bound
+    case some
+      link bound
+      save keep-bound, given/keep-bound
+      save kept, keep-bound(bound)
+    case none
+      save nothing, 0
+  sift gated/refused
+    case some
+      link found
+      back driver-refusal(run, found)
+    case none
+      save nothing, 0
+
+  # the types, and the fast roll's exit
+  save types-in
+    make types-given
+      bind deck-of, deck-of
+      bind scopes, input/scopes
+      bind host-deck-of, given/host-deck-of
+  save typed, program-types(run, types-in)
+  sift typed/refused
+    case some
+      link found
+      back driver-refusal(run, found)
+    case none
+      save nothing, 0
+  sift typed/roll
+    case some
+      link fast
+      back
+        make driver-answer
+          bind refused, make none
+          bind roll, make(some, fast)
+          bind pending, make none
+          bind run, run
+          bind uncertified, 0
+    case none
+      save nothing, 0
+
+  # the proofs
+  save proofs-in
+    make proofs-given
+      bind switches, given/switches
+  save proved, program-proofs(run, proofs-in)
+  sift proved/refused
+    case some
+      link found
+      back driver-refusal(run, found)
+    case none
+      save nothing, 0
+
+  # the warnings, the roll and the wake
+  save warnings-in
+    make warnings-given
+      bind deck-of, deck-of
+      bind same-node, given/same-node
+      bind scoped, input/scoped
+  save warned, program-warnings(run, warnings-in)
+  sift warned/refused
+    case some
+      link found
+      back driver-refusal(run, found)
+    case none
+      save nothing, 0
+
+  # the emit
+  save root-names, make list
+  fork test, input/has-roots
+    hold
+      save root-names, roots-of(run)
+  save emit-in
+    make emit-given
+      bind has-roots, input/has-roots
+      bind roots, root-names
+      bind cover, input/cover
+      bind has-modules, input/has-modules
+      bind modules-url, given/modules-url
+      bind scoped, input/scoped
+      bind home, input/naming
+      bind emit-only, given/emit-only
+      bind raw, input/raw
+      bind env, input/env
+      bind foreign, given/foreign
+  save emitted, program-emit(run, emit-in)
+  sift emitted/refused
+    case some
+      link found
+      back driver-refusal(run, found)
+    case none
+      save nothing, 0
+  back
+    make driver-answer
+      bind refused, make none
+      bind roll, make none
+      bind pending, emitted/pending
+      bind run, run
+      bind uncertified, subtract(program-driver-refine/uncertified-count(), run/uncertified-before)
+
+# ---- the graph ----
+
+# THE ENTRY'S CLOSURE, or the load errors that refuse it: every module the entry loads, dependencies first, read once
+task load-graph
+  take source, like token-source
+  take reading, like compile-reading
+  like graph-loaded
+
+  save sources, make list
+  push(sources, source)
+  save scopes, make list
+  save load-errors, make list
+  fork test, reading/has-resolve
+    hold
+      save collected, as-collected(program-driver-load/collect-modules(source, reading/resolve, reading/parsed, reading/scan-of, reading/walked))
+      save sources, collected/sources
+      # compile/load.ts's scope list, since compile/loading.tree's `file-scope` is a form of its own beside
+      # compile/import-scope.tree's, which the phases take, the two one shape on TypeScript
+      save scopes, as-scopes(program-driver-load/scope-list(collected/scope))
+      walk collected/diagnostics
+        take found
+        fork test, not(is-equal(found/severity, make warning))
+          hold
+            push(load-errors, found)
+      # and a module the build's env has no native for, refused at its `{platform}` load by name
+      fork test, and(is-equal(load-errors/length, 0), not(is-equal(reading/env, <>)))
+        hold
+          push-all(load-errors, as-diagnostics(program-driver-load/platform-refusals(sources, reading/resolve, reading/env, reading/parsed)))
+
+  # what a coverage build measures: the entry file alone, its keys relative to the folder it is in, or the target
+  save cover, reading/cover
+  fork test, reading/cover-whole
+    hold
+      save slash, last-index-of(source/file, </>)
+      fork test, is-below(slash, 0)
+        hold
+          save slash, 0
+      save whole
+        make cover-target
+          bind prefix, source/file
+          bind root, substring(source/file, 0, slash)
+      save cover, make(some, whole)
+
+  # the effective tree-shaking flag: on for the optimized merged build, the explicit option first
+  save shaking, and(not(reading/modules), not(reading/raw))
+  fork test, reading/has-tree-shake
+    hold
+      save shaking, reading/tree-shake
+
+  save graph
+    make compile-graph
+      bind sources, sources
+      bind scopes, scopes
+      bind cover, cover
+      bind tree-shake, shaking
+  fork test, is-above(load-errors/length, 0)
+    hold
+      back
+        make graph-loaded
+          bind refused, make(some, load-errors)
+          bind graph, graph
+  back
+    make graph-loaded
+      bind refused, make none
+      bind graph, graph
+
+# a text as JSON writes it: quoted, a backslash, a quote and the line, return and tab characters escaped. A task name or
+# a twin's label holds no other character JSON escapes
+task json-quote
+  take value, like text
+  like text
+  mark private
+
+  save slash, <\\>
+  save quote, <">
+  save quoted, replace-all(value, slash, <\\\\>)
+  save quoted, replace-all(quoted, quote, <\\">)
+  save quoted, replace-all(quoted, <\n>, <\\n>)
+  save quoted, replace-all(quoted, <\r>, <\\r>)
+  save quoted, replace-all(quoted, <\t>, <\\t>)
+  back <"{quoted}">
+
+# a choice of implementation as JSON writes the caller's record of it, for the key: `"reference"`, `{"use":...}`, or the
+# size check's fields in the order the record type declares them
+task choice-json
+  take choice, like twin-choice
+  like text
+  mark private
+
+  sift choice
+    case reference
+      back <"reference">
+    case use
+      link label
+      back <\{"use":{json-quote(label)}\}>
+    case size
+      link of
+      link below
+      link small
+      link large
+      save small-json, choice-json(small)
+      save large-json, choice-json(large)
+      back <\{"check":"size","of":{json-quote(of)},"below":{below},"then":{small-json},"else":{large-json}\}>
+
+# THE OUTPUT CACHE'S KEY: an exact module graph (every file at its current content, with the role and lean it is read
+# with) and every option and switch that changes what it compiles to
+task graph-key
+  take source, like token-source
+  take reading, like compile-reading
+  take graph, like compile-graph
+  take switches, like checker-switches
+  like text
+
+  save role-of, reading/role-of
+  save lean-of, reading/lean-of
+  save key, <>
+  walk graph/sources
+    take unit
+    take at
+    save role, role-of(unit/file)
+    save role-part, <>
+    fork test, not(is-equal(role, <>))
+      hold
+        save role-part, <#{role}>
+    save lean-part, <>
+    fork test, lean-of(unit/file)
+      hold
+        save lean-part, <#lean>
+    save unit-key, <{unit/file}@{program-driver-cache/content-hash(unit/text)}{role-part}{lean-part}>
+    fork test, is-above(at, 0)
+      hold
+        save key, <{key}|{unit-key}>
+      miss
+        save key, unit-key
+  fork test, reading/modules
+    hold
+      save key, <{key}|modules>
+  fork test, reading/raw
+    hold
+      save key, <{key}|raw>
+  fork test, not(is-equal(reading/env, <>))
+    hold
+      save key, <{key}|env:{reading/env}>
+  fork test, graph/tree-shake
+    hold
+      save key, <{key}|shake>
+  fork test, switches/await-outside
+    hold
+      save key, <{key}|await-outside>
+  fork test, switches/seam
+    hold
+      save key, <{key}|seam>
+  fork test, switches/strict
+    hold
+      save key, <{key}|strict>
+  fork test, switches/widths
+    hold
+      save key, <{key}|widths>
+  fork test, reading/roll
+    hold
+      save key, <{key}|roll>
+  fork test, is-above(reading/choices/length, 0)
+    hold
+      save chosen, <>
+      walk reading/choices
+        take one
+        take at
+        save entry-json, <{json-quote(one/task)}:{choice-json(one/choice)}>
+        fork test, is-above(at, 0)
+          hold
+            save chosen, <{chosen},{entry-json}>
+          miss
+            save chosen, entry-json
+      save key, <{key}|twins:\{{chosen}\}>
+  fork test, reading/expose
+    hold
+      save key, <{key}|expose>
+  sift graph/cover
+    case some
+      link target
+      save key, <{key}|cover:{target/prefix}@{target/root}>
+    case none
+      save nothing, 0
+  # a mutant is a different program every time it is asked for, so it is never answered from the cache
+  fork test, reading/adjusted
+    hold
+      save key, <{key}|adjusted:{random-number()}>
+  fork test, is-above(reading/entry-points/length, 0)
+    hold
+      save sorted, sort(reading/entry-points, from-texts)
+      save joined, <>
+      walk sorted
+        take point
+        take at
+        fork test, is-above(at, 0)
+          hold
+            save joined, <{joined},{point}>
+          miss
+            save joined, point
+      save key, <{key}|entry:{joined}>
+  back key
+
+# the key of the roll alone, cached on its own beside the full result
+task roll-only-key
+  take key, like text
+  take fast, like boolean
+  like text
+
+  fork test, fast
+    hold
+      back <{key}|roll-only|fast>
+  back <{key}|roll-only>
+
+# THE BUILD OF ONE GRAPH: mill every module, merge them, root the entry's own definitions, run the five phases, then
+# the entry's own warnings and the twins
+task build-graph
+  take source, like token-source
+  take reading, like compile-reading
+  take graph, like compile-graph
+  take given, like driver-given
+  like graph-built
+
+  save parsed, reading/parsed
+  save milled, reading/milled
+
+  # every `tree` template the graph defines, gathered before any module mills, and the fingerprint of the modules that
+  # define them
+  save template-set, graph-templates(graph/sources, parsed)
+
+  save program, make list
+  save twins, make list
+  save root-table, make hash
+  save points, reading/entry-points
+  save pointed, is-above(points/length, 0)
+  save point-table, make hash
+  walk points
+    take point
+    save point-table/{point}, true
+  save no-warnings, make list
+
+  walk graph/sources
+    take unit
+    save one-milled, milled(unit, template-set/templates, template-set/template-key)
+    fork test, not(one-milled/ok)
+      hold
+        # read, never written: the mill cache holds this answer
+        save mill-errors, make list
+        walk one-milled/diagnostics
+          take mill-error
+          push(mill-errors, mill-error)
+        back
+          make graph-built
+            bind refused, make(some, mill-errors)
+            bind answer, make none
+            bind warnings, no-warnings
+            bind twins, make none
+
+    # the entry module's own top-level functions are the compiled unit's public surface; under tree-shaking its forms
+    # too. With entry points, only those
+    fork test, is-equal(unit/file, source/file)
+      hold
+        walk one-milled/program
+          take one
+          sift one
+            case function
+              link name
+              fork test, pointed
+                hold
+                  fork test, point-table/has(name)
+                    hold
+                      save root-table/{name}, true
+                miss
+                  save root-table/{name}, true
+            case record-type
+              link name
+              fork test, and(not(pointed), graph/tree-shake)
+                hold
+                  save root-table/{name}, true
+            miss
+              turn next
+
+    walk one-milled/program
+      take one
+      push(program, filed-in(one, unit/file))
+    walk one-milled/twins
+      take one-twin
+      save one-twin/span/file, make(some, unit/file)
+      push(twins, one-twin)
+
+  # the render runtime's own file, as the build finds any load, so an app's own `view/render.tree` is not it
+  save render-file, <>
+  fork test, reading/has-resolve
+    hold
+      save resolve-source, reading/resolve-source
+      sift resolve-source(<@term/site/view/render>, source/file)
+        case some
+          link found
+          save render-file, found/file
+        case none
+          save nothing, 0
+
+  save want, make no-roll
+  fork test, reading/roll
+    hold
+      save want, make whole-roll
+      fork test, and(reading/roll-only, reading/roll-fast)
+        hold
+          save want, make fast-roll
+
+  save selecting, or(is-above(reading/choices/length, 0), reading/expose)
+  save selected-twins, twins
+  fork test, and(selecting, reading/adjusted)
+    hold
+      save adjust, reading/adjust
+      save selected-twins, adjust(driver-copy-twins(twins))
+
+  save root-names, make list
+  walk root-table/entries()
+    take entry
+    push(root-names, entry/first)
+
+  save input
+    make program-input
+      bind program, program
+      bind file, source/file
+      bind has-roots, true
+      bind roots, root-names
+      bind merged, true
+      bind has-modules, reading/modules
+      bind raw, reading/raw
+      bind env, reading/env
+      bind has-env, reading/has-env
+      bind tree-shake, or(graph/tree-shake, pointed)
+      bind want-roll, want
+      bind scopes, graph/scopes
+      bind has-selected, selecting
+      bind expose, reading/expose
+      bind twins, selected-twins
+      bind choices, reading/choices
+      bind library, reading/library
+      bind naming, source/file
+      bind scoped, false
+      bind emit-only, make list
+      bind render-file, render-file
+      bind cover, graph/cover
+  save answer, run-program(input, given)
+
+  sift answer/refused
+    case some
+      link found
+      back
+        make graph-built
+          bind refused, make(some, found)
+          bind answer, make none
+          bind warnings, no-warnings
+          bind twins, make none
+    case none
+      save nothing, 0
+
+  save spelled, entry-warnings(source, graph/sources, parsed, template-set/templates)
+
+  # a twin is checked against the program it twins a task of: what can be refused without running anything
+  fork test, is-equal(twins/length, 0)
+    hold
+      back
+        make graph-built
+          bind refused, make none
+          bind answer, make(some, answer)
+          bind warnings, spelled
+          bind twins, make none
+  save refused, as-diagnostics(program-driver-twin/check-twins(program, twins, source/file))
+  fork test, is-above(refused/length, 0)
+    hold
+      back
+        make graph-built
+          bind refused, make(some, refused)
+          bind answer, make none
+          bind warnings, no-warnings
+          bind twins, make none
+  back
+    make graph-built
+      bind refused, make none
+      bind answer, make(some, answer)
+      bind warnings, spelled
+      bind twins, make(some, twins)

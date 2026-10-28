@@ -1,0 +1,1109 @@
+# THE INFER STATE, part 1 of 8 of the check/infer.ts port (item 0250 of term/self-host/change/001, decision 032). The
+# original is one function, `checkProgram`, whose closures share about sixty locals. Here they are the fields of one
+# `mark shared` record, `infer-state`, made once per check and handed first to every task of every part, so a write in
+# one part is seen by every other on every backend (spec 4.8). This field list is the contract parts 2 to 8 read: a part
+# that needs a field this file lacks adds it only through a `Decide:` item (decision 032 section 2).
+#
+# Every closure-local `let` and `const` of `checkProgram`, and where it went (59 in all, in the original's order):
+#   diagnostics          field `diagnostics`
+#   leftOut              data: an `arrangement` carries the positions a call left out (decision 032 section 4.1)
+#   currentFile          field `current-file`
+#   wantedElement        field `wanted-element`
+#   sub                  field `sub`
+#   fresh                task `fresh-variable`
+#   resolve              task `resolve-held`
+#   occurs               task `occurs-held`
+#   records              field `records`
+#   declaredTwice        field `declared-twice`
+#   exceptionProps       field `exception-props`, `''` for a form that adds no props
+#   EXCEPTION_SHARED     task `exception-shared`
+#   loopDepth            field `loop-depth`
+#   loopLabels           field `loop-labels`
+#   inLoop               tasks `enter-loop` and `leave-loop`, around the body its callback checked
+#   caughtRaises         field `caught-raises`
+#   programRaises        field `program-raises`
+#   fieldNick            field `field-nick`
+#   enums                field `enums`
+#   familyVariantIndexHead  field `family-variant-index-head`, `''` for a position with no constructor head
+#   variantEnum          field `variant-enum`
+#   variantOwners        field `variant-owners`
+#   variantFields        field `variant-fields`
+#   variantFieldsByOwner field `variant-fields-by-owner`
+#   caseFields           field `case-fields`
+#   caseRequired         field `case-required`
+#   formGenerics         field `form-generics`
+#   unionTags            field `union-tags`
+#   narrowing            field `narrowing`
+#   origin               read as `sub/origin`, the one table it names
+#   transparentAlias     field `transparent-alias`
+#   unfoldAlias          task `unfold-held`
+#   unify                tasks `unify` and `unify-at`
+#   expect               task `expect`
+#   asyncIntoSync        task `async-into-sync`
+#   opaqueTypes          field `opaque-types`
+#   docksByFile          field `docks-by-file`
+#   seeder               field `seeder`, made again once the tables are filled (part 2)
+#   seedType             tasks `seed-maybe-type` and `seed-given-type`
+#   PRIMITIVE_TYPE_NAMES task `primitive-type-names`
+#   maskNames            field `mask-names`
+#   namedIn              part 2, a task of the type-name check, which alone reads it
+#   namesAType           part 2, the same
+#   knownType            part 2, the same
+#   instances            field `instances`
+#   maskMethods          field `mask-methods`
+#   maskTasks            field `mask-tasks`
+#   maskClash            part 2, a local of the mask pass, read only there
+#   functions            field `functions`
+#   debugIntrinsics      field `debug-intrinsics`
+#   methodTable          field `method-table`
+#   methodNames          field `method-names`
+#   methodFiles          field `method-files`
+#   ownTaskFiles         field `own-task-files`
+#   nativeWrappers       field `native-wrappers`
+#   instantiateScheme    task `instantiate-held`
+#   generalize           task `generalize-held`
+#   currentBounds        field `current-bounds`
+#   currentGenericNames  field `current-generic-names`
+#   holes                field `holes`, each hole as data (decision 032 section 4.2)
+#   moduleEnv            field `module-env`
+#   topLevelSkip         task `top-level-skip`
+#   zonkGeneric          part 3
+#   zonkWritten          part 3
+# and `checkProgram`'s own parameters, fields `program`, `file`, `merged` and `only`. The module-level `profile` is the
+# field `profile` (spec 4.8: the face holds the one instance and hands it in), and check/strict.ts's three switches are
+# read off `switches`, the checker-switches record of item 0261 (decision 032 section 4.6: a part written after the
+# docked module's port loads the port).
+#
+# The module-level helpers of infer.ts are tasks here: `instantiate`, `ordinal`, `assigns-name` (a walk by node-children,
+# skipping `span` and `type` as the original did, decision 032 section 4.8), `body-raises`, and the constant tables as
+# tasks (traps T022). A table the original kept as a JavaScript Set of texts is a hash of booleans when it is only asked
+# for membership, and a list in the original's insertion order when it is walked.
+
+load @term/base/list
+  find list
+  find get
+  find contains
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnose
+  find diagnostic
+  find diagnostic-input
+  find diagnostic-name
+  find span
+
+load ../compile/node
+  find type
+  find expression
+  find statement
+  find binary-op
+  find string-type
+  find number-type
+  find boolean-type
+
+load ../compile/node-children
+  find node-handle
+  find node-children
+  find block-handles
+
+load ../compile/lowered-members
+  find lowered-list-members
+  find lowered-map-members
+  find lowered-list-read
+  find lowered-map-read
+
+load ./substitution
+  find substitution
+  find new-substitution
+  find fresh-type
+  find resolve-type
+  find occurs-in
+  find unify-types
+  find unify-types-at
+
+load ./scheme
+  find scheme
+  find instantiate-scheme
+  find generalize
+
+load ./signature
+  find instantiate-types
+
+load ./type-seed
+  find seeder
+  find seed-type
+
+load ./alias
+  find type-alias
+  find transparent-aliases
+  find unfold-alias
+
+load ./expect
+  find expect-type
+
+load ./seam
+  find unknown-seam
+
+load ./checker-switches
+  find checker-switches
+
+# milliseconds on a clock that only moves forward, for the profile's spans (the original's `performance.now()`); only
+# the difference of two readings means anything
+bind inferring-clock-ms
+  like float
+  case node
+    text <performance.now()>
+  case browser
+    text <performance.now()>
+  case rust
+    text <(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64() * 1000.0).unwrap_or(0.0))>
+  case swift
+    text <(ProcessInfo.processInfo.systemUptime * 1000.0)>
+  case kotlin
+    text <(System.nanoTime().toDouble() / 1000000.0)>
+
+# ---- the records ----
+
+# what inference spends, for `pnpm term:generalize-bench` (decisions-2026-10.md, D10): every check and every generalize
+# inside one, with the size of the environment it walked. The face holds the one instance (spec 4.8) and times `check`
+# itself (decision 032 section 4.9)
+form infer-profile
+  mark shared
+  link checks, like number
+  link check-ms, like float
+  link generalizes, like number
+  link generalize-ms, like float
+  # the environment entries walked, summed over every generalize
+  link walked, like number
+
+# a generic of a signature and the mask it is bounded by (`need`), in the order the generics were declared
+form generic-bound
+  link id, like number
+  link mask, like text
+
+# a generic of an instantiated signature, or of the task being checked, and the mask it is bounded by
+form type-bound
+  link variable, like type
+  link mask, like text
+
+# A task's signature in the checker: the firewall boundary, since a caller depends on a callee's signature and never its
+# body. `generics` are the ids of its generic variables, in declaration order, `holes` the variables a generic
+# signature's bare forms were seeded with (`like maybe`), which are not among them (native-dom-0046). `min-args` is the
+# fewest arguments a call may give, and `names`, `fallbacks`, `positional` and `optional` are aligned with `params`
+form task-signature
+  link generics, like list, like number
+  link generic-names, like hash, like number, like text
+  link bounds, like list, like generic-bound
+  link params, like list, like type
+  link result, like type
+  link min-args, like number
+  link names, like list, like text
+  link fallbacks, like list, like maybe, like expression
+  link positional, like list, like boolean
+  link optional, like list, like boolean
+  link holes, like list, like number
+
+# a signature with its generics freshened for one use
+form instantiated-signature
+  link params, like list, like type
+  link result, like type
+  link bounds, like list, like type-bound
+  link min-args, like number
+  link names, like list, like text
+  link fallbacks, like list, like maybe, like expression
+  link positional, like list, like boolean
+  link optional, like list, like boolean
+
+# A TYPED HOLE MET, with the scope it stood in, reported once every body is checked. It is data: the report reads only
+# the hole's span, its type, the environment, the file and the generic names in scope, never its node (decision 032
+# section 4.2)
+form hole
+  link span, like span
+  link type, like type
+  link env, like hash, like text, like scheme
+  link file, like text
+  link names, like hash, like number, like text
+
+# A CALL'S ARGUMENTS ARRANGED, and the positions among them that stand in for a required argument the call left out.
+# The refusal is already said, so the placeholder there is not checked against its parameter. The original marked the
+# placeholder in a WeakSet; the call case reads these positions instead (decision 032 section 4.1)
+form arrangement
+  link args, like list, like expression
+  link left-out, like list, like number
+
+# the mask an arithmetic operator may stand behind, and the task the mask declares (decisions-2026-10.md, D5)
+form arithmetic-mask
+  link mask, like text
+  link task, like text
+
+# EVERYTHING ONE CHECK HOLDS. `mark shared`: one reference every task of every part writes through
+form infer-state
+  mark shared
+  # checkProgram's parameters
+  link program, like list, like statement
+  link file, like text
+  link merged, like boolean
+  link only, like maybe, like text
+  # the diagnostics said so far, in order
+  link diagnostics, like list, like diagnostic
+  # the file of the statement being checked: a merged program's top-level statement names its own module
+  link current-file, like text
+  # the element type the next list literal takes, set by infer-wanted and taken by the `array` case
+  link wanted-element, like maybe, like type
+  # the unification substitution (check/substitution.tree); its `origin` is the original's `origin`
+  link sub, like substitution
+  # a form's field types, by form name then field name
+  link records, like hash, like text, like hash, like text, like type
+  # how many times each form name was declared: a name declared twice has no one answer about its fields
+  link declared-twice, like hash, like text, like number
+  # an exception form to the name of its props record, `''` when it adds none
+  link exception-props, like hash, like text, like text
+  # how many loops enclose the statement being checked, and their names, innermost last, `''` for an unnamed one
+  link loop-depth, like number
+  link loop-labels, like list, like text
+  # a caught exception's raise set (the guarded body's), by the name it is caught as
+  link caught-raises, like hash, like text, like list, like text
+  # every task's raise set, gathered at the first guard met (check/effects.tree), none until then
+  link program-raises, like maybe, like hash, like text, like list, like text
+  # a field's foreign `name <...>`, by form name then field name
+  link field-nick, like hash, like text, like hash, like text, like text
+  # each enum's variants, in declaration order
+  link enums, like hash, like text, like list, like text
+  # an indexed family's variants, each to the head name of its output index at every position, `''` where none
+  link family-variant-index-head, like hash, like text, like hash, like text, like list, like text
+  # a variant to the enum declared last with it, and to every enum that declares it, in order
+  link variant-enum, like hash, like text, like text
+  link variant-owners, like hash, like text, like list, like text
+  # a variant's fields, by its surface name (the last declaration wins), and one entry per declaring enum
+  link variant-fields, like hash, like text, like hash, like text, like type
+  link variant-fields-by-owner, like hash, like text, like list, like hash, like text, like type
+  # a case's fields and the ones a construction must give, keyed `<form>/<case>`
+  link case-fields, like hash, like text, like hash, like text, like type
+  link case-required, like hash, like text, like list, like text
+  # a form's generic parameter names
+  link form-generics, like hash, like text, like list, like text
+  # a form with cases to the field its tag is read as
+  link union-tags, like hash, like text, like text
+  # a subject variable narrowed to a variant inside a `case` arm
+  link narrowing, like hash, like text, like text
+  # the transparent form aliases of the program (check/alias.tree)
+  link transparent-alias, like hash, like text, like type-alias
+  # the opaque handle types `dock type` declares, and the modules each file docks, by file
+  link opaque-types, like hash, like text, like boolean
+  link docks-by-file, like hash, like text, like hash, like text, like boolean
+  # what seeding a declared type reads, made once the tables are complete (part 2)
+  link seeder, like seeder
+  # every mask's name
+  link mask-names, like hash, like text, like boolean
+  # the trait instances, `<mask>:<type>`
+  link instances, like hash, like text, like boolean
+  # every method a mask declares, and each mask task's declared signature, a name two masks declare apart left out
+  link mask-methods, like hash, like text, like boolean
+  link mask-tasks, like hash, like text, like declared-signature
+  # every task's signature, by name, in the order first defined
+  link functions, like hash, like text, like task-signature
+  # `inspect` and `print` of @term/base/debug, when the build defines them
+  link debug-intrinsics, like hash, like text, like boolean
+  # a form's methods, by form name then bare method name; every bare method name; each method's file
+  link method-table, like hash, like text, like hash, like text, like text
+  link method-names, like hash, like text, like boolean
+  link method-files, like hash, like text, like text
+  # the files that define a top-level task of each name, in order
+  link own-task-files, like hash, like text, like list, like text
+  # the methods that are thin native wrappers (a body calling `self/<its own name>`)
+  link native-wrappers, like hash, like text, like boolean
+  # the bounded generics of the task being checked, and its generic names
+  link current-bounds, like list, like type-bound
+  link current-generic-names, like hash, like number, like text
+  # every typed hole met, in order
+  link holes, like list, like hole
+  # the module-level bindings, typed once and seen by every body
+  link module-env, like hash, like text, like scheme
+  # what inference spends, when a profile is handed in
+  link profile, like maybe, like infer-profile
+  # the checker's switches (check/checker-switches.tree): `seam`, `strict` and the ambiguous refusal
+  link switches, like checker-switches
+
+# ---- the state, made ----
+
+# the state one check starts with: every table empty, the transparent aliases read off the program, and a seeder over
+# empty tables, which part 2 makes again once the tables are filled
+task make-infer-state
+  take program, like list, like statement
+  take file, like text
+  take merged, like boolean
+  take only, like maybe, like text
+  take switches, like checker-switches
+  take profile, like maybe, like infer-profile
+  like infer-state
+
+  save sub, new-substitution()
+  save aliases, transparent-aliases(program)
+  save seeding
+    make seeder
+      bind sub, sub
+      bind records, make hash
+      bind form-generics, make hash
+      bind opaque, make hash
+  save made
+    make infer-state
+      bind program, program
+      bind file, file
+      bind merged, merged
+      bind only, only
+      bind diagnostics, make list
+      bind current-file, file
+      bind wanted-element, make none
+      bind sub, sub
+      bind records, make hash
+      bind declared-twice, make hash
+      bind exception-props, make hash
+      bind loop-depth, 0
+      bind loop-labels, make list
+      bind caught-raises, make hash
+      bind program-raises, make none
+      bind field-nick, make hash
+      bind enums, make hash
+      bind family-variant-index-head, make hash
+      bind variant-enum, make hash
+      bind variant-owners, make hash
+      bind variant-fields, make hash
+      bind variant-fields-by-owner, make hash
+      bind case-fields, make hash
+      bind case-required, make hash
+      bind form-generics, make hash
+      bind union-tags, make hash
+      bind narrowing, make hash
+      bind transparent-alias, aliases
+      bind opaque-types, make hash
+      bind docks-by-file, make hash
+      bind seeder, seeding
+      bind mask-names, make hash
+      bind instances, make hash
+      bind mask-methods, make hash
+      bind mask-tasks, make hash
+      bind functions, make hash
+      bind debug-intrinsics, make hash
+      bind method-table, make hash
+      bind method-names, make hash
+      bind method-files, make hash
+      bind own-task-files, make hash
+      bind native-wrappers, make hash
+      bind current-bounds, make list
+      bind current-generic-names, make hash
+      bind holes, make list
+      bind module-env, make hash
+      bind profile, profile
+      bind switches, switches
+  back made
+
+# a statement's file: its span's, else the entry's (`statement.span.file ?? file`)
+task file-or
+  take at, like span
+  take fallback, like text
+  like text
+
+  sift at/file
+    case some
+      link written
+      back written
+    case none
+      back fallback
+
+# ---- the module-level helpers ----
+
+# instantiate a signature, freshening its generics through `sub`. A signature with no generics comes back as it is
+task instantiate
+  take signature, like task-signature
+  take sub, like substitution
+  like instantiated-signature
+
+  fork test, is-equal(signature/generics/length, 0)
+    hold
+      save plain
+        make instantiated-signature
+          bind params, signature/params
+          bind result, signature/result
+          bind bounds, make list
+          bind min-args, signature/min-args
+          bind names, signature/names
+          bind fallbacks, signature/fallbacks
+          bind positional, signature/positional
+          bind optional, signature/optional
+      back plain
+  save types, instantiate-types(signature/generics, signature/holes, signature/params, signature/result, sub)
+  save bounds, make list
+  walk signature/bounds
+    take bound
+    save fresh-variable-of, types/fresh/get(bound/id)
+    save made-bound
+      make type-bound
+        bind variable, fresh-variable-of
+        bind mask, bound/mask
+    push(bounds, made-bound)
+  save freshened
+    make instantiated-signature
+      bind params, types/params
+      bind result, types/result
+      bind bounds, bounds
+      bind min-args, signature/min-args
+      bind names, signature/names
+      bind fallbacks, signature/fallbacks
+      bind positional, signature/positional
+      bind optional, signature/optional
+  back freshened
+
+# `1st`, `2nd`, `3rd`, `4th`: a position named for a message
+task ordinal
+  take n, like number
+  like text
+
+  save tens, modulo(n, 100)
+  fork test, and(is-minimum(tens, 11), is-maximum(tens, 13))
+    hold
+      back <{n}th>
+  save units, modulo(n, 10)
+  fork test, is-equal(units, 1)
+    hold
+      back <{n}st>
+  fork test, is-equal(units, 2)
+    hold
+      back <{n}nd>
+  fork test, is-equal(units, 3)
+    hold
+      back <{n}rd>
+  back <{n}th>
+
+# the members a native map answers itself on every backend (camelCase, as a member call emits): what the emitters
+# lower (compile/lowered-members.tree). A member call of any other `hash` method dispatches to the Term method
+task native-map-members
+  like list, like text
+
+  save out, make list
+  walk lowered-map-members()
+    take member
+    push(out, member)
+  push(out, lowered-map-read())
+  back out
+
+# the same for a native list
+task native-list-members
+  like list, like text
+
+  save out, make list
+  walk lowered-list-members()
+    take member
+    push(out, member)
+  push(out, lowered-list-read())
+  back out
+
+# the mask an arithmetic operator may stand behind, and the task it declares (decisions-2026-10.md, D5)
+task arithmetic-mask-of
+  take op, like binary-op
+  like maybe, like arithmetic-mask
+
+  save mask-name, <>
+  save task-name, <>
+  sift op
+    case plus
+      save mask-name, <addition>
+      save task-name, <add>
+    case minus
+      save mask-name, <subtraction>
+      save task-name, <subtract>
+    case times
+      save mask-name, <multiplication>
+      save task-name, <multiply>
+    case divide
+      save mask-name, <division>
+      save task-name, <divide>
+    miss
+      back make none
+  save found
+    make arithmetic-mask
+      bind mask, mask-name
+      bind task, task-name
+  back make(some, found)
+
+# the result of each member a text answers itself, camelCase as a member call is written by now, typed as
+# @term/base/text declares the task over it (`char-code-at` an integer, `split` a list of texts)
+task text-member-result
+  take op, like text
+  like maybe, like type
+
+  save texts, make list
+  push(texts, <charAt>)
+  push(texts, <concat>)
+  push(texts, <padEnd>)
+  push(texts, <padStart>)
+  push(texts, <repeat>)
+  push(texts, <replace>)
+  push(texts, <replaceAll>)
+  push(texts, <slice>)
+  push(texts, <substring>)
+  push(texts, <toLowerCase>)
+  push(texts, <toString>)
+  push(texts, <toUpperCase>)
+  push(texts, <trim>)
+  push(texts, <trimEnd>)
+  push(texts, <trimStart>)
+  fork test, contains(texts, op)
+    hold
+      back make(some, string-type())
+  save numbers, make list
+  push(numbers, <charCodeAt>)
+  push(numbers, <compare>)
+  push(numbers, <indexOf>)
+  push(numbers, <lastIndexOf>)
+  fork test, contains(numbers, op)
+    hold
+      back make(some, number-type())
+  save booleans, make list
+  push(booleans, <endsWith>)
+  push(booleans, <includes>)
+  push(booleans, <startsWith>)
+  fork test, contains(booleans, op)
+    hold
+      back make(some, boolean-type())
+  fork test, is-equal(op, <split>)
+    hold
+      save element-type, string-type()
+      save listed
+        make type/array
+          bind element, element-type
+      back make(some, listed)
+  back make none
+
+# the fields every exception carries, bound in a `case <form>` arm beside the form's own props
+task exception-shared
+  like list, like text
+
+  save out, make list
+  push(out, <host>)
+  push(out, <form>)
+  push(out, <note>)
+  push(out, <code>)
+  push(out, <time>)
+  back out
+
+# the type words every build knows, for the type-name check (part 2)
+task primitive-type-names
+  like list, like text
+
+  save out, make list
+  push(out, <u8>)
+  push(out, <u16>)
+  push(out, <u32>)
+  push(out, <u64>)
+  push(out, <u128>)
+  push(out, <i8>)
+  push(out, <i16>)
+  push(out, <i32>)
+  push(out, <i64>)
+  push(out, <i128>)
+  push(out, <integer>)
+  push(out, <number>)
+  push(out, <decimal>)
+  push(out, <float>)
+  push(out, <f32>)
+  push(out, <f64>)
+  push(out, <dynamic>)
+  push(out, <json>)
+  push(out, <bytes>)
+  push(out, <buffer>)
+  push(out, <text>)
+  push(out, <boolean>)
+  push(out, <void>)
+  push(out, <unknown>)
+  push(out, <any>)
+  push(out, <unit>)
+  push(out, <list>)
+  push(out, <hash>)
+  push(out, <task>)
+  push(out, <string>)
+  push(out, <natural>)
+  push(out, <self>)
+  push(out, <type>)
+  push(out, <size>)
+  back out
+
+# the top-level statements the module pass skips: they declare, and bind nothing a body reads (part 8)
+task top-level-skip
+  like list, like text
+
+  save out, make list
+  push(out, <record-type>)
+  push(out, <mask>)
+  push(out, <instance>)
+  push(out, <native>)
+  back out
+
+# whether a handle is `save <name>, ...` of the plain variable `name`
+task is-assign-of
+  take handle, like node-handle
+  take name, like text
+  like boolean
+  mark private
+
+  sift handle
+    case statement-handle
+      link held
+      sift held
+        case assign
+          link target
+          sift target
+            case variable
+              link assigned
+              back is-equal(assigned, name)
+            miss
+              back false
+        miss
+          back false
+    miss
+      back false
+
+# DOES A BODY ASSIGN THE PLAIN VARIABLE `name` ANYWHERE IN IT (`save name, ...` once it is bound). A walk by
+# node-children, skipping `span` and `type` as the original's reflective walk did (decision 032 section 4.8). The answer
+# is a yes or no, so the order of the walk does not matter
+task assigns-name
+  take body, like list, like statement
+  take name, like text
+  like boolean
+
+  save skip, make list
+  push(skip, <span>)
+  push(skip, <type>)
+  save stack, block-handles(body)
+  walk test
+    hook test, is-above(stack/length, 0)
+    hook hold
+      save one, stack/pop()
+      fork test, is-assign-of(one, name)
+        hold
+          back true
+      walk node-children(one, skip)
+        take child
+        push(stack, child)
+  back false
+
+# add an exception to a raise set, once, in the order first met
+task add-raise
+  take out, like list, like text
+  take raised, like text
+  mark private
+
+  fork test, not(contains(out, raised))
+    hold
+      push(out, raised)
+
+# the raises an expression's calls can make, by the raise sets of the tasks it calls
+task expression-raises
+  take node, like expression
+  take sets, like hash, like text, like list, like text
+  take out, like list, like text
+  mark private
+
+  sift node
+    case call
+      link callee
+      link args
+      sift callee
+        case variable
+          link called
+          fork test, sets/has(called)
+            hold
+              walk sets/get(called)
+                take raised
+                add-raise(out, raised)
+        miss
+          save nothing, 0
+      expression-raises(callee, sets, out)
+      walk args
+        take arg
+        expression-raises(arg, sets, out)
+    case binary
+      link left
+      link right
+      expression-raises(left, sets, out)
+      expression-raises(right, sets, out)
+    case unary
+      link operand
+      expression-raises(operand, sets, out)
+    case member
+      link target
+      expression-raises(target, sets, out)
+    case await
+      link expr
+      expression-raises(expr, sets, out)
+    case array
+      link items
+      walk items
+        take item
+        expression-raises(item, sets, out)
+    case record
+      link fields
+      walk fields
+        take field
+        expression-raises(field/value, sets, out)
+    case template
+      link parts
+      walk parts
+        take part
+        sift part
+          case value
+            link part-value
+            expression-raises(part-value, sets, out)
+          miss
+            save nothing, 0
+    miss
+      back
+
+# the raises of a run of statements, nested guards with handlers left out
+task statements-raises
+  take statements, like list, like statement
+  take sets, like hash, like text, like list, like text
+  take out, like list, like text
+  mark private
+
+  walk statements
+    take one
+    sift one
+      case throw
+        link value
+        link raise
+        fork test, is-above(raise/length, 0)
+          hold
+            add-raise(out, raise)
+          miss
+            sift value
+              case string
+                add-raise(out, <failure>)
+              miss
+                add-raise(out, <exception>)
+      case let
+        link init
+        expression-raises(init, sets, out)
+      case assign
+        link value
+        expression-raises(value, sets, out)
+      case expression
+        link expr
+        expression-raises(expr, sets, out)
+      case return
+        link value
+        sift value
+          case some
+            link returned
+            expression-raises(returned, sets, out)
+          case none
+            save nothing, 0
+      case if
+        link branches
+        link otherwise
+        walk branches
+          take branch
+          expression-raises(branch/cond, sets, out)
+          statements-raises(branch/body, sets, out)
+        sift otherwise
+          case some
+            link rest
+            statements-raises(rest, sets, out)
+          case none
+            save nothing, 0
+      case while
+        link cond
+        link body
+        expression-raises(cond, sets, out)
+        statements-raises(body, sets, out)
+      case for-each
+        link iterable
+        link body
+        expression-raises(iterable, sets, out)
+        statements-raises(body, sets, out)
+      case match
+        link subject
+        link cases
+        link otherwise
+        expression-raises(subject, sets, out)
+        walk cases
+          take arm
+          statements-raises(arm/body, sets, out)
+        sift otherwise
+          case some
+            link rest
+            statements-raises(rest, sets, out)
+          case none
+            save nothing, 0
+      case guard
+        link catch
+        sift catch
+          case some
+            link handler
+            statements-raises(handler/body, sets, out)
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+
+# THE EXCEPTIONS A GUARDED BODY CAN RAISE: its own `halt <form>`s (outside nested guards with handlers) and the raise
+# sets of the tasks it calls, so a `fork case` over the caught value can be held exhaustive. Each once, in the order
+# first met, which is the order the original's set was filled in
+task body-raises
+  take body, like list, like statement
+  take sets, like hash, like text, like list, like text
+  like list, like text
+
+  save out, make list
+  statements-raises(body, sets, out)
+  back out
+
+# ---- the closure helpers, over the state ----
+
+# a brand-new type variable
+task fresh-variable
+  take st, like infer-state
+  like type
+
+  back fresh-type(st/sub)
+
+# a type with its variable bindings followed
+task resolve-held
+  take st, like infer-state
+  take given, like type
+  like type
+
+  back resolve-type(st/sub, given)
+
+# whether variable `id` appears in a type
+task occurs-held
+  take st, like infer-state
+  take id, like number
+  take given, like type
+  like boolean
+
+  back occurs-in(st/sub, id, given)
+
+# a transparent alias unfolded to its base, through a chain
+task unfold-held
+  take st, like infer-state
+  take given, like type
+  like type
+
+  back unfold-alias(given, st/transparent-alias)
+
+# unify two types, each side's aliases unfolded first. Answers whether they are compatible
+task unify
+  take st, like infer-state
+  take a, like type
+  take b, like type
+  like boolean
+
+  save left-side, unfold-held(st, a)
+  save right-side, unfold-held(st, b)
+  back unify-types(st/sub, left-side, right-side)
+
+# the same, recording `at` as where a variable this solves was solved
+task unify-at
+  take st, like infer-state
+  take a, like type
+  take b, like type
+  take at, like span
+  like boolean
+
+  save left-side, unfold-held(st, a)
+  save right-side, unfold-held(st, b)
+  back unify-types-at(st/sub, left-side, right-side, at)
+
+# ASYNC IS PART OF A TASK TYPE, in one direction (term/compiler decision 006): a task that is not async may stand where
+# an async one is wanted, and an async task may not stand where one that is not async is wanted
+task async-into-sync
+  take st, like infer-state
+  take actual, like type
+  take wanted, like type
+  take at, like span
+  take what, like text
+  like list, like diagnostic
+
+  save out, make list
+  save given-now, resolve-held(st, actual)
+  save slot-now, resolve-held(st, wanted)
+  save given-async, false
+  sift given-now
+    case function
+      link effects
+      # walked where it is, never handed to a call, which would write an empty list into the type (traps T003)
+      walk effects
+        take effect
+        fork test, is-equal(effect, <async>)
+          hold
+            save given-async, true
+    miss
+      back out
+  save slot-async, false
+  sift slot-now
+    case function
+      link effects
+      walk effects
+        take effect
+        fork test, is-equal(effect, <async>)
+          hold
+            save slot-async, true
+    miss
+      back out
+  fork test, or(not(given-async), slot-async)
+    hold
+      back out
+  save input
+    make diagnostic-input
+      bind file, st/current-file
+      bind span, at
+      bind message, make(some, <{what}: an async task where a task that is not async is wanted>)
+      bind hint, make(some, <write `mark async` under that `like task`, so the slot takes an async task>)
+  save kind, make type-mismatch
+  push(out, diagnose(kind, input))
+  back out
+
+# UNIFY OR DIAGNOSE, in the current file (check/expect.tree). When the two unify, an `unknown` handed on to a typed
+# place is the seam's to refuse (check/seam.tree), and an async task where one that is not async is wanted is refused
+task expect
+  take st, like infer-state
+  take actual, like type
+  take wanted, like type
+  take at, like span
+  take what, like text
+
+  save found, expect-type(st/sub, st/transparent-alias, actual, wanted, at, what, st/current-file)
+  fork test, is-above(found/length, 0)
+    hold
+      walk found
+        take one
+        push(st/diagnostics, one)
+      back
+  save seamed, unknown-seam(st/switches/seam, st/sub, actual, wanted, at, what, st/current-file)
+  walk seamed
+    take one
+    push(st/diagnostics, one)
+  save crossed, async-into-sync(st, actual, wanted, at, what)
+  walk crossed
+    take one
+    push(st/diagnostics, one)
+
+# a declared type seeded for inference, its generic names mapped to their variables; none is a fresh variable
+task seed-maybe-type
+  take st, like infer-state
+  take given, like maybe, like type
+  take generics, like hash, like text, like type
+  like type
+
+  sift given
+    case some
+      link written
+      back seed-type(st/seeder, written, generics)
+    case none
+      back fresh-type(st/sub)
+
+# the same, for a type that is there
+task seed-given-type
+  take st, like infer-state
+  take given, like type
+  take generics, like hash, like text, like type
+  like type
+
+  back seed-type(st/seeder, given, generics)
+
+# freshen a scheme at a use
+task instantiate-held
+  take st, like infer-state
+  take given, like scheme
+  like type
+
+  back instantiate-scheme(given, st/sub)
+
+# the variables free in a type and in no binding of the environment, timed into the profile when one is handed in
+task generalize-held
+  take st, like infer-state
+  take given, like type
+  take env, like hash, like text, like scheme
+  like list, like number
+
+  sift st/profile
+    case some
+      link counted
+      save start, inferring-clock-ms()
+      save out, generalize(given, env, st/sub)
+      save spent, subtract(inferring-clock-ms(), start)
+      save counted/generalizes, add(counted/generalizes, 1)
+      save counted/generalize-ms, add(counted/generalize-ms, spent)
+      save size, 0
+      walk env/keys()
+        take key
+        save size, add(size, 1)
+      save counted/walked, add(counted/walked, size)
+      back out
+    case none
+      back generalize(given, env, st/sub)
+
+# whether a value is of a form that wears `mask`, or of a generic of the task being checked that is bounded by it
+task wears-arithmetic
+  take st, like infer-state
+  take given, like type
+  take mask, like text
+  like boolean
+
+  save held, resolve-held(st, given)
+  sift held
+    case named
+      link held-name
+      back st/instances/has(<{mask}:{held-name}>)
+    case variable
+      link held-id
+      walk st/current-bounds
+        take bound
+        fork test, is-equal(bound/mask, mask)
+          hold
+            save bound-now, resolve-held(st, bound/variable)
+            sift bound-now
+              case variable
+                link bound-id
+                fork test, is-equal(bound-id, held-id)
+                  hold
+                    back true
+              miss
+                save nothing, 0
+      back false
+    miss
+      back false
+
+# a loop entered: a loop named like one around it is refused, since `halt, name <it>` could mean either, and the depth
+# and the names go one deeper. The original's `inLoop` ran its callback between this and `leave-loop`
+task enter-loop
+  take st, like infer-state
+  take label, like maybe, like text
+  take at, like span
+
+  sift label
+    case some
+      link named
+      fork test, contains(st/loop-labels, named)
+        hold
+          save input
+            make diagnostic-input
+              bind file, st/current-file
+              bind span, at
+              bind message, make(some, <a loop inside the loop named "{named}" is named "{named}" too, so `halt, name {named}` could mean either. Name it something else>)
+          save kind, make duplicate-definition
+          push(st/diagnostics, diagnose(kind, input))
+      save st/loop-depth, add(st/loop-depth, 1)
+      push(st/loop-labels, named)
+    case none
+      save st/loop-depth, add(st/loop-depth, 1)
+      push(st/loop-labels, <>)
+
+# a loop left
+task leave-loop
+  take st, like infer-state
+
+  st/loop-labels/pop()
+  save st/loop-depth, subtract(st/loop-depth, 1)

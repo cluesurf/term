@@ -1,0 +1,1054 @@
+# THE INFER TABLES, part 2 of 8 of the check/infer.ts port (item 0251 of term/self-host/change/001, decision 032).
+# `checkProgram`'s pre-passes, in the original's order, each filling the tables of the infer state (part 1,
+# check/inferring-state.tree) before any body is checked: the forms (fields, nicks, enums, variants, cases, tags,
+# generics, exception props, index heads), the opaque types and each file's docks, the seeder over the finished tables,
+# the type-name existence check, the trait instances, the masks' methods and tasks, every task's signature, the debug
+# intrinsics, the native bindings' signatures, each task a form wears unified with its mask's, the method tables, each
+# name's own task files, and the thin native wrappers.
+#
+# A JavaScript Set of texts is a list kept in insertion order wherever the original walked it (an enum's variants, a
+# case's required fields, the files of a name), and a hash of booleans where it was only asked. A walk by reflection is
+# node-children's (spec 4.10), and the type-name check gathers its names in the order the original's set met them,
+# which is the order of its diagnostics.
+
+load @term/base/list
+  find list
+  find get
+  find contains
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find ends-with
+
+load ../parser/diagnostic
+  find diagnose
+  find diagnostic
+  find diagnostic-input
+  find diagnostic-name
+  find span
+
+load ../compile/node
+  find type
+  find expression
+  find statement
+  find function-param
+  find form-field
+  find form-variant
+  find variant-field
+  find mask-task
+  find declared-signature
+  find declared-param
+  find generic-param
+  find statement-span
+
+load ../compile/node-children
+  find node-handle
+  find node-children
+  find block-handles
+
+load ../compile/type-text
+  find show-type
+
+load ./type-seed
+  find seeder
+
+load ./inferring-state
+  find infer-state
+  find task-signature
+  find generic-bound
+  find file-or
+  find fresh-variable
+  find resolve-held
+  find unify
+  find seed-maybe-type
+  find seed-given-type
+  find primitive-type-names
+
+# ---- the forms ----
+
+# a variant's own output-index heads, one per index position: the construction's name where the index is one, `''`
+# where it is not constructor-headed
+task index-heads
+  take variant, like form-variant
+  like list, like text
+  mark private
+
+  save heads, make list
+  walk variant/index-values
+    take value
+    sift value
+      case record
+        link record-name
+        push(heads, record-name)
+      miss
+        push(heads, <>)
+  back heads
+
+# one form declaration's tables. Its `need false` fields are read where they stand, never handed to a call, which
+# would write their defaults into the program (traps T003)
+task fill-record
+  take st, like infer-state
+  take form-name, like text
+  take form-params, like list, like text
+  take form-fields, like list, like form-field
+  take form-variants, like list, like form-variant
+  take is-union, like boolean
+  take tag-field, like text
+  take is-exception, like boolean
+  take form-props, like text
+  mark private
+
+  save st/form-generics/{form-name}, form-params
+  fork test, is-union
+    hold
+      save st/union-tags/{form-name}, tag-field
+  save fields, make hash
+  save nicks, make hash
+  save nicked, false
+  walk form-fields
+    take field
+    save field-name, field/name
+    save fields/{field-name}, field/type
+    save nick, field/nick
+    fork test, is-above(nick/length, 0)
+      hold
+        save nicks/{field-name}, nick
+        save nicked, true
+  save twice, 0
+  fork test, st/declared-twice/has(form-name)
+    hold
+      save twice, st/declared-twice/get(form-name)
+  save st/declared-twice/{form-name}, add(twice, 1)
+  save st/records/{form-name}, fields
+  fork test, nicked
+    hold
+      save st/field-nick/{form-name}, nicks
+  # an exception form: its props record, for a `fork case` over a caught exception
+  fork test, is-exception
+    hold
+      save st/exception-props/{form-name}, form-props
+  fork test, is-above(form-variants/length, 0)
+    hold
+      save variant-names, make list
+      save heads-by-variant, make hash
+      save headed, false
+      walk form-variants
+        take variant
+        save variant-name, variant/name
+        fork test, not(contains(variant-names, variant-name))
+          hold
+            push(variant-names, variant-name)
+        save st/variant-enum/{variant-name}, form-name
+        save heads, index-heads(variant)
+        save any-head, false
+        walk heads
+          take head
+          fork test, is-above(head/length, 0)
+            hold
+              save any-head, true
+        fork test, any-head
+          hold
+            save heads-by-variant/{variant-name}, heads
+            save headed, true
+        save owners, make list
+        fork test, st/variant-owners/has(variant-name)
+          hold
+            save owners, st/variant-owners/get(variant-name)
+        push(owners, form-name)
+        save st/variant-owners/{variant-name}, owners
+        save own, make hash
+        save required, make list
+        walk variant/fields
+          take field
+          save field-name, field/name
+          save own/{field-name}, field/type
+          fork test, field/optional
+            miss
+              fork test, not(contains(required, field-name))
+                hold
+                  push(required, field-name)
+        save st/variant-fields/{variant-name}, own
+        save case-key, <{form-name}/{variant-name}>
+        save st/case-fields/{case-key}, own
+        save st/case-required/{case-key}, required
+        save by-owner, make list
+        fork test, st/variant-fields-by-owner/has(variant-name)
+          hold
+            save by-owner, st/variant-fields-by-owner/get(variant-name)
+        push(by-owner, own)
+        save st/variant-fields-by-owner/{variant-name}, by-owner
+      save st/enums/{form-name}, variant-names
+      fork test, headed
+        hold
+          save st/family-variant-index-head/{form-name}, heads-by-variant
+
+# record-type fields, variants and the rest, for member access, exhaustiveness and constructions
+task fill-records
+  take st, like infer-state
+  mark private
+
+  walk st/program
+    take one
+    sift one
+      case record-type
+        link form-name
+        link form-params
+        link form-indices
+        link form-fields
+        link form-variants
+        link form-alias
+        link form-tag
+        link form-text
+        link form-extend
+        link form-pins
+        link form-chain
+        link form-props
+        save is-union, and(is-above(form-variants/length, 0), not(form-text))
+        save tag-field, <form>
+        fork test, is-above(form-tag/length, 0)
+          hold
+            save tag-field, form-tag
+        save is-exception, false
+        walk form-chain
+          take link-name
+          fork test, is-equal(link-name, <exception>)
+            hold
+              save is-exception, true
+        save props, form-props
+        fill-record(st, form-name, form-params, form-fields, form-variants, is-union, tag-field, is-exception, props)
+      miss
+        turn next
+
+# opaque per-backend handle types (`dock type`), and the module names each file docks, by file
+task fill-docks
+  take st, like infer-state
+  mark private
+
+  walk st/program
+    take one
+    sift one
+      case native
+        link native-alias
+        link native-module
+        link native-kind
+        link native-async
+        link native-async-tasks
+        link native-span
+        link native-file
+        save is-type, false
+        sift native-kind
+          case some
+            link kind-held
+            sift kind-held
+              case type
+                save is-type, true
+              miss
+                save is-type, false
+          case none
+            save is-type, false
+        fork test, is-type
+          hold
+            save st/opaque-types/{native-alias}, true
+          miss
+            save docked-file, native-file
+            fork test, is-equal(docked-file/length, 0)
+              hold
+                save docked-file, file-or-empty(native-span)
+            save docks, make hash
+            fork test, st/docks-by-file/has(docked-file)
+              hold
+                save docks, st/docks-by-file/get(docked-file)
+            save docks/{native-alias}, true
+            save st/docks-by-file/{docked-file}, docks
+      miss
+        turn next
+
+# a span's file, or the empty text
+task file-or-empty
+  take at, like span
+  like text
+  mark private
+
+  sift at/file
+    case some
+      link written
+      back written
+    case none
+      back <>
+
+# the seeder over the finished tables: the forms, their generics and the opaque types
+task make-seeder
+  take st, like infer-state
+  mark private
+
+  save known, make hash
+  walk st/records/keys()
+    take form-name
+    save known/{form-name}, true
+  save opaque, make hash
+  walk st/opaque-types/keys()
+    take opaque-name
+    save opaque/{opaque-name}, true
+  save made
+    make seeder
+      bind sub, st/sub
+      bind records, known
+      bind form-generics, st/form-generics
+      bind opaque, opaque
+  save st/seeder, made
+
+# ---- the type names ----
+
+# every name a type mentions, added once, in the order met
+task named-in
+  take given, like maybe, like type
+  take into, like list, like text
+  mark private
+
+  sift given
+    case some
+      link held
+      named-in-type(held, into)
+    case none
+      back
+
+task named-in-type
+  take held, like type
+  take into, like list, like text
+  mark private
+
+  sift held
+    case named
+      link held-name
+      link held-args
+      fork test, not(contains(into, held-name))
+        hold
+          push(into, held-name)
+      walk held-args
+        take arg
+        named-in-type(arg, into)
+    case array
+      link element
+      named-in-type(element, into)
+    case map
+      link key
+      link value
+      named-in-type(key, into)
+      named-in-type(value, into)
+    case function
+      link params
+      link result
+      walk params
+        take param
+        named-in-type(param, into)
+      named-in-type(result, into)
+    miss
+      back
+
+# `type`, or a task whose result is one at the end of its arrows: what a type family parameter is declared as
+task names-a-type
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link held
+      back type-at-end(held)
+    case none
+      back false
+
+task type-at-end
+  take held, like type
+  like boolean
+  mark private
+
+  sift held
+    case named
+      link held-name
+      back is-equal(held-name, <type>)
+    case function
+      link result
+      back type-at-end(result)
+    miss
+      back false
+
+task known-type
+  take st, like infer-state
+  take type-name, like text
+  take own, like list, like text
+  take primitives, like list, like text
+  like boolean
+  mark private
+
+  fork test, st/records/has(type-name)
+    hold
+      back true
+  fork test, st/enums/has(type-name)
+    hold
+      back true
+  fork test, contains(primitives, type-name)
+    hold
+      back true
+  fork test, contains(own, type-name)
+    hold
+      back true
+  fork test, st/mask-names/has(type-name)
+    hold
+      back true
+  fork test, st/opaque-types/has(type-name)
+    hold
+      back true
+  back st/transparent-alias/has(type-name)
+
+# EVERY `like <name>` ON A SIGNATURE OR A FIELD NAMES SOMETHING: a form, an enum, a primitive, a generic of its own
+# declaration, a mask, a transparent alias or an opaque native type (compiler-hygiene-0010). Before the signatures are
+# built, while every name is as written. Each module reports its own
+task check-type-names
+  take st, like infer-state
+  mark private
+
+  save primitives, primitive-type-names()
+  walk st/program
+    take one
+    save at, statement-span(one)
+    fork test, st/merged
+      hold
+        sift at/file
+          case some
+            link span-file
+            fork test, not(is-equal(span-file, st/file))
+              hold
+                turn next
+          case none
+            turn next
+    save names, make list
+    save own, make list
+    save checked, false
+    sift one
+      case function
+        link params
+        link result
+        link generics
+        save checked, true
+        walk generics
+          take generic
+          push(own, generic/name)
+        walk params
+          take param
+          fork test, names-a-type(param/type)
+            hold
+              push(own, param/name)
+        walk params
+          take param
+          named-in(param/type, names)
+        named-in(result, names)
+      case record-type
+        link form-name
+        link form-params
+        link form-indices
+        link form-fields
+        link form-variants
+        save checked, true
+        walk form-params
+          take form-param
+          push(own, form-param)
+        walk form-fields
+          take field
+          named-in-type(field/type, names)
+        walk form-variants
+          take variant
+          walk variant/fields
+            take field
+            named-in-type(field/type, names)
+      miss
+        save checked, false
+    fork test, not(checked)
+      hold
+        turn next
+    walk names
+      take type-name
+      fork test, not(known-type(st, type-name, own, primitives))
+        hold
+          save input
+            make diagnostic-input
+              bind file, file-or(at, st/current-file)
+              bind span, at
+              bind message, make(some, <"{type-name}" is not a type this build knows: no form, enum, primitive, generic, mask or alias declares it>)
+          save kind, make unknown-type
+          push(st/diagnostics, diagnose(kind, input))
+
+# ---- instances and masks ----
+
+# the trait instances, `<mask>:<type>`, and every mask's methods and tasks. Two masks declaring one task name type
+# neither, so that name is left out of the mask tasks
+task fill-masks
+  take st, like infer-state
+  mark private
+
+  walk st/program
+    take one
+    sift one
+      case instance
+        link instance-mask
+        link instance-target
+        save instance-key, <{instance-mask}:{instance-target}>
+        save st/instances/{instance-key}, true
+      miss
+        turn next
+  save clash, make list
+  walk st/program
+    take one
+    sift one
+      case mask
+        link mask-name
+        link mask-methods
+        link mask-tasks
+        walk mask-methods
+          take method
+          save st/mask-methods/{method}, true
+        walk mask-tasks
+          take declared
+          save declared-name, declared/name
+          fork test, st/mask-tasks/has(declared-name)
+            hold
+              fork test, not(contains(clash, declared-name))
+                hold
+                  push(clash, declared-name)
+          save st/mask-tasks/{declared-name}, declared/signature
+      miss
+        turn next
+  walk clash
+    take clashed
+    st/mask-tasks/remove(clashed)
+
+# ---- the signatures ----
+
+# every variable a generic signature's types hold that is not one of its generics: a bare form's argument
+task gather-holes
+  take held, like type
+  take generic-ids, like list, like number
+  take holes, like list, like number
+  mark private
+
+  sift held
+    case variable
+      link held-id
+      fork test, and(not(contains(generic-ids, held-id)), not(contains(holes, held-id)))
+        hold
+          push(holes, held-id)
+    case array
+      link element
+      gather-holes(element, generic-ids, holes)
+    case map
+      link key
+      link value
+      gather-holes(key, generic-ids, holes)
+      gather-holes(value, generic-ids, holes)
+    case function
+      link params
+      link result
+      walk params
+        take param
+        gather-holes(param, generic-ids, holes)
+      gather-holes(result, generic-ids, holes)
+    case named
+      link held-name
+      link held-args
+      walk held-args
+        take arg
+        gather-holes(arg, generic-ids, holes)
+    miss
+      back
+
+# one task's signature: its generics freshened, its parameter and result types seeded in that order, its holes
+task signature-of
+  take st, like infer-state
+  take params, like list, like function-param
+  take result, like maybe, like type
+  take generics, like list, like generic-param
+  like task-signature
+  mark private
+
+  save generic-vars, make hash
+  save generic-ids, make list
+  save generic-names, make hash
+  save bounds, make list
+  walk generics
+    take generic
+    save generic-name, generic/name
+    save generic-need, generic/need
+    save variable, fresh-variable(st)
+    save generic-vars/{generic-name}, variable
+    sift variable
+      case variable
+        link variable-id
+        push(generic-ids, variable-id)
+        save generic-names/{variable-id}, generic-name
+        fork test, is-above(generic-need/length, 0)
+          hold
+            save bound
+              make generic-bound
+                bind id, variable-id
+                bind mask, generic-need
+            push(bounds, bound)
+      miss
+        save nothing, 0
+  save param-types, make list
+  walk params
+    take param
+    push(param-types, seed-maybe-type(st, param/type, generic-vars))
+  save result-type, seed-maybe-type(st, result, generic-vars)
+  save holes, make list
+  fork test, is-above(generic-ids/length, 0)
+    hold
+      walk param-types
+        take param-type
+        gather-holes(param-type, generic-ids, holes)
+      gather-holes(result-type, generic-ids, holes)
+  save min-args, 0
+  save names, make list
+  save fallbacks, make list
+  save positional, make list
+  save optional, make list
+  walk params
+    take param
+    push(names, param/name)
+    save fallback, param/fallback
+    push(fallbacks, fallback)
+    fork test, param/positional
+      hold
+        push(positional, true)
+      miss
+        push(positional, false)
+    fork test, param/optional
+      hold
+        push(optional, true)
+      miss
+        save min-args, add(min-args, 1)
+        push(optional, false)
+  save made
+    make task-signature
+      bind generics, generic-ids
+      bind generic-names, generic-names
+      bind bounds, bounds
+      bind params, param-types
+      bind result, result-type
+      bind min-args, min-args
+      bind names, names
+      bind fallbacks, fallbacks
+      bind positional, positional
+      bind optional, optional
+      bind holes, holes
+  back made
+
+# every task's signature by name. A redefinition keeps the first; one with a different number of parameters, in the
+# entry module, is refused (imported packages carry same-name overloads, which the emitter dedups)
+task fill-functions
+  take st, like infer-state
+  mark private
+
+  walk st/program
+    take one
+    sift one
+      case function
+        link name
+        link params
+        link result
+        link generics
+        link span
+        fork test, st/functions/has(name)
+          hold
+            save existing, st/functions/get(name)
+            fork test, and(not(is-equal(existing/params/length, params/length)), is-equal(file-or(span, st/file), st/file))
+              hold
+                save input
+                  make diagnostic-input
+                    bind file, st/file
+                    bind span, span
+                    bind message, make(some, <"{name}" is defined more than once, with a different number of parameters>)
+                save kind, make duplicate-definition
+                push(st/diagnostics, diagnose(kind, input))
+            turn next
+        save st/functions/{name}, signature-of(st, params, result, generics)
+      miss
+        turn next
+
+# `inspect` and `print` of @term/base/debug, lowered at each call by the argument's static type (term/base-v1 decision
+# 001). Only the stdlib's own definitions are
+task fill-debug-intrinsics
+  take st, like infer-state
+  mark private
+
+  walk st/program
+    take one
+    sift one
+      case function
+        link name
+        link span
+        fork test, or(is-equal(name, <inspect>), is-equal(name, <print>))
+          hold
+            save written, file-or-empty(span)
+            fork test, or(is-equal(written, <base/code/debug.tree>), ends-with(written, </base/code/debug.tree>))
+              hold
+                save st/debug-intrinsics/{name}, true
+      miss
+        turn next
+
+# a declarative native binding's signature: no generics, no body, its parameters seeded with no generic names
+task fill-binds
+  take st, like infer-state
+  mark private
+
+  walk st/program
+    take one
+    sift one
+      case bind
+        link bind-name
+        link bind-params
+        link bind-result
+        fork test, st/functions/has(bind-name)
+          hold
+            turn next
+        save no-generics, make hash
+        save param-types, make list
+        walk bind-params
+          take param
+          push(param-types, seed-maybe-type(st, param/type, no-generics))
+        save result-type, seed-maybe-type(st, bind-result, no-generics)
+        save min-args, 0
+        save names, make list
+        save fallbacks, make list
+        save positional, make list
+        save optional, make list
+        walk bind-params
+          take param
+          push(names, param/name)
+          push(fallbacks, make none)
+          push(positional, false)
+          fork test, param/optional
+            hold
+              push(optional, true)
+            miss
+              save min-args, add(min-args, 1)
+              push(optional, false)
+        save made
+          make task-signature
+            bind generics, make list
+            bind generic-names, make hash
+            bind bounds, make list
+            bind params, param-types
+            bind result, result-type
+            bind min-args, min-args
+            bind names, names
+            bind fallbacks, fallbacks
+            bind positional, positional
+            bind optional, optional
+            bind holes, make list
+        save st/functions/{bind-name}, made
+      miss
+        turn next
+
+# ---- each task a form wears fits its mask ----
+
+task wear-refused
+  take st, like infer-state
+  take where-file, like text
+  take where, like span
+  take message, like text
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, where-file
+      bind span, where
+      bind message, make(some, message)
+  save kind, make type-mismatch
+  push(st/diagnostics, diagnose(kind, input))
+
+# one mask task against the task the form wears for it
+task check-worn-task
+  take st, like infer-state
+  take target, like text
+  take mask-name, like text
+  take declared, like mask-task
+  take own, like task-signature
+  take where-file, like text
+  take where, like span
+  mark private
+
+  save task-name, declared/name
+  save wanted, declared/signature/params/length
+  # `like self` in the mask is the form wearing it (decisions-2026-10.md, D5)
+  save wearer-type
+    make type/named
+      bind name, target
+  save no-generics, make hash
+  save wearer, make hash
+  save self-name, <self>
+  save wearer/{self-name}, seed-given-type(st, wearer-type, no-generics)
+  fork test, not(is-equal(own/params/length, wanted))
+    hold
+      save plural, <s>
+      fork test, is-equal(wanted, 1)
+        hold
+          save plural, <>
+      wear-refused(st, where-file, where, <"{target}" wears "{mask-name}", whose "{task-name}" takes {wanted} input{plural}, self first, and this "{task-name}" takes {own/params/length}>)
+      back
+  save at, 0
+  walk declared/signature/params
+    take param
+    fork test, is-above(at, 0)
+      hold
+        sift param/type
+          case some
+            link param-type
+            save declared-type, seed-given-type(st, param-type, wearer)
+            save own-param, get(own/params, at)
+            fork test, not(unify(st, declared-type, own-param))
+              hold
+                save own-name, get(own/names, at)
+                save own-shown, show-type(resolve-held(st, own-param))
+                wear-refused(st, where-file, where, <"{target}" wears "{mask-name}", whose "{task-name}" takes {show-type(declared-type)} as "{own-name}", and this one takes {own-shown}>)
+          case none
+            save nothing, 0
+    save at, add(at, 1)
+  sift declared/signature/result
+    case some
+      link result-type
+      save declared-result, seed-given-type(st, result-type, wearer)
+      fork test, not(unify(st, declared-result, own/result))
+        hold
+          save own-shown, show-type(resolve-held(st, own/result))
+          wear-refused(st, where-file, where, <"{target}" wears "{mask-name}", whose "{task-name}" answers {show-type(declared-result)}, and this one answers {own-shown}>)
+    case none
+      back
+
+# EACH TASK A FORM WEARS FITS ITS MASK'S SIGNATURE: as many inputs, `self` first, each typed one and the result unified
+# with the mask's. A task the form leaves its type off takes the mask's, by the same unification
+task check-mask-wear
+  take st, like infer-state
+  mark private
+
+  save masks, make hash
+  save worn, make hash
+  walk st/program
+    take one
+    sift one
+      case mask
+        link mask-name
+        save masks/{mask-name}, one
+      case function
+        link name
+        link method
+        sift method
+          case some
+            link method-of
+            save worn-key, <{method-of/form}:{method-of/name}>
+            save worn/{worn-key}, name
+          case none
+            save nothing, 0
+      miss
+        turn next
+  walk st/program
+    take one
+    sift one
+      case instance
+        link instance-mask
+        link instance-target
+        link instance-methods
+        link instance-span
+        fork test, not(masks/has(instance-mask))
+          hold
+            turn next
+        save where-file, file-or(instance-span, st/file)
+        save mask-statement, masks/get(instance-mask)
+        sift mask-statement
+          case mask
+            link tasks
+            walk tasks
+              take declared
+              save worn-key, <{instance-target}:{declared/name}>
+              fork test, not(worn/has(worn-key))
+                hold
+                  turn next
+              save own-name, worn/get(worn-key)
+              fork test, not(st/functions/has(own-name))
+                hold
+                  turn next
+              check-worn-task(st, instance-target, instance-mask, declared, st/functions/get(own-name), where-file, instance-span)
+          miss
+            save nothing, 0
+      miss
+        turn next
+
+# ---- the methods ----
+
+# receiver dispatch: a form's mangled method by form name then bare method name, every bare method name, and each
+# method's file
+task fill-methods
+  take st, like infer-state
+  mark private
+
+  walk st/program
+    take one
+    sift one
+      case function
+        link name
+        link method
+        link span
+        sift method
+          case some
+            link method-of
+            save by-name, make hash
+            fork test, st/method-table/has(method-of/form)
+              hold
+                save by-name, st/method-table/get(method-of/form)
+            save by-name/{method-of/name}, name
+            save st/method-table/{method-of/form}, by-name
+            save st/method-names/{method-of/name}, true
+            save st/method-files/{name}, file-or(span, st/file)
+          case none
+            turn next
+      miss
+        turn next
+
+# A FILE'S OWN TASK WINS (module-scope-0008): the files that define a top-level task of each name
+task fill-own-task-files
+  take st, like infer-state
+  mark private
+
+  walk st/program
+    take one
+    sift one
+      case function
+        link name
+        link method
+        link span
+        sift method
+          case some
+            turn next
+          case none
+            save files, make list
+            fork test, st/own-task-files/has(name)
+              hold
+                save files, st/own-task-files/get(name)
+            save written, file-or(span, st/file)
+            fork test, not(contains(files, written))
+              hold
+                push(files, written)
+            save st/own-task-files/{name}, files
+      miss
+        turn next
+
+# whether a handle is a call of `self/<own>`
+task calls-self-member
+  take handle, like node-handle
+  take own, like text
+  like boolean
+  mark private
+
+  sift handle
+    case expression-handle
+      link held
+      sift held
+        case call
+          link callee
+          sift callee
+            case member
+              link target
+              link name
+              fork test, not(is-equal(name, own))
+                hold
+                  back false
+              sift target
+                case variable
+                  link target-name
+                  back is-equal(target-name, <self>)
+                miss
+                  back false
+            miss
+              back false
+        miss
+          back false
+    miss
+      back false
+
+# THE METHODS THAT ARE THIN NATIVE WRAPPERS: a body that calls `self/<its own name>` is the native method under a Term
+# signature. A walk by node-children, skipping `span` and `type` as the original's did
+task fill-native-wrappers
+  take st, like infer-state
+  mark private
+
+  save skip, make list
+  push(skip, <span>)
+  push(skip, <type>)
+  walk st/program
+    take one
+    sift one
+      case function
+        link name
+        link body
+        link method
+        sift method
+          case some
+            link method-of
+            save own, method-of/name
+            save stack, block-handles(body)
+            save found, false
+            walk test
+              hook test, and(not(found), is-above(stack/length, 0))
+              hook hold
+                save handle, stack/pop()
+                fork test, calls-self-member(handle, own)
+                  hold
+                    save found, true
+                  miss
+                    walk node-children(handle, skip)
+                      take child
+                      push(stack, child)
+            fork test, found
+              hold
+                save st/native-wrappers/{name}, true
+          case none
+            turn next
+      miss
+        turn next
+
+# ---- the pre-passes, in order ----
+
+# EVERY TABLE THE BODIES READ, filled before any body is checked, in the original's order: the forms, the docks, the
+# seeder, the type names, the instances and masks, the signatures, the debug intrinsics, the bindings, the masks worn,
+# the methods, the own task files and the native wrappers
+task fill-tables
+  take st, like infer-state
+
+  fill-records(st)
+  fill-docks(st)
+  make-seeder(st)
+  fill-masks-names-first(st)
+  fill-functions(st)
+  fill-debug-intrinsics(st)
+  fill-binds(st)
+  check-mask-wear(st)
+  fill-methods(st)
+  fill-own-task-files(st)
+  fill-native-wrappers(st)
+
+# the mask names, then the type-name check that reads them, then the instances and the masks' tables
+task fill-masks-names-first
+  take st, like infer-state
+  mark private
+
+  walk st/program
+    take one
+    sift one
+      case mask
+        link mask-name
+        save st/mask-names/{mask-name}, true
+      miss
+        turn next
+  check-type-names(st)
+  fill-masks(st)
