@@ -13,6 +13,7 @@
 // and the node-keyed answers as tests, and assembles the module.
 
 import { keepDocksApart } from '@term/make/code/compile/dock-apart'
+import { stampPlaces } from '@term/make/code/compile/place-stamp'
 import { markUnit, unmarked } from '@term/make/code/compile/unit-split'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
 import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
@@ -553,8 +554,9 @@ export function emitKotlin(
   written: Program,
   options?: { wake?: WakeGroup[]; units?: boolean },
 ): string {
-  // a task named like a docked module is renamed, since Kotlin reads `log.writeInfo` on a function `log` (dock-apart.ts)
-  const program = keepDocksApart(written)
+  // a task named like a docked module is renamed, since Kotlin reads `log.writeInfo` on a function `log` (dock-apart.ts).
+  // The last rewrite: every fact below and the emission read one STAMPED copy, each place a node of its own (D011 rule 4)
+  const program = stampPlaces(keepDocksApart(written) as never) as unknown as Program
   // the `+`, `-` and `*` nodes proven not to overflow (compile/proven.ts): the counted steps here, then the interval
   // fact once the list facts it reads are known
   let provenSteps: Proven = provenIncrements(program)

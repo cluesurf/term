@@ -36,8 +36,9 @@ export type MergedProgram =
 // every span but changes no AST, so it must backdate (leave dependents green). Spans are provenance for diagnostics,
 // carried beside the value, never compared as a dependency target (the Salsa rule).
 // The text compared is node-json's declared form, the node's identity (decision 034), with spans in the skip list. A failed
-// unit's diagnostics are stored records, not nodes, and keep `JSON.stringify` (decision 039)
-const WITHOUT_SPANS = ['span']
+// unit's diagnostics are stored records, not nodes, and keep `JSON.stringify` (decision 039). A node's `placeRow` is
+// where it stands in one stamped program (D011), never identity, so it is left out too
+const WITHOUT_SPANS = ['span', 'placeRow']
 
 function withoutSpans(_key: string, value: unknown): unknown {
   return _key === 'span' ? undefined : value

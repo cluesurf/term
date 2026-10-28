@@ -1,0 +1,793 @@
+# The dependent type kernel: a Calculus of Constructions with self types, the proof island of the type system.
+# Validity is decided by normalization plus definitional equality. Ported from the IIT-CoC reference
+# (land/code/HigherOrderCO/gist/iit-coc.ts) by way of check/kernel.ts, which this replaces (self-hosting, item
+# term-self-host-001-0090, spec 4.6).
+#
+# FIRST-ORDER DE BRUIJN TERMS, as check/cubical.tree. The original's binder was a JavaScript function, so substitution
+# was application, and Term's strict positivity refuses a form holding a task over its own type. Here:
+#   - a binder's body is a term in which `bound 0` is the bound variable (`bound k` the k-th binder out), and opening a
+#     body with an argument substitutes it (`open-body`). Every term the kernel hands around is closed: its only free
+#     variables are `variable` levels, the original's own variables, so substituting one never needs a shift past the
+#     argument's own binders
+#   - THE ORIGINAL'S NORMAL FORM WAS LAZY under a binder: `normal` of a function answered `x => normal(body(x))`, and the
+#     body was normalized (and its annotations checked) only when something called it. `later` is that call waiting:
+#     a binder's body `later depth, t` is normalized at `depth` when the body is opened, and the walk that opens a body
+#     runs every `later` it reaches without crossing another binder (`force`), as calling the function would have
+#     evaluated it. So a mismatch the original never reached is never raised here either
+#   - the book is a list of entries in the original's key order, the first of a name found
+#   - a kernel error raises `failure`, its kind in front of its message as check/judging.tree does: `kernel-mismatch:`
+#     for the original's `TypeMismatch`, `kernel-fault:` for a plain `Error`, `kernel-budget:` for a check out of
+#     steps. `message-of` takes the kind off
+#   - `show-term`, `equal` and `normalize` take the book, which the original's closures captured
+#   - EVERY CALL SPENDS FROM A STEP BUDGET (decision 047): each call of `reduce-under`, `normalize-under` and
+#     `equal-under` is one step, and a call past `kernel-step-budget()` steps raises `kernel-budget:`. `check-book`
+#     gives each definition a budget of its own, so a definition whose check does not end is refused alone and every
+#     other definition is still checked. `normalize`, `reduce`, `equal` and `show-term` spend from no limit, as the
+#     original's calls did
+#
+# Diverges (spec 4.6): a binder is a term, never a function, so a caller builds `make-lambda(make-bound(0))` where it
+# wrote `lambda(x => x)`, and a term's JSON shows the whole body where the original's showed a function.
+# Diverges (decision 047, decision 027 row 18): the original had no budget, and a check that does not end overflowed the
+# host's stack, which checkBook reported as that definition's error 'Maximum call stack size exceeded'. Here the same
+# definition is refused with `the check did not finish within <n> reduction steps`, on every backend alike.
+
+load @term/base/list
+  find list
+  find push
+
+load @term/base/text
+  find substring
+  find starts-with
+
+form coc-term
+  mark tag, name tag
+  # a free variable, by its de Bruijn LEVEL: the original's own variables, made for an equality or a name
+  case variable
+    link level, like number
+  # a bound variable, by its de Bruijn INDEX: the binder `index` binders out
+  case bound
+    link index, like number
+  # dependent function type: for all (x: input) body
+  case pi
+    link input, like coc-term
+    link body, like coc-term
+  case lambda
+    link body, like coc-term
+  case apply
+    link fun, like coc-term
+    link arg, like coc-term
+  # self type, the foundation under inductive types
+  case self
+    link body, like coc-term
+  case annotate
+    link value, like coc-term
+    link type, like coc-term
+  case reference
+    link name, like text
+  # a binder's body to be normalized at `depth` once the binder is opened: the original's lazy `x => normal(body(x))`
+  case later
+    link depth, like number
+    link body, like coc-term
+
+# a named definition of a book, with its declared type and its value
+form coc-entry
+  link name, like text
+  link type, like coc-term
+  link value, like coc-term
+
+# what `check-book` says of one definition: `error` is the message when it did not check, `<>` when it did
+form book-check
+  link name, like text
+  link ok, like boolean
+  link error, like text
+
+# the steps one check has spent, and how many it may spend (decision 047)
+form kernel-work
+  mark shared
+  link spent, like number
+  link limit, like number
+
+# ---- builders ----
+
+task make-variable
+  take level, like number
+  like coc-term
+
+  back
+    make variable
+      bind level, level
+
+task make-bound
+  take index, like number
+  like coc-term
+
+  back
+    make bound
+      bind index, index
+
+task make-pi
+  take input, like coc-term
+  take body, like coc-term
+  like coc-term
+
+  back
+    make pi
+      bind input, input
+      bind body, body
+
+task make-lambda
+  take body, like coc-term
+  like coc-term
+
+  back
+    make lambda
+      bind body, body
+
+task make-apply
+  take fun, like coc-term
+  take arg, like coc-term
+  like coc-term
+
+  back
+    make apply
+      bind fun, fun
+      bind arg, arg
+
+task make-self
+  take body, like coc-term
+  like coc-term
+
+  back
+    make self
+      bind body, body
+
+task make-annotate
+  take value, like coc-term
+  take type, like coc-term
+  like coc-term
+
+  back
+    make annotate
+      bind value, value
+      bind type, type
+
+task make-reference
+  take name, like text
+  like coc-term
+
+  back
+    make reference
+      bind name, name
+
+task make-later
+  take depth, like number
+  take body, like coc-term
+  like coc-term
+  mark private
+
+  back
+    make later
+      bind depth, depth
+      bind body, body
+
+# the universe (the type of types): the self-type identity, self x. x
+task make-universe
+  like coc-term
+
+  back make-self(make-bound(0))
+
+task make-entry
+  take name, like text
+  take type, like coc-term
+  take value, like coc-term
+  like coc-entry
+
+  back
+    make coc-entry
+      bind name, name
+      bind type, type
+      bind value, value
+
+# ---- the step budget (decision 047) ----
+
+# the steps one definition's check may spend. Over the kernel-terms pair's inputs no check that ends spent more than 57,
+# and a check that does not end ran out of host stack on TypeScript at 4,793 steps at the earliest (decision 047), so a
+# check out of steps is refused here well before the stack gives out
+task kernel-step-budget
+  like number
+
+  back 1024
+
+# the budget of a call that is not a definition's check (`normalize`, `reduce`, `equal`, `show-term`): none, as the
+# original had none. A show of a normal form that ends spent up to 43,191 steps over the pair's inputs
+task unbounded-steps
+  like number
+  mark private
+
+  back 9007199254740991
+
+# a budget of `limit` steps, none spent
+task make-work
+  take limit, like number
+  like kernel-work
+
+  back
+    make kernel-work
+      bind spent, 0
+      bind limit, limit
+
+# one step spent, refused once the budget is past
+task spend
+  take work, like kernel-work
+  mark private
+
+  save work/spent, add(work/spent, 1)
+  fork test, is-above(work/spent, work/limit)
+    hold
+      save limit, work/limit
+      refuse(<kernel-budget:the check did not finish within {limit} reduction steps>)
+
+# ---- binders ----
+
+# every bound variable at or past `cutoff` moved `by` binders out
+task shift
+  take term, like coc-term
+  take by, like number
+  take cutoff, like number
+  like coc-term
+  mark private
+
+  sift term
+    case bound
+      fork test, is-minimum(index, cutoff)
+        hold
+          back make-bound(add(index, by))
+      back term
+    case pi
+      back make-pi(shift(input, by, cutoff), shift(body, by, add(cutoff, 1)))
+    case lambda
+      back make-lambda(shift(body, by, add(cutoff, 1)))
+    case apply
+      back make-apply(shift(fun, by, cutoff), shift(arg, by, cutoff))
+    case self
+      back make-self(shift(body, by, add(cutoff, 1)))
+    case annotate
+      back make-annotate(shift(value, by, cutoff), shift(type, by, cutoff))
+    case later
+      back make-later(depth, shift(body, by, cutoff))
+    miss
+      back term
+
+# the binder `at` binders out replaced by `image`, whose own bound variables are moved past the binders crossed
+task substitute
+  take term, like coc-term
+  take at, like number
+  take image, like coc-term
+  like coc-term
+  mark private
+
+  sift term
+    case bound
+      fork test, is-equal(index, at)
+        hold
+          back shift(image, at, 0)
+      fork test, is-above(index, at)
+        hold
+          back make-bound(subtract(index, 1))
+      back term
+    case pi
+      back make-pi(substitute(input, at, image), substitute(body, add(at, 1), image))
+    case lambda
+      back make-lambda(substitute(body, add(at, 1), image))
+    case apply
+      back make-apply(substitute(fun, at, image), substitute(arg, at, image))
+    case self
+      back make-self(substitute(body, add(at, 1), image))
+    case annotate
+      back make-annotate(substitute(value, at, image), substitute(type, at, image))
+    case later
+      back make-later(depth, substitute(body, at, image))
+    miss
+      back term
+
+# every `later` reached without crossing a binder, normalized: what calling the original's function evaluated
+task force
+  take book, like list, like coc-entry
+  take work, like kernel-work
+  take term, like coc-term
+  like coc-term
+  mark private
+
+  sift term
+    case later
+      back normalize-under(book, work, force(book, work, body), depth)
+    case apply
+      save forced-fun, force(book, work, fun)
+      back make-apply(forced-fun, force(book, work, arg))
+    case annotate
+      save forced-value, force(book, work, value)
+      back make-annotate(forced-value, force(book, work, type))
+    case pi
+      back make-pi(force(book, work, input), body)
+    miss
+      back term
+
+# a binder's body with its variable given: the original's `body(arg)`
+task open-body
+  take book, like list, like coc-entry
+  take work, like kernel-work
+  take body, like coc-term
+  take arg, like coc-term
+  like coc-term
+  mark private
+
+  back force(book, work, substitute(body, 0, arg))
+
+# ---- the book ----
+
+task book-defines
+  take book, like list, like coc-entry
+  take term, like coc-term
+  like boolean
+  mark private
+
+  sift term
+    case reference
+      walk book
+        take entry
+        fork test, is-equal(entry/name, name)
+          hold
+            back true
+      back false
+    miss
+      back false
+
+# the value the book gives a reference it defines (`book-defines` first)
+task defined-value
+  take book, like list, like coc-entry
+  take term, like coc-term
+  like coc-term
+  mark private
+
+  sift term
+    case reference
+      walk book
+        take entry
+        fork test, is-equal(entry/name, name)
+          hold
+            back entry/value
+      back term
+    miss
+      back term
+
+# expand a reference to its value
+task deref
+  take book, like list, like coc-entry
+  take work, like kernel-work
+  take term, like coc-term
+  like coc-term
+  mark private
+
+  fork test, book-defines(book, term)
+    hold
+      back reduce-under(book, work, defined-value(book, term))
+  back term
+
+# ---- reduction ----
+
+# reduce to weak head normal form, as the original did: no budget
+task reduce
+  take book, like list, like coc-entry
+  take term, like coc-term
+  like coc-term
+
+  back reduce-under(book, make-work(unbounded-steps()), term)
+
+# reduce to weak head normal form
+task reduce-under
+  take book, like list, like coc-entry
+  take work, like kernel-work
+  take term, like coc-term
+  like coc-term
+
+  spend(work)
+  sift term
+    case apply
+      back reduce-apply(book, work, reduce-under(book, work, fun), arg)
+    case annotate
+      back reduce-annotate(book, work, value, reduce-under(book, work, type))
+    miss
+      back term
+
+# reduce an annotation: push the type through a function or a self type
+task reduce-annotate
+  take book, like list, like coc-entry
+  take work, like kernel-work
+  take value, like coc-term
+  take type, like coc-term
+  like coc-term
+  mark private
+
+  save head, deref(book, work, type)
+  sift head
+    # { t : for all (x: A) B }  reduces to  lambda x. { (t {x:A}) : B }
+    case pi
+      back make-lambda(make-annotate(make-apply(value, make-annotate(make-bound(0), input)), body))
+    # { t : self x. T }  reduces to  T[x <- t]
+    case self
+      back reduce-under(book, work, open-body(book, work, body, value))
+    miss
+      back make-annotate(value, type)
+
+# reduce an application
+task reduce-apply
+  take book, like list, like coc-entry
+  take work, like kernel-work
+  take fun, like coc-term
+  take arg, like coc-term
+  like coc-term
+  mark private
+
+  save head, deref(book, work, fun)
+  sift head
+    case lambda
+      back reduce-under(book, work, open-body(book, work, body, arg))
+    case annotate
+      refuse(<kernel-fault:applying a non-function (annotated value)>)
+      back head
+    miss
+      back make-apply(head, arg)
+
+# evaluate a term to full normal form, as the original did: no budget
+task normalize
+  take book, like list, like coc-entry
+  take term, like coc-term
+  take depth, like number
+  like coc-term
+
+  back normalize-under(book, make-work(unbounded-steps()), term, depth)
+
+# evaluate a term to full normal form, checking annotations as it goes. Under a binder it waits (`later`)
+task normalize-under
+  take book, like list, like coc-entry
+  take work, like kernel-work
+  take term, like coc-term
+  take depth, like number
+  like coc-term
+
+  spend(work)
+  save head, reduce-under(book, work, term)
+  sift head
+    case lambda
+      back make-lambda(make-later(add(depth, 1), body))
+    case pi
+      save shown-input, normalize-under(book, work, input, depth)
+      back make-pi(shown-input, make-later(add(depth, 1), substitute(body, 0, make-annotate(make-bound(0), input))))
+    case apply
+      save normal-fun, normalize-under(book, work, fun, depth)
+      back make-apply(normal-fun, normalize-under(book, work, arg, depth))
+    case self
+      back make-self(make-later(add(depth, 1), body))
+    case annotate
+      save normal-value, normalize-under(book, work, value, depth)
+      back normal-annotate(book, work, normal-value, normalize-under(book, work, type, depth), depth)
+    case reference
+      fork test, book-defines(book, head)
+        hold
+          back normalize-under(book, work, defined-value(book, head), depth)
+      back head
+    miss
+      back head
+
+# the annotation check: where type mismatches are caught
+task normal-annotate
+  take book, like list, like coc-entry
+  take work, like kernel-work
+  take value, like coc-term
+  take type, like coc-term
+  take depth, like number
+  like coc-term
+  mark private
+
+  sift value
+    case annotate
+      link inner-value
+      link inner-type
+      fork test, not(equal-under(book, work, inner-type, type, depth))
+        hold
+          save expected, show-under(book, work, type, depth)
+          save detected, show-under(book, work, inner-type, depth)
+          refuse(<kernel-mismatch:type mismatch\n- expected: {expected}\n- detected: {detected}>)
+      back make-annotate(inner-value, inner-type)
+    case lambda
+      refuse(<kernel-fault:a bare function cannot be annotated here>)
+      back value
+    miss
+      back make-annotate(value, type)
+
+# raise a kernel error, its kind in front of its message (`message-of` takes it off), where the original threw
+task refuse
+  take note, like text
+  mark private
+
+  halt <{note}>
+
+# ---- equality ----
+
+# the five same-shape rules of `equal`: 1 equal, 0 not, 2 when the two are not of one of those shapes
+task same-shape-equal
+  take book, like list, like coc-entry
+  take work, like kernel-work
+  take a, like coc-term
+  take b, like coc-term
+  take depth, like number
+  like number
+  mark private
+
+  sift a
+    case variable
+      link a-level
+      sift b
+        case variable
+          link b-level
+          back answer-of(is-equal(a-level, b-level))
+        miss
+          back 2
+    case lambda
+      link a-body
+      sift b
+        case lambda
+          link b-body
+          save left, open-body(book, work, a-body, make-variable(depth))
+          save right, open-body(book, work, b-body, make-variable(depth))
+          back answer-of(equal-under(book, work, left, right, add(depth, 1)))
+        miss
+          back 2
+    case apply
+      link a-fun
+      link a-arg
+      sift b
+        case apply
+          link b-fun
+          link b-arg
+          fork test, not(equal-under(book, work, a-fun, b-fun, depth))
+            hold
+              back 0
+          back answer-of(equal-under(book, work, a-arg, b-arg, depth))
+        miss
+          back 2
+    case pi
+      link a-input
+      link a-body
+      sift b
+        case pi
+          link b-input
+          link b-body
+          fork test, not(equal-under(book, work, a-input, b-input, depth))
+            hold
+              back 0
+          save left, open-body(book, work, a-body, make-variable(depth))
+          save right, open-body(book, work, b-body, make-variable(depth))
+          back answer-of(equal-under(book, work, left, right, add(depth, 1)))
+        miss
+          back 2
+    case self
+      link a-body
+      sift b
+        case self
+          link b-body
+          save left, open-body(book, work, a-body, make-variable(depth))
+          save right, open-body(book, work, b-body, make-variable(depth))
+          back answer-of(equal-under(book, work, left, right, add(depth, 1)))
+        miss
+          back 2
+    miss
+      back 2
+
+task answer-of
+  take yes, like boolean
+  like number
+  mark private
+
+  fork test, yes
+    hold
+      back 1
+  back 0
+
+task is-annotate
+  take term, like coc-term
+  like boolean
+  mark private
+
+  sift term
+    case annotate
+      back true
+    miss
+      back false
+
+task is-lambda
+  take term, like coc-term
+  like boolean
+  mark private
+
+  sift term
+    case lambda
+      back true
+    miss
+      back false
+
+task annotated-value
+  take term, like coc-term
+  like coc-term
+  mark private
+
+  sift term
+    case annotate
+      back value
+    miss
+      back term
+
+# definitional equality, as the original did: no budget
+task equal
+  take book, like list, like coc-entry
+  take a, like coc-term
+  take b, like coc-term
+  take depth, like number
+  like boolean
+
+  back equal-under(book, make-work(unbounded-steps()), a, b, depth)
+
+# definitional equality, by structure under normalization
+task equal-under
+  take book, like list, like coc-entry
+  take work, like kernel-work
+  take a, like coc-term
+  take b, like coc-term
+  take depth, like number
+  like boolean
+
+  spend(work)
+  save shaped, same-shape-equal(book, work, a, b, depth)
+  fork test, is-below(shaped, 2)
+    hold
+      back is-equal(shaped, 1)
+  fork test, book-defines(book, a)
+    hold
+      back equal-under(book, work, normalize-under(book, work, defined-value(book, a), depth), b, depth)
+  fork test, book-defines(book, b)
+    hold
+      back equal-under(book, work, a, normalize-under(book, work, defined-value(book, b), depth), depth)
+  fork test, is-annotate(a)
+    hold
+      back equal-under(book, work, annotated-value(a), b, depth)
+  fork test, is-annotate(b)
+    hold
+      back equal-under(book, work, a, annotated-value(b), depth)
+  # eta: a function equals any term that applies the same way
+  fork test, is-lambda(a)
+    hold
+      back equal-under(book, work, a, make-lambda(make-apply(b, make-bound(0))), depth)
+  fork test, is-lambda(b)
+    hold
+      back equal-under(book, work, make-lambda(make-apply(a, make-bound(0))), b, depth)
+  back false
+
+# ---- checking a book ----
+
+# a kernel error's message, its kind taken off
+task message-of
+  take note, like text
+  like text
+
+  fork test, starts-with(note, <kernel-mismatch:>)
+    hold
+      back substring(note, 16, note/length)
+  fork test, starts-with(note, <kernel-fault:>)
+    hold
+      back substring(note, 13, note/length)
+  fork test, starts-with(note, <kernel-budget:>)
+    hold
+      back substring(note, 14, note/length)
+  back note
+
+# check every definition in a book: normalize each value against its declared type, each under a budget of its own
+task check-book
+  take book, like list, like coc-entry
+  like list, like book-check
+
+  save out, make list
+  walk book
+    take entry
+    save failed, <>
+    save fine, true
+    fork
+      mark unsafe
+      normalize-under(book, make-work(kernel-step-budget()), make-annotate(entry/value, entry/type), 0)
+    halt take
+      take problem
+      save fine, false
+      save failed, message-of(problem/note)
+    save checked
+      make book-check
+        bind name, entry/name
+        bind ok, fine
+        bind error, failed
+    push(out, checked)
+  back out
+
+# ---- showing ----
+
+# a term as text, as the original did: no budget
+task show-term
+  take book, like list, like coc-entry
+  take term, like coc-term
+  take depth, like number
+  like text
+
+  back show-under(book, make-work(unbounded-steps()), term, depth)
+
+# a term as text, the bodies it opens normalized as the original's functions did when called
+task show-under
+  take book, like list, like coc-entry
+  take work, like kernel-work
+  take term, like coc-term
+  take depth, like number
+  like text
+
+  sift term
+    case variable
+      back number-to-name(level)
+    case lambda
+      save name, number-to-name(depth)
+      save inner, show-under(book, work, open-body(book, work, body, make-variable(depth)), add(depth, 1))
+      back <lambda {name} {inner}>
+    case pi
+      save name, number-to-name(depth)
+      save shown-input, show-under(book, work, input, depth)
+      save inner, show-under(book, work, open-body(book, work, body, make-variable(depth)), add(depth, 1))
+      back <forall ({name}: {shown-input}) {inner}>
+    case apply
+      save shown-fun, show-under(book, work, fun, depth)
+      save shown-arg, show-under(book, work, arg, depth)
+      back <({shown-fun} {shown-arg})>
+    case self
+      save name, number-to-name(depth)
+      save inner, show-under(book, work, open-body(book, work, body, make-variable(depth)), add(depth, 1))
+      back <self {name} {inner}>
+    case annotate
+      save shown-value, show-under(book, work, value, depth)
+      save shown-type, show-under(book, work, type, depth)
+      back <\{{shown-value}: {shown-type}\}>
+    case reference
+      back <@{name}>
+    case bound
+      back <#{index}>
+    # the waiting body is normalized at its own depth by `force`, and shown at the depth the show has reached
+    case later
+      link waiting-depth
+      link waiting-body
+      back show-under(book, work, force(book, work, term), depth)
+
+# a level as letters: 0 a, 25 z, 26 aa
+task number-to-name
+  take value, like number
+  like text
+  mark private
+
+  save letters, <abcdefghijklmnopqrstuvwxyz>
+  save shown, <>
+  save n, add(value, 1)
+  walk test
+    hook test, is-above(n, 0)
+    hook hold
+      save rest, subtract(n, 1)
+      save whole, 0
+      walk test
+        hook test, is-minimum(rest, 26)
+        hook hold
+          save rest, subtract(rest, 26)
+          save whole, add(whole, 1)
+      save letter, substring(letters, rest, add(rest, 1))
+      save shown, <{letter}{shown}>
+      save n, whole
+  back shown

@@ -59,7 +59,7 @@ function typeParameters(statement: Statement): Set<string> {
 // A FORM AND A VARIANT CASE OF ONE NAME. `make <name>` constructs either, and the flat program gave every such
 // construction to whichever it met: a user's `case pair` was built by the stdlib's zip in place of its own `pair` form,
 // and the user's own `make pair` was refused for missing the stdlib form's fields. So a form whose name is also some
-// form's case takes a name of its own (`<name>__form`), unless it is the entry file's, and the case keeps its name,
+// form's case takes a name of its own (`<name>__form`), the entry file's too unless it is a union or a mask, and the case keeps its name,
 // which reaches the output (a TypeScript tag, a printed record). Then each reference is bound: a named type, a raise, a
 // method and a mask instance can only mean the form; a construction means the case where its file defines that case's
 // form or imports it, the form where its file defines or imports the form, and otherwise whichever's fields the
@@ -115,7 +115,21 @@ function separateCaseNames(program: Program, scope: ImportScope | undefined, ent
   for (const [name, defining] of forms) {
     const owners = cases.get(name)
 
-    if (!owners || defining.some(d => d.span.file === entry)) {
+    if (!owners) {
+      continue
+    }
+
+    // a union or a mask is never built by its own name, so a construction of the name is the case, in every file and
+    // whichever file is the entry (term-self-host-001-0294: ir/selection.tree's `make twin-choice` meant
+    // parser/diagnostic.tree's case, and once selection was not the entry its own union `twin-choice` took it)
+    const constructible = defining.some(d => d.form === 'record-type' && d.variants.length === 0)
+
+    // THE ENTRY'S RECORD FORM IS RENAMED AS A LOADED ONE IS (decision 045, term-self-host-001-0295): kept by its name in
+    // the entry, the checker built the case for every construction there (it reads a case before a record), so a file
+    // that built its own form failed as the entry and built as a loaded module. A union or a mask keeps its name in the
+    // entry, where nothing builds it and its types bind alike either way. The entry's renamed form keeps the name it
+    // was written with in what the build exports, through an alias (compile.ts `entryFormAliases`)
+    if (!constructible && defining.some(d => d.span.file === entry)) {
       continue
     }
 
@@ -124,10 +138,6 @@ function separateCaseNames(program: Program, scope: ImportScope | undefined, ent
     const formFields = new Set(defining.flatMap(d => (d.form === 'record-type' ? d.fields.map(f => f.name) : [])))
     const caseFiles = new Set(owners.map(o => o.file))
     const caseForms = new Set(owners.map(o => o.form))
-    // a union or a mask is never built by its own name, so a construction of the name is the case, in every file and
-    // whichever file is the entry (term-self-host-001-0294: ir/selection.tree's `make twin-choice` meant
-    // parser/diagnostic.tree's case, and once selection was not the entry its own union `twin-choice` took it)
-    const constructible = defining.some(d => d.form === 'record-type' && d.variants.length === 0)
 
     defining.forEach(d => (d.name = renamed))
 
@@ -387,6 +397,9 @@ function bindForms(program: Program, scope: ImportScope | undefined, entry?: str
 // is told its owner instead (`owner`, which the checker reads first, as it does for `make expression/integer`): the
 // owner its own file defines, else the one owner its file's imports reach. Neither leaves it to the checker's own
 // choice by fields, as before
+// what module scope added to a form's name: `__form` (named apart from a case), then `__in0_<k>` (split by file)
+const WRITTEN_FORM = /(?:__form)?(?:__in\d+_\d+)?$/
+
 function bindSharedCases(program: Program, scope: ImportScope | undefined): void {
   type Owner = { file: string; form: string }
   const owners = new Map<string, Owner[]>()
@@ -418,7 +431,11 @@ function bindSharedCases(program: Program, scope: ImportScope | undefined): void
     const list = shared.get(name)!
     const own = list.filter(o => o.file === file)
     const imported = scope?.get(file)?.finds
-    const importsAnother = list.some(o => o.file !== file && imported?.has(o.form))
+    // a form is imported by the name it was written with, and by now one named like some case is `<name>__form` and
+    // one split by file `<name>__in0_<k>`: compile/view-document imports node.tree's `statement`, which analyzer.tree's
+    // closure had renamed `statement__form`, so its `make view` read as importing no other owner and was told its own
+    // `view-body` (traps.md T-0079, term-self-host-001-0310)
+    const importsAnother = list.some(o => o.file !== file && imported?.has(o.form.replace(WRITTEN_FORM, '')))
 
     return own.length === 1 && !importsAnother ? own[0]!.form : undefined
   }

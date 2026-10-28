@@ -1,0 +1,155 @@
+# Places stamped on the nodes (decision 011 rules 2, 3, 5, 6). `stamp-places` answers a copy of a program in which
+# every expression and statement is a FRESH node carrying its `place-row`: its row in compile/place-walk.tree's
+# pre-order plus one. A node the input holds at two places comes back as two nodes with two rows, and so does every
+# record on the path to a place (a pin's field value, a named type's value arguments, a branch, an arm, a map entry),
+# since compile/node-rebuild.tree makes each of those new too. The input is never written. `same-place` compares two
+# stamped nodes: both rows above 0 and equal.
+#
+# Written for self-hosting, 2026-10-27 (item 0038, decision 044), for the emitters' node facts, which kept facts by
+# object identity (`===`, WeakMap) on TypeScript and so read one fact for two places of a shared node. A copy is not
+# an unshare there (`copy-program`, `structuredClone` keep the sharing, traps T041): only this walk is.
+#
+# The walk is compile/node-children.tree's descent with `type` skipped, as place-walk never enters `type` (or `span`,
+# which holds no node), each child stamped before its parent is rebuilt over it.
+
+load @term/base/list
+  find list
+
+load ./node
+  find expression
+  find statement
+
+load ./node-children
+  find node-handle
+  find node-children
+
+load ./node-rebuild
+  find rebuild-type
+  find rebuild-view
+  find rebuild-expression
+  find rebuild-statement
+  find place-expression
+  find place-statement
+  find place-row-of-expression
+  find place-row-of-statement
+
+# the next place's row, counted as the walk meets places
+form stamp-count
+  mark shared
+  link next, like number
+
+# the keys a place walk never enters
+task place-skip
+  like list, like text
+  mark private
+
+  save skip, make list
+  push(skip, <type>)
+  back skip
+
+# a whole program, every place a fresh node with its row
+task stamp-places
+  take program, like list, like statement
+  like list, like statement
+
+  save count
+    make stamp-count
+      bind next, 1
+  save skip, place-skip()
+  save out, make list
+  walk program
+    take one
+    push(out, stamp-statement(count, skip, one))
+  back out
+
+task stamp-statement
+  take count, like stamp-count
+  take skip, like list, like text
+  take node, like statement
+  like statement
+  mark private
+
+  save handle
+    make node-handle/statement-handle
+      bind node, node
+  save made, stamp-handle(count, skip, handle)
+  sift made
+    case statement-handle
+      link inner
+      back inner
+    miss
+      halt <place-stamp: a statement was rebuilt as another kind of node>
+
+# the children of a node, each stamped, in node-children's order
+task stamp-children
+  take count, like stamp-count
+  take skip, like list, like text
+  take handle, like node-handle
+  like list, like node-handle
+  mark private
+
+  save out, make list
+  walk node-children(handle, skip)
+    take child
+    push(out, stamp-handle(count, skip, child))
+  back out
+
+# one node: a place takes its row BEFORE its children are walked (pre-order), then is rebuilt over them
+task stamp-handle
+  take count, like stamp-count
+  take skip, like list, like text
+  take handle, like node-handle
+  like node-handle
+  mark private
+
+  sift handle
+    case expression-handle
+      link inner
+      save row, count/next
+      save count/next, add(row, 1)
+      save children, stamp-children(count, skip, handle)
+      save made, rebuild-expression(inner, children, skip)
+      back
+        make node-handle/expression-handle
+          bind node, place-expression(made, row)
+    case statement-handle
+      link inner
+      save row, count/next
+      save count/next, add(row, 1)
+      save children, stamp-children(count, skip, handle)
+      save made, rebuild-statement(inner, children, skip)
+      back
+        make node-handle/statement-handle
+          bind node, place-statement(made, row)
+    case type-handle
+      link inner
+      save children, stamp-children(count, skip, handle)
+      back
+        make node-handle/type-handle
+          bind node, rebuild-type(inner, children, skip)
+    case view-handle
+      link inner
+      save children, stamp-children(count, skip, handle)
+      back
+        make node-handle/view-handle
+          bind node, rebuild-view(inner, children, skip)
+
+# two expressions stand at one place: both stamped (rows above 0) and the rows equal
+task same-place
+  take left, like expression
+  take right, like expression
+  like boolean
+
+  save l, place-row-of-expression(left)
+  save r, place-row-of-expression(right)
+  back and(is-above(l, 0), is-equal(l, r))
+
+# two statements stand at one place
+task same-statement-place
+  take left, like statement
+  take right, like statement
+  like boolean
+
+  save l, place-row-of-statement(left)
+  save r, place-row-of-statement(right)
+  back and(is-above(l, 0), is-equal(l, r))

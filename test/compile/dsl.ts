@@ -125,13 +125,16 @@ function main(): void {
     const PATHLIKE = `hook /users\n  task get\n    call list-users\n`
     const WORDLIKE = `hook make\n  take name\n    like text\n  call make-deck\n    bind name, read name\n`
 
-    // a route carries a `component` field; a command does not. That is the shape the two builders differ by.
+    // a route is flagged `page: true`; a command is not. That is the shape the two builders differ by. (The original
+    // bridge also wrote a `component` KEY on every route, empty when it had no view, and this test read the key; the
+    // mill is Term since item term-self-host-001-0280, which writes an absent maybe as no key at all, so the flag the
+    // original wrote for exactly this question is what is read: decision 034 section 2, absent and default are one.)
     const kindOf = (text: string, role?: string): string => {
       const route = (lower(text, role).find(
         (s): s is Extract<Statement, { form: 'dock' }> => s.form === 'dock',
       ) as { route?: Record<string, unknown> } | undefined)?.route
 
-      return route ? ('component' in route ? 'route' : 'command') : 'none'
+      return route ? (route.page === true ? 'route' : 'command') : 'none'
     }
 
     ok('with no role, a path-shaped hook is a route', kindOf(PATHLIKE) === 'route')

@@ -1,0 +1,1216 @@
+# The mint bridge, part 4 of 8 (decision 033 section 2): forms, fields, binds, native docks and twins.
+#
+# Ported from compile/mint-bridge.ts's `formOf`, `fieldOf`, `bindOf`, `nativeOf` and `twinOf` (self-hosting, item 0275),
+# which stays as the face until part 8. The decisions:
+#   - a field the original set only when present is written with its default otherwise, which node-json reads as the
+#     absent field (decision 034 section 2)
+#   - a case's field is the `variant-field` node.tree declares: the original spread a whole `fieldOf` into it, and
+#     node.tree's variant field has no `fallback`, so a case field's default is not carried (node-json drops it too)
+#   - a form's methods, and the methods of each `wear` inside it, are part 3's `function-of`, built with the state's
+#     owner, self type and owner parameters set to the form's for the time they are built
+#   - `twin-of` answers the twin, and compile/minting.tree's `top-level-form` puts it beside the program
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/text
+  find replace-all
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/tree
+  find node
+
+load ../parser/diagnostic
+  find span
+
+load ./node
+  find expression
+  find statement
+  find type
+  find twin
+  find form-field
+  find variant-field
+  find form-variant
+  find form-extend
+  find extend-head
+  find head-link
+  find field-value
+  find type-index
+  find closure-param
+  find bind-param
+  find bind-import
+  find bind-target
+  find native-kind
+  find function-param
+  find generic-param
+  find match-case
+  find statement-branch
+  find binary-op
+  find unknown-type
+  find string-type
+
+load ./surface
+  find is-type-name
+  find type-of-word
+
+load ./mill-running
+  find minted
+
+load ./minting-reads
+  find mint-state
+  find is-form
+  find at
+  find first-at
+  find forms-at
+  find need-word
+  find fall-value
+  find text-of
+  find word-at
+  find span-of
+  find is-form-mark
+  find is-width-word
+
+load ./minting-values
+  find push-problem
+  find refuse
+  find unhandled
+  find expression-of
+  find type-of
+  find type-of-heads
+  find with-head-args
+  find with-outer-takes
+  find refuse-sibling-likes
+  find minted-form
+  find node-of
+
+load ./minting-flow
+  find flow-of
+  find function-of
+
+# ---- small readers ----
+
+task forms-word-is
+  take word, like maybe, like text
+  take expected, like text
+  like boolean
+  mark private
+
+  sift word
+    case some
+      link known
+      back is-equal(known, expected)
+    case none
+      back false
+
+task forms-text-else
+  take word, like maybe, like text
+  take fallback, like text
+  like text
+  mark private
+
+  sift word
+    case some
+      link known
+      back known
+    case none
+      back fallback
+
+task forms-has-word
+  take word, like maybe, like text
+  like boolean
+  mark private
+
+  sift word
+    case some
+      back true
+    case none
+      back false
+
+task forms-has-value
+  take value, like maybe, like minted
+  like boolean
+  mark private
+
+  sift value
+    case some
+      back true
+    case none
+      back false
+
+task forms-has-type
+  take value, like maybe, like type
+  like boolean
+  mark private
+
+  sift value
+    case some
+      back true
+    case none
+      back false
+
+# the text of a value, else its `text` word: how a `mark` or a `note` under a dock says its word
+task note-word
+  take value, like minted
+  like text
+  mark private
+
+  save held, make(some, value)
+  sift text-of(held)
+    case some
+      link known
+      back known
+    case none
+      back forms-text-else(word-at(held, <text>), <>)
+
+# a `mark <kind>` among the value's marks
+task has-mark-kind
+  take value, like minted
+  take kind, like text
+  like boolean
+  mark private
+
+  walk forms-at(make(some, value), <mark>)
+    take mark-form
+    fork test, forms-word-is(word-at(make(some, mark-form), <kind>), kind)
+      hold
+        back true
+  back false
+
+# a `note <word>` among the value's notes (the spelling from before `note` became text)
+task has-note-word
+  take value, like minted
+  take word, like text
+  like boolean
+  mark private
+
+  walk forms-at(make(some, value), <note>)
+    take note-form
+    fork test, forms-word-is(word-at(make(some, note-form), <text>), word)
+      hold
+        back true
+  back false
+
+task is-function-kind
+  take value, like type
+  like boolean
+  mark private
+
+  sift value
+    case function
+      back true
+    miss
+      back false
+
+task array-type
+  take element, like type
+  like type
+  mark private
+
+  back
+    make array
+      bind element, element
+
+task named-of
+  take name, like text
+  take args, like list, like type
+  like type
+  mark private
+
+  back
+    make named
+      bind name, name
+      bind args, args
+
+# ---- a field ----
+
+# One `link` line of a form: its name and type. The type is written `like <t>`, or in one of the shorthands that name a
+# collection of a form (`list <t>`). `need false` makes the field optional, and a `fall` gives it a default
+task field-of
+  take state, like mint-state
+  take link-form, like minted
+  take positional, like boolean
+  like form-field
+
+  save held, make(some, link-form)
+  save like-value, first-at(held, <like>)
+  save list-value, first-at(held, <list>)
+  save declared, with-head-args(state, with-outer-takes(state, type-of(state, like-value), link-form), link-form)
+  refuse-sibling-likes(state, link-form, declared)
+  save field-type, unknown-type()
+  sift declared
+    case some
+      link known
+      save field-type, known
+    case none
+      sift word-at(list-value, <form>)
+        case some
+          link element
+          save field-type, array-type(type-of-word(element))
+        case none
+          save nothing, 0
+  save need, need-word(held)
+  sift need
+    case none
+      save need, need-word(like-value)
+    case some
+      save nothing, 0
+  save fall, first-at(held, <fall>)
+  sift fall
+    case none
+      save fall, first-at(like-value, <fall>)
+    case some
+      save nothing, 0
+  save fallback, expression-of(state, fall-value(fall))
+
+  # `name <onabort>`: the field's exact native spelling. A field CALLED `name` gets none, as the original's mill did
+  save field, word-at(held, <name>)
+  save nick, <>
+  fork test, not(forms-word-is(field, <name>))
+    hold
+      save nick, forms-text-else(word-at(held, <nick>), <>)
+  # `like u8` and the other width aliases are a `number`, the width kept
+  save width, <>
+  sift like-value
+    case some
+      save word, text-of(like-value)
+      sift word
+        case none
+          save word, word-at(like-value, <name>)
+        case some
+          save nothing, 0
+      sift word
+        case some
+          link known
+          fork test, is-width-word(known)
+            hold
+              save width, known
+        case none
+          save nothing, 0
+    case none
+      save nothing, 0
+  save field-span, span-of(held)
+  back
+    make form-field
+      bind name, forms-text-else(field, <>)
+      bind type, field-type
+      bind nick, nick
+      bind identity, false
+      bind optional, forms-word-is(need, <false>)
+      bind fallback, fallback
+      bind positional, positional
+      bind width, width
+      bind span, make(some, field-span)
+
+# a field read under a `case`, as the case's own field
+task case-field
+  take field, like form-field
+  like variant-field
+  mark private
+
+  back
+    make variant-field
+      bind name, field/name
+      bind type, field/type
+      bind nick, field/nick
+      bind identity, field/identity
+      bind optional, field/optional
+      bind positional, field/positional
+      bind width, field/width
+      bind span, field/span
+
+# ---- a form ----
+
+# A `form` declares a type and, nested inside it, that type's methods, lifted out as functions carrying a `method` tag
+task form-of
+  take state, like mint-state
+  take value, like minted
+  like list, like statement
+
+  save held, make(some, value)
+  save out, make list
+  sift word-at(held, <name>)
+    case none
+      unhandled(state, value, <a form with no name>)
+      back out
+    case some
+      save nothing, 0
+  save name, forms-text-else(word-at(held, <name>), <>)
+
+  # `head a` names a TYPE parameter. `head b, like <type>` names a VALUE index
+  save params, make list
+  save indices, make list
+  walk forms-at(held, <head>)
+    take head-form
+    save headed, make(some, head-form)
+    fork test, not(forms-has-value(first-at(headed, <like>)))
+      hold
+        save head-name, forms-text-else(word-at(headed, <name>), <>)
+        fork test, is-unequal(head-name, <>)
+          hold
+            push(params, head-name)
+  walk forms-at(held, <head>)
+    take head-form
+    save headed, make(some, head-form)
+    sift type-of(state, first-at(headed, <like>))
+      case some
+        link index-type
+        save index
+          make type-index
+            bind name, forms-text-else(word-at(headed, <name>), <>)
+            bind type, index-type
+        push(indices, index)
+      case none
+        save nothing, 0
+
+  # A form NAMED for a primitive registers no record-type: its methods are still desugared, typed over the primitive
+  save form-self, make none
+  fork test, is-type-name(name)
+    hold
+      save primitive, type-of-word(name)
+      save form-self, make(some, primitive)
+    miss
+      fork test, is-equal(name, <list>)
+        hold
+          save list-self, array-type(named-of(param-or(params, 0, <t>), make list))
+          save form-self, make(some, list-self)
+        miss
+          fork test, is-equal(name, <hash>)
+            hold
+              save hash-self
+                make map
+                  bind key, named-of(param-or(params, 0, <k>), make list)
+                  bind value, named-of(param-or(params, 1, <v>), make list)
+              save form-self, make(some, hash-self)
+
+  sift form-self
+    case none
+      record-of-form(state, value, name, params, indices, out)
+    case some
+      save nothing, 0
+
+  save outer, state/owner
+  save outer-self, state/self-type
+  save outer-params, state/owner-params
+  save state/owner, make(some, name)
+  sift form-self
+    case some
+      link known
+      save state/self-type, make(some, known)
+    case none
+      save param-types, make list
+      walk params
+        take param-name
+        push(param-types, named-of(param-name, make list))
+      save own-self, named-of(name, param-types)
+      save state/self-type, make(some, own-self)
+  save state/owner-params, make(some, params)
+
+  # `wear <mask>` blocks inside the form are trait instances for it, and their methods are lifted out as the form's
+  walk forms-at(held, <wear>)
+    take worn
+    save wearing, make(some, worn)
+    sift word-at(wearing, <name>)
+      case some
+        link mask
+        save methods, make list
+        walk forms-at(wearing, <task>)
+          take task-form
+          save method-name, forms-text-else(word-at(make(some, task-form), <name>), <>)
+          fork test, is-unequal(method-name, <>)
+            hold
+              push(methods, method-name)
+        save worn-instance
+          make instance
+            bind mask, mask
+            bind target, name
+            bind methods, methods
+            bind span, span-of(wearing)
+        push(out, worn-instance)
+        walk forms-at(wearing, <task>)
+          take task-form
+          walk function-of(state, task-form)
+            take built
+            push(out, built)
+      case none
+        save nothing, 0
+
+  walk forms-at(held, <task>)
+    take task-form
+    walk function-of(state, task-form)
+      take built
+      push(out, built)
+
+  save state/owner, outer
+  save state/self-type, outer-self
+  save state/owner-params, outer-params
+  back out
+
+task param-or
+  take params, like list, like text
+  take index, like number
+  take fallback, like text
+  like text
+  mark private
+
+  fork test, is-below(index, params/length)
+    hold
+      back get(params, index)
+  back fallback
+
+# The record-type of a form that is not a primitive, pushed onto `out`, and a `mark text` form's two conversions
+task record-of-form
+  take state, like mint-state
+  take value, like minted
+  take name, like text
+  take params, like list, like text
+  take indices, like list, like type-index
+  take out, like list, like statement
+  mark private
+
+  save held, make(some, value)
+  # A form's fields, in the order they were written: `link` names a field, `slot` makes it POSITIONAL
+  save fields, make list
+  walk forms-at(held, <link>)
+    take link-form
+    push(fields, field-of(state, link-form, false))
+  walk forms-at(held, <slot>)
+    take slot-form
+    push(fields, field-of(state, slot-form, true))
+
+  # `like <base>` on a form: with children it EXTENDS the base, with none it is a transparent ALIAS of it
+  save like-value, first-at(held, <like>)
+  save base, type-of-heads(state, like-value, true)
+  save pins, make list
+  walk forms-at(like-value, <bind>)
+    take pin-form
+    save pinned, make(some, pin-form)
+    # the text fallback first (two pure reads), so the local is an expression from the start: a `make none`
+    # placeholder was typed as one and emitted as a `none` in an expression's place (item 0280, node-switch)
+    save pin-value
+      make string
+        bind value, forms-text-else(word-at(pinned, <text>), <>)
+        bind span, span-of(pinned)
+    sift expression-of(state, first-at(pinned, <seed>))
+      case some
+        link built
+        save pin-value, built
+      case none
+        save nothing, 0
+    save pin
+      make field-value
+        bind name, forms-text-else(word-at(pinned, <name>), <>)
+        bind value, pin-value
+    push(pins, pin)
+  save links, make list
+  walk forms-at(like-value, <link>)
+    take link-form
+    push(links, field-of(state, link-form, false))
+  # Only a `head` that carries a `like` or a `link` of its own counts: a bare `head t` under the base is a positional
+  # type ARGUMENT, and `head t / base function` a bound, and neither makes the form an extension of its base
+  save heads, make list
+  walk forms-at(like-value, <head>)
+    take head-form
+    save headed, make(some, head-form)
+    fork test, or(forms-has-value(first-at(headed, <like>)), is-above(at(headed, <link>)/length, 0))
+      hold
+        save head-type, type-of(state, first-at(headed, <like>))
+        # `head a / link x, like text`: an anonymous record as the argument, its fields written inline
+        save head-links, make list
+        walk forms-at(headed, <link>)
+          take link-form
+          save field, field-of(state, link-form, false)
+          save linked
+            make head-link
+              bind name, field/name
+              bind type, field/type
+          push(head-links, linked)
+        save extended
+          make extend-head
+            bind name, forms-text-else(word-at(headed, <name>), <>)
+            bind type, head-type
+            bind links, head-links
+            bind span, span-of(headed)
+        push(heads, extended)
+  save extend, make none
+  save alias, make none
+  sift base
+    case some
+      link known
+      fork test, or(is-above(pins/length, 0), or(is-above(links/length, 0), is-above(heads/length, 0)))
+        hold
+          save extending
+            make form-extend
+              bind base, known
+              bind heads, heads
+              bind links, links
+              bind pins, pins
+              bind span, span-of(like-value)
+          save extend, make(some, extending)
+        miss
+          fork test, is-equal(fields/length, 0)
+            hold
+              save alias, make(some, known)
+    case none
+      save nothing, 0
+
+  # `mark text` (D9): a closed set of texts, each case its text, `case plus, text <+>`, or its name in snake_case
+  save textual, has-mark-kind(value, <text>)
+  save variants, make list
+  walk forms-at(held, <case>)
+    take arm
+    push(variants, variant-of(state, arm, indices, textual))
+
+  # A word under a form that nothing reads is refused (`unknown-mark`), as a task's is. A bare-word `note` is the old
+  # spelling of a mark, held to the same list, and a `note <text>` is documentation and passes
+  save marks, make list
+  walk forms-at(held, <mark>)
+    take mark-form
+    push(marks, mark-form)
+  walk forms-at(held, <note>)
+    take note-form
+    sift first-at(make(some, note-form), <text>)
+      case some
+        link written
+        sift written
+          case word
+            push(marks, note-form)
+          miss
+            save nothing, 0
+      case none
+        save nothing, 0
+  walk marks
+    take mark-form
+    save marking, make(some, mark-form)
+    save kind, word-at(marking, <kind>)
+    sift kind
+      case none
+        fork test, forms-word-is(minted-form(mark-form), <note>)
+          hold
+            save kind, word-at(marking, <text>)
+      case some
+        save nothing, 0
+    sift kind
+      case some
+        link known
+        fork test, not(is-form-mark(known))
+          hold
+            push-problem(state, span-of(marking), <unknown-mark: `mark {known}` is not a mark a form takes. The marks are text, prop, shared, tag, deprecated, sole, hide>, make none)
+      case none
+        save nothing, 0
+
+  save function-free, true
+  walk fields
+    take field
+    fork test, is-function-kind(field/type)
+      hold
+        save function-free, false
+  walk variants
+    take variant
+    walk variant/fields
+      take field
+      fork test, is-function-kind(field/type)
+        hold
+          save function-free, false
+
+  save built-record
+    make record-type
+      bind name, name
+      bind params, params
+      bind indices, indices
+      bind fields, fields
+      bind variants, variants
+      # `mark prop`: a propositional truncation, where any two inhabitants are equal
+      bind truncation, has-mark-kind(value, <prop>)
+      # `mark shared`: one object through every binding. `note shared` is the older spelling, still read
+      bind shared, or(has-mark-kind(value, <shared>), has-note-word(value, <shared>))
+      # `mark tag, name kind`: the field a union discriminates on
+      bind tag, tag-of(value)
+      bind text, textual
+      bind deprecated, or(has-mark-kind(value, <deprecated>), has-note-word(value, <deprecated>))
+      # `mark sole` and `mark hide` (term/affine-kinds decision 001), `mark` only
+      bind sole, has-mark-kind(value, <sole>)
+      bind hide, has-mark-kind(value, <hide>)
+      bind alias, alias
+      bind extend, extend
+      bind function-free, function-free
+      bind span, span-of(held)
+  push(out, built-record)
+
+  # A `mark text` form's two conversions, `to-text(value)` and `from-text(text, fallback)`, as ordinary Term tasks. A
+  # case that holds a value is refused by name (check/text-forms.ts), so no pair is built for such a form
+  fork test, textual
+    hold
+      save fieldless, true
+      walk variants
+        take variant
+        fork test, is-above(variant/fields/length, 0)
+          hold
+            save fieldless, false
+      fork test, fieldless
+        hold
+          text-conversions(name, variants, span-of(held), out)
+
+# the field a union's tag is: `mark tag, name kind`, never `form`
+task tag-of
+  take value, like minted
+  like text
+  mark private
+
+  walk forms-at(make(some, value), <mark>)
+    take mark-form
+    save marking, make(some, mark-form)
+    fork test, forms-word-is(word-at(marking, <kind>), <tag>)
+      hold
+        save name, word-at(first-at(marking, <name>), <name>)
+        sift name
+          case none
+            save name, word-at(marking, <name>)
+          case some
+            save nothing, 0
+        save tag, forms-text-else(name, <>)
+        fork test, is-equal(tag, <form>)
+          hold
+            back <>
+        back tag
+  back <>
+
+# One `case` of a form: its fields, `slot` fields positional, a `like` payload as its one field `value`
+task variant-of
+  take state, like mint-state
+  take arm, like minted
+  take indices, like list, like type-index
+  take textual, like boolean
+  like form-variant
+  mark private
+
+  save held, make(some, arm)
+  save payload, type-of(state, first-at(held, <like>))
+  save fields, make list
+  walk forms-at(held, <link>)
+    take link-form
+    push(fields, case-field(field-of(state, link-form, false)))
+  walk forms-at(held, <slot-field>)
+    take slot-form
+    push(fields, case-field(field-of(state, slot-form, true)))
+  # An INDEXED family's variant says what the index is AT this constructor
+  save index-values, make list
+  fork test, is-above(indices/length, 0)
+    hold
+      walk at(held, <head>)
+        take head-form
+        sift expression-of(state, first-at(make(some, head-form), <seed>))
+          case some
+            link built
+            push(index-values, built)
+          case none
+            save nothing, 0
+  sift payload
+    case some
+      link known
+      save arm-span, span-of(held)
+      save value-field
+        make variant-field
+          bind name, <value>
+          bind type, known
+          bind span, make(some, arm-span)
+      push(fields, value-field)
+    case none
+      save nothing, 0
+  save arm-name, forms-text-else(word-at(held, <name>), <>)
+  save case-label, make none
+  fork test, textual
+    hold
+      save case-text, replace-all(arm-name, <->, <_>)
+      sift expression-of(state, first-at(held, <seed>))
+        case some
+          link literal
+          sift literal
+            case string
+              link literal-value
+              save case-text, literal-value
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+      save case-label, make(some, case-text)
+  back
+    make form-variant
+      bind name, arm-name
+      bind fields, fields
+      bind index-values, index-values
+      bind text, case-label
+
+# `to-text(value)`, the case's text, and `from-text(text, fallback)`, the case whose text it is, else the fallback
+task text-conversions
+  take name, like text
+  take variants, like list, like form-variant
+  take where, like span
+  take out, like list, like statement
+  mark private
+
+  save own-type, named-of(name, make list)
+  save cases, make list
+  walk variants
+    take variant
+    save said, forms-text-else(variant/text, variant/name)
+    save body, make list
+    push(body, return-of(string-of(said, where), where))
+    save arm
+      make match-case
+        bind label, variant/name
+        bind body, body
+    push(cases, arm)
+  save matched
+    make match
+      bind subject, variable-of(<value>, where)
+      bind cases, cases
+      bind span, where
+  save to-body, make list
+  push(to-body, matched)
+  save to-params, make list
+  push(to-params, param-named(<value>, own-type))
+  save to-text-task
+    make function
+      bind name, <to-text>
+      bind params, to-params
+      bind result, make(some, string-type())
+      bind generics, make list
+      bind body, to-body
+      bind span, where
+  push(out, to-text-task)
+
+  save from-body, make list
+  walk variants
+    take variant
+    save said, forms-text-else(variant/text, variant/name)
+    save no-fields, make list
+    save built
+      make record
+        bind name, variant/name
+        bind fields, no-fields
+        bind function-free, true
+        bind span, where
+    save returned, make list
+    push(returned, return-of(built, where))
+    save equal-op, make equal
+    save branch
+      make statement-branch
+        bind cond
+          make binary
+            bind op, equal-op
+            bind left, variable-of(<value>, where)
+            bind right, string-of(said, where)
+            bind span, where
+        bind body, returned
+    save branches, make list
+    push(branches, branch)
+    save tested
+      make if
+        bind branches, branches
+        bind span, where
+    push(from-body, tested)
+  push(from-body, return-of(variable-of(<fallback>, where), where))
+  save from-params, make list
+  push(from-params, param-named(<value>, string-type()))
+  push(from-params, param-named(<fallback>, own-type))
+  save from-text-task
+    make function
+      bind name, <from-text>
+      bind params, from-params
+      bind result, make(some, own-type)
+      bind generics, make list
+      bind body, from-body
+      bind span, where
+  push(out, from-text-task)
+
+task param-named
+  take name, like text
+  take param-type, like type
+  like function-param
+  mark private
+
+  back
+    make function-param
+      bind name, name
+      bind type, make(some, param-type)
+
+task variable-of
+  take name, like text
+  take where, like span
+  like expression
+  mark private
+
+  back
+    make variable
+      bind name, name
+      bind span, where
+
+task string-of
+  take value, like text
+  take where, like span
+  like expression
+  mark private
+
+  back
+    make string
+      bind value, value
+      bind span, where
+
+task return-of
+  take value, like expression
+  take where, like span
+  like statement
+  mark private
+
+  back
+    make return
+      bind value, make(some, value)
+      bind span, where
+
+# ---- a bind ----
+
+# `bind <name>`: one stdlib name, a native expression per environment
+task bind-of
+  take state, like mint-state
+  take value, like minted
+  like list, like statement
+
+  save held, make(some, value)
+  save out, make list
+  sift word-at(held, <name>)
+    case none
+      unhandled(state, value, <a bind with no name>)
+      back out
+    case some
+      save nothing, 0
+  save name, forms-text-else(word-at(held, <name>), <>)
+
+  save params, make list
+  walk forms-at(held, <take>)
+    take take-form
+    save taken, make(some, take-form)
+    save param-type, type-of(state, first-at(taken, <like>))
+    save param
+      make bind-param
+        bind name, forms-text-else(word-at(taken, <name>), <>)
+        bind type, param-type
+    push(params, param)
+  save result, type-of(state, first-at(held, <like>))
+  # A target's children are its native expression and the imports that expression needs, in whatever order they were
+  # written: the `text <...>` is the expression, and each `load <...>` beside it is an import
+  save targets, make list
+  walk forms-at(held, <case>)
+    take target-form
+    push(targets, bind-target-of(state, target-form, name))
+  save bound
+    make bind
+      bind name, name
+      bind params, params
+      bind result, result
+      bind targets, targets
+      bind span, span-of(held)
+  push(out, bound)
+  back out
+
+task bind-target-of
+  take state, like mint-state
+  take target-form, like minted
+  take name, like text
+  like bind-target
+  mark private
+
+  save target, make(some, target-form)
+  save written, make none
+  save loads, make list
+  walk forms-at(target, <seed>)
+    take seed-form
+    save seeded, make(some, seed-form)
+    save seed-rule, minted-form(seed-form)
+    fork test, and(forms-word-is(seed-rule, <seed-text>), not(forms-has-value(written)))
+      hold
+        save written, seeded
+    fork test, and(forms-word-is(seed-rule, <seed-call-open>), forms-word-is(word-at(seeded, <name>), <load>))
+      hold
+        push(loads, seed-form)
+  # A bind's text is host code, so a brace in it would open an interpolation the bind drops: refuse it, naming the
+  # escape (term-compiler-0058)
+  sift first-at(written, <value>)
+    case some
+      link literal
+      fork test, is-interpolated-text(node-of(literal))
+        hold
+          push-problem(state, span-of(make(some, literal)), <a bind's text is host code, and a `\{` in it would open an interpolation that the bind drops: write a literal brace as `\\\{` and `\\\}` (bind {name})>, make none)
+    case none
+      save nothing, 0
+  save native-text, word-at(written, <value>)
+  sift native-text
+    case none
+      save native-text, word-at(target, <text>)
+    case some
+      save nothing, 0
+  save imports, make list
+  walk loads
+    take load-form
+    save module, forms-text-else(word-at(make(some, load-form), <seed>), <>)
+    fork test, is-unequal(module, <>)
+      hold
+        push(imports, import-of(module))
+  # `case rust / load <num_bigint::BigInt>`: an import the native expression needs, its path captured at `path`
+  walk forms-at(target, <load>)
+    take load-form
+    save module, forms-text-else(word-at(make(some, load-form), <path>), <>)
+    fork test, is-unequal(module, <>)
+      hold
+        push(imports, import-of(module))
+  back
+    make bind-target
+      bind env, forms-text-else(word-at(target, <platform>), <>)
+      bind expression, forms-text-else(native-text, <>)
+      bind imports, imports
+
+task import-of
+  take module, like text
+  like bind-import
+  mark private
+
+  back
+    make bind-import
+      bind module, module
+
+# a parse node that is a text literal with an interpolation in it
+task is-interpolated-text
+  take value, like maybe, like node
+  like boolean
+  mark private
+
+  sift value
+    case some
+      link one
+      sift one
+        case text
+          walk parts
+            take part
+            sift part
+              case interpolation
+                back true
+              miss
+                save nothing, 0
+          back false
+        miss
+          back false
+    case none
+      back false
+
+# ---- a native dock ----
+
+# `dock load` binds a native module, `dock type` an opaque per-backend handle type. One statement per line
+task native-of
+  take state, like mint-state
+  take value, like minted
+  like list, like statement
+
+  save held, make(some, value)
+  save kind, word-at(held, <kind>)
+  save is-type, forms-word-is(kind, <type>)
+  save dock-kind, forms-text-else(kind, <load>)
+  # `mark native` under a `dock load` is read by nothing: `dock` is what says a module is native
+  walk at(held, <note>)
+    take note-form
+    save noted, note-word(note-form)
+    push-problem(state, span-of(make(some, note-form)), <`mark {noted}` under `dock {dock-kind}` is read by nothing: `dock` already says the module is native. Remove the line>, make none)
+
+  save out, make list
+  walk forms-at(held, <line>)
+    take line-form
+    save line, make(some, line-form)
+    save module, word-at(line, <path>)
+    save alias, word-at(line, <name>)
+    # a line with no alias binds nothing and is skipped, the way the mill skips it
+    fork test, and(forms-has-word(module), forms-has-word(alias))
+      hold
+        # `mark async` under the line is the one word read there: the module's functions return promises
+        save is-async, false
+        walk at(line, <note>)
+          take note-form
+          save word, note-word(note-form)
+          fork test, and(is-equal(word, <async>), not(is-type))
+            hold
+              save is-async, true
+            miss
+              fork test, is-type
+                hold
+                  push-problem(state, span-of(make(some, note-form)), <`mark {word}` under a `dock type` line is read by nothing: a handle type is not called. Remove the line>, make none)
+                miss
+                  push-problem(state, span-of(make(some, note-form)), <`mark {word}` under a `dock load` line is read by nothing: `mark async` is the one word read there. Remove the line>, make none)
+        # `find <name>` with `mark async` under it: that one function of the module returns a promise
+        save async-tasks, make list
+        walk forms-at(line, <find>)
+          take find-form
+          save found, make(some, find-form)
+          save found-name, word-at(found, <name>)
+          save words, make list
+          walk at(found, <note>)
+            take note-form
+            push(words, note-word(note-form))
+          save one-async, false
+          fork test, is-equal(words/length, 1)
+            hold
+              save one-async, is-equal(get(words, 0), <async>)
+          fork test, and(forms-has-word(found-name), and(not(is-type), one-async))
+            hold
+              push(async-tasks, forms-text-else(found-name, <>))
+            miss
+              save shown-name, forms-text-else(found-name, <>)
+              fork test, is-type
+                hold
+                  push-problem(state, span-of(found), <`find {shown-name}` under a `dock type` line is read by nothing: a handle type has no functions. Remove the line>, make none)
+                miss
+                  push-problem(state, span-of(found), <`find {shown-name}` under a `dock load` line takes one `mark async` under it, which says that function returns a promise>, make none)
+        # the span is the LOAD line, not the whole dock block: each line is its own statement
+        save line-kind, native-kind-of(is-type)
+        save docked
+          make native
+            bind alias, forms-text-else(alias, <>)
+            bind module, forms-text-else(module, <>)
+            bind kind, make(some, line-kind)
+            bind async, is-async
+            bind async-tasks, async-tasks
+            bind span, span-of(line)
+            bind file, state/file
+        push(out, docked)
+  back out
+
+task native-kind-of
+  take is-type, like boolean
+  like native-kind
+  mark private
+
+  fork test, is-type
+    hold
+      back make type
+  back make module
+
+# ---- a twin ----
+
+# `twin <task>, name <label>`: another implementation of a named task, read beside the program, never into it
+task twin-of
+  take state, like mint-state
+  take value, like minted
+  like maybe, like twin
+
+  save held, make(some, value)
+  save twin-of-name, word-at(held, <name>)
+  save label, word-at(first-at(held, <label>), <name>)
+  fork test, not(and(forms-has-word(twin-of-name), forms-has-word(label)))
+    hold
+      refuse(state, value, <a twin names the task it twins and its own label: `twin \<task\>, name \<label\>`>)
+      back make none
+  save twinned, forms-text-else(twin-of-name, <>)
+
+  # a twin's parameters take their types from the task it twins, so a type written on one is refused
+  save takes, forms-at(held, <take>)
+  walk takes
+    take take-form
+    save taken, make(some, take-form)
+    fork test, forms-has-value(first-at(taken, <like>))
+      hold
+        save taken-name, forms-text-else(word-at(taken, <name>), <x>)
+        refuse(state, take-form, <a twin's parameters take their types from `{twinned}`: write `take {taken-name}` alone>)
+  save params, make list
+  walk takes
+    take take-form
+    save param-name, forms-text-else(word-at(make(some, take-form), <name>), <>)
+    fork test, is-unequal(param-name, <>)
+      hold
+        push(params, param-name)
+  save knobs, make list
+  walk forms-at(held, <knob>)
+    take knob-form
+    save knobbed, make(some, knob-form)
+    save knob-type, type-of(state, first-at(knobbed, <like>))
+    save knob
+      make closure-param
+        bind name, forms-text-else(word-at(knobbed, <name>), <>)
+        bind type, knob-type
+    push(knobs, knob)
+
+  # metadata is a `mark`: `mark platform, name rust`, `mark trust`
+  save platform, make list
+  save trust, false
+  walk forms-at(held, <mark>)
+    take mark-form
+    save marking, make(some, mark-form)
+    save mark-kind, word-at(marking, <kind>)
+    save mark-name, word-at(first-at(marking, <name>), <name>)
+    fork test, and(forms-word-is(mark-kind, <platform>), forms-has-word(mark-name))
+      hold
+        push(platform, forms-text-else(mark-name, <>))
+    fork test, forms-word-is(mark-kind, <trust>)
+      hold
+        save trust, true
+
+  # the body is its own scope, with the parameters and the knobs bound
+  save enclosing, state/declared
+  save own, make hash
+  walk params
+    take param-name
+    save own/{param-name}, true
+  walk knobs
+    take knob
+    save own/{knob/name}, true
+  save state/declared, own
+  save body, flow-of(state, at(held, <flow>))
+  save state/declared, enclosing
+
+  save costs, twin-lines(state, value, <cost>)
+  save cost, make none
+  fork test, is-above(costs/length, 0)
+    hold
+      save first-cost, get(costs, 0)
+      save cost, make(some, first-cost)
+  save haves, twin-lines(state, value, <have>)
+  save tests, twin-lines(state, value, <test>)
+  save eases, make list
+  walk forms-at(held, <ease>)
+    take ease-form
+    save eased, forms-text-else(word-at(make(some, ease-form), <name>), <>)
+    fork test, is-unequal(eased, <>)
+      hold
+        push(eases, eased)
+  save built
+    make twin
+      bind of, twinned
+      bind name, forms-text-else(label, <>)
+      bind params, params
+      bind have, haves
+      bind test, tests
+      bind ease, eases
+      bind cost, cost
+      bind knobs, knobs
+      bind platform, platform
+      bind trust, trust
+      bind body, body
+      bind span, span-of(held)
+  back make(some, built)
+
+# the expressions of a twin's `have`, `test` or `cost` lines
+task twin-lines
+  take state, like mint-state
+  take value, like minted
+  take site, like text
+  like list, like expression
+  mark private
+
+  save out, make list
+  walk forms-at(make(some, value), site)
+    take line-form
+    sift expression-of(state, first-at(make(some, line-form), <seed>))
+      case some
+        link built
+        push(out, built)
+      case none
+        save nothing, 0
+  back out

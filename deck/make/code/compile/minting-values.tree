@@ -1,0 +1,3349 @@
+# The mint bridge, part 2 of 8 (decision 033 section 2): the value half of the lowering. A minted value read as an
+# expression: literals and text templates, names and paths, records and anonymous records, closures, value forks,
+# calls with their `bind`, lean and `link` arguments, the builtin fold, types with their head and outer takes, a body's
+# steps, the reads of a node through the grammar, and the refusals.
+#
+# Ported from compile/mint-bridge.ts (self-hosting, item 0273), which stays as the face until part 8. The decisions:
+#   - every lowering takes the shared `mint-state` of part 1 (compile/minting-reads.tree), the original's `Bridge`
+#   - a closure's body, and a value fork's arms, are lowered through the state's `flow` (decision 033 section 4), the
+#     statement half part 3 sets before any lowering. So `scoped-flow` and `condition-of`, which the value fork reaches,
+#     live here and call the state's flow, and no part loads the part after it. `flow-from-nodes` is here too: it only
+#     mines, and `body-steps` reads it
+#   - arguments, record values and body steps are ordered by the `at` a capture carries (decision 042), ties kept in the
+#     order written, the original's fallback (the count of entries already written) where a value has none
+#   - a field the original set only when present (`names`, `lean`, `args`, `positional`) is written with its default
+#     otherwise, which node-json reads as the absent field (decision 034 section 2)
+#   - an integer literal past 2^53 arrives as a bigint inside the minted value's float (compile/mill-running.tree), so
+#     two binds read it: whether it is wide, and its number
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort-by
+
+load @term/base/text
+  find split
+  find contains
+  find substring
+  find char-count
+  find char-at
+  find starts-with
+  find ends-with
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/tree
+  find node
+  find root-node
+
+load ../parser/diagnostic
+  find span
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+
+load ./node
+  find expression
+  find statement
+  find type
+  find template-part
+  find chunk-part
+  find value-part
+  find map-entry
+  find field-value
+  find closure-param
+  find value-branch
+  find statement-branch
+  find binary-op
+  find unary-op
+  find free-unknown-type
+  find unknown-type
+  find unit-type
+  find statement-span
+  find expression-span
+
+load ./surface
+  find is-type-name
+  find type-of-word
+  find is-binary-builtin
+  find binary-builtin-op
+  find is-unary-builtin
+  find unescape-text
+
+load ./templates
+  find span-of-whole
+
+load ./mill-running
+  find minted
+  find mill-capture
+  find mine-run
+  find run-mine
+  find run-mint
+  find word-of
+  find head-word
+
+load ./minting-reads
+  find mint-state
+  find is-form
+  find at
+  find first-at
+  find forms-at
+  find text-of
+  find word-at
+  find has-word
+  find span-of
+  find is-flow-head
+  find is-fork-test-arm
+  find outline-of
+
+# ---- an integer past 2^53 ----
+
+# the capture's float holds a bigint once the literal is past 2^53 (mill-running's `exact-integer`), never natively
+bind minting-wide-integer
+  take value, like float
+  like boolean
+  case node
+    text <(typeof $value === 'bigint' && !Number.isSafeInteger(Number($value)))>
+  case browser
+    text <(typeof $value === 'bigint' && !Number.isSafeInteger(Number($value)))>
+  case rust
+    text <false>
+  case swift
+    text <false>
+  case kotlin
+    text <false>
+
+# the number a captured integer stands for, rounded where it is wide, as `Number` rounds a bigint
+bind minting-integer-number
+  take value, like float
+  like number
+  case node
+    text <Number($value)>
+  case browser
+    text <Number($value)>
+  case rust
+    text <($value as i64)>
+  case swift
+    text <Int($value)>
+  case kotlin
+    text <($value.toLong())>
+
+# the float a captured decimal stands for
+bind minting-float-number
+  take value, like float
+  like float
+  case node
+    text <Number($value)>
+  case browser
+    text <Number($value)>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+# an integer literal of any size the parser read: past 2^53 it carries its exact digits (`digits`)
+task integer-literal
+  take value, like float
+  take where, like span
+  like expression
+
+  save number, minting-integer-number(value)
+  fork test, minting-wide-integer(value)
+    hold
+      save digits, <{value}>
+      back
+        make integer
+          bind value, number
+          bind digits, digits
+          bind span, where
+  back
+    make integer
+      bind value, number
+      bind span, where
+
+# ---- the nodes this half builds ----
+
+task variable-at
+  take name, like text
+  take where, like span
+  like expression
+  mark private
+
+  back
+    make variable
+      bind name, name
+      bind span, where
+
+task string-at
+  take value, like text
+  take where, like span
+  like expression
+  mark private
+
+  back
+    make string
+      bind value, value
+      bind span, where
+
+task unit-at
+  take where, like span
+  like expression
+  mark private
+
+  back
+    make unit
+      bind span, where
+
+task boolean-at
+  take value, like boolean
+  take where, like span
+  like expression
+  mark private
+
+  back
+    make boolean
+      bind value, value
+      bind span, where
+
+task float-at
+  take value, like float
+  take where, like span
+  like expression
+  mark private
+
+  back
+    make float
+      bind value, minting-float-number(value)
+      bind span, where
+
+task await-at
+  take inner, like expression
+  take where, like span
+  like expression
+  mark private
+
+  back
+    make await
+      bind expr, inner
+      bind span, where
+
+task not-at
+  take operand, like expression
+  take where, like span
+  like expression
+  mark private
+
+  save op, make not
+  back
+    make unary
+      bind op, op
+      bind operand, operand
+      bind span, where
+
+task binary-at
+  take op, like binary-op
+  take left, like expression
+  take right, like expression
+  take where, like span
+  like expression
+  mark private
+
+  back
+    make binary
+      bind op, op
+      bind left, left
+      bind right, right
+      bind span, where
+
+# a call with nothing but its callee and arguments
+task plain-call
+  take callee, like expression
+  take args, like list, like expression
+  take where, like span
+  like expression
+  mark private
+
+  back
+    make call
+      bind callee, callee
+      bind args, args
+      bind span, where
+
+# a call with every field the bridge may set: a list or flag left at its default is the absent field (decision 034)
+task full-call
+  take callee, like expression
+  take args, like list, like expression
+  take where, like span
+  take names, like list, like text
+  take lean-names, like list, like boolean
+  take lean-shaped, like list, like boolean
+  take lean, like boolean
+  take propagate, like boolean
+  take background, like boolean
+  take into, like maybe, like type
+  like expression
+  mark private
+
+  back
+    make call
+      bind callee, callee
+      bind args, args
+      bind span, where
+      bind names, names
+      bind lean-names, lean-names
+      bind lean-shaped, lean-shaped
+      bind lean, lean
+      bind propagate, propagate
+      bind background, background
+      bind into, into
+
+# the names when one of them is not empty, else none (the original wrote `names` only then)
+task names-if-any
+  take names, like list, like text
+  like list, like text
+  mark private
+
+  walk names
+    take one
+    fork test, is-unequal(one, <>)
+      hold
+        back names
+  back make list
+
+task flags-if-any
+  take flags, like list, like boolean
+  like list, like boolean
+  mark private
+
+  walk flags
+    take one
+    fork test, one
+      hold
+        back flags
+  back make list
+
+task no-args
+  like list, like expression
+  mark private
+
+  back make list
+
+task no-texts
+  like list, like text
+  mark private
+
+  back make list
+
+task no-flags
+  like list, like boolean
+  mark private
+
+  back make list
+
+task make-root
+  take nodes, like list, like node
+  like root-node
+  mark private
+
+  back
+    make root
+      bind nodes, nodes
+
+# ---- reading a minted value ----
+
+# the rule name a minted form was built by, none for a word or a literal
+task minted-form
+  take value, like minted
+  like maybe, like text
+
+  sift value
+    case form
+      link built-form
+      back make(some, built-form)
+    miss
+      back make none
+
+# the parse node a minted value was read from
+task node-of
+  take value, like minted
+  like maybe, like node
+
+  sift value
+    case word
+      link word-value
+      link word-span
+      link word-node
+      back word-node
+    case text
+      link text-value
+      link text-span
+      link text-node
+      back text-node
+    case number
+      link number-value
+      link number-decimal
+      link number-span
+      link number-node
+      back number-node
+    case form
+      link form-built
+      link form-fields
+      link form-span
+      link form-node
+      back form-node
+
+# where a minted value sat among the nodes the mine enumerated it from (decision 033 section 3)
+task written-at
+  take value, like minted
+  like maybe, like number
+
+  sift value
+    case word
+      link word-value
+      link word-span
+      link word-node
+      link word-at
+      back word-at
+    case text
+      link text-value
+      link text-span
+      link text-node
+      link text-at
+      back text-at
+    case number
+      link number-value
+      link number-decimal
+      link number-span
+      link number-node
+      link number-at
+      back number-at
+    case form
+      link form-built
+      link form-fields
+      link form-span
+      link form-node
+      link form-at
+      back form-at
+
+# the value's `at`, else the fallback
+task at-or
+  take value, like minted
+  take fallback, like number
+  like number
+  mark private
+
+  sift written-at(value)
+    case some
+      link known
+      back known
+    case none
+      back fallback
+
+# the same minted value read from another node at another place (a drop line read again as a call)
+task with-node-at
+  take value, like minted
+  take from, like maybe, like node
+  take place, like maybe, like number
+  like minted
+  mark private
+
+  sift value
+    case word
+      link word-value
+      link word-span
+      back
+        make word
+          bind value, word-value
+          bind span, word-span
+          bind node, from
+          bind at, place
+    case text
+      link text-value
+      link text-span
+      back
+        make text
+          bind value, text-value
+          bind span, text-span
+          bind node, from
+          bind at, place
+    case number
+      link number-value
+      link number-decimal
+      link number-span
+      back
+        make number
+          bind value, number-value
+          bind decimal, number-decimal
+          bind span, number-span
+          bind node, from
+          bind at, place
+    case form
+      link form-built
+      link form-fields
+      link form-span
+      back
+        make form
+          bind form, form-built
+          bind fields, form-fields
+          bind span, form-span
+          bind node, from
+          bind at, place
+
+# a word or literal capture as the minted value it already is
+task capture-value
+  take capture, like mill-capture
+  like minted
+  mark private
+
+  sift capture
+    case word
+      link word-value
+      link word-span
+      link word-node
+      link word-at
+      back
+        make word
+          bind value, word-value
+          bind span, word-span
+          bind node, make(some, word-node)
+          bind at, word-at
+    case text
+      link text-value
+      link text-span
+      link text-node
+      link text-at
+      back
+        make text
+          bind value, text-value
+          bind span, text-span
+          bind node, make(some, text-node)
+          bind at, text-at
+    case number
+      link number-value
+      link number-decimal
+      link number-span
+      link number-node
+      link number-at
+      back
+        make number
+          bind value, number-value
+          bind decimal, number-decimal
+          bind span, number-span
+          bind node, make(some, number-node)
+          bind at, number-at
+    case match
+      # never reached: a match is minted, never passed through
+      link match-rule
+      save no-span, no-span-at()
+      back
+        make word
+          bind value, match-rule
+          bind span, no-span
+
+task no-span-at
+  like maybe, like span
+  mark private
+
+  back make none
+
+# ---- reading the parse tree ----
+
+task group-kids
+  take value, like maybe, like node
+  like maybe, like list, like node
+  mark private
+
+  sift value
+    case some
+      link one
+      sift one
+        case group
+          back make(some, nodes)
+        miss
+          back make none
+    case none
+      back make none
+
+task is-group
+  take value, like maybe, like node
+  like boolean
+  mark private
+
+  sift group-kids(value)
+    case some
+      back true
+    case none
+      back false
+
+task node-in
+  take kids, like list, like node
+  take index, like number
+  like maybe, like node
+  mark private
+
+  fork test, and(is-minimum(index, 0), is-below(index, kids/length))
+    hold
+      save found, get(kids, index)
+      back make(some, found)
+  back make none
+
+# the parts of a name or a text literal, none for any other node
+task parts-of
+  take one, like node
+  like list, like node
+  mark private
+
+  sift one
+    case name
+      back parts
+    case text
+      back parts
+    miss
+      back make list
+
+task has-interpolation
+  take parts, like list, like node
+  like boolean
+  mark private
+
+  walk parts
+    take part
+    sift part
+      case interpolation
+        back true
+      miss
+        save nothing, 0
+  back false
+
+# ---- refusals ----
+
+# one `unexpected-node` diagnostic on the state
+task push-problem
+  take state, like mint-state
+  take where, like span
+  take message, like text
+  take hint, like maybe, like text
+
+  save input
+    make diagnostic-input
+      bind file, state/file
+      bind span, where
+      bind message, make(some, message)
+      bind hint, hint
+  save name, make unexpected-node
+  push(state/diagnostics, diagnose(name, input))
+
+# A construct the reader REFUSES, with the reason: the language has been taught it, and the answer is no
+task refuse
+  take state, like mint-state
+  take value, like minted
+  take message, like text
+
+  push-problem(state, span-of(make(some, value)), message, make none)
+
+# A construct the bridge has not been taught
+task unhandled
+  take state, like mint-state
+  take value, like minted
+  take what, like text
+
+  push-problem(state, span-of(make(some, value)), <the mint bridge does not build {what} yet>, make none)
+
+# A statement head read as a lean call: its own rule refused the line. Name the real cause and the two ways out
+task comma-trap
+  take state, like mint-state
+  take head, like text
+  take where, like span
+
+  save hint, <look for a word under it that `{head}` does not take, or a comma that put an argument in the wrong place: a comma after a closed call or a literal stays at its level, and one after a word pops only that word. Keep every argument inside its call (`back substring(one, 0, 1)`), or put the arguments on their own indented lines>
+  push-problem(state, where, <`{head}` is a statement, and its grammar could not read this line, so it was read as a call to a task named `{head}`>, make(some, hint))
+
+# A `hook` under a call is not a callback, and a `wait` under one is the await marker, `true` or `false`
+task refuse-hooks
+  take state, like mint-state
+  take value, like minted
+
+  walk forms-at(make(some, value), <wait>)
+    take wait-form
+    save word, word-at(make(some, wait-form), <seed>)
+    fork test, not(is-true-or-false(word))
+      hold
+        save hint, <await the other call first, `save x, wait f(y)`, and pass `x`>
+        push-problem(state, span-of(make(some, wait-form)), <a `wait` under a call marks the call itself and takes `true` or `false`, so this would be dropped>, make(some, hint))
+  walk forms-at(make(some, value), <hook>)
+    take hook-form
+    save hint, <write the callback as an anonymous task: `task` on its own line, with its `take` parameters and body indented under it>
+    push-problem(state, span-of(make(some, hook-form)), <a `hook` under a call is not read as an argument, so this would be dropped>, make(some, hint))
+
+task is-true-or-false
+  take word, like maybe, like text
+  like boolean
+  mark private
+
+  sift word
+    case some
+      link known
+      back or(is-equal(known, <true>), is-equal(known, <false>))
+    case none
+      back false
+
+task is-word
+  take word, like maybe, like text
+  take expected, like text
+  like boolean
+  mark private
+
+  sift word
+    case some
+      link known
+      back is-equal(known, expected)
+    case none
+      back false
+
+# A NAMED task directly under a task, or under a walk's `hook next`: the language has no nested named task
+task refuse-nested-tasks
+  take state, like mint-state
+  take value, like minted
+
+  walk forms-at(make(some, value), <task>)
+    take nested
+    sift word-at(make(some, nested), <name>)
+      case some
+        link name
+        save hint, <move it to the top level of the file and call it from here>
+        push-problem(state, span-of(make(some, nested)), <`task {name}` cannot be defined inside a body: a named task is defined at the top level of a file>, make(some, hint))
+      case none
+        save nothing, 0
+
+# A `take`, `link` or `slot` has ONE type, its first `like`. A second one is read only as a function's result
+task refuse-sibling-likes
+  take state, like mint-state
+  take value, like minted
+  take declared, like maybe, like type
+
+  save extras, make list
+  save likes, forms-at(make(some, value), <like>)
+  save index, 0
+  walk likes
+    take one
+    fork test, is-above(index, 0)
+      hold
+        push(extras, one)
+    save index, add(index, 1)
+  walk forms-at(make(some, value), <result>)
+    take one
+    push(extras, one)
+  fork test, is-equal(extras/length, 0)
+    hold
+      back
+  fork test, is-function-type(declared)
+    hold
+      back
+  sift word-at(make(some, value), <nick>)
+    case some
+      back
+    case none
+      save nothing, 0
+  walk extras
+    take extra
+    save hint, <nest the type argument under its type, or write it on one line: `take x, like list, like text`>
+    push-problem(state, span-of(make(some, extra)), <a second `like` beside the first is read by nothing: a parameter or field has one type>, make(some, hint))
+
+task is-function-type
+  take declared, like maybe, like type
+  like boolean
+  mark private
+
+  sift declared
+    case some
+      link known
+      sift known
+        case function
+          back true
+        miss
+          back false
+    case none
+      back false
+
+# ---- names ----
+
+# An identifier with its `{...}` TEMPLATE PARAMETERS dropped. A WHOLE path segment in braces after the first is a member
+# read BY VALUE, `names/{at}`, and is kept for `read-path` to index with
+task plain-name
+  take name, like text
+  like text
+
+  fork test, not(contains(name, <\{>))
+    hold
+      back name
+  save out, make list
+  save index, 0
+  walk split(name, </>)
+    take segment
+    fork test, and(is-above(index, 0), is-braced-segment(segment))
+      hold
+        push(out, segment)
+      miss
+        push(out, without-braces(segment))
+    save index, add(index, 1)
+  back join(out, </>)
+
+# `{x}` with no other brace inside: the original's /^\{[^{}]+\}$/
+task is-braced-segment
+  take segment, like text
+  like boolean
+  mark private
+
+  save count, char-count(segment)
+  fork test, is-below(count, 3)
+    hold
+      back false
+  fork test, not(and(starts-with(segment, <\{>), ends-with(segment, <\}>)))
+    hold
+      back false
+  save inner, substring(segment, 1, subtract(count, 1))
+  back not(or(contains(inner, <\{>), contains(inner, <\}>)))
+
+# every `{...}` run removed, as /\{[^}]*\}/g removes it: from a `{` to the next `}`, a `{` with no `}` after it kept
+task without-braces
+  take segment, like text
+  like text
+  mark private
+
+  save out, <>
+  save count, char-count(segment)
+  save index, 0
+  walk test
+    hook test, is-below(index, count)
+    hook hold
+      save one, char-at(segment, index)
+      save close, -1
+      fork test, is-equal(one, <\{>)
+        hold
+          save close, close-after(segment, index, count)
+      fork test, is-minimum(close, 0)
+        hold
+          save index, add(close, 1)
+        miss
+          save out, <{out}{one}>
+          save index, add(index, 1)
+  back out
+
+# the first `}` after `from`, -1 for none
+task close-after
+  take segment, like text
+  take from, like number
+  take count, like number
+  like number
+  mark private
+
+  save index, add(from, 1)
+  walk test
+    hook test, is-below(index, count)
+    hook hold
+      fork test, is-equal(char-at(segment, index), <\}>)
+        hold
+          back index
+      save index, add(index, 1)
+  back -1
+
+# `read a/b/c` is a member chain rooted at a variable, and `read x/{k}` a dynamic index
+task read-path
+  take path, like text
+  take where, like span
+  like expression
+
+  save parts, split(path, </>)
+  save built, variable-at(get(parts, 0), where)
+  save index, 0
+  walk parts
+    take part
+    fork test, is-above(index, 0)
+      hold
+        save count, char-count(part)
+        fork test, and(is-minimum(count, 2), and(starts-with(part, <\{>), ends-with(part, <\}>)))
+          hold
+            save inner, substring(part, 1, subtract(count, 1))
+            save key, variable-at(inner, where)
+            save built, index-member(built, key, where)
+          miss
+            save built, named-member(built, part, where)
+    save index, add(index, 1)
+  back built
+
+task named-member
+  take target, like expression
+  take name, like text
+  take where, like span
+  like expression
+  mark private
+
+  back
+    make member
+      bind target, target
+      bind name, name
+      bind span, where
+
+task index-member
+  take target, like expression
+  take index, like expression
+  take where, like span
+  like expression
+  mark private
+
+  back
+    make member
+      bind target, target
+      bind name, <>
+      bind index, make(some, index)
+      bind span, where
+
+# the name node a `read` was built from, wherever it sits under the captured group
+task name-node-of
+  take value, like maybe, like node
+  like maybe, like node
+
+  sift value
+    case some
+      link one
+      sift one
+        case name
+          back value
+        case group
+          walk nodes
+            take child
+            save found, name-node-of(make(some, child))
+            sift found
+              case some
+                link known
+                fork test, has-interpolation(parts-of(known))
+                  hold
+                    back found
+              case none
+                save nothing, 0
+          back make none
+        miss
+          back make none
+    case none
+      back make none
+
+# A path with an interpolated segment: each chunk gives plain segments, each `{...}` a member indexed by its value
+task dynamic-path
+  take state, like mint-state
+  take value, like minted
+  take where, like span
+  like maybe, like expression
+
+  sift name-node-of(node-of(value))
+    case some
+      link head
+      save built, no-expression()
+      walk parts-of(head)
+        take part
+        sift part
+          case chunk
+            link chunk-text
+            walk split(chunk-text, </>)
+              take segment
+              fork test, is-above(char-count(segment), 0)
+                hold
+                  save built, step-path(built, segment, where)
+          case interpolation
+            link braced-depth
+            link braced-group
+            sift braced-group
+              case some
+                link group
+                fork test, is-group(braced-group)
+                  hold
+                    save read, expression-from-node(state, group, span-of-whole(group))
+                    sift read
+                      case none
+                        back make none
+                      case some
+                        link inner
+                        sift built
+                          case none
+                            save built, read
+                          case some
+                            link target
+                            save next, index-member(target, inner, where)
+                            save built, make(some, next)
+              case none
+                save nothing, 0
+          miss
+            save nothing, 0
+      back built
+    case none
+      back make none
+
+task no-expression
+  like maybe, like expression
+  mark private
+
+  back make none
+
+task step-path
+  take built, like maybe, like expression
+  take name, like text
+  take where, like span
+  like maybe, like expression
+  mark private
+
+  sift built
+    case some
+      link target
+      save next, named-member(target, name, where)
+      back make(some, next)
+    case none
+      save first, variable-at(name, where)
+      back make(some, first)
+
+# a word written with an empty pair of parentheses straight after it, `f()`
+task has-empty-parens
+  take one, like node
+  like boolean
+
+  save name, make none
+  sift one
+    case name
+      save name, make(some, one)
+    case group
+      fork test, is-equal(nodes/length, 1)
+        hold
+          save first, get(nodes, 0)
+          sift first
+            case name
+              save name, make(some, first)
+            miss
+              save nothing, 0
+    miss
+      save nothing, 0
+  sift name
+    case some
+      link known
+      save parts, parts-of(known)
+      fork test, is-equal(parts/length, 0)
+        hold
+          back false
+      save last, get(parts, subtract(parts/length, 1))
+      sift last
+        case chunk
+          link chunk-text
+          link chunk-span
+          link chunk-follows
+          sift chunk-follows
+            case some
+              link follows-word
+              back is-equal(to-text(follows-word), <empty-parens>)
+            case none
+              back false
+        miss
+          back false
+    case none
+      back false
+
+# a word written with a parenthesis straight after it, `host(`
+task opens-paren
+  take value, like maybe, like node
+  like boolean
+
+  sift value
+    case some
+      link one
+      sift one
+        case name
+          fork test, is-equal(parts/length, 0)
+            hold
+              back false
+          save last, get(parts, subtract(parts/length, 1))
+          sift last
+            case chunk
+              link chunk-text
+              link chunk-span
+              link chunk-follows
+              sift chunk-follows
+                case some
+                  back true
+                case none
+                  back false
+            miss
+              back false
+        miss
+          back false
+    case none
+      back false
+
+# the word a value form stands for when it heads a construct with nothing in it
+task value-word-form
+  take form, like text
+  like maybe, like text
+  mark private
+
+  fork test, is-equal(form, <seed-text>)
+    hold
+      back make(some, <text>)
+  fork test, is-equal(form, <seed-code>)
+    hold
+      back make(some, <code>)
+  fork test, is-equal(form, <seed-term>)
+    hold
+      back make(some, <term>)
+  fork test, or(is-equal(form, <seed-read>), is-equal(form, <read>))
+    hold
+      back make(some, <read>)
+  fork test, is-equal(form, <seed-loan>)
+    hold
+      back make(some, <loan>)
+  fork test, is-equal(form, <make>)
+    hold
+      back make(some, <make>)
+  fork test, is-equal(form, <task>)
+    hold
+      back make(some, <task>)
+  fork test, is-equal(form, <seed-meet>)
+    hold
+      back make(some, <meet>)
+  back make none
+
+# the three words that head a literal, and the literal to write instead
+task literal-word
+  take word, like text
+  like maybe, like text
+  mark private
+
+  fork test, is-equal(word, <text>)
+    hold
+      back make(some, <`\<\>` for the empty text>)
+  fork test, is-equal(word, <code>)
+    hold
+      back make(some, <`0` for zero>)
+  fork test, is-equal(word, <term>)
+    hold
+      back make(some, <`term \<word\>` for a word as a value>)
+  back make none
+
+# the word, when this construct is its head word written alone: no literal, no name, no child
+task lone-value-word
+  take value, like minted
+  like maybe, like text
+
+  sift minted-form(value)
+    case some
+      link built-form
+      sift value-word-form(built-form)
+        case some
+          link word
+          sift node-of(value)
+            case some
+              link one
+              save alone, false
+              sift one
+                case name
+                  save alone, true
+                case group
+                  fork test, is-equal(nodes/length, 1)
+                    hold
+                      save first, get(nodes, 0)
+                      sift first
+                        case name
+                          save alone, true
+                        miss
+                          save nothing, 0
+                miss
+                  save nothing, 0
+              fork test, and(alone, and(is-word(word-of(one), word), not(has-empty-parens(one))))
+                hold
+                  back make(some, word)
+            case none
+              save nothing, 0
+        case none
+          save nothing, 0
+    case none
+      save nothing, 0
+  back make none
+
+# a local in scope here: a parameter, a `save`, or any other binder the bridge has passed
+task in-scope
+  take state, like mint-state
+  take name, like text
+  like boolean
+
+  back or(state/declared/has(name), state/bound/has(name))
+
+task copy-names
+  take names, like hash, like text, like boolean
+  like hash, like text, like boolean
+
+  save out, make hash
+  walk names/keys()
+    take one
+    save out/{one}, true
+  back out
+
+# ---- reading through the grammar ----
+
+# Read one node as a value, through the grammar's `seed` rule, so an interpolation's contents are lowered by the same
+# rules as any other expression
+task expression-from-node
+  take state, like mint-state
+  take one, like node
+  take where, like span
+  like maybe, like expression
+
+  save nodes, make list
+  push(nodes, one)
+  save mined, run-mine(state/grammar/mine, <seed>, make-root(nodes))
+  fork test, not(mined/ok)
+    hold
+      back make none
+  walk mined/match/values()
+    take captures
+    walk captures
+      take capture
+      sift capture
+        case match
+          link rule-name
+          link rule-match
+          link rule-span
+          link rule-node
+          save from, make(some, rule-node)
+          walk run-mint(state/grammar/mint, rule-name, rule-match, from, no-number())
+            take value
+            save built, expression-of(state, make(some, value))
+            sift built
+              case some
+                back built
+              case none
+                save nothing, 0
+        miss
+          save plain, capture-value(capture)
+          save built, expression-of(state, make(some, plain))
+          sift built
+            case some
+              back built
+            case none
+              save nothing, 0
+  back make none
+
+task no-number
+  like maybe, like number
+  mark private
+
+  back make none
+
+# Read nodes as STATEMENTS, through the grammar's own `flow` rule, one line at a time
+task flow-from-nodes
+  take state, like mint-state
+  take nodes, like list, like node
+  like list, like minted
+
+  save out, make list
+  walk nodes
+    take one
+    save ok, false
+    save match, make hash
+    sift one
+      case group
+        save wrapped, make list
+        push(wrapped, one)
+        save mined, run-mine(state/grammar/mine, <flow>, make-root(wrapped))
+        save ok, mined/ok
+        save match, mined/match
+      miss
+        save nothing, 0
+    fork test, not(ok)
+      hold
+        save outline, outline-of(make(some, one))
+        push-problem(state, span-of-whole(one), <the code grammar does not read this line as a statement, at `{outline}`>, make none)
+        turn next
+    walk match/values()
+      take captures
+      walk captures
+        take capture
+        sift capture
+          case match
+            link rule-name
+            link rule-match
+            link rule-span
+            link rule-node
+            save from, make(some, rule-node)
+            walk run-mint(state/grammar/mint, rule-name, rule-match, from, no-number())
+              take value
+              push(out, value)
+          miss
+            push(out, capture-value(capture))
+  back out
+
+# ---- text ----
+
+# A text literal: a STRING unless it carries an interpolation, and then a TEMPLATE of chunks and the values between them
+task text-expression
+  take state, like mint-state
+  take value, like minted
+  take where, like span
+  like expression
+
+  save plain, string-at(text-or-empty(text-of(make(some, value))), where)
+  save parts, make list
+  save is-text, false
+  sift node-of(value)
+    case some
+      link one
+      save parts, parts-of(one)
+      sift one
+        case text
+          save is-text, true
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  fork test, not(is-text)
+    hold
+      back plain
+  fork test, not(has-interpolation(parts))
+    hold
+      back plain
+  save built, make list
+  walk parts
+    take part
+    sift part
+      case chunk
+        link chunk-text
+        push(built, chunk-part(unescape-text(chunk-text)))
+      case interpolation
+        link braced-depth
+        link braced-group
+        sift braced-group
+          case some
+            link group
+            sift group
+              case group
+                link group-nodes
+                # `<{123}>`: a whole number alone in braces is its own digits, written in at compile time
+                save digits, make none
+                fork test, is-equal(group-nodes/length, 1)
+                  hold
+                    save only, get(group-nodes, 0)
+                    sift only
+                      case integer
+                        link integer-value
+                        link integer-text
+                        save digits, make(some, integer-text)
+                      miss
+                        save nothing, 0
+                sift digits
+                  case some
+                    link known
+                    push(built, chunk-part(known))
+                    turn next
+                  case none
+                    save nothing, 0
+                save head, head-word(group)
+                save inner, expression-from-node(state, group, where)
+                sift inner
+                  case none
+                    sift head
+                      case some
+                        link head-text
+                        fork test, and(contains(head-text, </>), is-equal(group-nodes/length, 1))
+                          hold
+                            save path, read-path(head-text, where)
+                            save inner, make(some, path)
+                      case none
+                        save nothing, 0
+                  case some
+                    save nothing, 0
+                sift inner
+                  case some
+                    link known
+                    push(built, value-part(known))
+                  case none
+                    save nothing, 0
+              miss
+                save nothing, 0
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  back
+    make template
+      bind parts, built
+      bind span, where
+
+task text-or-empty
+  take value, like maybe, like text
+  like text
+  mark private
+
+  sift value
+    case some
+      link known
+      back known
+    case none
+      back <>
+
+# ---- types ----
+
+# a list type, however it was written: `like list, like text` is an array, and a bare `like list` read as a phrase is
+# the named type `list`
+task is-list-type
+  take value, like maybe, like type
+  like boolean
+
+  sift value
+    case some
+      link known
+      sift known
+        case array
+          back true
+        case named
+          link named-name
+          back is-equal(named-name, <list>)
+        miss
+          back false
+    case none
+      back false
+
+# a type written as one phrase: `stack number` is `stack` applied to `number`
+task phrase-type
+  take phrase, like text
+  like type
+
+  save words, split(phrase, < >)
+  save name, get(words, 0)
+  fork test, is-equal(words/length, 1)
+    hold
+      back type-of-word(name)
+  save applied, make list
+  save index, 0
+  walk words
+    take word
+    fork test, is-above(index, 0)
+      hold
+        push(applied, phrase-type(word))
+    save index, add(index, 1)
+  back named-type(name, applied, make list)
+
+task named-type
+  take name, like text
+  take args, like list, like type
+  take value-args, like list, like expression
+  like type
+  mark private
+
+  back
+    make named
+      bind name, name
+      bind args, args
+      bind value-args, value-args
+
+task type-or-free
+  take value, like maybe, like type
+  like type
+  mark private
+
+  sift value
+    case some
+      link known
+      back known
+    case none
+      back free-unknown-type()
+
+task type-or-unknown
+  take value, like maybe, like type
+  like type
+  mark private
+
+  sift value
+    case some
+      link known
+      back known
+    case none
+      back unknown-type()
+
+task type-at
+  take types, like list, like maybe, like type
+  take index, like number
+  like maybe, like type
+  mark private
+
+  fork test, is-below(index, types/length)
+    hold
+      back get(types, index)
+  back make none
+
+# A `like` names a type and carries its parts: applied arguments ride in the name as a phrase, an element or key and
+# value as a nested `like`, and a task type its parameters as `take` lines and its result as the nested `like`
+task type-of
+  take state, like mint-state
+  take value, like maybe, like minted
+  like maybe, like type
+
+  back type-of-heads(state, value, false)
+
+# POSITIONAL ARGUMENTS ONLY, when `positional-only`: a `head` carrying a `like` or a `link` of its own is a NAMED type
+# argument and belongs to the extension, not to the base type
+task type-of-heads
+  take state, like mint-state
+  take value, like maybe, like minted
+  take positional-only, like boolean
+  like maybe, like type
+
+  sift text-of(value)
+    case some
+      link word
+      save phrased, phrase-type(word)
+      back make(some, phrased)
+    case none
+      save nothing, 0
+  fork test, not(is-form(value))
+    hold
+      back make none
+  save phrase, make none
+  sift word-at(value, <name>)
+    case some
+      link known
+      save phrase, make(some, known)
+    case none
+      back make none
+  save phrase-text, text-or-empty(phrase)
+  save children, make list
+  walk at(value, <child>)
+    take child
+    push(children, type-of(state, make(some, child)))
+  save words, split(phrase-text, < >)
+  save name, get(words, 0)
+  save applied, make list
+  save index, 0
+  walk words
+    take word
+    fork test, is-above(index, 0)
+      hold
+        push(applied, word)
+    save index, add(index, 1)
+
+  # the native collections: their parts are nested `like` lines, and a bare one leaves its part FREE
+  fork test, is-equal(name, <list>)
+    hold
+      save element, type-or-free(type-at(children, 0))
+      save built
+        make array
+          bind element, element
+      back make(some, built)
+
+  fork test, is-equal(name, <hash>)
+    hold
+      # THE ONE-LINE SPELLING, `like hash, like text, like number`: each comma nests the next `like` under the one
+      # before, so the value arrives as the KEY's own child. A key that is a primitive takes no argument
+      save child-values, at(value, <child>)
+      save only, make none
+      fork test, is-equal(children/length, 1)
+        hold
+          save first-child, get(child-values, 0)
+          save only, make(some, first-child)
+      save key-base, make none
+      save spilled, make list
+      fork test, is-form(only)
+        hold
+          sift word-at(only, <name>)
+            case some
+              link key-word
+              fork test, and(not(contains(key-word, < >)), is-type-name(key-word))
+                hold
+                  save key-type, type-of-word(key-word)
+                  save key-base, make(some, key-type)
+            case none
+              save nothing, 0
+          save spilled, at(only, <child>)
+      sift key-base
+        case some
+          link key-known
+          fork test, and(not(is-named-type(key-known)), is-equal(spilled/length, 1))
+            hold
+              save spilled-first, get(spilled, 0)
+              save spilled-type, type-or-free(type-of(state, make(some, spilled-first)))
+              save keyed
+                make map
+                  bind key, key-known
+                  bind value, spilled-type
+              back make(some, keyed)
+        case none
+          save nothing, 0
+      save key-type, type-or-free(type-at(children, 0))
+      save value-type, type-or-free(type-at(children, 1))
+      save built
+        make map
+          bind key, key-type
+          bind value, value-type
+      back make(some, built)
+
+  fork test, is-equal(name, <task>)
+    hold
+      save params, make list
+      # `''` for a parameter with no name
+      save param-names, make list
+      walk forms-at(value, <take>)
+        take take-form
+        save declared, type-of(state, first-at(make(some, take-form), <like>))
+        push(params, type-or-unknown(with-head-args(state, declared, take-form)))
+        push(param-names, text-or-empty(word-at(make(some, take-form), <name>)))
+      # EFFECTS on a callback type: `mark async` makes it async (`wait true` is the older spelling), and a bare `halt`
+      # one that may raise
+      save effects, make list
+      save holder, first-form(value)
+      fork test, or(marked(holder, <async>), waits-true(holder))
+        hold
+          push(effects, <async>)
+      fork test, is-above(at(value, <halt>)/length, 0)
+        hold
+          push(effects, <throw>)
+      save result, unit-type()
+      sift type-at(children, 0)
+        case some
+          link known
+          save result, known
+        case none
+          save nothing, 0
+      save built
+        make function
+          bind params, params
+          bind result, result
+          bind param-names, names-if-any(param-names)
+          bind effects, effects
+      back make(some, built)
+
+  fork test, and(is-type-name(name), and(is-equal(applied/length, 0), is-equal(children/length, 0)))
+    hold
+      save base, type-of-word(name)
+      back make(some, base)
+
+  # A `head` under a `like` is either a TYPE argument or a VALUE index: a type lands at a name or a nested `like`, a value
+  # at `seed`. `like vec / head a / head / read count` is `vec a count`
+  save heads, make list
+  walk forms-at(value, <head>)
+    take head-form
+    save held, make(some, head-form)
+    fork test, or(not(positional-only), not(or(is-some-minted(first-at(held, <like>)), is-above(at(held, <link>)/length, 0))))
+      hold
+        push(heads, head-form)
+  save args, make list
+  walk applied
+    take word
+    push(args, phrase-type(word))
+  walk children
+    take child
+    sift child
+      case some
+        link known
+        push(args, known)
+      case none
+        save nothing, 0
+  walk heads
+    take head-form
+    save held, make(some, head-form)
+    fork test, not(is-some-minted(first-at(held, <seed>)))
+      hold
+        push(args, head-type(state, held))
+  save value-args, make list
+  walk heads
+    take head-form
+    save held, make(some, head-form)
+    save seed, first-at(held, <seed>)
+    fork test, is-some-minted(seed)
+      hold
+        sift expression-of(state, seed)
+          case some
+            link known
+            push(value-args, known)
+          case none
+            save nothing, 0
+  save built, named-type(name, args, value-args)
+  back make(some, built)
+
+# a `head`'s type argument: its `like`, else its name as a type
+task head-type
+  take state, like mint-state
+  take head-form, like maybe, like minted
+  like type
+  mark private
+
+  sift type-of(state, first-at(head-form, <like>))
+    case some
+      link known
+      back known
+    case none
+      back type-of-word(text-or-empty(word-at(head-form, <name>)))
+
+task is-named-type
+  take value, like type
+  like boolean
+  mark private
+
+  sift value
+    case named
+      back true
+    miss
+      back false
+
+task is-some-minted
+  take value, like maybe, like minted
+  like boolean
+  mark private
+
+  sift value
+    case some
+      back true
+    case none
+      back false
+
+# the value as a form, a bare word standing for an empty one (only a form reaches it)
+task first-form
+  take value, like maybe, like minted
+  like minted
+  mark private
+
+  sift value
+    case some
+      link known
+      back known
+    case none
+      save no-fields, make hash
+      back
+        make form
+          bind form, <>
+          bind fields, no-fields
+
+# The `head` arguments a declaration writes BESIDE its `like` rather than inside it, folded into the declared type
+task with-head-args
+  take state, like mint-state
+  take declared, like maybe, like type
+  take owner, like minted
+  like maybe, like type
+
+  sift declared
+    case some
+      link known
+      sift known
+        case named
+          link named-name
+          link named-args
+          link named-value-args
+          link named-alias
+          save heads, forms-at(make(some, owner), <head>)
+          fork test, is-equal(heads/length, 0)
+            hold
+              back declared
+          save args, make list
+          walk named-args
+            take one
+            push(args, one)
+          save added, 0
+          walk heads
+            take head-form
+            save held, make(some, head-form)
+            fork test, not(is-some-minted(first-at(held, <seed>)))
+              hold
+                push(args, head-type(state, held))
+                save added, add(added, 1)
+          save value-args, make list
+          walk named-value-args
+            take one
+            push(value-args, one)
+          walk heads
+            take head-form
+            save held, make(some, head-form)
+            save seed, first-at(held, <seed>)
+            fork test, is-some-minted(seed)
+              hold
+                sift expression-of(state, seed)
+                  case some
+                    link built
+                    push(value-args, built)
+                  case none
+                    save nothing, 0
+          save folded
+            make named
+              bind name, named-name
+              bind args, args
+              bind value-args, value-args
+              bind alias, named-alias
+          back make(some, folded)
+        miss
+          back declared
+    case none
+      back declared
+
+# A `like task` whose parameters are written as `take` lines beside it rather than inside it: the same function type
+task with-outer-takes
+  take state, like mint-state
+  take declared, like maybe, like type
+  take owner, like minted
+  like maybe, like type
+
+  sift declared
+    case some
+      link known
+      sift known
+        case function
+          link function-params
+          link function-result
+          link function-effects
+          link function-param-names
+          fork test, is-above(function-params/length, 0)
+            hold
+              back declared
+          save takes, forms-at(make(some, owner), <take>)
+          fork test, is-equal(takes/length, 0)
+            hold
+              back declared
+          # no head folding: a `head` beside one of THESE takes is not part of its type
+          save params, make list
+          walk takes
+            take take-form
+            push(params, type-or-unknown(type-of(state, first-at(make(some, take-form), <like>))))
+          # the RESULT comes with them: a SECOND `like` beside the first is the function's return type
+          save likes, at(make(some, owner), <like>)
+          save result, function-result
+          sift type-of(state, first-at(make(some, owner), <result>))
+            case some
+              link known-result
+              save result, known-result
+            case none
+              fork test, is-above(likes/length, 1)
+                hold
+                  save second, get(likes, 1)
+                  sift type-of(state, make(some, second))
+                    case some
+                      link second-result
+                      save result, second-result
+                    case none
+                      save nothing, 0
+          # walked into fresh lists, so an absent list is read and never written into the declared type (traps T003)
+          save effects, make list
+          walk function-effects
+            take effect
+            push(effects, effect)
+          save param-names, make list
+          walk function-param-names
+            take param-name
+            push(param-names, param-name)
+          save widened
+            make function
+              bind params, params
+              bind result, result
+              bind effects, effects
+              bind param-names, param-names
+          back make(some, widened)
+        miss
+          back declared
+    case none
+      back declared
+
+# ---- marks ----
+
+# Metadata written as `note <word>` or as `mark <word>`
+task marked
+  take value, like minted
+  take word, like text
+  like boolean
+
+  fork test, has-word(make(some, value), <note>, word)
+    hold
+      back true
+  walk forms-at(make(some, value), <mark>)
+    take mark-form
+    fork test, is-word(word-at(make(some, mark-form), <kind>), word)
+      hold
+        back true
+  back false
+
+# `wait true` written on the definition itself
+task waits-true
+  take value, like minted
+  like boolean
+
+  walk forms-at(make(some, value), <wait>)
+    take wait-form
+    fork test, is-word(word-at(make(some, wait-form), <seed>), <true>)
+      hold
+        back true
+  back false
+
+# ---- a body ----
+
+# A task's or a closure's statements in written order, with every `wait <call>` line among them, and every line the
+# grammar matched as the binding dialect's vocabulary whose head the file defines or imports, read again as a call
+task body-steps
+  take state, like mint-state
+  take value, like minted
+  like list, like minted
+
+  save held, make(some, value)
+  save flow, at(held, <flow>)
+  save awaited, make list
+  walk forms-at(held, <wait>)
+    take wait-form
+    fork test, not(is-true-or-false(word-at(make(some, wait-form), <seed>)))
+      hold
+        push(awaited, wait-form)
+  save called, make list
+  walk at(held, <drop>)
+    take drop
+    save drop-node, node-of(drop)
+    sift drop-node
+      case some
+        link one
+        sift one
+          case group
+            sift head-word(one)
+              case some
+                link head
+                fork test, state/named/has(head)
+                  hold
+                    save lines, make list
+                    push(lines, one)
+                    walk flow-from-nodes(state, lines)
+                      take step
+                      push(called, with-node-at(step, drop-node, written-at(drop)))
+              case none
+                fork test, state/named/has(<>)
+                  hold
+                    save lines, make list
+                    push(lines, one)
+                    walk flow-from-nodes(state, lines)
+                      take step
+                      push(called, with-node-at(step, drop-node, written-at(drop)))
+          miss
+            save nothing, 0
+      case none
+        save nothing, 0
+  fork test, and(is-equal(awaited/length, 0), is-equal(called/length, 0))
+    hold
+      back flow
+  save steps, make list
+  walk flow
+    take step
+    push(steps, step)
+  walk awaited
+    take step
+    push(steps, step)
+  walk called
+    take step
+    push(steps, step)
+  save placed, make list
+  save index, 0
+  walk steps
+    take step
+    save entry
+      make placed-step
+        bind place, at-or(step, index)
+        bind step, step
+    push(placed, entry)
+    save index, add(index, 1)
+  save out, make list
+  walk sort-by(placed, step-place)
+    take entry
+    push(out, entry/step)
+  back out
+
+# a body step and the place it sorts by
+form placed-step
+  link place, like number
+  link step, like minted
+
+task step-place
+  take entry, like placed-step
+  like number
+  mark private
+
+  back entry/place
+
+# a nested body is its own scope: a `save x` in one arm of a fork must not turn the `save x` in the other arm into an
+# assignment. `binds` are the names the body binds on entry
+task scoped-flow
+  take state, like mint-state
+  take values, like list, like minted
+  take binds, like list, like text
+  like list, like statement
+
+  save enclosing, state/declared
+  save outer, state/bound
+  save state/declared, copy-names(enclosing)
+  save widened, copy-names(outer)
+  walk binds
+    take one
+    save widened/{one}, true
+  save state/bound, widened
+  save body, state/flow(values)
+  save state/declared, enclosing
+  save state/bound, outer
+  back body
+
+# ---- the lean surface ----
+
+# Does this construct take lean labels in this file: the file's role is lean AND the rule that read it is `mark lean`
+task is-lean
+  take state, like mint-state
+  take rule, like text
+  like boolean
+
+  back and(state/lean, state/grammar/lean/has(rule))
+
+# One argument as it was written, with where it sat among the construct's children, so a label written before a
+# positional argument stays before it. `lean` marks a label from a PROPERTY HEAD rather than an explicit `bind`, and
+# `shaped` one written call-shaped, `name(<x>)`
+form written
+  link at, like number
+  link expr, like expression
+  link name
+    like maybe, like text
+    need false
+  link lean, like boolean
+  link shaped, like boolean
+
+task written-of
+  take where, like number
+  take expr, like expression
+  take name, like maybe, like text
+  like written
+  mark private
+
+  back
+    make written
+      bind at, where
+      bind expr, expr
+      bind name, name
+      bind lean, false
+      bind shaped, false
+
+# a stable sort by `at`, ties in the order written
+task sort-written
+  take entries, like list, like written
+  like list, like written
+
+  back sort-by(entries, written-place)
+
+task written-place
+  take entry, like written
+  like number
+  mark private
+
+  back entry/at
+
+# The explicit `bind name, value` site, as a named argument, in every file
+task bind-arguments
+  take state, like mint-state
+  take value, like minted
+  like list, like written
+
+  save written-list, make list
+  walk forms-at(make(some, value), <bind>)
+    take bind-form
+    save held, make(some, bind-form)
+    sift expression-of(state, first-at(held, <seed>))
+      case some
+        link built
+        push(written-list, written-of(at-or(bind-form, written-list/length), built, word-at(held, <name>)))
+      case none
+        save nothing, 0
+  back written-list
+
+# The label of a `seed-bind-arg`, read off the parse tree: `mine seed-bind-arg` matches the name as a bare node
+task bind-arg-label
+  take seed, like minted
+  like maybe, like text
+
+  sift group-kids(node-of(seed))
+    case some
+      link kids
+      sift node-in(kids, 1)
+        case some
+          link second
+          sift second
+            case group
+              sift node-in(nodes, 0)
+                case some
+                  link first
+                  back word-of(first)
+                case none
+                  back make none
+            miss
+              back make none
+        case none
+          back make none
+    case none
+      back make none
+
+# The lean partition of a construct's `seed` captures: a bare-head call with a plain name is a NAMED argument, its own
+# arguments the value as an ARRAY. Anything else stays positional
+task lean-arguments
+  take state, like mint-state
+  take value, like minted
+  like list, like written
+
+  save written-list, make list
+  walk at(make(some, value), <seed>)
+    take seed
+    save index, at-or(seed, written-list/length)
+    save held, make(some, seed)
+    save form, minted-form(seed)
+    fork test, is-word(form, <seed-call-open>)
+      hold
+        # a property head carrying a CALL MODIFIER is a call, never a label
+        save modified, or(is-above(forms-at(held, <wait>)/length, 0), or(is-above(forms-at(held, <halt>)/length, 0), is-above(forms-at(held, <bind>)/length, 0)))
+        sift word-at(held, <name>)
+          case some
+            link head
+            fork test, and(not(contains(head, </>)), not(modified))
+              hold
+                save items, make list
+                walk at(held, <seed>)
+                  take inner
+                  sift expression-of(state, make(some, inner))
+                    case some
+                      link built
+                      push(items, built)
+                    case none
+                      save nothing, 0
+                save list-node
+                  make array
+                    bind items, items
+                    bind span, span-of(held)
+                save shaped, false
+                sift group-kids(node-of(seed))
+                  case some
+                    link kids
+                    save shaped, opens-paren(node-in(kids, 0))
+                  case none
+                    save nothing, 0
+                save label, plain-name(head)
+                save entry
+                  make written
+                    bind at, index
+                    bind expr, list-node
+                    bind name, make(some, label)
+                    bind lean, true
+                    bind shaped, shaped
+                push(written-list, entry)
+                turn next
+          case none
+            save nothing, 0
+    fork test, is-word(form, <seed-bind-arg>)
+      hold
+        save label, bind-arg-label(seed)
+        sift expression-of(state, first-at(held, <seed>))
+          case some
+            link built
+            push(written-list, written-of(index, built, label))
+            turn next
+          case none
+            save nothing, 0
+    sift expression-of(state, held)
+      case some
+        link built
+        push(written-list, written-of(index, built, make none))
+      case none
+        save nothing, 0
+  back written-list
+
+# ---- expressions ----
+
+# a minted value as an expression, none for one that does not lower (a refusal says why)
+task expression-of
+  take state, like mint-state
+  take value, like maybe, like minted
+  like maybe, like expression
+
+  sift value
+    case some
+      link one
+      save where, span-of(value)
+      sift one
+        case text
+          link text-value
+          link text-span
+          link text-node
+          link text-at
+          save built, text-expression(state, one, where)
+          back make(some, built)
+        case number
+          link number-value
+          link number-decimal
+          link number-span
+          link number-node
+          link number-at
+          fork test, number-decimal
+            hold
+              save decimal, float-at(number-value, where)
+              back make(some, decimal)
+          save whole, integer-literal(number-value, where)
+          back make(some, whole)
+        case word
+          link word-value
+          link word-span
+          link word-node
+          link word-at
+          back word-expression(state, word-value, word-node, one, where)
+        case form
+          link form-built
+          link form-fields
+          link form-span
+          link form-node
+          link form-at
+          back form-expression(state, one, form-built, where)
+    case none
+      back make none
+
+# a bare word in value position: `true`, `false`, `void`, a call written `f()`, or a name
+task word-expression
+  take state, like mint-state
+  take word, like text
+  take from, like maybe, like node
+  take value, like minted
+  take where, like span
+  like maybe, like expression
+  mark private
+
+  fork test, or(is-equal(word, <true>), is-equal(word, <false>))
+    hold
+      save flag, boolean-at(is-equal(word, <true>), where)
+      back make(some, flag)
+  # `void` reaches here from a lean call's argument list, where the longhand's `seed` site carried it as the literal
+  fork test, is-equal(word, <void>)
+    hold
+      save nothing-value, unit-at(where)
+      back make(some, nothing-value)
+  # `f()` is a call with no arguments: the parentheses survive only in the token stream
+  sift from
+    case some
+      link one
+      fork test, has-empty-parens(one)
+        hold
+          save callee, read-path(plain-name(word), where)
+          save called, plain-call(callee, no-args(), where)
+          back make(some, called)
+    case none
+      save nothing, 0
+  # a braced segment, `x/{k}`, or a path after a call, `greeting()/text`, is read from the name's parts
+  sift name-node-of(from)
+    case some
+      link head
+      fork test, has-interpolation(parts-of(head))
+        hold
+          save dynamic, dynamic-path(state, value, where)
+          sift dynamic
+            case some
+              back dynamic
+            case none
+              save nothing, 0
+    case none
+      save nothing, 0
+  save path, read-path(plain-name(word), where)
+  back make(some, path)
+
+task form-expression
+  take state, like mint-state
+  take value, like minted
+  take form, like text
+  take where, like span
+  like maybe, like expression
+  mark private
+
+  save held, make(some, value)
+  # A VALUE WORD STANDING ALONE: where a local of that name is in scope it is the local. With none, in a body, the three
+  # literal words are refused rather than guessed at
+  sift lone-value-word(value)
+    case some
+      link lone
+      fork test, in-scope(state, lone)
+        hold
+          save local, read-path(lone, where)
+          back make(some, local)
+      sift literal-word(lone)
+        case some
+          link literal
+          fork test, state/in-body
+            hold
+              refuse(state, value, <a bare `{lone}` is not a value: no local named `{lone}` is in scope here. Write `read {lone}` for a variable named `{lone}`, or {literal}>)
+              back make none
+        case none
+          save nothing, 0
+    case none
+      save nothing, 0
+
+  # `loan x` read as `read x` and borrowed nothing: refused (term/affine-kinds decision 002)
+  fork test, is-equal(form, <seed-loan>)
+    hold
+      save path, <x>
+      sift word-at(held, <path>)
+        case some
+          link known
+          save path, known
+        case none
+          sift word-at(held, <name>)
+            case some
+              link known
+              save path, known
+            case none
+              save nothing, 0
+      refuse(state, value, <`loan {path}` borrows nothing: it was read as `read {path}`. Write `read {path}`>)
+      back make none
+
+  fork test, or(is-equal(form, <seed-read>), is-equal(form, <read>))
+    hold
+      save path, word-at(held, <path>)
+      sift path
+        case none
+          save path, word-at(held, <name>)
+        case some
+          save nothing, 0
+      sift path
+        case none
+          # a bare `read` names the empty path
+          save linked, with-links(state, read-path(<>, where), value)
+          back make(some, linked)
+        case some
+          link known
+          # `read x/{key}` reads the member NAMED BY evaluating `key`
+          fork test, contains(known, <\{>)
+            hold
+              sift dynamic-path(state, value, where)
+                case some
+                  link dynamic
+                  save linked, with-links(state, dynamic, value)
+                  back make(some, linked)
+                case none
+                  save nothing, 0
+          save linked, with-links(state, read-path(known, where), value)
+          back make(some, linked)
+
+  fork test, is-equal(form, <seed-text>)
+    hold
+      sift first-at(held, <value>)
+        case some
+          link literal
+          save literal-at, span-of(make(some, literal))
+          save built, text-expression(state, literal, literal-at)
+          back make(some, built)
+        case none
+          # a bare `text` has no literal to take a span from, so the head's own extent stands in
+          save empty, string-at(<>, where)
+          back make(some, empty)
+
+  fork test, is-equal(form, <seed-code>)
+    hold
+      save literal, first-at(held, <value>)
+      sift literal
+        case some
+          link known
+          save literal-at, span-of(literal)
+          sift known
+            case number
+              link number-value
+              link number-decimal
+              fork test, number-decimal
+                hold
+                  save decimal, float-at(number-value, literal-at)
+                  back make(some, decimal)
+              save whole, integer-literal(number-value, literal-at)
+              back make(some, whole)
+            miss
+              save nothing, 0
+          # `code false` / `code true`: the boolean written with the literal head
+          save word, text-of(literal)
+          fork test, is-true-or-false(word)
+            hold
+              save flag, boolean-at(is-word(word, <true>), literal-at)
+              back make(some, flag)
+        case none
+          save nothing, 0
+      save zero
+        make integer
+          bind value, 0
+          bind span, where
+      back make(some, zero)
+
+  # `term utf8` is the word ITSELF as a value
+  fork test, is-equal(form, <seed-term>)
+    hold
+      save word, string-at(text-or-empty(word-at(held, <name>)), where)
+      back make(some, word)
+
+  fork test, is-equal(form, <call>)
+    hold
+      back call-of(state, value)
+
+  fork test, is-equal(form, <make>)
+    hold
+      back record-of(state, value)
+
+  fork test, is-equal(form, <task>)
+    hold
+      save closure, closure-of(state, value)
+      back make(some, closure)
+
+  # `fork lack` over a value: logical NOT, an absent operand false
+  fork test, is-equal(form, <fork-lack>)
+    hold
+      save operand, boolean-at(false, where)
+      sift expression-of(state, first-at(held, <seed>))
+        case some
+          link known
+          save operand, known
+        case none
+          save nothing, 0
+      save negation, not-at(operand, where)
+      back make(some, negation)
+
+  fork test, is-equal(form, <fork-test>)
+    hold
+      sift condition-of(state, value)
+        case some
+          link built
+          sift built
+            case if
+              back as-conditional(state, built, where)
+            miss
+              back make none
+        case none
+          back make none
+
+  # `meet and` / `meet or` combine their operands left to right, the operator's identity with none
+  fork test, is-equal(form, <seed-meet>)
+    hold
+      save marker, word-at(held, <name>)
+      sift marker
+        case none
+          save marker, word-at(held, <mode>)
+        case some
+          save nothing, 0
+      save either, is-word(marker, <or>)
+      save op, make both
+      fork test, either
+        hold
+          save op, make either
+      save operands, make list
+      walk at(held, <seed>)
+        take operand
+        sift expression-of(state, make(some, operand))
+          case some
+            link built
+            push(operands, built)
+          case none
+            save nothing, 0
+      fork test, is-equal(operands/length, 0)
+        hold
+          save identity, boolean-at(not(either), where)
+          back make(some, identity)
+      save joined, get(operands, 0)
+      save index, 0
+      walk operands
+        take right
+        fork test, is-above(index, 0)
+          hold
+            save joined, binary-at(op, joined, right, where)
+        save index, add(index, 1)
+      back make(some, joined)
+
+  # `move x` hands ownership on: the value is the same, spanned by the whole construct
+  fork test, is-equal(form, <move>)
+    hold
+      sift word-at(held, <name>)
+        case some
+          link moved
+          save read, read-path(moved, where)
+          back make(some, read)
+        case none
+          back make none
+
+  # `bind <name>, <value>` as an argument of the generic call fallback: the value, the name dropped
+  fork test, is-equal(form, <seed-bind-arg>)
+    hold
+      save bound, first-at(held, <seed>)
+      sift bound
+        case some
+          back expression-of(state, bound)
+        case none
+          save nothing-value, unit-at(where)
+          back make(some, nothing-value)
+
+  # `wait <call>` as a PREFIX
+  fork test, is-equal(form, <seed-wait>)
+    hold
+      save awaited, expression-of(state, first-at(held, <call>))
+      sift awaited
+        case none
+          save awaited, expression-of(state, first-at(held, <open>))
+        case some
+          save nothing, 0
+      sift awaited
+        case some
+          link known
+          save waited, await-at(known, where)
+          back make(some, waited)
+        case none
+          unhandled(state, value, <a wait with nothing to await>)
+          back make none
+
+  fork test, is-equal(form, <seed-call-open>)
+    hold
+      back open-call-of(state, value, where)
+
+  unhandled(state, value, <the {form} expression>)
+  back make none
+
+# a bare call written as its own head (`name <document>`): the head is the callee, the rest its arguments
+task open-call-of
+  take state, like mint-state
+  take value, like minted
+  take where, like span
+  like maybe, like expression
+  mark private
+
+  save held, make(some, value)
+  save callee-word, word-at(held, <name>)
+  # except when the head is a LITERAL keyword: `code false` is the boolean, not a call to `code`
+  fork test, is-word(callee-word, <code>)
+    hold
+      save word, word-at(held, <seed>)
+      fork test, is-true-or-false(word)
+        hold
+          save flag, boolean-at(is-word(word, <true>), where)
+          back make(some, flag)
+  sift callee-word
+    case none
+      unhandled(state, value, <an open call with no head>)
+      back make none
+    case some
+      save nothing, 0
+  save callee, text-or-empty(callee-word)
+  save plain, plain-name(callee)
+
+  # THE COMMA TRAP: a statement head whose own rule refused the line arrives here as a callee. `host` is the one
+  # statement word a task may also be named
+  fork test, and(is-flow-head(plain), not(and(is-equal(plain, <host>), state/host-task)))
+    hold
+      comma-trap(state, plain, where)
+      back make none
+
+  # A BUILTIN HAS NO PARAMETER NAMES, so a bare-head child under one is a nested call, never a label
+  fork test, and(is-lean(state, <seed-call-open>), or(is-binary-builtin(plain), is-unary-builtin(plain)))
+    hold
+      save args, make list
+      walk at(held, <seed>)
+        take seed
+        sift expression-of(state, make(some, seed))
+          case some
+            link built
+            push(args, built)
+          case none
+            save nothing, 0
+      sift fold-builtin(state, plain, args, where)
+        case some
+          link folded
+          back make(some, folded)
+        case none
+          save called, plain-call(read-path(plain, where), args, where)
+          back make(some, called)
+
+  # the same modifiers `call` reads
+  refuse-hooks(state, value)
+  save propagate, false
+  walk forms-at(held, <halt>)
+    take halt-form
+    fork test, is-word(word-at(make(some, halt-form), <mode>), <kink>)
+      hold
+        save propagate, true
+  save background, false
+  save awaited, false
+  walk forms-at(held, <wait>)
+    take wait-form
+    save word, word-at(make(some, wait-form), <seed>)
+    fork test, is-word(word, <false>)
+      hold
+        save background, true
+    fork test, is-word(word, <true>)
+      hold
+        save awaited, true
+  save into, no-type()
+  fork test, or(is-equal(plain, <fill>), is-equal(plain, <melt>))
+    hold
+      save into, type-of(state, first-at(held, <like>))
+  save filled, is-some-type(into)
+
+  # the lean surface: property heads among the arguments become labels, in written order
+  fork test, is-lean(state, <seed-call-open>)
+    hold
+      save entries, make list
+      walk bind-arguments(state, value)
+        take entry
+        push(entries, entry)
+      walk lean-arguments(state, value)
+        take entry
+        push(entries, entry)
+      save sorted, sort-written(entries)
+      save args, make list
+      save names, make list
+      save lean-names, make list
+      save lean-shaped, make list
+      walk sorted
+        take entry
+        push(args, entry/expr)
+        push(names, text-or-empty(entry/name))
+        push(lean-names, entry/lean)
+        push(lean-shaped, entry/shaped)
+      sift fold-builtin(state, plain, args, where)
+        case some
+          link folded
+          save finished, finish-call(state, folded, awaited, value, where)
+          back make(some, finished)
+        case none
+          save nothing, 0
+      fork test, filled
+        hold
+          # `fill` / `melt` carry the lean markers too, so a nested call written bare under one is a call
+          save formed, full-call(read-path(<{plain}-form>, where), args, where, names-if-any(names), flags-if-any(lean-names), no-flags(), true, false, false, into)
+          save finished, finish-call(state, formed, awaited, value, where)
+          back make(some, finished)
+      save called, full-call(read-path(plain, where), args, where, names-if-any(names), flags-if-any(lean-names), flags-if-any(lean-shaped), true, propagate, background, no-type())
+      save finished, finish-call(state, called, awaited, value, where)
+      back make(some, finished)
+
+  # A `bind` KEEPS ITS NAME here, as it does under `call`, so the checker places the value by the callee's parameters
+  save loose, bind-arguments(state, value)
+  walk at(held, <seed>)
+    take seed
+    save index, at-or(seed, loose/length)
+    save named, make none
+    fork test, is-word(minted-form(seed), <seed-bind-arg>)
+      hold
+        save named, bind-arg-label(seed)
+    sift expression-of(state, make(some, seed))
+      case some
+        link built
+        push(loose, written-of(index, built, named))
+      case none
+        save nothing, 0
+  save sorted, sort-written(loose)
+  save args, make list
+  save names, make list
+  walk sorted
+    take entry
+    push(args, entry/expr)
+    push(names, text-or-empty(entry/name))
+  # the arithmetic, comparison and boolean builtins fold to an operator here as they do under `call`
+  sift fold-builtin(state, plain, args, where)
+    case some
+      link folded
+      save finished, finish-call(state, folded, awaited, value, where)
+      back make(some, finished)
+    case none
+      save nothing, 0
+  fork test, filled
+    hold
+      save formed, full-call(read-path(<{plain}-form>, where), args, where, no-texts(), no-flags(), no-flags(), false, false, false, into)
+      save finished, finish-call(state, formed, awaited, value, where)
+      back make(some, finished)
+  save called, full-call(read-path(plain, where), args, where, names-if-any(names), no-flags(), no-flags(), false, propagate, background, no-type())
+  save finished, finish-call(state, called, awaited, value, where)
+  back make(some, finished)
+
+# the call awaited when a `wait true` marks it, then piped through its `link`s
+task finish-call
+  take state, like mint-state
+  take called, like expression
+  take awaited, like boolean
+  take owner, like minted
+  take where, like span
+  like expression
+  mark private
+
+  fork test, awaited
+    hold
+      back with-links(state, await-at(called, where), owner)
+  back with-links(state, called, owner)
+
+task no-type
+  like maybe, like type
+  mark private
+
+  back make none
+
+task is-some-type
+  take value, like maybe, like type
+  like boolean
+  mark private
+
+  sift value
+    case some
+      back true
+    case none
+      back false
+
+# `make <form>` with `bind` children is a record construction; `make list` and `make hash` are the native collections
+task record-of
+  take state, like mint-state
+  take value, like minted
+  like maybe, like expression
+
+  save held, make(some, value)
+  save whole, span-of(held)
+  sift word-at(held, <name>)
+    case none
+      # a bare `make` is a record with an empty name
+      save empty
+        make record
+          bind name, <>
+          bind fields, make list
+          bind function-free, true
+          bind span, whole
+      back make(some, empty)
+    case some
+      save nothing, 0
+  save name, text-or-empty(word-at(held, <name>))
+  save fields, make list
+  save positional, make list
+  walk forms-at(held, <bind>)
+    take bind-form
+    save bound, make(some, bind-form)
+    save built, expression-of(state, first-at(bound, <seed>))
+    sift word-at(bound, <name>)
+      case some
+        link field
+        # a `bind` with no value still names a field, given unit spanned by the whole construction
+        save field-value-of, unit-at(whole)
+        sift built
+          case some
+            link known
+            save field-value-of, known
+          case none
+            save nothing, 0
+        save entry
+          make field-value
+            bind name, field
+            bind value, field-value-of
+        push(fields, entry)
+      case none
+        save nothing, 0
+
+  # the lean surface: `make x / foo true` fills the field `foo`. NOT for `make list` or `make find`, whose children are
+  # all elements
+  save lean, and(is-lean(state, <make>), and(is-unequal(name, <list>), is-unequal(name, <find>)))
+  fork test, lean
+    hold
+      walk lean-arguments(state, value)
+        take entry
+        sift entry/name
+          case some
+            link label
+            save labeled
+              make field-value
+                bind name, label
+                bind value, entry/expr
+            push(fields, labeled)
+          case none
+            push(positional, entry/expr)
+    miss
+      walk at(held, <seed>)
+        take seed
+        sift expression-of(state, make(some, seed))
+          case some
+            link built
+            push(positional, built)
+          case none
+            save nothing, 0
+
+  # values written UNDER the name: `make some(x)`, and `make some x`, which parses the same
+  fork test, is-equal(positional/length, 0)
+    hold
+      sift group-kids(node-of(value))
+        case some
+          link kids
+          sift node-in(kids, 1)
+            case some
+              link named
+              sift named
+                case group
+                  save index, 0
+                  walk nodes
+                    take child
+                    fork test, is-above(index, 0)
+                      hold
+                        sift expression-from-node(state, child, whole)
+                          case some
+                            link built
+                            push(positional, built)
+                          case none
+                            save nothing, 0
+                    save index, add(index, 1)
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+        case none
+          save nothing, 0
+
+  fork test, and(is-equal(name, <list>), is-equal(fields/length, 0))
+    hold
+      save items
+        make array
+          bind items, positional
+          bind span, whole
+      back make(some, items)
+
+  fork test, and(is-equal(name, <find>), is-equal(fields/length, 0))
+    hold
+      refuse(state, value, <`make find` is the older spelling of `make hash`. Write `make hash`, with the same `save \<key\>, \<value\>` lines under it>)
+      back make none
+
+  # `make hash` is the native map, its entries `save <key>, <value>` lines: a key is the line's word, or under
+  # `save-key` any value
+  fork test, and(is-equal(name, <hash>), is-equal(fields/length, 0))
+    hold
+      save entries, make list
+      walk forms-at(held, <save>)
+        take entry
+        save line, make(some, entry)
+        save key, string-at(text-or-empty(word-at(line, <name>)), whole)
+        save key-value, first-at(line, <key>)
+        sift key-value
+          case some
+            sift expression-of(state, key-value)
+              case some
+                link built
+                save key, built
+              case none
+                save nothing, 0
+          case none
+            save nothing, 0
+        save entry-value, unit-at(whole)
+        sift expression-of(state, first-at(line, <seed>))
+          case some
+            link built
+            save entry-value, built
+          case none
+            save nothing, 0
+        save pair
+          make map-entry
+            bind key, key
+            bind value, entry-value
+        push(entries, pair)
+      save map
+        make map
+          bind entries, entries
+          bind span, whole
+      back make(some, map)
+
+  save function-free, true
+  walk fields
+    take field
+    sift field/value
+      case closure
+        save function-free, false
+      miss
+        save nothing, 0
+  save record
+    make record
+      bind name, name
+      bind fields, fields
+      bind positional, positional
+      bind function-free, function-free
+      bind lean, lean
+      bind span, whole
+  save linked, with-links(state, record, value)
+  back make(some, linked)
+
+# the record a nested `host` block builds. It has no form name, and no `function-free` (the mill sets that on a `make`)
+task anonymous-record
+  take state, like mint-state
+  take entries, like list, like minted
+  take where, like span
+  like expression
+
+  save fields, make list
+  walk entries
+    take entry
+    save held, make(some, entry)
+    save inner, forms-at(held, <host>)
+    save entry-at, span-of(held)
+    save entry-value, unit-at(entry-at)
+    fork test, is-above(inner/length, 0)
+      hold
+        save entry-value, anonymous-record(state, inner, entry-at)
+      miss
+        sift expression-of(state, first-at(held, <seed>))
+          case some
+            link built
+            save entry-value, built
+          case none
+            save nothing, 0
+    save field
+      make field-value
+        bind name, text-or-empty(word-at(held, <name>))
+        bind value, entry-value
+    push(fields, field)
+  back
+    make record
+      bind name, <>
+      bind fields, fields
+      bind span, where
+
+# a task written in value position is a closure: the same shape, carried as an expression
+task closure-of
+  take state, like mint-state
+  take value, like minted
+  like expression
+
+  save held, make(some, value)
+  save params, make list
+  save param-names, make list
+  walk forms-at(held, <take>)
+    take take-form
+    save declared, type-of(state, first-at(make(some, take-form), <like>))
+    # a closure's parameter folds the `head` arguments written beside its `like`, the way a task's does
+    save folded, with-head-args(state, declared, take-form)
+    save name, text-or-empty(word-at(make(some, take-form), <name>))
+    save param
+      make closure-param
+        bind name, name
+        bind type, folded
+    push(params, param)
+    push(param-names, name)
+  save result, type-of(state, first-at(held, <like>))
+  # the parameters are in scope in the body, and the body is its own scope: a name the enclosing body declared is
+  # still assigned, since a closure captures it, but a name the closure declares stays the closure's
+  save outer, state/bound
+  save enclosing, state/declared
+  save widened, copy-names(outer)
+  walk param-names
+    take name
+    save widened/{name}, true
+  save state/bound, widened
+  save state/declared, copy-names(enclosing)
+  save body, state/flow(body-steps(state, value))
+  save state/bound, outer
+  save state/declared, enclosing
+  back
+    make closure
+      bind params, params
+      bind body, body
+      bind result, result
+      bind async, or(marked(value, <async>), waits-true(value))
+      bind span, span-of(held)
+
+# A VALUE-POSITION FORK IS AN EXPRESSION, so each arm is one value and has nowhere to put a statement. Say what an arm
+# did instead
+task as-conditional
+  take state, like mint-state
+  take built, like statement
+  take where, like span
+  like maybe, like expression
+
+  sift built
+    case if
+      link if-branches
+      link if-otherwise
+      save branches, make list
+      walk if-branches
+        take branch
+        save body, branch/body
+        fork test, is-equal(body/length, 0)
+          hold
+            arm-problem(state, expression-span(branch/cond), <is empty>)
+            back make none
+        fork test, is-above(body/length, 1)
+          hold
+            arm-problem(state, statement-span(get(body, 1)), <holds {body/length} statements>)
+            back make none
+        save only, get(body, 0)
+        sift only
+          case expression
+            link only-expr
+            save pair
+              make value-branch
+                bind cond, branch/cond
+                bind value, only-expr
+            push(branches, pair)
+          miss
+            arm-problem(state, statement-span(only), <holds a `{only/form}` statement>)
+            back make none
+      save otherwise, no-expression()
+      sift if-otherwise
+        case some
+          link arms
+          fork test, is-above(arms/length, 1)
+            hold
+              arm-problem(state, statement-span(get(arms, 1)), <holds {arms/length} statements>)
+              back make none
+          fork test, is-above(arms/length, 0)
+            hold
+              save last, get(arms, 0)
+              sift last
+                case expression
+                  link last-expr
+                  save otherwise, make(some, last-expr)
+                case if
+                  link chain-branches
+                  link chain-otherwise
+                  link chain-span
+                  # an else-if chain: the else is another conditional, carried in value position too
+                  save chained, as-conditional(state, last, statement-span(last))
+                  sift chained
+                    case none
+                      back make none
+                    case some
+                      save otherwise, chained
+                miss
+                  arm-problem(state, statement-span(last), <holds a `{last/form}` statement>)
+                  back make none
+        case none
+          save nothing, 0
+      save conditional
+        make conditional
+          bind branches, branches
+          bind otherwise, otherwise
+          bind span, where
+      back make(some, conditional)
+    miss
+      back make none
+
+task arm-problem
+  take state, like mint-state
+  take where, like span
+  take what, like text
+  mark private
+
+  save hint, <bind the value first (`save x` before the fork, and each arm a plain value), or make the fork a statement whose arms each `send back`>
+  push-problem(state, where, <a fork in value position is one value per arm, and this arm {what}>, make(some, hint))
+
+# `fork test` with `hook test` / `hook hold` / `hook miss` arms, in source order: a chain of test and hold pairs is an if
+# / else-if chain, and a `miss` the else
+task condition-of
+  take state, like mint-state
+  take value, like minted
+  like maybe, like statement
+
+  save held, make(some, value)
+  save where, span-of(held)
+  save branches, make list
+  save otherwise, make none
+  save pending, no-expression()
+  # `fork test, name <flag>` dispatches on a named boolean parameter, `fork test, <expression>` writes it inline
+  sift word-at(first-at(held, <name>), <name>)
+    case some
+      link flag
+      save read, variable-at(flag, where)
+      save pending, make(some, read)
+    case none
+      save pending, expression-of(state, first-at(held, <condition>))
+
+  # A `hook <word>` the fork has no arm for never reaches the arm list, and was dropped: read it off the parse tree
+  sift group-kids(node-of(value))
+    case some
+      link kids
+      save index, 0
+      walk kids
+        take child
+        fork test, is-above(index, 1)
+          hold
+            refuse-stray-hook(state, child)
+        save index, add(index, 1)
+    case none
+      save nothing, 0
+
+  walk forms-at(held, <arm>)
+    take arm
+    save arm-held, make(some, arm)
+    save kind, word-at(arm-held, <kind>)
+    save flow, at(arm-held, <flow>)
+    fork test, is-word(kind, <test>)
+      hold
+        save first, make none
+        fork test, is-above(flow/length, 0)
+          hold
+            save first-step, get(flow, 0)
+            save first, make(some, first-step)
+        save pending, expression-of(state, first)
+        turn next
+    fork test, or(is-word(kind, <hold>), is-word(kind, <step>))
+      hold
+        # a `hook hold` with nothing to hold on is unconditional: its body is the else
+        sift pending
+          case some
+            link cond
+            save branch
+              make statement-branch
+                bind cond, cond
+                bind body, scoped-flow(state, flow, make list)
+            push(branches, branch)
+            save pending, no-expression()
+          case none
+            save arm-body, scoped-flow(state, flow, make list)
+            save otherwise, make(some, arm-body)
+        turn next
+    fork test, or(is-word(kind, <miss>), or(is-word(kind, <else>), is-word(kind, <fall>)))
+      hold
+        save arm-body, scoped-flow(state, flow, make list)
+        save otherwise, make(some, arm-body)
+        turn next
+    save named, <(nothing)>
+    sift kind
+      case some
+        link known
+        save named, known
+      case none
+        save nothing, 0
+    unhandled(state, arm, <a fork arm named {named}>)
+    back make none
+
+  # a `hook test` with no `hook hold` after it is still a branch, its body empty
+  sift pending
+    case some
+      link cond
+      save branch
+        make statement-branch
+          bind cond, cond
+          bind body, make list
+      push(branches, branch)
+    case none
+      save nothing, 0
+  save built
+    make if
+      bind branches, branches
+      bind otherwise, otherwise
+      bind span, where
+  back make(some, built)
+
+# `hook true` under a `fork test` is no arm of it
+task refuse-stray-hook
+  take state, like mint-state
+  take child, like node
+  mark private
+
+  sift child
+    case group
+      sift head-word(child)
+        case some
+          link head
+          fork test, is-unequal(head, <hook>)
+            hold
+              back
+        case none
+          back
+      sift node-in(nodes, 1)
+        case some
+          link second
+          sift second
+            case group
+              sift head-word(second)
+                case some
+                  link word
+                  fork test, not(is-fork-test-arm(word))
+                    hold
+                      push-problem(state, span-of-whole(child), <`hook {word}` is not an arm of a `fork test`, which has `hook test` (a condition), `hook hold` (what runs when it holds) and `hook miss` (what runs otherwise)>, make none)
+                case none
+                  save nothing, 0
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+
+# ---- calls ----
+
+task call-of
+  take state, like mint-state
+  take value, like minted
+  like maybe, like expression
+
+  save held, make(some, value)
+  sift word-at(held, <name>)
+    case none
+      unhandled(state, value, <a call with no name>)
+      back make none
+    case some
+      save nothing, 0
+  save name, text-or-empty(word-at(held, <name>))
+  save where, span-of(held)
+  # A call's arguments are matched into two sites, one for `bind <name>, <value>` and one for a bare value, so their
+  # interleaving is in the parse tree: each argument's `at` is the order it was written in
+  save entries, make list
+  walk forms-at(held, <bind>)
+    take bind-form
+    save bound, make(some, bind-form)
+    sift expression-of(state, first-at(bound, <seed>))
+      case some
+        link built
+        push(entries, written-of(at-or(bind-form, entries/length), built, word-at(bound, <name>)))
+      case none
+        save nothing, 0
+  fork test, is-lean(state, <call>)
+    hold
+      walk lean-arguments(state, value)
+        take entry
+        push(entries, entry)
+    miss
+      walk at(held, <seed>)
+        take seed
+        sift expression-of(state, make(some, seed))
+          case some
+            link built
+            push(entries, written-of(at-or(seed, entries/length), built, make none))
+          case none
+            save nothing, 0
+  # A `note` written under a CALL is not metadata: the mill reads it as an argument, `note(async)` (quirk 6)
+  walk forms-at(held, <note>)
+    take note-form
+    save noted, make(some, note-form)
+    sift word-at(noted, <text>)
+      case some
+        link word
+        save note-at, span-of(noted)
+        save inner-args, make list
+        push(inner-args, variable-at(word, span-of(first-at(noted, <text>))))
+        save note-call, plain-call(variable-at(<note>, note-at), inner-args, note-at)
+        push(entries, written-of(at-or(note-form, entries/length), note-call, make none))
+      case none
+        save nothing, 0
+  refuse-hooks(state, value)
+  save sorted, sort-written(entries)
+  save args, make list
+  save names, make list
+  save lean-names, make list
+  save lean-shaped, make list
+  walk sorted
+    take entry
+    push(args, entry/expr)
+    push(names, text-or-empty(entry/name))
+    push(lean-names, entry/lean)
+    push(lean-shaped, entry/shaped)
+  # the arithmetic and comparison builtins lower to an operator, not a call
+  save folded, fold-builtin(state, name, args, where)
+  # `halt kink` as a child of the call passes the callee's exception on
+  save propagate, false
+  walk forms-at(held, <halt>)
+    take halt-form
+    fork test, is-word(word-at(make(some, halt-form), <mode>), <kink>)
+      hold
+        save propagate, true
+  # `tick f(x)` is the call STARTED AND NOT WAITED FOR, told apart by its head word
+  save ticked, false
+  sift node-of(value)
+    case some
+      link one
+      sift one
+        case group
+          save ticked, is-word(head-word(one), <tick>)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  fork test, ticked
+    hold
+      walk forms-at(held, <wait>)
+        take wait-form
+        save hint, <write the call without `tick` to wait for it, or drop the `wait` to start it and go on>
+        push-problem(state, span-of(make(some, wait-form)), <`tick` starts the call and does not wait for it, so a `wait` under it says the opposite>, make(some, hint))
+  save background, ticked
+  save awaited, false
+  walk forms-at(held, <wait>)
+    take wait-form
+    save word, word-at(make(some, wait-form), <seed>)
+    fork test, is-word(word, <false>)
+      hold
+        save background, true
+    fork test, is-word(word, <true>)
+      hold
+        save awaited, true
+  # `call fill / <data> / like <form>` fills a form from data: the `like` names the FORM, carried as `into`
+  save into, no-type()
+  fork test, or(is-equal(name, <fill>), is-equal(name, <melt>))
+    hold
+      save into, type-of(state, first-at(held, <like>))
+  save called, plain-call(read-path(name, where), args, where)
+  sift folded
+    case some
+      link known
+      save called, known
+    case none
+      fork test, is-some-type(into)
+        hold
+          save called, full-call(read-path(<{name}-form>, where), args, where, no-texts(), no-flags(), no-flags(), false, false, false, into)
+        miss
+          save called, full-call(read-path(name, where), args, where, names-if-any(names), flags-if-any(lean-names), flags-if-any(lean-shaped), is-lean(state, <call>), propagate, background, no-type())
+  save finished, finish-call(state, called, awaited, value, where)
+  back make(some, finished)
+
+# `call f, x / link g / link h` PIPES: each `link` takes the running value as its first argument
+task with-links
+  take state, like mint-state
+  take value, like expression
+  take owner, like minted
+  like expression
+
+  save piped, value
+  walk forms-at(make(some, owner), <link>)
+    take link-form
+    save linked, make(some, link-form)
+    sift word-at(linked, <name>)
+      case some
+        link name
+        save args, make list
+        push(args, piped)
+        walk at(linked, <seed>)
+          take seed
+          sift expression-of(state, make(some, seed))
+            case some
+              link built
+              push(args, built)
+            case none
+              save nothing, 0
+        save link-at, span-of(linked)
+        save piped, plain-call(variable-at(name, link-at), args, link-at)
+      case none
+        save nothing, 0
+  back piped
+
+# The compiler's own words (`add`, `is-equal`, `not`, ...) lower to an operator where they are written, UNLESS the file
+# defines a top-level task of that name: then the call is that task
+task fold-builtin
+  take state, like mint-state
+  take name, like text
+  take args, like list, like expression
+  take where, like span
+  like maybe, like expression
+
+  fork test, state/own-tasks/has(name)
+    hold
+      back make none
+  fork test, and(is-binary-builtin(name), is-equal(args/length, 2))
+    hold
+      save folded, binary-at(binary-builtin-op(name), get(args, 0), get(args, 1), where)
+      back make(some, folded)
+  fork test, is-equal(args/length, 1)
+    hold
+      save one
+        make integer
+          bind value, 1
+          bind span, where
+      fork test, is-equal(name, <increment>)
+        hold
+          save plus, make plus
+          save folded, binary-at(plus, get(args, 0), one, where)
+          back make(some, folded)
+      fork test, is-equal(name, <decrement>)
+        hold
+          save minus, make minus
+          save folded, binary-at(minus, get(args, 0), one, where)
+          back make(some, folded)
+      fork test, is-equal(name, <not>)
+        hold
+          save folded, not-at(get(args, 0), where)
+          back make(some, folded)
+  back make none

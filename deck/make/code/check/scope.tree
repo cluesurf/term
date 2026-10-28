@@ -217,7 +217,8 @@ task with-owner-renamed
 # A FORM AND A VARIANT CASE OF ONE NAME. `make <name>` constructs either, and the flat program gave every such
 # construction to whichever it met: a user's `case pair` was built by the stdlib's zip in place of its own `pair` form,
 # and the user's own `make pair` was refused for missing the stdlib form's fields. So a form whose name is also some
-# form's case takes a name of its own (`<name>__form`), unless it is the entry file's, and the case keeps its name, which
+# form's case takes a name of its own (`<name>__form`), the entry file's too unless it is a union or a mask (decision
+# 045), and the case keeps its name, which
 # reaches the output (a TypeScript tag, a printed record). Then each reference is bound: a named type, a raise, a method
 # and a mask instance can only mean the form; a construction means the case where its file defines that case's form or
 # imports it, the form where its file defines or imports the form, and otherwise whichever's fields the construction
@@ -320,7 +321,11 @@ task separate-case-names
                 push(form-fields, field/name)
         miss
           save nothing, 0
-    fork test, in-entry
+    # THE ENTRY'S RECORD FORM IS RENAMED AS A LOADED ONE IS (decision 045, term-self-host-001-0295): kept by its name in
+    # the entry, the checker built the case for every construction there, so a file that built its own form failed as
+    # the entry and built loaded. A union or a mask keeps its name in the entry, where nothing builds it and its types
+    # bind alike either way. The build exports the renamed form by its written name too (compile.ts `entryFormAliases`)
+    fork test, and(in-entry, not(constructible))
       hold
         turn next
     # a union or a mask is never built by its own name: no file's construction means it and no field fits it, so
@@ -449,6 +454,9 @@ task bind-forms-by-import
           save program/{i}, with-name(defining, renamed-for(renamed, file-of(defining)))
     save at, add(at, 1)
 
+  # every task and method name, so a lean call to one is never taken for a construction (node-rewrite `bind-expression`)
+  save tasks, task-names(program)
+
   save position, 0
   walk program
     take one
@@ -461,6 +469,7 @@ task bind-forms-by-import
         bind shadowed, shadowed
         bind scopes, scopes
         bind order, order
+        bind tasks, tasks
     save owned, with-owners-bound(one, binding)
     save rule
       make bind-forms
@@ -473,6 +482,27 @@ task bind-forms-by-import
     make scope-result
       bind program, program
       bind diagnostics, make list
+
+task task-names
+  take program, like list, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case function
+        push(out, name)
+        sift method
+          case some
+            link owner
+            push(out, owner/name)
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  back out
 
 task renamed-for
   take renamed, like list, like renamed-file

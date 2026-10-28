@@ -467,7 +467,10 @@ task check-private-references
       back out
   save told, make list
   # the fields a reference cannot be in: types, signatures and the resolver's binding hold no reference a definition
-  # could be named by
+  # could be named by. Nor can a stub's carried shape or body (compile/stub.ts `stubShape`, `stubBody`): its references
+  # were checked in the stub's own unit, and they carry that unit's names. A task two files define is split there
+  # (`word-at__in0_1`), and the same split name meant another file's private task in the importer's unit, so the
+  # separate build refused what the merged build allowed (minting-flow.tree's `is-halt-take`, item 0313)
   save skip, make list
   push(skip, <span>)
   push(skip, <type>)
@@ -476,6 +479,8 @@ task check-private-references
   push(skip, <generics>)
   push(skip, <binding>)
   push(skip, <privateNote>)
+  push(skip, <stubShape>)
+  push(skip, <stubBody>)
   walk program
     take top
     # the statement's file where it has one, an empty one included, else the compile's

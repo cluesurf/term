@@ -9,8 +9,8 @@
 #   - a SKIP LIST names the keys left out at every depth, spelled as TypeScript spells them (`span`, `valueArgs`), as a
 #     replacer returning `undefined` for them did. A skipped key's value is never visited. `place-row` goes in the list
 #     the pipeline's fingerprints use, so stamping changes no key
-#   - a `need false` field that is not a maybe is left out when it holds its default (false, the empty text, the empty
-#     list), because Term reads an absent field as that default and cannot tell the two apart. A maybe is written when
+#   - a `need false` field that is not a maybe is left out when it holds its default (false, the empty text, 0, the
+#     empty list), because Term reads an absent field as that default and cannot tell the two apart. A maybe is written when
 #     it is `some` and left out when `none`
 #   - a text is quoted by term/quote.tree and a number as JavaScript prints it, `null` for what JSON cannot write
 #   - no bigint: node.ts reshaped an integer literal to its number and its `digits`
@@ -580,6 +580,7 @@ task json-of-expression
       link f2
       link f3
       link f4
+      link f5
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"integer">)
@@ -601,10 +602,14 @@ task json-of-expression
               push(members, <"type":{json-of-type(skip-keys, inner)}>)
             case none
               save ignored, true
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f5, 0))
+        hold
+          push(members, <"placeRow":{number-json(f5)}>)
     case float
       link f1
       link f2
       link f3
+      link f4
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"float">)
@@ -623,10 +628,14 @@ task json-of-expression
               push(members, <"type":{json-of-type(skip-keys, inner)}>)
             case none
               save ignored, true
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f4, 0))
+        hold
+          push(members, <"placeRow":{number-json(f4)}>)
     case boolean
       link f1
       link f2
       link f3
+      link f4
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"boolean">)
@@ -645,10 +654,14 @@ task json-of-expression
               push(members, <"type":{json-of-type(skip-keys, inner)}>)
             case none
               save ignored, true
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f4, 0))
+        hold
+          push(members, <"placeRow":{number-json(f4)}>)
     case string
       link f1
       link f2
       link f3
+      link f4
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"string">)
@@ -667,10 +680,14 @@ task json-of-expression
               push(members, <"type":{json-of-type(skip-keys, inner)}>)
             case none
               save ignored, true
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f4, 0))
+        hold
+          push(members, <"placeRow":{number-json(f4)}>)
     case template
       link f1
       link f2
       link f3
+      link f4
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"template">)
@@ -689,9 +706,13 @@ task json-of-expression
               push(members, <"type":{json-of-type(skip-keys, inner)}>)
             case none
               save ignored, true
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f4, 0))
+        hold
+          push(members, <"placeRow":{number-json(f4)}>)
     case unit
       link f1
       link f2
+      link f3
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"unit">)
@@ -707,9 +728,13 @@ task json-of-expression
               push(members, <"type":{json-of-type(skip-keys, inner)}>)
             case none
               save ignored, true
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f3, 0))
+        hold
+          push(members, <"placeRow":{number-json(f3)}>)
     case null
       link f1
       link f2
+      link f3
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"null">)
@@ -725,12 +750,16 @@ task json-of-expression
               push(members, <"type":{json-of-type(skip-keys, inner)}>)
             case none
               save ignored, true
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f3, 0))
+        hold
+          push(members, <"placeRow":{number-json(f3)}>)
     case variable
       link f1
       link f2
       link f3
       link f4
       link f5
+      link f6
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"variable">)
@@ -761,12 +790,16 @@ task json-of-expression
       fork test, and(enters(skip-keys, <alias>), is-unequal(f5, <>))
         hold
           push(members, <"alias":{json-quote(f5)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f6, 0))
+        hold
+          push(members, <"placeRow":{number-json(f6)}>)
     case binary
       link f1
       link f2
       link f3
       link f4
       link f5
+      link f6
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"binary">)
@@ -791,11 +824,15 @@ task json-of-expression
               push(members, <"type":{json-of-type(skip-keys, inner)}>)
             case none
               save ignored, true
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f6, 0))
+        hold
+          push(members, <"placeRow":{number-json(f6)}>)
     case unary
       link f1
       link f2
       link f3
       link f4
+      link f5
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"unary">)
@@ -817,6 +854,9 @@ task json-of-expression
               push(members, <"type":{json-of-type(skip-keys, inner)}>)
             case none
               save ignored, true
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f5, 0))
+        hold
+          push(members, <"placeRow":{number-json(f5)}>)
     case call
       link f1
       link f2
@@ -832,6 +872,7 @@ task json-of-expression
       link f12
       link f13
       link f14
+      link f15
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"call">)
@@ -905,10 +946,14 @@ task json-of-expression
       fork test, and(enters(skip-keys, <printed>), f14)
         hold
           push(members, <"printed":{flag-json(f14)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f15, 0))
+        hold
+          push(members, <"placeRow":{number-json(f15)}>)
     case array
       link f1
       link f2
       link f3
+      link f4
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"array">)
@@ -927,10 +972,14 @@ task json-of-expression
               push(members, <"type":{json-of-type(skip-keys, inner)}>)
             case none
               save ignored, true
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f4, 0))
+        hold
+          push(members, <"placeRow":{number-json(f4)}>)
     case map
       link f1
       link f2
       link f3
+      link f4
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"map">)
@@ -949,6 +998,9 @@ task json-of-expression
               push(members, <"type":{json-of-type(skip-keys, inner)}>)
             case none
               save ignored, true
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f4, 0))
+        hold
+          push(members, <"placeRow":{number-json(f4)}>)
     case record
       link f1
       link f2
@@ -959,6 +1011,7 @@ task json-of-expression
       link f7
       link f8
       link f9
+      link f10
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"record">)
@@ -1005,6 +1058,9 @@ task json-of-expression
       fork test, and(enters(skip-keys, <owner>), is-unequal(f9, <>))
         hold
           push(members, <"owner":{json-quote(f9)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f10, 0))
+        hold
+          push(members, <"placeRow":{number-json(f10)}>)
     case member
       link f1
       link f2
@@ -1013,6 +1069,7 @@ task json-of-expression
       link f5
       link f6
       link f7
+      link f8
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"member">)
@@ -1049,10 +1106,14 @@ task json-of-expression
               push(members, <"type":{json-of-type(skip-keys, inner)}>)
             case none
               save ignored, true
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f8, 0))
+        hold
+          push(members, <"placeRow":{number-json(f8)}>)
     case await
       link f1
       link f2
       link f3
+      link f4
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"await">)
@@ -1071,6 +1132,9 @@ task json-of-expression
               push(members, <"type":{json-of-type(skip-keys, inner)}>)
             case none
               save ignored, true
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f4, 0))
+        hold
+          push(members, <"placeRow":{number-json(f4)}>)
     case closure
       link f1
       link f2
@@ -1078,6 +1142,7 @@ task json-of-expression
       link f4
       link f5
       link f6
+      link f7
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"closure">)
@@ -1111,11 +1176,15 @@ task json-of-expression
               push(members, <"type":{json-of-type(skip-keys, inner)}>)
             case none
               save ignored, true
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f7, 0))
+        hold
+          push(members, <"placeRow":{number-json(f7)}>)
     case conditional
       link f1
       link f2
       link f3
       link f4
+      link f5
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"conditional">)
@@ -1143,11 +1212,15 @@ task json-of-expression
               push(members, <"type":{json-of-type(skip-keys, inner)}>)
             case none
               save ignored, true
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f5, 0))
+        hold
+          push(members, <"placeRow":{number-json(f5)}>)
     case hole
       link f1
       link f2
       link f3
       link f4
+      link f5
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"hole">)
@@ -1169,6 +1242,9 @@ task json-of-expression
       fork test, and(enters(skip-keys, <deferred>), f4)
         hold
           push(members, <"deferred":{flag-json(f4)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f5, 0))
+        hold
+          push(members, <"placeRow":{number-json(f5)}>)
   back <\{{join(members, <,>)}\}>
 
 task json-of-span
@@ -1491,6 +1567,7 @@ task json-of-statement
       link f5
       link f6
       link f7
+      link f8
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"let">)
@@ -1521,11 +1598,15 @@ task json-of-statement
       fork test, and(enters(skip-keys, <stubExport>), is-unequal(f7, <>))
         hold
           push(members, <"stubExport":{json-quote(f7)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f8, 0))
+        hold
+          push(members, <"placeRow":{number-json(f8)}>)
     case assign
       link f1
       link f2
       link f3
       link f4
+      link f5
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"assign">)
@@ -1541,9 +1622,13 @@ task json-of-statement
       fork test, enters(skip-keys, <span>)
         hold
           push(members, <"span":{json-of-span(skip-keys, f4)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f5, 0))
+        hold
+          push(members, <"placeRow":{number-json(f5)}>)
     case expression
       link f1
       link f2
+      link f3
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"expression">)
@@ -1553,10 +1638,14 @@ task json-of-statement
       fork test, enters(skip-keys, <span>)
         hold
           push(members, <"span":{json-of-span(skip-keys, f2)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f3, 0))
+        hold
+          push(members, <"placeRow":{number-json(f3)}>)
     case if
       link f1
       link f2
       link f3
+      link f4
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"if">)
@@ -1575,6 +1664,9 @@ task json-of-statement
       fork test, enters(skip-keys, <span>)
         hold
           push(members, <"span":{json-of-span(skip-keys, f3)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f4, 0))
+        hold
+          push(members, <"placeRow":{number-json(f4)}>)
     case while
       link f1
       link f2
@@ -1582,6 +1674,7 @@ task json-of-statement
       link f4
       link f5
       link f6
+      link f7
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"while">)
@@ -1613,6 +1706,9 @@ task json-of-statement
       fork test, and(enters(skip-keys, <label>), is-unequal(f6, <>))
         hold
           push(members, <"label":{json-quote(f6)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f7, 0))
+        hold
+          push(members, <"placeRow":{number-json(f7)}>)
     case match
       link f1
       link f2
@@ -1621,6 +1717,7 @@ task json-of-statement
       link f5
       link f6
       link f7
+      link f8
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"match">)
@@ -1655,6 +1752,9 @@ task json-of-statement
       fork test, and(enters(skip-keys, <typeArms>), f7)
         hold
           push(members, <"typeArms":{flag-json(f7)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f8, 0))
+        hold
+          push(members, <"placeRow":{number-json(f8)}>)
     case for-each
       link f1
       link f2
@@ -1663,6 +1763,7 @@ task json-of-statement
       link f5
       link f6
       link f7
+      link f8
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"for-each">)
@@ -1691,9 +1792,13 @@ task json-of-statement
       fork test, and(enters(skip-keys, <label>), is-unequal(f7, <>))
         hold
           push(members, <"label":{json-quote(f7)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f8, 0))
+        hold
+          push(members, <"placeRow":{number-json(f8)}>)
     case break
       link f1
       link f2
+      link f3
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"break">)
@@ -1703,9 +1808,13 @@ task json-of-statement
       fork test, enters(skip-keys, <span>)
         hold
           push(members, <"span":{json-of-span(skip-keys, f2)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f3, 0))
+        hold
+          push(members, <"placeRow":{number-json(f3)}>)
     case continue
       link f1
       link f2
+      link f3
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"continue">)
@@ -1715,9 +1824,13 @@ task json-of-statement
       fork test, enters(skip-keys, <span>)
         hold
           push(members, <"span":{json-of-span(skip-keys, f2)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f3, 0))
+        hold
+          push(members, <"placeRow":{number-json(f3)}>)
     case return
       link f1
       link f2
+      link f3
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"return">)
@@ -1733,25 +1846,37 @@ task json-of-statement
       fork test, enters(skip-keys, <span>)
         hold
           push(members, <"span":{json-of-span(skip-keys, f2)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f3, 0))
+        hold
+          push(members, <"placeRow":{number-json(f3)}>)
     case exit
       link f1
+      link f2
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"exit">)
       fork test, enters(skip-keys, <span>)
         hold
           push(members, <"span":{json-of-span(skip-keys, f1)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f2, 0))
+        hold
+          push(members, <"placeRow":{number-json(f2)}>)
     case debug
       link f1
+      link f2
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"debug">)
       fork test, enters(skip-keys, <span>)
         hold
           push(members, <"span":{json-of-span(skip-keys, f1)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f2, 0))
+        hold
+          push(members, <"placeRow":{number-json(f2)}>)
     case probe
       link f1
       link f2
+      link f3
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"probe">)
@@ -1761,10 +1886,14 @@ task json-of-statement
       fork test, enters(skip-keys, <span>)
         hold
           push(members, <"span":{json-of-span(skip-keys, f2)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f3, 0))
+        hold
+          push(members, <"placeRow":{number-json(f3)}>)
     case guard
       link f1
       link f2
       link f3
+      link f4
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"guard">)
@@ -1783,11 +1912,15 @@ task json-of-statement
       fork test, enters(skip-keys, <span>)
         hold
           push(members, <"span":{json-of-span(skip-keys, f3)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f4, 0))
+        hold
+          push(members, <"placeRow":{number-json(f4)}>)
     case throw
       link f1
       link f2
       link f3
       link f4
+      link f5
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"throw">)
@@ -1803,12 +1936,16 @@ task json-of-statement
       fork test, and(enters(skip-keys, <site>), is-unequal(f4, <>))
         hold
           push(members, <"site":{json-quote(f4)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f5, 0))
+        hold
+          push(members, <"placeRow":{number-json(f5)}>)
     case hold
       link f1
       link f2
       link f3
       link f4
       link f5
+      link f6
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"hold">)
@@ -1837,6 +1974,9 @@ task json-of-statement
               push(members, <"origin":{json-of-hold-origin(inner)}>)
             case none
               save ignored, true
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f6, 0))
+        hold
+          push(members, <"placeRow":{number-json(f6)}>)
     case function
       link f1
       link f2
@@ -1870,6 +2010,7 @@ task json-of-statement
       link f30
       link f31
       link f32
+      link f33
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"function">)
@@ -2041,6 +2182,9 @@ task json-of-statement
       fork test, enters(skip-keys, <span>)
         hold
           push(members, <"span":{json-of-span(skip-keys, f32)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f33, 0))
+        hold
+          push(members, <"placeRow":{number-json(f33)}>)
     case record-type
       link f1
       link f2
@@ -2062,6 +2206,7 @@ task json-of-statement
       link f18
       link f19
       link f20
+      link f21
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"record-type">)
@@ -2149,12 +2294,16 @@ task json-of-statement
       fork test, enters(skip-keys, <span>)
         hold
           push(members, <"span":{json-of-span(skip-keys, f20)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f21, 0))
+        hold
+          push(members, <"placeRow":{number-json(f21)}>)
     case mask
       link f1
       link f2
       link f3
       link f4
       link f5
+      link f6
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"mask">)
@@ -2177,11 +2326,15 @@ task json-of-statement
       fork test, enters(skip-keys, <span>)
         hold
           push(members, <"span":{json-of-span(skip-keys, f5)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f6, 0))
+        hold
+          push(members, <"placeRow":{number-json(f6)}>)
     case instance
       link f1
       link f2
       link f3
       link f4
+      link f5
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"instance">)
@@ -2197,6 +2350,9 @@ task json-of-statement
       fork test, enters(skip-keys, <span>)
         hold
           push(members, <"span":{json-of-span(skip-keys, f4)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f5, 0))
+        hold
+          push(members, <"placeRow":{number-json(f5)}>)
     case native
       link f1
       link f2
@@ -2205,6 +2361,7 @@ task json-of-statement
       link f5
       link f6
       link f7
+      link f8
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"native">)
@@ -2239,12 +2396,16 @@ task json-of-statement
       fork test, and(enters(skip-keys, <file>), is-unequal(f7, <>))
         hold
           push(members, <"file":{json-quote(f7)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f8, 0))
+        hold
+          push(members, <"placeRow":{number-json(f8)}>)
     case bind
       link f1
       link f2
       link f3
       link f4
       link f5
+      link f6
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"bind">)
@@ -2269,11 +2430,15 @@ task json-of-statement
       fork test, enters(skip-keys, <span>)
         hold
           push(members, <"span":{json-of-span(skip-keys, f5)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f6, 0))
+        hold
+          push(members, <"placeRow":{number-json(f6)}>)
     case view
       link f1
       link f2
       link f3
       link f4
+      link f5
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"view">)
@@ -2289,9 +2454,13 @@ task json-of-statement
       fork test, enters(skip-keys, <span>)
         hold
           push(members, <"span":{json-of-span(skip-keys, f4)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f5, 0))
+        hold
+          push(members, <"placeRow":{number-json(f5)}>)
     case dock
       link f1
       link f2
+      link f3
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"dock">)
@@ -2301,10 +2470,14 @@ task json-of-statement
       fork test, enters(skip-keys, <span>)
         hold
           push(members, <"span":{json-of-span(skip-keys, f2)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f3, 0))
+        hold
+          push(members, <"placeRow":{number-json(f3)}>)
     case roll
       link f1
       link f2
       link f3
+      link f4
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"roll">)
@@ -2317,6 +2490,9 @@ task json-of-statement
       fork test, enters(skip-keys, <span>)
         hold
           push(members, <"span":{json-of-span(skip-keys, f3)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f4, 0))
+        hold
+          push(members, <"placeRow":{number-json(f4)}>)
     case tell
       link f1
       link f2
@@ -2324,6 +2500,7 @@ task json-of-statement
       link f4
       link f5
       link f6
+      link f7
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"tell">)
@@ -2357,6 +2534,9 @@ task json-of-statement
       fork test, enters(skip-keys, <span>)
         hold
           push(members, <"span":{json-of-span(skip-keys, f6)}>)
+      fork test, and(enters(skip-keys, <placeRow>), is-unequal(f7, 0))
+        hold
+          push(members, <"placeRow":{number-json(f7)}>)
   back <\{{join(members, <,>)}\}>
 
 task json-of-assign-op

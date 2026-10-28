@@ -1,0 +1,506 @@
+# The mint bridge, part 5 of 8 (decision 033 section 2): rules, claims and their binders.
+#
+# Ported from compile/mint-bridge.ts's `ruleOf`, `claimOf`, `refuseMarkBinders` and `negated` (self-hosting, item
+# 0276), which stays as the face until part 8. The decisions:
+#   - `slug-of`, `param-of` and `proof-of` are part 3's (compile/minting-flow.tree): a `hold` reads the first two
+#   - a field the original set only when present (`open`, `axiom`, `theorem`, `universals`, a hold's `proof`) is written
+#     with its default otherwise, which node-json reads as the absent field (decision 034 section 2)
+#
+# A `rule` is a named THEOREM or AXIOM and desugars to a FUNCTION. Two shapes, told apart by whether it states a `show`
+# goal: with one, its `seat` binders are the parameters and the goal is held under its hypotheses; without one, it is a
+# CLAIM, a signature-only function marked `claim` that a `task` of the same name must fill (check/claim.ts).
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find span
+
+load ./node
+  find expression
+  find statement
+  find type
+  find function-param
+  find generic-param
+  find declared-param
+  find universal
+  find statement-branch
+  find binary-op
+  find refinement
+
+load ./mill-running
+  find minted
+
+load ./minting-reads
+  find mint-state
+  find at
+  find first-at
+  find forms-at
+  find text-of
+  find word-at
+  find span-of
+
+load ./minting-values
+  find push-problem
+  find expression-of
+  find type-of
+  find with-head-args
+  find fold-builtin
+  find read-path
+  find marked
+  find minted-form
+
+load ./minting-flow
+  find slug-of
+  find param-of
+  find proof-of
+
+# ---- small readers ----
+
+task rules-word-is
+  take word, like maybe, like text
+  take expected, like text
+  like boolean
+  mark private
+
+  sift word
+    case some
+      link known
+      back is-equal(known, expected)
+    case none
+      back false
+
+task rules-text-else
+  take word, like maybe, like text
+  take fallback, like text
+  like text
+  mark private
+
+  sift word
+    case some
+      link known
+      back known
+    case none
+      back fallback
+
+# the head word a minted value was built from, for a relation written as a bare name
+task head-word-of
+  take value, like maybe, like minted
+  like maybe, like text
+  mark private
+
+  sift value
+    case some
+      link known
+      save held, make(some, known)
+      sift minted-form(known)
+        case some
+          link built-by
+          sift word-at(held, <name>)
+            case some
+              link named
+              back make(some, named)
+            case none
+              back word-at(held, <path>)
+        case none
+          back make none
+    case none
+      back make none
+
+# ---- the binders ----
+
+# `mark x, like t` under a `rule` or its `have` was the spelling of a theorem's variable until 2026-10-05: refused by name
+task refuse-mark-binders
+  take state, like mint-state
+  take value, like minted
+
+  walk forms-at(make(some, value), <mark>)
+    take mark-form
+    save marking, make(some, mark-form)
+    save name, rules-text-else(word-at(marking, <name>), <x>)
+    save hint, <write `seat {name}` in its place, or run `pnpm term:seat-migrate --commit` over the tree>
+    push-problem(state, span-of(marking), <`mark {name}` is the old spelling of a theorem's variable. A variable of a rule is a `seat`>, make(some, hint))
+
+# ---- the claim ----
+
+# A `show` line's claim: one value as written, or a relation and its arguments as a call
+task claim-of
+  take state, like mint-state
+  take shown, like minted
+  like maybe, like expression
+
+  save held, make(some, shown)
+  save seeds, at(held, <seed>)
+  fork test, is-equal(seeds/length, 0)
+    hold
+      back make none
+  save first, get(seeds, 0)
+  fork test, is-equal(seeds/length, 1)
+    hold
+      back expression-of(state, make(some, first))
+  save where, span-of(held)
+  save callee, text-of(make(some, first))
+  sift callee
+    case none
+      save callee, head-word-of(make(some, first))
+    case some
+      save nothing, 0
+  save called, rules-text-else(callee, <>)
+  save args, make list
+  save index, 0
+  walk seeds
+    take seed-form
+    fork test, is-above(index, 0)
+      hold
+        sift expression-of(state, make(some, seed-form))
+          case some
+            link built
+            push(args, built)
+          case none
+            save nothing, 0
+    save index, add(index, 1)
+  sift fold-builtin(state, called, args, where)
+    case some
+      link folded
+      back make(some, folded)
+    case none
+      save nothing, 0
+  save called-claim
+    make call
+      bind callee, read-path(called, where)
+      bind args, args
+      bind span, where
+  back make(some, called-claim)
+
+# `show miss` proves the claim FALSE. An ORDER comparison flips to its complement, anything else is negated
+task negated
+  take claim, like expression
+  take where, like span
+  like expression
+
+  sift claim
+    case binary
+      link bin-op
+      link bin-left
+      link bin-right
+      link bin-span
+      link bin-type
+      link bin-row
+      sift flip-order(bin-op)
+        case some
+          link flipped
+          back
+            make binary
+              bind op, flipped
+              bind left, bin-left
+              bind right, bin-right
+              bind span, bin-span
+              bind type, bin-type
+              bind place-row, bin-row
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  save not-op, make not
+  back
+    make unary
+      bind op, not-op
+      bind operand, claim
+      bind span, where
+
+task flip-order
+  take op, like binary-op
+  like maybe, like binary-op
+  mark private
+
+  sift op
+    case above
+      save flipped, make at-most
+      back make(some, flipped)
+    case below
+      save flipped, make at-least
+      back make(some, flipped)
+    case at-least
+      save flipped, make below
+      back make(some, flipped)
+    case at-most
+      save flipped, make above
+      back make(some, flipped)
+    miss
+      back make none
+
+# ---- a rule ----
+
+form hypothesis
+  link name, like text
+  link expr, like maybe, like expression
+  link binders, like list, like text
+  link types, like list, like declared-param
+
+# `rule <name>`: a claim or a theorem, and what proves it
+task rule-of
+  take state, like mint-state
+  take value, like minted
+  like list, like statement
+
+  save held, make(some, value)
+  save where, span-of(held)
+  save name, <rule>
+  save named, first-at(held, <name>)
+  sift named
+    case some
+      link known
+      sift known
+        case text
+          link written
+          save name, slug-of(written)
+        miss
+          save name, rules-text-else(text-of(named), <rule>)
+    case none
+      save nothing, 0
+
+  save generics, make list
+  walk forms-at(held, <head>)
+    take head-form
+    save generic
+      make generic-param
+        bind name, rules-text-else(word-at(make(some, head-form), <name>), <>)
+    push(generics, generic)
+
+  save out, make list
+  save shows, forms-at(held, <show>)
+  fork test, is-equal(shows/length, 0)
+    hold
+      save claim-params, make list
+      walk forms-at(held, <take>)
+        take take-form
+        push(claim-params, param-of(state, take-form, state/owner, false))
+      save claim-result, type-of(state, first-at(held, <like>))
+      save no-body, make list
+      # a claim declares and does not define: nothing elaborates or emits its empty body, as for a stub
+      save claimed
+        make function
+          bind name, name
+          bind params, claim-params
+          bind body, no-body
+          bind result, claim-result
+          bind generics, generics
+          bind claim, true
+          bind stub, true
+          bind open, marked(value, <open>)
+          bind span, where
+      push(out, claimed)
+      back out
+
+  refuse-mark-binders(state, value)
+
+  # `seat x, like natural-number` carries the n >= 0 bound the prover needs, read from the type's NAME
+  save params, make list
+  walk forms-at(held, <seat>)
+    take seat-form
+    save seated, make(some, seat-form)
+    save like-value, first-at(seated, <like>)
+    save seat-type, with-head-args(state, type-of(state, like-value), seat-form)
+    save refine, make none
+    fork test, rules-word-is(word-at(like-value, <name>), <natural-number>)
+      hold
+        save natural, make natural
+        save refine, make(some, natural)
+    save param
+      make function-param
+        bind name, rules-text-else(word-at(seated, <name>), <>)
+        bind type, seat-type
+        bind refine, refine
+    push(params, param)
+
+  save hypotheses, make list
+  save have-index, 0
+  walk forms-at(held, <have>)
+    take have-form
+    refuse-mark-binders(state, have-form)
+    save had, make(some, have-form)
+    save have-name, rules-text-else(word-at(had, <name>), <claim_{have-index}>)
+    save have-expr, expression-of(state, first-at(had, <seed>))
+    # `seat` inside a `have`: the hypothesis holds FOR EVERY value of these, each read at its own type
+    save binders, make list
+    walk forms-at(had, <seat>)
+      take seat-form
+      push(binders, rules-text-else(word-at(make(some, seat-form), <name>), <>))
+    save types, make list
+    walk forms-at(had, <seat>)
+      take seat-form
+      save seated, make(some, seat-form)
+      save binder-type, with-head-args(state, type-of(state, first-at(seated, <like>)), seat-form)
+      save declared
+        make declared-param
+          bind type, binder-type
+      push(types, declared)
+    save hypothesis-of
+      make hypothesis
+        bind name, have-name
+        bind expr, have-expr
+        bind binders, binders
+        bind types, types
+    push(hypotheses, hypothesis-of)
+    save have-index, add(have-index, 1)
+
+  save universals, make list
+  walk hypotheses
+    take one
+    sift one/expr
+      case some
+        link known
+        fork test, is-above(one/binders/length, 0)
+          hold
+            save quantified
+              make universal
+                bind name, one/name
+                bind binders, one/binders
+                bind expr, known
+                bind types, one/types
+            push(universals, quantified)
+      case none
+        save nothing, 0
+
+  save witnesses, make list
+  walk forms-at(held, <find>)
+    take find-form
+    save found, make(some, find-form)
+    save witness-name, rules-text-else(word-at(found, <name>), <>)
+    sift expression-of(state, first-at(found, <seed>))
+      case some
+        link known
+        push(witnesses, let-of(witness-name, known, where))
+      case none
+        save nothing, 0
+
+  save goal, make none
+  save shown, get(shows, 0)
+  sift claim-of(state, shown)
+    case some
+      link stated
+      fork test, rules-word-is(word-at(make(some, shown), <mode>), <miss>)
+        hold
+          save flipped, negated(stated, where)
+          save goal, make(some, flipped)
+        miss
+          save goal, make(some, stated)
+    case none
+      save nothing, 0
+  save bases, forms-at(held, <base>)
+  save is-axiom, is-above(bases/length, 0)
+  save proof-steps, make list
+  walk at(held, <step>)
+    take step-form
+    push(proof-steps, proof-of(step-form))
+
+  save body, witnesses
+  sift goal
+    case some
+      link known
+      fork test, is-axiom
+        hold
+          walk hypotheses
+            take one
+            sift one/expr
+              case some
+                link have-value
+                push(body, let-of(one/name, have-value, where))
+              case none
+                save nothing, 0
+          push(body, let-of(<claim>, known, where))
+        miss
+          # each hypothesis becomes a guard around the goal, innermost last, which is how an implication is proved
+          save goal-hold
+            make hold
+              bind name, name
+              bind expr, known
+              bind proof, proof-steps
+              bind span, where
+          save guarded, make list
+          push(guarded, goal-hold)
+          save at-index, subtract(hypotheses/length, 1)
+          walk test
+            hook test, is-minimum(at-index, 0)
+            hook hold
+              save one, get(hypotheses, at-index)
+              fork test, is-equal(one/binders/length, 0)
+                hold
+                  sift one/expr
+                    case some
+                      link guard-cond
+                      save branch
+                        make statement-branch
+                          bind cond, guard-cond
+                          bind body, guarded
+                      save branches, make list
+                      push(branches, branch)
+                      save wrapped
+                        make if
+                          bind branches, branches
+                          bind span, where
+                      save guarded, make list
+                      push(guarded, wrapped)
+                    case none
+                      save nothing, 0
+              save at-index, subtract(at-index, 1)
+          walk guarded
+            take one
+            push(body, one)
+    case none
+      save nothing, 0
+
+  save returned, make none
+  fork test, is-above(params/length, 0)
+    hold
+      save first-param, get(params, 0)
+      save read-first, read-path(first-param/name, where)
+      save returned, make(some, read-first)
+    miss
+      save unit-value
+        make unit
+          bind span, where
+      save returned, make(some, unit-value)
+  save back-step
+    make return
+      bind value, returned
+      bind span, where
+  push(body, back-step)
+
+  # an axiom is postulated, not proven: the trust ledger (`term hold`) lists every one by name
+  save has-goal, false
+  sift goal
+    case some
+      save has-goal, true
+    case none
+      save nothing, 0
+  save built
+    make function
+      bind name, name
+      bind params, params
+      bind body, body
+      bind generics, generics
+      bind axiom, and(has-goal, is-axiom)
+      bind theorem, and(has-goal, not(is-axiom))
+      bind universals, universals
+      bind span, where
+  push(out, built)
+  back out
+
+task let-of
+  take name, like text
+  take init, like expression
+  take where, like span
+  like statement
+  mark private
+
+  back
+    make let
+      bind name, name
+      bind init, init
+      bind mutable, false
+      bind span, where

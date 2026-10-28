@@ -30,6 +30,7 @@ import * as tsNames from '@term/make/code/compile/ts-names'
 import * as tsEmit from '@term/make/code/compile/ts-emit'
 import * as tsPreludes from '@term/make/code/compile/ts-preludes'
 import * as tsAssemble from '@term/make/code/compile/ts-assemble'
+import { stampPlaces } from '@term/make/code/compile/place-stamp'
 import * as shapes from '@term/make/code/compile/backend-shapes'
 import { raiseSetsOf } from '@term/make/code/check/effects'
 
@@ -364,7 +365,7 @@ export function emitTypeScript(
 ): string {
   const env = options?.env ?? 'node'
   // stubs dropped, `hook` routes lowered, and every table the emitter's facts are built from
-  const tables = tsAssemble.tsTables(
+  const assembled = tsAssemble.tsTables(
     program as never,
     boxed(options?.context) as never,
     [...(options?.variants ?? [])],
@@ -373,6 +374,8 @@ export function emitTypeScript(
     options?.variants !== undefined,
     env,
   )
+  // the last rewrite: every fact below and the emission read one STAMPED copy, each place a node of its own (D011 rule 4)
+  const tables = { ...assembled, program: stampPlaces(assembled.program as never) as unknown as typeof assembled.program }
   const lowered = tables.program as unknown as Program
 
   tsOpaqueTypes = tables.opaque

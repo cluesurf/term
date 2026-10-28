@@ -89,7 +89,7 @@ function sameValueArgs(
   return text(a) === text(b)
 }
 
-const AS_WRITTEN = ['span', 'type', 'binding', 'site']
+const AS_WRITTEN = ['span', 'type', 'binding', 'site', 'placeRow']
 
 // thrown to abandon checking a construct the effect layer cannot represent yet (distinct from a real type error,
 // which surfaces as the kernel's TypeError). A declined function is left to the surface checker and counted, with

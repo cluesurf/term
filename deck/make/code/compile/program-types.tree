@@ -1,0 +1,743 @@
+# THE TYPES of `compileProgram`, steps 11 to 14: the claims filled, each task's signature as written, the checker, the
+# warning dedupe, the two stamps (an `inspect`'s checked type, every call's and raise's Term frame), the affine checks,
+# the components' lowered code checked, async slots and resolution, the missing waits, and the fast roll's exit. It
+# writes the run in place and answers the refusal that stops the compile, the fast roll, or neither to hand the run on
+# to the proofs.
+#
+# Ported from compile/compile.ts's `programTypes`, `stampInspectTypes`, `stampSites` and `relativePath` (item 0265 of
+# term/self-host/change/001, decision 031 part E), which stay as the face. The decisions:
+#   - the passes that are Term are loaded by their `.tree` names (check/claim, check/async-slots, check/async-resolve,
+#     compile/frames, and the gate's `deck-homes`); the ones with no port yet are docks, each named for its module
+#     (decision 031 section 3): check/infer, check/views, check/sole, check/sole-earned, check/hide, check/missing-wait
+#     and compile/roll
+#   - check/views.ts `copyForViews` is a `structuredClone` of the program when this file defines a component, written
+#     here with the same clone (`types-copy-program`), so the docked view check gets the copy the original made
+#   - the two stamps walk with compile/node-children.tree and rebuild with compile/node-rebuild.tree (spec.md sections
+#     4.10, 4.11): a node is rebuilt fresh only when it or a node under it is stamped, so the answer is a stamped program
+#     whose stamped places are new nodes, the input never written. The face assigns it. The original's reflective walks
+#     skipped the keys `span`, `type` and `into` (the inspect stamp) and also `result` (the site stamp), which are the
+#     skip lists here
+#   - a `call` of a component's view body (node.tree's view-node case `call`) took a `site` from the original's site
+#     stamp, a key node.tree does not declare there (decision 034 rule 3). Nothing reads it, node-json leaves it out, and
+#     here it is not written
+#   - the original's two patterns are written out: `the type "<name>" is not defined` anywhere in a type-name message
+#     (`/the type "([^"]+)" is not defined/`), and `"<name>" is not a type` at the start of a checker message
+#     (`/^"([^"]+)" is not a type/`), the name at least one character and holding no `"`
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-count
+  find index-of
+  find last-index-of
+  find substring
+  find starts-with
+  find ends-with
+
+load ../parser/diagnostic
+  find diagnostic
+
+load ./node
+  find statement
+  find expression
+  find type
+  find declared-param
+  find declared-signature
+  find statement-span
+  find expression-type
+
+load ./node-children
+  find node-handle
+  find node-children
+
+load ./node-rebuild
+  find rebuild-type
+  find rebuild-view
+  find rebuild-expression
+  find rebuild-statement
+
+load ./import-scope
+  find file-scope
+
+load ./program-run
+  find program-run
+
+load ./rolling
+  find roll-deck
+
+load ./frames
+  find frame-text
+
+load ./program-gate
+  find deck-homes
+
+load ../check/claim
+  find fill-claims
+
+load ../check/async-slots
+  find async-slots
+
+load ../check/async-resolve
+  find resolve-async
+
+dock load
+  load <@term/make/code/check/infer>, name program-types-infer
+  load <@term/make/code/check/views>, name program-types-views
+  load <@term/make/code/check/sole>, name program-types-sole
+  load <@term/make/code/check/sole-earned>, name program-types-earned
+  load <@term/make/code/check/hide>, name program-types-hide
+  load <@term/make/code/check/missing-wait>, name program-types-waits
+  load <@term/make/code/compile/roll>, name program-types-roll
+
+# what the run holds as `need false` and the types read, filled by the face
+form types-given
+  # the deck the build knows a file by, none for every file when the build knows none
+  link deck-of
+    like task
+      take file, like text
+      like maybe, like roll-deck
+  # the import scope as the ported passes take it, empty for none
+  link scopes, like list, like file-scope
+  # the build's own deck lookup as the roll takes it (compile/roll.ts `DeckOf`), absent when the build has none
+  link host-deck-of, like dynamic
+
+# the refusal that stops the compile, or none; and the fast roll, when the run wanted only that
+form types-answer
+  link refused, like maybe, like list, like diagnostic
+  link roll, like maybe, like dynamic
+
+# the fast roll's options, as compile/roll.ts takes them
+form types-roll-options
+  link deck-of, like dynamic
+  link ids, like boolean
+  link docks
+    like list, like statement
+    need false
+
+# one stamp's walk: how many nodes it stamped so far, which stamp it is, and for the site stamp the task and the file
+# spelled for the statement it is in
+form stamp-state
+  mark shared
+  link stamped, like number
+  link sites, like boolean
+  link task-name, like text
+  link file-name, like text
+
+# ---- clones, as the original's `structuredClone` ----
+
+# a type, deep-copied. Natively a value is already a copy
+bind types-copy-type
+  take value, like type
+  like type
+  case node
+    text <structuredClone($value)>
+  case browser
+    text <structuredClone($value)>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+# a whole program, deep-copied. Natively a value is already a copy
+bind types-copy-program
+  take value, like list, like statement
+  like list, like statement
+  case node
+    text <structuredClone($value)>
+  case browser
+    text <structuredClone($value)>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+# ---- small helpers ----
+
+task types-refusal
+  take found, like list, like diagnostic
+  like types-answer
+  mark private
+
+  back
+    make types-answer
+      bind refused, make(some, found)
+      bind roll, make none
+
+task handed-on
+  like types-answer
+  mark private
+
+  back
+    make types-answer
+      bind refused, make none
+      bind roll, make none
+
+# a dock's answer, a list of diagnostics
+task as-diagnostics
+  take value, like dynamic
+  like list, like diagnostic
+  mark private
+
+  back value
+
+task is-warning
+  take one, like diagnostic
+  like boolean
+  mark private
+
+  back is-equal(one/severity, make warning)
+
+task push-all
+  take out, like list, like diagnostic
+  take found, like list, like diagnostic
+  mark private
+
+  walk found
+    take one
+    push(out, one)
+
+# ---- the types as written, for the kernel ----
+
+# each task's parameter and result types as written, before the surface pass seeds them (lossily, on purpose): a copy
+# of each, so what the checker writes into the program's own types is not seen here
+task with-declared
+  take program, like list, like statement
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case function
+        save written-params, make list
+        walk params
+          take param
+          sift param/type
+            case some
+              link param-type
+              save copied-type, types-copy-type(param-type)
+              save kept
+                make declared-param
+                  bind type, make(some, copied-type)
+              push(written-params, kept)
+            case none
+              save bare, make declared-param
+              push(written-params, bare)
+        sift result
+          case some
+            link written-result
+            save copied-result, types-copy-type(written-result)
+            save signature
+              make declared-signature
+                bind params, written-params
+                bind result, make(some, copied-result)
+            save one/declared, make(some, signature)
+          case none
+            save bare-signature
+              make declared-signature
+                bind params, written-params
+            save one/declared, make(some, bare-signature)
+      miss
+        save nothing, 0
+    push(out, one)
+  back out
+
+# the copy the components' lowered code is checked from, or none when this file defines no component
+task views-copy
+  take program, like list, like statement
+  take file, like text
+  like maybe, like list, like statement
+  mark private
+
+  walk program
+    take one
+    sift one
+      case view
+        sift span/file
+          case some
+            link view-file
+            fork test, is-equal(view-file, file)
+              hold
+                save copied, types-copy-program(program)
+                back make(some, copied)
+          case none
+            turn next
+      miss
+        turn next
+  back make none
+
+# ---- the warning dedupe ----
+
+# the name of `the type "<name>" is not defined` anywhere in a message, the first place it stands
+task undefined-type-name
+  take message, like text
+  like maybe, like text
+  mark private
+
+  save head, <the type ">
+  save at, index-of(message, head, 0)
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      save start, add(at, char-count(head))
+      save close, index-of(message, <">, start)
+      fork test, is-above(close, start)
+        hold
+          fork test, starts-with(substring(message, close), <" is not defined>)
+            hold
+              save named-type, substring(message, start, close)
+              back make(some, named-type)
+      save at, index-of(message, head, add(at, 1))
+  back make none
+
+# the name of `"<name>" is not a type` at the start of a message
+task not-a-type-name
+  take message, like text
+  like maybe, like text
+  mark private
+
+  fork test, not(starts-with(message, <">))
+    hold
+      back make none
+  save close, index-of(message, <">, 1)
+  fork test, is-above(close, 1)
+    hold
+      fork test, starts-with(substring(message, close), <" is not a type>)
+        hold
+          save named-type, substring(message, 1, close)
+          back make(some, named-type)
+  back make none
+
+# a checker warning said already: an unknown type name the type-name pass reported
+task named-already
+  take one, like diagnostic
+  take named, like hash, like text, like boolean
+  like boolean
+  mark private
+
+  fork test, not(is-equal(one/name, <unknown-type>))
+    hold
+      back false
+  sift not-a-type-name(one/message)
+    case some
+      link type-name
+      back named/has(type-name)
+    case none
+      back false
+
+# ---- the two stamps ----
+
+# a path inside `root`, with `/` between its parts on every platform
+task relative-path
+  take root, like text
+  take file, like text
+  like text
+
+  save base, root
+  fork test, not(ends-with(root, </>))
+    hold
+      save base, <{root}/>
+  fork test, starts-with(file, base)
+    hold
+      back substring(file, char-count(base))
+  back file
+
+# a file as a frame spells it: by its deck, `<deck>/<path in the deck>`, else by its own name; the empty text for none.
+# Each file is spelled once
+task spelled-file
+  take spelled, like hash, like text, like text
+  take deck-of
+    like task
+      take file, like text
+      like maybe, like roll-deck
+  take written, like maybe, like text
+  like text
+  mark private
+
+  sift written
+    case none
+      back <>
+    case some
+      link path
+      fork test, spelled/has(path)
+        hold
+          back spelled/get(path)
+      save known, substring(path, add(last-index-of(path, </>), 1))
+      sift deck-of(path)
+        case some
+          link deck
+          save known, <{deck/name}/{relative-path(deck/root, path)}>
+        case none
+          save nothing, 0
+      save spelled/{path}, known
+      back known
+
+# whether the inspect stamp writes this call: an `inspect-form` call with no `into` yet, whose first argument is typed
+task wants-inspect-type
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case call
+      sift into
+        case some
+          back false
+        case none
+          save nothing, 0
+      fork test, is-equal(args/length, 0)
+        hold
+          back false
+      sift callee
+        case variable
+          fork test, not(is-equal(name, <inspect-form>))
+            hold
+              back false
+        miss
+          back false
+      sift expression-type(get(args, 0))
+        case some
+          back true
+        case none
+          back false
+    miss
+      back false
+
+# whether the site stamp writes this expression: a call with no frame yet
+task wants-call-site
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case call
+      back is-equal(site, <>)
+    miss
+      back false
+
+task wants-raise-site
+  take node, like statement
+  like boolean
+  mark private
+
+  sift node
+    case throw
+      back is-equal(site, <>)
+    miss
+      back false
+
+# a fresh expression, its stamp written
+task stamp-expression
+  take state, like stamp-state
+  take node, like expression
+  like expression
+  mark private
+
+  save made, node
+  sift made
+    case call
+      fork test, state/sites
+        hold
+          save frame, frame-text(state/task-name, state/file-name, add(span/start/line, 1))
+          save made/site, frame
+        miss
+          sift expression-type(get(args, 0))
+            case some
+              link argument-type
+              save made/into, make(some, argument-type)
+            case none
+              save nothing, 0
+    miss
+      save nothing, 0
+  back made
+
+# a fresh statement, its stamp written
+task stamp-statement
+  take state, like stamp-state
+  take node, like statement
+  like statement
+  mark private
+
+  save made, node
+  sift made
+    case throw
+      save frame, frame-text(state/task-name, state/file-name, add(span/start/line, 1))
+      save made/site, frame
+    miss
+      save nothing, 0
+  back made
+
+# whether this stamp writes this node
+task wants-stamp
+  take state, like stamp-state
+  take handle, like node-handle
+  like boolean
+  mark private
+
+  sift handle
+    case expression-handle
+      link inner
+      fork test, state/sites
+        hold
+          back wants-call-site(inner)
+      back wants-inspect-type(inner)
+    case statement-handle
+      link inner
+      fork test, state/sites
+        hold
+          back wants-raise-site(inner)
+      back false
+    miss
+      back false
+
+# one node, stamped: its children first, then the node rebuilt fresh over them, and its own stamp written on the new
+# node, only when it or a node under it was stamped. A node nothing under it changed comes back as it was
+task stamp-node
+  take state, like stamp-state
+  take skip, like list, like text
+  take handle, like node-handle
+  like node-handle
+  mark private
+
+  save before, state/stamped
+  save children, make list
+  walk node-children(handle, skip)
+    take child
+    push(children, stamp-node(state, skip, child))
+  save wanted, wants-stamp(state, handle)
+  fork test, and(not(wanted), is-equal(state/stamped, before))
+    hold
+      back handle
+  fork test, wanted
+    hold
+      save state/stamped, add(state/stamped, 1)
+  sift handle
+    case expression-handle
+      link inner
+      save made, rebuild-expression(inner, children, skip)
+      fork test, wanted
+        hold
+          save made, stamp-expression(state, made)
+      back
+        make node-handle/expression-handle
+          bind node, made
+    case statement-handle
+      link inner
+      save made, rebuild-statement(inner, children, skip)
+      fork test, wanted
+        hold
+          save made, stamp-statement(state, made)
+      back
+        make node-handle/statement-handle
+          bind node, made
+    case type-handle
+      link inner
+      back
+        make node-handle/type-handle
+          bind node, rebuild-type(inner, children, skip)
+    case view-handle
+      link inner
+      back
+        make node-handle/view-handle
+          bind node, rebuild-view(inner, children, skip)
+
+task stamped-statement
+  take state, like stamp-state
+  take skip, like list, like text
+  take node, like statement
+  like statement
+  mark private
+
+  save handle
+    make node-handle/statement-handle
+      bind node, node
+  save made, stamp-node(state, skip, handle)
+  sift made
+    case statement-handle
+      link inner
+      back inner
+    miss
+      halt <program-types: a statement was rebuilt as another kind of node>
+
+# AN `inspect` IS WALKED BY THE TYPE ITS ARGUMENT HAD WHERE IT WAS WRITTEN (term/base-v1 decision 001). The checked
+# type is kept on the call as its `into`, so inlining a small task, which puts the caller's argument in place of its
+# parameter (`show(value)` with `value` unknown, called with `5`), leaves the walk the one its source said
+task stamp-inspect-types
+  take program, like list, like statement
+  like list, like statement
+
+  save skip, make list
+  push(skip, <type>)
+  push(skip, <into>)
+  save state
+    make stamp-state
+      bind stamped, 0
+      bind sites, false
+      bind task-name, <>
+      bind file-name, <>
+  save out, make list
+  walk program
+    take one
+    push(out, stamped-statement(state, skip, one))
+  back out
+
+# EVERY CALL AND EVERY RAISE KNOWS ITS TERM FRAME (term/hive decision 001, compile/frames.tree): `<task> <file>:<line>`,
+# stamped before the simplifier runs, so a task inlined into its caller keeps the frames of its own source. A closure's
+# sites are named by the task it is written in, a site outside every task by `top`. The file is spelled by its deck,
+# else by its own name, so a frame is one text in a separate build and a merged one and on every machine. A node already
+# stamped (a stub's body, built by the unit that owns it) keeps its frame
+task stamp-sites
+  take program, like list, like statement
+  take deck-of
+    like task
+      take file, like text
+      like maybe, like roll-deck
+  like list, like statement
+
+  save skip, make list
+  push(skip, <type>)
+  push(skip, <into>)
+  push(skip, <result>)
+  save spelled, make hash
+  save state
+    make stamp-state
+      bind stamped, 0
+      bind sites, true
+      bind task-name, <top>
+      bind file-name, <>
+  save out, make list
+  walk program
+    take one
+    save at, statement-span(one)
+    save state/file-name, spelled-file(spelled, deck-of, at/file)
+    save state/task-name, <top>
+    sift one
+      case function
+        save state/task-name, name
+        sift method
+          case some
+            link owner
+            save state/task-name, owner/name
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+    push(out, stamped-statement(state, skip, one))
+  back out
+
+# ---- the types ----
+
+task program-types
+  take run, like program-run
+  take given, like types-given
+  like types-answer
+
+  save file, run/file
+
+  # a claim's fill inherits the claim's signature, so a proof states the name and its parameters and the type is
+  # written once, on the rule. Runs BEFORE the checker so the fill's body is checked against the claim
+  save run/program, fill-claims(run/program)
+
+  # the types as written, before the surface pass seeds them, for the kernel
+  save run/program, with-declared(run/program)
+
+  # the components' lowered code is checked too, from a copy taken before the main check annotates the program
+  save view-copy, views-copy(run/program, file)
+
+  # formal type checking: the surface pass annotates the program with types. Its warnings (an unknown type name) ride
+  # with the build's other warnings; only its errors stop it
+  save found, as-diagnostics(program-types-infer/check(run/program, file, run/merged))
+  save errors, make list
+  walk found
+    take one
+    fork test, not(is-warning(one))
+      hold
+        push(errors, one)
+
+  # an unknown type name the type-name pass already reported (as a warning, in a deck that describes a host) is said
+  # once: the checker's `unknown-type` for the same name was a second line about one problem
+  save named, make hash
+  walk run/type-name-diagnostics
+    take one
+    sift undefined-type-name(one/message)
+      case some
+        link type-name
+        save named/{type-name}, true
+      case none
+        turn next
+  save warnings, make list
+  walk found
+    take one
+    fork test, and(is-warning(one), not(named-already(one, named)))
+      hold
+        push(warnings, one)
+  save run/check-warnings, warnings
+  fork test, is-above(errors/length, 0)
+    hold
+      back types-refusal(errors)
+
+  save run/program, stamp-inspect-types(run/program)
+  save run/program, stamp-sites(run/program, given/deck-of)
+
+  # `mark sole` and `mark hide` on a form (affine-kinds decision 001), held after the checker typed every value and
+  # before any backend: a form holding a sole value is sole itself, only the declaring file makes a hidden form, and a
+  # sole value is used at most once
+  save affine, make list
+  push-all(affine, as-diagnostics(program-types-earned/check-sole-earned(run/program, file)))
+  save homes, deck-homes(run/program, given/scopes, file, given/deck-of)
+  push-all(affine, as-diagnostics(program-types-hide/check-hidden-makes(run/program, file, homes)))
+  push-all(affine, as-diagnostics(program-types-sole/check-sole-generics(run/program, file)))
+  push-all(affine, as-diagnostics(program-types-sole/check-sole-uses(run/program, file)))
+  fork test, is-above(affine/length, 0)
+    hold
+      back types-refusal(affine)
+
+  sift view-copy
+    case some
+      link copied
+      save view-errors, as-diagnostics(program-types-views/check-lowered-views(copied, file, run/merged))
+      fork test, is-above(view-errors/length, 0)
+        hold
+          back types-refusal(view-errors)
+    case none
+      save nothing, 0
+
+  # async resolution: which tasks are async, from the call graph, with async calls awaited by default. A task written
+  # in place where an async task is taken is async itself
+  save run/program, async-slots(run/program)
+  save run/program, resolve-async(run/program)
+
+  # a call into a host module that answers promises, awaited by nothing
+  save missing-waits, as-diagnostics(program-types-waits/check-missing-waits(run/program, file))
+  fork test, is-above(missing-waits/length, 0)
+    hold
+      back types-refusal(missing-waits)
+
+  # the roll alone, for an entry already known to build: everything after this only refuses or warns
+  fork test, is-equal(run/want-roll, make fast-roll)
+    hold
+      save options
+        make types-roll-options
+          bind deck-of, given/host-deck-of
+          bind ids, true
+      # the gate writes the page docks only when the route lowering dropped some
+      fork test, is-above(run/page-docks/length, 0)
+        hold
+          save options/docks, run/page-docks
+      save rolled, program-types-roll/build-roll(run/program, file, options)
+      back
+        make types-answer
+          bind refused, make none
+          bind roll, make(some, rolled)
+
+  back handed-on()

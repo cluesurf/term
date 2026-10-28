@@ -76,6 +76,63 @@ const SELECTION = `load @app/diagnostic\n  find diagnose\n\nform twin-choice\n  
   ok('a record form named like a case: its own file still builds the form', result.ok, said(result))
 }
 
+// ---- a RECORD form named like a case the file never imports (term-self-host-001-0295, decision 045) ----
+// As the entry the record kept its name and the checker built the case (`kind has no field label`); loaded, it was
+// renamed `twin-choice__form` and built. Now the entry's is renamed too, and exported by its written name as well
+
+const OWN_BODY = `form twin-choice\n  link label, like text\n\ntask pick\n  like text\n  save k\n    make twin-choice\n      bind label, <x>\n  back k/label\n`
+const OTHER = `load @app/diagnostic\n  find diagnose\n\ntask other\n  like text\n  back <o>\n`
+
+{
+  const main = `load @app/other\n  find other\n\nload @app/diagnostic\n  find diagnose\n\n${OWN_BODY}`
+  const result = build({ '@app/diagnostic': DIAGNOSTIC, '@app/other': OTHER }, main)
+  ok('a record form named like an unimported case: built as the form, the file the entry', result.ok, said(result))
+  ok(
+    'a record form named like a case: the entry exports it by its written name',
+    result.ok && /^export type TwinChoice = TwinChoiceForm$/m.test(result.typescript),
+    result.ok ? result.typescript.split('\n').filter(line => line.includes('TwinChoice')).join(' | ') : '',
+  )
+}
+
+{
+  const main = `load @app/other\n  find other\n\n${OWN_BODY}`
+  const result = build({ '@app/diagnostic': DIAGNOSTIC, '@app/other': OTHER }, main)
+  ok('a record form named like a case only another module loads: built as the form, the file the entry', result.ok, said(result))
+}
+
+{
+  const main = `load @app/own\n  find pick\n\nload @app/other\n  find other\n\ntask run\n  like text\n  back pick()\n`
+  const result = build({ '@app/diagnostic': DIAGNOSTIC, '@app/own': OWN_BODY, '@app/other': OTHER }, main)
+  ok('a record form named like an unimported case: built as the form, the file loaded', result.ok, said(result))
+}
+
+{
+  // no case of the name in the closure: nothing is renamed, and nothing is aliased
+  const result = build({}, OWN_BODY)
+  ok('a record form no case shares: kept by its name, no alias', result.ok && /\bTwinChoice\b/.test(result.typescript) && !/TwinChoiceForm/.test(result.typescript), said(result))
+}
+
+// ---- a case two forms share, the importer's form renamed by what else the closure holds (T-0079, 0310) ----
+// view-document builds node.tree's `view` statement and defines its own `view-body` case `view`. Loaded by analyzer.tree,
+// whose closure has a case named `statement`, node.tree's form became `statement__form`, so the importer's `find
+// statement` no longer matched it by name and the construction was told its own `view-body`
+
+const NODE = `form statement\n  case view\n    link name, like text\n  case other\n`
+const DOC = `load @term/base/list\n  find list\n  find push\n\nload @app/node\n  find statement\n\nform view-body\n  case view\n    link value, like text\n  case plain\n\ntask lower\n  like list, like statement\n  save out, make list\n  save made\n    make view\n      bind name, <v>\n  push(out, made)\n  back out\n`
+const KINDS = `form analysis-kind\n  mark text\n  case view\n  case code\n\nform held\n  case statement\n    link at, like number\n  case none\n`
+
+{
+  const main = `load @app/doc\n  find lower\n\ntask run\n  like number\n  back lower()/length\n`
+  const result = build({ '@app/node': NODE, '@app/doc': DOC }, main)
+  ok('a shared case built by an importer: told the imported owner, nothing renamed', result.ok, said(result))
+}
+
+{
+  const main = `load @app/doc\n  find lower\n\n${KINDS}\ntask run\n  like number\n  back lower()/length\n`
+  const result = build({ '@app/node': NODE, '@app/doc': DOC }, main)
+  ok('a shared case built by an importer: told the imported owner, its form renamed __form by the closure', result.ok, said(result))
+}
+
 // ---- a lean label under a method a form shares its name with ----
 
 const WALKING = `load @term/base/list\n  find list\n\nform walk-state\n  link program, like list, like number\n\ntask walk-statement\n  take state, like walk-state\n  take x, like number\n  like number\n  mark private\n  back x\n\ntask swap\n  take xs, like list, like number\n  like list, like number\n  save state\n    make walk-state\n      bind program, xs\n  set(state/program, 0, walk-statement(state, 1))\n  back state/program\n`

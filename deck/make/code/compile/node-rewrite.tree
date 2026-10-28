@@ -43,6 +43,12 @@ load ./node-reach
   find reach-expression
   find reach-statements
 
+load ./node-rebuild
+  find place-expression
+  find place-statement
+  find place-row-of-expression
+  find place-row-of-statement
+
 load ./node
   find binding
   find closure-param
@@ -230,6 +236,8 @@ form form-binding
   link shadowed, like list, like text
   link scopes, like list, like file-scope
   link order, like list, like file-order
+  # every task's and method's name in the program: a lean call to one is a call, never a construction
+  link tasks, like list, like text
 
 form shared-case
   link name, like text
@@ -2207,8 +2215,21 @@ task known-type-key
     miss
       back one/kind
 
-# a whole task the caller may write without touching the one it was handed. Natively a value is already a copy
-bind copy-statement
+# a whole task the caller may write without touching the one it was handed, standing at no place yet: its
+# `place-row` is 0 (decision 011 rule 6, a copy made to stand at a second place clears the stamp). Written only when
+# the input carried a row, so a copy of an unstamped node stays as it was (decision 034 section 2: absent is 0)
+task copy-statement
+  take value, like statement
+  like statement
+
+  save made, clone-statement(value)
+  fork test, is-above(place-row-of-statement(made), 0)
+    hold
+      back place-statement(made, 0)
+  back made
+
+# a statement, deep-copied. Natively a value is already a copy
+bind clone-statement
   take value, like statement
   like statement
   case node
@@ -2423,8 +2444,20 @@ task resolved-trait-call
 
 # ---- an inlined body's locals (ir/inline-statements.tree) ----
 
-# an expression the caller may write without touching the one it was handed. Natively a value is already a copy
-bind copy-expression
+# an expression the caller may write without touching the one it was handed, standing at no place yet: its
+# `place-row` is 0 (decision 011 rule 6), written only when the input carried a row
+task copy-expression
+  take value, like expression
+  like expression
+
+  save made, clone-expression(value)
+  fork test, is-above(place-row-of-expression(made), 0)
+    hold
+      back place-expression(made, 0)
+  back made
+
+# an expression, deep-copied. Natively a value is already a copy
+bind clone-expression
   take value, like expression
   like expression
   case node
@@ -3147,9 +3180,50 @@ task bind-expression
         case none
           save nothing, 0
       save given/name, rebind-construction(binding, name, written-alias)
+    # A LEAN BARE HEAD THAT NAMES A FORM is a construction of it (`pair feature(<a>), value <b>`), and is still a
+    # `call` here: the checker makes it a `record` only later. So its callee is rebound as a `make` is, or a form split
+    # by file (a grammar's `pair` beside @term/base/pair's) left no form of the written name. A task or method of the
+    # name keeps it: a bare call to a name that is both means the task (check/scope.ts `rewrite`, 2026-10-13)
+    case call
+      fork test, lean
+        hold
+          save written, callee-name(callee)
+          fork test, and(is-unequal(written, <>), not(has-text(binding/tasks, written)))
+            hold
+              sift rebind-form(binding, written, make none)
+                case some
+                  link bound
+                  save given/callee, callee-renamed(callee, bound)
+                case none
+                  save nothing, 0
     miss
       save nothing, 0
   back given
+
+# the name a call's callee is written as, when it is a bare variable, else `<>` (which no group or task has)
+task callee-name
+  take target, like expression
+  like text
+  mark private
+
+  sift target
+    case variable
+      back name
+    miss
+      back <>
+
+task callee-renamed
+  take target, like expression
+  take to, like text
+  like expression
+  mark private
+
+  sift target
+    case variable
+      save target/name, to
+      back target
+    miss
+      back target
 
 # A QUALIFIED CONSTRUCTION NAMES ITS FORM BEFORE THE SLASH. `make resolution/file` builds the case `file` of the form
 # `resolution`, so where that form is split by file (`resolution__in0_1`) the owner follows the rename and the case
@@ -3228,7 +3302,7 @@ task owner-for
         take owner
         fork test, is-unequal(owner/file, file)
           hold
-            sift targets-of(scope/finds, owner/form)
+            sift targets-of(scope/finds, written-form(owner/form))
               case some
                 save imports-another, true
               case none
@@ -3240,6 +3314,25 @@ task owner-for
       save only, get(own, 0)
       back make(some, only/form)
   back make none
+
+# A FORM IS IMPORTED BY THE NAME IT WAS WRITTEN WITH. By the time shared cases are bound, a form named like some case is
+# `<name>__form` and one split by file `<name>__in0_<k>`, while a file's finds name it as written: compile/view-document
+# imports node.tree's `statement`, which analyzer.tree's closure had renamed `statement__form`, so its `make view` read as
+# importing no other owner and was told its own `view-body` (traps.md T-0079, term-self-host-001-0310)
+task written-form
+  take name, like text
+  like text
+  mark private
+
+  save written, name
+  save split, last-index-of(written, <__in>)
+  fork test, is-above(split, 0)
+    hold
+      save written, substring(written, 0, split)
+  fork test, ends-with(written, <__form>)
+    hold
+      save written, substring(written, 0, subtract(written/length, 6))
+  back written
 
 task shares-case
   take sharing, like case-sharing

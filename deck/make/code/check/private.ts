@@ -224,7 +224,12 @@ function eachReference(
       key !== 'declared' &&
       key !== 'generics' &&
       key !== 'binding' &&
-      key !== 'privateNote'
+      key !== 'privateNote' &&
+      // a stub's carried shape and body were checked in the stub's own unit and carry that unit's names: a task two
+      // files define is split there (`word-at__in0_1`), and the importer's unit may give the same split name to another
+      // file's private task (check/private.tree, item 0313)
+      key !== 'stubShape' &&
+      key !== 'stubBody'
     ) {
       eachReference(value, visit, seen)
     }

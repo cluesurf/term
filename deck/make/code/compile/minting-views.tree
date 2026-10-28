@@ -1,0 +1,575 @@
+# The mint bridge, part 7 of 8 (decision 033 section 2): a component, `view` in the code role.
+#
+# Ported from compile/mint-bridge.ts's `viewOf`, `viewNodeOf`, `viewBodyOf`, `viewHandlerOf` and `viewElementOf`
+# (self-hosting, item 0278), which stay as the face until part 8. The decisions:
+#   - a field the original set only when present (an element's `ref`, a fork's `otherwise`, a slot's `name`, a
+#     parameter's `type`) is written with its default otherwise, which node-json reads as the absent field (decision 034
+#     section 2)
+#   - a node the original answered `undefined` for is none here, and the bodies leave it out as the original's did
+#   - a handler of several lines is a closure over part 3's `flow-of`, as the original's `flowOf`
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find span
+
+load ./node
+  find expression
+  find statement
+  find type
+  find closure-param
+  find field-value
+  find view-attribute
+  find view-branch
+  find view-node
+
+load ./mill-running
+  find minted
+
+load ./minting-reads
+  find mint-state
+  find at
+  find first-at
+  find forms-at
+  find word-at
+  find span-of
+
+load ./minting-values
+  find expression-of
+  find type-of
+  find text-expression
+  find minted-form
+
+load ./minting-flow
+  find flow-of
+
+# a handler's or an attribute's value, and whether it was a whole statement body
+form view-handler
+  link value, like maybe, like expression
+  link multi, like boolean
+
+# ---- small readers ----
+
+task views-word-is
+  take word, like maybe, like text
+  take expected, like text
+  like boolean
+  mark private
+
+  sift word
+    case some
+      link known
+      back is-equal(known, expected)
+    case none
+      back false
+
+task views-text-else
+  take word, like maybe, like text
+  take fallback, like text
+  like text
+  mark private
+
+  sift word
+    case some
+      link known
+      back known
+    case none
+      back fallback
+
+task views-first-form
+  take value, like maybe, like minted
+  take field, like text
+  like maybe, like minted
+  mark private
+
+  walk forms-at(value, field)
+    take found
+    back make(some, found)
+  back make none
+
+task unit-or
+  take value, like maybe, like expression
+  take where, like span
+  like expression
+  mark private
+
+  sift value
+    case some
+      link known
+      back known
+    case none
+      back
+        make expression/unit
+          bind span, where
+
+task text-node
+  take value, like text
+  take where, like span
+  like view-node
+  mark private
+
+  back
+    make view-node/text
+      bind value, value
+      bind span, where
+
+task read-node
+  take value, like expression
+  take where, like span
+  like view-node
+  mark private
+
+  back
+    make view-node/read
+      bind value, value
+      bind span, where
+
+# a text with braces in it is a dynamic text node, its value the template, as it is anywhere else a text is read
+task literal-node
+  take state, like mint-state
+  take literal, like minted
+  take fallback, like text
+  take where, like span
+  like view-node
+  mark private
+
+  save built, text-expression(state, literal, where)
+  sift built
+    case template
+      back read-node(built, where)
+    miss
+      back text-node(fallback, where)
+
+# ---- a markup node ----
+
+# One markup node. The eight the component grammar knows, and nothing else: a head it does not know is a mistake the
+# reader refuses rather than drops, and the grammar refuses it in the same place
+task view-node-of
+  take state, like mint-state
+  take value, like minted
+  like maybe, like view-node
+
+  save where, span-of(make(some, value))
+
+  # a bare text literal sitting in a body, rather than `text <...>`
+  sift value
+    case text
+      link text-value
+      save made, literal-node(state, value, text-value, where)
+      back make(some, made)
+    case form
+      save nothing, 0
+    miss
+      back make none
+
+  save held, make(some, value)
+  sift views-first-form(held, <element>)
+    case some
+      link element
+      back view-element-of(state, element, where)
+    case none
+      save nothing, 0
+
+  sift first-at(held, <text>)
+    case some
+      link text-form
+      save written, views-text-else(word-at(make(some, text-form), <value>), <>)
+      sift first-at(make(some, text-form), <value>)
+        case some
+          link literal
+          save made, literal-node(state, literal, written, where)
+          back make(some, made)
+        case none
+          save made, text-node(written, where)
+          back make(some, made)
+    case none
+      save nothing, 0
+
+  sift first-at(held, <read>)
+    case some
+      link read-form
+      sift expression-of(state, first-at(make(some, read-form), <seed>))
+        case some
+          link inner
+          save made, read-node(inner, where)
+          back make(some, made)
+        case none
+          back make none
+    case none
+      save nothing, 0
+
+  sift first-at(held, <slot>)
+    case some
+      link slot-form
+      save slot-name, views-text-else(word-at(make(some, slot-form), <name>), <>)
+      save slotted
+        make view-node/slot
+          bind name, slot-name
+          bind span, where
+      back make(some, slotted)
+    case none
+      save nothing, 0
+
+  sift first-at(held, <fork>)
+    case some
+      link fork-form
+      save made, fork-node-of(state, fork-form, where)
+      back make(some, made)
+    case none
+      save nothing, 0
+
+  sift first-at(held, <walk>)
+    case some
+      link walk-form
+      save made, walk-node-of(state, walk-form, where)
+      back make(some, made)
+    case none
+      save nothing, 0
+
+  sift first-at(held, <save>)
+    case some
+      link save-form
+      sift word-at(make(some, save-form), <name>)
+        case some
+          link save-name
+          save saved-value, unit-or(expression-of(state, first-at(make(some, save-form), <seed>)), where)
+          save saved
+            make view-node/save
+              bind name, save-name
+              bind value, saved-value
+              bind span, where
+          back make(some, saved)
+        case none
+          back make none
+    case none
+      save nothing, 0
+
+  sift first-at(held, <call>)
+    case some
+      link call-form
+      sift expression-of(state, make(some, call-form))
+        case some
+          link built
+          save called
+            make view-node/call
+              bind value, built
+              bind span, where
+          back make(some, called)
+        case none
+          back make none
+    case none
+      save nothing, 0
+
+  back make none
+
+task fork-node-of
+  take state, like mint-state
+  take fork-form, like minted
+  take where, like span
+  like view-node
+  mark private
+
+  save forked, make(some, fork-form)
+  save cond, make none
+  sift first-at(forked, <test>)
+    case some
+      link test-form
+      save cond, expression-of(state, first-at(make(some, test-form), <seed>))
+    case none
+      save nothing, 0
+  save miss-form, views-first-form(forked, <miss>)
+  # no `hook test` at all is a branch that never runs, which is what the reader answers too
+  save never
+    make expression/boolean
+      bind value, false
+      bind span, where
+  save branch-cond, never
+  sift cond
+    case some
+      link known
+      save branch-cond, known
+    case none
+      save nothing, 0
+  save branch-body, view-body-of(state, views-first-form(forked, <hold>))
+  save branch
+    make view-branch
+      bind cond, branch-cond
+      bind body, branch-body
+  save branches, make list
+  push(branches, branch)
+  save otherwise, make list
+  sift miss-form
+    case some
+      save otherwise, view-body-of(state, miss-form)
+    case none
+      save nothing, 0
+  back
+    make view-node/fork
+      bind branches, branches
+      bind otherwise, otherwise
+      bind span, where
+
+task walk-node-of
+  take state, like mint-state
+  take walk-form, like minted
+  take where, like span
+  like view-node
+  mark private
+
+  save walked, make(some, walk-form)
+  save next, views-first-form(walked, <next>)
+  # `take site, name <item>` gives the loop variable its name; without one the reader calls it `item`
+  save item, <item>
+  sift first-at(next, <item>)
+    case some
+      link named
+      save item, views-text-else(word-at(first-at(make(some, named), <name>), <name>), <item>)
+    case none
+      save nothing, 0
+  save iterable, unit-or(expression-of(state, first-at(walked, <seed>)), where)
+  save body, view-body-of(state, next)
+  back
+    make view-node/walk
+      bind iterable, iterable
+      bind item, item
+      bind body, body
+      bind span, where
+
+# the markup under a node that holds some: a fork arm, a walk's `hook next`, or an element
+task view-body-of
+  take state, like mint-state
+  take holder, like maybe, like minted
+  like list, like view-node
+
+  save out, make list
+  walk at(holder, <node>)
+    take one-node
+    sift view-node-of(state, one-node)
+      case some
+        link built
+        push(out, built)
+      case none
+        save nothing, 0
+  back out
+
+# A handler or attribute value. ONE node is the value; MORE than one is a statement BODY and becomes a closure, which
+# is what lets a two-line click handler run both of its lines
+task view-handler-of
+  take state, like mint-state
+  take holder, like minted
+  like view-handler
+
+  save held, make(some, holder)
+  save seeds, at(held, <seed>)
+  fork test, is-above(seeds/length, 1)
+    hold
+      save no-params, make list
+      save body, flow-of(state, seeds)
+      save closure
+        make expression/closure
+          bind params, no-params
+          bind body, body
+          bind result, make none
+          bind async, false
+          bind span, span-of(held)
+      back
+        make view-handler
+          bind value, make(some, closure)
+          bind multi, true
+  save first, make none
+  fork test, is-above(seeds/length, 0)
+    hold
+      save first-seed, get(seeds, 0)
+      save first, make(some, first-seed)
+  back
+    make view-handler
+      bind value, expression-of(state, first)
+      bind multi, false
+
+# an attribute whose value is a CALL, in either spelling, or a whole statement body, is an event handler. A builtin
+# folds to an operator in both spellings and stays a value in the bare one
+task is-event
+  take first, like maybe, like minted
+  take built, like maybe, like expression
+  take multi, like boolean
+  like boolean
+  mark private
+
+  fork test, multi
+    hold
+      back true
+  save first-form, <>
+  save first-word, false
+  sift first
+    case some
+      link seeded
+      sift seeded
+        case form
+          link seeded-form
+          save first-form, seeded-form
+        case word
+          save first-word, true
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  fork test, is-equal(first-form, <call>)
+    hold
+      back true
+  save is-call, false
+  save is-awaited-call, false
+  sift built
+    case some
+      link known
+      sift known
+        case call
+          save is-call, true
+        case await
+          link expr
+          sift expr
+            case call
+              save is-awaited-call, true
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  fork test, or(is-equal(first-form, <seed-call-open>), is-equal(first-form, <seed-wait>))
+    hold
+      fork test, or(is-call, is-awaited-call)
+        hold
+          back true
+  back and(first-word, is-call)
+
+task view-element-of
+  take state, like mint-state
+  take value, like minted
+  take where, like span
+  like maybe, like view-node
+
+  save held, make(some, value)
+  sift word-at(held, <name>)
+    case some
+      link element-name
+      save attributes, make list
+      walk forms-at(held, <attribute>)
+        take attribute
+        save attributed, make(some, attribute)
+        sift word-at(attributed, <name>)
+          case some
+            link label
+            save handled, view-handler-of(state, attribute)
+            save event, is-event(first-at(attributed, <seed>), handled/value, handled/multi)
+            save attribute-value, unit-or(handled/value, where)
+            save written
+              make view-attribute
+                bind name, label
+                bind value, attribute-value
+                bind event, event
+                bind span, span-of(attributed)
+            push(attributes, written)
+          case none
+            save nothing, 0
+      walk forms-at(held, <event>)
+        take handler
+        save handling, make(some, handler)
+        save label, word-at(handling, <name>)
+        save handled, view-handler-of(state, handler)
+        sift label
+          case some
+            link known-label
+            sift handled/value
+              case some
+                link built
+                save written
+                  make view-attribute
+                    bind name, known-label
+                    bind value, built
+                    bind event, true
+                    bind span, span-of(handling)
+                push(attributes, written)
+              case none
+                save nothing, 0
+          case none
+            save nothing, 0
+      save props, make list
+      walk forms-at(held, <prop>)
+        take prop
+        save propped, make(some, prop)
+        sift word-at(propped, <name>)
+          case some
+            link label
+            save prop-value, unit-or(expression-of(state, first-at(propped, <seed>)), where)
+            save written
+              make field-value
+                bind name, label
+                bind value, prop-value
+            push(props, written)
+          case none
+            save nothing, 0
+      save children, make list
+      walk at(held, <child>)
+        take child
+        sift view-node-of(state, child)
+          case some
+            link built
+            push(children, built)
+          case none
+            save nothing, 0
+      save ref, views-text-else(word-at(first-at(held, <ref>), <name>), <>)
+      # `node <tag>` forces an html element even where `<tag>` also names a component
+      save forced, views-word-is(word-at(held, <kind>), <node>)
+      save element
+        make view-node/element
+          bind name, element-name
+          bind attributes, attributes
+          bind props, props
+          bind children, children
+          bind ref, ref
+          bind forced, forced
+          bind span, where
+      back make(some, element)
+    case none
+      back make none
+
+# ---- a component ----
+
+# `view <name>` at the top level DEFINES a component: its `take` lines are its parameters, and everything that is not
+# part of the signature is its markup
+task view-of
+  take state, like mint-state
+  take value, like minted
+  like list, like statement
+
+  save out, make list
+  save held, make(some, value)
+  sift word-at(held, <name>)
+    case some
+      link view-name
+      save params, make list
+      walk forms-at(held, <take>)
+        take take-form
+        save taken, make(some, take-form)
+        save param-type, type-of(state, first-at(taken, <like>))
+        save param
+          make closure-param
+            bind name, views-text-else(word-at(taken, <name>), <>)
+            bind type, param-type
+        push(params, param)
+      save body, view-body-of(state, held)
+      save viewed
+        make statement/view
+          bind name, view-name
+          bind params, params
+          bind body, body
+          bind span, span-of(held)
+      push(out, viewed)
+    case none
+      save nothing, 0
+  back out

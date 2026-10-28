@@ -11,7 +11,10 @@
 #   - what is Term is loaded (the tolerant parse, the data reader, the layout, the lint driver, the fixes), and what is
 #     not is a dock named for its module (decision 031 section 3): compile/template, compile/mill, compile/view,
 #     compile/compile, format/format (its `format` hands the meaning check to format/meaning.ts) and
-#     lint/rules/data-grammar. The lint driver, lint/rule-check-dispatch.tree, was a dock of lint/lint.ts until item 0078
+#     lint/rules/data-grammar. The lint driver, lint/rule-check-dispatch.tree, was a dock of lint/lint.ts until item 0078,
+#     and the view gate, compile/view-catalog-handed.tree, a dock of compile/view.ts until item 0079 (loaded here once
+#     check/scope bound a shared case's owner by its written name, item 0310, traps.md T-0079). The view's lowering
+#     stays a dock of compile/view.ts's `lowerView` (Term, compile/view-document.tree, behind it)
 #   - parser/narrow.ts's `groupsOf` is a sift on the node's kind (decision 031 section 5)
 #   - the suppressions are a hash of line to a hash of code to `true`, lint-lines' `lint-setting` table, and the
 #     severities a hash of code to severity, which the face makes of the caller's record
@@ -68,6 +71,11 @@ load ./lint/rule-check-dispatch
 load ./compile/main-entry
   find whitespace-code
 
+load ./compile/view-catalog-handed
+  find handed-check
+  find handed-result
+  find check-handed-view
+
 dock load
   load <@term/make/code/compile/template>, name analyzer-template
   load <@term/make/code/compile/mill>, name analyzer-mill
@@ -78,15 +86,17 @@ dock load
 
 # ---- what the docks are handed and answer ----
 
-# what compile/view.ts's `checkView` is handed: the catalog, absent when the caller gave none
-form view-asked
+# the gate's options as the caller gave them: the catalog, absent (`undefined`) when the caller gave none. Read back
+# as compile/view-catalog-handed's `handed-check`, whose absent field is `none`
+form view-given
   link catalog, like dynamic
 
-# what `checkView` answers. `file` is read only when `ok`, and `diagnostics` only when not
-form view-answer
-  link ok, like boolean
-  link file, like dynamic
-  link diagnostics, like list, like diagnostic
+task handed-of
+  take given, like dynamic
+  like handed-check
+  mark private
+
+  back given
 
 # what compile/mill.ts's `mill` answers. `program` is read only when `ok`, and `diagnostics` only when not
 form mill-answer
@@ -132,7 +142,7 @@ form analysis-held
     link written, like text
     link tree, like root-node
     link parsed, like list, like diagnostic
-    link viewed, like view-answer
+    link viewed, like handed-result
   case mill-held
     link source, like token-source
     link parsed, like list, like diagnostic
@@ -363,13 +373,13 @@ task suppressions
 task view-checked
   take source, like token-source
   take catalog, like dynamic
-  like view-answer
+  like handed-result
   mark private
 
-  save asked
-    make view-asked
+  save given
+    make view-given
       bind catalog, catalog
-  back analyzer-view/check-view(source, asked)
+  back check-handed-view(source, handed-of(given))
 
 task milled
   take tree, like root-node
@@ -494,11 +504,13 @@ task analyze
       save viewed, view-checked(source, catalog)
       save program, make none
       save refused, no-diagnostics()
-      fork test, viewed/ok
-        hold
-          save lowered, analyzer-view/lower-view(viewed/file)
+      save read-file, viewed/file
+      sift read-file
+        case some
+          link document
+          save lowered, analyzer-view/lower-view(document)
           save program, make(some, lowered)
-        miss
+        case none
           save refused, viewed/diagnostics
       back
         make analysis

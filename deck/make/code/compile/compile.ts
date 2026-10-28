@@ -4,7 +4,7 @@
 // Pipeline: parse -> mill (mine/mint) -> resolve (fill name holes) -> check (types) -> emit.
 // See note/project/term/archive/computation/plans/11-elaboration.md.
 
-import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import type { Template } from '@term/make/code/compile/template'
 import {
@@ -19,26 +19,21 @@ import {
 } from '@term/make/code/compile/side-files'
 import type { Maybe, MillChecked } from '@term/make/code/compile/side-files'
 import {
-  deckHomes as deckHomesPort,
   deckNames as deckNamesPort,
   programGate as programGatePort,
 } from '@term/make/code/compile/program-gate'
 import type { ProgramRun as GateRun } from '@term/make/code/compile/program-gate'
+import { programTypes as programTypesPort } from '@term/make/code/compile/program-types'
+import type { ProgramRun as TypesRun } from '@term/make/code/compile/program-types'
+import { programProofs as programProofsPort } from '@term/make/code/compile/program-proofs'
+import type { ProgramRun as ProofsRun } from '@term/make/code/compile/program-proofs'
 import type { WakeGroup } from '@term/make/code/compile/wake'
 import { resolve } from '@term/make/code/check/resolve'
-import { check } from '@term/make/code/check/infer'
-import { checkAsyncArguments, resolveAsync } from '@term/make/code/check/async-resolve'
-import { checkMissingWaits } from '@term/make/code/check/missing-wait'
-import { asyncSlots } from '@term/make/code/check/async-slots'
 import { checkDockShadow } from '@term/make/code/check/dock-shadow'
 import { checkDockMemberSpelling } from '@term/make/code/check/dock-member-spelling'
 import { checkBuiltinShadow } from '@term/make/code/check/builtin-shadow'
 import { overloadGroups, runtimeBound } from '@term/make/code/check/overload'
-import { frameText } from '@term/make/code/compile/frames'
 import { warnPrivateNotes } from '@term/make/code/check/private'
-import { checkHiddenMakes } from '@term/make/code/check/hide'
-import { checkSoleGenerics, checkSoleUses } from '@term/make/code/check/sole'
-import { checkSoleEarned } from '@term/make/code/check/sole-earned'
 import { checkTells } from '@term/make/code/check/tell'
 import { checkRaiseBounds } from '@term/make/code/check/effects'
 import { checkMissingBacks } from '@term/make/code/check/returns'
@@ -46,37 +41,14 @@ import { checkLoweredMembers } from '@term/make/code/check/lowered'
 import { warnDeprecated } from '@term/make/code/check/deprecated'
 import { checkLostWrites, warnLostCollectionWrites } from '@term/make/code/check/lost-writes'
 import { checkTextForms } from '@term/make/code/check/text-forms'
-import { copyForViews, checkLoweredViews } from '@term/make/code/check/views'
 import { checkSupervision } from '@term/make/code/check/supervise'
 import { buildRoll } from '@term/make/code/compile/roll'
 import type { Roll } from '@term/make/code/compile/roll'
-import { elaborateReport } from '@term/make/code/check/elaborate'
-import { checkHolds } from '@term/make/code/check/holds'
 import type { Tally } from '@term/make/code/check/holds'
-import { checkCallsOutsideTasks, checkEffects } from '@term/make/code/check/effects'
 import { checkerSwitches, unknownSeamOn } from '@term/make/code/check/strict'
 import { inferStrict } from '@term/make/code/check/strict'
 import { widthRanges } from '@term/make/code/check/width-range'
-import {
-  checkClaims,
-  fillClaims,
-  stampGrounded,
-} from '@term/make/code/check/claim'
-import {
-  checkTotality,
-  terminatingFunctions,
-} from '@term/make/code/check/totality'
-import {
-  lengthKeepingFunctions,
-  pureFunctions,
-  returnsFreshFunctions,
-  stateFreeFunctions,
-} from '@term/make/code/check/facts'
 import { uncertifiedCount } from '@term/make/code/check/refine'
-import {
-  hasContracts,
-  lowerContracts,
-} from '@term/make/code/check/contract'
 
 // AWAIT BY DEFAULT, outside every task: an un-awaited, un-ticked call to an async task there is refused, naming `tick`
 // (check/effects.tree `check-calls-outside-tasks`). ON since 2026-10-03, after `pnpm term:await-migrate --commit`
@@ -84,99 +56,6 @@ import {
 // compiles under both settings, which is why it is a switch and not a constant, and the compile cache keys on it. It
 // is the `await-outside` field of the one `checker-switches` record check/strict.ts holds (check/checker-switches.tree,
 // item term-self-host-001-0261)
-
-// AN `inspect` IS WALKED BY THE TYPE ITS ARGUMENT HAD WHERE IT WAS WRITTEN (term/base-v1 decision 001). The checked
-// type is kept on the call as its `into`, so inlining a small task, which puts the caller's argument in place of its
-// parameter (`show(value)` with `value` unknown, called with `5`), leaves the walk the one its source said
-function stampInspectTypes(program: Program): void {
-  const visit = (node: unknown): void => {
-    if (Array.isArray(node)) {
-      node.forEach(visit)
-
-      return
-    }
-
-    if (node === null || typeof node !== 'object') {
-      return
-    }
-
-    const one = node as { form?: string; callee?: { form?: string; name?: string }; args?: { type?: unknown }[]; into?: unknown }
-
-    if (one.form === 'call' && one.callee?.form === 'variable' && one.callee.name === 'inspect-form' && !one.into && one.args?.[0]?.type) {
-      one.into = one.args[0].type
-    }
-
-    for (const [key, value] of Object.entries(node)) {
-      if (key !== 'span' && key !== 'type' && key !== 'into') {
-        visit(value)
-      }
-    }
-  }
-
-  visit(program)
-}
-
-// EVERY CALL AND EVERY RAISE KNOWS ITS TERM FRAME (term/hive decision 001, compile/frames.tree): `<task> <file>:<line>`,
-// stamped before the simplifier runs, so a task inlined into its caller keeps the frames of its own source, and every
-// backend appends the same text where a raise passes. A closure's sites are named by the task it is written in, a site
-// outside every task by `top`. The file is spelled by its deck (`@term/base/code/exception.tree`), else by its own name,
-// so a frame is one text in a separate build and a merged one and on every machine. A node already stamped (a stub's
-// body, built by the unit that owns it) keeps its frame
-function stampSites(program: Program, deckOf?: (file: string) => { name: string; root: string } | undefined): void {
-  const spelled = new Map<string, string>()
-  const spell = (file: string | undefined): string => {
-    if (file === undefined) {
-      return ''
-    }
-
-    let known = spelled.get(file)
-
-    if (known === undefined) {
-      const deck = deckOf?.(file)
-      known = deck ? `${deck.name}/${relativePath(deck.root, file)}` : (file.split('/').pop() ?? file)
-      spelled.set(file, known)
-    }
-
-    return known
-  }
-
-  const visit = (node: unknown, task: string, file: string): void => {
-    if (Array.isArray(node)) {
-      node.forEach(one => visit(one, task, file))
-
-      return
-    }
-
-    if (node === null || typeof node !== 'object') {
-      return
-    }
-
-    const one = node as { form?: string; site?: string; name?: string; span?: Span }
-
-    if ((one.form === 'call' || one.form === 'throw') && one.site === undefined && one.span) {
-      one.site = frameText(task, file, one.span.start.line + 1)
-    }
-
-    for (const [key, value] of Object.entries(node)) {
-      if (key !== 'span' && key !== 'type' && key !== 'into' && key !== 'result') {
-        visit(value, task, file)
-      }
-    }
-  }
-
-  for (const statement of program) {
-    const file = spell(statement.span.file)
-    const task = statement.form === 'function' ? (statement.method?.name ?? statement.name) : 'top'
-    visit(statement, task, file)
-  }
-}
-
-// a path inside `root`, with `/` between its parts on every platform
-function relativePath(root: string, file: string): string {
-  const base = root.endsWith('/') ? root : `${root}/`
-
-  return file.startsWith(base) ? file.slice(base.length) : file
-}
 
 // the build's resolver as compile/side-files.tree takes it: none where it finds nothing
 function resolverTask(
@@ -220,17 +99,6 @@ function deckTask(
   }
 }
 
-// the deck the build knows each file by, for every file the privacy checks may ask about: the compile's own, each
-// statement's and each file in the import scope (compile/program-gate.tree `deck-homes`)
-function deckHomes(
-  program: Program,
-  scope: ImportScope | undefined,
-  file: string,
-  deckOf?: (file: string) => { name: string; root: string } | undefined,
-): { file: string; root: string }[] {
-  return deckHomesPort(program, scopeList(scope), file, deckTask(deckOf))
-}
-
 // the deck each file of a program belongs to, by name, as form extension and the tell check take it (check/extend.tree,
 // check/tell.tree): the compile's own file and every statement's, which is every file a raise's `host` is read from
 // (compile/program-gate.tree `deck-names`)
@@ -242,45 +110,13 @@ function deckNames(
   return deckNamesPort(program, file, deckTask(deckOf))
 }
 
-// the terminating tasks, or none when the analysis fails: a crash there must cost proofs, never pass one
-function safeTerminating(program: Program): Set<string> {
-  try {
-    return terminatingFunctions(program)
-  } catch {
-    return new Set()
-  }
-}
-
-// THE RULES THE KERNEL PROVED: each theorem whose goal, the `hold` named after it, the kernel discharged. Handed to the
-// arithmetic provers, so `cite count-of-plus` there rests on a law proved by `fold` as it rests on one they proved
-function provenByKernel(program: Program, discharged: Set<string>): Set<string> {
-  const out = new Set<string>()
-
-  const visit = (statements: Statement[], rule: string): void => {
-    for (const s of statements) {
-      if (s.form === 'hold' && s.name === rule && discharged.has(`${s.span.start.line}:${s.span.start.column}`)) {
-        out.add(rule)
-      } else if (s.form === 'if') {
-        s.branches.forEach(b => visit(b.body, rule))
-      }
-    }
-  }
-
-  for (const s of program) {
-    if (s.form === 'function' && s.theorem) {
-      visit(s.body, s.name)
-    }
-  }
-
-  return out
-}
 import { findUnused } from '@term/make/code/check/unused'
 import { simplify } from '@term/make/code/ir/simplify'
 import { coverProgram } from '@term/make/code/ir/cover'
 import type { CoverTarget } from '@term/make/code/ir/cover'
 import { passDictionaries } from '@term/make/code/ir/dictionary'
 import { lowerViews } from '@term/make/code/compile/view-lower'
-import { emitTypeScript } from '@term/make/code/compile/typescript'
+import { emitTypeScript, toPascal } from '@term/make/code/compile/typescript'
 import { emitModules } from '@term/make/code/compile/modules'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
 import { collectModules, makeParseMemo, platformRefusals, scopeList } from '@term/make/code/compile/load'
@@ -1105,270 +941,71 @@ export function programGate(run: ProgramRun): CompileResult | undefined {
 }
 
 // STEPS 11 TO 14, THE TYPES: claims filled, the checker, the stamps, the affine checks, async resolution, and the fast
-// roll's exit. Undefined hands the run on
+// roll's exit. Undefined hands the run on. The types are Term, compile/program-types.tree (item term-self-host-001-0265):
+// this face hands it the run in its Term form, and writes back the program and the checker's warnings, the two fields
+// the types write
 export function programTypes(run: ProgramRun): CompileResult | undefined {
-  const { file, merged, wantRoll, deckOf, scope } = run
-
-  // a claim's fill inherits the claim's signature, so a proof states the name and its parameters and the type is
-  // written once, on the rule. Runs BEFORE the checker so the fill's body is checked against the claim. claim.ts.
-  run.program = fillClaims(run.program)
-
-  // the types as written, before the surface pass seeds them (lossily, on purpose), for the kernel. node.ts `declared`
-  for (const statement of run.program) {
-    if (statement.form === 'function') {
-      statement.declared = {
-        params: statement.params.map(p =>
-          p.type ? { type: structuredClone(p.type) } : {},
-        ),
-        ...(statement.result
-          ? { result: structuredClone(statement.result) }
-          : {}),
-      }
-    }
-  }
-
-  // the components' lowered code is checked too, from a copy taken before the main check annotates the program
-  // (check/views.ts)
-  const viewCopy = copyForViews(run.program, file)
-
-  // formal type checking: the surface pass (gradual bidirectional inference) annotates the AST with types
-  const checkDiagnostics = check(run.program, file, merged)
-  // the checker's warnings (an unknown type name) ride with the build's other warnings; only its errors stop it
-  const checkErrors = checkDiagnostics.filter(d => d.severity !== 'warning')
-  // an unknown type name the type-name pass already reported (as a warning, in a deck that describes a host) is said
-  // once: the checker's `unknown-type` for the same name was a second line about one problem. It also made the two
-  // builds disagree, since the merged one prunes a task nothing reaches before the checker runs and the separate one
-  // checks every task (@term/bind's methods, 549 lines, 2026-10-05)
-  const namedAlready = new Set(
-    run.typeNameDiagnostics.flatMap(d => {
-      const named = /the type "([^"]+)" is not defined/.exec(d.message)
-
-      return named ? [named[1]!] : []
-    }),
-  )
-  run.checkWarnings = checkDiagnostics.filter(d => {
-    const named = d.name === 'unknown-type' ? /^"([^"]+)" is not a type/.exec(d.message) : null
-
-    return d.severity === 'warning' && !(named && namedAlready.has(named[1]!))
+  const { deckOf, scope, selected, emitOnly, roots } = run
+  // the run as compile/program-run.tree declares it, as the gate's face hands it
+  const termRun = {
+    ...run,
+    roots: roots && new Map<string, boolean>([...roots].map(name => [name, true])),
+    modulesURL: run.modulesUrl,
+    wantRoll: run.wantRoll === 'fast' ? 'fast_roll' : run.wantRoll ? 'whole_roll' : 'no_roll',
+    deckOf: deckTask(deckOf),
+    scope: scopeList(scope),
+    selected: selected && { twins: selected.twins, choices: twinChoiceList(selected.choices), expose: selected.expose },
+    emitOnly: emitOnly && new Map([...emitOnly].map(one => [one, true])),
+  } as unknown as TypesRun
+  const answer = programTypesPort(termRun, {
+    deckOf: deckTask(deckOf),
+    scopes: scopeList(scope),
+    hostDeckOf: deckOf,
   })
+  const written = termRun as unknown as ProgramRun
 
-  if (checkErrors.length) {
-    return { ok: false, diagnostics: checkErrors }
+  run.program = written.program
+  run.checkWarnings = written.checkWarnings
+
+  if (answer.refused.form === 'some') {
+    return { ok: false, diagnostics: answer.refused.value as Diagnostic[] }
   }
 
-  stampInspectTypes(run.program)
-  stampSites(run.program, deckOf)
-
-  // `mark sole` and `mark hide` on a form (affine-kinds decision 001), held here, after the checker typed every value
-  // and before any backend, so TypeScript, Rust, Swift and Kotlin refuse alike: a form holding a sole value is sole
-  // itself (check/sole-earned.ts), only the declaring file makes a hidden form (check/hide.ts, beside check/private.ts),
-  // and a sole value is used at most once (check/sole.ts)
-  const affine = [
-    ...checkSoleEarned(run.program, file),
-    ...checkHiddenMakes(run.program, file, deckHomes(run.program, scope, file, deckOf)),
-    ...checkSoleGenerics(run.program, file),
-    ...checkSoleUses(run.program, file),
-  ]
-
-  if (affine.length) {
-    return { ok: false, diagnostics: affine }
-  }
-
-  const viewErrors = viewCopy ? checkLoweredViews(viewCopy, file, merged) : []
-
-  if (viewErrors.length) {
-    return { ok: false, diagnostics: viewErrors }
-  }
-
-  // async resolution: infer which functions are async from the call graph and await async calls by default, so callers
-  // need no per-call `wait true`. Runs before the effect check so the inserted awaits satisfy the discipline. See
-  // note/seed/compiler/async-inference.md.
-  // a task written in place where an async task is taken is async itself, so each backend builds the function its slot
-  // takes (check/async-slots.ts)
-  run.program = asyncSlots(run.program)
-  run.program = resolveAsync(run.program)
-
-  // a call into a host module that answers promises (`<node:fs/promises>`), awaited by nothing: the promise was handed
-  // on as the answer (check/missing-wait.ts, term/compiler decision 004)
-  const missingWaits = checkMissingWaits(run.program, file)
-
-  if (missingWaits.length) {
-    return { ok: false, diagnostics: missingWaits }
-  }
-
-  // the roll alone, for an entry already known to build: everything below only refuses or warns
-  if (wantRoll === 'fast') {
-    return { ok: true, program: [], typescript: '', warnings: [], roll: buildRoll(run.program, file, { deckOf, ids: true, docks: run.pageDocks }) }
+  // the roll alone, for an entry already known to build
+  if (answer.roll.form === 'some') {
+    return { ok: true, program: [], typescript: '', warnings: [], roll: answer.roll.value as Roll }
   }
 
   return undefined
 }
 
 // STEPS 15 TO 19, THE PROOFS: the kernel, the effects, the claims, the holds and contracts, and totality. Undefined
-// hands the run on
+// hands the run on. The proofs are Term, compile/program-proofs.tree (item term-self-host-001-0266): this face hands
+// it the run in its Term form and the checker's switches, and writes back what the proofs write
 export function programProofs(run: ProgramRun): CompileResult | undefined {
-  const { file } = run
+  const { deckOf, scope, selected, emitOnly, roots } = run
+  // the run as compile/program-run.tree declares it, as the gate's face hands it
+  const termRun = {
+    ...run,
+    roots: roots && new Map<string, boolean>([...roots].map(name => [name, true])),
+    modulesURL: run.modulesUrl,
+    wantRoll: run.wantRoll === 'fast' ? 'fast_roll' : run.wantRoll ? 'whole_roll' : 'no_roll',
+    deckOf: deckTask(deckOf),
+    scope: scopeList(scope),
+    selected: selected && { twins: selected.twins, choices: twinChoiceList(selected.choices), expose: selected.expose },
+    emitOnly: emitOnly && new Map([...emitOnly].map(one => [one, true])),
+  } as unknown as ProofsRun
+  const answer = programProofsPort(termRun, { switches: checkerSwitches })
+  const written = termRun as unknown as ProgramRun
 
-  // elaboration: lower the now-typed surface into the sound dependent kernel and let it verify. The kernel is the
-  // single type-theoretic authority; the surface pass above is its inference front-end. See plans/12-type-systems.
-  // It also discharges non-linear `hold` clauses by definitional equality (the kernel fallback for refinement).
-  const elaboration = elaborateReport(run.program, file)
+  run.program = written.program
+  run.openClaims = written.openClaims
+  run.obligations = written.obligations
+  run.kernel = written.kernel
+  run.holdWarnings = written.holdWarnings
+  run.totalityWarnings = written.totalityWarnings
 
-  const kernelDischarged = new Set(
-    elaboration.discharged.map(
-      s => `${s.start.line}:${s.start.column}`,
-    ),
-  )
-
-  // what the claim wall reads of every task (check/claim.ts): lists, each name once, as it takes them
-  const claimEvidence = {
-    verified: [...new Set(elaboration.proven)],
-    terminating: [...safeTerminating(run.program)],
-    pure: [...pureFunctions(run.program)],
-    declined: elaboration.declined.map(d => ({ name: d.name, reason: d.reason })),
-  }
-
-  // A KERNEL REFUSAL DOES NOT HIDE THE REST. The provers still run, and every goal the kernel neither proved nor refused
-  // is reported too: a file with one false law used to report only that one, every unproven goal beside it silent until
-  // it was fixed, and a control counting its refusals read seven where eight were refused (test/case/set, 2026-10-05).
-  // The claim wall too: a proof that loops beside one the kernel refused went unreported (relation/well-founded)
-  if (elaboration.diagnostics.length) {
-    const at = (span: Span): string => `${span.start.line}:${span.start.column}`
-    const answered = new Set([...kernelDischarged, ...elaboration.diagnostics.map(d => at(d.span))])
-    const unanswered = checkHolds(run.program, file).filter(
-      d => d.severity === 'error' && !d.markers.some(m => answered.has(at(m.span))),
-    )
-    const claimed = checkClaims(run.program, file, claimEvidence).diagnostics.filter(d => !answered.has(at(d.span)))
-
-    return { ok: false, diagnostics: [...elaboration.diagnostics, ...unanswered, ...claimed] }
-  }
-
-  // effect checking: async / await discipline (the surface slice of the effect system)
-  // and outside every task, where nothing can wait, a call to an async task is `tick`ed or refused (behind the
-  // switch, `setAwaitOutsideTasks`)
-  const effectDiagnostics = [
-    ...checkEffects(run.program, file),
-    ...(awaitsOutsideTasks() ? checkCallsOutsideTasks(run.program, file) : []),
-    ...checkAsyncArguments(run.program, file),
-  ]
-
-  if (effectDiagnostics.length) {
-    return { ok: false, diagnostics: effectDiagnostics }
-  }
-
-  // the claim wall: a `rule` states a claim and a `task` of the same name proves it. An unfilled claim is refused,
-  // and code that runs may not call one. `note open` leaves a claim deliberately open, counted here so the build
-  // line and the gate can report it rather than pass it in silence. See check/claim.ts.
-  // every task records whether it may carry a proof, so a stub taken from this unit tells a dependent unit, which
-  // sees the signature only (check/claim.ts groundingOf)
-  run.program = stampGrounded(run.program, claimEvidence)
-
-  const claims = checkClaims(run.program, file, claimEvidence)
-
-  if (claims.diagnostics.length) {
-    return { ok: false, diagnostics: claims.diagnostics }
-  }
-
-  run.openClaims = claims.open
-
-  // refinement layer 2: discharge `hold` verification conditions. The linear prover handles the linear fragment, and
-  // holds the kernel already proved by definitional equality are dropped. BOTH remaining outcomes are errors since
-  // 2026-09-18: a hold the prover refutes, and a hold it could not reach. Not proven is not proven, and a claim
-  // nobody checked must not compile as though somebody had. See note/project/term/proof/archive/law-proof-gate.md.
-  const undischarged = (d: Diagnostic): boolean =>
-    !d.markers.some(m =>
-      kernelDischarged.has(`${m.span.start.line}:${m.span.start.column}`),
-    )
-
-  // THIS FILE'S OWN TASKS are checked in the checker's copy below, where a task's `have` wraps its body and a
-  // callee's `must` follows its call, so the holds the programmer wrote may use both. Every other task (an import,
-  // whose own file checks its contracts) is checked here, as written.
-  const checked = lowerContracts(run.program, { file, tier0: true })
-  // the rules the kernel proved, which an arithmetic `cite` may rest on as it rests on one the provers proved
-  const kernelProven = provenByKernel(run.program, kernelDischarged)
-  const holdDiagnostics = checkHolds(run.program, file, {
-    skip: checked.lowered,
-    kernelProven,
-  }).filter(undischarged)
-
-  // contracts: every `have` / `must` / `down` lowered into holds in a copy of the program only the checker reads,
-  // and discharged by the same provers. A contract the programmer wrote is owed like a hold they wrote, so an
-  // unproven one fails the build. check/contract.ts.
-  //
-  // TIER 0 rides in the same copy: every list read and division in this file's own tasks owes a hold, counted in
-  // `obligations` rather than failed. The copy is skipped only when there is neither a contract nor a task of this
-  // file to write obligations for.
-  const obligations: Tally = { total: 0, proven: 0, failed: [] }
-
-  // the kernel's verdict on this file's own tasks, by name
-  const stampedProgram = run.program.some(
-    s => s.form === 'function' && s.span.file !== undefined,
-  )
-  const ownNames = new Set(
-    run.program
-      .filter(
-        s =>
-          s.form === 'function' &&
-          !s.claim &&
-          !s.stub &&
-          (stampedProgram ? s.span.file === file : true),
-      )
-      .map(s => (s as { name: string }).name),
-  )
-  const provenSet = new Set(elaboration.proven)
-  const kernel = {
-    proven: elaboration.proven.filter(n => ownNames.has(n)).length,
-    commands: elaboration.verified.filter(
-      n => ownNames.has(n) && !provenSet.has(n),
-    ).length,
-    declined: elaboration.declined.filter(d => ownNames.has(d.name)),
-    statementwise: elaboration.statementwise.filter(
-      d => ownNames.has(d.name) && !provenSet.has(d.name),
-    ),
-  }
-
-  holdDiagnostics.push(
-    ...checkHolds(checked.program, file, {
-      kernelProven,
-      tally: obligations,
-      // this file's own tasks, every hold in them: the programmer's and the checker's
-      only: checked.lowered,
-      // the holds written into the copy call nothing the real tasks did not, so purity is the real program's
-      pure: pureFunctions(run.program),
-      stateFree: stateFreeFunctions(run.program),
-      keeping: lengthKeepingFunctions(run.program),
-      returning: returnsFreshFunctions(run.program),
-    }).filter(undischarged),
-  )
-
-  // the running counter is how ordinals were assigned, not part of the answer, and a Map does not survive the
-  // output cache's JSON anyway
-  delete obligations.seen
-
-  run.obligations = obligations
-  run.kernel = kernel
-
-  const holdErrors = holdDiagnostics.filter(d => d.severity === 'error')
-
-  if (holdErrors.length) {
-    return { ok: false, diagnostics: holdErrors }
-  }
-
-  run.holdWarnings = holdDiagnostics.filter(
-    d => d.severity === 'warning',
-  )
-
-  // totality: strict positivity (hard error) keeps datatypes sound; termination (warning) flags recursion we
-  // cannot show well-founded. Both are prerequisites for soundly making definitions proof-relevant.
-  const totality = checkTotality(run.program, file)
-
-  if (totality.errors.length) {
-    return { ok: false, diagnostics: totality.errors }
-  }
-
-  run.totalityWarnings = totality.warnings
-
-  return undefined
+  return answer.refused.form === 'some' ? { ok: false, diagnostics: answer.refused.value as Diagnostic[] } : undefined
 }
 
 // STEPS 20 AND 21, THE WARNINGS: the build's warnings, the late refusals, the roll and the hive's wake. Undefined
@@ -1629,10 +1266,33 @@ export function programEmit(run: ProgramRun): CompileResult {
 
   Object.defineProperty(result, 'typescript', {
     enumerable: true,
-    get: () => (typescript ??= emitTypeScript(loweredTs, { env, wake, ...(library ? { library: true } : {}) })),
+    get: () =>
+      (typescript ??= `${emitTypeScript(loweredTs, { env, wake, ...(library ? { library: true } : {}) })}${entryFormAliases(loweredTs, file)}`),
   })
 
   return result as typeof result & { typescript: string }
+}
+
+// THE ENTRY'S RENAMED RECORD FORM IS EXPORTED BY ITS WRITTEN NAME TOO (decision 045). check/scope renames an entry's
+// record form named like some case `<name>__form`, as it renames a loaded one, so a construction binds alike whichever
+// file is the entry. The emitter writes the renamed name, and a face imports the form by the name it was written with
+// (`TwinChoice`, never `TwinChoiceForm`), so each such form gets a type alias under that name. Nothing else in the
+// program can be named so: every definition of the name was renamed, and a case is written inside its union's type
+export function entryFormAliases(program: Program, file: string): string {
+  const lines: string[] = []
+
+  for (const statement of program) {
+    if (statement.form !== 'record-type' || statement.span.file !== file || statement.variants.length > 0 || !statement.name.endsWith('__form')) {
+      continue
+    }
+
+    const params = statement.params ?? []
+    const heads = params.length ? `<${params.map(param => `${toPascal(param)} = any`).join(', ')}>` : ''
+    const args = params.length ? `<${params.map(param => toPascal(param)).join(', ')}>` : ''
+    lines.push(`export type ${toPascal(statement.name.slice(0, -'__form'.length))}${heads} = ${toPascal(statement.name)}${args}`)
+  }
+
+  return lines.length ? `\n${lines.join('\n')}\n` : ''
 }
 
 // the roll grouped by deck, in the shape `hiveWake` takes: exceptions and tells only, so the wake chain stays small.

@@ -11,6 +11,9 @@
 #   - names-in-file and tasks-in-file answer a hash of text to true, the original's `Set`
 #   - reads-variable reads through compile/node-reach.tree (spec section 4.10): every expression the value holds, types
 #     included, but never through a field named `span` or `type`, as the original's reflective walk
+#   - the three walks that write a program (rename-local, free-alias-targets, apply-aliases) are rules of
+#     compile/node-rewrite.tree (decision 043). Each hands back the program it wrote: rename-local writes a copy, as the
+#     original built a new value, and the other two write the program they are handed, as the original did in place
 
 load @term/base/list
   find list
@@ -40,6 +43,12 @@ load ./node
 
 load ./node-reach
   find reach-expression
+
+load ./node-rewrite
+  find rewrite-rule
+  find rewrite-program
+  find copy-program
+  find fresh-count
 
 load ./mill-running
   find minted
@@ -739,3 +748,66 @@ task reads-variable
       miss
         save nothing, 0
   back false
+
+# Every free reference to the local `from` in a built body, read or written, renamed `to`. A construct that binds `from`
+# again (a closure's parameter, a walk's item or index, a nested task, a case arm's `link` names, a handler's caught
+# name) starts a new scope where `from` is that binding, so nothing under it is renamed. The body handed in is left as
+# it was
+task rename-local
+  take body, like list, like statement
+  take from, like text
+  take to, like text
+  like list, like statement
+
+  save rule
+    make rename-local
+      bind from, from
+      bind to, to
+  back rewrite-program(copy-program(body), rule)
+
+# A LOCAL NAMED LIKE AN ALIAS'S TARGET TAKES A FRESH NAME. apply-aliases below renames every aliased reference to the
+# imported name, so after it `find root, name project-root` then `save root, call project-root` reads `root` inside the
+# scope of a local `root` (term-compiler-0032). Here, before that rename, a `save`, a walk's item or index, or a
+# closure's parameter named like a target is renamed `<name>__<n>` with its own uses wherever its scope reads an alias of
+# that target, counting on the state's `shadows`. A task's parameter is not renamed: its name is a named argument
+# callers write
+task free-alias-targets
+  take state, like mint-state
+  take program, like list, like statement
+  like list, like statement
+
+  save targets, make hash
+  walk state/aliases/values()
+    take target
+    save targets/{target}, true
+  fork test, targets/is-empty()
+    hold
+      back program
+  save fresh
+    make fresh-count
+      bind count, state/shadows
+  save rule
+    make free-alias-targets
+      bind aliases, state/aliases
+      bind targets, targets
+      bind fresh, fresh
+  save written, rewrite-program(program, rule)
+  save state/shadows, fresh/count
+  back written
+
+# Every reference written with an alias (`find x, name y`) takes the imported name: a variable (a read or a call), a
+# construction and a named type, each keeping the alias, and a lean call whose label is an alias notes the target in
+# `lean-aliases`. A definition's own name is none of those, and an alias names something imported rather than defined
+# here, so every match is a genuine reference
+task apply-aliases
+  take aliases, like hash, like text, like text
+  take program, like list, like statement
+  like list, like statement
+
+  fork test, aliases/is-empty()
+    hold
+      back program
+  save rule
+    make apply-aliases
+      bind aliases, aliases
+  back rewrite-program(program, rule)

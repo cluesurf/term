@@ -97,8 +97,9 @@ export function surfaceHash(surface: Program, portable: (text: string) => string
   return hashText(portable(programJson(WITHOUT_SPANS, surface as never)))
 }
 
-// the keys a fingerprint leaves out at every depth: a span is provenance, never identity
-const WITHOUT_SPANS = ['span']
+// the keys a fingerprint leaves out at every depth: a span is provenance, and a `placeRow` where a node stands in one
+// stamped program (D011), never identity
+const WITHOUT_SPANS = ['span', 'placeRow']
 
 // EACH DEFINITION OF A SURFACE, AS THE NAME-LEVEL CUTOFF READS IT (compile/names.tree): the names it can be reached by,
 // the names it mentions, and its fingerprint. A dependent's key holds the fingerprints of the definitions it reaches by

@@ -271,5 +271,49 @@ freeCase(
   2,
 )
 
+// ---- copy-statement and copy-expression (item 0309, decision 011 rule 6): a copy stands at no place yet ----
+
+function holds(name: string, good: boolean, detail: unknown): void {
+  if (good) {
+    pass++
+    console.log(`ok    ${name}`)
+  } else {
+    fail++
+    console.log(`FAIL  ${name}\n        ${text(detail)}`)
+  }
+}
+
+const copier = port as unknown as {
+  copyStatement: (value: unknown) => Record<string, unknown>
+  copyExpression: (value: unknown) => Record<string, unknown>
+}
+const rowOf = (node: Record<string, unknown>): number => (node.placeRow as number | undefined) ?? 0
+const unstamped = (node: Record<string, unknown>): Record<string, unknown> => ({ ...node, placeRow: undefined })
+
+{
+  const inner = { ...call('f', v('a')), placeRow: 4 }
+  const given = { ...say(inner), placeRow: 3 }
+  const before = text(given)
+  const made = copier.copyStatement(given)
+  holds('copy-statement: the copy answers place-row 0', rowOf(made) === 0, made)
+  holds('copy-statement: the copy equals the input but for its row', text(unstamped(made)) === text(unstamped(given)), made)
+  holds('copy-statement: the input keeps its row and is not written', given.placeRow === 3 && text(given) === before, given)
+  holds('copy-statement: the copy shares nothing with the input', made !== given && made.expr !== given.expr, made)
+}
+
+{
+  const given = { ...call('g', { ...v('b'), placeRow: 8 }), placeRow: 7 }
+  const before = text(given)
+  const made = copier.copyExpression(given)
+  holds('copy-expression: the copy answers place-row 0', rowOf(made) === 0, made)
+  holds('copy-expression: the copy equals the input but for its row', text(unstamped(made)) === text(unstamped(given)), made)
+  holds('copy-expression: the input keeps its row and is not written', given.placeRow === 7 && text(given) === before, given)
+  holds('copy-expression: the copy shares nothing with the input', made !== given && made.args !== given.args, made)
+  const fresh = copier.copyExpression(v('c'))
+  holds('copy-expression: a node never stamped copies with no placeRow key', !('placeRow' in fresh), fresh)
+  const task = copier.copyStatement(say(v('d')))
+  holds('copy-statement: a node never stamped copies with no placeRow key', !('placeRow' in task), task)
+}
+
 console.log(`\nnode-rewrite-scope: ${pass} pass, ${fail} fail`)
 process.exitCode = fail > 0 ? 1 : 0

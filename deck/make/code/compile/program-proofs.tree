@@ -1,0 +1,514 @@
+# THE PROOFS of `compileProgram`, steps 15 to 19: the kernel's report, the effects (the await switch read off the
+# checker-switches record), the claims, the holds and contracts with the tier-0 tally, and totality. It writes the run
+# in place and answers the refusal that stops the compile, or none to hand the run on to the warnings.
+#
+# Ported from compile/compile.ts's `programProofs`, `safeTerminating` and `provenByKernel` (item 0266 of
+# term/self-host/change/001, decision 031 part F), which stay as the face. The decisions:
+#   - the passes that are Term are loaded by their `.tree` names (check/claim, check/effects, check/async-resolve,
+#     check/contracts); the ones with no port yet are docks, each named for its module (decision 031 section 3):
+#     check/elaborate, check/holds, check/facts, and check/totality.ts, the face that hands check/termination.tree the
+#     linear prover, a task Term cannot hand in
+#   - check/contract.ts's `lowerContracts` read the width switch off check/width-range.ts; here the contracts' port takes
+#     it off the checker-switches record, as it takes the await switch (spec.md section 4.8)
+#   - `safeTerminating`'s try/catch is a `mark unsafe` fork, a failed analysis answering no task
+#   - the tier-0 tally is handed to check/holds.ts as a record it writes, and the run keeps a record built from it
+#     without `seen` (the original deleted `seen` from the tally it handed)
+#   - a set the original built is a list here, each name once in the order first met; a set of spans is a hash of
+#     `<line>:<column>`
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+  find span
+
+load ./node
+  find statement
+  find statement-span
+
+load ./program-run
+  find program-run
+  find program-kernel
+  find task-reason
+
+load ../check/checker-switches
+  find checker-switches
+
+load ../check/claim
+  find claim-evidence
+  find declined-task
+  find stamp-grounded
+  find check-claims
+
+load ../check/effects
+  find check-effects
+  find check-calls-outside-tasks
+
+load ../check/async-resolve
+  find check-async-arguments
+
+load ../check/contracts
+  find lower-contracts
+
+dock load
+  load <@term/make/code/check/elaborate>, name program-proofs-elaborate
+  load <@term/make/code/check/holds>, name program-proofs-holds
+  load <@term/make/code/check/facts>, name program-proofs-facts
+  load <@term/make/code/check/totality>, name program-proofs-totality
+
+# what the proofs read that the run does not hold: the checker's switches
+form proofs-given
+  link switches, like checker-switches
+
+# the refusal that stops the compile, or none
+form proofs-answer
+  link refused, like maybe, like list, like diagnostic
+
+# the kernel's report, as check/elaborate.ts answers it
+form kernel-report
+  link diagnostics, like list, like diagnostic
+  link verified, like list, like text
+  link proven, like list, like text
+  link declined, like list, like task-reason
+  link statementwise, like list, like task-reason
+  link discharged, like list, like span
+
+# strict positivity's errors and termination's warnings, as check/totality.ts answers them
+form totality-report
+  link errors, like list, like diagnostic
+  link warnings, like list, like diagnostic
+
+# the tier-0 tally check/holds.ts counts into: it writes `total`, `proven`, `failed`, and `seen` and `kinds` once it
+# counted something (check/holds.ts `Tally`)
+form proofs-tally
+  link total, like number
+  link proven, like number
+  link failed, like list, like dynamic
+  link seen
+    like dynamic
+    need false
+  link kinds
+    like dynamic
+    need false
+
+# the tally as the run keeps it: the counts, the failures and the kinds, never the running `seen`
+form proofs-obligations
+  link total, like number
+  link proven, like number
+  link failed, like list, like dynamic
+  link kinds
+    like dynamic
+    need false
+
+# the holds' options for the program as written: the tasks another pass checks, and the rules the kernel proved
+form holds-skip-options
+  link skip, like list, like text
+  link kernel-proven, like list, like text
+
+# the holds' options for the checker's copy
+form holds-copy-options
+  link kernel-proven, like list, like text
+  link tally, like proofs-tally
+  link only, like list, like text
+  link pure, like dynamic
+  link state-free, like dynamic
+  link keeping, like dynamic
+  link returning, like dynamic
+
+# ---- small helpers ----
+
+task proofs-refusal
+  take found, like list, like diagnostic
+  like proofs-answer
+  mark private
+
+  back
+    make proofs-answer
+      bind refused, make(some, found)
+
+task as-diagnostics
+  take value, like dynamic
+  like list, like diagnostic
+  mark private
+
+  back value
+
+task as-kernel-report
+  take value, like dynamic
+  like kernel-report
+  mark private
+
+  back value
+
+task as-totality
+  take value, like dynamic
+  like totality-report
+  mark private
+
+  back value
+
+# a set the original built, as a list in its order
+bind proofs-set-list
+  take value, like dynamic
+  like list, like text
+  case node
+    text <[...$value]>
+  case browser
+    text <[...$value]>
+  case rust
+    text <Vec::new()>
+  case swift
+    text <[]>
+  case kotlin
+    text <mutableListOf()>
+
+# whether a host value the dock wrote is there at all. Natively no dock writes one, and a value is always there
+bind proofs-given-value
+  take value, like dynamic
+  like boolean
+  case node
+    text <($value !== undefined)>
+  case browser
+    text <($value !== undefined)>
+  case rust
+    text <true>
+  case swift
+    text <true>
+  case kotlin
+    text <true>
+
+task push-all
+  take out, like list, like diagnostic
+  take found, like list, like diagnostic
+  mark private
+
+  walk found
+    take one
+    push(out, one)
+
+# a span's start, `<line>:<column>`, as the original keyed spans
+task at-text
+  take at, like span
+  like text
+  mark private
+
+  back <{at/start/line}:{at/start/column}>
+
+# whether any marker of the diagnostic stands at a key of `keys`
+task marked-at
+  take one, like diagnostic
+  take keys, like hash, like text, like boolean
+  like boolean
+  mark private
+
+  walk one/markers
+    take marker
+    fork test, keys/has(at-text(marker/span))
+      hold
+        back true
+  back false
+
+# the names, each once, in the order first met
+task once-each
+  take names, like list, like text
+  like list, like text
+  mark private
+
+  save seen, make hash
+  save out, make list
+  walk names
+    take name
+    fork test, not(seen/has(name))
+      hold
+        save seen/{name}, true
+        push(out, name)
+  back out
+
+# the terminating tasks, or none when the analysis fails: a crash there must cost proofs, never pass one
+task safe-terminating
+  take program, like list, like statement
+  like list, like text
+  mark private
+
+  fork
+    mark unsafe
+    save found, proofs-set-list(program-proofs-totality/terminating-functions(program))
+    back found
+  halt take
+    take problem
+    back make list
+  back make list
+
+# THE RULES THE KERNEL PROVED: each theorem whose goal, the `hold` named after it, the kernel discharged. Handed to the
+# arithmetic provers, so `cite count-of-plus` there rests on a law proved by `fold` as it rests on one they proved
+task proven-by-kernel
+  take program, like list, like statement
+  take discharged, like hash, like text, like boolean
+  like list, like text
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case function
+        fork test, theorem
+          hold
+            visit-rule(out, body, name, discharged)
+      miss
+        turn next
+  back once-each(out)
+
+task visit-rule
+  take out, like list, like text
+  take statements, like list, like statement
+  take rule, like text
+  take discharged, like hash, like text, like boolean
+  mark private
+
+  walk statements
+    take one
+    sift one
+      case hold
+        fork test, and(is-equal(name, rule), discharged/has(at-text(span)))
+          hold
+            push(out, rule)
+      case if
+        walk branches
+          take branch
+          visit-rule(out, branch/body, rule, discharged)
+      miss
+        turn next
+
+# ---- the proofs ----
+
+task program-proofs
+  take run, like program-run
+  take given, like proofs-given
+  like proofs-answer
+
+  save file, run/file
+
+  # elaboration: the now-typed surface lowered into the dependent kernel, which verifies it, and discharges the
+  # non-linear `hold` clauses it can by definitional equality
+  save elaboration, as-kernel-report(program-proofs-elaborate/elaborate-report(run/program, file))
+  save kernel-discharged, make hash
+  walk elaboration/discharged
+    take at
+    save key, at-text(at)
+    save kernel-discharged/{key}, true
+
+  # what the claim wall reads of every task: lists, each name once
+  save declined, make list
+  walk elaboration/declined
+    take reason
+    save task
+      make declined-task
+        bind name, reason/name
+        bind reason, reason/reason
+    push(declined, task)
+  save pure-names, proofs-set-list(program-proofs-facts/pure-functions(run/program))
+  save evidence
+    make claim-evidence
+      bind verified, once-each(elaboration/proven)
+      bind terminating, safe-terminating(run/program)
+      bind pure, pure-names
+      bind declined, declined
+
+  # A KERNEL REFUSAL DOES NOT HIDE THE REST: every goal the kernel neither proved nor refused is reported too, and the
+  # claim wall's refusals beside it
+  fork test, is-above(elaboration/diagnostics/length, 0)
+    hold
+      save answered, make hash
+      walk kernel-discharged/entries()
+        take entry
+        save answered/{entry/first}, true
+      walk elaboration/diagnostics
+        take one
+        save key, at-text(one/span)
+        save answered/{key}, true
+      save found, make list
+      push-all(found, elaboration/diagnostics)
+      walk as-diagnostics(program-proofs-holds/check-holds(run/program, file))
+        take one
+        fork test, and(is-equal(one/severity, make error), not(marked-at(one, answered)))
+          hold
+            push(found, one)
+      save claimed, check-claims(run/program, file, evidence)
+      walk claimed/diagnostics
+        take one
+        fork test, not(answered/has(at-text(one/span)))
+          hold
+            push(found, one)
+      back proofs-refusal(found)
+
+  # effect checking: the async discipline, and outside every task, where nothing can wait, a call to an async task is
+  # `tick`ed or refused (behind the await switch)
+  save effects, make list
+  push-all(effects, check-effects(run/program, file))
+  fork test, given/switches/await-outside
+    hold
+      push-all(effects, check-calls-outside-tasks(run/program, file))
+  push-all(effects, check-async-arguments(run/program, file))
+  fork test, is-above(effects/length, 0)
+    hold
+      back proofs-refusal(effects)
+
+  # the claim wall: every task records whether it may carry a proof, an unfilled claim is refused, and the claims left
+  # open are counted
+  save run/program, stamp-grounded(run/program, evidence)
+  save claims, check-claims(run/program, file, evidence)
+  fork test, is-above(claims/diagnostics/length, 0)
+    hold
+      back proofs-refusal(claims/diagnostics)
+  save run/open-claims, claims/open
+
+  # this file's own tasks are checked in the checker's copy, where a task's `have` wraps its body and a callee's `must`
+  # follows its call; every other task here, as written
+  save checked, lower-contracts(run/program, make(some, file), true, given/switches/widths)
+  save kernel-proven, proven-by-kernel(run/program, kernel-discharged)
+  save skip-options
+    make holds-skip-options
+      bind skip, checked/lowered
+      bind kernel-proven, kernel-proven
+  save hold-diagnostics, make list
+  walk as-diagnostics(program-proofs-holds/check-holds(run/program, file, skip-options))
+    take one
+    fork test, not(marked-at(one, kernel-discharged))
+      hold
+        push(hold-diagnostics, one)
+
+  # the tier-0 tally, counted in the checker's copy
+  save tally
+    make proofs-tally
+      bind total, 0
+      bind proven, 0
+      bind failed, make list
+
+  # the kernel's verdict on this file's own tasks, by name
+  save stamped-program, false
+  walk run/program
+    take one
+    sift one
+      case function
+        sift span/file
+          case some
+            save stamped-program, true
+          case none
+            turn next
+      miss
+        turn next
+  save own-names, make hash
+  walk run/program
+    take one
+    sift one
+      case function
+        fork test, or(claim, stub)
+          hold
+            turn next
+        save own, true
+        fork test, stamped-program
+          hold
+            save own, false
+            sift span/file
+              case some
+                link own-file
+                save own, is-equal(own-file, file)
+              case none
+                save nothing, 0
+        fork test, own
+          hold
+            save own-names/{name}, true
+      miss
+        turn next
+  save proven-set, make hash
+  walk elaboration/proven
+    take name
+    save proven-set/{name}, true
+  save proven-count, 0
+  walk elaboration/proven
+    take name
+    fork test, own-names/has(name)
+      hold
+        save proven-count, add(proven-count, 1)
+  save command-count, 0
+  walk elaboration/verified
+    take name
+    fork test, and(own-names/has(name), not(proven-set/has(name)))
+      hold
+        save command-count, add(command-count, 1)
+  save kernel-declined, make list
+  walk elaboration/declined
+    take reason
+    fork test, own-names/has(reason/name)
+      hold
+        push(kernel-declined, reason)
+  save kernel-statementwise, make list
+  walk elaboration/statementwise
+    take reason
+    fork test, and(own-names/has(reason/name), not(proven-set/has(reason/name)))
+      hold
+        push(kernel-statementwise, reason)
+  save kernel
+    make program-kernel
+      bind proven, proven-count
+      bind commands, command-count
+      bind declined, kernel-declined
+      bind statementwise, kernel-statementwise
+
+  save copy-options
+    make holds-copy-options
+      bind kernel-proven, kernel-proven
+      bind tally, tally
+      bind only, checked/lowered
+      bind pure, program-proofs-facts/pure-functions(run/program)
+      bind state-free, program-proofs-facts/state-free-functions(run/program)
+      bind keeping, program-proofs-facts/length-keeping-functions(run/program)
+      bind returning, program-proofs-facts/returns-fresh-functions(run/program)
+  walk as-diagnostics(program-proofs-holds/check-holds(checked/program, file, copy-options))
+    take one
+    fork test, not(marked-at(one, kernel-discharged))
+      hold
+        push(hold-diagnostics, one)
+
+  # the running count is how ordinals were assigned, not part of the answer. The kinds are there once something was
+  # counted, and absent otherwise, as the original's tally left them
+  save obligations
+    make proofs-obligations
+      bind total, tally/total
+      bind proven, tally/proven
+      bind failed, tally/failed
+  fork test, proofs-given-value(tally/kinds)
+    hold
+      save obligations/kinds, tally/kinds
+  save run/obligations, obligations
+  save run/kernel, kernel
+
+  save hold-errors, make list
+  save hold-warnings, make list
+  walk hold-diagnostics
+    take one
+    fork test, is-equal(one/severity, make error)
+      hold
+        push(hold-errors, one)
+    fork test, is-equal(one/severity, make warning)
+      hold
+        push(hold-warnings, one)
+  fork test, is-above(hold-errors/length, 0)
+    hold
+      back proofs-refusal(hold-errors)
+  save run/hold-warnings, hold-warnings
+
+  # totality: strict positivity refuses, termination warns
+  save totality, as-totality(program-proofs-totality/check-totality(run/program, file))
+  fork test, is-above(totality/errors/length, 0)
+    hold
+      back proofs-refusal(totality/errors)
+  save run/totality-warnings, totality/warnings
+
+  back
+    make proofs-answer
+      bind refused, make none

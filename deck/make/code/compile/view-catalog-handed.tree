@@ -1,5 +1,3 @@
-mark draft
-
 # What compile/view.ts's callers hand the document reader, made into what compile/view-document.tree reads: the
 # catalog's sets, the graph's templates, the gate's options, and the answer as the callers hold it.
 #

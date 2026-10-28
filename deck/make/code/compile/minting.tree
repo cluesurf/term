@@ -1,0 +1,822 @@
+# The mint bridge, the driver (decision 033 section 2, part 3): a parsed `.tree` file read by the code role's own
+# grammar and lowered to the compiler's program. `mill` expands the file's grammar scopes, then `mill-by-grammar` mines
+# it, mints every top-level capture in written order, lowers the finds in what it minted, lowers each value as a
+# top-level statement, and frees and applies the file's import aliases.
+#
+# Ported from compile/mint-bridge.ts (`topLevelOf`, `topLevelInOrder`, `bakedGrammar`, `millByGrammar`) and
+# compile/mill.ts (self-hosting, item 0274), which stay as the faces until part 8. The decisions:
+#   - the baked grammar's text is compile/mill-grammar.generated.ts's, docked until item new-0008 ports it (0248
+#     re-points it), and read once per process into a shared cell
+#   - the original's `MillResult` union is `mill-result`, its `ok` saying which half holds the answer
+#   - the mint state's `flow` is set before anything lowers, to a closure over the state (decision 033 section 4)
+#   - the top-level captures are ordered by their `at` (decision 042), ties in the order the match holds them
+#   - a top-level `hook` is part 6's `hook-of`: the dock statement and the route's handlers
+
+load @term/base/list
+  find list
+  find get
+  find sort-by
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+
+load ../parser/tree
+  find node
+  find root-node
+  find parse
+  find parse-result
+
+load ../parser/token
+  find token-source
+
+load ../parser/diagnostic
+  find span
+  find position
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+
+load ../deck/resolve
+  find base-refusal
+
+load ./node
+  find statement
+  find type
+  find twin
+  find declared-param
+  find declared-signature
+  find mask-task
+
+load ./templates
+  find span-of-whole
+
+load ./scope
+  find expand-scopes
+
+load ./find-lower
+  find lower-finds
+
+load ./mill-running
+  find minted
+  find mill-capture
+  find mine-run
+  find run-mine
+  find run-mint
+  find read-mine-grammar
+  find read-mint-grammar
+  find read-lean-rules
+
+load ./minting-reads
+  find mint-state
+  find mint-grammar
+  find new-mint-state
+  find is-form
+  find at
+  find first-at
+  find forms-at
+  find word-at
+  find span-of
+  find outline-of
+  find mask-self
+  find free-alias-targets
+  find apply-aliases
+
+load ./minting-values
+  find refuse
+  find unhandled
+  find type-of
+  find body-steps
+  find minted-form
+
+load ./minting-flow
+  find flow-of
+  find statement-of
+  find function-of
+  find function-built
+  find hold-of
+
+load ./minting-forms
+  find form-of
+  find native-of
+  find bind-of
+  find twin-of
+
+load ./minting-rules
+  find rule-of
+
+load ./minting-routes
+  find hook-of
+
+load ./minting-views
+  find view-of
+
+dock load
+  load <@term/make/code/compile/mill-grammar.generated>, name minting-grammar-text
+
+# what milling a file answers: the program and the twins beside it when `ok`, else the diagnostics that stopped it
+form mill-result
+  link ok, like boolean
+  link program, like list, like statement
+  link twins, like list, like twin
+  link diagnostics, like list, like diagnostic
+
+# ---- the baked grammar ----
+
+# the code role's grammar, read once per process
+form grammar-cell
+  mark shared
+  link grammar
+    like maybe, like mint-grammar
+    need false
+
+host baked-cell, make grammar-cell
+
+task baked-grammar
+  like mint-grammar
+
+  sift baked-cell/grammar
+    case some
+      link known
+      back known
+    case none
+      save nothing, 0
+  save mine-tree, parse-source(<code-mine.tree>, minting-grammar-text/MINE_SOURCE)
+  save mint-tree, parse-source(<code-mint.tree>, minting-grammar-text/MINT_SOURCE)
+  save mine, make hash
+  save lean, make hash
+  sift mine-tree
+    case some
+      link known
+      save mine, read-mine-grammar(known)
+      walk read-lean-rules(known)
+        take rule
+        save lean/{rule}, true
+    case none
+      save nothing, 0
+  save mint, make hash
+  sift mint-tree
+    case some
+      link known
+      save mint, read-mint-grammar(known)
+    case none
+      save nothing, 0
+  save grammar
+    make mint-grammar
+      bind mine, mine
+      bind mint, mint
+      bind lean, lean
+  save baked-cell/grammar, make(some, grammar)
+  back grammar
+
+task parse-source
+  take file, like text
+  take text, like text
+  like maybe, like root-node
+  mark private
+
+  save source
+    make token-source
+      bind file, file
+      bind text, text
+  save parsed, parse(source)
+  fork test, parsed/ok
+    hold
+      save tree, parsed/tree
+      back make(some, tree)
+  back make none
+
+# ---- the driver ----
+
+# The mill: grammar scopes first, so the code grammar only ever sees code
+task mill
+  take tree, like root-node
+  take file, like text
+  take role, like maybe, like text
+  take lean, like boolean
+  like mill-result
+
+  save expanded, expand-scopes(tree, file)
+  fork test, is-above(expanded/diagnostics/length, 0)
+    hold
+      back failed(expanded/diagnostics)
+  back mill-by-grammar(expanded/tree, file, role, baked-grammar(), lean)
+
+task failed
+  take diagnostics, like list, like diagnostic
+  like mill-result
+  mark private
+
+  save no-program, make list
+  save no-twins, make list
+  back
+    make mill-result
+      bind ok, false
+      bind program, no-program
+      bind twins, no-twins
+      bind diagnostics, diagnostics
+
+task mill-by-grammar
+  take tree, like root-node
+  take file, like text
+  take role, like maybe, like text
+  take grammar, like mint-grammar
+  take lean, like boolean
+  like mill-result
+
+  save state, new-mint-state(file, role, lean, tree, grammar)
+  save state/flow
+    task
+      take values, like list, like minted
+      like list, like statement
+      back flow-of(state, values)
+  save mined, run-mine(grammar/mine, <code>, tree)
+  fork test, not(mined/ok)
+    hold
+      save where, zero-span()
+      save outline, outline-of(mined/at)
+      sift mined/at
+        case some
+          link known
+          save where, span-of-whole(known)
+        case none
+          save nothing, 0
+      save input
+        make diagnostic-input
+          bind file, file
+          bind span, where
+          bind message, make(some, <the code grammar does not match this file, at `{outline}`>)
+      save name, make unexpected-node
+      save stopped, make list
+      push(stopped, diagnose(name, input))
+      back failed(stopped)
+
+  save program, make list
+  walk top-level-in-order(mined/match)
+    take capture
+    sift capture
+      case match
+        link rule-name
+        link rule-match
+        link rule-span
+        link rule-node
+        save from, make(some, rule-node)
+        # every `find` in it is lowered here, to the forms the bridge builds (compile/find-lower.tree, decision 005)
+        save lowered, lower-finds(run-mint(grammar/mint, rule-name, rule-match, from, no-number()))
+        walk lowered/problems
+          take problem
+          save where, zero-span()
+          sift problem/span
+            case some
+              link known
+              save where, known
+            case none
+              save nothing, 0
+          save input
+            make diagnostic-input
+              bind file, file
+              bind span, where
+              bind message, make(some, problem/message)
+          save name, make not-implemented
+          push(state/diagnostics, diagnose(name, input))
+        walk lowered/values
+          take value
+          # EACH TOP-LEVEL STATEMENT GETS A FRESH SCOPE
+          save state/declared, make hash
+          save state/bound, make hash
+          walk top-level-of(state, value)
+            take built
+            push(program, built)
+      miss
+        save nothing, 0
+
+  fork test, is-above(state/diagnostics/length, 0)
+    hold
+      back failed(state/diagnostics)
+  save freed, free-alias-targets(state, program)
+  save aliased, apply-aliases(state/aliases, freed)
+  save no-diagnostics, make list
+  back
+    make mill-result
+      bind ok, true
+      bind program, aliased
+      bind twins, state/twins
+      bind diagnostics, no-diagnostics
+
+task no-number
+  like maybe, like number
+  mark private
+
+  back make none
+
+task zero-span
+  like span
+  mark private
+
+  save origin
+    make position
+      bind line, 0
+      bind column, 0
+  back
+    make span
+      bind start, origin
+      bind end, origin
+
+# The match's captures in source order: every capture carries `at`, its node's index among the tree's nodes (decision
+# 042), ties and captures with none in the order the match holds them
+form placed-capture
+  link place, like number
+  link capture, like mill-capture
+
+task top-level-in-order
+  take match, like hash, like text, like list, like mill-capture
+  like list, like mill-capture
+
+  save placed, make list
+  save index, 0
+  walk match/values()
+    take captures
+    walk captures
+      take capture
+      save entry
+        make placed-capture
+          bind place, capture-place(capture, index)
+          bind capture, capture
+      push(placed, entry)
+      save index, add(index, 1)
+  save out, make list
+  walk sort-by(placed, capture-place-of)
+    take entry
+    push(out, entry/capture)
+  back out
+
+task capture-place-of
+  take entry, like placed-capture
+  like number
+  mark private
+
+  back entry/place
+
+task capture-place
+  take capture, like mill-capture
+  take fallback, like number
+  like number
+  mark private
+
+  sift capture
+    case word
+      link word-value
+      link word-span
+      link word-node
+      link word-at
+      back number-else(word-at, fallback)
+    case text
+      link text-value
+      link text-span
+      link text-node
+      link text-at
+      back number-else(text-at, fallback)
+    case number
+      link number-value
+      link number-decimal
+      link number-span
+      link number-node
+      link number-at
+      back number-else(number-at, fallback)
+    case match
+      link match-rule
+      link match-match
+      link match-span
+      link match-node
+      link match-at
+      back number-else(match-at, fallback)
+
+task number-else
+  take value, like maybe, like number
+  take fallback, like number
+  like number
+  mark private
+
+  sift value
+    case some
+      link known
+      back known
+    case none
+      back fallback
+
+# ---- one top-level statement ----
+
+# A top-level statement can lower to several compiler statements (a form and its methods), or to none at all (a `load`
+# is an import, which the loader resolves)
+task top-level-of
+  take state, like mint-state
+  take value, like minted
+  like list, like statement
+
+  sift minted-form(value)
+    case none
+      back statement-of(state, value)
+    case some
+      link form
+      back top-level-form(state, value, form)
+
+task top-level-form
+  take state, like mint-state
+  take value, like minted
+  take form, like text
+  like list, like statement
+  mark private
+
+  save held, make(some, value)
+
+  fork test, is-equal(form, <load>)
+    hold
+      load-of(state, value)
+      back no-statements()
+
+  # a package manifest read by the code role, `bear` and a top-level `note`: none is a statement
+  fork test, or(is-equal(form, <deck-def>), or(is-equal(form, <bear>), is-equal(form, <note>)))
+    hold
+      back no-statements()
+
+  # another implementation of a named task: returned beside the program
+  fork test, is-equal(form, <twin>)
+    hold
+      sift twin-of(state, value)
+        case some
+          link built
+          push(state/twins, built)
+        case none
+          save nothing, 0
+      back no-statements()
+
+  fork test, is-equal(form, <form>)
+    hold
+      back form-of(state, value)
+
+  fork test, is-equal(form, <dock-bind>)
+    hold
+      back native-of(state, value)
+
+  # RETIRED. `dock` was also a routing form, an alias for `hook`
+  fork test, is-equal(form, <dock-def>)
+    hold
+      refuse(state, value, <`dock` is the native FFI binding (`dock load`, `dock type`). A URL route is `hook \</path\>`>)
+      back no-statements()
+
+  fork test, is-equal(form, <mask>)
+    hold
+      back mask-of(state, value)
+
+  fork test, is-equal(form, <suit>)
+    hold
+      back suit-of(state, value)
+
+  fork test, is-equal(form, <wear>)
+    hold
+      sift word-at(held, <name>)
+        case some
+          link mask
+          sift state/owner
+            case some
+              link target
+              save instance
+                make instance
+                  bind mask, mask
+                  bind target, target
+                  bind methods, task-names(state, value)
+                  bind span, span-of(held)
+              back one-statement(instance)
+            case none
+              back no-statements()
+        case none
+          back no-statements()
+
+  fork test, is-equal(form, <bind-def>)
+    hold
+      back bind-of(state, value)
+
+  fork test, is-equal(form, <hook>)
+    hold
+      back hook-of(state, value)
+
+  fork test, is-equal(form, <rule-def>)
+    hold
+      back rule-of(state, value)
+
+  fork test, is-equal(form, <view-def>)
+    hold
+      back view-of(state, value)
+
+  fork test, is-equal(form, <tell>)
+    hold
+      back tell-of(state, value)
+
+  # a proof `hold` written at the top level rather than inside a task body
+  fork test, is-equal(form, <hold-claim>)
+    hold
+      back hold-of(state, value)
+
+  back statement-of(state, value)
+
+task no-statements
+  like list, like statement
+  mark private
+
+  back make list
+
+task one-statement
+  take one, like statement
+  like list, like statement
+  mark private
+
+  save out, make list
+  push(out, one)
+  back out
+
+# The loader resolves the path: what is kept here is `find X, name Y` (Y a local synonym for X), and what is SAID here is
+# a `base <dir>` that disagrees with the path and a `find get as list-get`, which binds nothing
+task load-of
+  take state, like mint-state
+  take value, like minted
+  mark private
+
+  save held, make(some, value)
+  walk forms-at(held, <find>)
+    take found
+    save finding, make(some, found)
+    sift word-at(finding, <text>)
+      case some
+        link imported
+        save local, word-at(first-at(finding, <name>), <name>)
+        sift local
+          case none
+            save local, word-at(finding, <name>)
+          case some
+            save nothing, 0
+        sift local
+          case some
+            link known
+            fork test, and(is-unequal(known, <>), and(is-unequal(imported, <>), is-unequal(known, imported)))
+              hold
+                save state/aliases/{known}, imported
+          case none
+            save nothing, 0
+      case none
+        save nothing, 0
+  # `base <dir>` forces the package root, and must name the path's first segment
+  save based, first-at(held, <base>)
+  sift word-at(based, <value>)
+    case some
+      link base
+      sift word-at(held, <path>)
+        case some
+          link path
+          save refused, base-refusal(path, base)
+          fork test, is-unequal(refused, <>)
+            hold
+              save at-value, value
+              sift based
+                case some
+                  link known
+                  save at-value, known
+                case none
+                  save nothing, 0
+              refuse(state, at-value, refused)
+        case none
+          save nothing, 0
+    case none
+      save nothing, 0
+  walk forms-at(held, <find>)
+    take found
+    sift word-at(make(some, found), <stray>)
+      case some
+        link stray
+        save words, split(stray, < >)
+        save first, get(words, 0)
+        save last, get(words, subtract(words/length, 1))
+        refuse(state, found, <"find {stray}" binds nothing: an import alias is written "find {first}, name {last}">)
+      case none
+        save nothing, 0
+
+# the names of the named tasks under a value
+task task-names
+  take state, like mint-state
+  take value, like minted
+  like list, like text
+  mark private
+
+  save out, make list
+  walk forms-at(make(some, value), <task>)
+    take task-form
+    sift word-at(make(some, task-form), <name>)
+      case some
+        link name
+        fork test, is-unequal(name, <>)
+          hold
+            push(out, name)
+      case none
+        save nothing, 0
+  back out
+
+# A `mask`: its declared tasks, each one's signature as written, and a task with a body is a DEFAULT, one generic task
+# over every form wearing the mask, `<mask>_<task>`, its `self` that form
+task mask-of
+  take state, like mint-state
+  take value, like minted
+  like list, like statement
+  mark private
+
+  save held, make(some, value)
+  sift word-at(held, <name>)
+    case none
+      unhandled(state, value, <a mask with no name>)
+      back no-statements()
+    case some
+      save nothing, 0
+  save name, text-or(word-at(held, <name>))
+  save declared, make list
+  walk forms-at(held, <task>)
+    take task-form
+    sift word-at(make(some, task-form), <name>)
+      case some
+        push(declared, task-form)
+      case none
+        save nothing, 0
+  save defaults, make hash
+  save outer, state/owner
+  save outer-self, state/self-type
+  save outer-params, state/owner-params
+  save state/owner, make(some, name)
+  save self-args, make list
+  save self-type
+    make named
+      bind name, mask-self()
+      bind args, self-args
+  save state/self-type, make(some, self-type)
+  save self-params, make list
+  push(self-params, mask-self())
+  save state/owner-params, make(some, self-params)
+  save out, make list
+  walk declared
+    take task-form
+    fork test, is-equal(body-steps(state, task-form)/length, 0)
+      hold
+        turn next
+    save built, function-built(state, task-form, make(some, name))
+    fork test, is-above(built/length, 0)
+      hold
+        save defaults/{text-or(word-at(make(some, task-form), <name>))}, true
+        walk built
+          take one
+          push(out, one)
+  save state/owner, outer
+  save state/self-type, outer-self
+  save state/owner-params, outer-params
+
+  save methods, make list
+  save tasks, make list
+  walk declared
+    take task-form
+    save task-held, make(some, task-form)
+    save task-name, text-or(word-at(task-held, <name>))
+    push(methods, task-name)
+    save result, type-of(state, first-at(task-held, <like>))
+    save params, make list
+    walk forms-at(task-held, <take>)
+      take take-form
+      save param
+        make declared-param
+          bind type, type-of(state, first-at(make(some, take-form), <like>))
+      push(params, param)
+    save signature
+      make declared-signature
+        bind params, params
+        bind result, result
+    save entry
+      make mask-task
+        bind name, task-name
+        bind signature, signature
+        bind default, defaults/has(task-name)
+    push(tasks, entry)
+  save masked
+    make mask
+      bind name, name
+      bind methods, methods
+      bind tasks, tasks
+      bind span, span-of(held)
+  save all, make list
+  push(all, masked)
+  walk out
+    take one
+    push(all, one)
+  back all
+
+# `suit <target>` declares nothing itself: its `wear` blocks are trait implementations for the target, and their bodies
+# are lifted as functions over the target, as a `wear` under the form lifts them
+task suit-of
+  take state, like mint-state
+  take value, like minted
+  like list, like statement
+  mark private
+
+  save held, make(some, value)
+  sift word-at(held, <name>)
+    case none
+      back no-statements()
+    case some
+      save nothing, 0
+  save target, text-or(word-at(held, <name>))
+  save outer, state/owner
+  save outer-self, state/self-type
+  save outer-params, state/owner-params
+  save state/owner, make(some, target)
+  save target-args, make list
+  save self-type
+    make named
+      bind name, target
+      bind args, target-args
+  save state/self-type, make(some, self-type)
+  save no-params, make list
+  save state/owner-params, make(some, no-params)
+  save out, make list
+  walk forms-at(held, <wear>)
+    take worn
+    save worn-held, make(some, worn)
+    sift word-at(worn-held, <name>)
+      case some
+        link mask
+        save instance
+          make instance
+            bind mask, mask
+            bind target, target
+            bind methods, task-names(state, worn)
+            bind span, span-of(worn-held)
+        push(out, instance)
+        walk forms-at(worn-held, <task>)
+          take task-form
+          walk function-of(state, task-form)
+            take one
+            push(out, one)
+      case none
+        save nothing, 0
+  save state/owner, outer
+  save state/self-type, outer-self
+  save state/owner-params, outer-params
+  back out
+
+# `tell @deck/form`: what a customer sees when this exception reaches them
+task tell-of
+  take state, like mint-state
+  take value, like minted
+  like list, like statement
+  mark private
+
+  save held, make(some, value)
+  sift word-at(held, <name>)
+    case none
+      refuse(state, value, <tell needs the full name of an exception (@deck/form)>)
+      back no-statements()
+    case some
+      link named
+      save links, make list
+      walk forms-at(held, <link>)
+        take link-form
+        sift word-at(make(some, link-form), <name>)
+          case some
+            link known
+            fork test, is-above(char-length(known), 0)
+              hold
+                push(links, known)
+          case none
+            save nothing, 0
+      save told
+        make tell
+          bind name, named
+          bind note, word-at(first-at(held, <note>), <value>)
+          bind hint, text-or(word-at(first-at(held, <hint>), <value>))
+          bind links, links
+          bind alias, word-at(first-at(held, <alias>), <value>)
+          bind span, span-of(held)
+      back one-statement(told)
+
+task char-length
+  take value, like text
+  like number
+  mark private
+
+  back value/length
+
+task text-or
+  take value, like maybe, like text
+  like text
+  mark private
+
+  sift value
+    case some
+      link known
+      back known
+    case none
+      back <>

@@ -1,31 +1,16 @@
 // The mill: a parsed `.tree` file to the compiler's AST.
 //
-// THE CODE ROLE IS READ BY ITS OWN GRAMMAR, like every other dialect.
-//
-// `deck/mill/code/tree/code/` holds the `mine` and `mint` files that define the code role. `compile/mill-run.ts` runs
-// them and `compile/mint-bridge.ts` turns what they build into the compiler's nodes. Nothing here reads `.tree`
-// syntax by hand any more, which is the rule every other dialect in the tree already obeyed. See
-// note/project/term/one-parser.md.
-//
-// WHAT USED TO BE HERE. `compile/mill-legacy.ts` is the hand-written reader, 5,366 lines that lowered a parse
-// tree by hand. It came off the compile path on 2026-09-01 (mint-bridge-0004), and nothing the compiler ships
-// imports it. It stays on disk as the reference half of the historical parity gate, which runs it only under
-// `pnpm term:mint-parity --reference`. Do not edit it and do not import it: a second implementation of a grammar
-// disagrees with the grammar eventually, and the disagreement is silent.
-//
-// HOW THE SWITCH WAS MADE, because the first attempt failed and the reason is worth keeping. It flipped once, on
-// 2026-08-31, on full byte parity over every `.tree` file in all twelve packages, and `pnpm term:test` went from
-// 247 pass / 0 fail to 140 / 107. The pool was wrong: the compiler does not only mill files, it mills source
-// STRINGS the suites and tools write inline, and those use constructs no file in the tree contains. A corpus is
-// not a language. So the measurement moved here, where every caller passes through, behind a flag that ran the
-// switch without making it (`TERM_MILL_GRAMMAR=1 pnpm term:test`), and the 107 failures were worked down one at
-// a time to zero before the line moved. The account is in note/project/term/mill/review/mint-bridge/readme.md.
+// THE CODE ROLE IS READ BY ITS OWN GRAMMAR, like every other dialect. `deck/mill/code/tree/code/` holds the `mine`
+// and `mint` files that define the code role, `compile/mill-running.tree` runs them, and `compile/minting.tree` turns
+// what they build into the compiler's nodes, grammar scopes first (compile/scope.tree), so the code grammar only ever
+// sees code. This is a face over minting.tree's `mill` (self-hosting, item term-self-host-001-0280), keeping the
+// TypeScript shapes compile/mint-bridge.ts names. See note/project/term/one-parser.md and
+// note/project/term/mill/review/mint-bridge/readme.md for how the grammar replaced the hand-written reader.
 
 import type { RootNode } from '@term/make/code/parser/narrow'
-import type { Diagnostic } from '@term/make/code/parser/diagnostic'
-import { millByGrammar } from '@term/make/code/compile/mint-bridge'
+import { millResultOf } from '@term/make/code/compile/mint-bridge'
 import type { MillResult } from '@term/make/code/compile/mint-bridge'
-import { expandScopes } from '@term/make/code/compile/scope'
+import * as port from '@term/make/code/compile/minting'
 
 export type { MillResult } from '@term/make/code/compile/mint-bridge'
 
@@ -33,19 +18,11 @@ export function mill(
   tree: RootNode,
   file: string,
   role?: string,
-  // `mark lean` on the file's role rule: a bare head is a call and a property head is a named argument. The
-  // lean pass runs over the MATCH, between mine and mint, so nothing downstream of it can tell the two
-  // spellings apart. See note/project/term/mill/lean.md.
+  // `mark lean` on the file's role rule: a bare head is a call and a property head is a named argument.
+  // See note/project/term/mill/lean.md.
   lean?: boolean,
 ): MillResult {
-  // GRAMMAR SCOPES FIRST (compile/scope.tree, note/project/term/mill/02-role-scopes.md): every `role note, x + y`, and every
-  // name the file imports as a grammar, is read by its grammar and lowered to the code it means, so the code grammar
-  // below only ever sees code. A file with no scope comes back as it went in
-  const expanded = expandScopes(tree as never, file)
-
-  if (expanded.diagnostics.length > 0) {
-    return { ok: false, diagnostics: expanded.diagnostics as Diagnostic[] }
-  }
-
-  return millByGrammar(expanded.tree as RootNode, file, role, undefined, lean)
+  return millResultOf(
+    port.mill(tree as never, file, role === undefined ? { form: 'none' } : { form: 'some', value: role }, lean === true),
+  )
 }

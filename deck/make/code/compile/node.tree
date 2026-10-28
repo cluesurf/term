@@ -225,6 +225,8 @@ form value-branch
   link cond, like expression
   link value, like expression
 
+# Every case carries `place-row`: where the node stands in a program stamped by compile/place-stamp.tree, its place-walk
+# row plus one, and 0 (absent) in a program nothing stamped (D011). Never identity: node-json's fingerprints skip it
 form expression
   # `value` the number, and `digits` its exact text past 2^53
   case integer
@@ -236,11 +238,17 @@ form expression
     link type
       like maybe, like type
       need false
+    link place-row
+      like number
+      need false
   case float
     link value, like float
     link span, like span
     link type
       like maybe, like type
+      need false
+    link place-row
+      like number
       need false
   case boolean
     link value, like boolean
@@ -248,11 +256,17 @@ form expression
     link type
       like maybe, like type
       need false
+    link place-row
+      like number
+      need false
   case string
     link value, like text
     link span, like span
     link type
       like maybe, like type
+      need false
+    link place-row
+      like number
       need false
   # run-time text interpolation: the chunks as written and an expression per `{{...}}`
   case template
@@ -261,16 +275,25 @@ form expression
     link type
       like maybe, like type
       need false
+    link place-row
+      like number
+      need false
   case unit
     link span, like span
     link type
       like maybe, like type
+      need false
+    link place-row
+      like number
       need false
   # the host null literal, for the dynamic boundary
   case null
     link span, like span
     link type
       like maybe, like type
+      need false
+    link place-row
+      like number
       need false
   case variable
     link name, like text
@@ -285,6 +308,9 @@ form expression
     link alias
       like text
       need false
+    link place-row
+      like number
+      need false
   case binary
     link op, like binary-op
     link left, like expression
@@ -293,12 +319,18 @@ form expression
     link type
       like maybe, like type
       need false
+    link place-row
+      like number
+      need false
   case unary
     link op, like unary-op
     link operand, like expression
     link span, like span
     link type
       like maybe, like type
+      need false
+    link place-row
+      like number
       need false
   case call
     link callee, like expression
@@ -348,17 +380,26 @@ form expression
     link printed
       like boolean
       need false
+    link place-row
+      like number
+      need false
   case array
     link items, like list, like expression
     link span, like span
     link type
       like maybe, like type
       need false
+    link place-row
+      like number
+      need false
   case map
     link entries, like list, like map-entry
     link span, like span
     link type
       like maybe, like type
+      need false
+    link place-row
+      like number
       need false
   case record
     link name, like text
@@ -386,6 +427,9 @@ form expression
     link owner
       like text
       need false
+    link place-row
+      like number
+      need false
   case member
     link target, like expression
     link name, like text
@@ -405,11 +449,17 @@ form expression
     link type
       like maybe, like type
       need false
+    link place-row
+      like number
+      need false
   case await
     link expr, like expression
     link span, like span
     link type
       like maybe, like type
+      need false
+    link place-row
+      like number
       need false
   # a function literal used as a value
   case closure
@@ -425,6 +475,9 @@ form expression
     link type
       like maybe, like type
       need false
+    link place-row
+      like number
+      need false
   # a conditional in value position, each branch a (cond, value) pair
   case conditional
     link branches, like list, like value-branch
@@ -435,6 +488,9 @@ form expression
     link type
       like maybe, like type
       need false
+    link place-row
+      like number
+      need false
   # an unresolved reference, which may be deferred to run time
   case hole
     link name, like text
@@ -444,6 +500,9 @@ form expression
       need false
     link deferred
       like boolean
+      need false
+    link place-row
+      like number
       need false
 
 # ---- statements ----
@@ -685,6 +744,7 @@ form bind-target
   link expression, like text
   link imports, like list, like bind-import
 
+# Every case carries `place-row`, as an expression's does
 form statement
   # `foreign` is the host name an ambient binding maps to
   case let
@@ -702,14 +762,23 @@ form statement
     link stub-export
       like text
       need false
+    link place-row
+      like number
+      need false
   case assign
     link target, like expression
     link op, like assign-op
     link value, like expression
     link span, like span
+    link place-row
+      like number
+      need false
   case expression
     link expr, like expression
     link span, like span
+    link place-row
+      like number
+      need false
   case if
     link branches, like list, like statement-branch
     # a maybe: an `otherwise` left out and one written empty (a bare `hook miss`) are told apart (no-empty-block)
@@ -717,6 +786,9 @@ form statement
       like maybe, like list, like statement
       need false
     link span, like span
+    link place-row
+      like number
+      need false
   case while
     link cond, like expression
     link body, like list, like statement
@@ -730,6 +802,9 @@ form statement
     # the loop's name (`walk xs, name outer`)
     link label
       like text
+      need false
+    link place-row
+      like number
       need false
   # a pattern match on an enum value
   case match
@@ -753,6 +828,9 @@ form statement
     link type-arms
       like boolean
       need false
+    link place-row
+      like number
+      need false
   case for-each
     link item, like text
     link index
@@ -767,33 +845,54 @@ form statement
     link label
       like text
       need false
+    link place-row
+      like number
+      need false
   # `halt` and `turn next`, of the innermost loop or of the loop named `label`
   case break
     link label
       like text
       need false
     link span, like span
+    link place-row
+      like number
+      need false
   case continue
     link label
       like text
       need false
     link span, like span
+    link place-row
+      like number
+      need false
   case return
     link value
       like maybe, like expression
       need false
     link span, like span
+    link place-row
+      like number
+      need false
   # stop the whole program
   case exit
     link span, like span
+    link place-row
+      like number
+      need false
   # a debugger breakpoint
   case debug
     link span, like span
+    link place-row
+      like number
+      need false
   # a coverage probe, written only by ir/cover.tree under `term test --cover`: the statement after it ran when this
   # does, and the key is `<file>:<line>` of that statement (every backend adds it to one process-wide set)
   case probe
     link key, like text
     link span, like span
+    link place-row
+      like number
+      need false
   # a guarded body and its handler
   case guard
     link body, like list, like statement
@@ -801,6 +900,9 @@ form statement
       like maybe, like catch-clause
       need false
     link span, like span
+    link place-row
+      like number
+      need false
   case throw
     link value, like expression
     link span, like span
@@ -810,6 +912,9 @@ form statement
     # the Term frame of the raise, the first of its `flow` (compile/frames.tree)
     link site
       like text
+      need false
+    link place-row
+      like number
       need false
   # a verification condition
   case hold
@@ -823,6 +928,9 @@ form statement
     link span, like span
     link origin
       like maybe, like hold-origin
+      need false
+    link place-row
+      like number
       need false
   case function
     link name, like text
@@ -919,6 +1027,9 @@ form statement
       like maybe, like declared-signature
       need false
     link span, like span
+    link place-row
+      like number
+      need false
   case record-type
     link name, like text
     link params, like list, like text
@@ -975,6 +1086,9 @@ form statement
       like boolean
       need false
     link span, like span
+    link place-row
+      like number
+      need false
   # a trait: a named set of method signatures
   case mask
     link name, like text
@@ -986,12 +1100,18 @@ form statement
       like text
       need false
     link span, like span
+    link place-row
+      like number
+      need false
   # a trait implementation for a type
   case instance
     link mask, like text
     link target, like text
     link methods, like list, like text
     link span, like span
+    link place-row
+      like number
+      need false
   # a native module binding
   case native
     link alias, like text
@@ -1011,6 +1131,9 @@ form statement
     link file
       like text
       need false
+    link place-row
+      like number
+      need false
   # one stdlib name, a native expression template per environment
   case bind
     link name, like text
@@ -1020,21 +1143,33 @@ form statement
       need false
     link targets, like list, like bind-target
     link span, like span
+    link place-row
+      like number
+      need false
   # a component definition
   case view
     link name, like text
     link params, like list, like closure-param
     link body, like list, like view-node
     link span, like span
+    link place-row
+      like number
+      need false
   # a routing / CLI dock
   case dock
     link route, like dock-route
     link span, like span
+    link place-row
+      like number
+      need false
   # a kind a deck declares
   case roll
     link name, like text
     link like, like text
     link span, like span
+    link place-row
+      like number
+      need false
   # the app's decision about one exception
   case tell
     link name, like text
@@ -1051,6 +1186,9 @@ form statement
       like maybe, like text
       need false
     link span, like span
+    link place-row
+      like number
+      need false
 
 # every statement's span, which every case carries: a pass that asks which file a statement came from reads it here,
 # since a field is read off a union only inside an arm

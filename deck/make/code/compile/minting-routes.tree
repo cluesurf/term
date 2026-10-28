@@ -1,0 +1,1016 @@
+# The mint bridge, part 6 of 8 (decision 033 section 2): a top-level `hook`, the CLI command or URL route DSL.
+#
+# Ported from compile/mint-bridge.ts's `routeOf`, `routeHandlers` and `leadingNote` (self-hosting, item 0277), which
+# stay as the face until part 8. `hook-of` is the original's `topLevelOf` case `hook`: the one `dock` statement
+# carrying the route, then the route's handlers. The decisions:
+#   - a field the original set only when present (a take's `short`, `aliases`, `masked`, `note`, `fallback`,
+#     `variadic`, `positional`, `passes`, `choices`; a route's `note`, `component`, `page`, `passes`) is written with its
+#     default otherwise, which node-json reads as the absent field (decision 034 section 2)
+#   - the original's every-step evaluation order is kept, so the diagnostics come out in its order: the takes, the
+#     flow lines, the hook's marks, `mark pass`, the slot passes, the flow calls, the methods, the calls, the component,
+#     the directives, then the nested hooks
+#   - a handler is part 3's `function-of`, renamed in place by compile/route-lower.tree's `handler-name`
+#   - the live `routeOf` guards its lone-word refusal with `fallbackBind &&` (:4805) since the reference copies of
+#     01:34. A lone word is only ever read off a bind, so the guard changes nothing: the pair reads the copy
+#     `mint-bridge-minting-at-route.ts`, which carries it (decision 027 route 1, log.md 0277)
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find starts-with
+  find substring
+  find trim
+
+load ../parser/tree
+  find node
+  find comment
+
+load ../parser/diagnostic
+  find span
+
+load ./node
+  find expression
+  find statement
+  find type
+  find dock-route
+  find dock-take
+  find dock-literal
+  find dock-call
+  find dock-argument
+  find dock-method
+  find dock-send
+  find dock-component
+  find dock-hook
+
+load ./mill-running
+  find minted
+
+load ./minting-reads
+  find mint-state
+  find is-form
+  find at
+  find first-at
+  find forms-at
+  find need-word
+  find text-of
+  find word-at
+  find span-of
+  find writes-mark-pass
+
+load ./minting-values
+  find refuse
+  find expression-of
+  find type-of
+  find is-list-type
+  find body-steps
+  find minted-form
+  find node-of
+  find minting-integer-number
+
+load ./minting-flow
+  find function-of
+
+load ./route-lower
+  find handler-name
+
+# a `mark <word>` under a hook or a take: the note it was written in, and its word
+form route-mark
+  link written, like minted
+  link word, like text
+
+# a `mark pass` under a slot: the take's place among the hook's takes, and the note it was written in
+form slot-pass
+  link place, like number
+  link written, like minted
+
+# ---- small readers ----
+
+task routes-word-is
+  take word, like maybe, like text
+  take expected, like text
+  like boolean
+  mark private
+
+  sift word
+    case some
+      link known
+      back is-equal(known, expected)
+    case none
+      back false
+
+task routes-text-else
+  take word, like maybe, like text
+  take fallback, like text
+  like text
+  mark private
+
+  sift word
+    case some
+      link known
+      back known
+    case none
+      back fallback
+
+task routes-has-value
+  take value, like maybe, like minted
+  like boolean
+  mark private
+
+  sift value
+    case some
+      back true
+    case none
+      back false
+
+# a minted value that is a word
+task routes-is-word
+  take value, like maybe, like minted
+  like boolean
+  mark private
+
+  sift value
+    case some
+      link one
+      sift one
+        case word
+          back true
+        miss
+          back false
+    case none
+      back false
+
+# `take path` / `take query` / `take body` / `take head` group a route's takes by where they come from
+task is-section
+  take word, like text
+  like boolean
+  mark private
+
+  back or(or(is-equal(word, <path>), is-equal(word, <query>)), or(is-equal(word, <body>), is-equal(word, <head>)))
+
+# the first value of a list, none for an empty one
+task routes-first
+  take values, like list, like minted
+  like maybe, like minted
+  mark private
+
+  fork test, is-above(values/length, 0)
+    hold
+      save first, get(values, 0)
+      back make(some, first)
+  back make none
+
+# the first `note` that is not a `mark <word>`: help is a text literal, a mark a word
+task first-help
+  take notes, like list, like minted
+  like maybe, like minted
+  mark private
+
+  walk notes
+    take one-note
+    fork test, not(routes-is-word(first-at(make(some, one-note), <text>)))
+      hold
+        back make(some, one-note)
+  back make none
+
+# every `mark <word>` among the notes, in order
+task marks-of
+  take notes, like list, like minted
+  like list, like route-mark
+  mark private
+
+  save marks, make list
+  walk notes
+    take one-note
+    sift first-at(make(some, one-note), <text>)
+      case some
+        link written
+        sift written
+          case word
+            link word-value
+            push(marks, build-mark(one-note, word-value))
+          miss
+            save nothing, 0
+      case none
+        save nothing, 0
+  back marks
+
+task has-pass
+  take marks, like list, like route-mark
+  like boolean
+  mark private
+
+  walk marks
+    take one-mark
+    fork test, is-equal(one-mark/word, <pass>)
+      hold
+        back true
+  back false
+
+# a list of text, exactly: `like list, like text`
+task is-list-of-text
+  take value, like maybe, like type
+  like boolean
+  mark private
+
+  sift value
+    case some
+      link known
+      sift known
+        case array
+          link element
+          sift element
+            case string
+              back true
+            miss
+              back false
+        miss
+          back false
+    case none
+      back false
+
+# the first type argument of a named type, none for any other
+task first-type-arg
+  take value, like maybe, like type
+  like maybe, like type
+  mark private
+
+  sift value
+    case some
+      link known
+      sift known
+        case named
+          link args
+          # walked, never handed to a call, so an absent list is not written into the type (traps T003)
+          walk args
+            take first-arg
+            back make(some, first-arg)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back make none
+
+# a named type called `maybe`
+task is-maybe-type
+  take value, like maybe, like type
+  like boolean
+  mark private
+
+  sift value
+    case some
+      link known
+      sift known
+        case named
+          link name
+          back is-equal(name, <maybe>)
+        miss
+          back false
+    case none
+      back false
+
+# ---- a comment's help text ----
+
+# The help text a `#` comment above a command or a parameter carries. Comments are CST trivia the parser attaches to
+# the group, and a minted value keeps its CST node. Multi-line comments join with a space, so a wrapped sentence stays
+# one help line
+task leading-note
+  take value, like maybe, like minted
+  like maybe, like text
+
+  sift value
+    case some
+      link one
+      sift node-of(one)
+        case some
+          link held-node
+          sift held-node
+            case group
+              link comments
+              sift comments
+                case some
+                  link lines
+                  back joined-comments(lines)
+                case none
+                  back make none
+            miss
+              back make none
+        case none
+          back make none
+    case none
+      back make none
+
+task joined-comments
+  take lines, like list, like comment
+  like maybe, like text
+  mark private
+
+  save joined, <>
+  save first, true
+  walk lines
+    take line
+    save written, line/text
+    fork test, starts-with(written, <#>)
+      hold
+        save written, substring(written, 1)
+    save written, trim(written)
+    fork test, not(is-equal(written, <>))
+      hold
+        fork test, first
+          hold
+            save joined, written
+            save first, false
+          miss
+            save joined, <{joined} {written}>
+  fork test, is-equal(joined, <>)
+    hold
+      back make none
+  back make(some, joined)
+
+# ---- a hook ----
+
+# a top-level `hook`: the one dock statement carrying the whole tree, then the route's handlers
+task hook-of
+  take state, like mint-state
+  take value, like minted
+  like list, like statement
+
+  save route, route-of(state, value)
+  save out, make list
+  save docked
+    make statement/dock
+      bind route, route
+      bind span, span-of(make(some, value))
+  push(out, docked)
+  walk route-handlers(state, value, route)
+    take handler
+    push(out, handler)
+  back out
+
+# One `hook`: a CLI command or a URL route, with its help text, its parameters, the task it runs and its subcommands.
+# Nested hooks are its children, so a command group is one dock statement, not several
+task route-of
+  take state, like mint-state
+  take value, like minted
+  like dock-route
+
+  save held, make(some, value)
+  # The role decides first, BEFORE the takes are read: a route reads four of its take names as sections and a command
+  # must not
+  save path, routes-text-else(word-at(held, <name>), <>)
+  save file-role, routes-text-else(state/role, <>)
+  save is-route, false
+  fork test, is-equal(file-role, <site>)
+    hold
+      save is-route, true
+    miss
+      fork test, not(is-equal(file-role, <call>))
+        hold
+          save is-route, or(starts-with(path, </>), is-above(forms-at(held, <view>)/length, 0))
+
+  # `take path` and the other sections are sections on a route, ordinary parameters on a command
+  save take-list, make list
+  walk forms-at(held, <take>)
+    take take-form
+    save take-name, routes-text-else(word-at(make(some, take-form), <name>), <>)
+    fork test, and(is-route, is-section(take-name))
+      hold
+        walk forms-at(make(some, take-form), <take>)
+          take inner-take
+          push(take-list, inner-take)
+      miss
+        push(take-list, take-form)
+
+  # every `mark pass` written under a take or slot, by the take's place: checked once the takes are read
+  save slot-passes, make list
+  save takes, make list
+  save take-index, 0
+  walk take-list
+    take one-take
+    push(takes, take-of(state, one-take, take-index, is-route, slot-passes))
+    save take-index, add(take-index, 1)
+
+  # A LINE UNDER A COMMAND THAT NO RULE READ falls to the hook's flow, and only its `call`s are kept, so it is refused
+  fork test, not(is-route)
+    hold
+      walk at(held, <flow>)
+        take flow-step
+        fork test, is-form(make(some, flow-step))
+          hold
+            refuse-unread-line(state, flow-step)
+
+  save notes, forms-at(held, <note>)
+  save mark-words, marks-of(notes)
+  save passes, and(not(is-route), has-pass(mark-words))
+  walk mark-words
+    take one-mark
+    save is-pass, is-equal(one-mark/word, <pass>)
+    fork test, is-route
+      hold
+        fork test, is-pass
+          hold
+            refuse(state, one-mark/written, <`mark pass` is read only under a command hook: a URL route has no command line to hand on>)
+      miss
+        fork test, not(is-pass)
+          hold
+            refuse(state, one-mark/written, <`mark {one-mark/word}` is not read under a command: `mark pass` is the one mark a command hook takes>)
+
+  # A PASSING HOOK HAS EXACTLY ONE SLOT, `like list, like text`, and no take and no nested hook
+  fork test, passes
+    hold
+      save list-of-text, false
+      fork test, is-equal(takes/length, 1)
+        hold
+          save only, get(takes, 0)
+          save list-of-text, and(only/positional, is-list-of-text(only/type))
+      fork test, or(not(list-of-text), is-above(forms-at(held, <hook>)/length, 0))
+        hold
+          refuse(state, value, <`mark pass` makes a hook hand its words to another console: it has exactly one slot, `like list, like text`, and no take and no nested hook>)
+
+  # A SLOT MARKED `mark pass` halts the command's flags at its first positional: read only under a command's last slot
+  save last-slot, -1
+  save slot-index, 0
+  walk takes
+    take one-take
+    fork test, one-take/positional
+      hold
+        save last-slot, slot-index
+    save slot-index, add(slot-index, 1)
+  walk slot-passes
+    take one-pass
+    save marked-take, get(takes, one-pass/place)
+    save why, <>
+    fork test, is-route
+      hold
+        save why, <a URL route has no command line>
+      miss
+        fork test, not(marked-take/positional)
+          hold
+            save why, <it is never under a `take`>
+          miss
+            fork test, not(is-equal(one-pass/place, last-slot))
+              hold
+                save why, <this slot is not the hook's last>
+              miss
+                fork test, not(is-list-of-text(marked-take/type))
+                  hold
+                    save why, <this slot is not `like list, like text`>
+                  miss
+                    fork test, is-above(slot-passes/length, 1)
+                      hold
+                        save why, <only one slot of a hook may pass>
+                      miss
+                        fork test, passes
+                          hold
+                            save why, <the hook is itself `mark pass`, which already hands on every word>
+    fork test, not(is-equal(why, <>))
+      hold
+        refuse(state, one-pass/written, <`mark pass` is read under a command's last slot, `like list, like text`, the only one so marked, under a hook that does not pass (decision cli-in-term/012): {why}>)
+
+  save help, <>
+  fork test, not(is-route)
+    hold
+      sift word-at(first-help(notes), <text>)
+        case some
+          link written
+          save help, written
+        case none
+          save help, routes-text-else(leading-note(held), <>)
+
+  # a `call` written under a hook is captured with the rest of its flow
+  save flow-calls, calls-in-flow(state, held)
+
+  # A ROUTE's `task get` / `task post` are its HTTP METHODS; a command's `task <impl>` is its handler instead
+  save methods, make list
+  fork test, is-route
+    hold
+      walk forms-at(held, <task>)
+        take method
+        push(methods, method-of(state, method))
+
+  save calls, make list
+  fork test, not(is-route)
+    hold
+      walk forms-at(held, <task>)
+        take handler
+        save no-args, make list
+        save no-params, make list
+        push(calls, build-call(routes-text-else(word-at(make(some, handler), <name>), <>), no-args, span-of(make(some, handler))))
+  walk forms-at(held, <call>)
+    take written-call
+    push(calls, call-of-form(state, written-call))
+  walk flow-calls
+    take flow-call
+    push(calls, flow-call)
+
+  # a client route renders a component, with its props
+  save component, make none
+  sift routes-first(forms-at(held, <view>))
+    case some
+      link shown
+      save props, arguments-of(state, shown)
+      save shown-component
+        make dock-component
+          bind name, routes-text-else(word-at(make(some, shown), <name>), <>)
+          bind props, props
+      save component, make(some, shown-component)
+    case none
+      save nothing, 0
+
+  # a route's `seed <name>, <value>` lines are its directives: `title`, `layout`, `proxy`, a meta tag
+  save directives, make list
+  fork test, is-route
+    hold
+      walk at(held, <flow>)
+        take flow-step
+        fork test, and(routes-word-is(minted-form(flow-step), <seed-call-open>), routes-word-is(word-at(make(some, flow-step), <name>), <seed>))
+          hold
+            push-directive(state, directives, flow-step)
+
+  save children, make list
+  walk forms-at(held, <hook>)
+    take child
+    push(children, route-of(state, child))
+
+  save sends, make list
+  save hooks, make list
+  back
+    make dock-route
+      bind path, path
+      bind note, help
+      bind takes, takes
+      bind methods, methods
+      bind calls, calls
+      bind component, component
+      bind page, is-route
+      bind passes, passes
+      bind directives, directives
+      bind sends, sends
+      bind hooks, hooks
+      bind children, children
+      bind span, span-of(held)
+
+# a line under a command that no rule read: everything but a `call`
+task refuse-unread-line
+  take state, like mint-state
+  take flow-step, like minted
+  mark private
+
+  fork test, routes-word-is(minted-form(flow-step), <call>)
+    hold
+      back
+  save line, make(some, flow-step)
+  save head, word-at(line, <name>)
+  fork test, routes-word-is(head, <slot>)
+    hold
+      refuse(state, flow-step, <a `slot` under a hook carries `like`, `need`, `bind`, `pick` and its note, nothing else: a positional has no flag to shorten or rename, so no `code` and no `name`>)
+      back
+  fork test, and(routes-word-is(head, <take>), writes-mark-pass(node-of(flow-step)))
+    hold
+      refuse(state, flow-step, <`mark pass` is read under a command's last slot, `like list, like text`, never under a `take` (decision cli-in-term/012): a flag has no words of another program to hand on>)
+      back
+  save named, routes-text-else(head, routes-text-else(minted-form(flow-step), <>))
+  refuse(state, flow-step, <this `{named}` line under a command is not read, so it would be dropped>)
+
+# A `seed` line on a route: its first argument names the directive (a bare word, built as a variable) and its second
+# is the value. Every argument is built, as the original's map builds them
+task push-directive
+  take state, like mint-state
+  take directives, like list, like dock-send
+  take flow-step, like minted
+  mark private
+
+  save built, make list
+  walk at(make(some, flow-step), <seed>)
+    take seed-value
+    push(built, expression-of(state, make(some, seed-value)))
+  fork test, is-equal(built/length, 0)
+    hold
+      back
+  save named, get(built, 0)
+  sift named
+    case some
+      link named-value
+      sift named-value
+        case variable
+          link name
+          save given, make none
+          fork test, is-above(built/length, 1)
+            hold
+              save given, get(built, 1)
+          push(directives, build-send(name, given))
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+
+# ---- calls ----
+
+# a call's `bind <name>, <value>` lines, each value built before its name is read
+task arguments-of
+  take state, like mint-state
+  take value, like minted
+  like list, like dock-argument
+  mark private
+
+  save out, make list
+  walk forms-at(make(some, value), <bind>)
+    take bind-form
+    save bound, make(some, bind-form)
+    save built, expression-of(state, first-at(bound, <seed>))
+    save name, word-at(bound, <name>)
+    sift built
+      case some
+        link built-value
+        sift name
+          case some
+            link known
+            save argument
+              make dock-argument
+                bind name, known
+                bind value, built-value
+            push(out, argument)
+          case none
+            save nothing, 0
+      case none
+        save nothing, 0
+  back out
+
+task call-of-form
+  take state, like mint-state
+  take value, like minted
+  like dock-call
+  mark private
+
+  save name, routes-text-else(word-at(make(some, value), <name>), <>)
+  save args, arguments-of(state, value)
+  back build-call(name, args, span-of(make(some, value)))
+
+task build-call
+  take name, like text
+  take args, like list, like dock-argument
+  take where, like span
+  like dock-call
+  mark private
+
+  save no-params, make list
+  back
+    make dock-call
+      bind name, name
+      bind args, args
+      bind params, no-params
+      bind span, where
+
+task build-send
+  take name, like text
+  take value, like maybe, like expression
+  like dock-send
+  mark private
+
+  back
+    make dock-send
+      bind name, name
+      bind value, value
+
+task build-mark
+  take written, like minted
+  take word, like text
+  like route-mark
+  mark private
+
+  back
+    make route-mark
+      bind written, written
+      bind word, word
+
+task build-pass
+  take place, like number
+  take written, like minted
+  like slot-pass
+  mark private
+
+  back
+    make slot-pass
+      bind place, place
+      bind written, written
+
+# the `call` lines in a hook's or a method's flow
+task calls-in-flow
+  take state, like mint-state
+  take held, like maybe, like minted
+  like list, like dock-call
+  mark private
+
+  save out, make list
+  walk at(held, <flow>)
+    take flow-step
+    fork test, routes-word-is(minted-form(flow-step), <call>)
+      hold
+        push(out, call-of-form(state, flow-step))
+  back out
+
+# ---- a route's method ----
+
+task method-of
+  take state, like mint-state
+  take method, like minted
+  like dock-method
+  mark private
+
+  save held, make(some, method)
+  save name, routes-text-else(word-at(held, <name>), <>)
+  save take-list, make list
+  walk forms-at(held, <take>)
+    take take-form
+    fork test, is-section(routes-text-else(word-at(make(some, take-form), <name>), <>))
+      hold
+        walk forms-at(make(some, take-form), <take>)
+          take inner-take
+          push(take-list, inner-take)
+      miss
+        push(take-list, take-form)
+  save takes, make list
+  walk take-list
+    take one-take
+    save taken, make(some, one-take)
+    save take-type, type-of(state, first-at(taken, <like>))
+    push(takes, plain-take(routes-text-else(word-at(taken, <name>), <>), take-type, routes-word-is(need-word(taken), <true>), span-of(taken)))
+  save calls, calls-in-flow(state, held)
+  save sends, make list
+  walk at(held, <flow>)
+    take flow-step
+    fork test, routes-word-is(minted-form(flow-step), <send-kind>)
+      hold
+        save sent, make(some, flow-step)
+        save built, expression-of(state, first-at(sent, <seed>))
+        push(sends, build-send(routes-text-else(word-at(sent, <kind>), <>), built))
+  back
+    make dock-method
+      bind name, name
+      bind takes, takes
+      bind calls, calls
+      bind sends, sends
+      bind span, span-of(held)
+
+# a method's take: its name, type and need alone
+task plain-take
+  take name, like text
+  take take-type, like maybe, like type
+  take required, like boolean
+  take where, like span
+  like dock-take
+  mark private
+
+  save no-aliases, make list
+  save no-choices, make list
+  back
+    make dock-take
+      bind name, name
+      bind type, take-type
+      bind required, required
+      bind short, <>
+      bind aliases, no-aliases
+      bind masked, false
+      bind note, <>
+      bind fallback, make none
+      bind variadic, false
+      bind positional, false
+      bind passes, false
+      bind choices, no-choices
+      bind span, where
+
+# ---- a hook's take ----
+
+task take-of
+  take state, like mint-state
+  take one, like minted
+  take place, like number
+  take is-route, like boolean
+  take slot-passes, like list, like slot-pass
+  like dock-take
+  mark private
+
+  save held, make(some, one)
+  save take-type, type-of(state, first-at(held, <like>))
+  # `slot <name>` under a hook mints as a `hook-slot` form into the take site, so slots and takes keep their order
+  save positional, routes-word-is(minted-form(one), <hook-slot>)
+  # a list take under a command is a repeatable option: its type is the list, and it is never `variadic`
+  save repeatable, and(and(not(is-route), not(positional)), is-list-type(take-type))
+
+  fork test, is-above(at(held, <many>)/length, 0)
+    hold
+      save many-name, routes-text-else(word-at(held, <name>), <x>)
+      refuse(state, one, <`many` is retired: a take collects every word left when its type is a list. Write `take {many-name}, like list, like text`>)
+
+  # the help is the first note that is not a word; `mark pass` is the one mark a slot takes
+  save take-notes, forms-at(held, <note>)
+  save take-note, leading-note(held)
+  sift take-note
+    case some
+      save nothing, 0
+    case none
+      save take-note, word-at(first-help(take-notes), <text>)
+  save take-marks, marks-of(take-notes)
+  save kind, <take>
+  fork test, positional
+    hold
+      save kind, <slot>
+  walk take-marks
+    take one-mark
+    fork test, is-equal(one-mark/word, <pass>)
+      hold
+        push(slot-passes, build-pass(place, one-mark/written))
+      miss
+        refuse(state, one-mark/written, <`mark {one-mark/word}` is not read under a {kind}: `mark pass` under a command's last slot is the one mark there (decision cli-in-term/012)>)
+
+  save passing, and(and(not(is-route), positional), has-pass(take-marks))
+  save short, word-at(held, <code>)
+  # every long alias in source order
+  save aliases, make list
+  walk forms-at(held, <alias>)
+    take alias-form
+    sift word-at(make(some, alias-form), <name>)
+      case some
+        link alias-name
+        push(aliases, alias-name)
+      case none
+        save nothing, 0
+  # `take code / wait rise` reads a secret without echoing it back
+  save masked, false
+  walk forms-at(held, <wait>)
+    take wait-form
+    fork test, routes-word-is(word-at(make(some, wait-form), <seed>), <rise>)
+      hold
+        save masked, true
+  # `take format / pick <human> / pick <json>`: the allowed-value set
+  save choices, make list
+  walk at(held, <pick>)
+    take pick-value
+    sift text-of(make(some, pick-value))
+      case some
+        link choice
+        push(choices, choice)
+      case none
+        save nothing, 0
+
+  save fallback-bind, routes-first(forms-at(held, <bind>))
+  save fallback-value, first-at(fallback-bind, <seed>)
+  # `bind true` READS AS A NAME: `true` and `false` are the flag they spell, any other lone word is refused
+  save lone-word, make none
+  fork test, and(routes-has-value(fallback-bind), not(routes-has-value(fallback-value)))
+    hold
+      save lone-word, word-at(fallback-bind, <name>)
+  sift lone-word
+    case some
+      link lone
+      fork test, and(not(is-equal(lone, <true>)), not(is-equal(lone, <false>)))
+        hold
+          sift fallback-bind
+            case some
+              link bound
+              refuse(state, bound, <a take's default is a literal, and `{lone}` alone is not one: write `bind \<{lone}\>` for a text, `bind code 3` for a number, `bind true` or `bind false` for a flag>)
+            case none
+              save nothing, 0
+    case none
+      save nothing, 0
+
+  save literal, make none
+  fork test, routes-has-value(fallback-value)
+    hold
+      save literal, expression-of(state, fallback-value)
+
+  # A MAYBE TAKE OR SLOT IS ONE THAT CAN BE ABSENT: `need true`, a `bind` default and a list slot each contradict it
+  fork test, and(not(is-route), is-maybe-type(take-type))
+    hold
+      save maybe-name, routes-text-else(word-at(held, <name>), <x>)
+      fork test, routes-word-is(need-word(held), <true>)
+        hold
+          refuse(state, one, <the {kind} `{maybe-name}` is a maybe, which is absent when not given: it cannot also be `need true`. Drop one>)
+      sift fallback-bind
+        case some
+          link bound
+          refuse(state, bound, <the {kind} `{maybe-name}` is a maybe, which is absent when not given: a `bind` default means it never is. Drop the default, or the maybe>)
+        case none
+          save nothing, 0
+      fork test, and(positional, is-list-type(first-type-arg(take-type)))
+        hold
+          refuse(state, one, <the slot `{maybe-name}` is a maybe of a list: a list slot is never absent, it is the empty list. Write `slot {maybe-name}, like list, like ...`>)
+
+  save fallback, literal-default(literal, lone-word)
+
+  back
+    make dock-take
+      bind name, routes-text-else(word-at(held, <name>), <>)
+      bind type, take-type
+      bind required, routes-word-is(need-word(held), <true>)
+      bind short, routes-text-else(short, <>)
+      bind aliases, aliases
+      bind masked, masked
+      bind note, routes-text-else(take-note, <>)
+      bind fallback, fallback
+      # A LIST TAKE IS THE REST OF THE WORDS: the type says it
+      bind variadic, and(is-list-type(take-type), not(repeatable))
+      bind positional, positional
+      bind passes, passing
+      bind choices, choices
+      bind span, span-of(held)
+
+# a take's default as written: a number, a text or a flag, and `bind true` / `bind false` read as a name
+task literal-default
+  take literal, like maybe, like expression
+  take lone-word, like maybe, like text
+  like maybe, like dock-literal
+  mark private
+
+  sift literal
+    case some
+      link built
+      sift built
+        case integer
+          link value
+          back number-default(value)
+        case float
+          link value
+          back number-default(minting-integer-number(value))
+        case string
+          link value
+          save written
+            make dock-literal/text
+              bind value, value
+          back make(some, written)
+        case boolean
+          link value
+          back flag-default(value)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  sift lone-word
+    case some
+      link lone
+      fork test, or(is-equal(lone, <true>), is-equal(lone, <false>))
+        hold
+          back flag-default(is-equal(lone, <true>))
+    case none
+      save nothing, 0
+  back make none
+
+task number-default
+  take value, like number
+  like maybe, like dock-literal
+  mark private
+
+  save written
+    make dock-literal/number
+      bind value, value
+  back make(some, written)
+
+task flag-default
+  take value, like boolean
+  like maybe, like dock-literal
+  mark private
+
+  save written
+    make dock-literal/flag
+      bind value, value
+  back make(some, written)
+
+# ---- a page route's method handlers ----
+
+# Each `task <method>` with a body under a top-level page route is a task of its own, named by compile/route-lower.tree
+# `handler-name` (`task post` under `hook /notes` is `answer-post-notes`). A nested hook's tasks are not lifted
+task route-handlers
+  take state, like mint-state
+  take value, like minted
+  take route, like dock-route
+  like list, like statement
+
+  save out, make list
+  fork test, not(route/page)
+    hold
+      back out
+  walk forms-at(make(some, value), <task>)
+    take method
+    sift word-at(make(some, method), <name>)
+      case some
+        link method-name
+        fork test, is-above(body-steps(state, method)/length, 0)
+          hold
+            save built, function-of(state, method)
+            fork test, is-above(built/length, 0)
+              hold
+                save first, get(built, 0)
+                save handler, handler-name(method-name, route/path)
+                sift first
+                  case function
+                    save first/name, handler
+                    push(out, first)
+                  miss
+                    save nothing, 0
+      case none
+        save nothing, 0
+  back out

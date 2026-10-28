@@ -23,6 +23,7 @@ import type {
   Type,
 } from '@term/make/code/compile/node'
 import { unmarked } from '@term/make/code/compile/unit-split'
+import { stampPlaces } from '@term/make/code/compile/place-stamp'
 import { collectBinds, bindImports, referencedBinds } from '@term/make/code/compile/bind'
 import {
   textCursors,
@@ -110,7 +111,10 @@ type CloneRecord = { forms: Set<string>; generic: boolean }
 // generic is cloned at all (generic code could be holding it). Anything unproven keeps `Rc`
 // with `units`, each module's statements stay marked, for the caller to write one file per module
 // (compile/unit-split.ts)
-export function emitRust(program: Program, options?: { wake?: WakeGroup[]; units?: boolean }): string {
+export function emitRust(handed: Program, options?: { wake?: WakeGroup[]; units?: boolean }): string {
+  // every fact and the emission of both passes read one STAMPED copy, each place a node of its own (D011 rule 4):
+  // nothing below rewrites the program
+  const program = stampPlaces(handed as never) as unknown as Program
   const finish = (text: string): string => (options?.units ? text : unmarked(text))
   const record: CloneRecord = { forms: new Set(), generic: false }
   const first = emitRustPass(program, options, new Set(), record)
