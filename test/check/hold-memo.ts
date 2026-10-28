@@ -6,7 +6,9 @@
 // Run: npx tsx test/check/hold-memo.ts
 
 import { compile } from '@term/make/code/compile/compile'
-import { clearHoldMemo, holdsReplayed } from '@term/make/code/check/holds'
+import { checkHolds, clearHoldMemo, holdsReplayed } from '@term/make/code/check/holds'
+import type { Tally } from '@term/make/code/check/holds'
+import type { Program } from '@term/make/code/compile/node'
 
 let pass = 0
 let fail = 0
@@ -54,6 +56,61 @@ ok('an edit to one task replays the walks of the tasks it did not touch', replay
 clearHoldMemo()
 const fresh = build(moduleText(10))
 ok('and the build is the build the provers give afresh', answer(kept) === answer(fresh), `${answer(kept)}\n      ${answer(fresh)}`)
+
+// THE KEY IS NODE-JSON'S TEXT (decision 034 section 1, item 0319): a `need false` field absent and the same field at its
+// default are one node, so the walk of a task that differs only so is answered from the memo. Here every task that
+// carries no `async` is handed `async: false`, and every member read no `nick` the empty text, as a pass that writes
+// the defaults would, and the program's holds are checked again: every walk kept the first time replays, and the
+// answer is the same
+const program = (first.ok ? first.program : []) as Program
+const withDefaults = structuredClone(program)
+let written = 0
+const writeDefaults = (value: unknown): void => {
+  if (Array.isArray(value)) {
+    value.forEach(writeDefaults)
+    return
+  }
+
+  if (value && typeof value === 'object') {
+    const node = value as Record<string, unknown>
+
+    if (node.form === 'function' && Array.isArray(node.body) && !('async' in node)) {
+      node.async = false
+      written++
+    }
+
+    if (node.form === 'member' && !('nick' in node)) {
+      node.nick = ''
+      written++
+    }
+
+    Object.values(node).forEach(writeDefaults)
+  }
+}
+writeDefaults(withDefaults)
+ok('the copy writes a default the program left out', written > 0, `${written} written`)
+
+const holdsOf = (of: Program): string => {
+  const tally: Tally = { total: 0, proven: 0, failed: [] }
+  const said = checkHolds(of, 'm.tree', { tally }).map(d => `${d.name} ${d.span.start.line}:${d.span.start.column} ${d.message}`)
+
+  return JSON.stringify({ said: said.sort(), total: tally.total, proven: tally.proven, kinds: tally.kinds })
+}
+
+clearHoldMemo()
+const plain = holdsOf(program)
+const replayedBeforeSame = holdsReplayed.tasks
+holdsOf(program)
+const replayedSame = holdsReplayed.tasks - replayedBeforeSame
+ok('the program checked twice replays its kept walks', replayedSame >= 2, `${replayedSame} replayed`)
+const replayedBeforeDefaults = holdsReplayed.tasks
+const defaulted = holdsOf(withDefaults)
+const replayedDefaults = holdsReplayed.tasks - replayedBeforeDefaults
+ok('a task differing only absent against default replays from the memo', replayedDefaults === replayedSame, `${replayedDefaults} replayed, ${replayedSame} as written`)
+ok('and answers as the program as written', plain === defaulted, `${plain}\n      ${defaulted}`)
+
+clearHoldMemo()
+ok('which is what the provers give afresh', holdsOf(withDefaults) === defaulted)
 
 console.log(`\nhold-memo: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)

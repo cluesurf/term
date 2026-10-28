@@ -16,7 +16,9 @@
 #     the counter of uncertified answers, the replay counter the tests read, and the profile a run may ask for
 #   - the program's sets the caller already knows (pure, state-free, length-keeping, fresh-returning, the functions) are
 #     the face's, cached per program by check/facts.ts, and arrive as hashes
-#   - a memo key is the original's JSON text, written part by part through binds, and hashed by term/hash.tree
+#   - a memo key is JSON text, written part by part and hashed by term/hash.tree. A statement in it (the task, a cited
+#     rule) is node-json's declared form without its spans (decision 034 section 1), so a `need false` field absent and
+#     the same field at its default are one key, and the heap's key order is no part of it (item 0319)
 
 load @term/base/list
   find list
@@ -51,6 +53,9 @@ load ../compile/node
   find type
   find binary-op
   find match-case
+
+load ../compile/node-json
+  find statement-json
 
 load ../compile/node-children
   find node-handle
@@ -387,14 +392,14 @@ bind param-width
   case kotlin
     text <"">
 
-# a task as checked without its places, as JSON, and every text in it
-bind key-text
-  take statement, like statement
-  like key-found
+# every text value a JSON text holds, each once, its keys left out
+bind json-strings
+  take json, like text
+  like list, like text
   case node
-    text <(() =\> \{ const names = new Set(); const text = JSON.stringify($statement, (key, value) =\> \{ if (key === 'span') \{ return undefined \} if (typeof value === 'string') \{ names.add(value) \} return typeof value === 'bigint' ? String(value) + 'n' : value \}); return \{ text, names: [...names] as string[] \} \})()>
+    text <(() =\> \{ const names = new Set\<string\>(); JSON.parse($json, (_key, value) =\> \{ if (typeof value === 'string') \{ names.add(value) \} return value \}); return [...names] \})()>
   case browser
-    text <(() =\> \{ const names = new Set(); const text = JSON.stringify($statement, (key, value) =\> \{ if (key === 'span') \{ return undefined \} if (typeof value === 'string') \{ names.add(value) \} return typeof value === 'bigint' ? String(value) + 'n' : value \}); return \{ text, names: [...names] as string[] \} \})()>
+    text <(() =\> \{ const names = new Set\<string\>(); JSON.parse($json, (_key, value) =\> \{ if (typeof value === 'string') \{ names.add(value) \} return value \}); return [...names] \})()>
   case rust
     text <unimplemented!()>
   case swift
@@ -402,19 +407,35 @@ bind key-text
   case kotlin
     text <TODO()>
 
-bind theorem-json
+# what a memo key leaves out of a statement at every depth: its places
+task key-skip
+  like list, like text
+  mark private
+
+  save out, texts()
+  push(out, <span>)
+  back out
+
+# a task as checked without its places, as node-json's text, and every text in it
+task key-text
+  take statement, like statement
+  like key-found
+  mark private
+
+  save json, statement-json(key-skip(), statement)
+  save found
+    make key-found
+      bind text, json
+      bind names, json-strings(json)
+  back found
+
+# a cited rule without its places, as node-json's text
+task theorem-json
   take statement, like statement
   like text
-  case node
-    text <JSON.stringify($statement, (key, value) =\> (key === 'span' ? undefined : typeof value === 'bigint' ? String(value) + 'n' : value))>
-  case browser
-    text <JSON.stringify($statement, (key, value) =\> (key === 'span' ? undefined : typeof value === 'bigint' ? String(value) + 'n' : value))>
-  case rust
-    text <String::new()>
-  case swift
-    text <"">
-  case kotlin
-    text <"">
+  mark private
+
+  back statement-json(key-skip(), statement)
 
 bind json-text
   take value, like text

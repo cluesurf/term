@@ -1333,8 +1333,12 @@ export function checkRaiseBounds(
       declared.add('failure')
     }
 
+    const raised = sets.raises.get(s.name)
+
     for (const name of declared) {
-      if (!exceptions.has(name)) {
+      // `failure` the body does raise is bound rightly with no form for it: a `halt <text>` raises it, and the build
+      // holds no `failure` form when nothing loads @term/base/exception (item term-self-host-001-0315)
+      if (!exceptions.has(name) && !(name === 'failure' && raised?.has(name))) {
         // a stdlib exception the build dropped is one nothing here raises: the bound is wider than the body, not
         // a misspelling, and saying "not an exception form" named the wrong problem
         diagnostics.push(

@@ -2357,9 +2357,15 @@ task check-raise-bounds
         fork test, has-text(sets/native, name)
           hold
             save declared, add-text(declared, <failure>)
+        # `failure` the body does raise is bound rightly with no form for it: a `halt <text>` raises it, and the build
+        # holds no `failure` form when nothing loads @term/base/exception (item term-self-host-001-0315)
+        save fails-here, false
+        fork test, sets/raises/has(name)
+          hold
+            save fails-here, has-text(sets/raises/get(name), <failure>)
         walk declared
           take bound
-          fork test, not(exception-names/has(bound))
+          fork test, and(not(exception-names/has(bound)), not(and(is-equal(bound, <failure>), fails-here)))
             hold
               push(diagnostics, bound-refusal(here, span, name, bound))
         save beyond, make list

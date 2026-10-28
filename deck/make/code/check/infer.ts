@@ -2559,8 +2559,17 @@ function checkProgram(
         // the form's own props, and the arms must cover what the guarded body can raise (or carry an `otherwise`)
         // An arm may name an exception this build never declares (`failure`, raised only by a native backend's foreign
         // call, is pruned from a node build): it still matches by `form`, with only the shared fields, rather than
-        // turning the whole match into a comparison of the caught value with text
-        if (subjectType.kind === 'named' && subjectType.name === 'exception' && node.cases.some(c => exceptionProps.has(c.label))) {
+        // turning the whole match into a comparison of the caught value with text. So may a build that holds no
+        // exception form at all, where nothing loads @term/base/exception: a `halt <text>` still raises `failure`, and
+        // a sift over the caught value is a match on what it raised all the same (item term-self-host-001-0315). Until
+        // then such an arm compared the caught value with the text "failure", never true, its locals unbound
+        const caughtWithoutForm =
+          !records.has('exception') && node.subject.form === 'variable' && caughtRaises.has(node.subject.name)
+
+        if (
+          (subjectType.kind === 'named' && subjectType.name === 'exception' && node.cases.some(c => exceptionProps.has(c.label))) ||
+          caughtWithoutForm
+        ) {
           node.exceptionArms = node.cases.map(branch => {
             const props = exceptionProps.get(branch.label)
             const link = props ? [...(records.get(props)?.keys() ?? [])] : []
@@ -2610,7 +2619,8 @@ function checkProgram(
             const own = exceptionProps.get(branch.label)
             const linkFields = own ? records.get(own) : undefined
             const fields = new Map<string, Type>()
-            arm.shared.forEach(name => fields.set(name, records.get('exception')?.get(name) ?? stringType()))
+            // with no exception form in the build, the shared fields' own types (@term/base/exception: `time` a number)
+            arm.shared.forEach(name => fields.set(name, records.get('exception')?.get(name) ?? (name === 'time' ? numberType() : stringType())))
             arm.link.forEach(name => fields.set(name, linkFields?.get(name) ?? stringType()))
 
             for (const { field, local } of armLocals([...fields.keys()], branch.binds ?? [])) {
