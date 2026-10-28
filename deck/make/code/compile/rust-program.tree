@@ -27,14 +27,10 @@ load @term/base/maybe
 load @term/base/text
   find starts-with
   find char-at
-  find index-of
-  find substring
-  find split
 
 load @term/base/text/unicode
   find to-runes
   find from-runes
-  find rune-to-text
 
 load @term/base/float
   find to-number
@@ -181,6 +177,9 @@ load ./rust-assemble
   find rust-module
   find rust-module-input
   find payload-entry
+
+load ./unit-split
+  find unmarked
 
 # ---- what crosses ----
 
@@ -2544,44 +2543,7 @@ task emit-rust
   fork test, units
     hold
       back text
-  back unmark-text(text)
-
-# the program as one file, every mark removed (compile/unit-split.tree `unmarked`, which copies the rest of the text at
-# every mark, so a module of a thousand statements took most of the emit): each open mark through the close that ends
-# its file, then every end, each piece read from where the last ended
-task unmark-text
-  take text, like text
-  like text
-  mark private
-
-  save open, rune-to-text(57344)
-  save close, rune-to-text(57345)
-  save end, rune-to-text(57346)
-  fork test, is-below(index-of(text, open), 0)
-    hold
-      back text
-  save kept, make list
-  save at, 0
-  save size, text/length
-  walk test
-    hook test, is-below(at, size)
-    hook hold
-      save found, index-of(text, open, at)
-      fork test, is-below(found, 0)
-        hold
-          push(kept, substring(text, at, size))
-          halt
-      save closed, index-of(text, close, add(found, 1))
-      fork test, is-below(closed, 0)
-        hold
-          # an open mark no close follows is no mark: kept, and the search goes on after it
-          push(kept, substring(text, at, add(found, 1)))
-          save at, add(found, 1)
-          turn next
-      push(kept, substring(text, at, found))
-      save at, add(closed, 1)
-  save joined, join-with(kept, <>)
-  back join-with(split(joined, end), <>)
+  back unmarked(text)
 
 # what the first pass recorded and which forms it boxes, for a test to assert (test/compile/rust-box.ts)
 task rust-boxing-of

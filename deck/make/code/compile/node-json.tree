@@ -2406,6 +2406,7 @@ task json-of-statement
       link f4
       link f5
       link f6
+      link f7
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"bind">)
@@ -2433,6 +2434,9 @@ task json-of-statement
       fork test, and(enters(skip-keys, <placeRow>), is-unequal(f6, 0))
         hold
           push(members, <"placeRow":{number-json(f6)}>)
+      fork test, and(enters(skip-keys, <async>), f7)
+        hold
+          push(members, <"async":{flag-json(f7)}>)
     case view
       link f1
       link f2

@@ -20,10 +20,17 @@ load ./substitution
   find fresh-type
   find resolve-type
 
-# a type with some inference variables generalized. Empty `vars` is a plain monomorphic type.
+# a type with some inference variables generalized. Empty `vars` is a plain monomorphic type. `binding` numbers the
+# environment entry the scheme was made for, one number per made scheme, so two entries are the same binding exactly
+# when their numbers are equal: what check/infer.ts read as object identity (decision 052 of
+# term/self-host/change/001). Nothing here reads it. It is need false, 0 when absent, so check/infer.ts, which builds
+# its schemes without it until the face switch (item 0259), still types against this form
 form scheme
   link vars, like list, like number
   link type, like type
+  link binding
+    like number
+    need false
 
 # freshen a scheme's quantified variables, so a polymorphic binding can be used at several types
 task instantiate-scheme

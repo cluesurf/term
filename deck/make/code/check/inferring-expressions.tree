@@ -32,9 +32,13 @@ load @term/base/list
   find list
   find get
   find contains
+  find sort
 
 load @term/base/maybe
   find maybe
+
+load @term/base/ordering
+  find from-texts
 
 load @term/base/text
   find index-of
@@ -42,6 +46,7 @@ load @term/base/text
   find substring
   find char-count
   find char-at
+  find to-upper-case
 
 load ../parser/diagnostic
   find diagnose
@@ -66,6 +71,12 @@ load ../compile/node
   find dynamic-type
   find with-type
   find expression-span
+  find expression-type
+  find statement-span
+  find statement-branch
+  find match-case
+  find exception-arm
+  find map-entry
 
 load ../compile/type-text
   find show-type
@@ -74,12 +85,33 @@ load ../compile/text-methods
   find is-string-method
   find host-method
 
+load ../compile/node-rewrite
+  find copy-expression
+
 load ./scheme
   find scheme
   find free-type-vars
+  find is-value-expression
 
 load ./resolving
   find hole-name
+
+load ./arm
+  find arm-locals
+
+load ./seam
+  find type-test-of
+
+load ./effects
+  find raise-sets-of
+
+load ./lean-nest
+  find lean-labels
+  find lean-calls-nested
+  find is-foldable
+
+load ./checker-switches
+  find refuses-ambiguous
 
 load ./inferring-state
   find infer-state
@@ -88,6 +120,7 @@ load ./inferring-state
   find task-signature
   find instantiate
   find instantiate-held
+  find bound-scheme
   find fresh-variable
   find resolve-held
   find occurs-held
@@ -98,6 +131,16 @@ load ./inferring-state
   find wears-arithmetic
   find arithmetic-mask-of
   find text-member-result
+  find instantiated-signature
+  find exception-shared
+  find assigns-name
+  find body-raises
+  find enter-loop
+  find leave-loop
+  find generalize-held
+  find ordinal
+  find native-map-members
+  find native-list-members
 
 dock load
   load <@term/make/code/check/overload>, name inferring-overload
@@ -131,9 +174,14 @@ task check-body
   take result, like type
   like list, like statement
 
-  halt <check-body is written by part 5, item 0254>
+  save out, make list
+  walk body
+    take one
+    push(out, check-statement(st, one, env, result))
+  back out
 
-# one statement checked, answered as the statement to keep (part 5)
+# ONE STATEMENT CHECKED, answered as the statement to keep: every expression in it inferred and written back where it
+# stood, and an `if` a narrowing rewrote checked as the `sift` it became (part 5)
 task check-statement
   take st, like infer-state
   take node, like statement
@@ -141,9 +189,69 @@ task check-statement
   take result, like type
   like statement
 
-  halt <check-statement is written by part 5, item 0254>
+  sift node
+    case let
+      back check-let(st, node, env)
+    case assign
+      back check-assign(st, node, env)
+    case expression
+      link expression-of
+      save expression-found, infer-expression(st, expression-of, env)
+      save node/expr, expression-found/node
+      back node
+    case return
+      back check-return(st, node, env, result)
+    case while
+      back check-while(st, node, env, result)
+    case if
+      back check-if(st, node, env, result)
+    case guard
+      back check-guard(st, node, env, result)
+    case for-each
+      back check-for-each(st, node, env, result)
+    case match
+      back check-match(st, node, env, result)
+    case hold
+      link held-expr
+      link held-name
+      link held-proof
+      link held-span
+      save held-found, infer-expression(st, held-expr, env)
+      save node/expr, held-found/node
+      expect(st, held-found/type, boolean-type(), held-span, <hold condition>)
+      back node
+    case throw
+      link thrown-value
+      # a throw has no result type (it is bottom)
+      save thrown-found, infer-expression(st, thrown-value, env)
+      save node/value, thrown-found/node
+      back node
+    case break
+      link break-label
+      link break-span
+      check-jump(st, true, break-label, break-span)
+      back node
+    case continue
+      link continue-label
+      link continue-span
+      check-jump(st, false, continue-label, continue-span)
+      back node
+    case function
+      link function-name
+      link function-params
+      link function-body
+      link function-result
+      # A NAMED task inside a body is not a construct the language has: a task is defined at the top level of a file,
+      # and a local function is a closure
+      save written-name, strip-both-suffixes(function-name)
+      say-hinted(st, make(unexpected-node), statement-span(node), <`task {written-name}` cannot be defined inside a body: a named task is defined at the top level of a file>, <move it to the top level of the file and call it from here>)
+      back node
+    miss
+      back node
 
-# an expression inferred with the type its place wants handed down, none where nothing is wanted (part 5)
+# an expression inferred with the type its place wants handed down, none where nothing is wanted. A list literal wanted
+# as a list whose element is a number of a width takes that element (the `array` case reads it), and the wanted element
+# is cleared after it, where the original cleared it in a `finally` (decision 032 section 4.9) (part 5)
 task infer-wanted
   take st, like infer-state
   take node, like expression
@@ -151,25 +259,283 @@ task infer-wanted
   take env, like hash, like text, like scheme
   like inferred
 
-  halt <infer-wanted is written by part 5, item 0254>
+  sift node
+    case array
+      sift wanted
+        case some
+          link wanted-type
+          save wanted-list, resolve-held(st, wanted-type)
+          sift wanted-list
+            case array
+              link wanted-element-of
+              save element, resolve-held(st, wanted-element-of)
+              sift element
+                case number
+                  link element-width
+                  fork test, is-unequal(element-width, <>)
+                    hold
+                      save st/wanted-element, make(some, element)
+                miss
+                  save nothing, 0
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  # cleared after the inference. A raise is not caught to clear it: Term has no way to raise a caught value again, and
+  # no task of the check catches a raise and goes on with the same state (decision 050, D027 row 26)
+  save answer, infer-expression(st, node, env)
+  save st/wanted-element, make none
+  back answer
 
-# a `fork test` over an `unknown` subject whose branches test its type, narrowed (part 5)
+# AN `if` WHOSE FIRST TEST ASKS WHAT AN `unknown` LOCAL HOLDS (`is-text(value)`), rewritten into the type-arm match a
+# `sift value / case text` builds, with the later branches as its `miss`. A type test AFTER other tests splits the chain
+# there: the branches before it keep this `if`, and it starts a new one in their `miss`, rewritten when that is checked.
+# One with a task of its name in scope is that task's. The statement to keep is answered beside whether it narrowed
+# (part 5)
 task narrows-unknown
   take st, like infer-state
   take node, like statement
   take env, like hash, like text, like scheme
   like narrowed
 
-  halt <narrows-unknown is written by part 5, item 0254>
+  sift node
+    case if
+      link if-branches
+      link if-otherwise
+      link if-span
+      # the first branch whose test is a type test of a name no task has
+      save at, -1
+      save index, 0
+      walk if-branches
+        take branch
+        fork test, is-below(at, 0)
+          hold
+            save tested-at, type-test-of(branch/cond)
+            sift tested-at
+              case some
+                link test-at
+                fork test, not(st/functions/has(test-at/test))
+                  hold
+                    save at, index
+              case none
+                save nothing, 0
+        save index, add(index, 1)
+      fork test, is-below(at, 0)
+        hold
+          back narrowed-of(false, node)
+      fork test, is-above(at, 0)
+        hold
+          save before, list-before(if-branches, at)
+          save after, list-from(if-branches, at)
+          save first-after, get(after, 0)
+          save split
+            make statement/if
+              bind branches, after
+              bind otherwise, if-otherwise
+              bind span, expression-span(first-after/cond)
+          save split-list, make list
+          push(split-list, split)
+          save node/branches, before
+          save node/otherwise, make(some, split-list)
+          back narrowed-of(false, node)
+      save first, get(if-branches, 0)
+      save tested-first, type-test-of(first/cond)
+      save test-name, <>
+      save test-label, <>
+      save subject-name, <>
+      sift tested-first
+        case some
+          link test-first
+          save test-name, test-first/test
+          save test-label, test-first/label
+          save subject-name, test-first/subject
+        case none
+          save nothing, 0
+      save held, held-local(st, env, subject-name)
+      save held-unknown, false
+      save held-shown, <>
+      sift held
+        case some
+          link held-type
+          save held-shown, show-type(held-type)
+          sift held-type
+            case unknown
+              save held-unknown, true
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+      save first-cond, first/cond
+      save cond-args, make list
+      save cond-is-call, false
+      sift first-cond
+        case call
+          link cond-callee
+          link cond-given
+          save cond-is-call, true
+          save cond-args, cond-given
+        miss
+          save nothing, 0
+      fork test, or(not(held-unknown), not(cond-is-call))
+        hold
+          sift held
+            case some
+              say-hinted(st, make(type-mismatch), expression-span(first-cond), <"{test-name}" tests what an unknown holds, and "{subject-name}" is {held-shown} already, so there is nothing to narrow>, <test the value itself, or take it `like unknown` where it is made>)
+            case none
+              say(st, make(type-mismatch), expression-span(first-cond), <"{test-name}" tests what an unknown local holds, and "{subject-name}" is no local>)
+          back narrowed-of(false, node)
+      save subject, get(cond-args, 0)
+      save rest, list-from(if-branches, 1)
+      save otherwise-list, otherwise-of(rest, if-otherwise)
+      save arm
+        make match-case
+          bind label, test-label
+          bind body, first/body
+      save cases, make list
+      push(cases, arm)
+      save made
+        make statement/match
+          bind subject, subject
+          bind cases, cases
+          bind otherwise, make(some, otherwise-list)
+          bind span, if-span
+      back narrowed-of(true, placed-like(made, node))
+    miss
+      back narrowed-of(false, node)
 
-# a `fork test` whose branches test a subject's case, narrowed (part 5)
+# AN `if` WHOSE FIRST TEST ASKS WHICH CASE A FORM VALUE IS (`is-some(m)`, `is-<case>(local)` over a local whose form
+# has that case), rewritten into the `sift` it means: the branch is the case's arm, so inside it the local is narrowed
+# to the case, and the rest is the `miss` (or the one case left, when only one is). The arm binds the case's fields as
+# locals only where no name in scope, and no `save` in the branch, already has the name. A form with a case whose
+# fields would all hide one is left as a plain test (gap 105, term-decisions-2026-10-seam-0012) (part 5)
 task narrows-case
   take st, like infer-state
   take node, like statement
   take env, like hash, like text, like scheme
   like narrowed
 
-  halt <narrows-case is written by part 5, item 0254>
+  sift node
+    case if
+      link if-branches
+      link if-otherwise
+      link if-span
+      fork test, is-equal(if-branches/length, 0)
+        hold
+          back narrowed-of(false, node)
+      save first, get(if-branches, 0)
+      save first-cond, first/cond
+      save called-name, <>
+      save subject, first-cond
+      save subject-name, <>
+      save fits-shape, false
+      sift first-cond
+        case call
+          link cond-callee
+          link cond-given
+          fork test, is-equal(cond-given/length, 1)
+            hold
+              save subject, get(cond-given, 0)
+              sift cond-callee
+                case variable
+                  link cond-callee-name
+                  sift subject
+                    case variable
+                      link cond-subject-name
+                      save called-name, cond-callee-name
+                      save subject-name, cond-subject-name
+                      save fits-shape, true
+                    miss
+                      save nothing, 0
+                miss
+                  save nothing, 0
+        miss
+          save nothing, 0
+      fork test, not(fits-shape)
+        hold
+          back narrowed-of(false, node)
+      # `/^is-(.+)$/` over the name with an overload's suffix removed
+      save stripped, strip-overload-suffix(called-name)
+      save label, <>
+      fork test, and(is-above(char-count(stripped), 3), is-equal(substring(stripped, 0, 3), <is->))
+        hold
+          save label, substring(stripped, 3)
+      save held, held-local(st, env, subject-name)
+      save held-name, <>
+      sift held
+        case some
+          link held-type
+          sift held-type
+            case named
+              link held-type-name
+              save held-name, held-type-name
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+      fork test, or(is-equal(label, <>), is-equal(held-name, <>))
+        hold
+          back narrowed-of(false, node)
+      fork test, not(enum-holds(st, held-name, label))
+        hold
+          back narrowed-of(false, node)
+      save variants, st/enums/get(held-name)
+      save rest, list-from(if-branches, 1)
+      save otherwise-list, otherwise-of(rest, if-otherwise)
+      save others, make list
+      walk variants
+        take variant
+        fork test, is-unequal(variant, label)
+          hold
+            push(others, variant)
+      save own, selected-fields(st, env, held-name, label, first/body)
+      save no-fields, make list
+      save last, make(some, no-fields)
+      fork test, is-equal(others/length, 1)
+        hold
+          save last, selected-fields(st, env, held-name, get(others, 0), otherwise-list)
+      save own-binds, make list
+      save last-binds, make list
+      save refused, false
+      sift own
+        case some
+          link own-free
+          save own-binds, own-free
+        case none
+          save refused, true
+      sift last
+        case some
+          link last-free
+          save last-binds, last-free
+        case none
+          save refused, true
+      # a form of one case has nowhere to put an `else`, and a test of it is always true anyway
+      fork test, or(refused, and(is-equal(others/length, 0), is-above(otherwise-list/length, 0)))
+        hold
+          back narrowed-of(false, node)
+      save cases, make list
+      push(cases, case-arm(label, first/body, own-binds))
+      fork test, is-equal(others/length, 1)
+        hold
+          push(cases, case-arm(get(others, 0), otherwise-list, last-binds))
+      fork test, is-above(others/length, 1)
+        hold
+          save closed-otherwise
+            make statement/match
+              bind subject, subject
+              bind cases, cases
+              bind otherwise, make(some, otherwise-list)
+              bind span, if-span
+          back narrowed-of(true, placed-like(closed-otherwise, node))
+      save made
+        make statement/match
+          bind subject, subject
+          bind cases, cases
+          bind span, if-span
+      back narrowed-of(true, placed-like(made, node))
+    miss
+      back narrowed-of(false, node)
 
 # a call's arguments put in the callee's declared positions, its defaults filled, its lean labels placed (part 6)
 task arrange-arguments
@@ -178,43 +544,1188 @@ task arrange-arguments
   take env, like maybe, like hash, like text, like scheme
   like arranged
 
-  halt <arrange-arguments is written by part 6, item 0255>
+  save callee, callee-name(node)
+  save no-positions, make list
+  save has-signature, st/functions/has(callee)
+  # A FORM's bare head under lean is a construction; a METHOD NAME is a call, even where a form shares it
+  save construction, and(and(not(has-signature), not(st/method-names/has(callee))), or(st/records/has(callee), st/variant-enum/has(callee)))
+  save current, node
+  # A LEAN LABEL THAT NAMES NO PARAMETER IS A NESTED CALL (check/lean-nest.tree): the ones only the checker's tables
+  # hold, a form or a variant written positionally under a call. Never under a construction, where labels are fields
+  fork test, not(construction)
+    hold
+      save signature-names, make list
+      fork test, has-signature
+        hold
+          save named-signature, st/functions/get(callee)
+          save signature-names, named-signature/names
+      save chosen, make list
+      walk lean-labels(current)
+        take label
+        save named, or(or(or(st/functions/has(label/name), inferring-overload/overload-groups/has(label/name)), or(st/method-names/has(label/name), st/records/has(label/name))), or(st/variant-enum/has(label/name), is-foldable(label/name)))
+        fork test, and(not(contains(signature-names, label/written)), named)
+          hold
+            push(chosen, label/at)
+      save nesting, lean-calls-nested(current, chosen)
+      save current, nesting/node
+  save is-lean, call-lean(current)
+  save args, arguments-of(current)
+  save names, names-of-call(current, args/length)
+  # THE LEAN SURFACE: a bare head that names a FORM is a construction of it, its labels the fields, rewritten into a
+  # record the record case types exactly as a `make` would. A value with no head has nowhere to go and is refused
+  fork test, and(is-lean, construction)
+    hold
+      save fields, make list
+      save positional, make list
+      save at, 0
+      walk args
+        take arg
+        save field-name, text-at(names, at)
+        fork test, is-equal(field-name, <>)
+          hold
+            push(positional, arg)
+          miss
+            save field
+              make field-value
+                bind name, field-name
+                bind value, arg
+            push(fields, field)
+        save at, add(at, 1)
+      fork test, is-above(positional/length, 0)
+        hold
+          say(st, make(type-mismatch), expression-span(get(positional, 0)), <"{callee}" is a form, so every value here needs a field name as its head. A property whose value is a read, a call or a list must start its own line, because an inline comma pops out of it>)
+      save record, construction-of(current, callee, fields)
+      back arranged-of(record, args, no-positions)
+  # a receiver-dispatched method or an unknown callee: the labels are documentation and the call stays positional
+  fork test, not(has-signature)
+    hold
+      save lean-flags, lean-names-of-call(current)
+      save any-lean-flag, false
+      walk lean-flags
+        take flag
+        fork test, flag
+          hold
+            save any-lean-flag, true
+      # only a label that came from a PROPERTY HEAD is refused
+      fork test, and(is-lean, any-lean-flag)
+        hold
+          save dropped, make list
+          save at, 0
+          walk written-names(current)
+            take one
+            fork test, and(is-unequal(one, <>), and(is-below(at, lean-flags/length), get(lean-flags, at)))
+              hold
+                push(dropped, one)
+            save at, add(at, 1)
+          save dropped-listed, dropped/join(<, >)
+          say(st, make(type-mismatch), expression-span(current), <"{callee}" is not a task or a form this file can see, so its properties ({dropped-listed}) name nothing>)
+      # THE LABELS STILL SAY WHAT ORDER THEY WERE WRITTEN IN: where every form that has the method declares the label's
+      # parameter at ANOTHER position, the arguments are out of order
+      save owners, make list
+      save signatures, make list
+      walk st/method-table/keys()
+        take owner
+        save methods, st/method-table/get(owner)
+        save mangled, <>
+        fork test, methods/has(callee)
+          hold
+            save mangled, methods/get(callee)
+        fork test, st/functions/has(mangled)
+          hold
+            push(owners, owner)
+            push(signatures, st/functions/get(mangled))
+      fork test, is-above(signatures/length, 0)
+        hold
+          save at, 0
+          walk written-names(current)
+            take label
+            fork test, is-unequal(label, <>)
+              hold
+                save fits-here, false
+                save elsewhere, false
+                save which, 0
+                walk signatures
+                  take method
+                  save declared, text-at(method/names, at)
+                  fork test, or(is-equal(declared, label), and(is-equal(declared, <self>), is-equal(label, get(owners, which))))
+                    hold
+                      save fits-here, true
+                  fork test, contains(method/names, label)
+                    hold
+                      save elsewhere, true
+                  save which, add(which, 1)
+                fork test, and(not(fits-here), elsewhere)
+                  hold
+                    save label-at, expression-span(current)
+                    fork test, is-below(at, args/length)
+                      hold
+                        save label-at, expression-span(get(args, at))
+                    save first-signature, get(signatures, 0)
+                    save order, first-signature/names/join(<, >)
+                    save position, ordinal(add(at, 1))
+                    say(st, make(type-mismatch), label-at, <"{label}" is not the {position} parameter of "{callee}", and a call on a receiver passes its arguments in the order written. Write them in the method's order: {order}>)
+            save at, add(at, 1)
+      back arranged-of(without-labels(current), args, no-positions)
+  save signature, st/functions/get(callee)
+  # THE LEAN SURFACE, by the DECLARED type and never by the count: an inline comma after a bare-word value lifted out,
+  # a repeated list label accumulated, a one-item property unwrapped, a bare word naming a boolean parameter a flag
+  fork test, is-lean
+    hold
+      save lifted, lean-lifted(st, signature, args, names)
+      save accumulated, lean-accumulated(st, signature, lifted/args, lifted/names)
+      save flagged, lean-flagged(st, signature, callee, accumulated/args, accumulated/names, env)
+      save args, flagged/args
+      save names, flagged/names
+      save current, without-lean(with-arguments(current, args))
+  # the arguments put in their declared positions
+  save ordered, make list
+  save filled-at, make list
+  walk signature/params
+    take param
+    push(ordered, unit-at(expression-span(current)))
+    push(filled-at, false)
+  save next, 0
+  save failed, false
+  save failed-named, false
+  save at, 0
+  walk test
+    hook test, and(is-below(at, args/length), not(failed))
+    hook hold
+      save name, text-at(names, at)
+      save arg, get(args, at)
+      fork test, is-equal(name, <>)
+        hold
+          # a positional argument takes the next unfilled position
+          walk test
+            hook test, and(is-below(next, ordered/length), get(filled-at, next))
+            hook hold
+              save next, add(next, 1)
+          fork test, is-minimum(next, ordered/length)
+            hold
+              save plural, <s>
+              fork test, is-equal(ordered/length, 1)
+                hold
+                  save plural, <>
+              say-hinted(st, make(type-mismatch), expression-span(arg), <"{callee}" takes {ordered/length} argument{plural}, and this is one more>, <if a comma put it here, close the call with parentheses, `{callee}(...)`, or stack its arguments one per line: a comma after a call written with a space puts what follows inside that call>)
+              save failed, true
+            miss
+              save ordered, expressions-with(ordered, next, arg)
+              save filled-at, flags-with(filled-at, next, true)
+              save next, add(next, 1)
+        miss
+          save index, position-of(signature/names, name)
+          fork test, is-below(index, 0)
+            hold
+              save taken, signature/names/join(<, >)
+              fork test, is-equal(taken, <>)
+                hold
+                  save taken, <nothing>
+              say(st, make(type-mismatch), expression-span(arg), <"{callee}" has no parameter "{name}" (it takes {taken})>)
+              save failed-named, true
+            miss
+              fork test, flag-at(signature/positional, index)
+                hold
+                  say(st, make(type-mismatch), expression-span(arg), <"{name}" is a slot of "{callee}" and is given by position, never by name>)
+                  save failed-named, true
+                miss
+                  fork test, get(filled-at, index)
+                    hold
+                      say(st, make(type-mismatch), expression-span(arg), <"{name}" is given twice>)
+                      save failed-named, true
+                    miss
+                      save ordered, expressions-with(ordered, index, arg)
+                      save filled-at, flags-with(filled-at, index, true)
+      save at, add(at, 1)
+  fork test, failed-named
+    hold
+      save failed, true
+  fork test, failed
+    hold
+      back arranged-of(without-names(with-arguments(current, args)), args, no-positions)
+  # omitted parameters filled from their defaults; one with no default must be trailing and optional
+  save left-out, make list
+  save filled, ordered/length
+  save back-at, subtract(ordered/length, 1)
+  walk test
+    hook test, and(is-minimum(back-at, 0), not(get(filled-at, back-at)))
+    hook hold
+      save filled, back-at
+      save back-at, subtract(back-at, 1)
+  save call-span, expression-span(current)
+  save at, 0
+  walk signature/params
+    take param
+    fork test, not(get(filled-at, at))
+      hold
+        save gap-type, resolve-held(st, param)
+        save optional, flag-at(signature/optional, at)
+        save empty-gap, make none
+        fork test, and(is-below(at, filled), optional)
+          hold
+            save empty-gap, empty-value(gap-type, call-span)
+        sift fallback-at(signature, at)
+          case some
+            link fallback
+            # the original's JSON clone of the default, its span the call's (decision 032 section 4.7)
+            save cloned, spanned-at(copy-expression(fallback), call-span)
+            save ordered, expressions-with(ordered, at, cloned)
+            save filled-at, flags-with(filled-at, at, true)
+          case none
+            sift empty-gap
+              case some
+                link gap-value
+                save ordered, expressions-with(ordered, at, gap-value)
+                save filled-at, flags-with(filled-at, at, true)
+              case none
+                fork test, is-below(at, filled)
+                  hold
+                    save needed, text-at(signature/names, at)
+                    say(st, make(type-mismatch), call-span, <"{callee}" needs "{needed}", which this call leaves out>)
+                    # the positions kept aligned for the rest of the check: the refusal already stops the build
+                    save filled-at, flags-with(filled-at, at, true)
+                    push(left-out, at)
+    save at, add(at, 1)
+  # a trailing optional collection or text left out is its empty value, typed as the parameter; a trailing optional of
+  # any other type stays omitted; a REQUIRED one left out is refused
+  save at, 0
+  walk signature/params
+    take param
+    fork test, not(get(filled-at, at))
+      hold
+        save held-param, resolve-held(st, param)
+        fork test, not(flag-at(signature/optional, at))
+          hold
+            save needed, text-at(signature/names, at)
+            say(st, make(type-mismatch), call-span, <"{callee}" needs "{needed}", which this call leaves out>)
+            save filled-at, flags-with(filled-at, at, true)
+            push(left-out, at)
+          miss
+            sift empty-value(held-param, call-span)
+              case some
+                link trailing-value
+                save ordered, expressions-with(ordered, at, trailing-value)
+                save filled-at, flags-with(filled-at, at, true)
+              case none
+                save nothing, 0
+    save at, add(at, 1)
+  save end, ordered/length
+  walk test
+    hook test, and(is-above(end, 0), not(get(filled-at, subtract(end, 1))))
+    hook hold
+      save end, subtract(end, 1)
+  save kept-args, make list
+  save at, 0
+  walk ordered
+    take one
+    fork test, is-below(at, end)
+      hold
+        # an optional of another type left out before a filled one leaves a hole the original's call case then
+        # crashed on: raised here, where it is made
+        fork test, not(get(filled-at, at))
+          hold
+            halt <arrange-arguments: "{callee}" leaves out an optional argument before one it fills>
+        push(kept-args, one)
+    save at, add(at, 1)
+  save arranged-call, without-names(with-arguments(current, kept-args))
+  back arranged-of(arranged-call, kept-args, left-out)
 
-# the member of a same-arity overload group whose parameter types fit the arguments (part 6)
+# choose among same-arity overloads by the arguments' types: each candidate's parameter types compared structurally
+# with the arguments' resolved types, a type variable or an unknown on either side fitting anything. The unique fit
+# wins; among several, the ones that fit with no wildcard, and of those the LAST definition (the per-environment shim
+# that loads after the shared signature it refines); none is refused (part 6)
 task choose-overload
   take st, like infer-state
   take node, like expression
   take env, like hash, like text, like scheme
   like expression
 
-  halt <choose-overload is written by part 6, item 0255>
+  save callee, callee-name(node)
+  save candidates, make list
+  fork test, inferring-overload/overload-groups/has(callee)
+    hold
+      save candidates, overload-candidates(callee)
+  save arg-types, make list
+  save args-out, make list
+  walk arguments-of(node)
+    take arg
+    save arg-found, infer-expression(st, arg, env)
+    push(args-out, arg-found/node)
+    push(arg-types, resolve-held(st, arg-found/type))
+  save current, with-arguments(node, args-out)
+  save fitting, make list
+  walk candidates
+    take candidate
+    fork test, st/functions/has(candidate)
+      hold
+        save signature, st/functions/get(candidate)
+        fork test, and(is-minimum(arg-types/length, signature/min-args), is-maximum(arg-types/length, signature/params/length))
+          hold
+            save instance, instantiate(signature, st/sub)
+            fork test, all-fit(st, arg-types, instance/params)
+              hold
+                push(fitting, candidate)
+  fork test, is-equal(fitting/length, 1)
+    hold
+      back with-callee(current, renamed-variable(callee-of(current), get(fitting, 0)))
+  fork test, is-above(fitting/length, 1)
+    hold
+      save exact, make list
+      walk fitting
+        take candidate
+        save instance, instantiate(st/functions/get(candidate), st/sub)
+        fork test, all-exact(st, arg-types, instance/params)
+          hold
+            push(exact, candidate)
+      save pool, fitting
+      fork test, is-above(exact/length, 0)
+        hold
+          save pool, exact
+      save chosen, get(pool, subtract(pool/length, 1))
+      save current, with-callee(current, renamed-variable(callee-of(current), chosen))
+      # a tie is refused, naming every definition it could be: on by default since D10
+      fork test, and(is-above(pool/length, 1), refuses-ambiguous(st/switches))
+        hold
+          save written, strip-overload-suffix(chosen)
+          save each, make list
+          walk pool
+            take candidate
+            save shown, make list
+            save pooled, st/functions/get(candidate)
+            walk pooled/params
+              take param
+              push(shown, show-type(resolve-held(st, param)))
+            save defined, defining-file(st, candidate)
+            save where, <>
+            fork test, is-unequal(defined, <>)
+              hold
+                save where, < in {defined}>
+            save shown-listed, shown/join(<, >)
+            push(each, <({shown-listed}){where}>)
+          save each-listed, each/join(< and >)
+          say-hinted(st, make(type-mismatch), expression-span(current), <ambiguous call: {pool/length} definitions of "{written}" fit these arguments equally, {each-listed}, and the last one would run>, <give the argument a type where it is made, or name the definition apart>)
+      back current
+  save shown, make list
+  walk candidates
+    take candidate
+    fork test, st/functions/has(candidate)
+      hold
+        save params-shown, make list
+        save listed-signature, st/functions/get(candidate)
+        walk listed-signature/params
+          take param
+          push(params-shown, show-type(param))
+        save params-listed, params-shown/join(<, >)
+        push(shown, <({params-listed})>)
+      miss
+        push(shown, candidate)
+  save args-shown, make list
+  walk arg-types
+    take arg-type
+    push(args-shown, show-type(arg-type))
+  save args-listed, args-shown/join(<, >)
+  save shown-listed, shown/join(<, >)
+  save written, strip-both-suffixes(callee)
+  say(st, make(type-mismatch), expression-span(current), <no overload of "{written}" takes ({args-listed}). It is defined for {shown-listed}>)
+  back current
 
-# a lean construction's property heads read as its fields (part 7)
+# THE LEAN SURFACE: a lean construction's property heads read as its fields (part 7). A field that came from a property
+# head is a list of that head's children. Where the declared field is not a list, a one-item list is that item and
+# more than one is a diagnostic. By the DECLARED type and never by the count, so a one-element list and a scalar stay
+# different things. Three passes, in the original's order: a property swallowed by an inline comma lifted back out, a
+# head given twice merged or refused, and each field unwrapped. The construction comes back with its lean mark dropped
 task unwrap-lean-fields
   take st, like infer-state
   take node, like expression
   take env, like hash, like text, like scheme
   like expression
 
-  halt <unwrap-lean-fields is written by part 7, item 0256>
+  sift node
+    case record
+      link unwrapped-name
+      link unwrapped-fields
+      link unwrapped-span
+      link unwrapped-type
+      link unwrapped-positional
+      link unwrapped-function-free
+      link unwrapped-lean
+      fork test, not(unwrapped-lean)
+        hold
+          back node
+      # every declaration of this variant, not just the last one read: where two enums declare the field they have to
+      # agree about being a list for the unwrap to be safe, and where neither declares the name it is left to the kernel
+      save candidates, lean-candidates(st, unwrapped-name)
+      save lifted, lean-fields-lifted(st, candidates, unwrapped-fields)
+      save merged, lean-fields-merged(st, candidates, unwrapped-name, lifted)
+      save settled, make list
+      walk merged
+        take field
+        push(settled, lean-field-settled(st, candidates, unwrapped-name, field, env))
+      save node/fields, settled
+      save node/lean, false
+      back node
+    miss
+      back node
 
-# `call peer/send / read line` on a form whose `send` is a Term method, rewritten to the method with `peer` first (part 7)
+# A MEMBER CALL ONTO A FORM'S OWN METHOD (part 7). `call peer/send / read line`, where `peer` is a `socket` record and
+# `send` is declared under `form socket` with `take self` first, becomes a call of the mangled method with the member's
+# target as its first argument, what receiver dispatch builds for `call send / read peer / read line`. Only a method
+# whose first parameter is `self` is rewritten: a native DOM method takes no `self`. On a native map or list only a
+# method that is not a thin native wrapper, and not a member the native object answers itself, dispatches
 task bind-member-method
   take st, like infer-state
   take node, like expression
   take env, like hash, like text, like scheme
   like expression
 
-  halt <bind-member-method is written by part 7, item 0256>
+  save current, node
+  save called, callee-of(node)
+  sift called
+    case member
+      link method-target
+      link method-name
+      link method-index
+      link method-nick
+      link method-tag
+      link method-span
+      # a narrowed case subject reads its variant's fields, never a method
+      sift method-target
+        case variable
+          link narrowed-target
+          fork test, st/narrowing/has(narrowed-target)
+            hold
+              back current
+        miss
+          save nothing, 0
+      save target-node, method-target
+      save target-known, expression-type(method-target)
+      save target-held, unknown-type()
+      sift target-known
+        case some
+          link known-target-type
+          save target-held, resolve-held(st, known-target-type)
+        case none
+          # inferred where it stands, as the original's inference wrote the target in place
+          save target-found, infer-expression(st, method-target, env)
+          save target-node, target-found/node
+          save called/target, target-node
+          save current, with-callee(current, called)
+          save target-held, resolve-held(st, target-found/type)
+      save native, <>
+      sift target-held
+        case map
+          save native, <hash>
+        case array
+          save native, <list>
+        miss
+          save nothing, 0
+      fork test, is-unequal(native, <>)
+        hold
+          save native-mangled, method-of(st, native, method-name)
+          fork test, or(is-equal(native-mangled, <>), not(st/functions/has(native-mangled)))
+            hold
+              back current
+          save native-method, st/functions/get(native-mangled)
+          # the name as a native member: every emitter handles these on a map or list itself (`xs/get(i)` is `xs[i]`)
+          save camel, member-camel(method-name)
+          save native-members, native-list-members()
+          fork test, is-equal(native, <hash>)
+            hold
+              save native-members, native-map-members()
+          fork test, or(or(is-unequal(text-at(native-method/names, 0), <self>), contains(native-members, camel)), st/native-wrappers/has(native-mangled))
+            hold
+              back current
+          back member-rewritten(current, native-mangled, method-span, target-node)
+      sift target-held
+        case named
+          link target-form
+          fork test, not(st/records/has(target-form))
+            hold
+              back current
+          save target-fields, st/records/get(target-form)
+          fork test, target-fields/has(method-name)
+            hold
+              back current
+          save form-mangled, method-of(st, target-form, method-name)
+          fork test, or(is-equal(form-mangled, <>), not(st/functions/has(form-mangled)))
+            hold
+              back current
+          save form-method, st/functions/get(form-mangled)
+          fork test, is-unequal(text-at(form-method/names, 0), <self>)
+            hold
+              back current
+          back member-rewritten(current, form-mangled, method-span, target-node)
+        miss
+          back current
+    miss
+      back current
 
-# a labelled call to a form method a top-level task of the same name shadows, bound to its receiver's method (part 7)
+# A LABELLED CALL TO A SHADOWED FORM METHOD (part 7). `call get / bind self, read xs / bind index, code 0` names list's
+# `get` method, but a top-level `get` anywhere in the program would place the labels by ITS parameters. Rewritten to the
+# receiver form's mangled method, before the labels are placed, when the receiver (the argument labelled `self`, else
+# the first unlabelled one) is of a form that owns a method of this name (a list for an array, a hash for a map), every
+# label is a parameter of that method, and a label is `self` or the top-level task of the name cannot take every label
 task bind-labelled-method
   take st, like infer-state
   take node, like expression
   take env, like hash, like text, like scheme
   like expression
 
-  halt <bind-labelled-method is written by part 7, item 0256>
+  save current, node
+  save called-name, callee-name(node)
+  # `''` is a positional argument
+  save labels, written-names(node)
+  save named, make list
+  walk labels
+    take label
+    fork test, is-unequal(label, <>)
+      hold
+        push(named, label)
+  fork test, and(not(contains(named, <self>)), st/functions/has(called-name))
+    hold
+      save top, st/functions/get(called-name)
+      fork test, all-contained(named, top/names)
+        hold
+          back current
+  save given, arguments-of(node)
+  save at, position-of(labels, <self>)
+  fork test, is-below(at, 0)
+    hold
+      save index, 0
+      walk test
+        hook test, and(is-below(at, 0), is-below(index, given/length))
+        hook hold
+          fork test, is-equal(text-at(labels, index), <>)
+            hold
+              save at, index
+          save index, add(index, 1)
+  fork test, or(is-below(at, 0), not(is-below(at, given/length)))
+    hold
+      back current
+  save receiver-node, get(given, at)
+  save receiver-known, expression-type(receiver-node)
+  save receiver, unknown-type()
+  sift receiver-known
+    case some
+      link known-receiver-type
+      save receiver, resolve-held(st, known-receiver-type)
+    case none
+      # inferred where it stands, as the original's inference wrote the argument in place
+      save receiver-found, infer-expression(st, receiver-node, env)
+      save current, with-arguments(current, expressions-with(given, at, receiver-found/node))
+      save receiver, resolve-held(st, receiver-found/type)
+  save owner, <>
+  sift receiver
+    case named
+      link receiver-form
+      save owner, receiver-form
+    case array
+      save owner, <list>
+    case map
+      save owner, <hash>
+    miss
+      save nothing, 0
+  fork test, is-equal(owner, <>)
+    hold
+      back current
+  save mangled, method-of(st, owner, called-name)
+  fork test, or(is-equal(mangled, <>), not(st/functions/has(mangled)))
+    hold
+      back current
+  save method, st/functions/get(mangled)
+  fork test, not(all-contained(named, method/names))
+    hold
+      back current
+  save renamed, renamed-variable(callee-of(current), mangled)
+  back with-callee(current, renamed)
+
+# ---- part 7's helpers ----
+
+# the field tables a lean construction's name may mean: every enum's declaration of the variant, else the record form
+task lean-candidates
+  take st, like infer-state
+  take record-name, like text
+  like list, like hash, like text, like type
+  mark private
+
+  save out, make list
+  fork test, st/variant-enum/has(record-name)
+    hold
+      fork test, st/variant-fields-by-owner/has(record-name)
+        hold
+          walk st/variant-fields-by-owner/get(record-name)
+            take table
+            push(out, table)
+      back out
+  fork test, st/records/has(record-name)
+    hold
+      push(out, st/records/get(record-name))
+  back out
+
+# whether any candidate declares a field of this name
+task candidates-declare
+  take candidates, like list, like hash, like text, like type
+  take name, like text
+  like boolean
+  mark private
+
+  walk candidates
+    take table
+    fork test, table/has(name)
+      hold
+        back true
+  back false
+
+# the types the candidates declare a field of this name as, in their order
+task candidate-types
+  take candidates, like list, like hash, like text, like type
+  take name, like text
+  like list, like type
+  mark private
+
+  save out, make list
+  walk candidates
+    take table
+    fork test, table/has(name)
+      hold
+        push(out, table/get(name))
+  back out
+
+# whether a declared type, seeded, is a list
+task seeds-a-list
+  take st, like infer-state
+  take given, like type
+  like boolean
+  mark private
+
+  save no-generics, make hash
+  save seeded, resolve-held(st, seed-given-type(st, given, no-generics))
+  sift seeded
+    case array
+      back true
+    miss
+      back false
+
+# A FIELD THAT TAKES ONE VALUE IS COMPLETE AFTER IT: some candidate declares it, and none as a list. Seeded in order,
+# stopping at the first list, as the original's `every`
+task takes-one-value
+  take st, like infer-state
+  take candidates, like list, like hash, like text, like type
+  take name, like text
+  like boolean
+  mark private
+
+  save held, candidate-types(candidates, name)
+  fork test, is-equal(held/length, 0)
+    hold
+      back false
+  walk held
+    take one
+    fork test, seeds-a-list(st, one)
+      hold
+        back false
+  back true
+
+# whether every text of a list is in another
+task all-contained
+  take values, like list, like text
+  take within, like list, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, not(contains(within, one))
+      hold
+        back false
+  back true
+
+# a field of a construction, made
+task field-of
+  take name, like text
+  take value, like expression
+  like field-value
+  mark private
+
+  back
+    make field-value
+      bind name, name
+      bind value, value
+
+# a list of fields with one position replaced
+task fields-with
+  take values, like list, like field-value
+  take at, like number
+  take value, like field-value
+  like list, like field-value
+  mark private
+
+  save out, make list
+  save index, 0
+  walk values
+    take one
+    fork test, is-equal(index, at)
+      hold
+        push(out, value)
+      miss
+        push(out, one)
+    save index, add(index, 1)
+  back out
+
+# fields inserted at a position, as `splice(at, 0, ...)` does: past the end, at the end
+task fields-spliced
+  take values, like list, like field-value
+  take at, like number
+  take inserted, like list, like field-value
+  like list, like field-value
+  mark private
+
+  save out, make list
+  save index, 0
+  walk values
+    take one
+    fork test, is-equal(index, at)
+      hold
+        walk inserted
+          take added
+          push(out, added)
+    push(out, one)
+    save index, add(index, 1)
+  fork test, is-maximum(values/length, at)
+    hold
+      walk inserted
+        take added
+        push(out, added)
+  back out
+
+# AN INLINE COMMA AFTER A BARE-WORD VALUE LEAVES THE NEXT PROPERTY INSIDE IT, and this puts it back. `pair a <x>, b
+# true, c true` parses as `pair(a("x"), b(true, c(true)))`: a comma pops ONE level and a bare word opens one. The
+# DECLARED form decides: a trailing item lifts out only when its head names another field of this construction, the
+# field it leaves takes one value, and every label it carries names a field here too. The swallow chains, so a field is
+# lifted again until nothing moves, and what came out is reached in turn
+task lean-fields-lifted
+  take st, like infer-state
+  take candidates, like list, like hash, like text, like type
+  take given, like list, like field-value
+  like list, like field-value
+  mark private
+
+  fork test, is-equal(candidates/length, 0)
+    hold
+      back given
+  save out, given
+  save i, 0
+  walk test
+    hook test, is-below(i, out/length)
+    hook hold
+      save going, true
+      walk test
+        hook test, going
+        hook hold
+          save going, false
+          save field, get(out, i)
+          save field-name, field/name
+          save held-value, field/value
+          sift held-value
+            case array
+              link held-items
+              link held-span
+              fork test, is-minimum(held-items/length, 2)
+                hold
+                  fork test, takes-one-value(st, candidates, field-name)
+                    hold
+                      save last, get(held-items, subtract(held-items/length, 1))
+                      sift last
+                        case call
+                          link swallowed-callee
+                          link swallowed-args
+                          link swallowed-span
+                          link swallowed-type
+                          link swallowed-names
+                          sift swallowed-callee
+                            case variable
+                              link swallowed-name
+                              fork test, candidates-declare(candidates, swallowed-name)
+                                hold
+                                  save labels, make list
+                                  walk swallowed-names
+                                    take one
+                                    push(labels, one)
+                                  save foreign, false
+                                  walk labels
+                                    take one
+                                    fork test, and(is-unequal(one, <>), not(candidates-declare(candidates, one)))
+                                      hold
+                                        save foreign, true
+                                  fork test, not(foreign)
+                                    hold
+                                      save carried, make list
+                                      save positional, make list
+                                      save at, 0
+                                      walk swallowed-args
+                                        take one
+                                        save label, text-at(labels, at)
+                                        fork test, is-unequal(label, <>)
+                                          hold
+                                            push(carried, field-of(label, one))
+                                          miss
+                                            push(positional, one)
+                                        save at, add(at, 1)
+                                      save popped, make list
+                                      save item-at, 0
+                                      walk held-items
+                                        take item
+                                        fork test, is-below(item-at, subtract(held-items/length, 1))
+                                          hold
+                                            push(popped, item)
+                                        save item-at, add(item-at, 1)
+                                      save held-value/items, popped
+                                      save out, fields-with(out, i, field-of(field-name, held-value))
+                                      save lifted-items
+                                        make expression/array
+                                          bind items, positional
+                                          bind span, swallowed-span
+                                      save inserted, make list
+                                      push(inserted, field-of(swallowed-name, lifted-items))
+                                      walk carried
+                                        take one
+                                        push(inserted, one)
+                                      save out, fields-spliced(out, add(i, 1), inserted)
+                                      save going, true
+                            miss
+                              save nothing, 0
+                        miss
+                          save nothing, 0
+            miss
+              save nothing, 0
+      save i, add(i, 1)
+  back out
+
+# A PROPERTY HEAD GIVEN TWICE: a list field accumulates its heads (by the declared type, never the count), and anything
+# else is refused, since the second would silently replace the first. Either way the later heads go
+task lean-fields-merged
+  take st, like infer-state
+  take candidates, like list, like hash, like text, like type
+  take record-name, like text
+  take given, like list, like field-value
+  like list, like field-value
+  mark private
+
+  save by-name, make hash
+  save at, 0
+  walk given
+    take field
+    save field-key, field/name
+    save seen-at, make list
+    fork test, by-name/has(field-key)
+      hold
+        save seen-at, by-name/get(field-key)
+    push(seen-at, at)
+    save by-name/{field-key}, seen-at
+    save at, add(at, 1)
+  save out, given
+  save drop, make list
+  walk by-name/keys()
+    take name
+    save positions, by-name/get(name)
+    fork test, is-minimum(positions/length, 2)
+      hold
+        save declared, candidate-types(candidates, name)
+        # every declaration a list, seeded in order and stopping at the first that is not, as the original's `every`
+        save listed, is-above(declared/length, 0)
+        walk declared
+          take one
+          fork test, listed
+            hold
+              save listed, seeds-a-list(st, one)
+        save all-lists, true
+        walk positions
+          take position
+          save position-field, get(out, position)
+          save position-value, position-field/value
+          sift position-value
+            case array
+              save nothing, 0
+            miss
+              save all-lists, false
+        fork test, and(listed, all-lists)
+          hold
+            save first-at, get(positions, 0)
+            save gathered, make list
+            walk positions
+              take position
+              save gathered-field, get(out, position)
+              save gathered-value, gathered-field/value
+              sift gathered-value
+                case array
+                  link gathered-items
+                  walk gathered-items
+                    take item
+                    push(gathered, item)
+                miss
+                  save nothing, 0
+            save first-field, get(out, first-at)
+            save first-value, first-field/value
+            sift first-value
+              case array
+                save first-value/items, gathered
+              miss
+                save nothing, 0
+            save out, fields-with(out, first-at, field-of(name, first-value))
+          miss
+            save second-field, get(out, get(positions, 1))
+            save second-value, second-field/value
+            say-hinted(st, make(type-mismatch), expression-span(second-value), <"{name}" of "{record-name}" is given twice, and it is not a list, so the second would silently replace the first>, <give it once, or declare the field `like list` so the heads accumulate>)
+        save later-at, 0
+        walk positions
+          take position
+          fork test, is-above(later-at, 0)
+            hold
+              push(drop, position)
+          save later-at, add(later-at, 1)
+  fork test, is-equal(drop/length, 0)
+    hold
+      back out
+  save kept, make list
+  save at, 0
+  walk out
+    take field
+    fork test, not(contains(drop, at))
+      hold
+        push(kept, field)
+    save at, add(at, 1)
+  back kept
+
+# ONE FIELD OF A LEAN CONSTRUCTION SETTLED. A field declared as a form with fields, given as heads that each name one of
+# them, is that form built (`at / a 10 / b 20` under a field `like point`, lean-0018). A field every declaration makes
+# a list takes one child that is itself a list directly, its own type telling the two apart. A field no declaration
+# makes a list is its one value, and more than one is refused. Declarations that disagree leave it to the kernel
+task lean-field-settled
+  take st, like infer-state
+  take candidates, like list, like hash, like text, like type
+  take record-name, like text
+  take field, like field-value
+  take env, like hash, like text, like scheme
+  like field-value
+  mark private
+
+  save field-name, field/name
+  save seen, candidate-types(candidates, field-name)
+  fork test, is-equal(seen/length, 0)
+    hold
+      back field
+  save settled-value, field/value
+  save field-type, get(seen, 0)
+  sift field-type
+    case named
+      link nested-form
+      sift settled-value
+        case array
+          link nested-items
+          link nested-span
+          fork test, and(is-above(nested-items/length, 0), st/records/has(nested-form))
+            hold
+              save own, st/records/get(nested-form)
+              save nested-labels, make list
+              save all-named, true
+              walk nested-items
+                take item
+                save label, nested-label(item)
+                fork test, or(is-equal(label, <>), not(own/has(label)))
+                  hold
+                    save all-named, false
+                push(nested-labels, label)
+              fork test, and(is-above(entry-count(own), 0), all-named)
+                hold
+                  save nested-fields, make list
+                  save label-at, 0
+                  walk nested-items
+                    take item
+                    save item-args, arguments-of(item)
+                    save item-value
+                      make expression/array
+                        bind items, item-args
+                        bind span, expression-span(item)
+                    push(nested-fields, field-of(get(nested-labels, label-at), item-value))
+                    save label-at, add(label-at, 1)
+                  save built
+                    make expression/record
+                      bind name, nested-form
+                      bind fields, nested-fields
+                      bind span, nested-span
+                      bind function-free, true
+                      bind lean, true
+                  back field-of(field-name, unwrap-lean-fields(st, built, env))
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  sift settled-value
+    case array
+      link settled-items
+      link settled-span
+      save listed, make list
+      walk seen
+        take one
+        push(listed, seeds-a-list(st, one))
+      fork test, and(contains(listed, true), contains(listed, false))
+        hold
+          back field
+      fork test, get(listed, 0)
+        hold
+          # a list field whose one child is itself a list takes that list directly (see arrange-arguments)
+          fork test, is-equal(settled-items/length, 1)
+            hold
+              save item-found, infer-expression(st, get(settled-items, 0), env)
+              save one-item, make list
+              push(one-item, item-found/node)
+              save settled-value/items, one-item
+              save item-held, resolve-held(st, item-found/type)
+              sift item-held
+                case array
+                  back field-of(field-name, item-found/node)
+                miss
+                  save nothing, 0
+          back field-of(field-name, settled-value)
+      fork test, is-equal(settled-items/length, 1)
+        hold
+          back field-of(field-name, get(settled-items, 0))
+      fork test, is-above(settled-items/length, 1)
+        hold
+          say(st, make(type-mismatch), settled-span, <"{field-name}" of "{record-name}" takes one value, and this gives {settled-items/length}>)
+      back field
+    miss
+      back field
+
+# the label a nested item names, `''` for any item that is not a lean call of a bare name
+task nested-label
+  take item, like expression
+  like text
+  mark private
+
+  sift item
+    case call
+      link label-callee
+      link label-args
+      link label-span
+      link label-type
+      link label-names
+      link label-lean
+      fork test, not(label-lean)
+        hold
+          back <>
+      sift label-callee
+        case variable
+          link label-name
+          back label-name
+        miss
+          back <>
+    miss
+      back <>
+
+# a form's method of a bare name, mangled, `''` where the form has none
+task method-of
+  take st, like infer-state
+  take owner, like text
+  take name, like text
+  like text
+  mark private
+
+  fork test, not(st/method-table/has(owner))
+    hold
+      back <>
+  save by-name, st/method-table/get(owner)
+  fork test, not(by-name/has(name))
+    hold
+      back <>
+  back by-name/get(name)
+
+# `-([a-z])` replaced by its letter upper-cased, as a member name is spelled where a member call is emitted
+task member-camel
+  take name, like text
+  like text
+  mark private
+
+  save lower, <abcdefghijklmnopqrstuvwxyz>
+  save size, char-count(name)
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one, char-at(name, at)
+      save taken, false
+      fork test, and(is-equal(one, <->), is-below(add(at, 1), size))
+        hold
+          save next, char-at(name, add(at, 1))
+          fork test, is-minimum(index-of(lower, next), 0)
+            hold
+              save out, <{out}{to-upper-case(next)}>
+              save at, add(at, 2)
+              save taken, true
+      fork test, not(taken)
+        hold
+          save out, <{out}{one}>
+          save at, add(at, 1)
+  back out
+
+# A CALL REWRITTEN ONTO A METHOD: the callee the mangled method at the member's span, the receiver its first argument,
+# and each per-argument list the call carries given a positional entry in front
+task member-rewritten
+  take node, like expression
+  take mangled, like text
+  take at, like span
+  take receiver, like expression
+  like expression
+  mark private
+
+  sift node
+    case call
+      link rewritten-callee
+      link rewritten-args
+      link rewritten-span
+      link rewritten-type
+      link rewritten-names
+      link rewritten-lean
+      link rewritten-lean-names
+      save new-callee
+        make expression/variable
+          bind name, mangled
+          bind span, at
+      save new-args, make list
+      push(new-args, receiver)
+      walk rewritten-args
+        take one
+        push(new-args, one)
+      save node/callee, new-callee
+      save node/args, new-args
+      # the original prefixed only a list the call carried; a `need false` list left out reads as empty here
+      fork test, is-above(rewritten-names/length, 0)
+        hold
+          save new-names, make list
+          push(new-names, <>)
+          walk rewritten-names
+            take one
+            push(new-names, one)
+          save node/names, new-names
+      fork test, is-above(rewritten-lean-names/length, 0)
+        hold
+          save new-lean-names, make list
+          push(new-lean-names, false)
+          walk rewritten-lean-names
+            take one
+            push(new-lean-names, one)
+          save node/lean-names, new-lean-names
+      fork test, is-above(lean-shaped/length, 0)
+        hold
+          save new-shaped, make list
+          push(new-shaped, false)
+          walk lean-shaped
+            take one
+            push(new-shaped, one)
+          save node/lean-shaped, new-shaped
+    miss
+      save nothing, 0
+  back node
 
 # ---- small helpers ----
 
@@ -410,6 +1921,2289 @@ task template-side
       back side-value
     miss
       back <\{...\}>
+
+# ---- statements (part 5) ----
+
+# a narrowing task's answer
+task narrowed-of
+  take did, like boolean
+  take kept, like statement
+  like narrowed
+  mark private
+
+  back
+    make narrowed
+      bind narrows, did
+      bind node, kept
+
+# the items before position `at`
+task list-before
+  take items, like list, like statement-branch
+  take at, like number
+  like list, like statement-branch
+  mark private
+
+  save out, make list
+  save index, 0
+  walk items
+    take item
+    fork test, is-below(index, at)
+      hold
+        push(out, item)
+    save index, add(index, 1)
+  back out
+
+# the items from position `at` on
+task list-from
+  take items, like list, like statement-branch
+  take at, like number
+  like list, like statement-branch
+  mark private
+
+  save out, make list
+  save index, 0
+  walk items
+    take item
+    fork test, is-minimum(index, at)
+      hold
+        push(out, item)
+    save index, add(index, 1)
+  back out
+
+# the `miss` of a narrowed `if`: the branches after the first as an `if` of their own, else the `if`'s own `miss`, else
+# nothing
+task otherwise-of
+  take rest, like list, like statement-branch
+  take otherwise, like maybe, like list, like statement
+  like list, like statement
+  mark private
+
+  save out, make list
+  fork test, is-above(rest/length, 0)
+    hold
+      save first-rest, get(rest, 0)
+      save chained
+        make statement/if
+          bind branches, rest
+          bind otherwise, otherwise
+          bind span, expression-span(first-rest/cond)
+      push(out, chained)
+      back out
+  sift otherwise
+    case some
+      link written
+      back written
+    case none
+      back out
+
+# a statement a narrowing made, given the place row of the `if` it replaces, where that carried one: the original
+# rewrote the `if` in place, so the match kept its row (traps T-0309: a row of 0 is never written)
+task placed-like
+  take made, like statement
+  take was, like statement
+  like statement
+  mark private
+
+  save row, 0
+  sift was
+    case if
+      link was-branches
+      link was-otherwise
+      link was-span
+      link was-row
+      save row, was-row
+    miss
+      save nothing, 0
+  fork test, is-above(row, 0)
+    hold
+      sift made
+        case match
+          save made/place-row, row
+        miss
+          save nothing, 0
+  back made
+
+# what a local holds, its scheme freshened and its variables followed, none for a name no local has
+task held-local
+  take st, like infer-state
+  take env, like hash, like text, like scheme
+  take name, like text
+  like maybe, like type
+  mark private
+
+  fork test, env/has(name)
+    hold
+      save fresh-held, instantiate-held(st, env/get(name))
+      save held, resolve-held(st, fresh-held)
+      back make(some, held)
+  back make none
+
+# the names a body's own `save`s declare, at its top level
+task let-names
+  take body, like list, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  walk body
+    take one
+    sift one
+      case let
+        link declared-name
+        push(out, declared-name)
+      miss
+        save nothing, 0
+  back out
+
+# THE FIELDS OF A CASE THAT ITS ARM MAY BIND: the case's fields no name in scope and no `save` of the body has. None when
+# the case has fields and every one would hide a name
+task selected-fields
+  take st, like infer-state
+  take env, like hash, like text, like scheme
+  take form-name, like text
+  take variant, like text
+  take body, like list, like statement
+  like maybe, like list, like text
+  mark private
+
+  save key, <{form-name}/{variant}>
+  save fields, make list
+  fork test, st/case-fields/has(key)
+    hold
+      save case-table, st/case-fields/get(key)
+      walk case-table/keys()
+        take field
+        push(fields, field)
+  save taken, let-names(body)
+  save free, make list
+  walk fields
+    take field
+    fork test, and(not(env/has(field)), not(contains(taken, field)))
+      hold
+        push(free, field)
+  fork test, and(is-above(fields/length, 0), is-equal(free/length, 0))
+    hold
+      back make none
+  back make(some, free)
+
+# a narrowed `if`'s arm: its binds written only when there are any
+task case-arm
+  take variant, like text
+  take body, like list, like statement
+  take arm-binds, like list, like text
+  like match-case
+  mark private
+
+  save arm
+    make match-case
+      bind label, variant
+      bind body, body
+  fork test, is-above(arm-binds/length, 0)
+    hold
+      save arm/binds, arm-binds
+  back arm
+
+# where `__` and a run of ASCII digits ending at `end` begin, or -1 where the text does not end so there
+task suffix-start
+  take name, like text
+  take end, like number
+  like number
+  mark private
+
+  save at, end
+  walk test
+    hook test, and(is-above(at, 0), is-minimum(index-of(<0123456789>, char-at(name, subtract(at, 1))), 0))
+    hook hold
+      save at, subtract(at, 1)
+  fork test, is-equal(at, end)
+    hold
+      back -1
+  fork test, and(is-minimum(at, 2), is-equal(substring(name, subtract(at, 2), at), <__>))
+    hold
+      back subtract(at, 2)
+  back -1
+
+# a name with an overload's arity or type suffix removed: the original's `/__\d+(__\d+)?$/`, the leftmost match, which
+# is the longer one where both runs are there
+task strip-overload-suffix
+  take name, like text
+  like text
+  mark private
+
+  save one-cut, suffix-start(name, char-count(name))
+  fork test, is-below(one-cut, 0)
+    hold
+      back name
+  save two-cut, suffix-start(name, one-cut)
+  fork test, is-minimum(two-cut, 0)
+    hold
+      back substring(name, 0, two-cut)
+  back substring(name, 0, one-cut)
+
+# a name with a split's two-run suffix removed: the original's `/__\d+__\d+$/`
+task strip-both-suffixes
+  take name, like text
+  like text
+  mark private
+
+  save one-cut, suffix-start(name, char-count(name))
+  fork test, is-below(one-cut, 0)
+    hold
+      back name
+  save two-cut, suffix-start(name, one-cut)
+  fork test, is-minimum(two-cut, 0)
+    hold
+      back substring(name, 0, two-cut)
+  back name
+
+# a loop's name as the loop tasks take it: none for an unnamed loop
+task label-of
+  take written, like text
+  like maybe, like text
+  mark private
+
+  fork test, is-equal(written, <>)
+    hold
+      back make none
+  back make(some, written)
+
+# a scheme of no generalized variables, for one environment entry, numbered as its own binding (decision 052)
+task plain-scheme
+  take st, like infer-state
+  take given, like type
+  like scheme
+  mark private
+
+  save no-vars, make list
+  back bound-scheme(st, no-vars, given)
+
+# whether an expression is the unit placeholder
+task is-unit-expression
+  take given, like expression
+  like boolean
+  mark private
+
+  sift given
+    case unit
+      back true
+    miss
+      back false
+
+# A `save` or `host`. The annotation is a milled type and is seeded like any other before it is compared, before the
+# initializer is inferred, so a list literal declared a list of a width is built at it. An annotation types the binding
+# (its initializer checked against it, an ambient one's unit placeholder not); a bare `save x` is declared now and typed
+# by its first assignment; anything else takes its initializer's type, generalized when it is an immutable value
+task check-let
+  take st, like infer-state
+  take node, like statement
+  take env, like hash, like text, like scheme
+  like statement
+  mark private
+
+  sift node
+    case let
+      link let-name
+      link let-init
+      link let-mutable
+      link let-span
+      link let-type
+      save annotated, make none
+      sift let-type
+        case some
+          link written-type
+          save no-generics, make hash
+          save seeded, seed-given-type(st, written-type, no-generics)
+          save annotated, make(some, seeded)
+        case none
+          save nothing, 0
+      save init-found, infer-wanted(st, let-init, annotated, env)
+      save init-node, init-found/node
+      save init-type, init-found/type
+      save node/init, init-node
+      sift annotated
+        case some
+          link declared
+          fork test, not(is-unit-expression(init-node))
+            hold
+              expect(st, init-type, declared, let-span, <binding>)
+          save env/{let-name}, plain-scheme(st, declared)
+          back node
+        case none
+          save nothing, 0
+      fork test, and(let-mutable, is-unit-expression(init-node))
+        hold
+          save declared-later, fresh-variable(st)
+          save env/{let-name}, plain-scheme(st, declared-later)
+          save node/type, make(some, declared-later)
+          back node
+      save vars, make list
+      fork test, and(not(let-mutable), is-value-expression(init-node))
+        hold
+          save vars, generalize-held(st, init-type, env)
+      save env/{let-name}, bound-scheme(st, vars, init-type)
+      save node/type, make(some, init-type)
+      back node
+    miss
+      back node
+
+# An assignment: the value, then the target, inferred, and the value held to the target's type. A form's tag is read
+# and never written, since writing it alone would leave the fields of another case behind it
+task check-assign
+  take st, like infer-state
+  take node, like statement
+  take env, like hash, like text, like scheme
+  like statement
+  mark private
+
+  sift node
+    case assign
+      link assigned-target
+      link assigned-op
+      link assigned-value
+      link assigned-span
+      save value-found, infer-expression(st, assigned-value, env)
+      save node/value, value-found/node
+      save target-found, infer-expression(st, assigned-target, env)
+      save target-node, target-found/node
+      save node/target, target-node
+      sift target-node
+        case member
+          link tag-target
+          link tag-name
+          link tag-index
+          link tag-nick
+          link tag-of
+          fork test, is-unequal(tag-of, <>)
+            hold
+              say(st, make(type-mismatch), assigned-span, <"{tag-name}" is the tag of "{tag-of}", which is read and never written. Build the case wanted with `make` instead>)
+              back node
+        miss
+          save nothing, 0
+      expect(st, value-found/type, target-found/type, assigned-span, <assignment>)
+      back node
+    miss
+      back node
+
+# `send back`: a value held to the task's result, which it is inferred toward; a bare one in a task that declares no
+# result makes the result unit (a typed backend needs to know)
+task check-return
+  take st, like infer-state
+  take node, like statement
+  take env, like hash, like text, like scheme
+  take result, like type
+  like statement
+  mark private
+
+  sift node
+    case return
+      link returned-value
+      link returned-span
+      sift returned-value
+        case some
+          link returned
+          save wanted-result, make(some, result)
+          save returned-found, infer-wanted(st, returned, wanted-result, env)
+          save node/value, make(some, returned-found/node)
+          expect(st, returned-found/type, result, returned-span, <return value>)
+        case none
+          save held-result, resolve-held(st, result)
+          sift held-result
+            case variable
+              expect(st, unit-type(), result, returned-span, <return value>)
+            miss
+              save nothing, 0
+      back node
+    miss
+      back node
+
+# a `walk test`: its condition a boolean, its body checked one loop deeper
+task check-while
+  take st, like infer-state
+  take node, like statement
+  take env, like hash, like text, like scheme
+  take result, like type
+  like statement
+  mark private
+
+  sift node
+    case while
+      link loop-cond
+      link loop-body
+      link loop-span
+      link loop-must
+      link loop-down
+      link loop-label
+      save cond-found, infer-expression(st, loop-cond, env)
+      save node/cond, cond-found/node
+      expect(st, cond-found/type, boolean-type(), expression-span(cond-found/node), <loop condition>)
+      enter-loop(st, label-of(loop-label), loop-span)
+      save checked, check-body(st, loop-body, env, result)
+      save node/body, checked
+      leave-loop(st)
+      back node
+    miss
+      back node
+
+# A `fork test`. A TEST OF WHAT AN `unknown` HOLDS, or of which case a form value is, narrows it: the `if` is rewritten
+# into the `sift` it is the same as and checked as that. Otherwise every condition is a boolean and every body checked
+task check-if
+  take st, like infer-state
+  take node, like statement
+  take env, like hash, like text, like scheme
+  take result, like type
+  like statement
+  mark private
+
+  save by-type, narrows-unknown(st, node, env)
+  fork test, by-type/narrows
+    hold
+      back check-statement(st, by-type/node, env, result)
+  save by-case, narrows-case(st, by-type/node, env)
+  fork test, by-case/narrows
+    hold
+      back check-statement(st, by-case/node, env, result)
+  save current, by-case/node
+  sift current
+    case if
+      link if-branches
+      link if-otherwise
+      save branches-out, make list
+      walk if-branches
+        take branch
+        save cond-found, infer-expression(st, branch/cond, env)
+        save branch/cond, cond-found/node
+        expect(st, cond-found/type, boolean-type(), expression-span(cond-found/node), <branch condition>)
+        save branch/body, check-body(st, branch/body, env, result)
+        push(branches-out, branch)
+      save current/branches, branches-out
+      sift if-otherwise
+        case some
+          link otherwise-body
+          save otherwise-checked, check-body(st, otherwise-body, env, result)
+          save current/otherwise, make(some, otherwise-checked)
+        case none
+          save nothing, 0
+      back current
+    miss
+      back current
+
+# A GUARDED BODY and its handler. The caught value is the shared exception form when the program has one, else left to
+# inference, and what the body can raise (its own raises and its callees' sets, gathered at the first guard met) is
+# kept by the name it is caught as, so a `sift` over it is held exhaustive against exactly that
+task check-guard
+  take st, like infer-state
+  take node, like statement
+  take env, like hash, like text, like scheme
+  take result, like type
+  like statement
+  mark private
+
+  sift node
+    case guard
+      link guarded-body
+      link guarded-catch
+      save body-checked, check-body(st, guarded-body, env, result)
+      save node/body, body-checked
+      sift guarded-catch
+        case some
+          link handler
+          save inner, copy-env(env)
+          save caught-type, fresh-type-or-exception(st)
+          save inner/{handler/name}, plain-scheme(st, caught-type)
+          save raises, program-raises-of(st)
+          save st/caught-raises/{handler/name}, body-raises(body-checked, raises)
+          save handler-checked, check-body(st, handler/body, inner, result)
+          save handler/body, handler-checked
+          save node/catch, make(some, handler)
+        case none
+          save nothing, 0
+      back node
+    miss
+      back node
+
+# the type a caught value has: the program's exception form, else a fresh variable
+task fresh-type-or-exception
+  take st, like infer-state
+  like type
+  mark private
+
+  fork test, st/records/has(<exception>)
+    hold
+      save no-generics, make hash
+      save named
+        make type/named
+          bind name, <exception>
+      back seed-given-type(st, named, no-generics)
+  back fresh-variable(st)
+
+# every task's raise set, gathered once, at the first guard met
+task program-raises-of
+  take st, like infer-state
+  like hash, like text, like list, like text
+  mark private
+
+  sift st/program-raises
+    case some
+      link gathered
+      back gathered
+    case none
+      save exceptions, make list
+      walk st/exception-props/keys()
+        take key
+        push(exceptions, key)
+      save sets, raise-sets-of(st/program, exceptions)
+      save gathered-now, sets/raises
+      save st/program-raises, make(some, gathered-now)
+      back gathered-now
+
+# A `walk` over a list: the iterable a list, its item that list's element (the host's value, or the gradual unknown,
+# where the list holds one: a fresh element unified with a gradual type binds nothing), the second `take` the turn's
+# index, a number, and the body checked one loop deeper
+task check-for-each
+  take st, like infer-state
+  take node, like statement
+  take env, like hash, like text, like scheme
+  take result, like type
+  like statement
+  mark private
+
+  sift node
+    case for-each
+      link each-item
+      link each-index
+      link each-iterable
+      link each-body
+      link each-span
+      link each-must
+      link each-label
+      save element, fresh-variable(st)
+      save iterable-found, infer-expression(st, each-iterable, env)
+      save node/iterable, iterable-found/node
+      save wanted-list
+        make type/array
+          bind element, element
+      expect(st, iterable-found/type, wanted-list, expression-span(iterable-found/node), <iterable>)
+      save held, resolve-held(st, iterable-found/type)
+      save item-type, element
+      sift held
+        case array
+          link held-element
+          save given, resolve-held(st, held-element)
+          sift given
+            case dynamic
+              save item-type, given
+            case unknown
+              save item-type, given
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+      save inner, copy-env(env)
+      save inner/{each-item}, plain-scheme(st, item-type)
+      fork test, is-unequal(each-index, <>)
+        hold
+          save inner/{each-index}, plain-scheme(st, number-type())
+      enter-loop(st, label-of(each-label), each-span)
+      save checked, check-body(st, each-body, inner, result)
+      save node/body, checked
+      leave-loop(st)
+      back node
+    miss
+      back node
+
+# `halt` or `turn next`: only inside a loop, which is un-emittable outside one on every backend, and a named one must
+# name a loop it is inside
+task check-jump
+  take st, like infer-state
+  take is-break, like boolean
+  take label, like text
+  take at, like span
+  mark private
+
+  save word, <turn next>
+  fork test, is-break
+    hold
+      save word, <halt>
+  fork test, and(is-above(st/loop-depth, 0), and(is-unequal(label, <>), not(contains(st/loop-labels, label))))
+    hold
+      save named, make list
+      walk st/loop-labels
+        take one
+        fork test, is-unequal(one, <>)
+          hold
+            push(named, one)
+      save around, <, and none around it has a name>
+      fork test, is-above(named/length, 0)
+        hold
+          save named-listed, named/join(<, >)
+          save around, < (the loops around it are named {named-listed})>
+      say-hinted(st, make(unknown-name), at, <`{word}, name {label}` names no loop around it{around}>, <name the loop it means with `walk ..., name \<loop\>`>)
+  fork test, is-equal(st/loop-depth, 0)
+    hold
+      save hint, <to skip the rest of a branch, restructure it as a `fork`; `turn next` starts the next turn of the innermost `walk`>
+      fork test, is-break
+        hold
+          save hint, <to leave a task, use `send back`; bare `halt` leaves the innermost `walk`>
+      say-hinted(st, make(unexpected-node), at, <`{word}` is only valid inside a loop>, hint)
+
+# ---- a match (part 5) ----
+
+# an arm's `link` names, copied, so nothing writes an empty list into the arm (traps T003)
+task binds-of
+  take arm, like match-case
+  like list, like text
+  mark private
+
+  save out, make list
+  walk arm/binds
+    take one
+    push(out, one)
+  back out
+
+# whether a name is one of the four primitive type tests an arm over an `unknown` names by its label
+task primitive-arm
+  take label, like text
+  like maybe, like type
+  mark private
+
+  fork test, is-equal(label, <number>)
+    hold
+      back make(some, number-type())
+  fork test, is-equal(label, <float>)
+    hold
+      back make(some, float-type())
+  fork test, is-equal(label, <text>)
+    hold
+      back make(some, string-type())
+  fork test, is-equal(label, <boolean>)
+    hold
+      back make(some, boolean-type())
+  back make none
+
+# why a value of this type cannot be told apart inside an `unknown` on every backend, `''` when it can
+task untestable
+  take st, like infer-state
+  take given, like type
+  like text
+  mark private
+
+  save held, resolve-held(st, given)
+  sift held
+    case number
+      back <>
+    case float
+      back <>
+    case boolean
+      back <>
+    case string
+      back <>
+    case unknown
+      back <>
+    case array
+      link held-element
+      back untestable(st, held-element)
+    case map
+      link held-key
+      link held-value
+      save key, resolve-held(st, held-key)
+      sift key
+        case string
+          back untestable(st, held-value)
+        case number
+          back untestable(st, held-value)
+        miss
+          back <a hash keyed by anything but text or a number>
+    case named
+      link held-name
+      link held-args
+      fork test, not(st/records/has(held-name))
+        hold
+          back <"{held-name}", which is no form>
+      # a form with cases is told apart like a form of fields (seam decision 003); its type parameters and a second
+      # declaration still refuse it
+      fork test, or(is-above(generics-of(st, held-name)/length, 0), is-above(held-args/length, 0))
+        hold
+          back <"{held-name}", a form with type parameters>
+      fork test, st/declared-twice/has(held-name)
+        hold
+          fork test, is-above(st/declared-twice/get(held-name), 1)
+            hold
+              back <"{held-name}", a form declared twice>
+      back <>
+    miss
+      back <"{show-type(held)}">
+
+# A `sift` OVER AN `unknown`: each arm names a type the value is tested for at run time (a primitive, a form, a list or
+# a hash of those), and inside it the subject, or the arm's one `link`, has that type. A form with type parameters, or
+# declared twice, cannot be told apart on TypeScript, and the match needs a `miss` (test/compile/unknown-narrow.ts)
+task check-unknown-match
+  take st, like infer-state
+  take node, like statement
+  take env, like hash, like text, like scheme
+  take result, like type
+  like statement
+  mark private
+
+  sift node
+    case match
+      link match-subject
+      link match-cases
+      link match-otherwise
+      link match-span
+      save outside, make list
+      save cases-out, make list
+      walk match-cases
+        take branch
+        save label, branch/label
+        save has-type, false
+        save written, make none
+        sift branch/type
+          case some
+            link written-type
+            save has-type, true
+            save written, make(some, written-type)
+          case none
+            save nothing, 0
+        save is-primitive, false
+        sift primitive-arm(label)
+          case some
+            save is-primitive, true
+          case none
+            save nothing, 0
+        save is-collection, or(is-equal(label, <list>), is-equal(label, <hash>))
+        fork test, and(is-primitive, not(has-type))
+          hold
+            save nothing, 0
+          miss
+            fork test, and(is-collection, not(has-type))
+              hold
+                save also, <>
+                fork test, is-equal(label, <hash>)
+                  hold
+                    save also, < / `like number`>
+                push(outside, <"{label}" says what it holds, with a `like` line under the arm (`case {label}` / `like text`{also})>)
+              miss
+                save to-seed
+                  make type/named
+                    bind name, label
+                sift written
+                  case some
+                    link written-now
+                    save to-seed, written-now
+                  case none
+                    save nothing, 0
+                save no-generics, make hash
+                save seeded, resolve-held(st, seed-given-type(st, to-seed, no-generics))
+                save why, untestable(st, seeded)
+                fork test, is-unequal(why, <>)
+                  hold
+                    push(outside, why)
+                  miss
+                    save branch/type, make(some, seeded)
+        push(cases-out, branch)
+      fork test, is-above(outside/length, 0)
+        hold
+          save outside-listed, outside/join(<, >)
+          say-hinted(st, make(type-mismatch), match-span, <a sift over an unknown tests what type its value is, and {outside-listed} is not one every backend can tell apart: number, float, text, boolean, a form of fields, a form with cases, or a list or hash of those>, <give the value a form with a case per kind it can be, and sift that>)
+      sift match-otherwise
+        case none
+          say-hinted(st, make(non-exhaustive), match-span, <a sift over an unknown needs a `miss`: the value can be any type, and an arm per type cannot cover them all>, <add a `miss` arm for every other value>)
+        case some
+          save nothing, 0
+      save node/type-arms, true
+      save subject-name, <>
+      sift match-subject
+        case variable
+          link match-subject-name
+          save subject-name, match-subject-name
+        miss
+          save nothing, 0
+      save checked, make list
+      walk cases-out
+        take branch
+        save inner, copy-env(env)
+        save arm-type, unknown-type()
+        sift primitive-arm(branch/label)
+          case some
+            link primitive-type
+            save arm-type, primitive-type
+          case none
+            save nothing, 0
+        sift branch/type
+          case some
+            link tested-type
+            save arm-type, tested-type
+          case none
+            save nothing, 0
+        save bound-name, <>
+        walk binds-of(branch)
+          take one
+          fork test, is-equal(bound-name, <>)
+            hold
+              save bound-name, one
+        fork test, is-unequal(bound-name, <>)
+          hold
+            save inner/{bound-name}, plain-scheme(st, arm-type)
+          miss
+            fork test, is-unequal(subject-name, <>)
+              hold
+                save inner/{subject-name}, plain-scheme(st, arm-type)
+        save branch/body, check-body(st, branch/body, inner, result)
+        push(checked, branch)
+      save node/cases, checked
+      sift match-otherwise
+        case some
+          link otherwise-body
+          save otherwise-checked, check-body(st, otherwise-body, env, result)
+          save node/otherwise, make(some, otherwise-checked)
+        case none
+          save nothing, 0
+      back node
+    miss
+      back node
+
+# the props record an exception form adds, `''` for none or a name that is no exception
+task props-of
+  take st, like infer-state
+  take label, like text
+  like text
+  mark private
+
+  fork test, st/exception-props/has(label)
+    hold
+      back st/exception-props/get(label)
+  back <>
+
+# the field names of an exception arm's own props, in their order
+task props-fields
+  take st, like infer-state
+  take label, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  save props, props-of(st, label)
+  fork test, and(is-unequal(props, <>), st/records/has(props))
+    hold
+      save props-table, st/records/get(props)
+      walk props-table/keys()
+        take field
+        push(out, field)
+  back out
+
+# A `sift` OVER A CAUGHT EXCEPTION: the labels are exception forms, each arm binds the shared fields and the form's own
+# props, and the arms must cover what the guarded body can raise, or carry a `miss`. An arm may name an exception the
+# build never declares (`failure`), and a build may hold no exception form at all: it still matches by `form`, with the
+# shared fields alone (item term-self-host-001-0315)
+task check-exception-match
+  take st, like infer-state
+  take node, like statement
+  take env, like hash, like text, like scheme
+  take result, like type
+  like statement
+  mark private
+
+  sift node
+    case match
+      link match-subject
+      link match-cases
+      link match-otherwise
+      link match-span
+      save arms, make list
+      walk match-cases
+        take branch
+        save made-arm
+          make exception-arm
+            bind label, branch/label
+            bind shared, exception-shared()
+            bind link, props-fields(st, branch/label)
+        push(arms, made-arm)
+      save node/exception-arms, arms
+      save caught-name, <>
+      sift match-subject
+        case variable
+          link match-subject-name
+          save caught-name, match-subject-name
+        miss
+          save nothing, 0
+      save has-caught, and(is-unequal(caught-name, <>), st/caught-raises/has(caught-name))
+      save caught, make list
+      fork test, has-caught
+        hold
+          save caught, st/caught-raises/get(caught-name)
+      sift match-otherwise
+        case none
+          fork test, has-caught
+            hold
+              save covered, make list
+              walk match-cases
+                take branch
+                push(covered, branch/label)
+              save missing, make list
+              walk caught
+                take raised
+                fork test, and(not(contains(covered, raised)), is-unequal(raised, <exception>))
+                  hold
+                    push(missing, raised)
+              fork test, is-above(missing/length, 0)
+                hold
+                  save sorted, sort(missing, from-texts)
+                  save pronoun, <it>
+                  fork test, is-above(sorted/length, 1)
+                    hold
+                      save pronoun, <them>
+                  save sorted-listed, sorted/join(<, >)
+                  say-hinted(st, make(non-exhaustive), match-span, <the guarded body can also raise {sorted-listed}, and no case here covers {pronoun}>, <add a case for each, or an otherwise>)
+        case some
+          save nothing, 0
+      fork test, has-caught
+        hold
+          walk match-cases
+            take branch
+            # `failure` is never refused: it is what a foreign call's throw becomes on every backend
+            fork test, and(not(contains(caught, branch/label)), is-unequal(branch/label, <failure>))
+              hold
+                say(st, make(unknown-name), match-span, <"{branch/label}" is not something the guarded body can raise>)
+      save checked, make list
+      walk match-cases
+        take branch
+        save inner, copy-env(env)
+        save fields, make hash
+        save has-exception, st/records/has(<exception>)
+        walk exception-shared()
+          take shared-name
+          save shared-type, string-type()
+          fork test, is-equal(shared-name, <time>)
+            hold
+              save shared-type, number-type()
+          fork test, has-exception
+            hold
+              save exception-fields, st/records/get(<exception>)
+              fork test, exception-fields/has(shared-name)
+                hold
+                  save shared-type, exception-fields/get(shared-name)
+          save fields/{shared-name}, shared-type
+        save props, props-of(st, branch/label)
+        save has-props, and(is-unequal(props, <>), st/records/has(props))
+        walk props-fields(st, branch/label)
+          take prop-name
+          save prop-type, string-type()
+          fork test, has-props
+            hold
+              save prop-fields, st/records/get(props)
+              fork test, prop-fields/has(prop-name)
+                hold
+                  save prop-type, prop-fields/get(prop-name)
+          save fields/{prop-name}, prop-type
+        save field-names, make list
+        walk fields/keys()
+          take field-name
+          push(field-names, field-name)
+        walk arm-locals(field-names, binds-of(branch))
+          take pair
+          save no-generics, make hash
+          save inner/{pair/local}, plain-scheme(st, seed-given-type(st, fields/get(pair/field), no-generics))
+        save branch/body, check-body(st, branch/body, inner, result)
+        push(checked, branch)
+      save node/cases, checked
+      sift match-otherwise
+        case some
+          link otherwise-body
+          save otherwise-checked, check-body(st, otherwise-body, env, result)
+          save node/otherwise, make(some, otherwise-checked)
+        case none
+          save nothing, 0
+      back node
+    miss
+      back node
+
+# the head name of each value index of a family's subject, `''` where an index is no construction
+task subject-heads-of
+  take subject-type, like type
+  like list, like text
+  mark private
+
+  save out, make list
+  sift subject-type
+    case named
+      link subject-name
+      link subject-args
+      link subject-value-args
+      walk subject-value-args
+        take value-arg
+        sift value-arg
+          case record
+            link value-arg-name
+            push(out, value-arg-name)
+          miss
+            push(out, <>)
+    miss
+      save nothing, 0
+  back out
+
+# INVERSION: when the subject is an indexed family at a constructor-headed index (`vec (succ n)`), a variant whose
+# output-index head differs at some position where both are constructor-headed is impossible there and may be omitted
+task variant-reachable
+  take st, like infer-state
+  take family, like text
+  take variant, like text
+  take subject-heads, like list, like text
+  like boolean
+  mark private
+
+  fork test, not(st/family-variant-index-head/has(family))
+    hold
+      back true
+  save index-heads, st/family-variant-index-head/get(family)
+  fork test, not(index-heads/has(variant))
+    hold
+      back true
+  save at, 0
+  walk index-heads/get(variant)
+    take variant-head
+    save subject-head, <>
+    fork test, is-below(at, subject-heads/length)
+      hold
+        save subject-head, get(subject-heads, at)
+    fork test, and(and(is-unequal(variant-head, <>), is-unequal(subject-head, <>)), is-unequal(variant-head, subject-head))
+      hold
+        back false
+    save at, add(at, 1)
+  back true
+
+# A `sift` OVER A FORM WITH CASES: every arm names one of its cases, and without a `miss` they cover every case the
+# subject can be (an indexed family's impossible ones left out); a `miss` that answers one case or none says less than
+# listing it would. Answers whether the arms close the match (every case covered, no `miss`)
+task enum-closes
+  take st, like infer-state
+  take enum-name, like text
+  take subject-type, like type
+  take cases, like list, like match-case
+  take has-otherwise, like boolean
+  take at, like span
+  like boolean
+  mark private
+
+  save variants, st/enums/get(enum-name)
+  save covered, make list
+  walk cases
+    take branch
+    push(covered, branch/label)
+    fork test, not(contains(variants, branch/label))
+      hold
+        say(st, make(unknown-name), at, <"{branch/label}" is not a variant of "{enum-name}">)
+  fork test, not(has-otherwise)
+    hold
+      save subject-heads, subject-heads-of(subject-type)
+      save missing, make list
+      walk variants
+        take variant
+        fork test, and(not(contains(covered, variant)), variant-reachable(st, enum-name, variant, subject-heads))
+          hold
+            push(missing, variant)
+      fork test, is-above(missing/length, 0)
+        hold
+          save missing-listed, missing/join(<, >)
+          say(st, make(non-exhaustive), at, <match on "{enum-name}" does not cover: {missing-listed}>)
+          back false
+      back true
+  save rest, make list
+  walk variants
+    take variant
+    fork test, not(contains(covered, variant))
+      hold
+        push(rest, variant)
+  fork test, is-equal(rest/length, 0)
+    hold
+      say-hinted(st, make(thin-catch-all), at, <this `hook miss` arm answers no case of "{enum-name}": every case is listed above it>, <remove the arm>)
+  fork test, is-equal(rest/length, 1)
+    hold
+      save only, get(rest, 0)
+      say-hinted(st, make(thin-catch-all), at, <this `hook miss` arm answers one case of "{enum-name}", `{only}`>, <write it as `case {only}`, so a case added to "{enum-name}" later stops the build rather than going to this arm>)
+  back false
+
+# whether the binding a name has here is the module-level one: the original compared the two scheme objects, and each
+# made scheme carries its own binding number, which `copy-env` keeps (decision 052)
+task is-module-binding
+  take st, like infer-state
+  take env, like hash, like text, like scheme
+  take name, like text
+  like boolean
+  mark private
+
+  fork test, not(st/module-env/has(name))
+    hold
+      back false
+  back is-equal(env/get(name)/binding, st/module-env/get(name)/binding)
+
+# the arms of a match checked: inside each, the subject variable is narrowed to the arm's case, and the case's fields are
+# locals typed as the case declares them with the subject's type arguments put for the form's generics
+task checked-arms
+  take st, like infer-state
+  take subject-type, like type
+  take subject-var, like text
+  take cases, like list, like match-case
+  take at, like span
+  take env, like hash, like text, like scheme
+  take result, like type
+  like list, like match-case
+  mark private
+
+  save subject-name, <>
+  save subject-args, make list
+  sift subject-type
+    case named
+      link subject-type-name
+      link subject-type-args
+      save subject-name, subject-type-name
+      walk subject-type-args
+        take one
+        push(subject-args, one)
+    miss
+      save nothing, 0
+  save checked, make list
+  walk cases
+    take branch
+    save label, branch/label
+    save had-previous, false
+    save previous, <>
+    fork test, is-unequal(subject-var, <>)
+      hold
+        fork test, st/narrowing/has(subject-var)
+          hold
+            save had-previous, true
+            save previous, st/narrowing/get(subject-var)
+        save st/narrowing/{subject-var}, label
+    save case-key, <{subject-name}/{label}>
+    save by-case, and(is-unequal(subject-name, <>), st/case-fields/has(case-key))
+    save fields, make none
+    fork test, by-case
+      hold
+        save fields, make(some, st/case-fields/get(case-key))
+      miss
+        fork test, st/variant-fields/has(label)
+          hold
+            save fields, make(some, st/variant-fields/get(label))
+          miss
+            # a variantless record matched under its own name binds its fields as a variant's do
+            fork test, and(is-equal(subject-name, label), and(is-unequal(subject-name, <>), st/records/has(label)))
+              hold
+                save fields, make(some, st/records/get(label))
+    save inner, copy-env(env)
+    sift fields
+      case some
+        link arm-fields
+        save owner, label
+        fork test, by-case
+          hold
+            save owner, subject-name
+          miss
+            fork test, st/variant-enum/has(label)
+              hold
+                save owner, st/variant-enum/get(label)
+        save params, generics-of(st, owner)
+        save arg-map, make hash
+        save param-at, 0
+        walk params
+          take param
+          fork test, is-below(param-at, subject-args/length)
+            hold
+              save arg-map/{param}, get(subject-args, param-at)
+          save param-at, add(param-at, 1)
+        save field-names, make list
+        walk arm-fields/keys()
+          take field-name
+          push(field-names, field-name)
+        save binds, binds-of(branch)
+        save selecting, is-above(binds/length, 0)
+        walk binds
+          take one
+          fork test, not(contains(field-names, one))
+            hold
+              save selecting, false
+        # a `link` past the variant's last field binds nothing
+        fork test, and(not(selecting), is-above(binds/length, field-names/length))
+          hold
+            save extra, make list
+            save bind-at, 0
+            walk binds
+              take one
+              fork test, is-minimum(bind-at, field-names/length)
+                hold
+                  push(extra, one)
+              save bind-at, add(bind-at, 1)
+            save count, field-names/length
+            save plural, <s>
+            fork test, is-equal(count, 1)
+              hold
+                save plural, <>
+            save listed, <>
+            fork test, is-above(count, 0)
+              hold
+                save field-listed, field-names/join(<, >)
+                save listed, < ({field-listed})>
+            save extra-listed, extra/join(<", "link ">)
+            say(st, make(type-mismatch), at, <"link {extra-listed}" under "case {label}" binds nothing: the variant has {count} field{plural}{listed}, and a link either selects fields by name or renames them in order>)
+        walk arm-locals(field-names, binds)
+          take pair
+          save local, pair/local
+          save field, pair/field
+          # a field named like a variable the task bound hides it for the whole arm; a module-level name is not one, nor
+          # the match's own subject. An arm that WRITES that name writes the field, and the write is lost
+          fork test, and(env/has(local), and(not(is-module-binding(st, env, local)), is-unequal(local, subject-var)))
+            hold
+              fork test, assigns-name(branch/body, local)
+                hold
+                  say-hinted(st, make(type-mismatch), at, <"case {label}" binds its field "{field}" as "{local}", so a `save {local}` in the arm writes the field, not the "{local}" outside it, and is lost when the arm ends>, <rename the outer "{local}", or rename the field under `case {label}` with a `link` line>)
+                miss
+                  say-hinted(st, make(arm-shadow), at, <"case {label}" binds its field "{field}" as "{local}", which hides the "{local}" already in scope for the whole arm>, <rename the fields under `case {label}` with `link` lines, which name them in the order the variant declares them, or rename the outer "{local}">)
+          save inner/{local}, plain-scheme(st, seed-given-type(st, arm-fields/get(field), arg-map))
+          # the name IS the field for the whole arm, so a path off it is the field's own
+          fork test, is-equal(local, subject-var)
+            hold
+              st/narrowing/remove(subject-var)
+      case none
+        save nothing, 0
+    save branch/body, check-body(st, branch/body, inner, result)
+    push(checked, branch)
+    fork test, is-unequal(subject-var, <>)
+      hold
+        fork test, had-previous
+          hold
+            save st/narrowing/{subject-var}, previous
+          miss
+            st/narrowing/remove(subject-var)
+  back checked
+
+# A `sift`: its subject inferred, then by what the subject is, a type-arm match over an `unknown`, a match over a
+# caught exception, or a match over a form's cases, its arms narrowed to their case
+task check-match
+  take st, like infer-state
+  take node, like statement
+  take env, like hash, like text, like scheme
+  take result, like type
+  like statement
+  mark private
+
+  sift node
+    case match
+      link match-subject
+      link match-cases
+      link match-otherwise
+      link match-span
+      save subject-found, infer-expression(st, match-subject, env)
+      save subject-node, subject-found/node
+      save node/subject, subject-node
+      save subject-type, resolve-held(st, subject-found/type)
+      save is-unknown, false
+      sift subject-type
+        case unknown
+          save is-unknown, true
+        miss
+          save nothing, 0
+      fork test, and(is-unknown, is-above(match-cases/length, 0))
+        hold
+          back check-unknown-match(st, node, env, result)
+      # a `like` under an arm names the type an unknown is tested for, and this subject is no unknown
+      save cleared, make list
+      walk match-cases
+        take branch
+        sift branch/type
+          case some
+            say-hinted(st, make(type-mismatch), match-span, <a `like` under `case {branch/label}` names the type an unknown is tested for, and this sift is over {show-type(subject-type)}>, <take the `like` lines out of the arm>)
+            save branch/type, make none
+          case none
+            save nothing, 0
+        push(cleared, branch)
+      save node/cases, cleared
+      save subject-var, <>
+      sift subject-node
+        case variable
+          link subject-variable
+          save subject-var, subject-variable
+        miss
+          save nothing, 0
+      save has-otherwise, false
+      sift match-otherwise
+        case some
+          save has-otherwise, true
+        case none
+          save nothing, 0
+      save caught-without-form, and(not(st/records/has(<exception>)), and(is-unequal(subject-var, <>), st/caught-raises/has(subject-var)))
+      save over-exception, false
+      sift subject-type
+        case named
+          link subject-type-name
+          fork test, is-equal(subject-type-name, <exception>)
+            hold
+              walk cleared
+                take branch
+                fork test, st/exception-props/has(branch/label)
+                  hold
+                    save over-exception, true
+        miss
+          save nothing, 0
+      fork test, or(over-exception, caught-without-form)
+        hold
+          back check-exception-match(st, node, env, result)
+      sift subject-type
+        case named
+          link enum-name
+          fork test, st/enums/has(enum-name)
+            hold
+              fork test, enum-closes(st, enum-name, subject-type, cleared, has-otherwise, match-span)
+                hold
+                  save node/closed, true
+        miss
+          save nothing, 0
+      save node/cases, checked-arms(st, subject-type, subject-var, cleared, match-span, env, result)
+      sift match-otherwise
+        case some
+          link otherwise-body
+          save otherwise-checked, check-body(st, otherwise-body, env, result)
+          save node/otherwise, make(some, otherwise-checked)
+        case none
+          save nothing, 0
+      back node
+    miss
+      back node
+
+# ---- a call's arguments (part 6) ----
+
+# a call's arguments and their names, as one lean adjustment leaves them
+form labelled
+  link args, like list, like expression
+  link names, like list, like text
+
+# arrange-arguments' answer
+task arranged-of
+  take kept, like expression
+  take args, like list, like expression
+  take left-out, like list, like number
+  like arranged
+  mark private
+
+  save made-arrangement
+    make arrangement
+      bind args, args
+      bind left-out, left-out
+  back
+    make arranged
+      bind node, kept
+      bind arrangement, made-arrangement
+
+# a text of a list, `''` past its end (`names[i] ?? ''`)
+task text-at
+  take values, like list, like text
+  take at, like number
+  like text
+  mark private
+
+  fork test, and(is-minimum(at, 0), is-below(at, values/length))
+    hold
+      back get(values, at)
+  back <>
+
+# a flag of a list, false past its end
+task flag-at
+  take values, like list, like boolean
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, and(is-minimum(at, 0), is-below(at, values/length))
+    hold
+      back get(values, at)
+  back false
+
+# where a text first stands in a list, -1 where it does not
+task position-of
+  take values, like list, like text
+  take value, like text
+  like number
+  mark private
+
+  save at, 0
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back at
+    save at, add(at, 1)
+  back -1
+
+# a signature's parameter type at a position, the gradual unknown past its end (`params[i] ?? unknownType()`)
+task param-at
+  take signature, like task-signature
+  take at, like number
+  like type
+  mark private
+
+  fork test, and(is-minimum(at, 0), is-below(at, signature/params/length))
+    hold
+      back get(signature/params, at)
+  back unknown-type()
+
+# a signature's default at a position, none past its end
+task fallback-at
+  take signature, like task-signature
+  take at, like number
+  like maybe, like expression
+  mark private
+
+  fork test, and(is-minimum(at, 0), is-below(at, signature/fallbacks/length))
+    hold
+      back get(signature/fallbacks, at)
+  back make none
+
+# whether a call is written lean
+task call-lean
+  take node, like expression
+  like boolean
+  mark private
+
+  sift node
+    case call
+      link lean-called
+      link lean-given
+      link lean-at
+      link lean-type
+      link lean-names
+      link lean-flag
+      back lean-flag
+    miss
+      back false
+
+# a call's argument names as written, copied (traps T003)
+task written-names
+  take node, like expression
+  like list, like text
+  mark private
+
+  save out, make list
+  sift node
+    case call
+      link names-called
+      link names-given
+      link names-at
+      link names-type
+      link names-written
+      walk names-written
+        take one
+        push(out, one)
+    miss
+      save nothing, 0
+  back out
+
+# a call's argument names, `''` for each argument when it wrote none (`node.names ?? node.args.map(() => '')`)
+task names-of-call
+  take node, like expression
+  take count, like number
+  like list, like text
+  mark private
+
+  save out, written-names(node)
+  fork test, is-equal(out/length, 0)
+    hold
+      save at, 0
+      walk test
+        hook test, is-below(at, count)
+        hook hold
+          push(out, <>)
+          save at, add(at, 1)
+  back out
+
+# which of a call's argument names came from a property head, copied
+task lean-names-of-call
+  take node, like expression
+  like list, like boolean
+  mark private
+
+  save out, make list
+  sift node
+    case call
+      link flags-called
+      link flags-given
+      link flags-at
+      link flags-type
+      link flags-names
+      link flags-lean
+      link flags-written
+      walk flags-written
+        take one
+        push(out, one)
+    miss
+      save nothing, 0
+  back out
+
+# a call with its argument names dropped (the original deleted `names`; a need-false list's default is its absence)
+task without-names
+  take node, like expression
+  like expression
+  mark private
+
+  sift node
+    case call
+      save no-names, make list
+      save node/names, no-names
+    miss
+      save nothing, 0
+  back node
+
+# a call with its labels and its lean marks dropped
+task without-labels
+  take node, like expression
+  like expression
+  mark private
+
+  save kept, without-lean(node)
+  back without-names(kept)
+
+# a call with its lean marks dropped, once its lean surface is settled
+task without-lean
+  take node, like expression
+  like expression
+  mark private
+
+  sift node
+    case call
+      save no-flags, make list
+      save no-shapes, make list
+      save node/lean-names, no-flags
+      save node/lean-shaped, no-shapes
+      save node/lean, false
+    miss
+      save nothing, 0
+  back node
+
+# A LEAN CALL OF A FORM'S NAME AS ITS CONSTRUCTION: the call rewritten into a `record` of its labels, keeping the
+# call's span, type and place row, as the original rewrote the node in place
+task construction-of
+  take node, like expression
+  take form-name, like text
+  take fields, like list, like field-value
+  like expression
+  mark private
+
+  save at, expression-span(node)
+  save made
+    make expression/record
+      bind name, form-name
+      bind fields, fields
+      bind span, at
+      bind lean, true
+  save row, 0
+  sift node
+    case call
+      link was-callee
+      link was-args
+      link was-span
+      link was-type
+      sift was-type
+        case some
+          link was-type-value
+          save made, with-type(made, was-type-value)
+        case none
+          save nothing, 0
+      save row, place-row
+    miss
+      save nothing, 0
+  fork test, is-above(row, 0)
+    hold
+      sift made
+        case record
+          save made/place-row, row
+        miss
+          save nothing, 0
+  back made
+
+# the unit placeholder at a span
+task unit-at
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/unit
+      bind span, at
+
+# a list of expressions with one position replaced
+task expressions-with
+  take values, like list, like expression
+  take at, like number
+  take value, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  save index, 0
+  walk values
+    take one
+    fork test, is-equal(index, at)
+      hold
+        push(out, value)
+      miss
+        push(out, one)
+    save index, add(index, 1)
+  back out
+
+# a list of flags with one position replaced
+task flags-with
+  take values, like list, like boolean
+  take at, like number
+  take value, like boolean
+  like list, like boolean
+  mark private
+
+  save out, make list
+  save index, 0
+  walk values
+    take one
+    fork test, is-equal(index, at)
+      hold
+        push(out, value)
+      miss
+        push(out, one)
+    save index, add(index, 1)
+  back out
+
+# a list of texts with one position set, `''` filling any gap before it (an assignment past a JavaScript array's end)
+task texts-with
+  take values, like list, like text
+  take at, like number
+  take value, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  save index, 0
+  walk values
+    take one
+    fork test, is-equal(index, at)
+      hold
+        push(out, value)
+      miss
+        push(out, one)
+    save index, add(index, 1)
+  walk test
+    hook test, is-maximum(index, at)
+    hook hold
+      fork test, is-equal(index, at)
+        hold
+          push(out, value)
+        miss
+          push(out, <>)
+      save index, add(index, 1)
+  back out
+
+# expressions inserted at a position, as `splice(at, 0, ...)` does: past the end, at the end
+task expressions-spliced
+  take values, like list, like expression
+  take at, like number
+  take inserted, like list, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  save index, 0
+  walk values
+    take one
+    fork test, is-equal(index, at)
+      hold
+        walk inserted
+          take added
+          push(out, added)
+    push(out, one)
+    save index, add(index, 1)
+  fork test, is-maximum(values/length, at)
+    hold
+      walk inserted
+        take added
+        push(out, added)
+  back out
+
+# texts inserted at a position, as `splice(at, 0, ...)` does
+task texts-spliced
+  take values, like list, like text
+  take at, like number
+  take inserted, like list, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  save index, 0
+  walk values
+    take one
+    fork test, is-equal(index, at)
+      hold
+        walk inserted
+          take added
+          push(out, added)
+    push(out, one)
+    save index, add(index, 1)
+  fork test, is-maximum(values/length, at)
+    hold
+      walk inserted
+        take added
+        push(out, added)
+  back out
+
+# an expression's span set where it stands
+task spanned-at
+  take one, like expression
+  take at, like span
+  like expression
+  mark private
+
+  sift one
+    case integer
+      save one/span, at
+    case float
+      save one/span, at
+    case boolean
+      save one/span, at
+    case string
+      save one/span, at
+    case template
+      save one/span, at
+    case unit
+      save one/span, at
+    case null
+      save one/span, at
+    case variable
+      save one/span, at
+    case binary
+      save one/span, at
+    case unary
+      save one/span, at
+    case call
+      save one/span, at
+    case array
+      save one/span, at
+    case map
+      save one/span, at
+    case record
+      save one/span, at
+    case member
+      save one/span, at
+    case await
+      save one/span, at
+    case closure
+      save one/span, at
+    case conditional
+      save one/span, at
+    case hole
+      save one/span, at
+  back one
+
+# the empty value of a `need false` map, list or text, typed as the parameter, none for any other type
+task empty-value
+  take given, like type
+  take at, like span
+  like maybe, like expression
+  mark private
+
+  sift given
+    case map
+      save no-entries, make list
+      save made
+        make expression/map
+          bind entries, no-entries
+          bind span, at
+          bind type, make(some, given)
+      back make(some, made)
+    case array
+      save no-items, make list
+      save made
+        make expression/array
+          bind items, no-items
+          bind span, at
+          bind type, make(some, given)
+      back make(some, made)
+    case string
+      save made
+        make expression/string
+          bind value, <>
+          bind span, at
+          bind type, make(some, given)
+      back make(some, made)
+    miss
+      back make none
+
+# whether the parameter a label names takes one value: a parameter of the callee that is not a list
+task single-here
+  take st, like infer-state
+  take signature, like task-signature
+  take name, like text
+  like boolean
+  mark private
+
+  save at, position-of(signature/names, name)
+  fork test, is-below(at, 0)
+    hold
+      back false
+  save held, resolve-held(st, param-at(signature, at))
+  sift held
+    case array
+      back false
+    miss
+      back true
+
+# AN INLINE COMMA AFTER A BARE-WORD VALUE, on a lean call: `pick a true, b true` parses as `pick(a(true, b(true)))`, so
+# the parameter named second lands inside the one named first. A trailing item lifts out only when its head names
+# ANOTHER parameter of this callee and the parameter it leaves takes ONE value, so a list parameter keeps everything
+task lean-lifted
+  take st, like infer-state
+  take signature, like task-signature
+  take args, like list, like expression
+  take names, like list, like text
+  like labelled
+  mark private
+
+  save out-args, args
+  save out-names, names
+  save i, 0
+  walk test
+    hook test, is-below(i, out-args/length)
+    hook hold
+      save going, true
+      walk test
+        hook test, going
+        hook hold
+          save going, false
+          save name, text-at(out-names, i)
+          save arg, get(out-args, i)
+          fork test, and(is-unequal(name, <>), single-here(st, signature, name))
+            hold
+              sift arg
+                case array
+                  link arg-items
+                  fork test, is-minimum(arg-items/length, 2)
+                    hold
+                      save last, get(arg-items, subtract(arg-items/length, 1))
+                      sift last
+                        case call
+                          link last-callee
+                          link last-args
+                          link last-span
+                          link last-type
+                          link last-names
+                          sift last-callee
+                            case variable
+                              link last-callee-name
+                              fork test, contains(signature/names, last-callee-name)
+                                hold
+                                  save labels, make list
+                                  walk last-names
+                                    take one
+                                    push(labels, one)
+                                  save foreign, false
+                                  walk labels
+                                    take one
+                                    fork test, and(is-unequal(one, <>), not(contains(signature/names, one)))
+                                      hold
+                                        save foreign, true
+                                  fork test, not(foreign)
+                                    hold
+                                      save carried-names, make list
+                                      save carried-args, make list
+                                      save positional, make list
+                                      save at, 0
+                                      walk last-args
+                                        take one
+                                        save label, text-at(labels, at)
+                                        fork test, is-unequal(label, <>)
+                                          hold
+                                            push(carried-names, label)
+                                            push(carried-args, one)
+                                          miss
+                                            push(positional, one)
+                                        save at, add(at, 1)
+                                      save popped, make list
+                                      save item-at, 0
+                                      walk arg-items
+                                        take item
+                                        fork test, is-below(item-at, subtract(arg-items/length, 1))
+                                          hold
+                                            push(popped, item)
+                                        save item-at, add(item-at, 1)
+                                      save arg/items, popped
+                                      save out-args, expressions-with(out-args, i, arg)
+                                      save lifted-items
+                                        make expression/array
+                                          bind items, positional
+                                          bind span, last-span
+                                      save inserted, make list
+                                      push(inserted, lifted-items)
+                                      walk carried-args
+                                        take one
+                                        push(inserted, one)
+                                      save inserted-names, make list
+                                      push(inserted-names, last-callee-name)
+                                      walk carried-names
+                                        take one
+                                        push(inserted-names, one)
+                                      save out-args, expressions-spliced(out-args, add(i, 1), inserted)
+                                      save out-names, texts-spliced(out-names, add(i, 1), inserted-names)
+                                      save going, true
+                            miss
+                              save nothing, 0
+                        miss
+                          save nothing, 0
+                miss
+                  save nothing, 0
+      save i, add(i, 1)
+  back
+    make labelled
+      bind args, out-args
+      bind names, out-names
+
+# A PROPERTY HEAD GIVEN TWICE, on a lean call: a list parameter accumulates its heads, so `states <a>` on one line and
+# `states <b>` on the next is one list of two; anything else keeps the "given twice" refusal
+task lean-accumulated
+  take st, like infer-state
+  take signature, like task-signature
+  take args, like list, like expression
+  take names, like list, like text
+  like labelled
+  mark private
+
+  save by-name, make hash
+  save at, 0
+  walk names
+    take name
+    fork test, is-unequal(name, <>)
+      hold
+        save seen-at, make list
+        fork test, by-name/has(name)
+          hold
+            save seen-at, by-name/get(name)
+        push(seen-at, at)
+        save by-name/{name}, seen-at
+    save at, add(at, 1)
+  save out-args, args
+  save drop, make list
+  walk by-name/keys()
+    take name
+    save positions, by-name/get(name)
+    fork test, is-minimum(positions/length, 2)
+      hold
+        save index, position-of(signature/names, name)
+        save param, resolve-held(st, param-at(signature, index))
+        save param-list, false
+        sift param
+          case array
+            save param-list, true
+          miss
+            save nothing, 0
+        save all-arrays, true
+        walk positions
+          take position
+          sift get(out-args, position)
+            case array
+              save nothing, 0
+            miss
+              save all-arrays, false
+        fork test, and(and(is-minimum(index, 0), param-list), all-arrays)
+          hold
+            save first-at, get(positions, 0)
+            save gathered, make list
+            walk positions
+              take position
+              sift get(out-args, position)
+                case array
+                  link gathered-items
+                  walk gathered-items
+                    take item
+                    push(gathered, item)
+                miss
+                  save nothing, 0
+            save first, get(out-args, first-at)
+            sift first
+              case array
+                save first/items, gathered
+              miss
+                save nothing, 0
+            save out-args, expressions-with(out-args, first-at, first)
+            save later-at, 0
+            walk positions
+              take position
+              fork test, is-above(later-at, 0)
+                hold
+                  push(drop, position)
+              save later-at, add(later-at, 1)
+  fork test, is-equal(drop/length, 0)
+    hold
+      back
+        make labelled
+          bind args, out-args
+          bind names, names
+  save kept-args, make list
+  save at, 0
+  walk out-args
+    take one
+    fork test, not(contains(drop, at))
+      hold
+        push(kept-args, one)
+    save at, add(at, 1)
+  save kept-names, make list
+  save at, 0
+  walk names
+    take one
+    fork test, not(contains(drop, at))
+      hold
+        push(kept-names, one)
+    save at, add(at, 1)
+  back
+    make labelled
+      bind args, kept-args
+      bind names, kept-names
+
+# A FLAG IS AN UNBOUND WORD: a positional bare word the resolver left unbound that names a boolean parameter is that
+# parameter set to true; one that names none is refused as the unknown name it is. A named property's one-item list is
+# its one value where the parameter is not a list (one child that is itself a list fills a list parameter directly),
+# and more than one is refused
+task lean-flagged
+  take st, like infer-state
+  take signature, like task-signature
+  take callee, like text
+  take args, like list, like expression
+  take names, like list, like text
+  take env, like maybe, like hash, like text, like scheme
+  like labelled
+  mark private
+
+  save out-args, args
+  save out-names, names
+  save seen, make hash
+  save i, 0
+  walk test
+    hook test, is-below(i, out-args/length)
+    hook hold
+      save name, text-at(out-names, i)
+      save arg, get(out-args, i)
+      fork test, is-equal(name, <>)
+        hold
+          sift arg
+            case variable
+              link word-name
+              link word-span
+              link word-type
+              link word-binding
+              save unbound, true
+              sift word-binding
+                case some
+                  save unbound, false
+                case none
+                  save nothing, 0
+              save is-flag, false
+              fork test, and(and(unbound, contains(signature/names, word-name)), not(seen/has(word-name)))
+                hold
+                  save flag-type, resolve-held(st, param-at(signature, position-of(signature/names, word-name)))
+                  sift flag-type
+                    case boolean
+                      save is-flag, true
+                    miss
+                      save nothing, 0
+              fork test, is-flag
+                hold
+                  save out-names, texts-with(out-names, i, word-name)
+                  save flag
+                    make expression/boolean
+                      bind value, true
+                      bind span, word-span
+                  save out-args, expressions-with(out-args, i, flag)
+                  save seen/{word-name}, true
+                miss
+                  fork test, unbound
+                    hold
+                      say(st, make(unknown-name), word-span, <the name "{word-name}" is not defined, and "{callee}" has no boolean parameter of that name for it to be a flag of>)
+            miss
+              save nothing, 0
+        miss
+          save seen/{name}, true
+          save index, position-of(signature/names, name)
+          fork test, is-minimum(index, 0)
+            hold
+              sift arg
+                case array
+                  link property-items
+                  link property-span
+                  save param, resolve-held(st, param-at(signature, index))
+                  save param-list, false
+                  sift param
+                    case array
+                      save param-list, true
+                    miss
+                      save nothing, 0
+                  fork test, param-list
+                    hold
+                      # one child that is itself a list fills the list parameter directly; its own type tells them apart
+                      fork test, is-equal(property-items/length, 1)
+                        hold
+                          sift env
+                            case some
+                              link scope
+                              save item-found, infer-expression(st, get(property-items, 0), scope)
+                              save one-item, make list
+                              push(one-item, item-found/node)
+                              save arg/items, one-item
+                              save out-args, expressions-with(out-args, i, arg)
+                              save item-held, resolve-held(st, item-found/type)
+                              sift item-held
+                                case array
+                                  save out-args, expressions-with(out-args, i, item-found/node)
+                                miss
+                                  save nothing, 0
+                            case none
+                              save nothing, 0
+                    miss
+                      fork test, is-equal(property-items/length, 1)
+                        hold
+                          save out-args, expressions-with(out-args, i, get(property-items, 0))
+                      fork test, is-above(property-items/length, 1)
+                        hold
+                          say(st, make(type-mismatch), property-span, <"{name}" of "{callee}" takes one value, and this gives {property-items/length}>)
+                miss
+                  save nothing, 0
+      save i, add(i, 1)
+  back
+    make labelled
+      bind args, out-args
+      bind names, out-names
+
+# the members of an overload group, by the TypeScript name `overloadGroups` is docked by (decision 032 section 4.6)
+task overload-candidates
+  take name, like text
+  like list, like text
+  mark private
+
+  back inferring-overload/overload-groups/get(name)
+
+# whether an argument's type fits a parameter's: a variable or an unknown on either side fits anything, a form by its
+# name, a list by its element, a map by its key and value, any other kind by its kind
+task fits-type
+  take st, like infer-state
+  take arg, like type
+  take param, like type
+  like boolean
+  mark private
+
+  save a, resolve-held(st, arg)
+  save p, resolve-held(st, param)
+  fork test, or(is-wild(a), is-wild(p))
+    hold
+      back true
+  sift a
+    case named
+      link a-name
+      sift p
+        case named
+          link p-name
+          back is-equal(a-name, p-name)
+        miss
+          back false
+    case array
+      link a-element
+      sift p
+        case array
+          link p-element
+          back fits-type(st, a-element, p-element)
+        miss
+          back false
+    case map
+      link a-key
+      link a-value
+      sift p
+        case map
+          link p-key
+          link p-value
+          fork test, fits-type(st, a-key, p-key)
+            hold
+              back fits-type(st, a-value, p-value)
+          back false
+        miss
+          back false
+    miss
+      back is-equal(a/kind, p/kind)
+
+# a type variable or the gradual unknown
+task is-wild
+  take given, like type
+  like boolean
+  mark private
+
+  sift given
+    case variable
+      back true
+    case unknown
+      back true
+    miss
+      back false
+
+# whether every argument fits its parameter
+task all-fit
+  take st, like infer-state
+  take arg-types, like list, like type
+  take params, like list, like type
+  like boolean
+  mark private
+
+  save at, 0
+  walk arg-types
+    take arg-type
+    fork test, not(fits-type(st, arg-type, get(params, at)))
+      hold
+        back false
+    save at, add(at, 1)
+  back true
+
+# whether every argument and its parameter are both settled: no variable or unknown on either side
+task all-exact
+  take st, like infer-state
+  take arg-types, like list, like type
+  take params, like list, like type
+  like boolean
+  mark private
+
+  save at, 0
+  walk arg-types
+    take arg-type
+    save a, resolve-held(st, arg-type)
+    save p, resolve-held(st, get(params, at))
+    fork test, or(is-wild(a), is-wild(p))
+      hold
+        back false
+    save at, add(at, 1)
+  back true
+
+# the file the first top-level task of a name is defined in, `''` where none says
+task defining-file
+  take st, like infer-state
+  take name, like text
+  like text
+  mark private
+
+  walk st/program
+    take one
+    sift one
+      case function
+        link defined-name
+        link defined-params
+        link defined-body
+        link defined-result
+        fork test, is-equal(defined-name, name)
+          hold
+            save defined-span, statement-span(one)
+            sift defined-span/file
+              case some
+                link defined-file
+                back defined-file
+              case none
+                back <>
+      miss
+        save nothing, 0
+  back <>
 
 # ---- the expression ----
 
@@ -788,12 +4582,7 @@ task infer-closure
           case none
             save nothing, 0
         push(params, param-type)
-        save no-vars, make list
-        save bound
-          make scheme
-            bind vars, no-vars
-            bind type, param-type
-        save inner/{param/name}, bound
+        save inner/{param/name}, plain-scheme(st, param-type)
       save outer-depth, st/loop-depth
       save outer-labels, st/loop-labels
       save st/loop-depth, 0

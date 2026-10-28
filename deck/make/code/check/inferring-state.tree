@@ -321,6 +321,9 @@ form infer-state
   link holes, like list, like hole
   # the module-level bindings, typed once and seen by every body
   link module-env, like hash, like text, like scheme
+  # how many environment entries were made so far: each made scheme takes the next number as its `binding`, the
+  # original's object identity as data (decision 052)
+  link bindings, like number
   # what inference spends, when a profile is handed in
   link profile, like maybe, like infer-profile
   # the checker's switches (check/checker-switches.tree): `seam`, `strict` and the ambiguous refusal
@@ -395,6 +398,7 @@ task make-infer-state
       bind current-generic-names, make hash
       bind holes, make list
       bind module-env, make hash
+      bind bindings, 0
       bind profile, profile
       bind switches, switches
   back made
@@ -1020,6 +1024,22 @@ task instantiate-held
   like type
 
   back instantiate-scheme(given, st/sub)
+
+# a scheme for one environment entry, numbered with the next binding: the original wrote a fresh object literal at
+# every `env.set`, so each made scheme is its own binding (decision 052)
+task bound-scheme
+  take st, like infer-state
+  take vars, like list, like number
+  take given, like type
+  like scheme
+
+  save st/bindings, add(st/bindings, 1)
+  save made
+    make scheme
+      bind vars, vars
+      bind type, given
+      bind binding, st/bindings
+  back made
 
 # the variables free in a type and in no binding of the environment, timed into the profile when one is handed in
 task generalize-held

@@ -905,6 +905,15 @@ task bind-of
   walk forms-at(held, <case>)
     take target-form
     push(targets, bind-target-of(state, target-form, name))
+  # `mark async` under the bind, anywhere in its signature: its host code answers a promise, so a call to it is waited
+  # like an async task's (decision 053 of term/self-host/change/001-finish-self-host). Written only when marked, so an
+  # unmarked bind's node is what it was
+  save is-async, false
+  walk at(held, <note>)
+    take note-form
+    fork test, is-equal(note-word(note-form), <async>)
+      hold
+        save is-async, true
   save bound
     make bind
       bind name, name
@@ -912,6 +921,16 @@ task bind-of
       bind result, result
       bind targets, targets
       bind span, span-of(held)
+  fork test, is-async
+    hold
+      save bound
+        make bind
+          bind name, name
+          bind params, params
+          bind result, result
+          bind targets, targets
+          bind span, span-of(held)
+          bind async, true
   push(out, bound)
   back out
 

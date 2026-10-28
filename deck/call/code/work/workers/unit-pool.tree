@@ -167,6 +167,7 @@ bind units-drop-idle
 
 bind units-promise
   take start, like dynamic
+  mark async
   like dynamic
   case node
     text <new Promise((settle) =\> $start(settle))>
@@ -179,6 +180,7 @@ bind units-call
 
 bind units-terminate
   take workers, like list, like dynamic
+  mark async
   like dynamic
   case node
     text <Promise.all($workers.map((worker) =\> worker.terminate()))>

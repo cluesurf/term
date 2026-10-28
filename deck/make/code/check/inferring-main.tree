@@ -1,0 +1,551 @@
+# THE DRIVER, part 8 of 8 of the check/infer.ts port (item 0257 of term/self-host/change/001, decision 032).
+# `checkProgram`'s own order, over the state part 1 makes: the tables filled (part 2), the module-level bindings typed
+# into the module environment, every task body and then every zone checked (parts 4 to 7), a task whose result nothing
+# fixed defaulted to unit, an untyped parameter refused under the strict switch, the typed holes reported and the final
+# zonk written (part 3). `infer-program` is the one entry, and it answers the state: its `diagnostics` are what `check`
+# returned, and its `program` is the checked program, written in place where the original mutated it.
+#
+# The decisions:
+#   - every environment entry written here takes its scheme from part 1's `bound-scheme`, so it carries its own binding
+#     number, and a task's environment copies the module's entries with theirs (decision 052)
+#   - nothing here catches a raise. A raise out of any part leaves the entry whole, and its state is never read again,
+#     as the original's `checkProgram` locals died with the call (decision 050)
+#   - a parameter's `fall` default is checked on a copy (compile/node-rewrite.tree's `copy-expression`, as part 6
+#     copies an argument default, decision 032 section 4.7) in a copy of the module environment, and nothing it writes
+#     is kept
+#   - a statement is written back where it stood (decision 032 section 4.3), each task answering the node to keep
+#   - the timing and the count of `check` stay in the face, which holds the profile (decision 032 section 4.9); the
+#     profile is handed in so `generalize-held` counts into it
+
+load @term/base/list
+  find list
+  find get
+  find contains
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find type
+  find expression
+  find statement
+  find function-param
+  find closure-param
+  find view-node
+  find view-attribute
+  find view-branch
+  find field-value
+  find statement-span
+  find expression-span
+  find unknown-type
+  find unit-type
+
+load ../compile/node-rewrite
+  find copy-expression
+
+load ./scheme
+  find scheme
+  find free-type-vars
+
+load ./checker-switches
+  find checker-switches
+
+load ./inferring-state
+  find infer-state
+  find infer-profile
+  find type-bound
+  find make-infer-state
+  find file-or
+  find top-level-skip
+  find bound-scheme
+  find resolve-held
+  find fresh-variable
+  find expect
+  find seed-maybe-type
+
+load ./inferring-tables
+  find fill-tables
+
+load ./inferring-holes
+  find report-holes
+  find write-zonked-types
+
+load ./inferring-expressions
+  find inferred
+  find infer-expression
+  find check-body
+  find check-statement
+
+# ---- the entry ----
+
+# ONE CHECK OF A PROGRAM, in the original's order. `only` names the one task whose body is checked and zonked (the
+# incremental path); none checks every body and every zone
+task infer-program
+  take program, like list, like statement
+  take file, like text
+  take merged, like boolean
+  take only, like maybe, like text
+  take switches, like checker-switches
+  take profile, like maybe, like infer-profile
+  like infer-state
+
+  save st, make-infer-state(program, file, merged, only, switches, profile)
+  fill-tables(st)
+  check-module-bindings(st)
+  check-bodies(st)
+  sift only
+    case none
+      default-unfixed-results(st)
+      fork test, st/switches/strict
+        hold
+          refuse-untyped-params(st)
+    case some
+      save nothing, 0
+  report-holes(st)
+  write-zonked-types(st)
+  back st
+
+# ---- the passes, in order ----
+
+# FIRST PASS: the module-level bindings typed into the module environment, so the bodies checked next see their types.
+# A foreign host global whose name a task has is skipped: bind's `Element`/`Text` globals must not shadow the
+# framework's `element`/`text` render helpers
+task check-module-bindings
+  take st, like infer-state
+  mark private
+
+  save skip, top-level-skip()
+  save at, 0
+  walk st/program
+    take one
+    save st/current-file, file-or(statement-span(one), st/file)
+    save kept, one
+    save skipped, contains(skip, one/form)
+    sift one
+      case function
+        save skipped, true
+      case let
+        link name
+        link foreign
+        fork test, and(is-unequal(foreign, <>), st/functions/has(name))
+          hold
+            save skipped, true
+      miss
+        save nothing, 0
+    fork test, not(skipped)
+      hold
+        save kept, check-statement(st, one, st/module-env, unknown-type())
+    save st/program/{at}, kept
+    save at, add(at, 1)
+
+# SECOND PASS: every task body (or the one `only` names), then every zone, which is checked whole-program only
+task check-bodies
+  take st, like infer-state
+  mark private
+
+  save at, 0
+  walk st/program
+    take one
+    save st/current-file, file-or(statement-span(one), st/file)
+    save kept, one
+    sift one
+      case function
+        link task-name
+        fork test, is-checked-task(st, task-name)
+          hold
+            save kept, check-function(st, one)
+      case view
+        sift st/only
+          case none
+            save kept, check-zone(st, one)
+          case some
+            save nothing, 0
+      miss
+        save nothing, 0
+    save st/program/{at}, kept
+    save at, add(at, 1)
+
+# whether this pass checks a task: every task, or the one `only` names
+task is-checked-task
+  take st, like infer-state
+  take task-name, like text
+  like boolean
+  mark private
+
+  sift st/only
+    case some
+      link only-name
+      back is-equal(task-name, only-name)
+    case none
+      back true
+
+# A task declaring no result whose body never fixed one (no valued `send back`, and no caller or callee pinned it) is
+# unit, so a typed backend does not read its result as a free type parameter. After every body, so a forward
+# reference to a task checked later still gets that task's real result
+task default-unfixed-results
+  take st, like infer-state
+  mark private
+
+  walk st/program
+    take one
+    sift one
+      case function
+        link name
+        link result
+        link stub
+        save declared, false
+        sift result
+          case some
+            save declared, true
+          case none
+            save nothing, 0
+        fork test, or(declared, stub)
+          hold
+            turn next
+        fork test, st/functions/has(name)
+          hold
+            save signature, st/functions/get(name)
+            sift resolve-held(st, signature/result)
+              case variable
+                save st/current-file, file-or(statement-span(one), st/file)
+                expect(st, unit-type(), signature/result, statement-span(one), <result>)
+              miss
+                save nothing, 0
+      miss
+        save nothing, 0
+
+# A PARAMETER NOTHING GAVE A TYPE, under the strict switch. After every body, so a call checked later has had its say.
+# Each module reports its own, as the type names do
+task refuse-untyped-params
+  take st, like infer-state
+  mark private
+
+  walk st/program
+    take one
+    sift one
+      case function
+        link name
+        link stub
+        save task-name, name
+        fork test, stub
+          hold
+            turn next
+        save at-span, statement-span(one)
+        fork test, st/merged
+          hold
+            sift at-span/file
+              case some
+                link written-file
+                fork test, is-unequal(written-file, st/file)
+                  hold
+                    turn next
+              case none
+                turn next
+        fork test, not(st/functions/has(task-name))
+          hold
+            turn next
+        save signature, st/functions/get(task-name)
+        save at, 0
+        walk signature/params
+          take param
+          save held, resolve-held(st, param)
+          sift held
+            case variable
+              link held-id
+              fork test, and(not(contains(signature/generics, held-id)), not(contains(signature/holes, held-id)))
+                hold
+                  save param-name, get(signature/names, at)
+                  save input
+                    make diagnostic-input
+                      bind file, file-or(at-span, st/file)
+                      bind span, at-span
+                      bind message, make(some, <"{param-name}" of "{task-name}" is never given a type: no call and no use of it decides one, and TypeScript and Rust would each guess a different one>)
+                      bind hint, make(some, <write its type, `take {param-name}, like <type>`, or `like unknown` for any value>)
+                  save kind, make type-mismatch
+                  push(st/diagnostics, diagnose(kind, input))
+            miss
+              save nothing, 0
+          save at, add(at, 1)
+      miss
+        save nothing, 0
+
+# ---- a task ----
+
+# ONE TASK'S BODY CHECKED against its signature, answered as the statement to keep. A separate-compilation stub carries
+# only its signature (its body was checked in its owning unit), and a definition with no signature has nothing to be
+# checked against (the caller says why)
+task check-function
+  take st, like infer-state
+  take node, like statement
+  like statement
+
+  sift node
+    case function
+      link name
+      link params
+      link body
+      link stub
+      save task-params, params
+      save task-body, body
+      fork test, stub
+        hold
+          back node
+      fork test, not(st/functions/has(name))
+        hold
+          back node
+      save signature, st/functions/get(name)
+      # the generics of this task carry their declared `need` bounds, which discharge bounded calls
+      save bounds, make list
+      walk signature/bounds
+        take bound
+        save bound-variable
+          make type/variable
+            bind id, bound/id
+        save made-bound
+          make type-bound
+            bind variable, bound-variable
+            bind mask, bound/mask
+        push(bounds, made-bound)
+      save st/current-bounds, bounds
+      save st/current-generic-names, signature/generic-names
+      save env, copy-env-of(st/module-env)
+      # a same-arity redefinition keeps the first signature, but a merged program can still hand this body more params
+      # than the kept signature has: the extra ones are typed from their own annotation
+      save at, 0
+      walk task-params
+        take param
+        save param-type, unknown-type()
+        fork test, is-below(at, signature/params/length)
+          hold
+            save param-type, get(signature/params, at)
+          miss
+            save no-generics, make hash
+            save param-type, seed-maybe-type(st, param/type, no-generics)
+        save no-vars, make list
+        save env/{param/name}, bound-scheme(st, no-vars, param-type)
+        save at, add(at, 1)
+      check-fallbacks(st, task-params, signature/params)
+      save node/body, check-body(st, task-body, env, signature/result)
+      back node
+    miss
+      back node
+
+# A `fall` DEFAULT IS A VALUE OF ITS PARAMETER'S TYPE, checked once here on a copy, since each call site that leaves
+# the parameter out infers its own copy. A parameter whose type still mentions a generic is skipped, since unifying
+# here would pin the generic for every call
+task check-fallbacks
+  take st, like infer-state
+  take params, like list, like function-param
+  take declared-params, like list, like type
+  mark private
+
+  save at, 0
+  walk params
+    take param
+    fork test, is-below(at, declared-params/length)
+      hold
+        save declared, get(declared-params, at)
+        sift param/fallback
+          case some
+            link fallback
+            save free, free-type-vars(declared, st/sub)
+            fork test, is-equal(free/length, 0)
+              hold
+                save found, infer-expression(st, copy-expression(fallback), copy-env-of(st/module-env))
+                expect(st, found/type, declared, expression-span(fallback), <the default of "{param/name}">)
+          case none
+            save nothing, 0
+    save at, add(at, 1)
+
+# a copy of an environment, its entries (and their binding numbers) kept, as `new Map(env)` copied it
+task copy-env-of
+  take env, like hash, like text, like scheme
+  like hash, like text, like scheme
+  mark private
+
+  save out, make hash
+  walk env/keys()
+    take key
+    save out/{key}, env/get(key)
+  back out
+
+# ---- a zone ----
+
+# A ZONE'S VIEW CHECKED: each embedded expression inferred with the zone's params in scope, its `save` bindings threaded
+# through, answered as the statement to keep. An element ref (`view input / name x`) is a `view`-typed local declared
+# first, so a handler can read any of them
+task check-zone
+  take st, like infer-state
+  take node, like statement
+  like statement
+
+  save st/current-bounds, make list
+  sift node
+    case view
+      link params
+      link body
+      save zone-params, params
+      save zone-body, body
+      save env, copy-env-of(st/module-env)
+      walk zone-params
+        take param
+        save no-generics, make hash
+        save no-vars, make list
+        save env/{param/name}, bound-scheme(st, no-vars, seed-maybe-type(st, param/type, no-generics))
+      save refs, make list
+      gather-refs(zone-body, refs)
+      walk refs
+        take ref
+        save view-type
+          make type/named
+            bind name, <view>
+        save no-vars, make list
+        save env/{ref}, bound-scheme(st, no-vars, view-type)
+      save node/body, check-zone-nodes(st, zone-body, env)
+      back node
+    miss
+      back node
+
+# every element ref under a view, in walk order: an element's own first, then its children's, a fork's branches and
+# its otherwise, a walk's body
+task gather-refs
+  take nodes, like list, like view-node
+  take refs, like list, like text
+  mark private
+
+  walk nodes
+    take member
+    sift member
+      case element
+        link children
+        link ref
+        fork test, is-unequal(ref, <>)
+          hold
+            push(refs, ref)
+        gather-refs(children, refs)
+      case fork
+        link fork-branches
+        link fork-otherwise
+        walk fork-branches
+          take branch
+          gather-refs(branch/body, refs)
+        # walked where it is, never handed to a call, which would write an empty list into the program (traps T003)
+        save others, make list
+        walk fork-otherwise
+          take other
+          push(others, other)
+        gather-refs(others, refs)
+      case walk
+        link body
+        gather-refs(body, refs)
+      miss
+        save nothing, 0
+
+# the nodes of a view checked, each written back where it stood
+task check-zone-nodes
+  take st, like infer-state
+  take nodes, like list, like view-node
+  take env, like hash, like text, like scheme
+  like list, like view-node
+
+  save out, make list
+  walk nodes
+    take one
+    push(out, check-zone-node(st, one, env))
+  back out
+
+# ONE VIEW NODE CHECKED: an element's attributes, props and children; a read's value; a save's value, bound for the
+# nodes after it; a setup call, typed for its effect; a fork's conditions, each branch in a copy of the scope; a walk's
+# item, the element of the list it walks (or a fresh variable), in a copy
+task check-zone-node
+  take st, like infer-state
+  take node, like view-node
+  take env, like hash, like text, like scheme
+  like view-node
+  mark private
+
+  sift node
+    case element
+      link attributes
+      link props
+      link children
+      save attributes-out, make list
+      walk attributes
+        take attribute
+        save attribute-found, infer-expression(st, attribute/value, env)
+        save attribute/value, attribute-found/node
+        push(attributes-out, attribute)
+      save node/attributes, attributes-out
+      save props-out, make list
+      walk props
+        take prop
+        save prop-found, infer-expression(st, prop/value, env)
+        save prop/value, prop-found/node
+        push(props-out, prop)
+      save node/props, props-out
+      save node/children, check-zone-nodes(st, children, env)
+      back node
+    case read
+      link read-value
+      save read-found, infer-expression(st, read-value, env)
+      save node/value, read-found/node
+      back node
+    case save
+      link save-name
+      link save-value
+      save save-found, infer-expression(st, save-value, env)
+      save node/value, save-found/node
+      save no-vars, make list
+      save env/{save-name}, bound-scheme(st, no-vars, save-found/type)
+      back node
+    case call
+      link call-value
+      save call-found, infer-expression(st, call-value, env)
+      save node/value, call-found/node
+      back node
+    case fork
+      link fork-branches
+      link fork-otherwise
+      save branches-out, make list
+      walk fork-branches
+        take branch
+        save cond-found, infer-expression(st, branch/cond, env)
+        save branch/cond, cond-found/node
+        save branch/body, check-zone-nodes(st, branch/body, copy-env-of(env))
+        push(branches-out, branch)
+      save node/branches, branches-out
+      # walked where it is, so an `otherwise` left out stays out (traps T003)
+      save others, make list
+      walk fork-otherwise
+        take other
+        push(others, other)
+      fork test, is-above(others/length, 0)
+        hold
+          save node/otherwise, check-zone-nodes(st, others, copy-env-of(env))
+      back node
+    case walk
+      link walk-iterable
+      link walk-item
+      link walk-body
+      save iterable-found, infer-expression(st, walk-iterable, env)
+      save node/iterable, iterable-found/node
+      save iterable-type, resolve-held(st, iterable-found/type)
+      save item-type, unknown-type()
+      sift iterable-type
+        case array
+          link iterable-element
+          save item-type, iterable-element
+        miss
+          save item-type, fresh-variable(st)
+      save inner, copy-env-of(env)
+      save no-vars, make list
+      save inner/{walk-item}, bound-scheme(st, no-vars, item-type)
+      save node/body, check-zone-nodes(st, walk-body, inner)
+      back node
+    miss
+      back node

@@ -612,6 +612,17 @@ task async-set-of
   walk docks
     take dock
     save set, add-text(set, dock-root(dock))
+  # a bind marked `mark async` answers a promise, and is async from the start, as a marked task is (decision 053 of
+  # term/self-host/change/001-finish-self-host)
+  walk program
+    take one
+    sift one
+      case bind
+        fork test, async
+          hold
+            save set, add-text(set, name)
+      miss
+        turn next
   save indices, task-indices(program)
   walk indices
     take at

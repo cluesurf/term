@@ -55,6 +55,7 @@ import type { ModuleEmit } from '@term/make/code/compile/modules'
 import { makeParseMemo, scopeList } from '@term/make/code/compile/load'
 import type { ImportScope, ParseMemo, Resolver, Source, WalkMemo } from '@term/make/code/compile/load'
 import type { CompileCache } from '@term/make/code/compile/cache'
+import { milledUnit as cachedMill, output as cachedOutput, scanned as cachedScan } from '@term/make/code/compile/cache-store'
 import type { Program, Statement, Twin } from '@term/make/code/compile/node'
 import { twinChoiceList } from '@term/make/code/ir/twin'
 import type { TwinChoices } from '@term/make/code/ir/twin'
@@ -265,12 +266,15 @@ export function compile(source: { file: string; text: string }, options?: Compil
         : full
     }
 
-    return cache ? cache.output(rollOnlyKeyPort(graphKey, options.rollFast === true), rollOf) : rollOf()
+    return cache
+      ? (cachedOutput(cache.state, rollOnlyKeyPort(graphKey, options.rollFast === true), rollOf, 'output') as CompileResult)
+      : rollOf()
   }
 
   // the output cache stores a JSON-serialized result, which cannot hold the per-module `Map`, so per-module mode skips
-  // the output level (and still gets mill-level reuse)
-  return cache && !options?.modules ? cache.output(graphKey, build) : build()
+  // the output level (and still gets mill-level reuse). The cache is Term (compile/cache-store.tree, item 0107), and
+  // the build is handed to it as a task until 0248 makes it a case of a form
+  return cache && !options?.modules ? (cachedOutput(cache.state, graphKey, build, 'output') as CompileResult) : build()
 }
 
 // A FILE THAT IS NOT A PROGRAM, answered whole: a look stylesheet, a data file or a mill definition, in
@@ -314,7 +318,7 @@ function readingOf(options?: CompileOptions): CompileReading {
     resolve: options?.resolve,
     resolveSource: resolverTask(options?.resolve),
     parsed,
-    scanOf: cache ? (unit: Source, compute: () => unknown) => cache.scanned(unit.file, unit.text, compute as never) : undefined,
+    scanOf: cache ? (unit: Source, compute: () => unknown) => cachedScan(cache.state, unit.file, unit.text, compute) : undefined,
     walked: options?.walked,
     roleOf: file => options?.roleOf?.(file) ?? '',
     leanOf: file => options?.leanOf?.(file) ?? false,
@@ -427,7 +431,9 @@ export function milledModule(
       | { ok: false; diagnostics: Diagnostic[] }
 
   return cache
-    ? cache.milledUnit(`${leanKey}${unit.file}\u0000${usesTemplates ? templateKey : ''}\u0000${role ?? ''}`, unit.text, mill)
+    ? (cachedMill(cache.state, `${leanKey}${unit.file}\u0000${usesTemplates ? templateKey : ''}\u0000${role ?? ''}`, unit.text, mill) as
+        | { ok: true; program: Program; twins?: Twin[] }
+        | { ok: false; diagnostics: Diagnostic[] })
     : mill()
 }
 

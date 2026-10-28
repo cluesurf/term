@@ -348,6 +348,7 @@ form mount-ask
 
 bind host-fetch
   take url, like dynamic
+  mark async
   like dynamic
   case node
     text <fetch($url)>

@@ -984,6 +984,12 @@ task check-calls-outside-tasks
         fork test, read(async)
           hold
             save state/async-functions/{name}, true
+      # a bind marked `mark async` is waited like an async task, so outside every task it must be ticked too
+      # (decision 053 of term/self-host/change/001-finish-self-host)
+      case bind
+        fork test, read(async)
+          hold
+            save state/async-functions/{name}, true
       miss
         save nothing, 0
   walk program

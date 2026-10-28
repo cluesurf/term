@@ -139,6 +139,7 @@ bind pool-new-set
 # a promise the pool settles: `start` is handed the function that settles it
 bind pool-promise
   take start, like dynamic
+  mark async
   like dynamic
   case node
     text <new Promise((finish) =\> $start(finish))>
@@ -150,14 +151,14 @@ bind pool-call
   case node
     text <$done()>
 
-# the run's end: every worker terminated, then the answer
+# the run's end, once the run is waited: every worker terminated, then the answer
 bind pool-after
-  take run, like dynamic
   take workers, like list, like dynamic
   take answer, like dynamic
+  mark async
   like dynamic
   case node
-    text <$run.then(() =\> Promise.all($workers.map((worker) =\> worker.terminate()))).then(() =\> $answer())>
+    text <Promise.all($workers.map((worker) =\> worker.terminate())).then(() =\> $answer())>
 
 # a reply's fields, each read as the original read it
 bind pool-reply-ok
@@ -445,15 +446,19 @@ task compile-project-parallel
   take options
     like dynamic
     fall pool-nothing()
-  like dynamic
+  like pool-answer
+  mark async
 
+  # async, and every promise below waited for: until term-self-host-001-0334 this task handed back the pool's promise
+  # as a dynamic, so a caller reading `result/problems` read a field of the promise and `term make --merged` stopped
+  # on "entries is not iterable"
   # the SAME selection the sequential build makes: a build targets one platform, and the other platforms' native trees
   # are not compiled. Defaults to the worker's own default env, so the two cannot drift apart
   save platform, pool-platform-of(options)
   save files, find-tree-files(root, platform, root)
   fork test, is-equal(files/length, 0)
     hold
-      back pool-promise(pool-zero-answer)
+      back wait pool-promise(pool-zero-answer)
   save size, pool-size-of(options, files/length)
   save bundle, ensure-build-worker-bundle()
   save stdlib, resolving-module/stdlibBase()
@@ -484,7 +489,10 @@ task compile-project-parallel
     task
       like pool-answer
       back make(pool-answer, bind(compiled, run/compiled), bind(failed, run/failed), bind(errors, run/errors), bind(warnings, run/warnings), bind(problems, run/problems), bind(faults, run/faults), bind(open, pool-sorted(run/open)), bind(obligations, run/obligations))
-  back pool-after(pool-promise(start), run/workers, answer)
+  # both binds are `mark async` (decision 053), so the run is waited before the workers end: the promise is never
+  # handed from one bind to the other, where waiting by default would hand on its answer instead
+  wait pool-promise(start)
+  back wait pool-after(run/workers, answer)
 
 # the answer for a project with no files
 task pool-zero-answer

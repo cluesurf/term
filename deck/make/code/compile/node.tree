@@ -1146,6 +1146,12 @@ form statement
     link place-row
       like number
       need false
+    # `mark async` under the bind: its host code answers a promise, so a call to it is waited like an async task's
+    # (decision 053 of term/self-host/change/001-finish-self-host). Last, so a reader that renames the fields in order
+    # (compile/node-rebuild.tree) keeps its positions
+    link async
+      like boolean
+      need false
   # a component definition
   case view
     link name, like text

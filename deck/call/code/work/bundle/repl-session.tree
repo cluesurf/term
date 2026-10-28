@@ -120,6 +120,7 @@ bind repl-has-resolver
 bind repl-evaluate
   take href, like text
   take folder, like text
+  mark async
   like dynamic
   case node
     text <import($href).then((module) =\> (module.seedReplEval ? module.seedReplEval() : undefined)).finally(() =\> process.getBuiltinModule("node:fs").rmSync($folder, \{ recursive: true, force: true \}))>

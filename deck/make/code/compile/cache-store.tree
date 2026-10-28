@@ -1,0 +1,384 @@
+# THE COMPILE CACHE'S STATE AND EVERY DECISION MADE ON IT, in Term (spec.md 4.8 and 4.15 of
+# term/self-host/change/001-finish-self-host, item term-self-host-001-0107). Ported from compile/cache.ts, which stays
+# as the face: it keeps the `CompileCache` class its callers construct, and only what Term cannot hold, each injected
+# as a task of `cache-io`:
+#   - the persistent store (a `CacheStore`, or none in the browser), read and written as text
+#   - the entry's JSON: `JSON.stringify` with the bigint tag on a write, `JSON.parse` with the reviver and the shape
+#     test on a read, so the bytes on disk are the original's (spec.md 4.15). A stored value is a host value, never a
+#     node, so it is not node-json (spec.md 4.7)
+#   - the clone a milled unit is handed back as (`structuredClone`), so a caller may rewrite the program it gets
+# The three maps, the counters and the memoized text hash are the records below, `mark shared`, one per cache, and the
+# text hash's one per process the face holds.
+#
+# Two levels, both keyed by source content, never mtime, so a touched but unchanged file is a hit and an edit that
+# reverts to a prior state reuses that state:
+#   - mill: the parse, template expansion and mill of one module, reused while its text is unchanged
+#   - output: the whole compiled result for an exact module graph (and `unit`, one unit of the separate build)
+#
+# Every map is a least-recently-used cache over the hash's insertion order, the same order on every backend: a hit
+# moves its key to the end, and a set past the cap drops keys from the front. Neither cap can change an answer.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find char-code-at
+
+load @term/base/text/unicode
+  find byte-count
+
+load ../term/hash
+  find hash-text
+
+# THE HASH OF A MODULE'S TEXT, ONCE PER PROCESS, keyed by the text itself and bounded by the size of the texts it holds
+# (64 MiB). Every compile keys its graph and each module's entries by the hash of each text, and a dev loop compiles
+# the same closure again on every edit.
+#
+# Diverges: original, the budget counts UTF-16 units (`text.length`); new, it counts characters (`text/length`, what
+# `char-count` counts, without its copy of the text on TypeScript), the measure every backend has; reason, the memo only decides which hashes are kept, never what a hash is, so an astral
+# text counted at half its units changes no answer.
+form text-hashes
+  mark shared
+  link known
+    like hash
+      like text
+      like text
+  link size, like number
+  link cap, like number
+
+# what the face injects: the compiler fingerprint per kind, the store's read and write with the entry's JSON, and the
+# clone of a milled unit
+form cache-io
+  # the version folded into every key of a kind (the compiler version and the epoch)
+  link version-of
+    like task
+      take kind, like text
+      like text
+  # a stored entry of a kind under a key, read as `shape` reads it (`mill`, `scan`, or the kind): none when there is
+  # no store, no entry, or one that does not parse or has the wrong shape. A corrupt entry is a miss, never a crash
+  link read-entry
+    like task
+      take kind, like text
+      take key, like text
+      take shape, like text
+      like maybe, like unknown
+  # a fresh entry written to the store, when there is one
+  link write-entry
+    like task
+      take kind, like text
+      take key, like text
+      take value, like unknown
+      like boolean
+  # a milled unit as its caller gets it: a fresh copy of an ok unit's program and twins, a failed unit as it is
+  link clone-unit
+    like task
+      take unit, like unknown
+      like unknown
+
+form compile-cache
+  mark shared
+  link mills
+    like hash
+      like text
+      like unknown
+  link outputs
+    like hash
+      like text
+      like unknown
+  link scans
+    like hash
+      like text
+      like unknown
+  # how often each level was reused or rebuilt, split by tier
+  link hits, like number
+  link misses, like number
+  link disk-hits, like number
+  link mill-cap, like number
+  link output-cap, like number
+  link io, like cache-io
+  # the process's memoized text hash, shared by every cache
+  link hashes, like text-hashes
+
+host text-hash-cap, code 67108864
+
+task make-text-hashes
+  like text-hashes
+
+  back
+    make text-hashes
+      bind known, make hash
+      bind size, 0
+      bind cap, text-hash-cap
+
+task make-compile-cache
+  take io, like cache-io
+  take mill-cap, like number
+  take output-cap, like number
+  take hashes, like text-hashes
+  like compile-cache
+
+  back
+    make compile-cache
+      bind mills, make hash
+      bind outputs, make hash
+      bind scans, make hash
+      bind hits, 0
+      bind misses, 0
+      bind disk-hits, 0
+      bind mill-cap, mill-cap
+      bind output-cap, output-cap
+      bind io, io
+      bind hashes, hashes
+
+# A TEXT'S LENGTH IN UTF-16 UNITS, the length a key field is prefixed with. The keys are the original's on every
+# backend, so a store one compiler wrote is read by every other.
+#
+# Without a walk when the text holds no astral character, which is nearly every key field: an astral character is four
+# bytes of UTF-8 and one character, so a text whose UTF-8 is under three bytes longer than its characters holds none,
+# and then its units are its characters (every ASCII text among them). Walking every character made a corpus text's key
+# cost twice the original's `text.length` (item term-self-host-001-0345)
+task utf16-units
+  take text, like text
+  like number
+  mark private
+
+  save chars, text/length
+  fork test, is-below(byte-count(text), add(chars, 3))
+    hold
+      back chars
+  save units, 0
+  walk split(text, <>)
+    take char
+    fork test, is-above(char-code-at(char, 0), 65535)
+      hold
+        save units, add(units, 2)
+      miss
+        save units, add(units, 1)
+  back units
+
+# join fields into one hash input with length prefixes, so no concatenation is ambiguous (`a` + `bc` cannot collide
+# with `ab` + `c`). Use for any composite key
+task hash-fields
+  take fields, like list, like text
+  like text
+
+  save joined, <>
+  walk fields
+    take field
+    save joined, <{joined}{utf16-units(field)}:{field}>
+  back hash-text(joined)
+
+task content-hash
+  take memo, like text-hashes
+  take text, like text
+  like text
+
+  fork test, has(memo/known, text)
+    hold
+      save known, get-or-default(memo/known, text, <>)
+      memo/known/remove(text)
+      memo/known/set(text, known)
+      back known
+  save made, hash-text(text)
+  memo/known/set(text, made)
+  save memo/size, add(memo/size, text/length)
+  walk test
+    hook test, is-above(memo/size, memo/cap)
+    hook hold
+      save names, keys(memo/known)
+      fork test, is-equal(names/length, 0)
+        hold
+          halt
+      save oldest, names/0
+      memo/known/remove(oldest)
+      save memo/size, subtract(memo/size, oldest/length)
+  back made
+
+# drop keys from the front of the order until the map holds at most `cap`
+task evict-to
+  take map
+    like hash
+      like text
+      like unknown
+  take cap, like number
+  mark private
+
+  walk test
+    hook test, is-above(length(map), cap)
+    hook hold
+      save names, keys(map)
+      fork test, is-equal(names/length, 0)
+        hold
+          halt
+      save oldest, names/0
+      map/remove(oldest)
+
+# a hit: the key moves to the end of the order
+task touch
+  take map
+    like hash
+      like text
+      like unknown
+  take key, like text
+  take value, like unknown
+  mark private
+
+  map/remove(key)
+  map/set(key, value)
+
+task bump-hits
+  take cache, like compile-cache
+  mark private
+
+  save cache/hits, add(cache/hits, 1)
+
+task bump-misses
+  take cache, like compile-cache
+  mark private
+
+  save cache/misses, add(cache/misses, 1)
+
+task bump-disk-hits
+  take cache, like compile-cache
+  mark private
+
+  save cache/disk-hits, add(cache/disk-hits, 1)
+
+# the compiler's fingerprint for one kind, which `term make --explain` reports when it moved
+task version-for
+  take cache, like compile-cache
+  take kind, like text
+  like text
+
+  save io, cache/io
+  save version-of, io/version-of
+  back version-of(kind)
+
+# THE MILLED UNIT FOR (file, text): from memory, then the store, then built, and stored on a build. Handed back as a
+# fresh clone, so the caller may annotate or rewrite the program (the checker does) without changing the cached copy
+task milled-unit
+  take cache, like compile-cache
+  take file, like text
+  take text, like text
+  take build
+    like task
+      like unknown
+  like unknown
+
+  save io, cache/io
+  save clone-unit, io/clone-unit
+  save read-entry, io/read-entry
+  save write-entry, io/write-entry
+  save key, hash-fields(make list(version-for(cache, <mill>), file, content-hash(cache/hashes, text)))
+
+  fork test, has(cache/mills, key)
+    hold
+      save cached, get-or-default(cache/mills, key, <>)
+      bump-hits(cache)
+      touch(cache/mills, key, cached)
+      back clone-unit(cached)
+
+  sift read-entry(<mill>, key, <mill>)
+    case some
+      link unit
+      cache/mills/set(key, unit)
+      evict-to(cache/mills, cache/mill-cap)
+      bump-disk-hits(cache)
+      back clone-unit(unit)
+    case none
+      save absent, true
+
+  bump-misses(cache)
+  save fresh, build()
+  cache/mills/set(key, fresh)
+  evict-to(cache/mills, cache/mill-cap)
+  write-entry(<mill>, key, fresh)
+  back clone-unit(fresh)
+
+# WHAT A MODULE'S TEXT IMPORTS (its `load` lines), for the module walk: a module whose text is unchanged is not parsed
+# to find its dependencies, in this process or the next. Stored beside the mill entries, under the mill kind's version.
+# The value is read, never changed, so a hit is handed back as it is
+task scanned
+  take cache, like compile-cache
+  take file, like text
+  take text, like text
+  take build
+    like task
+      like unknown
+  like unknown
+
+  save io, cache/io
+  save read-entry, io/read-entry
+  save write-entry, io/write-entry
+  save key, hash-fields(make list(version-for(cache, <mill>), <scan>, file, content-hash(cache/hashes, text)))
+
+  fork test, has(cache/scans, key)
+    hold
+      save cached, get-or-default(cache/scans, key, <>)
+      bump-hits(cache)
+      touch(cache/scans, key, cached)
+      back cached
+
+  sift read-entry(<mill>, key, <scan>)
+    case some
+      link stored
+      cache/scans/set(key, stored)
+      evict-to(cache/scans, cache/mill-cap)
+      bump-disk-hits(cache)
+      back stored
+    case none
+      save absent, true
+
+  bump-misses(cache)
+  save fresh, build()
+  cache/scans/set(key, fresh)
+  evict-to(cache/scans, cache/mill-cap)
+  write-entry(<mill>, key, fresh)
+  back fresh
+
+# THE WHOLE COMPILED OUTPUT FOR A GRAPH KEY, under a kind (`output`, or `unit` for one unit of the separate build,
+# which the store keeps machine-wide beside the mill): from memory, then the store, then built
+task output
+  take cache, like compile-cache
+  take key, like text
+  take build
+    like task
+      like unknown
+  take kind, like text
+  like unknown
+
+  save io, cache/io
+  save read-entry, io/read-entry
+  save write-entry, io/write-entry
+  save versioned, hash-fields(make list(version-for(cache, kind), key))
+
+  fork test, has(cache/outputs, versioned)
+    hold
+      save cached, get-or-default(cache/outputs, versioned, <>)
+      bump-hits(cache)
+      touch(cache/outputs, versioned, cached)
+      back cached
+
+  sift read-entry(kind, versioned, kind)
+    case some
+      link stored
+      cache/outputs/set(versioned, stored)
+      evict-to(cache/outputs, cache/output-cap)
+      bump-disk-hits(cache)
+      back stored
+    case none
+      save absent, true
+
+  bump-misses(cache)
+  save fresh, build()
+  cache/outputs/set(versioned, fresh)
+  evict-to(cache/outputs, cache/output-cap)
+  write-entry(kind, versioned, fresh)
+  back fresh

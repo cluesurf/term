@@ -653,6 +653,7 @@ task place-statement
       link f4
       link f5
       link f6
+      link f7
       save copy/place-row, row
     case view
       link f1
@@ -885,6 +886,7 @@ task place-row-of-statement
       link f4
       link f5
       link f6
+      link f7
       back f6
     case view
       link f1
@@ -2554,6 +2556,7 @@ task rebuild-step-statement
       link f4
       link f5
       link f6
+      link f7
       fork test, enters(skip, <params>)
         hold
           save made-126, make list

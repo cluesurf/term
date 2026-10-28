@@ -3,14 +3,29 @@
 //   - mill level: the parse + template-expand + mill of a single module. Reused across compiles when its text is
 //     unchanged, even if other modules in the graph changed. Fine-grained, so the persisted entries are small.
 //   - output level: the whole compiled result for an exact module graph. A re-save with no edits returns instantly.
-// The in-memory path is pure and browser-safe (a pure-JS content hash, no node:crypto). Persistence is OPTIONAL and
-// injected as a `CacheStore`, so the browser path stays pure while a node CLI can back the cache with `.base/@term/code/cache`
-// (see code/call/cache-store.ts). Keys fold in a version, so a toolchain change never serves a stale hit.
-// See note/project/term/research/repo/turborepo/07-lessons-for-seed.md and note/seed/plan/compilation-performance.md (Tier 1).
+// Persistence is OPTIONAL and injected as a `CacheStore`, so the browser path stays pure while a node CLI can back the
+// cache with `.base/@term/code/cache` (see code/call/cache-store.ts). Keys fold in a version, so a toolchain change
+// never serves a stale hit.
+//
+// THE STATE AND EVERY DECISION ARE TERM, compile/cache-store.tree (item term-self-host-001-0107): the three maps, the
+// counters, the least-recently-used order, every key, and the memoized text hash. This file is the face. It keeps the
+// `CompileCache` API its callers construct, and only what Term cannot hold, handed to the port as `cache-io`: the
+// store, the entry's JSON (`JSON.stringify` with the bigint tag, `JSON.parse` with the reviver and the shape test, so
+// the bytes on disk are the original's, spec.md 4.15), and the clone a milled unit is handed back as.
 
 import type { Program, Twin } from '@term/make/code/compile/node'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
-import { hashText } from '@term/make/code/term/hash'
+import {
+  contentHash as contentHashPort,
+  hashFields as hashFieldsPort,
+  makeCompileCache,
+  makeTextHashes,
+  milledUnit as milledUnitPort,
+  output as outputPort,
+  scanned as scannedPort,
+  versionFor,
+} from '@term/make/code/compile/cache-store'
+import type { CompileCache as CacheState } from '@term/make/code/compile/cache-store'
 
 // the cache format epoch. Bump to invalidate every persisted entry at once (turborepo's `global_cache_key`). Change
 // this on any change to the cached value shape or the mill/compile pipeline that the per-entry key does not capture.
@@ -36,6 +51,7 @@ import { hashText } from '@term/make/code/term/hash'
 // '11': a stub's carried shape and body name each task in the names its module wrote (compile/stub.ts `carried`,
 // items term-self-host-001-0323 and 0324), not its own unit's split names, so a unit stored at '10' may hold a stub
 // whose carried call names another file's task in the unit reading it.
+// The port to Term (item 0107) changes no key and no stored byte, so it keeps '11'.
 export const CACHE_EPOCH = '11'
 
 // A cached entry, or nothing. A CORRUPT ENTRY IS A MISS, never a crash: the store writes atomically, but a
@@ -119,55 +135,20 @@ function readScan<T>(stored: string | undefined): T | undefined {
   }
 }
 
-// THE CONTENT HASH IS TERM: `hashText` is deck/make/code/term/hash.tree, the first compiler module switched to its
-// port (self-hosting-0018, 2026-10-02). The TypeScript original was deleted in the same change, and every importer
-// reaches the emitted module through the `host/port/*` fallback in tsconfig.json (task/port-build.ts writes it).
-//
-// The switch CHANGED THE HASH of text outside the Basic Multilingual Plane, on purpose: the TypeScript walked UTF-16
-// code units and Term walks code points, which is what Term text is on every backend. A changed key is a cache miss,
-// never a wrong reuse, so nothing stale can be served. The pairing in `pnpm term:self-host` had held the two equal
-// over 16,575 identifiers, all ASCII, which is why it never saw the difference.
+// THE CONTENT HASH IS TERM: `hashText` is deck/make/code/term/hash.tree, and the key of every field list and the memo
+// of each text's hash are compile/cache-store.tree. The memo is the process's one `text-hashes` record, shared by
+// every cache, bounded by the size of the texts it holds.
+const TEXT_HASHES = makeTextHashes()
 
 // join fields into one hash input with length prefixes, so no concatenation is ambiguous (`a` + `bc` cannot collide
 // with `ab` + `c`). Use for any composite key.
 export function hashFields(fields: string[]): string {
-  return hashText(fields.map(f => `${f.length}:${f}`).join(''))
+  return hashFieldsPort(fields)
 }
 
-// THE HASH OF A MODULE'S TEXT, ONCE PER PROCESS. Every compile keys its graph and each module's entries by the hash of
-// each text, and a dev loop compiles the same closure again on every edit: `hashText` walked the whole closure twice a
-// compile, 38 ms a megabyte. The memo is keyed by the text itself, which the engine hashes natively and compares by
-// length first, so a text read again from disk with the same content is a hit. Bounded by the bytes it holds.
-const TEXT_HASH_BYTES = 64 * 1024 * 1024
-const textHashes = new Map<string, string>()
-let textHashBytes = 0
-
+// THE HASH OF A MODULE'S TEXT, ONCE PER PROCESS
 export function contentHash(text: string): string {
-  const known = textHashes.get(text)
-
-  if (known !== undefined) {
-    textHashes.delete(text)
-    textHashes.set(text, known)
-
-    return known
-  }
-
-  const hash = hashText(text)
-  textHashes.set(text, hash)
-  textHashBytes += text.length
-
-  while (textHashBytes > TEXT_HASH_BYTES) {
-    const oldest = textHashes.keys().next()
-
-    if (oldest.done) {
-      break
-    }
-
-    textHashes.delete(oldest.value)
-    textHashBytes -= oldest.value.length
-  }
-
-  return hash
+  return contentHashPort(TEXT_HASHES, text)
 }
 
 // the milled output of one module: a program, or the diagnostics that stopped it
@@ -184,196 +165,12 @@ export interface CacheStore {
   save(kind: string, key: string, value: string): void
 }
 
-// Least-recently-used eviction over a Map, which already keeps insertion order: a hit re-inserts the key to make it
-// most-recent, and a set evicts from the front once the cap is passed.
-//
-// WHY THE CAPS EXIST. Both maps used to grow without limit for the life of a build, and `outputs` grows once PER
-// ENTRY FILE. Measured on @term/bind at 400 of its 3,091 files, retained heap after a forced GC:
-//
-//   both caches   172 MB          outputs cleared    29 MB
-//   mills cleared 178 MB          neither            23 MB
-//
-// So `outputs` was the whole retained heap, at roughly 370 KB an entry, and it is the term that scales with the
-// PROJECT rather than with the module graph: at 3,091 files it exhausted an 8 GB heap, and at a hundred thousand it
-// would want terabytes. Its hit rate in a project build is ZERO by construction, because compileProject visits each
-// entry exactly once and each entry has its own graph key (the 400 files produced 400 entries and no reuse). It pays
-// off only in watch mode and repeated compiles of the same entry, which a small cap serves just as well.
-//
-// `mills` is keyed by MODULE, so it is bounded by the graph rather than the project (1,694 entries for those same
-// 400 files) and costs about 3.5 KB an entry. Its cap is large enough to hold a realistic closure and exists only so
-// that nothing is unbounded.
-//
-// Neither cap can change a result. Everything either map holds is rebuildable, and the persistent store still
-// carries reuse across runs.
-function evictTo<K, V>(map: Map<K, V>, cap: number): void {
-  while (map.size > cap) {
-    const oldest = map.keys().next()
-
-    if (oldest.done) {
-      return
-    }
-
-    map.delete(oldest.value)
-  }
-}
-
-function touch<K, V>(map: Map<K, V>, key: K, value: V): void {
-  map.delete(key)
-  map.set(key, value)
-}
-
+// The LRU caps (compile/cache-store.tree holds the order). `outputs` grows once PER ENTRY FILE and was the whole
+// retained heap at roughly 370 KB an entry (measured on @term/bind at 400 of its 3,091 files: both caches 172 MB,
+// outputs cleared 29 MB), with a hit rate of zero in a project build, so its cap is small. `mills` is keyed by module,
+// bounded by the graph, about 3.5 KB an entry. Neither cap can change a result.
 export const MILL_CACHE_CAP = 8192
 export const OUTPUT_CACHE_CAP = 32
-
-export class CompileCache {
-  private readonly mills = new Map<string, MilledUnit>()
-  private readonly outputs = new Map<string, unknown>()
-  private readonly scans = new Map<string, unknown>()
-  // counters for observability (and tests): how often each level was reused vs rebuilt, split by tier
-  hits = 0
-  misses = 0
-  diskHits = 0
-
-  // `store` persists entries across processes (optional). `version` is folded into every key (the compiler version +
-  // epoch), so an upgraded toolchain invalidates everything without a manual wipe.
-  constructor(
-    private readonly store?: CacheStore,
-    // The compiler fingerprint, PER KIND. A string versions every kind alike; a function gives each its own, which
-    // is what stops a change only the output level can see from also changing every mill KEY. The store namespaces
-    // by kind directory and the key folds the version in as well, so BOTH have to be per kind or the split is
-    // half done: the directory says mill is still valid and the key says it is not.
-    private readonly version: string | ((kind: string) => string) = CACHE_EPOCH,
-    // the LRU caps, overridable so a test can force eviction without building thousands of modules
-    private readonly millCap: number = MILL_CACHE_CAP,
-    private readonly outputCap: number = OUTPUT_CACHE_CAP,
-  ) {}
-
-  // the milled unit for (file, text). Looks in memory, then the persistent store, then builds. Stores on a build.
-  // Returns a fresh clone of the program so the caller may annotate / rewrite the AST (the checker does) without
-  // corrupting the cached copy.
-  private versionFor(kind: string): string {
-    return typeof this.version === 'string'
-      ? this.version
-      : this.version(kind)
-  }
-
-  // the compiler's fingerprint for one kind, which `term make --explain` reports when it moved
-  versionOf(kind: string): string {
-    return this.versionFor(kind)
-  }
-
-  milledUnit(
-    file: string,
-    text: string,
-    build: () => MilledUnit,
-  ): MilledUnit {
-    const key = hashFields([this.versionFor('mill'), file, contentHash(text)])
-    const cached = this.mills.get(key)
-
-    if (cached) {
-      this.hits++
-      touch(this.mills, key, cached)
-
-      return cloneUnit(cached)
-    }
-
-    const unit = readEntry<MilledUnit>(this.store?.load('mill', key), 'mill')
-
-    if (unit !== undefined) {
-      this.mills.set(key, unit)
-      evictTo(this.mills, this.millCap)
-      this.diskHits++
-
-      return cloneUnit(unit)
-    }
-
-    this.misses++
-
-    const fresh = build()
-    this.mills.set(key, fresh)
-    evictTo(this.mills, this.millCap)
-    this.store?.save('mill', key, JSON.stringify(fresh, storeBigint))
-
-    return cloneUnit(fresh)
-  }
-
-  // what a module's text imports (its `load` lines), for the module walk. A module whose text is unchanged is then
-  // not parsed at all to find its dependencies, in this process or the next: the walk parsed every module of the
-  // closure on every compile, 226 ms of a 1.2 s rebuild of a 40-module app, even when every mill entry hit. Stored
-  // beside the mill entries, under the mill kind's version (whose scope holds the parser and `load.ts`). The value
-  // is read, never changed, so a hit is handed back as it is
-  scanned<T>(file: string, text: string, build: () => T): T {
-    const key = hashFields([this.versionFor('mill'), 'scan', file, contentHash(text)])
-    const cached = this.scans.get(key) as T | undefined
-
-    if (cached !== undefined) {
-      this.hits++
-      touch(this.scans, key, cached)
-
-      return cached
-    }
-
-    const stored = readScan<T>(this.store?.load('mill', key))
-
-    if (stored !== undefined) {
-      this.scans.set(key, stored)
-      evictTo(this.scans, this.millCap)
-      this.diskHits++
-
-      return stored
-    }
-
-    this.misses++
-
-    const fresh = build()
-    this.scans.set(key, fresh)
-    evictTo(this.scans, this.millCap)
-    this.store?.save('mill', key, JSON.stringify(fresh, storeBigint))
-
-    return fresh
-  }
-
-  // one unit of the separate build (compile/separate.ts): the same tiers as `output`, under its own kind, which the
-  // store keeps machine-wide beside the mill. A unit's key is its content and the surfaces it reaches, so the standard
-  // library's units one project built answer every other project's (note/project/term/incremental-best-in-class.md,
-  // step 1)
-  unit<T>(key: string, build: () => T): T {
-    return this.output(key, build, 'unit')
-  }
-
-  // the whole compiled output for a graph key. Looks in memory, then the store, then builds. The value must be
-  // JSON-serializable (the compile result is: program AST + emitted text + diagnostics).
-  output<T>(key: string, build: () => T, kind = 'output'): T {
-    const versioned = hashFields([this.versionFor(kind), key])
-    const cached = this.outputs.get(versioned) as T | undefined
-
-    if (cached !== undefined) {
-      this.hits++
-      touch(this.outputs, versioned, cached)
-
-      return cached
-    }
-
-    const value = readEntry<T>(this.store?.load(kind, versioned), kind)
-
-    if (value !== undefined) {
-      this.outputs.set(versioned, value)
-      evictTo(this.outputs, this.outputCap)
-      this.diskHits++
-
-      return value
-    }
-
-    this.misses++
-
-    const fresh = build()
-    this.outputs.set(versioned, fresh)
-    evictTo(this.outputs, this.outputCap)
-    this.store?.save(kind, versioned, JSON.stringify(fresh, storeBigint))
-
-    return fresh
-  }
-}
 
 function cloneUnit(unit: MilledUnit): MilledUnit {
   return unit.ok
@@ -383,4 +180,79 @@ function cloneUnit(unit: MilledUnit): MilledUnit {
         ...(unit.twins ? { twins: structuredClone(unit.twins) } : {}),
       }
     : unit
+}
+
+export class CompileCache {
+  // the port's record: the three maps, the counters, the caps and the injected host IO
+  readonly state: CacheState
+
+  // `store` persists entries across processes (optional). `version` is folded into every key (the compiler version +
+  // epoch), so an upgraded toolchain invalidates everything without a manual wipe. A string versions every kind
+  // alike; a function gives each its own, which stops a change only the output level can see from also changing
+  // every mill KEY. The caps are overridable so a test can force eviction without building thousands of modules.
+  constructor(
+    store?: CacheStore,
+    version: string | ((kind: string) => string) = CACHE_EPOCH,
+    millCap: number = MILL_CACHE_CAP,
+    outputCap: number = OUTPUT_CACHE_CAP,
+  ) {
+    this.state = makeCompileCache(
+      {
+        versionOf: typeof version === 'string' ? () => version : version,
+        readEntry: (kind: string, key: string, shape: string) => {
+          const stored = store?.load(kind, key)
+          const value = shape === 'scan' ? readScan<unknown>(stored) : readEntry<unknown>(stored, shape)
+
+          return value === undefined ? { form: 'none' } : { form: 'some', value }
+        },
+        writeEntry: (kind: string, key: string, value: unknown) => {
+          store?.save(kind, key, JSON.stringify(value, storeBigint))
+
+          return true
+        },
+        cloneUnit: (unit: unknown) => cloneUnit(unit as MilledUnit),
+      } as never,
+      millCap,
+      outputCap,
+      TEXT_HASHES,
+    )
+  }
+
+  // counters for observability (and tests): how often each level was reused vs rebuilt, split by tier
+  get hits(): number {
+    return this.state.hits
+  }
+
+  get misses(): number {
+    return this.state.misses
+  }
+
+  get diskHits(): number {
+    return this.state.diskHits
+  }
+
+  // the compiler's fingerprint for one kind, which `term make --explain` reports when it moved
+  versionOf(kind: string): string {
+    return versionFor(this.state, kind)
+  }
+
+  // the milled unit for (file, text): memory, then the store, then built, handed back as a fresh clone
+  milledUnit(file: string, text: string, build: () => MilledUnit): MilledUnit {
+    return milledUnitPort(this.state, file, text, build) as MilledUnit
+  }
+
+  // what a module's text imports (its `load` lines), for the module walk, stored beside the mill entries
+  scanned<T>(file: string, text: string, build: () => T): T {
+    return scannedPort(this.state, file, text, build) as T
+  }
+
+  // one unit of the separate build (compile/separate.ts), under its own kind, which the store keeps machine-wide
+  unit<T>(key: string, build: () => T): T {
+    return this.output(key, build, 'unit')
+  }
+
+  // the whole compiled output for a graph key. The value must be JSON-serializable
+  output<T>(key: string, build: () => T, kind = 'output'): T {
+    return outputPort(this.state, key, build, kind) as T
+  }
 }

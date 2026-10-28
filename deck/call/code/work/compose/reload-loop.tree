@@ -297,6 +297,7 @@ bind stage-fact
 
 # a promise that resolves on the first ctrl-c
 bind interrupted
+  mark async
   like dynamic
   case node
     text <new Promise((done) =\> process.once("SIGINT", () =\> done()))>

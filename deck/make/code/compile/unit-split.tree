@@ -59,7 +59,14 @@ task mark-unit
       back text
   back <{open-mark()}{file}{close-mark()}{text}{end-mark()}>
 
-# the program as one file, every mark removed: each open mark through the close that ends its file, then every end
+# the program as one file, every mark removed: each open mark through the close that ends its file, then every end.
+# Each search starts where the last piece ended and each piece is sliced from the text itself, so the text is never
+# copied whole per mark (a copy of the rest at every mark made a module of n statements cost n times its size, traps.md
+# T-0065).
+#
+# The walk ends because `at` rises every turn and the walk stops at `size`. A search from `at` answers -1 or a place at
+# or past `at`, so each miss below is tested against where its search started, not against 0: the same answers, and
+# the prover then sees the found place past `at`, so each new `at` is past the old (item term-self-host-001-0340)
 task unmarked
   take text, like text
   like text
@@ -75,22 +82,20 @@ task unmarked
   walk test
     hook test, is-below(at, size)
     hook hold
-      save rest, substring(text, at, size)
-      save found, index-of(rest, open)
-      fork test, is-below(found, 0)
+      save found, index-of(text, open, at)
+      fork test, is-below(found, at)
         hold
-          push(kept, rest)
+          push(kept, substring(text, at, size))
           halt
-      save after, substring(rest, add(found, 1), rest/length)
-      save closed, index-of(after, close)
-      fork test, is-below(closed, 0)
+      save closed, index-of(text, close, add(found, 1))
+      fork test, is-below(closed, add(found, 1))
         hold
           # an open mark no close follows is no mark: kept, and the search goes on after it
-          push(kept, substring(rest, 0, add(found, 1)))
-          save at, add(add(at, found), 1)
+          push(kept, substring(text, at, add(found, 1)))
+          save at, add(found, 1)
           turn next
-      push(kept, substring(rest, 0, found))
-      save at, add(add(add(at, found), 1), add(closed, 1))
+      push(kept, substring(text, at, found))
+      save at, add(closed, 1)
   save joined, join(kept, <>)
   save pieces, split(joined, end-mark())
   back join(pieces, <>)

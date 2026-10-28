@@ -674,7 +674,9 @@ export function checkCallsOutsideTasks(program: Program, file: string): Diagnost
   const asyncFunctions = new Set<string>()
 
   for (const statement of program) {
-    if (statement.form === 'function' && statement.async) {
+    // a bind marked `mark async` is waited like an async task (decision 053 of
+    // note/project/term/self-host/change/001-finish-self-host)
+    if ((statement.form === 'function' || statement.form === 'bind') && statement.async) {
       asyncFunctions.add(statement.name)
     }
   }
