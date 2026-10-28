@@ -44,7 +44,14 @@ load ./templates
 # the node itself, and `at`, the node's index in the list of nodes the mine enumerated it from (a group's children, or
 # the root's nodes for a top-level capture). The mint bridge orders call arguments, record children, body steps and
 # top-level captures by `at`, never by the node's identity (D011, decision 033 section 3). A minted value carries the
-# `at` of the capture it was minted from
+# `at` of the capture it was minted from.
+#
+# `at` is an index in ONE group, so a capture enumerated inside a callee's parentheses also carries `within`, the `at`
+# of that group in the list around it (an `open` rule's group, `f(...)` in `call f(a, b)`). The arguments of
+# `call f(a, b)` / `code 9` sit in two groups: `a` and `b` at 1 and 2 in `f(...)`, the `9` line at 2 in the call's own
+# group. Written order is the parenthesized arguments first, then each line below, so the bridge orders by `within`
+# where a value has one and by `at` where it has none, and by `at` among the values of one `within`
+# (compile/minting-values.tree `at-or`, item term-self-host-001-0303). Absent for a capture of the rule's own group
 form mill-capture
   mark tag, name kind
   case word
@@ -56,6 +63,9 @@ form mill-capture
     link at
       like maybe, like number
       need false
+    link within
+      like maybe, like number
+      need false
   case text
     link value, like text
     link span
@@ -63,6 +73,9 @@ form mill-capture
       need false
     link node, like node
     link at
+      like maybe, like number
+      need false
+    link within
       like maybe, like number
       need false
   case number
@@ -76,6 +89,9 @@ form mill-capture
     link at
       like maybe, like number
       need false
+    link within
+      like maybe, like number
+      need false
   case match
     link rule, like text
     link match, like hash, like text, like list, like mill-capture
@@ -84,6 +100,9 @@ form mill-capture
       need false
     link node, like node
     link at
+      like maybe, like number
+      need false
+    link within
       like maybe, like number
       need false
 
@@ -184,6 +203,9 @@ form minted
     link at
       like maybe, like number
       need false
+    link within
+      like maybe, like number
+      need false
   case text
     link value, like text
     link span
@@ -193,6 +215,9 @@ form minted
       like maybe, like node
       need false
     link at
+      like maybe, like number
+      need false
+    link within
       like maybe, like number
       need false
   case number
@@ -207,6 +232,9 @@ form minted
     link at
       like maybe, like number
       need false
+    link within
+      like maybe, like number
+      need false
   case form
     link form, like text
     link fields, like hash, like text, like list, like minted
@@ -217,6 +245,9 @@ form minted
       like maybe, like node
       need false
     link at
+      like maybe, like number
+      need false
+    link within
       like maybe, like number
       need false
 
@@ -857,6 +888,113 @@ task capture-all
       take value
       capture(into, some-site, value)
 
+# a match's captures, each enumerated inside the group at `group-at`: every one without a `within` takes it. One
+# already carrying one was enumerated inside a group nested in this one and keeps its own
+task stamped-within
+  take trial, like hash, like text, like list, like mill-capture
+  take group-at, like number
+  like hash, like text, like list, like mill-capture
+  mark private
+
+  save out, empty-match()
+  walk trial/keys()
+    take site
+    save values, make list
+    walk trial/get(site)
+      take value
+      push(values, with-within(value, group-at))
+    save out/{site}, values
+  back out
+
+# whether a capture already carries a group
+task is-placed
+  take within, like maybe, like number
+  like boolean
+  mark private
+
+  sift within
+    case some
+      back true
+    case none
+      back false
+
+task with-within
+  take value, like mill-capture
+  take group-at, like number
+  like mill-capture
+  mark private
+
+  save stamp, make(some, group-at)
+  sift value
+    case word
+      link word-value
+      link word-span
+      link word-node
+      link word-at
+      link word-within
+      fork test, is-placed(word-within)
+        hold
+          back value
+      back
+        make word
+          bind value, word-value
+          bind span, word-span
+          bind node, word-node
+          bind at, word-at
+          bind within, stamp
+    case text
+      link text-value
+      link text-span
+      link text-node
+      link text-at
+      link text-within
+      fork test, is-placed(text-within)
+        hold
+          back value
+      back
+        make text
+          bind value, text-value
+          bind span, text-span
+          bind node, text-node
+          bind at, text-at
+          bind within, stamp
+    case number
+      link number-value
+      link number-decimal
+      link number-span
+      link number-node
+      link number-at
+      link number-within
+      fork test, is-placed(number-within)
+        hold
+          back value
+      back
+        make number
+          bind value, number-value
+          bind decimal, number-decimal
+          bind span, number-span
+          bind node, number-node
+          bind at, number-at
+          bind within, stamp
+    case match
+      link match-rule
+      link match-match
+      link match-span
+      link match-node
+      link match-at
+      link match-within
+      fork test, is-placed(match-within)
+        hold
+          back value
+      back
+        make match
+          bind rule, match-rule
+          bind match, match-match
+          bind span, match-span
+          bind node, match-node
+          bind at, match-at
+          bind within, stamp
+
 task word-capture
   take word, like text
   take one, like node
@@ -1150,10 +1288,16 @@ task match-rule
           sift head-word(one)
             case some
               link head
-              save inner, match-sequence(grammar, open-children, kids-of(one), 1, into)
+              # the group's own captures are enumerated from ITS children, so each carries the group's `at` as
+              # `within`, which places them before the lines after the group (see `mill-capture`)
+              save trial, empty-match()
+              save inner, match-sequence(grammar, open-children, kids-of(one), 1, trial)
               fork test, or(is-equal(inner, -1), is-below(inner, kids-of(one)/length))
                 hold
+                  # what a failed match captured stays where it landed before, as every other failing rule leaves it
+                  capture-all(into, trial)
                   back -1
+              capture-all(into, stamped-within(trial, at))
               capture(into, open-site, word-capture(head, one, at))
               back next-at
             case none
@@ -1545,7 +1689,14 @@ task run-mint
   take from-at, like maybe, like number
   like list, like minted
 
-  back mint-in(mints, name, match, 0, from, from-at, empty-memo())
+  back mint-in(mints, name, match, 0, from, from-at, no-within(), empty-memo())
+
+# a match handed to `run-mint` was enumerated inside no group of its own
+task no-within
+  like maybe, like number
+  mark private
+
+  back make none
 
 task minted-of
   take value, like mill-capture
@@ -1558,29 +1709,34 @@ task minted-of
       link word-span
       link word-node
       link word-at
+      link word-within
       back
         make word
           bind value, word-value
           bind span, word-span
           bind node, make(some, word-node)
           bind at, word-at
+          bind within, word-within
     case text
       link text-value
       link text-span
       link text-node
       link text-at
+      link text-within
       back
         make text
           bind value, text-value
           bind span, text-span
           bind node, make(some, text-node)
           bind at, text-at
+          bind within, text-within
     case number
       link number-value
       link number-decimal
       link number-span
       link number-node
       link number-at
+      link number-within
       back
         make number
           bind value, number-value
@@ -1588,6 +1744,7 @@ task minted-of
           bind span, number-span
           bind node, make(some, number-node)
           bind at, number-at
+          bind within, number-within
     case match
       # never reached: a match is minted, never passed through
       link match-rule-name
@@ -1619,6 +1776,8 @@ task mint-in
   take id, like number
   take from, like maybe, like node
   take from-at, like maybe, like number
+  # the `within` of the capture `match` came from
+  take from-within, like maybe, like number
   take memo, like mint-memo
   like list, like minted
   mark private
@@ -1661,6 +1820,7 @@ task mint-in
               link cap-span
               link cap-node
               link cap-at
+              link cap-within
               save sub, cap-rule
               sift one-case/mint
                 case some
@@ -1668,7 +1828,7 @@ task mint-in
                   save sub, named-sub
                 case none
                   save nothing, 0
-              walk mint-in(mints, sub, cap-match, cap-id, make(some, cap-node), cap-at, memo)
+              walk mint-in(mints, sub, cap-match, cap-id, make(some, cap-node), cap-at, cap-within, memo)
                 take one
                 push(values, one)
             miss
@@ -1680,7 +1840,7 @@ task mint-in
     case some
       link make-rule
       save out, make list
-      push(out, build-make(make-rule, by-case, from, from-at))
+      push(out, build-make(make-rule, by-case, from, from-at, from-within))
       back remember(memo, id, name, out)
     case none
       save nothing, 0
@@ -1696,7 +1856,7 @@ task mint-in
         turn next
     walk by-case/get(case-name)
       take value
-      push(out, widened(value, from, from-at))
+      push(out, widened(value, from, from-at, from-within))
   back remember(memo, id, name, out)
 
 task minted-table
@@ -1721,11 +1881,12 @@ task remember
   save memo/known/{id}, for-match
   back value
 
-# a form value takes the extent of the node it was passed through, that node, and its index
+# a form value takes the extent of the node it was passed through, that node, its index and its group
 task widened
   take value, like minted
   take from, like maybe, like node
   take from-at, like maybe, like number
+  take from-within, like maybe, like number
   like minted
   mark private
 
@@ -1744,9 +1905,76 @@ task widened
               bind span, make(some, whole)
               bind node, from
               bind at, from-at
+              bind within, from-within
         miss
-          back value
+          # a word or literal passed through was enumerated from the same nodes as the capture it passes through,
+          # so it sits in that capture's group too
+          back minted-within(value, from-within)
     case none
+      back value
+
+# a word or literal with no group of its own takes `within`
+task minted-within
+  take value, like minted
+  take within, like maybe, like number
+  like minted
+  mark private
+
+  fork test, not(is-placed(within))
+    hold
+      back value
+  sift value
+    case word
+      link word-value
+      link word-span
+      link word-node
+      link word-at
+      link word-within
+      fork test, is-placed(word-within)
+        hold
+          back value
+      back
+        make word
+          bind value, word-value
+          bind span, word-span
+          bind node, word-node
+          bind at, word-at
+          bind within, within
+    case text
+      link text-value
+      link text-span
+      link text-node
+      link text-at
+      link text-within
+      fork test, is-placed(text-within)
+        hold
+          back value
+      back
+        make text
+          bind value, text-value
+          bind span, text-span
+          bind node, text-node
+          bind at, text-at
+          bind within, within
+    case number
+      link number-value
+      link number-decimal
+      link number-span
+      link number-node
+      link number-at
+      link number-within
+      fork test, is-placed(number-within)
+        hold
+          back value
+      back
+        make number
+          bind value, number-value
+          bind decimal, number-decimal
+          bind span, number-span
+          bind node, number-node
+          bind at, number-at
+          bind within, within
+    miss
       back value
 
 task build-make
@@ -1754,6 +1982,7 @@ task build-make
   take by-case, like hash, like text, like list, like minted
   take from, like maybe, like node
   take from-at, like maybe, like number
+  take from-within, like maybe, like number
   like minted
   mark private
 
@@ -1765,7 +1994,7 @@ task build-make
       case some
         link nested
         save built, make list
-        push(built, build-make(nested, by-case, from, from-at))
+        push(built, build-make(nested, by-case, from, from-at, from-within))
         save fields/{bind-name}, built
       case none
         save read-name, one-bind/read
@@ -1789,3 +2018,4 @@ task build-make
       bind span, at-span
       bind node, from
       bind at, from-at
+      bind within, from-within

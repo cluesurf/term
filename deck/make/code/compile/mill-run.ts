@@ -39,10 +39,11 @@ import * as lowering from '@term/make/code/compile/find-lower'
 // number while that is exact, and a bigint read from its own text past 2^53, where the parsed number has already
 // rounded to a different integer. `at` is the node's index among the nodes the mine enumerated it from (a group's
 // children, or the root's nodes at the top level), which the bridge orders by instead of the node's identity
-// (decision 033 section 3). A minted value carries the `at` of the capture it came from.
+// (decision 033 section 3). A minted value carries the `at` of the capture it came from. `within` is the `at` of the
+// group a capture was enumerated inside when that is a callee's parentheses (compile/mill-running.tree `mill-capture`).
 export type MillCapture =
-  | { kind: 'word'; value: string; span?: Span; node?: Node; at?: number }
-  | { kind: 'text'; value: string; span?: Span; node?: Node; at?: number }
+  | { kind: 'word'; value: string; span?: Span; node?: Node; at?: number; within?: number }
+  | { kind: 'text'; value: string; span?: Span; node?: Node; at?: number; within?: number }
   | {
       kind: 'number'
       // a bigint only for an integer past 2^53, where a number would round to a different value
@@ -51,6 +52,7 @@ export type MillCapture =
       span?: Span
       node?: Node
       at?: number
+      within?: number
     }
   | {
       kind: 'match'
@@ -59,6 +61,7 @@ export type MillCapture =
       span?: Span
       node?: Node
       at?: number
+      within?: number
     }
 
 // one rule's fill: site name -> the captures that landed there, in order
@@ -155,8 +158,8 @@ export function readMintGrammar(tree: RootNode): MintGrammar {
 // A minted value keeps the CST node it was built from (and that node's extent), so the bridge that turns these
 // into compiler AST nodes can carry an exact span onto every one of them.
 export type Minted =
-  | { kind: 'word'; value: string; span?: Span; node?: Node; at?: number }
-  | { kind: 'text'; value: string; span?: Span; node?: Node; at?: number }
+  | { kind: 'word'; value: string; span?: Span; node?: Node; at?: number; within?: number }
+  | { kind: 'text'; value: string; span?: Span; node?: Node; at?: number; within?: number }
   | {
       kind: 'number'
       value: number | bigint
@@ -164,6 +167,7 @@ export type Minted =
       span?: Span
       node?: Node
       at?: number
+      within?: number
     }
   | {
       kind: 'form'
@@ -172,6 +176,7 @@ export type Minted =
       span?: Span
       node?: Node
       at?: number
+      within?: number
     }
 
 // a minted form's fields as the `Record` the bridge reads. The port hands back the same list wherever minting was
@@ -213,6 +218,7 @@ function mintedValue(value: port.Minted, seen: WeakMap<object, unknown>): Minted
     span: value.span,
     node: value.node as Node | undefined,
     ...(value.at === undefined ? {} : { at: value.at }),
+    ...(value.within === undefined ? {} : { within: value.within }),
   }
   seen.set(value, out)
 

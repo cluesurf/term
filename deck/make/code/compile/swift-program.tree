@@ -1,0 +1,2937 @@
+# THE SWIFT EMITTER'S PROGRAM PASS: a whole program written as one Swift file. It keeps docked modules apart from the
+# tasks named like them, stamps the program (decision 011), runs the analyses, hands compile/swift-emit.tree the
+# program's tables and the node-keyed answers as tests, asks it for each statement, and assembles the file: the
+# imports, the preludes the recorded needs call for, the `host` data structs, the unchecked copies, the Equatable,
+# Hashable and TermKeyed conformances, the tags, the form walkers and the wake chain.
+#
+# Ported from compile/swift.ts `emitSwift` (self-hosting, item term-self-host-001-0066), which stays a thin face. What
+# the face held by node identity is keyed here by the node's `place-row`, as compile/rust-program.tree and
+# compile/kotlin-program.tree do: every answer an analysis gives about a node (a proven step, a loop's guard, an ASCII
+# text, an owned inner list, a consumed subject, a slot local, a place write) is a table of rows, and the emitter's
+# tests are closures over those tables. A node the emitter makes for itself stands at no place (row 0) and has no fact.
+# The per-task facts the face kept in `WeakMap`s by the task (its text cursors, its redeclared `let`s) are kept by the
+# task's row, and a copy of a task (`name-fast`) stands at its row and reads the same.
+#
+# The face's reflective walk for the type kinds a program holds is node-reach.tree's walk, past `span`, and the node
+# classes' walk of a task body is the same walk past `type` and `span`, a closure's own nodes left out.
+#
+# The program is stamped after docks are kept apart (swift.ts did the same), so every fact reads the stamped copy.
+# The `host` data trees are named on a copy, which the emission reads, where the face renamed them in place.
+#
+# The wake chain reads the roll's entries as roll values (decision 040).
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find substring
+  find starts-with
+  find index-of
+  find to-upper-case
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load @term/base/float
+  find to-number
+
+load ../parser/diagnostic
+  find span
+
+load ./node
+  find type
+  find expression
+  find statement
+  find field-value
+  find form-field
+  find form-variant
+  find native-kind
+  find expression-type
+
+load ./node-rebuild
+  find place-row-of-expression
+  find place-row-of-statement
+
+load ./place-stamp
+  find stamp-places
+  find same-place
+
+load ./place-walk
+  find walk-program
+
+load ./node-reach
+  find reach-statements
+  find reach-expression
+
+load ./dock-apart
+  find keep-docks-apart
+
+load ./bind
+  find collect-binds
+  find referenced-binds
+  find bind-imports
+
+load ./tag
+  find tagged-forms
+  find tag-text
+
+load ./backend-shapes
+  find inspect-forms
+  find record-field
+  find reassigned
+
+load ./backend-names
+  find gated-tasks
+  find fill-tasks
+
+load ./backend-lending
+  find list-facts-of
+  find owned-fields
+  find native-forms
+  find owned-locals
+
+load ./backend-copies
+  find text-cursors-of
+
+load ./backend-loops
+  find redeclared-lets
+
+load ./backend-reads
+  find last-reads-of
+
+load ./backend-elements
+  find owned-elements-of
+
+load ./places
+  find scope-of
+  find private-forms-of
+  find value-places
+
+load ../check/effects
+  find raise-sets-of
+
+load ../ir/facts/steps
+  find proven-increments
+
+load ../ir/facts/intervals
+  find bounded-arithmetic
+
+load ../ir/facts/guards
+  find bounded-loops
+
+load ../ir/facts/ascii
+  find ascii-texts
+
+load ../term/quote
+  find json-quote
+
+load ./rolling
+  find roll-value
+  find string-of
+
+load ./unit-split
+  find mark-unit
+  find unmarked
+
+load ./kotlin-facts
+  find hidden-generics
+
+load ./swift-names
+  find camel
+  find camelize
+  find pascal
+  find body-throws
+  find swift-form-walk
+
+load ./swift-emit
+  find swift-facts
+  find swift-state
+  find new-swift-state
+  find emit-statement
+  find emit-unchecked
+  find swift-type-of
+  find node-class
+  find node-case
+  find bound-limit
+  find loop-guard
+  find slot-local
+  find place-write
+
+# ---- what crosses ----
+
+# one deck of what wakes the hive (compile/program-warnings.tree `wake-group`, decision 040): its entries roll values
+form swift-wake-group
+  link deck, like text
+  link entries, like list, like roll-value
+  link exceptions, like list, like roll-value
+  link tells, like list, like roll-value
+  link docks, like list, like roll-value
+
+# what each task's emission reads by node, by the task's row, worked out the first time it is asked
+form swift-task-facts
+  mark shared
+  link cursor-names, like hash, like number, like list, like text
+  link cursor-reads, like hash, like number, like hash, like number, like text
+  link redeclared, like hash, like number, like hash, like number, like boolean
+
+# the lists of lists that own their inner lists, by row, filled once the emitter can spell a type (swift.ts
+# `elementLists`): until then every test answers no, as the face's did while it was undefined
+form swift-element-tables
+  mark shared
+  link keys, like hash, like text, like boolean
+  link lets, like hash, like number, like text
+  link walks, like hash, like number, like text
+  link items, like hash, like number, like text
+  link moves, like hash, like number, like boolean
+
+# the `host` data trees named: the structs to declare
+form swift-host-structs
+  mark shared
+  link defs, like list, like text
+
+# the forms one form holds by value, for the `indirect` enums
+form swift-held-graph
+  mark shared
+  link forms, like hash, like text, like statement
+  link edges, like hash, like text, like hash, like text, like boolean
+
+# a fixpoint's set, in the order its names were found
+form swift-name-set
+  mark shared
+  link names, like hash, like text, like boolean
+
+# ---- small helpers ----
+
+task swift-program-skip
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <type>)
+  push(out, <span>)
+  back out
+
+task span-skip
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <span>)
+  back out
+
+task flags-of
+  take names, like list, like text
+  like hash, like text, like boolean
+  mark private
+
+  save out, make hash
+  walk names
+    take one
+    save out/{one}, true
+  back out
+
+task keys-of
+  take table, like hash, like text, like boolean
+  like list, like text
+  mark private
+
+  save out, make list
+  walk table/keys()
+    take one
+    push(out, one)
+  back out
+
+task has-name
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task join-with
+  take parts, like list, like text
+  take between, like text
+  like text
+  mark private
+
+  save out, <>
+  save first, true
+  walk parts
+    take part
+    fork test, first
+      hold
+        save out, part
+        save first, false
+      miss
+        save out, <{out}{between}{part}>
+  back out
+
+task expression-rows
+  take nodes, like list, like expression
+  like hash, like number, like boolean
+  mark private
+
+  save out, make hash
+  walk nodes
+    take node
+    save row, place-row-of-expression(node)
+    fork test, is-above(row, 0)
+      hold
+        save out/{row}, true
+  back out
+
+task statement-rows
+  take nodes, like list, like statement
+  like hash, like number, like boolean
+  mark private
+
+  save out, make hash
+  walk nodes
+    take node
+    save row, place-row-of-statement(node)
+    fork test, is-above(row, 0)
+      hold
+        save out/{row}, true
+  back out
+
+task has-expression-row
+  take table, like hash, like number, like boolean
+  take node, like expression
+  like boolean
+  mark private
+
+  save row, place-row-of-expression(node)
+  back and(is-above(row, 0), table/has(row))
+
+task has-statement-row
+  take table, like hash, like number, like boolean
+  take node, like statement
+  like boolean
+  mark private
+
+  save row, place-row-of-statement(node)
+  back and(is-above(row, 0), table/has(row))
+
+task is-type-kind
+  take kind, like native-kind
+  like boolean
+  mark private
+
+  sift kind
+    case type
+      back true
+    miss
+      back false
+
+# a native binding that is a `type` dock
+task is-type-native
+  take kind, like maybe, like native-kind
+  like boolean
+  mark private
+
+  sift kind
+    case some
+      link native-kind
+      back is-type-kind(native-kind)
+    case none
+      back false
+
+task named-name
+  take given, like maybe, like type
+  like maybe, like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case named
+          link name
+          back make(some, name)
+        miss
+          back make none
+    case none
+      back make none
+
+task first-function
+  take program, like list, like statement
+  take wanted, like text
+  like maybe, like statement
+  mark private
+
+  walk program
+    take one
+    sift one
+      case function
+        link name
+        fork test, is-equal(name, wanted)
+          hold
+            back make(some, one)
+      miss
+        save idle, 0
+  back make none
+
+task statement-span-of
+  take one, like statement
+  like span
+  mark private
+
+  sift one
+    case let
+      link span
+      back span
+    case function
+      link span
+      back span
+    case record-type
+      link span
+      back span
+    case mask
+      link span
+      back span
+    case instance
+      link span
+      back span
+    case native
+      link span
+      back span
+    case bind
+      link span
+      back span
+    case view
+      link span
+      back span
+    case dock
+      link span
+      back span
+    case roll
+      link span
+      back span
+    case tell
+      link span
+      back span
+    case assign
+      link span
+      back span
+    case expression
+      link span
+      back span
+    case if
+      link span
+      back span
+    case while
+      link span
+      back span
+    case match
+      link span
+      back span
+    case for-each
+      link span
+      back span
+    case break
+      link span
+      back span
+    case continue
+      link span
+      back span
+    case return
+      link span
+      back span
+    case exit
+      link span
+      back span
+    case debug
+      link span
+      back span
+    case probe
+      link span
+      back span
+    case guard
+      link span
+      back span
+    case throw
+      link span
+      back span
+    case hold
+      link span
+      back span
+
+task file-of
+  take one, like statement
+  like text
+  mark private
+
+  save at, statement-span-of(one)
+  sift at/file
+    case some
+      link file
+      back file
+    case none
+      back <>
+
+# a module path as an import names it: a leading `scheme:` (lower-case letters) dropped, `/^[a-z]+:/`
+task without-scheme
+  take module, like text
+  like text
+  mark private
+
+  save runes, to-runes(module)
+  save at, 0
+  walk test
+    hook test, and(is-below(at, runes/length), and(is-minimum(get(runes, at), 97), is-maximum(get(runes, at), 122)))
+    hook hold
+      save at, add(at, 1)
+  fork test, and(and(is-above(at, 0), is-below(at, runes/length)), is-equal(get(runes, at), 58))
+    hold
+      back substring(module, add(at, 1))
+  back module
+
+# a parameter name upper-cased, as a Swift generic is spelled (`p.toUpperCase()`)
+task upper-params
+  take params, like list, like text
+  take bound, like text
+  like text
+  mark private
+
+  save parts, make list
+  walk params
+    take param
+    push(parts, <{to-upper-case(param)}: {bound}>)
+  back <where {join-with(parts, <, >)}>
+
+task where-clause
+  take params, like list, like text
+  take bound, like text
+  like text
+  mark private
+
+  fork test, is-equal(params/length, 0)
+    hold
+      back <>
+  back < {upper-params(params, bound)}>
+
+# whether a code point is a word character, JavaScript's `\w`
+task is-word-code
+  take code, like number
+  like boolean
+  mark private
+
+  back or(or(or(and(is-minimum(code, 48), is-maximum(code, 57)), and(is-minimum(code, 65), is-maximum(code, 90))), and(is-minimum(code, 97), is-maximum(code, 122))), is-equal(code, 95))
+
+# `/^final class X\b/`: the text opens with the class, and no word character follows its name
+task opens-class
+  take text, like text
+  take name, like text
+  like boolean
+  mark private
+
+  save head, <final class {name}>
+  fork test, not(starts-with(text, head))
+    hold
+      back false
+  save rest, substring(text, head/length, add(head/length, 1))
+  fork test, is-equal(rest, <>)
+    hold
+      back true
+  back not(is-word-code(get(to-runes(rest), 0)))
+
+# a number in lower-case hexadecimal, padded with zeros to `width`
+task hex-of
+  take value, like number
+  take width, like number
+  like text
+  mark private
+
+  save digits, <0123456789abcdef>
+  save out, <>
+  save rest, value
+  walk test
+    hook test, is-above(rest, 0)
+    hook hold
+      save digit, modulo(rest, 16)
+      save out, <{substring(digits, digit, add(digit, 1))}{out}>
+      save rest, divide(subtract(rest, digit), 16)
+  fork test, is-equal(out, <>)
+    hold
+      save out, <0>
+  walk test
+    hook test, is-below(out/length, width)
+    hook hold
+      save out, <0{out}>
+  back out
+
+# a Swift string literal: JSON's \u0007 and \f are not Swift escapes, so every other control character is \u{..}
+task swift-quote-text
+  take value, like text
+  like text
+  mark private
+
+  save out, <>
+  walk to-runes(value)
+    take code
+    fork test, is-equal(code, 92)
+      hold
+        save out, <{out}\\\\>
+        turn next
+    fork test, is-equal(code, 34)
+      hold
+        save out, <{out}\\">
+        turn next
+    fork test, is-equal(code, 10)
+      hold
+        save out, <{out}\\n>
+        turn next
+    fork test, is-equal(code, 13)
+      hold
+        save out, <{out}\\r>
+        turn next
+    fork test, is-equal(code, 9)
+      hold
+        save out, <{out}\\t>
+        turn next
+    fork test, or(is-below(code, 32), is-equal(code, 127))
+      hold
+        save out, <{out}\\u\{{hex-of(code, 1)}\}>
+        turn next
+    save single, make list
+    push(single, code)
+    save out, <{out}{from-runes(single)}>
+  back <"{out}">
+
+task fields-of-form
+  take node, like statement
+  like list, like form-field
+  mark private
+
+  sift node
+    case record-type
+      link fields
+      back fields
+    miss
+      back make list
+
+task variants-of-form
+  take node, like statement
+  like list, like form-variant
+  mark private
+
+  sift node
+    case record-type
+      link variants
+      back variants
+    miss
+      back make list
+
+task params-of-form
+  take node, like statement
+  like list, like text
+  mark private
+
+  sift node
+    case record-type
+      link params
+      back params
+    miss
+      back make list
+
+task is-shared-form
+  take node, like statement
+  like boolean
+  mark private
+
+  sift node
+    case record-type
+      link shared
+      back is-equal(shared, true)
+    miss
+      back false
+
+# every field type a form holds: its own fields, then each case's
+task field-types-of
+  take node, like statement
+  like list, like type
+  mark private
+
+  save out, make list
+  walk fields-of-form(node)
+    take field
+    push(out, field/type)
+  walk variants-of-form(node)
+    take variant
+    walk variant/fields
+      take field
+      push(out, field/type)
+  back out
+
+task record-fields-of
+  take fields, like list, like form-field
+  like list, like record-field
+  mark private
+
+  save out, make list
+  walk fields
+    take field
+    save one
+      make record-field
+        bind name, field/name
+        bind type, field/type
+        bind optional, field/optional
+    push(out, one)
+  back out
+
+task variant-record-fields
+  take variant, like form-variant
+  like list, like record-field
+  mark private
+
+  save out, make list
+  walk variant/fields
+    take field
+    save one
+      make record-field
+        bind name, field/name
+        bind type, field/type
+        bind optional, field/optional
+    push(out, one)
+  back out
+
+# ---- the wake chain ----
+
+# a roll value as `JSON.stringify` writes it, inside a list (where nothing is `null`)
+task json-item
+  take value, like roll-value
+  like text
+  mark private
+
+  sift value
+    case no-value
+      back <null>
+    miss
+      back json-of(value)
+
+task json-of
+  take value, like roll-value
+  like text
+  mark private
+
+  sift value
+    case no-value
+      back <null>
+    case null-value
+      back <null>
+    case text-value
+      link text
+      back json-quote(text)
+    case number-value
+      link number
+      back <{number}>
+    case flag-value
+      link flag
+      fork test, flag
+        hold
+          back <true>
+      back <false>
+    case item-values
+      link values
+      save parts, make list
+      walk values
+        take one
+        push(parts, json-item(one))
+      back <[{join-with(parts, <,>)}]>
+    case pair-values
+      link pairs
+      save parts, make list
+      walk pairs
+        take pair
+        sift pair/value
+          case no-value
+            save idle, 0
+          miss
+            push(parts, <{json-quote(pair/key)}:{json-of(pair/value)}>)
+      back <\{{join-with(parts, <,>)}\}>
+
+# the value under a key, none when the entry has no such key
+task wake-at
+  take entry, like roll-value
+  take key, like text
+  like maybe, like roll-value
+  mark private
+
+  sift entry
+    case pair-values
+      link pairs
+      walk pairs
+        take pair
+        fork test, is-equal(pair/key, key)
+          hold
+            save found, pair/value
+            back make(some, found)
+      back make none
+    miss
+      back make none
+
+# `String(value ?? '')`
+task value-string
+  take value, like roll-value
+  like text
+  mark private
+
+  sift value
+    case no-value
+      back <>
+    case null-value
+      back <>
+    miss
+      back string-of(value)
+
+# `String(entry[key] ?? '')`
+task wake-string
+  take entry, like roll-value
+  take key, like text
+  like text
+  mark private
+
+  sift wake-at(entry, key)
+    case some
+      link found
+      back value-string(found)
+    case none
+      back <>
+
+# `entry[key] ?? {}`
+task wake-record
+  take entry, like roll-value
+  take key, like text
+  like roll-value
+  mark private
+
+  save empty
+    make pair-values
+      bind pairs, make list
+  sift wake-at(entry, key)
+    case some
+      link found
+      sift found
+        case no-value
+          back empty
+        case null-value
+          back empty
+        miss
+          back found
+    case none
+      back empty
+
+# a value as the typed wake writes a text
+task wake-text-of
+  take entry, like roll-value
+  take key, like text
+  like text
+  mark private
+
+  back swift-quote-text(wake-string(entry, key))
+
+# a list of texts, the empty one when the value is no list: a list FIELD of a struct is a Swift array
+task wake-texts-of
+  take entry, like roll-value
+  take key, like text
+  like text
+  mark private
+
+  save parts, make list
+  sift wake-at(entry, key)
+    case some
+      link found
+      sift found
+        case item-values
+          link values
+          walk values
+            take one
+            push(parts, swift-quote-text(value-string(one)))
+        miss
+          save idle, 0
+    case none
+      save idle, 0
+  back <[{join-with(parts, <, >)}] as [String]>
+
+task wake-entry-text
+  take entry, like roll-value
+  like text
+  mark private
+
+  save boxed-base, <>
+  save has-ref, false
+  sift wake-at(entry, <ref>)
+    case some
+      link ref-value
+      sift ref-value
+        case text-value
+          link value
+          save has-ref, true
+          save boxed-base, camel(value)
+        miss
+          save idle, 0
+    case none
+      save idle, 0
+  fork test, not(has-ref)
+    hold
+      save boxed-base, json-quote(json-of(wake-record(entry, <base>)))
+  save host, json-quote(wake-string(entry, <host>))
+  save kind, json-quote(wake-string(entry, <kind>))
+  save name, json-quote(wake-string(entry, <name>))
+  save site, json-quote(wake-string(entry, <site>))
+  back <HiveEntry(host: {host}, kind: {kind}, name: {name}, site: {site}, base: {boxed-base})>
+
+task wake-typed-entry
+  take form-name, like text
+  take entry, like roll-value
+  take base, like text
+  like text
+  mark private
+
+  back <HiveEntry\<{form-name}\>(host: {wake-text-of(entry, <host>)}, kind: {wake-text-of(entry, <kind>)}, name: {wake-text-of(entry, <name>)}, site: {wake-text-of(entry, <site>)}, base: {base})>
+
+task wake-typed-list
+  take form-name, like text
+  take entries, like list, like text
+  like text
+  mark private
+
+  back <SeedList\<HiveEntry\<{form-name}\>\>([{join-with(entries, <, >)}])>
+
+# `Object.entries(roll.link ?? {})`: a record's keys, a list's indexes
+task link-pairs
+  take value, like roll-value
+  like list, like text
+  mark private
+
+  save out, make list
+  sift value
+    case pair-values
+      link pairs
+      walk pairs
+        take pair
+        push(out, <Pair\<String, String\>(first: {swift-quote-text(pair/key)}, second: {swift-quote-text(value-string(pair/value))})>)
+    case item-values
+      link values
+      save at, 0
+      walk values
+        take one
+        push(out, <Pair\<String, String\>(first: {swift-quote-text(<{at}>)}, second: {swift-quote-text(value-string(one))})>)
+        save at, add(at, 1)
+    miss
+      save idle, 0
+  back out
+
+task wake-typed-call
+  take group, like swift-wake-group
+  like text
+  mark private
+
+  save exceptions, make list
+  walk group/exceptions
+    take entry
+    save roll, wake-record(entry, <base>)
+    save links, link-pairs(wake-record(roll, <link>))
+    save base, <ExceptionRoll(like: {wake-text-of(roll, <like>)}, chain: {wake-texts-of(roll, <chain>)}, note: {wake-text-of(roll, <note>)}, link: [{join-with(links, <, >)}] as [Pair\<String, String\>])>
+    push(exceptions, wake-typed-entry(<ExceptionRoll>, entry, base))
+  save tells, make list
+  walk group/tells
+    take entry
+    save roll, wake-record(entry, <base>)
+    save base, <TellRoll(note: {wake-text-of(roll, <note>)}, hint: {wake-text-of(roll, <hint>)}, link: {wake-texts-of(roll, <link>)}, alias: {wake-text-of(roll, <alias>)})>
+    push(tells, wake-typed-entry(<TellRoll>, entry, base))
+  save docks, make list
+  walk group/docks
+    take entry
+    save roll, wake-record(entry, <base>)
+    push(docks, wake-typed-entry(<DockRoll>, entry, <DockRoll(halt: {wake-texts-of(roll, <halt>)})>))
+  back <  hiveWakeTyped(name: {json-quote(group/deck)}, exceptions: {wake-typed-list(<ExceptionRoll>, exceptions)}, tells: {wake-typed-list(<TellRoll>, tells)}, docks: {wake-typed-list(<DockRoll>, docks)})>
+
+task is-typed-kind
+  take entry, like roll-value
+  like boolean
+  mark private
+
+  save kind, <undefined>
+  sift wake-at(entry, <kind>)
+    case some
+      link found
+      save kind, string-of(found)
+    case none
+      save idle, 0
+  back or(or(is-equal(kind, <exception>), is-equal(kind, <tell>)), is-equal(kind, <dock>))
+
+# the wake chain: one `hiveWake` per deck with its static entries, when the program has the stdlib hive and the compile
+# driver handed over the roll. A static entry's `base` is the declaration as JSON text; an entry with a `ref` (a
+# declared kind's constant) binds the live module constant. See note/project/term/hive/05-hive.md, and THE TYPED WAKE
+# (seam spec §3.3), as typescript.ts and kotlin.ts write it
+task wake-chain
+  take program, like list, like statement
+  take wake, like list, like swift-wake-group
+  like list, like text
+  mark private
+
+  save out, make list
+  fork test, is-equal(wake/length, 0)
+    hold
+      back out
+  save has-wake, false
+  save typed, false
+  walk program
+    take one
+    sift one
+      case function
+        link name
+        fork test, is-equal(name, <hive-wake>)
+          hold
+            save has-wake, true
+        fork test, is-equal(name, <hive-wake-typed>)
+          hold
+            save typed, true
+      miss
+        save idle, 0
+  fork test, not(has-wake)
+    hold
+      back out
+  save calls, make list
+  walk wake
+    take group
+    save texts, make list
+    walk group/entries
+      take entry
+      fork test, and(typed, is-typed-kind(entry))
+        hold
+          turn next
+      push(texts, wake-entry-text(entry))
+    save woken, <  hiveWake(name: {json-quote(group/deck)}, roll: SeedList\<HiveEntry\>([{join-with(texts, <, >)}]))>
+    fork test, typed
+      hold
+        push(calls, <{woken}\n{wake-typed-call(group)}>)
+      miss
+        push(calls, woken)
+  push(out, <func wakeHive() -\> Void \{\n{join-with(calls, <\n>)}\n\}>)
+  back out
+
+# ---- the host data trees ----
+
+bind swift-program-copy-expression
+  take value, like expression
+  like expression
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+bind swift-program-copy-statement
+  take value, like statement
+  like statement
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+task is-anonymous-record
+  take value, like expression
+  like boolean
+  mark private
+
+  sift value
+    case record
+      link name
+      back is-equal(name, <>)
+    miss
+      back false
+
+task host-leaf-type
+  take value, like expression
+  like text
+  mark private
+
+  sift value
+    case integer
+      back <Int>
+    case float
+      back <Double>
+    case string
+      back <String>
+    case boolean
+      back <Bool>
+    miss
+      back <Int>
+
+# a module-level `host` data tree is an ANONYMOUS nested record: with no name it emits as a labelled tuple, and a
+# single-field tuple is not valid Swift. One struct per record node, named by the binding and the field path (HostRange,
+# HostRangeH), each declared after the ones it holds. Answers a copy of the record with its name, and every nested
+# anonymous record named the same way
+task name-host-record
+  take value, like expression
+  take base, like text
+  take structs, like swift-host-structs
+  like expression
+  mark private
+
+  save copy, swift-program-copy-expression(value)
+  sift copy
+    case record
+      link fields
+      save named-fields, make list
+      save texts, make list
+      walk fields
+        take field
+        save inner, field/value
+        fork test, is-anonymous-record(inner)
+          hold
+            save nested-name, <{base}{pascal(field/name)}>
+            save renamed, name-host-record(inner, nested-name, structs)
+            push(texts, <var {camel(field/name)}: {nested-name}>)
+            save named-field
+              make field-value
+                bind name, field/name
+                bind value, renamed
+            push(named-fields, named-field)
+          miss
+            push(texts, <var {camel(field/name)}: {host-leaf-type(inner)}>)
+            push(named-fields, field)
+      save copy/name, base
+      save copy/fields, named-fields
+      save defs, structs/defs
+      push(defs, <struct {base} \{ {join-with(texts, <; >)} \}>)
+      save structs/defs, defs
+    miss
+      save idle, 0
+  back copy
+
+# the program with each top-level `host` data tree named, and the structs that names
+task name-host-trees
+  take program, like list, like statement
+  take structs, like swift-host-structs
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case let
+        link name
+        link init
+        fork test, is-anonymous-record(init)
+          hold
+            save renamed, name-host-record(init, <Host{pascal(name)}>, structs)
+            save copy, swift-program-copy-statement(one)
+            sift copy
+              case let
+                save copy/init, renamed
+              miss
+                save idle, 0
+            push(out, copy)
+          miss
+            push(out, one)
+      miss
+        push(out, one)
+  back out
+
+# ---- the analyses ----
+
+# every type kind the program's nodes carry: a list or map value has a list or map type on some node even where the
+# emitter writes no annotation for it. Answers the helpers that records, `list` and `map`, as swift.ts `typeKindsIn`
+task type-needs
+  take program, like list, like statement
+  like hash, like text, like boolean
+  mark private
+
+  save has-list, false
+  save has-map, false
+  walk reach-statements(program, span-skip())/types
+    take one
+    sift one
+      case array
+        save has-list, true
+      case map
+        save has-map, true
+      miss
+        save idle, 0
+  save out, make hash
+  fork test, has-list
+    hold
+      save list-need, <list>
+      save out/{list-need}, true
+  fork test, has-map
+    hold
+      save map-need, <map>
+      save out/{map-need}, true
+  back out
+
+# the forms by name, the last of a name kept at the place its first stood (a `Map` set again)
+task forms-by-name
+  take program, like list, like statement
+  take with-shared, like boolean
+  like hash, like text, like statement
+  mark private
+
+  save out, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        link name
+        link shared
+        fork test, or(with-shared, not(is-equal(shared, true)))
+          hold
+            save out/{name}, one
+      miss
+        save idle, 0
+  back out
+
+task add-edge
+  take graph, like swift-held-graph
+  take from, like text
+  take to, like text
+  like boolean
+  mark private
+
+  fork test, not(graph/forms/has(to))
+    hold
+      back false
+  fork test, is-shared-form(graph/forms/get(to))
+    hold
+      back false
+  save edges, graph/edges
+  save out, make hash
+  fork test, edges/has(from)
+    hold
+      save out, edges/get(from)
+  save out/{to}, true
+  save edges/{from}, out
+  save graph/edges, edges
+  back true
+
+task hold-edges
+  take graph, like swift-held-graph
+  take from, like text
+  take given, like type
+  like boolean
+  mark private
+
+  sift given
+    case named
+      link name
+      link args
+      add-edge(graph, from, name)
+      walk read(args)
+        take arg
+        hold-edges(graph, name, arg)
+        hold-edges(graph, from, arg)
+    miss
+      save idle, 0
+  back true
+
+task reaches-itself
+  take graph, like swift-held-graph
+  take start, like text
+  like boolean
+  mark private
+
+  save seen, make hash
+  save stack, make list
+  save edges, graph/edges
+  fork test, edges/has(start)
+    hold
+      save first-edges, edges/get(start)
+      walk first-edges/keys()
+        take next
+        push(stack, next)
+  walk test
+    hook test, is-above(stack/length, 0)
+    hook hold
+      save next, pop(stack)
+      fork test, is-equal(next, start)
+        hold
+          back true
+      fork test, not(seen/has(next))
+        hold
+          save seen/{next}, true
+          fork test, edges/has(next)
+            hold
+              save next-edges, edges/get(next)
+              walk next-edges/keys()
+                take after
+                push(stack, after)
+  back false
+
+# The enums that must be `indirect`: those on a cycle of forms that hold each other BY VALUE (swift.ts said why). A
+# list, a map and a function are references, and a `shared` form is a class, so none of them carries a cycle
+task recursive-enums
+  take program, like list, like statement
+  like hash, like text, like boolean
+  mark private
+
+  save graph
+    make swift-held-graph
+      bind forms, forms-by-name(program, true)
+      bind edges, make hash
+  walk graph/forms/keys()
+    take name
+    save node, graph/forms/get(name)
+    fork test, is-shared-form(node)
+      hold
+        turn next
+    walk field-types-of(node)
+      take field-type
+      hold-edges(graph, name, field-type)
+  save out, make hash
+  walk graph/forms/keys()
+    take name
+    save node, graph/forms/get(name)
+    fork test, and(is-above(variants-of-form(node)/length, 0), reaches-itself(graph, name))
+      hold
+        save out/{name}, true
+  back out
+
+# whether a type holds a float anywhere a key could see it (swift.ts `swiftKeyConformances`)
+task holds-float
+  take given, like type
+  take params, like hash, like text, like boolean
+  take floaty, like swift-name-set
+  like boolean
+  mark private
+
+  sift given
+    case float
+      back true
+    case array
+      back true
+    case map
+      back true
+    case named
+      link name
+      link args
+      fork test, or(or(is-equal(name, <float>), is-equal(name, <list>)), is-equal(name, <hash>))
+        hold
+          back true
+      fork test, or(params/has(name), floaty/names/has(name))
+        hold
+          back true
+      walk read(args)
+        take arg
+        fork test, holds-float(arg, params, floaty)
+          hold
+            back true
+      back false
+    miss
+      back false
+
+task key-hash
+  take value, like text
+  like text
+  mark private
+
+  back <termKeyHash({value}, into: &h)>
+
+task key-eq
+  take left, like text
+  take right, like text
+  like text
+  mark private
+
+  back <termKeyEq({left}, {right})>
+
+task or-true
+  take text, like text
+  like text
+  mark private
+
+  fork test, is-equal(text, <>)
+    hold
+      back <true>
+  back text
+
+task bound-names
+  take prefix, like text
+  take count, like number
+  like text
+  mark private
+
+  fork test, is-equal(count, 0)
+    hold
+      back <>
+  save parts, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      push(parts, <let {prefix}{at}>)
+      save at, add(at, 1)
+  back <({join-with(parts, <, >)})>
+
+task held-class
+  take node-classes, like hash, like text, like node-class
+  take name, like text
+  like maybe, like node-class
+  mark private
+
+  fork test, node-classes/has(name)
+    hold
+      save held, node-classes/get(name)
+      back make(some, held)
+  back make none
+
+task class-field-names
+  take held, like node-class
+  like list, like text
+  mark private
+
+  save out, make list
+  walk held/fields
+    take field
+    push(out, camel(field/name))
+  back out
+
+# `TermKeyed` for every hashable form that can hold a float, so a map keyed by one follows the key rule (see the map
+# runtime): each field hashed and compared by `termKeyHash` / `termKeyEq`, an enum's case first
+task key-conformances
+  take form-decls, like hash, like text, like statement
+  take declared, like hash, like text, like boolean
+  take hashable, like hash, like text, like boolean
+  take equatable, like hash, like text, like boolean
+  take node-classes, like hash, like text, like node-class
+  like list, like text
+  mark private
+
+  save floaty
+    make swift-name-set
+      bind names, make hash
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      walk form-decls/keys()
+        take name
+        save node, form-decls/get(name)
+        save params, flags-of(params-of-form(node))
+        fork test, floaty/names/has(name)
+          hold
+            turn next
+        save holds, false
+        walk field-types-of(node)
+          take field-type
+          fork test, holds-float(field-type, params, floaty)
+            hold
+              save holds, true
+              halt
+        fork test, holds
+          hold
+            save names, floaty/names
+            save names/{name}, true
+            save floaty/names, names
+            save changed, true
+  save out, make list
+  walk floaty/names/keys()
+    take name
+    save node, form-decls/get(name)
+    fork test, or(or(not(declared/has(name)), not(hashable/has(name))), or(not(equatable/has(name)), is-shared-form(node)))
+      hold
+        turn next
+    save where-text, where-clause(params-of-form(node), <Hashable>)
+    save variants, variants-of-form(node)
+    save held, held-class(node-classes, name)
+    fork test, is-equal(variants/length, 0)
+      hold
+        save hashes, make list
+        save tests, make list
+        walk fields-of-form(node)
+          take field
+          save f, camel(field/name)
+          push(hashes, key-hash(f))
+          push(tests, key-eq(f, <o.{f}>))
+        push(out, <extension {pascal(name)}: TermKeyed{where-text} \{\n  func termHash(into h: inout Hasher) \{ {join-with(hashes, <; >)} \}\n  func termEq(_ other: Any) -\> Bool \{ guard let o = other as? Self else \{ return false \}; return {or-true(join-with(tests, < && >))} \}\n\}>)
+        turn next
+    save hash-arms, make list
+    save eq-arms, make list
+    save at, 0
+    walk variants
+      take variant
+      save n, variant/fields/length
+      sift held
+        case some
+          link known
+          fork test, is-equal(variant/name, known/label)
+            hold
+              save n, 1
+        case none
+          save idle, 0
+      save hash-tail, <>
+      save tests, make list
+      save k, 0
+      walk test
+        hook test, is-below(k, n)
+        hook hold
+          save hash-tail, <{hash-tail}; {key-hash(<a{k}>)}>
+          push(tests, key-eq(<a{k}>, <b{k}>))
+          save k, add(k, 1)
+      save label, camel(variant/name)
+      push(hash-arms, <case .{label}{bound-names(<a>, n)}: h.combine({at}){hash-tail}>)
+      push(eq-arms, <case (.{label}{bound-names(<a>, n)}, .{label}{bound-names(<b>, n)}): return {or-true(join-with(tests, < && >))}>)
+      save at, add(at, 1)
+    save default-arm, <>
+    fork test, is-above(variants/length, 1)
+      hold
+        save default-arm, <; default: return false>
+    push(out, <extension {pascal(name)}: TermKeyed{where-text} \{\n  func termHash(into h: inout Hasher) \{ switch self \{ {join-with(hash-arms, <; >)} \} \}\n  func termEq(_ other: Any) -\> Bool \{ guard let o = other as? Self else \{ return false \}; switch (self, o) \{ {join-with(eq-arms, <; >)}{default-arm} \} \}\n\}>)
+    sift held
+      case some
+        link known
+        save hashes, make list
+        save tests, make list
+        walk class-field-names(known)
+          take f
+          push(hashes, key-hash(f))
+          push(tests, key-eq(f, <o.{f}>))
+        push(out, <extension {known/name}: TermKeyed \{\n  func termHash(into h: inout Hasher) \{ {join-with(hashes, <; >)} \}\n  func termEq(_ other: Any) -\> Bool \{ guard let o = other as? {known/name} else \{ return false \}; return self === o || ({or-true(join-with(tests, < && >))}) \}\n\}>)
+      case none
+        save idle, 0
+  back out
+
+# whether a field of the type keeps a form Equatable (or Hashable): swift.ts `fieldTypeQualifies`
+task field-qualifies
+  take given, like type
+  take params, like hash, like text, like boolean
+  take forms, like swift-name-set
+  take shared, like hash, like text, like boolean
+  like boolean
+  mark private
+
+  sift given
+    case number
+      back true
+    case float
+      back true
+    case boolean
+      back true
+    case string
+      back true
+    case bytes
+      back true
+    case array
+      link element
+      back field-qualifies(element, params, forms, shared)
+    # a map hashes by its entries in any order (`SeedMap: Hashable`), so it may sit in a key
+    case map
+      link value
+      back field-qualifies(value, params, forms, shared)
+    case named
+      link name
+      link args
+      save all-args, make list
+      walk read(args)
+        take arg
+        push(all-args, arg)
+      fork test, or(is-equal(name, <text>), is-equal(name, <boolean>))
+        hold
+          back true
+      fork test, is-equal(name, <list>)
+        hold
+          walk all-args
+            take arg
+            fork test, not(field-qualifies(arg, params, forms, shared))
+              hold
+                back false
+          back true
+      fork test, is-equal(name, <hash>)
+        hold
+          fork test, is-below(all-args/length, 2)
+            hold
+              back true
+          back field-qualifies(get(all-args, 1), params, forms, shared)
+      fork test, params/has(name)
+        hold
+          back true
+      # a `mark shared` class is Equatable and Hashable by identity, wherever it sits
+      fork test, shared/has(name)
+        hold
+          back true
+      fork test, not(forms/names/has(name))
+        hold
+          back false
+      walk all-args
+        take arg
+        fork test, not(field-qualifies(arg, params, forms, shared))
+          hold
+            back false
+      back true
+    miss
+      back false
+
+# the forms that stay when every form whose fields do not qualify is dropped, until none drops: a greatest fixpoint,
+# so a recursive form qualifies unless something else disqualifies it
+task qualifying-forms
+  take form-decls, like hash, like text, like statement
+  take shared, like hash, like text, like boolean
+  like hash, like text, like boolean
+  mark private
+
+  save forms
+    make swift-name-set
+      bind names, make hash
+  walk form-decls/keys()
+    take name
+    save names, forms/names
+    save names/{name}, true
+    save forms/names, names
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      walk keys-of(forms/names)
+        take name
+        save node, form-decls/get(name)
+        save params, flags-of(params-of-form(node))
+        save fits, true
+        walk field-types-of(node)
+          take field-type
+          fork test, not(field-qualifies(field-type, params, forms, shared))
+            hold
+              save fits, false
+              halt
+        fork test, not(fits)
+          hold
+            save kept, make hash
+            walk forms/names/keys()
+              take other
+              fork test, is-unequal(other, name)
+                hold
+                  save kept/{other}, true
+            save forms/names, kept
+            save changed, true
+  back forms/names
+
+# the map key indices of a generic form: which of its parameters (by index) flow into a map KEY inside its fields
+task find-keys
+  take given, like type
+  take keys, like swift-name-set
+  like boolean
+  mark private
+
+  sift given
+    case map
+      link key
+      link value
+      sift key
+        case named
+          link name
+          save names, keys/names
+          save names/{name}, true
+          save keys/names, names
+        miss
+          save idle, 0
+      find-keys(key, keys)
+      find-keys(value, keys)
+    case array
+      link element
+      find-keys(element, keys)
+    case named
+      link args
+      walk read(args)
+        take arg
+        find-keys(arg, keys)
+    miss
+      save idle, 0
+  back true
+
+task form-key-indices-of
+  take program, like list, like statement
+  like hash, like text, like list, like number
+  mark private
+
+  save out, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        link name
+        link params
+        link fields
+        link variants
+        fork test, is-equal(params/length, 0)
+          hold
+            turn next
+        save keys
+          make swift-name-set
+            bind names, make hash
+        fork test, is-above(variants/length, 0)
+          hold
+            walk variants
+              take variant
+              walk variant/fields
+                take field
+                find-keys(field/type, keys)
+          miss
+            walk fields
+              take field
+              find-keys(field/type, keys)
+        save indices, make list
+        save at, 0
+        walk params
+          take param
+          fork test, keys/names/has(param)
+            hold
+              push(indices, at)
+          save at, add(at, 1)
+        fork test, is-above(indices/length, 0)
+          hold
+            save out/{name}, indices
+      miss
+        save idle, 0
+  back out
+
+# the rows of every expression and statement inside a closure among these, the closures' own nodes included
+task closure-rows
+  take reached-expressions, like list, like expression
+  take skip, like list, like text
+  like hash, like number, like boolean
+  mark private
+
+  save out, make hash
+  walk reached-expressions
+    take node
+    sift node
+      case closure
+        save inner, reach-expression(node, skip)
+        walk inner/expressions
+          take one
+          save row, place-row-of-expression(one)
+          fork test, is-above(row, 0)
+            hold
+              save out/{row}, true
+        walk inner/statements
+          take one
+          save row, place-row-of-statement(one)
+          fork test, is-above(row, 0)
+            hold
+              save out/{row}, true
+      miss
+        save idle, 0
+  back out
+
+# NODES REUSED (Swift's side of rust.ts `reusable`, swift.ts says what each buys): a recursive form whose case that
+# holds the form is opened at a local's last read and built again in one task keeps that case's fields in a final class
+# instead, and the task keeps a node its match opened in a spare of its own. Answers the node classes by form, the
+# spare forms by task, and the rows of the match subjects matched with `consume`
+form swift-node-reuse
+  mark shared
+  link classes, like hash, like text, like node-class
+  link spares, like hash, like text, like list, like text
+  link consumed, like hash, like number, like boolean
+
+task node-reuse-of
+  take program, like list, like statement
+  take recursive, like hash, like text, like boolean
+  like swift-node-reuse
+  mark private
+
+  save answer
+    make swift-node-reuse
+      bind classes, make hash
+      bind spares, make hash
+      bind consumed, make hash
+  save taken, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        link name
+        save spelled, pascal(name)
+        save taken/{spelled}, true
+      miss
+        save idle, 0
+  save candidates, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        link name
+        link params
+        link variants
+        fork test, or(not(recursive/has(name)), is-above(params/length, 0))
+          hold
+            turn next
+        save has-empty, false
+        walk variants
+          take variant
+          fork test, is-equal(variant/fields/length, 0)
+            hold
+              save has-empty, true
+        fork test, not(has-empty)
+          hold
+            turn next
+        save holding, make list
+        walk variants
+          take variant
+          save holds, false
+          walk variant/fields
+            take field
+            sift field/type
+              case named
+                link field-type-name
+                fork test, is-equal(field-type-name, name)
+                  hold
+                    save holds, true
+              miss
+                save idle, 0
+          fork test, holds
+            hold
+              push(holding, variant)
+        fork test, is-equal(holding/length, 1)
+          hold
+            save holder, get(holding, 0)
+            save class-name, <{pascal(name)}{pascal(holder/name)}>
+            fork test, not(taken/has(class-name))
+              hold
+                save one-class
+                  make node-class
+                    bind label, holder/name
+                    bind name, class-name
+                    bind fields, variant-record-fields(holder)
+                save candidates/{name}, one-class
+      miss
+        save idle, 0
+  fork test, is-equal(candidates/keys()/length, 0)
+    hold
+      back answer
+  save skip, swift-program-skip()
+  walk program
+    take fn
+    sift fn
+      case function
+        link fn-name
+        link fn-params
+        link fn-body
+        save last, expression-rows(last-reads-of(fn-body, false)/last)
+        save reached, reach-statements(fn-body, skip)
+        save inside, closure-rows(reached/expressions, skip)
+        save lets, make hash
+        save opened-forms, make list
+        save opened, make hash
+        save built, make hash
+        walk reached/statements
+          take one
+          save row, place-row-of-statement(one)
+          fork test, and(is-above(row, 0), inside/has(row))
+            hold
+              turn next
+          sift one
+            case let
+              link let-name
+              fork test, is-unequal(let-name, <>)
+                hold
+                  save lets/{let-name}, true
+            case match
+              link subject
+              link cases
+              sift subject
+                case variable
+                  sift named-name(expression-type(subject))
+                    case some
+                      link subject-form
+                      fork test, and(has-expression-row(last, subject), candidates/has(subject-form))
+                        hold
+                          save form, candidates/get(subject-form)
+                          save opens, false
+                          walk cases
+                            take arm
+                            fork test, is-equal(arm/label, form/label)
+                              hold
+                                save opens, true
+                          fork test, opens
+                            hold
+                              save subjects, make list
+                              fork test, opened/has(subject-form)
+                                hold
+                                  save subjects, opened/get(subject-form)
+                                miss
+                                  push(opened-forms, subject-form)
+                              push(subjects, subject)
+                              save opened/{subject-form}, subjects
+                    case none
+                      save idle, 0
+                miss
+                  save idle, 0
+            miss
+              save idle, 0
+        walk reached/expressions
+          take one
+          save row, place-row-of-expression(one)
+          fork test, and(is-above(row, 0), inside/has(row))
+            hold
+              turn next
+          sift one
+            case record
+              link record-name
+              sift named-name(expression-type(one))
+                case some
+                  link record-form
+                  fork test, candidates/has(record-form)
+                    hold
+                      fork test, is-equal(candidates/get(record-form)/label, record-name)
+                        hold
+                          save built/{record-form}, true
+                case none
+                  save idle, 0
+            miss
+              save idle, 0
+        walk opened-forms
+          take form-name
+          save own, make list
+          walk opened/get(form-name)
+            take subject
+            sift subject
+              case variable
+                link variable-name
+                fork test, lets/has(variable-name)
+                  hold
+                    push(own, subject)
+              miss
+                save idle, 0
+          fork test, and(built/has(form-name), is-above(own/length, 0))
+            hold
+              save classes, answer/classes
+              save classes/{form-name}, candidates/get(form-name)
+              save answer/classes, classes
+              save spares, answer/spares
+              save forms, make list
+              fork test, spares/has(fn-name)
+                hold
+                  save forms, spares/get(fn-name)
+              fork test, not(has-name(forms, form-name))
+                hold
+                  push(forms, form-name)
+              save spares/{fn-name}, forms
+              save answer/spares, spares
+              save consumed, answer/consumed
+              walk own
+                take subject
+                save subject-row, place-row-of-expression(subject)
+                fork test, is-above(subject-row, 0)
+                  hold
+                    save consumed/{subject-row}, true
+              save answer/consumed, consumed
+      miss
+        save idle, 0
+  back answer
+
+# ---- what each task reads ----
+
+task cursors-for
+  take fn, like statement
+  take cache, like swift-task-facts
+  take is-ascii
+    like task
+      take node, like expression
+      like boolean
+  like number
+  mark private
+
+  save row, place-row-of-statement(fn)
+  fork test, and(is-above(row, 0), cache/cursor-names/has(row))
+    hold
+      back row
+  save found, text-cursors-of(fn, is-ascii)
+  save reads, make hash
+  walk found/reads
+    take one
+    save call-row, place-row-of-expression(one/call)
+    fork test, is-above(call-row, 0)
+      hold
+        save reads/{call-row}, one/name
+  save names, cache/cursor-names
+  save names/{row}, found/names
+  save cache/cursor-names, names
+  save all-reads, cache/cursor-reads
+  save all-reads/{row}, reads
+  save cache/cursor-reads, all-reads
+  back row
+
+task redeclared-for
+  take fn, like statement
+  take cache, like swift-task-facts
+  like hash, like number, like boolean
+  mark private
+
+  save row, place-row-of-statement(fn)
+  fork test, and(is-above(row, 0), cache/redeclared/has(row))
+    hold
+      back cache/redeclared/get(row)
+  save found, statement-rows(redeclared-lets(fn))
+  save all, cache/redeclared
+  save all/{row}, found
+  save cache/redeclared, all
+  back found
+
+# whether the element tables name an owned key for the node's row
+task owns-inner-row
+  take table, like hash, like number, like text
+  take keys, like hash, like text, like boolean
+  take row, like number
+  like boolean
+  mark private
+
+  fork test, and(is-above(row, 0), table/has(row))
+    hold
+      back keys/has(table/get(row))
+  back false
+
+# ---- the program ----
+
+# a whole program as one Swift file. `units` keeps each module's statements marked, for the caller to write one file
+# per module (compile/unit-split.tree)
+task emit-swift
+  take written, like list, like statement
+  take wake, like list, like swift-wake-group
+  take units, like boolean
+  like text
+
+  # a task named like a docked module is renamed, since Swift refuses `enum log` beside `func log` (dock-apart). The
+  # last rewrite: every fact below and the emission read one STAMPED copy, each place a node of its own (D011 rule 4)
+  save program, stamp-places(keep-docks-apart(written))
+  # the `+`, `-` and `*` nodes proven not to overflow, written as the wrapping `&+`, `&-`, `&*`: the counted steps,
+  # joined below by the interval fact once the list facts it reads are known
+  save proven, expression-rows(proven-increments(program))
+  # the counted loops whose calls to a bounded task may run its wrapping copy (ir/facts/guards.tree), by the loop's
+  # row. No lend facts: only tasks that take no list run unchecked here
+  save guards, make hash
+  save fast-in, make hash
+  walk bounded-loops(program, make hash)
+    take found
+    save loop-row, place-row-of-statement(found/loop)
+    fork test, is-equal(loop-row, 0)
+      hold
+        turn next
+    save limits, make list
+    fork test, is-above(found/fast/length, 0)
+      hold
+        walk found/limits
+          take limit
+          save high, 0
+          fork test, not(limit/low)
+            hold
+              sift limit/high
+                case some
+                  link value
+                  save high, to-number(value)
+                case none
+                  save idle, 0
+          save one-limit
+            make bound-limit
+              bind name, limit/name
+              bind low, limit/low
+              bind high, high
+          push(limits, one-limit)
+    save one-guard
+      make loop-guard
+        bind fast, is-above(found/fast/length, 0)
+        bind limits, limits
+    save guards/{loop-row}, one-guard
+    save fast-in/{loop-row}, expression-rows(found/fast)
+  # the text expressions proven ASCII, read in place by byte offset
+  save ascii, expression-rows(ascii-texts(program))
+  # the tasks that only fill a list
+  save fills, fill-tasks(program)
+  # the prelude helpers this program uses, recorded by the emitter where each is written. A list or a map value
+  # carries a list or map type somewhere in the program even when no annotation is written for it, so the program's
+  # types decide the two wrappers
+  save needs, type-needs(program)
+  # the enums that must be `indirect` because they can contain themselves, and the node classes they reuse
+  save recursive, recursive-enums(program)
+  save reuse, node-reuse-of(program, recursive)
+  save node-classes, reuse/classes
+  save node-cases, make hash
+  walk node-classes/keys()
+    take form-name
+    save held, node-classes/get(form-name)
+    save one-case
+      make node-case
+        bind form, form-name
+        bind label, held/label
+        bind name, held/name
+        bind fields, held/fields
+    save node-cases/{held/label}, one-case
+  # the program's tables
+  save hive-tell, false
+  save function-params, make hash
+  save function-labels, make hash
+  save task-arity, make hash
+  save async-names, make list
+  save throwing, make hash
+  save impl-fns, make hash
+  save bodied-names, make list
+  save generic-arity, make hash
+  save variant-set, make hash
+  save variant-fields, make hash
+  save case-field-names, make hash
+  save shared-names, make list
+  save record-fields, make hash
+  save exception-flags, make hash
+  save union-names, make list
+  save struct-forms, make hash
+  save plain-variants, make hash
+  save opaque, make hash
+  save alias-names, make list
+  save mask-methods, make hash
+  save mask-of, make hash
+  save instance-targets, make hash
+  save assigned, make hash
+  walk program
+    take one
+    sift one
+      case function
+        link name
+        link params
+        link body
+        link async
+        link method
+        fork test, is-equal(name, <hive-tell>)
+          hold
+            save hive-tell, true
+        save function-params/{name}, params
+        save labels, make list
+        walk params
+          take param
+          push(labels, param/name)
+        save function-labels/{name}, labels
+        sift method
+          case some
+            link method-of
+            save impl-key, <{method-of/form}:{method-of/name}>
+            save impl-fns/{impl-key}, one
+          case none
+            save task-arity/{name}, params/length
+        fork test, async
+          hold
+            push(async-names, name)
+        fork test, is-above(body/length, 0)
+          hold
+            push(bodied-names, name)
+        # the functions whose body throws directly: their signatures carry `throws`
+        fork test, body-throws(body)
+          hold
+            save throwing/{name}, true
+        # every name assigned anywhere (whole, or through a member path): a module-level binding one of these targets
+        # must be a `var`
+        walk reassigned(body)
+          take assigned-name
+          save assigned/{assigned-name}, true
+      case record-type
+        link name
+        link params
+        link fields
+        link variants
+        link shared
+        link chain
+        save generic-arity/{name}, params/length
+        walk variants
+          take variant
+          save variant-set/{variant/name}, true
+          save names, make list
+          walk variant/fields
+            take field
+            push(names, field/name)
+          save variant-fields/{variant/name}, names
+          save case-key, <{name}/{variant/name}>
+          save case-field-names/{case-key}, names
+        fork test, shared
+          hold
+            push(shared-names, name)
+        fork test, is-equal(variants/length, 0)
+          hold
+            save record-fields/{name}, record-fields-of(fields)
+            fork test, not(shared)
+              hold
+                save struct-forms/{name}, true
+          miss
+            push(union-names, name)
+            fork test, and(and(not(shared), is-equal(params/length, 0)), not(node-classes/has(name)))
+              hold
+                walk variants
+                  take variant
+                  save plain-variants/{variant/name}, true
+        walk chain
+          take chain-name
+          fork test, is-equal(chain-name, <exception>)
+            hold
+              save exception-flags/{name}, true
+      case native
+        link alias
+        link module
+        link kind
+        fork test, is-type-native(kind)
+          hold
+            fork test, is-equal(module, <any>)
+              hold
+                save opaque/{alias}, <Any>
+              miss
+                save opaque/{alias}, module
+          miss
+            push(alias-names, alias)
+      case mask
+        link name
+        link methods
+        walk methods
+          take method-name
+          save mask-methods/{method-name}, true
+          save mask-of/{method-name}, name
+      case instance
+        link mask
+        link target
+        save targets, make list
+        fork test, instance-targets/has(mask)
+          hold
+            save targets, instance-targets/get(mask)
+        push(targets, target)
+        save instance-targets/{mask}, targets
+      miss
+        save idle, 0
+  # the raise sets (note/project/term/hive/04-reach.md): a function that can raise, through its callees too, is
+  # `throws`, a call to one is `try` where the caller is itself `throws` or the call sits in a guarded body
+  save raise-sets, raise-sets-of(program, keys-of(exception-flags))
+  walk raise-sets/raises/keys()
+    take raiser
+    fork test, is-above(raise-sets/raises/get(raiser)/length, 0)
+      hold
+        save throwing/{raiser}, true
+  # F1, the same facts Rust reads: the lent and fresh lists
+  save gated, gated-tasks(program, keys-of(mask-methods))
+  save list-facts, list-facts-of(program, gated)
+  save lend, list-facts/lend
+  save fresh, flags-of(list-facts/fresh)
+  # the place table and its places' identities: on a stamped program every place is a node of its own
+  save walked, walk-program(program)
+  save ids, make list
+  save row-at, 0
+  walk walked/handles
+    take handle
+    push(ids, row-at)
+    save row-at, add(row-at, 1)
+  save scope, scope-of(walked, ids)
+  save private, private-forms-of(scope, lend, fresh)
+  save owned-all, owned-fields(program, fresh, lend, flags-of(private/forms))
+  # every `+`, `-` and `*` the interval fact bounds inside the safe integers, with the counted steps
+  save task-ids, make list
+  save next-id, 0
+  save reach-skip, swift-program-skip()
+  walk program
+    take one
+    sift one
+      case function
+        link body
+        save reached, reach-statements(body, reach-skip)
+        save one-ids, make list
+        walk reached/order
+          take ignored
+          push(one-ids, next-id)
+          save next-id, add(next-id, 1)
+        push(task-ids, one-ids)
+      miss
+        save idle, 0
+  walk bounded-arithmetic(program, flags-of(owned-all), lend, flags-of(native-forms(program)), task-ids)
+    take bounded
+    save bounded-row, place-row-of-expression(bounded)
+    fork test, is-above(bounded-row, 0)
+      hold
+        save proven/{bounded-row}, true
+  # the plain records' list fields the record owns, and a plain variant's: not a generic form's, and not a variant held
+  # in a node class
+  save field-list-names, make list
+  walk owned-all
+    take key
+    save owner, get(split(key, </>), 0)
+    fork test, or(struct-forms/has(owner), plain-variants/has(owner))
+      hold
+        push(field-list-names, key)
+  save field-lists, flags-of(field-list-names)
+  # F4 on Swift: the record writes narrowed to their changed fields, and the slot locals read through their slot
+  save value-answer, value-places(scope)
+  save place-writes, make hash
+  walk value-answer/writes
+    take written-one
+    save place-fields, make list
+    walk written-one/write/fields
+      take place-field
+      save one-field
+        make field-value
+          bind name, place-field/name
+          bind value, place-field/value
+      push(place-fields, one-field)
+    save one-write
+      make place-write
+        bind local, written-one/write/local
+        bind fields, place-fields
+        bind temps, written-one/write/temps
+    save write-row, place-row-of-statement(written-one/node)
+    fork test, is-above(write-row, 0)
+      hold
+        save place-writes/{write-row}, one-write
+  save slot-locals, make hash
+  walk value-answer/locals
+    take local-read
+    save one-local
+      make slot-local
+        bind list, local-read/local/list
+        bind index, local-read/local/index
+    save local-row, place-row-of-statement(local-read/node)
+    fork test, is-above(local-row, 0)
+      hold
+        save slot-locals/{local-row}, one-local
+  # the lists of lists that own their inner lists: decided below, once the emitter can spell a type
+  save elements
+    make swift-element-tables
+      bind keys, make hash
+      bind lets, make hash
+      bind walks, make hash
+      bind items, make hash
+      bind moves, make hash
+  # each task's text cursors and redeclared `let`s, asked once per task
+  save cache
+    make swift-task-facts
+      bind cursor-names, make hash
+      bind cursor-reads, make hash
+      bind redeclared, make hash
+  save is-ascii-node
+    task
+      take node, like expression
+      like boolean
+      back has-expression-row(ascii, node)
+  save is-proven
+    task
+      take node, like expression
+      like boolean
+      back has-expression-row(proven, node)
+  save loop-guard-of
+    task
+      take node, like statement
+      like maybe, like loop-guard
+      save row, place-row-of-statement(node)
+      fork test, and(is-above(row, 0), guards/has(row))
+        hold
+          save guard, guards/get(row)
+          back make(some, guard)
+      back make none
+  save is-fast-in
+    task
+      take node, like expression
+      take loop, like statement
+      like boolean
+      save row, place-row-of-statement(loop)
+      fork test, and(is-above(row, 0), fast-in/has(row))
+        hold
+          back has-expression-row(fast-in/get(row), node)
+      back false
+  save cursor-names
+    task
+      take fn, like statement
+      like list, like text
+      save row, cursors-for(fn, cache, is-ascii-node)
+      back cache/cursor-names/get(row)
+  save cursor-of
+    task
+      take fn, like statement
+      take node, like expression
+      like maybe, like text
+      save row, cursors-for(fn, cache, is-ascii-node)
+      save reads, cache/cursor-reads/get(row)
+      save node-row, place-row-of-expression(node)
+      fork test, and(is-above(node-row, 0), reads/has(node-row))
+        hold
+          save name, reads/get(node-row)
+          back make(some, name)
+      back make none
+  save is-redeclared
+    task
+      take fn, like statement
+      take node, like statement
+      like boolean
+      back has-statement-row(redeclared-for(fn, cache), node)
+  save owns-inner-let
+    task
+      take node, like statement
+      like boolean
+      back owns-inner-row(elements/lets, elements/keys, place-row-of-statement(node))
+  save owns-inner-walk
+    task
+      take node, like statement
+      like boolean
+      back owns-inner-row(elements/walks, elements/keys, place-row-of-statement(node))
+  save owns-inner-item
+    task
+      take node, like expression
+      like boolean
+      back owns-inner-row(elements/items, elements/keys, place-row-of-expression(node))
+  save is-consumed
+    task
+      take node, like expression
+      like boolean
+      back has-expression-row(reuse/consumed, node)
+  save slot-local-of
+    task
+      take node, like statement
+      like maybe, like slot-local
+      save row, place-row-of-statement(node)
+      fork test, and(is-above(row, 0), slot-locals/has(row))
+        hold
+          save found, slot-locals/get(row)
+          back make(some, found)
+      back make none
+  save place-of
+    task
+      take node, like statement
+      like maybe, like place-write
+      save row, place-row-of-statement(node)
+      fork test, and(is-above(row, 0), place-writes/has(row))
+        hold
+          save found, place-writes/get(row)
+          back make(some, found)
+      back make none
+  save is-element-move
+    task
+      take node, like expression
+      like boolean
+      back has-expression-row(elements/moves, node)
+  save owned-locals-of
+    task
+      take fn, like statement
+      like hash, like text, like boolean
+      back owned-locals(fn, fresh, lend, field-lists, is-element-move)
+  save same-node
+    task
+      take left, like expression
+      take right, like expression
+      like boolean
+      back same-place(left, right)
+  save inspect-walkers, make hash
+  save facts
+    make swift-facts
+      bind variant-set, variant-set
+      bind variant-fields, variant-fields
+      bind case-field-names, case-field-names
+      bind record-fields, record-fields
+      bind inspect-forms, inspect-forms(program)
+      bind inspect-walkers, inspect-walkers
+      bind shared-forms, flags-of(shared-names)
+      bind exception-forms, exception-flags
+      bind union-forms, flags-of(union-names)
+      bind generic-arity, generic-arity
+      bind opaque, opaque
+      bind form-key-indices, form-key-indices-of(program)
+      bind function-params, function-params
+      bind function-labels, function-labels
+      bind task-arity, task-arity
+      bind hidden-generic, hidden-generics(program)
+      bind binds, collect-binds(program)
+      bind fills, fills
+      bind throwing, throwing
+      bind async-tasks, flags-of(async-names)
+      bind mask-methods, mask-methods
+      bind mask-of, mask-of
+      bind instance-targets, instance-targets
+      bind impl-fn, impl-fns
+      bind aliases, flags-of(alias-names)
+      bind lend-params, lend
+      bind fresh-lists, fresh
+      bind field-lists, field-lists
+      bind node-classes, node-classes
+      bind node-cases, node-cases
+      bind spare-tasks, reuse/spares
+      bind recursive, recursive
+      bind has-hive-tell, hive-tell
+      bind assigned-anywhere, assigned
+      bind is-proven, is-proven
+      bind loop-guard-of, loop-guard-of
+      bind is-fast-in, is-fast-in
+      bind is-ascii, is-ascii-node
+      bind cursor-names, cursor-names
+      bind cursor-of, cursor-of
+      bind is-redeclared, is-redeclared
+      bind owns-inner-let, owns-inner-let
+      bind owns-inner-walk, owns-inner-walk
+      bind owns-inner-item, owns-inner-item
+      bind is-consumed, is-consumed
+      bind slot-local-of, slot-local-of
+      bind place-of, place-of
+      bind owned-locals-of, owned-locals-of
+      bind same-node, same-node
+  save st, new-swift-state(needs)
+  # the lists of lists that own their inner lists, each inner list a plain `[E]`, keyed by the element's Swift type
+  save key-of
+    task
+      take t, like type
+      like text
+      back swift-type-of(make(some, t), st, facts)
+  save owned-inner, owned-elements-of(walked, ids, fresh, lend, key-of, same-node)
+  save inner-keys, flags-of(owned-inner/keys)
+  save inner-lets, make hash
+  walk owned-inner/lets
+    take element
+    save element-row, place-row-of-statement(element/node)
+    fork test, is-above(element-row, 0)
+      hold
+        save inner-lets/{element-row}, element/key
+  save inner-walks, make hash
+  walk owned-inner/walks
+    take element
+    save element-row, place-row-of-statement(element/node)
+    fork test, is-above(element-row, 0)
+      hold
+        save inner-walks/{element-row}, element/key
+  save inner-items, make hash
+  walk owned-inner/items
+    take element
+    save element-row, place-row-of-expression(element/node)
+    fork test, is-above(element-row, 0)
+      hold
+        save inner-items/{element-row}, element/key
+  save elements/keys, inner-keys
+  save elements/lets, inner-lets
+  save elements/walks, inner-walks
+  save elements/items, inner-items
+  save elements/moves, expression-rows(owned-inner/moves)
+  save st/inner-keys, inner-keys
+  # a `<global:X>` binding needs no import: it is already in scope. A `type` dock is an inline type reference
+  save imports, make list
+  save shim-names, make hash
+  walk program
+    take one
+    sift one
+      case native
+        link alias
+        link module
+        link kind
+        fork test, starts-with(module, <global:>)
+          hold
+            save shim-name, camelize(alias)
+            save shim-names/{shim-name}, true
+        fork test, and(not(is-type-native(kind)), not(starts-with(module, <global:>)))
+          hold
+            push(imports, <import {without-scheme(module)}>)
+      miss
+        save idle, 0
+  # a DOTTED opaque handle type (`dock type / load <SwiftUI.AnyView>`) names its module, which must be imported for the
+  # type to resolve, UNLESS the first segment is a shim namespace, compared in the spelling emitted (swift.ts said why)
+  walk program
+    take one
+    sift one
+      case native
+        link module
+        link kind
+        fork test, and(is-type-native(kind), is-unequal(index-of(module, <.>), -1))
+          hold
+            save head, get(split(module, <.>), 0)
+            fork test, shim-names/has(head)
+              hold
+                turn next
+            save import-line, <import {head}>
+            fork test, not(has-name(imports, import-line))
+              hold
+                push(imports, import-line)
+      miss
+        save idle, 0
+  # a declarative binding's swift expression may need a module imported (e.g. `Foundation.pow`)
+  walk bind-imports(referenced-binds(program, facts/binds), <swift>)
+    take need
+    save import-line, <import {without-scheme(need/module)}>
+    fork test, not(has-name(imports, import-line))
+      hold
+        push(imports, import-line)
+  # the string API lowers to Foundation methods: import it always
+  fork test, not(has-name(imports, <import Foundation>))
+    hold
+      save with-foundation, make list
+      push(with-foundation, <import Foundation>)
+      walk imports
+        take one
+        push(with-foundation, one)
+      save imports, with-foundation
+  # a module-level `host` data tree is an ANONYMOUS nested record: one struct per record node, named by the binding
+  # and the field path, and the records renamed so the construction uses the memberwise init
+  save structs
+    make swift-host-structs
+      bind defs, make list
+  save named-program, name-host-trees(program, structs)
+  # an abstract module's signature-only declaration yields to the platform module's implementation
+  save implemented, flags-of(bodied-names)
+  # a form declared in an abstract module AND its platform module lands twice in the closure: the empty declaration
+  # yields to the full one, and an exact repeat keeps only its first appearance
+  save full-forms, make hash
+  walk named-program
+    take one
+    sift one
+      case record-type
+        link name
+        link fields
+        link variants
+        fork test, or(is-above(fields/length, 0), is-above(variants/length, 0))
+          hold
+            save full-forms/{name}, true
+      miss
+        save idle, 0
+  save seen-forms, make hash
+  # a module collected twice (two import spellings of one file) emits its functions twice: keep the first
+  save seen-fns, make hash
+  save body, make list
+  walk structs/defs
+    take def
+    push(body, def)
+  walk named-program
+    take one
+    save kept, true
+    sift one
+      case native
+        save kept, false
+      case function
+        link fn-name
+        link fn-params
+        link fn-body
+        fork test, and(is-equal(fn-body/length, 0), implemented/has(fn-name))
+          hold
+            save kept, false
+          miss
+            save fn-key, <{fn-name}/{fn-params/length}>
+            fork test, seen-fns/has(fn-key)
+              hold
+                save kept, false
+              miss
+                save seen-fns/{fn-key}, true
+      case record-type
+        link name
+        link fields
+        link variants
+        fork test, and(and(is-equal(fields/length, 0), is-equal(variants/length, 0)), full-forms/has(name))
+          hold
+            save kept, false
+          miss
+            fork test, seen-forms/has(name)
+              hold
+                save kept, false
+              miss
+                save seen-forms/{name}, true
+      miss
+        save idle, 0
+    fork test, kept
+      hold
+        # each marked with its module, so the program can be written one file per module (compile/unit-split.tree)
+        save text, mark-unit(file-of(one), emit-statement(one, 0, st, facts))
+        fork test, is-unequal(text, <>)
+          hold
+            push(body, text)
+  # each task a guarded loop calls unchecked, once more with wrapping arithmetic (`aValueFast`), behind the bound the
+  # guard proved its arguments inside. A copy may reach another, which is written after it
+  save fast-at, 0
+  walk test
+    hook test, is-below(fast-at, st/fast-tasks/length)
+    hook hold
+      save fast-name, get(st/fast-tasks, fast-at)
+      save fast-at, add(fast-at, 1)
+      sift first-function(named-program, fast-name)
+        case some
+          link fast-fn
+          save fast-copy, swift-program-copy-statement(fast-fn)
+          sift fast-copy
+            case function
+              save fast-copy/name, <{fast-name}-fast>
+            miss
+              save idle, 0
+          push(body, mark-unit(file-of(fast-fn), emit-unchecked(fast-copy, st, facts)))
+        case none
+          save idle, 0
+  # `is-equal` on two records compares their fields, on every backend: a struct or enum whose every field can be
+  # compared gets a synthesized `Equatable`, and `Hashable` too when every field can be hashed. A greatest fixpoint, so
+  # a recursive form qualifies unless something else disqualifies it. The two sets are one: a field that can be
+  # compared can be hashed, by the same rule (swift.ts ran it twice)
+  save form-decls, forms-by-name(program, false)
+  save shared-forms, flags-of(shared-names)
+  save equatable, qualifying-forms(form-decls, shared-forms)
+  save hashable, equatable
+  save declared, st/declared-forms
+  save conformances, make list
+  walk form-decls/keys()
+    take name
+    save node, form-decls/get(name)
+    # only a form this program actually declares as a struct or an enum
+    fork test, not(declared/has(name))
+      hold
+        turn next
+    fork test, not(equatable/has(name))
+      hold
+        turn next
+    save swift-name, pascal(name)
+    save form-file, file-of(node)
+    save params, params-of-form(node)
+    save held, held-class(node-classes, name)
+    # in the form's own module: Swift synthesizes a conformance only in the file that declares the type
+    push(conformances, mark-unit(form-file, <extension {swift-name}: Equatable{where-clause(params, <Equatable>)} \{\}>))
+    sift held
+      case some
+        link known
+        save equals, make list
+        walk class-field-names(known)
+          take f
+          push(equals, <a.{f} == b.{f}>)
+        push(conformances, mark-unit(form-file, <extension {known/name}: Equatable \{ static func == (a: {known/name}, b: {known/name}) -\> Bool \{ a === b || ({join-with(equals, < && >)}) \} \}>))
+      case none
+        save idle, 0
+    fork test, not(hashable/has(name))
+      hold
+        turn next
+    push(conformances, mark-unit(form-file, <extension {swift-name}: Hashable{where-clause(params, <Hashable>)} \{\}>))
+    sift held
+      case some
+        link known
+        save combines, make list
+        walk class-field-names(known)
+          take f
+          push(combines, <hasher.combine({f})>)
+        push(conformances, mark-unit(form-file, <extension {known/name}: Hashable \{ func hash(into hasher: inout Hasher) \{ {join-with(combines, <; >)} \} \}>))
+      case none
+        save idle, 0
+  # a `mark shared` form is a class, one object seen through every binding, so it is equal to itself alone and hashes
+  # by its identity. Read through the unit marks, which open each statement
+  save open-body, make list
+  fork test, is-above(shared-forms/keys()/length, 0)
+    hold
+      walk body
+        take one
+        push(open-body, unmarked(one))
+  walk shared-forms/keys()
+    take name
+    save swift-name, pascal(name)
+    save found, false
+    walk open-body
+      take one
+      fork test, opens-class(one, swift-name)
+        hold
+          save found, true
+          halt
+    fork test, not(found)
+      hold
+        turn next
+    push(conformances, <extension {swift-name}: Equatable \{ static func == (a: {swift-name}, b: {swift-name}) -\> Bool \{ a === b \} \}>)
+    push(conformances, <extension {swift-name}: Hashable \{ func hash(into hasher: inout Hasher) \{ hasher.combine(ObjectIdentifier(self)) \} \}>)
+  # the key rule for a record (`TermKeyed`, in the map runtime): only a form that can hold a float somewhere gets one,
+  # since every other key's own `==` already is the rule
+  fork test, st/needs/has(<map>)
+    hold
+      walk key-conformances(form-decls, declared, hashable, equatable, node-classes)
+        take one
+        push(conformances, one)
+      fork test, st/needs/has(<list>)
+        hold
+          push(conformances, swift-list-key-text())
+  # the tag, for a form whose tag the program reads as a field: the case's name as text (compile/tag.tree)
+  walk tagged-forms(program)
+    take name
+    fork test, not(form-decls/has(name))
+      hold
+        turn next
+    save node, form-decls/get(name)
+    save variants, variants-of-form(node)
+    fork test, and(declared/has(name), is-above(variants/length, 0))
+      hold
+        save arms, make list
+        walk variants
+          take variant
+          push(arms, <case .{camel(variant/name)}: return {json-quote(tag-text(variant/name))}>)
+        push(conformances, <extension {pascal(name)} \{\n  var termTag: String \{ switch self \{ {join-with(arms, <; >)} \} \}\n\}>)
+  walk conformances
+    take one
+    push(body, one)
+  # `run-pending` drains through the spawn runtime, written by its binding (deck/base/code/pending.tree)
+  walk body
+    take line
+    fork test, is-unequal(index-of(line, <__termDrain(>), -1)
+      hold
+        save spawn-need, <spawn>
+        save all-needs, st/needs
+        save all-needs/{spawn-need}, true
+        save st/needs, all-needs
+        halt
+  # the program's loop, present when a module the program loads docks it: a tick is counted there as a job is, and the
+  # main runs an asynchronous entry inside it, found by `__termLoopEntry` (compile/main-entry.tree)
+  save has-loop, false
+  walk program
+    take one
+    sift one
+      case native
+        link module
+        fork test, is-equal(module, <global:loop>)
+          hold
+            save has-loop, true
+      miss
+        save idle, 0
+  fork test, has-loop
+    hold
+      push(body, swift-loop-entry-text())
+  save prelude, make list
+  fork test, st/needs/has(<text>)
+    hold
+      push(prelude, swift-text-text())
+  fork test, st/needs/has(<number>)
+    hold
+      push(prelude, swift-number-text())
+  fork test, st/needs/has(<discard>)
+    hold
+      push(prelude, swift-discard-text())
+  fork test, st/needs/has(<spawn>)
+    hold
+      fork test, has-loop
+        hold
+          push(prelude, swift-spawn-counted-text())
+        miss
+          push(prelude, swift-spawn-text())
+  fork test, st/needs/has(<stop>)
+    hold
+      push(prelude, swift-stop-text())
+  fork test, st/needs/has(<exception>)
+    hold
+      push(prelude, swift-exception-text())
+  fork test, st/needs/has(<map>)
+    hold
+      push(prelude, swift-map-text())
+  fork test, st/needs/has(<list>)
+    hold
+      push(prelude, swift-list-text())
+  save fill-specs, make list
+  walk st/fill-specs/values()
+    take spec
+    push(fill-specs, spec)
+  save melt-specs, make list
+  walk st/melt-specs/values()
+    take spec
+    push(melt-specs, spec)
+  save parts, make list
+  walk imports
+    take one
+    push(parts, one)
+  walk prelude
+    take one
+    push(parts, one)
+  walk body
+    take one
+    push(parts, one)
+  walk swift-form-walk(fill-specs, melt-specs, swift-form-helpers-text())
+    take one
+    push(parts, one)
+  # the walkers a lowered `inspect` wrote, one per form it met (term/base-v1 decision 001)
+  walk inspect-walkers/values()
+    take walker
+    fork test, is-unequal(walker, <>)
+      hold
+        push(parts, walker)
+  walk wake-chain(program, wake)
+    take one
+    push(parts, one)
+  save text, <{join-with(parts, <\n\n>)}\n>
+  # with `units`, each module's statements still marked, for the caller to write one file per module
+  fork test, units
+    hold
+      back text
+  back unmarked(text)
+
+# ---- the runtime texts ----
+
+# a list key by its items, under the key rule
+task swift-list-key-text
+  like text
+  mark private
+
+  back <extension SeedList: TermKeyed where T: Hashable \{\n  func termHash(into h: inout Hasher) \{ data.termHash(into: &h) \}\n  func termEq(_ other: Any) -\> Bool \{ guard let o = other as? SeedList\<T\> else \{ return false \}; return data.termEq(o.data) \}\n\}>
+
+# the program's loop entry (native/swift/runtime/loop.swift)
+task swift-loop-entry-text
+  like text
+  mark private
+
+  back <func __termLoopEntry\<T\>(_ body: () async throws -\> T) async rethrows -\> T \{ try await termLoop.entry(body) \}>
+
+# the text operations by code point, over unicodeScalars (swift.ts said what each buys)
+task swift-text-text
+  like text
+
+  back <enum TermText \{\n    // Positions count Unicode scalars (code points), as on every backend (note/project/term/stdlib/semantics.md), and each is\n    // found by stepping the String's own views where the text lies: a search runs over its UTF-8 bytes, which match only\n    // at scalar boundaries because UTF-8 is self-synchronizing, and an order compares UTF-8 bytes, which IS code point\n    // order. Nothing is copied into an array, so a loop reading a text by position is no longer quadratic in allocation.\n    // It copied every text into [Unicode.Scalar] on almost every call until 2026-10-02.\n    static func at(_ s: String, _ i: Int) -\> String.Index? \{\n        i \< 0 ? nil : s.unicodeScalars.index(s.unicodeScalars.startIndex, offsetBy: i, limitedBy: s.unicodeScalars.endIndex)\n    \}\n    static func clamped(_ s: String, _ i: Int) -\> String.Index \{ at(s, max(i, 0)) ?? s.endIndex \}\n    static func scalarsTo(_ s: String, _ i: String.Index) -\> Int \{ s.unicodeScalars.distance(from: s.unicodeScalars.startIndex, to: i) \}\n    static func find(_ s: String, _ n: String, _ from: String.Index) -\> String.Index? \{\n        let h = s.utf8\n        let m = n.utf8\n        if m.isEmpty \{ return from \}\n        var i = from\n        while i \< h.endIndex \{\n            var a = i\n            var b = m.startIndex\n            while b \< m.endIndex && a \< h.endIndex && h[a] == m[b] \{ a = h.index(after: a); b = m.index(after: b) \}\n            if b == m.endIndex \{ return i \}\n            i = h.index(after: i)\n        \}\n        return nil\n    \}\n    static func white(_ c: Unicode.Scalar) -\> Bool \{ c.properties.isWhitespace \}\n    static func length(_ s: String) -\> Int \{ s.unicodeScalars.count \}\n    static func charAt(_ s: String, _ i: Int) -\> String \{\n        guard let x = at(s, i), x \< s.unicodeScalars.endIndex else \{ return "" \}\n        return String(s.unicodeScalars[x])\n    \}\n    static func charCodeAt(_ s: String, _ i: Int) -\> Int \{\n        guard let x = at(s, i), x \< s.unicodeScalars.endIndex else \{ return -1 \}\n        return Int(s.unicodeScalars[x].value)\n    \}\n    // an ASCII text (ir/facts/text.ts): a code point is one UTF-8 byte, read in place by its offset\n    // one byte through the UTF-8 view, whose offset is constant time on a native text: a withUTF8 per read, which\n    // must copy the text into a local to call, measured 3% slower on fasta (2026-10-03)\n    static func asciiByte(_ s: String, _ i: Int) -\> UInt8? \{\n        let u = s.utf8\n        return i \>= 0 && i \< u.count ? u[u.index(u.startIndex, offsetBy: i)] : nil\n    \}\n    static func asciiCodeAt(_ s: String, _ i: Int) -\> Int \{ asciiByte(s, i).map \{ Int($0) \} ?? -1 \}\n    static func asciiCharAt(_ s: String, _ i: Int) -\> String \{ asciiByte(s, i).map \{ String(Unicode.Scalar($0)) \} ?? "" \}\n    // appended as the scalar, with no one-character String made for it\n    static func asciiAppend(_ out: inout String, _ s: String, _ i: Int) \{\n        if let c = asciiByte(s, i) \{ out.unicodeScalars.append(Unicode.Scalar(c)) \}\n    \}\n    // both ends clamped to the text and swapped when reversed (the Term meaning), as byte offsets\n    static func asciiSubstring(_ s: String, _ a: Int, _ e: Int? = nil) -\> String \{\n        var s = s\n        return s.withUTF8 \{ b in\n            let n = b.count\n            var x = min(max(a, 0), n)\n            var y = min(max(e ?? n, 0), n)\n            if x \> y \{ swap(&x, &y) \}\n            return String(decoding: b[x..\<y], as: UTF8.self)\n        \}\n    \}\n    // a search of an ASCII text answers its UTF-8 offset, which is the code-point index: no scalar count back from it\n    static func asciiIndexOf(_ s: String, _ n: String, _ from: Int = 0) -\> Int \{\n        let h = s.utf8\n        guard let found = find(s, n, h.index(h.startIndex, offsetBy: min(max(from, 0), h.count))) else \{ return -1 \}\n        return h.distance(from: h.startIndex, to: found)\n    \}\n    static func asciiLastIndexOf(_ s: String, _ n: String) -\> Int \{\n        let h = s.utf8\n        var last: String.Index? = nil\n        var from = h.startIndex\n        while let found = find(s, n, from) \{\n            last = found\n            if found == h.endIndex \{ break \}\n            from = h.index(after: found)\n        \}\n        return last.map \{ h.distance(from: h.startIndex, to: $0) \} ?? -1\n    \}\n    // a scalar read through a cursor (backend.ts, textCursors): the scalar index and UTF-8 offset of the last read,\n    // stepped forward or back from, or restarted at the start when that is nearer. A read past the end leaves it there\n    // the UTF-8 offset of scalar i, the end past the last\n    static func cursorTo(_ s: String, _ i: Int, _ c: inout (Int, Int)) -\> Int \{\n        let u = s.utf8\n        let n = u.count\n        var (k, b) = c\n        let byte = \{ (o: Int) -\> UInt8 in u[u.index(u.startIndex, offsetBy: o)] \}\n        if i \< k \{\n            if i \<= k - i \{\n                (k, b) = (0, 0)\n            \} else \{\n                while k \> i \{\n                    b -= 1\n                    while byte(b) & 0xC0 == 0x80 \{ b -= 1 \}\n                    k -= 1\n                \}\n            \}\n        \}\n        while k \< i && b \< n \{\n            let x = byte(b)\n            b += x \< 0x80 ? 1 : x \< 0xE0 ? 2 : x \< 0xF0 ? 3 : 4\n            k += 1\n        \}\n        c = (k, b)\n        return b\n    \}\n    static func cursorAt(_ s: String, _ i: Int, _ c: inout (Int, Int)) -\> Unicode.Scalar? \{\n        if i \< 0 \{ return nil \}\n        let b = cursorTo(s, i, &c)\n        let u = s.utf8\n        return c.0 == i && b \< u.count ? s.unicodeScalars[u.index(u.startIndex, offsetBy: b)] : nil\n    \}\n    // the scalars from a to e through the cursor, both clamped and swapped when reversed: the cursor moves to the start,\n    // and the end is counted on from it\n    static func cursorSlice(_ s: String, _ a: Int, _ e: Int, _ c: inout (Int, Int)) -\> String \{\n        let (x, y) = a \<= e ? (max(a, 0), max(e, 0)) : (max(e, 0), max(a, 0))\n        let u = s.utf8\n        let n = u.count\n        let from = cursorTo(s, x, &c)\n        var to = from\n        var k = c.0\n        while k \< y && to \< n \{\n            let b = u[u.index(u.startIndex, offsetBy: to)]\n            to += b \< 0x80 ? 1 : b \< 0xE0 ? 2 : b \< 0xF0 ? 3 : 4\n            k += 1\n        \}\n        return String(s[u.index(u.startIndex, offsetBy: from)..\<u.index(u.startIndex, offsetBy: to)])\n    \}\n    static func cursorCodeAt(_ s: String, _ i: Int, _ c: inout (Int, Int)) -\> Int \{ cursorAt(s, i, &c).map \{ Int($0.value) \} ?? -1 \}\n    static func cursorCharAt(_ s: String, _ i: Int, _ c: inout (Int, Int)) -\> String \{ cursorAt(s, i, &c).map \{ String($0) \} ?? "" \}\n    static func indexOf(_ s: String, _ n: String, _ from: Int = 0) -\> Int \{\n        guard let found = find(s, n, clamped(s, from)) else \{ return -1 \}\n        return scalarsTo(s, found)\n    \}\n    static func lastIndexOf(_ s: String, _ n: String) -\> Int \{\n        var last: String.Index? = nil\n        var from = s.startIndex\n        while let found = find(s, n, from) \{\n            last = found\n            if found == s.endIndex \{ break \}\n            from = s.utf8.index(after: found)\n        \}\n        return last.map \{ scalarsTo(s, $0) \} ?? -1\n    \}\n    static func split(_ s: String, _ d: String) -\> [String] \{\n        if d.isEmpty \{ return s.unicodeScalars.map \{ String($0) \} \}\n        var out: [String] = []\n        var start = s.startIndex\n        while let found = find(s, d, start) \{\n            out.append(String(s[start..\<found]))\n            start = s.utf8.index(found, offsetBy: d.utf8.count)\n        \}\n        out.append(String(s[start...]))\n        return out\n    \}\n    static func substring(_ s: String, _ a: Int, _ b: Int? = nil) -\> String \{\n        var x = clamped(s, a)\n        var y = b.map \{ clamped(s, $0) \} ?? s.endIndex\n        if x \> y \{ swap(&x, &y) \}\n        return String(s.unicodeScalars[x..\<y])\n    \}\n    static func slice(_ s: String, _ a: Int, _ b: Int? = nil) -\> String \{ substring(s, a, b) \}\n    // Unicode's default lowercase mapping with its one context rule, Final_Sigma, which JavaScript, Rust and the JDK\n    // apply and Swift's lowercased() does not: a capital sigma after a cased letter and before none becomes final\n    static func toLowerCase(_ s: String) -\> String \{\n        if !s.unicodeScalars.contains(where: \{ $0.value == 0x3A3 \}) \{ return s.lowercased() \}\n        let h = Array(s.unicodeScalars)\n        var out = String.UnicodeScalarView()\n        for (i, c) in h.enumerated() \{\n            if c.value != 0x3A3 \{ out.append(contentsOf: String(c).lowercased().unicodeScalars); continue \}\n            var j = i - 1\n            while j \>= 0 && h[j].properties.isCaseIgnorable \{ j -= 1 \}\n            var k = i + 1\n            while k \< h.count && h[k].properties.isCaseIgnorable \{ k += 1 \}\n            let final = j \>= 0 && h[j].properties.isCased && !(k \< h.count && h[k].properties.isCased)\n            out.append(Unicode.Scalar(final ? 0x3C2 : 0x3C3)!)\n        \}\n        return String(out)\n    \}\n    static func toUpperCase(_ s: String) -\> String \{ s.uppercased() \}\n    static func trimStart(_ s: String) -\> String \{\n        let v = s.unicodeScalars\n        var i = v.startIndex\n        while i \< v.endIndex && white(v[i]) \{ i = v.index(after: i) \}\n        return String(v[i...])\n    \}\n    static func trimEnd(_ s: String) -\> String \{\n        let v = s.unicodeScalars\n        var j = v.endIndex\n        while j \> v.startIndex && white(v[v.index(before: j)]) \{ j = v.index(before: j) \}\n        return String(v[..\<j])\n    \}\n    static func trim(_ s: String) -\> String \{ trimEnd(trimStart(s)) \}\n    static func pad(_ s: String, _ w: Int, _ f: String, _ front: Bool) -\> String \{\n        let n = length(s)\n        if n \>= w || f.isEmpty \{ return s \}\n        var out = String.UnicodeScalarView()\n        var fill = f.unicodeScalars.makeIterator()\n        for _ in 0..\<(w - n) \{\n            if let c = fill.next() \{ out.append(c) \} else \{ fill = f.unicodeScalars.makeIterator(); out.append(fill.next()!) \}\n        \}\n        return front ? String(out) + s : s + String(out)\n    \}\n    static func padStart(_ s: String, _ w: Int, _ f: String) -\> String \{ pad(s, w, f, true) \}\n    static func padEnd(_ s: String, _ w: Int, _ f: String) -\> String \{ pad(s, w, f, false) \}\n    static func replace(_ s: String, _ a: String, _ b: String) -\> String \{\n        guard let found = find(s, a, s.startIndex) else \{ return s \}\n        return String(s[..\<found]) + b + String(s[s.utf8.index(found, offsetBy: a.utf8.count)...])\n    \}\n    static func replaceAll(_ s: String, _ a: String, _ b: String) -\> String \{\n        if !a.isEmpty \{ return split(s, a).joined(separator: b) \}\n        return b + s.unicodeScalars.map \{ String($0) + b \}.joined()\n    \}\n    static func includes(_ s: String, _ n: String) -\> Bool \{ find(s, n, s.startIndex) != nil \}\n    static func startsWith(_ s: String, _ n: String) -\> Bool \{ s.utf8.starts(with: n.utf8) \}\n    static func endsWith(_ s: String, _ n: String) -\> Bool \{ s.utf8.count \>= n.utf8.count && s.utf8.suffix(n.utf8.count).elementsEqual(n.utf8) \}\n    static func repeated(_ s: String, _ n: Int) -\> String \{ n \> 0 ? String(repeating: s, count: n) : "" \}\n    static func concat(_ s: String, _ b: String) -\> String \{ s + b \}\n    // by code point, never Swift's canonical equivalence (which makes a precomposed and a decomposed é equal)\n    static func equal(_ a: String, _ b: String) -\> Bool \{ a.utf8.elementsEqual(b.utf8) \}\n    static func compare(_ a: String, _ b: String) -\> Int \{\n        var x = a.utf8.makeIterator()\n        var y = b.utf8.makeIterator()\n        while true \{\n            switch (x.next(), y.next()) \{\n            case (nil, nil): return 0\n            case (nil, _): return -1\n            case (_, nil): return 1\n            case let (p?, q?): if p != q \{ return p \< q ? -1 : 1 \}\n            \}\n        \}\n    \}\n\}>
+
+# a float as text, ECMAScript's layout over the shortest round-trip digits
+task swift-number-text
+  like text
+
+  back <func termNumber(_ x: Double) -\> String \{\n    if x.isNaN \{ return "NaN" \}\n    if x.isInfinite \{ return x \> 0 ? "Infinity" : "-Infinity" \}\n    if x == 0 \{ return "0" \}\n    let shortest = abs(x).description.lowercased()\n    let halves = shortest.split(separator: "e", omittingEmptySubsequences: false)\n    let exponent = halves.count \> 1 ? (Int(halves[1]) ?? 0) : 0\n    let pieces = halves[0].split(separator: ".", omittingEmptySubsequences: false)\n    let whole = String(pieces[0])\n    var all = Array(whole + (pieces.count \> 1 ? String(pieces[1]) : ""))\n    var n = whole.count + exponent\n    while all.count \> 1 && all.first == "0" \{ all.removeFirst(); n -= 1 \}\n    while all.count \> 1 && all.last == "0" \{ all.removeLast() \}\n    let k = all.count\n    let digits = String(all)\n    var body: String\n    if k \<= n && n \<= 21 \{\n        body = digits + String(repeating: "0", count: n - k)\n    \} else if 0 \< n && n \<= 21 \{\n        body = String(all[0..\<n]) + "." + String(all[n...])\n    \} else if -6 \< n && n \<= 0 \{\n        body = "0." + String(repeating: "0", count: -n) + digits\n    \} else \{\n        let e = n - 1\n        let sign = e \< 0 ? "-" : "+"\n        body = (k == 1 ? digits : String(all[0..\<1]) + "." + String(all[1...])) + "e" + sign + String(abs(e))\n    \}\n    return x \< 0 ? "-" + body : body\n\}>
+
+# the result of a call whose type the build cannot see, let go in statement position
+task swift-discard-text
+  like text
+
+  back <@inline(__always) func termDiscard\<T\>(_ value: T) \{\}>
+
+# fire and forget (`tick f(x)`): the work starts now and runs to its first wait
+task swift-spawn-text
+  like text
+
+  back <let __termOutstanding = DispatchGroup()\nfunc __termSpawn(_ work: @escaping () async -\> Void) \{\n    __termOutstanding.enter()\n    if #available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *) \{\n        Task.immediate \{ await work(); __termOutstanding.leave() \}\n    \} else \{\n        Task \{ await work(); __termOutstanding.leave() \}\n    \}\n\}\nfunc __termDrain() -\> Bool \{ __termOutstanding.wait(); return true \}>
+
+# the `spawn` helper in a program that has the loop: a tick counted there as a job is
+task swift-spawn-counted-text
+  like text
+
+  back <let __termOutstanding = DispatchGroup()\nfunc __termSpawn(_ work: @escaping () async -\> Void) \{\n    __termOutstanding.enter()\n    let counted = termLoop.start()\n    let body: () async -\> Void = \{ await termLoop.$counted.withValue(counted) \{ await work() \}; termLoop.end(counted); __termOutstanding.leave() \}\n    if #available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *) \{\n        Task.immediate \{ await body() \}\n    \} else \{\n        Task \{ await body() \}\n    \}\n\}\nfunc __termDrain() -\> Bool \{ __termOutstanding.wait(); return true \}>
+
+# an integer step past the integer's range is a stop (D15)
+task swift-stop-text
+  like text
+
+  back <func termStop(_ message: String) -\> Never \{ FileHandle.standardError.write(Data((message + "\\n").utf8)); exit(1) \}\n@inline(__always) func termAdd\<T: FixedWidthInteger\>(_ a: T, _ b: T) -\> T \{ let (r, o) = a.addingReportingOverflow(b); if o \{ termStop(a \< 0 ? "shortage: a number past \\(T.min)" : "excess: a number past \\(T.max)") \}; return r \}\n@inline(__always) func termSubtract\<T: FixedWidthInteger\>(_ a: T, _ b: T) -\> T \{ let (r, o) = a.subtractingReportingOverflow(b); if o \{ termStop(a \< 0 ? "shortage: a number past \\(T.min)" : "excess: a number past \\(T.max)") \}; return r \}\n@inline(__always) func termMultiply\<T: FixedWidthInteger\>(_ a: T, _ b: T) -\> T \{ let (r, o) = a.multipliedReportingOverflow(by: b); if o \{ termStop((a \< 0) != (b \< 0) ? "shortage: a number past \\(T.min)" : "excess: a number past \\(T.max)") \}; return r \}\n@inline(__always) func termNegate\<T: FixedWidthInteger\>(_ a: T) -\> T \{ let (r, o) = T.zero.subtractingReportingOverflow(a); if o \{ termStop("excess: a number past \\(T.max)") \}; return r \}\n@inline(__always) func termAdd(_ a: Int, _ b: Int) -\> Int \{ let (r, o) = a.addingReportingOverflow(b); if o \{ termStop(a \< 0 ? "shortage: a number past \\(Int.min)" : "excess: a number past \\(Int.max)") \}; return r \}\n@inline(__always) func termSubtract(_ a: Int, _ b: Int) -\> Int \{ let (r, o) = a.subtractingReportingOverflow(b); if o \{ termStop(a \< 0 ? "shortage: a number past \\(Int.min)" : "excess: a number past \\(Int.max)") \}; return r \}\n@inline(__always) func termMultiply(_ a: Int, _ b: Int) -\> Int \{ let (r, o) = a.multipliedReportingOverflow(by: b); if o \{ termStop((a \< 0) != (b \< 0) ? "shortage: a number past \\(Int.min)" : "excess: a number past \\(Int.max)") \}; return r \}\n@inline(__always) func termNegate(_ a: Int) -\> Int \{ let (r, o) = Int.zero.subtractingReportingOverflow(a); if o \{ termStop("excess: a number past \\(Int.max)") \}; return r \}>
+
+# the one exception value of a Term program on this backend
+task swift-exception-text
+  like text
+
+  back <struct TermException: Error \{ let host: String; let form: String; let note: String; let code: String; let time: Int; let link: Any?; let base: Any?; var first: String? = nil; var second: String? = nil; var rest: [String] = [] \}\nextension TermException \{ var flow: [String] \{ Array(([first, second].compactMap \{ $0 \} + rest).flatMap \{ $0.split(separator: "\\n").map(String.init) \}.prefix(64)) \}; func at(_ site: String) -\> TermException \{ var raised = self; if raised.first == nil \{ raised.first = site \} else if raised.second == nil \{ raised.second = site \} else if raised.rest.count \< 62 \{ raised.rest.append(site) \}; return raised \} \}\nfunc termException(_ thrown: Any) -\> TermException \{ if let e = thrown as? TermException \{ return e \}; return TermException(host: "", form: "failure", note: "\\(thrown)", code: "", time: 0, link: nil, base: thrown) \}\n@inline(__always) func termCall\<T\>(_ site: String, _ body: () throws -\> T) throws -\> T \{ do \{ return try body() \} catch let raised as TermException \{ throw raised.at(site) \} \}\n@inline(__always) func termCallAsync\<T\>(_ site: String, _ body: () async throws -\> T) async throws -\> T \{ do \{ return try await body() \} catch let raised as TermException \{ throw raised.at(site) \} \}\nfunc termEnd\<T\>(_ site: String, _ body: () throws -\> T) -\> T \{ do \{ return try body() \} catch \{ termUnhandled(termException(error).at(site)) \} \}\nfunc termEndAsync\<T\>(_ site: String, _ body: () async throws -\> T) async -\> T \{ do \{ return try await body() \} catch \{ termUnhandled(termException(error).at(site)) \} \}\nfunc termUnhandled(_ thrown: Any) -\> Never \{ let raised = termException(thrown); var text = raised.form + ": " + raised.note + "\\n"; for frame in raised.flow \{ text += "  at " + frame + "\\n" \}; FileHandle.standardError.write(Data(text.utf8)); exit(1) \}>
+
+# the reference wrapper for maps, insertion-ordered, and the key rule
+task swift-map-text
+  like text
+
+  back <protocol TermKeyed \{ func termHash(into h: inout Hasher); func termEq(_ other: Any) -\> Bool \}\nfunc termKeyHash\<T: Hashable\>(_ k: T, into h: inout Hasher) \{\n    if T.self == String.self || T.self == Int.self || T.self == Bool.self \{ h.combine(k); return \}\n    if let d = k as? Double \{ h.combine(d.isNaN ? Double.nan.bitPattern : d == 0 ? 0 : d.bitPattern); return \}\n    if let f = k as? Float \{ termKeyHash(Double(f), into: &h); return \}\n    if let t = k as? TermKeyed \{ t.termHash(into: &h); return \}\n    h.combine(k)\n\}\nfunc termKeyEq\<T: Hashable\>(_ a: T, _ b: T) -\> Bool \{\n    if T.self == String.self || T.self == Int.self || T.self == Bool.self \{ return a == b \}\n    if let x = a as? Double, let y = b as? Double \{ return (x.isNaN && y.isNaN) || x == y \}\n    if let x = a as? Float, let y = b as? Float \{ return (x.isNaN && y.isNaN) || x == y \}\n    if let t = a as? TermKeyed \{ return t.termEq(b) \}\n    return a == b\n\}\nstruct TermKeyBox\<K: Hashable\>: Hashable \{\n    let key: K\n    init(_ key: K) \{ self.key = key \}\n    static func == (a: TermKeyBox\<K\>, b: TermKeyBox\<K\>) -\> Bool \{ termKeyEq(a.key, b.key) \}\n    func hash(into h: inout Hasher) \{ termKeyHash(key, into: &h) \}\n\}\nextension Array: TermKeyed where Element: Hashable \{\n    func termHash(into h: inout Hasher) \{ h.combine(count); for x in self \{ termKeyHash(x, into: &h) \} \}\n    func termEq(_ other: Any) -\> Bool \{ guard let o = other as? [Element], o.count == count else \{ return false \}; return zip(self, o).allSatisfy \{ termKeyEq($0, $1) \} \}\n\}\nstruct SeedOrdered\<K: Hashable, V\>: Sequence \{\n    private var slot: [TermKeyBox\<K\>: Int] = [:]\n    private var ks: [K] = []\n    private var vs: [V] = []\n    private var live: [Bool] = []\n    private var dead = 0\n    init() \{\}\n    init(_ data: [K: V]) \{ for (k, v) in data \{ self[k] = v \} \}\n    var count: Int \{ slot.count \}\n    var isEmpty: Bool \{ slot.isEmpty \}\n    subscript(key: K) -\> V? \{\n        get \{ if let i = slot[TermKeyBox(key)] \{ return vs[i] \}; return nil \}\n        set \{\n            guard let value = newValue else \{ removeValue(forKey: key); return \}\n            vs[place(key, value)] = value\n        \}\n    \}\n    // the entry of a key, made with fallback when it is absent: the dictionary hashes the key once, through its\n    // default subscript modified in place, where a read and then a write hashed it twice\n    mutating func place(_ key: K, _ fallback: V) -\> Int \{\n        let n = ks.count\n        var fresh = false\n        let i = \{ (at: inout Int) -\> Int in if at \< 0 \{ at = n; fresh = true \}; return at \}(&slot[TermKeyBox(key), default: -1])\n        if fresh \{ ks.append(key); vs.append(fallback); live.append(true) \}\n        return i\n    \}\n    // a value changed from itself in one probe (backend.ts, mapUpdate)\n    mutating func update(_ key: K, _ fallback: V, _ change: (V) -\> V) \{ let i = place(key, fallback); vs[i] = change(vs[i]) \}\n    @discardableResult mutating func removeValue(forKey key: K) -\> V? \{\n        guard let i = slot.removeValue(forKey: TermKeyBox(key)) else \{ return nil \}\n        let out = vs[i]\n        live[i] = false\n        dead += 1\n        if dead \> 16 && dead * 2 \> ks.count \{ compact() \}\n        return out\n    \}\n    private mutating func compact() \{\n        var k2: [K] = []; var v2: [V] = []\n        k2.reserveCapacity(slot.count); v2.reserveCapacity(slot.count)\n        for i in 0..\<ks.count where live[i] \{ slot[TermKeyBox(ks[i])] = k2.count; k2.append(ks[i]); v2.append(vs[i]) \}\n        ks = k2; vs = v2; live = Array(repeating: true, count: k2.count); dead = 0\n    \}\n    var keys: [K] \{ dead == 0 ? ks : ks.indices.compactMap \{ live[$0] ? ks[$0] : nil \} \}\n    var values: [V] \{ dead == 0 ? vs : vs.indices.compactMap \{ live[$0] ? vs[$0] : nil \} \}\n    struct Iterator: IteratorProtocol \{\n        let map: SeedOrdered\<K, V\>\n        var at = 0\n        mutating func next() -\> (key: K, value: V)? \{\n            while at \< map.ks.count \{ let i = at; at += 1; if map.live[i] \{ return (key: map.ks[i], value: map.vs[i]) \} \}\n            return nil\n        \}\n    \}\n    func makeIterator() -\> Iterator \{ Iterator(map: self) \}\n\}\nfinal class SeedMap\<K: Hashable, V\> \{\n    var data: SeedOrdered\<K, V\>\n    init(_ data: [K: V] = [:]) \{ self.data = SeedOrdered(data) \}\n    init(pairs: [(K, V)]) \{ var d = SeedOrdered\<K, V\>(); for (k, v) in pairs \{ d[k] = v \}; self.data = d \}\n    @discardableResult func setting(_ key: K, _ value: V) -\> SeedMap\<K, V\> \{ data[key] = value; return self \}\n    @discardableResult func removing(_ key: K) -\> Bool \{ let had = data[key] != nil; data.removeValue(forKey: key); return had \}\n\}\n// two maps are equal when they hold the same keys with equal values, in any order (Kotlin's Map.equals)\nextension SeedMap: Equatable where V: Equatable \{\n    static func == (a: SeedMap\<K, V\>, b: SeedMap\<K, V\>) -\> Bool \{ a.data.count == b.data.count && a.data.allSatisfy \{ b.data[$0.key] == $0.value \} \}\n\}\nextension SeedMap: Hashable where V: Hashable \{\n    func hash(into h: inout Hasher) \{ var sum = 0; for (k, v) in data \{ var one = Hasher(); termKeyHash(k, into: &one); termKeyHash(v, into: &one); sum = sum &+ one.finalize() \}; h.combine(data.count); h.combine(sum) \}\n\}\nextension SeedMap: TermKeyed where V: Hashable \{\n    func termHash(into h: inout Hasher) \{ hash(into: &h) \}\n    func termEq(_ other: Any) -\> Bool \{ guard let o = other as? SeedMap\<K, V\>, o.data.count == data.count else \{ return false \}; return data.allSatisfy \{ e in o.data[e.key].map \{ termKeyEq($0, e.value) \} ?? false \} \}\n\}>
+
+# the reference wrapper for lists
+task swift-list-text
+  like text
+
+  back <final class SeedList\<T\> \{\n    var data: [T]\n    init(_ data: [T] = []) \{ self.data = data \}\n    @discardableResult func appending(_ item: T) -\> Int \{ data.append(item); return data.count \}\n    @discardableResult func popping() -\> T \{ return data.removeLast() \}\n    func storing(_ index: Int, _ item: T) \{ data[index] = item \}\n    @discardableResult func unshifting(_ item: T) -\> Int \{ data.insert(item, at: 0); return data.count \}\n    @discardableResult func shifting() -\> T \{ return data.removeFirst() \}\n    @discardableResult func splicing(_ start: Int, _ count: Int, _ items: [T]) -\> Int \{ let s = min(max(start, 0), data.count); let c = min(max(count, 0), data.count - s); data.replaceSubrange(s..\<(s + c), with: items); return data.count \}\n    func slicing(_ start: Int, _ end: Int? = nil) -\> SeedList\<T\> \{ let x = min(max(start, 0), data.count); let y = min(max(end ?? data.count, 0), data.count); return SeedList(x \< y ? Array(data[x..\<y]) : []) \}\n\}\n// a list compares and hashes by its items, as on every other backend (note/project/term/optimize/meaning.md, question 4)\nextension SeedList: Equatable where T: Equatable \{\n    static func == (a: SeedList\<T\>, b: SeedList\<T\>) -\> Bool \{ a.data == b.data \}\n\}\nextension SeedList: Hashable where T: Hashable \{\n    func hash(into hasher: inout Hasher) \{ hasher.combine(data) \}\n\}>
+
+# what the form walkers share: a value that does not fit throws `data-mismatch`
+task swift-form-helpers-text
+  like text
+
+  back <func __termMismatch(_ path: String, _ reason: String) -\> TermException \{\n  let link: [String: String] = ["thing": "data", "path": path.isEmpty ? "." : path, "reason": reason]\n  return TermException(host: "@term/host", form: "data-mismatch", note: "Data does not fit the shape", code: "", time: Int(Date().timeIntervalSince1970 * 1000), link: link, base: nil)\n\}\nfunc __termPath(_ path: String, _ key: String) -\> String \{ return path.isEmpty ? key : path + "/" + key \}\nfunc __termKind(_ value: DataForm) -\> String \{\n  switch value \{ case .hash: return "a map"; case .array: return "a list"; case .blank: return "void"; case .text: return "text"; case .number: return "number"; case .decimal: return "decimal"; case .flag: return "flag"; case .graft: return "a fuse" \}\n\}\nfunc __termIsBlank(_ value: DataForm) -\> Bool \{ if case .blank = value \{ return true \}; return false \}\nfunc __termEntries(_ value: DataForm, _ path: String) throws -\> SeedList\<DataEntry\> \{\n  if case .hash(let list) = value \{ return list \}\n  throw __termMismatch(path, "is \\(__termKind(value)) where a map belongs")\n\}\nfunc __termText(_ value: DataForm?, _ path: String, _ optional: Bool) throws -\> String \{\n  switch value \{ case .some(.text(let value)): return value; case .none, .some(.blank): if optional \{ return "" \}; throw __termMismatch(path, "is missing"); case .some(let other): throw __termMismatch(path, "is \\(__termKind(other)) where text belongs") \}\n\}\nfunc __termNumber(_ value: DataForm?, _ path: String, _ optional: Bool) throws -\> Int \{\n  switch value \{ case .some(.number(let value)): return value; case .none, .some(.blank): if optional \{ return 0 \}; throw __termMismatch(path, "is missing"); case .some(let other): throw __termMismatch(path, "is \\(__termKind(other)) where number belongs") \}\n\}\nfunc __termDecimal(_ value: DataForm?, _ path: String, _ optional: Bool) throws -\> Double \{\n  switch value \{ case .some(.decimal(let value)): return value; case .some(.number(let value)): return Double(value); case .none, .some(.blank): if optional \{ return 0.0 \}; throw __termMismatch(path, "is missing"); case .some(let other): throw __termMismatch(path, "is \\(__termKind(other)) where decimal belongs") \}\n\}\nfunc __termFlag(_ value: DataForm?, _ path: String, _ optional: Bool) throws -\> Bool \{\n  switch value \{ case .some(.flag(let value)): return value; case .none, .some(.blank): if optional \{ return false \}; throw __termMismatch(path, "is missing"); case .some(let other): throw __termMismatch(path, "is \\(__termKind(other)) where flag belongs") \}\n\}\nfunc __termData(_ value: DataForm?, _ path: String, _ optional: Bool) throws -\> DataForm \{\n  if let value = value \{ return value \}\n  if optional \{ return .blank \}\n  throw __termMismatch(path, "is missing")\n\}\nfunc __termList\<T\>(_ value: DataForm?, _ path: String, _ optional: Bool, _ item: (DataForm, String) throws -\> T) throws -\> SeedList\<T\> \{\n  switch value \{\n  case .some(.array(let list)): return SeedList(try list.data.enumerated().map \{ (i, d) in try item(d, __termPath(path, String(i))) \})\n  case .none, .some(.blank): if optional \{ return SeedList() \}; throw __termMismatch(path, "is missing")\n  case .some(let other): throw __termMismatch(path, "is \\(__termKind(other)) where a list belongs")\n  \}\n\}>

@@ -1,0 +1,1232 @@
+# THE TYPESCRIPT EMITTER'S PROGRAM PASS: a program written as one TypeScript module. It reads the program into
+# compile/ts-assemble.tree's tables, stamps it (decision 011), runs the analyses, hands compile/ts-emit.tree the tables
+# and the node-keyed answers as tests, and has ts-assemble.tree write the module, the wake chain's entries written here.
+#
+# Ported from compile/typescript.ts `emitTypeScript` and `makeEmitter` (self-hosting, item term-self-host-001-0069),
+# which stays a thin face. What the face held as module state (the tables, the prelude flags the emitter raised, the
+# field-less constants and guards) is one emission's own values here, and what it held by node identity is keyed by the
+# node's `place-row`, as compile/swift-program.tree does: every answer an analysis gives about a node (a proven step, a
+# loop's guard, a place write, a copied `let`, an ASCII text, a reuse site, a tail return) is a table of rows, and the
+# emitter's tests are closures over those tables. A node the emitter makes for itself stands at no place (row 0) and
+# has no fact. The per-task facts the face kept in `WeakMap`s by the task (its text cursors, its redeclared `let`s) are
+# kept by the task's row, and a copy of a task (`name-fast`, `name-reuse`) stands at its row and reads the same.
+#
+# compile/proven.ts's union (the counted steps and the interval fact) is computed here, as the other emitters do.
+#
+# The wake chain reads the roll's entries as roll values (decision 040), each written as `JSON.stringify` wrote it.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/float
+  find to-number
+
+load ./node
+  find type
+  find expression
+  find statement
+  find field-value
+  find form-field
+  find variant-field
+  find expression-type
+
+load ./node-rebuild
+  find place-row-of-expression
+  find place-row-of-statement
+
+load ./place-stamp
+  find stamp-places
+  find same-place
+
+load ./place-walk
+  find walk-program
+
+load ./node-reach
+  find reach-statements
+
+load ./backend-shapes
+  find inspect-forms
+
+load ./backend-names
+  find gated-tasks
+  find fill-tasks
+
+load ./backend-lending
+  find list-facts-of
+  find owned-fields
+  find native-forms
+
+load ./backend-copies
+  find record-copies-of
+  find text-cursors-of
+
+load ./backend-loops
+  find redeclared-lets
+
+load ./backend-reads
+  find tail-tasks-of
+
+load ./places
+  find scope-of
+  find private-forms-of
+  find record-places
+  find record-reuse
+
+load ../check/effects
+  find raise-sets-of
+
+load ../ir/facts/steps
+  find proven-increments
+
+load ../ir/facts/intervals
+  find bounded-arithmetic
+
+load ../ir/facts/guards
+  find bounded-loops
+
+load ../ir/facts/ascii
+  find ascii-texts
+
+load ../term/quote
+  find json-quote
+
+load ./rolling
+  find roll-value
+  find string-of
+  find value-at
+  find without-pair
+
+load ./view-lower
+  find runtime-bound
+
+load ./ts-names
+  find to-camel
+  find ts-field
+
+load ./ts-emit
+  find emit-facts
+  find emit-state
+  find new-emit-state
+  find emit-statement
+  find emit-unchecked
+  find emit-reusing
+  find tag-for
+  find bound-check
+  find bound-limit
+  find loop-guard
+  find place-write
+  find reuse-task
+
+load ./ts-assemble
+  find ts-tables
+  find wake-group
+  find emit-flags
+  find assemble-type-script
+
+# ---- what crosses ----
+
+# one deck of what wakes the hive (compile/program-warnings.tree `wake-group`, decision 040): its entries roll values
+form ts-wake-group
+  link deck, like text
+  link entries, like list, like roll-value
+  link exceptions, like list, like roll-value
+  link tells, like list, like roll-value
+  link docks, like list, like roll-value
+
+# what each task's emission reads by node, by the task's row, worked out the first time it is asked
+form ts-task-facts
+  mark shared
+  link cursor-names, like hash, like number, like list, like text
+  link cursor-reads, like hash, like number, like hash, like number, like text
+  link redeclared, like hash, like number, like hash, like number, like boolean
+
+# ---- small helpers ----
+
+task ts-program-skip
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <type>)
+  push(out, <span>)
+  back out
+
+task flags-of
+  take names, like list, like text
+  like hash, like text, like boolean
+  mark private
+
+  save out, make hash
+  walk names
+    take one
+    save out/{one}, true
+  back out
+
+task keys-of
+  take table, like hash, like text, like boolean
+  like list, like text
+  mark private
+
+  save out, make list
+  walk table/keys()
+    take one
+    push(out, one)
+  back out
+
+task join-with
+  take parts, like list, like text
+  take between, like text
+  like text
+  mark private
+
+  save out, <>
+  save first, true
+  walk parts
+    take part
+    fork test, first
+      hold
+        save out, part
+        save first, false
+      miss
+        save out, <{out}{between}{part}>
+  back out
+
+task expression-rows
+  take nodes, like list, like expression
+  like hash, like number, like boolean
+  mark private
+
+  save out, make hash
+  walk nodes
+    take node
+    save row, place-row-of-expression(node)
+    fork test, is-above(row, 0)
+      hold
+        save out/{row}, true
+  back out
+
+task statement-rows
+  take nodes, like list, like statement
+  like hash, like number, like boolean
+  mark private
+
+  save out, make hash
+  walk nodes
+    take node
+    save row, place-row-of-statement(node)
+    fork test, is-above(row, 0)
+      hold
+        save out/{row}, true
+  back out
+
+task has-expression-row
+  take table, like hash, like number, like boolean
+  take node, like expression
+  like boolean
+  mark private
+
+  save row, place-row-of-expression(node)
+  back and(is-above(row, 0), table/has(row))
+
+task has-statement-row
+  take table, like hash, like number, like boolean
+  take node, like statement
+  like boolean
+  mark private
+
+  save row, place-row-of-statement(node)
+  back and(is-above(row, 0), table/has(row))
+
+task no-type
+  like maybe, like type
+  mark private
+
+  back make none
+
+task named-name
+  take given, like maybe, like type
+  like maybe, like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case named
+          link name
+          back make(some, name)
+        miss
+          back make none
+    case none
+      back make none
+
+task first-function
+  take program, like list, like statement
+  take wanted, like text
+  like maybe, like statement
+  mark private
+
+  walk program
+    take one
+    sift one
+      case function
+        link name
+        fork test, is-equal(name, wanted)
+          hold
+            back make(some, one)
+      miss
+        save idle, 0
+  back make none
+
+# the fields as the emitter's tables hold them
+task ts-fields-of-variant
+  take fields, like list, like variant-field
+  like list, like ts-field
+  mark private
+
+  save out, make list
+  walk fields
+    take field
+    save one
+      make ts-field
+        bind name, field/name
+        bind type, field/type
+        bind optional, field/optional
+    push(out, one)
+  back out
+
+task ts-fields-of-form
+  take fields, like list, like form-field
+  like list, like ts-field
+  mark private
+
+  save out, make list
+  walk fields
+    take field
+    save one
+      make ts-field
+        bind name, field/name
+        bind type, field/type
+        bind optional, field/optional
+    push(out, one)
+  back out
+
+# ---- the sole check ----
+
+task sole-name
+  take given, like maybe, like type
+  take sole, like hash, like text, like boolean
+  like maybe, like text
+  mark private
+
+  sift named-name(given)
+    case some
+      link name
+      fork test, sole/has(name)
+        hold
+          back make(some, name)
+      back make none
+    case none
+      back make none
+
+# A `mark sole` value has one owner and is moved, never copied (term/affine-kinds decision 001): a copy the record
+# copies would make fails the build at the emitter, naming the form and the task or local (compile/backend.ts
+# `refuseSoleCopies`), over the program and the context a unit reads
+task refuse-sole-copies
+  take program, like list, like statement
+  take copy-params, like hash, like text, like hash, like number, like boolean
+  take lets, like list, like statement
+  take fail
+    like task
+      take reason, like text
+      like boolean
+  like boolean
+  mark private
+
+  save sole-forms, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        link name
+        link sole
+        fork test, sole
+          hold
+            save sole-forms/{name}, true
+      miss
+        save idle, 0
+  fork test, is-equal(sole-forms/keys()/length, 0)
+    hold
+      back true
+  walk copy-params/keys()
+    take task-name
+    save fn-params, make list
+    sift first-function(program, task-name)
+      case some
+        link fn
+        sift fn
+          case function
+            link params
+            save fn-params, params
+          miss
+            save idle, 0
+      case none
+        save idle, 0
+    save positions, copy-params/get(task-name)
+    walk positions/keys()
+      take index
+      fork test, is-below(index, fn-params/length)
+        hold
+          save param, get(fn-params, index)
+          sift sole-name(param/type, sole-forms)
+            case some
+              link form
+              fail(<sole-copied: `{task-name}` would copy its parameter of `{form}`, which is `mark sole`. A sole value is moved, never copied>)
+              back false
+            case none
+              save idle, 0
+  walk lets
+    take local
+    sift local
+      case let
+        link name
+        link type
+        link init
+        save local-type, type
+        sift type
+          case none
+            save local-type, expression-type(init)
+          case some
+            save idle, 0
+        sift sole-name(local-type, sole-forms)
+          case some
+            link form
+            fail(<sole-copied: `{name}` would copy a value of `{form}`, which is `mark sole`. A sole value is moved, never copied>)
+            back false
+          case none
+            save idle, 0
+      miss
+        save idle, 0
+  back true
+
+# ---- what each task reads ----
+
+task cursors-for
+  take fn, like statement
+  take cache, like ts-task-facts
+  take is-ascii
+    like task
+      take node, like expression
+      like boolean
+  like number
+  mark private
+
+  save row, place-row-of-statement(fn)
+  fork test, and(is-above(row, 0), cache/cursor-names/has(row))
+    hold
+      back row
+  save found, text-cursors-of(fn, is-ascii)
+  save reads, make hash
+  walk found/reads
+    take one
+    save call-row, place-row-of-expression(one/call)
+    fork test, is-above(call-row, 0)
+      hold
+        save reads/{call-row}, one/name
+  save names, cache/cursor-names
+  save names/{row}, found/names
+  save cache/cursor-names, names
+  save all-reads, cache/cursor-reads
+  save all-reads/{row}, reads
+  save cache/cursor-reads, all-reads
+  back row
+
+task redeclared-for
+  take fn, like statement
+  take cache, like ts-task-facts
+  like hash, like number, like boolean
+  mark private
+
+  save row, place-row-of-statement(fn)
+  fork test, and(is-above(row, 0), cache/redeclared/has(row))
+    hold
+      back cache/redeclared/get(row)
+  save found, statement-rows(redeclared-lets(fn))
+  save all, cache/redeclared
+  save all/{row}, found
+  save cache/redeclared, all
+  back found
+
+# ---- the wake chain's entries ----
+
+# a roll value as `JSON.stringify` writes it, inside a list (where nothing is `null`)
+task json-item
+  take value, like roll-value
+  like text
+  mark private
+
+  sift value
+    case no-value
+      back <null>
+    miss
+      back json-of(value)
+
+task json-of
+  take value, like roll-value
+  like text
+  mark private
+
+  sift value
+    case no-value
+      back <null>
+    case null-value
+      back <null>
+    case text-value
+      link text
+      back json-quote(text)
+    case number-value
+      link number
+      back <{number}>
+    case flag-value
+      link flag
+      fork test, flag
+        hold
+          back <true>
+      back <false>
+    case item-values
+      link values
+      save parts, make list
+      walk values
+        take one
+        push(parts, json-item(one))
+      back <[{join-with(parts, <,>)}]>
+    case pair-values
+      link pairs
+      save parts, make list
+      walk pairs
+        take pair
+        sift pair/value
+          case no-value
+            save idle, 0
+          miss
+            push(parts, <{json-quote(pair/key)}:{json-of(pair/value)}>)
+      back <\{{join-with(parts, <,>)}\}>
+
+# `String(value ?? '')`
+task value-string
+  take value, like roll-value
+  like text
+  mark private
+
+  sift value
+    case no-value
+      back <>
+    case null-value
+      back <>
+    miss
+      back string-of(value)
+
+# the value under a key, no value when the entry has no such key
+task wake-at
+  take entry, like roll-value
+  take key, like text
+  like roll-value
+  mark private
+
+  sift value-at(entry, key)
+    case some
+      link found
+      back found
+    case none
+      back make no-value
+
+# `entry[key] ?? {}`
+task wake-record
+  take entry, like roll-value
+  take key, like text
+  like roll-value
+  mark private
+
+  save empty
+    make pair-values
+      bind pairs, make list
+  save found, wake-at(entry, key)
+  sift found
+    case no-value
+      back empty
+    case null-value
+      back empty
+    miss
+      back found
+
+# `JSON.stringify(typeof value === 'string' ? value : value == null ? '' : String(value))`
+task text-of
+  take value, like roll-value
+  like text
+  mark private
+
+  back json-quote(value-string(value))
+
+# `JSON.stringify(Array.isArray(value) ? value.map(item => typeof item === 'string' ? item : String(item)) : [])`
+task texts-of
+  take value, like roll-value
+  like text
+  mark private
+
+  save parts, make list
+  sift value
+    case item-values
+      link values
+      walk values
+        take one
+        push(parts, json-quote(string-of(one)))
+    miss
+      save idle, 0
+  back <[{join-with(parts, <,>)}]>
+
+# an exception's `link`, the roll's object of field name to type text, each a `pair` of the two: `Object.entries`, a
+# record's keys or a list's indexes
+task field-pairs
+  take value, like roll-value
+  like text
+  mark private
+
+  save parts, make list
+  sift value
+    case pair-values
+      link pairs
+      walk pairs
+        take pair
+        push(parts, <\{ first: {json-quote(pair/key)}, second: {text-of(pair/value)} \}>)
+    case item-values
+      link values
+      save at, 0
+      walk values
+        take one
+        push(parts, <\{ first: {json-quote(<{at}>)}, second: {text-of(one)} \}>)
+        save at, add(at, 1)
+    miss
+      save idle, 0
+  back <[{join-with(parts, <, >)}]>
+
+task typed-entry
+  take entry, like roll-value
+  take base, like text
+  like text
+  mark private
+
+  back <\{ host: {text-of(wake-at(entry, <host>))}, kind: {text-of(wake-at(entry, <kind>))}, name: {text-of(wake-at(entry, <name>))}, site: {text-of(wake-at(entry, <site>))}, base: {base} \}>
+
+# THE TYPED WAKE (seam spec §3.3): a deck's static exceptions, tells and routes go to `hiveWakeTyped` as `hive-entry`
+# records whose `base` is a record of `exception-roll`, `tell-roll` or `dock-roll` with every field present
+task typed-text
+  take group, like ts-wake-group
+  like text
+  mark private
+
+  save exceptions, make list
+  walk group/exceptions
+    take entry
+    save roll, wake-record(entry, <base>)
+    push(exceptions, typed-entry(entry, <\{ like: {text-of(wake-at(roll, <like>))}, chain: {texts-of(wake-at(roll, <chain>))}, note: {text-of(wake-at(roll, <note>))}, link: {field-pairs(wake-at(roll, <link>))} \}>))
+  save tells, make list
+  walk group/tells
+    take entry
+    save roll, wake-record(entry, <base>)
+    push(tells, typed-entry(entry, <\{ note: {text-of(wake-at(roll, <note>))}, hint: {text-of(wake-at(roll, <hint>))}, link: {texts-of(wake-at(roll, <link>))}, alias: {text-of(wake-at(roll, <alias>))} \}>))
+  save docks, make list
+  walk group/docks
+    take entry
+    save roll, wake-record(entry, <base>)
+    push(docks, typed-entry(entry, <\{ halt: {texts-of(wake-at(roll, <halt>))} \}>))
+  back <[{join-with(exceptions, <, >)}], [{join-with(tells, <, >)}], [{join-with(docks, <, >)}]>
+
+# a wake entry's text: an entry with a `ref` is a declared kind's constant, its `base` the constant's live value and
+# not a copy
+task entry-text
+  take entry, like roll-value
+  like text
+  mark private
+
+  save rest, without-pair(entry, <ref>)
+  sift wake-at(entry, <ref>)
+    case text-value
+      link ref-name
+      back <\{ ...{json-of(without-pair(rest, <base>))}, base: {to-camel(ref-name)} \}>
+    miss
+      back json-of(rest)
+
+task is-typed-kind
+  take entry, like roll-value
+  like boolean
+  mark private
+
+  save kind, string-of(wake-at(entry, <kind>))
+  back or(or(is-equal(kind, <exception>), is-equal(kind, <tell>)), is-equal(kind, <dock>))
+
+# ---- the program ----
+
+# a program as one TypeScript module. `variants` and `exceptions` are the whole program's (per-module emit), `context`
+# the whole program read and never emitted, `library` a program host code also builds values of
+task emit-type-script
+  take given, like list, like statement
+  take context, like maybe, like list, like statement
+  take variants-given, like list, like text
+  take has-variants, like boolean
+  take exceptions-given, like list, like text
+  take library, like boolean
+  take env, like text
+  take hmr, like boolean
+  take export-constants, like boolean
+  take wake, like list, like ts-wake-group
+  take runtime, like list, like runtime-bound
+  take fail
+    like task
+      take reason, like text
+      like boolean
+  like text
+
+  # stubs dropped, `hook` routes lowered, and every table the emitter's facts are built from
+  save tables, ts-tables(given, context, variants-given, exceptions-given, library, has-variants, env)
+  # the last rewrite: every fact below and the emission read one STAMPED copy, each place a node of its own (D011 rule 4)
+  save lowered, stamp-places(tables/program)
+  save tables/program, lowered
+  # over the whole program a per-module emit is handed, else this one: a separately built unit's stubs carry the sets
+  # their own units closed over, so a call gains its frame alike in a separate build and a merged one
+  save whole, given
+  sift context
+    case some
+      link known
+      save whole, known
+    case none
+      save idle, 0
+  save raising, make hash
+  save raise-sets, raise-sets-of(whole, keys-of(tables/exceptions))
+  walk raise-sets/raises/keys()
+    take raiser
+    fork test, is-above(raise-sets/raises/get(raiser)/length, 0)
+      hold
+        save raising/{raiser}, true
+  # F1's facts, which the interval fact and the guards read: this backend keys no list representation by them
+  save mask-methods, make hash
+  walk lowered
+    take one
+    sift one
+      case mask
+        link methods
+        walk methods
+          take method-name
+          save mask-methods/{method-name}, true
+      miss
+        save idle, 0
+  save gated, gated-tasks(lowered, keys-of(mask-methods))
+  save list-facts, list-facts-of(lowered, gated)
+  save lend, list-facts/lend
+  save fresh, flags-of(list-facts/fresh)
+  # the place table and its places' identities: on a stamped program every place is a node of its own
+  save walked, walk-program(lowered)
+  save ids, make list
+  save row-at, 0
+  walk walked/handles
+    take handle
+    push(ids, row-at)
+    save row-at, add(row-at, 1)
+  save scope, scope-of(walked, ids)
+  # the `+`, `-` and `*` nodes proven not to overflow (compile/proven.ts): the counted steps, and every one the interval
+  # fact bounds inside the safe integers
+  save proven, expression-rows(proven-increments(lowered))
+  save private, private-forms-of(scope, lend, fresh)
+  save owned-all, owned-fields(lowered, fresh, lend, flags-of(private/forms))
+  save task-ids, make list
+  save next-id, 0
+  save reach-skip, ts-program-skip()
+  walk lowered
+    take one
+    sift one
+      case function
+        link body
+        save reached, reach-statements(body, reach-skip)
+        save one-ids, make list
+        walk reached/order
+          take ignored
+          push(one-ids, next-id)
+          save next-id, add(next-id, 1)
+        push(task-ids, one-ids)
+      miss
+        save idle, 0
+  walk bounded-arithmetic(lowered, flags-of(owned-all), lend, flags-of(native-forms(lowered)), task-ids)
+    take bounded
+    save bounded-row, place-row-of-expression(bounded)
+    fork test, is-above(bounded-row, 0)
+      hold
+        save proven/{bounded-row}, true
+  # the counted loops whose list indexes a guard before the loop can prove in bounds, by the loop's row
+  save lent, make hash
+  walk lend/keys()
+    take lent-task
+    save positions, make list
+    save lent-at, lend/get(lent-task)
+    walk lent-at/keys()
+      take position
+      push(positions, position)
+    save lent/{lent-task}, positions
+  save guards, make hash
+  save fast-in, make hash
+  walk bounded-loops(lowered, lent)
+    take found
+    save loop-row, place-row-of-statement(found/loop)
+    fork test, is-equal(loop-row, 0)
+      hold
+        turn next
+    save checks, make list
+    walk found/checks
+      take check
+      save one-check
+        make bound-check
+          bind list, check/list
+          bind base, check/base
+          bind offset, to-number(check/offset)
+          bind side, check/side
+          bind path, check/path
+      push(checks, one-check)
+    save limits, make list
+    fork test, is-above(found/fast/length, 0)
+      hold
+        walk found/limits
+          take limit
+          save high, 0
+          fork test, not(limit/low)
+            hold
+              sift limit/high
+                case some
+                  link value
+                  save high, to-number(value)
+                case none
+                  save idle, 0
+          save one-limit
+            make bound-limit
+              bind name, limit/name
+              bind low, limit/low
+              bind high, high
+          push(limits, one-limit)
+    save one-guard
+      make loop-guard
+        bind checks, checks
+        bind limits, limits
+    save guards/{loop-row}, one-guard
+    save fast-in/{loop-row}, expression-rows(found/fast)
+  # the slot writes of a record that assign the changed fields of the object already there
+  save place-writes, make hash
+  walk record-places(scope)/writes
+    take written-one
+    save place-fields, make list
+    walk written-one/write/fields
+      take place-field
+      save one-field
+        make field-value
+          bind name, place-field/name
+          bind value, place-field/value
+      push(place-fields, one-field)
+    save one-write
+      make place-write
+        bind local, written-one/write/local
+        bind fields, place-fields
+        bind temps, written-one/write/temps
+    save write-row, place-row-of-statement(written-one/node)
+    fork test, is-above(write-row, 0)
+      hold
+        save place-writes/{write-row}, one-write
+  # where a record is copied so a write through one name cannot reach another, a sole one refused
+  save context-list, make list
+  sift context
+    case some
+      link known
+      save context-list, known
+    case none
+      save idle, 0
+  save copies, record-copies-of(lowered, context-list)
+  save copy-lets, make list
+  save copy-deep, make hash
+  walk copies/lets
+    take one
+    push(copy-lets, one/node)
+    save let-row, place-row-of-statement(one/node)
+    fork test, is-above(let-row, 0)
+      hold
+        save copy-deep/{let-row}, one/deep
+  save sole-scope, make list
+  walk lowered
+    take one
+    push(sole-scope, one)
+  walk context-list
+    take one
+    push(sole-scope, one)
+  refuse-sole-copies(sole-scope, copies/params, copy-lets, fail)
+  # the text expressions proven ASCII, read with JavaScript's own string reads
+  save ascii, expression-rows(ascii-texts(lowered))
+  # the records built in the object their task was given
+  save reuse, record-reuse(scope)
+  save reuse-tasks, make hash
+  save builds, make hash
+  save carriers, make hash
+  walk reuse/tasks
+    take reuse-one
+    save one-reuse
+      make reuse-task
+        bind param, reuse-one/param
+        bind keep, reuse-one/keep-field
+    save reuse-tasks/{reuse-one/name}, one-reuse
+    save builds/{reuse-one/name}, expression-rows(reuse-one/builds)
+    fork test, is-unequal(reuse-one/keep-field, <>)
+      hold
+        save carriers/{reuse-one/name}, expression-rows(reuse-one/carriers)
+      miss
+        save carriers/{reuse-one/name}, make hash
+  save reuse-sites, expression-rows(reuse/sites)
+  save reuse-locals, make hash
+  walk reuse/locals
+    take local
+    save local-row, place-row-of-statement(local/node)
+    fork test, is-above(local-row, 0)
+      hold
+        save reuse-locals/{local-row}, local/field
+  save write-backs, statement-rows(reuse/write-backs)
+  # the tasks whose every self call is a tail call, each to those returns
+  save tails, make hash
+  walk tail-tasks-of(lowered)
+    take tail
+    save tails/{tail/name}, statement-rows(tail/returns)
+  # each task's text cursors and redeclared `let`s, asked once per task
+  save cache
+    make ts-task-facts
+      bind cursor-names, make hash
+      bind cursor-reads, make hash
+      bind redeclared, make hash
+  save is-ascii-node
+    task
+      take node, like expression
+      like boolean
+      back has-expression-row(ascii, node)
+  save is-proven
+    task
+      take node, like expression
+      like boolean
+      back has-expression-row(proven, node)
+  save loop-guard-of
+    task
+      take node, like statement
+      like maybe, like loop-guard
+      save row, place-row-of-statement(node)
+      fork test, and(is-above(row, 0), guards/has(row))
+        hold
+          save guard, guards/get(row)
+          back make(some, guard)
+      back make none
+  save is-fast-in
+    task
+      take node, like expression
+      take loop, like statement
+      like boolean
+      save row, place-row-of-statement(loop)
+      fork test, and(is-above(row, 0), fast-in/has(row))
+        hold
+          back has-expression-row(fast-in/get(row), node)
+      back false
+  save place-of
+    task
+      take node, like statement
+      like maybe, like place-write
+      save row, place-row-of-statement(node)
+      fork test, and(is-above(row, 0), place-writes/has(row))
+        hold
+          save found, place-writes/get(row)
+          back make(some, found)
+      back make none
+  save copy-of-let
+    task
+      take node, like statement
+      like maybe, like boolean
+      save row, place-row-of-statement(node)
+      fork test, and(is-above(row, 0), copy-deep/has(row))
+        hold
+          save deep, copy-deep/get(row)
+          back make(some, deep)
+      back make none
+  save is-reuse-site
+    task
+      take node, like expression
+      like boolean
+      back has-expression-row(reuse-sites, node)
+  save reuse-kept-of
+    task
+      take node, like statement
+      like maybe, like text
+      save row, place-row-of-statement(node)
+      fork test, and(is-above(row, 0), reuse-locals/has(row))
+        hold
+          save kept, reuse-locals/get(row)
+          back make(some, kept)
+      back make none
+  save is-write-back
+    task
+      take node, like statement
+      like boolean
+      back has-statement-row(write-backs, node)
+  save reuse-task-of
+    task
+      take name, like text
+      like maybe, like reuse-task
+      fork test, reuse-tasks/has(name)
+        hold
+          save found, reuse-tasks/get(name)
+          back make(some, found)
+      back make none
+  save is-build
+    task
+      take task-name, like text
+      take node, like expression
+      like boolean
+      fork test, builds/has(task-name)
+        hold
+          back has-expression-row(builds/get(task-name), node)
+      back false
+  save is-carrier
+    task
+      take task-name, like text
+      take node, like expression
+      like boolean
+      fork test, carriers/has(task-name)
+        hold
+          back has-expression-row(carriers/get(task-name), node)
+      back false
+  save has-tails
+    task
+      take name, like text
+      like boolean
+      back tails/has(name)
+  save is-tail-return
+    task
+      take task-name, like text
+      take node, like statement
+      like boolean
+      fork test, tails/has(task-name)
+        hold
+          back has-statement-row(tails/get(task-name), node)
+      back false
+  save is-redeclared
+    task
+      take fn, like statement
+      take node, like statement
+      like boolean
+      back has-statement-row(redeclared-for(fn, cache), node)
+  save cursor-names
+    task
+      take fn, like statement
+      like list, like text
+      save row, cursors-for(fn, cache, is-ascii-node)
+      back cache/cursor-names/get(row)
+  save cursor-of
+    task
+      take fn, like statement
+      take node, like expression
+      like maybe, like text
+      save row, cursors-for(fn, cache, is-ascii-node)
+      save reads, cache/cursor-reads/get(row)
+      save node-row, place-row-of-expression(node)
+      fork test, and(is-above(node-row, 0), reads/has(node-row))
+        hold
+          save name, reads/get(node-row)
+          back make(some, name)
+      back make none
+  save same-node
+    task
+      take left, like expression
+      take right, like expression
+      like boolean
+      back same-place(left, right)
+  # the tables' fields as the emitter reads them
+  save variant-fields, make hash
+  walk tables/variant-fields/keys()
+    take variant-name
+    save variant-fields/{variant-name}, ts-fields-of-variant(tables/variant-fields/get(variant-name))
+  save by-owner, make hash
+  walk tables/variant-fields-by-owner/keys()
+    take owner
+    save own, tables/variant-fields-by-owner/get(owner)
+    save own-fields, make hash
+    walk own/keys()
+      take variant-name
+      save own-fields/{variant-name}, ts-fields-of-variant(own/get(variant-name))
+    save by-owner/{owner}, own-fields
+  save record-fields, make hash
+  walk tables/record-fields/keys()
+    take form-name
+    save record-fields/{form-name}, ts-fields-of-form(tables/record-fields/get(form-name))
+  save facts
+    make emit-facts
+      bind variants, flags-of(keys-of(tables/variants))
+      bind variant-fields, variant-fields
+      bind variant-fields-by-owner, by-owner
+      bind record-fields, record-fields
+      bind inspect-forms, inspect-forms(given)
+      bind shared-forms, flags-of(keys-of(tables/shared-forms))
+      bind identity, flags-of(tables/identity)
+      bind text-by-owner, tables/text-by-owner
+      bind text-by-variant, tables/text-by-variant
+      bind tag-by-owner, tables/tag-by-owner
+      bind tag-by-variant, tables/tag-by-variant
+      bind function-params, tables/function-params
+      bind exceptions, flags-of(keys-of(tables/exceptions))
+      bind raising, raising
+      bind dock-names, tables/dock-names
+      bind opaque, tables/opaque
+      bind binds, tables/binds
+      bind fills, fill-tasks(lowered)
+      bind copy-params, copies/params
+      bind plain-records, flags-of(copies/plain)
+      bind env, env
+      bind hmr, hmr
+      bind runtime, runtime
+      bind is-proven, is-proven
+      bind loop-guard-of, loop-guard-of
+      bind is-fast-in, is-fast-in
+      bind place-of, place-of
+      bind copy-of-let, copy-of-let
+      bind is-ascii, is-ascii-node
+      bind is-reuse-site, is-reuse-site
+      bind reuse-kept-of, reuse-kept-of
+      bind is-write-back, is-write-back
+      bind reuse-task-of, reuse-task-of
+      bind is-build, is-build
+      bind is-carrier, is-carrier
+      bind has-tails, has-tails
+      bind is-tail-return, is-tail-return
+      bind is-redeclared, is-redeclared
+      bind cursor-names, cursor-names
+      bind cursor-of, cursor-of
+      bind same-node, same-node
+  save fieldless, make hash
+  save guards-met, make hash
+  save st, new-emit-state(fieldless, guards-met)
+  # the wake chain's entries, each its text: the typed kinds leave `hiveWake` when the program has `hive-wake-typed`
+  save typed-wake, false
+  walk lowered
+    take one
+    sift one
+      case function
+        link name
+        fork test, is-equal(name, <hive-wake-typed>)
+          hold
+            save typed-wake, true
+      miss
+        save idle, 0
+  save wake-of
+    task
+      like list, like wake-group
+      save groups, make list
+      walk wake
+        take group
+        save texts, make list
+        walk group/entries
+          take entry
+          fork test, and(typed-wake, is-typed-kind(entry))
+            hold
+              turn next
+          push(texts, entry-text(entry))
+        save one-group
+          make wake-group
+            bind deck, group/deck
+            bind entries, texts
+            bind typed, typed-text(group)
+        push(groups, one-group)
+      back groups
+  save statement-of
+    task
+      take node, like statement
+      like text
+      back emit-statement(node, 0, st, facts)
+  save unchecked-of
+    task
+      take node, like statement
+      take copy-name, like text
+      like text
+      save fast-copy, ts-program-copy-statement(node)
+      sift fast-copy
+        case function
+          save fast-copy/name, copy-name
+        miss
+          save idle, 0
+      back emit-unchecked(fast-copy, st, facts)
+  # a task's copy that builds its result in the record it is given, for a reuse site: with a kept field, the copy
+  # answers that field alone
+  save reusing-of
+    task
+      take node, like statement
+      like text
+      save task-name, <>
+      save reuse-copy, ts-program-copy-statement(node)
+      sift reuse-copy
+        case function
+          link fn-name
+          save task-name, fn-name
+          save reuse-copy/name, <{fn-name}-reuse>
+        miss
+          save idle, 0
+      walk reuse/tasks
+        take reuse-one
+        fork test, and(is-equal(reuse-one/name, task-name), is-unequal(reuse-one/keep-field, <>))
+          hold
+            sift reuse-copy
+              case function
+                save reuse-copy/result, reuse-one/keep-type
+              miss
+                save idle, 0
+      back emit-reusing(reuse-copy, task-name, st, facts)
+  save tag-of
+    task
+      take variant, like text
+      like text
+      back tag-for(variant, no-type(), facts)
+  save fast-tasks
+    task
+      like list, like text
+      back st/fast-tasks
+  save reuse-tasks-of
+    task
+      like list, like text
+      back st/reuse-tasks
+  save flags-of-emit
+    task
+      like emit-flags
+      back
+        make emit-flags
+          bind form-walk-used, st/form-walk-used
+          bind inspect-used, st/inspect-used
+          bind host-used, st/host-used
+          bind maybe-field-used, st/maybe-field-used
+          bind int-used, st/int-used
+          bind equal-used, st/equal-used
+          bind text-used, st/text-used
+          bind list-used, st/list-used
+          bind flow-used, st/flow-used
+          bind fieldless, st/fieldless
+          bind guards, st/guards
+  back assemble-type-script(tables, env, export-constants, is-above(wake/length, 0), wake-of, statement-of, unchecked-of, reusing-of, tag-of, fast-tasks, reuse-tasks-of, flags-of-emit)
+
+bind ts-program-copy-statement
+  take value, like statement
+  like statement
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>

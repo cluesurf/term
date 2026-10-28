@@ -10,7 +10,9 @@
 #     live here and call the state's flow, and no part loads the part after it. `flow-from-nodes` is here too: it only
 #     mines, and `body-steps` reads it
 #   - arguments, record values and body steps are ordered by the `at` a capture carries (decision 042), ties kept in the
-#     order written, the original's fallback (the count of entries already written) where a value has none
+#     order written, the original's fallback (the count of entries already written) where a value has none. A value
+#     enumerated inside a callee's parentheses also carries `within`, the `at` of that group, and sorts at it, before
+#     the lines after the group (`at-or`, item term-self-host-001-0303)
 #   - a field the original set only when present (`names`, `lean`, `args`, `positional`) is written with its default
 #     otherwise, which node-json reads as the absent field (decision 034 section 2)
 #   - an integer literal past 2^53 arrives as a bigint inside the minted value's float (compile/mill-running.tree), so
@@ -429,25 +431,81 @@ task written-at
       link form-at
       back form-at
 
-# the value's `at`, else the fallback
+# where a minted value was enumerated inside a group nested in its own (`within`, compile/mill-running.tree
+# `mill-capture`)
+task written-within
+  take value, like minted
+  like maybe, like number
+
+  sift value
+    case word
+      link word-value
+      link word-span
+      link word-node
+      link word-at
+      link word-within
+      back word-within
+    case text
+      link text-value
+      link text-span
+      link text-node
+      link text-at
+      link text-within
+      back text-within
+    case number
+      link number-value
+      link number-decimal
+      link number-span
+      link number-node
+      link number-at
+      link number-within
+      back number-within
+    case form
+      link form-built
+      link form-fields
+      link form-span
+      link form-node
+      link form-at
+      link form-within
+      back form-within
+
+# the place a value sorts at: its `at`, else the fallback, scaled by `place-span`. A value enumerated inside the group
+# at `within` sorts just after that group's own place and before the next one: `call f(a, b)` / `code 9` puts `a` and
+# `b` (at 1 and 2 in `f(...)`, within 1) at 1 * span + 2 and 1 * span + 3, the `9` line (at 2) at 2 * span. Written
+# order, the parenthesized arguments first, then each line below (item term-self-host-001-0303)
 task at-or
   take value, like minted
   take fallback, like number
   like number
   mark private
 
+  save own-place, fallback
   sift written-at(value)
     case some
       link known
-      back known
+      save own-place, known
     case none
-      back fallback
+      save nothing, 0
+  sift written-within(value)
+    case some
+      link group-at
+      back add(multiply(group-at, place-span()), add(own-place, 1))
+    case none
+      back multiply(own-place, place-span())
+
+# more than any child index or count of entries a sorted list holds, so a place inside a group never reaches the next
+task place-span
+  like number
+  mark private
+
+  back 1048576
 
 # the same minted value read from another node at another place (a drop line read again as a call)
 task with-node-at
   take value, like minted
   take from, like maybe, like node
   take place, like maybe, like number
+  take place-within, like maybe, like number
   like minted
   mark private
 
@@ -461,6 +519,7 @@ task with-node-at
           bind span, word-span
           bind node, from
           bind at, place
+          bind within, place-within
     case text
       link text-value
       link text-span
@@ -470,6 +529,7 @@ task with-node-at
           bind span, text-span
           bind node, from
           bind at, place
+          bind within, place-within
     case number
       link number-value
       link number-decimal
@@ -481,6 +541,7 @@ task with-node-at
           bind span, number-span
           bind node, from
           bind at, place
+          bind within, place-within
     case form
       link form-built
       link form-fields
@@ -492,6 +553,7 @@ task with-node-at
           bind span, form-span
           bind node, from
           bind at, place
+          bind within, place-within
 
 # a word or literal capture as the minted value it already is
 task capture-value
@@ -505,29 +567,34 @@ task capture-value
       link word-span
       link word-node
       link word-at
+      link word-within
       back
         make word
           bind value, word-value
           bind span, word-span
           bind node, make(some, word-node)
           bind at, word-at
+          bind within, word-within
     case text
       link text-value
       link text-span
       link text-node
       link text-at
+      link text-within
       back
         make text
           bind value, text-value
           bind span, text-span
           bind node, make(some, text-node)
           bind at, text-at
+          bind within, text-within
     case number
       link number-value
       link number-decimal
       link number-span
       link number-node
       link number-at
+      link number-within
       back
         make number
           bind value, number-value
@@ -535,6 +602,7 @@ task capture-value
           bind span, number-span
           bind node, make(some, number-node)
           bind at, number-at
+          bind within, number-within
     case match
       # never reached: a match is minted, never passed through
       link match-rule
@@ -1909,7 +1977,7 @@ task body-steps
                     push(lines, one)
                     walk flow-from-nodes(state, lines)
                       take step
-                      push(called, with-node-at(step, drop-node, written-at(drop)))
+                      push(called, with-node-at(step, drop-node, written-at(drop), written-within(drop)))
               case none
                 fork test, state/named/has(<>)
                   hold
@@ -1917,7 +1985,7 @@ task body-steps
                     push(lines, one)
                     walk flow-from-nodes(state, lines)
                       take step
-                      push(called, with-node-at(step, drop-node, written-at(drop)))
+                      push(called, with-node-at(step, drop-node, written-at(drop), written-within(drop)))
           miss
             save nothing, 0
       case none
