@@ -5277,6 +5277,8 @@ task fill-statement
           save nothing, 0
       back copy
     case bind
+      # the one field this arm reads. Binding every field made the copy's arm below hide each of them, async among them
+      link result
       save inner, enter-scope(scope, scope-of-statement(node))
       save walked-result, fill-maybe-type(result, inner, arm, ctx)
       fork test, is-equal(walked-result, result)

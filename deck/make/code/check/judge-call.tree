@@ -1,0 +1,78 @@
+# A call into the kernel from TypeScript, as check/judge.ts's `kernel` made it before item term-self-host-001-0072:
+# the step runs, and when it raises, the unfold fuel is put back to what it was at the call, the value the original's
+# `finally` chain restored on every conversion that unfolded (nothing inside the kernel catches such a raise).
+#
+# The answer says how the step ended. A `failure` whose note names a kernel error (`kernel-type:` for the original's
+# `TypeError`, `kernel-fault:` for a plain `Error`, check/judging.tree's header) comes back as `judge-raised` with the
+# raise itself and its message without the prefix, so the face throws that same raise again as the original's class:
+# a raise is reused, never rebuilt, because the elaborator throws and catches thousands a program (traps.md T039). A
+# `failure` with any other note comes back with kind `<>`, and the face throws it as it came. Any other raise passes
+# on from here as it came, the fuel put back first.
+#
+# Unlike check/judging.tree's `kernel-call`, nothing is turned into an answer the caller must read: `decline:` stays a
+# raise, which check/elaborate.ts turns into its `Decline`.
+
+load @term/base/exception
+  find exception
+  find failure
+
+load @term/base/text
+  find substring
+  find starts-with
+
+load ./judging
+  find judge-state
+
+form judge-outcome
+  case judge-done
+    link value, like unknown
+  case judge-raised
+    link raised, like unknown
+    link kind, like text
+    link message, like text
+
+task run-in-kernel
+  take st, like judge-state
+  take step
+    like task
+      like unknown
+      halt failure
+  like judge-outcome
+
+  save fuel, st/unfold-fuel
+  fork
+    mark unsafe
+    save value, step()
+    back
+      make judge-done
+        bind value, value
+  halt take
+    take problem
+    save st/unfold-fuel, fuel
+    sift problem
+      case failure
+        link note
+        fork test, starts-with(note, <kernel-type:>)
+          hold
+            back
+              make judge-raised
+                bind raised, problem
+                bind kind, <type>
+                bind message, substring(note, 12, note/length)
+        fork test, starts-with(note, <kernel-fault:>)
+          hold
+            back
+              make judge-raised
+                bind raised, problem
+                bind kind, <fault>
+                bind message, substring(note, 13, note/length)
+        back
+          make judge-raised
+            bind raised, problem
+            bind kind, <>
+            bind message, note
+  back
+    make judge-raised
+      bind raised, <unreachable>
+      bind kind, <>
+      bind message, <unreachable>

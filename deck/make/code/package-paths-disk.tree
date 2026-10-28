@@ -1,0 +1,576 @@
+# What module resolution reads from the disk and the process, for the resolve.ts face (item 0074, the COLLAPSE of
+# resolve.ts): `stat` and the code-root cache, `readdir`, `realpath`, the walk up to the stdlib, `TERM_STDLIB`, and each
+# resolver, a closure there, as a case of `package-resolver` run by `apply-package-resolver` (spec.md section 4.9).
+# Every call reaches the platform through @term/base/file/blocking (section 4.23). The rules themselves are
+# package-paths.tree's, untouched.
+#
+#   - the code-root cache is a `mark shared` record the face makes once and hands to `code-root-on-disk` (section 4.8),
+#     keyed by the directory and valid while the manifest's change time holds. It STATS `deck.tree` on every call, as
+#     the original did: port-build's trace attributes a file's read to every stat that sees the file, which is how a
+#     module served from this cache keeps the manifest's content in its key (decision 038)
+#   - a call that could fail on the disk asks first: the original caught the throw of a missing path, a directory read
+#     as a file or a file listed as a directory, and answered its fallback, which these tasks answer for the same cases
+#   - the stdlib walk starts from the face's own module address, handed in as its `file:` URL, as the original walked
+#     from its `import.meta.url`
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find substring
+  find starts-with
+  find ends-with
+  find index-of
+  find contains
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load @term/base/url/percent
+  find percent-decode
+  find utf-8-decode
+
+load @term/base/environment
+  find variable, name environment-variable
+
+load @term/base/file/blocking
+  find read, name disk-read
+  find exists, name disk-exists
+  find stat, name disk-stat
+  find list, name disk-list
+  find resolve-real, name disk-real
+  find entry-kind
+  find path-entry
+
+load ./package-paths
+  find join-two
+  find join-three
+  find dirname-of
+  find code-root-of-text
+  find default-code-root
+  find package-hit
+  find resolve-package-path
+  find stdlib-rest
+  find sibling-of
+  find find-project-root
+  find tree-file
+  find package-disk
+
+load ./deck/resolve
+  find package-rest
+
+# ---- the disk ----
+
+# whether a path exists, a link followed
+task path-exists
+  take path, like text
+  like boolean
+
+  back disk-exists(path)
+
+task is-directory-kind
+  take kind, like entry-kind
+  like boolean
+  mark private
+
+  sift kind
+    case directory
+      back true
+    miss
+      back false
+
+task is-link-kind
+  take kind, like entry-kind
+  like boolean
+  mark private
+
+  sift kind
+    case file
+      back false
+    case directory
+      back false
+    case other
+      back false
+    miss
+      back true
+
+# whether a path is a directory, a link followed; false for a path that is not there
+task is-dir-on-disk
+  take path, like text
+  like boolean
+
+  fork test, is-equal(disk-exists(path), false)
+    hold
+      back false
+  save seen, disk-stat(path)
+  back is-directory-kind(seen/kind)
+
+# a file's whole text, none for a path that is not there or is a directory
+task read-file-on-disk
+  take path, like text
+  like maybe, like text
+
+  fork test, is-equal(disk-exists(path), false)
+    hold
+      back make none
+  fork test, is-dir-on-disk(path)
+    hold
+      back make none
+  save text, disk-read(path)
+  back make(some, text)
+
+# a file's whole text, for a path a resolver found
+task read-whole
+  take path, like text
+  like text
+
+  back disk-read(path)
+
+# a directory's entry names in the platform's order, none for a path that is not a directory
+task read-dir-on-disk
+  take dir, like text
+  like maybe, like list, like text
+
+  fork test, is-equal(is-dir-on-disk(dir), false)
+    hold
+      back make none
+  save names, make list
+  walk disk-list(dir)
+    take entry
+    push(names, entry/name)
+  back make(some, names)
+
+# a path with every link in it followed, the path itself when it is not there
+task real-of
+  take dir, like text
+  like text
+
+  fork test, is-equal(disk-exists(dir), false)
+    hold
+      back dir
+  back disk-real(dir)
+
+# `path.relative(base, full)` for a full path the walk joined under base
+task relative-under
+  take base, like text
+  take full, like text
+  like text
+  mark private
+
+  save prefix, <{base}/>
+  fork test, starts-with(full, prefix)
+    hold
+      back substring(full, prefix/length, full/length)
+  back full
+
+# every `.tree` file under `dir`, as its path and its path from `base`, depth first in the listing's order. Capped so a
+# pathological tree cannot stall a code action: a folder past depth 8, or reached with more than 2000 files found, adds
+# nothing. `tmp` is scratch and a package's own `link/` is its dependencies, searched as packages of their own
+task gather-tree-files
+  take dir, like text
+  take base, like text
+  take depth, like number
+  take before, like number
+  like list, like tree-file
+  mark private
+
+  save out, make list
+  fork test, or(is-above(depth, 8), is-above(before, 2000))
+    hold
+      back out
+  fork test, is-equal(is-dir-on-disk(dir), false)
+    hold
+      back out
+  walk disk-list(dir)
+    take entry
+    save name, entry/name
+    save skipped, or(or(starts-with(name, <.>), is-equal(name, <node_modules>)), or(is-equal(name, <host>), is-equal(name, <tmp>)))
+    fork test, or(skipped, and(is-equal(name, <link>), is-equal(dir, base)))
+      hold
+        turn next
+    save full, join-two(dir, name)
+    # the entry's own kind, read with the listing, and a stat only for a link (which is how `link/` holds a package)
+    save is-dir, is-directory-kind(entry/kind)
+    fork test, is-link-kind(entry/kind)
+      hold
+        fork test, is-equal(disk-exists(full), false)
+          hold
+            turn next
+        save target, disk-stat(full)
+        save is-dir, is-directory-kind(target/kind)
+    fork test, is-dir
+      hold
+        walk gather-tree-files(full, base, add(depth, 1), add(before, out/length))
+          take found
+          push(out, found)
+      miss
+        fork test, ends-with(name, <.tree>)
+          hold
+            save one
+              make tree-file
+                bind path, full
+                bind rel, relative-under(base, full)
+            push(out, one)
+  back out
+
+task tree-files-on-disk
+  take dir, like text
+  like list, like tree-file
+
+  back gather-tree-files(dir, dir, 0, 0)
+
+# ---- the code root ----
+
+# what the cache keeps for one directory: the manifest's change time when it was read, and the code root it named
+form code-root-entry
+  link changed, like float
+  link code, like text
+
+form code-roots
+  mark shared
+  link known, like hash, like text, like code-root-entry
+
+task make-code-roots
+  like code-roots
+
+  back
+    make code-roots
+      bind known, make hash
+
+# the code root a package directory's manifest names, relative to it, `code` when there is no manifest. Read again only
+# when the manifest's change time moved, so a long-lived language server sees an edited manifest and a build does not
+# re-parse one per import
+task code-root-on-disk
+  take roots, like code-roots
+  take dir, like text
+  like text
+
+  save file, join-two(dir, <deck.tree>)
+  fork test, is-equal(disk-exists(file), false)
+    hold
+      back default-code-root()
+  save seen, disk-stat(file)
+  save changed, seen/changed
+  fork test, roots/known/has(dir)
+    hold
+      save hit, roots/known/get(dir)
+      fork test, is-equal(hit/changed, changed)
+        hold
+          back hit/code
+  save code, default-code-root()
+  fork test, is-equal(is-directory-kind(seen/kind), false)
+    hold
+      save code, code-root-of-text(disk-read(file), file)
+  save entry
+    make code-root-entry
+      bind changed, changed
+      bind code, code
+  save roots/known/{dir}, entry
+  back code
+
+# ---- the stdlib ----
+
+# `fileURLToPath` of a `file:` URL on a POSIX host: the path after the scheme and any host, percent escapes read as UTF-8
+task file-url-path
+  take url, like text
+  like text
+  mark private
+
+  save rest, url
+  fork test, starts-with(url, <file://>)
+    hold
+      save rest, substring(url, 7, url/length)
+  fork test, is-equal(starts-with(rest, </>), false)
+    hold
+      save slash, index-of(rest, </>)
+      fork test, is-minimum(slash, 0)
+        hold
+          save rest, substring(rest, slash, rest/length)
+  fork test, contains(rest, <%>)
+    hold
+      back from-runes(utf-8-decode(percent-decode(to-runes(rest))))
+  back rest
+
+# the stdlib package directory (`deck/base`, next to the compiler), found by walking up from the module at `url`, ONE
+# candidate on purpose: a second probe is how a stale directory left by a rename quietly becomes the stdlib. A bundle
+# that runs elsewhere is pinned by `TERM_STDLIB`. None when the compiler runs somewhere without its stdlib
+task stdlib-base-from
+  take url, like text
+  like maybe, like text
+
+  save pinned, environment-variable(<TERM_STDLIB>)
+  fork test, and(is-unequal(pinned, <>), disk-exists(join-two(pinned, <code>)))
+    hold
+      back make(some, pinned)
+  save dir, dirname-of(file-url-path(url))
+  save depth, 0
+  walk test
+    hook test, is-below(depth, 10)
+    hook hold
+      save candidate, join-three(dir, <deck>, <base>)
+      fork test, disk-exists(join-two(candidate, <code>))
+        hold
+          back make(some, candidate)
+      save parent, dirname-of(dir)
+      fork test, is-equal(parent, dir)
+        hold
+          back make none
+      save dir, parent
+      save depth, add(depth, 1)
+  back make none
+
+# ---- the resolvers ----
+
+# a module a resolver found: its canonical path, its text, and the file in the package root it shadows
+form loaded-source
+  link file, like text
+  link text, like text
+  link shadowed
+    like maybe, like text
+    need false
+
+# the source a hit names, canonicalized through `realpath` (a file reached through a linked folder and by its real path
+# is one module), then read
+task found-source
+  take hit, like package-hit
+  like maybe, like loaded-source
+  mark private
+
+  sift hit/file
+    case some
+      link found
+      save real, disk-real(found)
+      save text, disk-read(found)
+      sift hit/shadowed
+        case some
+          save shadowing
+            make loaded-source
+              bind file, real
+              bind text, text
+              bind shadowed, hit/shadowed
+          back make(some, shadowing)
+        case none
+          save plain
+            make loaded-source
+              bind file, real
+              bind text, text
+          back make(some, plain)
+    case none
+      back make none
+
+# each resolver the face hands out, holding what its closure captured
+form package-resolver
+  # the stdlib: `@term/base/<rest>` inside the stdlib's directory
+  case stdlib-packages
+    link stdlib-dir, like text
+    link code-root-of
+      like task
+        take dir, like text
+        like text
+  # every package in the stdlib's own tree, by name, when it declares itself with a deck.tree
+  case sibling-packages
+    link deck-root, like text
+    link code-root-of
+      like task
+        take dir, like text
+        like text
+  # a package through the project's `link/` dir, where `term link` puts each dependency
+  case linked-packages
+    link link-dir, like text
+    link code-root-of
+      like task
+        take dir, like text
+        like text
+  # an opened file's project's linked packages first, then the stdlib
+  case editor-packages
+    link link-dir, like maybe, like text
+    link stdlib-dir, like maybe, like text
+    link code-root-of
+      like task
+        take dir, like text
+        like text
+
+task resolve-stdlib
+  take stdlib-dir, like text
+  take code-root-of
+    like task
+      take dir, like text
+      like text
+  take path, like text
+  take base, like maybe, like text
+  like maybe, like loaded-source
+  mark private
+
+  sift stdlib-rest(path)
+    case some
+      link rest
+      back found-source(resolve-package-path(stdlib-dir, rest, base, path-exists, code-root-of))
+    case none
+      back make none
+
+task resolve-linked
+  take link-dir, like text
+  take code-root-of
+    like task
+      take dir, like text
+      like text
+  take path, like text
+  take base, like maybe, like text
+  like maybe, like loaded-source
+  mark private
+
+  save found, package-rest(path)
+  fork test, is-equal(found/found, false)
+    hold
+      back make none
+  save pkg-dir, join-two(link-dir, found/pkg)
+  fork test, is-equal(disk-exists(pkg-dir), false)
+    hold
+      back make none
+  back found-source(resolve-package-path(pkg-dir, found/rest, base, path-exists, code-root-of))
+
+# what a resolver answers for an import path, with the `base` its load carried
+task apply-package-resolver
+  take resolver, like package-resolver
+  take path, like text
+  take base, like maybe, like text
+  like maybe, like loaded-source
+
+  sift resolver
+    case stdlib-packages
+      back resolve-stdlib(stdlib-dir, code-root-of, path, base)
+    case sibling-packages
+      sift sibling-of(path)
+        case some
+          link sibling
+          save pkg-root, join-two(deck-root, sibling/pkg)
+          # it is a package only if it declares itself one
+          fork test, is-equal(disk-exists(join-two(pkg-root, <deck.tree>)), false)
+            hold
+              back make none
+          back found-source(resolve-package-path(pkg-root, sibling/rest, base, path-exists, code-root-of))
+        case none
+          back make none
+    case linked-packages
+      back resolve-linked(link-dir, code-root-of, path, base)
+    case editor-packages
+      sift link-dir
+        case some
+          link linked
+          save first, resolve-linked(linked, code-root-of, path, base)
+          sift first
+            case some
+              back first
+            case none
+              save first, first
+        case none
+          save nothing, 0
+      sift stdlib-dir
+        case some
+          link stdlib
+          back resolve-stdlib(stdlib, code-root-of, path, base)
+        case none
+          back make none
+
+task stdlib-resolver-from
+  take url, like text
+  take code-root-of
+    like task
+      take dir, like text
+      like text
+  like maybe, like package-resolver
+
+  sift stdlib-base-from(url)
+    case some
+      link stdlib
+      save resolver
+        make stdlib-packages
+          bind stdlib-dir, stdlib
+          bind code-root-of, code-root-of
+      back make(some, resolver)
+    case none
+      back make none
+
+task sibling-resolver-from
+  take url, like text
+  take code-root-of
+    like task
+      take dir, like text
+      like text
+  like maybe, like package-resolver
+
+  sift stdlib-base-from(url)
+    case some
+      link stdlib
+      # the directory holding every in-tree package: the stdlib's own parent (`.../deck/base` -> `.../deck`)
+      save resolver
+        make sibling-packages
+          bind deck-root, dirname-of(stdlib)
+          bind code-root-of, code-root-of
+      back make(some, resolver)
+    case none
+      back make none
+
+task link-resolver-of
+  take root, like text
+  take code-root-of
+    like task
+      take dir, like text
+      like text
+  like package-resolver
+
+  back
+    make linked-packages
+      bind link-dir, join-two(root, <link>)
+      bind code-root-of, code-root-of
+
+# the resolver an editor (language server) uses for an opened file: its project's linked packages, found from the file,
+# then the stdlib
+task editor-resolver-of
+  take file, like text
+  take url, like text
+  take code-root-of
+    like task
+      take dir, like text
+      like text
+  like package-resolver
+
+  save link-dir, make none
+  sift find-project-root(file, path-exists)
+    case some
+      link root
+      save linked, join-two(root, <link>)
+      save link-dir, make(some, linked)
+    case none
+      save link-dir, link-dir
+  back
+    make editor-packages
+      bind link-dir, link-dir
+      bind stdlib-dir, stdlib-base-from(url)
+      bind code-root-of, code-root-of
+
+# the disk package-paths.tree's searches walk: these tasks, the face's code-root cache and its stdlib
+task disk-of
+  take code-root-of
+    like task
+      take dir, like text
+      like text
+  take stdlib-base
+    like task
+      like maybe, like text
+  like package-disk
+
+  back
+    make package-disk
+      bind exists, path-exists
+      bind code-root-of, code-root-of
+      bind read-file, read-file-on-disk
+      bind read-dir, read-dir-on-disk
+      bind is-dir, is-dir-on-disk
+      bind real-of, real-of
+      bind tree-files-in, tree-files-on-disk
+      bind stdlib-base, stdlib-base
