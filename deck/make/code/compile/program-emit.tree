@@ -1,0 +1,470 @@
+# THE EMIT of `compileProgram`, steps 22 to 25: the internal marks, the coverage probes, the trait dictionaries on an
+# unshared copy, the modules or the raw emit, the simplifier, the view lowering and the lowered member check. It answers
+# the refusal that stops the compile, or what the result is built from: a pending emit, whose TypeScript
+# `emit-typescript` writes when the face's getter first reads it.
+#
+# Ported from compile/compile.ts's `programEmit` and `entryFormAliases` (item 0268 of term/self-host/change/001,
+# decision 031 part H), which stay as the face. The decisions:
+#   - the passes that are Term are loaded by their `.tree` names (ir/cover, ir/dictionary, ir/simplifying,
+#     compile/view-lower, check/lowered, compile/ts-names); the two with no port yet are docks, each named for its
+#     module (decision 031 section 3): compile/modules (the per-module emit) and compile/typescript (the emitter)
+#   - the lazy `typescript` stays a getter in the face (decision 031 section 6): this answers a `pending-emit` and the
+#     getter calls `emit-typescript` on it. The raw emit (`optimize: false`) is eager, as the original's was, and the face
+#     calls the same task at once
+#   - one result builder in the face replaces the original's three spellings of the result
+#   - what Term cannot read off the run is handed in by the face: the roots as a list (a set's order), the cover target
+#     and the per-module URL as maybes, whether a `let` is a host global (ir/simplify.ts's `foreign`, an absent text and
+#     an empty one reading alike), and the files the run emits as the host set the per-module emit takes
+#   - a generic carries a trait bound when its `need` is not empty: absent and empty are one value (decision 034
+#     section 2), where the original tested `need !== undefined`
+#   - the internal marks and the file a made statement is put in are written into the statements as the original wrote
+#     them, each written back into its list, so the program the result holds carries them on every backend, and the run
+#     holds the program the probes were written into, as the original's spliced one did
+#   - the dictionaries' copy is the original's `structuredClone` (`emit-copy-program`). Natively a value is already a copy
+
+load @term/base/list
+  find list
+  find get
+  find set
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-count
+  find ends-with
+  find substring
+
+load ../parser/diagnostic
+  find diagnostic
+
+load ./node
+  find statement
+  find statement-span
+
+load ./program-run
+  find program-run
+
+load ./ts-names
+  find to-pascal
+
+load ./view-lower
+  find lower-views
+
+load ../ir/cover
+  find cover-target
+  find covered
+  find cover-program
+
+load ../ir/dictionary
+  find pass-dictionaries
+
+load ../ir/simplifying
+  find simplify
+
+load ../check/lowered
+  find check-lowered-members
+
+dock load
+  load <@term/make/code/compile/modules>, name program-emit-modules
+  load <@term/make/code/compile/typescript>, name program-emit-typescript
+
+# what the emit reads that the run does not hold as Term can read it, filled by the face
+form emit-given
+  # the entry's public surface, in the order the run's set holds it, and whether the run named one at all
+  link has-roots, like boolean
+  link roots, like list, like text
+  # the coverage target, none when the run measures nothing
+  link cover, like maybe, like cover-target
+  # per-module mode: the URL each file's module is served at, as the per-module emit takes it
+  link has-modules, like boolean
+  link modules-url, like dynamic
+  # the files whose modules are emitted (a separate unit), with the file a made statement is put in, and the same set as
+  # the per-module emit takes it
+  link scoped, like boolean
+  link home, like text
+  link emit-only, like dynamic
+  # the editor path: the program as checked, with a raw emit
+  link raw, like boolean
+  # the env the lowered member check is for, `<>` for none
+  link env, like text
+  # whether a statement is a `let` of a host global (ir/simplify.ts `foreign`)
+  link foreign
+    like task
+      take given, like statement
+      like boolean
+
+# which result the emit makes
+form emit-kind
+  mark text
+  case modules-emit
+  case raw-emit
+  case optimized-emit
+
+# what the result is built from: its kind, the program it holds, the program the TypeScript is emitted from, the cover
+# keys when the run measured some, and the per-module emit
+form pending-emit
+  link kind, like emit-kind
+  link program, like list, like statement
+  link ts-program, like list, like statement
+  link file, like text
+  link cover, like maybe, like list, like text
+  link modules, like maybe, like dynamic
+
+# the refusal that stops the compile, or what the result is built from
+form emit-answer
+  link refused, like maybe, like list, like diagnostic
+  link pending, like maybe, like pending-emit
+
+# ---- small helpers ----
+
+# a whole program, deep-copied, as the original's `structuredClone`. Natively a value is already a copy
+bind emit-copy-program
+  take value, like list, like statement
+  like list, like statement
+  case node
+    text <structuredClone($value)>
+  case browser
+    text <structuredClone($value)>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+task emit-pending
+  take kind, like emit-kind
+  take program, like list, like statement
+  take ts-program, like list, like statement
+  take file, like text
+  take cover, like maybe, like list, like text
+  take modules, like maybe, like dynamic
+  like emit-answer
+  mark private
+
+  save pending
+    make pending-emit
+      bind kind, kind
+      bind program, program
+      bind ts-program, ts-program
+      bind file, file
+      bind cover, cover
+      bind modules, modules
+  back
+    make emit-answer
+      bind refused, make none
+      bind pending, make(some, pending)
+
+# the statement with the file it is in, when it names none: the file a statement the build made belongs to
+task filed-statement
+  take one, like statement
+  take home, like text
+  like statement
+  mark private
+
+  sift statement-span(one)/file
+    case some
+      back one
+    case none
+      save nothing, 0
+  sift one
+    case let
+      save one/span/file, make(some, home)
+    case assign
+      save one/span/file, make(some, home)
+    case expression
+      save one/span/file, make(some, home)
+    case if
+      save one/span/file, make(some, home)
+    case while
+      save one/span/file, make(some, home)
+    case match
+      save one/span/file, make(some, home)
+    case for-each
+      save one/span/file, make(some, home)
+    case break
+      save one/span/file, make(some, home)
+    case continue
+      save one/span/file, make(some, home)
+    case return
+      save one/span/file, make(some, home)
+    case exit
+      save one/span/file, make(some, home)
+    case debug
+      save one/span/file, make(some, home)
+    case probe
+      save one/span/file, make(some, home)
+    case guard
+      save one/span/file, make(some, home)
+    case throw
+      save one/span/file, make(some, home)
+    case hold
+      save one/span/file, make(some, home)
+    case function
+      save one/span/file, make(some, home)
+    case record-type
+      save one/span/file, make(some, home)
+    case mask
+      save one/span/file, make(some, home)
+    case instance
+      save one/span/file, make(some, home)
+    case native
+      save one/span/file, make(some, home)
+    case bind
+      save one/span/file, make(some, home)
+    case view
+      save one/span/file, make(some, home)
+    case dock
+      save one/span/file, make(some, home)
+    case roll
+      save one/span/file, make(some, home)
+    case tell
+      save one/span/file, make(some, home)
+  back one
+
+# whether the program has trait-bounded generics: a mask, and a task with a generic that carries a `need`
+task has-trait-generics
+  take program, like list, like statement
+  like boolean
+  mark private
+
+  save has-mask, false
+  walk program
+    take one
+    sift one
+      case mask
+        save has-mask, true
+      miss
+        turn next
+  fork test, not(has-mask)
+    hold
+      back false
+  walk program
+    take one
+    sift one
+      case function
+        walk generics
+          take generic
+          fork test, is-unequal(generic/need, <>)
+            hold
+              back true
+      miss
+        turn next
+  back false
+
+# whether the program holds a `view`
+task has-view
+  take program, like list, like statement
+  like boolean
+  mark private
+
+  walk program
+    take one
+    sift one
+      case view
+        back true
+      miss
+        turn next
+  back false
+
+# the roots the simplifier keeps: the run's, with the render runtime names the build renamed when a view will be
+# lowered into calls of them, each once in the order first met
+task simplify-roots
+  take run, like program-run
+  take given, like emit-given
+  take program, like list, like statement
+  like maybe, like list, like text
+  mark private
+
+  fork test, not(given/has-roots)
+    hold
+      back make none
+  fork test, or(is-equal(run/renamed-runtime/length, 0), not(has-view(program)))
+    hold
+      save kept, given/roots
+      back make(some, kept)
+  save seen, make hash
+  save out, make list
+  walk given/roots
+    take name
+    fork test, not(seen/has(name))
+      hold
+        save seen/{name}, true
+        push(out, name)
+  walk run/renamed-runtime
+    take name
+    fork test, not(seen/has(name))
+      hold
+        save seen/{name}, true
+        push(out, name)
+  back make(some, out)
+
+# ---- the TypeScript ----
+
+# THE ENTRY'S RENAMED RECORD FORM IS EXPORTED BY ITS WRITTEN NAME TOO (decision 045): each record form of the entry
+# file renamed `<name>__form` gets a type alias under the name it was written with
+task entry-form-aliases
+  take program, like list, like statement
+  take file, like text
+  like text
+
+  save lines, make list
+  walk program
+    take one
+    sift one
+      case record-type
+        save in-file, false
+        sift span/file
+          case some
+            link written
+            save in-file, is-equal(written, file)
+          case none
+            save nothing, 0
+        fork test, and(and(in-file, is-equal(variants/length, 0)), ends-with(name, <__form>))
+          hold
+            save heads, <>
+            save args, <>
+            fork test, is-above(params/length, 0)
+              hold
+                save head-parts, make list
+                save arg-parts, make list
+                walk params
+                  take param
+                  push(head-parts, <{to-pascal(param)} = any>)
+                  push(arg-parts, to-pascal(param))
+                save comma, <, >
+                save head-text, join(head-parts, comma)
+                save arg-text, join(arg-parts, comma)
+                save heads, <\<{head-text}\>>
+                save args, <\<{arg-text}\>>
+            save written-name, substring(name, 0, subtract(char-count(name), 6))
+            push(lines, <export type {to-pascal(written-name)}{heads} = {to-pascal(name)}{args}>)
+      miss
+        turn next
+  fork test, is-equal(lines/length, 0)
+    hold
+      back <>
+  save line-end, <\n>
+  save joined, join(lines, line-end)
+  back <\n{joined}\n>
+
+# THE TYPESCRIPT of a pending emit: the raw emit with the emitter's defaults, else the emit with the options the face
+# hands (env, wake, library) and the entry's form aliases after it
+task emit-typescript
+  take pending, like pending-emit
+  take options, like dynamic
+  like text
+
+  sift pending/kind
+    case raw-emit
+      back program-emit-typescript/emit-type-script(pending/ts-program)
+    miss
+      save text, program-emit-typescript/emit-type-script(pending/ts-program, options)
+      back <{text}{entry-form-aliases(pending/ts-program, pending/file)}>
+
+# ---- the emit ----
+
+task program-emit
+  take run, like program-run
+  take given, like emit-given
+  like emit-answer
+
+  save file, run/file
+  save program, run/program
+
+  # every function outside the public surface is marked `internal`: every call it receives is in this program. Only
+  # when the roots are known
+  fork test, given/has-roots
+    hold
+      save root-set, make hash
+      walk given/roots
+        take name
+        save root-set/{name}, true
+      walk program
+        take one
+        take index
+        sift one
+          case function
+            fork test, not(root-set/has(name))
+              hold
+                save one/internal, true
+                set(program, index, one)
+          miss
+            turn next
+
+  # COVERAGE PROBES, after every check above and before the simplifier
+  save cover-keys, make none
+  sift given/cover
+    case some
+      link target
+      save covering, cover-program(program, target)
+      save program, covering/program
+      save keys, covering/keys
+      save cover-keys, make(some, keys)
+    case none
+      save nothing, 0
+  save run/program, program
+
+  # trait-instance dictionary passing feeds ONLY the TypeScript emit, on a copy, leaving the program every native
+  # backend emits from with its trait calls intact
+  save traits, has-trait-generics(program)
+  save ts-program, program
+  fork test, traits
+    hold
+      save ts-program, pass-dictionaries(emit-copy-program(program))
+
+  # a statement the build made rather than read has no file, and in a separate unit it belongs to the unit
+  fork test, given/scoped
+    hold
+      save filed, make list
+      walk ts-program
+        take one
+        push(filed, filed-statement(one, given/home))
+      save ts-program, filed
+      fork test, not(traits)
+        hold
+          save program, filed
+          save run/program, filed
+
+  # per-module mode: one ESM module per source file, from the checked (pre-simplify) program
+  fork test, given/has-modules
+    hold
+      save modules, program-emit-modules/emit-modules(ts-program, given/modules-url, given/emit-only, run/runtime-names)
+      save modules-kind, make modules-emit
+      back emit-pending(modules-kind, ts-program, ts-program, file, cover-keys, make(some, modules))
+
+  # the editor path keeps the un-optimized program, and lowers only what the TypeScript is emitted from
+  fork test, given/raw
+    hold
+      save raw-lowered, lower-views(program, run/runtime-names)
+      save raw-kind, make raw-emit
+      save no-modules, make none
+      back emit-pending(raw-kind, program, raw-lowered, file, cover-keys, no-modules)
+
+  # the simplifier, then the view lowering, each over the TypeScript's copy too when the dictionaries made one
+  save roots, simplify-roots(run, given, program)
+  save optimized, simplify(program, roots, given/foreign)
+  save ts-optimized, optimized
+  fork test, traits
+    hold
+      save ts-optimized, simplify(ts-program, roots, given/foreign)
+  save lowered, lower-views(optimized, run/runtime-names)
+  save lowered-ts, lowered
+  fork test, traits
+    hold
+      save lowered-ts, lower-views(ts-optimized, run/runtime-names)
+
+  # a member call on a list or a map that no native backend lowers, refused before anything is emitted
+  save unlowered, check-lowered-members(lowered, file, given/env)
+  fork test, is-above(unlowered/length, 0)
+    hold
+      back
+        make emit-answer
+          bind refused, make(some, unlowered)
+          bind pending, make none
+
+  save optimized-kind, make optimized-emit
+  save none-modules, make none
+  back emit-pending(optimized-kind, lowered, lowered-ts, file, cover-keys, none-modules)

@@ -6,6 +6,7 @@
 // Run: npx tsx test/check/hold-memo.ts
 
 import { compile } from '@term/make/code/compile/compile'
+import { CompileCache } from '@term/make/code/compile/cache'
 import { checkHolds, clearHoldMemo, holdsReplayed } from '@term/make/code/check/holds'
 import type { Tally } from '@term/make/code/check/holds'
 import type { Program } from '@term/make/code/compile/node'
@@ -111,6 +112,31 @@ ok('and answers as the program as written', plain === defaulted, `${plain}\n    
 
 clearHoldMemo()
 ok('which is what the provers give afresh', holdsOf(withDefaults) === defaulted)
+
+// THE KEY HOLDS EVERY DEFINITION THE WALK CAN UNFOLD (item 0326): the same entry file and task text over a dependency
+// whose task changed is another question. `run`'s hold is true over lift = x + 2 and false over lift = x + 1, and each
+// program is answered as it is alone, in either order
+const dependency = (k: number): string => `task lift\n  take a, like integer\n  like integer\n  send back, add(a, ${k})\n`
+const entry = 'load ./dep\n  find lift\n\ntask run\n  take x, like integer\n  like integer\n  hold is-equal(lift(x), add(x, 2))\n  send back, x\n'
+const over = (k: number): boolean =>
+  compile(
+    { file: 'e.tree', text: entry },
+    { resolve: path => (path === './dep' ? { file: 'dep.tree', text: dependency(k) } : undefined), cache: new CompileCache() },
+  ).ok
+
+clearHoldMemo()
+const trueAlone = over(2)
+clearHoldMemo()
+const falseAlone = over(1)
+ok('the hold over lift = x + 2 holds, and over lift = x + 1 is refused, each alone', trueAlone && !falseAlone)
+clearHoldMemo()
+const trueFirst = over(2)
+const falseAfter = over(1)
+ok('the false one is refused after the true one', trueFirst && !falseAfter)
+clearHoldMemo()
+const falseFirst = over(1)
+const trueAfter = over(2)
+ok('and the true one holds after the false one', !falseFirst && trueAfter)
 
 console.log(`\nhold-memo: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)

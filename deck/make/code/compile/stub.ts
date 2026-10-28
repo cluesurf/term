@@ -47,6 +47,91 @@ export type StubKnown = {
   // each rule the arithmetic provers proved in this unit, and how: over every ordered field, or with integer reasoning.
   // A dependent citing the rule reads it (check/holds.ts `citedFacts`), since a field-wide rule may cite only another
   proven: ReadonlyMap<string, 'field' | 'integer'>
+  // each top-level name this unit's binding renamed (`bump__in0_1`, `sleep__1`, `focus__value0`, `is-given__native0`),
+  // to the name it was written with. A carried shape or body is written back in these, so the importer binds it again
+  // by its own file's imports (`carried` below)
+  written: ReadonlyMap<string, string>
+}
+
+// THE NAMES A UNIT'S BINDING GIVES ARE THAT UNIT'S: a task two files define is split by file (`name__in<g>_<k>`, k its
+// file's place among the definers the unit holds), an overloaded one takes its arity (`name__<n>`, a typed one an index
+// after it), and a value or a native binding a task shares its name with is renamed apart (check/disambiguate.tree).
+// The suffixes come off in this order
+const RENAMED_TASK = /(__in\d+_\d+)?(__\d+)*$/
+const RENAMED_VALUE = /__value\d+$/
+const RENAMED_NATIVE = /__native\d+$/
+// a member of a same-arity overload told apart by type (`sleep__1__0`): the importer's checker picks among the members
+// by the argument types it checks, and it checks no carried body, so its written name says less than its unit knew
+const TYPED_MEMBER = /__\d+__\d+$/
+
+function writtenNames(program: Program): Map<string, string> {
+  const out = new Map<string, string>()
+
+  for (const s of program) {
+    const name = (s as { name?: unknown }).name
+
+    if (typeof name !== 'string') {
+      continue
+    }
+
+    const pattern = s.form === 'function' ? RENAMED_TASK : s.form === 'let' ? RENAMED_VALUE : s.form === 'bind' ? RENAMED_NATIVE : undefined
+    const written = pattern ? name.replace(pattern, '') : name
+
+    if (written !== name && written !== '') {
+      out.set(name, written)
+    }
+  }
+
+  return out
+}
+
+// A CARRIED SHAPE OR BODY UNDER THE NAMES ITS MODULE WROTE (items 0323, 0324). As its own unit's binding left it, a call
+// held that unit's split name, and the importer's unit gives the same split name to whichever file is k-th among the
+// definers IT holds: mid.tree's `lift` sent back `bump__in0_1`, pub's `bump` in mid's unit and priv's PRIVATE `bump` in
+// the entry's, so the separate build proved `lift(x) == x + 2` where the merged build refuted it. Written back, each
+// reference is bound in the importer by the stub's own file's imports, as the merged build binds it, since a stub keeps
+// its file and the importer's scope holds every file it reaches (check/disambiguate.tree walks a stub's shape and body
+// in every pass). `undefined` when a reference names a typed overload member, which the importer could not pick again:
+// the task then carries no shape and no body, and a reader sees an opaque call, never another task's body
+function carried<T>(node: T, written: ReadonlyMap<string, string>): T | undefined {
+  let typed = false
+
+  const walk = (value: unknown): void => {
+    if (value === null || typeof value !== 'object') {
+      return
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(walk)
+
+      return
+    }
+
+    const record = value as Record<string, unknown>
+
+    if (record.form === 'variable' && typeof record.name === 'string') {
+      const name = written.get(record.name)
+
+      if (name !== undefined) {
+        if (TYPED_MEMBER.test(record.name.replace(/__in\d+_\d+/, ''))) {
+          typed = true
+        }
+
+        record.name = name
+      }
+    }
+
+    for (const [key, inner] of Object.entries(record)) {
+      if (key !== 'span' && key !== 'type' && key !== 'result' && key !== 'declared') {
+        walk(inner)
+      }
+    }
+  }
+
+  const copy = structuredClone(node)
+  walk(copy)
+
+  return typed ? undefined : copy
 }
 
 export function stubKnown(program: Program): StubKnown {
@@ -83,6 +168,7 @@ export function stubKnown(program: Program): StubKnown {
     // the proof pass of this unit ran just before (compile/separate.ts calls this after compiling the unit), so its
     // record is this unit's
     proven: new Map(provenRules()),
+    written: writtenNames(program),
   }
 }
 
@@ -235,7 +321,17 @@ export function stubProgram(program: Program, known?: StubKnown, underProof = fa
       case 'function': {
         // a one-statement body that sends a value back is what the shape readers recognize (check/facts.ts
         // `onlyStatement`). Nothing longer is carried, so an edit inside a longer body still cuts off at the stub
-        const only = statement.body.length === 1 && statement.body[0]!.form === 'return' ? statement.body[0] : undefined
+        const bare = statement.body.length === 1 && statement.body[0]!.form === 'return' ? statement.body[0] : undefined
+        const bodied =
+          known !== undefined &&
+          theory &&
+          !statement.claim &&
+          statement.body.length > 0 &&
+          (statement.theorem || (known.ends.has(statement.name) && known.clean.has(statement.name)))
+        // both under the names the module wrote, or neither: one reference the importer could not bind again drops both
+        const only = known && bare ? carried(bare, known.written) : undefined
+        const whole = known && bodied ? carried(statement.body, known.written) : undefined
+        const opaque = (bare !== undefined && known !== undefined && only === undefined) || (bodied && whole === undefined)
 
         out.push({
           ...statement,
@@ -248,20 +344,14 @@ export function stubProgram(program: Program, known?: StubKnown, underProof = fa
                 stubRaises: [...(known.raises.get(statement.name) ?? [])].sort(),
               }
             : {}),
-          ...(known && only ? { stubShape: only } : {}),
+          ...(only && !opaque ? { stubShape: only } : {}),
           // IN A THEORY, A PURE TASK SHOWN TO END CARRIES ITS WHOLE BODY, for the kernel alone (check/elaborate.ts). The
           // kernel sees through a task by running its body, so without it a proof in another file could not compute
           // `both(yes, a)` over an imported `both`: every rule of logic/boolean.tree in @term/seed failed separately and
           // held merged. A RULE carries its body too, which is its `show hold`, so a `cite` of it from another file finds
           // the lemma. It is part of the surface, so a body edit rebuilds the units naming it, which is what a proof that
           // ran or cited the old body requires
-          ...(known &&
-          theory &&
-          !statement.claim &&
-          statement.body.length > 0 &&
-          (statement.theorem || (known.ends.has(statement.name) && known.clean.has(statement.name)))
-            ? { stubBody: statement.body }
-            : {}),
+          ...(whole && !opaque ? { stubBody: whole } : {}),
           // arity-overload mangling (`name__<arity>`, code/check/overload.ts) is undone: the DEPENDENT unit runs its
           // own disambiguation over these stubs plus its calls, which re-derives the identical mangled names, so the
           // emitted imports line up with the owning unit's exports

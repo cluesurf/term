@@ -33,7 +33,10 @@ import { hashText } from '@term/make/code/term/hash'
 // may hold a literal that names a different integer than its text.
 // '10': every unit key, name key and surface hash is node-json's declared form, not `JSON.stringify` (decision 034,
 // item term-self-host-001-0282), so every stored key changes once.
-export const CACHE_EPOCH = '10'
+// '11': a stub's carried shape and body name each task in the names its module wrote (compile/stub.ts `carried`,
+// items term-self-host-001-0323 and 0324), not its own unit's split names, so a unit stored at '10' may hold a stub
+// whose carried call names another file's task in the unit reading it.
+export const CACHE_EPOCH = '11'
 
 // A cached entry, or nothing. A CORRUPT ENTRY IS A MISS, never a crash: the store writes atomically, but a
 // full disk, a killed process on a filesystem that does not honour the rename, or a half-synced network share

@@ -1,0 +1,559 @@
+# THE WARNINGS of `compileProgram`, steps 20 and 21: the stray saves, every warning of the build, the late refusals (the
+# tells, the dock member spelling, the raise bounds, the text forms, the lost writes, the missing backs, supervision),
+# the roll and the hive's wake. It writes the run in place and answers the refusal that stops the compile, or none to
+# hand the run on to the emit.
+#
+# Ported from compile/compile.ts's `programWarnings` and `wakeGroups` (item 0267 of term/self-host/change/001, decision
+# 031 part G), which stay as the face. The decisions:
+#   - every pass here is Term and loaded by its `.tree` name (check/unused, check/private, check/deprecated,
+#     check/lost-writes, check/dock-shadow, check/builtin-shadow, check/tell, check/dock-member-spelling, check/effects,
+#     check/text-forms, check/returns, check/supervise), so the phase docks nothing
+#   - the roll is compile/rolling.tree's `build-roll`, as compile/roll.ts's face calls it, with the raise sets from
+#     check/effects.tree's `raise-sets-of` and node identity handed in by the face (`same-node`, `===` on TypeScript).
+#     The run holds the roll as rolling.tree's list of `roll-kind`, and the face turns it into a plain roll
+#   - a wake entry is a `roll-value` (decision 040): a group is its deck, its entries and its typed entries, and the face
+#     turns each entry into the plain object compile/wake.ts names
+#   - a diagnostic re-filed under its span's file, or made a warning, is a shallow copy holding every field the original
+#     held, as the original's spread made one, so the diagnostics the run already holds are never written
+
+load @term/base/list
+  find list
+  find get
+  find set
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+
+load ./node
+  find statement
+  find expression
+
+load ./program-run
+  find program-run
+
+load ./program-gate
+  find deck-names
+
+load ./rolling
+  find roll-value
+  find roll-pair
+  find roll-kind
+  find roll-deck
+  find roll-raises
+  find roll-options
+  find build-roll
+  find entries-of
+  find value-at
+  find without-pair
+  find string-at
+  find pairs-value
+  find pair-of
+
+load ../check/unused
+  find find-unused
+
+load ../check/private
+  find warn-private-notes
+
+load ../check/deprecated
+  find warn-deprecated
+
+load ../check/lost-writes
+  find warn-lost-collection-writes
+  find check-lost-writes
+
+load ../check/dock-shadow
+  find check-dock-shadow
+
+load ../check/builtin-shadow
+  find check-builtin-shadow
+
+load ../check/tell
+  find check-tells
+
+load ../check/dock-member-spelling
+  find check-dock-member-spelling
+
+load ../check/effects
+  find raise-sets
+  find raise-sets-of
+  find check-raise-bounds
+
+load ../check/text-forms
+  find check-text-forms
+
+load ../check/returns
+  find check-missing-backs
+
+load ../check/supervise
+  find check-supervision
+
+# what the warnings read that the run does not hold as Term can read it, filled by the face
+form warnings-given
+  # the deck the build knows a file by, none for every file when the build knows none
+  link deck-of
+    like task
+      take file, like text
+      like maybe, like roll-deck
+  # whether two nodes are one, which the supervision walk of the roll keys its trees by
+  link same-node
+    like task
+      take left, like expression
+      take right, like expression
+      like boolean
+  # whether the run names the files whose modules are emitted (`emit-only`), which a `need false` hash cannot say
+  link scoped, like boolean
+
+# the refusal that stops the compile, or none
+form warnings-answer
+  link refused, like maybe, like list, like diagnostic
+
+# a deck's static exception, tell and dock entries, for `hive-wake-typed` (compile/wake.ts `WakeGroup`'s `typed`)
+form wake-typed
+  link exceptions, like list, like roll-value
+  link tells, like list, like roll-value
+  link docks, like list, like roll-value
+
+# one deck of what wakes the hive: its name, its entries and its typed entries (compile/wake.ts `WakeGroup`)
+form wake-group
+  link deck, like text
+  link entries, like list, like roll-value
+  link typed, like wake-typed
+
+# ---- small helpers ----
+
+# a copy of a diagnostic holding every field it holds, as the original's spread made one. Natively a value is already
+# a copy
+bind warnings-copy
+  take value, like diagnostic
+  like diagnostic
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+task warnings-refusal
+  take found, like list, like diagnostic
+  like warnings-answer
+  mark private
+
+  back
+    make warnings-answer
+      bind refused, make(some, found)
+
+task push-all
+  take out, like list, like diagnostic
+  take found, like list, like diagnostic
+  mark private
+
+  walk found
+    take one
+    push(out, one)
+
+# the diagnostic named by the file its span is in, when the span names one and it is not the diagnostic's own: a copy
+task refiled
+  take one, like diagnostic
+  like diagnostic
+  mark private
+
+  sift one/span/file
+    case some
+      link span-file
+      fork test, is-unequal(span-file, one/file)
+        hold
+          save copy, warnings-copy(one)
+          save copy/file, span-file
+          back copy
+    case none
+      back one
+  back one
+
+# each diagnostic named by the file its span is in
+task refiled-all
+  take found, like list, like diagnostic
+  like list, like diagnostic
+  mark private
+
+  save out, make list
+  walk found
+    take one
+    push(out, refiled(one))
+  back out
+
+# the diagnostic as a warning: a copy
+task as-warning
+  take one, like diagnostic
+  like diagnostic
+  mark private
+
+  save copy, warnings-copy(one)
+  save copy/severity, make warning
+  back copy
+
+# ---- the roll ----
+
+# the raise sets as the roll takes them
+task roll-raises-of
+  take sets, like raise-sets
+  like roll-raises
+  mark private
+
+  back
+    make roll-raises
+      bind raises, sets/raises
+      bind via, sets/via
+
+# the roll of the checked program, as compile/roll.ts `buildRoll` builds it: `ids` marks what a merge reads, `own`
+# lists a separate unit's own definitions alone (none for every definition), and the page docks are rolled when the
+# route lowering dropped some
+task program-roll
+  take run, like program-run
+  take given, like warnings-given
+  take ids, like boolean
+  take own, like maybe, like hash, like text, like boolean
+  like list, like roll-kind
+  mark private
+
+  save program, run/program
+  save options
+    make roll-options
+      bind ids, ids
+  sift own
+    case some
+      link own-files
+      save options/own, make(some, own-files)
+    case none
+      save nothing, 0
+  fork test, is-above(run/page-docks/length, 0)
+    hold
+      save page-docks, run/page-docks
+      save options/docks, make(some, page-docks)
+  save raises-of
+    task
+      take names, like list, like text
+      like roll-raises
+      back roll-raises-of(raise-sets-of(program, names))
+  back build-roll(program, run/file, options, given/deck-of, raises-of, given/same-node)
+
+# ---- the hive's wake ----
+
+# a value as JavaScript's truthiness reads it
+task is-truthy
+  take value, like roll-value
+  like boolean
+  mark private
+
+  sift value
+    case no-value
+      back false
+    case null-value
+      back false
+    case text-value
+      link text
+      back is-unequal(text, <>)
+    case number-value
+      link number
+      # zero and NaN are false; NaN is the one number unequal to itself
+      back and(is-unequal(number, 0.0), is-equal(number, number))
+    case flag-value
+      link flag
+      back flag
+    miss
+      back true
+
+# the value under a key, `undefined` when the entry has none, as a destructuring reads it
+task field-of
+  take entry, like roll-value
+  take key, like text
+  like roll-value
+  mark private
+
+  sift value-at(entry, key)
+    case some
+      link found
+      back found
+    case none
+      back make no-value
+
+# an entry as the wake holds it: its host, kind, name and site, and every field but the host as its `base`, with the
+# `ref` a declared kind's entry carries when `with-ref` asks for it
+task wake-entry-of
+  take entry, like roll-value
+  take with-ref, like boolean
+  like roll-value
+  mark private
+
+  save pairs, make list
+  push(pairs, pair-of(<host>, field-of(entry, <host>)))
+  push(pairs, pair-of(<kind>, field-of(entry, <kind>)))
+  push(pairs, pair-of(<name>, field-of(entry, <name>)))
+  push(pairs, pair-of(<site>, field-of(entry, <site>)))
+  push(pairs, pair-of(<base>, without-pair(entry, <host>)))
+  fork test, with-ref
+    hold
+      save ref-value, field-of(entry, <ref>)
+      fork test, is-truthy(ref-value)
+        hold
+          push(pairs, pair-of(<ref>, ref-value))
+  back pairs-value(pairs)
+
+# the groups and the typed entries, each by deck in the order first met
+form wake-build
+  mark shared
+  link names, like list, like text
+  link groups, like list, like list, like roll-value
+  link at, like hash, like text, like number
+  link typed-names, like list, like text
+  link typed, like list, like wake-typed
+  link typed-at, like hash, like text, like number
+
+# the index of a deck's typed entries, made empty at the end when there are none yet
+task typed-index
+  take build, like wake-build
+  take deck, like text
+  like number
+  mark private
+
+  fork test, build/typed-at/has(deck)
+    hold
+      back build/typed-at/get(deck)
+  save made
+    make wake-typed
+      bind exceptions, make list
+      bind tells, make list
+      bind docks, make list
+  push(build/typed, made)
+  push(build/typed-names, deck)
+  save index, subtract(build/typed/length, 1)
+  save build/typed-at/{deck}, index
+  back index
+
+# the index of a deck's group, made empty at the end when there is none yet
+task group-index
+  take build, like wake-build
+  take deck, like text
+  like number
+  mark private
+
+  fork test, build/at/has(deck)
+    hold
+      back build/at/get(deck)
+  save made, make list
+  push(build/groups, made)
+  push(build/names, deck)
+  save index, subtract(build/groups/length, 1)
+  save build/at/{deck}, index
+  back index
+
+# THE ROLL GROUPED BY DECK, in the shape `hive-wake` takes: exceptions and tells only, so the wake chain stays small.
+# `typed` holds the same deck's static `exception`, `tell` and `dock` entries apart, for `hive-wake-typed`. The built-in
+# kinds carry their declaration as `base`; a declared kind's entry carries a `ref`, the constant the emitter binds as
+# the live `base`
+task wake-groups
+  take roll, like list, like roll-kind
+  like list, like wake-group
+
+  save build
+    make wake-build
+      bind names, make list
+      bind groups, make list
+      bind at, make hash
+      bind typed-names, make list
+      bind typed, make list
+      bind typed-at, make hash
+
+  # every deck, its group emptied
+  walk entries-of(roll, <deck>)
+    take deck-entry
+    save deck-name, string-at(deck-entry, <name>)
+    save at-group, group-index(build, deck-name)
+    save emptied, make list
+    set(build/groups, at-group, emptied)
+    typed-index(build, deck-name)
+
+  # the static entries, typed
+  walk entries-of(roll, <exception>)
+    take one
+    save at-typed, typed-index(build, string-at(one, <host>))
+    save held, get(build/typed, at-typed)
+    push(held/exceptions, wake-entry-of(one, false))
+    set(build/typed, at-typed, held)
+  walk entries-of(roll, <tell>)
+    take one
+    save at-typed, typed-index(build, string-at(one, <host>))
+    save held, get(build/typed, at-typed)
+    push(held/tells, wake-entry-of(one, false))
+    set(build/typed, at-typed, held)
+  walk entries-of(roll, <dock>)
+    take one
+    save at-typed, typed-index(build, string-at(one, <host>))
+    save held, get(build/typed, at-typed)
+    push(held/docks, wake-entry-of(one, false))
+    set(build/typed, at-typed, held)
+
+  # the built-in kinds, then each kind a deck declares
+  save kinds, make list
+  push(kinds, <exception>)
+  push(kinds, <tell>)
+  walk entries-of(roll, <kind>)
+    take declared
+    push(kinds, string-at(declared, <name>))
+  walk kinds
+    take kind-name
+    walk entries-of(roll, kind-name)
+      take one
+      save at-group, group-index(build, string-at(one, <host>))
+      save entries, get(build/groups, at-group)
+      push(entries, wake-entry-of(one, true))
+      set(build/groups, at-group, entries)
+
+  save out, make list
+  walk build/names
+    take deck-name
+    take index
+    save typed, get(build/typed, typed-index(build, deck-name))
+    save group
+      make wake-group
+        bind deck, deck-name
+        bind entries, get(build/groups, index)
+        bind typed, typed
+    push(out, group)
+  back out
+
+# whether the program holds the stdlib hive's `hive-wake`
+task loads-hive
+  take program, like list, like statement
+  like boolean
+  mark private
+
+  walk program
+    take one
+    sift one
+      case function
+        fork test, is-equal(name, <hive-wake>)
+          hold
+            back true
+      miss
+        turn next
+  back false
+
+# ---- the warnings ----
+
+task program-warnings
+  take run, like program-run
+  take given, like warnings-given
+  like warnings-answer
+
+  save file, run/file
+
+  # a never-read save one edit from a variable the task reads is a misspelled save, refused (`stray-save`). Every other
+  # never-read binding is a warning below
+  save unused, find-unused(run/program, file)
+  save stray-saves, make list
+  walk unused
+    take one
+    fork test, is-equal(one/severity, make error)
+      hold
+        push(stray-saves, one)
+  fork test, is-above(stray-saves/length, 0)
+    hold
+      back warnings-refusal(stray-saves)
+
+  # warnings do not fail the build. Each names the file its span is in
+  save found, make list
+  push-all(found, run/check-warnings)
+  push-all(found, unused)
+  push-all(found, warn-private-notes(run/program, file))
+  push-all(found, run/totality-warnings)
+  push-all(found, run/hold-warnings)
+  push-all(found, run/literal-warnings)
+  push-all(found, run/pattern-warnings)
+  push-all(found, run/bind-warnings)
+  push-all(found, warn-deprecated(run/program, file))
+  # a write to a list or hash parameter its caller never sees under value semantics
+  push-all(found, warn-lost-collection-writes(run/program, file))
+  # a local named like a module its file docks, which hides the module
+  push-all(found, check-dock-shadow(run/program))
+  # a task named like one of the compiler's own words, which no call reaches by that name
+  push-all(found, check-builtin-shadow(run/program, file))
+  # a host description's undeclared types and imports, counted rather than refused
+  fork test, run/describes-host
+    hold
+      walk run/type-name-diagnostics
+        take one
+        push(found, as-warning(one))
+      walk run/stale-finds
+        take one
+        push(found, as-warning(one))
+  save run/warnings, refiled-all(found)
+
+  # the app's `tell` decisions: each must name an exception the program can raise, with props it declares
+  save tells, check-tells(run/program, file, deck-names(run/program, file, given/deck-of))
+  fork test, is-above(tells/length, 0)
+    hold
+      back warnings-refusal(tells)
+
+  # a kebab member of a docked module with an acronym word reads two ways: refused once here, before any backend
+  save spelling, refiled-all(check-dock-member-spelling(run/program))
+  fork test, is-above(spelling/length, 0)
+    hold
+      back warnings-refusal(spelling)
+
+  # a task that bounds its raise set with `halt` lines on its signature is held to them
+  save bounds, check-raise-bounds(run/program, file)
+  fork test, is-above(bounds/length, 0)
+    hold
+      back warnings-refusal(bounds)
+
+  # a closed set of texts holds only texts, each its own
+  save text-forms, check-text-forms(run/program, file)
+  fork test, is-above(text-forms/length, 0)
+    hold
+      back warnings-refusal(text-forms)
+
+  # a write through a record parameter reaches somebody
+  save lost-writes, check-lost-writes(run/program, file)
+  fork test, is-above(lost-writes/length, 0)
+    hold
+      back warnings-refusal(lost-writes)
+
+  # every path through a task that promises a value sends one back
+  save backs, check-missing-backs(run/program, file)
+  fork test, is-above(backs/length, 0)
+    hold
+      back warnings-refusal(backs)
+
+  # supervision trees: a transient worker whose work can raise nothing never restarts
+  save supervision, check-supervision(run/program, file)
+  fork test, is-above(supervision/length, 0)
+    hold
+      back warnings-refusal(supervision)
+
+  # the roll is built from the checked, un-simplified program, so every task is still there to be listed. A separate
+  # unit lists its OWN definitions alone, each with its identity and its paths' ends
+  fork test, is-unequal(run/want-roll, make no-roll)
+    hold
+      save run/roll, program-roll(run, given, true, make none)
+    miss
+      fork test, given/scoped
+        hold
+          save run/roll, program-roll(run, given, false, make(some, run/emit-only))
+
+  # what wakes the hive: every deck with its exceptions and tells, whether or not a roll was asked for, only when the
+  # program loads the stdlib hive
+  fork test, loads-hive(run/program)
+    hold
+      save run/wake, wake-groups(program-roll(run, given, false, make none))
+
+  back
+    make warnings-answer
+      bind refused, make none

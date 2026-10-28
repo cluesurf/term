@@ -18,32 +18,23 @@ import {
   sideFile as sideFilePort,
 } from '@term/make/code/compile/side-files'
 import type { Maybe, MillChecked } from '@term/make/code/compile/side-files'
-import {
-  deckNames as deckNamesPort,
-  programGate as programGatePort,
-} from '@term/make/code/compile/program-gate'
+import { programGate as programGatePort } from '@term/make/code/compile/program-gate'
 import type { ProgramRun as GateRun } from '@term/make/code/compile/program-gate'
 import { programTypes as programTypesPort } from '@term/make/code/compile/program-types'
 import type { ProgramRun as TypesRun } from '@term/make/code/compile/program-types'
 import { programProofs as programProofsPort } from '@term/make/code/compile/program-proofs'
 import type { ProgramRun as ProofsRun } from '@term/make/code/compile/program-proofs'
-import type { WakeGroup } from '@term/make/code/compile/wake'
+import { programWarnings as programWarningsPort } from '@term/make/code/compile/program-warnings'
+import type {
+  ProgramRun as WarningsRun,
+  WakeGroup as WakeGroupTerm,
+} from '@term/make/code/compile/program-warnings'
+import type { RollKind, RollValue } from '@term/make/code/compile/rolling'
+import type { WakeEntry, WakeGroup } from '@term/make/code/compile/wake'
 import { resolve } from '@term/make/code/check/resolve'
-import { checkDockShadow } from '@term/make/code/check/dock-shadow'
-import { checkDockMemberSpelling } from '@term/make/code/check/dock-member-spelling'
-import { checkBuiltinShadow } from '@term/make/code/check/builtin-shadow'
 import { overloadGroups, runtimeBound } from '@term/make/code/check/overload'
-import { warnPrivateNotes } from '@term/make/code/check/private'
-import { checkTells } from '@term/make/code/check/tell'
-import { checkRaiseBounds } from '@term/make/code/check/effects'
-import { checkMissingBacks } from '@term/make/code/check/returns'
 import { checkLoweredMembers } from '@term/make/code/check/lowered'
-import { warnDeprecated } from '@term/make/code/check/deprecated'
-import { checkLostWrites, warnLostCollectionWrites } from '@term/make/code/check/lost-writes'
-import { checkTextForms } from '@term/make/code/check/text-forms'
-import { checkSupervision } from '@term/make/code/check/supervise'
-import { buildRoll } from '@term/make/code/compile/roll'
-import type { Roll } from '@term/make/code/compile/roll'
+import type { Roll, RollEntry } from '@term/make/code/compile/roll'
 import type { Tally } from '@term/make/code/check/holds'
 import { checkerSwitches, unknownSeamOn } from '@term/make/code/check/strict'
 import { inferStrict } from '@term/make/code/check/strict'
@@ -99,18 +90,6 @@ function deckTask(
   }
 }
 
-// the deck each file of a program belongs to, by name, as form extension and the tell check take it (check/extend.tree,
-// check/tell.tree): the compile's own file and every statement's, which is every file a raise's `host` is read from
-// (compile/program-gate.tree `deck-names`)
-function deckNames(
-  program: Program,
-  file: string,
-  deckOf?: (file: string) => { name: string; root: string } | undefined,
-): { file: string; name: string }[] {
-  return deckNamesPort(program, file, deckTask(deckOf))
-}
-
-import { findUnused } from '@term/make/code/check/unused'
 import { simplify } from '@term/make/code/ir/simplify'
 import { coverProgram } from '@term/make/code/ir/cover'
 import type { CoverTarget } from '@term/make/code/ir/cover'
@@ -1009,110 +988,89 @@ export function programProofs(run: ProgramRun): CompileResult | undefined {
 }
 
 // STEPS 20 AND 21, THE WARNINGS: the build's warnings, the late refusals, the roll and the hive's wake. Undefined
-// hands the run on
+// hands the run on. The warnings are Term, compile/program-warnings.tree (item term-self-host-001-0267): this face hands
+// it the run in its Term form, the deck lookup and node identity, and writes back the warnings, and once it handed the
+// run on, the roll and the wake as plain values (decision 040: a wake entry is a roll value, made a plain object here)
 export function programWarnings(run: ProgramRun): CompileResult | undefined {
-  const { file, wantRoll, deckOf, emitOnly } = run
+  const { deckOf, scope, selected, emitOnly, roots } = run
+  // the run as compile/program-run.tree declares it, as the gate's face hands it, with no roll or wake yet
+  const termRun = {
+    ...run,
+    roots: roots && new Map<string, boolean>([...roots].map(name => [name, true])),
+    modulesURL: run.modulesUrl,
+    wantRoll: run.wantRoll === 'fast' ? 'fast_roll' : run.wantRoll ? 'whole_roll' : 'no_roll',
+    deckOf: deckTask(deckOf),
+    scope: scopeList(scope),
+    selected: selected && { twins: selected.twins, choices: twinChoiceList(selected.choices), expose: selected.expose },
+    emitOnly: emitOnly && new Map([...emitOnly].map(one => [one, true])),
+    roll: undefined,
+    wake: undefined,
+  } as unknown as WarningsRun
+  const answer = programWarningsPort(termRun, {
+    deckOf: deckTask(deckOf),
+    sameNode: (left: unknown, right: unknown) => left === right,
+    scoped: emitOnly !== undefined,
+  } as never)
+  const written = termRun as unknown as { warnings: ProgramRun['warnings']; roll?: RollKind[]; wake?: WakeGroupTerm[] }
 
-  // a never-read save one edit from a variable the task reads is a misspelled save, refused (`stray-save`, check/unused.tree,
-  // term/compiler decision 003). Every other never-read binding is a warning below
-  const unused = findUnused(run.program, file)
-  const straySaves = unused.filter(d => d.severity === 'error')
+  run.warnings = written.warnings
 
-  if (straySaves.length) {
-    return { ok: false, diagnostics: straySaves }
+  if (answer.refused.form === 'some') {
+    return { ok: false, diagnostics: answer.refused.value as Diagnostic[] }
   }
 
-  // warnings do not fail the build (unused bindings, termination, unchecked holds, etc.). Each names the file its span
-  // is in: a check handed the entry's name and a merged-in module's span printed the module's line under the entry's
-  // name, `code/boot.tree:1054` in a 22-line file, and a build that prints only its own file's warnings could not
-  // tell them apart (guides: language/data, 2026-10-04)
-  run.warnings = [
-    ...run.checkWarnings,
-    ...unused,
-    ...warnPrivateNotes(run.program, file),
-    ...run.totalityWarnings,
-    ...run.holdWarnings,
-    ...run.literalWarnings,
-    ...run.patternWarnings,
-    ...run.bindWarnings,
-    ...warnDeprecated(run.program, file),
-    // a write to a list or hash parameter its caller never sees under value semantics (check/lost-writes.ts, 0026)
-    ...warnLostCollectionWrites(run.program, file),
-    // a local named like a module its file docks, which hides the module (check/dock-shadow.ts)
-    ...checkDockShadow(run.program),
-    // a task named like one of the compiler's own words, which no call reaches by that name (check/builtin-shadow.ts)
-    ...checkBuiltinShadow(run.program, file),
-    // a host description's undeclared types and imports, counted rather than refused (`describesHost`)
-    ...(run.describesHost ? [...run.typeNameDiagnostics, ...run.staleFinds].map(d => ({ ...d, severity: 'warning' as const })) : []),
-  ].map(d => (d.span.file !== undefined && d.span.file !== d.file ? { ...d, file: d.span.file } : d))
-
-  // the app's `tell` decisions: each must name an exception the program can raise, with props it declares
-  const tellDiagnostics = checkTells(run.program, file, deckNames(run.program, file, deckOf))
-
-  if (tellDiagnostics.length) {
-    return { ok: false, diagnostics: tellDiagnostics }
-  }
-
-  // a kebab member of a docked module with an acronym word reads two ways (toJSONValue, toJsonValue): refused once
-  // here, before any backend (check/dock-member-spelling.tree, term/compiler decision 010)
-  const dockSpelling = checkDockMemberSpelling(run.program).map(d => (d.span.file !== undefined && d.span.file !== d.file ? { ...d, file: d.span.file } : d))
-
-  if (dockSpelling.length) {
-    return { ok: false, diagnostics: dockSpelling }
-  }
-
-  // a task that bounds its raise set with `halt` lines on its signature is held to them
-  const boundDiagnostics = checkRaiseBounds(run.program, file)
-
-  if (boundDiagnostics.length) {
-    return { ok: false, diagnostics: boundDiagnostics }
-  }
-
-  // a closed set of texts holds only texts, each its own (check/text-forms.ts, D9)
-  const textForms = checkTextForms(run.program, file)
-
-  if (textForms.length) {
-    return { ok: false, diagnostics: textForms }
-  }
-
-  // a write through a record parameter reaches somebody (check/lost-writes.ts)
-  const lostWrites = checkLostWrites(run.program, file)
-
-  if (lostWrites.length) {
-    return { ok: false, diagnostics: lostWrites }
-  }
-
-  // every path through a task that promises a value sends one back (check/returns.ts)
-  const backDiagnostics = checkMissingBacks(run.program, file)
-
-  if (backDiagnostics.length) {
-    return { ok: false, diagnostics: backDiagnostics }
-  }
-
-  // supervision trees: a transient worker whose work can raise nothing never restarts (check/supervise.ts)
-  const supervisionDiagnostics = checkSupervision(run.program, file)
-
-  if (supervisionDiagnostics.length) {
-    return { ok: false, diagnostics: supervisionDiagnostics }
-  }
-
-  // the roll is built from the checked, un-simplified program, so every task is still there to be listed. A separate
-  // unit lists its OWN definitions alone, each with its identity and its paths' ends, typed here once and kept with
-  // the unit: a project's roll is assembled from them (call/code/roll.ts `projectRoll`), where each entry used to type
-  // its whole closure again for its roll (note/project/term/incremental-best-in-class.md, step 5)
-  run.roll = wantRoll
-    ? buildRoll(run.program, file, { deckOf, ids: true, docks: run.pageDocks })
-    : emitOnly
-      ? buildRoll(run.program, file, { deckOf, own: emitOnly, docks: run.pageDocks })
-      : undefined
-
-  // what wakes the hive: every deck with its exceptions and tells, whether or not a roll was asked for. Cheap, and
-  // only emitted when the program loads the stdlib hive.
-  run.wake = run.program.some(s => s.form === 'function' && s.name === 'hive-wake')
-    ? wakeGroups(buildRoll(run.program, file, { deckOf, docks: run.pageDocks }))
-    : undefined
+  run.roll = written.roll ? rollOfKinds(written.roll) : undefined
+  run.wake = written.wake ? written.wake.map(plainWakeGroup) : undefined
 
   return undefined
+}
+
+// a roll value as the plain value it stands for, as compile/roll.ts reads one back: a key holding `no-value` is there
+// and holds undefined
+function plainValue(value: RollValue): unknown {
+  switch (value.form) {
+    case 'no-value':
+      return undefined
+    case 'null-value':
+      return null
+    case 'text-value':
+    case 'number-value':
+    case 'flag-value':
+      return value.value
+    case 'item-values':
+      return value.values.map(plainValue)
+    case 'pair-values': {
+      const out: Record<string, unknown> = {}
+
+      for (const pair of value.pairs) {
+        out[pair.key] = plainValue(pair.value)
+      }
+
+      return out
+    }
+  }
+}
+
+// compile/rolling.tree's roll as the plain roll compile/roll.ts answers
+function rollOfKinds(kinds: RollKind[]): Roll {
+  const out: Record<string, RollEntry[]> = {}
+
+  for (const kind of kinds) {
+    out[kind.name] = kind.entries.map(plainValue) as RollEntry[]
+  }
+
+  return out as Roll
+}
+
+// a wake group of compile/program-warnings.tree, its entries roll values, as the plain group compile/wake.ts names
+function plainWakeGroup(group: WakeGroupTerm): WakeGroup {
+  const entries = (values: RollValue[]): WakeEntry[] => values.map(value => plainValue(value) as WakeEntry)
+
+  return {
+    deck: group.deck,
+    entries: entries(group.entries),
+    typed: { exceptions: entries(group.typed.exceptions), tells: entries(group.typed.tells), docks: entries(group.typed.docks) },
+  }
 }
 
 // STEPS 22 TO 25, THE EMIT: the internal marks, coverage, the dictionaries, the emit, the simplifier and the result
@@ -1293,48 +1251,4 @@ export function entryFormAliases(program: Program, file: string): string {
   }
 
   return lines.length ? `\n${lines.join('\n')}\n` : ''
-}
-
-// the roll grouped by deck, in the shape `hiveWake` takes: exceptions and tells only, so the wake chain stays small.
-// `typed` holds the same deck's static `exception`, `tell` and `dock` entries apart, for `hiveWakeTyped`, which a
-// backend writes as records of `exception-roll`, `tell-roll` and `dock-roll` (seam spec §3.3). A backend that writes
-// the typed call leaves those three kinds out of `entries`; one that does not writes `entries` as before
-function wakeGroups(
-  roll: Roll,
-): WakeGroup[] {
-  const groups = new Map<string, Record<string, unknown>[]>()
-  const typed = new Map<string, WakeGroup['typed']>()
-  const typedOf = (deck: string): WakeGroup['typed'] => {
-    const held = typed.get(deck) ?? { exceptions: [], tells: [], docks: [] }
-    typed.set(deck, held)
-
-    return held
-  }
-
-  for (const deck of roll.deck) {
-    groups.set(deck.name, [])
-    typedOf(deck.name)
-  }
-
-  for (const [kind, key] of [['exception', 'exceptions'], ['tell', 'tells'], ['dock', 'docks']] as const) {
-    for (const entry of roll[kind] ?? []) {
-      const { host, ...rest } = entry
-      typedOf(host)[key].push({ host, kind: entry.kind, name: entry.name, site: entry.site, base: rest })
-    }
-  }
-
-  // the built-in kinds carry their declaration as `base`; a declared kind's entry carries a `ref`, the constant the
-  // emitter binds as the live `base`
-  const kinds = ['exception', 'tell', ...roll.kind.map(k => k.name)]
-
-  for (const kind of kinds) {
-    for (const entry of roll[kind] ?? []) {
-      const { host, ...rest } = entry
-      const list = groups.get(host) ?? []
-      list.push({ host, kind: entry.kind, name: entry.name, site: entry.site, base: rest, ...(entry.ref ? { ref: entry.ref } : {}) })
-      groups.set(host, list)
-    }
-  }
-
-  return [...groups].map(([deck, entries]) => ({ deck, entries, typed: typedOf(deck) }))
 }

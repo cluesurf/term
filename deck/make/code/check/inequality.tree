@@ -1625,14 +1625,48 @@ task reads-monomial-atom
           back true
   back false
 
-# a comparison goal proven by products of the facts: `L >= R` is `L - R >= 0`, an equation is both. Only the facts
-# that share a variable with the goal, directly or through other facts, are given, at most thirteen
+# one comparison read into what its product search needs: the comparison, the connected facts and the exact difference
+form product-search
+  link op, like binary-op
+  link kept, like list, like fact
+  link exact, like hash, like text, like rational
+
+task search-list
+  like list, like product-search
+  mark private
+
+  back make list
+
+# a comparison goal proven by products of the facts: `L >= R` is `L - R >= 0`, an equation is both. A conjunction
+# reads every comparison into its search before it runs any (decision 048): one that cannot reach a search answers
+# false at once, so the other's search is never charged to the budget. The searches then run in written order, and
+# the first that fails ends the goal
 task product-goal
   take state, like hold-state
   take calls, like hold-calls
   take expr, like expression
   take available, like list, like inequality
   like boolean
+
+  sift product-searches(state, expr, available)
+    case some
+      link searches
+      walk searches
+        take one
+        fork test, not(proved-by-products(calls, one/op, one/kept, one/exact, make none))
+          hold
+            back false
+      back true
+    case none
+      back false
+
+# every comparison of a conjunction read into its search, in written order, or none when one cannot reach a search
+task product-searches
+  take state, like hold-state
+  take expr, like expression
+  take available, like list, like inequality
+  like maybe, like list, like product-search
+  mark private
 
   sift expr
     case binary
@@ -1641,15 +1675,54 @@ task product-goal
       link right-expr
       sift op
         case both
-          fork test, not(product-goal(state, calls, left-expr, available))
-            hold
-              back false
-          back product-goal(state, calls, right-expr, available)
+          sift product-searches(state, left-expr, available)
+            case some
+              link lefts
+              sift product-searches(state, right-expr, available)
+                case some
+                  link rights
+                  save out, search-list()
+                  walk lefts
+                    take one
+                    push(out, one)
+                  walk rights
+                    take one
+                    push(out, one)
+                  back make(some, out)
+                case none
+                  back make none
+            case none
+              back make none
         miss
           save nothing, 0
+      sift product-search-of(state, expr, available)
+        case some
+          link one
+          save out, search-list()
+          push(out, one)
+          back make(some, out)
+        case none
+          back make none
+    miss
+      back make none
+
+# one comparison read into its search: both sides expanded, nonlinear somewhere, the facts as products, the exact
+# difference and the facts that share a variable with the goal, directly or through other facts, at most thirteen
+task product-search-of
+  take state, like hold-state
+  take expr, like expression
+  take available, like list, like inequality
+  like maybe, like product-search
+  mark private
+
+  sift expr
+    case binary
+      link op
+      link left-expr
+      link right-expr
       fork test, not(is-comparison(op))
         hold
-          back false
+          back make none
       save left-read, expand-polynomial(state, left-expr)
       save right-read, expand-polynomial(state, right-expr)
       sift left-read
@@ -1661,7 +1734,7 @@ task product-goal
               save nonlinear, or(or(is-above(polynomial-degree(left), 1), is-above(polynomial-degree(right), 1)), reads-monomial-atom(available))
               fork test, not(nonlinear)
                 hold
-                  back false
+                  back make none
               sift product-facts(available)
                 case some
                   link all
@@ -1703,18 +1776,23 @@ task product-goal
                                   save grew, true
                       fork test, is-above(kept/length, 13)
                         hold
-                          back false
-                      back proved-by-products(calls, op, kept, exact, make none)
+                          back make none
+                      save search
+                        make product-search
+                          bind op, op
+                          bind kept, kept
+                          bind exact, exact
+                      back make(some, search)
                     case none
-                      back false
+                      back make none
                 case none
-                  back false
+                  back make none
             case none
-              back false
+              back make none
         case none
-          back false
+          back make none
     miss
-      back false
+      back make none
 
 # the facts refute -1 >= 0 with products of them
 task refuted-by-products

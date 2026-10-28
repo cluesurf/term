@@ -3073,6 +3073,24 @@ task arity-statement
           save nothing, 0
     case function
       save node/body, arity-block(arity-of, body)
+      # a stub's carried shape and body are written in the names its module wrote (compile/stub.ts `carried`), so a
+      # call in one to an overloaded task takes its arity here, as the reference passes bind its file's imports
+      sift stub-shape
+        case some
+          link shape
+          save written, arity-statement(arity-of, shape)
+          save node/stub-shape, make(some, written)
+        case none
+          save nothing, 0
+      # walked here, never handed to arity-block: an optional field passed as an argument is ported as
+      # `node.stubBody ??= []`, which wrote an empty stubBody into every task (pair-overload 1,068 disagree)
+      fork test, is-above(stub-body/length, 0)
+        hold
+          save stub-out, make list
+          walk stub-body
+            take inner
+            push(stub-out, arity-statement(arity-of, inner))
+          save node/stub-body, stub-out
     miss
       save nothing, 0
   back node

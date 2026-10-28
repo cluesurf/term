@@ -2922,8 +2922,122 @@ task keys-of-texts
     push(out, key)
   back out
 
-# everything a task's walk reads, as one key: the task as checked, without its places, and every whole-program fact
-# about a name it mentions
+# THE DEFINITIONS A WALK CAN UNFOLD, by name: every top-level task and value of the program (a stub's carried shape and
+# body are fields of its task, so in its text), each written once as node-json without its places when a key first
+# reaches it. A walk unfolds a pure task's body and reads a value's definition (check/unfolding.tree over the program),
+# so the key holds the text of every definition its names reach, and of every one those mention in turn: two programs
+# whose task is the same text over a dependency that changed never share a key (item 0326)
+form definition-memo
+  mark shared
+  link statements, like hash, like text, like list, like statement
+  link written, like hash, like text, like key-found
+
+task definition-memo-of
+  take program, like list, like statement
+  like definition-memo
+  mark private
+
+  save by-name, statement-lists()
+  walk program
+    take s
+    save name, <>
+    sift s
+      case function
+        link fn-name
+        save name, fn-name
+      case let
+        link let-name
+        save name, let-name
+      miss
+        save nothing, 0
+    fork test, is-unequal(name, <>)
+      hold
+        fork test, not(by-name/has(name))
+          hold
+            save fresh, statements()
+            save by-name/{name}, fresh
+        save held, by-name/get(name)
+        push(held, s)
+        save by-name/{name}, held
+  save memo
+    make definition-memo
+      bind statements, by-name
+      bind written, key-found-table()
+  back memo
+
+task statement-lists
+  like hash, like text, like list, like statement
+  mark private
+
+  back make hash
+
+task key-found-table
+  like hash, like text, like key-found
+  mark private
+
+  back make hash
+
+# one name's definitions as the hash of their text, and every text in them
+task definition-found
+  take defs, like definition-memo
+  take name, like text
+  like key-found
+  mark private
+
+  fork test, defs/written/has(name)
+    hold
+      back defs/written/get(name)
+  save parts, texts()
+  save names, texts()
+  walk defs/statements/get(name)
+    take s
+    save one, key-text(s)
+    push(parts, one/text)
+    walk one/names
+      take n
+      push(names, n)
+  save found
+    make key-found
+      bind text, hash-text(json-list(parts))
+      bind names, names
+  save defs/written/{name}, found
+  back found
+
+# the definitions a task's names reach, each name with the hash of its definitions' text, sorted by name
+task reached-definitions
+  take defs, like definition-memo
+  take names, like list, like text
+  like text
+  mark private
+
+  save seen, flags()
+  save queue, texts()
+  walk names
+    take name
+    fork test, and(defs/statements/has(name), not(seen/has(name)))
+      hold
+        save seen/{name}, true
+        push(queue, name)
+  save at, 0
+  walk test
+    hook test, is-below(at, queue/length)
+    hook hold
+      save found, definition-found(defs, get(queue, at))
+      walk found/names
+        take name
+        fork test, and(defs/statements/has(name), not(seen/has(name)))
+          hold
+            save seen/{name}, true
+            push(queue, name)
+      save at, add(at, 1)
+  save pairs, texts()
+  walk sort(queue, utf16-order)
+    take name
+    push(pairs, json-list(two-texts(json-text(name), json-text(definition-found(defs, name)/text))))
+  back json-list(pairs)
+
+# everything a task's walk reads, as one key: the task as checked, without its places, every whole-program fact about
+# a name it mentions, and the text of every definition those names reach
 task hold-key
   take state, like hold-state
   take wc, like walk-calls
@@ -2932,12 +3046,14 @@ task hold-key
   take tables, like list, like inequality
   take globals, like hash, like text, like boolean
   take constants, like hash, like text, like boolean
+  take defs, like definition-memo
   like text
 
   save found, key-text(statement)
   save names, found/names
   save parts, texts()
   push(parts, json-text(found/text))
+  push(parts, reached-definitions(defs, names))
   push(parts, mentioned(names, given/pure))
   push(parts, mentioned(names, given/state-free))
   push(parts, mentioned(names, given/keeping))
@@ -3370,6 +3486,7 @@ task check-program-holds
         save nothing, 0
   save state/cased-forms, cased
   save state/small-tasks, small-tasks-of(program)
+  save defs, definition-memo-of(program)
   # the pass limited to the file's own tasks keeps what the unlimited pass before it proved
   fork test, not(given/limited)
     hold
@@ -3416,7 +3533,7 @@ task check-program-holds
         fork test, given/skip/has(fn-name)
           hold
             turn next
-        check-task(state, calls, wc, given, statement, tables, globals, constants, diagnostics)
+        check-task(state, calls, wc, given, statement, tables, globals, constants, diagnostics, defs)
       case hold
         # a top-level `hold`, proven with no assumptions
         fork test, given/limited
@@ -3470,6 +3587,7 @@ task check-task
   take globals, like hash, like text, like boolean
   take constants, like hash, like text, like boolean
   take diagnostics, like list, like diagnostic
+  take defs, like definition-memo
   mark private
 
   sift statement
@@ -3577,7 +3695,7 @@ task check-task
       save key, <>
       fork test, not(theorem)
         hold
-          save key, hold-key(state, wc, statement, given, tables, globals, constants)
+          save key, hold-key(state, wc, statement, given, tables, globals, constants, defs)
           fork test, state/memo/has(key)
             hold
               replay-holds(calls, wc, state/memo/get(key), given)
