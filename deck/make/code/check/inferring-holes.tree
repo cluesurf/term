@@ -1,0 +1,789 @@
+# THE HOLES AND THE FINAL ZONK, part 3 of 8 of the check/infer.ts port (item 0252 of term/self-host/change/001, decision
+# 032). What `checkProgram` does once every body is checked: each typed hole met is reported with the values in scope
+# and the tasks of the program whose type fits it, then every task's result and parameter types are written fully
+# resolved, generic variables named, and every expression's type and every `save`'s own type with them. Read from
+# infer.ts as item 0197 left it: the written result and parameter types hold value-argument expressions of their own
+# (`unshareValueArgs`), so no expression object stands at two places of the checked program.
+#
+# The decisions:
+#   - a hole is data, its span, type, environment, file and generic names (decision 032 section 4.2, part 1's `hole`)
+#   - the environment is walked newest first, by its keys in insertion order, which a Term `hash` keeps on every
+#     backend (note/project/term/optimize/meaning.md question 1, test/compile/meaning-native.ts), so section 4.4 needs
+#     no list beside it
+#   - the tasks a hole offers sort by `locale-compare` through deck/lock, as compile/rolling.tree does (section 4.5)
+#   - a trial unification restores the substitution's two tables and its counter as the original did, the tables
+#     copied before the trial and put back after it
+#   - the program is written in place by `check/resolving.tree`'s pattern: each task answers the node to keep and its
+#     caller writes it back, so a native backend's values land where TypeScript's references did (section 4.3)
+#   - a value argument is copied by compile/node-rewrite.tree's `copy-expression`, as check/extend.tree copies one
+
+load @term/base/list
+  find list
+  find get
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/text
+  find index-of
+
+load ../parser/diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+  find edit
+  find fix
+
+load ../compile/node
+  find type
+  find expression
+  find statement
+  find function-param
+  find template-part
+  find map-entry
+  find field-value
+  find value-branch
+  find statement-branch
+  find match-case
+  find catch-clause
+  find expression-type
+  find with-type
+  find statement-span
+  find unknown-type
+  find value-part
+
+load ../compile/node-rewrite
+  find copy-expression
+
+load ../compile/type-text
+  find show-type
+
+load ../deck/lock
+  find locale-compare
+
+load ./substitution
+  find substitution
+  find solved
+  find unify-types
+
+load ./zonk
+  find zonk-generic
+
+load ./resolving
+  find hole-name
+  find name-span
+
+load ./inferring-state
+  find infer-state
+  find hole
+  find task-signature
+  find instantiate
+  find instantiate-held
+  find resolve-held
+  find file-or
+
+# ---- the wrappers ----
+
+# a type deeply resolved, the variables of `generic-names` written as those names (check/zonk.tree)
+task zonk-generic-held
+  take st, like infer-state
+  take given, like type
+  take generic-names, like hash, like number, like text
+  like type
+
+  back zonk-generic(given, generic-names, st/sub)
+
+# whether a type holds a value argument anywhere under its arrays, maps, functions and named arguments
+task holds-value-args
+  take given, like type
+  like boolean
+  mark private
+
+  sift given
+    case array
+      back holds-value-args(element)
+    case map
+      back or(holds-value-args(key), holds-value-args(value))
+    case function
+      walk params
+        take param
+        fork test, holds-value-args(param)
+          hold
+            back true
+      back holds-value-args(result)
+    case named
+      fork test, is-above(value-args/length, 0)
+        hold
+          back true
+      walk args
+        take arg
+        fork test, holds-value-args(arg)
+          hold
+            back true
+      back false
+    miss
+      back false
+
+# A TYPE WHOSE EVERY VALUE ARGUMENT IS A FRESH COPY, rebuilt through array, map, function and named (infer.ts
+# `unshareValueArgs`, item 0197). A type holding no value argument comes back as it is, so the common case makes
+# nothing. A rebuilt node keeps every other field of the one it replaces, as the original's spread did, and a `need
+# false` list it carries over is copied by a walk and written only when it holds something (D10)
+task unshare-value-args
+  take given, like type
+  like type
+
+  fork test, not(holds-value-args(given))
+    hold
+      back given
+  sift given
+    case array
+      save element-out, unshare-value-args(element)
+      back
+        make type/array
+          bind element, element-out
+    case map
+      save key-out, unshare-value-args(key)
+      save value-out, unshare-value-args(value)
+      back
+        make type/map
+          bind key, key-out
+          bind value, value-out
+    case function
+      save params-out, make list
+      walk params
+        take param
+        push(params-out, unshare-value-args(param))
+      save result-out, unshare-value-args(result)
+      save effects-out, make list
+      walk effects
+        take effect
+        push(effects-out, effect)
+      save names-out, make list
+      walk param-names
+        take param-name
+        push(names-out, param-name)
+      save made
+        make type/function
+          bind params, params-out
+          bind result, result-out
+      sift made
+        case function
+          fork test, is-above(effects-out/length, 0)
+            hold
+              save made/effects, effects-out
+          fork test, is-above(names-out/length, 0)
+            hold
+              save made/param-names, names-out
+        miss
+          save nothing, 0
+      back made
+    case named
+      link named-name
+      link named-args
+      link named-values
+      link named-alias
+      save args-out, make list
+      walk named-args
+        take arg
+        push(args-out, unshare-value-args(arg))
+      save values-out, make list
+      walk named-values
+        take value-arg
+        push(values-out, copy-expression(value-arg))
+      save made
+        make type/named
+          bind name, named-name
+      sift made
+        case named
+          fork test, is-above(args-out/length, 0)
+            hold
+              save made/args, args-out
+          fork test, is-above(values-out/length, 0)
+            hold
+              save made/value-args, values-out
+          sift named-alias
+            case some
+              save made/alias, named-alias
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+      back made
+    miss
+      back given
+
+# what the final pass writes as a result or parameter type: resolved, generics named, value arguments its own
+task zonk-written
+  take st, like infer-state
+  take given, like type
+  take generic-names, like hash, like number, like text
+  like type
+
+  back unshare-value-args(zonk-generic-held(st, given, generic-names))
+
+# ---- the trial ----
+
+# the substitution's bindings, copied
+task copy-bindings
+  take given, like hash, like number, like type
+  like hash, like number, like type
+  mark private
+
+  save out, make hash
+  walk given/keys()
+    take key
+    save out/{key}, given/get(key)
+  back out
+
+# where each variable was solved, copied
+task copy-origin
+  take given, like hash, like number, like solved
+  like hash, like number, like solved
+  mark private
+
+  save out, make hash
+  walk given/keys()
+    take key
+    save out/{key}, given/get(key)
+  back out
+
+# WHETHER A CANDIDATE'S TYPE UNIFIES WITH A HOLE'S, answered without keeping anything the trial bound: the substitution
+# is restored whole, path compression and recorded origins included
+task fits-trial
+  take st, like infer-state
+  take candidate, like type
+  take wanted, like type
+  like boolean
+
+  save bindings, copy-bindings(st/sub/bindings)
+  save origin, copy-origin(st/sub/origin)
+  save next, st/sub/next
+  save fits, unify-types(st/sub, candidate, wanted)
+  save st/sub/bindings, bindings
+  save st/sub/origin, origin
+  save st/sub/next, next
+  back fits
+
+# a type a value may be read at says nothing about whether it fits: a variable, the gradual unknown, a host value
+task is-loose
+  take st, like infer-state
+  take given, like type
+  like boolean
+
+  save held, resolve-held(st, given)
+  sift held
+    case variable
+      back true
+    case unknown
+      back true
+    case dynamic
+      back true
+    miss
+      back false
+
+# ---- the holes ----
+
+# a value in scope that fits a hole, and how its type is shown
+form offered-value
+  link name, like text
+  link shown, like text
+
+# a task whose result fits a hole, and whether it is defined in the hole's own file
+form offered-task
+  link name, like text
+  link near, like boolean
+
+# the tasks of the hole's own file first, then by name in the host's collation
+task offered-order
+  take left, like offered-task
+  take right, like offered-task
+  like ordering
+  mark private
+
+  fork test, and(left/near, not(right/near))
+    hold
+      back make less
+  fork test, and(right/near, not(left/near))
+    hold
+      back make greater
+  save sign, locale-compare(left/name, right/name)
+  fork test, is-below(sign, 0)
+    hold
+      back make less
+  fork test, is-above(sign, 0)
+    hold
+      back make greater
+  back make equal
+
+# whether a name is one a reader never wrote: renamed apart (`__`) by the build
+task is-made-name
+  take name, like text
+  like boolean
+  mark private
+
+  back is-minimum(index-of(name, <__>), 0)
+
+# `, and 3 more` when a list was cut short
+task more-of
+  take all, like number
+  take shown-count, like number
+  like text
+  mark private
+
+  fork test, is-above(all, shown-count)
+    hold
+      back <, and {subtract(all, shown-count)} more>
+  back <>
+
+# the file of the last top-level task of each name, none where that one has no file
+task task-files
+  take st, like infer-state
+  like hash, like text, like maybe, like text
+  mark private
+
+  save out, make hash
+  walk st/program
+    take one
+    sift one
+      case function
+        link task-name
+        save task-span, statement-span(one)
+        save out/{task-name}, task-span/file
+      miss
+        save nothing, 0
+  back out
+
+# whether a task's file is the hole's
+task is-near
+  take files, like hash, like text, like maybe, like text
+  take name, like text
+  take hole-file, like text
+  like boolean
+  mark private
+
+  fork test, not(files/has(name))
+    hold
+      back false
+  save found, files/get(name)
+  sift found
+    case some
+      link task-file
+      back is-equal(task-file, hole-file)
+    case none
+      back false
+
+# ONE TYPED HOLE, ONE ERROR: the type its place needs, every value in scope of that type as a fix (not sure, since
+# several may fit and only the author knows which is meant), and the tasks of the program that return the type, named
+# in the hint because a call needs arguments a fix cannot choose
+task report-hole
+  take st, like infer-state
+  take one-hole, like hole
+  take files, like hash, like text, like maybe, like text
+  mark private
+
+  save limit, 12
+  save wanted, resolve-held(st, one-hole/type)
+  save shown, show-type(zonk-generic-held(st, one-hole/type, one-hole/names))
+  save at, name-span(one-hole/span, hole-name())
+  save values, make list
+  save tasks, make list
+  save loose, is-loose(st, wanted)
+  fork test, not(loose)
+    hold
+      # innermost first: a local before a parameter before a module binding, the order the reader looks in
+      save names-in-order, make list
+      walk one-hole/env/keys()
+        take key
+        push(names-in-order, key)
+      save back-at, subtract(names-in-order/length, 1)
+      walk test
+        hook test, is-minimum(back-at, 0)
+        hook hold
+          save value-name, get(names-in-order, back-at)
+          save back-at, subtract(back-at, 1)
+          fork test, and(is-unequal(value-name, hole-name()), not(is-made-name(value-name)))
+            hold
+              save value-type, instantiate-held(st, one-hole/env/get(value-name))
+              fork test, not(is-loose(st, value-type))
+                hold
+                  fork test, fits-trial(st, value-type, one-hole/type)
+                    hold
+                      save value-shown, show-type(zonk-generic-held(st, value-type, one-hole/names))
+                      save fitting
+                        make offered-value
+                          bind name, value-name
+                          bind shown, value-shown
+                      push(values, fitting)
+      walk st/functions/keys()
+        take task-name
+        fork test, and(not(is-made-name(task-name)), not(one-hole/env/has(task-name)))
+          hold
+            save signature, st/functions/get(task-name)
+            save instance, instantiate(signature, st/sub)
+            fork test, not(is-loose(st, instance/result))
+              hold
+                fork test, fits-trial(st, instance/result, one-hole/type)
+                  hold
+                    save returning
+                      make offered-task
+                        bind name, task-name
+                        bind near, is-near(files, task-name, one-hole/file)
+                    push(tasks, returning)
+      save tasks, sort(tasks, offered-order)
+  save offered, make list
+  walk values
+    take value-offered
+    fork test, is-below(offered/length, limit)
+      hold
+        push(offered, value-offered)
+  save named-tasks, make list
+  walk tasks
+    take task-offered
+    fork test, is-below(named-tasks/length, limit)
+      hold
+        push(named-tasks, task-offered/name)
+  save hint, <nothing around the hole decides its type yet: give it a value, or use it where a type is needed and scan again>
+  fork test, not(loose)
+    hold
+      save offered-names, make list
+      walk offered
+        take value-offered
+        push(offered-names, value-offered/name)
+      save separator, <, >
+      save values-joined, offered-names/join(separator)
+      save tasks-joined, named-tasks/join(separator)
+      save values-more, more-of(values/length, offered/length)
+      save tasks-more, more-of(tasks/length, named-tasks/length)
+      save in-scope, <nothing in scope has that type>
+      fork test, is-above(values/length, 0)
+        hold
+          save in-scope, <in scope of that type: {values-joined}{values-more}>
+      save hint, in-scope
+      fork test, is-above(tasks/length, 0)
+        hold
+          save hint, <{in-scope}. Tasks that return it: {tasks-joined}{tasks-more}>
+  save message, <this hole needs a value of type {shown}>
+  fork test, loose
+    hold
+      save message, <this hole can be a value of any type>
+  save fixes, make list
+  walk offered
+    take value-offered
+    save change
+      make edit
+        bind span, at
+        bind text, value-offered/name
+        bind was, hole-name()
+    save changes, make list
+    push(changes, change)
+    save offered-fix
+      make fix
+        bind title, <Write "{value-offered/name}" ({value-offered/shown})>
+        bind sure, false
+        bind edits, changes
+    push(fixes, offered-fix)
+  save input
+    make diagnostic-input
+      bind file, one-hole/file
+      bind span, one-hole/span
+      bind message, make(some, message)
+      bind hint, make(some, hint)
+      bind fixes, make(some, fixes)
+  save kind, make typed-hole
+  push(st/diagnostics, diagnose(kind, input))
+
+# EACH TYPED HOLE MET, ONE ERROR, in the order they were met
+task report-holes
+  take st, like infer-state
+
+  save files, task-files(st)
+  walk st/holes
+    take one-hole
+    report-hole(st, one-hole, files)
+
+# ---- the final zonk ----
+
+# expressions resolved, each written back where it stood
+task zonk-expressions
+  take st, like infer-state
+  take items, like list, like expression
+  take generic-names, like hash, like number, like text
+  like list, like expression
+  mark private
+
+  save at, 0
+  walk items
+    take item
+    save items/{at}, zonk-expression(st, item, generic-names)
+    save at, add(at, 1)
+  back items
+
+# AN EXPRESSION'S TYPE, AND EVERY TYPE UNDER IT, fully resolved, generic variables named. A closure's body is checked with
+# everything else and resolved with it too: left out, its locals kept their raw inference variables and every native
+# backend spelled them `Any` (native-dom-0021)
+task zonk-expression
+  take st, like infer-state
+  take node, like expression
+  take generic-names, like hash, like number, like text
+  like expression
+
+  save typed, node
+  save had-type, expression-type(node)
+  sift had-type
+    case some
+      link known
+      save typed, with-type(node, zonk-generic-held(st, known, generic-names))
+    case none
+      save nothing, 0
+  sift typed
+    case binary
+      save typed/left, zonk-expression(st, left, generic-names)
+      save typed/right, zonk-expression(st, right, generic-names)
+    case unary
+      save typed/operand, zonk-expression(st, operand, generic-names)
+    case call
+      save typed/callee, zonk-expression(st, callee, generic-names)
+      save typed/args, zonk-expressions(st, args, generic-names)
+    case member
+      save typed/target, zonk-expression(st, target, generic-names)
+    case await
+      save typed/expr, zonk-expression(st, expr, generic-names)
+    case array
+      save typed/items, zonk-expressions(st, items, generic-names)
+    case map
+      save entries-out, make list
+      walk entries
+        take entry
+        save entry/key, zonk-expression(st, entry/key, generic-names)
+        save entry/value, zonk-expression(st, entry/value, generic-names)
+        push(entries-out, entry)
+      save typed/entries, entries-out
+    case record
+      save fields-out, make list
+      walk fields
+        take field
+        save field/value, zonk-expression(st, field/value, generic-names)
+        push(fields-out, field)
+      save typed/fields, fields-out
+    case closure
+      save typed/body, zonk-body(st, body, generic-names)
+    case conditional
+      save branches-out, make list
+      walk branches
+        take branch
+        save branch/cond, zonk-expression(st, branch/cond, generic-names)
+        save branch/value, zonk-expression(st, branch/value, generic-names)
+        push(branches-out, branch)
+      save typed/branches, branches-out
+      sift otherwise
+        case some
+          link known-otherwise
+          save kept-otherwise, zonk-expression(st, known-otherwise, generic-names)
+          save typed/otherwise, make(some, kept-otherwise)
+        case none
+          save nothing, 0
+    case template
+      save parts-out, make list
+      walk parts
+        take part
+        sift part
+          case value
+            link part-value
+            push(parts-out, value-part(zonk-expression(st, part-value, generic-names)))
+          miss
+            push(parts-out, part)
+      save typed/parts, parts-out
+    miss
+      save nothing, 0
+  back typed
+
+# A BODY WALKED, EACH EXPRESSION'S TYPE REPLACED WITH ITS FULLY RESOLVED FORM, each statement written back where it stood
+task zonk-body
+  take st, like infer-state
+  take body, like list, like statement
+  take generic-names, like hash, like number, like text
+  like list, like statement
+
+  save at, 0
+  walk body
+    take item
+    save body/{at}, zonk-statement(st, item, generic-names)
+    save at, add(at, 1)
+  back body
+
+# one statement of a body, resolved
+task zonk-statement
+  take st, like infer-state
+  take node, like statement
+  take generic-names, like hash, like number, like text
+  like statement
+  mark private
+
+  sift node
+    case let
+      # the let's own annotation zonks too: a local inferred at a generic's type keeps a raw inference variable
+      # otherwise, and a backend rendering the annotation cannot map it to the declared generic name
+      sift type
+        case some
+          link known-type
+          save kept-type, zonk-generic-held(st, known-type, generic-names)
+          save node/type, make(some, kept-type)
+        case none
+          save nothing, 0
+      save node/init, zonk-expression(st, init, generic-names)
+    case assign
+      save node/target, zonk-expression(st, target, generic-names)
+      save node/value, zonk-expression(st, value, generic-names)
+    case expression
+      save node/expr, zonk-expression(st, expr, generic-names)
+    case hold
+      save node/expr, zonk-expression(st, expr, generic-names)
+    case return
+      sift value
+        case some
+          link known-value
+          save kept-value, zonk-expression(st, known-value, generic-names)
+          save node/value, make(some, kept-value)
+        case none
+          save nothing, 0
+    case throw
+      save node/value, zonk-expression(st, value, generic-names)
+    case while
+      save node/cond, zonk-expression(st, cond, generic-names)
+      save node/body, zonk-body(st, body, generic-names)
+    case guard
+      save node/body, zonk-body(st, body, generic-names)
+      sift catch
+        case some
+          link handler
+          save handler/body, zonk-body(st, handler/body, generic-names)
+          save node/catch, make(some, handler)
+        case none
+          save nothing, 0
+    case for-each
+      save node/iterable, zonk-expression(st, iterable, generic-names)
+      save node/body, zonk-body(st, body, generic-names)
+    case if
+      save branches-out, make list
+      walk branches
+        take branch
+        save branch/cond, zonk-expression(st, branch/cond, generic-names)
+        save branch/body, zonk-body(st, branch/body, generic-names)
+        push(branches-out, branch)
+      save node/branches, branches-out
+      sift otherwise
+        case some
+          link known-otherwise
+          save kept-otherwise, zonk-body(st, known-otherwise, generic-names)
+          save node/otherwise, make(some, kept-otherwise)
+        case none
+          save nothing, 0
+    case match
+      save node/subject, zonk-expression(st, subject, generic-names)
+      save cases-out, make list
+      walk cases
+        take arm
+        save arm/body, zonk-body(st, arm/body, generic-names)
+        push(cases-out, arm)
+      save node/cases, cases-out
+      sift otherwise
+        case some
+          link known-otherwise
+          save kept-otherwise, zonk-body(st, known-otherwise, generic-names)
+          save node/otherwise, make(some, kept-otherwise)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  back node
+
+# a task's result and parameter types written from its signature, then its body resolved
+task zonk-task
+  take st, like infer-state
+  take node, like statement
+  like statement
+  mark private
+
+  sift node
+    case function
+      link task-name
+      link task-params
+      link task-body
+      save signature, st/functions/get(task-name)
+      save written-result, zonk-written(st, signature/result, signature/generic-names)
+      save node/result, make(some, written-result)
+      # when a merged program holds two top-level tasks of one name (common across the generated binding modules),
+      # `functions` keeps only the last, so its signature can have fewer params than this statement: the param keeps
+      # its own milled type
+      save at, 0
+      walk task-params
+        take param
+        fork test, is-below(at, signature/params/length)
+          hold
+            save written-param, zonk-written(st, get(signature/params, at), signature/generic-names)
+            save param/type, make(some, written-param)
+          miss
+            save milled, param/type
+            sift milled
+              case some
+                save nothing, 0
+              case none
+                save fallen, unknown-type()
+                save param/type, make(some, fallen)
+        save task-params/{at}, param
+        save at, add(at, 1)
+      save node/params, task-params
+      save node/body, zonk-body(st, task-body, signature/generic-names)
+    miss
+      save nothing, 0
+  back node
+
+# whether the final pass writes a task: every task, or the one `only` names
+task is-zonked-task
+  take st, like infer-state
+  take task-name, like text
+  like boolean
+  mark private
+
+  sift st/only
+    case some
+      link only-name
+      back is-equal(task-name, only-name)
+    case none
+      back true
+
+# FINAL PASS: record fully resolved types, once every cross-task constraint from the call sites is known. A task's
+# result and parameter types hold value arguments of their own; every expression's inferred type is deep-resolved so
+# later passes (monomorphization, native codegen) see concrete types, a free variable tied to a generic written as that
+# generic's name. A module-level binding zonks too: a native backend reads its literal's type to spell a collection
+task write-zonked-types
+  take st, like infer-state
+
+  save at, 0
+  walk st/program
+    take one
+    save st/current-file, file-or(statement-span(one), st/file)
+    save kept, one
+    sift one
+      case function
+        link task-name
+        fork test, is-zonked-task(st, task-name)
+          hold
+            save kept, zonk-task(st, one)
+      case let
+        sift st/only
+          case none
+            save single, make list
+            push(single, one)
+            save zonked, zonk-body(st, single, make hash)
+            save kept, get(zonked, 0)
+          case some
+            save nothing, 0
+      miss
+        save nothing, 0
+    save st/program/{at}, kept
+    save at, add(at, 1)

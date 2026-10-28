@@ -2931,14 +2931,16 @@ task means-form
       fork test, has-text(apart/form-files, file)
         hold
           back true
+  # a find of the form by its written name is the nearer binding, so it wins over a union import that brings a case
+  # of the name (decision 049, term-self-host-001-0332)
+  fork test, any-held(reached-files(apart/scopes, file, apart/name), apart/form-files)
+    hold
+      back true
   walk case-forms
     take case-form
     fork test, any-held(reached-files(apart/scopes, file, case-form), case-files)
       hold
         back false
-  fork test, any-held(reached-files(apart/scopes, file, apart/name), apart/form-files)
-    hold
-      back true
   save case-fit, false
   walk apart/owners
     take owner

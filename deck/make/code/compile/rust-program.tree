@@ -1,0 +1,2660 @@
+# THE RUST EMITTER'S PROGRAM PASS: a whole program written as one Rust module. It stamps the program (decision 011),
+# reads it into the tables compile/rust-emit.tree takes, runs the analyses, asks for each statement, and assembles the
+# module from what the emitter recorded (compile/rust-assemble.tree).
+#
+# Ported from compile/rust.ts `emitRust` and `emitRustPass` (self-hosting, item term-self-host-001-0065), which stays a
+# thin face. What the face held by node identity is keyed here by the node's `place-row`: every answer an analysis
+# gives about a node (a proven step, a loop's guard, an unsigned division, an ASCII text, an owned inner list, and per
+# task the last reads, the slot takes, the slice keys and the cursor reads) is a table of rows, and the emitter's tests
+# are closures over those tables. A node the emitter makes for itself stands at no place (row 0) and has no fact, as it
+# had none in the face's `WeakMap`s. The places the face numbered by object (compile/place.ts `numberedWalk`,
+# ir/facts/interval.ts `identities`) are each their own row here, since a stamped program shares no node.
+#
+# The program twice when that buys something: a first pass records every clone it writes, and a recursive form whose
+# values no pass ever clones has its children held in a `Box` instead of an `Rc` in a second pass (item 0029). Each
+# pass reads the stamped program as it was handed: the face's first pass renamed the module's `host` data trees in
+# place, so its second pass wrote none of their structs. The `host` data trees are named here on a copy.
+#
+# The wake chain reads the roll's entries as roll values (decision 040).
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find starts-with
+  find char-at
+  find index-of
+  find substring
+  find split
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+  find rune-to-text
+
+load @term/base/float
+  find to-number
+
+load ../parser/diagnostic
+  find span
+
+load ./node
+  find type
+  find expression
+  find statement
+  find field-value
+  find function-param
+  find form-field
+  find form-variant
+  find native-kind
+  find expression-type
+
+load ./node-children
+  find node-handle
+  find node-children
+  find block-handles
+
+load ./node-rebuild
+  find place-row-of-expression
+  find place-row-of-statement
+
+load ./place-stamp
+  find stamp-places
+  find same-place
+  find same-statement-place
+
+load ./place-walk
+  find walk-program
+
+load ./node-reach
+  find reach-statements
+
+load ./bind
+  find collect-binds
+  find referenced-binds
+  find bind-imports
+
+load ./tag
+  find tagged-forms
+
+load ./backend-shapes
+  find string-call
+  find is-text
+  find escaping-params
+  find inspect-forms
+  find record-field
+
+load ./backend-names
+  find gated-tasks
+  find map-update-of
+  find fill-tasks
+
+load ./backend-lending
+  find list-facts-of
+  find owned-fields
+  find native-forms
+  find owned-locals
+
+load ./backend-copies
+  find borrowed-texts
+  find borrowed-records
+  find text-cursors-of
+
+load ./backend-loops
+  find fixed-lists-of
+
+load ./backend-reads
+  find last-reads-of
+  find slot-takes-of
+  find placeholder
+
+load ./backend-elements
+  find owned-elements-of
+
+load ./places
+  find scope-of
+  find private-forms
+
+load ../check/effects
+  find raise-sets-of
+
+load ../ir/facts/steps
+  find proven-increments
+
+load ../ir/facts/intervals
+  find bounded-arithmetic
+
+load ../ir/facts/guards
+  find bounded-loops
+  find unsigned-divisions
+
+load ../ir/facts/ascii
+  find ascii-texts
+
+load ./rolling
+  find roll-value
+  find roll-pair
+  find string-of
+
+load ./rust-names
+  find rust-type-context
+  find rust-type
+  find snake
+  find pascal
+  find boxable-forms
+  find text-keys-of
+  find mutated-captures
+  find rust-form-walk
+
+load ./rust-tables
+  find module-bindings-of
+  find phantom-forms
+  find form-traits-of
+  find form-key-indices
+
+load ./rust-forms
+  find rust-form-facts
+
+load ./rust-emit
+  find rust-facts
+  find rust-state
+  find new-rust-state
+  find emit-statement
+  find module-let
+  find emit-unchecked
+  find note-clone
+  find module-read
+  find loop-guard
+  find bound-limit
+  find slot-take
+  find slot-let
+  find owned-local
+  find task-entry
+
+load ./rust-assemble
+  find rust-uses
+  find kept-statements
+  find rust-module
+  find rust-module-input
+  find payload-entry
+
+# ---- what crosses ----
+
+# one deck of what wakes the hive (compile/program-warnings.tree `wake-group`, decision 040): its entries roll values
+form rust-wake-group
+  link deck, like text
+  link entries, like list, like roll-value
+  link exceptions, like list, like roll-value
+  link tells, like list, like roll-value
+  link docks, like list, like roll-value
+
+# what one pass cloned (item 0029): the forms named in any cloned type, and whether a clone was of a type not known or
+# generic, which could be any form
+form rust-clone-record
+  mark shared
+  link forms, like hash, like text, like boolean
+  link generic, like boolean
+
+# what the first pass recorded and which forms it boxes, for a test to assert (test/compile/rust-box.ts)
+form rust-boxing
+  link cloned, like list, like text
+  link generic, like boolean
+  link boxed, like list, like text
+
+# what one task's emission reads by node, by row, worked out when its emission starts and dropped when it ends
+form rust-task-reads
+  link cursors, like hash, like number, like text
+  link slice-lets, like hash, like number, like boolean
+  link move-nodes, like hash, like number, like boolean
+  link many-moves, like hash, like number, like boolean
+  link slot-lets, like hash, like number, like slot-let
+  link slot-reads, like hash, like number, like slot-take
+
+# the tasks being emitted, read only at the top
+form rust-reads-stack
+  mark shared
+  link reads, like list, like rust-task-reads
+
+# the `host` data trees named: the structs to declare and the binding each names
+form rust-host-structs
+  mark shared
+  link defs, like list, like text
+  link of, like hash, like text, like text
+
+# the slice-key walk of one task's body
+form rust-slice-scan
+  mark shared
+  link keys, like list, like text
+  link seen, like hash, like text, like boolean
+  link reads, like hash, like text, like number
+  link lets, like hash, like text, like list, like statement
+
+# ---- small helpers ----
+
+task rust-program-skip
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <type>)
+  push(out, <span>)
+  back out
+
+task flags-of
+  take names, like list, like text
+  like hash, like text, like boolean
+  mark private
+
+  save out, make hash
+  walk names
+    take one
+    save out/{one}, true
+  back out
+
+task keys-of
+  take table, like hash, like text, like boolean
+  like list, like text
+  mark private
+
+  save out, make list
+  walk table/keys()
+    take one
+    push(out, one)
+  back out
+
+task has-name
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task join-with
+  take parts, like list, like text
+  take between, like text
+  like text
+  mark private
+
+  save out, <>
+  save first, true
+  walk parts
+    take part
+    fork test, first
+      hold
+        save out, part
+        save first, false
+      miss
+        save out, <{out}{between}{part}>
+  back out
+
+task expression-rows
+  take nodes, like list, like expression
+  like hash, like number, like boolean
+  mark private
+
+  save out, make hash
+  walk nodes
+    take node
+    save row, place-row-of-expression(node)
+    fork test, is-above(row, 0)
+      hold
+        save out/{row}, true
+  back out
+
+task has-expression-row
+  take table, like hash, like number, like boolean
+  take node, like expression
+  like boolean
+  mark private
+
+  save row, place-row-of-expression(node)
+  back and(is-above(row, 0), table/has(row))
+
+task has-statement-row
+  take table, like hash, like number, like boolean
+  take node, like statement
+  like boolean
+  mark private
+
+  save row, place-row-of-statement(node)
+  back and(is-above(row, 0), table/has(row))
+
+task text-at-row
+  take table, like hash, like number, like text
+  take row, like number
+  like maybe, like text
+  mark private
+
+  fork test, and(is-above(row, 0), table/has(row))
+    hold
+      save found, table/get(row)
+      back make(some, found)
+  back make none
+
+# a type named `name`, the shape `{ kind: 'named', name }` the face wrote
+task named-of
+  take name, like text
+  like type
+  mark private
+
+  back
+    make named
+      bind name, name
+
+# the record-types of a program by name, the first of each
+task first-forms
+  take program, like list, like statement
+  like hash, like text, like statement
+  mark private
+
+  save out, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        link name
+        fork test, not(out/has(name))
+          hold
+            save out/{name}, one
+      miss
+        save idle, 0
+  back out
+
+task is-type-kind
+  take kind, like native-kind
+  like boolean
+  mark private
+
+  sift kind
+    case type
+      back true
+    miss
+      back false
+
+task type-is-function
+  take given, like type
+  like boolean
+  mark private
+
+  sift given
+    case function
+      back true
+    miss
+      back false
+
+task named-name
+  take given, like type
+  like maybe, like text
+  mark private
+
+  sift given
+    case named
+      link name
+      back make(some, name)
+    miss
+      back make none
+
+# ---- the context a type's spelling reads ----
+
+task new-context
+  like rust-type-context
+  mark private
+
+  back
+    make rust-type-context
+      bind var-names, make hash
+      bind opaque-types, make hash
+      bind shared-forms, make hash
+      bind text-keys, false
+      bind owned-inner, make hash
+      bind generic-arity, make hash
+
+task spell
+  take given, like type
+  take context, like rust-type-context
+  like text
+  mark private
+
+  back rust-type(make(some, given), context)
+
+# ---- the boxed payloads ----
+
+# a field that holds the form INSIDE a type stored in place (`maybe latex-node`), as recursive as one naming it
+task holds-in-place
+  take given, like type
+  take form-name, like text
+  like boolean
+  mark private
+
+  sift given
+    case named
+      link name
+      link args
+      fork test, or(or(is-equal(name, <list>), is-equal(name, <hash>)), is-equal(name, <set>))
+        hold
+          back false
+      walk args
+        take arg
+        sift named-name(arg)
+          case some
+            link arg-name
+            fork test, is-equal(arg-name, form-name)
+              hold
+                back true
+          case none
+            save idle, 0
+        fork test, holds-in-place(arg, form-name)
+          hold
+            back true
+      back false
+    miss
+      back false
+
+# the payload a form's reused boxes hold: its one payload case's, none for a form with two or more
+task reused-payload-of
+  take payloads, like hash, like text, like text
+  take owner, like text
+  like maybe, like text
+  mark private
+
+  save found, make list
+  walk payloads/keys()
+    take key
+    fork test, starts-with(key, <{owner}/>)
+      hold
+        push(found, payloads/get(key))
+  fork test, is-equal(found/length, 1)
+    hold
+      save one, get(found, 0)
+      back make(some, one)
+  back make none
+
+# ---- the host data trees ----
+
+bind rust-program-copy-expression
+  take value, like expression
+  like expression
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+bind rust-program-copy-statement
+  take value, like statement
+  like statement
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+task is-anonymous-record
+  take value, like expression
+  like boolean
+  mark private
+
+  sift value
+    case record
+      link name
+      back is-equal(name, <>)
+    miss
+      back false
+
+task host-leaf-type
+  take value, like expression
+  take context, like rust-type-context
+  like text
+  mark private
+
+  sift value
+    case integer
+      back <i64>
+    case float
+      back <f64>
+    case string
+      back <String>
+    case boolean
+      back <bool>
+    miss
+      sift expression-type(value)
+        case some
+          link known
+          back spell(known, context)
+        case none
+          back <i64>
+
+# a module-level `host` data tree is an ANONYMOUS nested record: Rust gets one struct per record node, named by the
+# binding and the field path (HostRange, HostRangeH), each declared after the ones it holds. Answers a copy of the
+# record with its name, and every nested anonymous record named the same way
+task name-host-record
+  take value, like expression
+  take base, like text
+  take structs, like rust-host-structs
+  take context, like rust-type-context
+  like expression
+  mark private
+
+  save copy, rust-program-copy-expression(value)
+  sift copy
+    case record
+      link fields
+      save named-fields, make list
+      save texts, make list
+      walk fields
+        take field
+        save inner, field/value
+        fork test, is-anonymous-record(inner)
+          hold
+            save nested-name, <{base}{pascal(field/name)}>
+            save renamed, name-host-record(inner, nested-name, structs, context)
+            push(texts, <pub {snake(field/name)}: {nested-name}>)
+            save named-field
+              make field-value
+                bind name, field/name
+                bind value, renamed
+            push(named-fields, named-field)
+          miss
+            push(texts, <pub {snake(field/name)}: {host-leaf-type(inner, context)}>)
+            push(named-fields, field)
+      save copy/name, base
+      save copy/fields, named-fields
+      save defs, structs/defs
+      push(defs, <#[derive(Clone)] pub struct {base} \{ {join-with(texts, <, >)} \}>)
+      save structs/defs, defs
+    miss
+      save idle, 0
+  back copy
+
+# the program with each top-level `host` data tree named, and the structs that names
+task name-host-trees
+  take program, like list, like statement
+  take structs, like rust-host-structs
+  take context, like rust-type-context
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case let
+        link name
+        link init
+        fork test, is-anonymous-record(init)
+          hold
+            save base, <Host{pascal(name)}>
+            save renamed, name-host-record(init, base, structs, context)
+            save of, structs/of
+            save of/{name}, base
+            save structs/of, of
+            save copy, rust-program-copy-statement(one)
+            sift copy
+              case let
+                link init
+                save copy/init, renamed
+              miss
+                save idle, 0
+            push(out, copy)
+          miss
+            push(out, one)
+      miss
+        push(out, one)
+  back out
+
+# ---- the slice keys ----
+
+task slice-visit
+  take handle, like node-handle
+  take skip, like list, like text
+  take scan, like rust-slice-scan
+  mark private
+
+  sift handle
+    case statement-handle
+      link inner
+      sift map-update-of(inner)
+        case some
+          link update
+          save key, update/key
+          sift key
+            case variable
+              link name
+              link type
+              fork test, is-text(type)
+                hold
+                  fork test, not(scan/seen/has(name))
+                    hold
+                      save seen, scan/seen
+                      save seen/{name}, true
+                      save scan/seen, seen
+                      save keys, scan/keys
+                      push(keys, name)
+                      save scan/keys, keys
+                  back
+            miss
+              save idle, 0
+        case none
+          save idle, 0
+      sift inner
+        case let
+          link name
+          save lets, scan/lets
+          fork test, lets/has(name)
+            hold
+              save made, lets/get(name)
+              push(made, inner)
+              save lets/{name}, made
+            miss
+              save made, make list
+              push(made, inner)
+              save lets/{name}, made
+          save scan/lets, lets
+        miss
+          save idle, 0
+    case expression-handle
+      link inner
+      sift inner
+        case variable
+          link name
+          save reads, scan/reads
+          fork test, reads/has(name)
+            hold
+              save reads/{name}, add(reads/get(name), 1)
+            miss
+              save reads/{name}, 1
+          save scan/reads, reads
+        miss
+          save idle, 0
+    miss
+      save idle, 0
+  walk node-children(handle, skip)
+    take child
+    slice-visit(child, skip, scan)
+
+# the text locals of a task that are only ever the key of a map update and are made from a substring of an ASCII text,
+# by a single `let`: a `&str` into the text serves the borrowed lookup, so no String is made per key. Answers the rows
+# of their lets, and their names
+task slice-keys
+  take fn, like statement
+  take ascii, like hash, like number, like boolean
+  take lets-out, like hash, like number, like boolean
+  like list, like text
+  mark private
+
+  save names, make list
+  sift fn
+    case function
+      link params
+      link body
+      save scan
+        make rust-slice-scan
+          bind keys, make list
+          bind seen, make hash
+          bind reads, make hash
+          bind lets, make hash
+      save skip, rust-program-skip()
+      walk block-handles(body)
+        take handle
+        slice-visit(handle, skip, scan)
+      walk scan/keys
+        take key-name
+        fork test, not(scan/lets/has(key-name))
+          hold
+            turn next
+        save made, scan/lets/get(key-name)
+        fork test, is-unequal(made/length, 1)
+          hold
+            turn next
+        save made-let, get(made, 0)
+        fork test, and(scan/reads/has(key-name), is-above(scan/reads/get(key-name), 0))
+          hold
+            turn next
+        save is-param, false
+        walk params
+          take param
+          fork test, is-equal(param/name, key-name)
+            hold
+              save is-param, true
+        fork test, is-param
+          hold
+            turn next
+        sift made-let
+          case let
+            link init
+            sift init
+              case call
+                link callee
+                sift string-call(callee)
+                  case some
+                    link text-op
+                    fork test, and(or(is-equal(text-op/op, <substring>), is-equal(text-op/op, <slice>)), has-expression-row(ascii, text-op/target))
+                      hold
+                        save row, place-row-of-statement(made-let)
+                        fork test, is-above(row, 0)
+                          hold
+                            save lets-out/{row}, true
+                        push(names, key-name)
+                  case none
+                    save idle, 0
+              miss
+                save idle, 0
+          miss
+            save idle, 0
+    miss
+      save idle, 0
+  back names
+
+# ---- the emission ----
+
+task empty-reads
+  like rust-task-reads
+  mark private
+
+  back
+    make rust-task-reads
+      bind cursors, make hash
+      bind slice-lets, make hash
+      bind move-nodes, make hash
+      bind many-moves, make hash
+      bind slot-lets, make hash
+      bind slot-reads, make hash
+
+task top-reads
+  take stack, like rust-reads-stack
+  like rust-task-reads
+  mark private
+
+  save at, stack/reads/length
+  fork test, is-above(at, 0)
+    hold
+      back get(stack/reads, subtract(at, 1))
+  back empty-reads()
+
+# the guard of each counted loop (ir/facts/guards.tree) as the emitter reads it, by the loop's row
+task guard-of
+  take fast-count, like number
+  take limit-names, like list, like text
+  take limit-lows, like list, like boolean
+  take limit-highs, like list, like number
+  like loop-guard
+  mark private
+
+  save limits, make list
+  save at, 0
+  walk limit-names
+    take limit-name
+    save one-limit
+      make bound-limit
+        bind name, limit-name
+        bind low, get(limit-lows, at)
+        bind high, get(limit-highs, at)
+    push(limits, one-limit)
+    save at, add(at, 1)
+  back
+    make loop-guard
+      bind fast, is-above(fast-count, 0)
+      bind limits, limits
+
+# a Rust string literal: JSON's \u0007 and \f are not Rust escapes, so every other control character is \u{..}
+task wake-quote
+  take value, like text
+  like text
+  mark private
+
+  save out, <>
+  walk to-runes(value)
+    take code
+    fork test, is-equal(code, 92)
+      hold
+        save out, <{out}\\\\>
+        turn next
+    fork test, is-equal(code, 34)
+      hold
+        save out, <{out}\\">
+        turn next
+    fork test, is-equal(code, 10)
+      hold
+        save out, <{out}\\n>
+        turn next
+    fork test, is-equal(code, 13)
+      hold
+        save out, <{out}\\r>
+        turn next
+    fork test, is-equal(code, 9)
+      hold
+        save out, <{out}\\t>
+        turn next
+    fork test, or(is-below(code, 32), is-equal(code, 127))
+      hold
+        save out, <{out}\\u\{{wake-hex(code, 0)}\}>
+        turn next
+    save single, make list
+    push(single, code)
+    save out, <{out}{from-runes(single)}>
+  back <"{out}">
+
+# a number in lower-case hexadecimal, padded with zeros to `width`
+task wake-hex
+  take value, like number
+  take width, like number
+  like text
+  mark private
+
+  save digits, <0123456789abcdef>
+  save out, <>
+  save rest, value
+  walk test
+    hook test, is-above(rest, 0)
+    hook hold
+      save digit, modulo(rest, 16)
+      save out, <{char-at(digits, digit)}{out}>
+      save rest, divide(subtract(rest, digit), 16)
+  fork test, is-equal(out, <>)
+    hold
+      save out, <0>
+  walk test
+    hook test, is-below(out/length, width)
+    hook hold
+      save out, <0{out}>
+  back out
+
+# a text as `JSON.stringify` writes it
+task json-quote
+  take value, like text
+  like text
+  mark private
+
+  save out, <>
+  walk to-runes(value)
+    take code
+    fork test, is-equal(code, 34)
+      hold
+        save out, <{out}\\">
+        turn next
+    fork test, is-equal(code, 92)
+      hold
+        save out, <{out}\\\\>
+        turn next
+    fork test, is-equal(code, 8)
+      hold
+        save out, <{out}\\b>
+        turn next
+    fork test, is-equal(code, 12)
+      hold
+        save out, <{out}\\f>
+        turn next
+    fork test, is-equal(code, 10)
+      hold
+        save out, <{out}\\n>
+        turn next
+    fork test, is-equal(code, 13)
+      hold
+        save out, <{out}\\r>
+        turn next
+    fork test, is-equal(code, 9)
+      hold
+        save out, <{out}\\t>
+        turn next
+    fork test, or(is-below(code, 32), and(is-minimum(code, 55296), is-maximum(code, 57343)))
+      hold
+        save out, <{out}\\u{wake-hex(code, 4)}>
+        turn next
+    save single, make list
+    push(single, code)
+    save out, <{out}{from-runes(single)}>
+  back <"{out}">
+
+# a roll value as `JSON.stringify` writes it, inside a list (where nothing is `null`)
+task json-item
+  take value, like roll-value
+  like text
+  mark private
+
+  sift value
+    case no-value
+      back <null>
+    miss
+      back json-of(value)
+
+task json-of
+  take value, like roll-value
+  like text
+  mark private
+
+  sift value
+    case no-value
+      back <null>
+    case null-value
+      back <null>
+    case text-value
+      link text
+      back json-quote(text)
+    case number-value
+      link number
+      back <{number}>
+    case flag-value
+      link flag
+      fork test, flag
+        hold
+          back <true>
+      back <false>
+    case item-values
+      link values
+      save parts, make list
+      walk values
+        take one
+        push(parts, json-item(one))
+      back <[{join-with(parts, <,>)}]>
+    case pair-values
+      link pairs
+      save parts, make list
+      walk pairs
+        take pair
+        sift pair/value
+          case no-value
+            save idle, 0
+          miss
+            push(parts, <{json-quote(pair/key)}:{json-of(pair/value)}>)
+      back <\{{join-with(parts, <,>)}\}>
+
+# the value under a key, none when the entry has no such key
+task wake-at
+  take entry, like roll-value
+  take key, like text
+  like maybe, like roll-value
+  mark private
+
+  sift entry
+    case pair-values
+      link pairs
+      walk pairs
+        take pair
+        fork test, is-equal(pair/key, key)
+          hold
+            save found, pair/value
+            back make(some, found)
+      back make none
+    miss
+      back make none
+
+# `String(entry[key] ?? '')`
+task wake-string
+  take entry, like roll-value
+  take key, like text
+  like text
+  mark private
+
+  sift wake-at(entry, key)
+    case some
+      link found
+      sift found
+        case no-value
+          back <>
+        case null-value
+          back <>
+        miss
+          back string-of(found)
+    case none
+      back <>
+
+# `entry[key] ?? {}`
+task wake-record
+  take entry, like roll-value
+  take key, like text
+  like roll-value
+  mark private
+
+  save empty
+    make pair-values
+      bind pairs, make list
+  sift wake-at(entry, key)
+    case some
+      link found
+      sift found
+        case no-value
+          back empty
+        case null-value
+          back empty
+        miss
+          back found
+    case none
+      back empty
+
+# a value as the typed wake writes a text: `"...".to_string()`, the empty text for none
+task wake-text-of
+  take entry, like roll-value
+  take key, like text
+  like text
+  mark private
+
+  back <{wake-quote(wake-string(entry, key))}.to_string()>
+
+# a list of texts as a plain `Vec`, the empty one when the value is no list
+task wake-texts-of
+  take entry, like roll-value
+  take key, like text
+  like text
+  mark private
+
+  save parts, make list
+  sift wake-at(entry, key)
+    case some
+      link found
+      sift found
+        case item-values
+          link values
+          walk values
+            take one
+            save text, <>
+            sift one
+              case no-value
+                save text, <>
+              case null-value
+                save text, <>
+              miss
+                save text, string-of(one)
+            push(parts, <{wake-quote(text)}.to_string()>)
+        miss
+          save idle, 0
+    case none
+      save idle, 0
+  back <vec![{join-with(parts, <, >)}]>
+
+task wake-entry-text
+  take entry, like roll-value
+  take st, like rust-state
+  take facts, like rust-facts
+  like text
+  mark private
+
+  save boxed-base, <>
+  save ref-text, <>
+  save has-ref, false
+  sift wake-at(entry, <ref>)
+    case some
+      link ref-value
+      sift ref-value
+        case text-value
+          link value
+          save has-ref, true
+          save ref-text, value
+        miss
+          save idle, 0
+    case none
+      save idle, 0
+  fork test, has-ref
+    hold
+      save boxed-base, <std::rc::Rc::new({module-read(ref-text, st, facts)})>
+    miss
+      save base-json, json-of(wake-record(entry, <base>))
+      save boxed-base, <std::rc::Rc::new({json-quote(base-json)}.to_string())>
+  save host, json-quote(wake-string(entry, <host>))
+  save kind, json-quote(wake-string(entry, <kind>))
+  save name, json-quote(wake-string(entry, <name>))
+  save site, json-quote(wake-string(entry, <site>))
+  back <HiveEntry \{ host: {host}.to_string(), kind: {kind}.to_string(), name: {name}.to_string(), site: {site}.to_string(), base: {boxed-base} \}>
+
+task wake-typed-entry
+  take form-name, like text
+  take entry, like roll-value
+  take base, like text
+  like text
+  mark private
+
+  back <HiveEntry::\<{form-name}\> \{ host: {wake-text-of(entry, <host>)}, kind: {wake-text-of(entry, <kind>)}, name: {wake-text-of(entry, <name>)}, site: {wake-text-of(entry, <site>)}, base: {base} \}>
+
+task wake-list-of
+  take items, like list, like text
+  like text
+  mark private
+
+  back <std::rc::Rc::new(std::cell::RefCell::new(vec![{join-with(items, <, >)}]))>
+
+task wake-typed-call
+  take group, like rust-wake-group
+  like text
+  mark private
+
+  save exceptions, make list
+  walk group/exceptions
+    take entry
+    save roll, wake-record(entry, <base>)
+    save links, make list
+    sift wake-record(roll, <link>)
+      case pair-values
+        link pairs
+        walk pairs
+          take pair
+          save type-text, <>
+          sift pair/value
+            case text-value
+              link value
+              save type-text, value
+            case no-value
+              save type-text, <>
+            case null-value
+              save type-text, <>
+            miss
+              save type-text, string-of(pair/value)
+          push(links, <Pair \{ first: {wake-quote(pair/key)}.to_string(), second: {wake-quote(type-text)}.to_string() \}>)
+      miss
+        save idle, 0
+    save base, <ExceptionRoll \{ like: {wake-text-of(roll, <like>)}, chain: {wake-texts-of(roll, <chain>)}, note: {wake-text-of(roll, <note>)}, link: vec![{join-with(links, <, >)}] \}>
+    push(exceptions, wake-typed-entry(<ExceptionRoll>, entry, base))
+  save tells, make list
+  walk group/tells
+    take entry
+    save roll, wake-record(entry, <base>)
+    save base, <TellRoll \{ note: {wake-text-of(roll, <note>)}, hint: {wake-text-of(roll, <hint>)}, link: {wake-texts-of(roll, <link>)}, alias: {wake-text-of(roll, <alias>)} \}>
+    push(tells, wake-typed-entry(<TellRoll>, entry, base))
+  save docks, make list
+  walk group/docks
+    take entry
+    save roll, wake-record(entry, <base>)
+    push(docks, wake-typed-entry(<DockRoll>, entry, <DockRoll \{ halt: {wake-texts-of(roll, <halt>)} \}>))
+  back <    hive_wake_typed({json-quote(group/deck)}.to_string(), {wake-list-of(exceptions)}, {wake-list-of(tells)}, {wake-list-of(docks)});>
+
+task is-typed-kind
+  take entry, like roll-value
+  like boolean
+  mark private
+
+  save kind, <undefined>
+  sift wake-at(entry, <kind>)
+    case some
+      link found
+      save kind, string-of(found)
+    case none
+      save idle, 0
+  back or(or(is-equal(kind, <exception>), is-equal(kind, <tell>)), is-equal(kind, <dock>))
+
+# the wake chain: one `hive_wake` per deck with its static entries, when the program has the stdlib hive and the
+# compile driver handed over the roll. See note/project/term/hive/05-hive.md, and THE TYPED WAKE (seam spec §3.3)
+task wake-chain
+  take program, like list, like statement
+  take wake, like list, like rust-wake-group
+  take st, like rust-state
+  take facts, like rust-facts
+  like list, like text
+  mark private
+
+  save out, make list
+  fork test, is-equal(wake/length, 0)
+    hold
+      back out
+  save has-wake, false
+  save typed, false
+  walk program
+    take one
+    sift one
+      case function
+        link name
+        fork test, is-equal(name, <hive-wake>)
+          hold
+            save has-wake, true
+        fork test, is-equal(name, <hive-wake-typed>)
+          hold
+            save typed, true
+      miss
+        save idle, 0
+  fork test, not(has-wake)
+    hold
+      back out
+  save calls, make list
+  walk wake
+    take group
+    save texts, make list
+    walk group/entries
+      take entry
+      fork test, and(typed, is-typed-kind(entry))
+        hold
+          turn next
+      push(texts, wake-entry-text(entry, st, facts))
+    save woken, <    hive_wake({json-quote(group/deck)}.to_string(), std::rc::Rc::new(std::cell::RefCell::new(vec![{join-with(texts, <, >)}])));>
+    fork test, typed
+      hold
+        push(calls, <{woken}\n{wake-typed-call(group)}>)
+      miss
+        push(calls, woken)
+  push(out, <pub fn wake_hive() \{\n{join-with(calls, <\n>)}\n\}>)
+  back out
+
+# one pass over the program: every fact, every statement, the module. `boxed-forms` are the recursive forms whose
+# children this pass holds in a `Box`, and `record` is filled with what it clones
+task emit-rust-pass
+  take handed, like list, like statement
+  take wake, like list, like rust-wake-group
+  take boxed-forms, like hash, like text, like boolean
+  take record, like rust-clone-record
+  take context, like rust-type-context
+  take fail
+    like task
+      take reason, like text
+      like boolean
+  like text
+  mark private
+
+  save program, handed
+  # the `+`, `-` and `*` nodes proven not to overflow: the counted steps, joined below by the interval fact
+  save steps, proven-increments(program)
+  # the counted loops whose calls to a bounded task may run its unchecked copy, and the divisions that copy does
+  # unsigned (ir/facts/guards.tree), by the loop's row
+  save guards, make hash
+  save fast-in, make hash
+  walk bounded-loops(program, make hash)
+    take found
+    save loop-row, place-row-of-statement(found/loop)
+    fork test, is-equal(loop-row, 0)
+      hold
+        turn next
+    save names, make list
+    save lows, make list
+    save highs, make list
+    fork test, is-above(found/fast/length, 0)
+      hold
+        walk found/limits
+          take limit
+          push(names, limit/name)
+          push(lows, limit/low)
+          save high, 0
+          fork test, not(limit/low)
+            hold
+              sift limit/high
+                case some
+                  link value
+                  save high, to-number(value)
+                case none
+                  save idle, 0
+          push(highs, high)
+    save guards/{loop-row}, guard-of(found/fast/length, names, lows, highs)
+    save fast-in/{loop-row}, expression-rows(found/fast)
+  save unsigned, expression-rows(unsigned-divisions(program))
+  # the text expressions proven ASCII, read by byte
+  save ascii, expression-rows(ascii-texts(program))
+  save fills, fill-tasks(program)
+  # when the stdlib hive is in the program, every new raise tells it
+  save has-hive-tell, false
+  save generic-arity, make hash
+  save shared-forms, make hash
+  save opaque, make hash
+  walk program
+    take one
+    sift one
+      case function
+        link name
+        fork test, is-equal(name, <hive-tell>)
+          hold
+            save has-hive-tell, true
+      case record-type
+        link name
+        link params
+        link variants
+        link shared
+        save generic-arity/{name}, params/length
+        fork test, and(shared, is-equal(variants/length, 0))
+          hold
+            save shared-forms/{name}, true
+      case native
+        link alias
+        link module
+        link kind
+        sift kind
+          case some
+            link native-kind
+            fork test, is-type-kind(native-kind)
+              hold
+                fork test, is-equal(module, <any>)
+                  hold
+                    save opaque/{alias}, <std::rc::Rc\<dyn std::any::Any\>>
+                  miss
+                    save opaque/{alias}, module
+          case none
+            save idle, 0
+      miss
+        save idle, 0
+  save context/generic-arity, generic-arity
+  save context/shared-forms, shared-forms
+  # decided below, once the list facts are known
+  save context/owned-inner, make hash
+  save context/text-keys, text-keys-of(program)
+  # per generic task, each parameter that is the key type of a map parameter, and that map's position
+  save key-positions, make hash
+  walk program
+    take one
+    sift one
+      case function
+        link name
+        link params
+        link generics
+        save generic-names, make list
+        walk generics
+          take generic
+          push(generic-names, generic/name)
+        save positions, make hash
+        save at, 0
+        walk params
+          take param
+          sift param/type
+            case some
+              link param-type
+              fork test, is-generic(param-type, generic-names)
+                hold
+                  save map-at, map-position(params, param-type, generic-names)
+                  fork test, is-minimum(map-at, 0)
+                    hold
+                      save positions/{at}, map-at
+            case none
+              save idle, 0
+          save at, add(at, 1)
+        fork test, is-above(positions/keys()/length, 0)
+          hold
+            save key-positions/{name}, positions
+      miss
+        save idle, 0
+  save context/opaque-types, opaque
+  # the program's forms by name
+  save variant-owner, make hash
+  save variant-owners, make hash
+  save variant-fields, make hash
+  save case-field-names, make hash
+  save closure-fields, make hash
+  save recursive-fields, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        link name
+        link fields
+        link variants
+        walk variants
+          take variant
+          save variant-owner/{variant/name}, name
+          save owners, make list
+          fork test, variant-owners/has(variant/name)
+            hold
+              save owners, variant-owners/get(variant/name)
+          fork test, not(has-name(owners, name))
+            hold
+              push(owners, name)
+          save variant-owners/{variant/name}, owners
+          save field-names, make list
+          walk variant/fields
+            take field
+            push(field-names, field/name)
+            fork test, type-is-function(field/type)
+              hold
+                save closure-fields/{field/name}, true
+            sift named-name(field/type)
+              case some
+                link field-type-name
+                fork test, is-equal(field-type-name, name)
+                  hold
+                    save recursive-key, <{variant/name}/{field/name}>
+                    save recursive-fields/{recursive-key}, true
+              case none
+                save idle, 0
+          save variant-fields/{variant/name}, field-names
+          save case-key, <{name}/{variant/name}>
+          save case-field-names/{case-key}, field-names
+        walk fields
+          take field
+          fork test, type-is-function(field/type)
+            hold
+              save closure-fields/{field/name}, true
+      miss
+        save idle, 0
+  # A BOXED PAYLOAD: a case of a boxed form, or of a plain form the program clones, that holds the form itself keeps
+  # all its fields in one struct of its own (`Disk(Box<StackDisk>)`). Keyed `form/case`
+  save taken, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        link name
+        save taken-name, pascal(name)
+        save taken/{taken-name}, true
+      miss
+        save idle, 0
+  save payloads, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        link name
+        link params
+        link variants
+        link shared
+        fork test, not(or(boxed-forms/has(name), and(is-equal(params/length, 0), not(shared))))
+          hold
+            turn next
+        walk variants
+          take variant
+          save struct-name, <{pascal(name)}{pascal(variant/name)}>
+          save holds, false
+          walk variant/fields
+            take field
+            fork test, or(recursive-fields/has(<{variant/name}/{field/name}>), holds-in-place(field/type, name))
+              hold
+                save holds, true
+          fork test, and(holds, not(taken/has(struct-name)))
+            hold
+              save payload-key, <{name}/{variant/name}>
+              save payloads/{payload-key}, struct-name
+      miss
+        save idle, 0
+  # traits (masks) emit as native Rust traits, instances as `impl` blocks
+  save mask-methods, make hash
+  save mask-of, make hash
+  save instance-targets, make hash
+  save impl-fn, make hash
+  walk program
+    take one
+    sift one
+      case mask
+        link name
+        link methods
+        walk methods
+          take method-name
+          save mask-methods/{method-name}, true
+          save mask-of/{method-name}, name
+      case instance
+        link mask
+        link target
+        save targets, make list
+        fork test, instance-targets/has(mask)
+          hold
+            save targets, instance-targets/get(mask)
+        push(targets, target)
+        save instance-targets/{mask}, targets
+      case function
+        link method
+        sift method
+          case some
+            link method-of
+            save impl-key, <{method-of/form}:{method-of/name}>
+            save impl-fn/{impl-key}, one
+          case none
+            save idle, 0
+      miss
+        save idle, 0
+  save forms-by-name, first-forms(program)
+  # every struct form's declared fields, and the exception forms
+  save record-fields, make hash
+  save exception-names, make list
+  save exception-forms, make hash
+  save native-aliases, make hash
+  save async-functions, make hash
+  save function-params, make hash
+  save module-consts, make hash
+  save plain-records, make hash
+  save sole-forms, make hash
+  save aliases, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        link name
+        link fields
+        link variants
+        link chain
+        link shared
+        link sole
+        fork test, is-equal(variants/length, 0)
+          hold
+            save one-fields, make list
+            walk fields
+              take field
+              save one-field
+                make record-field
+                  bind name, field/name
+                  bind type, field/type
+                  bind optional, field/optional
+              push(one-fields, one-field)
+            save record-fields/{name}, one-fields
+        # walked in place: a need-false list handed to a call is written into the node (traps.md T003)
+        save is-exception, false
+        walk chain
+          take chain-name
+          fork test, is-equal(chain-name, <exception>)
+            hold
+              save is-exception, true
+        fork test, and(is-exception, not(exception-forms/has(name)))
+          hold
+            push(exception-names, name)
+            save exception-forms/{name}, true
+        fork test, not(shared)
+          hold
+            save plain-records/{name}, true
+        fork test, sole
+          hold
+            save sole-forms/{name}, true
+      case native
+        link alias
+        link kind
+        save aliases/{alias}, true
+        save is-type, false
+        sift kind
+          case some
+            link native-kind
+            save is-type, is-type-kind(native-kind)
+          case none
+            save idle, 0
+        fork test, not(is-type)
+          hold
+            save native-aliases/{alias}, true
+      case function
+        link name
+        link params
+        link async
+        fork test, async
+          hold
+            save async-functions/{name}, true
+        save param-types, make list
+        walk params
+          take param
+          push(param-types, param/type)
+        save function-params/{name}, param-types
+      case let
+        link name
+        save module-consts/{name}, true
+      miss
+        save idle, 0
+  # THE RESULT LOWERING: a task whose raise set is not empty returns `Result<T, TermException>`
+  save raising, make hash
+  save raise-sets, raise-sets-of(program, exception-names)
+  walk raise-sets/raises/keys()
+    take raiser
+    fork test, is-above(raise-sets/raises/get(raiser)/length, 0)
+      hold
+        save raising/{raiser}, true
+  # F1's facts: the tasks whose signature this backend may change, the lent and fresh lists
+  save gated, gated-tasks(program, keys-of(mask-methods))
+  save list-facts, list-facts-of(program, gated)
+  save lend, list-facts/lend
+  save fresh, flags-of(list-facts/fresh)
+  # the place table and its places' identities: on a stamped program every place is a node of its own
+  save walked, walk-program(program)
+  save ids, make list
+  save row-at, 0
+  walk walked/handles
+    take handle
+    push(ids, row-at)
+    save row-at, add(row-at, 1)
+  save scope, scope-of(walked, ids)
+  save no-rows, make hash
+  save no-carriers, make hash
+  save private, private-forms(scope, lend, fresh, no-rows, no-carriers)
+  # the variant fields that own their lists, held as a plain `Vec`
+  save field-lists, flags-of(owned-fields(program, fresh, lend, flags-of(private/forms)))
+  # every `+`, `-` and `*` the interval fact bounds inside the safe integers, with the counted steps
+  save task-ids, make list
+  save next-id, 0
+  save reach-skip, rust-program-skip()
+  walk program
+    take one
+    sift one
+      case function
+        link body
+        save reached, reach-statements(body, reach-skip)
+        save one-ids, make list
+        walk reached/order
+          take ignored
+          push(one-ids, next-id)
+          save next-id, add(next-id, 1)
+        push(task-ids, one-ids)
+      miss
+        save idle, 0
+  save proven, expression-rows(steps)
+  walk bounded-arithmetic(program, field-lists, lend, flags-of(native-forms(program)), task-ids)
+    take bounded
+    save bounded-row, place-row-of-expression(bounded)
+    fork test, is-above(bounded-row, 0)
+      hold
+        save proven/{bounded-row}, true
+  # the lists of lists that own their inner lists
+  save key-of
+    task
+      take t, like type
+      like text
+      back spell(t, context)
+  save same-node
+    task
+      take left, like expression
+      take right, like expression
+      like boolean
+      back same-place(left, right)
+  save elements, owned-elements-of(walked, ids, fresh, lend, key-of, same-node)
+  save element-keys, flags-of(elements/keys)
+  save context/owned-inner, element-keys
+  save element-lets, make hash
+  walk elements/lets
+    take element
+    save element-row, place-row-of-statement(element/node)
+    fork test, is-above(element-row, 0)
+      hold
+        save element-lets/{element-row}, element/key
+  save element-walks, make hash
+  walk elements/walks
+    take element
+    save element-row, place-row-of-statement(element/node)
+    fork test, is-above(element-row, 0)
+      hold
+        save element-walks/{element-row}, element/key
+  save element-items, make hash
+  walk elements/items
+    take element
+    save element-row, place-row-of-expression(element/node)
+    fork test, is-above(element-row, 0)
+      hold
+        save element-items/{element-row}, element/key
+  save element-moves, expression-rows(elements/moves)
+  # the owned list locals of each task that never grow, held as a fixed array on the stack
+  save scalar-element
+    task
+      take given, like type
+      like boolean
+      sift given
+        case number
+          back true
+        case float
+          back true
+        case boolean
+          back true
+        miss
+          back false
+  save fixed, fixed-lists-of(program, lend, fresh, scalar-element, false)
+  save stack-lists, make hash
+  walk fixed/locals/keys()
+    take fixed-task
+    save stack-lists/{fixed-task}, keys-of(fixed/locals/get(fixed-task))
+  # F1 for records and texts: the parameters each task only reads, taken by reference
+  save borrow-params, borrowed-records(program, gated)
+  save texts-borrowed, borrowed-texts(program, gated)
+  walk texts-borrowed/keys()
+    take borrow-task
+    save merged, make list
+    fork test, borrow-params/has(borrow-task)
+      hold
+        save merged, borrow-params/get(borrow-task)
+    walk texts-borrowed/get(borrow-task)
+      take borrow-at
+      fork test, not(has-number(merged, borrow-at))
+        hold
+          push(merged, borrow-at)
+    save borrow-params/{borrow-task}, merged
+  # each variant's field types, by label and by form and case
+  save variant-types, make hash
+  save case-field-types, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        link name
+        link variants
+        walk variants
+          take variant
+          save types, make hash
+          walk variant/fields
+            take field
+            save types/{field/name}, field/type
+          save variant-types/{variant/name}, types
+          save case-key, <{name}/{variant/name}>
+          save case-field-types/{case-key}, types
+      miss
+        save idle, 0
+  # F2 escape: a function parameter the task only CALLS is `impl Fn(..)`
+  save impl-fn-params, make hash
+  walk gated
+    take gated-fn
+    sift gated-fn
+      case function
+        link name
+        link params
+        save escapes, escaping-params(gated-fn)
+        save local, make list
+        save at, 0
+        walk params
+          take param
+          sift param/type
+            case some
+              link param-type
+              fork test, and(is-local-fn(param-type), not(has-name(escapes, param/name)))
+                hold
+                  push(local, at)
+            case none
+              save idle, 0
+          save at, add(at, 1)
+        fork test, is-above(local/length, 0)
+          hold
+            save impl-fn-params/{name}, local
+      miss
+        save idle, 0
+  # a module-level `host` data tree gets one struct per record node, named by the binding and the field path
+  save structs
+    make rust-host-structs
+      bind defs, make list
+      bind of, make hash
+  save program, name-host-trees(program, structs, context)
+  # WHAT EACH MODULE BINDING IS, the forms that need a PhantomData marker, the traits each form derives
+  save bindings, module-bindings-of(program)
+  save phantom-table, make hash
+  walk phantom-forms(program, context)
+    take phantom
+    save phantom-table/{phantom/form}, phantom/marker
+  save traits, form-traits-of(program, context)
+  save tagged, flags-of(tagged-forms(program))
+  save key-index-table, make hash
+  walk form-key-indices(program)
+    take key-entry
+    save key-index-table/{key-entry/form}, key-entry/indices
+  save binds, collect-binds(program)
+  # a form's reused boxes, when it is not generic and has a field-less case
+  save reusable, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        link name
+        fork test, is-reusable(name, forms-by-name, payloads, boxed-forms)
+          hold
+            save reusable/{name}, true
+      miss
+        save idle, 0
+  save form-facts
+    make rust-form-facts
+      bind payloads, payloads
+      bind recursive-fields, recursive-fields
+      bind boxed-forms, boxed-forms
+      bind field-lists, field-lists
+      bind phantom, phantom-table
+      bind tagged, tagged
+      bind equatable, flags-of(traits/equatable)
+      bind hashable, flags-of(traits/hashable)
+      bind keyable, flags-of(traits/keyable)
+      bind sole, sole-forms
+      bind raising, raising
+      bind instance-targets, instance-targets
+      bind impl-fn, impl-fn
+      bind mask-of, mask-of
+      bind context, context
+  # the tasks being emitted, and what each reads by node
+  save stack
+    make rust-reads-stack
+      bind reads, make list
+  save placeholder-of
+    task
+      take given, like maybe, like type
+      like maybe, like placeholder
+      sift given
+        case some
+          link known
+          sift named-name(known)
+            case some
+              link known-name
+              fork test, forms-by-name/has(known-name)
+                hold
+                  save form-node, forms-by-name/get(known-name)
+                  sift form-node
+                    case record-type
+                      link variants
+                      walk variants
+                        take variant
+                        fork test, is-equal(variant/fields/length, 0)
+                          hold
+                            save found-placeholder
+                              make placeholder
+                                bind form, known-name
+                                bind empty, variant/name
+                            back make(some, found-placeholder)
+                    miss
+                      save idle, 0
+            case none
+              save idle, 0
+        case none
+          save idle, 0
+      back make none
+  save is-ascii-node
+    task
+      take node, like expression
+      like boolean
+      back has-expression-row(ascii, node)
+  save is-element-move
+    task
+      take node, like expression
+      like boolean
+      back has-expression-row(element-moves, node)
+  save enter-task
+    task
+      take node, like statement
+      like task-entry
+      save cursors, text-cursors-of(node, is-ascii-node)
+      save cursor-reads, make hash
+      walk cursors/reads
+        take cursor-read
+        save cursor-row, place-row-of-expression(cursor-read/call)
+        fork test, is-above(cursor-row, 0)
+          hold
+            save cursor-reads/{cursor-row}, cursor-read/name
+      save slice-lets, make hash
+      save slice-names, slice-keys(node, ascii, slice-lets)
+      save owned, make hash
+      save owned-list, make list
+      save lent, make hash
+      save task-body, make list
+      sift node
+        case function
+          link name
+          link params
+          link body
+          link async
+          save task-body, body
+          fork test, not(async)
+            hold
+              save owned, owned-locals(node, fresh, lend, field-lists, is-element-move)
+          fork test, lend/has(name)
+            hold
+              save lend-at, lend/get(name)
+              save at, 0
+              walk params
+                take param
+                fork test, lend-at/has(at)
+                  hold
+                    save lent/{param/name}, lend-at/get(at)
+                save at, add(at, 1)
+          walk owned/keys()
+            take owned-name
+            save lent/{owned-name}, <write>
+            save one-owned
+              make owned-local
+                bind name, owned-name
+                bind writes, owned/get(owned-name)
+            push(owned-list, one-owned)
+        miss
+          save idle, 0
+      save last, last-reads-of(task-body, true)
+      save move-nodes, expression-rows(last/last)
+      save many-moves, expression-rows(last/many)
+      save lists
+        task
+          take list-name, like text
+          like boolean
+          fork test, and(lent/has(list-name), is-equal(lent/get(list-name), <write>))
+            hold
+              back true
+          back and(owned/has(list-name), owned/get(list-name))
+      save last-read
+        task
+          take read-node, like expression
+          like boolean
+          back has-expression-row(move-nodes, read-node)
+      save takes, slot-takes-of(task-body, lists, last-read, placeholder-of, flags-of(mutated-captures(task-body)))
+      save slot-lets, make hash
+      walk takes/lets
+        take let-take
+        save take-row, place-row-of-statement(let-take/node)
+        fork test, is-above(take-row, 0)
+          hold
+            save found, let-take/take
+            save one-let
+              make slot-let
+                bind list, found/list
+                bind index, found/index
+                bind form, found/form
+                bind empty, found/empty
+                bind kept, let-take/kept
+            save slot-lets/{take-row}, one-let
+      save slot-reads, make hash
+      walk takes/takes
+        take read-take
+        save take-row, place-row-of-expression(read-take/node)
+        fork test, is-above(take-row, 0)
+          hold
+            save found, read-take/take
+            save one-take
+              make slot-take
+                bind list, found/list
+                bind index, found/index
+                bind form, found/form
+                bind empty, found/empty
+            save slot-reads/{take-row}, one-take
+      save one-reads
+        make rust-task-reads
+          bind cursors, cursor-reads
+          bind slice-lets, slice-lets
+          bind move-nodes, move-nodes
+          bind many-moves, many-moves
+          bind slot-lets, slot-lets
+          bind slot-reads, slot-reads
+      save stacked, stack/reads
+      push(stacked, one-reads)
+      save stack/reads, stacked
+      back
+        make task-entry
+          bind cursor-names, cursors/names
+          bind slice-names, slice-names
+          bind owned, owned-list
+  save leave-task
+    task
+      like boolean
+      save kept, make list
+      save at, 0
+      save last-at, subtract(stack/reads/length, 1)
+      walk stack/reads
+        take one-reads
+        fork test, is-below(at, last-at)
+          hold
+            push(kept, one-reads)
+        save at, add(at, 1)
+      save stack/reads, kept
+      back true
+  save is-proven
+    task
+      take node, like expression
+      like boolean
+      back has-expression-row(proven, node)
+  save loop-guard-of
+    task
+      take node, like statement
+      like maybe, like loop-guard
+      save row, place-row-of-statement(node)
+      fork test, and(is-above(row, 0), guards/has(row))
+        hold
+          save guard, guards/get(row)
+          back make(some, guard)
+      back make none
+  save is-fast-in
+    task
+      take node, like expression
+      take loop, like statement
+      like boolean
+      save row, place-row-of-statement(loop)
+      fork test, and(is-above(row, 0), fast-in/has(row))
+        hold
+          back has-expression-row(fast-in/get(row), node)
+      back false
+  save is-unsigned-div
+    task
+      take node, like expression
+      like boolean
+      back has-expression-row(unsigned, node)
+  save owns-inner-item
+    task
+      take node, like expression
+      like boolean
+      sift text-at-row(element-items, place-row-of-expression(node))
+        case some
+          link key
+          back element-keys/has(key)
+        case none
+          back false
+  save owns-inner-let
+    task
+      take node, like statement
+      like boolean
+      sift text-at-row(element-lets, place-row-of-statement(node))
+        case some
+          link key
+          back element-keys/has(key)
+        case none
+          back false
+  save owns-inner-walk
+    task
+      take node, like statement
+      like boolean
+      sift text-at-row(element-walks, place-row-of-statement(node))
+        case some
+          link key
+          back element-keys/has(key)
+        case none
+          back false
+  save is-move-node
+    task
+      take node, like expression
+      like boolean
+      back has-expression-row(top-reads(stack)/move-nodes, node)
+  save is-many-move
+    task
+      take node, like expression
+      like boolean
+      back has-expression-row(top-reads(stack)/many-moves, node)
+  save slot-let-of
+    task
+      take node, like statement
+      like maybe, like slot-let
+      save row, place-row-of-statement(node)
+      save top, top-reads(stack)
+      fork test, and(is-above(row, 0), top/slot-lets/has(row))
+        hold
+          save found, top/slot-lets/get(row)
+          back make(some, found)
+      back make none
+  save slot-read-of
+    task
+      take node, like expression
+      like maybe, like slot-take
+      save row, place-row-of-expression(node)
+      save top, top-reads(stack)
+      fork test, and(is-above(row, 0), top/slot-reads/has(row))
+        hold
+          save found, top/slot-reads/get(row)
+          back make(some, found)
+      back make none
+  save is-slice-let
+    task
+      take node, like statement
+      like boolean
+      back has-statement-row(top-reads(stack)/slice-lets, node)
+  save cursor-of
+    task
+      take node, like expression
+      like maybe, like text
+      back text-at-row(top-reads(stack)/cursors, place-row-of-expression(node))
+  save same-statement
+    task
+      take left, like statement
+      take right, like statement
+      like boolean
+      back same-statement-place(left, right)
+  save inspect-walkers, make hash
+  save facts
+    make rust-facts
+      bind variant-owner, variant-owner
+      bind variant-owners, variant-owners
+      bind variant-fields, variant-fields
+      bind case-field-names, case-field-names
+      bind closure-fields, closure-fields
+      bind recursive-fields, recursive-fields
+      bind payloads, payloads
+      bind boxed-forms, boxed-forms
+      bind reusable, reusable
+      bind mask-methods, mask-methods
+      bind mask-of, mask-of
+      bind instance-targets, instance-targets
+      bind impl-fn, impl-fn
+      bind raising, raising
+      bind record-fields, record-fields
+      bind inspect-forms, inspect-forms(program)
+      bind inspect-walkers, inspect-walkers
+      bind exception-forms, exception-forms
+      bind native-aliases, native-aliases
+      bind function-params, function-params
+      bind async-functions, async-functions
+      bind impl-fn-params, impl-fn-params
+      bind lend-params, lend
+      bind fresh-lists, fresh
+      bind field-lists, field-lists
+      bind borrow-params, borrow-params
+      bind variant-types, variant-types
+      bind case-field-types, case-field-types
+      bind plain-records, plain-records
+      bind module-consts, module-consts
+      bind module-slots, flags-of(bindings/slots)
+      bind scalar-consts, flags-of(bindings/scalars)
+      bind text-consts, flags-of(bindings/texts)
+      bind host-struct-of, structs/of
+      bind phantom-forms, phantom-table
+      bind aliases, aliases
+      bind binds, binds
+      bind key-positions, key-positions
+      bind has-hive-tell, has-hive-tell
+      bind fills, fills
+      bind stack-lists, stack-lists
+      bind form-key-indices, key-index-table
+      bind form-facts, form-facts
+      bind context, context
+      bind is-proven, is-proven
+      bind loop-guard-of, loop-guard-of
+      bind is-fast-in, is-fast-in
+      bind is-unsigned-div, is-unsigned-div
+      bind is-ascii, is-ascii-node
+      bind owns-inner-item, owns-inner-item
+      bind owns-inner-let, owns-inner-let
+      bind owns-inner-walk, owns-inner-walk
+      bind is-move-node, is-move-node
+      bind is-many-move, is-many-move
+      bind slot-let-of, slot-let-of
+      bind slot-read-of, slot-read-of
+      bind is-slice-let, is-slice-let
+      bind cursor-of, cursor-of
+      bind enter-task, enter-task
+      bind leave-task, leave-task
+      bind same-node, same-node
+      bind same-statement, same-statement
+      bind fail, fail
+  save st, new-rust-state()
+  # `use` declarations for native module bindings, then the `use` each called bind needs
+  save uses, rust-uses(program, bind-imports(referenced-binds(program, binds), <rust>))
+  # each statement's text, beside the module it came from
+  save body, make list
+  save body-files, make list
+  walk structs/defs
+    take def
+    fork test, is-unequal(def, <>)
+      hold
+        push(body, def)
+        push(body-files, <>)
+  walk kept-statements(program)
+    take kept
+    save text, <>
+    sift kept
+      case let
+        link name
+        save text, module-let(kept, st, facts)
+      miss
+        save text, emit-statement(kept, 0, st, facts)
+    fork test, is-unequal(text, <>)
+      hold
+        push(body, text)
+        push(body-files, file-of(kept))
+  # each task a guarded loop calls unchecked, once more with plain arithmetic (the list grows while it is walked)
+  save fast-at, 0
+  walk test
+    hook test, is-below(fast-at, st/fast-tasks/length)
+    hook hold
+      save fast-name, get(st/fast-tasks, fast-at)
+      save fast-at, add(fast-at, 1)
+      sift first-function(program, fast-name)
+        case some
+          link fast-fn
+          save fast-copy, rust-program-copy-statement(fast-fn)
+          sift fast-copy
+            case function
+              link name
+              save fast-copy/name, <{fast-name}-fast>
+            miss
+              save idle, 0
+          push(body, emit-unchecked(fast-copy, st, facts))
+          push(body-files, file-of(fast-fn))
+        case none
+          save idle, 0
+  # a fill walker raises `data-mismatch` through the carrier
+  save fills-forms, is-above(st/fill-specs/keys()/length, 0)
+  save wake-texts, wake-chain(program, wake, st, facts)
+  # A SOLE VALUE IS NEVER CLONED (term/affine-kinds decision 001), asked before `melt`'s clones are noted
+  walk st/clone-forms/keys()
+    take cloned
+    fork test, sole-forms/has(cloned)
+      hold
+        fail(<sole-cloned: the Rust emitter would clone a value of `{cloned}`, which is `mark sole`. A sole value is moved, never copied>)
+  # `melt` clones every field of each form it melts (item 0029)
+  walk st/melt-specs/keys()
+    take melted
+    save melted-type, named-of(melted)
+    note-clone(make(some, melted-type), st, facts)
+  # what this pass cloned, for `emit-rust` to box the forms nothing cloned
+  save cloned-forms, record/forms
+  walk st/clone-forms/keys()
+    take cloned
+    save cloned-forms/{cloned}, true
+  save record/forms, cloned-forms
+  fork test, st/clone-generic
+    hold
+      save record/generic, true
+  # THE MODULE (compile/rust-assemble.tree `rust-module`)
+  save payload-entries, make list
+  walk payloads/keys()
+    take payload-key
+    save one-payload
+      make payload-entry
+        bind key, payload-key
+        bind name, payloads/get(payload-key)
+    push(payload-entries, one-payload)
+  save fill-specs, make list
+  walk st/fill-specs/values()
+    take spec
+    push(fill-specs, spec)
+  save melt-specs, make list
+  walk st/melt-specs/values()
+    take spec
+    push(melt-specs, spec)
+  save form-walk, rust-form-walk(fill-specs, melt-specs)
+  walk facts/inspect-walkers/values()
+    take walker
+    fork test, is-unequal(walker, <>)
+      hold
+        push(form-walk, walker)
+  save input
+    make rust-module-input
+      bind uses, uses
+      bind body, body
+      bind body-files, body-files
+      bind carries, st/carries
+      bind fills, fills-forms
+      bind budget-uses, st/budget-uses
+      bind spawn-uses, st/spawn-uses
+      bind boxed-futures, st/boxed-futures
+      bind text-keys, context/text-keys
+      bind reuse-opened, st/reuse-opened
+      bind reuse-built, st/reuse-built
+      bind boxed-forms, keys-of(boxed-forms)
+      bind payloads, payload-entries
+      bind form-walk, form-walk
+      bind wake, wake-texts
+  back rust-module(input, program)
+
+task file-of
+  take one, like statement
+  like text
+  mark private
+
+  save at, statement-span-of(one)
+  sift at/file
+    case some
+      link file
+      back file
+    case none
+      back <>
+
+task first-function
+  take program, like list, like statement
+  take wanted, like text
+  like maybe, like statement
+  mark private
+
+  walk program
+    take one
+    sift one
+      case function
+        link name
+        fork test, is-equal(name, wanted)
+          hold
+            back make(some, one)
+      miss
+        save idle, 0
+  back make none
+
+task has-number
+  take values, like list, like number
+  take value, like number
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task is-generic
+  take given, like type
+  take generic-names, like list, like text
+  like boolean
+  mark private
+
+  sift given
+    case variable
+      back true
+    case named
+      link name
+      back has-name(generic-names, name)
+    miss
+      back false
+
+task same-key-type
+  take left, like type
+  take right, like type
+  like boolean
+  mark private
+
+  sift left
+    case variable
+      link id
+      save left-id, id
+      sift right
+        case variable
+          link right-id
+          back is-equal(left-id, right-id)
+        miss
+          back false
+    case named
+      link name
+      save left-name, name
+      sift right
+        case named
+          link right-name
+          back is-equal(left-name, right-name)
+        miss
+          back false
+    miss
+      back false
+
+# the first map parameter whose key is generic and the same type as `wanted`, -1 for none
+task map-position
+  take params, like list, like function-param
+  take wanted, like type
+  take generic-names, like list, like text
+  like number
+  mark private
+
+  save at, 0
+  walk params
+    take param
+    sift param/type
+      case some
+        link param-type
+        sift param-type
+          case map
+            link key
+            fork test, and(is-generic(key, generic-names), same-key-type(key, wanted))
+              hold
+                back at
+          miss
+            save idle, 0
+      case none
+        save idle, 0
+    save at, add(at, 1)
+  back -1
+
+# a function-typed parameter that is not asynchronous
+task is-local-fn
+  take given, like type
+  like boolean
+  mark private
+
+  sift given
+    case function
+      link effects
+      # walked in place: a need-false list handed to a call is written into the node (traps.md T003)
+      walk effects
+        take effect
+        fork test, is-equal(effect, <async>)
+          hold
+            back false
+      back true
+    miss
+      back false
+
+task is-reusable
+  take name, like text
+  take forms-by-name, like hash, like text, like statement
+  take payloads, like hash, like text, like text
+  take boxed-forms, like hash, like text, like boolean
+  like boolean
+  mark private
+
+  fork test, not(forms-by-name/has(name))
+    hold
+      back false
+  save form-node, forms-by-name/get(name)
+  sift form-node
+    case record-type
+      link params
+      link variants
+      save payloaded, false
+      save field-less, false
+      walk variants
+        take variant
+        fork test, payloads/has(<{name}/{variant/name}>)
+          hold
+            save payloaded, true
+        fork test, is-equal(variant/fields/length, 0)
+          hold
+            save field-less, true
+      save reused-ok, false
+      sift reused-payload-of(payloads, name)
+        case some
+          save reused-ok, boxed-forms/has(name)
+        case none
+          save idle, 0
+      back and(and(is-equal(params/length, 0), field-less), or(not(payloaded), reused-ok))
+    miss
+      back false
+
+task statement-span-of
+  take one, like statement
+  like span
+  mark private
+
+  sift one
+    case let
+      link span
+      back span
+    case function
+      link span
+      back span
+    case record-type
+      link span
+      back span
+    case mask
+      link span
+      back span
+    case instance
+      link span
+      back span
+    case native
+      link span
+      back span
+    case bind
+      link span
+      back span
+    case view
+      link span
+      back span
+    case dock
+      link span
+      back span
+    case roll
+      link span
+      back span
+    case tell
+      link span
+      back span
+    case assign
+      link span
+      back span
+    case expression
+      link span
+      back span
+    case if
+      link span
+      back span
+    case while
+      link span
+      back span
+    case match
+      link span
+      back span
+    case for-each
+      link span
+      back span
+    case break
+      link span
+      back span
+    case continue
+      link span
+      back span
+    case return
+      link span
+      back span
+    case exit
+      link span
+      back span
+    case debug
+      link span
+      back span
+    case probe
+      link span
+      back span
+    case guard
+      link span
+      back span
+    case throw
+      link span
+      back span
+    case hold
+      link span
+      back span
+
+# ---- the entries ----
+
+# a whole program as one Rust module. `units` keeps each module's statements marked, for the caller to write one file
+# per module (compile/unit-split.tree)
+task emit-rust
+  take handed, like list, like statement
+  take wake, like list, like rust-wake-group
+  take units, like boolean
+  take fail
+    like task
+      take reason, like text
+      like boolean
+  like text
+
+  # every fact and the emission of both passes read one STAMPED copy, each place a node of its own (D011 rule 4)
+  save program, stamp-places(handed)
+  save context, new-context()
+  save record
+    make rust-clone-record
+      bind forms, make hash
+      bind generic, false
+  save none-boxed, make hash
+  save first, emit-rust-pass(program, wake, none-boxed, record, context, fail)
+  save text, first
+  fork test, not(record/generic)
+    hold
+      save boxed, flags-of(boxable-forms(program, keys-of(record/forms)))
+      fork test, is-above(boxed/keys()/length, 0)
+        hold
+          save again
+            make rust-clone-record
+              bind forms, make hash
+              bind generic, false
+          save text, emit-rust-pass(program, wake, boxed, again, context, fail)
+  fork test, units
+    hold
+      back text
+  back unmark-text(text)
+
+# the program as one file, every mark removed (compile/unit-split.tree `unmarked`, which copies the rest of the text at
+# every mark, so a module of a thousand statements took most of the emit): each open mark through the close that ends
+# its file, then every end, each piece read from where the last ended
+task unmark-text
+  take text, like text
+  like text
+  mark private
+
+  save open, rune-to-text(57344)
+  save close, rune-to-text(57345)
+  save end, rune-to-text(57346)
+  fork test, is-below(index-of(text, open), 0)
+    hold
+      back text
+  save kept, make list
+  save at, 0
+  save size, text/length
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save found, index-of(text, open, at)
+      fork test, is-below(found, 0)
+        hold
+          push(kept, substring(text, at, size))
+          halt
+      save closed, index-of(text, close, add(found, 1))
+      fork test, is-below(closed, 0)
+        hold
+          # an open mark no close follows is no mark: kept, and the search goes on after it
+          push(kept, substring(text, at, add(found, 1)))
+          save at, add(found, 1)
+          turn next
+      push(kept, substring(text, at, found))
+      save at, add(closed, 1)
+  save joined, join-with(kept, <>)
+  back join-with(split(joined, end), <>)
+
+# what the first pass recorded and which forms it boxes, for a test to assert (test/compile/rust-box.ts)
+task rust-boxing-of
+  take handed, like list, like statement
+  take fail
+    like task
+      take reason, like text
+      like boolean
+  like rust-boxing
+
+  save program, stamp-places(handed)
+  save record
+    make rust-clone-record
+      bind forms, make hash
+      bind generic, false
+  save wake, make list
+  save none-boxed, make hash
+  emit-rust-pass(program, wake, none-boxed, record, new-context(), fail)
+  save cloned, keys-of(record/forms)
+  save boxed, make list
+  fork test, not(record/generic)
+    hold
+      save boxed, boxable-forms(program, cloned)
+  back
+    make rust-boxing
+      bind cloned, sort-texts(cloned)
+      bind generic, record/generic
+      bind boxed, sort-texts(boxed)
+
+# texts in code-unit order, as `Array.prototype.sort` with no comparator orders them
+task sort-texts
+  take values, like list, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk values
+    take value
+    save at, 0
+    save placed, false
+    save next, make list
+    walk out
+      take one
+      fork test, and(not(placed), text-below(value, one))
+        hold
+          push(next, value)
+          save placed, true
+      push(next, one)
+    fork test, not(placed)
+      hold
+        push(next, value)
+    save out, next
+  back out
+
+bind rust-program-text-below
+  take left, like text
+  take right, like text
+  like boolean
+  case node
+    text <($left \< $right)>
+  case browser
+    text <($left \< $right)>
+  case rust
+    text <($left \< $right)>
+  case swift
+    text <($left \< $right)>
+  case kotlin
+    text <($left \< $right)>
+
+task text-below
+  take left, like text
+  take right, like text
+  like boolean
+  mark private
+
+  back rust-program-text-below(left, right)

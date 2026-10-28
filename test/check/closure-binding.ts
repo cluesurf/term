@@ -13,6 +13,8 @@
 //                                             `walk-statement` was renamed apart by arity the checker refused it as a
 //                                             property of `set` (disambiguate.tree `nest-under-task`)
 //
+// A record form a file finds by name wins over a case of a union it also imports (decision 049, 0332), both ways too.
+//
 // Each is built both ways, small, and then the real modules through compile/program-gate-probe.tree, as the entry and
 // loaded by another file.
 //
@@ -131,6 +133,38 @@ const KINDS = `form analysis-kind\n  mark text\n  case view\n  case code\n\nform
   const main = `load @app/doc\n  find lower\n\n${KINDS}\ntask run\n  like number\n  back lower()/length\n`
   const result = build({ '@app/node': NODE, '@app/doc': DOC }, main)
   ok('a shared case built by an importer: told the imported owner, its form renamed __form by the closure', result.ok, said(result))
+}
+
+// ---- a record form found by name beside a union whose case has the name (term-self-host-001-0332, decision 049) ----
+// check/inferring-expressions.tree finds node.tree's `expression` (a case `hole`) and part 1's record form `hole`, and
+// builds the record. meansForm asked the union import first, so `make hole` built the case ('hole has no field file'),
+// as the entry and loaded. A name is scoped to its module: the form the file finds by name is the nearer binding
+
+const EXPR = `form expr\n  case hole\n    link name, like text\n  case other\n\ntask show-expr\n  take e, like expr\n  like text\n  back <e>\n`
+const STATE = `form hole\n  link file, like text\n  link count, like number\n\ntask hole-file\n  take h, like hole\n  like text\n  back h/file\n`
+const FINDS_BOTH = `load @app/expr\n  find expr\n  find show-expr\n\nload @app/state\n  find hole\n  find hole-file\n\ntask made\n  like text\n  save h\n    make hole\n      bind file, <a>\n      bind count, 1\n  back hole-file(h)\n`
+// the union alone imported: its case is still what `make hole` builds
+const FINDS_UNION = `load @app/expr\n  find expr\n  find show-expr\n\nload @app/state\n  find hole-file\n\ntask made\n  like text\n  save e\n    make hole\n      bind name, <n>\n  back show-expr(e)\n`
+const LOADS_MADE = `load @app/user\n  find made\n\ntask run\n  like text\n  back made()\n`
+
+{
+  const result = build({ '@app/expr': EXPR, '@app/state': STATE }, FINDS_BOTH)
+  ok('a record form found by name beside a union with its case: built as the form, the file the entry', result.ok, said(result))
+}
+
+{
+  const result = build({ '@app/expr': EXPR, '@app/state': STATE, '@app/user': FINDS_BOTH }, LOADS_MADE)
+  ok('a record form found by name beside a union with its case: built as the form, the file loaded', result.ok, said(result))
+}
+
+{
+  const result = build({ '@app/expr': EXPR, '@app/state': STATE }, FINDS_UNION)
+  ok('the union alone found, the record form in the closure: built as the case, the file the entry', result.ok, said(result))
+}
+
+{
+  const result = build({ '@app/expr': EXPR, '@app/state': STATE, '@app/user': FINDS_UNION }, LOADS_MADE)
+  ok('the union alone found, the record form in the closure: built as the case, the file loaded', result.ok, said(result))
 }
 
 // ---- a lean label under a method a form shares its name with ----

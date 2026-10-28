@@ -62,7 +62,8 @@ function typeParameters(statement: Statement): Set<string> {
 // form's case takes a name of its own (`<name>__form`), the entry file's too unless it is a union or a mask, and the case keeps its name,
 // which reaches the output (a TypeScript tag, a printed record). Then each reference is bound: a named type, a raise, a
 // method and a mask instance can only mean the form; a construction means the case where its file defines that case's
-// form or imports it, the form where its file defines or imports the form, and otherwise whichever's fields the
+// form, the form where its file defines the form or finds it by its name (decision 049: the nearer binding, so it wins
+// over an import of the case's union), the case where its file imports that union, and otherwise whichever's fields the
 // construction names, the case where that does not decide. A union or a mask is never built by its own name, so there
 // the construction is always the case
 function separateCaseNames(program: Program, scope: ImportScope | undefined, entry?: string): void {
@@ -156,8 +157,10 @@ function separateCaseNames(program: Program, scope: ImportScope | undefined, ent
       if (!constructible) return false
       if (file && caseFiles.has(file)) return false
       if (file && formFiles.has(file)) return true
-      if ([...caseForms].some(form => [...reaches(file, form)].some(f => caseFiles.has(f)))) return false
+      // a find of the form by its written name is the nearer binding, so it wins over a union import that brings a
+      // case of the name (decision 049, term-self-host-001-0332): a name is scoped to its module
       if ([...reaches(file, name)].some(f => formFiles.has(f))) return true
+      if ([...caseForms].some(form => [...reaches(file, form)].some(f => caseFiles.has(f)))) return false
       const caseFit = owners.some(o => fields.every(f => o.fields.includes(f)))
       const formFit = fields.every(f => formFields.has(f))
 
