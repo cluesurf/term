@@ -39,9 +39,16 @@ export type TreeSource =
 export type TakeResult = (result: StreamResult) => boolean | void
 
 export function walkGroups(source: TreeSource, take: TakeResult): void {
-  const lines = 'lines' in source ? source.lines[Symbol.iterator]() : source.text.split('\n')[Symbol.iterator]()
+  const lines =
+    'lines' in source
+      ? source.lines[Symbol.iterator]()
+      : source.text.split('\n')[Symbol.iterator]()
+
   let done = false
-  const nextLine = (): { form: 'some'; value: string } | { form: 'none' } => {
+
+  const nextLine = ():
+    | { form: 'some'; value: string }
+    | { form: 'none' } => {
     const one = lines.next()
 
     if (one.done) {
@@ -53,7 +60,11 @@ export function walkGroups(source: TreeSource, take: TakeResult): void {
     return { form: 'some', value: one.value }
   }
 
-  walk(source.file, nextLine, result => take(result as StreamResult) !== false)
+  walk(
+    source.file,
+    nextLine,
+    result => take(result as StreamResult) !== false,
+  )
 
   // an iterable the walk stopped early is closed, as a `for..of` that returns closes it
   if (!done) {

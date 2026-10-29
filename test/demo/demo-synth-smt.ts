@@ -21,7 +21,9 @@ async function main(): Promise<void> {
   try {
     z3 = await makeSmt()
   } catch {
-    console.log('z3-solver not installed - run `pnpm install`, then re-run.')
+    console.log(
+      'z3-solver not installed - run `pnpm install`, then re-run.',
+    )
     console.log('\nseed-verify synth-smt demo: skipped (no z3)')
     return
   }
@@ -32,8 +34,13 @@ async function main(): Promise<void> {
   let pass = 0
   let fail = 0
   function ok(name: string, cond: boolean, info = ''): void {
-    if (cond) { pass++; console.log(`ok    ${name}${info ? '  ' + info : ''}`) }
-    else { fail++; console.log(`FAIL  ${name}${info ? '  ' + info : ''}`) }
+    if (cond) {
+      pass++
+      console.log(`ok    ${name}${info ? '  ' + info : ''}`)
+    } else {
+      fail++
+      console.log(`FAIL  ${name}${info ? '  ' + info : ''}`)
+    }
   }
 
   const cases: {
@@ -47,7 +54,8 @@ async function main(): Promise<void> {
       taskName: 'find-max',
       varCount: 2,
       names: ['a', 'b'],
-      jsSpec: ([a, b], out) => out >= a && out >= b && (out === a || out === b),
+      jsSpec: ([a, b], out) =>
+        out >= a && out >= b && (out === a || out === b),
       symSpec: (vars, out, z3) => {
         const [a, b] = vars
         return z3.And(out.ge(a), out.ge(b), z3.Or(out.eq(a), out.eq(b)))
@@ -60,7 +68,10 @@ async function main(): Promise<void> {
       jsSpec: ([a], out) => out >= 0 && (out === a || out === -a),
       symSpec: (vars, out, z3) => {
         const [a] = vars
-        return z3.And(out.ge(z3.Int.val(0)), z3.Or(out.eq(a), out.eq(a.neg())))
+        return z3.And(
+          out.ge(z3.Int.val(0)),
+          z3.Or(out.eq(a), out.eq(a.neg())),
+        )
       },
     },
   ]
@@ -73,20 +84,41 @@ async function main(): Promise<void> {
       symSpec: c.symSpec,
       z3,
     })
-    ok(`${c.taskName}: synthesized + proven UNBOUNDED via Z3`,
+    ok(
+      `${c.taskName}: synthesized + proven UNBOUNDED via Z3`,
       synth.ok,
-      synth.ok ? `=> ${showExpr(synth.expr, c.names)} (${synth.counterexamples.length} Z3 counterexamples)` : synth.reason)
+      synth.ok
+        ? `=> ${showExpr(synth.expr, c.names)} (${synth.counterexamples.length} Z3 counterexamples)`
+        : synth.reason,
+    )
 
     if (synth.ok) {
       // emit as Seed and compile - the unbounded-proven code is real
-      const source = emitSeed({ name: c.taskName, params: c.names, body: synth.expr })
-      const compiled = compile({ file: `${c.taskName}.tree`, text: source }, { resolve })
-      ok(`${c.taskName}: emitted Seed compiles`, compiled.ok,
-        compiled.ok ? '' : (compiled.diagnostics || []).slice(0, 1).map(d => d.name).join())
+      const source = emitSeed({
+        name: c.taskName,
+        params: c.names,
+        body: synth.expr,
+      })
+      const compiled = compile(
+        { file: `${c.taskName}.tree`, text: source },
+        { resolve },
+      )
+      ok(
+        `${c.taskName}: emitted Seed compiles`,
+        compiled.ok,
+        compiled.ok
+          ? ''
+          : (compiled.diagnostics || [])
+              .slice(0, 1)
+              .map(d => d.name)
+              .join(),
+      )
     }
   }
 
-  console.log(`\nseed-verify synth-smt demo: ${pass} pass, ${fail} fail`)
+  console.log(
+    `\nseed-verify synth-smt demo: ${pass} pass, ${fail} fail`,
+  )
   if (fail > 0) process.exit(1)
 }
 

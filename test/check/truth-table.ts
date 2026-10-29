@@ -13,16 +13,26 @@ let fail = 0
 
 // `want` is 'ok', or a text one of the refusals must contain
 function expect(name: string, source: string, want: string): void {
-  const result = compile({ file: 't.tree', text: source }, { leanOf: () => true })
-  const messages = result.ok ? [] : result.diagnostics.map(d => `${d.name}: ${d.message}`)
-  const good = want === 'ok' ? result.ok : !result.ok && messages.some(m => m.includes(want))
+  const result = compile(
+    { file: 't.tree', text: source },
+    { leanOf: () => true },
+  )
+  const messages = result.ok
+    ? []
+    : result.diagnostics.map(d => `${d.name}: ${d.message}`)
+  const good =
+    want === 'ok'
+      ? result.ok
+      : !result.ok && messages.some(m => m.includes(want))
 
   if (good) {
     pass++
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (ok=${result.ok}, wanted ${want})\n      ${messages.join('\n      ')}`)
+    console.log(
+      `FAIL  ${name}  (ok=${result.ok}, wanted ${want})\n      ${messages.join('\n      ')}`,
+    )
   }
 }
 
@@ -136,7 +146,11 @@ const WEAKENING = `make arrow
 
 const FROM_NOTHING = `make arrow(a, b)`
 
-expect('a sound system is proven sound by one fold', system(WEAKENING, 'forward'), 'ok')
+expect(
+  'a sound system is proven sound by one fold',
+  system(WEAKENING, 'forward'),
+  'ok',
+)
 
 expect(
   'an unsound axiom is refused, naming the case and the values that break it',
@@ -340,14 +354,21 @@ rule plus-commutes-unproven
   )
   const names = result.ok ? [] : result.diagnostics.map(d => d.name)
   // the second law is refused by the provers, as not proven: unchecked or unproven, as long as it is SAID
-  const good = !result.ok && names.includes('invalid-proof') && names.some(n => n === 'unchecked-hold' || n === 'unproven')
+  const good =
+    !result.ok &&
+    names.includes('invalid-proof') &&
+    names.some(n => n === 'unchecked-hold' || n === 'unproven')
 
   if (good) {
     pass++
-    console.log('ok    one false law does not hide an unproven law beside it')
+    console.log(
+      'ok    one false law does not hide an unproven law beside it',
+    )
   } else {
     fail++
-    console.log(`FAIL  one false law does not hide an unproven law beside it  (${names.join(', ')})`)
+    console.log(
+      `FAIL  one false law does not hide an unproven law beside it  (${names.join(', ')})`,
+    )
   }
 }
 

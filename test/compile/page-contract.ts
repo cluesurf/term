@@ -24,7 +24,10 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const TERM = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+const TERM = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../..',
+)
 const FILE = path.join(TERM, 'test/compile/page-contract.tree')
 
 const PAGE = `load @term/site/code/dom/page
@@ -45,39 +48,67 @@ task visit
     call page-path
 `
 
-const build = (env: string, text: string) => compile({ file: FILE, text }, { resolve: projectResolver(TERM, env) })
+const build = (env: string, text: string) =>
+  compile({ file: FILE, text }, { resolve: projectResolver(TERM, env) })
 
 const reasons = (result: ReturnType<typeof build>) =>
-  result.ok ? '' : result.diagnostics.slice(0, 3).map(d => d.message).join(' | ')
+  result.ok
+    ? ''
+    : result.diagnostics
+        .slice(0, 3)
+        .map(d => d.message)
+        .join(' | ')
 
 // the body of the emitted `setTitle`, which is what tells one env's page from another's
 const bodyOf = (typescript: string, name: string) => {
   const at = typescript.search(new RegExp(`function ${name}\\(`))
-  return at < 0 ? '' : typescript.slice(at, typescript.indexOf('\n}', at))
+  return at < 0
+    ? ''
+    : typescript.slice(at, typescript.indexOf('\n}', at))
 }
 
 const browser = build('browser', PAGE)
 ok('the page compiles for the browser', browser.ok, reasons(browser))
-ok('the browser sets the live document title', bodyOf(browser.typescript ?? '', 'setTitle').includes('title.set('), bodyOf(browser.typescript ?? '', 'setTitle'))
+ok(
+  'the browser sets the live document title',
+  bodyOf(browser.typescript ?? '', 'setTitle').includes('title.set('),
+  bodyOf(browser.typescript ?? '', 'setTitle'),
+)
 
 const node = build('node', PAGE)
 ok('the page compiles for node', node.ok, reasons(node))
-ok('node stashes the title for the SSR shell', bodyOf(node.typescript ?? '', 'setTitle').includes('doc.setTitle('), bodyOf(node.typescript ?? '', 'setTitle'))
+ok(
+  'node stashes the title for the SSR shell',
+  bodyOf(node.typescript ?? '', 'setTitle').includes('doc.setTitle('),
+  bodyOf(node.typescript ?? '', 'setTitle'),
+)
 
 const cloudflare = build('cloudflare', PAGE)
-ok('the page compiles for cloudflare', cloudflare.ok, reasons(cloudflare))
+ok(
+  'the page compiles for cloudflare',
+  cloudflare.ok,
+  reasons(cloudflare),
+)
 ok(
   "cloudflare stashes like node, not the browser's live document",
-  bodyOf(cloudflare.typescript ?? '', 'setTitle').includes('doc.setTitle(') && !(cloudflare.typescript ?? '').includes('title.set('),
+  bodyOf(cloudflare.typescript ?? '', 'setTitle').includes(
+    'doc.setTitle(',
+  ) && !(cloudflare.typescript ?? '').includes('title.set('),
   bodyOf(cloudflare.typescript ?? '', 'setTitle'),
 )
 
 // `javascript` has no page of its own and no fallback env: it reaches the abstract module, whose tasks are no-ops
 const bare = build('javascript', PAGE)
-ok('the page compiles for an env with no page of its own', bare.ok, reasons(bare))
+ok(
+  'the page compiles for an env with no page of its own',
+  bare.ok,
+  reasons(bare),
+)
 ok(
   'that env gets the no-op fallback, touching neither a document nor a shell',
-  bodyOf(bare.typescript ?? '', 'setTitle').startsWith('function setTitle(') &&
+  bodyOf(bare.typescript ?? '', 'setTitle').startsWith(
+    'function setTitle(',
+  ) &&
     !/doc\.|title\.set/.test(bodyOf(bare.typescript ?? '', 'setTitle')),
   bodyOf(bare.typescript ?? '', 'setTitle'),
 )
@@ -96,7 +127,8 @@ task visit
   )
   ok(
     `the dom no longer answers for set-title on ${env}`,
-    !fromDom.ok && fromDom.diagnostics.some(d => d.message.includes('set-title')),
+    !fromDom.ok &&
+      fromDom.diagnostics.some(d => d.message.includes('set-title')),
     fromDom.ok ? 'it compiled' : reasons(fromDom),
   )
 }
@@ -115,7 +147,11 @@ task mount
     call page-body
 `,
 )
-ok('page-body and listen-document stay in the dom', node2.ok, reasons(node2))
+ok(
+  'page-body and listen-document stay in the dom',
+  node2.ok,
+  reasons(node2),
+)
 
 console.log(`\npage-contract: ${pass} pass, ${fail} fail`)
 

@@ -5,7 +5,11 @@
 // builds the TypeScript shape of a guard, reads the lent lists into the port's hash, and keeps the list-free test's
 // memo across the calls a caller makes of it.
 
-import type { Expression, Program, Statement } from '@term/make/code/compile/node'
+import type {
+  Expression,
+  Program,
+  Statement,
+} from '@term/make/code/compile/node'
 import {
   boundedLoops as guardsIn,
   integerBounds as integerBoundsIn,
@@ -20,7 +24,13 @@ import {
 // one bound the guard checks: `base + offset` (base a variable's name, or absent for a literal `offset`) compared with 0
 // (`low`) or with the list's length (`high`). `list` is the list's name, or for a list reached through a path the
 // path's key (`listKey`, `ps/{k}/xs`), with `path` the node an emitter writes to read its length
-export type BoundCheck = { list: string; base?: string; offset: number; side: 'low' | 'high'; path?: object }
+export type BoundCheck = {
+  list: string
+  base?: string
+  offset: number
+  side: 'low' | 'high'
+  path?: object
+}
 
 // the key of a list a guard may name: a variable, or a path from one through fields and through slots at a literal or
 // a variable index (`ps/{k}/xs`)
@@ -35,11 +45,20 @@ export function listKey(node: unknown): string | undefined {
 export type Limit = { name: string; low?: true; high?: number }
 
 // `fast`: the call nodes in the body that may call the task's unchecked copy once the guard, `limits` included, holds
-export type LoopGuard = { checks: BoundCheck[]; fast?: object[]; limits?: Limit[] }
+export type LoopGuard = {
+  checks: BoundCheck[]
+  fast?: object[]
+  limits?: Limit[]
+}
 
-export function boundedLoops(program: Program, lent: Map<string, Map<number, unknown>> = new Map()): WeakMap<Statement, LoopGuard> {
+export function boundedLoops(
+  program: Program,
+  lent = new Map<string, Map<number, unknown>>(),
+): WeakMap<Statement, LoopGuard> {
   const guards = new WeakMap<Statement, LoopGuard>()
-  const lentLists = new Map([...lent].map(([name, at]) => [name, [...at.keys()]]))
+  const lentLists = new Map(
+    [...lent].map(([name, at]) => [name, [...at.keys()]]),
+  )
 
   for (const found of guardsIn(program, lentLists)) {
     const checks: BoundCheck[] = found.checks.map(c => ({
@@ -49,11 +68,20 @@ export function boundedLoops(program: Program, lent: Map<string, Map<number, unk
       side: c.side as 'low' | 'high',
       ...(c.path.form === 'some' ? { path: c.path.value } : {}),
     }))
+
     const limits: Limit[] = found.limits.map(l =>
-      l.low ? { name: l.name, low: true as const } : { name: l.name, high: l.high.form === 'some' ? l.high.value : 0 },
+      l.low
+        ? { name: l.name, low: true as const }
+        : {
+            name: l.name,
+            high: l.high.form === 'some' ? l.high.value : 0,
+          },
     )
 
-    guards.set(found.loop, { checks, ...(found.fast.length ? { fast: found.fast, limits } : {}) })
+    guards.set(found.loop, {
+      checks,
+      ...(found.fast.length ? { fast: found.fast, limits } : {}),
+    })
   }
 
   return guards
@@ -63,7 +91,13 @@ export function boundedLoops(program: Program, lent: Map<string, Map<number, unk
 export function listFree(program: Program): (type: unknown) => boolean {
   const state = listFreedomOf(program)
 
-  return type => isListFree(state, type === undefined ? { form: 'none' } : { form: 'some', value: type as never })
+  return type =>
+    isListFree(
+      state,
+      type === undefined
+        ? { form: 'none' }
+        : { form: 'some', value: type as never },
+    )
 }
 
 // the tasks whose integer arithmetic cannot leave the safe integers while every argument is in [0, L), each with L
@@ -77,7 +111,10 @@ export function unsignedDivisions(program: Program): WeakSet<object> {
 }
 
 // a call to a native module's function, through a `dock load` the checker leaves deferred
-export function nativeCall(callee: { form?: string; target?: unknown }): boolean {
+export function nativeCall(callee: {
+  form?: string
+  target?: unknown
+}): boolean {
   return nativeCallIn(callee as Expression)
 }
 

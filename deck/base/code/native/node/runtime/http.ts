@@ -15,7 +15,11 @@ const http = {
       headers[name] = value
     }
 
-    const init: RequestInit = { method, headers, signal: AbortSignal.timeout(Math.max(0, timeout)) }
+    const init: RequestInit = {
+      method,
+      headers,
+      signal: AbortSignal.timeout(Math.max(0, timeout)),
+    }
 
     if (body.length > 0) {
       init.body = body
@@ -34,7 +38,12 @@ const http = {
     } catch (error) {
       const name = (error as { name?: string }).name
 
-      return [name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'outage', String(error)]
+      return [
+        name === 'TimeoutError' || name === 'AbortError'
+          ? 'timeout'
+          : 'outage',
+        String(error),
+      ]
     }
   },
 }

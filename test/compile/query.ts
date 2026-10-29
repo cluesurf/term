@@ -131,7 +131,9 @@ async function main(): Promise<void> {
     await fromStdlib()
     ok('high-durability query computed once', runs === 1)
 
-    for (let i = 0; i < 5; i++) {db.setInput('buffer', i, LOW)}
+    for (let i = 0; i < 5; i++) {
+      db.setInput('buffer', i, LOW)
+    }
 
     await fromStdlib()
     ok(
@@ -260,7 +262,9 @@ async function main(): Promise<void> {
     const serial = async (ps: Promise<number>[]): Promise<number[]> => {
       const out: number[] = []
 
-      for (const p of ps) {out.push(await p)}
+      for (const p of ps) {
+        out.push(await p)
+      }
 
       return out
     }
@@ -276,7 +280,9 @@ async function main(): Promise<void> {
 
   console.log(`\nquery: ${pass} pass, ${fail} fail`)
 
-  if (fail > 0) {process.exit(1)}
+  if (fail > 0) {
+    process.exit(1)
+  }
 }
 
 void main()

@@ -5,7 +5,12 @@
 // Run: npx tsx test/view/navigation.ts
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
@@ -126,29 +131,101 @@ writeFileSync(entry, PROGRAM)
 // the host with no address: the abstract page, as a native app gets it, in place of the node page's server request
 const base = projectResolver(process.cwd(), 'node')
 const resolve = (importPath: string, fromFile: string) =>
-  base(importPath.replace(/dom\/native\/\{platform\}\/page$/, 'dom/native/page'), fromFile)
-const result = compile({ file: entry, text: PROGRAM }, { resolve, env: 'node' })
-ok('a program driving the contract compiles', result.ok, result.ok ? '' : [...new Set(result.diagnostics.map(d => d.message))].slice(0, 6).join(' | '))
+  base(
+    importPath.replace(
+      /dom\/native\/\{platform\}\/page$/,
+      'dom/native/page',
+    ),
+    fromFile,
+  )
+const result = compile(
+  { file: entry, text: PROGRAM },
+  { resolve, env: 'node' },
+)
+ok(
+  'a program driving the contract compiles',
+  result.ok,
+  result.ok
+    ? ''
+    : [...new Set(result.diagnostics.map(d => d.message))]
+        .slice(0, 6)
+        .join(' | '),
+)
 
 if (result.ok) {
-  const readRuntime = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, 'utf8') : undefined)
+  const readRuntime = (file: string): string | undefined =>
+    existsSync(file) ? readFileSync(file, 'utf8') : undefined
   const file = join(dir, 'navigation.ts')
-  writeFileSync(file, `${nativePrelude(result.program, 'node', readRuntime, result.typescript)}\n${result.typescript}\nconsole.log(run())\n`)
+  writeFileSync(
+    file,
+    `${nativePrelude(result.program, 'node', readRuntime, result.typescript)}\n${result.typescript}\nconsole.log(run())\n`,
+  )
   const ran = spawnSync('npx', ['tsx', file], { encoding: 'utf8' })
   ok('it runs', ran.status === 0, ran.stderr.slice(0, 600))
 
   const said = ran.stdout.trim().split('\n').pop()!.split('|')
-  const [start, a, b, back1, afterBack, c, back2, root, back3, stays, woken, id, user, missing] = said
-  ok('it starts at the host\'s path, / with no address', start === '/', start)
-  ok('navigate goes to /a, then /b', a === '/a' && b === '/b', `${a} ${b}`)
-  ok('back from /b is /a', back1 === 'true' && afterBack === '/a', `${back1} ${afterBack}`)
-  ok('replace takes /a\'s place with /c, keeping the depth', c === '/c', c)
-  ok('back from /c is the start, since /c replaced /a', back2 === 'true' && root === '/', `${back2} ${root}`)
-  ok('back at the first is refused and stays put', back3 === 'false' && stays === '/', `${back3} ${stays}`)
-  ok('an effect on the route signal woke once at first and once per move: 1 + 5', woken === '6', woken)
+  const [
+    start,
+    a,
+    b,
+    back1,
+    afterBack,
+    c,
+    back2,
+    root,
+    back3,
+    stays,
+    woken,
+    id,
+    user,
+    missing,
+  ] = said
+  ok(
+    "it starts at the host's path, / with no address",
+    start === '/',
+    start,
+  )
+  ok(
+    'navigate goes to /a, then /b',
+    a === '/a' && b === '/b',
+    `${a} ${b}`,
+  )
+  ok(
+    'back from /b is /a',
+    back1 === 'true' && afterBack === '/a',
+    `${back1} ${afterBack}`,
+  )
+  ok(
+    "replace takes /a's place with /c, keeping the depth",
+    c === '/c',
+    c,
+  )
+  ok(
+    'back from /c is the start, since /c replaced /a',
+    back2 === 'true' && root === '/',
+    `${back2} ${root}`,
+  )
+  ok(
+    'back at the first is refused and stays put',
+    back3 === 'false' && stays === '/',
+    `${back3} ${stays}`,
+  )
+  ok(
+    'an effect on the route signal woke once at first and once per move: 1 + 5',
+    woken === '6',
+    woken,
+  )
   ok('a pattern reads its :id out of a path', id === '42', id)
-  ok('a pattern with two parameters reads the one asked for', user === 'ana', user)
-  ok('a path shorter than the pattern reads empty', missing === '', JSON.stringify(missing))
+  ok(
+    'a pattern with two parameters reads the one asked for',
+    user === 'ana',
+    user,
+  )
+  ok(
+    'a path shorter than the pattern reads empty',
+    missing === '',
+    JSON.stringify(missing),
+  )
 }
 
 console.log(`\nnavigation: ${pass} pass, ${fail} fail`)

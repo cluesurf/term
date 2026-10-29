@@ -37,19 +37,37 @@ export function runComposeAndroid({
   }
 
   const tools = androidTools()
-  const adb = (...args: string[]) => spawnSync(tools.adb, ['-s', found.serial, ...args], { encoding: 'utf8' })
+  const adb = (...args: string[]) =>
+    spawnSync(tools.adb, ['-s', found.serial, ...args], {
+      encoding: 'utf8',
+    })
   adb('uninstall', identifier)
   const installed = adb('install', '-r', apk).status === 0
   prepare?.(found.serial)
   adb('shell', 'am', 'start', '-n', `${identifier}/.TermActivity`)
 
   // this app's own lines, streamed (./android-log.ts)
-  const output = followAppLog({ adb: tools.adb, serial: found.serial, identifier })
-  const picture = spawnSync(tools.adb, ['-s', found.serial, 'exec-out', 'cat', `/sdcard/Android/data/${identifier}/files/${shot}`])
+  const output = followAppLog({
+    adb: tools.adb,
+    serial: found.serial,
+    identifier,
+  })
+  const picture = spawnSync(tools.adb, [
+    '-s',
+    found.serial,
+    'exec-out',
+    'cat',
+    `/sdcard/Android/data/${identifier}/files/${shot}`,
+  ])
 
   if (picture.status === 0 && picture.stdout.length > 0) {
     writeFileSync(pulled, picture.stdout)
   }
 
-  return { form: 'ran', installed, output, exited: output.includes('native-view exit 0') }
+  return {
+    form: 'ran',
+    installed,
+    output,
+    exited: output.includes('native-view exit 0'),
+  }
 }

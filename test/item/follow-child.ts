@@ -3,7 +3,12 @@
 // printed. Usage: npx tsx test/item/follow-child.ts [--raw]
 
 import { spawn } from 'node:child_process'
-import { closeRun, followChild, openRun, setOutput } from '@term/call/code/output'
+import {
+  closeRun,
+  followChild,
+  openRun,
+  setOutput,
+} from '@term/call/code/output'
 
 setOutput({ raw: process.argv.includes('--raw') }, '2.5.24')
 openRun({ verb: 'boot', root: process.cwd() })
@@ -14,7 +19,9 @@ const script = [
   `console.log('listening on 4000')`,
 ].join(';')
 
-const child = spawn(process.execPath, ['-e', script], { stdio: ['ignore', 'pipe', 'pipe'] })
+const child = spawn(process.execPath, ['-e', script], {
+  stdio: ['ignore', 'pipe', 'pipe'],
+})
 followChild(child, 'server')
 child.on('close', () => {
   // the streams' last lines are read before `close`, so the run closes after every one of them

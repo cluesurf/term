@@ -31,7 +31,8 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const ROOT = join(HERE, '../..')
 const BASE = join(ROOT, 'deck/base')
 const LINE = join(ROOT, 'host/line.js')
@@ -59,13 +60,16 @@ function skip(why: string): never {
 // the opt-in, first: nothing below runs, so no window opens, unless the person asked for it. A lowercase `skip` line,
 // which the gate (task/term/test.ts) reads as skipped rather than as a pass of nothing
 if (process.env.TERM_NATIVE_ITERM !== '1') {
-  console.log('skip  find-native (mac): opens a real iTerm2 window, so it runs only with TERM_NATIVE_ITERM=1')
+  console.log(
+    'skip  find-native (mac): opens a real iTerm2 window, so it runs only with TERM_NATIVE_ITERM=1',
+  )
   process.exit(0)
 }
 
 if (process.platform !== 'darwin') skip('this is not a Mac')
 if (!existsSync(ITERM)) skip(`iTerm2 is not installed at ${ITERM}`)
-if (!existsSync(LINE)) skip(`the CLI is not built (${LINE}): pnpm run make:line`)
+if (!existsSync(LINE))
+  skip(`the CLI is not built (${LINE}): pnpm run make:line`)
 
 // the one JXA helper, arguments by argv so no text of ours is ever spliced into script source
 const HELPER = `
@@ -145,11 +149,15 @@ writeFileSync(helperPath, HELPER)
 type Sessions = { id: string; name: string }[]
 
 function jxa(...args: string[]): string {
-  return execFileSync('osascript', ['-l', 'JavaScript', helperPath, ...args], {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-    timeout: 60000,
-  }).trim()
+  return execFileSync(
+    'osascript',
+    ['-l', 'JavaScript', helperPath, ...args],
+    {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 60000,
+    },
+  ).trim()
 }
 
 // consent: the cheapest Apple event to iTerm2
@@ -170,32 +178,54 @@ try {
 
 const mark = Math.random().toString(36).slice(2, 8)
 const token = `term-find-0008-${mark}`
-const titles = [`${token}-server`, `${token}-other`, `${token}-dup`, `${token}-dup`]
+const titles = [
+  `${token}-server`,
+  `${token}-other`,
+  `${token}-dup`,
+  `${token}-dup`,
+]
 const before = jxa('windows')
 let windowId = ''
 
 try {
-  windowId = (JSON.parse(jxa('create', ...titles)) as { window: number }).window.toString()
+  windowId = (
+    JSON.parse(jxa('create', ...titles)) as { window: number }
+  ).window.toString()
 
   // each session's title is what its shell printed (iTerm2 adds the job name); poll until all four are in
   let sessions: Sessions = []
   for (let tries = 0; tries < 60; tries++) {
     sessions = JSON.parse(jxa('sessions', windowId)) as Sessions
 
-    if (sessions.length === 4 && sessions.every((one) => one.name.startsWith(token))) break
+    if (
+      sessions.length === 4 &&
+      sessions.every(one => one.name.startsWith(token))
+    )
+      break
   }
 
-  ok('the test window holds four sessions with the made-up titles', sessions.length === 4 && sessions.every((one) => one.name.startsWith(token)), JSON.stringify(sessions))
+  ok(
+    'the test window holds four sessions with the made-up titles',
+    sessions.length === 4 &&
+      sessions.every(one => one.name.startsWith(token)),
+    JSON.stringify(sessions),
+  )
 
-  const byName = (suffix: string): Sessions => sessions.filter((one) => one.name.startsWith(`${token}-${suffix}`))
+  const byName = (suffix: string): Sessions =>
+    sessions.filter(one => one.name.startsWith(`${token}-${suffix}`))
   let server = byName('server')[0]
   let other = byName('other')[0]
   let dup = byName('dup')
 
-  ok('one session each of server and other, two of dup', Boolean(server) && Boolean(other) && dup.length === 2, JSON.stringify(sessions))
+  ok(
+    'one session each of server and other, two of dup',
+    Boolean(server) && Boolean(other) && dup.length === 2,
+    JSON.stringify(sessions),
+  )
 
   // the shells are up when their prompt is in the contents
-  const contentsOf = (session: { id: string }): string => jxa('contents', windowId, session.id)
+  const contentsOf = (session: { id: string }): string =>
+    jxa('contents', windowId, session.id)
 
   for (const session of sessions) {
     for (let tries = 0; tries < 60; tries++) {
@@ -227,7 +257,14 @@ try {
   const exit = ran.status ?? 1
   const verdict = `${ran.stdout}${ran.stderr}`
 
-  ok('the Term test of the program passes: 4 tests, 4 passed', exit === 0 && verdict.includes('4 tests') && verdict.includes('4 passed') && !verdict.includes('failed'), verdict)
+  ok(
+    'the Term test of the program passes: 4 tests, 4 passed',
+    exit === 0 &&
+      verdict.includes('4 tests') &&
+      verdict.includes('4 passed') &&
+      !verdict.includes('failed'),
+    verdict,
+  )
 
   // what each session holds now: poll until the shell has printed the output of what was typed
   const wait = (session: { id: string }, needle: string): string => {
@@ -242,22 +279,53 @@ try {
     return text
   }
   const serverText = wait(server, `\n${'term-find-0008-awk'} a'b`)
-  const lines = serverText.split('\n').map((line) => line.trimEnd())
+  const lines = serverText.split('\n').map(line => line.trimEnd())
 
-  ok('the server session shows the typed line and its output', lines.some((line) => line.endsWith('echo term-find-0008-ok')) && lines.includes('term-find-0008-ok'), serverText)
   ok(
-    `the awkward line arrived exactly: echo term-find-0008-awk "a'b" ; echo $HOME`,
-    lines.some((line) => line.endsWith(`echo term-find-0008-awk "a'b" ; echo $HOME`)),
+    'the server session shows the typed line and its output',
+    lines.some(line => line.endsWith('echo term-find-0008-ok')) &&
+      lines.includes('term-find-0008-ok'),
     serverText,
   )
-  ok("its output is the quoted text and the person's home", lines.includes("term-find-0008-awk a'b") && lines.includes(process.env.HOME ?? '/'), serverText)
+  ok(
+    `the awkward line arrived exactly: echo term-find-0008-awk "a'b" ; echo $HOME`,
+    lines.some(line =>
+      line.endsWith(`echo term-find-0008-awk "a'b" ; echo $HOME`),
+    ),
+    serverText,
+  )
+  ok(
+    "its output is the quoted text and the person's home",
+    lines.includes("term-find-0008-awk a'b") &&
+      lines.includes(process.env.HOME ?? '/'),
+    serverText,
+  )
 
-  const quiet = [other, ...dup].map((one) => ({ name: one.name, text: contentsOf(one) }))
+  const quiet = [other, ...dup].map(one => ({
+    name: one.name,
+    text: contentsOf(one),
+  }))
 
-  ok('none of the other sessions was typed into', quiet.every((one) => !one.text.includes('term-find-0008-ok') && !one.text.includes('term-find-0008-awk') && !one.text.includes('echo ')), JSON.stringify(quiet))
-  const everything = [serverText, ...quiet.map((one) => one.text)].join('\n')
+  ok(
+    'none of the other sessions was typed into',
+    quiet.every(
+      one =>
+        !one.text.includes('term-find-0008-ok') &&
+        !one.text.includes('term-find-0008-awk') &&
+        !one.text.includes('echo '),
+    ),
+    JSON.stringify(quiet),
+  )
+  const everything = [serverText, ...quiet.map(one => one.text)].join(
+    '\n',
+  )
 
-  ok('find-none and find-many typed nothing anywhere', !everything.includes('term-find-0008-none') && !everything.includes('term-find-0008-many'), everything)
+  ok(
+    'find-none and find-many typed nothing anywhere',
+    !everything.includes('term-find-0008-none') &&
+      !everything.includes('term-find-0008-many'),
+    everything,
+  )
 } finally {
   if (windowId) {
     // the shells are asked to exit, which closes the tabs and then the window without a confirmation (a `close` of a
@@ -273,8 +341,15 @@ try {
 // iTerm2 closes a window a moment after being told to: ask again until it is gone
 // the windows other than ours are as they were. Ours is closed when it is gone or holds no session: under load iTerm2
 // can leave the empty shell of a closed window listed for a long time
-const sorted = (list: string): string => list.split(',').sort().join(',')
-const others = (list: string): string => sorted(list.split(',').filter((id) => id !== windowId).join(','))
+const sorted = (list: string): string =>
+  list.split(',').sort().join(',')
+const others = (list: string): string =>
+  sorted(
+    list
+      .split(',')
+      .filter(id => id !== windowId)
+      .join(','),
+  )
 let left = jxa('left', windowId)
 
 for (let tries = 0; tries < 30 && left !== '0'; tries++) {

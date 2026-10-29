@@ -76,15 +76,41 @@ task total
   back add(add(by-member(words), by-call(words)), counted(words))
 `
 
-const built = compile({ file: 'host-list.tree', text }, { resolve: withNativeEnv('rust', stdlibResolver()!), env: 'rust', entryPoints: ['total'] })
+const built = compile(
+  { file: 'host-list.tree', text },
+  {
+    resolve: withNativeEnv('rust', stdlibResolver()!),
+    env: 'rust',
+    entryPoints: ['total'],
+  },
+)
 
 if (!built.ok) {
-  ok('the program builds for rust', false, built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the program builds for rust',
+    false,
+    built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
 } else {
   const rust = `${emitRust(built.program)}\nfn main() {\n    println!("{}", total());\n}\n`
-  const unknownLocals = rust.split('\n').filter(l => /let (mut )?(seen|counts|words)\b.*dyn std::any::Any/.test(l))
-  ok('no host-bound collection holds an unknown element', unknownLocals.length === 0, unknownLocals.join(' | '))
-  ok('the walked list holds text', /let (mut )?seen: Vec<String>/.test(rust), rust.split('\n').filter(l => /let (mut )?seen/.test(l)).join(' | '))
+  const unknownLocals = rust
+    .split('\n')
+    .filter(l =>
+      /let (mut )?(seen|counts|words)\b.*dyn std::any::Any/.test(l),
+    )
+  ok(
+    'no host-bound collection holds an unknown element',
+    unknownLocals.length === 0,
+    unknownLocals.join(' | '),
+  )
+  ok(
+    'the walked list holds text',
+    /let (mut )?seen: Vec<String>/.test(rust),
+    rust
+      .split('\n')
+      .filter(l => /let (mut )?seen/.test(l))
+      .join(' | '),
+  )
 
   const rustc = spawnSync('rustc', ['--version'], { encoding: 'utf8' })
 
@@ -94,12 +120,35 @@ if (!built.ok) {
     const dir = mkdtempSync(join(tmpdir(), 'term-host-list-'))
     writeFileSync(join(dir, 'main.rs'), rust)
     const binary = join(dir, 'main')
-    const out = spawnSync('rustc', ['--edition', '2021', '-A', 'warnings', '-o', binary, join(dir, 'main.rs')], { encoding: 'utf8' })
-    ok('rustc compiles it', out.status === 0, out.stderr.split('\n').filter(l => /^error/.test(l)).join(' | '))
+    const out = spawnSync(
+      'rustc',
+      [
+        '--edition',
+        '2021',
+        '-A',
+        'warnings',
+        '-o',
+        binary,
+        join(dir, 'main.rs'),
+      ],
+      { encoding: 'utf8' },
+    )
+    ok(
+      'rustc compiles it',
+      out.status === 0,
+      out.stderr
+        .split('\n')
+        .filter(l => /^error/.test(l))
+        .join(' | '),
+    )
 
     if (out.status === 0) {
       const ran = spawnSync(binary, [], { encoding: 'utf8' })
-      ok('it answers 2 + 2 + 2', ran.stdout.trim() === '6', (ran.stdout + ran.stderr).trim())
+      ok(
+        'it answers 2 + 2 + 2',
+        ran.stdout.trim() === '6',
+        (ran.stdout + ran.stderr).trim(),
+      )
     }
   }
 }

@@ -26,8 +26,18 @@ function ok(name: string, holds: boolean, detail = ''): void {
 }
 
 const TERM = join(import.meta.dirname, '../..')
-const built = (text: string, entry: string, file = 'main.tree'): { program: Program; typescript: string } => {
-  const out = compile({ file, text }, { resolve: withNativeEnv('node', stdlibResolver()!), entryPoints: [entry] })
+const built = (
+  text: string,
+  entry: string,
+  file = 'main.tree',
+): { program: Program; typescript: string } => {
+  const out = compile(
+    { file, text },
+    {
+      resolve: withNativeEnv('node', stdlibResolver()!),
+      entryPoints: [entry],
+    },
+  )
 
   if (!out.ok) {
     throw new Error(`${file}: ${out.diagnostics[0]?.message}`)
@@ -37,11 +47,31 @@ const built = (text: string, entry: string, file = 'main.tree'): { program: Prog
 }
 
 // 1. List: the empty case by identity, through its guard
-const list = built(readFileSync(join(TERM, 'mark/list/term.tree'), 'utf8'), 'list-runs', 'mark/list/term.tree')
-ok('list: the empty case is an identity case', identityCases(list.program, false).has('chain/end'), [...identityCases(list.program, false)].join(', '))
-ok('list: matches test it through its guard', /__termIsEnd\(\w+\)/.test(list.typescript) && !/\.form === "end"/.test(list.typescript))
-ok('list: the guard narrows by the constant', /function __termIsEnd\(value: \{ form: string \}\): value is \{ form: "end" \} \{ return value === __termVariantEnd \}/.test(list.typescript))
-ok('a module emitted alone keeps the tag', identityCases(list.program, true).size === 0)
+const list = built(
+  readFileSync(join(TERM, 'mark/list/term.tree'), 'utf8'),
+  'list-runs',
+  'mark/list/term.tree',
+)
+ok(
+  'list: the empty case is an identity case',
+  identityCases(list.program, false).has('chain/end'),
+  [...identityCases(list.program, false)].join(', '),
+)
+ok(
+  'list: matches test it through its guard',
+  /__termIsEnd\(\w+\)/.test(list.typescript) &&
+    !/\.form === "end"/.test(list.typescript),
+)
+ok(
+  'list: the guard narrows by the constant',
+  /function __termIsEnd\(value: \{ form: string \}\): value is \{ form: "end" \} \{ return value === __termVariantEnd \}/.test(
+    list.typescript,
+  ),
+)
+ok(
+  'a module emitted alone keeps the tag',
+  identityCases(list.program, true).size === 0,
+)
 
 // 2. what keeps reading the tag, each the list program but for one thing
 const chain = `form chain
@@ -87,24 +117,56 @@ task use
 `,
   'use',
 )
-ok('a program that fills data keeps the tag', identityCases(filled.program, false).size === 0, [...identityCases(filled.program, false)].join(', '))
+ok(
+  'a program that fills data keeps the tag',
+  identityCases(filled.program, false).size === 0,
+  [...identityCases(filled.program, false)].join(', '),
+)
 
 // the shape a real `call fill / ... / like <form>` has once it reaches the backends: a call to `fill-form`
-const formFilled = structuredClone(built(`${chain}\ntask use\n  take c, like chain\n  like number\n  send back, call depth(read(c))\n`, 'use').program)
+const formFilled = structuredClone(
+  built(
+    `${chain}\ntask use\n  take c, like chain\n  like number\n  send back, call depth(read(c))\n`,
+    'use',
+  ).program,
+)
 const rename = (value: unknown): void => {
   if (typeof value !== 'object' || value === null) return
   if (Array.isArray(value)) return value.forEach(rename)
-  const node = value as { form?: string; callee?: { form?: string; name?: string } }
-  if (node.form === 'call' && node.callee?.form === 'variable' && node.callee.name === 'depth') node.callee.name = 'fill-form'
+  const node = value as {
+    form?: string
+    callee?: { form?: string; name?: string }
+  }
+  if (
+    node.form === 'call' &&
+    node.callee?.form === 'variable' &&
+    node.callee.name === 'depth'
+  )
+    node.callee.name = 'fill-form'
   Object.values(node).forEach(rename)
 }
 rename(formFilled.find(n => n.form === 'function' && n.name === 'use'))
-ok('a program with a `fill-form` call keeps the tag', identityCases(formFilled, false).size === 0, [...identityCases(formFilled, false)].join(', '))
+ok(
+  'a program with a `fill-form` call keeps the tag',
+  identityCases(formFilled, false).size === 0,
+  [...identityCases(formFilled, false)].join(', '),
+)
 
-const stubbed = structuredClone(built(`${chain}\ntask use\n  take c, like chain\n  like number\n  send back, call depth(read(c))\n`, 'use').program)
-const stub = stubbed.find((n): n is Extract<Statement, { form: 'function' }> => n.form === 'function' && n.name === 'depth')!
+const stubbed = structuredClone(
+  built(
+    `${chain}\ntask use\n  take c, like chain\n  like number\n  send back, call depth(read(c))\n`,
+    'use',
+  ).program,
+)
+const stub = stubbed.find(
+  (n): n is Extract<Statement, { form: 'function' }> =>
+    n.form === 'function' && n.name === 'depth',
+)!
 stub.stub = true
-ok('a program holding a stub keeps the tag', identityCases(stubbed, false).size === 0)
+ok(
+  'a program holding a stub keeps the tag',
+  identityCases(stubbed, false).size === 0,
+)
 
 console.log(`\nts-identity: ${pass} pass, ${fail} fail`)
 

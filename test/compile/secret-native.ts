@@ -64,14 +64,26 @@ task run
     text <{saved}|{replaced}|{held}|{removed}|{gone}|{again}>
 `
 
-const ran = runOn({ backend: 'swift', program: PROGRAM, resolve: () => projectResolver(ROOT, 'macos', ROOT), dir: mkdtempSync(join(tmpdir(), 'secret-native-')), name: 'secret' })
+const ran = runOn({
+  backend: 'swift',
+  program: PROGRAM,
+  resolve: () => projectResolver(ROOT, 'macos', ROOT),
+  dir: mkdtempSync(join(tmpdir(), 'secret-native-')),
+  name: 'secret',
+})
 
 if (ran.form === 'skipped') {
   console.log(`skip  secret-native  (${ran.reason})`)
   process.exit(0)
 }
 
-ok('the program builds and runs against the Keychain', ran.form === 'ran', ran.form === 'ran' ? '' : `${ran.stage}: ${ran.reason.slice(0, 1200)}`)
+ok(
+  'the program builds and runs against the Keychain',
+  ran.form === 'ran',
+  ran.form === 'ran'
+    ? ''
+    : `${ran.stage}: ${ran.reason.slice(0, 1200)}`,
+)
 
 if (ran.form === 'ran') {
   ok(
@@ -81,8 +93,16 @@ if (ran.form === 'ran') {
   )
 }
 
-const left = spawnSync('security', ['find-generic-password', '-s', 'term', '-a', NAME], { encoding: 'utf8' })
-ok('and the login keychain holds nothing under the name afterwards', left.status !== 0, `${left.status}`)
+const left = spawnSync(
+  'security',
+  ['find-generic-password', '-s', 'term', '-a', NAME],
+  { encoding: 'utf8' },
+)
+ok(
+  'and the login keychain holds nothing under the name afterwards',
+  left.status !== 0,
+  `${left.status}`,
+)
 
 console.log(`\nsecret-native: ${pass} pass, ${fail} fail`)
 

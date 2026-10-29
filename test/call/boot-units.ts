@@ -26,7 +26,10 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 const root = realpathSync(tempDir('boot-units-'))
 mkdirSync(join(root, 'code'), { recursive: true })
-writeFileSync(join(root, 'deck.tree'), `deck @probe/boot\n  mark <0.0.1>\n`)
+writeFileSync(
+  join(root, 'deck.tree'),
+  `deck @probe/boot\n  mark <0.0.1>\n`,
+)
 
 // a line no earlier run wrote: unit keys are the same in every clone (step 13), so the same text would be read from
 // the store a previous run of this test filled, and nothing would be built
@@ -44,24 +47,47 @@ writeFileSync(
 const out = join(root, 'out')
 
 // the bundle run as a person runs it, its exit code being what the task answered
-const run = (): number | null => spawnSync('node', [join(out, 'run.mjs'), 'say', '--who', 'you'], { encoding: 'utf8' }).status
+const run = (): number | null =>
+  spawnSync('node', [join(out, 'run.mjs'), 'say', '--who', 'you'], {
+    encoding: 'utf8',
+  }).status
 
 await callBoot({ root, entry: join(root, 'code', 'base.tree'), out })
-ok('the program boots through units', lastBootUnits.built > 0, `${lastBootUnits.built} built`)
-ok('and runs, answering the helper\'s number', run() === 3, String(run()))
+ok(
+  'the program boots through units',
+  lastBootUnits.built > 0,
+  `${lastBootUnits.built} built`,
+)
+ok(
+  "and runs, answering the helper's number",
+  run() === 3,
+  String(run()),
+)
 
 const first = { ...lastBootUnits }
 writeFileSync(helper, helperText(5))
 
 await callBoot({ root, entry: join(root, 'code', 'base.tree'), out })
-ok('a rebuild after an edit to the helper builds its unit and the one reading it, no other', lastBootUnits.built > 0 && lastBootUnits.built <= 2, `${lastBootUnits.built} built`)
-ok('and reads every other unit', lastBootUnits.reused >= first.built + first.reused - 2, `${lastBootUnits.reused} read`)
+ok(
+  'a rebuild after an edit to the helper builds its unit and the one reading it, no other',
+  lastBootUnits.built > 0 && lastBootUnits.built <= 2,
+  `${lastBootUnits.built} built`,
+)
+ok(
+  'and reads every other unit',
+  lastBootUnits.reused >= first.built + first.reused - 2,
+  `${lastBootUnits.reused} read`,
+)
 ok('and runs the edited program', run() === 5, String(run()))
 
 process.env.TERM_BOOT_MERGED = '1'
 await callBoot({ root, entry: join(root, 'code', 'base.tree'), out })
 delete process.env.TERM_BOOT_MERGED
-ok('the same program booted whole answers alike', run() === 5, String(run()))
+ok(
+  'the same program booted whole answers alike',
+  run() === 5,
+  String(run()),
+)
 
 console.log(`\nboot-units: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)

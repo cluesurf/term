@@ -3,7 +3,11 @@
 // the kind is `other`.
 
 export const nativeNetwork = {
-  kinds: { wifi: 'wifi', cellular: 'cellular', ethernet: 'wired' } as Record<string, string>,
+  kinds: {
+    wifi: 'wifi',
+    cellular: 'cellular',
+    ethernet: 'wired',
+  } as Record<string, string>,
 
   // `<online|offline> <kind>`
   async read(): Promise<string> {
@@ -15,7 +19,9 @@ export const nativeNetwork = {
       return 'offline none'
     }
 
-    const type = (navigator as unknown as { connection?: { type?: string } }).connection?.type
+    const type = (
+      navigator as unknown as { connection?: { type?: string } }
+    ).connection?.type
 
     return `online ${(type && nativeNetwork.kinds[type]) ?? 'other'}`
   },

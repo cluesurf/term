@@ -30,10 +30,22 @@ function ok(name: string, cond: boolean, info = ''): void {
 type Node = Record<string, any>
 
 // every for-each the mill builds of a source, read in lean or in longhand
-function walks(text: string, lean: boolean): { loops: Node[]; said: { name: string; message: string }[] } {
+function walks(
+  text: string,
+  lean: boolean,
+): { loops: Node[]; said: { name: string; message: string }[] } {
   const parsed = parse({ file: '/gate/code/walks.tree', text })
-  if (!parsed.ok) return { loops: [], said: [{ name: 'parse', message: 'did not parse' }] }
-  const built = mill(parsed.tree, '/gate/code/walks.tree', undefined, lean) as { ok: boolean; program?: Node[]; diagnostics?: Node[] }
+  if (!parsed.ok)
+    return {
+      loops: [],
+      said: [{ name: 'parse', message: 'did not parse' }],
+    }
+  const built = mill(
+    parsed.tree,
+    '/gate/code/walks.tree',
+    undefined,
+    lean,
+  ) as { ok: boolean; program?: Node[]; diagnostics?: Node[] }
   const loops: Node[] = []
   const visit = (value: unknown): void => {
     if (value === null || typeof value !== 'object') return
@@ -43,11 +55,18 @@ function walks(text: string, lean: boolean): { loops: Node[]; said: { name: stri
     }
     const record = value as Node
     if (record.form === 'for-each') loops.push(record)
-    for (const [key, inner] of Object.entries(record)) if (key !== 'span') visit(inner)
+    for (const [key, inner] of Object.entries(record))
+      if (key !== 'span') visit(inner)
   }
   visit(built.program ?? [])
 
-  return { loops, said: (built.diagnostics ?? []).map(d => ({ name: String(d.name), message: String(d.message) })) }
+  return {
+    loops,
+    said: (built.diagnostics ?? []).map(d => ({
+      name: String(d.name),
+      message: String(d.message),
+    })),
+  }
 }
 
 const LEAN_MARKED = `task total
@@ -89,22 +108,45 @@ const LONG_MARKED = `task total
 const UNMARKED = LEAN_MARKED.replace(', mark parallel', '')
 
 const lean = walks(LEAN_MARKED, true)
-ok('lean: `walk xs, mark parallel` mints a for-each with parallel true', lean.loops.length === 1 && lean.loops[0]!.parallel === true && lean.said.length === 0, JSON.stringify(lean))
+ok(
+  'lean: `walk xs, mark parallel` mints a for-each with parallel true',
+  lean.loops.length === 1 &&
+    lean.loops[0]!.parallel === true &&
+    lean.said.length === 0,
+  JSON.stringify(lean),
+)
 
 const named = walks(LEAN_NAMED, true)
 ok(
   'lean: `mark parallel, name outer` composes: parallel, its label and its index',
-  named.loops.length === 1 && named.loops[0]!.parallel === true && named.loops[0]!.label === 'outer' && named.loops[0]!.index === 'at' && named.said.length === 0,
+  named.loops.length === 1 &&
+    named.loops[0]!.parallel === true &&
+    named.loops[0]!.label === 'outer' &&
+    named.loops[0]!.index === 'at' &&
+    named.said.length === 0,
   JSON.stringify(named),
 )
 
 const long = walks(LONG_MARKED, false)
-ok('longhand: `walk list, read xs` with `mark parallel` as a child line mints parallel true', long.loops.length === 1 && long.loops[0]!.parallel === true && long.said.length === 0, JSON.stringify(long))
+ok(
+  'longhand: `walk list, read xs` with `mark parallel` as a child line mints parallel true',
+  long.loops.length === 1 &&
+    long.loops[0]!.parallel === true &&
+    long.said.length === 0,
+  JSON.stringify(long),
+)
 
 const plain = walks(UNMARKED, true)
-ok('an unmarked walk mints no parallel key', plain.loops.length === 1 && !('parallel' in plain.loops[0]!) && plain.said.length === 0, JSON.stringify(plain))
+ok(
+  'an unmarked walk mints no parallel key',
+  plain.loops.length === 1 &&
+    !('parallel' in plain.loops[0]!) &&
+    plain.said.length === 0,
+  JSON.stringify(plain),
+)
 
-const counted = walks(`task total
+const counted = walks(
+  `task total
   take n, like number
   like number
   save sum, 0
@@ -113,14 +155,21 @@ const counted = walks(`task total
     take i
     save sum, add(sum, i)
   back sum
-`, true)
+`,
+  true,
+)
 ok(
   '`mark parallel` on `walk size` is refused as parallel-walk-mode',
-  counted.said.some(d => d.name === 'parallel-walk-mode' && d.message.includes('a parallel walk walks a list')),
+  counted.said.some(
+    d =>
+      d.name === 'parallel-walk-mode' &&
+      d.message.includes('a parallel walk walks a list'),
+  ),
   JSON.stringify(counted.said),
 )
 
-const tested = walks(`task count
+const tested = walks(
+  `task count
   take n, like number
   like number
   save i, 0
@@ -129,17 +178,30 @@ const tested = walks(`task count
     hold
       save i, add(i, 1)
   back i
-`, true)
+`,
+  true,
+)
 ok(
   '`mark parallel` on `walk test` is refused as parallel-walk-mode',
-  tested.said.some(d => d.name === 'parallel-walk-mode' && d.message.includes('a parallel walk walks a list')),
+  tested.said.some(
+    d =>
+      d.name === 'parallel-walk-mode' &&
+      d.message.includes('a parallel walk walks a list'),
+  ),
   JSON.stringify(tested.said),
 )
 
-const other = walks(LEAN_MARKED.replace('mark parallel', 'mark quick'), true)
+const other = walks(
+  LEAN_MARKED.replace('mark parallel', 'mark quick'),
+  true,
+)
 ok(
-  'another word in a walk\'s mark is refused by name',
-  other.said.some(d => d.name === 'parallel-walk-mode' && d.message.includes('`mark quick`')),
+  "another word in a walk's mark is refused by name",
+  other.said.some(
+    d =>
+      d.name === 'parallel-walk-mode' &&
+      d.message.includes('`mark quick`'),
+  ),
   JSON.stringify(other.said),
 )
 
@@ -160,18 +222,30 @@ task total
 
 for (const env of ['node', 'rust']) {
   const emitted = (marked: boolean): string | undefined => {
-    const built = compile({ file: join(dir, 'total.tree'), text: program(marked) }, { resolve: projectResolver(process.cwd(), env), env } as never) as {
+    const built = compile(
+      { file: join(dir, 'total.tree'), text: program(marked) },
+      { resolve: projectResolver(process.cwd(), env), env } as never,
+    ) as {
       ok: boolean
       typescript?: string
       program?: unknown[]
       diagnostics?: Node[]
     }
-    if (!built.ok) return `refused: ${(built.diagnostics ?? []).map(d => d.message).join(' | ')}`
-    return env === 'rust' ? emitRust(built.program as never) : built.typescript
+    if (!built.ok)
+      return `refused: ${(built.diagnostics ?? []).map(d => d.message).join(' | ')}`
+    return env === 'rust'
+      ? emitRust(built.program as never)
+      : built.typescript
   }
   const before = emitted(false)
   const after = emitted(true)
-  ok(`${env === 'rust' ? 'Rust' : 'TypeScript'}: a marked walk emits what the unmarked one does`, before !== undefined && !String(before).startsWith('refused') && before === after, `${String(before).slice(0, 200)} / ${String(after).slice(0, 200)}`)
+  ok(
+    `${env === 'rust' ? 'Rust' : 'TypeScript'}: a marked walk emits what the unmarked one does`,
+    before !== undefined &&
+      !String(before).startsWith('refused') &&
+      before === after,
+    `${String(before).slice(0, 200)} / ${String(after).slice(0, 200)}`,
+  )
 }
 
 console.log(`\nparallel-mark: ${pass} pass, ${fail} fail`)

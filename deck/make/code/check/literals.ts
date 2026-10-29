@@ -19,33 +19,59 @@ import { WIDTHS } from '@term/make/code/check/width-range'
 // took `300` with no message (guides: types/annotations, 2026-10-03). A computed value is owed the same range as a
 // tier-0 obligation when TERM_WIDTH_RANGES is on (check/width-range.ts, D12)
 function checkWidths(program: Program, file: string): Diagnostic[] {
-  const widths = new Map<string, { names: string[]; widths: (string | undefined)[] }>()
+  const widths = new Map<
+    string,
+    { names: string[]; widths: (string | undefined)[] }
+  >()
+
   // and every width-typed field, `<form>/<field>` to its width, a case's under the case's name, which is the name its
   // construction carries. `bind os, code 300` into a `u8` field was taken with no message, as an argument once was.
   // Two definitions that give one key different widths leave it empty, which checks nothing (check/contracts.tree)
   const fields = new Map<string, string>()
+
   const noteField = (key: string, width: string | undefined): void => {
     if (width !== undefined && width in WIDTHS) {
-      fields.set(key, fields.has(key) && fields.get(key) !== width ? '' : width)
+      fields.set(
+        key,
+        fields.has(key) && fields.get(key) !== width ? '' : width,
+      )
     }
   }
 
   for (const s of program) {
     if (s.form === 'function' && s.params.some(p => p.width)) {
-      widths.set(s.name, { names: s.params.map(p => p.name), widths: s.params.map(p => p.width) })
+      widths.set(s.name, {
+        names: s.params.map(p => p.name),
+        widths: s.params.map(p => p.width),
+      })
     }
 
     if (s.form === 'record-type') {
-      s.fields.forEach(field => noteField(`${s.name}/${field.name}`, field.width))
-      s.variants.forEach(variant => variant.fields.forEach(field => noteField(`${variant.name}/${field.name}`, field.width)))
+      s.fields.forEach(field =>
+        noteField(`${s.name}/${field.name}`, field.width),
+      )
+      s.variants.forEach(variant =>
+        variant.fields.forEach(field =>
+          noteField(`${variant.name}/${field.name}`, field.width),
+        ),
+      )
     }
   }
 
   const out: Diagnostic[] = []
-  const outside = (literal: Record<string, unknown>, width: string, name: string): void => {
+
+  const outside = (
+    literal: Record<string, unknown>,
+    width: string,
+    name: string,
+  ): void => {
     // exact, past 2^53 too (compile/node.ts, `digits`)
     const digits = literal.digits as string | undefined
-    const value = digits !== undefined ? BigInt(digits) : BigInt(Math.trunc(literal.value as number))
+    const value =
+      digits !== undefined
+        ? BigInt(digits)
+        : BigInt(Math.trunc(literal.value as number))
+
     const [low, high] = WIDTHS[width]!
 
     if (value < low || value > high) {
@@ -61,8 +87,15 @@ function checkWidths(program: Program, file: string): Diagnostic[] {
 
   // the list width of the result of the task being visited
   let resultWidth: string | undefined
-  const listItems = (init: unknown, width: string | undefined, name: string): void => {
-    const array = init as { form?: string; items?: Record<string, unknown>[] } | undefined
+
+  const listItems = (
+    init: unknown,
+    width: string | undefined,
+    name: string,
+  ): void => {
+    const array = init as
+      | { form?: string; items?: Record<string, unknown>[] }
+      | undefined
 
     if (!width || array?.form !== 'array') {
       return
@@ -87,12 +120,23 @@ function checkWidths(program: Program, file: string): Diagnostic[] {
     }
 
     const record = node as Record<string, unknown>
-    const callee = record.callee as { form?: string; name?: string } | undefined
-    const target = callee?.form === 'variable' && callee.name ? widths.get(callee.name) : undefined
+    const callee = record.callee as
+      | { form?: string; name?: string }
+      | undefined
+
+    const target =
+      callee?.form === 'variable' && callee.name
+        ? widths.get(callee.name)
+        : undefined
 
     if (record.form === 'call' && target) {
-      const args = (record.args as Record<string, unknown>[] | undefined) ?? []
-      const names = (record.names as (string | undefined | null)[] | undefined) ?? []
+      const args =
+        (record.args as Record<string, unknown>[] | undefined) ?? []
+
+      const names =
+        (record.names as (string | undefined | null)[] | undefined) ??
+        []
+
       let position = 0
 
       args.forEach((arg, i) => {
@@ -112,7 +156,11 @@ function checkWidths(program: Program, file: string): Diagnostic[] {
     // a list literal declared a list of a width (`save ys, like list, like u8 / make list(3, 300)`): each literal item is
     // inside the width (width-0011, check/infer.ts `inferWanted`)
     if (record.form === 'let') {
-      listItems(record.init, listWidth(record.type), record.name as string)
+      listItems(
+        record.init,
+        listWidth(record.type),
+        record.name as string,
+      )
     }
 
     if (record.form === 'return') {
@@ -120,8 +168,12 @@ function checkWidths(program: Program, file: string): Diagnostic[] {
     }
 
     if (record.form === 'record') {
-      for (const field of (record.fields as { name: string; value: Record<string, unknown> }[] | undefined) ?? []) {
-        const width = fields.get(`${record.name as string}/${field.name}`)
+      for (const field of (record.fields as
+        | { name: string; value: Record<string, unknown> }[]
+        | undefined) ?? []) {
+        const width = fields.get(
+          `${record.name as string}/${field.name}`,
+        )
 
         if (width && field.value.form === 'integer') {
           outside(field.value, width, field.name)
@@ -148,8 +200,14 @@ function checkWidths(program: Program, file: string): Diagnostic[] {
 
 // the width of a list type's element, when it is a number of a width: `like list, like u8` is an array of `number{u8}`
 function listWidth(type: unknown): string | undefined {
-  const list = type as { kind?: string; element?: { kind?: string; width?: string } } | undefined
-  const width = list?.kind === 'array' && list.element?.kind === 'number' ? list.element.width : undefined
+  const list = type as
+    | { kind?: string; element?: { kind?: string; width?: string } }
+    | undefined
+
+  const width =
+    list?.kind === 'array' && list.element?.kind === 'number'
+      ? list.element.width
+      : undefined
 
   return width !== undefined && width in WIDTHS ? width : undefined
 }
@@ -161,8 +219,18 @@ const I64_MIN = -(2n ** 63n)
 // `env` is the build's: on a JavaScript one (node, browser, a worker) a literal past 2^53 is not the number written, so
 // it is refused there, where natively it is held exactly and only warned of. A test of rationals past i64 met it on
 // 2026-10-05: `4611686018427387903` ran as `...904` on TypeScript, with the warning nobody reads
-export function checkLiterals(program: Program, file: string, env?: string): { errors: Diagnostic[]; warnings: Diagnostic[] } {
-  const javascript = env === undefined || env === 'node' || env === 'browser' || env === 'cloudflare' || env === 'webview'
+export function checkLiterals(
+  program: Program,
+  file: string,
+  env?: string,
+): { errors: Diagnostic[]; warnings: Diagnostic[] } {
+  const javascript =
+    env === undefined ||
+    env === 'node' ||
+    env === 'browser' ||
+    env === 'cloudflare' ||
+    env === 'webview'
+
   const errors: Diagnostic[] = []
   const warnings: Diagnostic[] = []
 
@@ -183,7 +251,13 @@ export function checkLiterals(program: Program, file: string, env?: string): { e
       // exact, past 2^53 too (compile/node.ts, `digits`)
       const raw = record.value as number
       const digits = record.digits as string | undefined
-      const value = digits !== undefined ? BigInt(digits) : Number.isSafeInteger(raw) ? BigInt(raw) : undefined
+      const value =
+        digits !== undefined
+          ? BigInt(digits)
+          : Number.isSafeInteger(raw)
+            ? BigInt(raw)
+            : undefined
+
       const span = record.span as Diagnostic['span']
 
       if (value === undefined) {
@@ -235,5 +309,11 @@ export function checkLiterals(program: Program, file: string, env?: string): { e
   errors.push(...checkWidths(program, file))
 
   // a warning is a warning: carried with its severity, never failing the build
-  return { errors, warnings: warnings.map(w => ({ ...w, severity: 'warning' as const })) }
+  return {
+    errors,
+    warnings: warnings.map(w => ({
+      ...w,
+      severity: 'warning' as const,
+    })),
+  }
 }

@@ -108,7 +108,13 @@ const dir = mkdtempSync(join(tmpdir(), 'term-ordered-'))
 const only = process.env.COLLECTION_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'collections' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'collections',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
@@ -118,7 +124,9 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
   ok(
     `${backend}: bag, set and linked list answer alike`,
     ran.form === 'ran' && ran.output === EXPECTED,
-    ran.form === 'ran' ? `got ${JSON.stringify(ran.output)}` : `${ran.stage}: ${ran.reason}`,
+    ran.form === 'ran'
+      ? `got ${JSON.stringify(ran.output)}`
+      : `${ran.stage}: ${ran.reason}`,
   )
 }
 

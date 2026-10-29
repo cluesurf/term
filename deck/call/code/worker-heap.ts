@@ -21,7 +21,12 @@ export function workerHeapMb(workers: number): number {
     return Math.floor(given)
   }
 
-  return Math.max(FLOOR_MB, Math.floor((totalmem() * SHARE) / Math.max(1, workers) / (1024 * 1024)))
+  return Math.max(
+    FLOOR_MB,
+    Math.floor(
+      (totalmem() * SHARE) / Math.max(1, workers) / (1024 * 1024),
+    ),
+  )
 }
 
 // a worker's death by its heap limit, told apart from any other crash
@@ -34,8 +39,14 @@ export function isOutOfMemory(error: unknown): boolean {
 }
 
 // the one diagnostic an out-of-memory unit is reported by, framed at the top of its file
-export function outOfMemoryDiagnostic(file: string, limitMb: number): Diagnostic {
-  const span = { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } }
+export function outOfMemoryDiagnostic(
+  file: string,
+  limitMb: number,
+): Diagnostic {
+  const span = {
+    start: { line: 0, column: 0 },
+    end: { line: 0, column: 0 },
+  }
 
   return {
     code: 0,
@@ -44,7 +55,7 @@ export function outOfMemoryDiagnostic(file: string, limitMb: number): Diagnostic
     file,
     span,
     markers: [{ span }],
-    hint: 'raise TERM_WORKER_HEAP_MB, or split the file\'s rules',
+    hint: "raise TERM_WORKER_HEAP_MB, or split the file's rules",
     severity: 'error',
   }
 }

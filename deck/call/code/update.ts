@@ -21,8 +21,24 @@
 //
 // The signing key never leaves this machine: `~/.base/@term/code/update/<identifier>.pem`, written 0600 and never
 // overwritten. Its public half goes into the app at build time, in the two encodings the runtimes read.
-import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomUUID, sign } from 'node:crypto'
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+  randomUUID,
+  sign,
+} from 'node:crypto'
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import path from 'node:path'
 import { userHome } from '@term/call/code/home'
 
@@ -66,15 +82,24 @@ export function updateKeyPath(identifier: string): string {
 
 // the app's update key: read when it exists, made once when it does not. Never overwritten, because every installed
 // copy of the app trusts only this key, and a new one would orphan them all
-export function updateKey(identifier: string, keyFile?: string): { privatePem: string; made: boolean } {
+export function updateKey(
+  identifier: string,
+  keyFile?: string,
+): { privatePem: string; made: boolean } {
   const file = keyFile ?? updateKeyPath(identifier)
 
   if (existsSync(file)) {
     return { privatePem: readFileSync(file, 'utf8'), made: false }
   }
 
-  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
-  const privatePem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
+  const { privateKey } = generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+  })
+
+  const privatePem = privateKey
+    .export({ type: 'pkcs8', format: 'pem' })
+    .toString()
+
   mkdirSync(path.dirname(file), { recursive: true })
   writeFileSync(file, privatePem, { mode: 0o600 })
   chmodSync(file, 0o600)
@@ -84,7 +109,10 @@ export function updateKey(identifier: string, keyFile?: string): { privatePem: s
 
 // the public half, in the encodings the runtimes read: PKCS#1 DER for Apple's Security framework and SubjectPublicKeyInfo
 // DER for the JVM's X509EncodedKeySpec and Rust
-export function publicKeyFiles(privatePem: string): { pkcs1: Buffer; spki: Buffer } {
+export function publicKeyFiles(privatePem: string): {
+  pkcs1: Buffer
+  spki: Buffer
+} {
   const key = createPublicKey(createPrivateKey(privatePem))
 
   return {
@@ -95,8 +123,19 @@ export function publicKeyFiles(privatePem: string): { pkcs1: Buffer; spki: Buffe
 
 // write the public key into an app's resources, beside its runtime version
 // `keyFile` overrides where the private key is read, which a test points at a temporary directory
-export function stampUpdateKey({ identifier, into, keyFile }: { identifier: string; into: string; keyFile?: string }): void {
-  const { pkcs1, spki } = publicKeyFiles(updateKey(identifier, keyFile).privatePem)
+export function stampUpdateKey({
+  identifier,
+  into,
+  keyFile,
+}: {
+  identifier: string
+  into: string
+  keyFile?: string
+}): void {
+  const { pkcs1, spki } = publicKeyFiles(
+    updateKey(identifier, keyFile).privatePem,
+  )
+
   mkdirSync(into, { recursive: true })
   writeFileSync(path.join(into, 'update-key.der'), pkcs1)
   writeFileSync(path.join(into, 'update-key.spki.der'), spki)
@@ -109,7 +148,9 @@ function filesUnder(root: string, at = ''): string[] {
     .flatMap(name => {
       const relative = at ? `${at}/${name}` : name
 
-      return statSync(path.join(root, relative)).isDirectory() ? filesUnder(root, relative) : [relative]
+      return statSync(path.join(root, relative)).isDirectory()
+        ? filesUnder(root, relative)
+        : [relative]
     })
 }
 
@@ -135,8 +176,15 @@ function assetOf(page: string, key: string, out: string): UpdateAsset {
 }
 
 // the signature header value over a manifest's exact bytes, in the structured-field form Expo's client reads
-export function signManifest(bytes: Buffer, privatePem: string): string {
-  const signature = sign('sha256', bytes, createPrivateKey(privatePem)).toString('base64')
+export function signManifest(
+  bytes: Buffer,
+  privatePem: string,
+): string {
+  const signature = sign(
+    'sha256',
+    bytes,
+    createPrivateKey(privatePem),
+  ).toString('base64')
 
   return `sig=":${signature}:", keyid="root", alg="rsa-v1_5-sha256"`
 }
@@ -163,7 +211,9 @@ export function publishUpdate({
   const files = filesUnder(page)
 
   if (!files.includes('index.html')) {
-    throw new Error(`no index.html in ${page}: a page update launches from it`)
+    throw new Error(
+      `no index.html in ${page}: a page update launches from it`,
+    )
   }
 
   const assets = files.map(key => assetOf(page, key, out))
@@ -176,12 +226,17 @@ export function publishUpdate({
     metadata: { channel, platform },
     extra: {},
   }
+
   const bytes = Buffer.from(JSON.stringify(manifest, null, 2))
   const dir = path.join(out, platform, runtimeVersion)
   mkdirSync(dir, { recursive: true })
+
   const file = path.join(dir, `${channel}.json`)
   writeFileSync(file, bytes)
-  writeFileSync(`${file}.sig`, signManifest(bytes, updateKey(identifier, keyFile).privatePem))
+  writeFileSync(
+    `${file}.sig`,
+    signManifest(bytes, updateKey(identifier, keyFile).privatePem),
+  )
 
   return { manifest, file }
 }

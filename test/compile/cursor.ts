@@ -40,14 +40,20 @@ task use
     call scan
       text <aé€>
 `
-  const built = compile({ file: 'main.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!), env: 'node' })
+  const built = compile(
+    { file: 'main.tree', text },
+    { resolve: withNativeEnv('node', stdlibResolver()!), env: 'node' },
+  )
 
   if (!built.ok) {
     throw new Error(built.diagnostics.map(d => d.message).join(' | '))
   }
 
   const program = built.program as Program
-  const fn = program.find((n): n is Extract<Statement, { form: 'function' }> => n.form === 'function' && n.name === task)!
+  const fn = program.find(
+    (n): n is Extract<Statement, { form: 'function' }> =>
+      n.form === 'function' && n.name === task,
+  )!
 
   return textCursors(fn, asciiTexts(program)).names
 }
@@ -77,7 +83,11 @@ const param = cursors(`task scan
   take s, like text
   like number
 ${loop(sum)}`)
-ok('a parameter read by position in a loop takes a cursor', param.join() === 's', param.join())
+ok(
+  'a parameter read by position in a loop takes a cursor',
+  param.join() === 's',
+  param.join(),
+)
 
 // 2. a parameter written in the task: none, the text changes under the cursor
 const written = cursors(`task scan
@@ -85,7 +95,11 @@ const written = cursors(`task scan
   like number
   save s, text <{s}x>
 ${loop(sum)}`)
-ok('a text written in the task takes none', written.length === 0, written.join())
+ok(
+  'a text written in the task takes none',
+  written.length === 0,
+  written.join(),
+)
 
 // 3. read only outside a loop: none, nothing to step from
 const once = cursors(`task scan
@@ -95,7 +109,11 @@ const once = cursors(`task scan
     call char-code-at
       read s
       code 1`)
-ok('a text read once, outside a loop, takes none', once.length === 0, once.join())
+ok(
+  'a text read once, outside a loop, takes none',
+  once.length === 0,
+  once.join(),
+)
 
 // 4. a local declared inside the loop: none, a new text every turn
 const inner = cursors(`task scan
@@ -118,7 +136,11 @@ const inner = cursors(`task scan
             read t
             read i
   send back, read total`)
-ok('a local declared inside the loop takes none', inner.length === 0, inner.join())
+ok(
+  'a local declared inside the loop takes none',
+  inner.length === 0,
+  inner.join(),
+)
 
 // 5. a local at the top of the task, never written: a cursor
 const local = cursors(`task scan
@@ -126,7 +148,11 @@ const local = cursors(`task scan
   like number
   host s, text <{r}y>
 ${loop(sum)}`)
-ok('a local at the top of the task, never written, takes a cursor', local.join() === 's', local.join())
+ok(
+  'a local at the top of the task, never written, takes a cursor',
+  local.join() === 's',
+  local.join(),
+)
 
 // 6. an ASCII text: none, every read is a direct index already
 const ascii = (() => {
@@ -141,12 +167,19 @@ task use
     call scan
       text <abc>
 `
-  const built = compile({ file: 'main.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!), env: 'node' })
+  const built = compile(
+    { file: 'main.tree', text },
+    { resolve: withNativeEnv('node', stdlibResolver()!), env: 'node' },
+  )
 
-  if (!built.ok) throw new Error(built.diagnostics.map(d => d.message).join(' | '))
+  if (!built.ok)
+    throw new Error(built.diagnostics.map(d => d.message).join(' | '))
 
   const program = built.program as Program
-  const fn = program.find((n): n is Extract<Statement, { form: 'function' }> => n.form === 'function' && n.name === 'scan')!
+  const fn = program.find(
+    (n): n is Extract<Statement, { form: 'function' }> =>
+      n.form === 'function' && n.name === 'scan',
+  )!
 
   return textCursors(fn, asciiTexts(program)).names
 })()

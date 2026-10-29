@@ -24,19 +24,37 @@ function ok(name: string, holds: boolean, detail = ''): void {
   }
 }
 
-async function run(name: string, text: string, check: (mod: Record<string, () => unknown>) => boolean): Promise<void> {
-  const built = compile({ file: `/gate/code/${name.replace(/\W+/g, '-')}.tree`, text })
+async function run(
+  name: string,
+  text: string,
+  check: (mod: Record<string, () => unknown>) => boolean,
+): Promise<void> {
+  const built = compile({
+    file: `/gate/code/${name.replace(/\W+/g, '-')}.tree`,
+    text,
+  })
 
   if (!built.ok) {
-    ok(name, false, built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+    ok(
+      name,
+      false,
+      built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+    )
 
     return
   }
 
   const dir = mkdtempSync(join(tmpdir(), 'term-builtin-name-'))
   const file = join(dir, 'module.mjs')
-  writeFileSync(file, transformSync(built.typescript, { loader: 'ts', format: 'esm' }).code)
-  const mod = (await import(pathToFileURL(file).href)) as Record<string, () => unknown>
+  writeFileSync(
+    file,
+    transformSync(built.typescript, { loader: 'ts', format: 'esm' })
+      .code,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as Record<
+    string,
+    () => unknown
+  >
   ok(name, check(mod), JSON.stringify(Object.keys(mod)))
 }
 

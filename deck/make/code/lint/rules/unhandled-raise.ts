@@ -5,8 +5,16 @@
 // the stdlib was written before the word existed, so the count on it is the measure of the migration, and a call
 // whose only exception is `failure` (a native shim's, which any foreign call can raise) is left alone.
 
-import type { Program, Statement, Expression } from '@term/make/code/compile/node'
-import type { LintContext, LintNode, Rule } from '@term/make/code/lint/rule'
+import type {
+  Program,
+  Statement,
+  Expression,
+} from '@term/make/code/compile/node'
+import type {
+  LintContext,
+  LintNode,
+  Rule,
+} from '@term/make/code/lint/rule'
 import { raiseSetsOf } from '@term/make/code/check/effects'
 import { exceptionForm } from '@term/make/code/check/extend'
 
@@ -48,18 +56,30 @@ export const unhandledRaise: Rule = {
   docs: 'a call to a task that can raise, outside a guard and without `halt kink`, passes the exception on without saying so',
   fixable: false,
   check(target: LintNode, context: LintContext): void {
-    if (target.kind !== 'statement' || target.node.form !== 'function') {
+    if (
+      target.kind !== 'statement' ||
+      target.node.form !== 'function'
+    ) {
       return
     }
 
     const sets = raises(context)
 
-    const visitExpression = (node: Expression, guarded: boolean): void => {
+    const visitExpression = (
+      node: Expression,
+      guarded: boolean,
+    ): void => {
       switch (node.form) {
         case 'call': {
-          if (node.callee.form === 'variable' && !guarded && !node.propagate) {
+          if (
+            node.callee.form === 'variable' &&
+            !guarded &&
+            !node.propagate
+          ) {
             const set = sets.get(node.callee.name)
-            const named = set ? [...set].filter(e => e !== 'failure').sort() : []
+            const named = set
+              ? [...set].filter(e => e !== 'failure').sort()
+              : []
 
             if (named.length > 0) {
               context.report({
@@ -73,6 +93,7 @@ export const unhandledRaise: Rule = {
           node.args.forEach(a => visitExpression(a, guarded))
           break
         }
+
         case 'binary':
           visitExpression(node.left, guarded)
           visitExpression(node.right, guarded)
@@ -124,7 +145,10 @@ export const unhandledRaise: Rule = {
       }
     }
 
-    const visitStatements = (body: Statement[], guarded: boolean): void => {
+    const visitStatements = (
+      body: Statement[],
+      guarded: boolean,
+    ): void => {
       for (const s of body) {
         switch (s.form) {
           case 'let':
@@ -162,6 +186,7 @@ export const unhandledRaise: Rule = {
               visitExpression(b.cond, guarded)
               visitStatements(b.body, guarded)
             })
+
             if (s.otherwise) {
               visitStatements(s.otherwise, guarded)
             }

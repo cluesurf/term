@@ -67,7 +67,13 @@ const dir = mkdtempSync(join(tmpdir(), 'term-lowered-'))
 const only = process.env.LOWERED_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'lowered' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'lowered',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
@@ -77,31 +83,61 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
   ok(
     `${backend}: a walk over items/reverse copies, a map's entries and clear are its Term methods`,
     ran.form === 'ran' && ran.output === EXPECTED,
-    ran.form === 'ran' ? `got ${JSON.stringify(ran.output)}` : `${ran.stage}: ${ran.reason}`,
+    ran.form === 'ran'
+      ? `got ${JSON.stringify(ran.output)}`
+      : `${ran.stage}: ${ran.reason}`,
   )
 }
 
 // the refusals, which need only the checker
 const diagnostics = (text: string, env: string): string[] => {
-  const built = compile({ file: join(dir, `refused-${env}.tree`), text }, { resolve: projectResolver(process.cwd(), env as never), env: env as never })
+  const built = compile(
+    { file: join(dir, `refused-${env}.tree`), text },
+    {
+      resolve: projectResolver(process.cwd(), env as never),
+      env: env as never,
+    },
+  )
 
-  return built.ok ? [] : built.diagnostics.map(d => `${d.message} ${d.hint ?? ''}`)
+  return built.ok
+    ? []
+    : built.diagnostics.map(d => `${d.message} ${d.hint ?? ''}`)
 }
 
 const SORTED = `task run\n  like number\n  save items\n    make list\n      code 3\n      code 1\n  call items/sort\n  send back, read items/0\n`
 const EACH = `task run\n  like number\n  save counts\n    make hash\n      save a, code 1\n  save total, code 0\n  call counts/for-each\n    task\n      take value, like number\n      save total, add(read(total), read(value))\n  send back, read total\n`
 
-for (const env of ['rust', 'swift', 'kotlin'].filter(one => !only || one === only)) {
+for (const env of ['rust', 'swift', 'kotlin'].filter(
+  one => !only || one === only,
+)) {
   const sorted = diagnostics(SORTED, env)
-  ok(`${env}: a list's host-only method is refused, naming it, the backend and what a list answers`, sorted.some(m => m.includes('`sort` is not a method of a list on ' + env) && m.includes('index-of')), sorted.join(' | '))
+  ok(
+    `${env}: a list's host-only method is refused, naming it, the backend and what a list answers`,
+    sorted.some(
+      m =>
+        m.includes('`sort` is not a method of a list on ' + env) &&
+        m.includes('index-of'),
+    ),
+    sorted.join(' | '),
+  )
 
   const each = diagnostics(EACH, env)
-  ok(`${env}: a map's host-only method is refused the same way`, each.some(m => m.includes('`for-each` is not a method of a hash on ' + env)), each.join(' | '))
+  ok(
+    `${env}: a map's host-only method is refused the same way`,
+    each.some(m =>
+      m.includes('`for-each` is not a method of a hash on ' + env),
+    ),
+    each.join(' | '),
+  )
 }
 
 if (!only || only === 'typescript') {
   const sorted = diagnostics(SORTED, 'node')
-  ok('typescript: the host method is the host\'s own, and builds', sorted.length === 0, sorted.join(' | '))
+  ok(
+    "typescript: the host method is the host's own, and builds",
+    sorted.length === 0,
+    sorted.join(' | '),
+  )
 }
 
 console.log(`\nlowered-members: ${pass} pass, ${fail} fail`)

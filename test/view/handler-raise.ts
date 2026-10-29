@@ -120,28 +120,57 @@ task run
 function pinned(env: string): Resolver {
   const base = projectResolver(process.cwd(), env)
 
-  return (importPath, fromFile) => base(importPath.replace(/native\/\{platform\}\/(dom|device|view)$/, 'native/memory/$1'), fromFile)
+  return (importPath, fromFile) =>
+    base(
+      importPath.replace(
+        /native\/\{platform\}\/(dom|device|view)$/,
+        'native/memory/$1',
+      ),
+      fromFile,
+    )
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'term-handler-raise-'))
 const only = process.env.RAISE_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: pinned, dir, name: 'raise' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: pinned,
+    dir,
+    name: 'raise',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
     continue
   }
 
-  ok(`${backend}: a handler that raises compiles, builds, and the program runs to its end`, ran.form === 'ran', ran.form === 'failed' ? `${ran.stage}: ${ran.reason}` : '')
+  ok(
+    `${backend}: a handler that raises compiles, builds, and the program runs to its end`,
+    ran.form === 'ran',
+    ran.form === 'failed' ? `${ran.stage}: ${ran.reason}` : '',
+  )
 
   if (ran.form === 'ran') {
     const [before, raised, after] = ran.output.split('|')
     const [wantBefore, wantRaised, wantAfter] = WANT.split('|')
-    ok(`${backend}: nothing raised before any click`, before === wantBefore, `got ${JSON.stringify(before)}`)
-    ok(`${backend}: the raise's note reaches the view`, raised === wantRaised, `got ${JSON.stringify(raised)}`)
-    ok(`${backend}: the next click is still handled`, after === wantAfter, `got ${JSON.stringify(after)}`)
+    ok(
+      `${backend}: nothing raised before any click`,
+      before === wantBefore,
+      `got ${JSON.stringify(before)}`,
+    )
+    ok(
+      `${backend}: the raise's note reaches the view`,
+      raised === wantRaised,
+      `got ${JSON.stringify(raised)}`,
+    )
+    ok(
+      `${backend}: the next click is still handled`,
+      after === wantAfter,
+      `got ${JSON.stringify(after)}`,
+    )
   }
 }
 

@@ -35,16 +35,37 @@ task run
     text </a>
 `
 
-const result = compile({ file: 'written.tree', text: PROGRAM }, { env: 'swift' })
-ok('compiles for swift', result.ok, result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '))
+const result = compile(
+  { file: 'written.tree', text: PROGRAM },
+  { env: 'swift' },
+)
+ok(
+  'compiles for swift',
+  result.ok,
+  result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '),
+)
 
 if (result.ok) {
   const swift = emitSwift(result.program)
   const kotlin = emitKotlin(result.program)
-  ok('swift: the written no-op is not a stub', !swift.includes('stub: do-nothing'), swift.match(/func doNothing[\s\S]*?\n}/)?.[0] ?? '')
-  ok('kotlin: the written no-op is not a stub', !kotlin.includes('stub: do-nothing'), kotlin.match(/fun doNothing[\s\S]*?\n}/)?.[0] ?? '')
-  ok('swift: a task declared with no body is still the trap', swift.includes('stub: not-written'))
-  ok('kotlin: a task declared with no body is still the trap', kotlin.includes('stub: not-written'))
+  ok(
+    'swift: the written no-op is not a stub',
+    !swift.includes('stub: do-nothing'),
+    swift.match(/func doNothing[\s\S]*?\n}/)?.[0] ?? '',
+  )
+  ok(
+    'kotlin: the written no-op is not a stub',
+    !kotlin.includes('stub: do-nothing'),
+    kotlin.match(/fun doNothing[\s\S]*?\n}/)?.[0] ?? '',
+  )
+  ok(
+    'swift: a task declared with no body is still the trap',
+    swift.includes('stub: not-written'),
+  )
+  ok(
+    'kotlin: a task declared with no body is still the trap',
+    kotlin.includes('stub: not-written'),
+  )
 }
 
 console.log(`\nwritten-body: ${pass} pass, ${fail} fail`)

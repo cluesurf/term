@@ -104,9 +104,13 @@ async function main(): Promise<void> {
     built,
   )
   eq('calendar year of a built instant', calendar.year(built), 2026)
-  eq('calendar add-days crosses a month', calendar.day(
-    calendar.addDays(calendar.makeUtc(2026, 1, 31, 0, 0, 0), 1),
-  ), 1)
+  eq(
+    'calendar add-days crosses a month',
+    calendar.day(
+      calendar.addDays(calendar.makeUtc(2026, 1, 31, 0, 0, 0), 1),
+    ),
+    1,
+  )
 
   const date = await load('date.tree')
   eq(
@@ -124,7 +128,10 @@ async function main(): Promise<void> {
   eq('timezone Tokyo is +9h', tz.offsetHours(SUMMER, 'Asia/Tokyo'), 9)
   eq(
     'timezone Paris is +1h in winter, +2h in summer (DST)',
-    [tz.offsetHours(WINTER, 'Europe/Paris'), tz.offsetHours(SUMMER, 'Europe/Paris')],
+    [
+      tz.offsetHours(WINTER, 'Europe/Paris'),
+      tz.offsetHours(SUMMER, 'Europe/Paris'),
+    ],
     [1, 2],
   )
   eq(

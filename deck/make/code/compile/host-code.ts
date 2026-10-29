@@ -27,11 +27,27 @@ export type CodeLimits = {
   frame: number
 }
 
-export const LIMITS: CodeLimits = { depth: 256, frame: 64 * 1024 * 1024 }
+export const LIMITS: CodeLimits = {
+  depth: 256,
+  frame: 64 * 1024 * 1024,
+}
 
 export type CodeError = {
   // a stable name, the way a diagnostic has one
-  name: 'not-tree-code' | 'unknown-version' | 'truncated' | 'unknown-tag' | 'non-canonical' | 'bad-text' | 'bad-reference' | 'repeated-key' | 'too-deep' | 'too-large' | 'frame-length' | 'no-decompressor' | 'unencodable'
+  name:
+    | 'not-tree-code'
+    | 'unknown-version'
+    | 'truncated'
+    | 'unknown-tag'
+    | 'non-canonical'
+    | 'bad-text'
+    | 'bad-reference'
+    | 'repeated-key'
+    | 'too-deep'
+    | 'too-large'
+    | 'frame-length'
+    | 'no-decompressor'
+    | 'unencodable'
   message: string
   // the byte the problem was found at, in the input
   at: number
@@ -58,7 +74,13 @@ function toTerm(value: Data): TermData {
     case 'list':
       return { form: 'array', list: value.list.map(toTerm) }
     case 'hash':
-      return { form: 'hash', list: value.list.map(entry => ({ name: entry.name, base: toTerm(entry.base) })) }
+      return {
+        form: 'hash',
+        list: value.list.map(entry => ({
+          name: entry.name,
+          base: toTerm(entry.base),
+        })),
+      }
     case 'void':
       return BLANK
     case 'fuse':
@@ -79,7 +101,15 @@ function fromTerm(value: TermData): Data {
     case 'array':
       return { kind: 'list', list: value.list.map(fromTerm) }
     case 'hash':
-      return { kind: 'hash', list: value.list.map((entry: TermEntry): DataEntry => ({ name: entry.name, base: fromTerm(entry.base) })) }
+      return {
+        kind: 'hash',
+        list: value.list.map(
+          (entry: TermEntry): DataEntry => ({
+            name: entry.name,
+            base: fromTerm(entry.base),
+          }),
+        ),
+      }
     case 'blank':
       return { kind: 'void' }
     case 'graft':
@@ -98,10 +128,24 @@ function fromTerm(value: TermData): Data {
 // a `code-defect` raised by the codec, as the error this module has always thrown. Anything else (a compressor's own
 // failure) is not the codec's and goes on as it is
 function caught(cause: unknown): unknown {
-  const raised = cause as { form?: unknown; link?: { problem?: unknown; at?: unknown; reason?: unknown } } | undefined
+  const raised = cause as
+    | {
+        form?: unknown
+        link?: { problem?: unknown; at?: unknown; reason?: unknown }
+      }
+    | undefined
 
-  if (raised && typeof raised === 'object' && raised.form === 'code-defect' && raised.link) {
-    return new TreeCodeError({ name: raised.link.problem as CodeError['name'], message: String(raised.link.reason), at: Number(raised.link.at) })
+  if (
+    raised &&
+    typeof raised === 'object' &&
+    raised.form === 'code-defect' &&
+    raised.link
+  ) {
+    return new TreeCodeError({
+      name: raised.link.problem as CodeError['name'],
+      message: String(raised.link.reason),
+      at: Number(raised.link.at),
+    })
   }
 
   return cause
@@ -121,20 +165,37 @@ export type EncodeOptions = {
 const keepPlain = (plain: Uint8Array): Uint8Array => plain
 
 // the canonical `tree/code` of one value, or of several (one frame each)
-export function encodeTree(values: Data | Data[], options: EncodeOptions = {}): Uint8Array {
+export function encodeTree(
+  values: Data | Data[],
+  options: EncodeOptions = {},
+): Uint8Array {
   const items = (Array.isArray(values) ? values : [values]).map(toTerm)
 
   try {
-    return encodeCode(items, Boolean(options.compress), options.compressAbove ?? 256, Boolean(options.end), options.compress ?? keepPlain)
+    return encodeCode(
+      items,
+      Boolean(options.compress),
+      options.compressAbove ?? 256,
+      Boolean(options.end),
+      options.compress ?? keepPlain,
+    )
   } catch (cause) {
     throw caught(cause)
   }
 }
 
 // one frame, without a header: the unit a stream writer appends
-export function encodeFrame(value: Data, options: EncodeOptions = {}): Uint8Array {
+export function encodeFrame(
+  value: Data,
+  options: EncodeOptions = {},
+): Uint8Array {
   try {
-    return encodeCodeFrame(toTerm(value), Boolean(options.compress), options.compressAbove ?? 256, options.compress ?? keepPlain)
+    return encodeCodeFrame(
+      toTerm(value),
+      Boolean(options.compress),
+      options.compressAbove ?? 256,
+      options.compress ?? keepPlain,
+    )
   } catch (cause) {
     throw caught(cause)
   }
@@ -151,12 +212,17 @@ export type DecodeOptions = {
   limits?: Partial<CodeLimits>
 }
 
-export type DecodeResult = { ok: true; values: Data[] } | { ok: false; problem: CodeError }
+export type DecodeResult =
+  | { ok: true; values: Data[] }
+  | { ok: false; problem: CodeError }
 
 const keepPacked = (packed: Uint8Array): Uint8Array => packed
 
 // every value of a stream, or the first problem in it
-export function decodeTree(input: Uint8Array, options: DecodeOptions = {}): DecodeResult {
+export function decodeTree(
+  input: Uint8Array,
+  options: DecodeOptions = {},
+): DecodeResult {
   try {
     return { ok: true, values: [...readFrames(input, options)] }
   } catch (cause) {
@@ -170,10 +236,14 @@ export function decodeTree(input: Uint8Array, options: DecodeOptions = {}): Deco
 
 // the values of a stream one frame at a time: the tables of each are dropped before the next is read. Throws
 // `TreeCodeError` at the first problem
-export function* readFrames(input: Uint8Array, options: DecodeOptions = {}): Generator<Data> {
+export function* readFrames(
+  input: Uint8Array,
+  options: DecodeOptions = {},
+): Generator<Data> {
   const limits = { ...LIMITS, ...options.limits }
   const unpack = Boolean(options.decompress)
   const decompress = options.decompress ?? keepPacked
+
   let reader: ReturnType<typeof openCodeReader>
 
   try {

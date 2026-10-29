@@ -67,7 +67,11 @@ const OWN_ROUTE_LOAD = `load ./view/route-runtime
 `
 
 // write one case's folder (rewritten each run) and walk its entry
-function walk(name: string, entry: string, own: Record<string, string> = {}) {
+function walk(
+  name: string,
+  entry: string,
+  own: Record<string, string> = {},
+) {
   const folder = join(BASE, name)
   mkdirSync(join(folder, 'view'), { recursive: true })
 
@@ -81,40 +85,90 @@ function walk(name: string, entry: string, own: Record<string, string> = {}) {
   return collectModules({ file, text: entry }, resolve)
 }
 
-const count = (sources: { file: string }[], ending: string): number => sources.filter(s => s.file.endsWith(ending)).length
-const files = (sources: { file: string }[]): string => sources.map(s => s.file.replace(ROOT, '')).join(', ')
+const count = (sources: { file: string }[], ending: string): number =>
+  sources.filter(s => s.file.endsWith(ending)).length
+const files = (sources: { file: string }[]): string =>
+  sources.map(s => s.file.replace(ROOT, '')).join(', ')
 
 // a
 const a = walk('a', VIEW)
-ok('a: a view with no loads is given the render runtime once', count(a.sources, RENDER) === 1, files(a.sources))
+ok(
+  'a: a view with no loads is given the render runtime once',
+  count(a.sources, RENDER) === 1,
+  files(a.sources),
+)
 
 // b
 const b = walk('b', OWN_LOAD + VIEW, { 'view/render.tree': OWN })
-ok('b: the app\'s own ./view/render still gets the render runtime, once', count(b.sources, RENDER) === 1, files(b.sources))
-ok('b: the app\'s own file is walked too', count(b.sources, 'implicit-runtime/b/view/render.tree') === 1, files(b.sources))
+ok(
+  "b: the app's own ./view/render still gets the render runtime, once",
+  count(b.sources, RENDER) === 1,
+  files(b.sources),
+)
+ok(
+  "b: the app's own file is walked too",
+  count(b.sources, 'implicit-runtime/b/view/render.tree') === 1,
+  files(b.sources),
+)
 
 // c
 const c = walk('c', `load @term/site/view/render\n  find show\n${VIEW}`)
-ok('c: a written load of the runtime by its package path gives it once', count(c.sources, RENDER) === 1, files(c.sources))
+ok(
+  'c: a written load of the runtime by its package path gives it once',
+  count(c.sources, RENDER) === 1,
+  files(c.sources),
+)
 
 // d
-const d = walk('d', `load @cluesurf/site/code/view/render\n  find show\n${VIEW}`)
-ok('d: the legacy @cluesurf/site/code spelling gives it once', count(d.sources, RENDER) === 1, files(d.sources))
+const d = walk(
+  'd',
+  `load @cluesurf/site/code/view/render\n  find show\n${VIEW}`,
+)
+ok(
+  'd: the legacy @cluesurf/site/code spelling gives it once',
+  count(d.sources, RENDER) === 1,
+  files(d.sources),
+)
 
 // e
 const e = walk('e', OWN_LOAD, { 'view/render.tree': OWN })
-ok('e: no view, no render runtime', count(e.sources, RENDER) === 0, files(e.sources))
+ok(
+  'e: no view, no render runtime',
+  count(e.sources, RENDER) === 0,
+  files(e.sources),
+)
 
 // f
-const f = walk('f', OWN_ROUTE_LOAD + VIEW + ROUTE_TABLE, { 'view/route-runtime.tree': OWN })
-ok('f: the app\'s own ./view/route-runtime still gets the route runtime, once', count(f.sources, ROUTE) === 1, files(f.sources))
-ok('f: the app\'s own file is walked too', count(f.sources, 'implicit-runtime/f/view/route-runtime.tree') === 1, files(f.sources))
+const f = walk('f', OWN_ROUTE_LOAD + VIEW + ROUTE_TABLE, {
+  'view/route-runtime.tree': OWN,
+})
+ok(
+  "f: the app's own ./view/route-runtime still gets the route runtime, once",
+  count(f.sources, ROUTE) === 1,
+  files(f.sources),
+)
+ok(
+  "f: the app's own file is walked too",
+  count(f.sources, 'implicit-runtime/f/view/route-runtime.tree') === 1,
+  files(f.sources),
+)
 
 // g
 const renderFile = join(ROOT, RENDER)
-const g = collectModules({ file: renderFile, text: readFileSync(renderFile, 'utf8') }, resolve)
-ok('g: the runtime as the entry holds itself once', count(g.sources, RENDER) === 1, files(g.sources))
-ok('g: and no diagnostic', g.diagnostics.length === 0, g.diagnostics.map(x => x.message).join(' | '))
+const g = collectModules(
+  { file: renderFile, text: readFileSync(renderFile, 'utf8') },
+  resolve,
+)
+ok(
+  'g: the runtime as the entry holds itself once',
+  count(g.sources, RENDER) === 1,
+  files(g.sources),
+)
+ok(
+  'g: and no diagnostic',
+  g.diagnostics.length === 0,
+  g.diagnostics.map(x => x.message).join(' | '),
+)
 
 console.log(`implicit-runtime: ${pass} pass, ${fail} fail`)
 process.exit(fail ? 1 : 0)

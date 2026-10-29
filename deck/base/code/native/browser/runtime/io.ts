@@ -80,7 +80,8 @@ const io = (() => {
     fileSize: async (path: string): Promise<number> => {
       try {
         const { directory, name } = await locate(path, false)
-        return (await (await directory.getFileHandle(name)).getFile()).size
+        return (await (await directory.getFileHandle(name)).getFile())
+          .size
       } catch {
         return 0
       }

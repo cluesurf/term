@@ -19,13 +19,17 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
-import { commandRoutes, programOf } from '@term/call/code/work/hook/parsing'
+import {
+  commandRoutes,
+  programOf,
+} from '@term/call/code/work/hook/parsing'
 import { projectResolver } from '@term/call/code/make'
 import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import { tempDir } from '../temp'
 import { LINE } from './cli'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 
 // the verbs, read from the console's own routes (deck/call/code/line/base.tree through commandRoutes, as
@@ -35,14 +39,29 @@ function verbs(): string[] {
   const file = join(TERM, 'deck/call/code/line/base.tree')
   const result = compile(
     { file, text: readFileSync(file, 'utf8') },
-    { resolve: projectResolver(TERM), roleOf: projectRoleOf(TERM), leanOf: projectLeanOf(TERM) },
+    {
+      resolve: projectResolver(TERM),
+      roleOf: projectRoleOf(TERM),
+      leanOf: projectLeanOf(TERM),
+    },
   )
 
   if (!result.ok) {
-    throw new Error(`deck/call/code/line/base.tree does not compile: ${result.diagnostics.slice(0, 3).map(d => d.message).join('; ')}`)
+    throw new Error(
+      `deck/call/code/line/base.tree does not compile: ${result.diagnostics
+        .slice(0, 3)
+        .map(d => d.message)
+        .join('; ')}`,
+    )
   }
 
-  return [...new Set(programOf(commandRoutes(result.program)).commands.map(route => route.path))].sort()
+  return [
+    ...new Set(
+      programOf(commandRoutes(result.program)).commands.map(
+        route => route.path,
+      ),
+    ),
+  ].sort()
 }
 
 // a stack frame, a raw runtime error class, or a bare errno
@@ -51,7 +70,18 @@ const CRASH =
 
 // verbs that start something long-lived or interactive rather than answering and exiting. They are given the same
 // input and only have to not crash within the timeout; a timeout kill is not a crash.
-const LONG = new Set(['walk', 'work', 'feed', 'wash', 'time', 'test', 'boot', 'zone', 'cast', 'hunt'])
+const LONG = new Set([
+  'walk',
+  'work',
+  'feed',
+  'wash',
+  'time',
+  'test',
+  'boot',
+  'zone',
+  'cast',
+  'hunt',
+])
 
 let pass = 0
 let fail = 0
@@ -73,14 +103,22 @@ for (const verb of verbs()) {
   let out = ''
 
   try {
-    out = execFileSync('node', [LINE, verb, '--no-such-flag', 'no-such-path'], {
-      cwd: empty,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: LONG.has(verb) ? 8000 : 30000,
-    })
+    out = execFileSync(
+      'node',
+      [LINE, verb, '--no-such-flag', 'no-such-path'],
+      {
+        cwd: empty,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: LONG.has(verb) ? 8000 : 30000,
+      },
+    )
   } catch (error) {
-    const e = error as { stdout?: string; stderr?: string; killed?: boolean }
+    const e = error as {
+      stdout?: string
+      stderr?: string
+      killed?: boolean
+    }
 
     // a long-running verb killed by the timeout said what it was going to say already
     out = `${e.stdout ?? ''}\n${e.stderr ?? ''}`

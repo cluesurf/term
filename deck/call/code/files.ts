@@ -45,7 +45,10 @@ export async function collectTreeFiles(
     }
 
     if (stat.isFile()) {
-      if (target.endsWith('.tree') && (named || !(await isDraft(target)))) {
+      if (
+        target.endsWith('.tree') &&
+        (named || !(await isDraft(target)))
+      ) {
         found.push(target)
       }
 

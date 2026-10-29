@@ -64,7 +64,10 @@ async function main(): Promise<void> {
   const r = compile({ file: 'e.tree', text: SRC }, {})
 
   if (!r.ok) {
-    console.log('FAIL compile', JSON.stringify(r.diagnostics.slice(0, 3)))
+    console.log(
+      'FAIL compile',
+      JSON.stringify(r.diagnostics.slice(0, 3)),
+    )
     process.exit(1)
   }
 
@@ -88,10 +91,22 @@ async function main(): Promise<void> {
   expect('escaped backslash stays literal', m.backslash!(), 'a\\nb')
   expect('angle escapes', m.angle!(), 'a<b>c')
   // an interpolated text is a template literal on TypeScript, where a raw carriage return reads as a line feed
-  expect('carriage return in a template', m.carriageTemplate!('x'), 'x\rx')
-  expect('no raw carriage return in the emitted TypeScript', r.typescript.includes('\r'), false)
+  expect(
+    'carriage return in a template',
+    m.carriageTemplate!('x'),
+    'x\rx',
+  )
+  expect(
+    'no raw carriage return in the emitted TypeScript',
+    r.typescript.includes('\r'),
+    false,
+  )
   expect('newline in a template', m.newlineTemplate!('x'), 'x\nx')
-  expect('backtick, ${ and backslash in a template', m.quoteTemplate!('x'), 'x`${x}\\x')
+  expect(
+    'backtick, ${ and backslash in a template',
+    m.quoteTemplate!('x'),
+    'x`${x}\\x',
+  )
 
   console.log(`\ntext-escapes: ${pass} pass, ${fail} fail`)
 

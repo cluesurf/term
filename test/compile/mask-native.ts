@@ -121,7 +121,13 @@ const dir = mkdtempSync(join(tmpdir(), 'term-mask-'))
 const only = process.env.MASK_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'masks' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'masks',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
@@ -131,7 +137,9 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
   ok(
     `${backend}: a suit is called through its mask and directly, a default is given to the form that leaves it out, and a form's own task wins`,
     ran.form === 'ran' && ran.output === EXPECTED,
-    ran.form === 'ran' ? `got ${JSON.stringify(ran.output)}` : `${ran.stage}: ${ran.reason}`,
+    ran.form === 'ran'
+      ? `got ${JSON.stringify(ran.output)}`
+      : `${ran.stage}: ${ran.reason}`,
   )
 }
 
@@ -152,21 +160,39 @@ task twice
 `
 
 if (!only || only === 'typescript') {
-  const built = compile({ file: join(dir, 'range.tree'), text: RANGE }, { resolve: projectResolver(process.cwd(), 'node'), env: 'node' })
-  const ts = built.ok ? built.typescript : built.diagnostics.map(d => d.message).join(' | ')
+  const built = compile(
+    { file: join(dir, 'range.tree'), text: RANGE },
+    { resolve: projectResolver(process.cwd(), 'node'), env: 'node' },
+  )
+  const ts = built.ok
+    ? built.typescript
+    : built.diagnostics.map(d => d.message).join(' | ')
 
-  ok('TypeScript: a mask task times two is a checked integer product', /__termIntStop|__termInt\(/.test(ts.slice(ts.indexOf('function twice'))), ts.slice(ts.indexOf('function twice')))
+  ok(
+    'TypeScript: a mask task times two is a checked integer product',
+    /__termIntStop|__termInt\(/.test(
+      ts.slice(ts.indexOf('function twice')),
+    ),
+    ts.slice(ts.indexOf('function twice')),
+  )
 
   if (built.ok) {
     const rust = emitRust(built.program)
     const kotlin = emitKotlin(built.program)
 
-    ok('Rust: the same product is checked_mul', /fn twice[\s\S]*checked_mul/.test(rust), rust.slice(rust.indexOf('fn twice')))
+    ok(
+      'Rust: the same product is checked_mul',
+      /fn twice[\s\S]*checked_mul/.test(rust),
+      rust.slice(rust.indexOf('fn twice')),
+    )
     // since D15 the checked product is the prelude's termMultiply, which wraps Math.multiplyExact and turns its
     // ArithmeticException into a TermStop
     ok(
       'Kotlin: the same product is termMultiply, Math.multiplyExact as a stop',
-      /fun <T : Measurer> twice[\s\S]*termMultiply\(/.test(kotlin) && /fun termMultiply\(a: Long, b: Long\): Long = try \{ Math\.multiplyExact\(a, b\) \} catch \(e: ArithmeticException\) \{ throw TermStop\(/.test(kotlin),
+      /fun <T : Measurer> twice[\s\S]*termMultiply\(/.test(kotlin) &&
+        /fun termMultiply\(a: Long, b: Long\): Long = try \{ Math\.multiplyExact\(a, b\) \} catch \(e: ArithmeticException\) \{ throw TermStop\(/.test(
+          kotlin,
+        ),
       kotlin.slice(kotlin.indexOf('twice')),
     )
   }
@@ -179,7 +205,16 @@ if (!only || only === 'typescript') {
     },
     { resolve: projectResolver(process.cwd(), 'node'), env: 'node' },
   )
-  ok('a text passed where the mask declares a number is refused', !wrong.ok && wrong.diagnostics.some(d => d.message.includes('expected number, found text')), wrong.ok ? 'compiled' : wrong.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'a text passed where the mask declares a number is refused',
+    !wrong.ok &&
+      wrong.diagnostics.some(d =>
+        d.message.includes('expected number, found text'),
+      ),
+    wrong.ok
+      ? 'compiled'
+      : wrong.diagnostics.map(d => d.message).join(' | '),
+  )
 }
 
 // the product of a mask's task, RUN past i64 on each native backend (term-compiler-0019, gap 113). `side` is 2^62, which
@@ -233,31 +268,69 @@ task run
 // and says excess on stderr. Swift's own `*` trapped (killed by a signal) until its products went through termMultiply.
 // A stop by a signal is `trap`, and fails here
 const stopOf = (ran: Ran): string =>
-  ran.form !== 'failed' || ran.stage !== 'run' ? 'no stop' : /^exit null/.test(ran.reason) ? 'trap' : /^exit [1-9]\d*: [\s\S]*excess/.test(ran.reason) ? 'excess' : 'other'
+  ran.form !== 'failed' || ran.stage !== 'run'
+    ? 'no stop'
+    : /^exit null/.test(ran.reason)
+      ? 'trap'
+      : /^exit [1-9]\d*: [\s\S]*excess/.test(ran.reason)
+        ? 'excess'
+        : 'other'
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
   // 2^62 fits the i64 of every native backend. TypeScript's integers end at 2^53 (note/project/term/stdlib/semantics.md),
   // so there `big` itself stops, with the same excess, before the mask is reached
   if (backend !== 'typescript') {
-    const within = runOn({ backend, program: PAST('measure(b)'), resolve: env => projectResolver(process.cwd(), env), dir, name: 'mask-within' })
+    const within = runOn({
+      backend,
+      program: PAST('measure(b)'),
+      resolve: env => projectResolver(process.cwd(), env),
+      dir,
+      name: 'mask-within',
+    })
 
     if (within.form === 'skipped') {
       console.log(`skip  ${backend} range run: ${within.reason}`)
       continue
     }
 
-    ok(`${backend}: a mask task answers 2^62 unchanged`, within.form === 'ran' && within.output === '4611686018427387904', within.form === 'ran' ? `got ${JSON.stringify(within.output)}` : `${within.stage}: ${within.reason}`)
+    ok(
+      `${backend}: a mask task answers 2^62 unchanged`,
+      within.form === 'ran' && within.output === '4611686018427387904',
+      within.form === 'ran'
+        ? `got ${JSON.stringify(within.output)}`
+        : `${within.stage}: ${within.reason}`,
+    )
   }
 
   // the plain product of the same value, beside it, and the product through the mask, which must stop exactly as the
   // plain one does
-  const plain = runOn({ backend, program: PAST('plain(big)'), resolve: env => projectResolver(process.cwd(), env), dir, name: 'mask-plain' })
-  const past = runOn({ backend, program: PAST('twice(b)'), resolve: env => projectResolver(process.cwd(), env), dir, name: 'mask-past' })
-  ok(`${backend}: a plain multiply to 2^63 stops with excess`, stopOf(plain) === 'excess', plain.form === 'ran' ? `ran and printed ${JSON.stringify(plain.output)}` : `${plain.stage}: ${plain.reason}`)
+  const plain = runOn({
+    backend,
+    program: PAST('plain(big)'),
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'mask-plain',
+  })
+  const past = runOn({
+    backend,
+    program: PAST('twice(b)'),
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'mask-past',
+  })
+  ok(
+    `${backend}: a plain multiply to 2^63 stops with excess`,
+    stopOf(plain) === 'excess',
+    plain.form === 'ran'
+      ? `ran and printed ${JSON.stringify(plain.output)}`
+      : `${plain.stage}: ${plain.reason}`,
+  )
   ok(
     `${backend}: twice through the mask, 2^63, stops with excess as the plain multiply does`,
     stopOf(past) === 'excess',
-    past.form === 'ran' ? `ran and printed ${JSON.stringify(past.output)}` : `${past.stage}: ${past.reason}`,
+    past.form === 'ran'
+      ? `ran and printed ${JSON.stringify(past.output)}`
+      : `${past.stage}: ${past.reason}`,
   )
 }
 

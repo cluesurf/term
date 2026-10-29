@@ -3,10 +3,7 @@
 
 import { parse } from '@term/make/code/parser/tree'
 import { mill } from '@term/make/code/compile/mill'
-import {
-  emitZoneTree,
-  emitDockTree,
-} from '@term/make/code/view/tree'
+import { emitZoneTree, emitDockTree } from '@term/make/code/view/tree'
 import type { Statement } from '@term/make/code/compile/node'
 
 let pass = 0

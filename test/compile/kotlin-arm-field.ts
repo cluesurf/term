@@ -76,28 +76,75 @@ task total
 
 const want = '3'
 
-const node = compile({ file: 'vector.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!), entryPoints: ['total'] })
+const node = compile(
+  { file: 'vector.tree', text },
+  {
+    resolve: withNativeEnv('node', stdlibResolver()!),
+    entryPoints: ['total'],
+  },
+)
 
 if (!node.ok) {
-  ok('the program builds for node', false, node.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the program builds for node',
+    false,
+    node.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
 } else {
   const dir = mkdtempSync(join(tmpdir(), 'term-kotlin-arm-field-'))
   const file = join(dir, 'module.mjs')
-  writeFileSync(file, transformSync(node.typescript, { loader: 'ts', format: 'esm' }).code)
-  const mod = (await import(pathToFileURL(file).href)) as { total: () => number | bigint }
-  ok('TypeScript reads the arm field', String(mod.total()) === want, String(mod.total()))
+  writeFileSync(
+    file,
+    transformSync(node.typescript, { loader: 'ts', format: 'esm' })
+      .code,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as {
+    total: () => number | bigint
+  }
+  ok(
+    'TypeScript reads the arm field',
+    String(mod.total()) === want,
+    String(mod.total()),
+  )
 }
 
-const built = compile({ file: 'vector.tree', text }, { resolve: withNativeEnv('kotlin', stdlibResolver()!), env: 'kotlin', entryPoints: ['total'] })
+const built = compile(
+  { file: 'vector.tree', text },
+  {
+    resolve: withNativeEnv('kotlin', stdlibResolver()!),
+    env: 'kotlin',
+    entryPoints: ['total'],
+  },
+)
 
 if (!built.ok) {
-  ok('the program builds for kotlin', false, built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the program builds for kotlin',
+    false,
+    built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
 } else {
   const kotlin = `${emitKotlin(built.program)}\nfun main() {\n    println(total())\n}\n`
-  ok('the arm field is read as the local, never a function reference', !/return ::size/.test(kotlin), kotlin.split('\n').filter(l => /::size/.test(l)).join(' | '))
-  ok('the list field asserts its variance', /MutableList<@UnsafeVariance T>/.test(kotlin), kotlin.split('\n').filter(l => /class VectorLeaf/.test(l)).join(' | '))
+  ok(
+    'the arm field is read as the local, never a function reference',
+    !/return ::size/.test(kotlin),
+    kotlin
+      .split('\n')
+      .filter(l => /::size/.test(l))
+      .join(' | '),
+  )
+  ok(
+    'the list field asserts its variance',
+    /MutableList<@UnsafeVariance T>/.test(kotlin),
+    kotlin
+      .split('\n')
+      .filter(l => /class VectorLeaf/.test(l))
+      .join(' | '),
+  )
 
-  const kotlinc = spawnSync('kotlinc', ['-version'], { encoding: 'utf8' })
+  const kotlinc = spawnSync('kotlinc', ['-version'], {
+    encoding: 'utf8',
+  })
 
   if (kotlinc.status !== 0) {
     console.log('skip  kotlinc  (not installed)')
@@ -105,12 +152,27 @@ if (!built.ok) {
     const dir = mkdtempSync(join(tmpdir(), 'term-kotlin-arm-field-'))
     writeFileSync(join(dir, 'main.kt'), kotlin)
     const jar = join(dir, 'main.jar')
-    const out = spawnSync('kotlinc', [join(dir, 'main.kt'), '-include-runtime', '-nowarn', '-d', jar], { encoding: 'utf8' })
-    ok('kotlinc compiles it', out.status === 0, out.stderr.split('\n').filter(l => /error:/.test(l)).join(' | '))
+    const out = spawnSync(
+      'kotlinc',
+      [join(dir, 'main.kt'), '-include-runtime', '-nowarn', '-d', jar],
+      { encoding: 'utf8' },
+    )
+    ok(
+      'kotlinc compiles it',
+      out.status === 0,
+      out.stderr
+        .split('\n')
+        .filter(l => /error:/.test(l))
+        .join(' | '),
+    )
 
     if (out.status === 0) {
       const ran = spawnSync('java', ['-jar', jar], { encoding: 'utf8' })
-      ok('Kotlin answers what TypeScript does', ran.stdout.trim() === want, (ran.stdout + ran.stderr).trim())
+      ok(
+        'Kotlin answers what TypeScript does',
+        ran.stdout.trim() === want,
+        (ran.stdout + ran.stderr).trim(),
+      )
     }
   }
 }

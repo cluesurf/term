@@ -6,7 +6,9 @@ import * as grammarReading from '@term/deck/code/package/grammar-reading'
 
 export const GRAMMARS = grammarReading.makeGrammars()
 
-export async function refused<T>(run: () => T | Promise<T>): Promise<T> {
+export async function refused<T>(
+  run: () => T | Promise<T>,
+): Promise<T> {
   try {
     return await run()
   } catch (error) {

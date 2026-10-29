@@ -4,10 +4,25 @@
 // and native-runtime reader so both the `term test` CLI (project resolver) and the dev harness (stdlib tree) reuse
 // it. Pure logic, no process exit, no printing. See note/library/seed/test-dsl.md.
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { createHash } from 'node:crypto'
 import { hashText } from '@term/make/code/term/hash'
-import { dirname, isAbsolute, join, relative, resolve as resolvePath } from 'node:path'
+import {
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve as resolvePath,
+} from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build, version as esbuildVersion } from 'esbuild'
 import type { Plugin } from 'esbuild'
@@ -33,13 +48,25 @@ import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { toCamel } from '@term/make/code/compile/typescript'
 import type { Resolver } from '@term/make/code/compile/load'
 import type { RoleOf } from '@term/call/code/role-of'
-import { preprocessTests, readable, wantFailed, wantLine } from '@term/call/code/test-preprocess'
+import {
+  preprocessTests,
+  readable,
+  wantFailed,
+  wantLine,
+} from '@term/call/code/test-preprocess'
 import type { Snapshots } from '@term/call/code/test-preprocess'
 // what the runner decides beside its build and its module: `--case`, a test's label, the unproven note, `--update`
 import * as words from '@term/call/code/test-run-words'
 
 // one test: whether it held, how long it took in milliseconds, and the error it threw when it threw one
-export type TestResult = { name: string; label: string; held: boolean; ms?: number; error?: string; line?: number }
+export type TestResult = {
+  name: string
+  label: string
+  held: boolean
+  ms?: number
+  error?: string
+  line?: number
+}
 export type TestRun = {
   ok: boolean
   results: TestResult[]
@@ -99,7 +126,12 @@ type UnitsBuilt =
       names: (file: string) => string
       entry: string
       closureKey: string
-      exports: { name: string; exported: string; file: string; type: boolean }[]
+      exports: {
+        name: string
+        exported: string
+        file: string
+        type: boolean
+      }[]
     }
   | { ok: false; diagnostics: Diagnostic[] }
 
@@ -107,10 +139,16 @@ type UnitsBuilt =
 // reads of a program
 function compileUnits(
   source: { file: string; text: string },
-  input: { resolve: Resolver; roleOf?: RoleOf; leanOf?: (file: string) => boolean },
+  input: {
+    resolve: Resolver
+    roleOf?: RoleOf
+    leanOf?: (file: string) => boolean
+  },
   units: TestUnits,
 ): UnitsBuilt {
-  const names = (file: string): string => unitSlug(units.root, file, units.deckOf)
+  const names = (file: string): string =>
+    unitSlug(units.root, file, units.deckOf)
+
   const result = compileSeparate(source, {
     resolve: input.resolve,
     cache: units.cache,
@@ -185,7 +223,7 @@ function tsconfigJson(text: string): Record<string, unknown> {
       out += text.slice(at, end + 1)
       at = end + 1
     } else if (char === '/' && text[at + 1] === '/') {
-      while (at < text.length && text[at] !== '\n') at++
+      while (at < text.length && text[at] !== '\n') {at++}
     } else if (char === '/' && text[at + 1] === '*') {
       const end = text.indexOf('*/', at + 2)
       at = end < 0 ? text.length : end + 2
@@ -195,7 +233,10 @@ function tsconfigJson(text: string): Record<string, unknown> {
     }
   }
 
-  return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1')) as Record<string, unknown>
+  return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1')) as Record<
+    string,
+    unknown
+  >
 }
 
 // the specifiers a tsconfig's `paths` maps, each key as written (`@term/make/*`), following a relative `extends` (eight
@@ -206,19 +247,27 @@ export function tsconfigPathKeys(tsconfig: string): string[] {
   try {
     for (let depth = 0; depth < 8; depth++) {
       const json = tsconfigJson(readFileSync(file, 'utf8'))
-      const options = (json.compilerOptions ?? {}) as { paths?: Record<string, unknown> }
+      const options = (json.compilerOptions ?? {}) as {
+        paths?: Record<string, unknown>
+      }
 
       if (options.paths !== undefined) {
         return Object.keys(options.paths)
       }
 
-      const base = typeof json.extends === 'string' && json.extends.startsWith('.') ? json.extends : ''
+      const base =
+        typeof json.extends === 'string' && json.extends.startsWith('.')
+          ? json.extends
+          : ''
 
       if (base === '') {
         return []
       }
 
-      file = resolvePath(dirname(file), base.endsWith('.json') ? base : `${base}.json`)
+      file = resolvePath(
+        dirname(file),
+        base.endsWith('.json') ? base : `${base}.json`,
+      )
 
       if (!existsSync(file)) {
         return []
@@ -239,13 +288,20 @@ export function pathKeyMaps(key: string, specifier: string): boolean {
     return specifier === key
   }
 
-  return specifier.length >= key.length - 1 && specifier.startsWith(key.slice(0, star)) && specifier.endsWith(key.slice(star + 1))
+  return (
+    specifier.length >= key.length - 1 &&
+    specifier.startsWith(key.slice(0, star)) &&
+    specifier.endsWith(key.slice(star + 1))
+  )
 }
 
 // the esbuild options of a bundle that resolves its docks by the rule: the tsconfig, and a plugin that leaves a mapped
 // specifier to esbuild (which applies the tsconfig's paths) and marks every other bare one external. esbuild's own
 // `packages: 'external'` is not used: it decides by the specifier's look, before any tsconfig
-export function dockOptions(root: string): { tsconfig?: string; plugins: Plugin[] } {
+export function dockOptions(root: string): {
+  tsconfig?: string
+  plugins: Plugin[]
+} {
   const tsconfig = nearestTsconfig(root)
   const keys = tsconfig ? tsconfigPathKeys(tsconfig) : []
   const plugin: Plugin = {
@@ -253,7 +309,10 @@ export function dockOptions(root: string): { tsconfig?: string; plugins: Plugin[
     setup(on) {
       // a bare specifier: neither relative nor absolute
       on.onResolve({ filter: /^[^./]/ }, args => {
-        if (isAbsolute(args.path) || keys.some(key => pathKeyMaps(key, args.path))) {
+        if (
+          isAbsolute(args.path) ||
+          keys.some(key => pathKeyMaps(key, args.path))
+        ) {
           return undefined
         }
 
@@ -274,7 +333,10 @@ export function projectBanner(root: string): string {
 export type InlinedSource = { path: string; hash: string }
 
 // the content hash of each file read this process, by path, size and time, so a warm run reads a file it inlined once
-const HASHES = new Map<string, { size: number; time: number; hash: string }>()
+const HASHES = new Map<
+  string,
+  { size: number; time: number; hash: string }
+>()
 
 // a file's content hash, the empty text when it cannot be read
 export function sourceHash(file: string): string {
@@ -282,11 +344,17 @@ export function sourceHash(file: string): string {
     const stat = statSync(file)
     const known = HASHES.get(file)
 
-    if (known && known.size === stat.size && known.time === stat.mtimeMs) {
+    if (
+      known?.size === stat.size &&
+      known.time === stat.mtimeMs
+    ) {
       return known.hash
     }
 
-    const hash = createHash('sha256').update(readFileSync(file)).digest('hex')
+    const hash = createHash('sha256')
+      .update(readFileSync(file))
+      .digest('hex')
+
     HASHES.set(file, { size: stat.size, time: stat.mtimeMs, hash })
 
     return hash
@@ -315,14 +383,18 @@ export async function bundleDocks(input: {
     ...dockOptions(input.root),
     ...(input.banner ? { banner: { js: input.banner } } : {}),
   })
+
   const inlined: InlinedSource[] = []
 
-  for (const key of Object.keys(bundled.metafile!.inputs).sort()) {
+  for (const key of Object.keys(bundled.metafile.inputs).sort()) {
     const file = resolvePath(input.root, key)
     const inside = relative(input.own, file)
 
     // the program's own modules are named by the key it is kept under; a namespaced input is no file
-    if ((!inside.startsWith('..') && !isAbsolute(inside)) || key.includes(':')) {
+    if (
+      (!inside.startsWith('..') && !isAbsolute(inside)) ||
+      key.includes(':')
+    ) {
       continue
     }
 
@@ -333,7 +405,7 @@ export async function bundleDocks(input: {
     }
   }
 
-  return { text: bundled.outputFiles![0]!.text, inlined }
+  return { text: bundled.outputFiles[0]!.text, inlined }
 }
 
 // whether every source a kept bundle inlined still holds what it held
@@ -390,16 +462,28 @@ function writeWhole(file: string, text: string): void {
 // the native prelude in front of it, which every module's shims are then in scope of. A bundle is decided by the test
 // file's closure, its prelude and every source it inlined, so it is kept under the project's cache by all three and
 // reused while none moves, which leaves a warm run nothing to do for a file but run it. Answers the file to import
-async function bundleUnits(built: Extract<UnitsBuilt, { ok: true }>, prelude: string, root: string, units: TestUnits): Promise<string> {
+async function bundleUnits(
+  built: Extract<UnitsBuilt, { ok: true }>,
+  prelude: string,
+  root: string,
+  units: TestUnits,
+): Promise<string> {
   // the closure key names what was built and not what built it, so the compiler's own fingerprint goes in beside it
   const kept = units.bundles
-  const key = hashText(`${BUNDLE_EPOCH}\nesbuild@${esbuildVersion}\n${units.cache.versionOf('unit')}\n${built.closureKey}\n${prelude}`)
+  const key = hashText(
+    `${BUNDLE_EPOCH}\nesbuild@${esbuildVersion}\n${units.cache.versionOf('unit')}\n${built.closureKey}\n${prelude}`,
+  )
+
   const at = join(kept, `${key}.mjs`)
   const listed = join(kept, `${key}.inputs.json`)
 
   if (existsSync(at) && existsSync(listed)) {
     try {
-      if (inlinedHold(JSON.parse(readFileSync(listed, 'utf8')) as InlinedSource[])) {
+      if (
+        inlinedHold(
+          JSON.parse(readFileSync(listed, 'utf8')) as InlinedSource[],
+        )
+      ) {
         linkInstallModules(kept)
 
         return at
@@ -468,19 +552,29 @@ export function testsOf(
   // as `preprocessTests` takes it: a native run writes every `want` as the plain marker, and `term test` hands in the
   // file's snapshots
   options: { plainWants?: boolean; snapshots?: Snapshots } = {},
-): { text: string; tests: { name: string; label: string; line?: number }[] } {
+): {
+  text: string
+  tests: { name: string; label: string; line?: number }[]
+} {
   const { text, labels, heads } = preprocessTests(source, options)
   const tests = discoverTests(text, file).map(name => {
     const head = heads.get(name)
 
-    return { name, label: labelOf(labels, name), ...(head === undefined ? {} : { line: head + 1 }) }
+    return {
+      name,
+      label: labelOf(labels, name),
+      ...(head === undefined ? {} : { line: head + 1 }),
+    }
   })
 
   return { text, tests }
 }
 
 // whether a test is one `term test --case <phrase>` asked for: the phrase in its label or its task's name, in any case
-export function caseMatches(phrase: string, test: { name: string; label: string }): boolean {
+export function caseMatches(
+  phrase: string,
+  test: { name: string; label: string },
+): boolean {
   return words.caseMatches(phrase, test.name, test.label)
 }
 
@@ -499,9 +593,14 @@ function asWritten(
 ): { diagnostics: Diagnostic[]; diag: string } {
   const { place } = readable(input.source, input.snapshots)
   const lines = input.source.split('\n')
-  const diagnostics = found.map(d => (d.file === input.file ? place(d).diagnostic : d))
+  const diagnostics = found.map(d =>
+    d.file === input.file ? place(d).diagnostic : d,
+  )
 
-  return { diagnostics, diag: diagnostics.map(d => render(d, lines, false)).join('\n') }
+  return {
+    diagnostics,
+    diag: diagnostics.map(d => render(d, lines, false)).join('\n'),
+  }
 }
 
 export async function runTestFile(input: {
@@ -526,16 +625,26 @@ export async function runTestFile(input: {
 }): Promise<TestRun> {
   // expand `test <phrase>` blocks into top-level tasks; a file with none passes through unchanged
   // `heads`: each test task's 0-based line in the file as written, so a test that does not hold is placed (`at`)
-  const { text, labels, heads } = preprocessTests(input.source, { snapshots: input.snapshots })
+  const { text, labels, heads } = preprocessTests(input.source, {
+    snapshots: input.snapshots,
+  })
+
   const names = discoverTests(text, input.file).filter(
-    name => !input.select || input.select({ name, label: labelOf(labels, name) }),
+    name =>
+      !input.select ||
+      input.select({ name, label: labelOf(labels, name) }),
   )
+
   const result = input.units
     ? compileUnits({ file: input.file, text }, input, input.units)
     : compile(
         // use the real file path as the entry so `@/...` local-package aliases resolve against this file's deck.tree
         { file: input.file, text },
-        { resolve: input.resolve, roleOf: input.roleOf, leanOf: input.leanOf },
+        {
+          resolve: input.resolve,
+          roleOf: input.roleOf,
+          leanOf: input.leanOf,
+        },
       )
 
   if (!result.ok) {
@@ -583,7 +692,11 @@ export async function runTestFile(input: {
 
   // the module is built and imported inside the project (decision 009): the units' project, else the nearest folder
   // above the file holding a `link/` or a `deck.tree`, else the file's own folder
-  const root = input.units?.root ?? findProjectRoot(input.file) ?? dirname(input.file)
+  const root =
+    input.units?.root ??
+    findProjectRoot(input.file) ??
+    dirname(input.file)
+
   let out: string
 
   if ('closureKey' in result) {
@@ -594,15 +707,25 @@ export async function runTestFile(input: {
     const entry = join(dir, 'module.ts')
     writeFileSync(entry, `${prelude}\n${result.typescript}`)
     out = join(dir, 'module.mjs')
-    writeFileSync(out, (await bundleDocks({ root, entry, own: dir, banner: projectBanner(root) })).text)
+    writeFileSync(
+      out,
+      (
+        await bundleDocks({
+          root,
+          entry,
+          own: dir,
+          banner: projectBanner(root),
+        })
+      ).text,
+    )
     linkInstallModules(dir)
   }
 
   imports++
-  const mod = (await import(`${pathToFileURL(out).href}?run=${imports}`)) as Record<
-    string,
-    (() => Promise<boolean> | boolean) | undefined
-  >
+
+  const mod = (await import(
+    `${pathToFileURL(out).href}?run=${imports}`
+  )) as Record<string, (() => Promise<boolean> | boolean) | undefined>
 
   const results: TestResult[] = []
 
@@ -615,15 +738,30 @@ export async function runTestFile(input: {
     // a test that throws is a test that failed, with what it threw, and the tests after it still run
     try {
       const held = Boolean(await mod[toCamel(name)]!())
-      results.push({ name, label, held, ms: Date.now() - started, line })
+      results.push({
+        name,
+        label,
+        held,
+        ms: Date.now() - started,
+        line,
+      })
     } catch (error) {
       // a failing `want` raises a marker naming its line, read back as the line itself, with the two values a
       // comparison held
-      const why = wantFailed(error, input.source) ?? (error instanceof Error ? error.message : String(error))
+      const why =
+        wantFailed(error, input.source) ??
+        (error instanceof Error ? error.message : String(error))
 
       // the failing `want`'s own line when the marker names it, else the test's `test` line
       const wanted = wantLine(error)
-      results.push({ name, label, held: false, ms: Date.now() - started, error: why, line: wanted !== undefined ? wanted + 1 : line })
+      results.push({
+        name,
+        label,
+        held: false,
+        ms: Date.now() - started,
+        error: why,
+        line: wanted !== undefined ? wanted + 1 : line,
+      })
     }
   }
 
@@ -631,13 +769,23 @@ export async function runTestFile(input: {
   const taken = new Map<string, string[]>()
 
   if (input.snapshots?.update) {
-    const keys = (await mod.termSnapshotTakenKeys?.()) as unknown as string[] | undefined
-    const values = (await mod.termSnapshotTakenValues?.()) as unknown as string[] | undefined
+    const keys = (await mod.termSnapshotTakenKeys?.()) as unknown as
+      | string[]
+      | undefined
+
+    const values =
+      (await mod.termSnapshotTakenValues?.()) as unknown as
+        | string[]
+        | undefined
 
     for (const one of words.takenOf(keys ?? [], values ?? [])) {
       taken.set(one.phrase, one.values)
     }
   }
 
-  return { ok: results.every(r => r.held), results, ...(taken.size > 0 ? { taken } : {}) }
+  return {
+    ok: results.every(r => r.held),
+    results,
+    ...(taken.size > 0 ? { taken } : {}),
+  }
 }

@@ -44,7 +44,9 @@ export const mapLit = (pairs: [string, Value][]): Value => {
   // the contents in a shared cell (engine/value `map-cell`), marked as the port marks a `mark shared` record, so it is
   // compared and keyed by identity like one the interpreter made
   const cell = { map: m }
-  Object.defineProperty(cell, Symbol.for('term.shared'), { value: true })
+  Object.defineProperty(cell, Symbol.for('term.shared'), {
+    value: true,
+  })
 
   return { form: 'map', value: cell }
 }
@@ -85,7 +87,10 @@ export function setIndex(c: Value, i: Value, v: Value): Value {
       value: Arr.set(
         c.value,
         // an integer index: its ternary integer holds a big integer, `{ dock: bigint }`
-        Number((i as { value: { value: { dock: bigint } } }).value.value.dock),
+        Number(
+          (i as { value: { value: { dock: bigint } } }).value.value
+            .dock,
+        ),
         v,
       ),
     }
@@ -174,7 +179,9 @@ export const toInt = (v: Value): Value => {
     return int(
       BigInt(
         Math.trunc(
-          Number((v.value as { mantissa: { dock: bigint } }).mantissa.dock) *
+          Number(
+            (v.value as { mantissa: { dock: bigint } }).mantissa.dock,
+          ) *
             3 ** (v.value as { exponent: number }).exponent,
         ),
       ),

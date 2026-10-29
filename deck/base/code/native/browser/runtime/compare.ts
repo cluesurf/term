@@ -49,6 +49,8 @@ const compare = {
     return compareRuntime.numeric(a) < compareRuntime.numeric(b)
   },
   gap(a: unknown, b: unknown): number {
-    return Math.abs(compareRuntime.numeric(a) - compareRuntime.numeric(b))
+    return Math.abs(
+      compareRuntime.numeric(a) - compareRuntime.numeric(b),
+    )
   },
 }

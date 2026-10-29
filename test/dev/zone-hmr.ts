@@ -141,7 +141,10 @@ async function main(): Promise<void> {
 
   for (const [file, emit] of v1.modules) {
     const js = (
-      await transform(`${nativePrelude(v1.program, 'node', readRuntime, emit.code)}\n${emit.code}`, { loader: 'ts', format: 'esm' })
+      await transform(
+        `${nativePrelude(v1.program, 'node', readRuntime, emit.code)}\n${emit.code}`,
+        { loader: 'ts', format: 'esm' },
+      )
     ).code
 
     fs.writeFileSync(path.join(dir, safe(file)), js)
@@ -183,10 +186,13 @@ async function main(): Promise<void> {
 
     const walk = (n: any): void => {
       // text nodes hold either a static string or a signal value (a number); compare as strings
-      if (n?.handle?.text !== undefined && n.handle.text !== '')
-        {out.push(String(n.handle.text))}
+      if (n?.handle?.text !== undefined && n.handle.text !== '') {
+        out.push(String(n.handle.text))
+      }
 
-      for (const c of n?.handle?.children ?? []) {walk(c)}
+      for (const c of n?.handle?.children ?? []) {
+        walk(c)
+      }
     }
 
     walk(host)
@@ -216,7 +222,9 @@ async function main(): Promise<void> {
     { resolve, modules: url },
   )
 
-  if (!v2.ok || !v2.modules) {throw new Error('v2 compile failed')}
+  if (!v2.ok || !v2.modules) {
+    throw new Error('v2 compile failed')
+  }
 
   const v2js = (
     await transform(v2.modules.get(ENTRY)!.code, {
@@ -277,7 +285,9 @@ async function main(): Promise<void> {
   fs.rmSync(dir, { recursive: true, force: true })
   console.log(`\nzone-hmr: ${pass} pass, ${fail} fail`)
 
-  if (fail > 0) {process.exit(1)}
+  if (fail > 0) {
+    process.exit(1)
+  }
 }
 
 void main()

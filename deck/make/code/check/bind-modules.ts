@@ -35,7 +35,11 @@ export function stampModule(program: Program, file: string): void {
 // the module scope in `compileProgram`'s order: forms split and bound by import, then extended (an exception form
 // gets its fields and every raise is filled), then tasks split and bound by import. The first refusal of any step,
 // or none
-export function bindModules(program: Program, scope: ImportScope | undefined, entry: string): Diagnostic[] {
+export function bindModules(
+  program: Program,
+  scope: ImportScope | undefined,
+  entry: string,
+): Diagnostic[] {
   const scopes = scopeList(scope)
   const bound = binding.bindModules(
     program,

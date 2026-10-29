@@ -11,7 +11,9 @@ import { join } from 'node:path'
 import { kindsApart } from '../../tmp/retired/make/check/elaborate-kinds-apart'
 
 const TERM = join(import.meta.dirname, '..', '..')
-const portPath = process.env.NODE_REWRITE_PORT ?? join(TERM, 'deck/make/host/port/code/compile/node-rewrite.ts')
+const portPath =
+  process.env.NODE_REWRITE_PORT ??
+  join(TERM, 'deck/make/host/port/code/compile/node-rewrite.ts')
 const port = (await import(portPath)) as {
   rewriteProgram: (block: unknown[], rule: unknown) => unknown[]
   copyProgram?: (value: unknown[]) => unknown[]
@@ -35,13 +37,20 @@ function sorted(value: unknown): unknown {
 
 const text = (value: unknown): string => JSON.stringify(sorted(value))
 
-function ok(name: string, got: unknown, want: unknown, reference: unknown): void {
+function ok(
+  name: string,
+  got: unknown,
+  want: unknown,
+  reference: unknown,
+): void {
   if (text(got) === text(want) && text(got) === text(reference)) {
     pass++
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}\n        port      ${text(got)}\n        expected  ${text(want)}\n        reference ${text(reference)}`)
+    console.log(
+      `FAIL  ${name}\n        port      ${text(got)}\n        expected  ${text(want)}\n        reference ${text(reference)}`,
+    )
   }
 }
 
@@ -59,20 +68,36 @@ const copy = <T>(value: T): T => structuredClone(value)
 
 // ---- nodes ----
 
-const span = { file: '/t.tree', start: { line: 1, column: 1, offset: 0 }, end: { line: 1, column: 2, offset: 1 } }
+const span = {
+  file: '/t.tree',
+  start: { line: 1, column: 1, offset: 0 },
+  end: { line: 1, column: 2, offset: 1 },
+}
 type Node = Record<string, unknown>
 const v = (name: string): Node => ({ form: 'variable', name, span })
 const n = (value: number): Node => ({ form: 'integer', value, span })
-const call = (callee: string, ...args: unknown[]): Node => ({ form: 'call', callee: v(callee), args, span })
+const call = (callee: string, ...args: unknown[]): Node => ({
+  form: 'call',
+  callee: v(callee),
+  args,
+  span,
+})
 const back = (value: unknown): Node => ({ form: 'return', value, span })
-const named = (name: string, args?: unknown[]): Node => ({ kind: 'named', name, ...(args ? { args } : {}) })
+const named = (name: string, args?: unknown[]): Node => ({
+  kind: 'named',
+  name,
+  ...(args ? { args } : {}),
+})
 const make = (name: string, fields: [string, unknown][]): Node => ({
   form: 'record',
   name,
   fields: fields.map(([field, value]) => ({ name: field, value })),
   span,
 })
-const form = (name: string, fields: [string, unknown][] = [['x', { kind: 'number' }]]): Node => ({
+const form = (
+  name: string,
+  fields: [string, unknown][] = [['x', { kind: 'number' }]],
+): Node => ({
   form: 'record-type',
   name,
   params: [],
@@ -80,24 +105,57 @@ const form = (name: string, fields: [string, unknown][] = [['x', { kind: 'number
   variants: [],
   span,
 })
-const task = (name: string, params: [string, unknown?][], body: unknown[], extra: Node = {}): Node => ({
+const task = (
+  name: string,
+  params: [string, unknown?][],
+  body: unknown[],
+  extra: Node = {},
+): Node => ({
   form: 'function',
   name,
-  params: params.map(([one, type]) => ({ name: one, ...(type ? { type } : {}) })),
+  params: params.map(([one, type]) => ({
+    name: one,
+    ...(type ? { type } : {}),
+  })),
   body,
   generics: [],
   span,
   ...extra,
 })
-const host = (name: string, init: unknown): Node => ({ form: 'let', name, init, mutable: false, span })
+const host = (name: string, init: unknown): Node => ({
+  form: 'let',
+  name,
+  init,
+  mutable: false,
+  span,
+})
 
 // the rule as decision 055 builds it, the port's answer for one program
-function rewritten(program: Node[], forms: string[], tasks: string[]): unknown[] {
-  return port.rewriteProgram(copy(program), { form: 'kinds-apart', forms, tasks })
+function rewritten(
+  program: Node[],
+  forms: string[],
+  tasks: string[],
+): unknown[] {
+  return port.rewriteProgram(copy(program), {
+    form: 'kinds-apart',
+    forms,
+    tasks,
+  })
 }
 
-function kindsCase(name: string, program: Node[], forms: string[], tasks: string[], want: Node[]): void {
-  ok(`kinds-apart: ${name}`, rewritten(program, forms, tasks), want, kindsApart(copy(program) as never))
+function kindsCase(
+  name: string,
+  program: Node[],
+  forms: string[],
+  tasks: string[],
+  want: Node[],
+): void {
+  ok(
+    `kinds-apart: ${name}`,
+    rewritten(program, forms, tasks),
+    want,
+    kindsApart(copy(program) as never),
+  )
 }
 
 // a form and a task of one name: the type, the construction and the definition apart, the task and its call kept
@@ -105,25 +163,55 @@ kindsCase(
   'a form named like a task',
   [
     form('point'),
-    task('point', [['x', { kind: 'number' }]], [back(make('point', [['x', v('x')]]))], { result: named('point') }),
-    task('twice', [['p', named('point')]], [back(call('point', n(2)))], { result: named('point') }),
+    task(
+      'point',
+      [['x', { kind: 'number' }]],
+      [back(make('point', [['x', v('x')]]))],
+      { result: named('point') },
+    ),
+    task(
+      'twice',
+      [['p', named('point')]],
+      [back(call('point', n(2)))],
+      { result: named('point') },
+    ),
   ],
   ['point'],
   [],
   [
     form('point__form'),
-    task('point', [['x', { kind: 'number' }]], [back(make('point__form', [['x', v('x')]]))], { result: named('point__form') }),
-    task('twice', [['p', named('point__form')]], [back(call('point', n(2)))], { result: named('point__form') }),
+    task(
+      'point',
+      [['x', { kind: 'number' }]],
+      [back(make('point__form', [['x', v('x')]]))],
+      { result: named('point__form') },
+    ),
+    task(
+      'twice',
+      [['p', named('point__form')]],
+      [back(call('point', n(2)))],
+      { result: named('point__form') },
+    ),
   ],
 )
 
 // a parameter named like its form: the parameter and its reads keep their name
 kindsCase(
   'a form named like a parameter',
-  [form('box'), task('grow', [['box', named('box')]], [back(v('box'))], { result: named('box') })],
+  [
+    form('box'),
+    task('grow', [['box', named('box')]], [back(v('box'))], {
+      result: named('box'),
+    }),
+  ],
   ['box'],
   [],
-  [form('box__form'), task('grow', [['box', named('box__form')]], [back(v('box'))], { result: named('box__form') })],
+  [
+    form('box__form'),
+    task('grow', [['box', named('box__form')]], [back(v('box'))], {
+      result: named('box__form'),
+    }),
+  ],
 )
 
 // a top-level host value named like its form, a list type of the form inside a type argument
@@ -131,14 +219,25 @@ kindsCase(
   'a form named like a top-level host value',
   [
     form('non-finite'),
-    { ...host('non-finite', { form: 'array', items: [make('non-finite', [['x', n(1)]])], span }), type: named('list', [named('non-finite')]) },
+    {
+      ...host('non-finite', {
+        form: 'array',
+        items: [make('non-finite', [['x', n(1)]])],
+        span,
+      }),
+      type: named('list', [named('non-finite')]),
+    },
   ],
   ['non-finite'],
   [],
   [
     form('non-finite__form'),
     {
-      ...host('non-finite', { form: 'array', items: [make('non-finite__form', [['x', n(1)]])], span }),
+      ...host('non-finite', {
+        form: 'array',
+        items: [make('non-finite__form', [['x', n(1)]])],
+        span,
+      }),
       type: named('list', [named('non-finite__form')]),
     },
   ],
@@ -152,7 +251,14 @@ kindsCase(
     task(
       'describe',
       [['t', named('type')]],
-      [{ form: 'match', subject: { ...v('t'), type: named('type') }, cases: [{ label: 'type', body: [], type: named('type') }], span }],
+      [
+        {
+          form: 'match',
+          subject: { ...v('t'), type: named('type') },
+          cases: [{ label: 'type', body: [], type: named('type') }],
+          span,
+        },
+      ],
     ),
   ],
   ['type'],
@@ -162,7 +268,16 @@ kindsCase(
     task(
       'describe',
       [['t', named('type__form')]],
-      [{ form: 'match', subject: { ...v('t'), type: named('type__form') }, cases: [{ label: 'type', body: [], type: named('type__form') }], span }],
+      [
+        {
+          form: 'match',
+          subject: { ...v('t'), type: named('type__form') },
+          cases: [
+            { label: 'type', body: [], type: named('type__form') },
+          ],
+          span,
+        },
+      ],
     ),
   ],
 )
@@ -172,18 +287,76 @@ kindsCase(
 kindsCase(
   'a task named like a kernel constant, called, passed and shadowed by a method',
   [
-    task('equal', [['a'], ['b']], [back(call('is-equal', v('a'), v('b')))]),
-    task('same', [['a']], [back(call('equal', v('a'), v('a'))), back(call('keep', v('equal')))]),
-    task('equal', [['a']], [], { method: { form: 'point', name: 'equal' } }),
-    task('member', [['p']], [back({ form: 'call', callee: { form: 'member', target: v('p'), name: 'equal', span }, args: [], span })]),
+    task(
+      'equal',
+      [['a'], ['b']],
+      [back(call('is-equal', v('a'), v('b')))],
+    ),
+    task(
+      'same',
+      [['a']],
+      [
+        back(call('equal', v('a'), v('a'))),
+        back(call('keep', v('equal'))),
+      ],
+    ),
+    task('equal', [['a']], [], {
+      method: { form: 'point', name: 'equal' },
+    }),
+    task(
+      'member',
+      [['p']],
+      [
+        back({
+          form: 'call',
+          callee: {
+            form: 'member',
+            target: v('p'),
+            name: 'equal',
+            span,
+          },
+          args: [],
+          span,
+        }),
+      ],
+    ),
   ],
   [],
   ['equal'],
   [
-    task('equal__task', [['a'], ['b']], [back(call('is-equal', v('a'), v('b')))]),
-    task('same', [['a']], [back(call('equal__task', v('a'), v('a'))), back(call('keep', v('equal')))]),
-    task('equal', [['a']], [], { method: { form: 'point', name: 'equal' } }),
-    task('member', [['p']], [back({ form: 'call', callee: { form: 'member', target: v('p'), name: 'equal', span }, args: [], span })]),
+    task(
+      'equal__task',
+      [['a'], ['b']],
+      [back(call('is-equal', v('a'), v('b')))],
+    ),
+    task(
+      'same',
+      [['a']],
+      [
+        back(call('equal__task', v('a'), v('a'))),
+        back(call('keep', v('equal'))),
+      ],
+    ),
+    task('equal', [['a']], [], {
+      method: { form: 'point', name: 'equal' },
+    }),
+    task(
+      'member',
+      [['p']],
+      [
+        back({
+          form: 'call',
+          callee: {
+            form: 'member',
+            target: v('p'),
+            name: 'equal',
+            span,
+          },
+          args: [],
+          span,
+        }),
+      ],
+    ),
   ],
 )
 
@@ -192,28 +365,77 @@ kindsCase(
   'a method on a form kept apart, and a raise of it',
   [
     form('shape'),
-    task('shape', [['side']], [back(make('shape', [['x', v('side')]]))]),
-    task('shape_area', [], [{ form: 'throw', value: make('shape', [['x', n(0)]]), raise: 'shape', span }], { method: { form: 'shape', name: 'area' } }),
+    task(
+      'shape',
+      [['side']],
+      [back(make('shape', [['x', v('side')]]))],
+    ),
+    task(
+      'shape_area',
+      [],
+      [
+        {
+          form: 'throw',
+          value: make('shape', [['x', n(0)]]),
+          raise: 'shape',
+          span,
+        },
+      ],
+      { method: { form: 'shape', name: 'area' } },
+    ),
   ],
   ['shape'],
   [],
   [
     form('shape__form'),
-    task('shape', [['side']], [back(make('shape__form', [['x', v('side')]]))]),
-    task('shape_area', [], [{ form: 'throw', value: make('shape__form', [['x', n(0)]]), raise: 'shape__form', span }], {
-      method: { form: 'shape__form', name: 'area' },
-    }),
+    task(
+      'shape',
+      [['side']],
+      [back(make('shape__form', [['x', v('side')]]))],
+    ),
+    task(
+      'shape_area',
+      [],
+      [
+        {
+          form: 'throw',
+          value: make('shape__form', [['x', n(0)]]),
+          raise: 'shape__form',
+          span,
+        },
+      ],
+      {
+        method: { form: 'shape__form', name: 'area' },
+      },
+    ),
   ],
 )
 
 // a separate build's stub: its carried body and its one-statement shape are entered
 {
-  const body = [back(make('cell-thing', [['x', call('equal', v('a'), v('a'))]]))]
-  const stub = task('cell-thing', [['a', named('cell-thing')]], [], { stub: true, stubBody: body, stubShape: body[0], result: named('cell-thing') })
-  const renamedBody = [back(make('cell-thing__form', [['x', call('equal__task', v('a'), v('a'))]]))]
+  const body = [
+    back(make('cell-thing', [['x', call('equal', v('a'), v('a'))]])),
+  ]
+  const stub = task('cell-thing', [['a', named('cell-thing')]], [], {
+    stub: true,
+    stubBody: body,
+    stubShape: body[0],
+    result: named('cell-thing'),
+  })
+  const renamedBody = [
+    back(
+      make('cell-thing__form', [
+        ['x', call('equal__task', v('a'), v('a'))],
+      ]),
+    ),
+  ]
   kindsCase(
     'a stub carrying a body and a shape',
-    [form('cell-thing'), stub, task('equal', [['a'], ['b']], [], { stub: true })],
+    [
+      form('cell-thing'),
+      stub,
+      task('equal', [['a'], ['b']], [], { stub: true }),
+    ],
     ['cell-thing'],
     ['equal'],
     [
@@ -232,19 +454,53 @@ kindsCase(
 // ---- the caller copies, so the program it was handed is never written ----
 
 {
-  const program = [form('point'), task('point', [['x']], [back(make('point', [['x', v('x')]]))]), task('equal', [['a']], [back(call('equal', v('a')))])]
+  const program = [
+    form('point'),
+    task('point', [['x']], [back(make('point', [['x', v('x')]]))]),
+    task('equal', [['a']], [back(call('equal', v('a')))]),
+  ]
   const before = text(program)
-  const copier = port.copyProgram ?? ((value: unknown[]) => structuredClone(value))
-  const answer = port.rewriteProgram(copier(program), { form: 'kinds-apart', forms: ['point'], tasks: ['equal'] })
-  holds('kinds-apart over a copy: the program handed in is unchanged', text(program) === before, program)
-  holds('kinds-apart over a copy: the answer is renamed', text(answer).includes('point__form') && text(answer).includes('equal__task'), answer)
-  holds('kinds-apart over a copy: the answer shares no statement with the input', (answer as unknown[]).every((one, at) => one !== program[at]), answer)
+  const copier =
+    port.copyProgram ?? ((value: unknown[]) => structuredClone(value))
+  const answer = port.rewriteProgram(copier(program), {
+    form: 'kinds-apart',
+    forms: ['point'],
+    tasks: ['equal'],
+  })
+  holds(
+    'kinds-apart over a copy: the program handed in is unchanged',
+    text(program) === before,
+    program,
+  )
+  holds(
+    'kinds-apart over a copy: the answer is renamed',
+    text(answer).includes('point__form') &&
+      text(answer).includes('equal__task'),
+    answer,
+  )
+  holds(
+    'kinds-apart over a copy: the answer shares no statement with the input',
+    (answer as unknown[]).every((one, at) => one !== program[at]),
+    answer,
+  )
 }
 
 // both lists empty: nothing is renamed (decision 055: the caller hands the program back as given)
 {
-  const program = [form('point'), task('move', [['p', named('point')]], [back(call('equal', v('p')))])]
-  ok('kinds-apart with both lists empty renames nothing', rewritten(program, [], []), program, kindsApart(copy(program) as never))
+  const program = [
+    form('point'),
+    task(
+      'move',
+      [['p', named('point')]],
+      [back(call('equal', v('p')))],
+    ),
+  ]
+  ok(
+    'kinds-apart with both lists empty renames nothing',
+    rewritten(program, [], []),
+    program,
+    kindsApart(copy(program) as never),
+  )
 }
 
 console.log(`\nnode-rewrite-kinds-apart: ${pass} pass, ${fail} fail`)

@@ -14,7 +14,13 @@ import type { GroupNode } from '@term/make/code/parser/narrow'
 import { groupsOf } from '@term/make/code/parser/narrow'
 import { spanOfNode } from '@term/make/code/compile/mill-run'
 import type { Resolver } from '@term/make/code/compile/load'
-import { closeRun, count, openRun, report, reportProblems } from '@term/call/code/output'
+import {
+  closeRun,
+  count,
+  openRun,
+  report,
+  reportProblems,
+} from '@term/call/code/output'
 // what `term lint` decides beside the parser and the rules: which fixes apply, the inert manifest fields, the words
 import * as words from '@term/call/code/lint-words'
 
@@ -39,12 +45,22 @@ function toDiagnostic(finding: Finding, file: string): Diagnostic {
 function applyEdits(text: string, edits: TextEdit[]): string {
   const ranges = words.appliedEdits(
     text,
-    edits.map(e => ({ startLine: e.span.start.line, startColumn: e.span.start.column, endLine: e.span.end.line, endColumn: e.span.end.column, text: e.text })),
+    edits.map(e => ({
+      startLine: e.span.start.line,
+      startColumn: e.span.start.column,
+      endLine: e.span.end.line,
+      endColumn: e.span.end.column,
+      text: e.text,
+    })),
   )
+
   let result = text
 
   for (const range of ranges) {
-    result = result.slice(0, range.start) + range.text + result.slice(range.end)
+    result =
+      result.slice(0, range.start) +
+      range.text +
+      result.slice(range.end)
   }
 
   return result
@@ -65,11 +81,41 @@ function applyEdits(text: string, edits: TextEdit[]): string {
 
 // the four above as catalog entries, for `term show kink`, which lists them beside the driver's (make/code/lint/lint.ts
 // `lintCatalog`). Kept here, next to the checks, so a new one is added in one place
-export const MANIFEST_CATALOG: { code: string; name: string; severity: 'warning'; docs: string; fixable: boolean }[] = [
-  { code: 'L050', name: 'manifest-code-version', severity: 'warning', docs: "a manifest's `code <version>` (or a link's `code <range>`) is the old spelling of `mark`", fixable: true },
-  { code: 'L051', name: 'manifest-bear', severity: 'warning', docs: "a manifest's `bear ./dir` is the old spelling of the code root, `code ./dir`", fixable: true },
-  { code: 'L052', name: 'ambiguous-load', severity: 'warning', docs: "a package path names a file in the package's code root AND one in its package root. The code root wins, and `base <dir>` under the load picks the package root", fixable: false },
-  { code: 'L055', name: 'manifest-inert', severity: 'warning', docs: 'a manifest field no tool reads, which looks like it chooses something and chooses nothing', fixable: false },
+export const MANIFEST_CATALOG: {
+  code: string
+  name: string
+  severity: 'warning'
+  docs: string
+  fixable: boolean
+}[] = [
+  {
+    code: 'L050',
+    name: 'manifest-code-version',
+    severity: 'warning',
+    docs: "a manifest's `code <version>` (or a link's `code <range>`) is the old spelling of `mark`",
+    fixable: true,
+  },
+  {
+    code: 'L051',
+    name: 'manifest-bear',
+    severity: 'warning',
+    docs: "a manifest's `bear ./dir` is the old spelling of the code root, `code ./dir`",
+    fixable: true,
+  },
+  {
+    code: 'L052',
+    name: 'ambiguous-load',
+    severity: 'warning',
+    docs: "a package path names a file in the package's code root AND one in its package root. The code root wins, and `base <dir>` under the load picks the package root",
+    fixable: false,
+  },
+  {
+    code: 'L055',
+    name: 'manifest-inert',
+    severity: 'warning',
+    docs: 'a manifest field no tool reads, which looks like it chooses something and chooses nothing',
+    fixable: false,
+  },
 ]
 
 // L055 manifest-inert: a manifest field the grammar accepts and the writer keeps, which no tool reads. `test ./test`
@@ -77,7 +123,10 @@ export const MANIFEST_CATALOG: { code: string; name: string; severity: 'warning'
 // the line says (guides: packages/manifest, 2026-10-04). A nested `deck ./path` is the same. No `--fix`, because the
 // line may record an intent, and deleting it is the author's call (lint-words.tree `is-inert`)
 
-export function inertManifestFields(text: string, file: string): Finding[] {
+export function inertManifestFields(
+  text: string,
+  file: string,
+): Finding[] {
   if (manifestName(text, file) === undefined) {
     return []
   }
@@ -116,7 +165,13 @@ export function inertManifestFields(text: string, file: string): Finding[] {
         code: 'L055',
         message: words.inertMessage(word),
         severity: 'warning',
-        span: { start: at.start, end: { line: at.start.line, column: at.start.column + word.length } },
+        span: {
+          start: at.start,
+          end: {
+            line: at.start.line,
+            column: at.start.column + word.length,
+          },
+        },
       })
     }
   }
@@ -124,7 +179,10 @@ export function inertManifestFields(text: string, file: string): Finding[] {
   return out
 }
 
-export function manifestFindings(text: string, file: string): Finding[] {
+export function manifestFindings(
+  text: string,
+  file: string,
+): Finding[] {
   if (manifestName(text, file) === undefined) {
     return []
   }
@@ -134,18 +192,33 @@ export function manifestFindings(text: string, file: string): Finding[] {
     code: words.manifestCode(found.rule),
     message: found.message,
     severity: 'warning',
-    span: { start: { line: found.line, column: found.column }, end: { line: found.line, column: found.end } },
+    span: {
+      start: { line: found.line, column: found.column },
+      end: { line: found.line, column: found.end },
+    },
     fix: found.wholeLine
-      ? { span: { start: { line: found.line, column: 0 }, end: { line: found.line + 1, column: 0 } }, text: '' }
+      ? {
+          span: {
+            start: { line: found.line, column: 0 },
+            end: { line: found.line + 1, column: 0 },
+          },
+          text: '',
+        }
       : {
-          span: { start: { line: found.line, column: found.column }, end: { line: found.line, column: found.end } },
+          span: {
+            start: { line: found.line, column: found.column },
+            end: { line: found.line, column: found.end },
+          },
           text: found.text,
         },
   }))
 }
 
 // every top-level `load` path with its span and its `base`, read with the one parser
-function loadPaths(text: string, file: string): { path: string; base?: string; span: Finding['span'] }[] {
+function loadPaths(
+  text: string,
+  file: string,
+): { path: string; base?: string; span: Finding['span'] }[] {
   const parsed = parse({ file, text })
 
   if (!parsed.ok) {
@@ -158,7 +231,8 @@ function loadPaths(text: string, file: string): { path: string; base?: string; s
     return first?.kind === 'name' ? renderHead(first) : undefined
   }
 
-  const out: { path: string; base?: string; span: Finding['span'] }[] = []
+  const out: { path: string; base?: string; span: Finding['span'] }[] =
+    []
 
   for (const group of groupsOf(parsed.tree.nodes)) {
     if (headOf(group) !== 'load') {
@@ -176,19 +250,32 @@ function loadPaths(text: string, file: string): { path: string; base?: string; s
 
     const baseGroup = group.nodes
       .slice(2)
-      .find((n): n is GroupNode => n.kind === 'group' && headOf(n) === 'base')
+      .find(
+        (n): n is GroupNode =>
+          n.kind === 'group' && headOf(n) === 'base',
+      )
 
     out.push({
       path,
       base: baseGroup ? headOf(baseGroup.nodes[1]) : undefined,
-      span: { start: start.start, end: { line: start.start.line, column: start.start.column + path.length } },
+      span: {
+        start: start.start,
+        end: {
+          line: start.start.line,
+          column: start.start.column + path.length,
+        },
+      },
     })
   }
 
   return out
 }
 
-export function ambiguousLoads(text: string, file: string, resolve: Resolver): Finding[] {
+export function ambiguousLoads(
+  text: string,
+  file: string,
+  resolve: Resolver,
+): Finding[] {
   const out: Finding[] = []
 
   for (const load of loadPaths(text, file)) {
@@ -210,7 +297,11 @@ export function ambiguousLoads(text: string, file: string, resolve: Resolver): F
         code: 'L052',
         severity: 'warning',
         span: load.span,
-        message: words.ambiguousMessage(load.path, found.file, found.shadowed),
+        message: words.ambiguousMessage(
+          load.path,
+          found.file,
+          found.shadowed,
+        ),
       })
     }
   }
@@ -227,10 +318,22 @@ export async function callLint(input: {
 }): Promise<void> {
   const files = await collectTreeFiles(input.paths, input.root)
 
-  openRun({ verb: 'lint', root: input.root, counts: [count(files.length, 'files', 'file')], facts: input.fix ? ['--fix'] : [] })
+  openRun({
+    verb: 'lint',
+    root: input.root,
+    counts: [count(files.length, 'files', 'file')],
+    facts: input.fix ? ['--fix'] : [],
+  })
 
   if (files.length === 0) {
-    report({ glyph: 'failed', kind: 'problem', subject: 'There is no .tree file to lint', message: input.paths.length ? [`Looked in ${input.paths.join(', ')}.`] : [] })
+    report({
+      glyph: 'failed',
+      kind: 'problem',
+      subject: 'There is no .tree file to lint',
+      message: input.paths.length
+        ? [`Looked in ${input.paths.join(', ')}.`]
+        : [],
+    })
     closeRun({ verdict: 'Nothing to lint' })
 
     return
@@ -248,6 +351,7 @@ export async function callLint(input: {
   let totalFindings = 0
   let totalErrors = 0
   let totalFixed = 0
+
   // every finding of every file, drawn together at the end so they sort by path, line and column (section 12)
   const found: { diagnostic: Diagnostic; text: string }[] = []
 
@@ -264,7 +368,10 @@ export async function callLint(input: {
     const relative = path.relative(input.root, file)
     const readers = readersOf(path.resolve(input.root, file))
     const absolute = path.resolve(input.root, file)
-    const findings = [...analyze({ file: relative, text }, readers).lint(), ...fileFindings(text, absolute)]
+    const findings = [
+      ...analyze({ file: relative, text }, readers).lint(),
+      ...fileFindings(text, absolute),
+    ]
 
     if (findings.length === 0) {
       continue
@@ -301,7 +408,10 @@ export async function callLint(input: {
         }
 
         totalFindings++
-        found.push({ diagnostic: toDiagnostic(finding, relative), text: fixedText })
+        found.push({
+          diagnostic: toDiagnostic(finding, relative),
+          text: fixedText,
+        })
       }
     } else {
       for (const finding of findings) {
@@ -310,7 +420,10 @@ export async function callLint(input: {
         }
 
         totalFindings++
-        found.push({ diagnostic: toDiagnostic(finding, relative), text })
+        found.push({
+          diagnostic: toDiagnostic(finding, relative),
+          text,
+        })
       }
     }
   }
@@ -318,16 +431,28 @@ export async function callLint(input: {
   reportProblems(found, input.root)
 
   if (totalFixed > 0) {
-    report({ glyph: 'changed', kind: 'change', verb: 'fix', subject: 'findings fixed in place', counts: [count(totalFixed, 'fixes', 'fix')] })
+    report({
+      glyph: 'changed',
+      kind: 'change',
+      verb: 'fix',
+      subject: 'findings fixed in place',
+      counts: [count(totalFixed, 'fixes', 'fix')],
+    })
   }
 
   const warnings = totalFindings - totalErrors
-  const counts = [...(totalErrors ? [count(totalErrors, 'errors', 'error')] : []), ...(warnings ? [count(warnings, 'warnings', 'warning')] : [])]
+  const counts = [
+    ...(totalErrors ? [count(totalErrors, 'errors', 'error')] : []),
+    ...(warnings ? [count(warnings, 'warnings', 'warning')] : []),
+  ]
 
   // the closing glyph is the worst finding's: ✗ for an error (exit 1), ▲ for warnings alone (exit 0, 1 under --strict)
   closeRun({
     verdict: words.lintVerdict(totalFindings),
     counts,
-    next: found.some(one => one.diagnostic.hint) && !input.fix ? 'term lint --fix' : undefined,
+    next:
+      found.some(one => one.diagnostic.hint) && !input.fix
+        ? 'term lint --fix'
+        : undefined,
   })
 }

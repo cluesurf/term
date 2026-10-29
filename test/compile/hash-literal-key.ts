@@ -47,26 +47,51 @@ const dir = mkdtempSync(join(tmpdir(), 'term-hash-literal-'))
 const only = process.env.KEY_ONLY ?? ''
 
 {
-  const built = compile({ file: join(dir, 'keys.tree'), text: PROGRAM }, { resolve: projectResolver(process.cwd(), 'node'), env: 'node' })
-  const ts = built.ok ? built.typescript : built.diagnostics.map(d => d.message).join(' | ')
+  const built = compile(
+    { file: join(dir, 'keys.tree'), text: PROGRAM },
+    { resolve: projectResolver(process.cwd(), 'node'), env: 'node' },
+  )
+  const ts = built.ok
+    ? built.typescript
+    : built.diagnostics.map(d => d.message).join(' | ')
 
-  ok('typescript: the write is a `.set` of the key', /needs\.set\("exception", true\)/.test(ts), ts.slice(ts.indexOf('export function run')))
-  ok('typescript: and never a property of the map', !/needs\.exception\b/.test(ts), ts.slice(ts.indexOf('export function run')))
+  ok(
+    'typescript: the write is a `.set` of the key',
+    /needs\.set\("exception", true\)/.test(ts),
+    ts.slice(ts.indexOf('export function run')),
+  )
+  ok(
+    'typescript: and never a property of the map',
+    !/needs\.exception\b/.test(ts),
+    ts.slice(ts.indexOf('export function run')),
+  )
 
   const numbered = compile(
-    { file: join(dir, 'numbered.tree'), text: 'task run\n  like number\n  save m, make hash\n  save three, 3\n  save m/{three}, 1\n  save m/alpha, 2\n  back m/size\n' },
+    {
+      file: join(dir, 'numbered.tree'),
+      text: 'task run\n  like number\n  save m, make hash\n  save three, 3\n  save m/{three}, 1\n  save m/alpha, 2\n  back m/size\n',
+    },
     { resolve: projectResolver(process.cwd(), 'node'), env: 'node' },
   )
 
   ok(
     'a word key on a hash keyed by numbers is refused as a map key',
-    !numbered.ok && numbered.diagnostics.some(d => d.message.includes('map key')),
-    numbered.ok ? 'it built' : numbered.diagnostics.map(d => d.message).join(' | '),
+    !numbered.ok &&
+      numbered.diagnostics.some(d => d.message.includes('map key')),
+    numbered.ok
+      ? 'it built'
+      : numbered.diagnostics.map(d => d.message).join(' | '),
   )
 }
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'keys' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'keys',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
@@ -76,7 +101,9 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
   ok(
     `${backend}: a key written by a plain segment is found by has and get, and counted`,
     ran.form === 'ran' && ran.output === 'true true 1 3 1',
-    ran.form === 'ran' ? `got ${JSON.stringify(ran.output)}` : `${ran.stage}: ${ran.reason}`,
+    ran.form === 'ran'
+      ? `got ${JSON.stringify(ran.output)}`
+      : `${ran.stage}: ${ran.reason}`,
   )
 }
 

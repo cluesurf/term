@@ -81,16 +81,31 @@ const want = '30'
 
 const built = compile(
   { file: 'record-operand.tree', text },
-  { resolve: withNativeEnv('rust', stdlibResolver()!), env: 'rust', entryPoints: ['run', 'score'] },
+  {
+    resolve: withNativeEnv('rust', stdlibResolver()!),
+    env: 'rust',
+    entryPoints: ['run', 'score'],
+  },
 )
 
 if (!built.ok) {
-  ok('the program builds for rust', false, built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the program builds for rust',
+    false,
+    built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
 } else {
   const rust = emitRust(built.program)
-  const conditions = rust.split('\n').filter(line => /^\s*if .*Point/.test(line))
+  const conditions = rust
+    .split('\n')
+    .filter(line => /^\s*if .*Point/.test(line))
 
-  ok('each construction in a condition keeps its own parentheses', conditions.length === 2 && conditions.every(line => /\(Point \{/.test(line)), conditions.join(' | '))
+  ok(
+    'each construction in a condition keeps its own parentheses',
+    conditions.length === 2 &&
+      conditions.every(line => /\(Point \{/.test(line)),
+    conditions.join(' | '),
+  )
 
   const rustc = spawnSync('rustc', ['--version'], { encoding: 'utf8' })
 
@@ -98,14 +113,40 @@ if (!built.ok) {
     console.log('skip  rustc  (not installed)')
   } else {
     const dir = mkdtempSync(join(tmpdir(), 'term-rust-record-operand-'))
-    writeFileSync(join(dir, 'main.rs'), `${rust}\nfn main() {\n    println!("{}", run());\n}\n`)
+    writeFileSync(
+      join(dir, 'main.rs'),
+      `${rust}\nfn main() {\n    println!("{}", run());\n}\n`,
+    )
     const binary = join(dir, 'main')
-    const out = spawnSync('rustc', ['--edition', '2021', '-A', 'warnings', '-o', binary, join(dir, 'main.rs')], { encoding: 'utf8' })
-    ok('rustc compiles it', out.status === 0, out.stderr.split('\n').filter(l => /^error/.test(l)).join(' | '))
+    const out = spawnSync(
+      'rustc',
+      [
+        '--edition',
+        '2021',
+        '-A',
+        'warnings',
+        '-o',
+        binary,
+        join(dir, 'main.rs'),
+      ],
+      { encoding: 'utf8' },
+    )
+    ok(
+      'rustc compiles it',
+      out.status === 0,
+      out.stderr
+        .split('\n')
+        .filter(l => /^error/.test(l))
+        .join(' | '),
+    )
 
     if (out.status === 0) {
       const ran = spawnSync(binary, [], { encoding: 'utf8' })
-      ok('Rust answers 10 + 20', ran.stdout.trim() === want, (ran.stdout + ran.stderr).trim())
+      ok(
+        'Rust answers 10 + 20',
+        ran.stdout.trim() === want,
+        (ran.stdout + ran.stderr).trim(),
+      )
     }
   }
 }
@@ -132,15 +173,32 @@ task same
       code 0
 `,
   },
-  { resolve: withNativeEnv('rust', stdlibResolver()!), env: 'rust', entryPoints: ['same'] },
+  {
+    resolve: withNativeEnv('rust', stdlibResolver()!),
+    env: 'rust',
+    entryPoints: ['same'],
+  },
 )
 
 if (!compared.ok) {
-  ok('the comparison builds for rust', false, compared.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the comparison builds for rust',
+    false,
+    compared.diagnostics
+      .map(d => `${d.name}: ${d.message}`)
+      .join(' | '),
+  )
 } else {
-  const line = emitRust(compared.program).split('\n').find(text => /== 0/.test(text) && /cmp\(/.test(text)) ?? ''
+  const line =
+    emitRust(compared.program)
+      .split('\n')
+      .find(text => /== 0/.test(text) && /cmp\(/.test(text)) ?? ''
 
-  ok('a match on the left of == keeps its own parentheses', /\(match [^\n]*\}\) == 0/.test(line), line.trim())
+  ok(
+    'a match on the left of == keeps its own parentheses',
+    /\(match [^\n]*\}\) == 0/.test(line),
+    line.trim(),
+  )
 }
 
 console.log(`\nrust-record-operand: ${pass} pass, ${fail} fail`)

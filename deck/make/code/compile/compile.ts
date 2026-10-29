@@ -23,7 +23,10 @@ import {
   isLookStylesheet as isLookPort,
   sideFile as sideFilePort,
 } from '@term/make/code/compile/side-files'
-import type { Maybe, MillChecked } from '@term/make/code/compile/side-files'
+import type {
+  Maybe,
+  MillChecked,
+} from '@term/make/code/compile/side-files'
 import {
   emitTypescript as emitTypescriptPort,
   entryFormAliases as entryFormAliasesPort,
@@ -44,7 +47,10 @@ import type {
   GraphBuilt,
 } from '@term/make/code/compile/program-driver'
 import type { WakeGroup } from '@term/make/code/compile/program-warnings'
-import type { RollKind, RollValue } from '@term/make/code/compile/rolling'
+import type {
+  RollKind,
+  RollValue,
+} from '@term/make/code/compile/rolling'
 import { keepOverloadBound } from '@term/make/code/check/overload'
 import type { Roll, RollEntry } from '@term/make/code/compile/roll'
 import type { Tally } from '@term/make/code/check/holds'
@@ -52,10 +58,24 @@ import { checkerSwitches } from '@term/make/code/check/strict'
 import type { CoverTarget } from '@term/make/code/ir/cover'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
 import { makeParseMemo, scopeList } from '@term/make/code/compile/load'
-import type { ImportScope, ParseMemo, Resolver, Source, WalkMemo } from '@term/make/code/compile/load'
+import type {
+  ImportScope,
+  ParseMemo,
+  Resolver,
+  Source,
+  WalkMemo,
+} from '@term/make/code/compile/load'
 import type { CompileCache } from '@term/make/code/compile/cache'
-import { milledUnit as cachedMill, output as cachedOutput, scanned as cachedScan } from '@term/make/code/compile/cache-store'
-import type { Program, Statement, Twin } from '@term/make/code/compile/node'
+import {
+  milledUnit as cachedMill,
+  output as cachedOutput,
+  scanned as cachedScan,
+} from '@term/make/code/compile/cache-store'
+import type {
+  Program,
+  Statement,
+  Twin,
+} from '@term/make/code/compile/node'
 import { twinChoiceList } from '@term/make/code/ir/twin'
 import type { TwinChoices } from '@term/make/code/ir/twin'
 
@@ -196,7 +216,9 @@ export function awaitsOutsideTasks(): boolean {
 
 // the build's resolver as compile/side-files.tree and the driver take it: none where it finds nothing
 function resolverTask(
-  resolve: ((path: string, from: string) => Source | undefined) | undefined,
+  resolve:
+    | ((path: string, from: string) => Source | undefined)
+    | undefined,
 ): (path: string, from: string) => Maybe<Source> {
   return (path, from) => {
     const found = resolve?.(path, from)
@@ -213,7 +235,9 @@ function deckTask(
   return file => {
     const deck = deckOf?.(file)
 
-    return deck ? { form: 'some', value: { name: deck.name, root: deck.root } } : { form: 'none' }
+    return deck
+      ? { form: 'some', value: { name: deck.name, root: deck.root } }
+      : { form: 'none' }
   }
 }
 
@@ -223,16 +247,26 @@ export function checkMillSource(
   source: Source,
   resolve?: (path: string, from: string) => Source | undefined,
 ): MillChecked {
-  return checkMillPort(source, resolve !== undefined, resolverTask(resolve))
+  return checkMillPort(
+    source,
+    resolve !== undefined,
+    resolverTask(resolve),
+  )
 }
 
 // a .tree whose top-level statements are all `face` / `tone` / `base` rules compiles to a static stylesheet, not a
 // program. Shared by the merged and separate build paths so both route look files to the CSS backend.
-export function isLookStylesheet(source: { file: string; text: string }): boolean {
+export function isLookStylesheet(source: {
+  file: string
+  text: string
+}): boolean {
   return isLookPort(source)
 }
 
-export function compile(source: { file: string; text: string }, options?: CompileOptions): CompileResult {
+export function compile(
+  source: { file: string; text: string },
+  options?: CompileOptions,
+): CompileResult {
   const side = sideFile(source, options)
 
   if (side) {
@@ -243,14 +277,28 @@ export function compile(source: { file: string; text: string }, options?: Compil
   const loaded = loadGraphPort(source, reading)
 
   if (loaded.refused.form === 'some') {
-    return { ok: false, diagnostics: loaded.refused.value as Diagnostic[] }
+    return {
+      ok: false,
+      diagnostics: loaded.refused.value as Diagnostic[],
+    }
   }
 
   const cache = options?.cache
-  const graphKey = graphKeyPort(source, reading, loaded.graph, checkerSwitches)
+  const graphKey = graphKeyPort(
+    source,
+    reading,
+    loaded.graph,
+    checkerSwitches,
+  )
+
   const build = (): CompileResult =>
     builtResult(
-      buildGraphPort(source, reading, loaded.graph, givenOf(options?.deckOf, options?.modules, undefined)),
+      buildGraphPort(
+        source,
+        reading,
+        loaded.graph,
+        givenOf(options?.deckOf, options?.modules, undefined),
+      ),
       options?.env,
       options?.library,
     )
@@ -262,24 +310,45 @@ export function compile(source: { file: string; text: string }, options?: Compil
       const full = build()
 
       return full.ok
-        ? { ok: true, program: [], typescript: '', warnings: [], ...(full.roll ? { roll: full.roll } : {}) }
+        ? {
+            ok: true,
+            program: [],
+            typescript: '',
+            warnings: [],
+            ...(full.roll ? { roll: full.roll } : {}),
+          }
         : full
     }
 
     return cache
-      ? (cachedOutput(cache.state, rollOnlyKeyPort(graphKey, options.rollFast === true), rollOf, 'output') as CompileResult)
+      ? (cachedOutput(
+          cache.state,
+          rollOnlyKeyPort(graphKey, options.rollFast === true),
+          rollOf,
+          'output',
+        ) as CompileResult)
       : rollOf()
   }
 
   // the output cache stores a JSON-serialized result, which cannot hold the per-module `Map`, so per-module mode skips
   // the output level (and still gets mill-level reuse). The cache is Term (compile/cache-store.tree, item 0107), and
   // the build is handed to it as a task until 0248 makes it a case of a form
-  return cache && !options?.modules ? (cachedOutput(cache.state, graphKey, build, 'output') as CompileResult) : build()
+  return cache && !options?.modules
+    ? (cachedOutput(
+        cache.state,
+        graphKey,
+        build,
+        'output',
+      ) as CompileResult)
+    : build()
 }
 
 // A FILE THAT IS NOT A PROGRAM, answered whole: a look stylesheet, a data file or a mill definition, in
 // compile/side-files.tree (item term-self-host-001-0262). Undefined for a program
-export function sideFile(source: { file: string; text: string }, options?: CompileOptions): CompileResult | undefined {
+export function sideFile(
+  source: { file: string; text: string },
+  options?: CompileOptions,
+): CompileResult | undefined {
   const answer = sideFilePort(
     source,
     file => options?.roleOf?.(file) ?? '',
@@ -296,9 +365,22 @@ export function sideFile(source: { file: string; text: string }, options?: Compi
 
   switch (side.form) {
     case 'look-sheet':
-      return { ok: true, program: [], typescript: '', css: side.css, style: side.style, styleDark: side.styleDark, warnings: [] }
+      return {
+        ok: true,
+        program: [],
+        typescript: '',
+        css: side.css,
+        style: side.style,
+        styleDark: side.styleDark,
+        warnings: [],
+      }
     case 'data-module':
-      return { ok: true, program: [], typescript: side.typescript, warnings: [] }
+      return {
+        ok: true,
+        program: [],
+        typescript: side.typescript,
+        warnings: [],
+      }
     case 'mill-sound':
       return { ok: true, program: [], typescript: '', warnings: [] }
     case 'side-refused':
@@ -318,7 +400,10 @@ function readingOf(options?: CompileOptions): CompileReading {
     resolve: options?.resolve,
     resolveSource: resolverTask(options?.resolve),
     parsed,
-    scanOf: cache ? (unit: Source, compute: () => unknown) => cachedScan(cache.state, unit.file, unit.text, compute) : undefined,
+    scanOf: cache
+      ? (unit: Source, compute: () => unknown) =>
+          cachedScan(cache.state, unit.file, unit.text, compute)
+      : undefined,
     walked: options?.walked,
     roleOf: file => options?.roleOf?.(file) ?? '',
     leanOf: file => options?.leanOf?.(file) ?? false,
@@ -337,7 +422,10 @@ function readingOf(options?: CompileOptions): CompileReading {
     adjusted: options?.adjustTwins !== undefined,
     adjust: options?.adjustTwins ?? (twins => twins),
     coverWhole: cover === true,
-    cover: cover !== undefined && cover !== true ? { form: 'some', value: cover } : { form: 'none' },
+    cover:
+      cover !== undefined && cover !== true
+        ? { form: 'some', value: cover }
+        : { form: 'none' },
     library: options?.library === true,
     // the mill cache's closure: one module milled once per text, role, lean and template set
     milled: (unit, templates, templateKey) =>
@@ -356,7 +444,9 @@ function readingOf(options?: CompileOptions): CompileReading {
 // checker's switches, check/overload.ts's two tables (module state the checker reads after the gate), node identity
 // and ir/simplify.ts's host-global test
 function givenOf(
-  deckOf: ((file: string) => { name: string; root: string } | undefined) | undefined,
+  deckOf:
+    | ((file: string) => { name: string; root: string } | undefined)
+    | undefined,
   modulesUrl: ((file: string) => string) | undefined,
   emitOnly: Set<string> | undefined,
 ): DriverGiven {
@@ -373,7 +463,8 @@ function givenOf(
       return true
     },
     sameNode: (left: unknown, right: unknown) => left === right,
-    foreign: (statement: Statement) => statement.form === 'let' && statement.foreign !== undefined,
+    foreign: (statement: Statement) =>
+      statement.form === 'let' && statement.foreign !== undefined,
   } as DriverGiven
 }
 
@@ -394,7 +485,12 @@ export function entryWarnings(
   parsed: ParseMemo,
   templates?: Map<string, Template>,
 ): Diagnostic[] {
-  return entryWarningsPort(source, sources, parsed, templates as Map<string, Template>)
+  return entryWarningsPort(
+    source,
+    sources,
+    parsed,
+    templates!,
+  )
 }
 
 // One module milled, through the mill cache when there is one. The merged build and compile/separate.ts both mill
@@ -410,7 +506,9 @@ export function milledModule(
     role?: string
     lean: boolean
   },
-): { ok: true; program: Program; twins?: Twin[] } | { ok: false; diagnostics: Diagnostic[] } {
+):
+  | { ok: true; program: Program; twins?: Twin[] }
+  | { ok: false; diagnostics: Diagnostic[] } {
   const { parsed, templates, templateKey, cache, role, lean } = options
   // `mark lean` changes what the unit mills to, so it is in the key, prefixed so it cannot be read as a role's end
   const leanKey = lean ? 'lean:' : ''
@@ -422,7 +520,12 @@ export function milledModule(
       | { ok: false; diagnostics: Diagnostic[] }
 
   return cache
-    ? (cachedMill(cache.state, `${leanKey}${unit.file}\u0000${usesTemplates ? templateKey : ''}\u0000${role ?? ''}`, unit.text, mill) as
+    ? (cachedMill(
+        cache.state,
+        `${leanKey}${unit.file}\u0000${usesTemplates ? templateKey : ''}\u0000${role ?? ''}`,
+        unit.text,
+        mill,
+      ) as
         | { ok: true; program: Program; twins?: Twin[] }
         | { ok: false; diagnostics: Diagnostic[] })
     : mill()
@@ -490,7 +593,12 @@ export function compileProgram(
       env: env ?? '',
       hasEnv: env !== undefined,
       treeShake: treeShake ?? false,
-      wantRoll: wantRoll === 'fast' ? 'fast_roll' : wantRoll ? 'whole_roll' : 'no_roll',
+      wantRoll:
+        wantRoll === 'fast'
+          ? 'fast_roll'
+          : wantRoll
+            ? 'whole_roll'
+            : 'no_roll',
       scopes: scopeList(scope),
       hasSelected: selected !== undefined,
       expose: selected?.expose ?? false,
@@ -507,7 +615,9 @@ export function compileProgram(
   )
 
   // the roots the gate added, after the ones the caller's set had, in the order it added them
-  const added = (answer.run as unknown as { roots?: Map<string, boolean> }).roots
+  const added = (
+    answer.run as unknown as { roots?: Map<string, boolean> }
+  ).roots
 
   for (const name of added?.keys() ?? []) {
     roots?.add(name)
@@ -518,30 +628,64 @@ export function compileProgram(
 
 // WHAT THE BUILD CAME TO, as the result: a refusal, or the five phases' result with the entry's own warnings after the
 // build's and the checked twins beside it, each spread over the result as the original spread it
-function builtResult(built: GraphBuilt, env: string | undefined, library: boolean | undefined): CompileResult {
+function builtResult(
+  built: GraphBuilt,
+  env: string | undefined,
+  library: boolean | undefined,
+): CompileResult {
   if (built.refused.form === 'some') {
-    return { ok: false, diagnostics: built.refused.value as Diagnostic[] }
+    return {
+      ok: false,
+      diagnostics: built.refused.value as Diagnostic[],
+    }
   }
 
-  const compiled = answerResult((built.answer as { form: 'some'; value: DriverAnswer }).value, env, library)
+  const compiled = answerResult(
+    (built.answer as { form: 'some'; value: DriverAnswer }).value,
+    env,
+    library,
+  )
+
   const spelled = built.warnings as Diagnostic[]
   const warned: CompileResult =
-    compiled.ok && spelled.length > 0 ? { ...compiled, warnings: [...compiled.warnings, ...spelled] } : compiled
+    compiled.ok && spelled.length > 0
+      ? { ...compiled, warnings: [...compiled.warnings, ...spelled] }
+      : compiled
 
-  return built.twins.form === 'some' && warned.ok ? { ...warned, twins: built.twins.value as Twin[] } : warned
+  return built.twins.form === 'some' && warned.ok
+    ? { ...warned, twins: built.twins.value as Twin[] }
+    : warned
 }
 
 // WHAT THE FIVE PHASES CAME TO, as the result: a refusal, the fast roll, or the result of the pending emit
-function answerResult(answer: DriverAnswer, env: string | undefined, library: boolean | undefined): CompileResult {
+function answerResult(
+  answer: DriverAnswer,
+  env: string | undefined,
+  library: boolean | undefined,
+): CompileResult {
   if (answer.refused.form === 'some') {
-    return { ok: false, diagnostics: answer.refused.value as Diagnostic[] }
+    return {
+      ok: false,
+      diagnostics: answer.refused.value as Diagnostic[],
+    }
   }
 
   if (answer.roll.form === 'some') {
-    return { ok: true, program: [], typescript: '', warnings: [], roll: answer.roll.value as Roll }
+    return {
+      ok: true,
+      program: [],
+      typescript: '',
+      warnings: [],
+      roll: answer.roll.value as Roll,
+    }
   }
 
-  return emitResult(answer, (answer.pending as { form: 'some'; value: PendingEmit }).value, env, library)
+  return emitResult(
+    answer,
+    (answer.pending as { form: 'some'; value: PendingEmit }).value,
+    env,
+    library,
+  )
 }
 
 // a roll value as the plain value it stands for, as compile/roll.ts reads one back: a key holding `no-value` is there
@@ -558,6 +702,7 @@ function plainValue(value: RollValue): unknown {
       return value.value
     case 'item-values':
       return value.values.map(plainValue)
+
     case 'pair-values': {
       const out: Record<string, unknown> = {}
 
@@ -588,7 +733,12 @@ function rollOfKinds(kinds: RollKind[]): Roll {
 // THE TYPESCRIPT IS BUILT WHEN IT IS FIRST READ. A Rust, Swift or Kotlin build emits from `program` and never reads
 // it, and it was a quarter of every native compile (`tmp/prof-compile.ts`, 2026-10-05). It reads the program and
 // writes nothing back. Enumerable, so a spread or `JSON.stringify` of the result still carries it
-function emitResult(answer: DriverAnswer, pending: PendingEmit, env: string | undefined, library: boolean | undefined): CompileResult {
+function emitResult(
+  answer: DriverAnswer,
+  pending: PendingEmit,
+  env: string | undefined,
+  library: boolean | undefined,
+): CompileResult {
   const run = answer.run as unknown as {
     warnings: Diagnostic[]
     openClaims: string[]
@@ -597,14 +747,23 @@ function emitResult(answer: DriverAnswer, pending: PendingEmit, env: string | un
     roll?: RollKind[]
     wake?: WakeGroup[]
   }
+
   const roll = run.roll ? rollOfKinds(run.roll) : undefined
   const wake = run.wake
   const options = { env, wake, ...(library ? { library: true } : {}) }
-  const result: Record<string, unknown> = { ok: true, program: pending.program }
+  const result: Record<string, unknown> = {
+    ok: true,
+    program: pending.program,
+  }
 
   if (pending.kind === 'modules_emit') {
     result.typescript = ''
-    result.modules = (pending.modules as { form: 'some'; value: Map<string, ModuleEmit> }).value
+    result.modules = (
+      pending.modules as {
+        form: 'some'
+        value: Map<string, ModuleEmit>
+      }
+    ).value
   }
 
   if (pending.kind === 'raw_emit') {
@@ -647,6 +806,9 @@ function emitResult(answer: DriverAnswer, pending: PendingEmit, env: string | un
 
 // THE ENTRY'S RENAMED RECORD FORM IS EXPORTED BY ITS WRITTEN NAME TOO (decision 045), in compile/program-emit.tree
 // (item term-self-host-001-0268)
-export function entryFormAliases(program: Program, file: string): string {
+export function entryFormAliases(
+  program: Program,
+  file: string,
+): string {
   return entryFormAliasesPort(program, file)
 }

@@ -10,11 +10,31 @@ import * as shape from '@term/deck/code/object/object-shape'
 type ChunkParams = { min: number; avg: number; max: number }
 type TreeParams = { avgFanout: number; min: number; max: number }
 
-export const buildBlob = (input: { filePath: string; store: unknown; params?: ChunkParams }): Promise<string> =>
-  port.buildBlob(input.filePath, input.store, input.params ?? chunking.defaultChunkParams())
+export const buildBlob = (input: {
+  filePath: string
+  store: unknown
+  params?: ChunkParams
+}): Promise<string> =>
+  port.buildBlob(
+    input.filePath,
+    input.store,
+    input.params ?? chunking.defaultChunkParams(),
+  )
 
-export const buildTree = (input: { dir: string; store: unknown; params?: ChunkParams; treeParams?: TreeParams; exclude?: Set<string> }): Promise<string> =>
-  port.buildTree(input.dir, input.store, input.params ?? chunking.defaultChunkParams(), input.treeParams ?? shape.defaultTreeParams(), input.exclude ? [...input.exclude] : port.defaultBuildExclude())
+export const buildTree = (input: {
+  dir: string
+  store: unknown
+  params?: ChunkParams
+  treeParams?: TreeParams
+  exclude?: Set<string>
+}): Promise<string> =>
+  port.buildTree(
+    input.dir,
+    input.store,
+    input.params ?? chunking.defaultChunkParams(),
+    input.treeParams ?? shape.defaultTreeParams(),
+    input.exclude ? [...input.exclude] : port.defaultBuildExclude(),
+  )
 
 export const buildCommit = (input: {
   dir: string
@@ -28,4 +48,15 @@ export const buildCommit = (input: {
   params?: ChunkParams
   treeParams?: TreeParams
 }): Promise<{ commitId: string; commit: never }> =>
-  port.buildCommit(input.dir, input.package, input.deps, input.author, input.time, input.message ?? '', input.parents ?? [], input.store, input.params ?? chunking.defaultChunkParams(), input.treeParams ?? shape.defaultTreeParams()) as never
+  port.buildCommit(
+    input.dir,
+    input.package,
+    input.deps,
+    input.author,
+    input.time,
+    input.message ?? '',
+    input.parents ?? [],
+    input.store,
+    input.params ?? chunking.defaultChunkParams(),
+    input.treeParams ?? shape.defaultTreeParams(),
+  ) as never

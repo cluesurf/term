@@ -24,7 +24,10 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 const project = tempDir('term-emit-fragment-')
 mkdirSync(join(project, 'code'))
-writeFileSync(join(project, 'deck.tree'), 'deck @probe/emit-fragment\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\n')
+writeFileSync(
+  join(project, 'deck.tree'),
+  'deck @probe/emit-fragment\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\n',
+)
 
 // inside both fragments: numbers, a branch, recursion
 writeFileSync(
@@ -50,23 +53,45 @@ writeFileSync(
 `,
 )
 
-const term = (...args: string[]) => spawnSync(process.execPath, [LINE, ...args], { cwd: project, encoding: 'utf8' })
+const term = (...args: string[]) =>
+  spawnSync(process.execPath, [LINE, ...args], {
+    cwd: project,
+    encoding: 'utf8',
+  })
 
 for (const target of ['wgsl', 'hvm']) {
   const fib = term('make', '--emit', target, 'code/fib.tree')
   // the program, with no construct marked in place of code: a marker is `0 /* ... */` in WGSL and a header line in HVM
   const marked = /0 \/\*|SEED-UNSUPPORTED on/.test(fib.stdout)
-  ok(`${target}: a numeric, recursive program emits`, fib.status === 0 && /fib/.test(fib.stdout) && !marked, `${fib.status} ${fib.stdout} ${fib.stderr}`)
+  ok(
+    `${target}: a numeric, recursive program emits`,
+    fib.status === 0 && /fib/.test(fib.stdout) && !marked,
+    `${fib.status} ${fib.stdout} ${fib.stderr}`,
+  )
 
-  const greet = term('make', '--emit', target, 'code/greet.tree', '--out', `greet.${target}`)
+  const greet = term(
+    'make',
+    '--emit',
+    target,
+    'code/greet.tree',
+    '--out',
+    `greet.${target}`,
+  )
   ok(
     `${target}: text is refused, naming the construct and its line, and nothing is written`,
-    greet.status === 1 && /outside what (WGSL|HVM) lowers/.test(greet.stderr) && /greet\.tree:4/.test(greet.stderr) && !existsSync(join(project, `greet.${target}`)),
+    greet.status === 1 &&
+      /outside what (WGSL|HVM) lowers/.test(greet.stderr) &&
+      /greet\.tree:4/.test(greet.stderr) &&
+      !existsSync(join(project, `greet.${target}`)),
     `${greet.status} ${greet.stderr}`,
   )
 
   const run = term('make', '--emit', target, 'code/fib.tree', '--run')
-  ok(`${target}: --run is refused as usage, the target is emitted as source`, run.status === 2 && /emitted as source/.test(run.stderr), `${run.status} ${run.stderr}`)
+  ok(
+    `${target}: --run is refused as usage, the target is emitted as source`,
+    run.status === 2 && /emitted as source/.test(run.stderr),
+    `${run.status} ${run.stderr}`,
+  )
 }
 
 console.log(`\nemit-fragment: ${pass} pass, ${fail} fail`)

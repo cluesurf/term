@@ -69,7 +69,13 @@ const only = process.env.SB_ONLY
 const dir = mkdtempSync(join(tmpdir(), 'term-shared-borrow-'))
 
 for (const backend of BACKENDS.filter(one => !only || one === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'borrow' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'borrow',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)

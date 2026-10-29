@@ -57,7 +57,9 @@ const readRuntime = (path: string): string | undefined => {
   const prefix = '@term/base/'
   path = path.replace(/^@term\/base\//, prefix)
 
-  if (!path.startsWith(prefix)) {return undefined}
+  if (!path.startsWith(prefix)) {
+    return undefined
+  }
 
   const file = join(baseTree, path.slice(prefix.length))
 
@@ -73,8 +75,9 @@ async function loadProgram(
   )
 
   if (!result.ok) {
-    for (const d of result.diagnostics)
-      {console.log(render(d, source.split('\n'), false))}
+    for (const d of result.diagnostics) {
+      console.log(render(d, source.split('\n'), false))
+    }
 
     throw new Error('compile failed')
   }
@@ -1472,9 +1475,7 @@ async function main(): Promise<void> {
   )
   expect(
     'network/dns: resolve of localhost includes the loopback address',
-    ((await dns.all('localhost')) as string[]).includes(
-      '127.0.0.1',
-    ),
+    ((await dns.all('localhost')) as string[]).includes('127.0.0.1'),
     true,
   )
 
@@ -1720,11 +1721,7 @@ async function main(): Promise<void> {
   expect('random/integer(1,6) is in range', r >= 1 && r <= 6, true)
 
   const sg = await loadProgram(STRING)
-  expect(
-    'text/string: to-upper uppercases',
-    sg.shout('hello'),
-    'HELLO',
-  )
+  expect('text/string: to-upper uppercases', sg.shout('hello'), 'HELLO')
   expect(
     'text/string: trim strips whitespace',
     sg.trimmed('  hi  '),
@@ -2144,9 +2141,7 @@ async function main(): Promise<void> {
 
   // the public digest interface compiles for every target. digest is a declarative `bind`: it inlines each platform's
   // built-in crypto call directly at the use site (no hand-written shim), so the emit shows the native expression.
-  const digestSrc = stdlib(
-    '@term/base/code/cryptography/digest',
-  )!.text
+  const digestSrc = stdlib('@term/base/code/cryptography/digest')!.text
 
   const digestFor = (env: 'node' | 'rust' | 'swift' | 'kotlin') =>
     compile(
@@ -2357,7 +2352,9 @@ async function main(): Promise<void> {
     `\nio: ${pass} pass, ${fail} fail  (public file API -> hidden node native -> real fs; + cross-target compile)`,
   )
 
-  if (fail > 0) {process.exit(1)}
+  if (fail > 0) {
+    process.exit(1)
+  }
 }
 
 main()

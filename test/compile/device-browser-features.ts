@@ -11,7 +11,14 @@
 //
 // Skipped, with the reason, without Chrome. Run: npx tsx test/compile/device-browser-features.ts
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -33,7 +40,8 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+const CHROME =
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 
 if (!existsSync(CHROME)) {
   console.log(`skip  device-browser-features  (no Chrome at ${CHROME})`)
@@ -67,7 +75,11 @@ const CALLS: Call[] = [
   ['vibrate', 'vibrate', ['medium']],
   ['torch-state', 'torch-state', []],
   ['torch-set', 'set-torch', ['on']],
-  ['notification', 'show-notification', [TITLE, 'posted by device-browser-features']],
+  [
+    'notification',
+    'show-notification',
+    [TITLE, 'posted by device-browser-features'],
+  ],
   ['share', 'share-text', ['shared by device-browser-features']],
   ['motion', 'read-motion', []],
   ['camera', 'take-photo', []],
@@ -107,7 +119,11 @@ const MOVED = { latitude: 48.860611, longitude: 2.337644 }
 const PROGRAM = [
   'load @term/base/log',
   '  find info',
-  ...LOADS.flatMap(([file, finds]) => ['', `load @term/site/code/view/${file}`, ...finds.map(one => `  find ${one}`)]),
+  ...LOADS.flatMap(([file, finds]) => [
+    '',
+    `load @term/site/code/view/${file}`,
+    ...finds.map(one => `  find ${one}`),
+  ]),
   '',
   'task boot',
   '  mark async',
@@ -115,7 +131,11 @@ const PROGRAM = [
   ...CALLS.flatMap(([step, task, args]) => [
     `  save said-${step}`,
     `    call ${task}`,
-    ...args.map(arg => (typeof arg === 'number' ? `      code ${arg}` : `      text <${arg}>`)),
+    ...args.map(arg =>
+      typeof arg === 'number'
+        ? `      code ${arg}`
+        : `      text <${arg}>`,
+    ),
     '  call info',
     `    text <step ${step} {said-${step}}>`,
   ]),
@@ -137,24 +157,53 @@ const PROGRAM = [
 async function buildPage(): Promise<string> {
   const page = join(dir, 'page.tree')
   writeFileSync(page, PROGRAM)
-  const result = compile({ file: page, text: PROGRAM }, { resolve: projectResolver(ROOT, 'browser'), env: 'browser' })
+  const result = compile(
+    { file: page, text: PROGRAM },
+    { resolve: projectResolver(ROOT, 'browser'), env: 'browser' },
+  )
 
   if (!result.ok) {
-    throw new Error(`the page failed to compile: ${result.diagnostics.slice(0, 3).map(one => one.message).join('; ')}`)
+    throw new Error(
+      `the page failed to compile: ${result.diagnostics
+        .slice(0, 3)
+        .map(one => one.message)
+        .join('; ')}`,
+    )
   }
 
-  const readRuntime = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, 'utf8') : undefined)
-  const prelude = nativePrelude(result.program, 'browser', readRuntime, result.typescript)
+  const readRuntime = (file: string): string | undefined =>
+    existsSync(file) ? readFileSync(file, 'utf8') : undefined
+  const prelude = nativePrelude(
+    result.program,
+    'browser',
+    readRuntime,
+    result.typescript,
+  )
   const work = join(dir, 'work')
   mkdirSync(work, { recursive: true })
-  writeFileSync(join(work, 'app.ts'), `${prelude}\n${result.typescript}`)
-  writeFileSync(join(work, 'entry.ts'), "import { boot } from './app'\nboot()\n")
+  writeFileSync(
+    join(work, 'app.ts'),
+    `${prelude}\n${result.typescript}`,
+  )
+  writeFileSync(
+    join(work, 'entry.ts'),
+    "import { boot } from './app'\nboot()\n",
+  )
   const { build } = await import('esbuild')
-  const bundled = await build({ entryPoints: [join(work, 'entry.ts')], bundle: true, format: 'esm', platform: 'browser', write: false })
+  const bundled = await build({
+    entryPoints: [join(work, 'entry.ts')],
+    bundle: true,
+    format: 'esm',
+    platform: 'browser',
+    write: false,
+  })
   const site = join(dir, 'site')
   mkdirSync(site, { recursive: true })
   writeFileSync(join(site, 'app.js'), bundled.outputFiles[0]!.text)
-  writeFileSync(join(site, 'index.html'), '<!doctype html><meta charset="utf-8"><title>Term device</title><script type="module" src="./app.js"></script>')
+  writeFileSync(
+    join(site, 'index.html'),
+    '<!doctype html><meta charset="utf-8"><title>Term device</title><script type="module" src="./app.js"></script>',
+  )
 
   return site
 }
@@ -162,40 +211,85 @@ async function buildPage(): Promise<string> {
 // one DevTools connection: a request is answered by its id, and an event goes to whoever listens for its method
 class Protocol {
   private next = 1
-  private waiting = new Map<number, (value: { result?: unknown; error?: { message: string } }) => void>()
-  private listeners: ((method: string, params: Record<string, unknown>, session?: string) => void)[] = []
+  private waiting = new Map<
+    number,
+    (value: { result?: unknown; error?: { message: string } }) => void
+  >()
+  private listeners: ((
+    method: string,
+    params: Record<string, unknown>,
+    session?: string,
+  ) => void)[] = []
 
   constructor(private socket: WebSocket) {
     socket.addEventListener('message', event => {
-      const message = JSON.parse(String(event.data)) as { id?: number; method?: string; params?: Record<string, unknown>; sessionId?: string; result?: unknown; error?: { message: string } }
+      const message = JSON.parse(String(event.data)) as {
+        id?: number
+        method?: string
+        params?: Record<string, unknown>
+        sessionId?: string
+        result?: unknown
+        error?: { message: string }
+      }
 
       if (message.id !== undefined) {
         this.waiting.get(message.id)?.(message)
         this.waiting.delete(message.id)
       } else if (message.method) {
-        for (const listener of this.listeners) listener(message.method, message.params ?? {}, message.sessionId)
+        for (const listener of this.listeners)
+          listener(
+            message.method,
+            message.params ?? {},
+            message.sessionId,
+          )
       }
     })
   }
 
-  send(method: string, params: Record<string, unknown> = {}, sessionId?: string): Promise<Record<string, unknown>> {
+  send(
+    method: string,
+    params: Record<string, unknown> = {},
+    sessionId?: string,
+  ): Promise<Record<string, unknown>> {
     const id = this.next++
-    this.socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }))
+    this.socket.send(
+      JSON.stringify({
+        id,
+        method,
+        params,
+        ...(sessionId ? { sessionId } : {}),
+      }),
+    )
 
     return new Promise((resolve, reject) =>
-      this.waiting.set(id, answer => (answer.error ? reject(new Error(`${method}: ${answer.error.message}`)) : resolve((answer.result ?? {}) as Record<string, unknown>))),
+      this.waiting.set(id, answer =>
+        answer.error
+          ? reject(new Error(`${method}: ${answer.error.message}`))
+          : resolve((answer.result ?? {}) as Record<string, unknown>),
+      ),
     )
   }
 
-  on(listener: (method: string, params: Record<string, unknown>, session?: string) => void): void {
+  on(
+    listener: (
+      method: string,
+      params: Record<string, unknown>,
+      session?: string,
+    ) => void,
+  ): void {
     this.listeners.push(listener)
   }
 }
 
-const pause = (ms: number) => new Promise(settle => setTimeout(settle, ms))
+const pause = (ms: number) =>
+  new Promise(settle => setTimeout(settle, ms))
 
 // a sine of `hertz` at half scale, `seconds` long, as a 16-bit mono WAV: what Chrome's fake microphone is told to play
-function sineWave(hertz: number, rate: number, seconds: number): Buffer {
+function sineWave(
+  hertz: number,
+  rate: number,
+  seconds: number,
+): Buffer {
   const count = rate * seconds
   const out = Buffer.alloc(44 + count * 2)
   out.write('RIFF', 0, 'ascii')
@@ -211,29 +305,58 @@ function sineWave(hertz: number, rate: number, seconds: number): Buffer {
   out.write('data', 36, 'ascii')
   out.writeUInt32LE(count * 2, 40)
 
-  for (let index = 0; index < count; index++) out.writeInt16LE(Math.round(Math.sin((2 * Math.PI * hertz * index) / rate) * 16_000), 44 + index * 2)
+  for (let index = 0; index < count; index++)
+    out.writeInt16LE(
+      Math.round(
+        Math.sin((2 * Math.PI * hertz * index) / rate) * 16_000,
+      ),
+      44 + index * 2,
+    )
 
   return out
 }
 
 // a WAV's format and its samples, read from its RIFF chunks. Undefined when the bytes are not a WAV
-function readWave(bytes: Buffer): { format: number; channels: number; rate: number; bits: number; samples: Int16Array } | undefined {
-  if (bytes.length < 44 || bytes.toString('ascii', 0, 4) !== 'RIFF' || bytes.toString('ascii', 8, 12) !== 'WAVE') return undefined
+function readWave(bytes: Buffer):
+  | {
+      format: number
+      channels: number
+      rate: number
+      bits: number
+      samples: Int16Array
+    }
+  | undefined {
+  if (
+    bytes.length < 44 ||
+    bytes.toString('ascii', 0, 4) !== 'RIFF' ||
+    bytes.toString('ascii', 8, 12) !== 'WAVE'
+  )
+    return undefined
 
   let at = 12
-  let format: { format: number; channels: number; rate: number; bits: number } | undefined
+  let format:
+    | { format: number; channels: number; rate: number; bits: number }
+    | undefined
 
   while (at + 8 <= bytes.length) {
     const id = bytes.toString('ascii', at, at + 4)
     const size = bytes.readUInt32LE(at + 4)
 
     if (id === 'fmt ') {
-      format = { format: bytes.readUInt16LE(at + 8), channels: bytes.readUInt16LE(at + 10), rate: bytes.readUInt32LE(at + 12), bits: bytes.readUInt16LE(at + 22) }
+      format = {
+        format: bytes.readUInt16LE(at + 8),
+        channels: bytes.readUInt16LE(at + 10),
+        rate: bytes.readUInt32LE(at + 12),
+        bits: bytes.readUInt16LE(at + 22),
+      }
     } else if (id === 'data' && format) {
-      const count = Math.floor(Math.min(size, bytes.length - at - 8) / 2)
+      const count = Math.floor(
+        Math.min(size, bytes.length - at - 8) / 2,
+      )
       const samples = new Int16Array(count)
 
-      for (let index = 0; index < count; index++) samples[index] = bytes.readInt16LE(at + 8 + index * 2)
+      for (let index = 0; index < count; index++)
+        samples[index] = bytes.readInt16LE(at + 8 + index * 2)
 
       return { ...format, samples }
     }
@@ -274,11 +397,20 @@ function pitchOf(samples: Int16Array, rate: number): number {
 
 async function main(): Promise<void> {
   const site = await buildPage()
-  ok('the page builds for the browser env', existsSync(join(site, 'app.js')))
+  ok(
+    'the page builds for the browser env',
+    existsSync(join(site, 'app.js')),
+  )
 
-  const types: Record<string, string> = { '.js': 'text/javascript', '.html': 'text/html' }
+  const types: Record<string, string> = {
+    '.js': 'text/javascript',
+    '.html': 'text/html',
+  }
   const server = createServer((request, response) => {
-    const file = join(site, request.url === '/' ? 'index.html' : (request.url ?? '').slice(1))
+    const file = join(
+      site,
+      request.url === '/' ? 'index.html' : (request.url ?? '').slice(1),
+    )
 
     if (!file.startsWith(site) || !existsSync(file)) {
       response.writeHead(404).end()
@@ -286,9 +418,16 @@ async function main(): Promise<void> {
       return
     }
 
-    response.writeHead(200, { 'content-type': types[extname(file)] ?? 'application/octet-stream' }).end(readFileSync(file))
+    response
+      .writeHead(200, {
+        'content-type':
+          types[extname(file)] ?? 'application/octet-stream',
+      })
+      .end(readFileSync(file))
   })
-  await new Promise<void>(settle => server.listen(0, '127.0.0.1', settle))
+  await new Promise<void>(settle =>
+    server.listen(0, '127.0.0.1', settle),
+  )
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 
   const profile = join(dir, 'profile')
@@ -318,87 +457,200 @@ async function main(): Promise<void> {
     const portFile = join(profile, 'DevToolsActivePort')
     const deadline = Date.now() + 30_000
 
-    while (!existsSync(portFile) && Date.now() < deadline) await pause(100)
+    while (!existsSync(portFile) && Date.now() < deadline)
+      await pause(100)
 
-    const [port, path] = readFileSync(portFile, 'utf8').trim().split('\n')
+    const [port, path] = readFileSync(portFile, 'utf8')
+      .trim()
+      .split('\n')
     const socket = new WebSocket(`ws://127.0.0.1:${port}${path}`)
     await new Promise<void>((settle, refuse) => {
       socket.addEventListener('open', () => settle())
-      socket.addEventListener('error', () => refuse(new Error('the DevTools socket did not open')))
+      socket.addEventListener('error', () =>
+        refuse(new Error('the DevTools socket did not open')),
+      )
     })
     const protocol = new Protocol(socket)
 
     // what a person's browser would hold for this origin
     await protocol.send('Browser.grantPermissions', {
       origin,
-      permissions: ['geolocation', 'videoCapture', 'audioCapture', 'clipboardReadWrite', 'clipboardSanitizedWrite', 'notifications'],
+      permissions: [
+        'geolocation',
+        'videoCapture',
+        'audioCapture',
+        'clipboardReadWrite',
+        'clipboardSanitizedWrite',
+        'notifications',
+      ],
     })
-    const { targetId } = await protocol.send('Target.createTarget', { url: 'about:blank' })
-    const { sessionId } = (await protocol.send('Target.attachToTarget', { targetId, flatten: true })) as { sessionId: string }
+    const { targetId } = await protocol.send('Target.createTarget', {
+      url: 'about:blank',
+    })
+    const { sessionId } = (await protocol.send(
+      'Target.attachToTarget',
+      { targetId, flatten: true },
+    )) as { sessionId: string }
     const lines: string[] = []
     protocol.on((method, params, session) => {
-      if (method === 'Runtime.consoleAPICalled' && session === sessionId) {
-        const args = (params['args'] as { value?: unknown }[] | undefined) ?? []
+      if (
+        method === 'Runtime.consoleAPICalled' &&
+        session === sessionId
+      ) {
+        const args =
+          (params['args'] as { value?: unknown }[] | undefined) ?? []
         lines.push(args.map(one => String(one.value ?? '')).join(' '))
       }
     })
     await protocol.send('Runtime.enable', {}, sessionId)
     await protocol.send('Page.enable', {}, sessionId)
-    await protocol.send('Emulation.setGeolocationOverride', { ...PLACE, accuracy: 5 }, sessionId)
+    await protocol.send(
+      'Emulation.setGeolocationOverride',
+      { ...PLACE, accuracy: 5 },
+      sessionId,
+    )
     // the clipboard reads and writes only for a focused page
-    await protocol.send('Emulation.setFocusEmulationEnabled', { enabled: true }, sessionId)
-    await protocol.send('Page.navigate', { url: `${origin}/` }, sessionId)
+    await protocol.send(
+      'Emulation.setFocusEmulationEnabled',
+      { enabled: true },
+      sessionId,
+    )
+    await protocol.send(
+      'Page.navigate',
+      { url: `${origin}/` },
+      sessionId,
+    )
 
     const finished = Date.now() + 60_000
 
-    while (!lines.some(line => line.includes('step done')) && Date.now() < finished) await pause(100)
+    while (
+      !lines.some(line => line.includes('step done')) &&
+      Date.now() < finished
+    )
+      await pause(100)
 
     const said = (name: string): string => {
-      const line = lines.find(one => one.includes(`step ${name} `)) ?? ''
+      const line =
+        lines.find(one => one.includes(`step ${name} `)) ?? ''
 
-      return line.slice(line.indexOf(`step ${name} `) + `step ${name} `.length).trim()
+      return line
+        .slice(line.indexOf(`step ${name} `) + `step ${name} `.length)
+        .trim()
     }
-    ok('the page ran every capability and said it was done', lines.some(line => line.includes('step done')), lines.join(' | ').slice(-800))
+    ok(
+      'the page ran every capability and said it was done',
+      lines.some(line => line.includes('step done')),
+      lines.join(' | ').slice(-800),
+    )
 
-    ok('chrome: the clipboard takes a line and gives it back', said('clipboard-write') === 'written' && said('clipboard-read') === TOKEN, `${said('clipboard-write')} ${said('clipboard-read')}`)
-    ok('chrome: the grants Chrome was given read granted', ['camera', 'location', 'notification'].every(name => said(`permission-${name}`) === 'granted'), ['camera', 'location', 'notification'].map(name => said(`permission-${name}`)).join(' '))
+    ok(
+      'chrome: the clipboard takes a line and gives it back',
+      said('clipboard-write') === 'written' &&
+        said('clipboard-read') === TOKEN,
+      `${said('clipboard-write')} ${said('clipboard-read')}`,
+    )
+    ok(
+      'chrome: the grants Chrome was given read granted',
+      ['camera', 'location', 'notification'].every(
+        name => said(`permission-${name}`) === 'granted',
+      ),
+      ['camera', 'location', 'notification']
+        .map(name => said(`permission-${name}`))
+        .join(' '),
+    )
 
     const [latitude = '', longitude = ''] = said('position').split(' ')
-    ok('chrome: the position is the one Chrome was told', Math.abs(Number(latitude) - PLACE.latitude) < 0.0005 && Math.abs(Number(longitude) - PLACE.longitude) < 0.0005, said('position'))
+    ok(
+      'chrome: the position is the one Chrome was told',
+      Math.abs(Number(latitude) - PLACE.latitude) < 0.0005 &&
+        Math.abs(Number(longitude) - PLACE.longitude) < 0.0005,
+      said('position'),
+    )
 
-    const percent = /(\d+)%/.exec(spawnSync('pmset', ['-g', 'batt'], { encoding: 'utf8' }).stdout)?.[1]
+    const percent = /(\d+)%/.exec(
+      spawnSync('pmset', ['-g', 'batt'], { encoding: 'utf8' }).stdout,
+    )?.[1]
     const level = Number(said('battery').split(' ')[0])
     ok(
       "chrome: the battery is the Mac's own, against pmset",
-      percent === undefined ? /^\d\.\d\d (charging|full|unplugged)$|^unavailable$/.test(said('battery')) : Math.abs(level * 100 - Number(percent)) <= 1,
+      percent === undefined
+        ? /^\d\.\d\d (charging|full|unplugged)$|^unavailable$/.test(
+            said('battery'),
+          )
+        : Math.abs(level * 100 - Number(percent)) <= 1,
       `${said('battery')} against ${percent ?? 'no battery'}%`,
     )
-    ok('chrome: the network is online', /^online (wifi|cellular|wired|other)$/.test(said('network')), said('network'))
-    ok('chrome: a vibration answers from the closed set', ['played', 'unavailable'].includes(said('vibrate')), said('vibrate'))
-    ok("chrome: the fake camera has no torch, said so both ways", said('torch-state') === 'unavailable' && said('torch-set') === 'unavailable', `${said('torch-state')} ${said('torch-set')}`)
-    ok('chrome: the notification is shown, with the grant', said('notification') === 'shown', said('notification'))
-    ok('chrome: a share no click asked for is refused, or there is none', ['denied', 'unavailable'].includes(said('share')), said('share'))
-    ok('chrome: no accelerometer on a desktop, said so', said('motion') === 'unavailable', said('motion'))
+    ok(
+      'chrome: the network is online',
+      /^online (wifi|cellular|wired|other)$/.test(said('network')),
+      said('network'),
+    )
+    ok(
+      'chrome: a vibration answers from the closed set',
+      ['played', 'unavailable'].includes(said('vibrate')),
+      said('vibrate'),
+    )
+    ok(
+      'chrome: the fake camera has no torch, said so both ways',
+      said('torch-state') === 'unavailable' &&
+        said('torch-set') === 'unavailable',
+      `${said('torch-state')} ${said('torch-set')}`,
+    )
+    ok(
+      'chrome: the notification is shown, with the grant',
+      said('notification') === 'shown',
+      said('notification'),
+    )
+    ok(
+      'chrome: a share no click asked for is refused, or there is none',
+      ['denied', 'unavailable'].includes(said('share')),
+      said('share'),
+    )
+    ok(
+      'chrome: no accelerometer on a desktop, said so',
+      said('motion') === 'unavailable',
+      said('motion'),
+    )
 
     // the photo, checked where its blob lives: in the page
     const photo = said('camera')
-    ok('chrome: the camera takes a photo from the fake device', photo.startsWith('photo blob:'), photo)
+    ok(
+      'chrome: the camera takes a photo from the fake device',
+      photo.startsWith('photo blob:'),
+      photo,
+    )
 
     if (photo.startsWith('photo blob:')) {
       const { result } = (await protocol.send(
         'Runtime.evaluate',
-        { expression: `fetch(${JSON.stringify(photo.slice('photo '.length))}).then(r => r.blob()).then(b => b.type + ' ' + b.size)`, awaitPromise: true, returnByValue: true },
+        {
+          expression: `fetch(${JSON.stringify(photo.slice('photo '.length))}).then(r => r.blob()).then(b => b.type + ' ' + b.size)`,
+          awaitPromise: true,
+          returnByValue: true,
+        },
         sessionId,
       )) as { result: { value?: string } }
       const [type = '', size = '0'] = (result.value ?? '').split(' ')
-      ok('chrome: and it is a JPEG of some size', type === 'image/jpeg' && Number(size) > 1000, result.value ?? '')
+      ok(
+        'chrome: and it is a JPEG of some size',
+        type === 'image/jpeg' && Number(size) > 1000,
+        result.value ?? '',
+      )
     }
 
     // the recording, its bytes brought out of the page and read here: a WAV in the contract's format, the length asked
     // for, and the fake microphone's tone found again by counting the times the wave rises through zero
-    ok('chrome: the microphone grant Chrome was given reads granted', said('permission-microphone') === 'granted', said('permission-microphone'))
+    ok(
+      'chrome: the microphone grant Chrome was given reads granted',
+      said('permission-microphone') === 'granted',
+      said('permission-microphone'),
+    )
     const recording = said('microphone')
-    ok('chrome: the microphone records from the fake device', recording.startsWith('audio blob:'), recording)
+    ok(
+      'chrome: the microphone records from the fake device',
+      recording.startsWith('audio blob:'),
+      recording,
+    )
 
     if (recording.startsWith('audio blob:')) {
       const { result } = (await protocol.send(
@@ -414,12 +666,28 @@ async function main(): Promise<void> {
       const seconds = wave ? wave.samples.length / wave.rate : 0
       ok(
         'chrome: and it is a WAV of 16-bit PCM, mono, 16,000 a second, about as long as asked',
-        wave !== undefined && wave.format === 1 && wave.channels === 1 && wave.rate === 16_000 && wave.bits === 16 && Math.abs(seconds - RECORDING) < 0.25,
-        JSON.stringify(wave && { ...wave, samples: wave.samples.length, seconds }),
+        wave !== undefined &&
+          wave.format === 1 &&
+          wave.channels === 1 &&
+          wave.rate === 16_000 &&
+          wave.bits === 16 &&
+          Math.abs(seconds - RECORDING) < 0.25,
+        JSON.stringify(
+          wave && { ...wave, samples: wave.samples.length, seconds },
+        ),
       )
       const heard = wave ? pitchOf(wave.samples, wave.rate) : 0
-      const peak = wave ? wave.samples.reduce((most, one) => Math.max(most, Math.abs(one)), 0) : 0
-      ok(`chrome: and it holds the ${TONE} Hz tone the fake microphone played`, Math.abs(heard - TONE) < 10, `${heard.toFixed(1)} Hz, loudest sample ${peak}`)
+      const peak = wave
+        ? wave.samples.reduce(
+            (most, one) => Math.max(most, Math.abs(one)),
+            0,
+          )
+        : 0
+      ok(
+        `chrome: and it holds the ${TONE} Hz tone the fake microphone played`,
+        Math.abs(heard - TONE) < 10,
+        `${heard.toFixed(1)} Hz, loudest sample ${peak}`,
+      )
     }
 
     // the watchers: Chrome is moved, then taken offline and back, as the platform would be, and each watcher must hear
@@ -427,40 +695,103 @@ async function main(): Promise<void> {
     const heard = (name: string): string[] => {
       const at = `step watch-${name} `
 
-      return lines.filter(one => one.includes(at)).map(one => one.slice(one.indexOf(at) + at.length).trim())
+      return lines
+        .filter(one => one.includes(at))
+        .map(one => one.slice(one.indexOf(at) + at.length).trim())
     }
     const until = async (done: () => boolean): Promise<void> => {
       const by = Date.now() + 15_000
 
       while (!done() && Date.now() < by) await pause(100)
     }
-    const near = (said: string, place: { latitude: number; longitude: number }): boolean => {
+    const near = (
+      said: string,
+      place: { latitude: number; longitude: number },
+    ): boolean => {
       const [a = '', b = ''] = said.split(' ')
 
-      return Math.abs(Number(a) - place.latitude) < 0.0005 && Math.abs(Number(b) - place.longitude) < 0.0005
+      return (
+        Math.abs(Number(a) - place.latitude) < 0.0005 &&
+        Math.abs(Number(b) - place.longitude) < 0.0005
+      )
     }
 
-    await until(() => heard('position').length > 0 && heard('network').length > 0 && heard('motion').length > 0)
-    await protocol.send('Emulation.setGeolocationOverride', { ...MOVED, accuracy: 5 }, sessionId)
-    await until(() => heard('position').some(said => near(said, MOVED)) && heard('position-again').some(said => near(said, MOVED)))
+    await until(
+      () =>
+        heard('position').length > 0 &&
+        heard('network').length > 0 &&
+        heard('motion').length > 0,
+    )
+    await protocol.send(
+      'Emulation.setGeolocationOverride',
+      { ...MOVED, accuracy: 5 },
+      sessionId,
+    )
+    await until(
+      () =>
+        heard('position').some(said => near(said, MOVED)) &&
+        heard('position-again').some(said => near(said, MOVED)),
+    )
     await protocol.send('Network.enable', {}, sessionId)
-    const conditions = { latency: 0, downloadThroughput: -1, uploadThroughput: -1 }
-    await protocol.send('Network.emulateNetworkConditions', { offline: true, ...conditions }, sessionId)
+    const conditions = {
+      latency: 0,
+      downloadThroughput: -1,
+      uploadThroughput: -1,
+    }
+    await protocol.send(
+      'Network.emulateNetworkConditions',
+      { offline: true, ...conditions },
+      sessionId,
+    )
     await until(() => heard('network').includes('offline none'))
-    await protocol.send('Network.emulateNetworkConditions', { offline: false, ...conditions }, sessionId)
-    await until(() => heard('network').at(-1)?.startsWith('online') === true && heard('network').length >= 3)
+    await protocol.send(
+      'Network.emulateNetworkConditions',
+      { offline: false, ...conditions },
+      sessionId,
+    )
+    await until(
+      () =>
+        heard('network').at(-1)?.startsWith('online') === true &&
+        heard('network').length >= 3,
+    )
 
-    ok('chrome: the position watcher hears where it is first', near(heard('position')[0] ?? '', PLACE), heard('position').join(' | '))
-    ok('chrome: and then the move, without asking again', heard('position').some(said => near(said, MOVED)), heard('position').join(' | '))
-    ok('chrome: a second watcher on the same position hears the move too', heard('position-again').some(said => near(said, MOVED)), heard('position-again').join(' | '))
-    ok('chrome: a watcher dropped at once hears nothing after', !heard('position-dropped').some(said => near(said, MOVED)), heard('position-dropped').join(' | '))
+    ok(
+      'chrome: the position watcher hears where it is first',
+      near(heard('position')[0] ?? '', PLACE),
+      heard('position').join(' | '),
+    )
+    ok(
+      'chrome: and then the move, without asking again',
+      heard('position').some(said => near(said, MOVED)),
+      heard('position').join(' | '),
+    )
+    ok(
+      'chrome: a second watcher on the same position hears the move too',
+      heard('position-again').some(said => near(said, MOVED)),
+      heard('position-again').join(' | '),
+    )
+    ok(
+      'chrome: a watcher dropped at once hears nothing after',
+      !heard('position-dropped').some(said => near(said, MOVED)),
+      heard('position-dropped').join(' | '),
+    )
     ok(
       'chrome: the network watcher hears online, offline and online again',
-      /^online /.test(heard('network')[0] ?? '') && heard('network').includes('offline none') && /^online /.test(heard('network').at(-1) ?? ''),
+      /^online /.test(heard('network')[0] ?? '') &&
+        heard('network').includes('offline none') &&
+        /^online /.test(heard('network').at(-1) ?? ''),
       heard('network').join(' | '),
     )
-    ok('chrome: the battery watcher answers what the read answers', heard('battery')[0] === said('battery'), `${heard('battery').join(' | ')} against ${said('battery')}`)
-    ok('chrome: no accelerometer, so the motion watcher says so once', heard('motion').join(' | ') === 'unavailable', heard('motion').join(' | '))
+    ok(
+      'chrome: the battery watcher answers what the read answers',
+      heard('battery')[0] === said('battery'),
+      `${heard('battery').join(' | ')} against ${said('battery')}`,
+    )
+    ok(
+      'chrome: no accelerometer, so the motion watcher says so once',
+      heard('motion').join(' | ') === 'unavailable',
+      heard('motion').join(' | '),
+    )
 
     socket.close()
   } finally {
@@ -474,7 +805,12 @@ async function main(): Promise<void> {
       chrome.kill()
     })
     server.close()
-    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    rmSync(dir, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 200,
+    })
   }
 
   console.log(`\ndevice-browser-features: ${pass} pass, ${fail} fail`)
@@ -485,7 +821,11 @@ async function main(): Promise<void> {
 }
 
 main().catch(error => {
-  console.log(`FAIL  device-browser-features  ${String(error instanceof Error ? error.message : error).slice(0, 1200)}`)
-  console.log(`\ndevice-browser-features: ${pass} pass, ${fail + 1} fail`)
+  console.log(
+    `FAIL  device-browser-features  ${String(error instanceof Error ? error.message : error).slice(0, 1200)}`,
+  )
+  console.log(
+    `\ndevice-browser-features: ${pass} pass, ${fail + 1} fail`,
+  )
   process.exit(1)
 })

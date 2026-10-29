@@ -10,7 +10,10 @@
 
 import { codeRootOf } from '@term/make/code/resolve'
 import * as disk from '@term/make/code/compile/mill-files-disk'
-import type { MineGrammar, MintGrammar } from '@term/make/code/compile/mill-run'
+import type {
+  MineGrammar,
+  MintGrammar,
+} from '@term/make/code/compile/mill-run'
 
 export type LoadedGrammar = {
   mine: MineGrammar
@@ -29,8 +32,13 @@ export type LoadedGrammar = {
 // resolve one `load` path against the mill: `@term/mill/<p>` by the package path rule every resolver calls (the mill's
 // code root, then its package root), or a `./<p>` relative to the importer. `millRoot` is where the dialects are,
 // deck/mill/code/tree since 2026-10-06, so the package is the nearest folder above it holding a `deck.tree`
-export function resolveMillImport(millRoot: string, from: string, path: string): string | undefined {
+export function resolveMillImport(
+  millRoot: string,
+  from: string,
+  path: string,
+): string | undefined {
   const found = disk.resolveMillImport(millRoot, from, path, codeRootOf)
+
   return found.form === 'some' ? found.value : undefined
 }
 
@@ -80,10 +88,20 @@ export function readGrammarFile(file: string): GrammarFile | undefined {
 // ONE grammar file with its load closure inlined and every import block removed: the text a generator bakes into a
 // package that cannot read the mill at run time (deck/deck/task/make-grammar.ts). The same walk and resolver
 // `loadRoleGrammar` uses, so the two cannot disagree about which files a grammar reaches
-export function grammarTextOf(millRoot: string, entry: string): { text: string; files: string[]; problems: string[] } {
+export function grammarTextOf(
+  millRoot: string,
+  entry: string,
+): { text: string; files: string[]; problems: string[] } {
   return disk.grammarTextOf(millRoot, entry, codeRootOf)
 }
 
-export function loadRoleGrammar(millRoot: string, role: string): LoadedGrammar {
-  return disk.loadRoleGrammar(millRoot, role, codeRootOf) as LoadedGrammar
+export function loadRoleGrammar(
+  millRoot: string,
+  role: string,
+): LoadedGrammar {
+  return disk.loadRoleGrammar(
+    millRoot,
+    role,
+    codeRootOf,
+  ) as LoadedGrammar
 }

@@ -13,7 +13,18 @@
 //
 // Run: npx tsx test/call/port-build-skip.ts      (about 15 minutes: four full compiles of the 321 modules)
 import { execFileSync } from 'node:child_process'
-import { constants, cpSync, existsSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  constants,
+  cpSync,
+  existsSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { createRequire } from 'node:module'
 import { join, relative } from 'node:path'
 import { tempDir } from '../temp'
@@ -43,7 +54,14 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 // the build trees the clone leaves out: outputs other than the ports, and caches
-const LEAVE = new Set(['node_modules', 'target', '.build', '.base', 'tmp', '.git'])
+const LEAVE = new Set([
+  'node_modules',
+  'target',
+  '.build',
+  '.base',
+  'tmp',
+  '.git',
+])
 
 // the real path: the resolver records `/private/var/...` where the temporary directory says `/var/...`
 const copy = realpathSync(tempDir('term-port-build-skip-'))
@@ -64,42 +82,71 @@ function clone(): void {
       const at = relative(TERM, source).split('/')
       const host = at.indexOf('host')
 
-      return host < 0 || at.length === host + 1 || at[host + 1] === 'port'
+      return (
+        host < 0 || at.length === host + 1 || at[host + 1] === 'port'
+      )
     },
   })
 
-  for (const file of ['task/port-build.ts', 'task/port-trace.ts', 'package.json']) {
+  for (const file of [
+    'task/port-build.ts',
+    'task/port-trace.ts',
+    'package.json',
+  ]) {
     cpSync(join(TERM, file), join(copy, file))
   }
 
   // the one path tsconfig.json writes relative to the package, outside it, made absolute for the clone
-  const tsconfig = readFileSync(join(TERM, 'tsconfig.json'), 'utf8').replaceAll('"../../../../', `"${join(TERM, '../../../..')}/`)
+  const tsconfig = readFileSync(
+    join(TERM, 'tsconfig.json'),
+    'utf8',
+  ).replaceAll('"../../../../', `"${join(TERM, '../../../..')}/`)
 
   writeFileSync(join(copy, 'tsconfig.json'), tsconfig)
   symlinkSync(join(TERM, 'node_modules'), join(copy, 'node_modules'))
 }
 
-type Run = { code: number; built: number; unchanged: number; failed: number; skipped: Set<string>; out: string }
+type Run = {
+  code: number
+  built: number
+  unchanged: number
+  failed: number
+  skipped: Set<string>
+  out: string
+}
 
 function run(...args: string[]): Run {
   let out = ''
   let code = 0
 
   try {
-    out = execFileSync(process.execPath, [TSX, 'task/port-build.ts', '--explain', ...args], {
-      cwd: copy,
-      encoding: 'utf8',
-      maxBuffer: 1 << 28,
-      stdio: ['ignore', 'pipe', 'inherit'],
-    })
+    out = execFileSync(
+      process.execPath,
+      [TSX, 'task/port-build.ts', '--explain', ...args],
+      {
+        cwd: copy,
+        encoding: 'utf8',
+        maxBuffer: 1 << 28,
+        stdio: ['ignore', 'pipe', 'inherit'],
+      },
+    )
   } catch (error) {
-    const failure = error as { status?: number; stdout?: string; message?: string }
+    const failure = error as {
+      status?: number
+      stdout?: string
+      message?: string
+    }
     code = failure.status ?? 1
     out = failure.stdout || `${failure.message}`
   }
 
-  const summary = /term port-build: (\d+) built, (\d+) unchanged(?:, \d+ stale)?, (\d+) failed/.exec(out)
-  const skipped = new Set([...out.matchAll(/^ {2}skip {2}(\S+)$/gm)].map(match => match[1]!))
+  const summary =
+    /term port-build: (\d+) built, (\d+) unchanged(?:, \d+ stale)?, (\d+) failed/.exec(
+      out,
+    )
+  const skipped = new Set(
+    [...out.matchAll(/^ {2}skip {2}(\S+)$/gm)].map(match => match[1]!),
+  )
 
   return {
     code,
@@ -143,7 +190,10 @@ function restore(snapshot: Map<string, string>): void {
   }
 }
 
-function differences(a: Map<string, string>, b: Map<string, string>): string[] {
+function differences(
+  a: Map<string, string>,
+  b: Map<string, string>,
+): string[] {
   const out: string[] = []
 
   for (const path of new Set([...a.keys(), ...b.keys()])) {
@@ -155,25 +205,39 @@ function differences(a: Map<string, string>, b: Map<string, string>): string[] {
   return out
 }
 
-type Manifest = { table: [string, string][]; modules: Record<string, { reads: [number, number][] }> }
+type Manifest = {
+  table: [string, string][]
+  modules: Record<string, { reads: [number, number][] }>
+}
 
 function manifest(): Manifest {
-  return JSON.parse(readFileSync(join(copy, '.base', '@term', 'code', 'port-build.json'), 'utf8')) as Manifest
+  return JSON.parse(
+    readFileSync(
+      join(copy, '.base', '@term', 'code', 'port-build.json'),
+      'utf8',
+    ),
+  ) as Manifest
 }
 
 // the stdlib file the trace saw READ last, so the fewest modules rest on it and the rest are skipped: the edit shows
 // both halves, the readers compiled and the others not
 function stdlibProbe(): string | undefined {
   const prefix = `read\0${join(copy, STDLIB_ROOT)}/`
-  const rows = manifest().table.filter(([key]) => key.startsWith(prefix) && key.endsWith('.tree'))
+  const rows = manifest().table.filter(
+    ([key]) => key.startsWith(prefix) && key.endsWith('.tree'),
+  )
 
-  return rows.length > 0 ? relative(copy, rows[rows.length - 1]![0].slice('read\0'.length)) : undefined
+  return rows.length > 0
+    ? relative(copy, rows[rows.length - 1]![0].slice('read\0'.length))
+    : undefined
 }
 
 // the modules whose recorded trace read a file, from the clone's manifest
 function readers(file: string): Set<string> {
   const { table, modules } = manifest()
-  const row = table.findIndex(([key]) => key === `read\0${join(copy, file)}`)
+  const row = table.findIndex(
+    ([key]) => key === `read\0${join(copy, file)}`,
+  )
 
   if (row < 0) {
     return new Set()
@@ -204,7 +268,11 @@ function compare(label: string, edit: () => void): Run {
   const reference = ports()
   const diff = differences(skipped, reference)
 
-  ok(`${label}: the skip run and the --full run write the same bytes`, diff.length === 0 && skip.failed === 0 && full.failed === 0, diff.slice(0, 5).join(' '))
+  ok(
+    `${label}: the skip run and the --full run write the same bytes`,
+    diff.length === 0 && skip.failed === 0 && full.failed === 0,
+    diff.slice(0, 5).join(' '),
+  )
 
   return skip
 }
@@ -219,7 +287,11 @@ try {
   // ---- cold, then steady ----
 
   const cold = run()
-  ok('cold: every module compiles to the port already there', cold.built === 0 && cold.failed === 0 && cold.skipped.size === 0, cold.out.slice(-400))
+  ok(
+    'cold: every module compiles to the port already there',
+    cold.built === 0 && cold.failed === 0 && cold.skipped.size === 0,
+    cold.out.slice(-400),
+  )
 
   // every module, so a cold run that had to build some (a port left stale in the tree) fails only the line above,
   // not the steady and stdlib counts after it (term-cli-in-term-0149)
@@ -228,41 +300,83 @@ try {
   const steady = run()
   const seconds = (Date.now() - started) / 1000
 
-  ok(`steady: all ${total} skipped, nothing built (${seconds.toFixed(1)}s)`, steady.built === 0 && steady.unchanged === total && steady.skipped.size === total, steady.out.slice(-400))
+  ok(
+    `steady: all ${total} skipped, nothing built (${seconds.toFixed(1)}s)`,
+    steady.built === 0 &&
+      steady.unchanged === total &&
+      steady.skipped.size === total,
+    steady.out.slice(-400),
+  )
 
   // ---- --check: a hand-edited port, and a missing one ----
 
   const outputs = ports()
-  const victim = [...outputs.keys()].find(path => path.includes(PORT_PROBE.replace(/^deck\/(\w+)\/(.*)\.tree$/, '$1/host/port/$2.ts')))!
+  const victim = [...outputs.keys()].find(path =>
+    path.includes(
+      PORT_PROBE.replace(
+        /^deck\/(\w+)\/(.*)\.tree$/,
+        '$1/host/port/$2.ts',
+      ),
+    ),
+  )!
 
-  writeFileSync(join(copy, victim), `${outputs.get(victim)}// by hand\n`)
+  writeFileSync(
+    join(copy, victim),
+    `${outputs.get(victim)}// by hand\n`,
+  )
   const edited = run('--check')
-  ok('--check: a port edited by hand is stale', edited.code === 1 && edited.out.includes(`STALE ${PORT_PROBE}`), edited.out.slice(-400))
+  ok(
+    '--check: a port edited by hand is stale',
+    edited.code === 1 && edited.out.includes(`STALE ${PORT_PROBE}`),
+    edited.out.slice(-400),
+  )
 
   renameSync(join(copy, victim), join(copy, `${victim}.away`))
   const missing = run('--check')
-  ok('--check: a missing port is stale', missing.code === 1 && missing.out.includes(`STALE ${PORT_PROBE}`), missing.out.slice(-400))
+  ok(
+    '--check: a missing port is stale',
+    missing.code === 1 && missing.out.includes(`STALE ${PORT_PROBE}`),
+    missing.out.slice(-400),
+  )
   renameSync(join(copy, `${victim}.away`), join(copy, victim))
   writeFileSync(join(copy, victim), outputs.get(victim)!)
 
   const clean = run('--check')
-  ok('--check: put back, nothing stale', clean.code === 0, clean.out.slice(-400))
+  ok(
+    '--check: put back, nothing stale',
+    clean.code === 0,
+    clean.out.slice(-400),
+  )
 
   // ---- a stdlib file the ports read ----
 
   const probe = stdlibProbe()
   const reading = probe ? readers(probe) : new Set<string>()
-  ok(`stdlib: the trace saw ${probe} read, by ${reading.size} modules`, probe !== undefined && reading.size > 0)
+  ok(
+    `stdlib: the trace saw ${probe} read, by ${reading.size} modules`,
+    probe !== undefined && reading.size > 0,
+  )
 
   if (probe) {
     const stdlib = compare(`stdlib edit (${probe})`, () => {
       const file = join(copy, probe)
 
-      writeFileSync(file, `${readFileSync(file, 'utf8')}\n# port-build-skip probe\n`)
+      writeFileSync(
+        file,
+        `${readFileSync(file, 'utf8')}\n# port-build-skip probe\n`,
+      )
     })
     const wrong = [...reading].filter(name => stdlib.skipped.has(name))
-    ok('stdlib edit: no module that read it is skipped', wrong.length === 0, wrong.slice(0, 5).join(' '))
-    ok(`stdlib edit: the ${stdlib.skipped.size} modules that never read it are skipped`, stdlib.skipped.size + reading.size === total, `${stdlib.skipped.size} + ${reading.size} of ${total}`)
+    ok(
+      'stdlib edit: no module that read it is skipped',
+      wrong.length === 0,
+      wrong.slice(0, 5).join(' '),
+    )
+    ok(
+      `stdlib edit: the ${stdlib.skipped.size} modules that never read it are skipped`,
+      stdlib.skipped.size + reading.size === total,
+      `${stdlib.skipped.size} + ${reading.size} of ${total}`,
+    )
   }
 
   // ---- a toolchain .tree body ----
@@ -271,21 +385,38 @@ try {
     const file = join(copy, PORT_PROBE)
     const text = readFileSync(file, 'utf8')
     // a text literal changed: the module's emitted TypeScript must change with it
-    const changed = text.replace(/<([A-Za-z][^<>{}\\\n]*)>/, '<$1 probe>')
+    const changed = text.replace(
+      /<([A-Za-z][^<>{}\\\n]*)>/,
+      '<$1 probe>',
+    )
 
-    ok('toolchain .tree edit: the probe holds a text literal to change', changed !== text)
+    ok(
+      'toolchain .tree edit: the probe holds a text literal to change',
+      changed !== text,
+    )
     writeFileSync(file, changed)
   })
-  ok('toolchain .tree edit: the module is not skipped, and builds', !port.skipped.has(PORT_PROBE) && port.built >= 1, port.out.slice(-400))
+  ok(
+    'toolchain .tree edit: the module is not skipped, and builds',
+    !port.skipped.has(PORT_PROBE) && port.built >= 1,
+    port.out.slice(-400),
+  )
 
   // ---- a compiler .ts file ----
 
   const compiler = compare('compiler .ts edit', () => {
     const file = join(copy, COMPILER_PROBE)
 
-    writeFileSync(file, `${readFileSync(file, 'utf8')}\n// port-build-skip probe\n`)
+    writeFileSync(
+      file,
+      `${readFileSync(file, 'utf8')}\n// port-build-skip probe\n`,
+    )
   })
-  ok('compiler .ts edit: nothing is skipped', compiler.skipped.size === 0, `${compiler.skipped.size} skipped`)
+  ok(
+    'compiler .ts edit: nothing is skipped',
+    compiler.skipped.size === 0,
+    `${compiler.skipped.size} skipped`,
+  )
 } finally {
   if (fail === 0) {
     rmSync(copy, { recursive: true, force: true })

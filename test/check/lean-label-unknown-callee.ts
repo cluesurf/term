@@ -81,20 +81,40 @@ task run
 const files: Record<string, string> = { '@app/a': A, '@app/b': B }
 const stdlib = withNativeEnv('node', stdlibResolver()!)
 const resolve = (path: string, from: string): Source | undefined =>
-  files[path] !== undefined ? { file: `${path.slice('@app/'.length)}.tree`, text: files[path]! } : (stdlib(path, from) as Source | undefined)
+  files[path] !== undefined
+    ? { file: `${path.slice('@app/'.length)}.tree`, text: files[path]! }
+    : (stdlib(path, from) as Source | undefined)
 
-const built = compile({ file: 'main.tree', text: MAIN }, { resolve, entryPoints: ['run'], leanOf: () => true } as never)
+const built = compile({ file: 'main.tree', text: MAIN }, {
+  resolve,
+  entryPoints: ['run'],
+  leanOf: () => true,
+} as never)
 
-ok('a task two modules define, written under `get`, is a nested call', built.ok, built.ok ? '' : built.diagnostics.map(d => d.message).join(' | '))
+ok(
+  'a task two modules define, written under `get`, is a nested call',
+  built.ok,
+  built.ok ? '' : built.diagnostics.map(d => d.message).join(' | '),
+)
 
 if (built.ok) {
   // each file reaches its own pick-index: a's is the last index, b's the first, so 6 + 4
   const dir = tempDir('term-lean-label-')
   const file = join(dir, 'module.mjs')
-  writeFileSync(file, transformSync(built.typescript, { loader: 'ts', format: 'esm' }).code)
-  const mod = (await import(pathToFileURL(file).href)) as { run: () => number }
+  writeFileSync(
+    file,
+    transformSync(built.typescript, { loader: 'ts', format: 'esm' })
+      .code,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as {
+    run: () => number
+  }
 
-  ok('each file reaches its own pick-index: 6 + 4', mod.run() === 10, String(mod.run()))
+  ok(
+    'each file reaches its own pick-index: 6 + 4',
+    mod.run() === 10,
+    String(mod.run()),
+  )
 }
 
 console.log(`\nlean-label-unknown-callee: ${pass} pass, ${fail} fail`)

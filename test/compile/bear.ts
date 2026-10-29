@@ -65,4 +65,6 @@ expect('bear is transitive (c -> a -> b)', transitive.ok, true)
 
 console.log(`\nbear: ${pass} pass, ${fail} fail`)
 
-if (fail > 0) {process.exit(1)}
+if (fail > 0) {
+  process.exit(1)
+}

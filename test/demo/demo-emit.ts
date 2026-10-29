@@ -13,27 +13,41 @@
 
 import { compile } from '@term/make/code/compile/compile'
 import { projectResolver } from '@term/call/code/make'
-import { synthesizeContract, verifyContract, type Contract } from '@term/test/code/contract'
+import {
+  synthesizeContract,
+  verifyContract,
+  type Contract,
+} from '@term/test/code/contract'
 import { emitSeed } from '@term/test/code/source-emit'
 
 let pass = 0
 let fail = 0
 function ok(name: string, cond: boolean, info = ''): void {
-  if (cond) { pass++; console.log(`ok    ${name}${info ? '  ' + info : ''}`) }
-  else { fail++; console.log(`FAIL  ${name}${info ? '  ' + info : ''}`) }
+  if (cond) {
+    pass++
+    console.log(`ok    ${name}${info ? '  ' + info : ''}`)
+  } else {
+    fail++
+    console.log(`FAIL  ${name}${info ? '  ' + info : ''}`)
+  }
 }
 
 const ROOT = process.cwd() // the seed install dir, holding link/
 const resolve = projectResolver(ROOT, 'node', ROOT)
 
-const contracts: { contract: Contract; taskName: string; show?: boolean }[] = [
+const contracts: {
+  contract: Contract
+  taskName: string
+  show?: boolean
+}[] = [
   {
     taskName: 'find-max',
     show: true,
     contract: {
       name: 'max',
       params: [{ name: 'a' }, { name: 'b' }],
-      post: ([a, b], out) => out >= a && out >= b && (out === a || out === b),
+      post: ([a, b], out) =>
+        out >= a && out >= b && (out === a || out === b),
     },
   },
   {
@@ -41,7 +55,8 @@ const contracts: { contract: Contract; taskName: string; show?: boolean }[] = [
     contract: {
       name: 'min',
       params: [{ name: 'a' }, { name: 'b' }],
-      post: ([a, b], out) => out <= a && out <= b && (out === a || out === b),
+      post: ([a, b], out) =>
+        out <= a && out <= b && (out === a || out === b),
     },
   },
   {
@@ -58,7 +73,8 @@ const contracts: { contract: Contract; taskName: string; show?: boolean }[] = [
     contract: {
       name: 'clamp-low',
       params: [{ name: 'a' }],
-      post: ([a], out) => out >= 0 && out >= a && (out === a || out === 0),
+      post: ([a], out) =>
+        out >= 0 && out >= a && (out === a || out === 0),
     },
   },
 ]
@@ -82,17 +98,30 @@ for (const { contract, taskName, show } of contracts) {
   })
 
   // 4. compile the emitted source - is it valid Seed?
-  const compiled = compile({ file: `${taskName}.tree`, text: source }, { resolve })
+  const compiled = compile(
+    { file: `${taskName}.tree`, text: source },
+    { resolve },
+  )
 
   ok(
     `${taskName}: spec -> verified -> emitted Seed -> compiles`,
     verified && compiled.ok,
-    compiled.ok ? '' : (compiled.diagnostics || []).slice(0, 1).map(d => `${d.name}: ${d.message}`).join(''),
+    compiled.ok
+      ? ''
+      : (compiled.diagnostics || [])
+          .slice(0, 1)
+          .map(d => `${d.name}: ${d.message}`)
+          .join(''),
   )
 
   if (show && compiled.ok) {
     console.log('\n  --- emitted Seed for ' + taskName + ' ---')
-    console.log(source.split('\n').map(l => '  ' + l).join('\n'))
+    console.log(
+      source
+        .split('\n')
+        .map(l => '  ' + l)
+        .join('\n'),
+    )
   }
 }
 

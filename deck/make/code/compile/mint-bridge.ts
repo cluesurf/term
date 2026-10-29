@@ -14,7 +14,10 @@
 import type { RootNode } from '@term/make/code/parser/narrow'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import type { Program, Twin } from '@term/make/code/compile/node'
-import type { MineGrammar, MintGrammar } from '@term/make/code/compile/mill-run'
+import type {
+  MineGrammar,
+  MintGrammar,
+} from '@term/make/code/compile/mill-run'
 import * as port from '@term/make/code/compile/minting'
 import { maskSelf } from '@term/make/code/compile/minting-reads'
 
@@ -35,10 +38,17 @@ export type Grammar = {
 // the port's answer in the face's shape
 export function millResultOf(result: port.MillResult): MillResult {
   if (!result.ok) {
-    return { ok: false, diagnostics: result.diagnostics as unknown as Diagnostic[] }
+    return {
+      ok: false,
+      diagnostics: result.diagnostics as unknown as Diagnostic[],
+    }
   }
+
   const program = result.program as unknown as Program
-  return result.twins.length > 0 ? { ok: true, program, twins: result.twins as unknown as Twin[] } : { ok: true, program }
+
+  return result.twins.length > 0
+    ? { ok: true, program, twins: result.twins as unknown as Twin[] }
+    : { ok: true, program }
 }
 
 export function millByGrammar(
@@ -57,13 +67,18 @@ export function millByGrammar(
       : {
           mine: grammar.mine as never,
           mint: grammar.mint as never,
-          lean: new Map([...(grammar.lean ?? [])].map(rule => [rule, true])),
+          lean: new Map(
+            [...(grammar.lean ?? [])].map(rule => [rule, true]),
+          ),
         }
+
   return millResultOf(
     port.millByGrammar(
       tree as never,
       file,
-      role === undefined ? { form: 'none' } : { form: 'some', value: role },
+      role === undefined
+        ? { form: 'none' }
+        : { form: 'some', value: role },
       given,
       lean === true,
     ),

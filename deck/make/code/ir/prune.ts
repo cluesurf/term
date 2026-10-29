@@ -18,17 +18,18 @@
 // (compile with and without it, the entry's emitted code identical). Every layer
 // of shaking what a program ships is in note/project/term/compiler/runtime-shaking.md.
 
-import type {
-  Program,
-  Statement,
-} from '@term/make/code/compile/node'
+import type { Program, Statement } from '@term/make/code/compile/node'
 
 // every name mentioned anywhere inside a node (deep, generic, over-approximate)
 function collectNames(node: unknown, out: Set<string>): void {
-  if (node === null || typeof node !== 'object') {return}
+  if (node === null || typeof node !== 'object') {
+    return
+  }
 
   if (Array.isArray(node)) {
-    for (const item of node) {collectNames(item, out)}
+    for (const item of node) {
+      collectNames(item, out)
+    }
 
     return
   }
@@ -38,13 +39,19 @@ function collectNames(node: unknown, out: Set<string>): void {
   // any `name: string` is a potential reference (variable, call target, named
   // type, generic bound). Over-approximation: incidental names cost only extra
   // kept definitions, never a missed dependency.
-  if (typeof obj.name === 'string') {out.add(obj.name)}
+  if (typeof obj.name === 'string') {
+    out.add(obj.name)
+  }
 
   // a match arm names its case by `label`
-  if (typeof obj.label === 'string') {out.add(obj.label)}
+  if (typeof obj.label === 'string') {
+    out.add(obj.label)
+  }
 
   for (const key in obj) {
-    if (key === 'span') {continue} // spans carry only positions, never names
+    if (key === 'span') {
+      continue
+    } // spans carry only positions, never names
 
     collectNames(obj[key], out)
   }
@@ -69,8 +76,11 @@ export function pruneToReachable(
   const index = (name: string, statement: Statement): void => {
     const list = defsByName.get(name)
 
-    if (list) {list.push(statement)}
-    else {defsByName.set(name, [statement])}
+    if (list) {
+      list.push(statement)
+    } else {
+      defsByName.set(name, [statement])
+    }
   }
 
   for (const statement of program) {
@@ -91,7 +101,9 @@ export function pruneToReachable(
       // a form is reached through its CASES too: `make one` and `case one` name the case, never the form, so a task
       // that builds and matches a variant without writing the form's name lost the whole form, and every backend then
       // wrote the cases as records nothing declared
-      for (const variant of (statement as { variants?: { name: string }[] }).variants ?? []) {
+      for (const variant of (
+        statement as { variants?: { name: string }[] }
+      ).variants ?? []) {
         index(variant.name, statement)
       }
     }
@@ -107,14 +119,18 @@ export function pruneToReachable(
       const names = new Set<string>()
       collectNames(statement, names)
 
-      for (const name of names) {queue.push(name)}
+      for (const name of names) {
+        queue.push(name)
+      }
     }
   }
 
   while (queue.length > 0) {
     const name = queue.pop()!
 
-    if (reachable.has(name)) {continue}
+    if (reachable.has(name)) {
+      continue
+    }
 
     reachable.add(name)
 
@@ -123,13 +139,17 @@ export function pruneToReachable(
       collectNames(def, names)
 
       for (const n of names) {
-        if (!reachable.has(n)) {queue.push(n)}
+        if (!reachable.has(n)) {
+          queue.push(n)
+        }
       }
     }
   }
 
   return program.filter(statement => {
-    if (!PRUNABLE.has(statement.form)) {return true}
+    if (!PRUNABLE.has(statement.form)) {
+      return true
+    }
 
     const name = (statement as { name: string }).name
 

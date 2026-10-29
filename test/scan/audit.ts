@@ -8,7 +8,10 @@ import os from 'os'
 // undefined (the port reads it as the original's default did).
 import { runScan } from '@term/scan/code/scan-running'
 import { localDatabaseSource } from '@term/scan/code/advisory-sources'
-import { planUpgrades, applyUpgrades } from '@term/scan/code/upgrade-fixing'
+import {
+  planUpgrades,
+  applyUpgrades,
+} from '@term/scan/code/upgrade-fixing'
 
 type DependencyFinding = {
   kind: 'dependency'
@@ -60,11 +63,19 @@ const ADVISORY = JSON.stringify([
       {
         package: { ecosystem: 'term', name: '@term/left-pad' },
         ranges: [
-          { type: 'SEMVER', events: [{ introduced: '0' }, { fixed: '1.3.0' }] },
+          {
+            type: 'SEMVER',
+            events: [{ introduced: '0' }, { fixed: '1.3.0' }],
+          },
         ],
       },
     ],
-    references: [{ type: 'ADVISORY', url: 'https://term.surf/advisory/GHSA-app-0001' }],
+    references: [
+      {
+        type: 'ADVISORY',
+        url: 'https://term.surf/advisory/GHSA-app-0001',
+      },
+    ],
     database_specific: { severity: 'MODERATE' },
   },
 ])
@@ -87,29 +98,56 @@ async function main(): Promise<void> {
   await fsp.writeFile(path.join(root, 'deck.tree'), MANIFEST)
   await fsp.writeFile(path.join(root, 'lock.tree'), LOCKFILE)
   await fsp.mkdir(path.join(root, 'advisory'), { recursive: true })
-  await fsp.writeFile(path.join(root, 'advisory', 'ghsa.json'), ADVISORY)
-  await fsp.mkdir(path.join(root, 'deck', 'x', 'code'), { recursive: true })
+  await fsp.writeFile(
+    path.join(root, 'advisory', 'ghsa.json'),
+    ADVISORY,
+  )
+  await fsp.mkdir(path.join(root, 'deck', 'x', 'code'), {
+    recursive: true,
+  })
   await fsp.writeFile(
     path.join(root, 'deck', 'x', 'code', 'danger.tree'),
     DANGER,
   )
 
   // scan with ONLY the local advisory source (no network), plus the code scan
-  const result = await runScan(root, true, true, [localDatabaseSource(path.join(root, 'advisory'), 'term')], undefined, undefined)
+  const result = await runScan(
+    root,
+    true,
+    true,
+    [localDatabaseSource(path.join(root, 'advisory'), 'term')],
+    undefined,
+    undefined,
+  )
 
-  ok(result.dependencyCount === 2, 'reads both locked dependencies', `got ${result.dependencyCount}`)
+  ok(
+    result.dependencyCount === 2,
+    'reads both locked dependencies',
+    `got ${result.dependencyCount}`,
+  )
 
   const depFindings = result.findings.filter(
     (f): f is DependencyFinding => f.kind === 'dependency',
   )
-  ok(depFindings.length === 1, 'finds the one vulnerable dependency', `got ${depFindings.length}`)
+  ok(
+    depFindings.length === 1,
+    'finds the one vulnerable dependency',
+    `got ${depFindings.length}`,
+  )
 
   const leftPad = depFindings[0]
-  ok(leftPad?.node.name === '@term/left-pad', 'names the vulnerable package')
+  ok(
+    leftPad?.node.name === '@term/left-pad',
+    'names the vulnerable package',
+  )
   ok(leftPad?.node.version === '1.1.0', 'reports the installed version')
   ok(leftPad?.node.direct === true, 'marks it a direct dependency')
   ok(leftPad?.severity === 'moderate', 'carries the advisory severity')
-  ok(leftPad?.fixVersion === '1.3.0', 'computes the safe upgrade', `got ${leftPad?.fixVersion}`)
+  ok(
+    leftPad?.fixVersion === '1.3.0',
+    'computes the safe upgrade',
+    `got ${leftPad?.fixVersion}`,
+  )
 
   const codeFindings = result.findings.filter(f => f.kind === 'code')
   ok(
@@ -122,7 +160,8 @@ async function main(): Promise<void> {
   )
 
   ok(
-    result.advisorySources.length === 1 && result.unavailableSources.length === 0,
+    result.advisorySources.length === 1 &&
+      result.unavailableSources.length === 0,
     'records the consulted source and no unavailable ones',
   )
 
@@ -131,7 +170,10 @@ async function main(): Promise<void> {
   const applied = await applyUpgrades(root, upgrades, true)
   ok(applied.applied.length === 1, 'applies one upgrade')
 
-  const rewritten = await fsp.readFile(path.join(root, 'deck.tree'), 'utf-8')
+  const rewritten = await fsp.readFile(
+    path.join(root, 'deck.tree'),
+    'utf-8',
+  )
   ok(
     rewritten.includes('link @term/left-pad, mark <^1.3.0>'),
     'manifest now pins the safe version',
@@ -142,7 +184,14 @@ async function main(): Promise<void> {
   // post-install state by bumping the lock too and re-scanning)
   const fixedLock = LOCKFILE.replace('code <1.1.0>', 'code <1.3.0>')
   await fsp.writeFile(path.join(root, 'lock.tree'), fixedLock)
-  const after = await runScan(root, true, false, [localDatabaseSource(path.join(root, 'advisory'), 'term')], undefined, undefined)
+  const after = await runScan(
+    root,
+    true,
+    false,
+    [localDatabaseSource(path.join(root, 'advisory'), 'term')],
+    undefined,
+    undefined,
+  )
   ok(
     after.findings.filter(f => f.kind === 'dependency').length === 0,
     'no dependency findings after upgrading to the fixed version',

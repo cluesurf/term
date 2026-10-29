@@ -27,7 +27,9 @@ function messages(result: ReturnType<typeof compile>): string {
     : result.diagnostics.map(d => d.message ?? d.name).join(' | ')
 }
 
-async function run(text: string): Promise<Record<string, (...args: unknown[]) => unknown>> {
+async function run(
+  text: string,
+): Promise<Record<string, (...args: unknown[]) => unknown>> {
   const result = compile({ file: 's.tree', text })
 
   if (!result.ok) {
@@ -38,7 +40,8 @@ async function run(text: string): Promise<Record<string, (...args: unknown[]) =>
   const file = join(dir, 's.mjs')
   writeFileSync(
     file,
-    transformSync(result.typescript, { loader: 'ts', format: 'esm' }).code,
+    transformSync(result.typescript, { loader: 'ts', format: 'esm' })
+      .code,
   )
 
   return import(pathToFileURL(file).href)
@@ -100,7 +103,12 @@ task use
     call scale
       bind amount, code 5
 `
-  ok('an unknown argument name is refused', messages(compile({ file: 's.tree', text: UNKNOWN })).includes('no parameter "amount"'))
+  ok(
+    'an unknown argument name is refused',
+    messages(compile({ file: 's.tree', text: UNKNOWN })).includes(
+      'no parameter "amount"',
+    ),
+  )
 
   const GAP = `task scale
   take value, like number
@@ -116,7 +124,12 @@ task use
       bind value, code 5
       bind shift, code 1
 `
-  ok('an omitted middle parameter without a default is refused', messages(compile({ file: 's.tree', text: GAP })).includes('needs "by"'))
+  ok(
+    'an omitted middle parameter without a default is refused',
+    messages(compile({ file: 's.tree', text: GAP })).includes(
+      'needs "by"',
+    ),
+  )
 
   // slot parameters are positional only
   const SLOT_TASK = `task pair
@@ -135,7 +148,12 @@ task use
       bind left, code 1
       bind right, code 2
 `
-  ok('naming a slot parameter is refused', messages(compile({ file: 's.tree', text: SLOT_TASK })).includes('is a slot of "pair"'))
+  ok(
+    'naming a slot parameter is refused',
+    messages(compile({ file: 's.tree', text: SLOT_TASK })).includes(
+      'is a slot of "pair"',
+    ),
+  )
 
   const SLOT_OK = `task pair
   slot left, like number
@@ -153,7 +171,11 @@ task use
       code 1
       code 2
 `
-  ok('slot parameters take positional arguments', compile({ file: 's.tree', text: SLOT_OK }).ok, messages(compile({ file: 's.tree', text: SLOT_OK })))
+  ok(
+    'slot parameters take positional arguments',
+    compile({ file: 's.tree', text: SLOT_OK }).ok,
+    messages(compile({ file: 's.tree', text: SLOT_OK })),
+  )
 
   // slot fields on a form: positional make, in declaration order, with a fallback
   const SLOT_FORM = `form point
@@ -175,10 +197,21 @@ task read-label
   send back
     read p/label
 `
-  const slotForm = compile({ file: 's.tree', text: SLOT_FORM, optimize: false })
-  ok('a positional make of a slotted form compiles', slotForm.ok, messages(slotForm))
+  const slotForm = compile({
+    file: 's.tree',
+    text: SLOT_FORM,
+    optimize: false,
+  })
+  ok(
+    'a positional make of a slotted form compiles',
+    slotForm.ok,
+    messages(slotForm),
+  )
   const sts = slotForm.ok ? slotForm.typescript : ''
-  ok('positional values land on the slots in order', sts.includes('x: 3, y: 4'))
+  ok(
+    'positional values land on the slots in order',
+    sts.includes('x: 3, y: 4'),
+  )
   ok('the fallback field is filled', sts.includes('label: "origin"'))
 
   const NO_SLOTS = `form point
@@ -192,7 +225,12 @@ task make-point
       code 3
       code 4
 `
-  ok('a positional make of a form without slots is refused', messages(compile({ file: 's.tree', text: NO_SLOTS })).includes('has no slots'))
+  ok(
+    'a positional make of a form without slots is refused',
+    messages(compile({ file: 's.tree', text: NO_SLOTS })).includes(
+      'has no slots',
+    ),
+  )
 
   const TOO_MANY = `form point
   slot x, like number
@@ -204,7 +242,12 @@ task make-point
       code 3
       code 4
 `
-  ok('more values than slots is refused', messages(compile({ file: 's.tree', text: TOO_MANY })).includes('1 slot'))
+  ok(
+    'more values than slots is refused',
+    messages(compile({ file: 's.tree', text: TOO_MANY })).includes(
+      '1 slot',
+    ),
+  )
 
   // same-arity overloads chosen by type
   const OVERLOAD = `task show
@@ -251,7 +294,12 @@ task use
   send back
     call show, true
 `
-  ok('an argument no overload takes is refused', messages(compile({ file: 's.tree', text: NO_FIT })).includes('no overload'))
+  ok(
+    'an argument no overload takes is refused',
+    messages(compile({ file: 's.tree', text: NO_FIT })).includes(
+      'no overload',
+    ),
+  )
 
   console.log(`\nslot: ${pass} pass, ${fail} fail`)
 

@@ -24,7 +24,12 @@
  */
 
 import path from 'node:path'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { parse } from '@term/make/code/parser/tree'
 import { groupsOf } from '@term/make/code/parser/narrow'
@@ -32,7 +37,11 @@ import type { Node } from '@term/make/code/parser/tree'
 import { headWord } from '@term/make/code/compile/mill-run'
 import { expandTemplates } from '@term/make/code/compile/template'
 import { mill } from '@term/make/code/compile/mill'
-import { expandData, readDataText, toJsonValue } from '@term/make/code/compile/host'
+import {
+  expandData,
+  readDataText,
+  toJsonValue,
+} from '@term/make/code/compile/host'
 import { lawSentences } from '@term/make/code/check/law-english'
 import type { LawSentence } from '@term/make/code/check/law-english'
 import { readTree } from '@term/deck/code/package/read'
@@ -44,7 +53,10 @@ import type { HoldLean } from '@term/call/code/hold-lean'
 export const LAWS = 'laws.tree'
 
 // what proves a law, as the manifest names it
-type Proof = { kind: 'rule' | 'hide' | 'sole' | 'private' | 'tier'; name: string }
+type Proof = {
+  kind: 'rule' | 'hide' | 'sole' | 'private' | 'tier'
+  name: string
+}
 
 export type LawRow = {
   name: string
@@ -83,17 +95,23 @@ export type HoldReport = {
   file: string
 }
 
-type Definition = { name: string; file: string; start: number; end: number; statement: Record<string, unknown> }
+type Definition = {
+  name: string
+  file: string
+  start: number
+  end: number
+  statement: Record<string, unknown>
+}
 
 // every string a statement holds, outside its spans: the names it may reach
 function wordsOf(value: unknown, into: Set<string>): Set<string> {
   if (typeof value === 'string') {
     into.add(value)
   } else if (Array.isArray(value)) {
-    for (const item of value) wordsOf(item, into)
+    for (const item of value) {wordsOf(item, into)}
   } else if (value && typeof value === 'object') {
     for (const [key, item] of Object.entries(value)) {
-      if (key !== 'span') wordsOf(item, into)
+      if (key !== 'span') {wordsOf(item, into)}
     }
   }
 
@@ -101,7 +119,10 @@ function wordsOf(value: unknown, into: Set<string>): Set<string> {
 }
 
 // the manifest's entries, read by the data reader: a list `law` of maps
-function readLaws(root: string, problems: string[]): { name: string; proofs: Proof[] }[] | undefined {
+function readLaws(
+  root: string,
+  problems: string[],
+): { name: string; proofs: Proof[] }[] | undefined {
   const file = path.join(root, LAWS)
 
   if (!existsSync(file)) {
@@ -111,25 +132,40 @@ function readLaws(root: string, problems: string[]): { name: string; proofs: Pro
   const read = readDataText({ file, text: readFileSync(file, 'utf8') })
 
   if (!read.ok) {
-    problems.push(`${LAWS} does not read: ${read.diagnostics[0]?.message ?? 'not data'}`)
+    problems.push(
+      `${LAWS} does not read: ${read.diagnostics[0]?.message ?? 'not data'}`,
+    )
+
     return []
   }
 
   const expanded = expandData(read.data, file)
 
   if (!expanded.ok) {
-    problems.push(`${LAWS} does not read: ${expanded.diagnostics[0]?.message ?? 'not data'}`)
+    problems.push(
+      `${LAWS} does not read: ${expanded.diagnostics[0]?.message ?? 'not data'}`,
+    )
+
     return []
   }
 
   const value = toJsonValue(expanded.data) as { law?: unknown }
   const entries = Array.isArray(value.law) ? value.law : []
-  const texts = (v: unknown): string[] => (typeof v === 'string' ? [v] : typeof v === 'number' ? [String(v)] : Array.isArray(v) ? v.flatMap(texts) : [])
+  const texts = (v: unknown): string[] =>
+    typeof v === 'string'
+      ? [v]
+      : typeof v === 'number'
+        ? [String(v)]
+        : Array.isArray(v)
+          ? v.flatMap(texts)
+          : []
 
   return entries.map((entry, index) => {
     const e = (entry ?? {}) as Record<string, unknown>
     const name = texts(e.name)[0] ?? `law ${index + 1}`
-    const proofs: Proof[] = (['rule', 'hide', 'sole', 'private', 'tier'] as const).flatMap(kind => texts(e[kind]).map(one => ({ kind, name: one })))
+    const proofs: Proof[] = (
+      ['rule', 'hide', 'sole', 'private', 'tier'] as const
+    ).flatMap(kind => texts(e[kind]).map(one => ({ kind, name: one })))
 
     if (proofs.length === 0) {
       problems.push(`${LAWS}: ${name} names nothing that proves it`)
@@ -148,11 +184,21 @@ function contractsIn(file: string): number {
   }
 
   const count = (node: Node): number =>
-    node.kind === 'group' ? (['have', 'must', 'down'].includes(headWord(node) ?? '') ? 1 : 0) + node.nodes.reduce((sum, child) => sum + count(child), 0) : 0
+    node.kind === 'group'
+      ? (['have', 'must', 'down'].includes(headWord(node) ?? '')
+          ? 1
+          : 0) +
+        node.nodes.reduce((sum, child) => sum + count(child), 0)
+      : 0
 
   return groupsOf(parsed.tree.nodes)
     .filter(group => headWord(group) === 'task')
-    .reduce((sum, group) => sum + group.nodes.reduce((inner, child) => inner + count(child), 0), 0)
+    .reduce(
+      (sum, group) =>
+        sum +
+        group.nodes.reduce((inner, child) => inner + count(child), 0),
+      0,
+    )
 }
 
 function projectName(root: string): string {
@@ -160,7 +206,9 @@ function projectName(root: string): string {
 
   if (existsSync(file)) {
     const read = readTree({ file, text: readFileSync(file, 'utf8') })
-    const deck = read.ok ? read.forms.find(form => form.head === 'deck') : undefined
+    const deck = read.ok
+      ? read.forms.find(form => form.head === 'deck')
+      : undefined
 
     if (deck?.terms[0]) {
       return deck.terms[0]
@@ -172,20 +220,35 @@ function projectName(root: string): string {
 
 // the commit the project is at, read-only, `uncommitted` when its files differ from it
 function commitOf(root: string): string {
-  const head = spawnSync('git', ['-C', root, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' })
+  const head = spawnSync(
+    'git',
+    ['-C', root, 'rev-parse', '--short', 'HEAD'],
+    { encoding: 'utf8' },
+  )
 
   if (head.status !== 0) {
     return 'no commit'
   }
 
-  const dirty = spawnSync('git', ['-C', root, 'status', '--porcelain', '--', '.'], { encoding: 'utf8' })
+  const dirty = spawnSync(
+    'git',
+    ['-C', root, 'status', '--porcelain', '--', '.'],
+    { encoding: 'utf8' },
+  )
 
   return `${head.stdout.trim()}${dirty.stdout?.trim() ? ', with uncommitted changes' : ''}`
 }
 
-const TIER_ZERO = 'every list read is inside its list, every division is by something other than zero, and every `walk test` ends'
+const TIER_ZERO =
+  'every list read is inside its list, every division is by something other than zero, and every `walk test` ends'
 
-export function holdReport(input: { root: string; files: string[]; summary: HoldSummary; found: HoldFound; lean?: HoldLean }): HoldReport {
+export function holdReport(input: {
+  root: string
+  files: string[]
+  summary: HoldSummary
+  found: HoldFound
+  lean?: HoldLean
+}): HoldReport {
   const { root, files, summary, found } = input
   const problems: string[] = []
   const manifest = readLaws(root, problems)
@@ -200,19 +263,35 @@ export function holdReport(input: { root: string; files: string[]; summary: Hold
     const text = readFileSync(file, 'utf8')
     const parsed = parse({ file, text })
 
-    if (!parsed.ok) continue
+    if (!parsed.ok) {continue}
 
-    const built = mill(expandTemplates(parsed.tree), file, roleOf(file) ?? undefined, leanOf(file))
+    const built = mill(
+      expandTemplates(parsed.tree),
+      file,
+      roleOf(file) ?? undefined,
+      leanOf(file),
+    )
 
-    if (!built.ok) continue
+    if (!built.ok) {continue}
 
-    for (const statement of built.program as unknown as Record<string, unknown>[]) {
+    for (const statement of built.program as unknown as Record<
+      string,
+      unknown
+    >[]) {
       const name = statement.name
-      const span = statement.span as { start: { line: number }; end: { line: number } } | undefined
+      const span = statement.span as
+        | { start: { line: number }; end: { line: number } }
+        | undefined
 
       if (typeof name === 'string' && span) {
         const list = definitions.get(name) ?? []
-        list.push({ name, file, start: span.start.line, end: span.end.line, statement })
+        list.push({
+          name,
+          file,
+          start: span.start.line,
+          end: span.end.line,
+          statement,
+        })
         definitions.set(name, list)
       }
     }
@@ -230,13 +309,13 @@ export function holdReport(input: { root: string; files: string[]; summary: Hold
     while (stack.length > 0) {
       const one = stack.pop()!
 
-      if (seen.has(one) || !definitions.has(one)) continue
+      if (seen.has(one) || !definitions.has(one)) {continue}
 
       seen.add(one)
 
       for (const definition of definitions.get(one)!) {
         for (const word of wordsOf(definition.statement, new Set())) {
-          if (definitions.has(word) && !seen.has(word)) stack.push(word)
+          if (definitions.has(word) && !seen.has(word)) {stack.push(word)}
         }
       }
     }
@@ -245,14 +324,28 @@ export function holdReport(input: { root: string; files: string[]; summary: Hold
   }
 
   // the definition a refusal falls in
-  const placeOf = (diagnostic: { file?: string; span?: { start?: { line?: number } } }): string | undefined => {
-    const file = diagnostic.file ? path.resolve(root, diagnostic.file) : undefined
+  const placeOf = (diagnostic: {
+    file?: string
+    span?: { start?: { line?: number } }
+  }): string | undefined => {
+    const file = diagnostic.file
+      ? path.resolve(root, diagnostic.file)
+      : undefined
+
     const line = diagnostic.span?.start?.line
 
-    if (!file || line === undefined) return undefined
+    if (!file || line === undefined) {return undefined}
 
     for (const [name, list] of definitions) {
-      if (list.some(d => path.resolve(d.file) === file && d.start <= line && line <= d.end)) return name
+      if (
+        list.some(
+          d =>
+            path.resolve(d.file) === file &&
+            d.start <= line &&
+            line <= d.end,
+        )
+      )
+        {return name}
     }
 
     return undefined
@@ -267,16 +360,32 @@ export function holdReport(input: { root: string; files: string[]; summary: Hold
   // the outside calls and axioms of the ledger, `<file> <task>`, by task name
   const outside = new Map<string, string>()
 
-  for (const entry of [...summary.ledger.native, ...summary.ledger.axioms]) {
+  for (const entry of [
+    ...summary.ledger.native,
+    ...summary.ledger.axioms,
+  ]) {
     outside.set(entry.slice(entry.lastIndexOf(' ') + 1), entry)
   }
 
-  const fileOf = (name: string): string => path.relative(root, definitions.get(name)?.[0]?.file ?? '')
-  const statementOf = (name: string, form: string): Record<string, unknown> | undefined =>
-    definitions.get(name)?.find(d => d.statement.form === form)?.statement
+  const fileOf = (name: string): string =>
+    path.relative(root, definitions.get(name)?.[0]?.file ?? '')
+
+  const statementOf = (
+    name: string,
+    form: string,
+  ): Record<string, unknown> | undefined =>
+    definitions.get(name)?.find(d => d.statement.form === form)
+      ?.statement
 
   const laws: LawRow[] = (manifest ?? []).map(({ name, proofs }) => {
-    const row: LawRow = { name, proof: proofs.map(p => `${p.kind} ${p.name}`), holds: true, english: [], rests: [] }
+    const row: LawRow = {
+      name,
+      proof: proofs.map(p => `${p.kind} ${p.name}`),
+      holds: true,
+      english: [],
+      rests: [],
+    }
+
     const fail = (why: string): void => {
       if (row.holds) {
         row.holds = false
@@ -284,7 +393,8 @@ export function holdReport(input: { root: string; files: string[]; summary: Hold
       }
     }
 
-    if (proofs.length === 0) fail(`${LAWS} names nothing that proves it`)
+    if (proofs.length === 0)
+      {fail(`${LAWS} names nothing that proves it`)}
 
     for (const proof of proofs) {
       if (proof.kind === 'rule') {
@@ -295,7 +405,9 @@ export function holdReport(input: { root: string; files: string[]; summary: Hold
           continue
         }
 
-        row.english.push(sentence.text ?? `(not rendered: ${sentence.refused})`)
+        row.english.push(
+          sentence.text ?? `(not rendered: ${sentence.refused})`,
+        )
 
         if (sentence.kind === 'axiom') {
           row.rests.push(`axiom ${proof.name}`)
@@ -306,26 +418,37 @@ export function holdReport(input: { root: string; files: string[]; summary: Hold
         }
 
         const reached = reach(proof.name)
-        const refused = refusals.find(r => r.at !== undefined && reached.has(r.at))
+        const refused = refusals.find(
+          r => r.at !== undefined && reached.has(r.at),
+        )
 
         if (refused) {
-          fail(`${refused.diagnostic.message} (${refused.at}, ${refused.where})`)
+          fail(
+            `${refused.diagnostic.message} (${refused.at}, ${refused.where})`,
+          )
         } else if (summary.failed.includes(fileOf(proof.name))) {
           fail(`${fileOf(proof.name)} does not compile`)
         }
 
         for (const one of reached) {
           const call = outside.get(one)
-          if (call && !row.rests.includes(call)) row.rests.push(call)
+
+          if (call && !row.rests.includes(call)) {row.rests.push(call)}
         }
       } else if (proof.kind === 'tier') {
-        row.english.push(`${TIER_ZERO}: ${summary.proven} of ${summary.total} obligations proven, ${summary.baselined} in the baseline`)
+        row.english.push(
+          `${TIER_ZERO}: ${summary.proven} of ${summary.total} obligations proven, ${summary.baselined} in the baseline`,
+        )
 
         if (summary.fresh.length > 0) {
-          fail(`${summary.fresh.length} tier-0 obligation${summary.fresh.length === 1 ? ' is' : 's are'} not proven: ${summary.fresh[0]!.message} (${summary.fresh[0]!.key})`)
+          fail(
+            `${summary.fresh.length} tier-0 obligation${summary.fresh.length === 1 ? ' is' : 's are'} not proven: ${summary.fresh[0]!.message} (${summary.fresh[0]!.key})`,
+          )
         }
       } else {
-        const want = proof.kind === 'private' ? 'function' : 'record-type'
+        const want =
+          proof.kind === 'private' ? 'function' : 'record-type'
+
         const statement = statementOf(proof.name, want)
         const home = fileOf(proof.name)
         const words = {
@@ -333,10 +456,17 @@ export function holdReport(input: { root: string; files: string[]; summary: Hold
           sole: `a ${proof.name} is used at most once`,
           private: `only ${home} calls ${proof.name}`,
         }[proof.kind]
-        const refusal = { hide: 'hidden-make', sole: 'sole-reused', private: 'private-name' }[proof.kind]
+
+        const refusal = {
+          hide: 'hidden-make',
+          sole: 'sole-reused',
+          private: 'private-name',
+        }[proof.kind]
 
         if (!statement) {
-          fail(`no ${want === 'function' ? 'task' : 'form'} named ${proof.name}`)
+          fail(
+            `no ${want === 'function' ? 'task' : 'form'} named ${proof.name}`,
+          )
           continue
         }
 
@@ -346,8 +476,18 @@ export function holdReport(input: { root: string; files: string[]; summary: Hold
         }
 
         row.english.push(words)
-        const refused = refusals.find(r => r.diagnostic.name === refusal && r.diagnostic.message.includes(`"${proof.name}"`))
-          ?? refusals.find(r => r.diagnostic.name === refusal && r.diagnostic.message.includes(proof.name))
+
+        const refused =
+          refusals.find(
+            r =>
+              r.diagnostic.name === refusal &&
+              r.diagnostic.message.includes(`"${proof.name}"`),
+          ) ??
+          refusals.find(
+            r =>
+              r.diagnostic.name === refusal &&
+              r.diagnostic.message.includes(proof.name),
+          )
 
         if (refused) {
           fail(`${refused.diagnostic.message} (${refused.where})`)
@@ -361,27 +501,61 @@ export function holdReport(input: { root: string; files: string[]; summary: Hold
   })
 
   if (manifest === undefined) {
-    problems.push(`there is no ${LAWS} at the project root, so no law is named`)
+    problems.push(
+      `there is no ${LAWS} at the project root, so no law is named`,
+    )
   }
 
   const held = laws.filter(law => law.holds).length
   const resting = laws.filter(law => law.rests.length > 0).length
-  const contracts = files.reduce((sum, file) => sum + contractsIn(file), 0)
-  const notProven = new Set(summary.fresh.map(f => f.key.split(' ').slice(0, 2).join(' '))).size
-  const lean = input.lean && !input.lean.missing
-    ? { checked: input.lean.claims.filter(c => c.verdict === 'checked').length, total: input.lean.claims.length }
-    : undefined
+  const contracts = files.reduce(
+    (sum, file) => sum + contractsIn(file),
+    0,
+  )
 
-  const holds = manifest !== undefined && laws.length > 0 && held === laws.length && problems.length === 0 && summary.failed.length === 0
+  const notProven = new Set(
+    summary.fresh.map(f => f.key.split(' ').slice(0, 2).join(' ')),
+  ).size
+
+  const lean =
+    input.lean && !input.lean.missing
+      ? {
+          checked: input.lean.claims.filter(
+            c => c.verdict === 'checked',
+          ).length,
+          total: input.lean.claims.length,
+        }
+      : undefined
+
+  const holds =
+    manifest !== undefined &&
+    laws.length > 0 &&
+    held === laws.length &&
+    problems.length === 0 &&
+    summary.failed.length === 0
+
   const top = [
     held === laws.length
       ? `${laws.length} law${laws.length === 1 ? '' : 's'} hold`
-      : `${held} of ${laws.length} laws hold, ${laws.length - held} ${laws.length - held === 1 ? 'does' : 'do'} not (${laws.filter(l => !l.holds).map(l => l.name).join(', ')})`,
+      : `${held} of ${laws.length} laws hold, ${laws.length - held} ${laws.length - held === 1 ? 'does' : 'do'} not (${laws
+          .filter(l => !l.holds)
+          .map(l => l.name)
+          .join(', ')})`,
     `${summary.total} obligations`,
     `${contracts} contracts`,
-    ...(summary.kernel.declined > 0 ? [`${summary.kernel.declined} tasks declined by the kernel`] : []),
-    ...(resting > 0 ? [`${resting} law${resting === 1 ? ' rests' : 's rest'} on an outside call`] : []),
-    ...(summary.failed.length > 0 ? [`${summary.failed.length} file${summary.failed.length === 1 ? ' does' : 's do'} not compile`] : []),
+    ...(summary.kernel.declined > 0
+      ? [`${summary.kernel.declined} tasks declined by the kernel`]
+      : []),
+    ...(resting > 0
+      ? [
+          `${resting} law${resting === 1 ? ' rests' : 's rest'} on an outside call`,
+        ]
+      : []),
+    ...(summary.failed.length > 0
+      ? [
+          `${summary.failed.length} file${summary.failed.length === 1 ? ' does' : 's do'} not compile`,
+        ]
+      : []),
     ...problems,
   ].join(', ')
 
@@ -403,10 +577,16 @@ export function holdReport(input: { root: string; files: string[]; summary: Hold
       '',
     ]),
     'assumed (outside calls, each an axiom):',
-    ...(outside.size > 0 ? [...outside.values()].map(entry => `  ${entry}`) : ['  nothing']),
+    ...(outside.size > 0
+      ? [...outside.values()].map(entry => `  ${entry}`)
+      : ['  nothing']),
     '',
     `not proven: ${notProven} task${notProven === 1 ? '' : 's'}. declined by the kernel: ${summary.kernel.declined} task${summary.kernel.declined === 1 ? '' : 's'}`,
-    ...(lean ? [`re-checked in Lean 4: ${lean.checked} of ${lean.total}`] : input.lean?.missing ? ['re-checked in Lean 4: not run, Lean is not installed'] : []),
+    ...(lean
+      ? [`re-checked in Lean 4: ${lean.checked} of ${lean.total}`]
+      : input.lean?.missing
+        ? ['re-checked in Lean 4: not run, Lean is not installed']
+        : []),
     '',
   ].join('\n')
 
@@ -421,7 +601,11 @@ export function holdReport(input: { root: string; files: string[]; summary: Hold
     manifest: manifest !== undefined,
     problems,
     laws,
-    obligations: { proven: summary.proven, total: summary.total, baselined: summary.baselined },
+    obligations: {
+      proven: summary.proven,
+      total: summary.total,
+      baselined: summary.baselined,
+    },
     contracts,
     assumed: [...outside.values()],
     notProven,

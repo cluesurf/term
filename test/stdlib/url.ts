@@ -20,7 +20,12 @@
 // Run: sh tmp/dec-tsx.sh test/stdlib/url.ts   (URL_ONLY=typescript|rust|swift|kotlin runs one backend)
 //      URL_WRITE_KNOWN=1 writes known.json from the run, and refuses when the file exists
 
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { projectResolver } from '@term/call/code/make'
@@ -28,8 +33,18 @@ import { BACKENDS, runOn } from '../compile/shared/run-on'
 
 // `want` is the getters in the order the answer record carries them (href, origin, scheme, username, password, host,
 // port, path, query, fragment), null for one the corpus does not state
-type Case = { file: string; at: number; href: string; base: string; failure: boolean; want: (string | null)[] }
-type Known = Record<string, Record<string, number[]> | { build_failure: string }>
+type Case = {
+  file: string
+  at: number
+  href: string
+  base: string
+  failure: boolean
+  want: (string | null)[]
+}
+type Known = Record<
+  string,
+  Record<string, number[]> | { build_failure: string }
+>
 
 const here = join(process.cwd(), 'test', 'stdlib', 'url')
 const knownPath = join(here, 'known.json')
@@ -39,15 +54,22 @@ const FILES = [
   { name: 'idna', file: 'IdnaTestV2.json' },
 ]
 
-const hex = (text: string): string => Buffer.from(text, 'utf8').toString('hex')
-const unhex = (text: string): string => Buffer.from(text, 'hex').toString('utf8')
+const hex = (text: string): string =>
+  Buffer.from(text, 'utf8').toString('hex')
+const unhex = (text: string): string =>
+  Buffer.from(text, 'hex').toString('utf8')
 
 // the cases, each with the getters url.tree exposes today: scheme, host, port, path, query, fragment
 function load(): Case[] {
   const cases: Case[] = []
 
   for (const { name, file } of FILES) {
-    const entries = (JSON.parse(readFileSync(join(here, file), 'utf8')) as unknown[]).filter(entry => typeof entry !== 'string') as Record<string, any>[]
+    const entries = (
+      JSON.parse(readFileSync(join(here, file), 'utf8')) as unknown[]
+    ).filter(entry => typeof entry !== 'string') as Record<
+      string,
+      any
+    >[]
 
     entries.forEach((entry, at) => {
       if (name === 'urltestdata') {
@@ -80,7 +102,21 @@ function load(): Case[] {
           href: `https://${entry.input}/x`,
           base: '',
           failure: entry.output === null,
-          want: entry.output === null ? [] : [null, null, 'https', '', '', entry.output, '', '/x', '', ''],
+          want:
+            entry.output === null
+              ? []
+              : [
+                  null,
+                  null,
+                  'https',
+                  '',
+                  '',
+                  entry.output,
+                  '',
+                  '/x',
+                  '',
+                  '',
+                ],
         })
       }
     })
@@ -89,7 +125,14 @@ function load(): Case[] {
   return cases
 }
 
-const literal = (text: string): string => [...text].map(c => (c === '<' || c === '>' || c === '{' || c === '}' || c === '\\' ? `\\${c}` : c)).join('')
+const literal = (text: string): string =>
+  [...text]
+    .map(c =>
+      c === '<' || c === '>' || c === '{' || c === '}' || c === '\\'
+        ? `\\${c}`
+        : c,
+    )
+    .join('')
 
 const program = (caseFile: string): string => `load @term/base/url
   find make-url
@@ -169,23 +212,35 @@ task run
 `
 
 // the case indexes a backend got wrong, per corpus file
-function grade(cases: Case[], answer: string): Record<string, number[]> {
+function grade(
+  cases: Case[],
+  answer: string,
+): Record<string, number[]> {
   const records = answer.split(';')
-  const wrong: Record<string, number[]> = Object.fromEntries(FILES.map(f => [f.name, [] as number[]]))
+  const wrong: Record<string, number[]> = Object.fromEntries(
+    FILES.map(f => [f.name, [] as number[]]),
+  )
   let shown = 0
 
   cases.forEach((one, index) => {
     const got = (records[index] ?? '').split('|')
     const status = got[0] ?? ''
     const fields = got.slice(1).map(unhex)
-    const good = one.failure ? status === '1' || status === '2' : status === '0' && one.want.every((value, i) => value === null || fields[i] === value)
+    const good = one.failure
+      ? status === '1' || status === '2'
+      : status === '0' &&
+        one.want.every(
+          (value, i) => value === null || fields[i] === value,
+        )
 
     if (!good) {
       wrong[one.file]!.push(one.at)
 
       if (shown < Number(process.env.URL_SHOW ?? 0)) {
         shown++
-        console.log(`  ${one.file}[${one.at}] ${JSON.stringify(one.href)} base ${JSON.stringify(one.base)}\n    got  ${status} ${JSON.stringify(fields)}\n    want ${one.failure ? 'failure' : JSON.stringify(one.want)}`)
+        console.log(
+          `  ${one.file}[${one.at}] ${JSON.stringify(one.href)} base ${JSON.stringify(one.base)}\n    got  ${status} ${JSON.stringify(fields)}\n    want ${one.failure ? 'failure' : JSON.stringify(one.want)}`,
+        )
       }
     }
   })
@@ -194,18 +249,34 @@ function grade(cases: Case[], answer: string): Record<string, number[]> {
 }
 
 const cases = load()
-const total = Object.fromEntries(FILES.map(f => [f.name, cases.filter(one => one.file === f.name).length]))
+const total = Object.fromEntries(
+  FILES.map(f => [
+    f.name,
+    cases.filter(one => one.file === f.name).length,
+  ]),
+)
 const dir = mkdtempSync(join(tmpdir(), 'term-url-'))
 const caseFile = join(dir, 'cases.txt')
-writeFileSync(caseFile, cases.map(one => `${hex(one.href)}|${hex(one.base)}`).join(';'))
+writeFileSync(
+  caseFile,
+  cases.map(one => `${hex(one.href)}|${hex(one.base)}`).join(';'),
+)
 
 const only = process.env.URL_ONLY ?? ''
-const known: Known = existsSync(knownPath) ? JSON.parse(readFileSync(knownPath, 'utf8')) : {}
+const known: Known = existsSync(knownPath)
+  ? JSON.parse(readFileSync(knownPath, 'utf8'))
+  : {}
 const found: Known = {}
 let bad = 0
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: program(caseFile), resolve: env => projectResolver(process.cwd(), env), dir, name: 'url' })
+  const ran = runOn({
+    backend,
+    program: program(caseFile),
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'url',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`${backend} skipped: ${ran.reason}`)
@@ -219,7 +290,9 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
 
     if (!before || !('build_failure' in before)) {
       bad++
-      console.log(`FAIL  ${backend}: a build failure that known.json does not list`)
+      console.log(
+        `FAIL  ${backend}: a build failure that known.json does not list`,
+      )
     }
 
     continue
@@ -229,26 +302,36 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
   found[backend] = wrong
 
   for (const { name } of FILES) {
-    console.log(`${backend} ${name} ${total[name]! - wrong[name]!.length} of ${total[name]}`)
+    console.log(
+      `${backend} ${name} ${total[name]! - wrong[name]!.length} of ${total[name]}`,
+    )
   }
 
   const before = known[backend]
 
   if (Object.keys(known).length > 0) {
     for (const { name } of FILES) {
-      const listed = new Set(before && !('build_failure' in before) ? (before[name] ?? []) : [])
+      const listed = new Set(
+        before && !('build_failure' in before)
+          ? (before[name] ?? [])
+          : [],
+      )
       const now = new Set(wrong[name])
       const fresh = [...now].filter(at => !listed.has(at))
       const gone = [...listed].filter(at => !now.has(at))
 
       if (fresh.length > 0) {
         bad++
-        console.log(`FAIL  ${backend} ${name}: new failures ${fresh.slice(0, 20).join(',')}${fresh.length > 20 ? ` (${fresh.length})` : ''}`)
+        console.log(
+          `FAIL  ${backend} ${name}: new failures ${fresh.slice(0, 20).join(',')}${fresh.length > 20 ? ` (${fresh.length})` : ''}`,
+        )
       }
 
       if (gone.length > 0) {
         bad++
-        console.log(`FAIL  ${backend} ${name}: listed in known.json and now passing, remove ${gone.slice(0, 20).join(',')}${gone.length > 20 ? ` (${gone.length})` : ''}`)
+        console.log(
+          `FAIL  ${backend} ${name}: listed in known.json and now passing, remove ${gone.slice(0, 20).join(',')}${gone.length > 20 ? ` (${gone.length})` : ''}`,
+        )
       }
     }
   }
@@ -257,7 +340,9 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
 if (process.env.URL_WRITE_KNOWN === '1') {
   // an existing known.json is replaced only on purpose (URL_REPLACE_KNOWN=1), by the item whose parser changed what a case does
   if (existsSync(knownPath) && process.env.URL_REPLACE_KNOWN !== '1') {
-    console.log(`refused: ${knownPath} exists, known.json only shrinks and is edited by the item that fixes a case (URL_REPLACE_KNOWN=1 replaces it)`)
+    console.log(
+      `refused: ${knownPath} exists, known.json only shrinks and is edited by the item that fixes a case (URL_REPLACE_KNOWN=1 replaces it)`,
+    )
     process.exit(1)
   }
 
@@ -265,8 +350,14 @@ if (process.env.URL_WRITE_KNOWN === '1') {
   console.log(`wrote ${knownPath}`)
 }
 
-const emptied = Object.values(found).every(entry => !('build_failure' in entry) && Object.values(entry).every(list => list.length === 0))
-console.log(`\nurl: ${bad} ratchet failure(s), known.json ${Object.keys(known).length === 0 ? 'absent' : 'present'}, run ${emptied ? 'clean' : 'has failing cases'}`)
+const emptied = Object.values(found).every(
+  entry =>
+    !('build_failure' in entry) &&
+    Object.values(entry).every(list => list.length === 0),
+)
+console.log(
+  `\nurl: ${bad} ratchet failure(s), known.json ${Object.keys(known).length === 0 ? 'absent' : 'present'}, run ${emptied ? 'clean' : 'has failing cases'}`,
+)
 
 if (bad > 0) {
   process.exit(1)

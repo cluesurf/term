@@ -66,20 +66,52 @@ task field-not-constant
       back copy
 `
 
-const built = compile({ file: 'arm-capture.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!), library: true, leanOf: () => true } as never)
+const built = compile({ file: 'arm-capture.tree', text }, {
+  resolve: withNativeEnv('node', stdlibResolver()!),
+  library: true,
+  leanOf: () => true,
+} as never)
 
 if (!built.ok) {
-  ok('the program builds', false, built.diagnostics.map(d => d.message.split('\n').join(' ')).join(' | '))
+  ok(
+    'the program builds',
+    false,
+    built.diagnostics
+      .map(d => d.message.split('\n').join(' '))
+      .join(' | '),
+  )
 } else {
   const dir = mkdtempSync(join(tmpdir(), 'term-arm-capture-'))
   const file = join(dir, 'module.mjs')
-  writeFileSync(file, transformSync(built.typescript, { loader: 'ts', format: 'esm' }).code)
-  const mod = (await import(pathToFileURL(file).href)) as Record<string, (...a: unknown[]) => unknown>
+  writeFileSync(
+    file,
+    transformSync(built.typescript, { loader: 'ts', format: 'esm' })
+      .code,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as Record<
+    string,
+    (...a: unknown[]) => unknown
+  >
 
-  const pair = { form: 'pair', left: { form: 'point', value: 1, span: 99 }, span: 7 }
-  ok('a copy read inside an arm is the copied value, not the arm field of its name', mod.outerSpan!(pair) === 7, String(mod.outerSpan!(pair)))
-  ok('a constant name an arm rebinds reads the arm field', mod.fieldNotConstant!({ form: 'point', value: 3, span: 0 }) === 3, String(mod.fieldNotConstant!({ form: 'point', value: 3, span: 0 })))
-  ok('and outside such an arm the constant still propagates', mod.fieldNotConstant!({ form: 'blank' }) === 5)
+  const pair = {
+    form: 'pair',
+    left: { form: 'point', value: 1, span: 99 },
+    span: 7,
+  }
+  ok(
+    'a copy read inside an arm is the copied value, not the arm field of its name',
+    mod.outerSpan!(pair) === 7,
+    String(mod.outerSpan!(pair)),
+  )
+  ok(
+    'a constant name an arm rebinds reads the arm field',
+    mod.fieldNotConstant!({ form: 'point', value: 3, span: 0 }) === 3,
+    String(mod.fieldNotConstant!({ form: 'point', value: 3, span: 0 })),
+  )
+  ok(
+    'and outside such an arm the constant still propagates',
+    mod.fieldNotConstant!({ form: 'blank' }) === 5,
+  )
 }
 
 console.log(`\nsimplify-arm-capture: ${pass} pass, ${fail} fail`)

@@ -16,11 +16,36 @@ async function liftAsync<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
-export const TOOLCHAIN = port.toolchain() as string
-export const releasedVersions = (input: { transport: unknown; repository: string }): Promise<string[]> =>
-  liftAsync(() => port.releasedVersions(input.transport, input.repository) as Promise<string[]>)
-export const newestMatching = (input: { versions: string[]; hold: unknown }): string | undefined => port.newestMatching(input.versions, input.hold) as string | undefined
-export const pinSatisfies = (input: { need: any; pin: any }): boolean => port.pinSatisfies(input.need, input.pin) as boolean
-export const pinNeed = (input: { need: any; previous?: any; offline?: boolean }): Promise<{ pin?: any; kept: boolean; reason?: string }> =>
-  liftAsync(() => port.pinNeed(input.need, input.previous, input.offline ?? false) as Promise<{ pin?: any; kept: boolean; reason?: string }>)
-export const showPin = (pin: any): string => port.showPin(pin) as string
+export const TOOLCHAIN = port.toolchain()
+export const releasedVersions = (input: {
+  transport: unknown
+  repository: string
+}): Promise<string[]> =>
+  liftAsync(
+    () =>
+      port.releasedVersions(
+        input.transport,
+        input.repository,
+      ),
+  )
+export const newestMatching = (input: {
+  versions: string[]
+  hold: unknown
+}): string | undefined =>
+  port.newestMatching(input.versions, input.hold) as string | undefined
+export const pinSatisfies = (input: { need: any; pin: any }): boolean =>
+  port.pinSatisfies(input.need, input.pin)
+export const pinNeed = (input: {
+  need: any
+  previous?: any
+  offline?: boolean
+}): Promise<{ pin?: any; kept: boolean; reason?: string }> =>
+  liftAsync(
+    () =>
+      port.pinNeed(
+        input.need,
+        input.previous,
+        input.offline ?? false,
+      ) as Promise<{ pin?: any; kept: boolean; reason?: string }>,
+  )
+export const showPin = (pin: any): string => port.showPin(pin)

@@ -12,7 +12,10 @@ import { compile } from '@term/make/code/compile/compile'
 import { mill } from '@term/make/code/compile/mill'
 import { parse, printTree } from '@term/make/code/parser/tree'
 import { projectResolver } from '@term/call/code/make'
-import { setUnknownSeam, unknownSeamOn } from '@term/make/code/check/strict'
+import {
+  setUnknownSeam,
+  unknownSeamOn,
+} from '@term/make/code/check/strict'
 
 const TERM = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -32,20 +35,43 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-type Built = { ok: boolean; typescript: string; messages: string; names: string[]; lines?: number[]; warnings: string[] }
+type Built = {
+  ok: boolean
+  typescript: string
+  messages: string
+  names: string[]
+  lines?: number[]
+  warnings: string[]
+}
 
 // `linked` resolves the stdlib and @term/site, for a sample that loads them
-function build(text: string, file = '/gate/code/gap.tree', linked = false): Built {
+function build(
+  text: string,
+  file = '/gate/code/gap.tree',
+  linked = false,
+): Built {
   const out = compile(
-    { file: linked ? join(TERM, 'test/compile/guide-gaps.tree') : file, text },
-    linked ? { resolve: projectResolver(TERM, 'node'), env: 'node' } : {},
+    {
+      file: linked ? join(TERM, 'test/compile/guide-gaps.tree') : file,
+      text,
+    },
+    linked
+      ? { resolve: projectResolver(TERM, 'node'), env: 'node' }
+      : {},
   )
-  const warnings = ((out as { warnings?: { name: string; message: string }[] }).warnings ?? []).map(
-    w => `${w.name}: ${w.message}`,
-  )
+  const warnings = (
+    (out as { warnings?: { name: string; message: string }[] })
+      .warnings ?? []
+  ).map(w => `${w.name}: ${w.message}`)
 
   return out.ok
-    ? { ok: true, typescript: out.typescript, messages: '', names: [], warnings }
+    ? {
+        ok: true,
+        typescript: out.typescript,
+        messages: '',
+        names: [],
+        warnings,
+      }
     : {
         ok: false,
         typescript: '',
@@ -58,12 +84,17 @@ function build(text: string, file = '/gate/code/gap.tree', linked = false): Buil
 }
 
 // the emitted module, imported, so its exports can be called
-async function load(typescript: string): Promise<Record<string, (...args: unknown[]) => unknown>> {
+async function load(
+  typescript: string,
+): Promise<Record<string, (...args: unknown[]) => unknown>> {
   const dir = mkdtempSync(join(tmpdir(), 'term-guide-gaps-'))
   const file = join(dir, 'module.ts')
   writeFileSync(file, typescript)
 
-  return (await import(pathToFileURL(file).href)) as Record<string, (...args: unknown[]) => unknown>
+  return (await import(pathToFileURL(file).href)) as Record<
+    string,
+    (...args: unknown[]) => unknown
+  >
 }
 
 async function main(): Promise<void> {
@@ -92,23 +123,35 @@ task order
   send back, read seen
 `
     const parsed = parse({ file: '/gate/code/gap.tree', text })
-    const milled = parsed.ok ? mill(parsed.tree, '/gate/code/gap.tree') : undefined
-    const order = milled?.ok
-      ? milled.program.find(node => node.form === 'function' && node.name === 'order')
+    const milled = parsed.ok
+      ? mill(parsed.tree, '/gate/code/gap.tree')
       : undefined
-    const steps = order?.form === 'function'
-      ? order.body.map(step =>
-          step.form === 'expression' && step.expr.form === 'call' && step.expr.callee.form === 'variable'
-            ? step.expr.callee.name
-            : step.form,
+    const order = milled?.ok
+      ? milled.program.find(
+          node => node.form === 'function' && node.name === 'order',
         )
-      : []
-    ok('a task named `home` or `rank` is called from a body, in the order written', steps.join(' ') === 'let home rank assign return', steps.join(' '))
+      : undefined
+    const steps =
+      order?.form === 'function'
+        ? order.body.map(step =>
+            step.form === 'expression' &&
+            step.expr.form === 'call' &&
+            step.expr.callee.form === 'variable'
+              ? step.expr.callee.name
+              : step.form,
+          )
+        : []
+    ok(
+      'a task named `home` or `rank` is called from a body, in the order written',
+      steps.join(' ') === 'let home rank assign return',
+      steps.join(' '),
+    )
     ok('and the build keeps both', build(text).ok)
   }
 
   {
-    const built = build(`load @term/site/dom/dom
+    const built = build(
+      `load @term/site/dom/dom
   find view
 
 view home
@@ -119,8 +162,19 @@ task route
   take host, like view
   take path, like text
   home host
-`, undefined, true)
-    ok('`home host` alone in `route` places the component', built.ok && /function route\([^)]*\)[^{]*\{\s*home\(host\)/.test(built.typescript), built.messages || /function route[\s\S]{0,120}/.exec(built.typescript)?.[0])
+`,
+      undefined,
+      true,
+    )
+    ok(
+      '`home host` alone in `route` places the component',
+      built.ok &&
+        /function route\([^)]*\)[^{]*\{\s*home\(host\)/.test(
+          built.typescript,
+        ),
+      built.messages ||
+        /function route[\s\S]{0,120}/.exec(built.typescript)?.[0],
+    )
   }
 
   // ---- library/processes: `console`'s `log` beside `log`'s `warn` ----
@@ -139,15 +193,23 @@ task boot
   warn <err>
 `
     for (const env of ['rust', 'swift', 'kotlin'] as const) {
-      const out = compile({ file: join(TERM, 'test/compile/guide-gaps.tree'), text }, { resolve: projectResolver(TERM, env), env })
-      ok(`\`console\`'s \`log\` beside \`log\`'s \`warn\` builds for ${env}`, out.ok, out.ok ? '' : out.diagnostics.map(d => d.message).join(' | '))
+      const out = compile(
+        { file: join(TERM, 'test/compile/guide-gaps.tree'), text },
+        { resolve: projectResolver(TERM, env), env },
+      )
+      ok(
+        `\`console\`'s \`log\` beside \`log\`'s \`warn\` builds for ${env}`,
+        out.ok,
+        out.ok ? '' : out.diagnostics.map(d => d.message).join(' | '),
+      )
     }
   }
 
   // ---- library/exceptions: a `sift` over a caught value that leaves a raise out names neither spelling ----
   // the message said `this fork case` under a `sift`, which is the same node
   {
-    const built = build(`load @term/base/exception
+    const built = build(
+      `load @term/base/exception
   find absence
   find mismatch
 
@@ -178,10 +240,17 @@ task guarded
     sift problem
       case absence
         send back, code 0
-`, undefined, true)
+`,
+      undefined,
+      true,
+    )
     ok(
       'a `sift` that leaves a raise uncovered says no case covers it, and never `fork case`',
-      !built.ok && /can also raise mismatch, and no case here covers it/.test(built.messages) && !/fork case/.test(built.messages),
+      !built.ok &&
+        /can also raise mismatch, and no case here covers it/.test(
+          built.messages,
+        ) &&
+        !/fork case/.test(built.messages),
       built.messages,
     )
   }
@@ -212,11 +281,19 @@ task square-area
   like number
   back area(make square, bind side, 3)
 `)
-    ok('`back sift` builds, each arm giving its value', built.ok, built.messages)
+    ok(
+      '`back sift` builds, each arm giving its value',
+      built.ok,
+      built.messages,
+    )
 
     if (built.ok) {
       const mod = await load(built.typescript)
-      ok('and returns the matched arm\'s value', mod['circleArea']?.() === 4 && mod['squareArea']?.() === 9, `${String(mod['circleArea']?.())} ${String(mod['squareArea']?.())}`)
+      ok(
+        "and returns the matched arm's value",
+        mod['circleArea']?.() === 4 && mod['squareArea']?.() === 9,
+        `${String(mod['circleArea']?.())} ${String(mod['squareArea']?.())}`,
+      )
     }
   }
 
@@ -229,13 +306,19 @@ task square-area
   save at, subtract(xs/length, 1)
   back xs/{at}
 `)
-    ok('a binding read only as a computed index is not warned as unused', built.ok && !built.warnings.some(w => w.includes('"at" is never used')), built.warnings.join(' | ') || built.messages)
+    ok(
+      'a binding read only as a computed index is not warned as unused',
+      built.ok &&
+        !built.warnings.some(w => w.includes('"at" is never used')),
+      built.warnings.join(' | ') || built.messages,
+    )
   }
 
   // ---- library/exceptions: a raise on TypeScript carries its stack in `flow` ----
   // every raise built `flow: []`; the class fills it from the Error's own stack where the raise gave none
   {
-    const built = build(`load @term/base/exception
+    const built = build(
+      `load @term/base/exception
   find absence
 
 load @term/base/list
@@ -256,13 +339,20 @@ task frames
   halt take
     take problem
     send back, size(problem/flow)
-`, undefined, true)
+`,
+      undefined,
+      true,
+    )
     ok('a raise builds', built.ok, built.messages)
 
     if (built.ok) {
       const mod = await load(built.typescript)
       const count = mod.frames?.() as number
-      ok('and the caught exception carries the frames of the raise in `flow`', typeof count === 'number' && count > 0, String(count))
+      ok(
+        'and the caught exception carries the frames of the raise in `flow`',
+        typeof count === 'number' && count > 0,
+        String(count),
+      )
     }
   }
 
@@ -289,13 +379,22 @@ task five
     // another file is read alone and still folds its `add(...)`, so a task another file could import is warned about
     ok(
       'a task named like a compiler word builds, warned that only its own file reaches it by name',
-      built.ok && built.warnings.some(w => w.startsWith('builtin-shadow: a task named "add" is reached by that name only in this file')),
+      built.ok &&
+        built.warnings.some(w =>
+          w.startsWith(
+            'builtin-shadow: a task named "add" is reached by that name only in this file',
+          ),
+        ),
       built.warnings.join(' | ') || built.messages,
     )
 
     if (built.ok) {
       const mod = await load(built.typescript)
-      ok('and a call of it in its own file is that task: add(2, 3) is 6', mod.five?.() === 6, String(mod.five?.()))
+      ok(
+        'and a call of it in its own file is that task: add(2, 3) is 6',
+        mod.five?.() === 6,
+        String(mod.five?.()),
+      )
     }
   }
 
@@ -320,7 +419,8 @@ task five
 `)
     ok(
       'a private task named like a compiler word builds with no `builtin-shadow` warning',
-      built.ok && !built.warnings.some(w => w.startsWith('builtin-shadow')),
+      built.ok &&
+        !built.warnings.some(w => w.startsWith('builtin-shadow')),
       built.warnings.join(' | ') || built.messages,
     )
 
@@ -333,18 +433,26 @@ task five
   // ---- applications/web/routes: braces in a component's text ----
   // `view p, <Nothing at {path}>` built its literal chunks alone and served `<p>Nothing at </p>`, with no message
   {
-    const built = build(`load @term/site/dom/dom
+    const built = build(
+      `load @term/site/dom/dom
   find view
 
 view missing
   take host, like view
   take path, like text
   view p, <Nothing at {path}>
-`, undefined, true)
+`,
+      undefined,
+      true,
+    )
     ok(
       'a component text with braces is a dynamic text holding the value',
-      built.ok && /makeDynamicText\(\(\) => \(`Nothing at \$\{path\}`\)\)/.test(built.typescript),
-      built.messages || /function missing[\s\S]{0,200}/.exec(built.typescript)?.[0],
+      built.ok &&
+        /makeDynamicText\(\(\) => \(`Nothing at \$\{path\}`\)\)/.test(
+          built.typescript,
+        ),
+      built.messages ||
+        /function missing[\s\S]{0,200}/.exec(built.typescript)?.[0],
     )
   }
 
@@ -372,7 +480,10 @@ view missing
 
     if (built.ok) {
       const mod = await load(built.typescript)
-      ok('and the outer loop ends, having run the inner one n times each turn', mod.grid!(4) === 16)
+      ok(
+        'and the outer loop ends, having run the inner one n times each turn',
+        mod.grid!(4) === 16,
+      )
     }
   }
 
@@ -393,7 +504,11 @@ view missing
           read j
   send back, read total
 `)
-    ok('a take beside the bind lines names the counter', built.ok, built.messages)
+    ok(
+      'a take beside the bind lines names the counter',
+      built.ok,
+      built.messages,
+    )
 
     if (built.ok) {
       const mod = await load(built.typescript)
@@ -414,7 +529,11 @@ view missing
     hook hold
       send back, text <negative>
 `)
-    ok('a task promising text with no miss arm is refused', refused.names.includes('missing-back'), refused.messages)
+    ok(
+      'a task promising text with no miss arm is refused',
+      refused.names.includes('missing-back'),
+      refused.messages,
+    )
 
     const whole = build(`task all-paths
   take n, like number
@@ -429,7 +548,11 @@ view missing
     hook miss
       send back, text <not negative>
 `)
-    ok('and one that returns on every path builds', whole.ok, whole.messages)
+    ok(
+      'and one that returns on every path builds',
+      whole.ok,
+      whole.messages,
+    )
   }
 
   // ---- language/branching: an arm with a word the fork does not know ----
@@ -446,7 +569,11 @@ view missing
       send back, text <negative>
   send back, text <not negative>
 `)
-    ok('`hook true` under `fork test` is refused, not dropped', !built.ok && /true/.test(built.messages), built.messages)
+    ok(
+      '`hook true` under `fork test` is refused, not dropped',
+      !built.ok && /true/.test(built.messages),
+      built.messages,
+    )
   }
 
   // ---- language/errors: `halt <text>` raises `failure`, a TermException a handler can read ----
@@ -467,7 +594,11 @@ view missing
         caught = error as typeof caught
       }
 
-      ok('and throws the TermException carrier with form failure', caught.name === 'TermException' && caught.form === 'failure', JSON.stringify(caught))
+      ok(
+        'and throws the TermException carrier with form failure',
+        caught.name === 'TermException' && caught.form === 'failure',
+        JSON.stringify(caught),
+      )
     }
   }
 
@@ -493,7 +624,11 @@ task make-ada
   like number
   send back, code 1
 `)
-    ok('`mark deprecatd` is refused', !built.ok && /deprecatd/.test(built.messages), built.messages)
+    ok(
+      '`mark deprecatd` is refused',
+      !built.ok && /deprecatd/.test(built.messages),
+      built.messages,
+    )
 
     // a file's marks under a task were accepted and read by nothing
     for (const word of ['draft', 'stable', 'unstable']) {
@@ -502,7 +637,11 @@ task make-ada
   like number
   send back, code 1
 `)
-      ok(`\`mark ${word}\` under a task is refused as a file's mark`, !filed.ok && /marks a file/.test(filed.messages), filed.messages)
+      ok(
+        `\`mark ${word}\` under a task is refused as a file's mark`,
+        !filed.ok && /marks a file/.test(filed.messages),
+        filed.messages,
+      )
     }
 
     const exact = build(`task old-way
@@ -510,7 +649,11 @@ task make-ada
   like number
   send back, code 1
 `)
-    ok('`mark exact`, which nothing reads yet, is refused', !exact.ok && /exact/.test(exact.messages), exact.messages)
+    ok(
+      '`mark exact`, which nothing reads yet, is refused',
+      !exact.ok && /exact/.test(exact.messages),
+      exact.messages,
+    )
   }
 
   // ---- language/notes: `mark native` under a `dock load` repeats what `dock` says ----
@@ -526,7 +669,11 @@ task base-name
     call path/basename
       read file
 `)
-    ok('`mark native` under `dock load` is refused, naming the dock', !marked.ok && /mark native.*dock load/.test(marked.messages), marked.messages)
+    ok(
+      '`mark native` under `dock load` is refused, naming the dock',
+      !marked.ok && /mark native.*dock load/.test(marked.messages),
+      marked.messages,
+    )
 
     const bare = build(`dock load
   load <node:path>, name path
@@ -553,7 +700,11 @@ task nameless-age
     make person
       bind name, text <ada>
 `)
-    ok('a required field left out is refused', !field.ok && /age/.test(field.messages), field.messages)
+    ok(
+      'a required field left out is refused',
+      !field.ok && /age/.test(field.messages),
+      field.messages,
+    )
 
     const argument = build(`task greet
   take name, like text
@@ -567,7 +718,11 @@ task use-greet
     call greet
       text <ada>
 `)
-    ok('a text argument left out is refused', !argument.ok && /punct/.test(argument.messages), argument.messages)
+    ok(
+      'a text argument left out is refused',
+      !argument.ok && /punct/.test(argument.messages),
+      argument.messages,
+    )
   }
 
   // ---- language/variables: a misspelled save is refused (a warning until 2026-10-22, term/compiler decision 003) ----
@@ -582,7 +737,13 @@ task use-greet
       read count
   send back, read total
 `)
-    ok('the misspelled binding is refused, naming it', !built.ok && built.names.includes('stray-save') && /totl/.test(built.messages), built.messages || 'it built')
+    ok(
+      'the misspelled binding is refused, naming it',
+      !built.ok &&
+        built.names.includes('stray-save') &&
+        /totl/.test(built.messages),
+      built.messages || 'it built',
+    )
   }
 
   // ---- types: a type name that names nothing ----
@@ -592,7 +753,11 @@ task use-greet
   like number
   send back, code 1
 `)
-    ok('`like widgett` is refused', !built.ok && /widgett/.test(built.messages), built.messages)
+    ok(
+      '`like widgett` is refused',
+      !built.ok && /widgett/.test(built.messages),
+      built.messages,
+    )
   }
 
   // ---- language/values: number literals and `host` ----
@@ -608,10 +773,30 @@ task use-greet
   like number
   send back, code 9007199254740993
 `)
-    ok('a literal past 2^53 is refused on TypeScript, naming what it would read', !unsafe.ok && /9007199254740992/.test(unsafe.messages), unsafe.messages)
+    ok(
+      'a literal past 2^53 is refused on TypeScript, naming what it would read',
+      !unsafe.ok && /9007199254740992/.test(unsafe.messages),
+      unsafe.messages,
+    )
 
-    const natively = compile({ file: '/gate/code/gap.tree', text: `task big\n  like number\n  send back, code 9007199254740993\n` }, { env: 'rust' })
-    ok('and builds natively with the warning', natively.ok && ((natively as { warnings?: { message: string }[] }).warnings ?? []).some(w => /9007199254740992/.test(w.message)), natively.ok ? '' : natively.diagnostics.map(d => d.message).join(' | '))
+    const natively = compile(
+      {
+        file: '/gate/code/gap.tree',
+        text: `task big\n  like number\n  send back, code 9007199254740993\n`,
+      },
+      { env: 'rust' },
+    )
+    ok(
+      'and builds natively with the warning',
+      natively.ok &&
+        (
+          (natively as { warnings?: { message: string }[] }).warnings ??
+          []
+        ).some(w => /9007199254740992/.test(w.message)),
+      natively.ok
+        ? ''
+        : natively.diagnostics.map(d => d.message).join(' | '),
+    )
 
     const twice = build(`task limit-twice
   like number
@@ -619,7 +804,11 @@ task use-greet
   save limit, code 20
   send back, read limit
 `)
-    ok('a save after a host of one name is refused', !twice.ok && /limit/.test(twice.messages), twice.messages)
+    ok(
+      'a save after a host of one name is refused',
+      !twice.ok && /limit/.test(twice.messages),
+      twice.messages,
+    )
   }
 
   // ---- types/annotations: a width alias holds its range at a literal ----
@@ -636,7 +825,11 @@ task use-shade
     call shade
       code 300
 `)
-    ok('300 for a u8 parameter is refused', !over.ok && /u8/.test(over.messages), over.messages)
+    ok(
+      '300 for a u8 parameter is refused',
+      !over.ok && /u8/.test(over.messages),
+      over.messages,
+    )
 
     const named = build(`${SHADE}
 task use-shade
@@ -645,7 +838,11 @@ task use-shade
     call shade
       bind level, code -1
 `)
-    ok('and so is -1 passed by name', !named.ok && /u8/.test(named.messages), named.messages)
+    ok(
+      'and so is -1 passed by name',
+      !named.ok && /u8/.test(named.messages),
+      named.messages,
+    )
 
     const inside = build(`${SHADE}
 task use-shade
@@ -664,7 +861,10 @@ task use-shade
   take n, like number
   like number
 `
-    const library = (path: string) => (path === './later' ? { file: '/gate/code/later.tree', text: LIBRARY } : undefined)
+    const library = (path: string) =>
+      path === './later'
+        ? { file: '/gate/code/later.tree', text: LIBRARY }
+        : undefined
     const out = compile(
       {
         file: '/gate/code/gap.tree',
@@ -680,8 +880,14 @@ task use-later
       },
       { resolve: library },
     )
-    const messages = out.ok ? '' : out.diagnostics.map(d => d.message).join(' | ')
-    ok('a call into another module\'s task with no body anywhere is refused', !out.ok && /later\.tree/.test(messages), messages)
+    const messages = out.ok
+      ? ''
+      : out.diagnostics.map(d => d.message).join(' | ')
+    ok(
+      "a call into another module's task with no body anywhere is refused",
+      !out.ok && /later\.tree/.test(messages),
+      messages,
+    )
 
     const own = build(`task later
   take n, like number
@@ -695,7 +901,11 @@ task use-later
 `)
     // refused since 2026-10-05: every backend wrote the call to a stub that fails when it runs. A postulate, a body-less
     // task answering an indexed family, still builds (test/check/circle.ts), and so does a proof file's
-    ok('a file calling a body-less task it declares itself is refused too, since the call could only reach a stub', !own.ok && /"later" is declared with no body/.test(own.messages), own.messages || 'built')
+    ok(
+      'a file calling a body-less task it declares itself is refused too, since the call could only reach a stub',
+      !own.ok && /"later" is declared with no body/.test(own.messages),
+      own.messages || 'built',
+    )
   }
 
   // ---- language/tasks: labels and duplicates ----
@@ -720,7 +930,11 @@ task use-bump
       bind by, code 2
       bind counter, read c
 `)
-    ok('method arguments out of the method order are refused, naming the order', !labels.ok && /self, by/.test(labels.messages), labels.messages)
+    ok(
+      'method arguments out of the method order are refused, naming the order',
+      !labels.ok && /self, by/.test(labels.messages),
+      labels.messages,
+    )
 
     const twice = build(`task area
   take w, like number
@@ -735,7 +949,11 @@ task area
       read w
       read w
 `)
-    ok('two tasks of one name and one signature in one file are refused', twice.names.includes('duplicate-definition'), twice.messages)
+    ok(
+      'two tasks of one name and one signature in one file are refused',
+      twice.names.includes('duplicate-definition'),
+      twice.messages,
+    )
   }
 
   // ---- applications/web/fetching: a `find` of a name the module does not define ----
@@ -751,7 +969,11 @@ task use
       undefined,
       true,
     )
-    ok('a stale find is refused', !built.ok && /no-such-task/.test(built.messages), built.messages)
+    ok(
+      'a stale find is refused',
+      !built.ok && /no-such-task/.test(built.messages),
+      built.messages,
+    )
   }
 
   // ---- parsers/cursor: a write through a value parameter that reaches nobody ----
@@ -763,7 +985,11 @@ task bump
   take box, like counter
   save box/count, add(box/count, 1)
 `)
-    ok('a write to a value record nobody gets back is refused', !lost.ok && /box/.test(lost.messages), lost.messages)
+    ok(
+      'a write to a value record nobody gets back is refused',
+      !lost.ok && /box/.test(lost.messages),
+      lost.messages,
+    )
 
     const through = build(`form element-box
   link handle, mark private
@@ -772,7 +998,11 @@ task set-it
   take node, like element-box
   save node/handle/text, <x>
 `)
-    ok('a write through an opaque handle reaches the shared object, and builds', through.ok, through.messages)
+    ok(
+      'a write through an opaque handle reaches the shared object, and builds',
+      through.ok,
+      through.messages,
+    )
   }
 
   // ---- applications/web/routes: what a page route keeps and refuses ----
@@ -795,7 +1025,15 @@ hook /about
       undefined,
       true,
     )
-    ok('seed title and seed description reach the page', seeded.ok && /setTitle\("About"\)/.test(seeded.typescript) && /setMeta\("description", "Who we are"\)/.test(seeded.typescript), seeded.messages)
+    ok(
+      'seed title and seed description reach the page',
+      seeded.ok &&
+        /setTitle\("About"\)/.test(seeded.typescript) &&
+        /setMeta\("description", "Who we are"\)/.test(
+          seeded.typescript,
+        ),
+      seeded.messages,
+    )
 
     const method = build(
       `${PAGE}
@@ -806,7 +1044,11 @@ hook /data
       undefined,
       true,
     )
-    ok('a page route with `task get` is refused, not emitted as nothing', method.names.includes('not-implemented'), method.messages)
+    ok(
+      'a page route with `task get` is refused, not emitted as nothing',
+      method.names.includes('not-implemented'),
+      method.messages,
+    )
   }
 
   // ---- applications/web/components: the lowered component is typed and checked ----
@@ -858,9 +1100,20 @@ view checklist
       true,
     )
     ok('the components sample builds', typed.ok, typed.messages)
-    ok('a component returns void', /export function counter\(host: View\): void/.test(typed.typescript))
-    ok('the children closure takes a View', /\(view\d+: View\) =>/.test(typed.typescript))
-    ok('a walk over `like list, like item` types its row', /\(row: Item\) =>/.test(typed.typescript))
+    ok(
+      'a component returns void',
+      /export function counter\(host: View\): void/.test(
+        typed.typescript,
+      ),
+    )
+    ok(
+      'the children closure takes a View',
+      /\(view\d+: View\) =>/.test(typed.typescript),
+    )
+    ok(
+      'a walk over `like list, like item` types its row',
+      /\(row: Item\) =>/.test(typed.typescript),
+    )
 
     const number = build(
       `${HEAD}
@@ -873,7 +1126,11 @@ view counter
       undefined,
       true,
     )
-    ok('a number read into a text node is refused', !number.ok && /String|text/i.test(number.messages), number.messages)
+    ok(
+      'a number read into a text node is refused',
+      !number.ok && /String|text/i.test(number.messages),
+      number.messages,
+    )
   }
 
   // ---- language/matching: `hook miss` is the arm for every case a match does not list ----
@@ -895,7 +1152,11 @@ view counter
     hook miss
       send back, code 0
 `)
-    ok('a `sift` with a `hook miss` arm builds', caught.ok, caught.messages)
+    ok(
+      'a `sift` with a `hook miss` arm builds',
+      caught.ok,
+      caught.messages,
+    )
 
     if (caught.ok) {
       const mod = await load(caught.typescript)
@@ -903,7 +1164,9 @@ view counter
 
       ok(
         'and answers the listed case, and every other through the miss arm',
-        corners({ form: 'square', side: 2 }) === 4 && corners({ form: 'circle', r: 1 }) === 0 && corners({ form: 'dot' }) === 0,
+        corners({ form: 'square', side: 2 }) === 4 &&
+          corners({ form: 'circle', r: 1 }) === 0 &&
+          corners({ form: 'dot' }) === 0,
       )
     }
 
@@ -916,7 +1179,11 @@ view counter
     hook hold
       send back, code 0
 `)
-    ok('`hook hold` under a `sift` is refused, naming the arms a match takes', !other.ok && /hook hold.*hook miss/.test(other.messages), other.messages)
+    ok(
+      '`hook hold` under a `sift` is refused, naming the arms a match takes',
+      !other.ok && /hook hold.*hook miss/.test(other.messages),
+      other.messages,
+    )
 
     const twice = build(`${SHAPE}task corners
   take s, like shape
@@ -929,7 +1196,11 @@ view counter
     hook miss
       send back, code 1
 `)
-    ok('two `hook miss` arms are refused', !twice.ok && /two `hook miss`/.test(twice.messages), twice.messages)
+    ok(
+      'two `hook miss` arms are refused',
+      !twice.ok && /two `hook miss`/.test(twice.messages),
+      twice.messages,
+    )
 
     const open = compile(
       {
@@ -944,9 +1215,15 @@ view counter
       },
       {},
     )
-    const hint = open.ok ? '' : open.diagnostics.map(d => d.hint ?? '').join(' | ')
+    const hint = open.ok
+      ? ''
+      : open.diagnostics.map(d => d.hint ?? '').join(' | ')
 
-    ok('a match that leaves cases out names `hook miss`, not an `else` the grammar refuses', /hook miss/.test(hint) && !/else/.test(hint), hint)
+    ok(
+      'a match that leaves cases out names `hook miss`, not an `else` the grammar refuses',
+      /hook miss/.test(hint) && !/else/.test(hint),
+      hint,
+    )
 
     // a miss arm that answers one case or none builds, with a warning naming the case to list
     const one = build(`${SHAPE}task corners
@@ -960,7 +1237,14 @@ view counter
     hook miss
       send back, code 0
 `)
-    ok('a `hook miss` that answers only `dot` builds, warning to write `case dot`', one.ok && one.warnings.some(w => /thin-catch-all/.test(w) && /`dot`/.test(w)), one.warnings.join(' | '))
+    ok(
+      'a `hook miss` that answers only `dot` builds, warning to write `case dot`',
+      one.ok &&
+        one.warnings.some(
+          w => /thin-catch-all/.test(w) && /`dot`/.test(w),
+        ),
+      one.warnings.join(' | '),
+    )
 
     const none = build(`${SHAPE}task corners
   take s, like shape
@@ -975,8 +1259,16 @@ view counter
     hook miss
       send back, code 0
 `)
-    ok('and one that answers no case warns that every case is listed', none.ok && none.warnings.some(w => /answers no case/.test(w)), none.warnings.join(' | '))
-    ok('a `hook miss` over two cases does not warn', caught.ok && !caught.warnings.some(w => /thin-catch-all/.test(w)), caught.warnings.join(' | '))
+    ok(
+      'and one that answers no case warns that every case is listed',
+      none.ok && none.warnings.some(w => /answers no case/.test(w)),
+      none.warnings.join(' | '),
+    )
+    ok(
+      'a `hook miss` over two cases does not warn',
+      caught.ok && !caught.warnings.some(w => /thin-catch-all/.test(w)),
+      caught.warnings.join(' | '),
+    )
   }
 
   // ---- language/loops: a step, a count down, and `turn next` in a counted walk ----
@@ -1062,10 +1354,22 @@ task skip-odd
       const mod = await load(stepped.typescript)
 
       ok('by 2: 0 + 2 + 4 + 6', mod.evens!(7) === 12)
-      ok('a negative step counts down to above the head: 3, 2, 1', mod.down!(3) === 321)
-      ok('a step read from a variable: 0, 3, 6, 9 is four turns', mod.by!(10, 3) === 4)
-      ok('and a negative one from a variable counts down: 0, -3, -6, -9 is four turns', mod.by!(-10, -3) === 4)
-      ok('`turn next` steps the counter before the next turn, and the walk ends', mod.skipOdd!(6) === 6)
+      ok(
+        'a negative step counts down to above the head: 3, 2, 1',
+        mod.down!(3) === 321,
+      )
+      ok(
+        'a step read from a variable: 0, 3, 6, 9 is four turns',
+        mod.by!(10, 3) === 4,
+      )
+      ok(
+        'and a negative one from a variable counts down: 0, -3, -6, -9 is four turns',
+        mod.by!(-10, -3) === 4,
+      )
+      ok(
+        '`turn next` steps the counter before the next turn, and the walk ends',
+        mod.skipOdd!(6) === 6,
+      )
     }
 
     const zero = build(`task spin
@@ -1078,7 +1382,11 @@ task skip-odd
       turn next
   send back, code 0
 `)
-    ok('a step of 0 is refused: it never ends', !zero.ok && /step 0/.test(zero.messages), zero.messages)
+    ok(
+      'a step of 0 is refused: it never ends',
+      !zero.ok && /step 0/.test(zero.messages),
+      zero.messages,
+    )
   }
 
   // ---- language/matching: an arm field that hides a variable in scope warns ----
@@ -1099,7 +1407,14 @@ task skip-odd
     case dot
       send back, read radius
 `)
-    ok('a field named like a parameter warns that it hides it', hidden.ok && hidden.warnings.some(w => /arm-shadow/.test(w) && /"radius"/.test(w)), hidden.warnings.join(' | '))
+    ok(
+      'a field named like a parameter warns that it hides it',
+      hidden.ok &&
+        hidden.warnings.some(
+          w => /arm-shadow/.test(w) && /"radius"/.test(w),
+        ),
+      hidden.warnings.join(' | '),
+    )
 
     const renamed = build(`${SHAPES}task grow
   take s, like shape
@@ -1112,7 +1427,11 @@ task skip-odd
     case dot
       send back, read radius
 `)
-    ok('renamed with `link`, it does not', renamed.ok && !renamed.warnings.some(w => /arm-shadow/.test(w)), renamed.warnings.join(' | '))
+    ok(
+      'renamed with `link`, it does not',
+      renamed.ok && !renamed.warnings.some(w => /arm-shadow/.test(w)),
+      renamed.warnings.join(' | '),
+    )
   }
 
   // ---- types/annotations: a generic form that names itself passes its parameter on ----
@@ -1124,7 +1443,14 @@ task skip-odd
     link item, like t
     link rest, like loose
 `)
-    ok('a generic form naming itself without its parameter is refused', !bare.ok && /names itself without its parameter: write `like loose t`/.test(bare.messages), bare.messages)
+    ok(
+      'a generic form naming itself without its parameter is refused',
+      !bare.ok &&
+        /names itself without its parameter: write `like loose t`/.test(
+          bare.messages,
+        ),
+      bare.messages,
+    )
 
     const kept = build(`form chain
   head t
@@ -1158,14 +1484,31 @@ task both
   like text
   send back, run-twice(fetch-word)
 `)
-    ok('a `like task` with `mark async` builds', twice.ok, twice.messages)
-    ok('its type is a promise', /work: \(\) => Promise<string>/.test(twice.typescript), twice.typescript.slice(0, 600))
-    ok('the task taking it is async, and awaits each call', /async function runTwice/.test(twice.typescript) && /await work\(\)/.test(twice.typescript), twice.typescript.slice(0, 600))
+    ok(
+      'a `like task` with `mark async` builds',
+      twice.ok,
+      twice.messages,
+    )
+    ok(
+      'its type is a promise',
+      /work: \(\) => Promise<string>/.test(twice.typescript),
+      twice.typescript.slice(0, 600),
+    )
+    ok(
+      'the task taking it is async, and awaits each call',
+      /async function runTwice/.test(twice.typescript) &&
+        /await work\(\)/.test(twice.typescript),
+      twice.typescript.slice(0, 600),
+    )
 
     if (twice.ok) {
       const module = await load(twice.typescript)
       const value = await module.both?.()
-      ok('and the caller reads the text, not `[object Promise]`', value === 'abab', String(value))
+      ok(
+        'and the caller reads the text, not `[object Promise]`',
+        value === 'abab',
+        String(value),
+      )
     }
 
     const plain = build(`task run-twice
@@ -1186,7 +1529,11 @@ task both
   like text
   send back, run-twice(fetch-word)
 `)
-    ok('an async task passed where the parameter is not async is refused', !plain.ok && plain.names.includes('async-argument'), plain.messages)
+    ok(
+      'an async task passed where the parameter is not async is refused',
+      !plain.ok && plain.names.includes('async-argument'),
+      plain.messages,
+    )
 
     const done = build(`task later
   take done
@@ -1204,7 +1551,11 @@ task start
   like void
   later(finish)
 `)
-    ok('but not where the parameter gives back nothing to read', done.ok, done.messages)
+    ok(
+      'but not where the parameter gives back nothing to read',
+      done.ok,
+      done.messages,
+    )
   }
 
   // ---- language/forms: a bare value given to a one-value case is its value ----
@@ -1217,7 +1568,11 @@ task fill-box
   like box
   send back, make full, <apples>
 `)
-    ok('`make full, <apples>` on a one-value case builds', boxed.ok, boxed.messages)
+    ok(
+      '`make full, <apples>` on a one-value case builds',
+      boxed.ok,
+      boxed.messages,
+    )
 
     const pair = build(`form shape
   case dot
@@ -1229,7 +1584,14 @@ task one
   like shape
   send back, make rect, 3
 `)
-    ok('a bare value given to a case of two fields is refused, naming its fields', !pair.ok && /takes its fields by name \(`bind width`, `bind height`\)/.test(pair.messages), pair.messages)
+    ok(
+      'a bare value given to a case of two fields is refused, naming its fields',
+      !pair.ok &&
+        /takes its fields by name \(`bind width`, `bind height`\)/.test(
+          pair.messages,
+        ),
+      pair.messages,
+    )
   }
 
   // ---- language/operators: `not` needs no import, as `and` and `or` do not ----
@@ -1245,7 +1607,12 @@ task one
 
     if (negated.ok) {
       const module = await load(negated.typescript)
-      ok('and answers the negation', module.differs?.(1, 2) === true && module.differs?.(3, 3) === false, `${module.differs?.(1, 2)} ${module.differs?.(3, 3)}`)
+      ok(
+        'and answers the negation',
+        module.differs?.(1, 2) === true &&
+          module.differs?.(3, 3) === false,
+        `${module.differs?.(1, 2)} ${module.differs?.(3, 3)}`,
+      )
     }
 
     const imported = build(
@@ -1261,7 +1628,11 @@ task differs
       undefined,
       true,
     )
-    ok('and still builds beside the standard library\'s boolean', imported.ok, imported.messages)
+    ok(
+      "and still builds beside the standard library's boolean",
+      imported.ok,
+      imported.messages,
+    )
   }
 
   // ---- language/data: a fill that fails with no handler raises data-mismatch ----
@@ -1293,7 +1664,12 @@ task read-site
         caught = error as typeof caught
       }
 
-      ok('and a value that does not fit raises data-mismatch, not a ReferenceError', caught.name === 'TermException' && caught.form === 'data-mismatch', JSON.stringify(caught))
+      ok(
+        'and a value that does not fit raises data-mismatch, not a ReferenceError',
+        caught.name === 'TermException' &&
+          caught.form === 'data-mismatch',
+        JSON.stringify(caught),
+      )
     }
   }
 
@@ -1310,18 +1686,30 @@ task show
   like text
   send back, <sum {add-two(x, 3)}>
 `)
-    ok('a number inside a call in text braces is a number, not a name', braced.ok, braced.messages)
+    ok(
+      'a number inside a call in text braces is a number, not a name',
+      braced.ok,
+      braced.messages,
+    )
 
     if (braced.ok) {
       const module = await load(braced.typescript)
-      ok('and the text holds the call\'s value', module.show?.(2) === 'sum 5', String(module.show?.(2)))
+      ok(
+        "and the text holds the call's value",
+        module.show?.(2) === 'sum 5',
+        String(module.show?.(2)),
+      )
     }
 
     const literal = build(`task show
   like text
   send back, <a \\{31\\} b>
 `)
-    ok('a brace written as \\{ is still a brace', literal.ok && /a \{31\} b/.test(literal.typescript), literal.ok ? literal.typescript : literal.messages)
+    ok(
+      'a brace written as \\{ is still a brace',
+      literal.ok && /a \{31\} b/.test(literal.typescript),
+      literal.ok ? literal.typescript : literal.messages,
+    )
   }
 
   // ---- types/annotations: an unknown type is reported at the line that names it ----
@@ -1331,13 +1719,25 @@ task show
   like text
   send back, <hi>
 `)
-    ok('a misspelled parameter type is refused at its `take` line', !param.ok && param.names.includes('unknown-name') && param.lines?.[0] === 2, `${param.messages} at ${param.lines}`)
+    ok(
+      'a misspelled parameter type is refused at its `take` line',
+      !param.ok &&
+        param.names.includes('unknown-name') &&
+        param.lines?.[0] === 2,
+      `${param.messages} at ${param.lines}`,
+    )
 
     const field = build(`form pair
   link left, like number
   link right, like nmber
 `)
-    ok('a misspelled field type is refused at its `link` line', !field.ok && field.names.includes('unknown-name') && field.lines?.[0] === 3, `${field.messages} at ${field.lines}`)
+    ok(
+      'a misspelled field type is refused at its `link` line',
+      !field.ok &&
+        field.names.includes('unknown-name') &&
+        field.lines?.[0] === 3,
+      `${field.messages} at ${field.lines}`,
+    )
   }
 
   // ---- types/inference: a fraction is not a whole number ----
@@ -1354,13 +1754,24 @@ task show
     call whole
       code 1.5
 `)
-    ok('`whole(1.5)` against `like integer` is refused', !literal.ok && /expected number, a whole number, found float/.test(literal.messages), literal.messages)
+    ok(
+      '`whole(1.5)` against `like integer` is refused',
+      !literal.ok &&
+        /expected number, a whole number, found float/.test(
+          literal.messages,
+        ),
+      literal.messages,
+    )
 
     const returned = build(`task half
   like integer
   send back, code 1.5
 `)
-    ok('and so is returning 1.5 from a task typed to return a whole number', !returned.ok && /found float/.test(returned.messages), returned.messages)
+    ok(
+      'and so is returning 1.5 from a task typed to return a whole number',
+      !returned.ok && /found float/.test(returned.messages),
+      returned.messages,
+    )
 
     const widened = build(`task scale
   take x, like float
@@ -1373,7 +1784,11 @@ task use
     call scale
       code 2
 `)
-    ok('a whole number where a fraction is wanted widens, and builds', widened.ok, widened.messages)
+    ok(
+      'a whole number where a fraction is wanted widens, and builds',
+      widened.ok,
+      widened.messages,
+    )
   }
 
   // ---- a parameter named like a task is the parameter: the inliner put the task's body in its place ----
@@ -1413,36 +1828,85 @@ task use
       code 3
       read double
 `)
-    ok('a task-typed parameter named like a task builds', built.ok, built.messages)
+    ok(
+      'a task-typed parameter named like a task builds',
+      built.ok,
+      built.messages,
+    )
 
     if (built.ok) {
-      ok('and is called, not replaced by the task of its name', !/value\.key/.test(built.typescript), built.typescript.slice(0, 900))
+      ok(
+        'and is called, not replaced by the task of its name',
+        !/value\.key/.test(built.typescript),
+        built.typescript.slice(0, 900),
+      )
       const mod = await load(built.typescript)
-      ok('and the call gives the parameter\'s answer', mod.use!() === 6, String(mod.use!()))
+      ok(
+        "and the call gives the parameter's answer",
+        mod.use!() === 6,
+        String(mod.use!()),
+      )
     }
   }
 
   // ---- applications/web/styles: a `tint` that is not a CSS color is refused, at its line ----
   {
-    const good = compile({ file: '/gate/site/style/look.tree', text: 'tone base\n  have ink, tint rgb, 24, 24, 27\n  have line, tint rgb, <10%>, <20%>, <30%>, 0.5\n  have paper, tint hex, <fafafa>\n  have sea, tint oklch, 0.7, 0.1, 200\n' })
-    ok('rgb, a percent rgb with alpha, hex and oklch tints build', good.ok && /--ink: rgb\(24, 24, 27\)/.test(good.css ?? '') && /--sea: oklch\(0\.7 0\.1 200\)/.test(good.css ?? ''), good.ok ? good.css : good.diagnostics.map(d => d.message).join(' | '))
+    const good = compile({
+      file: '/gate/site/style/look.tree',
+      text: 'tone base\n  have ink, tint rgb, 24, 24, 27\n  have line, tint rgb, <10%>, <20%>, <30%>, 0.5\n  have paper, tint hex, <fafafa>\n  have sea, tint oklch, 0.7, 0.1, 200\n',
+    })
+    ok(
+      'rgb, a percent rgb with alpha, hex and oklch tints build',
+      good.ok &&
+        /--ink: rgb\(24, 24, 27\)/.test(good.css ?? '') &&
+        /--sea: oklch\(0\.7 0\.1 200\)/.test(good.css ?? ''),
+      good.ok
+        ? good.css
+        : good.diagnostics.map(d => d.message).join(' | '),
+    )
 
     const cases: [string, RegExp][] = [
       ['tint rgb, 24, 24', /takes 3 or 4 values, and this gives 2/],
-      ['tint rgb, 300, 24, 27', /channel is 0 to 255, or a percent, and this gives 300/],
-      ['tint hex, <fafazz>', /3, 4, 6 or 8 hex digits, and this gives `fafazz`/],
+      [
+        'tint rgb, 300, 24, 27',
+        /channel is 0 to 255, or a percent, and this gives 300/,
+      ],
+      [
+        'tint hex, <fafazz>',
+        /3, 4, 6 or 8 hex digits, and this gives `fafazz`/,
+      ],
       ['tint rbg, 1, 2, 3', /`rbg` is not a color space/],
     ]
 
     for (const [tint, message] of cases) {
-      const bad = compile({ file: '/gate/site/style/look.tree', text: `tone base\n  have paper, tint hex, <fff>\n  have ink, ${tint}\n` })
-      const said = bad.ok ? '' : bad.diagnostics.map(d => `${d.name}@${d.span.start.line + 1}: ${d.message}`).join(' | ')
-      ok(`\`${tint}\` is refused at its line`, !bad.ok && /^look-tint@3: /.test(said) && message.test(said), said)
+      const bad = compile({
+        file: '/gate/site/style/look.tree',
+        text: `tone base\n  have paper, tint hex, <fff>\n  have ink, ${tint}\n`,
+      })
+      const said = bad.ok
+        ? ''
+        : bad.diagnostics
+            .map(
+              d => `${d.name}@${d.span.start.line + 1}: ${d.message}`,
+            )
+            .join(' | ')
+      ok(
+        `\`${tint}\` is refused at its line`,
+        !bad.ok && /^look-tint@3: /.test(said) && message.test(said),
+        said,
+      )
     }
 
     // a sheet that does not parse compiled to an empty stylesheet and said nothing
-    const unparsed = compile({ file: '/gate/site/style/look.tree', text: 'tone base\n  have line, tint rgb, 10%, 20%, 30%\n' })
-    ok('a sheet that does not parse is refused, not written empty', !unparsed.ok, unparsed.ok ? JSON.stringify(unparsed.css) : '')
+    const unparsed = compile({
+      file: '/gate/site/style/look.tree',
+      text: 'tone base\n  have line, tint rgb, 10%, 20%, 30%\n',
+    })
+    ok(
+      'a sheet that does not parse is refused, not written empty',
+      !unparsed.ok,
+      unparsed.ok ? JSON.stringify(unparsed.css) : '',
+    )
   }
 
   // ---- a local named like a docked module hides it: the browser `set-title`'s `title.set is not a function` ----
@@ -1456,7 +1920,15 @@ task set-title
     read title
 `)
     // a text parameter is refused outright now (the method check below); one of any other type builds, and warns
-    ok('a parameter named like the module its file docks warns, at the parameter', hidden.warnings.some(w => /^dock-shadow: "title" in "set-title" hides the module this file docks as "title"/.test(w)), hidden.warnings.join(' | ') || hidden.messages)
+    ok(
+      'a parameter named like the module its file docks warns, at the parameter',
+      hidden.warnings.some(w =>
+        /^dock-shadow: "title" in "set-title" hides the module this file docks as "title"/.test(
+          w,
+        ),
+      ),
+      hidden.warnings.join(' | ') || hidden.messages,
+    )
 
     const renamed = build(`dock load
   load <global:title>, name title
@@ -1466,7 +1938,11 @@ task set-title
   call title/set
     read text
 `)
-    ok('renamed, it does not', !renamed.warnings.some(w => w.startsWith('dock-shadow')), renamed.warnings.join(' | ') || renamed.messages)
+    ok(
+      'renamed, it does not',
+      !renamed.warnings.some(w => w.startsWith('dock-shadow')),
+      renamed.warnings.join(' | ') || renamed.messages,
+    )
   }
 
   // ---- a method call on a text names a string operation, or is refused ----
@@ -1477,7 +1953,14 @@ task set-title
   send back
     call s/frobnicate
 `)
-    ok('`s/frobnicate` on a text is refused, naming the text and the method', !unknown.ok && /"s" is a text, which has no method "frobnicate"/.test(unknown.messages), unknown.ok ? unknown.typescript.slice(0, 300) : unknown.messages)
+    ok(
+      '`s/frobnicate` on a text is refused, naming the text and the method',
+      !unknown.ok &&
+        /"s" is a text, which has no method "frobnicate"/.test(
+          unknown.messages,
+        ),
+      unknown.ok ? unknown.typescript.slice(0, 300) : unknown.messages,
+    )
 
     const known = build(`task tidy
   take s, like text
@@ -1490,22 +1973,37 @@ task set-title
 
   // ---- library/collections: the method form of a hash task runs on a native `Map` ----
   {
-    const built = build(`load @term/base/hash
+    const built = build(
+      `load @term/base/hash
   find get-or-default
 
 task count-a
   take counts, like hash, like text, like number
   like number
   send back, counts/get-or-default(<a>, 0)
-`, undefined, true)
-    ok('`counts/get-or-default(<a>, 0)` builds', built.ok, built.messages)
+`,
+      undefined,
+      true,
+    )
+    ok(
+      '`counts/get-or-default(<a>, 0)` builds',
+      built.ok,
+      built.messages,
+    )
 
     if (built.ok) {
-      ok('and calls no `getOrDefault` method', !/\.getOrDefault\(/.test(built.typescript))
+      ok(
+        'and calls no `getOrDefault` method',
+        !/\.getOrDefault\(/.test(built.typescript),
+      )
       const mod = await load(built.typescript)
       const found = mod.countA!(new Map([['a', 3]]))
       const fallen = mod.countA!(new Map([['b', 3]]))
-      ok('and reads the entry, or falls back, at run time', found === 3 && fallen === 0, `${found} ${fallen}`)
+      ok(
+        'and reads the entry, or falls back, at run time',
+        found === 3 && fallen === 0,
+        `${found} ${fallen}`,
+      )
     }
   }
 
@@ -1533,18 +2031,33 @@ task line-of
   like text
   send back, <{greet(read who)/text} and {greet(<cy>)/count}>
 `)
-    ok('`greet(who)/text` builds, bare and inside a text', built.ok, built.messages)
+    ok(
+      '`greet(who)/text` builds, bare and inside a text',
+      built.ok,
+      built.messages,
+    )
 
     if (built.ok) {
       const mod = await load(built.typescript)
       const read = mod.textOf!('ada')
       const line = mod.lineOf!('ada')
-      ok('and reads the field of the returned record', read === 'hi ada' && line === 'hi ada and 3', `${read} | ${line}`)
+      ok(
+        'and reads the field of the returned record',
+        read === 'hi ada' && line === 'hi ada and 3',
+        `${read} | ${line}`,
+      )
     }
 
-    const parsed = parse({ file: 'p.tree', text: 'task t\n  log g()/text, x\n' })
+    const parsed = parse({
+      file: 'p.tree',
+      text: 'task t\n  log g()/text, x\n',
+    })
     const printed = parsed.ok ? printTree(parsed.tree) : ''
-    ok('a comma after one still pops to its level, and it prints back as written', parsed.ok && /g\(\)\/text\n\s+x/.test(printed), printed)
+    ok(
+      'a comma after one still pops to its level, and it prints back as written',
+      parsed.ok && /g\(\)\/text\n\s+x/.test(printed),
+      printed,
+    )
   }
 
   // ---- language/templates: a bare `{tag}` hole where a value goes ----
@@ -1565,11 +2078,21 @@ fuse is-tag
     ok('`is-equal(value, {tag})` builds', built.ok, built.messages)
 
     if (built.ok) {
-      ok('and the hole is the number, not a variable', /value === 1/.test(built.typescript), built.typescript.slice(0, 300))
+      ok(
+        'and the hole is the number, not a variable',
+        /value === 1/.test(built.typescript),
+        built.typescript.slice(0, 300),
+      )
     }
 
-    const unfilled = parse({ file: 'p.tree', text: 'task t\n  f(a, {k}/x, 2)\n\ntask u\n  g\n' })
-    ok('a bare brace with a path after it parses, and the next task is untouched', unfilled.ok && unfilled.tree.nodes.length === 2)
+    const unfilled = parse({
+      file: 'p.tree',
+      text: 'task t\n  f(a, {k}/x, 2)\n\ntask u\n  g\n',
+    })
+    ok(
+      'a bare brace with a path after it parses, and the next task is untouched',
+      unfilled.ok && unfilled.tree.nodes.length === 2,
+    )
   }
 
   // ---- language/modules: a private task is not exported from the TypeScript ----
@@ -1588,9 +2111,18 @@ task perimeter
     ok('a private task builds', built.ok, built.messages)
 
     if (built.ok) {
-      ok('and is emitted without `export`, while the public one keeps it', /(^|\n)function double\(/.test(built.typescript) && /export function perimeter\(/.test(built.typescript), built.typescript.slice(0, 400))
+      ok(
+        'and is emitted without `export`, while the public one keeps it',
+        /(^|\n)function double\(/.test(built.typescript) &&
+          /export function perimeter\(/.test(built.typescript),
+        built.typescript.slice(0, 400),
+      )
       const mod = await load(built.typescript)
-      ok('and the module answers through the public task alone', mod.double === undefined && mod.perimeter!(3) === 12, String(Object.keys(mod)))
+      ok(
+        'and the module answers through the public task alone',
+        mod.double === undefined && mod.perimeter!(3) === 12,
+        String(Object.keys(mod)),
+      )
     }
   }
 
@@ -1609,7 +2141,12 @@ task size-of
       undefined,
       true,
     )
-    ok('`find read` used as `read(path)` builds, and warns', shadowed.ok && shadowed.warnings.some(w => w.startsWith('keyword-import')), shadowed.warnings.join(' | ') || shadowed.messages)
+    ok(
+      '`find read` used as `read(path)` builds, and warns',
+      shadowed.ok &&
+        shadowed.warnings.some(w => w.startsWith('keyword-import')),
+      shadowed.warnings.join(' | ') || shadowed.messages,
+    )
 
     const reached = build(
       `load @term/base/file
@@ -1626,7 +2163,12 @@ task size-of
       undefined,
       true,
     )
-    ok('`call read` reaches the import, and is not warned', reached.ok && !reached.warnings.some(w => w.startsWith('keyword-import')), reached.warnings.join(' | ') || reached.messages)
+    ok(
+      '`call read` reaches the import, and is not warned',
+      reached.ok &&
+        !reached.warnings.some(w => w.startsWith('keyword-import')),
+      reached.warnings.join(' | ') || reached.messages,
+    )
   }
 
   // ---- applications/web/components: a call as a placement's one value is a text node of what it answers ----
@@ -1648,10 +2190,20 @@ view home
       undefined,
       true,
     )
-    ok('`view p, read-signal(problem)` builds', built.ok, built.messages)
+    ok(
+      '`view p, read-signal(problem)` builds',
+      built.ok,
+      built.messages,
+    )
 
     if (built.ok) {
-      ok('and is a dynamic text node over the call', /makeDynamicText\(\(\) => \(readSignal\(problem\)\)\)/.test(built.typescript), built.typescript.slice(-600))
+      ok(
+        'and is a dynamic text node over the call',
+        /makeDynamicText\(\(\) => \(readSignal\(problem\)\)\)/.test(
+          built.typescript,
+        ),
+        built.typescript.slice(-600),
+      )
     }
   }
 
@@ -1705,25 +2257,52 @@ task runs
       undefined,
       true,
     )
-    ok('an effect reading a signal and its memo builds', built.ok, built.messages)
+    ok(
+      'an effect reading a signal and its memo builds',
+      built.ok,
+      built.messages,
+    )
 
     if (built.ok) {
       const mod = await load(built.typescript)
       const seen = mod.runs!()
-      ok('and runs once per batch, a nested batch inside the outer one', seen === '0/3, 2/1, 5/-2', seen)
+      ok(
+        'and runs once per batch, a nested batch inside the outer one',
+        seen === '0/3, 2/1, 5/-2',
+        seen,
+      )
     }
   }
 
   // `add` on two texts (decisions-2026-10.md, D3): the checker refuses it and names the template, where the kernel
   // refused it as `type mismatch, expected Number` naming neither (guides: language/operators)
   {
-    const out = compile({ file: '/gate/code/gap.tree', text: 'task join-two\n  take a, like text\n  take b, like text\n\n  like text\n\n  back add(a, b)\n' })
-    const said = out.ok ? undefined : out.diagnostics.find(d => d.message.startsWith('`add` adds two numbers'))
+    const out = compile({
+      file: '/gate/code/gap.tree',
+      text: 'task join-two\n  take a, like text\n  take b, like text\n\n  like text\n\n  back add(a, b)\n',
+    })
+    const said = out.ok
+      ? undefined
+      : out.diagnostics.find(d =>
+          d.message.startsWith('`add` adds two numbers'),
+        )
 
-    ok('add on two texts is refused by the checker', said !== undefined, out.ok ? 'it built' : out.diagnostics.map(d => d.message).join(' | '))
-    ok('naming the template that joins them', said?.hint === 'join texts with a template: <{a}{b}>', said?.hint ?? '')
+    ok(
+      'add on two texts is refused by the checker',
+      said !== undefined,
+      out.ok
+        ? 'it built'
+        : out.diagnostics.map(d => d.message).join(' | '),
+    )
+    ok(
+      'naming the template that joins them',
+      said?.hint === 'join texts with a template: <{a}{b}>',
+      said?.hint ?? '',
+    )
 
-    const numbers = build('task sum\n  take a, like number\n  take b, like number\n\n  like number\n\n  back add(a, b)\n')
+    const numbers = build(
+      'task sum\n  take a, like number\n  take b, like number\n\n  like number\n\n  back add(a, b)\n',
+    )
     ok('add on two numbers still builds', numbers.ok, numbers.messages)
   }
 
@@ -1740,11 +2319,18 @@ task runs
     )
 
     setUnknownSeam(seamWas)
-    ok('the inlined sum keeps its range check', seam.ok && /passThrough[\s\S]*?__termIntStop/.test(seam.typescript), seam.messages || seam.typescript.slice(0, 400))
+    ok(
+      'the inlined sum keeps its range check',
+      seam.ok &&
+        /passThrough[\s\S]*?__termIntStop/.test(seam.typescript),
+      seam.messages || seam.typescript.slice(0, 400),
+    )
 
     if (seam.ok) {
       const mod = await load(seam.typescript)
-      let raised: { form?: string; link?: { actual?: string } } | undefined
+      let raised:
+        | { form?: string; link?: { actual?: string } }
+        | undefined
 
       try {
         mod.passThrough!('seven')
@@ -1752,7 +2338,11 @@ task runs
         raised = error as typeof raised
       }
 
-      ok('and text reaching it raises mismatch, naming text', raised?.form === 'mismatch' && raised.link?.actual === 'text', JSON.stringify(raised))
+      ok(
+        'and text reaching it raises mismatch, naming text',
+        raised?.form === 'mismatch' && raised.link?.actual === 'text',
+        JSON.stringify(raised),
+      )
     }
   }
 
@@ -1772,7 +2362,10 @@ fuse wrapper
 `)
     ok(
       'a site its fuse gives no beam builds and warns, naming the site',
-      empty.ok && empty.warnings.some(w => /^empty-site: .*`site fields` no `beam fields`/.test(w)),
+      empty.ok &&
+        empty.warnings.some(w =>
+          /^empty-site: .*`site fields` no `beam fields`/.test(w),
+        ),
       empty.messages || empty.warnings.join(' | '),
     )
 
@@ -1787,7 +2380,11 @@ fuse wrapper
   beam fields
     link x, like number
 `)
-    ok('a site its fuse fills does not warn', beamed.ok && !beamed.warnings.some(w => /empty-site/.test(w)), beamed.messages || beamed.warnings.join(' | '))
+    ok(
+      'a site its fuse fills does not warn',
+      beamed.ok && !beamed.warnings.some(w => /empty-site/.test(w)),
+      beamed.messages || beamed.warnings.join(' | '),
+    )
 
     const cycle = build(`tree ping
   take name
@@ -1832,7 +2429,11 @@ fuse two-boxes
   bind first, left
   bind second, right
 `)
-    ok('one template fused twice in a program is not a cycle', nested.ok, nested.messages)
+    ok(
+      'one template fused twice in a program is not a cycle',
+      nested.ok,
+      nested.messages,
+    )
 
     const dynamic = build(`host suit
   term hearts
@@ -1859,7 +2460,9 @@ fuse each, read suit
 `)
     ok(
       'a dynamic fuse of a name no template has is refused at expansion, naming it',
-      !dynamic.ok && dynamic.names.includes('unknown-name') && /`make-flagg`/.test(dynamic.messages),
+      !dynamic.ok &&
+        dynamic.names.includes('unknown-name') &&
+        /`make-flagg`/.test(dynamic.messages),
       dynamic.ok ? 'it built' : dynamic.messages,
     )
   }
@@ -1910,92 +2513,178 @@ task read-or-why
       case absence
         send back, text <absent>
 `
-    const options = { resolve: projectResolver(TERM, 'node'), env: 'node' }
-    const entry = { file: join(TERM, 'test/compile/guide-gaps.tree'), text }
+    const options = {
+      resolve: projectResolver(TERM, 'node'),
+      env: 'node',
+    }
+    const entry = {
+      file: join(TERM, 'test/compile/guide-gaps.tree'),
+      text,
+    }
     const plain = compile(entry, options)
     const shaken = compile(entry, { ...options, treeShake: true })
     const verdict = (out: typeof plain): string =>
-      out.ok ? 'built' : out.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | ')
+      out.ok
+        ? 'built'
+        : out.diagnostics
+            .map(d => `${d.name}: ${d.message}`)
+            .join(' | ')
     ok(
       'a guard over a native call that leaves out failure is refused, shaken or not',
-      !plain.ok && !shaken.ok && /failure/.test(verdict(plain)) && /failure/.test(verdict(shaken)),
+      !plain.ok &&
+        !shaken.ok &&
+        /failure/.test(verdict(plain)) &&
+        /failure/.test(verdict(shaken)),
       `plain: ${verdict(plain)} || shaken: ${verdict(shaken)}`,
     )
   }
 
   // ---- language/variables: `loan` borrowed nothing, and is refused (gap 195, term/affine-kinds decision 002) ----
   {
-    const loaned = build('task double\n  take n, like number\n  like number\n  send back\n    call multiply\n      loan n\n      code 2\n')
+    const loaned = build(
+      'task double\n  take n, like number\n  like number\n  send back\n    call multiply\n      loan n\n      code 2\n',
+    )
     ok(
       '`loan n` is refused, naming `read n`',
-      !loaned.ok && /`loan n` borrows nothing: it was read as `read n`\. Write `read n`/.test(loaned.messages),
+      !loaned.ok &&
+        /`loan n` borrows nothing: it was read as `read n`\. Write `read n`/.test(
+          loaned.messages,
+        ),
       loaned.ok ? 'it built' : loaned.messages,
     )
   }
 
   // ---- language/variables: a misspelled save is refused (gaps 193, 194, term/compiler decision 003) ----
   {
-    const typo = build('task typo\n  take count, like number\n  like number\n  save total, 0\n  save totl, add(total, count)\n  back total\n')
+    const typo = build(
+      'task typo\n  take count, like number\n  like number\n  save total, 0\n  save totl, add(total, count)\n  back total\n',
+    )
     ok(
       'a never-read save one letter from a read variable is refused as stray-save, naming both',
-      !typo.ok && typo.names.includes('stray-save') && /"totl" is saved and never read, and is one letter from "total"/.test(typo.messages),
+      !typo.ok &&
+        typo.names.includes('stray-save') &&
+        /"totl" is saved and never read, and is one letter from "total"/.test(
+          typo.messages,
+        ),
       typo.ok ? 'it built' : typo.messages,
     )
 
-    const spare = build('task spare\n  take count, like number\n  like number\n  save unrelated, add(count, 1)\n  back count\n')
-    ok('a never-read save named like nothing the task reads builds, with a warning', spare.ok, spare.messages)
+    const spare = build(
+      'task spare\n  take count, like number\n  like number\n  save unrelated, add(count, 1)\n  back count\n',
+    )
+    ok(
+      'a never-read save named like nothing the task reads builds, with a warning',
+      spare.ok,
+      spare.messages,
+    )
   }
 
   // ---- language/async, language/native: a missing `wait` on a host call that answers a promise (gaps 56, 151, 177,
   // term/compiler decision 004) ----
   {
-    const dock = 'load @term/base/console\n  find log\n\ndock load\n  load <node:fs/promises>, name fs-promise\n'
-    const missing = build(`${dock}\ntask read-length\n  mark async\n  take path, like text\n  like number\n  save body, fs-promise/read-file(path, <utf8>)\n  back body/length\n`, undefined, true)
+    const dock =
+      'load @term/base/console\n  find log\n\ndock load\n  load <node:fs/promises>, name fs-promise\n'
+    const missing = build(
+      `${dock}\ntask read-length\n  mark async\n  take path, like text\n  like number\n  save body, fs-promise/read-file(path, <utf8>)\n  back body/length\n`,
+      undefined,
+      true,
+    )
     ok(
       'a call into <node:fs/promises> with no wait is refused as missing-wait, naming the call',
-      !missing.ok && missing.names.includes('missing-wait') && /"fs-promise\/read-file" answers a promise/.test(missing.messages),
+      !missing.ok &&
+        missing.names.includes('missing-wait') &&
+        /"fs-promise\/read-file" answers a promise/.test(
+          missing.messages,
+        ),
       missing.ok ? 'it built' : missing.messages,
     )
 
-    const waited = build(`${dock}\ntask read-length\n  mark async\n  take path, like text\n  like number\n  save body, wait fs-promise/read-file(path, <utf8>)\n  back body/length\n`, undefined, true)
+    const waited = build(
+      `${dock}\ntask read-length\n  mark async\n  take path, like text\n  like number\n  save body, wait fs-promise/read-file(path, <utf8>)\n  back body/length\n`,
+      undefined,
+      true,
+    )
     ok('the same call under `wait` builds', waited.ok, waited.messages)
 
-    const handed = build(`${dock}\ntask read-text\n  mark async\n  take path, like text\n  like text\n  back fs-promise/read-file(path, <utf8>)\n`, undefined, true)
-    ok('the call given `back` whole from a `mark async` task builds (its promise is the task\'s own)', handed.ok, handed.messages)
+    const handed = build(
+      `${dock}\ntask read-text\n  mark async\n  take path, like text\n  like text\n  back fs-promise/read-file(path, <utf8>)\n`,
+      undefined,
+      true,
+    )
+    ok(
+      "the call given `back` whole from a `mark async` task builds (its promise is the task's own)",
+      handed.ok,
+      handed.messages,
+    )
 
-    const handedPlain = build(`${dock}\ntask read-text\n  take path, like text\n  like text\n  back fs-promise/read-file(path, <utf8>)\n`, undefined, true)
+    const handedPlain = build(
+      `${dock}\ntask read-text\n  take path, like text\n  like text\n  back fs-promise/read-file(path, <utf8>)\n`,
+      undefined,
+      true,
+    )
     ok(
       'the call given `back` from a task that is not async is refused',
       !handedPlain.ok && handedPlain.names.includes('missing-wait'),
       handedPlain.ok ? 'it built' : handedPlain.messages,
     )
 
-    const started = build(`${dock}\ntask start\n  take path, like text\n  tick fs-promise/read-file(path, <utf8>)\n`, undefined, true)
-    ok('the call started with `tick` builds', started.ok, started.messages)
+    const started = build(
+      `${dock}\ntask start\n  take path, like text\n  tick fs-promise/read-file(path, <utf8>)\n`,
+      undefined,
+      true,
+    )
+    ok(
+      'the call started with `tick` builds',
+      started.ok,
+      started.messages,
+    )
 
-    const marked = build(`load @term/base/console\n  find log\n\ndock load\n  load <node:fs/promises>, name fs-promise\n    mark async\n\ntask read-length\n  take path, like text\n  like number\n  save body, fs-promise/read-file(path, <utf8>)\n  back body/length\n`, undefined, true)
-    ok('the module marked `mark async` builds with no wait', marked.ok, marked.messages)
+    const marked = build(
+      `load @term/base/console\n  find log\n\ndock load\n  load <node:fs/promises>, name fs-promise\n    mark async\n\ntask read-length\n  take path, like text\n  like number\n  save body, fs-promise/read-file(path, <utf8>)\n  back body/length\n`,
+      undefined,
+      true,
+    )
+    ok(
+      'the module marked `mark async` builds with no wait',
+      marked.ok,
+      marked.messages,
+    )
 
     // gap 177: one function of a module marked on its own, so a mixed module needs no `wait` per call
     const one = `load @term/base/console\n  find log\n\ndock load\n  load <node:fs/promises>, name fs-promise\n    find read-file\n      mark async\n\ntask read-length\n  take path, like text\n  like number\n  save body, fs-promise/read-file(path, <utf8>)\n  back body/length\n\ntask boot\n  save size, read-length(<${join(TERM, 'deck.tree')}>)\n  log <{size}>\n`
     const each = build(one, undefined, true)
     ok(
       '`find read-file` / `mark async` under the load line awaits that function and makes its caller async',
-      each.ok && /await fsPromise\.readFile\(/.test(each.typescript) && /async function readLength/.test(each.typescript),
-      each.ok ? each.typescript.split('\n').filter(l => /readFile|readLength/.test(l)).join(' | ') : each.messages,
+      each.ok &&
+        /await fsPromise\.readFile\(/.test(each.typescript) &&
+        /async function readLength/.test(each.typescript),
+      each.ok
+        ? each.typescript
+            .split('\n')
+            .filter(l => /readFile|readLength/.test(l))
+            .join(' | ')
+        : each.messages,
     )
 
-    const other = build(`load @term/base/console\n  find log\n\ndock load\n  load <node:fs/promises>, name fs-promise\n    find read-file\n      mark async\n\ntask size-of\n  mark async\n  take path, like text\n  like number\n  save info, fs-promise/stat(path)\n  back info/size\n`, undefined, true)
+    const other = build(
+      `load @term/base/console\n  find log\n\ndock load\n  load <node:fs/promises>, name fs-promise\n    find read-file\n      mark async\n\ntask size-of\n  mark async\n  take path, like text\n  like number\n  save info, fs-promise/stat(path)\n  back info/size\n`,
+      undefined,
+      true,
+    )
     ok(
       'a function of the same module not marked on its own still needs wait',
-      !other.ok && /"fs-promise\/stat" answers a promise/.test(other.messages),
+      !other.ok &&
+        /"fs-promise\/stat" answers a promise/.test(other.messages),
       other.ok ? 'it built' : other.messages,
     )
 
-    const stray = build(`dock load\n  load <node:path>, name path\n    find join\n\ntask joined\n  like text\n  back path/join(<a>, <b>)\n`)
+    const stray = build(
+      `dock load\n  load <node:path>, name path\n    find join\n\ntask joined\n  like text\n  back path/join(<a>, <b>)\n`,
+    )
     ok(
       '`find` under a load line with no `mark async` is refused',
-      !stray.ok && /takes one `mark async` under it/.test(stray.messages),
+      !stray.ok &&
+        /takes one `mark async` under it/.test(stray.messages),
       stray.ok ? 'it built' : stray.messages,
     )
   }
@@ -2003,11 +2692,15 @@ task read-or-why
   // ---- types/masks: a mask written as a type parameter's `like` bound nothing, built, and threw `x.size is not a
   // function` on node (term-compiler-0018, the chunk 0 repro g110/same) ----
   {
-    const sizer = (bound: string): string => `load @term/base/console\n  find log\n\nform shape\n  link sides, like number\n\nmask sizer\n  task size\n    take self\n    like number\n\nsuit shape\n  wear sizer\n    task size\n      take self\n      like number\n      send back, read self/sides\n\ntask describe\n  head t\n    ${bound}\n  take x, like t\n  like number\n  send back, call x/size\n\ntask main\n  save s\n    make shape\n      bind sides, 3\n  log <{describe(s)}>\n`
+    const sizer = (bound: string): string =>
+      `load @term/base/console\n  find log\n\nform shape\n  link sides, like number\n\nmask sizer\n  task size\n    take self\n    like number\n\nsuit shape\n  wear sizer\n    task size\n      take self\n      like number\n      send back, read self/sides\n\ntask describe\n  head t\n    ${bound}\n  take x, like t\n  like number\n  send back, call x/size\n\ntask main\n  save s\n    make shape\n      bind sides, 3\n  log <{describe(s)}>\n`
     const asType = build(sizer('like sizer'), undefined, true)
     ok(
       '`head t, like sizer` is refused, naming `need sizer`',
-      !asType.ok && /"sizer" is a mask, not a type: `head t, like sizer` bounds nothing\. Write `head t, need sizer`/.test(asType.messages),
+      !asType.ok &&
+        /"sizer" is a mask, not a type: `head t, like sizer` bounds nothing\. Write `head t, need sizer`/.test(
+          asType.messages,
+        ),
       asType.ok ? 'it built' : asType.messages,
     )
 
@@ -2018,7 +2711,8 @@ task read-or-why
       const module = await load(asBound.typescript)
       const logged: string[] = []
       const log = console.log
-      console.log = (...parts: unknown[]) => void logged.push(parts.map(String).join(' '))
+      console.log = (...parts: unknown[]) =>
+        void logged.push(parts.map(String).join(' '))
 
       try {
         await module.main!()
@@ -2031,7 +2725,11 @@ task read-or-why
       answer = logged.join(' | ')
     }
 
-    ok('`head t, need sizer` builds and the call through the mask answers 3', asBound.ok && answer === '3', asBound.ok ? `answered ${answer}` : asBound.messages)
+    ok(
+      '`head t, need sizer` builds and the call through the mask answers 3',
+      asBound.ok && answer === '3',
+      asBound.ok ? `answered ${answer}` : asBound.messages,
+    )
   }
 
   console.log(`\nguide-gaps: ${pass} pass, ${fail} fail`)

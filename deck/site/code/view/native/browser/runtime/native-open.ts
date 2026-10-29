@@ -4,16 +4,24 @@
 export const nativeOpen = {
   // opened, or denied when the browser blocked the window, or unavailable outside a browser
   async address(address: string): Promise<string> {
-    if (typeof window === 'undefined' || typeof window.open !== 'function') {
+    if (
+      typeof window === 'undefined' ||
+      typeof window.open !== 'function'
+    ) {
       return 'unavailable'
     }
 
-    return window.open(address, '_blank', 'noopener') === null ? 'denied' : 'opened'
+    return window.open(address, '_blank', 'noopener') === null
+      ? 'denied'
+      : 'opened'
   },
 
   // shown, denied (the browser refused to show it, as it does outside a person's click), or unavailable
   async share(text: string): Promise<string> {
-    if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') {
+    if (
+      typeof navigator === 'undefined' ||
+      typeof navigator.share !== 'function'
+    ) {
       return 'unavailable'
     }
 

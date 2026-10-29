@@ -8,7 +8,10 @@ import type { DeckConfig, FilesLayer, ParsedManifest } from './artifact'
 import type { TrustedKeys } from './keys'
 import type { ObjectStore } from '../object/store'
 
-const p = port as unknown as Record<string, (...args: unknown[]) => unknown>
+const p = port as unknown as Record<
+  string,
+  (...args: unknown[]) => unknown
+>
 
 async function liftAsync<T>(work: () => Promise<T>): Promise<T> {
   try {
@@ -18,10 +21,25 @@ async function liftAsync<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
-export type OciVersion = { digest: string; manifest: ParsedManifest; manifestBytes: Buffer; config: DeckConfig; configBytes: Buffer; trust: TrustedKeys | undefined }
+export type OciVersion = {
+  digest: string
+  manifest: ParsedManifest
+  manifestBytes: Buffer
+  config: DeckConfig
+  configBytes: Buffer
+  trust: TrustedKeys | undefined
+}
 
-export const listOciVersions = (input: { transport: OciTransport; repository: string }): Promise<string[]> =>
-  liftAsync(() => p.listOciVersions!(input.transport, input.repository) as Promise<string[]>)
+export const listOciVersions = (input: {
+  transport: OciTransport
+  repository: string
+}): Promise<string[]> =>
+  liftAsync(
+    () =>
+      p.listOciVersions!(input.transport, input.repository) as Promise<
+        string[]
+      >,
+  )
 
 export const readOciVersion = (input: {
   transport: OciTransport
@@ -38,7 +56,19 @@ export const readOciVersion = (input: {
 }): Promise<OciVersion> =>
   liftAsync(
     () =>
-      p.readOciVersion!(input.transport, input.repository, input.package, input.reference, input.scope, input.keysRepository, input.host, input.trustDir, input.expect, input.env, input.warn) as Promise<OciVersion>,
+      p.readOciVersion!(
+        input.transport,
+        input.repository,
+        input.package,
+        input.reference,
+        input.scope,
+        input.keysRepository,
+        input.host,
+        input.trustDir,
+        input.expect,
+        input.env,
+        input.warn,
+      ) as Promise<OciVersion>,
   )
 
 export const installOciVersion = (input: {
@@ -49,10 +79,24 @@ export const installOciVersion = (input: {
   local: ObjectStore
   cache?: OciTransport
   concurrency?: number
-}): Promise<{ packsFetched: number; packsSkipped: number; looseFetched: number; bytes: number; files: FilesLayer }> =>
+}): Promise<{
+  packsFetched: number
+  packsSkipped: number
+  looseFetched: number
+  bytes: number
+  files: FilesLayer
+}> =>
   liftAsync(
     () =>
-      p.installOciVersion!(input.transport, input.repository, input.version, input.dest, input.local, input.cache, input.concurrency) as Promise<{
+      p.installOciVersion!(
+        input.transport,
+        input.repository,
+        input.version,
+        input.dest,
+        input.local,
+        input.cache,
+        input.concurrency,
+      ) as Promise<{
         packsFetched: number
         packsSkipped: number
         looseFetched: number

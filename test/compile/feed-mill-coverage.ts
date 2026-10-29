@@ -33,7 +33,12 @@
 // Run: npx tsx test/compile/feed-mill-coverage.ts
 //      npx tsx test/compile/feed-mill-coverage.ts --list   (every grammar and what it dropped)
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+} from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
 import { resolvePackagePath, sourceOf } from '@term/make/code/resolve'
@@ -44,7 +49,10 @@ import { collectModules } from '@term/make/code/compile/load'
 import type { Source } from '@term/make/code/compile/load'
 import { withNativeEnv } from '@term/make/code/compile/native'
 import { expandTemplates } from '@term/make/code/compile/template'
-import { bindModules, stampModule } from '@term/make/code/check/bind-modules'
+import {
+  bindModules,
+  stampModule,
+} from '@term/make/code/check/bind-modules'
 import type { Program } from '@term/make/code/compile/node'
 import {
   compileFeedMine,
@@ -55,7 +63,8 @@ import {
   readFeedMineGrammar,
 } from '@term/make/code/compile/feed-mill'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 // the format grammars: text/ and blob/ under the mill's code root (@term/feed's code/ until 2026-10-06). Not the
 // root itself, whose tree/ holds the tree dialects, which are mill grammars and never feed ones
@@ -63,7 +72,8 @@ const CODE = join(TERM, 'deck/mill/code')
 const FORMATS = [join(CODE, 'text'), join(CODE, 'blob')]
 
 // a grammar's name as it was measured: its path under its format folder, so `image/webp/mine.tree` stays that
-const nameOf = (file: string): string => relative(CODE, file).replace(/^(text|blob)\//, '')
+const nameOf = (file: string): string =>
+  relative(CODE, file).replace(/^(text|blob)\//, '')
 
 // WHAT THE 20 THAT DO NOT PARSE ACTUALLY ARE, checked one by one on 2026-08-31 rather than assumed. None is a
 // parser defect and none is a grammar with a small mistake in it. They are unfinished files in three states:
@@ -205,7 +215,10 @@ const resolver = (path: string, from: string): Source | undefined => {
 
     for (const candidate of [`${base}.tree`, join(base, 'base.tree')]) {
       if (existsSync(candidate)) {
-        return { file: candidate, text: readFileSync(candidate, 'utf8') }
+        return {
+          file: candidate,
+          text: readFileSync(candidate, 'utf8'),
+        }
       }
     }
 
@@ -308,7 +321,11 @@ let rules = 0
 let byteOnly = 0
 let textOnly = 0
 let neither = 0
-const dropping: { file: string; dropped: string[]; declared: number }[] = []
+const dropping: {
+  file: string
+  dropped: string[]
+  declared: number
+}[] = []
 const dangling: { file: string; names: string[] }[] = []
 
 for (const file of files) {
@@ -387,18 +404,30 @@ for (const file of files) {
 
 if (process.argv.includes('--list')) {
   for (const entry of dropping) {
-    console.log(`  ${entry.file}: ${entry.dropped.length}/${entry.declared} dropped (${entry.dropped.join(', ')})`)
+    console.log(
+      `  ${entry.file}: ${entry.dropped.length}/${entry.declared} dropped (${entry.dropped.join(', ')})`,
+    )
   }
 
   for (const entry of dangling) {
-    console.log(`  ${entry.file}: refers to ${entry.names.length} undefined (${entry.names.join(', ')})`)
+    console.log(
+      `  ${entry.file}: refers to ${entry.names.length} undefined (${entry.names.join(', ')})`,
+    )
   }
 }
 
-ok(`${files.length} grammars found`, files.length === GRAMMARS, `found ${files.length}`)
+ok(
+  `${files.length} grammars found`,
+  files.length === GRAMMARS,
+  `found ${files.length}`,
+)
 ok(`${parses} parse`, parses === PARSES, `${parses} not ${PARSES}`)
 ok(`${reads} read to rules`, reads === READS, `${reads} not ${READS}`)
-ok(`${mills} generate a reader that mills`, mills === MILLS, `${mills} not ${MILLS}`)
+ok(
+  `${mills} generate a reader that mills`,
+  mills === MILLS,
+  `${mills} not ${MILLS}`,
+)
 
 // THE CLAIM THAT MATTERS. Milling says the generated source is well-formed Term and nothing more: the names may
 // not resolve and the types may not agree, and a reader that mills without typechecking is one no build can use.
@@ -443,7 +472,9 @@ ok(
 )
 ok(
   `the substrate infers unambiguously (${byteOnly} byte, ${textOnly} text, ${neither} with no leaf yet)`,
-  byteOnly === BYTE_ONLY && textOnly === TEXT_ONLY && neither === NEITHER,
+  byteOnly === BYTE_ONLY &&
+    textOnly === TEXT_ONLY &&
+    neither === NEITHER,
   `${byteOnly}/${textOnly}/${neither} not ${BYTE_ONLY}/${TEXT_ONLY}/${NEITHER}`,
 )
 // ---- rules a grammar REFERS TO and never defines ----
@@ -470,7 +501,8 @@ ok(
 //   TYPE NAMES USED AS RULES: ushort, short, uint32, 2digit, 4digit.
 ok(
   `${dangling.length} grammars refer to a rule they never define (${dangling.reduce((n, d) => n + d.names.length, 0)} names)`,
-  dangling.length === DANGLING && dangling.reduce((n, d) => n + d.names.length, 0) === DANGLING_NAMES,
+  dangling.length === DANGLING &&
+    dangling.reduce((n, d) => n + d.names.length, 0) === DANGLING_NAMES,
   `${dangling.length}/${dangling.reduce((n, d) => n + d.names.length, 0)} not ${DANGLING}/${DANGLING_NAMES}`,
 )
 
@@ -507,12 +539,26 @@ const counted = readFeedMineGrammar(
     ].join('\n'),
   }).tree,
 )
-const countedSource = compileFeedMine(counted, 'byte', '@term/mill/feed')
+const countedSource = compileFeedMine(
+  counted,
+  'byte',
+  '@term/mill/feed',
+)
 
 ok(
   'a count-directed list stops at its count',
-  countedSource.includes('call is-below(call(size(read(list-1))), read(total))'),
-  countedSource.split('\n').filter(l => l.includes('hook test') || l.includes('is-below') || l.includes('at-end')).join(' | '),
+  countedSource.includes(
+    'call is-below(call(size(read(list-1))), read(total))',
+  ),
+  countedSource
+    .split('\n')
+    .filter(
+      l =>
+        l.includes('hook test') ||
+        l.includes('is-below') ||
+        l.includes('at-end'),
+    )
+    .join(' | '),
 )
 
 // and it still stops at the end of the input, because a count read FROM that input is not to be trusted on its
@@ -532,7 +578,9 @@ const uncounted = readFeedMineGrammar(
 
 ok(
   'a list with no count reads to the end and asks about no count',
-  !compileFeedMine(uncounted, 'byte', '@term/mill/feed').includes('is-below'),
+  !compileFeedMine(uncounted, 'byte', '@term/mill/feed').includes(
+    'is-below',
+  ),
 )
 
 console.log(

@@ -23,7 +23,9 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 function build(files: Record<string, string>, main: string) {
   const resolve = (p: string): Source | undefined =>
-    files[p] !== undefined ? { file: `${p.slice('@app/'.length)}.tree`, text: files[p]! } : undefined
+    files[p] !== undefined
+      ? { file: `${p.slice('@app/'.length)}.tree`, text: files[p]! }
+      : undefined
 
   return compile({ file: 'main.tree', text: main }, { resolve })
 }
@@ -52,26 +54,66 @@ task run-helper
 
 {
   // each call binds by its own file's import: main imported a's pick, c imported b's
-  const result = build({ '@app/a': PICK_A, '@app/b': PICK_B, '@app/c': C }, MAIN)
-  const text = result.ok ? result.typescript : result.diagnostics.map(d => d.message).join(' | ')
-  ok('two bodied definitions in two files compile when each caller imported one', result.ok, text)
-  const body = (name: string) => (result.ok ? (new RegExp(`function ${name}\\(\\)[^}]*}`).exec(result.typescript)?.[0] ?? '') : '')
+  const result = build(
+    { '@app/a': PICK_A, '@app/b': PICK_B, '@app/c': C },
+    MAIN,
+  )
+  const text = result.ok
+    ? result.typescript
+    : result.diagnostics.map(d => d.message).join(' | ')
+  ok(
+    'two bodied definitions in two files compile when each caller imported one',
+    result.ok,
+    text,
+  )
+  const body = (name: string) =>
+    result.ok
+      ? (new RegExp(`function ${name}\\(\\)[^}]*}`).exec(
+          result.typescript,
+        )?.[0] ?? '')
+      : ''
   // each file's definitions are renamed `pick__in<group>_<file index>`, files in sorted order: a.tree is 0, b.tree is 1
-  ok("main's call reaches a's pick, the one main imported", /"a"/.test(body('run')) || /pickIn\d+_0\(/.test(body('run')), body('run'))
+  ok(
+    "main's call reaches a's pick, the one main imported",
+    /"a"/.test(body('run')) || /pickIn\d+_0\(/.test(body('run')),
+    body('run'),
+  )
   // `helper` may be inlined into `run-helper`, so the answer is read from whichever of the two holds it
   const helped = `${body('helper')} ${body('runHelper')}`
-  ok("c's call reaches b's pick, the one c imported", /"b"/.test(helped) || /pickIn\d+_1\(/.test(helped), helped)
+  ok(
+    "c's call reaches b's pick, the one c imported",
+    /"b"/.test(helped) || /pickIn\d+_1\(/.test(helped),
+    helped,
+  )
 }
 
 {
   // main calls pick but imports it from neither definer: refused, naming both files
   const main = `load @app/c\n  find helper\n\nload @app/a\n  find other\n\ntask run\n  like text\n  send back\n    call pick\n      text <x>\n`
   const a = `${PICK_A}\ntask other\n  like text\n  send back, text <o>\n`
-  const result = build({ '@app/a': a, '@app/b': PICK_B, '@app/c': C }, main)
-  const message = result.ok ? '' : result.diagnostics.map(d => d.message).join(' | ')
-  ok('a call whose file imports the name from neither is refused', !result.ok, result.ok ? result.typescript : '')
-  ok('the refusal names both files', message.includes('a.tree') && message.includes('b.tree'), message)
-  ok('it is a duplicate-definition', !result.ok && result.diagnostics.some(d => d.name === 'duplicate-definition'), message)
+  const result = build(
+    { '@app/a': a, '@app/b': PICK_B, '@app/c': C },
+    main,
+  )
+  const message = result.ok
+    ? ''
+    : result.diagnostics.map(d => d.message).join(' | ')
+  ok(
+    'a call whose file imports the name from neither is refused',
+    !result.ok,
+    result.ok ? result.typescript : '',
+  )
+  ok(
+    'the refusal names both files',
+    message.includes('a.tree') && message.includes('b.tree'),
+    message,
+  )
+  ok(
+    'it is a duplicate-definition',
+    !result.ok &&
+      result.diagnostics.some(d => d.name === 'duplicate-definition'),
+    message,
+  )
 }
 
 {
@@ -79,11 +121,16 @@ task run-helper
   const d = `task pick\n  take x, like number\n  like text\n  send back, text <d>\n`
   const main = `load @app/d\n  find pick\n\nload @app/c\n  find helper\n\nload @app/a\n  find other\n\ntask run\n  like text\n  send back\n    call pick\n      code 3\n\ntask run-helper\n  like text\n  send back, call helper\n`
   const a = `${PICK_A}\ntask other\n  like text\n  send back, text <o>\n`
-  const result = build({ '@app/a': a, '@app/b': PICK_B, '@app/c': C, '@app/d': d }, main)
+  const result = build(
+    { '@app/a': a, '@app/b': PICK_B, '@app/c': C, '@app/d': d },
+    main,
+  )
   ok(
     'a call importing a third definition of the name, typed apart, is left to it',
     result.ok && /"d"/.test(result.typescript),
-    result.ok ? result.typescript : result.diagnostics.map(x => x.message).join(' | '),
+    result.ok
+      ? result.typescript
+      : result.diagnostics.map(x => x.message).join(' | '),
   )
 }
 
@@ -91,8 +138,14 @@ task run-helper
   // main imports pick from both definers: refused
   const main = `load @app/a\n  find pick\n\nload @app/b\n  find pick\n\ntask run\n  like text\n  send back\n    call pick\n      text <x>\n`
   const result = build({ '@app/a': PICK_A, '@app/b': PICK_B }, main)
-  const message = result.ok ? '' : result.diagnostics.map(d => d.message).join(' | ')
-  ok('a call whose file imports the name from both is refused', !result.ok && /more than one/.test(message), message)
+  const message = result.ok
+    ? ''
+    : result.diagnostics.map(d => d.message).join(' | ')
+  ok(
+    'a call whose file imports the name from both is refused',
+    !result.ok && /more than one/.test(message),
+    message,
+  )
 }
 
 {
@@ -102,24 +155,48 @@ task run-helper
     { '@app/a': PICK_A, '@app/b': abstract, '@app/c': C },
     MAIN,
   )
-  ok('a signature with no body is still overridden', result.ok, result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'a signature with no body is still overridden',
+    result.ok,
+    result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '),
+  )
 }
 
 {
   // arity tells them apart
   const two = `task pick\n  take x, like text\n  take y, like text\n  like text\n  send back, text <b>\n`
   const c = `load @app/b\n  find pick\n\ntask helper\n  like text\n  send back\n    call pick\n      text <y>\n      text <z>\n`
-  const result = build({ '@app/a': PICK_A, '@app/b': two, '@app/c': c }, MAIN)
-  ok('an arity overload across files compiles', result.ok, result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '))
-  ok('and each call reaches its own', result.ok && /"a"/.test(result.typescript) && /"b"/.test(result.typescript), result.ok ? result.typescript : '')
+  const result = build(
+    { '@app/a': PICK_A, '@app/b': two, '@app/c': c },
+    MAIN,
+  )
+  ok(
+    'an arity overload across files compiles',
+    result.ok,
+    result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '),
+  )
+  ok(
+    'and each call reaches its own',
+    result.ok &&
+      /"a"/.test(result.typescript) &&
+      /"b"/.test(result.typescript),
+    result.ok ? result.typescript : '',
+  )
 }
 
 {
   // the parameter type tells them apart
   const numeric = `task pick\n  take x, like number\n  like text\n  send back, text <b>\n`
   const c = `load @app/b\n  find pick\n\ntask helper\n  like text\n  send back\n    call pick\n      code 3\n`
-  const result = build({ '@app/a': PICK_A, '@app/b': numeric, '@app/c': c }, MAIN)
-  ok('a parameter-type overload across files compiles', result.ok, result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '))
+  const result = build(
+    { '@app/a': PICK_A, '@app/b': numeric, '@app/c': c },
+    MAIN,
+  )
+  ok(
+    'a parameter-type overload across files compiles',
+    result.ok,
+    result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '),
+  )
 }
 
 {
@@ -165,10 +242,16 @@ task run-helper
   const main = `load @app/keep\n  find keep\n\nload @app/a\n  find other\n\nload @app/b\n  find test\n\ntask run\n  like boolean\n  send back\n    call keep\n      task\n        take x, like text\n        like boolean\n        send back, true\n      text <x>\n`
   const testA = `task test\n  take x, like text\n  like boolean\n  send back, true\n\ntask other\n  like text\n  send back, text <o>\n`
   const testB = `task test\n  take x, like text\n  like boolean\n  send back, false\n`
-  const result = build({ '@app/keep': keep, '@app/a': testA, '@app/b': testB }, main)
+  const result = build(
+    { '@app/keep': keep, '@app/a': testA, '@app/b': testB },
+    main,
+  )
   ok(
     'a call to a parameter that shares a name two files define is the parameter',
-    !(!result.ok && result.diagnostics.some(d => d.name === 'duplicate-definition')),
+    !(
+      !result.ok &&
+      result.diagnostics.some(d => d.name === 'duplicate-definition')
+    ),
     result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '),
   )
 }
@@ -177,11 +260,20 @@ task run-helper
   // a LEAN nested call to a name two files define, under a call to that same name: the import binding renames every
   // `pick` apart before the resolver runs, so the nested one has to be a call by then or it is a label naming nothing
   // (`"pick__from0_0" has no parameter "pick"`, deck/site/code/http/http.tree, 2026-10-02)
-  const files: Record<string, string> = { '@app/a': PICK_A, '@app/b': PICK_B, '@app/c': C }
+  const files: Record<string, string> = {
+    '@app/a': PICK_A,
+    '@app/b': PICK_B,
+    '@app/c': C,
+  }
   const resolve = (p: string): Source | undefined =>
-    files[p] !== undefined ? { file: `${p.slice('@app/'.length)}.tree`, text: files[p]! } : undefined
+    files[p] !== undefined
+      ? { file: `${p.slice('@app/'.length)}.tree`, text: files[p]! }
+      : undefined
   const main = `load @app/a\n  find pick\n\nload @app/c\n  find helper\n\ntask run\n  like text\n  back pick(pick(<x>))\n`
-  const result = compile({ file: 'main.tree', text: main }, { resolve, leanOf: file => file === 'main.tree' })
+  const result = compile(
+    { file: 'main.tree', text: main },
+    { resolve, leanOf: file => file === 'main.tree' },
+  )
   ok(
     'a lean nested call to an ambiguous name is bound like any other call',
     result.ok,

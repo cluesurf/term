@@ -108,40 +108,83 @@ task run
 `
 
 const messages = (result: ReturnType<typeof compile>): string =>
-  (result.diagnostics ?? []).filter(d => d.severity !== 'warning').map(d => `${d.name}: ${d.message}`).join(' | ')
+  (result.diagnostics ?? [])
+    .filter(d => d.severity !== 'warning')
+    .map(d => `${d.name}: ${d.message}`)
+    .join(' | ')
 
 async function main(): Promise<void> {
   const bound = compile({ file: 'bound.tree', text: BOUND }, LEAN)
-  ok('a caller may declare halt failure for a callee\'s text raise', bound.ok, messages(bound))
+  ok(
+    "a caller may declare halt failure for a callee's text raise",
+    bound.ok,
+    messages(bound),
+  )
 
   const wide = compile({ file: 'wide.tree', text: WIDE }, LEAN)
   ok(
     'a halt failure bound nothing reaches is still refused',
-    !wide.ok && wide.diagnostics.some(d => d.name === 'raise-bound' && d.message.includes('nothing it calls raises "failure"')),
+    !wide.ok &&
+      wide.diagnostics.some(
+        d =>
+          d.name === 'raise-bound' &&
+          d.message.includes('nothing it calls raises "failure"'),
+      ),
     wide.ok ? 'compiled' : messages(wide),
   )
 
   const caught = compile({ file: 'caught.tree', text: CAUGHT }, LEAN)
-  ok('a handler sifting a text raise compiles', caught.ok, messages(caught))
+  ok(
+    'a handler sifting a text raise compiles',
+    caught.ok,
+    messages(caught),
+  )
 
   const ts = caught.ok ? caught.typescript : ''
-  ok('the arm tests what was raised', ts.includes('problem.form === "failure"'), ts.match(/if \(problem[^)]*\)/)?.[0] ?? '')
-  ok('the arm never compares the caught value with text', !ts.includes('problem === "failure"'))
-  ok('the renaming arm binds its local', /const said = problem\.\w+/.test(ts))
+  ok(
+    'the arm tests what was raised',
+    ts.includes('problem.form === "failure"'),
+    ts.match(/if \(problem[^)]*\)/)?.[0] ?? '',
+  )
+  ok(
+    'the arm never compares the caught value with text',
+    !ts.includes('problem === "failure"'),
+  )
+  ok(
+    'the renaming arm binds its local',
+    /const said = problem\.\w+/.test(ts),
+  )
 
   if (caught.ok) {
     const dir = mkdtempSync(join(tmpdir(), 'term-text-raise-'))
     const file = join(dir, 'caught.mjs')
-    writeFileSync(file, transformSync(caught.typescript, { loader: 'ts', format: 'esm' }).code)
+    writeFileSync(
+      file,
+      transformSync(caught.typescript, { loader: 'ts', format: 'esm' })
+        .code,
+    )
     const mod = await import(pathToFileURL(file).href)
-    ok('the raise reaches the arm and its field binds', mod.told('boom') === 'caught boom', String(mod.told('boom')))
-    ok('the renaming arm returns a text, never undefined', typeof mod.run('boom') === 'string', String(mod.run('boom')))
+    ok(
+      'the raise reaches the arm and its field binds',
+      mod.told('boom') === 'caught boom',
+      String(mod.told('boom')),
+    )
+    ok(
+      'the renaming arm returns a text, never undefined',
+      typeof mod.run('boom') === 'string',
+      String(mod.run('boom')),
+    )
   }
 
   const stray = compile({ file: 'stray.tree', text: STRAY }, LEAN)
   ok(
     'an arm the guarded body cannot raise is refused',
-    !stray.ok && stray.diagnostics.some(d => d.message.includes('"absence" is not something the guarded body can raise')),
+    !stray.ok &&
+      stray.diagnostics.some(d =>
+        d.message.includes(
+          '"absence" is not something the guarded body can raise',
+        ),
+      ),
     stray.ok ? 'compiled' : messages(stray),
   )
 

@@ -21,11 +21,23 @@ export function promiseText(text: string): boolean {
 }
 
 // every call into a promise module left unwaited, then every field read off an unmarked bind's promise
-export function checkMissingWaits(program: Program, file?: string): Diagnostic[] {
-  return port.checkMissingWaits(program as never, file ?? '') as Diagnostic[]
+export function checkMissingWaits(
+  program: Program,
+  file?: string,
+): Diagnostic[] {
+  return port.checkMissingWaits(
+    program as never,
+    file ?? '',
+  ) as Diagnostic[]
 }
 
 // the field reads off an unmarked bind's promise alone
-export function checkUnwaitedBindReads(program: Program, file?: string): Diagnostic[] {
-  return port.checkUnwaitedBindReads(program as never, file ?? '') as Diagnostic[]
+export function checkUnwaitedBindReads(
+  program: Program,
+  file?: string,
+): Diagnostic[] {
+  return port.checkUnwaitedBindReads(
+    program as never,
+    file ?? '',
+  ) as Diagnostic[]
 }

@@ -25,15 +25,17 @@ function shape(node: {
   value?: unknown
   token?: { text: string }
 }): string {
-  if (node.kind === 'group' || node.kind === 'root')
-    {return `${node.kind}(${(node.nodes ?? [])
+  if (node.kind === 'group' || node.kind === 'root') {
+    return `${node.kind}(${(node.nodes ?? [])
       .map(n => shape(n as never))
-      .join(',')})`}
+      .join(',')})`
+  }
 
-  if (node.kind === 'name' || node.kind === 'text')
-    {return `${node.kind}:${(node.parts ?? [])
+  if (node.kind === 'name' || node.kind === 'text') {
+    return `${node.kind}:${(node.parts ?? [])
       .map(p => p.text ?? '{}')
-      .join('')}`}
+      .join('')}`
+  }
 
   return `lit:${node.token?.text ?? node.value}`
 }
@@ -204,7 +206,8 @@ function main(): void {
     )
 
     // and a genuine runtime interpolation stays double
-    const runtime = 'task t\n  take x, like text\n  like text\n  send back, text <a {{x}} b>\n'
+    const runtime =
+      'task t\n  take x, like text\n  like text\n  send back, text <a {{x}} b>\n'
     const runtimeOut = format({ file: 'r.tree', text: runtime })
 
     ok(
@@ -264,37 +267,89 @@ task list-demo
 `
 
 function rules(): void {
-  const dense = (text: string) => text.split('\n').filter(line => line.trim() !== '').join('\n')
+  const dense = (text: string) =>
+    text
+      .split('\n')
+      .filter(line => line.trim() !== '')
+      .join('\n')
   const out = format({ file: 'list-demo.tree', text: BEFORE })
   const lines = out.split('\n')
   const has = (line: string) => lines.includes(line)
 
-  ok('the before column formats to the after column, blank lines aside', dense(out) === dense(AFTER), `\n${out}`)
-  ok('the after column is already formatted, blank lines aside', dense(format({ file: 'a.tree', text: AFTER })) === dense(AFTER))
-  ok('the before and after columns are one tree', shapeOf(BEFORE) === shapeOf(AFTER))
+  ok(
+    'the before column formats to the after column, blank lines aside',
+    dense(out) === dense(AFTER),
+    `\n${out}`,
+  )
+  ok(
+    'the after column is already formatted, blank lines aside',
+    dense(format({ file: 'a.tree', text: AFTER })) === dense(AFTER),
+  )
+  ok(
+    'the before and after columns are one tree',
+    shapeOf(BEFORE) === shapeOf(AFTER),
+  )
 
   // 1. a statement is one line
-  ok('1. `push` over `items` and `2` is `push items, 2`', has('  push items, 2'), out)
+  ok(
+    '1. `push` over `items` and `2` is `push items, 2`',
+    has('  push items, 2'),
+    out,
+  )
 
   // 2. Term's own words chain with commas
-  ok('2. `save items` over `make list` over `3` and `1` is `save items, make list, 3, 1`', has('  save items, make list, 3, 1'), out)
+  ok(
+    '2. `save items` over `make list` over `3` and `1` is `save items, make list, 3, 1`',
+    has('  save items, make list, 3, 1'),
+    out,
+  )
   {
-    const typed = format({ file: 't.tree', text: 'task f\n  take xs\n    like list\n      like number\n  like list\n    like number\n  back xs\n' })
+    const typed = format({
+      file: 't.tree',
+      text: 'task f\n  take xs\n    like list\n      like number\n  like list\n    like number\n  back xs\n',
+    })
 
-    ok('2. `like list` over `like number` is `like list, like number`', typed.includes('\n  like list, like number\n'), typed)
-    ok('2. ...and under a `take`, `take xs, like list, like number`', typed.includes('\n  take xs, like list, like number\n'), typed)
+    ok(
+      '2. `like list` over `like number` is `like list, like number`',
+      typed.includes('\n  like list, like number\n'),
+      typed,
+    )
+    ok(
+      '2. ...and under a `take`, `take xs, like list, like number`',
+      typed.includes('\n  take xs, like list, like number\n'),
+      typed,
+    )
   }
 
   {
     // a word closed in parentheses mid-line would read as a call (`bind(x, 1)`), so the group stacks instead
-    const record = format({ file: 'r.tree', text: 'task f\n  insert\n    seen\n    make point\n      bind x, 1\n      bind y, 2\n' })
+    const record = format({
+      file: 'r.tree',
+      text: 'task f\n  insert\n    seen\n    make point\n      bind x, 1\n      bind y, 2\n',
+    })
 
-    ok('2. a record stacks rather than write `bind(x, 1)`', record.includes('  insert seen\n    make point\n      bind x, 1\n      bind y, 2\n'), record)
-    ok('2. ...while `call add, read(a), read(b)` keeps its one-part words', format({ file: 'a.tree', text: 'task f\n  call add\n    read a\n    read b\n' }).includes('  call add, read(a), read b\n'))
+    ok(
+      '2. a record stacks rather than write `bind(x, 1)`',
+      record.includes(
+        '  insert seen\n    make point\n      bind x, 1\n      bind y, 2\n',
+      ),
+      record,
+    )
+    ok(
+      '2. ...while `call add, read(a), read(b)` keeps its one-part words',
+      format({
+        file: 'a.tree',
+        text: 'task f\n  call add\n    read a\n    read b\n',
+      }).includes('  call add, read(a), read b\n'),
+    )
   }
 
   // 3. a call reads by where it stands
-  ok('3. a call after `back` takes parentheses: `back multiply(n, 2)`', has('        back multiply(n, 2)'), out)
+  ok(
+    '3. a call after `back` takes parentheses: `back multiply(n, 2)`',
+    has('        back multiply(n, 2)'),
+    out,
+  )
   ok('3. ...and `back sum(doubled)`', has('  back sum(doubled)'), out)
   {
     const placed = format({
@@ -323,20 +378,60 @@ function rules(): void {
     })
     const lines = placed.split('\n')
 
-    ok('3. an argument that is a call takes parentheses: `push result, read-number(cursor)`', lines.includes('  push result, read-number(cursor)'), placed)
-    ok('3. a CONDITION reads with commas: `want hold, is-equal get(found, 1), 14`', lines.includes('  want hold, is-equal get(found, 1), 14'), placed)
-    ok('3. ...never `is-equal(get(found, 1), 14)`', !placed.includes('is-equal('), placed)
-    ok('3. a condition on its fork: `fork test, is-above n, 0`', lines.includes('  fork test, is-above n, 0'), placed)
-    ok('3. the layout parses to the stacked tree', shapeOf(placed) === shapeOf(placed.replace('push result, read-number(cursor)', 'push\n    result\n    read-number\n      cursor')))
+    ok(
+      '3. an argument that is a call takes parentheses: `push result, read-number(cursor)`',
+      lines.includes('  push result, read-number(cursor)'),
+      placed,
+    )
+    ok(
+      '3. a CONDITION reads with commas: `want hold, is-equal get(found, 1), 14`',
+      lines.includes('  want hold, is-equal get(found, 1), 14'),
+      placed,
+    )
+    ok(
+      '3. ...never `is-equal(get(found, 1), 14)`',
+      !placed.includes('is-equal('),
+      placed,
+    )
+    ok(
+      '3. a condition on its fork: `fork test, is-above n, 0`',
+      lines.includes('  fork test, is-above n, 0'),
+      placed,
+    )
+    ok(
+      '3. the layout parses to the stacked tree',
+      shapeOf(placed) ===
+        shapeOf(
+          placed.replace(
+            'push result, read-number(cursor)',
+            'push\n    result\n    read-number\n      cursor',
+          ),
+        ),
+    )
   }
 
   // 4. a block stacks, from the block on
-  ok('4. `map items` keeps `items` on its line and stacks the `task`', /\n {4}map items\n {6}task twice\n/.test(out), out)
-  ok('4. `save doubled` keeps `doubled` on its line and stacks the `map`', /\n {2}save doubled\n {4}map items\n/.test(out), out)
+  ok(
+    '4. `map items` keeps `items` on its line and stacks the `task`',
+    /\n {4}map items\n {6}task twice\n/.test(out),
+    out,
+  )
+  ok(
+    '4. `save doubled` keeps `doubled` on its line and stacks the `map`',
+    /\n {2}save doubled\n {4}map items\n/.test(out),
+    out,
+  )
   {
-    const loop = format({ file: 'w.tree', text: 'task f\n  take xs, like list\n  walk list\n    read xs\n    hook next\n      take site, name x\n      log x\n' })
+    const loop = format({
+      file: 'w.tree',
+      text: 'task f\n  take xs, like list\n  walk list\n    read xs\n    hook next\n      take site, name x\n      log x\n',
+    })
 
-    ok('4. a longhand loop keeps its list on the head line: `walk list, read xs`', loop.includes('\n  walk list, read xs\n    hook next\n'), loop)
+    ok(
+      '4. a longhand loop keeps its list on the head line: `walk list, read xs`',
+      loop.includes('\n  walk list, read xs\n    hook next\n'),
+      loop,
+    )
   }
 
   // 5. too wide, or a comment inside, stacks
@@ -350,118 +445,290 @@ function rules(): void {
     ok(
       '5. past 84 columns the group stacks',
       wide.split('\n').every(line => line.length <= 84) &&
-        wide.includes('\n  back\n    add-all first-long-argument-name\n      second-long-argument-name\n'),
+        wide.includes(
+          '\n  back\n    add-all first-long-argument-name\n      second-long-argument-name\n',
+        ),
       wide,
     )
 
-    const commented = format({ file: 'c.tree', text: 'task f\n  push\n    items\n    # the second\n    2\n' })
+    const commented = format({
+      file: 'c.tree',
+      text: 'task f\n  push\n    items\n    # the second\n    2\n',
+    })
 
-    ok('5. a comment inside stacks the group, and survives', commented.includes('  push items\n    # the second\n    2\n'), commented)
+    ok(
+      '5. a comment inside stacks the group, and survives',
+      commented.includes('  push items\n    # the second\n    2\n'),
+      commented,
+    )
   }
 
   // the meaning check: the parser keeps no node for parentheses, so these two are one tree with two programs, and
   // the formatter must re-emit what the tokens said
   {
-    const empty = format({ file: 'e.tree', text: 'task f\n  answer()\n  save b, make-box()\n  back b\n' }, { lean: true })
+    const empty = format(
+      {
+        file: 'e.tree',
+        text: 'task f\n  answer()\n  save b, make-box()\n  back b\n',
+      },
+      { lean: true },
+    )
 
-    ok('a call with no arguments keeps its parentheses: `answer()`', empty.includes('\n  answer()\n'), empty)
-    ok('...and in a value position: `save b, make-box()`', empty.includes('\n  save b, make-box()\n'), empty)
+    ok(
+      'a call with no arguments keeps its parentheses: `answer()`',
+      empty.includes('\n  answer()\n'),
+      empty,
+    )
+    ok(
+      '...and in a value position: `save b, make-box()`',
+      empty.includes('\n  save b, make-box()\n'),
+      empty,
+    )
 
-    const host = format({ file: 'h.tree', text: 'task f\n  take route, like text\n  take port, like number\n  host(route, port)\n' })
+    const host = format({
+      file: 'h.tree',
+      text: 'task f\n  take route, like text\n  take port, like number\n  host(route, port)\n',
+    })
 
-    ok('`host(route, port)` stays a call, not the constant `host route, port`', host.includes('\n  host(route, port)\n'), host)
+    ok(
+      '`host(route, port)` stays a call, not the constant `host route, port`',
+      host.includes('\n  host(route, port)\n'),
+      host,
+    )
   }
 
   // in a LEAN file a bare head under a call may be a label, which only the checker can tell from a call, so a
   // call-shaped part keeps its written parentheses and a part written on its own line stays there
   {
-    const labels = 'task use-gap\n  like number\n  back gap height(3), width 4\n\ntask origin\n  like point\n  back point x(0), y 0\n'
-    const leanOut = format({ file: 'l.tree', text: labels }, { lean: true })
+    const labels =
+      'task use-gap\n  like number\n  back gap height(3), width 4\n\ntask origin\n  like point\n  back point x(0), y 0\n'
+    const leanOut = format(
+      { file: 'l.tree', text: labels },
+      { lean: true },
+    )
 
-    ok('3. lean: a label keeps its spelling, `back gap height(3), width 4`', leanOut.includes('\n  back gap height(3), width 4\n'), leanOut)
-    ok('3. lean: ...and `back point x(0), y 0`', leanOut.includes('\n  back point x(0), y 0\n'), leanOut)
+    ok(
+      '3. lean: a label keeps its spelling, `back gap height(3), width 4`',
+      leanOut.includes('\n  back gap height(3), width 4\n'),
+      leanOut,
+    )
+    ok(
+      '3. lean: ...and `back point x(0), y 0`',
+      leanOut.includes('\n  back point x(0), y 0\n'),
+      leanOut,
+    )
 
-    const stacked = format({ file: 's.tree', text: 'task f\n  back\n    gap\n      height 3\n      width 4\n' }, { lean: true })
+    const stacked = format(
+      {
+        file: 's.tree',
+        text: 'task f\n  back\n    gap\n      height 3\n      width 4\n',
+      },
+      { lean: true },
+    )
 
-    ok('3. lean: labels written one per line stay one per line', stacked.includes('  back\n    gap\n      height 3\n      width 4\n'), stacked)
+    ok(
+      '3. lean: labels written one per line stay one per line',
+      stacked.includes(
+        '  back\n    gap\n      height 3\n      width 4\n',
+      ),
+      stacked,
+    )
 
-    const outside = format({ file: 'o.tree', text: 'task f\n  back\n    gap\n      height 3\n      width 4\n' })
+    const outside = format({
+      file: 'o.tree',
+      text: 'task f\n  back\n    gap\n      height 3\n      width 4\n',
+    })
 
-    ok('3. outside lean the same lines are calls, and take their parentheses', outside.includes('  back gap(height(3), width(4))\n'), outside)
+    ok(
+      '3. outside lean the same lines are calls, and take their parentheses',
+      outside.includes('  back gap(height(3), width(4))\n'),
+      outside,
+    )
   }
 
   // rule 3's parentheses are a call's: a dialect gets none
   {
-    const grammar = format({ file: 'm.tree', text: 'mine flow\n  back\n    seed head\n      text\n' }, { role: 'mill' })
+    const grammar = format(
+      {
+        file: 'm.tree',
+        text: 'mine flow\n  back\n    seed head\n      text\n',
+      },
+      { role: 'mill' },
+    )
 
-    ok('3. a `mill` file gets no call parentheses', !grammar.includes('('), grammar)
+    ok(
+      '3. a `mill` file gets no call parentheses',
+      !grammar.includes('('),
+      grammar,
+    )
   }
 
   // a statement in a `test` block is a statement, not a value
   {
-    const test = format({ file: 't.tree', text: 'test <split>\n  save parts, split(<a,,b>, <,>)\n  log <parts: {size(parts)}>\n' })
+    const test = format({
+      file: 't.tree',
+      text: 'test <split>\n  save parts, split(<a,,b>, <,>)\n  log <parts: {size(parts)}>\n',
+    })
 
-    ok('3. a statement in a `test` reads with commas, `log <parts: {size(parts)}>`', test.includes('\n  log <parts: {size(parts)}>\n'), test)
+    ok(
+      '3. a statement in a `test` reads with commas, `log <parts: {size(parts)}>`',
+      test.includes('\n  log <parts: {size(parts)}>\n'),
+      test,
+    )
   }
 
   // a grammar file is known by its `mine` heads, with no role to say so
   {
-    const grammar = format({ file: 'g.tree', text: 'mine version\n  mine form, form digits\n    send major\n  mine char, <.>\n' })
+    const grammar = format({
+      file: 'g.tree',
+      text: 'mine version\n  mine form, form digits\n    send major\n  mine char, <.>\n',
+    })
 
-    ok('a grammar is returned as written', grammar === 'mine version\n  mine form, form digits\n    send major\n  mine char, <.>\n', grammar)
+    ok(
+      'a grammar is returned as written',
+      grammar ===
+        'mine version\n  mine form, form digits\n    send major\n  mine char, <.>\n',
+      grammar,
+    )
   }
 
   // a lean line one character too wide in the parentheses it was written with: the stack drops them anyway, so the
   // bare line is the first run's answer too, or the second run joins what the first broke
   {
-    const wide = 'task t\n  want hold, is-equal(shown(run(call-program(<join>, make list(letters, str(<->))))), <a-b-c>)\n'
+    const wide =
+      'task t\n  want hold, is-equal(shown(run(call-program(<join>, make list(letters, str(<->))))), <a-b-c>)\n'
     const once = format({ file: 'w.tree', text: wide }, { lean: true })
 
-    ok('lean: a line too wide in its parentheses is written bare when that fits', once.includes('\n    is-equal shown(run(call-program(<join>, make list(letters, str(<->))))), <a-b-c>\n'), once)
-    ok('lean: ...and formatting it again changes nothing', format({ file: 'w.tree', text: once }, { lean: true }) === once)
+    ok(
+      'lean: a line too wide in its parentheses is written bare when that fits',
+      once.includes(
+        '\n    is-equal shown(run(call-program(<join>, make list(letters, str(<->))))), <a-b-c>\n',
+      ),
+      once,
+    )
+    ok(
+      'lean: ...and formatting it again changes nothing',
+      format({ file: 'w.tree', text: once }, { lean: true }) === once,
+    )
   }
 
   // a lean part under a call written `name(<x>)` keeps its parentheses, inline and on a line of its own however wide:
   // the meaning check does not compare `leanShaped`, and without them a label-or-call refusal (decision 009) would
   // turn into the label (term-compiler-0069)
   {
-    const inline = format({ file: 'l.tree', text: 'task run\n  back greet(name(<x>))\n' }, { lean: true })
+    const inline = format(
+      { file: 'l.tree', text: 'task run\n  back greet(name(<x>))\n' },
+      { lean: true },
+    )
     const long = `<${'x'.repeat(90)}>`
-    const wide = format({ file: 'l.tree', text: `task run\n  back greet(name(${long}))\n` }, { lean: true })
+    const wide = format(
+      {
+        file: 'l.tree',
+        text: `task run\n  back greet(name(${long}))\n`,
+      },
+      { lean: true },
+    )
 
-    ok('lean: a call-shaped part under a call keeps its parentheses, `greet(name(<x>))`', inline.includes('back greet(name(<x>))\n'), inline)
-    ok('lean: ...and on its own line when the call stacks', wide.includes(`\n      name(${long})\n`), wide)
-    ok('lean: ...and formatting it again changes nothing', format({ file: 'l.tree', text: wide }, { lean: true }) === wide)
+    ok(
+      'lean: a call-shaped part under a call keeps its parentheses, `greet(name(<x>))`',
+      inline.includes('back greet(name(<x>))\n'),
+      inline,
+    )
+    ok(
+      'lean: ...and on its own line when the call stacks',
+      wide.includes(`\n      name(${long})\n`),
+      wide,
+    )
+    ok(
+      'lean: ...and formatting it again changes nothing',
+      format({ file: 'l.tree', text: wide }, { lean: true }) === wide,
+    )
 
     // a part written `f(...)` that holds a comment stacks, and its head line keeps the parentheses (term-compiler-0071)
-    const commented = 'task run\n  greet\n    name(<x>)\n      # who\n      <y>\n'
-    const held = format({ file: 'l.tree', text: commented }, { lean: true })
-    const flat = format({ file: 'l.tree', text: 'task run\n  greet(name(<x>))\n    # who\n    <y>\n' }, { lean: true })
+    const commented =
+      'task run\n  greet\n    name(<x>)\n      # who\n      <y>\n'
+    const held = format(
+      { file: 'l.tree', text: commented },
+      { lean: true },
+    )
+    const flat = format(
+      {
+        file: 'l.tree',
+        text: 'task run\n  greet(name(<x>))\n    # who\n    <y>\n',
+      },
+      { lean: true },
+    )
 
-    ok('lean: a call-shaped part holding a comment keeps its parentheses, `name(<x>)` over `# who`', held === commented, held)
-    ok('lean: ...and formatting it again changes nothing', format({ file: 'l.tree', text: held }, { lean: true }) === held)
-    ok('lean: ...and `greet(name(<x>))` over a comment stacks to the same call', flat === 'task run\n  greet\n    name(<x>)\n    # who\n    <y>\n', flat)
+    ok(
+      'lean: a call-shaped part holding a comment keeps its parentheses, `name(<x>)` over `# who`',
+      held === commented,
+      held,
+    )
+    ok(
+      'lean: ...and formatting it again changes nothing',
+      format({ file: 'l.tree', text: held }, { lean: true }) === held,
+    )
+    ok(
+      'lean: ...and `greet(name(<x>))` over a comment stacks to the same call',
+      flat === 'task run\n  greet\n    name(<x>)\n    # who\n    <y>\n',
+      flat,
+    )
   }
 
   // a path after a call is written back as it was, never as the braces the parser holds it in
   {
-    const path = format({ file: 'p.tree', text: 'task t\n  log greeting()/text\n  log greet(<ada>)/text\n  log <{greet(who)/count} left>\n' }, { lean: true })
+    const path = format(
+      {
+        file: 'p.tree',
+        text: 'task t\n  log greeting()/text\n  log greet(<ada>)/text\n  log <{greet(who)/count} left>\n',
+      },
+      { lean: true },
+    )
 
-    ok('a path after a call keeps its spelling, `greeting()/text`', path.includes('  log greeting()/text\n  log greet(<ada>)/text\n  log <{greet(who)/count} left>\n'), path)
+    ok(
+      'a path after a call keeps its spelling, `greeting()/text`',
+      path.includes(
+        '  log greeting()/text\n  log greet(<ada>)/text\n  log <{greet(who)/count} left>\n',
+      ),
+      path,
+    )
   }
 
   // a walk's head line keeps ONE name or mark part after a one-part list, a second stacks as its first child, and a
   // longhand `walk list, read xs` keeps its mark stacked (decision 073 of term/self-host change 001)
   for (const [label, text, want, lean] of [
-    ['lean: `walk xs` over `mark parallel` becomes `walk xs, mark parallel`', 'task f\n  take xs, like list\n\n  walk xs\n    mark parallel\n    take x\n    log x\n', 'task f\n  take xs, like list\n\n  walk xs, mark parallel\n    take x\n    log x\n', true],
-    ['lean: `walk xs, name outer` stays on one line', 'task f\n  take xs, like list\n\n  walk xs, name outer\n    take x\n    log x\n', 'task f\n  take xs, like list\n\n  walk xs, name outer\n    take x\n    log x\n', true],
-    ['lean: `walk xs, name outer` over `mark parallel` keeps the mark a child', 'task f\n  take xs, like list\n\n  walk xs, name outer\n    mark parallel\n    take x\n    log x\n', 'task f\n  take xs, like list\n\n  walk xs, name outer\n    mark parallel\n    take x\n    log x\n', true],
-    ['longhand: `walk list, read xs` over `mark parallel` stays stacked', 'task f\n  take xs, like list\n\n  walk list\n    read xs\n    mark parallel\n    hook next\n      take site, name x\n      log x\n', 'task f\n  take xs, like list\n\n  walk list, read xs\n    mark parallel\n    hook next\n      take site, name x\n      log x\n', false],
+    [
+      'lean: `walk xs` over `mark parallel` becomes `walk xs, mark parallel`',
+      'task f\n  take xs, like list\n\n  walk xs\n    mark parallel\n    take x\n    log x\n',
+      'task f\n  take xs, like list\n\n  walk xs, mark parallel\n    take x\n    log x\n',
+      true,
+    ],
+    [
+      'lean: `walk xs, name outer` stays on one line',
+      'task f\n  take xs, like list\n\n  walk xs, name outer\n    take x\n    log x\n',
+      'task f\n  take xs, like list\n\n  walk xs, name outer\n    take x\n    log x\n',
+      true,
+    ],
+    [
+      'lean: `walk xs, name outer` over `mark parallel` keeps the mark a child',
+      'task f\n  take xs, like list\n\n  walk xs, name outer\n    mark parallel\n    take x\n    log x\n',
+      'task f\n  take xs, like list\n\n  walk xs, name outer\n    mark parallel\n    take x\n    log x\n',
+      true,
+    ],
+    [
+      'longhand: `walk list, read xs` over `mark parallel` stays stacked',
+      'task f\n  take xs, like list\n\n  walk list\n    read xs\n    mark parallel\n    hook next\n      take site, name x\n      log x\n',
+      'task f\n  take xs, like list\n\n  walk list, read xs\n    mark parallel\n    hook next\n      take site, name x\n      log x\n',
+      false,
+    ],
   ] as const) {
     const once = format({ file: 'w.tree', text }, { lean })
 
     ok(label, once === want, once)
-    ok(`${label}: and formatting it again changes nothing`, format({ file: 'w.tree', text: want }, { lean }) === want)
+    ok(
+      `${label}: and formatting it again changes nothing`,
+      format({ file: 'w.tree', text: want }, { lean }) === want,
+    )
   }
 
   // every rule's output is idempotent
@@ -471,7 +738,10 @@ function rules(): void {
   ] as const) {
     const once = format({ file: 'i.tree', text })
 
-    ok(`idempotent on ${label}`, format({ file: 'i.tree', text: once }) === once)
+    ok(
+      `idempotent on ${label}`,
+      format({ file: 'i.tree', text: once }) === once,
+    )
   }
 }
 

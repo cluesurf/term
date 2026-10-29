@@ -4,7 +4,10 @@
 // one thread. The opaque handle a Term atomic holds is the typed array. Reached only through the public atomic API.
 const atomic = {
   make: (initial: number): BigInt64Array => {
-    const buffer = typeof SharedArrayBuffer === 'function' ? new SharedArrayBuffer(8) : new ArrayBuffer(8)
+    const buffer =
+      typeof SharedArrayBuffer === 'function'
+        ? new SharedArrayBuffer(8)
+        : new ArrayBuffer(8)
     const cell = new BigInt64Array(buffer)
     Atomics.store(cell, 0, BigInt(initial))
     return cell

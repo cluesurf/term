@@ -8,10 +8,16 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // the Term package root, deck/term/deck/term
-export const TERM = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
+export const TERM = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+)
 
 // where the built CLI sits inside an install or a payload, relative to its root
 export const LINE_IN_INSTALL = 'host/line.js'
 
 // the CLI under test
-export const LINE = process.env.TERM_LINE ? resolve(process.env.TERM_LINE) : join(TERM, LINE_IN_INSTALL)
+export const LINE = process.env.TERM_LINE
+  ? resolve(process.env.TERM_LINE)
+  : join(TERM, LINE_IN_INSTALL)

@@ -53,7 +53,10 @@ task compute
 ${body}`
 
 function check(name: string, body: string, want: RegExp): void {
-  const built = compile({ file: 'main.tree', text: program(body) }, { optimize: false })
+  const built = compile(
+    { file: 'main.tree', text: program(body) },
+    { optimize: false },
+  )
 
   if (!built.ok) {
     ok(name, false, built.diagnostics.map(d => d.message).join(' | '))
@@ -62,15 +65,28 @@ function check(name: string, body: string, want: RegExp): void {
   }
 
   const swift = emitSwift(built.program)
-  const line = swift.split('\n').find(l => /return/.test(l) && /half/.test(l)) ?? ''
+  const line =
+    swift.split('\n').find(l => /return/.test(l) && /half/.test(l)) ??
+    ''
   const file = join(dir, `${name.replace(/\W+/g, '-')}.swift`)
   writeFileSync(file, swift)
 
   try {
-    execFileSync('swiftc', ['-typecheck', '-warnings-as-errors', file], { stdio: ['ignore', 'pipe', 'pipe'] })
+    execFileSync(
+      'swiftc',
+      ['-typecheck', '-warnings-as-errors', file],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    )
     ok(`${name}: typechecks with no warning`, true)
   } catch (error) {
-    ok(`${name}: typechecks with no warning`, false, String((error as { stderr?: Buffer }).stderr ?? error).split('\n').slice(0, 4).join(' / '))
+    ok(
+      `${name}: typechecks with no warning`,
+      false,
+      String((error as { stderr?: Buffer }).stderr ?? error)
+        .split('\n')
+        .slice(0, 4)
+        .join(' / '),
+    )
   }
 
   ok(`${name}: ${want}`, want.test(line), line.trim())

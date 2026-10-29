@@ -26,7 +26,8 @@ import { join } from 'node:path'
 import { tempDir } from '../temp'
 import { LINE } from './cli'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 
 let pass = 0
@@ -64,15 +65,27 @@ function walk(input: string): string {
 
 const opened = walk('exit\n')
 
-ok('the REPL announces itself as Term', /Term REPL/.test(opened), opened)
-ok('and prompts with `term>`, not `seed>`', /term> /.test(opened) && !/seed> /.test(opened), opened)
+ok(
+  'the REPL announces itself as Term',
+  /Term REPL/.test(opened),
+  opened,
+)
+ok(
+  'and prompts with `term>`, not `seed>`',
+  /term> /.test(opened) && !/seed> /.test(opened),
+  opened,
+)
 
 // ---- an expression evaluates ----
 
 // `code(2)` closed: a comma after the literal `2` would stay inside `code` (the comma rule since 2026-10-02)
 const added = walk('call add(code(2), code 3)\n\nexit\n')
 
-ok('a one-line expression evaluates and prints its value', /\b5\b/.test(added), added)
+ok(
+  'a one-line expression evaluates and prints its value',
+  /\b5\b/.test(added),
+  added,
+)
 
 // ---- a definition is kept, and used by what follows it ----
 //

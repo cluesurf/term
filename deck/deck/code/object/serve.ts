@@ -7,9 +7,22 @@ import * as port from '@term/deck/code/object/registry-server'
 
 export type WriteAccess = { token: string } | 'open'
 
-export const REGISTRY_TOKEN_VARIABLE: string = port.registryTokenVariable()
+export const REGISTRY_TOKEN_VARIABLE: string =
+  port.registryTokenVariable()
 
-export const writeAccessFromEnv = (env: NodeJS.ProcessEnv = process.env): WriteAccess => port.writeAccessFromEnv(env) as WriteAccess
+export const writeAccessFromEnv = (
+  env: NodeJS.ProcessEnv = process.env,
+): WriteAccess => port.writeAccessFromEnv(env) as WriteAccess
 
-export const serveRegistry = (input: { store: unknown; refs: unknown; scopeKeys: unknown; write: WriteAccess }): http.Server =>
-  port.serveRegistry(input.store, input.refs, input.scopeKeys, input.write) as http.Server
+export const serveRegistry = (input: {
+  store: unknown
+  refs: unknown
+  scopeKeys: unknown
+  write: WriteAccess
+}): http.Server =>
+  port.serveRegistry(
+    input.store,
+    input.refs,
+    input.scopeKeys,
+    input.write,
+  ) as http.Server

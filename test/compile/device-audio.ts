@@ -68,9 +68,15 @@ function writeFiles(dir: string): void {
 }
 
 // each step the program prints, its task call stacked one argument a line
-const say = (step: string): string[] => ['      call say', `        text <step ${step} {said-${step}}>`]
+const say = (step: string): string[] => [
+  '      call say',
+  `        text <step ${step} {said-${step}}>`,
+]
 
-const program = (leg: Leg, _shot: string): string => `load @term/site/code/dom/native/toolkit/dom
+const program = (
+  leg: Leg,
+  _shot: string,
+): string => `load @term/site/code/dom/native/toolkit/dom
   find open-root
   find launch
   find run-app
@@ -266,7 +272,12 @@ ${say('play-stopped').join('\n')}
               bind item, read value
 ${
   leg === 'ios'
-    ? ['      save said-record', '        call start-recording', '          text <{folder}/term-take.m4a>', ...say('record')].join('\n')
+    ? [
+        '      save said-record',
+        '        call start-recording',
+        '          text <{folder}/term-take.m4a>',
+        ...say('record'),
+      ].join('\n')
     : ''
 }
       save said-record-stopped
@@ -284,9 +295,12 @@ ${say('heard-recording').join('\n')}
 `
 
 function step(output: string, name: string): string {
-  const line = output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
+  const line =
+    output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
 
-  return line.slice(line.indexOf(`step ${name} `) + `step ${name} `.length).trim()
+  return line
+    .slice(line.indexOf(`step ${name} `) + `step ${name} `.length)
+    .trim()
 }
 
 // `value@ms` events, split
@@ -300,20 +314,48 @@ const events = (said: string): { value: string; at: number }[] =>
       return { value: one.slice(0, at), at: Number(one.slice(at + 1)) }
     })
 
-function prepare(leg: Leg, target: { udid?: string; identifier: string }): void {
+function prepare(
+  leg: Leg,
+  target: { udid?: string; identifier: string },
+): void {
   if (leg === 'ios' && target.udid) {
-    const found = spawnSync('xcrun', ['simctl', 'get_app_container', target.udid, target.identifier, 'data'], { encoding: 'utf8' })
+    const found = spawnSync(
+      'xcrun',
+      [
+        'simctl',
+        'get_app_container',
+        target.udid,
+        target.identifier,
+        'data',
+      ],
+      { encoding: 'utf8' },
+    )
     const container = (found.stdout ?? '').trim()
 
     if (found.status !== 0 || container === '') {
-      throw new Error(`simctl get_app_container failed (status ${found.status}): ${found.stderr}`)
+      throw new Error(
+        `simctl get_app_container failed (status ${found.status}): ${found.stderr}`,
+      )
     }
 
     // revoked, so the recorder answers denied and never reaches the Mac's microphone
-    const revoked = spawnSync('xcrun', ['simctl', 'privacy', target.udid, 'revoke', 'microphone', target.identifier], { encoding: 'utf8' })
+    const revoked = spawnSync(
+      'xcrun',
+      [
+        'simctl',
+        'privacy',
+        target.udid,
+        'revoke',
+        'microphone',
+        target.identifier,
+      ],
+      { encoding: 'utf8' },
+    )
 
     if (revoked.status !== 0) {
-      throw new Error(`simctl privacy revoke microphone failed (status ${revoked.status}): ${revoked.stderr}`)
+      throw new Error(
+        `simctl privacy revoke microphone failed (status ${revoked.status}): ${revoked.stderr}`,
+      )
     }
 
     writeFiles(join(container, 'tmp'))
@@ -324,50 +366,129 @@ function judge(leg: Leg, toolkit: string, output: string): void {
   const said = (name: string) => step(output, name)
   const named = `${leg} (${toolkit})`
 
-  ok(`${named}: the file's length, read from its frames, is 3000 ms`, Math.abs(Number(said('length')) - 3000) <= 1, said('length'))
-  ok(`${named}: the loop starts`, said('started') === 'looping', said('started'))
+  ok(
+    `${named}: the file's length, read from its frames, is 3000 ms`,
+    Math.abs(Number(said('length')) - 3000) <= 1,
+    said('length'),
+  )
+  ok(
+    `${named}: the loop starts`,
+    said('started') === 'looping',
+    said('started'),
+  )
 
   const loop = events(said('heard-loop'))
   const started = loop.find(one => one.value === 'looping')
   const wraps = loop.filter(one => one.value.startsWith('wrap '))
-  ok(`${named}: the watcher hears the loop stopped, then looping`, loop[0]?.value === 'stopped' && started !== undefined, said('heard-loop'))
-  ok(`${named}: and wraps 1 and 2, in order`, wraps[0]?.value === 'wrap 1' && wraps[1]?.value === 'wrap 2', said('heard-loop'))
+  ok(
+    `${named}: the watcher hears the loop stopped, then looping`,
+    loop[0]?.value === 'stopped' && started !== undefined,
+    said('heard-loop'),
+  )
+  ok(
+    `${named}: and wraps 1 and 2, in order`,
+    wraps[0]?.value === 'wrap 1' && wraps[1]?.value === 'wrap 2',
+    said('heard-loop'),
+  )
 
   const first = (wraps[0]?.at ?? 0) - (started?.at ?? 0)
   const second = (wraps[1]?.at ?? 0) - (wraps[0]?.at ?? 0)
-  ok(`${named}: a round apart, the two half-second segments, by the wall clock`, Math.abs(first - 1000) <= 150 && Math.abs(second - 1000) <= 150, `${first} ms, then ${second} ms`)
+  ok(
+    `${named}: a round apart, the two half-second segments, by the wall clock`,
+    Math.abs(first - 1000) <= 150 && Math.abs(second - 1000) <= 150,
+    `${first} ms, then ${second} ms`,
+  )
 
   const [word = '', segment = '', ms = ''] = said('state').split(' ')
   const place = Number(ms)
-  const inside = segment === '0' ? place >= 500 && place < 1000 : segment === '1' ? place >= 2000 && place < 2500 : false
-  ok(`${named}: the engine's render clock places playback inside a segment`, word === 'looping' && inside, said('state'))
-  ok(`${named}: the volume is held to 100 and to 0`, said('louder') === '100' && said('quieter') === '0' && said('zeroed') === '0', `${said('louder')} ${said('quieter')} ${said('zeroed')}`)
-  ok(`${named}: restart, stop, the state after, and restart with nothing running`, said('restarted') === 'looping' && said('stopped') === 'stopped' && said('state-after') === 'stopped' && said('restart-stopped') === 'stopped', ['restarted', 'stopped', 'state-after', 'restart-stopped'].map(said).join(' '))
-  ok(`${named}: and the watcher heard it stop`, loop.at(-1)?.value === 'stopped', said('heard-loop'))
-  ok(`${named}: a segment past the file's end is invalid, a missing file unavailable`, said('invalid') === 'invalid' && said('missing') === 'unavailable', `${said('invalid')} ${said('missing')}`)
+  const inside =
+    segment === '0'
+      ? place >= 500 && place < 1000
+      : segment === '1'
+        ? place >= 2000 && place < 2500
+        : false
+  ok(
+    `${named}: the engine's render clock places playback inside a segment`,
+    word === 'looping' && inside,
+    said('state'),
+  )
+  ok(
+    `${named}: the volume is held to 100 and to 0`,
+    said('louder') === '100' &&
+      said('quieter') === '0' &&
+      said('zeroed') === '0',
+    `${said('louder')} ${said('quieter')} ${said('zeroed')}`,
+  )
+  ok(
+    `${named}: restart, stop, the state after, and restart with nothing running`,
+    said('restarted') === 'looping' &&
+      said('stopped') === 'stopped' &&
+      said('state-after') === 'stopped' &&
+      said('restart-stopped') === 'stopped',
+    ['restarted', 'stopped', 'state-after', 'restart-stopped']
+      .map(said)
+      .join(' '),
+  )
+  ok(
+    `${named}: and the watcher heard it stop`,
+    loop.at(-1)?.value === 'stopped',
+    said('heard-loop'),
+  )
+  ok(
+    `${named}: a segment past the file's end is invalid, a missing file unavailable`,
+    said('invalid') === 'invalid' && said('missing') === 'unavailable',
+    `${said('invalid')} ${said('missing')}`,
+  )
 
   const playback = events(said('heard-playback'))
-  const playing = playback.filter(one => one.value.startsWith('playing '))
+  const playing = playback.filter(one =>
+    one.value.startsWith('playing '),
+  )
   const done = playback.find(one => one.value === 'done')
-  ok(`${named}: the queue plays both files, each heard as it starts, then done`, said('playing') === 'playing' && playing.length === 2 && playing.every(one => one.value.endsWith(SHORT)) && done !== undefined, said('heard-playback'))
+  ok(
+    `${named}: the queue plays both files, each heard as it starts, then done`,
+    said('playing') === 'playing' &&
+      playing.length === 2 &&
+      playing.every(one => one.value.endsWith(SHORT)) &&
+      done !== undefined,
+    said('heard-playback'),
+  )
   const span = (done?.at ?? 0) - (playing[0]?.at ?? 0)
   const gap = (playing[1]?.at ?? 0) - (playing[0]?.at ?? 0)
   ok(
     `${named}: about a second from the first start to done, the second file starting 500 ms after the first`,
-    Math.abs(span - 1000) <= 250 && playing.length === 2 && Math.abs(gap - 500) <= 150,
+    Math.abs(span - 1000) <= 250 &&
+      playing.length === 2 &&
+      Math.abs(gap - 500) <= 150,
     `${span} ms to done, ${gap} ms between starts`,
   )
-  ok(`${named}: a file that is not there is unavailable, and stopping answers stopped`, said('play-missing') === 'unavailable' && said('play-stopped') === 'stopped', `${said('play-missing')} ${said('play-stopped')}`)
+  ok(
+    `${named}: a file that is not there is unavailable, and stopping answers stopped`,
+    said('play-missing') === 'unavailable' &&
+      said('play-stopped') === 'stopped',
+    `${said('play-missing')} ${said('play-stopped')}`,
+  )
 
   if (leg === 'ios') {
-    ok(`${named}: the microphone revoked, the recorder says denied and records nothing`, said('record') === 'denied', said('record'))
+    ok(
+      `${named}: the microphone revoked, the recorder says denied and records nothing`,
+      said('record') === 'denied',
+      said('record'),
+    )
   }
 
-  ok(`${named}: an idle recorder stops as idle, and its watcher hears idle`, said('record-stopped') === 'idle' && said('heard-recording') === 'idle', `${said('record-stopped')} ${said('heard-recording')}`)
+  ok(
+    `${named}: an idle recorder stops as idle, and its watcher hears idle`,
+    said('record-stopped') === 'idle' &&
+      said('heard-recording') === 'idle',
+    `${said('record-stopped')} ${said('heard-recording')}`,
+  )
 }
 
 // the Apple hosts, which are the ones built (Android's is beat-term-0011)
-const LEGS = process.env.AUDIO_ONLY ? [process.env.AUDIO_ONLY] : ['macos', 'ios']
+const LEGS = process.env.AUDIO_ONLY
+  ? [process.env.AUDIO_ONLY]
+  : ['macos', 'ios']
 
 // the Mac's own program reads the Mac's temporary folder, which is node's
 if (LEGS.includes('macos')) {

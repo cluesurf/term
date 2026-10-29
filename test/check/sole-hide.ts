@@ -38,16 +38,29 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const ENV: Record<Backend, string> = { typescript: 'node', rust: 'rust', swift: 'swift', kotlin: 'kotlin' }
+const ENV: Record<Backend, string> = {
+  typescript: 'node',
+  rust: 'rust',
+  swift: 'swift',
+  kotlin: 'kotlin',
+}
 const only = process.env.SOLE_ONLY ?? ''
 const backends = BACKENDS.filter(b => !only || b === only)
 
 // `@app/<path>` is `/pkg/code/<path>.tree`, so `/pkg/test/` holds the package's tests; anything else is the stdlib
-function build(files: Record<string, string>, main: string, env: string, file = '/pkg/code/main.tree') {
+function build(
+  files: Record<string, string>,
+  main: string,
+  env: string,
+  file = '/pkg/code/main.tree',
+) {
   const stdlib = projectResolver(process.cwd(), env as never)
   const resolve: Resolver = (path, from, how) =>
     files[path] !== undefined
-      ? ({ file: `/pkg/code/${path.slice('@app/'.length)}.tree`, text: files[path]! } as Source)
+      ? ({
+          file: `/pkg/code/${path.slice('@app/'.length)}.tree`,
+          text: files[path]!,
+        } as Source)
       : stdlib(path, from, how)
 
   return compile({ file, text: main }, { resolve, env })
@@ -56,22 +69,39 @@ function build(files: Record<string, string>, main: string, env: string, file = 
 type Built = ReturnType<typeof build>
 
 const said = (result: Built): string =>
-  result.ok ? 'it built' : result.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | ')
+  result.ok
+    ? 'it built'
+    : result.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | ')
 
 // refused on every backend with `code`, and the message holds each of `holds`
-function refusedEverywhere(name: string, code: string, files: Record<string, string>, main: string, holds: string[] = [], file?: string): void {
+function refusedEverywhere(
+  name: string,
+  code: string,
+  files: Record<string, string>,
+  main: string,
+  holds: string[] = [],
+  file?: string,
+): void {
   for (const backend of backends) {
     const result = build(files, main, ENV[backend], file)
-    const hit = result.ok ? undefined : result.diagnostics.find(d => d.name === code)
+    const hit = result.ok
+      ? undefined
+      : result.diagnostics.find(d => d.name === code)
     ok(
       `${backend}: ${name} is refused as ${code}`,
-      hit !== undefined && holds.every(text => hit.message.includes(text)),
+      hit !== undefined &&
+        holds.every(text => hit.message.includes(text)),
       hit ? hit.message : said(result),
     )
   }
 }
 
-function buildsEverywhere(name: string, files: Record<string, string>, main: string, file?: string): void {
+function buildsEverywhere(
+  name: string,
+  files: Record<string, string>,
+  main: string,
+  file?: string,
+): void {
   for (const backend of backends) {
     const result = build(files, main, ENV[backend], file)
     ok(`${backend}: ${name} builds`, result.ok, said(result))
@@ -104,7 +134,10 @@ task run
   save a, spend(p)
   send back, spend(p)
 `
-refusedEverywhere('a permit spent twice', 'sole-reused', {}, twice, ['"p"', 'handed on at line'])
+refusedEverywhere('a permit spent twice', 'sole-reused', {}, twice, [
+  '"p"',
+  'handed on at line',
+])
 
 const afterMove = `${PERMIT}
 task keep
@@ -119,7 +152,13 @@ task run
   send back, read p/note
 `
 // reading a plain field consumes nothing, but a value handed on is gone: a read after the move is refused
-refusedEverywhere('a use after a move into a call', 'sole-reused', {}, afterMove, ['"p"', 'read here after it was handed on'])
+refusedEverywhere(
+  'a use after a move into a call',
+  'sole-reused',
+  {},
+  afterMove,
+  ['"p"', 'read here after it was handed on'],
+)
 
 const readsThenMoves = `${PERMIT}
 task run
@@ -129,7 +168,11 @@ task run
   save b, read p/note
   send back, spend(p)
 `
-buildsEverywhere('two plain field reads, then one move', {}, readsThenMoves)
+buildsEverywhere(
+  'two plain field reads, then one move',
+  {},
+  readsThenMoves,
+)
 
 // a method called on a sole value hands it on, as an argument does (term-affine-kinds-0003, gap 170)
 const STAMPED = `form permit
@@ -159,7 +202,13 @@ task run
   save a, call p/stamp
   send back, spend(p)
 `
-refusedEverywhere('a permit stamped by a method, then spent', 'sole-reused', {}, methodThenSpend, ['"p"', 'handed on at line'])
+refusedEverywhere(
+  'a permit stamped by a method, then spent',
+  'sole-reused',
+  {},
+  methodThenSpend,
+  ['"p"', 'handed on at line'],
+)
 
 const methodOnce = `${STAMPED}
 task run
@@ -202,7 +251,13 @@ task run
       save seen, <shut>
   send back, spend-ticket(t)
 `
-refusedEverywhere('a ticket matched into its fields, then spent', 'sole-reused', {}, matchThenSpend, ['"t"', 'handed on at line'])
+refusedEverywhere(
+  'a ticket matched into its fields, then spent',
+  'sole-reused',
+  {},
+  matchThenSpend,
+  ['"t"', 'handed on at line'],
+)
 
 const matchBindsNothing = `${TICKET}
 task run
@@ -216,7 +271,11 @@ task run
       save seen, <shut>
   send back, spend-ticket(t)
 `
-buildsEverywhere('a match that takes no field, then one spend', {}, matchBindsNothing)
+buildsEverywhere(
+  'a match that takes no field, then one spend',
+  {},
+  matchBindsNothing,
+)
 
 const moveThenMove = `${PERMIT}
 task keep
@@ -231,7 +290,13 @@ task run
   save r, p
   send back, spend(r)
 `
-refusedEverywhere('a save of a permit already moved into a call', 'sole-reused', {}, moveThenMove, ['"p"'])
+refusedEverywhere(
+  'a save of a permit already moved into a call',
+  'sole-reused',
+  {},
+  moveThenMove,
+  ['"p"'],
+)
 
 const looped = `${PERMIT}
 task run
@@ -244,7 +309,13 @@ task run
     save last, spend(p)
   send back, last
 `
-refusedEverywhere('a permit spent inside a walk', 'sole-reused', {}, looped, ['walk may run its body twice'])
+refusedEverywhere(
+  'a permit spent inside a walk',
+  'sole-reused',
+  {},
+  looped,
+  ['walk may run its body twice'],
+)
 
 const perArm = `${PERMIT}
 task pick
@@ -262,7 +333,11 @@ task run
   like text
   send back, pick(true)
 `
-buildsEverywhere('a fork that spends the permit once per arm', {}, perArm)
+buildsEverywhere(
+  'a fork that spends the permit once per arm',
+  {},
+  perArm,
+)
 
 const perArmThenAgain = `${PERMIT}
 task pick
@@ -277,7 +352,13 @@ task pick
       save a, spend(p)
   send back, spend(p)
 `
-refusedEverywhere('a spend after a fork that spent it in each arm', 'sole-reused', {}, perArmThenAgain, ['"p"'])
+refusedEverywhere(
+  'a spend after a fork that spent it in each arm',
+  'sole-reused',
+  {},
+  perArmThenAgain,
+  ['"p"'],
+)
 
 const fresh = `${PERMIT}
 task run
@@ -290,7 +371,11 @@ task run
     save last, spend(p)
   send back, last
 `
-buildsEverywhere('a permit made and spent inside each turn of a walk', {}, fresh)
+buildsEverywhere(
+  'a permit made and spent inside each turn of a walk',
+  {},
+  fresh,
+)
 
 const generic = `${PERMIT}
 task hoard
@@ -298,7 +383,9 @@ task hoard
   like number
   send back, 0
 `
-refusedEverywhere('a list of permits', 'sole-generic', {}, generic, ['permit'])
+refusedEverywhere('a list of permits', 'sole-generic', {}, generic, [
+  'permit',
+])
 
 // ---- earned ----
 
@@ -307,7 +394,13 @@ form ticket
   link permit, like permit
   link seat, like text
 `
-refusedEverywhere('a form holding a permit without mark sole', 'sole-unearned', {}, unearned, ['"ticket"', '"permit"'])
+refusedEverywhere(
+  'a form holding a permit without mark sole',
+  'sole-unearned',
+  {},
+  unearned,
+  ['"ticket"', '"permit"'],
+)
 
 const throughAnother = `${PERMIT}
 form ticket
@@ -318,7 +411,13 @@ form booking
   link ticket, like ticket
   link who, like text
 `
-refusedEverywhere('a form holding a sole form that holds a permit', 'sole-unearned', {}, throughAnother, ['"booking"'])
+refusedEverywhere(
+  'a form holding a sole form that holds a permit',
+  'sole-unearned',
+  {},
+  throughAnother,
+  ['"booking"'],
+)
 
 const earned = `${PERMIT}
 form ticket
@@ -367,7 +466,13 @@ task erase
         bind note, <n1>
         bind person, <ada>
 `
-refusedEverywhere('a make of a hidden permit from another file', 'hidden-make', { '@app/permit': HIDDEN }, forged, ['"permit"', 'pkg/code/permit.tree'])
+refusedEverywhere(
+  'a make of a hidden permit from another file',
+  'hidden-make',
+  { '@app/permit': HIDDEN },
+  forged,
+  ['"permit"', 'pkg/code/permit.tree'],
+)
 
 const asked = `load @app/permit
   find permit
@@ -379,9 +484,18 @@ task run
   save p, grant-delete(<ada>, <n1>)
   send back, delete-note(p)
 `
-buildsEverywhere('another file that asks the declaring file for a permit and reads it', { '@app/permit': HIDDEN }, asked)
+buildsEverywhere(
+  'another file that asks the declaring file for a permit and reads it',
+  { '@app/permit': HIDDEN },
+  asked,
+)
 
-buildsEverywhere('a test file of the package that makes a permit', { '@app/permit': HIDDEN }, forged, '/pkg/test/permit.tree')
+buildsEverywhere(
+  'a test file of the package that makes a permit',
+  { '@app/permit': HIDDEN },
+  forged,
+  '/pkg/test/permit.tree',
+)
 
 const HANDLE = `form handle
   mark hide
@@ -398,7 +512,13 @@ task forge
     make open
       bind at, <x>
 `
-refusedEverywhere('a make of a case of a hidden form from another file', 'hidden-make', { '@app/handle': HANDLE }, forgedCase, ['"handle"'])
+refusedEverywhere(
+  'a make of a case of a hidden form from another file',
+  'hidden-make',
+  { '@app/handle': HANDLE },
+  forgedCase,
+  ['"handle"'],
+)
 
 const axiom = `load @app/permit
   find permit
@@ -406,14 +526,26 @@ const axiom = `load @app/permit
 task conjure
   like permit
 `
-refusedEverywhere('a task with no body that answers a hidden form', 'hidden-make', { '@app/permit': HIDDEN }, axiom, ['"permit"'])
+refusedEverywhere(
+  'a task with no body that answers a hidden form',
+  'hidden-make',
+  { '@app/permit': HIDDEN },
+  axiom,
+  ['"permit"'],
+)
 
 // ---- run the passing programs where the toolchains are ----
 
 const dir = mkdtempSync(join(tmpdir(), 'term-sole-hide-'))
 
 for (const backend of backends) {
-  const ran = runOn({ backend, program: perArm, resolve: env => projectResolver(process.cwd(), env), dir, name: 'per-arm' })
+  const ran = runOn({
+    backend,
+    program: perArm,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'per-arm',
+  })
 
   if (ran.form === 'skipped') {
     skip++
@@ -424,7 +556,9 @@ for (const backend of backends) {
   ok(
     `${backend}: the per-arm program runs and spends its permit once`,
     ran.form === 'ran' && ran.output === 'n1',
-    ran.form === 'ran' ? `got ${JSON.stringify(ran.output)}` : `${ran.stage}: ${ran.reason}`,
+    ran.form === 'ran'
+      ? `got ${JSON.stringify(ran.output)}`
+      : `${ran.stage}: ${ran.reason}`,
   )
 }
 

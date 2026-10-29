@@ -32,7 +32,9 @@ const readRuntime = (path: string): string | undefined => {
   const prefix = '@term/base/'
   path = path.replace(/^@term\/base\//, prefix)
 
-  if (!path.startsWith(prefix)) {return undefined}
+  if (!path.startsWith(prefix)) {
+    return undefined
+  }
 
   const file = join(baseTree, path.slice(prefix.length))
 
@@ -67,7 +69,9 @@ class MemoryDirectory {
     options?: { create?: boolean },
   ): Promise<MemoryDirectory> {
     if (!this.directories.has(name)) {
-      if (!options?.create) {throw new Error('NotFoundError')}
+      if (!options?.create) {
+        throw new Error('NotFoundError')
+      }
 
       this.directories.set(name, new MemoryDirectory())
     }
@@ -77,7 +81,9 @@ class MemoryDirectory {
 
   async getFileHandle(name: string, options?: { create?: boolean }) {
     if (!this.files.has(name)) {
-      if (!options?.create) {throw new Error('NotFoundError')}
+      if (!options?.create) {
+        throw new Error('NotFoundError')
+      }
 
       this.files.set(name, new MemoryFile())
     }
@@ -96,8 +102,9 @@ class MemoryDirectory {
   }
 
   async removeEntry(name: string): Promise<void> {
-    if (!this.files.delete(name) && !this.directories.delete(name))
-      {throw new Error('NotFoundError')}
+    if (!this.files.delete(name) && !this.directories.delete(name)) {
+      throw new Error('NotFoundError')
+    }
   }
 }
 
@@ -174,7 +181,9 @@ task relocate
     { resolve: withNativeEnv('browser', stdlib) },
   )
 
-  if (!result.ok) {throw new Error('compile failed')}
+  if (!result.ok) {
+    throw new Error('compile failed')
+  }
 
   const prelude = nativePrelude(result.program, 'browser', readRuntime)
   const js = transformSync(`${prelude}\n${result.typescript}`, {
@@ -269,7 +278,9 @@ async function main(): Promise<void> {
     `\nopfs: ${pass} pass, ${fail} fail  (compiled browser file module over an in-memory OPFS)`,
   )
 
-  if (fail > 0) {process.exit(1)}
+  if (fail > 0) {
+    process.exit(1)
+  }
 }
 
 main()

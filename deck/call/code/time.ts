@@ -5,7 +5,17 @@
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
-import { closeRun, count, field, location, openRun, printData, problemOf, report, showPath } from '@term/call/code/output'
+import {
+  closeRun,
+  count,
+  field,
+  location,
+  openRun,
+  printData,
+  problemOf,
+  report,
+  showPath,
+} from '@term/call/code/output'
 import { projectHome } from '@term/call/code/home'
 import {
   compileBenchmarks,
@@ -34,7 +44,11 @@ import {
   runMemoryProfile,
   formatMemoryResult,
 } from '@term/make/code/time/memory'
-import { buildable, findTreeFiles, projectResolver } from '@term/call/code/make'
+import {
+  buildable,
+  findTreeFiles,
+  projectResolver,
+} from '@term/call/code/make'
 import { projectRoleOf } from '@term/call/code/role-of'
 import { withNativeEnv } from '@term/make/code/compile/native'
 
@@ -64,7 +78,14 @@ export async function callTime(input: {
     return
   }
 
-  openRun({ verb: 'time', root: input.root, facts: [...(input.filter ? [input.filter] : []), ...(input.compare ? [`--compare ${input.compare}`] : [])] })
+  openRun({
+    verb: 'time',
+    root: input.root,
+    facts: [
+      ...(input.filter ? [input.filter] : []),
+      ...(input.compare ? [`--compare ${input.compare}`] : []),
+    ],
+  })
 
   // `--history` alone reads the saved runs and runs nothing: it ran every benchmark first, to print a table nobody
   // asked for above the history that was (guides: commands/time, 2026-10-04)
@@ -84,16 +105,24 @@ export async function callTime(input: {
     // the baseline is read first, so a name that does not exist fails before anything runs. It was read after the
     // run, and a missing one printed `Could not read baseline` and exited 0, `--fail-on-regression` too, so a gate
     // pointed at a misspelled name passed (guides: commands/time, tests/benchmarks, 2026-10-04)
-    const baseline = input.compare ? await readBaseline(input.root, input.compare) : undefined
+    const baseline = input.compare
+      ? await readBaseline(input.root, input.compare)
+      : undefined
 
     // the walk `term make` does for node, leaving out `link/`: the manifest and the shelved files are not code
     const link = path.join(input.root, 'link') + path.sep
     const files = input.file
       ? [path.resolve(input.root, input.file)]
-      : findTreeFiles(input.root, [], 'node').filter(f => !f.startsWith(link))
+      : findTreeFiles(input.root, [], 'node').filter(
+          f => !f.startsWith(link),
+        )
 
     if (files.length === 0) {
-      report({ glyph: 'failed', kind: 'problem', subject: 'There is no .tree file to benchmark' })
+      report({
+        glyph: 'failed',
+        kind: 'problem',
+        subject: 'There is no .tree file to benchmark',
+      })
       process.exit(closeRun({ verdict: 'Nothing benchmarked' }))
     }
 
@@ -102,7 +131,12 @@ export async function callTime(input: {
     for (const file of files) {
       // a file of `test` blocks rewritten into tasks, as `term test` and `term roll` do, so it compiles rather than
       // printing a page of `unknown-name` for `test`, `want` and `hold`
-      const unit = buildable(file, await fs.readFile(file, 'utf-8'), roleOf(file))
+      const unit = buildable(
+        file,
+        await fs.readFile(file, 'utf-8'),
+        roleOf(file),
+      )
+
       const relative = path.relative(input.root, file)
 
       // a grammar that cannot generate a reader holds no benchmark, and `term make` reports why
@@ -127,7 +161,12 @@ export async function callTime(input: {
             reportSkipped(unit.place(diagnostic), input.root)
           }
 
-          report({ glyph: 'warning', verb: 'time', subject: `${relative} did not compile, and its benchmarks did not run`, counts: [count(err.diagnostics.length, 'errors', 'error')] })
+          report({
+            glyph: 'warning',
+            verb: 'time',
+            subject: `${relative} did not compile, and its benchmarks did not run`,
+            counts: [count(err.diagnostics.length, 'errors', 'error')],
+          })
 
           continue
         }
@@ -145,7 +184,14 @@ export async function callTime(input: {
     }
 
     if (allResults.length === 0) {
-      report({ glyph: 'failed', kind: 'problem', subject: 'There is no benchmark to run', fields: [field('next', 'define a zero-argument task named time-...')] })
+      report({
+        glyph: 'failed',
+        kind: 'problem',
+        subject: 'There is no benchmark to run',
+        fields: [
+          field('next', 'define a zero-argument task named time-...'),
+        ],
+      })
       process.exit(closeRun({ verdict: 'Nothing benchmarked' }))
     }
 
@@ -160,9 +206,15 @@ export async function callTime(input: {
     if (input.save) {
       const dir = projectHome(input.root, 'time')
       await fs.mkdir(dir, { recursive: true })
+
       const saved = path.join(dir, `${input.save}.json`)
       await fs.writeFile(saved, formatJson(suite))
-      report({ glyph: 'done', verb: 'save', subject: `Baseline ${input.save}`, fields: [location(showPath(saved, input.root))] })
+      report({
+        glyph: 'done',
+        verb: 'save',
+        subject: `Baseline ${input.save}`,
+        fields: [location(showPath(saved, input.root))],
+      })
 
       const historyDir = path.join(dir, 'history')
       await fs.mkdir(historyDir, { recursive: true })
@@ -185,7 +237,10 @@ export async function callTime(input: {
         printData(`\n${formatComparison(comparison, false)}\n`)
       }
 
-      compared.push(count(comparison.improvements, 'improvements', 'improvement'), count(comparison.regressions, 'regressions', 'regression'))
+      compared.push(
+        count(comparison.improvements, 'improvements', 'improvement'),
+        count(comparison.regressions, 'regressions', 'regression'),
+      )
 
       const gated =
         input.failOnRegression != null &&
@@ -198,12 +253,21 @@ export async function callTime(input: {
           kind: 'problem',
           verb: 'compare',
           subject: `${comparison.regressions} benchmark${comparison.regressions === 1 ? '' : 's'} regressed against ${input.compare}`,
-          fields: gated ? [field('budget', `${input.failOnRegression}%`)] : [],
+          fields: gated
+            ? [field('budget', `${input.failOnRegression}%`)]
+            : [],
         })
       }
 
       if (gated) {
-        process.exit(closeRun({ verdict: `A regression is past the ${input.failOnRegression}% threshold`, counts: [count(allResults.length, 'benchmarks', 'benchmark')] }))
+        process.exit(
+          closeRun({
+            verdict: `A regression is past the ${input.failOnRegression}% threshold`,
+            counts: [
+              count(allResults.length, 'benchmarks', 'benchmark'),
+            ],
+          }),
+        )
       }
     }
 
@@ -211,20 +275,39 @@ export async function callTime(input: {
       await showHistory({ root: input.root, name: input.history })
     }
 
-    closeRun({ verdict: 'Benchmarks complete', counts: [count(allResults.length, 'benchmarks', 'benchmark'), ...compared] })
+    closeRun({
+      verdict: 'Benchmarks complete',
+      counts: [
+        count(allResults.length, 'benchmarks', 'benchmark'),
+        ...compared,
+      ],
+    })
   } catch (err) {
-    report({ glyph: 'failed', kind: 'problem', subject: err instanceof Error ? err.message : String(err) })
+    report({
+      glyph: 'failed',
+      kind: 'problem',
+      subject: err instanceof Error ? err.message : String(err),
+    })
     process.exit(closeRun({ verdict: 'Benchmarks did not complete' }))
   }
 }
 
 // a benchmark file's compile problem, as a ▲ problem item: the file is skipped, and the run goes on
-function reportSkipped(placed: { diagnostic: Diagnostic; text?: string }, root: string): void {
-  report({ ...problemOf(placed.diagnostic, root, placed.text), glyph: 'warning' })
+function reportSkipped(
+  placed: { diagnostic: Diagnostic; text?: string },
+  root: string,
+): void {
+  report({
+    ...problemOf(placed.diagnostic, root, placed.text),
+    glyph: 'warning',
+  })
 }
 
 // a saved baseline (`term time --save <name>`), or the run stops with exit 1 naming the file it looked for
-async function readBaseline(root: string, name: string): Promise<{ results: ReturnType<typeof fromSaved>[] }> {
+async function readBaseline(
+  root: string,
+  name: string,
+): Promise<{ results: ReturnType<typeof fromSaved>[] }> {
   const where = projectHome(root, 'time', `${name}.json`)
 
   try {
@@ -232,11 +315,25 @@ async function readBaseline(root: string, name: string): Promise<{ results: Retu
 
     // snake_case on disk (time/output.ts `toSaved`), a pre-2026-10-04 baseline the mean alone. A result with no mean
     // compares as new, as it did when the comparison read the JSON itself
-    const results = (saved.results ?? saved.benchmarks ?? []) as Parameters<typeof fromSaved>[0][]
+    const results = (saved.results ??
+      saved.benchmarks ??
+      []) as Parameters<typeof fromSaved>[0][]
 
-    return { results: results.filter(r => typeof r.mean_ns === 'number').map(fromSaved) }
+    return {
+      results: results
+        .filter(r => typeof r.mean_ns === 'number')
+        .map(fromSaved),
+    }
   } catch {
-    report({ glyph: 'failed', kind: 'problem', subject: `There is no baseline named ${name}`, fields: [field('looked', showPath(where, root)), field('next', `term time --save ${name}`)] })
+    report({
+      glyph: 'failed',
+      kind: 'problem',
+      subject: `There is no baseline named ${name}`,
+      fields: [
+        field('looked', showPath(where, root)),
+        field('next', `term time --save ${name}`),
+      ],
+    })
     process.exit(closeRun({ verdict: 'Nothing compared' }))
   }
 }
@@ -254,12 +351,22 @@ async function runProfile(input: {
   // as above: profiling compiles the file, and it has to compile it the way the build does
   const resolve = withNativeEnv('node', projectResolver(input.root))
 
-  openRun({ verb: 'profile', root: input.root, subject: target, facts: [input.cpu ? 'cpu' : 'memory'] })
+  openRun({
+    verb: 'profile',
+    root: input.root,
+    subject: target,
+    facts: [input.cpu ? 'cpu' : 'memory'],
+  })
 
   try {
     await fs.access(filePath)
   } catch {
-    report({ glyph: 'failed', kind: 'problem', subject: `There is no file ${target}`, fields: [field('looked', showPath(filePath, input.root))] })
+    report({
+      glyph: 'failed',
+      kind: 'problem',
+      subject: `There is no file ${target}`,
+      fields: [field('looked', showPath(filePath, input.root))],
+    })
     process.exit(closeRun({ verdict: 'Nothing profiled' }))
   }
 
@@ -278,6 +385,7 @@ async function runProfile(input: {
         name,
         top: input.top,
       })
+
       printData(`\n${formatCpuResult(result)}\n\n`)
       closeRun({ verdict: 'CPU profile complete' })
     } else {
@@ -288,19 +396,35 @@ async function runProfile(input: {
         root: input.root,
         name,
       })
+
       printData(`\n${formatMemoryResult(result)}\n\n`)
       closeRun({ verdict: 'Memory profile complete' })
     }
   } catch (err) {
     if (err instanceof CompileFailure) {
       for (const diagnostic of err.diagnostics) {
-        report(problemOf(diagnostic, input.root, diagnostic.file === relative ? text : undefined))
+        report(
+          problemOf(
+            diagnostic,
+            input.root,
+            diagnostic.file === relative ? text : undefined,
+          ),
+        )
       }
 
-      process.exit(closeRun({ verdict: 'Nothing profiled', counts: [count(err.diagnostics.length, 'errors', 'error')] }))
+      process.exit(
+        closeRun({
+          verdict: 'Nothing profiled',
+          counts: [count(err.diagnostics.length, 'errors', 'error')],
+        }),
+      )
     }
 
-    report({ glyph: 'failed', kind: 'problem', subject: err instanceof Error ? err.message : String(err) })
+    report({
+      glyph: 'failed',
+      kind: 'problem',
+      subject: err instanceof Error ? err.message : String(err),
+    })
     process.exit(closeRun({ verdict: 'Nothing profiled' }))
   }
 }
@@ -351,13 +475,20 @@ async function showHistory(input: {
     }
 
     if (entries.length === 0) {
-      report({ glyph: 'warning', verb: 'history', subject: `There is no history for ${input.name}` })
+      report({
+        glyph: 'warning',
+        verb: 'history',
+        subject: `There is no history for ${input.name}`,
+      })
 
       return
     }
 
     // the history is data: one line per run, oldest first
-    const lines = ['', `History for "${input.name}" (last ${entries.length}):`]
+    const lines = [
+      '',
+      `History for "${input.name}" (last ${entries.length}):`,
+    ]
 
     for (const entry of entries) {
       const ns = entry.mean_ns
@@ -375,6 +506,11 @@ async function showHistory(input: {
 
     printData(`${lines.join('\n')}\n`)
   } catch {
-    report({ glyph: 'warning', verb: 'history', subject: 'There is no history yet', fields: [field('looked', showPath(historyDir, input.root))] })
+    report({
+      glyph: 'warning',
+      verb: 'history',
+      subject: 'There is no history yet',
+      fields: [field('looked', showPath(historyDir, input.root))],
+    })
   }
 }

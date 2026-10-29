@@ -125,7 +125,13 @@ ${title}  call run-app
 `
 
 const caseA = HEAD + FILE + VIEW + COPY + boot('  call copy-it\n')
-const caseB = HEAD + FILE + VIEW + COPY + OWN + boot('  call copy-it\n', '    call use-append\n')
+const caseB =
+  HEAD +
+  FILE +
+  VIEW +
+  COPY +
+  OWN +
+  boot('  call copy-it\n', '    call use-append\n')
 const caseC = HEAD + VIEW + boot('')
 
 // B2: the entry's own `append` takes views, so a wrong binding (the lowering calling the entry's) still compiles and
@@ -194,7 +200,11 @@ task use-forwarders
         text <c>
 `
 
-const caseE = HEAD + VIEW_ATTRIBUTE + OWN_FORWARDERS + boot('', '    call use-forwarders\n')
+const caseE =
+  HEAD +
+  VIEW_ATTRIBUTE +
+  OWN_FORWARDERS +
+  boot('', '    call use-forwarders\n')
 
 // F: the app owns a `view/render.tree` (beat-term-0058, review 0045 finding 4). It is loaded BEFORE the toolkit, so it
 // comes first in the merged program, and bind-runtime took the first file ending `/view/render.tree` for the runtime:
@@ -229,10 +239,25 @@ const APP_LOAD_ONLY = `load ./view/render
   find shout
 `
 
-const caseF2 = APP_LOAD_ONLY + HEAD + FILE + VIEW + COPY + USE_SHOUT + boot('  call copy-it\n', '    call use-shout\n')
-const caseF = APP_LOAD + HEAD + FILE + VIEW + COPY + USE_SHOUT + boot('  call copy-it\n', '    call use-shout\n')
+const caseF2 =
+  APP_LOAD_ONLY +
+  HEAD +
+  FILE +
+  VIEW +
+  COPY +
+  USE_SHOUT +
+  boot('  call copy-it\n', '    call use-shout\n')
+const caseF =
+  APP_LOAD +
+  HEAD +
+  FILE +
+  VIEW +
+  COPY +
+  USE_SHOUT +
+  boot('  call copy-it\n', '    call use-shout\n')
 
-const readRuntime = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, 'utf8') : undefined)
+const readRuntime = (file: string): string | undefined =>
+  existsSync(file) ? readFileSync(file, 'utf8') : undefined
 
 const xcrun = spawnSync('xcrun', ['--version'], { encoding: 'utf8' })
 const typechecks = !xcrun.error && xcrun.status === 0
@@ -244,11 +269,28 @@ if (!typechecks) {
 type Built = { swift: string; file: string } | undefined
 
 // compile for one Apple platform the way test/compile/shared/toolkit-run.ts does, write the Swift file, never run it
-function build(name: string, text: string, leg: 'ios' | 'macos', where = HERE): Built {
+function build(
+  name: string,
+  text: string,
+  leg: 'ios' | 'macos',
+  where = HERE,
+): Built {
   const entry = join(where, `${name}-${leg}.tree`)
   writeFileSync(entry, text)
-  const result = compile({ file: entry, text }, { resolve: projectResolver(ROOT, leg), env: leg })
-  ok(`${name} ${leg}: compiles`, result.ok, result.ok ? '' : result.diagnostics.slice(0, 4).map(d => d.message).join(' | '))
+  const result = compile(
+    { file: entry, text },
+    { resolve: projectResolver(ROOT, leg), env: leg },
+  )
+  ok(
+    `${name} ${leg}: compiles`,
+    result.ok,
+    result.ok
+      ? ''
+      : result.diagnostics
+          .slice(0, 4)
+          .map(d => d.message)
+          .join(' | '),
+  )
 
   if (!result.ok) {
     return undefined
@@ -262,36 +304,77 @@ function build(name: string, text: string, leg: 'ios' | 'macos', where = HERE): 
   const file = join(folder, 'main.swift')
   // an async `main` (it reaches an async task) is awaited at the top level of main.swift
   const start = `${/func main\(\)[^{]*throws/.test(swift) ? 'try ' : ''}${/func main\(\)[^{]*async/.test(swift) ? 'await ' : ''}main()`
-  writeFileSync(file, ['import Foundation', prelude, swift, start, ''].join('\n'))
+  writeFileSync(
+    file,
+    ['import Foundation', prelude, swift, start, ''].join('\n'),
+  )
 
   return { swift, file }
 }
 
-function typecheck(name: string, built: Built, leg: 'ios' | 'macos'): void {
+function typecheck(
+  name: string,
+  built: Built,
+  leg: 'ios' | 'macos',
+): void {
   if (!built || !typechecks) {
     return
   }
 
   const args =
     leg === 'ios'
-      ? ['-sdk', 'iphonesimulator', 'swiftc', '-typecheck', '-target', 'arm64-apple-ios17.0-simulator', '-module-name', SWIFT_MODULE, built.file]
-      : ['swiftc', '-typecheck', '-module-name', SWIFT_MODULE, built.file]
-  const run = spawnSync('xcrun', args, { encoding: 'utf8', timeout: 300_000 })
-  const errors = `${run.stdout}\n${run.stderr}`.split('\n').filter(l => /error:/.test(l)).slice(0, 8).join('\n')
-  ok(`${name} ${leg}: swiftc typechecks`, run.status === 0, errors || String(run.error ?? run.stderr).slice(0, 800))
+      ? [
+          '-sdk',
+          'iphonesimulator',
+          'swiftc',
+          '-typecheck',
+          '-target',
+          'arm64-apple-ios17.0-simulator',
+          '-module-name',
+          SWIFT_MODULE,
+          built.file,
+        ]
+      : [
+          'swiftc',
+          '-typecheck',
+          '-module-name',
+          SWIFT_MODULE,
+          built.file,
+        ]
+  const run = spawnSync('xcrun', args, {
+    encoding: 'utf8',
+    timeout: 300_000,
+  })
+  const errors = `${run.stdout}\n${run.stderr}`
+    .split('\n')
+    .filter(l => /error:/.test(l))
+    .slice(0, 8)
+    .join('\n')
+  ok(
+    `${name} ${leg}: swiftc typechecks`,
+    run.status === 0,
+    errors || String(run.error ?? run.stderr).slice(0, 800),
+  )
 }
 
 // every call of a free function `append(`, not a method (`x.append(`) and not its definition
 const calls = (swift: string, name: string): number => {
   const pattern = new RegExp(`(?<![.\\w])${name}\\(`, 'g')
 
-  return [...swift.matchAll(pattern)].filter(m => !swift.slice(Math.max(0, m.index! - 5), m.index!).endsWith('func ')).length
+  return [...swift.matchAll(pattern)].filter(
+    m =>
+      !swift
+        .slice(Math.max(0, m.index! - 5), m.index!)
+        .endsWith('func '),
+  ).length
 }
 
-const defines = (swift: string, name: string): boolean => new RegExp(`func ${name}\\(`).test(swift)
+const defines = (swift: string, name: string): boolean =>
+  new RegExp(`func ${name}\\(`).test(swift)
 
 // the Swift spelling of a kebab name: `make-text__in0_0` is `makeText__in0_0`
-const swiftName = (name: string): string => name.replace(/-(\w)/g, (_, c: string) => c.toUpperCase())
+const swiftName = (name: string): string =>
+  name.replace(/-(\w)/g, (_, c: string) => c.toUpperCase())
 
 // the body of the lowered `func screen(` up to the next top-level func
 function bodyOf(swift: string, name: string): string {
@@ -307,7 +390,10 @@ function bodyOf(swift: string, name: string): string {
 }
 
 // the free calls of `<name>…(` in a body: not a method call
-const freeCalls = (body: string, name: string): string[] => [...body.matchAll(new RegExp(`(?<![.\\w])(${name}\\w*)\\(`, 'g'))].map(m => m[1]!)
+const freeCalls = (body: string, name: string): string[] =>
+  [
+    ...body.matchAll(new RegExp(`(?<![.\\w])(${name}\\w*)\\(`, 'g')),
+  ].map(m => m[1]!)
 
 for (const leg of ['ios', 'macos'] as const) {
   // A: the defect
@@ -315,14 +401,34 @@ for (const leg of ['ios', 'macos'] as const) {
   typecheck('a', a, leg)
 
   if (a) {
-    const renamed = [...a.swift.matchAll(/func (append__in0_\d+)\(/g)].map(m => m[1])
-    ok(`a ${leg}: the build split append by file`, renamed.length >= 1, `renamed: ${renamed.join(', ')}`)
-    ok(`a ${leg}: no call of a plain append whose definition is absent`, calls(a.swift, 'append') === 0 || defines(a.swift, 'append'), `calls ${calls(a.swift, 'append')}`)
+    const renamed = [
+      ...a.swift.matchAll(/func (append__in0_\d+)\(/g),
+    ].map(m => m[1])
+    ok(
+      `a ${leg}: the build split append by file`,
+      renamed.length >= 1,
+      `renamed: ${renamed.join(', ')}`,
+    )
+    ok(
+      `a ${leg}: no call of a plain append whose definition is absent`,
+      calls(a.swift, 'append') === 0 || defines(a.swift, 'append'),
+      `calls ${calls(a.swift, 'append')}`,
+    )
     // the body of the lowered `screen` alone: render.tree's own `mount` calls a renamed append too
     const bound = overloadBound.runtime.get('append') ?? ''
     const lowered = freeCalls(bodyOf(a.swift, 'screen'), 'append')
-    ok(`a ${leg}: the lowered screen calls append, and only as the bound name`, /^append__in0_\d+$/.test(bound) && lowered.length > 0 && lowered.every(c => c === bound), `bound ${bound}, calls: ${lowered.join(', ')}`)
-    ok(`a ${leg}: the bound append has the dom's labels`, a.swift.includes(`func ${bound}(parent:`), `bound ${bound}`)
+    ok(
+      `a ${leg}: the lowered screen calls append, and only as the bound name`,
+      /^append__in0_\d+$/.test(bound) &&
+        lowered.length > 0 &&
+        lowered.every(c => c === bound),
+      `bound ${bound}, calls: ${lowered.join(', ')}`,
+    )
+    ok(
+      `a ${leg}: the bound append has the dom's labels`,
+      a.swift.includes(`func ${bound}(parent:`),
+      `bound ${bound}`,
+    )
   }
 
   // B: the entry defines the name
@@ -336,8 +442,18 @@ for (const leg of ['ios', 'macos'] as const) {
     // are not the lowering's
     const bound = overloadBound.runtime.get('append') ?? ''
     const lowered = freeCalls(bodyOf(b.swift, 'screen'), 'append')
-    ok(`b ${leg}: the lowered screen calls append, and only as the bound name`, /^append__in0_\d+$/.test(bound) && lowered.length > 0 && lowered.every(c => c === bound), `bound ${bound}, calls: ${lowered.join(', ')}`)
-    ok(`b ${leg}: the lowered screen never calls the entry's append`, mine && !lowered.includes('append'), `calls: ${lowered.join(', ')}`)
+    ok(
+      `b ${leg}: the lowered screen calls append, and only as the bound name`,
+      /^append__in0_\d+$/.test(bound) &&
+        lowered.length > 0 &&
+        lowered.every(c => c === bound),
+      `bound ${bound}, calls: ${lowered.join(', ')}`,
+    )
+    ok(
+      `b ${leg}: the lowered screen never calls the entry's append`,
+      mine && !lowered.includes('append'),
+      `calls: ${lowered.join(', ')}`,
+    )
   }
 
   // B2: the entry's append takes views, so a wrong binding compiles and only the text witness sees it
@@ -347,9 +463,22 @@ for (const leg of ['ios', 'macos'] as const) {
   if (b2) {
     const bound = overloadBound.runtime.get('append') ?? ''
     const lowered = freeCalls(bodyOf(b2.swift, 'screen'), 'append')
-    ok(`b2 ${leg}: the entry keeps its own append`, defines(b2.swift, 'append'))
-    ok(`b2 ${leg}: the lowered screen calls append, and only as the bound name`, /^append__in0_\d+$/.test(bound) && lowered.length > 0 && lowered.every(c => c === bound), `bound ${bound}, calls: ${lowered.join(', ')}`)
-    ok(`b2 ${leg}: the lowered screen never calls the entry's append`, !lowered.includes('append'), `calls: ${lowered.join(', ')}`)
+    ok(
+      `b2 ${leg}: the entry keeps its own append`,
+      defines(b2.swift, 'append'),
+    )
+    ok(
+      `b2 ${leg}: the lowered screen calls append, and only as the bound name`,
+      /^append__in0_\d+$/.test(bound) &&
+        lowered.length > 0 &&
+        lowered.every(c => c === bound),
+      `bound ${bound}, calls: ${lowered.join(', ')}`,
+    )
+    ok(
+      `b2 ${leg}: the lowered screen never calls the entry's append`,
+      !lowered.includes('append'),
+      `calls: ${lowered.join(', ')}`,
+    )
   }
 
   // C: nothing split
@@ -359,7 +488,13 @@ for (const leg of ['ios', 'macos'] as const) {
   if (c) {
     ok(`c ${leg}: nothing was renamed`, !/append__in0_/.test(c.swift))
     const lowered = freeCalls(bodyOf(c.swift, 'screen'), 'append')
-    ok(`c ${leg}: the lowered screen calls the dom's plain append`, defines(c.swift, 'append') && lowered.length > 0 && lowered.every(n => n === 'append'), `calls: ${lowered.join(', ')}`)
+    ok(
+      `c ${leg}: the lowered screen calls the dom's plain append`,
+      defines(c.swift, 'append') &&
+        lowered.length > 0 &&
+        lowered.every(n => n === 'append'),
+      `calls: ${lowered.join(', ')}`,
+    )
   }
 
   // E: the entry defines render.tree's own forwarders
@@ -369,17 +504,39 @@ for (const leg of ['ios', 'macos'] as const) {
   if (e) {
     // the body of the lowered `screen` alone: render.tree's own calls and the entry's are not the lowering's
     const screen = bodyOf(e.swift, 'screen')
-    ok(`e ${leg}: the lowered screen is found`, screen.length > 0 && /\w\(/.test(screen))
+    ok(
+      `e ${leg}: the lowered screen is found`,
+      screen.length > 0 && /\w\(/.test(screen),
+    )
 
     for (const name of ['make-text', 'write-attribute']) {
       const bound = overloadBound.runtime.get(name) ?? ''
       const spelled = swiftName(bound)
       const plain = swiftName(name)
-      ok(`e ${leg}: ${name} is split, render's is renamed`, new RegExp(`^${name}__in0_\\d+$`).test(bound), `bound ${bound}`)
-      const lowered = [...screen.matchAll(new RegExp(`(?<![.\\w])(${plain}\\w*)\\(`, 'g'))].map(m => m[1])
-      ok(`e ${leg}: the lowered screen calls ${name} and only as ${spelled}`, lowered.length > 0 && lowered.every(c => c === spelled), `calls: ${lowered.join(', ')}`)
-      ok(`e ${leg}: ${spelled} has a func in the Swift`, defines(e.swift, spelled), `bound ${bound}`)
-      ok(`e ${leg}: the entry keeps its own ${plain}`, defines(e.swift, plain))
+      ok(
+        `e ${leg}: ${name} is split, render's is renamed`,
+        new RegExp(`^${name}__in0_\\d+$`).test(bound),
+        `bound ${bound}`,
+      )
+      const lowered = [
+        ...screen.matchAll(
+          new RegExp(`(?<![.\\w])(${plain}\\w*)\\(`, 'g'),
+        ),
+      ].map(m => m[1])
+      ok(
+        `e ${leg}: the lowered screen calls ${name} and only as ${spelled}`,
+        lowered.length > 0 && lowered.every(c => c === spelled),
+        `calls: ${lowered.join(', ')}`,
+      )
+      ok(
+        `e ${leg}: ${spelled} has a func in the Swift`,
+        defines(e.swift, spelled),
+        `bound ${bound}`,
+      )
+      ok(
+        `e ${leg}: the entry keeps its own ${plain}`,
+        defines(e.swift, plain),
+      )
     }
   }
 }
@@ -396,9 +553,21 @@ for (const leg of ['ios', 'macos'] as const) {
   if (f) {
     const bound = overloadBound.runtime.get('append') ?? ''
     const lowered = freeCalls(bodyOf(f.swift, 'screen'), 'append')
-    ok(`f ${leg}: append is bound to the dom's renamed append, not left plain`, /^append__in0_\d+$/.test(bound), `bound ${bound}`)
-    ok(`f ${leg}: the lowered screen calls append, and only as the bound name`, lowered.length > 0 && lowered.every(c => c === bound), `bound ${bound}, calls: ${lowered.join(', ')}`)
-    ok(`f ${leg}: the bound append has the dom's labels`, f.swift.includes(`func ${bound}(parent:`), `bound ${bound}`)
+    ok(
+      `f ${leg}: append is bound to the dom's renamed append, not left plain`,
+      /^append__in0_\d+$/.test(bound),
+      `bound ${bound}`,
+    )
+    ok(
+      `f ${leg}: the lowered screen calls append, and only as the bound name`,
+      lowered.length > 0 && lowered.every(c => c === bound),
+      `bound ${bound}, calls: ${lowered.join(', ')}`,
+    )
+    ok(
+      `f ${leg}: the bound append has the dom's labels`,
+      f.swift.includes(`func ${bound}(parent:`),
+      `bound ${bound}`,
+    )
   }
 
   // F2: only the app's own ./view/render is loaded, so the runtime is given by the walk, not by a written load
@@ -408,8 +577,16 @@ for (const leg of ['ios', 'macos'] as const) {
   if (f2) {
     const bound = overloadBound.runtime.get('append') ?? ''
     const lowered = freeCalls(bodyOf(f2.swift, 'screen'), 'append')
-    ok(`f2 ${leg}: append is bound to the dom's renamed append, not left plain`, /^append__in0_\d+$/.test(bound), `bound ${bound}`)
-    ok(`f2 ${leg}: the lowered screen calls append, and only as the bound name`, lowered.length > 0 && lowered.every(c => c === bound), `bound ${bound}, calls: ${lowered.join(', ')}`)
+    ok(
+      `f2 ${leg}: append is bound to the dom's renamed append, not left plain`,
+      /^append__in0_\d+$/.test(bound),
+      `bound ${bound}`,
+    )
+    ok(
+      `f2 ${leg}: the lowered screen calls append, and only as the bound name`,
+      lowered.length > 0 && lowered.every(c => c === bound),
+      `bound ${bound}, calls: ${lowered.join(', ')}`,
+    )
   }
 }
 
@@ -420,10 +597,18 @@ if (mapped) {
   for (const name of ['append', 'remove', 'replace']) {
     const bound = overloadBound.runtime.get(name) ?? ''
     // `remove` and `replace` are split only when @term/base/file defines them too, which it does
-    ok(`d: ${name} is bound to the dom's renamed ${name}`, new RegExp(`^${name}__in0_\\d+$`).test(bound), `bound ${bound}`)
+    ok(
+      `d: ${name} is bound to the dom's renamed ${name}`,
+      new RegExp(`^${name}__in0_\\d+$`).test(bound),
+      `bound ${bound}`,
+    )
   }
 
-  ok('d: make-element is bound to itself', overloadBound.runtime.get('make-element') === 'make-element', `bound ${overloadBound.runtime.get('make-element')}`)
+  ok(
+    'd: make-element is bound to itself',
+    overloadBound.runtime.get('make-element') === 'make-element',
+    `bound ${overloadBound.runtime.get('make-element')}`,
+  )
 }
 
 console.log(`view-runtime-split: ${pass} pass, ${fail} fail`)

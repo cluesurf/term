@@ -27,12 +27,31 @@ function reads(line: string, name: string): boolean {
 }
 
 // the read rule, line by line
-ok('a bare read beside a member read of the same field counts', reads('      back is-equal(one/name, name)', 'name'))
-ok('a bare read as a later argument counts', reads('      back f(x, name)', 'name'))
-ok('a member read alone is no read', !reads('      back is-equal(one/name, 1)', 'name'))
-ok('a binder after its head is no read', !reads('    link name, like text', 'name') && !reads('      save x, name span', 'span'))
-ok('a type after like is no read', !reads('      take x, like span', 'span'))
-ok('a call of a task bearing the name is no read', !reads('      back span(1)', 'span'))
+ok(
+  'a bare read beside a member read of the same field counts',
+  reads('      back is-equal(one/name, name)', 'name'),
+)
+ok(
+  'a bare read as a later argument counts',
+  reads('      back f(x, name)', 'name'),
+)
+ok(
+  'a member read alone is no read',
+  !reads('      back is-equal(one/name, 1)', 'name'),
+)
+ok(
+  'a binder after its head is no read',
+  !reads('    link name, like text', 'name') &&
+    !reads('      save x, name span', 'span'),
+)
+ok(
+  'a type after like is no read',
+  !reads('      take x, like span', 'span'),
+)
+ok(
+  'a call of a task bearing the name is no read',
+  !reads('      back span(1)', 'span'),
+)
 
 // the whole scan over the item's fixture: same-name-read's arm reads the hidden name, same-name's never does
 const fixture = `form statement
@@ -65,7 +84,9 @@ task same-name-read
       back false
   back false
 `
-const folder = realpathSync(mkdtempSync(join(tmpdir(), 'arm-shadow-reads-')))
+const folder = realpathSync(
+  mkdtempSync(join(tmpdir(), 'arm-shadow-reads-')),
+)
 const file = join(folder, 'fixture.tree')
 
 writeFileSync(file, fixture)
@@ -73,9 +94,25 @@ writeFileSync(file, fixture)
 const found = scan(file)
 
 ok('the fixture compiles', !found.failed, found.out.join(' | '))
-ok('one arm reads its hidden name', found.count.reads === 1, found.out.join(' | '))
-ok('the read arm is same-name-read\'s (its sift at line 24, read at 26)', found.out.some(line => /line 24: "case call" binds "name" as "name".*READS it at line 26/.test(line)), found.out.join(' | '))
-ok('same-name\'s arm is counted, never read', found.count.quiet === 1, found.out.join(' | '))
+ok(
+  'one arm reads its hidden name',
+  found.count.reads === 1,
+  found.out.join(' | '),
+)
+ok(
+  "the read arm is same-name-read's (its sift at line 24, read at 26)",
+  found.out.some(line =>
+    /line 24: "case call" binds "name" as "name".*READS it at line 26/.test(
+      line,
+    ),
+  ),
+  found.out.join(' | '),
+)
+ok(
+  "same-name's arm is counted, never read",
+  found.count.quiet === 1,
+  found.out.join(' | '),
+)
 
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail > 0 ? 1 : 0)

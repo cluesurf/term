@@ -18,14 +18,39 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 const cases: [string, string, boolean, string | undefined][] = [
-  ['a Homebrew formula', '/opt/homebrew/Cellar/term/2.7.0/libexec/term', false, 'homebrew'],
-  ['a Homebrew cask', '/opt/homebrew/Caskroom/term/2.7.0/term', false, 'homebrew'],
+  [
+    'a Homebrew formula',
+    '/opt/homebrew/Cellar/term/2.7.0/libexec/term',
+    false,
+    'homebrew',
+  ],
+  [
+    'a Homebrew cask',
+    '/opt/homebrew/Caskroom/term/2.7.0/term',
+    false,
+    'homebrew',
+  ],
   ['the .deb', '/usr/lib/term', true, 'apt'],
   ['the .rpm', '/usr/lib/term', false, 'dnf'],
-  ['winget', 'C:\\Users\\a\\AppData\\Local\\Microsoft\\WinGet\\Packages\\ClueSurf.Term_Microsoft.Winget.Source_8wekyb3d8bbwe\\term', false, 'winget'],
+  [
+    'winget',
+    'C:\\Users\\a\\AppData\\Local\\Microsoft\\WinGet\\Packages\\ClueSurf.Term_Microsoft.Winget.Source_8wekyb3d8bbwe\\term',
+    false,
+    'winget',
+  ],
   ['a source checkout', '/Users/a/term/deck/term', false, undefined],
-  ['a folder only named like the system one', '/usr/lib/term-old', true, undefined],
-  ['another winget package', 'C:\\Users\\a\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Other.Term_x\\term', false, undefined],
+  [
+    'a folder only named like the system one',
+    '/usr/lib/term-old',
+    true,
+    undefined,
+  ],
+  [
+    'another winget package',
+    'C:\\Users\\a\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Other.Term_x\\term',
+    false,
+    undefined,
+  ],
 ]
 
 for (const [name, payload, dpkg, want] of cases) {

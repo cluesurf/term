@@ -25,7 +25,9 @@ export const title = {
       name.startsWith('og:') || name.startsWith('article:')
         ? 'property'
         : 'name'
-    let element = document.head.querySelector(`meta[${attribute}="${name}"]`)
+    let element = document.head.querySelector(
+      `meta[${attribute}="${name}"]`,
+    )
     if (!element) {
       element = document.createElement('meta')
       element.setAttribute(attribute, name)

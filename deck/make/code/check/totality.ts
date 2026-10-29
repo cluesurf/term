@@ -22,6 +22,7 @@ export function checkTotality(
   file: string,
 ): TotalityReport {
   const errors = positivityErrors(program, file)
+
   let warnings: Diagnostic[] = []
 
   // Termination analysis is best-effort and warnings-only: it must never crash the build. A bug or a malformed or

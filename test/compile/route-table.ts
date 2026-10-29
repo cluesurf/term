@@ -12,7 +12,12 @@
 // Run: npx tsx test/compile/route-table.ts
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
@@ -73,7 +78,8 @@ hook /users/:id
 `
 
 // the user page drawn: its id from the path's parameter and its name from the route's load, as two texts
-const drawsUser = (tree: string): boolean => />42</.test(tree) && />Ada</.test(tree)
+const drawsUser = (tree: string): boolean =>
+  />42</.test(tree) && />Ada</.test(tree)
 
 const ONLY = process.env.ROUTE_ONLY ?? ''
 const ROOT = process.cwd()
@@ -114,24 +120,66 @@ task run
   writeFileSync(entry, program)
   const base = projectResolver(ROOT, 'node')
   const resolve = (importPath: string, fromFile: string) =>
-    base(importPath.replace(/dom\/native\/\{platform\}\/(dom|view)$/, 'dom/native/memory/$1'), fromFile)
-  const result = compile({ file: entry, text: program }, { resolve, env: 'node' })
-  ok('typescript: the route table compiles, the route runtime injected', result.ok, result.ok ? '' : [...new Set(result.diagnostics.map(d => d.message))].slice(0, 6).join(' | '))
+    base(
+      importPath.replace(
+        /dom\/native\/\{platform\}\/(dom|view)$/,
+        'dom/native/memory/$1',
+      ),
+      fromFile,
+    )
+  const result = compile(
+    { file: entry, text: program },
+    { resolve, env: 'node' },
+  )
+  ok(
+    'typescript: the route table compiles, the route runtime injected',
+    result.ok,
+    result.ok
+      ? ''
+      : [...new Set(result.diagnostics.map(d => d.message))]
+          .slice(0, 6)
+          .join(' | '),
+  )
 
   if (result.ok) {
-    ok('typescript: the dispatcher is typed, not inferred', /function route\(host: View, request: Request\)/.test(result.typescript), result.typescript.match(/function route\([^)]*\)/)?.[0] ?? '')
-    const readRuntime = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, 'utf8') : undefined)
+    ok(
+      'typescript: the dispatcher is typed, not inferred',
+      /function route\(host: View, request: Request\)/.test(
+        result.typescript,
+      ),
+      result.typescript.match(/function route\([^)]*\)/)?.[0] ?? '',
+    )
+    const readRuntime = (file: string): string | undefined =>
+      existsSync(file) ? readFileSync(file, 'utf8') : undefined
     const file = join(dir, 'app.ts')
-    writeFileSync(file, `${nativePrelude(result.program, 'node', readRuntime, result.typescript)}\n${result.typescript}\nconsole.log(run())\n`)
+    writeFileSync(
+      file,
+      `${nativePrelude(result.program, 'node', readRuntime, result.typescript)}\n${result.typescript}\nconsole.log(run())\n`,
+    )
     const ran = spawnSync('npx', ['tsx', file], { encoding: 'utf8' })
-    ok('typescript: it runs', ran.status === 0, ran.stderr.slice(0, 600))
+    ok(
+      'typescript: it runs',
+      ran.status === 0,
+      ran.stderr.slice(0, 600),
+    )
     const [home, user] = ran.stdout.trim().split('\n').pop()!.split('|')
-    ok('typescript: / draws the home page', home?.includes('<span>home</span>') === true, home)
-    ok('typescript: /users/42 matches /users/:id, reads id 42, and the load gives the page its data', drawsUser(user ?? ''), user)
+    ok(
+      'typescript: / draws the home page',
+      home?.includes('<span>home</span>') === true,
+      home,
+    )
+    ok(
+      'typescript: /users/42 matches /users/:id, reads id 42, and the load gives the page its data',
+      drawsUser(user ?? ''),
+      user,
+    )
   }
 }
 
-const program = (_leg: Leg, shot: string): string => `load @term/site/code/dom/dom
+const program = (
+  _leg: Leg,
+  shot: string,
+): string => `load @term/site/code/dom/dom
   find view
   find page-body
 
@@ -176,14 +224,25 @@ task main
 `
 
 function step(output: string, name: string): string {
-  const line = output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
+  const line =
+    output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
 
-  return line.slice(line.indexOf(`step ${name} `) + `step ${name} `.length).trim()
+  return line
+    .slice(line.indexOf(`step ${name} `) + `step ${name} `.length)
+    .trim()
 }
 
 function judge(leg: Leg, toolkit: string, output: string): void {
-  ok(`${leg}: boot mounts the table on the window and draws / (${toolkit})`, step(output, 'home').includes('<span>home</span>'), step(output, 'home'))
-  ok(`${leg}: /users/42 through the contract draws the user page with its id and its loaded data`, drawsUser(step(output, 'user')), step(output, 'user'))
+  ok(
+    `${leg}: boot mounts the table on the window and draws / (${toolkit})`,
+    step(output, 'home').includes('<span>home</span>'),
+    step(output, 'home'),
+  )
+  ok(
+    `${leg}: /users/42 through the contract draws the user page with its id and its loaded data`,
+    drawsUser(step(output, 'user')),
+    step(output, 'user'),
+  )
 }
 
 if (ONLY !== 'typescript') {

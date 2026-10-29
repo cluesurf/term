@@ -8,7 +8,12 @@
 // Reading a ref writes nothing to the repository. A gained reach is a warning, so `--strict` makes the diff a gate.
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, symlinkSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+} from 'node:fs'
 import path from 'node:path'
 import type { Roll, RollEntry } from '@term/make/code/compile/roll'
 import { projectDeckOf } from '@term/call/code/deck-of'
@@ -40,7 +45,12 @@ export type RollDiff = {
   // the deck whose tasks are compared one by one: the project's own
   host: string
   tasks: {
-    added: { name: string; site: string; reach: string[]; halt: string[] }[]
+    added: {
+      name: string
+      site: string
+      reach: string[]
+      halt: string[]
+    }[]
     removed: { name: string; site: string }[]
     changed: {
       name: string
@@ -54,11 +64,18 @@ export type RollDiff = {
   routes: {
     added: string[]
     removed: string[]
-    changed: { name: string; halt: { added: string[]; removed: string[] } }[]
+    changed: {
+      name: string
+      halt: { added: string[]; removed: string[] }
+    }[]
   }
   // every other deck of the build whose part changed, counted: a deck the project newly loads brings its whole roll,
   // and what the PROJECT'S tasks can now do is already in `tasks`, which is what reaches those decks
-  decks: { host: string; tasks: { added: number; removed: number; changed: number }; exceptions: { added: number; removed: number } }[]
+  decks: {
+    host: string
+    tasks: { added: number; removed: number; changed: number }
+    exceptions: { added: number; removed: number }
+  }[]
   // false when the earlier roll was written before tasks carried their reach, so only raises could be compared
   reach: boolean
 }
@@ -80,41 +97,81 @@ export function rollBefore(
     try {
       return { roll: JSON.parse(readFileSync(file, 'utf8')) as Roll }
     } catch (error) {
-      return { error: `${before} is not a roll: ${error instanceof Error ? error.message : String(error)}` }
+      return {
+        error: `${before} is not a roll: ${error instanceof Error ? error.message : String(error)}`,
+      }
     }
   }
 
-  const git = (args: string[]): { ok: boolean; out: string; error: string } => {
-    const run = spawnSync('git', ['-C', root, ...args], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  const git = (
+    args: string[],
+  ): { ok: boolean; out: string; error: string } => {
+    const run = spawnSync('git', ['-C', root, ...args], {
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    })
 
-    return { ok: run.status === 0, out: (run.stdout ?? '').trim(), error: (run.stderr ?? '').trim() }
+    return {
+      ok: run.status === 0,
+      out: (run.stdout ?? '').trim(),
+      error: (run.stderr ?? '').trim(),
+    }
   }
 
-  const commit = git(['rev-parse', '--verify', '--quiet', `${before}^{commit}`])
+  const commit = git([
+    'rev-parse',
+    '--verify',
+    '--quiet',
+    `${before}^{commit}`,
+  ])
 
   if (!commit.ok || !commit.out) {
-    return { error: `${before} is neither a roll file (.json) nor a commit this repository has` }
+    return {
+      error: `${before} is neither a roll file (.json) nor a commit this repository has`,
+    }
   }
 
   const top = git(['rev-parse', '--show-toplevel']).out
   const prefix = git(['rev-parse', '--show-prefix']).out
   // under the commit, so a second diff against it reads what the first wrote, and a ref that moved reads its new commit
-  const at = path.join(root, 'tmp', `roll-at-${commit.out.slice(0, 12)}`)
+  const at = path.join(
+    root,
+    'tmp',
+    `roll-at-${commit.out.slice(0, 12)}`,
+  )
+
   const rolled = path.join(at, prefix)
 
   if (!existsSync(rolled)) {
     mkdirSync(at, { recursive: true })
 
-    const archive = spawnSync('git', ['-C', top, 'archive', '--format=tar', commit.out, ...(prefix ? [prefix] : [])], { maxBuffer: 1024 * 1024 * 1024 })
+    const archive = spawnSync(
+      'git',
+      [
+        '-C',
+        top,
+        'archive',
+        '--format=tar',
+        commit.out,
+        ...(prefix ? [prefix] : []),
+      ],
+      { maxBuffer: 1024 * 1024 * 1024 },
+    )
 
     if (archive.status !== 0) {
-      return { error: `git archive could not read ${before}: ${String(archive.stderr ?? '').trim()}` }
+      return {
+        error: `git archive could not read ${before}: ${String(archive.stderr ?? '').trim()}`,
+      }
     }
 
-    const tar = spawnSync('tar', ['-x', '-C', at], { input: archive.stdout })
+    const tar = spawnSync('tar', ['-x', '-C', at], {
+      input: archive.stdout,
+    })
 
     if (tar.status !== 0) {
-      return { error: `the tree of ${before} could not be unpacked: ${String(tar.stderr ?? '').trim()}` }
+      return {
+        error: `the tree of ${before} could not be unpacked: ${String(tar.stderr ?? '').trim()}`,
+      }
     }
   }
 
@@ -139,19 +196,35 @@ function entryOf(entry: RollEntry): port.RollEntry {
     host: entry.host,
     name: entry.name,
     site: entry.site,
-    reach: Array.isArray(entry.reach) ? { form: 'some', value: entry.reach as string[] } : { form: 'none' },
+    reach: Array.isArray(entry.reach)
+      ? { form: 'some', value: entry.reach as string[] }
+      : { form: 'none' },
     halt: Array.isArray(entry.halt) ? (entry.halt as string[]) : [],
     async: entry.async === true,
   }
 }
 
 function listsOf(roll: Roll): port.RollLists {
-  return { task: roll.task.map(entryOf), exception: roll.exception.map(entryOf), dock: roll.dock.map(entryOf) }
+  return {
+    task: roll.task.map(entryOf),
+    exception: roll.exception.map(entryOf),
+    dock: roll.dock.map(entryOf),
+  }
 }
 
 // the comparison itself is Term (call/code/roll-delta.tree), and its result is this shape field for field
-export function diffRolls(beforeName: string, before: Roll, after: Roll, host: string): RollDiff {
-  return port.diffRolls(beforeName, listsOf(before), listsOf(after), host)
+export function diffRolls(
+  beforeName: string,
+  before: Roll,
+  after: Roll,
+  host: string,
+): RollDiff {
+  return port.diffRolls(
+    beforeName,
+    listsOf(before),
+    listsOf(after),
+    host,
+  )
 }
 
 // how many tasks gained a native module, which is what `--strict` fails on

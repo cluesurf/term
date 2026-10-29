@@ -27,7 +27,9 @@ type SeedResponse = {
   body?: string
 }
 
-type Handler = (request: SeedRequest) => SeedResponse | Promise<SeedResponse>
+type Handler = (
+  request: SeedRequest,
+) => SeedResponse | Promise<SeedResponse>
 
 type Running = { server: http2.Http2Server | undefined; port: number }
 
@@ -49,7 +51,14 @@ const http2Runtime = {
     certificate: string,
     key: string,
   ): void => {
-    void http2Runtime.start(port, host, handler, secure, certificate, key)
+    void http2Runtime.start(
+      port,
+      host,
+      handler,
+      secure,
+      certificate,
+      key,
+    )
   },
 
   start: async (
@@ -63,13 +72,18 @@ const http2Runtime = {
     const scheme = secure ? 'https' : 'http'
     const onStream = (
       stream: http2.ServerHttp2Stream,
-      headers: http2.IncomingHttpHeaders & http2.IncomingHttpStatusHeader,
+      headers: http2.IncomingHttpHeaders &
+        http2.IncomingHttpStatusHeader,
     ): void => {
       void answer(stream, headers, handler, scheme)
     }
 
     const server = secure
-      ? http2.createSecureServer({ cert: certificate, key, allowHTTP1: true })
+      ? http2.createSecureServer({
+          cert: certificate,
+          key,
+          allowHTTP1: true,
+        })
       : http2.createServer()
 
     server.on('stream', onStream)
@@ -115,7 +129,9 @@ async function answer(
 
   // the pseudo-headers node already gives us, plus the stream id it does expose (unlike the other three)
   flat[':scheme'] = String(headers[':scheme'] ?? scheme)
-  flat[':authority'] = String(headers[':authority'] ?? flat['host'] ?? '')
+  flat[':authority'] = String(
+    headers[':authority'] ?? flat['host'] ?? '',
+  )
   flat[':path'] = target
   flat['x-term-stream'] = String(stream.id ?? 0)
 

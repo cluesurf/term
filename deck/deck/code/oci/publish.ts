@@ -3,10 +3,17 @@
 // The logic is Term; this file only converts shapes for TypeScript callers.
 // The original is kept byte for byte at deck/term/deck/term/tmp/retired/make/deck-oci-publish.
 import * as port from '@term/deck/code/oci/oci-publishing'
-import { ociErrorOf, type Descriptor, type OciTransport } from './transport'
+import {
+  ociErrorOf,
+  type Descriptor,
+  type OciTransport,
+} from './transport'
 import type { Keypair } from '../object/sign'
 
-const p = port as unknown as Record<string, (...args: unknown[]) => unknown>
+const p = port as unknown as Record<
+  string,
+  (...args: unknown[]) => unknown
+>
 
 function lift<T>(work: () => T): T {
   try {
@@ -24,7 +31,9 @@ async function liftAsync<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
-type Target = { kind: 'version'; version: string } | { kind: 'branch'; branch: string; expected?: string | null }
+type Target =
+  | { kind: 'version'; version: string }
+  | { kind: 'branch'; branch: string; expected?: string | null }
 type Artifact = any
 
 export type OciPublishResult = {
@@ -32,7 +41,12 @@ export type OciPublishResult = {
   reference: string
   tag: string
   unchanged: boolean
-  blobs: { total: number; uploaded: number; mounted: number; present: number }
+  blobs: {
+    total: number
+    uploaded: number
+    mounted: number
+    present: number
+  }
   bytes: { total: number; uploaded: number }
   layers: number
   manifestSize: number
@@ -57,9 +71,12 @@ type ArtifactInput = {
   include?: string[]
 }
 
-export const tagOfTarget = (target: Target): string => lift(() => p.tagOfTarget!(target) as string)
+export const tagOfTarget = (target: Target): string =>
+  lift(() => p.tagOfTarget!(target) as string)
 
-export const buildOciArtifact = (input: ArtifactInput): Promise<{ release: any; artifact: Artifact }> =>
+export const buildOciArtifact = (
+  input: ArtifactInput,
+): Promise<{ release: any; artifact: Artifact }> =>
   liftAsync(
     () =>
       p.buildOciArtifact!(
@@ -116,5 +133,18 @@ export const publishToOci = (
       ) as Promise<OciPublishResult>,
   )
 
-export const attachSignature = (input: { transport: OciTransport; repository: string; subject: Descriptor; artifact: Artifact }): Promise<'attached' | 'fallback-tag'> =>
-  liftAsync(() => p.attachSignature!(input.transport, input.repository, input.subject, input.artifact) as Promise<'attached' | 'fallback-tag'>)
+export const attachSignature = (input: {
+  transport: OciTransport
+  repository: string
+  subject: Descriptor
+  artifact: Artifact
+}): Promise<'attached' | 'fallback-tag'> =>
+  liftAsync(
+    () =>
+      p.attachSignature!(
+        input.transport,
+        input.repository,
+        input.subject,
+        input.artifact,
+      ) as Promise<'attached' | 'fallback-tag'>,
+  )

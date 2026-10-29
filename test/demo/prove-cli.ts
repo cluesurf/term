@@ -20,9 +20,20 @@ export async function main(): Promise<void> {
     .scriptName('seed-prove')
     .command('$0 <file>', 'verify a Seed file', y =>
       y
-        .positional('file', { type: 'string', describe: 'the .tree file to verify' })
-        .option('cross', { type: 'boolean', default: true, describe: 'run the cross-backend differential' })
-        .option('json', { type: 'boolean', default: false, describe: 'machine-readable output' }),
+        .positional('file', {
+          type: 'string',
+          describe: 'the .tree file to verify',
+        })
+        .option('cross', {
+          type: 'boolean',
+          default: true,
+          describe: 'run the cross-backend differential',
+        })
+        .option('json', {
+          type: 'boolean',
+          default: false,
+          describe: 'machine-readable output',
+        }),
     )
     .strict()
     .help()
@@ -31,7 +42,11 @@ export async function main(): Promise<void> {
   const file = String(argv.file)
   const root = process.cwd()
   const resolve = projectResolver(root, 'node', root)
-  const report = proveFile({ file, resolve, cross: Boolean(argv.cross) })
+  const report = proveFile({
+    file,
+    resolve,
+    cross: Boolean(argv.cross),
+  })
 
   if (argv.json) {
     console.log(JSON.stringify(report, null, 2))
@@ -46,7 +61,9 @@ export async function main(): Promise<void> {
 const invokedDirectly = process.argv[1]?.endsWith('prove-cli.ts')
 if (invokedDirectly) {
   main().catch(error => {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
+    process.stderr.write(
+      `${error instanceof Error ? error.message : String(error)}\n`,
+    )
     process.exit(2)
   })
 }

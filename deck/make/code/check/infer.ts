@@ -59,7 +59,12 @@ export function check(
   }
 }
 
-function checkProgram(program: Program, file: string, merged: boolean | undefined, only: string | undefined): Diagnostic[] {
+function checkProgram(
+  program: Program,
+  file: string,
+  merged: boolean | undefined,
+  only: string | undefined,
+): Diagnostic[] {
   const state = inferProgram(
     program as never,
     file,
@@ -73,7 +78,11 @@ function checkProgram(program: Program, file: string, merged: boolean | undefine
 
   // the checked program is written where the caller holds it: a statement the check replaced stands at its place
   if ((state.program as unknown) !== program) {
-    program.splice(0, program.length, ...(state.program as unknown as Program))
+    program.splice(
+      0,
+      program.length,
+      ...(state.program as unknown as Program),
+    )
   }
 
   return state.diagnostics as unknown as Diagnostic[]

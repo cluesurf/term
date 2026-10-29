@@ -13,7 +13,9 @@ import type { ElaborationReport } from '@term/make/code/check/elaborate'
 import { judgeState } from '@term/make/code/check/judge'
 
 // the kernel's transparent definitions after the last report
-const definitions = (): Map<string, unknown> => (judgeState() as unknown as { definition: Map<string, unknown> }).definition
+const definitions = (): Map<string, unknown> =>
+  (judgeState() as unknown as { definition: Map<string, unknown> })
+    .definition
 
 let pass = 0
 let fail = 0
@@ -54,18 +56,33 @@ function proven(name: string, text: string, task: string): void {
   ok(
     name,
     r.proven.includes(task) && r.diagnostics.length === 0,
-    JSON.stringify({ proven: r.proven, statementwise: r.statementwise, diagnostics: r.diagnostics.map(d => d.message) }),
+    JSON.stringify({
+      proven: r.proven,
+      statementwise: r.statementwise,
+      diagnostics: r.diagnostics.map(d => d.message),
+    }),
   )
 }
 
-function statementwise(name: string, text: string, task: string, reason: string): void {
+function statementwise(
+  name: string,
+  text: string,
+  task: string,
+  reason: string,
+): void {
   const r = report(text)
   const found = r.statementwise.find(one => one.name === task)
 
   ok(
     name,
-    !r.proven.includes(task) && r.verified.includes(task) && found?.reason === reason,
-    JSON.stringify({ proven: r.proven, statementwise: r.statementwise, declined: r.declined }),
+    !r.proven.includes(task) &&
+      r.verified.includes(task) &&
+      found?.reason === reason,
+    JSON.stringify({
+      proven: r.proven,
+      statementwise: r.statementwise,
+      declined: r.declined,
+    }),
   )
 }
 
@@ -498,37 +515,78 @@ const FALLS_OFF = `task falls
 
 function main(): void {
   proven('a fork test whose arm saves is one term', CLAMP, 'clamp')
-  proven('a fork inside an arm, a miss arm, and a save after the join', NESTED, 'bucket')
-  proven('an arm that returns beside an arm that falls through', EARLY, 'early')
-  proven('a name saved three times is three binders', SAVED_TWICE, 'twice')
+  proven(
+    'a fork inside an arm, a miss arm, and a save after the join',
+    NESTED,
+    'bucket',
+  )
+  proven(
+    'an arm that returns beside an arm that falls through',
+    EARLY,
+    'early',
+  )
+  proven(
+    'a name saved three times is three binders',
+    SAVED_TWICE,
+    'twice',
+  )
 
   const bad = report(BAD_SAVE)
   ok(
     'the kernel refuses a save of the wrong type',
-    bad.diagnostics.some(d => d.message.startsWith('kernel:')) && !bad.proven.includes('wrong'),
+    bad.diagnostics.some(d => d.message.startsWith('kernel:')) &&
+      !bad.proven.includes('wrong'),
     JSON.stringify(bad.diagnostics.map(d => d.message)),
   )
 
   const badArm = report(BAD_SAVE_IN_ARM)
   ok(
     'and one inside an arm',
-    badArm.diagnostics.some(d => d.message.startsWith('kernel:')) && !badArm.proven.includes('wrong-arm'),
+    badArm.diagnostics.some(d => d.message.startsWith('kernel:')) &&
+      !badArm.proven.includes('wrong-arm'),
     JSON.stringify(badArm.diagnostics.map(d => d.message)),
   )
 
-  statementwise('a save to a name a closure reads is not lowered, and says so', CLOSURE, 'late', 'a save to a name a closure reads')
+  statementwise(
+    'a save to a name a closure reads is not lowered, and says so',
+    CLOSURE,
+    'late',
+    'a save to a name a closure reads',
+  )
   // proof-by-default-0010: every walk is one term
-  proven('a walk test is one term, lifted to a task of its own', LOOP, 'sum-below')
-  proven('a counted walk over a list, its index read, is one term', LIST_SUM, 'sum-at')
-  proven('turn next, halt and send back inside a walk, each a case of its own', LIST_EXITS, 'first-big')
+  proven(
+    'a walk test is one term, lifted to a task of its own',
+    LOOP,
+    'sum-below',
+  )
+  proven(
+    'a counted walk over a list, its index read, is one term',
+    LIST_SUM,
+    'sum-at',
+  )
+  proven(
+    'turn next, halt and send back inside a walk, each a case of its own',
+    LIST_EXITS,
+    'first-big',
+  )
   proven('a walk last in an arm joins the arm', LIST_IN_ARM, 'count-if')
   proven('walk size is one term', SIZE, 'triangle')
   proven('a walk test with a down is one term', DOWN, 'halve')
-  proven('turn next out of a nested walk, by name', NESTED_WALKS, 'pairs')
+  proven(
+    'turn next out of a nested walk, by name',
+    NESTED_WALKS,
+    'pairs',
+  )
   // a turn's body is the kernel's to check, in a fold and in a lifted walk test alike
   for (const [what, walk] of [
-    ['a walk over a list', 'walk list, read xs\n    hook next\n      take x'],
-    ['a walk test', 'walk test\n    hook test\n      call is-below\n        read total\n        code 3\n    hook hold'],
+    [
+      'a walk over a list',
+      'walk list, read xs\n    hook next\n      take x',
+    ],
+    [
+      'a walk test',
+      'walk test\n    hook test\n      call is-below\n        read total\n        code 3\n    hook hold',
+    ],
   ] as const) {
     const bad = report(`task wrong-turn
   take xs, like list, like number
@@ -540,41 +598,96 @@ function main(): void {
 `)
     ok(
       `the kernel refuses a save of the wrong type inside ${what}`,
-      !bad.proven.includes('wrong-turn') && bad.diagnostics.some(d => d.message.startsWith('kernel:')),
-      JSON.stringify({ proven: bad.proven, statementwise: bad.statementwise, diagnostics: bad.diagnostics.map(d => d.message) }),
+      !bad.proven.includes('wrong-turn') &&
+        bad.diagnostics.some(d => d.message.startsWith('kernel:')),
+      JSON.stringify({
+        proven: bad.proven,
+        statementwise: bad.statementwise,
+        diagnostics: bad.diagnostics.map(d => d.message),
+      }),
     )
   }
 
   const overText = report(OVER_HASH)
-  ok('a walk over a text is no fold, and is not proven', !overText.proven.includes('keys'), JSON.stringify(overText.declined))
+  ok(
+    'a walk over a text is no fold, and is not proven',
+    !overText.proven.includes('keys'),
+    JSON.stringify(overText.declined),
+  )
 
   // a lifted walk test is a definition the kernel unfolds only with a `down`, and opaque without one
   report(DOWN)
-  ok('a walk test with a down is a definition', definitions().has('halve__walk0'), [...definitions().keys()].join(', '))
+  ok(
+    'a walk test with a down is a definition',
+    definitions().has('halve__walk0'),
+    [...definitions().keys()].join(', '),
+  )
   report(LOOP)
   ok(
     'one without is an opaque constant: nothing is computed through a loop not shown to end',
-    !definitions().has('sum-below__walk0') && definitions().has('sum-below'),
+    !definitions().has('sum-below__walk0') &&
+      definitions().has('sum-below'),
     [...definitions().keys()].join(', '),
   )
   // proof-by-default-0011: a guarded fork is one term, its raise a call of the handler
   proven('a guarded fork and its handler are one term', GUARDED, 'cap')
-  proven('a raise inside a walk inside the guarded fork', GUARDED_WALK, 'first-negative')
+  proven(
+    'a raise inside a walk inside the guarded fork',
+    GUARDED_WALK,
+    'first-negative',
+  )
   const reads = report(READS_RAISE)
   // neither is one term: the statement-by-statement checker then declines the guarded fork with its own reason
-  const notOneTerm = (name: string, r: ElaborationReport, task: string): void =>
+  const notOneTerm = (
+    name: string,
+    r: ElaborationReport,
+    task: string,
+  ): void =>
     ok(
       name,
-      !r.proven.includes(task) && [...r.statementwise, ...r.declined].some(one => one.name === task),
-      JSON.stringify({ statementwise: r.statementwise, declined: r.declined }),
+      !r.proven.includes(task) &&
+        [...r.statementwise, ...r.declined].some(
+          one => one.name === task,
+        ),
+      JSON.stringify({
+        statementwise: r.statementwise,
+        declined: r.declined,
+      }),
     )
-  notOneTerm('a handler that reads what was raised is not one term', reads, 'why')
-  notOneTerm('a call that may raise inside a guarded fork is not one term', report(RAISING_CALL), 'safe')
-  statementwise('a raise that leaves the task is not lowered, and says so', ESCAPES, 'loud', 'a raise')
+  notOneTerm(
+    'a handler that reads what was raised is not one term',
+    reads,
+    'why',
+  )
+  notOneTerm(
+    'a call that may raise inside a guarded fork is not one term',
+    report(RAISING_CALL),
+    'safe',
+  )
+  statementwise(
+    'a raise that leaves the task is not lowered, and says so',
+    ESCAPES,
+    'loud',
+    'a raise',
+  )
   // proof-by-default-0014
-  proven('a save through a field is one term, the record made again', FIELD_SAVE, 'reset')
-  statementwise('a save through a field of a mark shared form is not lowered, and says so', SHARED_SAVE, 'tick', 'a save through a member of a mark shared form')
-  statementwise('a path that ends without a return is named', FALLS_OFF, 'falls', 'a path that ends without a return')
+  proven(
+    'a save through a field is one term, the record made again',
+    FIELD_SAVE,
+    'reset',
+  )
+  statementwise(
+    'a save through a field of a mark shared form is not lowered, and says so',
+    SHARED_SAVE,
+    'tick',
+    'a save through a member of a mark shared form',
+  )
+  statementwise(
+    'a path that ends without a return is named',
+    FALLS_OFF,
+    'falls',
+    'a path that ends without a return',
+  )
 
   console.log(`\nlowering: ${pass} pass, ${fail} fail`)
 

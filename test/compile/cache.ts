@@ -3,10 +3,7 @@
 // Run: npx tsx test/compile/cache.ts
 
 import { compile } from '@term/make/code/compile/compile'
-import {
-  CompileCache,
-  hashFields,
-} from '@term/make/code/compile/cache'
+import { CompileCache, hashFields } from '@term/make/code/compile/cache'
 // the content hash is Term since 2026-10-02 (deck/make/code/term/hash.tree, note/term/self-host/04-the-port-switch.md)
 import { hashText } from '@term/make/code/term/hash'
 import type { CacheStore } from '@term/make/code/compile/cache'
@@ -214,25 +211,49 @@ fs.rmSync(dir, { recursive: true, force: true })
 // 101 GB on a laptop before 2026-09-01, so each is stated as the thing that went wrong.
 
 // entries are gzipped on disk, not stored as the raw JSON they used to be (13.1x on real entries)
-const gzDir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'seed-cache-gz-'))
+const gzDir = fs.mkdtempSync(
+  nodePath.join(os.tmpdir(), 'seed-cache-gz-'),
+)
 const gzStore = diskCacheStore(gzDir, 'v1')
-gzStore.save('output', 'aabbcc', JSON.stringify({ padding: 'x'.repeat(20000) }))
+gzStore.save(
+  'output',
+  'aabbcc',
+  JSON.stringify({ padding: 'x'.repeat(20000) }),
+)
 
 // the entries: the namespace's `.budget` stamp (when the byte budget was last held) is housekeeping, not an entry
-const written = walkFiles(gzDir).filter(f => nodePath.basename(f) !== '.budget')
-expect('layout: the budget stamp sits in the namespace, beside the shards', walkFiles(gzDir).some(f => f.endsWith(nodePath.join(versionSlug('v1'), '.budget'))), true)
-expect('layout: an entry is written gzipped', written.every(f => f.endsWith('.json.gz')), true)
+const written = walkFiles(gzDir).filter(
+  f => nodePath.basename(f) !== '.budget',
+)
+expect(
+  'layout: the budget stamp sits in the namespace, beside the shards',
+  walkFiles(gzDir).some(f =>
+    f.endsWith(nodePath.join(versionSlug('v1'), '.budget')),
+  ),
+  true,
+)
+expect(
+  'layout: an entry is written gzipped',
+  written.every(f => f.endsWith('.json.gz')),
+  true,
+)
 expect(
   'layout: gzip actually shrinks the entry',
   written.reduce((n, f) => n + fs.statSync(f).size, 0) < 2000,
   true,
 )
-expect('layout: a gzipped entry reads back', gzStore.load('output', 'aabbcc') !== undefined, true)
+expect(
+  'layout: a gzipped entry reads back',
+  gzStore.load('output', 'aabbcc') !== undefined,
+  true,
+)
 
 // the version is a DIRECTORY, so a stale namespace is a directory to remove rather than keys nobody can find
 expect(
   'layout: the version is a path segment',
-  written.every(f => f.includes(nodePath.join('output', versionSlug('v1')))),
+  written.every(f =>
+    f.includes(nodePath.join('output', versionSlug('v1'))),
+  ),
   true,
 )
 
@@ -268,11 +289,17 @@ expect(
 
 // A BUDGET BOUNDS WHAT IS LEFT, dropping least-recently-used first. Nothing a cache holds can change a result, so
 // the worst case of over-eviction is a slower build.
-const budgetDir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'seed-cache-budget-'))
+const budgetDir = fs.mkdtempSync(
+  nodePath.join(os.tmpdir(), 'seed-cache-budget-'),
+)
 const budgetStore = diskCacheStore(budgetDir, 'v1')
 
 for (let n = 0; n < 40; n++) {
-  budgetStore.save('output', `k${String(n).padStart(4, '0')}`, JSON.stringify({ n, pad: String(n).repeat(4000) }))
+  budgetStore.save(
+    'output',
+    `k${String(n).padStart(4, '0')}`,
+    JSON.stringify({ n, pad: String(n).repeat(4000) }),
+  )
 }
 
 const before = walkFiles(budgetDir)
@@ -281,7 +308,12 @@ const before = walkFiles(budgetDir)
 const budget = Math.floor(
   before.reduce((n, f) => n + fs.statSync(f).size, 0) / 2,
 )
-const swept = enforceBudget(budgetDir, 'output', versionSlug('v1'), budget)
+const swept = enforceBudget(
+  budgetDir,
+  'output',
+  versionSlug('v1'),
+  budget,
+)
 const after = walkFiles(budgetDir)
 
 expect(
@@ -299,53 +331,117 @@ expect('budget: the sweep keeps the rest', after.length > 0, true)
 // A SWEEP MUST NOT FOLLOW A SYMLINK. Following them made the first cache report claim 1,557,034 files under
 // `deck/zone`, which holds 40,725: the 56 symlinks in there point at package trees, and a sweep that deletes by
 // that measurement deletes the wrong thing.
-const linkDir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'seed-cache-link-'))
-const outside = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'seed-cache-outside-'))
+const linkDir = fs.mkdtempSync(
+  nodePath.join(os.tmpdir(), 'seed-cache-link-'),
+)
+const outside = fs.mkdtempSync(
+  nodePath.join(os.tmpdir(), 'seed-cache-outside-'),
+)
 fs.writeFileSync(nodePath.join(outside, 'big.bin'), 'y'.repeat(50000))
 fs.mkdirSync(nodePath.join(linkDir, 'output'), { recursive: true })
 fs.symlinkSync(outside, nodePath.join(linkDir, 'output', 'linked'))
 
 const seen = cacheEntries(linkDir)
 expect('walk: a symlink is never followed', seen.length === 0, true)
-expect('walk: the linked tree is untouched', fs.existsSync(nodePath.join(outside, 'big.bin')), true)
+expect(
+  'walk: the linked tree is untouched',
+  fs.existsSync(nodePath.join(outside, 'big.bin')),
+  true,
+)
 
 // THE IMPORT SCAN ROUND-TRIPS THROUGH THE DISK. A `find` with no `name` stores an `undefined` alias, which JSON
 // writes as `null`; read back plainly, it bound an alias called `null` and the module's imports bound nothing
-const scanDir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'seed-cache-scan-'))
+const scanDir = fs.mkdtempSync(
+  nodePath.join(os.tmpdir(), 'seed-cache-scan-'),
+)
 const scanWarm = new CompileCache(diskCacheStore(scanDir, 'v1'), 'v1')
-const scanFirst = compile({ file: 'a.tree', text: entryText(4) }, { resolve, cache: scanWarm })
+const scanFirst = compile(
+  { file: 'a.tree', text: entryText(4) },
+  { resolve, cache: scanWarm },
+)
 const scanCold = new CompileCache(diskCacheStore(scanDir, 'v1'), 'v1')
 // another entry text, so the output level misses and the scans are what the walk reads from the disk
-const scanSecond = compile({ file: 'a.tree', text: entryText(5) }, { resolve, cache: scanCold })
+const scanSecond = compile(
+  { file: 'a.tree', text: entryText(5) },
+  { resolve, cache: scanCold },
+)
 expect('scan: the first compile builds', scanFirst.ok, true)
-expect('scan: a fresh process reads the helper scan from disk', scanCold.diskHits > 0, true)
-expect('scan: and its imports still bind (`triple` is found)', scanSecond.ok, true)
+expect(
+  'scan: a fresh process reads the helper scan from disk',
+  scanCold.diskHits > 0,
+  true,
+)
+expect(
+  'scan: and its imports still bind (`triple` is found)',
+  scanSecond.ok,
+  true,
+)
 
 // THE TEMPLATE SET JOINS ONLY THE KEY OF A UNIT WITH A `fuse`. An edit to a template-bearing module re-mills only the
 // units that can use it, not the whole closure
-const shapes: Source = { file: 'shapes.tree', text: `tree twice\n  take name\n  hook fuse\n    task {name}-twice\n      take n, like number\n      like number\n      back multiply(n, 2)\n` }
+const shapes: Source = {
+  file: 'shapes.tree',
+  text: `tree twice\n  take name\n  hook fuse\n    task {name}-twice\n      take n, like number\n      like number\n      back multiply(n, 2)\n`,
+}
 const templateResolve = (path: string): Source | undefined =>
-  path === '@app/helper' ? helper : path === '@app/shapes' ? shapes : undefined
+  path === '@app/helper'
+    ? helper
+    : path === '@app/shapes'
+      ? shapes
+      : undefined
 const withTemplates = `load @app/helper\n  find triple\n\nload @app/shapes\n\ntask run\n  like number\n  back\n    call triple\n      code 1\n`
 const templateCache = new CompileCache()
-compile({ file: 'a.tree', text: withTemplates }, { resolve: templateResolve, cache: templateCache })
+compile(
+  { file: 'a.tree', text: withTemplates },
+  { resolve: templateResolve, cache: templateCache },
+)
 const builtBefore = templateCache.misses
 shapes.text = `${shapes.text}# edited\n`
-compile({ file: 'a.tree', text: withTemplates }, { resolve: templateResolve, cache: templateCache })
+compile(
+  { file: 'a.tree', text: withTemplates },
+  { resolve: templateResolve, cache: templateCache },
+)
 // the edit re-mills shapes.tree itself and its scan, and builds the output: three, never the helper or the entry
-expect('templates: editing a template module leaves units with no `fuse` cached', templateCache.misses - builtBefore, 3)
+expect(
+  'templates: editing a template module leaves units with no `fuse` cached',
+  templateCache.misses - builtBefore,
+  3,
+)
 
 // THE BUDGET IS HELD ONCE AN HOUR. The stamp in the namespace says when it last ran
-const stampDir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'seed-cache-stamp-'))
+const stampDir = fs.mkdtempSync(
+  nodePath.join(os.tmpdir(), 'seed-cache-stamp-'),
+)
 const { budgetDue } = await import('@term/call/code/cache-store')
-expect('budget stamp: the first sweep is due', budgetDue(stampDir, 'mill', 'slug'), true)
-expect('budget stamp: one just after it is not', budgetDue(stampDir, 'mill', 'slug'), false)
-expect('budget stamp: an hour later it is again', budgetDue(stampDir, 'mill', 'slug', Date.now() + 60 * 60 * 1000 + 1), true)
+expect(
+  'budget stamp: the first sweep is due',
+  budgetDue(stampDir, 'mill', 'slug'),
+  true,
+)
+expect(
+  'budget stamp: one just after it is not',
+  budgetDue(stampDir, 'mill', 'slug'),
+  false,
+)
+expect(
+  'budget stamp: an hour later it is again',
+  budgetDue(stampDir, 'mill', 'slug', Date.now() + 60 * 60 * 1000 + 1),
+  true,
+)
 
-for (const temp of [gzDir, budgetDir, linkDir, outside, scanDir, stampDir]) {
+for (const temp of [
+  gzDir,
+  budgetDir,
+  linkDir,
+  outside,
+  scanDir,
+  stampDir,
+]) {
   fs.rmSync(temp, { recursive: true, force: true })
 }
 
 console.log(`\ncache: ${pass} pass, ${fail} fail`)
 
-if (fail > 0) {process.exit(1)}
+if (fail > 0) {
+  process.exit(1)
+}

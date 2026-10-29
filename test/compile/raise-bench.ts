@@ -40,11 +40,13 @@ task run
 
 // the guard in `run`, calling a0, which calls a1 ... a9, which raises: ten calls deep
 const tenDeep = (n: number): string => {
-  const tasks: string[] = [`task a9
+  const tasks: string[] = [
+    `task a9
   take i, like number
   like number
   halt <no key {{i}}>
-`]
+`,
+  ]
 
   for (let k = 8; k >= 0; k--) {
     tasks.push(`task a${k}
@@ -90,9 +92,14 @@ function timed(command: string[]): { ms: number; out: string } {
 
   for (let k = 0; k < 3; k++) {
     const start = performance.now()
-    const run = spawnSync(command[0]!, command.slice(1), { encoding: 'utf8' })
+    const run = spawnSync(command[0]!, command.slice(1), {
+      encoding: 'utf8',
+    })
     best = Math.min(best, performance.now() - start)
-    out = run.status === 0 ? String(run.stdout) : `exit ${run.status}: ${String(run.stderr).slice(0, 300)}`
+    out =
+      run.status === 0
+        ? String(run.stdout)
+        : `exit ${run.status}: ${String(run.stderr).slice(0, 300)}`
   }
 
   return { ms: best, out }
@@ -110,10 +117,19 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
 
     for (const n of [0, 100000]) {
       const name = `bench-${shape.replace(' ', '-')}-${n}`
-      const built = buildOn({ backend, program: program(n), resolve: env => projectResolver(process.cwd(), env), dir, name })
+      const built = buildOn({
+        backend,
+        program: program(n),
+        resolve: env => projectResolver(process.cwd(), env),
+        dir,
+        name,
+      })
 
       if (built.form !== 'built') {
-        said = built.form === 'skipped' ? built.reason : `${built.stage}: ${built.reason}`
+        said =
+          built.form === 'skipped'
+            ? built.reason
+            : `${built.stage}: ${built.reason}`
         break
       }
 
@@ -127,6 +143,8 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
       continue
     }
 
-    console.log(`${label} ${backend} ${shape}: 100k raise-and-catch ${(runs[1]! - runs[0]!).toFixed(1)} ms, zero-raise run ${runs[0]!.toFixed(1)} ms (caught ${said})`)
+    console.log(
+      `${label} ${backend} ${shape}: 100k raise-and-catch ${(runs[1]! - runs[0]!).toFixed(1)} ms, zero-raise run ${runs[0]!.toFixed(1)} ms (caught ${said})`,
+    )
   }
 }

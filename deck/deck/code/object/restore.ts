@@ -4,7 +4,23 @@
 // The original is kept byte for byte at deck/term/deck/term/tmp/retired/make/deck-object-restore.
 import * as port from '@term/deck/code/object/version-restore'
 
-export const safeJoin = (dest: string, at: string): string => port.safeJoin(dest, at)
-export const restoreFiles = (input: { files: unknown[]; dest: string; store: unknown }): Promise<void> => port.restoreFiles(input.files, input.dest, input.store)
-export const restoreVersion = (input: { root: string; dest: string; chunks: unknown; store: unknown }): Promise<never[]> =>
-  port.restoreVersion(input.root, input.dest, input.chunks, input.store) as Promise<never[]>
+export const safeJoin = (dest: string, at: string): string =>
+  port.safeJoin(dest, at)
+export const restoreFiles = (input: {
+  files: unknown[]
+  dest: string
+  store: unknown
+}): Promise<void> =>
+  port.restoreFiles(input.files, input.dest, input.store)
+export const restoreVersion = (input: {
+  root: string
+  dest: string
+  chunks: unknown
+  store: unknown
+}): Promise<never[]> =>
+  port.restoreVersion(
+    input.root,
+    input.dest,
+    input.chunks,
+    input.store,
+  ) as Promise<never[]>

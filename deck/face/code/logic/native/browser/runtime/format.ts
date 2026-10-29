@@ -26,7 +26,9 @@ export const format = {
   // current high-resolution time in ms. The visibility machine measures its snap / fade / late-arrival windows against
   // this (and the family's first-ask stamp, taken the same way), so it needs a monotone clock, not the wall clock.
   now(): number {
-    return typeof performance !== 'undefined' ? performance.now() : Date.now()
+    return typeof performance !== 'undefined'
+      ? performance.now()
+      : Date.now()
   },
 
   // the font class token for a family + suffix ("font-CrowMark", "font-CrowMark-fallback", "font-CrowMark-waiting").

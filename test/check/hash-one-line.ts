@@ -26,7 +26,10 @@ function ok(name: string, holds: boolean, detail = ''): void {
 }
 
 const resultOf = (like: string, lean: boolean): string => {
-  const parsed = parse({ file: 'p.tree', text: `task t\n  ${like}\n  host out, make hash\n  back out\n` })
+  const parsed = parse({
+    file: 'p.tree',
+    text: `task t\n  ${like}\n  host out, make hash\n  back out\n`,
+  })
 
   if (!parsed.ok) {
     return `parse: ${parsed.diagnostics[0]?.message}`
@@ -38,15 +41,30 @@ const resultOf = (like: string, lean: boolean): string => {
     return `mill: ${built.diagnostics[0]?.message}`
   }
 
-  const task = built.program.find(d => (d as { name?: string }).name === 't') as unknown as { returnType?: unknown; result?: unknown; type?: unknown }
+  const task = built.program.find(
+    d => (d as { name?: string }).name === 't',
+  ) as unknown as {
+    returnType?: unknown
+    result?: unknown
+    type?: unknown
+  }
 
   return JSON.stringify(task.returnType ?? task.result ?? task.type)
 }
 
 const CASES: [string, string][] = [
-  ['like hash, like text, like number', '{"kind":"map","key":{"kind":"string"},"value":{"kind":"number"}}'],
-  ['like hash, like text, like list, like text', '{"kind":"map","key":{"kind":"string"},"value":{"kind":"array","element":{"kind":"string"}}}'],
-  ['like hash, like number, like boolean', '{"kind":"map","key":{"kind":"number"},"value":{"kind":"boolean"}}'],
+  [
+    'like hash, like text, like number',
+    '{"kind":"map","key":{"kind":"string"},"value":{"kind":"number"}}',
+  ],
+  [
+    'like hash, like text, like list, like text',
+    '{"kind":"map","key":{"kind":"string"},"value":{"kind":"array","element":{"kind":"string"}}}',
+  ],
+  [
+    'like hash, like number, like boolean',
+    '{"kind":"map","key":{"kind":"number"},"value":{"kind":"boolean"}}',
+  ],
 ]
 
 for (const [like, want] of CASES) {
@@ -58,7 +76,12 @@ for (const [like, want] of CASES) {
 }
 
 // the stacked spelling reads as it always did
-ok('stacked: like hash / like text / like number', resultOf('like hash\n    like text\n    like number', false) === CASES[0]![1], resultOf('like hash\n    like text\n    like number', false))
+ok(
+  'stacked: like hash / like text / like number',
+  resultOf('like hash\n    like text\n    like number', false) ===
+    CASES[0]![1],
+  resultOf('like hash\n    like text\n    like number', false),
+)
 
 // and a native backend sees the value with nothing to infer it from
 const built = compile(
@@ -80,15 +103,30 @@ task build
   send back, read out
 `,
   },
-  { resolve: withNativeEnv('swift', stdlibResolver()!), env: 'swift', entryPoints: ['build'] },
+  {
+    resolve: withNativeEnv('swift', stdlibResolver()!),
+    env: 'swift',
+    entryPoints: ['build'],
+  },
 )
 
 if (!built.ok) {
-  ok('the program builds for swift', false, built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the program builds for swift',
+    false,
+    built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
 } else {
-  const line = emitSwift(built.program).split('\n').find(text => /func build/.test(text)) ?? ''
+  const line =
+    emitSwift(built.program)
+      .split('\n')
+      .find(text => /func build/.test(text)) ?? ''
 
-  ok('Swift emits the hash of text to a list of text', /SeedMap<String, SeedList<String>>/.test(line), line.trim())
+  ok(
+    'Swift emits the hash of text to a list of text',
+    /SeedMap<String, SeedList<String>>/.test(line),
+    line.trim(),
+  )
 }
 
 console.log(`\nhash-one-line: ${pass} pass, ${fail} fail`)

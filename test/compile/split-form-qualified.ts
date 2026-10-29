@@ -30,9 +30,18 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-type Built = { ok: boolean; typescript?: string; diagnostics?: { name: string; message: string }[] }
+type Built = {
+  ok: boolean
+  typescript?: string
+  diagnostics?: { name: string; message: string }[]
+}
 
-const said = (r: Built): string => (r.ok ? 'ok' : (r.diagnostics ?? []).map(d => `${d.name}: ${d.message}`).join(' | '))
+const said = (r: Built): string =>
+  r.ok
+    ? 'ok'
+    : (r.diagnostics ?? [])
+        .map(d => `${d.name}: ${d.message}`)
+        .join(' | ')
 
 // the union, with qualified and bare constructions, a match over its own cases, and the form in type positions
 const UNION = `form resolution
@@ -121,54 +130,96 @@ task run
 
 const WANT = 'a/b fs missing pkg'
 
-const resolverOf = (files: Record<string, string>): Resolver => path => {
-  const name = path.replace(/^\.\//, '')
-  const text = files[name]
+const resolverOf =
+  (files: Record<string, string>): Resolver =>
+  path => {
+    const name = path.replace(/^\.\//, '')
+    const text = files[name]
 
-  return text === undefined ? undefined : { file: `${name}.tree`, text }
-}
+    return text === undefined
+      ? undefined
+      : { file: `${name}.tree`, text }
+  }
 
-const slug = (file: string): string => `./${file.replace(/\.tree$/, '').replace(/\W/g, '_')}.mjs`
+const slug = (file: string): string =>
+  `./${file.replace(/\.tree$/, '').replace(/\W/g, '_')}.mjs`
 
 const dir = mkdtempSync(join(tmpdir(), 'term-split-form-'))
 
 async function runModule(code: string, name: string): Promise<string> {
-  writeFileSync(join(dir, name), transformSync(code, { loader: 'ts', format: 'esm' }).code)
-  const module = (await import(`${pathToFileURL(join(dir, name)).href}?v=${Math.random()}`)) as { run(): string }
+  writeFileSync(
+    join(dir, name),
+    transformSync(code, { loader: 'ts', format: 'esm' }).code,
+  )
+  const module = (await import(
+    `${pathToFileURL(join(dir, name)).href}?v=${Math.random()}`
+  )) as { run(): string }
 
   return module.run()
 }
 
 async function main(): Promise<void> {
   const resolve = resolverOf({ union: UNION, plain: PLAIN })
-  const merged = compile({ file: 'entry.tree', text: ENTRY }, { resolve, cache: new CompileCache() }) as Built
+  const merged = compile(
+    { file: 'entry.tree', text: ENTRY },
+    { resolve, cache: new CompileCache() },
+  ) as Built
   ok('the whole-program build compiles', merged.ok, said(merged))
-  ok('and it split the two forms by file', merged.ok && /[Rr]esolution(__in0_|In0_?)\d/.test(merged.typescript ?? ''), '')
+  ok(
+    'and it split the two forms by file',
+    merged.ok &&
+      /[Rr]esolution(__in0_|In0_?)\d/.test(merged.typescript ?? ''),
+    '',
+  )
 
-  const separate = compileSeparate({ file: 'entry.tree', text: ENTRY }, { resolve, cache: new CompileCache(), modules: slug })
-  ok('the separate build compiles', separate.ok, said(separate as Built))
+  const separate = compileSeparate(
+    { file: 'entry.tree', text: ENTRY },
+    { resolve, cache: new CompileCache(), modules: slug },
+  )
+  ok(
+    'the separate build compiles',
+    separate.ok,
+    said(separate as Built),
+  )
 
   let mergedAnswer = ''
   let separateAnswer = ''
 
   if (merged.ok) {
     mergedAnswer = await runModule(merged.typescript!, 'merged.mjs')
-    ok('the whole-program build runs to the answer', mergedAnswer === WANT, mergedAnswer)
+    ok(
+      'the whole-program build runs to the answer',
+      mergedAnswer === WANT,
+      mergedAnswer,
+    )
   }
 
   if (separate.ok) {
     for (const [file, emit] of separate.modules) {
-      writeFileSync(join(dir, slug(file).slice(2)), transformSync(emit.code, { loader: 'ts', format: 'esm' }).code)
+      writeFileSync(
+        join(dir, slug(file).slice(2)),
+        transformSync(emit.code, { loader: 'ts', format: 'esm' }).code,
+      )
     }
 
-    const entry = (await import(`${pathToFileURL(join(dir, slug('entry.tree').slice(2))).href}?v=${Math.random()}`)) as {
+    const entry = (await import(
+      `${pathToFileURL(join(dir, slug('entry.tree').slice(2))).href}?v=${Math.random()}`
+    )) as {
       run(): string
     }
     separateAnswer = entry.run()
-    ok('the separate build runs to the answer', separateAnswer === WANT, separateAnswer)
+    ok(
+      'the separate build runs to the answer',
+      separateAnswer === WANT,
+      separateAnswer,
+    )
   }
 
-  ok('the two builds behave the same', merged.ok && separate.ok && mergedAnswer === separateAnswer, `${mergedAnswer} / ${separateAnswer}`)
+  ok(
+    'the two builds behave the same',
+    merged.ok && separate.ok && mergedAnswer === separateAnswer,
+    `${mergedAnswer} / ${separateAnswer}`,
+  )
 
   rmSync(dir, { recursive: true, force: true })
   console.log(`\nsplit-form-qualified: ${pass} pass, ${fail} fail`)

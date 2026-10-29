@@ -25,17 +25,33 @@
 // 344 files under deck/mill/code (its `bind mine, load ./mine` rule wants a text path, every base.tree writes a
 // name), so holding a file to it would report a defect in the meta-grammar on every file.
 
-import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
+import type {
+  Diagnostic,
+  Span,
+} from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import { parse } from '@term/make/code/parser/tree'
 import type { Node } from '@term/make/code/parser/tree'
 import type { GroupNode } from '@term/make/code/parser/narrow'
 import { groupsOf } from '@term/make/code/parser/narrow'
-import { readMineGrammar, spanOfWhole } from '@term/make/code/compile/mill-run'
+import {
+  readMineGrammar,
+  spanOfWhole,
+} from '@term/make/code/compile/mill-run'
 import type { Source } from '@term/make/code/compile/load'
 
 // the heads whose second word a mill definition DECLARES, so a `find` of it resolves
-const DECLARING = new Set(['form', 'task', 'mine', 'mint', 'mill', 'bind', 'mask', 'host', 'tree'])
+const DECLARING = new Set([
+  'form',
+  'task',
+  'mine',
+  'mint',
+  'mill',
+  'bind',
+  'mask',
+  'host',
+  'tree',
+])
 
 // the heads that declare a Term FORM, the thing a `mint ..., like F` or a `hook make / make F` hands to Term
 // (note/project/term/module-scope/decision/003-grammar-files-reference-only-forms.md, rule 2)
@@ -43,7 +59,9 @@ const FORM_DECLARING = new Set(['form', 'mask'])
 
 function wordOf(node: Node | undefined): string {
   if (node?.kind === 'name') {
-    return node.parts.map(p => (p.kind === 'chunk' ? p.text : '')).join('')
+    return node.parts
+      .map(p => (p.kind === 'chunk' ? p.text : ''))
+      .join('')
   }
 
   if (node?.kind === 'group') {
@@ -88,18 +106,31 @@ function declaredBy(source: Source, heads: Set<string>): string[] {
 // F as a form reaches it, which is the only thing that binds it: a `load` alone, or a `find` of a grammar rule that
 // happens to share the name (`load .../bind/mint` / `find bind` reaches the mint rule, never the form), does not.
 // `loads` are the targets this file already loads that declare F as a form, so a diagnostic can name the find to add
-export type MillFormReference = { name: string; how: 'like' | 'make'; span: Span; found: boolean; loads: string[] }
+export type MillFormReference = {
+  name: string
+  how: 'like' | 'make'
+  span: Span
+  found: boolean
+  loads: string[]
+}
 
-export function millFormReferences(source: Source, resolved: MillLoad[]): MillFormReference[] {
+export function millFormReferences(
+  source: Source,
+  resolved: MillLoad[],
+): MillFormReference[] {
   const tree = parse(source)
 
   return tree.ok ? formReferencesOf(tree.tree.nodes, resolved) : []
 }
 
-function formReferencesOf(nodes: Node[], resolved: MillLoad[]): MillFormReference[] {
+function formReferencesOf(
+  nodes: Node[],
+  resolved: MillLoad[],
+): MillFormReference[] {
   // form name -> whether a find reaches it, and the loads that declare it
   const found = new Set<string>()
   const declaring = new Map<string, string[]>()
+
   let loadAt = 0
 
   for (const group of groupsOf(nodes)) {
@@ -121,15 +152,26 @@ function formReferencesOf(nodes: Node[], resolved: MillLoad[]): MillFormReferenc
     }
 
     for (const child of group.nodes.slice(2)) {
-      if (child.kind === 'group' && headOf(child) === 'find' && forms.has(wordOf(child.nodes[1]))) {
+      if (
+        child.kind === 'group' &&
+        headOf(child) === 'find' &&
+        forms.has(wordOf(child.nodes[1]))
+      ) {
         found.add(wordOf(child.nodes[1]))
       }
     }
   }
 
   const out: MillFormReference[] = []
+
   const add = (name: string, how: 'like' | 'make', at: Node): void => {
-    out.push({ name, how, span: spanOfWhole(at), found: found.has(name), loads: declaring.get(name) ?? [] })
+    out.push({
+      name,
+      how,
+      span: spanOfWhole(at),
+      found: found.has(name),
+      loads: declaring.get(name) ?? [],
+    })
   }
 
   for (const group of groupsOf(nodes)) {
@@ -153,7 +195,12 @@ function formReferencesOf(nodes: Node[], resolved: MillLoad[]): MillFormReferenc
       // (compile/mill-running.tree read-mint-grammar)
       if (head === 'hook' && wordOf(child.nodes[1]) === 'make') {
         for (const inner of child.nodes.slice(1)) {
-          if (inner.kind === 'group' && headOf(inner) === 'make' && inner.nodes.length > 1 && wordOf(inner.nodes[1])) {
+          if (
+            inner.kind === 'group' &&
+            headOf(inner) === 'make' &&
+            inner.nodes.length > 1 &&
+            wordOf(inner.nodes[1])
+          ) {
             add(wordOf(inner.nodes[1]), 'make', inner)
           }
         }
@@ -167,11 +214,17 @@ function formReferencesOf(nodes: Node[], resolved: MillLoad[]): MillFormReferenc
 // The rule names one role's grammar defines, its load closure merged (compile/mill-load.ts loadRoleGrammar): what a
 // `mine form, like R` and a `case X, mint Y` must name (decision 003 rule 3). A caller passes the closure of every role
 // whose grammar holds the file, intersected, since a rule another role lacks dangles there
-export type MillClosure = { mine: ReadonlySet<string>; mint: ReadonlySet<string> }
+export type MillClosure = {
+  mine: ReadonlySet<string>
+  mint: ReadonlySet<string>
+}
 
 // what a gate knows beyond the file: the definers of a form, by the name the diagnostic shows (a name no module defines
 // is a mint-bridge tag, not a Term name, and is no reference), and the closure of the roles the file is in
-export type MillContext = { formDefiners?: (name: string) => string[]; closure?: MillClosure }
+export type MillContext = {
+  formDefiners?: (name: string) => string[]
+  closure?: MillClosure
+}
 
 // A matcher kind is what the mine reader itself accepts. Asked of it, never copied: a one-rule probe grammar written
 // with the kind is read by readMineGrammar (compile/mill-running.tree read-mine-rule), which drops an unknown kind
@@ -187,8 +240,14 @@ export function isMatcherKind(kind: string): boolean {
   let answer = false
 
   if (/^[a-z][a-z0-9-]*$/.test(kind)) {
-    const probe = parse({ file: 'matcher-kind-probe.tree', text: `mine probe\n  mine ${kind}, like probe\n` })
-    answer = probe.ok && (readMineGrammar(probe.tree).get('probe')?.length ?? 0) === 1
+    const probe = parse({
+      file: 'matcher-kind-probe.tree',
+      text: `mine probe\n  mine ${kind}, like probe\n`,
+    })
+
+    answer =
+      probe.ok &&
+      (readMineGrammar(probe.tree).get('probe')?.length ?? 0) === 1
   }
 
   KINDS.set(kind, answer)
@@ -198,22 +257,39 @@ export function isMatcherKind(kind: string): boolean {
 
 // rule 3: every matcher a `mine` rule nests is a known kind, a `mine form` names a rule of the closure, and every
 // `case X, mint Y` of a `mint` names a mint rule of the closure
-function ruleProblemsOf(nodes: Node[], closure: MillClosure): MillProblem[] {
+function ruleProblemsOf(
+  nodes: Node[],
+  closure: MillClosure,
+): MillProblem[] {
   const problems: MillProblem[] = []
 
   const matcher = (group: GroupNode): void => {
     const kind = wordOf(group.nodes[1])
 
     if (!isMatcherKind(kind)) {
-      problems.push({ what: `matches with "mine ${kind}", which is no matcher kind`, span: spanOfWhole(group) })
+      problems.push({
+        what: `matches with "mine ${kind}", which is no matcher kind`,
+        span: spanOfWhole(group),
+      })
     } else if (kind === 'form') {
-      const like = group.nodes.slice(2).find(n => n.kind === 'group' && headOf(n) === 'like') as GroupNode | undefined
+      const like = group.nodes
+        .slice(2)
+        .find(n => n.kind === 'group' && headOf(n) === 'like') as
+        | GroupNode
+        | undefined
+
       const rule = like ? wordOf(like.nodes[1]) : ''
 
       if (!rule) {
-        problems.push({ what: 'matches "mine form" with no "like <rule>"', span: spanOfWhole(group) })
+        problems.push({
+          what: 'matches "mine form" with no "like <rule>"',
+          span: spanOfWhole(group),
+        })
       } else if (!closure.mine.has(rule)) {
-        problems.push({ what: `matches "mine form, like ${rule}", which its grammar defines no mine rule for`, span: spanOfWhole(group) })
+        problems.push({
+          what: `matches "mine form, like ${rule}", which its grammar defines no mine rule for`,
+          span: spanOfWhole(group),
+        })
       }
     }
 
@@ -242,11 +318,19 @@ function ruleProblemsOf(nodes: Node[], closure: MillClosure): MillProblem[] {
         }
 
         // read-mint-grammar: the `mint` group after the case's head and name
-        const mint = child.nodes.slice(2).find(n => n.kind === 'group' && headOf(n) === 'mint') as GroupNode | undefined
+        const mint = child.nodes
+          .slice(2)
+          .find(n => n.kind === 'group' && headOf(n) === 'mint') as
+          | GroupNode
+          | undefined
+
         const rule = mint ? wordOf(mint.nodes[1]) : ''
 
         if (rule && !closure.mint.has(rule)) {
-          problems.push({ what: `mints a case through "mint ${rule}", which its grammar defines no mint rule for`, span: spanOfWhole(mint!) })
+          problems.push({
+            what: `mints a case through "mint ${rule}", which its grammar defines no mint rule for`,
+            span: spanOfWhole(mint!),
+          })
         }
       }
     }
@@ -259,14 +343,19 @@ function ruleProblemsOf(nodes: Node[], closure: MillClosure): MillProblem[] {
 export function millLoadTargets(source: Source): string[] {
   const parsed = parse(source)
 
-  return parsed.ok ? groupsOf(parsed.tree.nodes).filter(group => headOf(group) === 'load').map(group => wordOf(group.nodes[1])) : []
+  return parsed.ok
+    ? groupsOf(parsed.tree.nodes)
+        .filter(group => headOf(group) === 'load')
+        .map(group => wordOf(group.nodes[1]))
+    : []
 }
 
 export type MillLoad = { target: string; found?: Source }
 
 export type MillProblem = { what: string; span: Span; hint?: string }
 
-const LOAD_HINT = 'a mill definition loads grammar files and the stdlib forms its mints build: name one that exists'
+const LOAD_HINT =
+  'a mill definition loads grammar files and the stdlib forms its mints build: name one that exists'
 
 // The checks, as problems. A caller that cannot resolve (`resolving` false) skips the ones that need it, and says
 // nothing it cannot know. `resolved` answers `millLoadTargets`, one per target, in its order. A `context` with form
@@ -277,11 +366,19 @@ export function checkMillDefinition(
   resolving: boolean,
   resolved: MillLoad[],
   context: MillContext = {},
-): { parsed: boolean; problems: MillProblem[]; diagnostics: Diagnostic[] } {
+): {
+  parsed: boolean
+  problems: MillProblem[]
+  diagnostics: Diagnostic[]
+} {
   const tree = parse(source)
 
   if (!tree.ok) {
-    return { parsed: false, problems: [], diagnostics: tree.diagnostics }
+    return {
+      parsed: false,
+      problems: [],
+      diagnostics: tree.diagnostics,
+    }
   }
 
   const problems: MillProblem[] = []
@@ -289,6 +386,7 @@ export function checkMillDefinition(
   if (resolving) {
     // the forms the file's loads bring in, for the `like` checks
     const known = new Set<string>()
+
     let loadAt = 0
 
     for (const group of groupsOf(tree.tree.nodes)) {
@@ -300,7 +398,10 @@ export function checkMillDefinition(
       const found = resolved[loadAt++]?.found
 
       if (!found) {
-        problems.push({ what: `loads "${target}", which does not exist`, span: spanOfWhole(group) })
+        problems.push({
+          what: `loads "${target}", which does not exist`,
+          span: spanOfWhole(group),
+        })
         continue
       }
 
@@ -329,7 +430,10 @@ export function checkMillDefinition(
         continue
       }
 
-      const like = group.nodes.find(n => n.kind === 'group' && headOf(n) === 'like') as GroupNode | undefined
+      const like = group.nodes.find(
+        n => n.kind === 'group' && headOf(n) === 'like',
+      ) as GroupNode | undefined
+
       // a mint NAMED `like` (the type-annotation head's own mint) reads as an empty like-group here; only a like
       // clause with an argument names the built form
       const likeName = like ? wordOf(like.nodes[1]) : ''
@@ -349,7 +453,10 @@ export function checkMillDefinition(
     if (definersOf) {
       for (const ref of formReferencesOf(tree.tree.nodes, resolved)) {
         // a `like` no load brings in at all is reported above, once
-        const definers = ref.found || (ref.how === 'like' && !known.has(ref.name)) ? [] : definersOf(ref.name)
+        const definers =
+          ref.found || (ref.how === 'like' && !known.has(ref.name))
+            ? []
+            : definersOf(ref.name)
 
         if (definers.length === 0) {
           continue

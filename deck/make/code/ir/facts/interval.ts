@@ -43,19 +43,26 @@
 // hashes, numbers each place by the object it holds (a compiled program shares nodes between places, and the original
 // kept one fact per object), and makes the `WeakSet` of the nodes the port answers, which are the program's own objects.
 
-import type { Expression, Program, Statement } from '@term/make/code/compile/node'
+import type {
+  Expression,
+  Program,
+  Statement,
+} from '@term/make/code/compile/node'
 import { reachStatements } from '@term/make/code/compile/node-reach'
 import { boundedArithmetic as boundedIn } from '@term/make/code/ir/facts/intervals'
 
 type Lend = 'read' | 'write'
 
-const flags = (names: Set<string>): Map<string, boolean> => new Map([...names].map(name => [name, true]))
+const flags = (names: Set<string>): Map<string, boolean> =>
+  new Map([...names].map(name => [name, true]))
 
 // per task, in the program's order, each place of node-reach's walk of its body (the port's places) as the first place
 // across every task that holds the same object
 function identities(program: Program): number[][] {
   const first = new Map<object, number>()
+
   let next = 0
+
   const out: number[][] = []
 
   for (const statement of program as Statement[]) {
@@ -65,11 +72,15 @@ function identities(program: Program): number[][] {
 
     const seen = reachStatements(statement.body, ['type', 'span'])
     const ids: number[] = []
+
     let e = 0
     let s = 0
 
     for (const isExpression of seen.order) {
-      const node: object = isExpression ? seen.expressions[e++]! : seen.statements[s++]!
+      const node: object = isExpression
+        ? seen.expressions[e++]!
+        : seen.statements[s++]!
+
       let id = first.get(node)
 
       if (id === undefined) {
@@ -93,7 +104,15 @@ export function boundedArithmetic(
   // the list parameters each task takes lent, and whether it writes them (backend.ts, `listFacts`)
   lend: Map<string, Map<number, Lend>>,
   // the forms whose values cross into native code (backend.ts, `nativeForms`): a shim may build one with any field
-  native: Set<string> = new Set(),
+  native = new Set<string>(),
 ): WeakSet<Expression> {
-  return new WeakSet<Expression>(boundedIn(program, flags(owned), lend, flags(native), identities(program)))
+  return new WeakSet<Expression>(
+    boundedIn(
+      program,
+      flags(owned),
+      lend,
+      flags(native),
+      identities(program),
+    ),
+  )
 }

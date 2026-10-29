@@ -10,13 +10,20 @@
 //
 // Run: npx tsx test/call/home-move.ts
 import { execFileSync } from 'node:child_process'
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { frontDir, settle, settleFront } from '@term/call/code/home'
 import { GITIGNORE } from '@term/call/code/wake-text'
 import { tempDir } from '../temp'
 import { LINE } from './cli'
-
 
 let pass = 0
 let fail = 0
@@ -36,7 +43,10 @@ function scratch(): string {
 }
 
 // the block `term wake` wrote before 2026-10-05
-const OLD_IGNORE = GITIGNORE.replace(/@term\/code/g, '@cluesurf/term').replace(/@term\//g, '@cluesurf/')
+const OLD_IGNORE = GITIGNORE.replace(
+  /@term\/code/g,
+  '@cluesurf/term',
+).replace(/@term\//g, '@cluesurf/')
 
 // ---- the usual case ----
 
@@ -52,11 +62,30 @@ const OLD_IGNORE = GITIGNORE.replace(/@term\/code/g, '@cluesurf/term').replace(/
 
   const home = settle(base, root)
 
-  ok('the folder moves to .base/@term/code', home === join(base, '@term', 'code') && readFileSync(join(home, 'auth'), 'utf8') === 'ws-token\n')
-  ok('a link is left at the old name', lstatSync(old).isSymbolicLink() && readlinkSync(old) === join('..', '@term', 'code'))
-  ok('every file reads the same through the old name', readFileSync(join(old, 'memory', 'index.md'), 'utf8') === '- a fact\n')
-  ok("the project's .gitignore keeps the moved memory in git", readFileSync(join(root, '.gitignore'), 'utf8') === GITIGNORE, readFileSync(join(root, '.gitignore'), 'utf8'))
-  ok('asked again, the same answer and nothing moves', settle(base, root) === home)
+  ok(
+    'the folder moves to .base/@term/code',
+    home === join(base, '@term', 'code') &&
+      readFileSync(join(home, 'auth'), 'utf8') === 'ws-token\n',
+  )
+  ok(
+    'a link is left at the old name',
+    lstatSync(old).isSymbolicLink() &&
+      readlinkSync(old) === join('..', '@term', 'code'),
+  )
+  ok(
+    'every file reads the same through the old name',
+    readFileSync(join(old, 'memory', 'index.md'), 'utf8') ===
+      '- a fact\n',
+  )
+  ok(
+    "the project's .gitignore keeps the moved memory in git",
+    readFileSync(join(root, '.gitignore'), 'utf8') === GITIGNORE,
+    readFileSync(join(root, '.gitignore'), 'utf8'),
+  )
+  ok(
+    'asked again, the same answer and nothing moves',
+    settle(base, root) === home,
+  )
 }
 
 // ---- the front's folder, bin/ to call/ ----
@@ -68,8 +97,15 @@ const OLD_IGNORE = GITIGNORE.replace(/@term\/code/g, '@cluesurf/term').replace(/
   writeFileSync(join(home, 'bin', 'term'), '#!/bin/sh\n')
   settleFront(home)
 
-  ok('the front moves from bin/ to call/', readFileSync(join(home, 'call', 'term'), 'utf8') === '#!/bin/sh\n')
-  ok('   a link is left at bin/, so a PATH line naming it still runs term', lstatSync(join(home, 'bin')).isSymbolicLink() && existsSync(join(home, 'bin', 'term')))
+  ok(
+    'the front moves from bin/ to call/',
+    readFileSync(join(home, 'call', 'term'), 'utf8') === '#!/bin/sh\n',
+  )
+  ok(
+    '   a link is left at bin/, so a PATH line naming it still runs term',
+    lstatSync(join(home, 'bin')).isSymbolicLink() &&
+      existsSync(join(home, 'bin', 'term')),
+  )
   ok('   frontDir answers call/', frontDir(home) === join(home, 'call'))
 }
 
@@ -77,11 +113,17 @@ const OLD_IGNORE = GITIGNORE.replace(/@term\/code/g, '@cluesurf/term').replace(/
   const home = scratch()
 
   mkdirSync(join(home, 'bin'), { recursive: true })
-  ok('a home not settled yet: frontDir answers bin/, the folder that exists', frontDir(home) === join(home, 'bin'))
+  ok(
+    'a home not settled yet: frontDir answers bin/, the folder that exists',
+    frontDir(home) === join(home, 'bin'),
+  )
 
   const empty = scratch()
 
-  ok('a home with neither: frontDir answers call/, where the installer will put it', frontDir(empty) === join(empty, 'call'))
+  ok(
+    'a home with neither: frontDir answers call/, where the installer will put it',
+    frontDir(empty) === join(empty, 'call'),
+  )
 }
 
 // ---- a .gitignore a person wrote ----
@@ -95,7 +137,10 @@ const OLD_IGNORE = GITIGNORE.replace(/@term\/code/g, '@cluesurf/term').replace(/
   writeFileSync(join(root, '.gitignore'), theirs)
   settle(base, root)
 
-  ok('a .gitignore that is not the wake block is left as it is', readFileSync(join(root, '.gitignore'), 'utf8') === theirs)
+  ok(
+    'a .gitignore that is not the wake block is left as it is',
+    readFileSync(join(root, '.gitignore'), 'utf8') === theirs,
+  )
 }
 
 // ---- both folders there ----
@@ -115,9 +160,22 @@ const OLD_IGNORE = GITIGNORE.replace(/@term\/code/g, '@cluesurf/term').replace(/
 
   const home = settle(base, root)
 
-  ok('both there: what only the old folder held is moved in', home === current && readFileSync(join(current, 'memory', 'index.md'), 'utf8') === '- the old fact\n')
-  ok('both there: on a clash the new copy is kept', readFileSync(join(current, 'tmp', 'clash'), 'utf8') === 'new\n')
-  ok('both there: the old folder, left holding only clashes, stays a folder', lstatSync(old).isDirectory() && existsSync(join(old, 'tmp', 'clash')) && !existsSync(join(old, 'memory')))
+  ok(
+    'both there: what only the old folder held is moved in',
+    home === current &&
+      readFileSync(join(current, 'memory', 'index.md'), 'utf8') ===
+        '- the old fact\n',
+  )
+  ok(
+    'both there: on a clash the new copy is kept',
+    readFileSync(join(current, 'tmp', 'clash'), 'utf8') === 'new\n',
+  )
+  ok(
+    'both there: the old folder, left holding only clashes, stays a folder',
+    lstatSync(old).isDirectory() &&
+      existsSync(join(old, 'tmp', 'clash')) &&
+      !existsSync(join(old, 'memory')),
+  )
 }
 
 {
@@ -130,7 +188,10 @@ const OLD_IGNORE = GITIGNORE.replace(/@term\/code/g, '@cluesurf/term').replace(/
   mkdirSync(join(base, '@term', 'code', 'tmp'), { recursive: true })
   settle(base, root)
 
-  ok('both there with no clash: the old folder empties and becomes the link', lstatSync(old).isSymbolicLink())
+  ok(
+    'both there with no clash: the old folder empties and becomes the link',
+    lstatSync(old).isSymbolicLink(),
+  )
 }
 
 // ---- a move the filesystem refuses ----
@@ -147,8 +208,15 @@ if (process.platform !== 'win32' && process.getuid?.() !== 0) {
 
   const home = settle(base, root)
 
-  ok('a refused move uses the old folder, whole', home === old && readFileSync(join(home, 'auth'), 'utf8') === 'ws-token\n')
-  ok('   and nothing was split into the new one', !existsSync(join(base, '@term', 'code')))
+  ok(
+    'a refused move uses the old folder, whole',
+    home === old &&
+      readFileSync(join(home, 'auth'), 'utf8') === 'ws-token\n',
+  )
+  ok(
+    '   and nothing was split into the new one',
+    !existsSync(join(base, '@term', 'code')),
+  )
   chmodSync(join(base, '@cluesurf'), 0o755)
 }
 
@@ -162,15 +230,32 @@ if (existsSync(LINE)) {
   writeFileSync(join(old, 'auth'), 'ws-cli\n')
   writeFileSync(join(old, 'bin', 'term'), '#!/bin/sh\n')
   // a command that reads the user folder, so both renames happen: the folder, then its front
-  execFileSync(process.execPath, [LINE, 'self', 'list', '--plain'], { env: { ...process.env, HOME: home, USERPROFILE: home }, encoding: 'utf8', stdio: 'pipe' })
+  execFileSync(process.execPath, [LINE, 'self', 'list', '--plain'], {
+    env: { ...process.env, HOME: home, USERPROFILE: home },
+    encoding: 'utf8',
+    stdio: 'pipe',
+  })
 
   const current = join(home, '.base', '@term', 'code')
 
-  ok('the CLI moves the user folder on its first run', readFileSync(join(current, 'auth'), 'utf8') === 'ws-cli\n' && lstatSync(old).isSymbolicLink())
-  ok('   and its front, bin/ to call/', existsSync(join(current, 'call', 'term')) && lstatSync(join(current, 'bin')).isSymbolicLink())
-  ok('   the old PATH entry still reaches the front, through both links', readFileSync(join(old, 'bin', 'term'), 'utf8') === '#!/bin/sh\n')
+  ok(
+    'the CLI moves the user folder on its first run',
+    readFileSync(join(current, 'auth'), 'utf8') === 'ws-cli\n' &&
+      lstatSync(old).isSymbolicLink(),
+  )
+  ok(
+    '   and its front, bin/ to call/',
+    existsSync(join(current, 'call', 'term')) &&
+      lstatSync(join(current, 'bin')).isSymbolicLink(),
+  )
+  ok(
+    '   the old PATH entry still reaches the front, through both links',
+    readFileSync(join(old, 'bin', 'term'), 'utf8') === '#!/bin/sh\n',
+  )
 } else {
-  console.log(`skip  the CLI moves the user folder: ${LINE} is not built (pnpm run make:line)`)
+  console.log(
+    `skip  the CLI moves the user folder: ${LINE} is not built (pnpm run make:line)`,
+  )
 }
 
 console.log(`\nhome-move: ${pass} pass, ${fail} fail`)

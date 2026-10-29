@@ -35,7 +35,10 @@ const PORT = 39512
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-dev-'))
 // the app is its own package: a relative `load ./helper` may not escape the nearest `deck.tree`, so the resolver
 // refuses one that reaches into a temp dir from the Term package root
-fs.writeFileSync(path.join(dir, 'deck.tree'), 'deck @probe/dev\n  code <0.0.0>\n')
+fs.writeFileSync(
+  path.join(dir, 'deck.tree'),
+  'deck @probe/dev\n  code <0.0.0>\n',
+)
 fs.writeFileSync(
   path.join(dir, 'helper.tree'),
   `task helper-value\n  like number\n  send back\n    code 42\n`,
@@ -58,13 +61,17 @@ async function readEvent(
   for (let i = 0; i < 50; i++) {
     const { value, done } = await reader.read()
 
-    if (done) {return undefined}
+    if (done) {
+      return undefined
+    }
 
     buffer += decoder.decode(value, { stream: true })
 
     const match = /data: (.+)\n\n/.exec(buffer)
 
-    if (match) {return JSON.parse(match[1]) as HmrMessage}
+    if (match) {
+      return JSON.parse(match[1]) as HmrMessage
+    }
   }
 
   return undefined
@@ -88,7 +95,7 @@ async function main(): Promise<void> {
     shell.slice(0, 120),
   )
 
-  const entryUrl = (/src="(\/@mod\/[^"]+)"/.exec(shell))?.[1] ?? ''
+  const entryUrl = /src="(\/@mod\/[^"]+)"/.exec(shell)?.[1] ?? ''
   ok('shell references the entry module url', entryUrl.length > 0)
 
   // 2. the entry module is served as native ESM
@@ -142,26 +149,50 @@ async function main(): Promise<void> {
 
   // only this machine may ask (native-dom-0018): a rebound DNS name and a cross-site page are refused, the loopback
   // names and the Android emulator's alias for this machine are not. `fetch` cannot set Host, so these go through http
-  const ask = (headers: Record<string, string>, at = '/'): Promise<number> =>
+  const ask = (
+    headers: Record<string, string>,
+    at = '/',
+  ): Promise<number> =>
     new Promise(resolve => {
-      const request = http.get({ host: '127.0.0.1', port: PORT, path: at, headers }, response => {
-        response.resume()
-        resolve(response.statusCode ?? 0)
-        request.destroy()
-      })
+      const request = http.get(
+        { host: '127.0.0.1', port: PORT, path: at, headers },
+        response => {
+          response.resume()
+          resolve(response.statusCode ?? 0)
+          request.destroy()
+        },
+      )
       request.on('error', () => resolve(0))
     })
 
-  ok('a rebound host is refused', (await ask({ host: `rebound.example:${PORT}` })) === 403)
-  ok('localhost is served', (await ask({ host: `localhost:${PORT}` })) === 200)
-  ok('the emulator alias for this machine is served', (await ask({ host: `10.0.2.2:${PORT}` })) === 200)
+  ok(
+    'a rebound host is refused',
+    (await ask({ host: `rebound.example:${PORT}` })) === 403,
+  )
+  ok(
+    'localhost is served',
+    (await ask({ host: `localhost:${PORT}` })) === 200,
+  )
+  ok(
+    'the emulator alias for this machine is served',
+    (await ask({ host: `10.0.2.2:${PORT}` })) === 200,
+  )
   ok(
     'a cross-site page may not open the HMR stream',
-    (await ask({ host: `localhost:${PORT}`, origin: 'https://elsewhere.example' }, '/@seed/hmr')) === 403,
+    (await ask(
+      {
+        host: `localhost:${PORT}`,
+        origin: 'https://elsewhere.example',
+      },
+      '/@seed/hmr',
+    )) === 403,
   )
   ok(
     'a same-machine origin may',
-    (await ask({ host: `localhost:${PORT}`, origin: `http://localhost:${PORT}` }, '/@seed/hmr')) === 200,
+    (await ask(
+      { host: `localhost:${PORT}`, origin: `http://localhost:${PORT}` },
+      '/@seed/hmr',
+    )) === 200,
   )
 
   server.close()

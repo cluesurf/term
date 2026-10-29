@@ -17,7 +17,10 @@ export function hasContracts(program: Program): boolean {
 }
 
 // replace every read of a name by an expression, without entering a closure (whose parameters may shadow it)
-export function substitute(expression: Expression, binding: Map<string, Expression>): Expression {
+export function substitute(
+  expression: Expression,
+  binding: Map<string, Expression>,
+): Expression {
   return substituteIn(expression, binding)
 }
 
@@ -27,8 +30,17 @@ export function lowerContracts(
   program: Program,
   options: { file?: string; tier0?: boolean } = {},
 ): { program: Program; lowered: Set<string> } {
-  const file = options.file === undefined ? ({ form: 'none' } as const) : ({ form: 'some', value: options.file } as const)
-  const result = lowerContractsIn(program, file, options.tier0 === true, checkerSwitches.widths)
+  const file =
+    options.file === undefined
+      ? ({ form: 'none' } as const)
+      : ({ form: 'some', value: options.file } as const)
+
+  const result = lowerContractsIn(
+    program,
+    file,
+    options.tier0 === true,
+    checkerSwitches.widths,
+  )
 
   return { program: result.program, lowered: new Set(result.lowered) }
 }

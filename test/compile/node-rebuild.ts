@@ -15,14 +15,25 @@
 // Run: npx tsx test/compile/node-rebuild.ts [--sample N] [--seed S]
 // NODE_REBUILD_MODULE names another module (an absolute path) exporting `rebuildNode`, to test a draft before it lands.
 
-import { nodeChildren, type NodeHandle } from '@term/make/code/compile/node-children'
+import {
+  nodeChildren,
+  type NodeHandle,
+} from '@term/make/code/compile/node-children'
 import { programJson } from '@term/make/code/compile/node-json'
 import * as sharedNodes from '../../../../../../task/term/shared-nodes'
 
 type Node = Record<string, any>
-type Rebuild = (handle: NodeHandle, children: NodeHandle[], skip: string[]) => NodeHandle
+type Rebuild = (
+  handle: NodeHandle,
+  children: NodeHandle[],
+  skip: string[],
+) => NodeHandle
 
-const shared = ((sharedNodes as any).corpus ? sharedNodes : (sharedNodes as any).default) as typeof sharedNodes
+const shared = (
+  (sharedNodes as any).corpus
+    ? sharedNodes
+    : (sharedNodes as any).default
+) as typeof sharedNodes
 
 let pass = 0
 let fail = 0
@@ -47,31 +58,49 @@ const SEED = flag('--seed', 7)
 
 const loaded = (await (process.env.NODE_REBUILD_MODULE
   ? import(process.env.NODE_REBUILD_MODULE)
-  : import('@term/make/code/compile/node-rebuild'))) as { rebuildNode?: Rebuild; default?: { rebuildNode?: Rebuild } }
+  : import('@term/make/code/compile/node-rebuild'))) as {
+  rebuildNode?: Rebuild
+  default?: { rebuildNode?: Rebuild }
+}
 const rebuildNode = (loaded.rebuildNode ?? loaded.default?.rebuildNode)!
 
-const statementHandle = (node: Node): NodeHandle => ({ of: 'statement-handle', node }) as NodeHandle
+const statementHandle = (node: Node): NodeHandle =>
+  ({ of: 'statement-handle', node }) as NodeHandle
 
 // every node rebuilt over its own children, each child rebuilt first. A node met at two places is rebuilt at each
-function deep(handle: NodeHandle, skip: string[], count: { nodes: number }): NodeHandle {
+function deep(
+  handle: NodeHandle,
+  skip: string[],
+  count: { nodes: number },
+): NodeHandle {
   count.nodes++
-  const children = nodeChildren(handle, skip).map(child => deep(child, skip, count))
+  const children = nodeChildren(handle, skip).map(child =>
+    deep(child, skip, count),
+  )
   return rebuildNode(handle, children, skip)
 }
 
-function rebuildProgram(program: Node[], skip: string[], count = { nodes: 0 }): Node[] {
-  return program.map(one => deep(statementHandle(one), skip, count).node as Node)
+function rebuildProgram(
+  program: Node[],
+  skip: string[],
+  count = { nodes: 0 },
+): Node[] {
+  return program.map(
+    one => deep(statementHandle(one), skip, count).node as Node,
+  )
 }
 
 // every object and list reachable from a value, a `span` never entered (spans are leaves, kept as they were)
 function reachable(value: unknown, out: Set<object>): void {
-  if (value === null || typeof value !== 'object' || out.has(value)) return
+  if (value === null || typeof value !== 'object' || out.has(value))
+    return
   out.add(value)
   if (Array.isArray(value)) {
     for (const one of value) reachable(one, out)
     return
   }
-  for (const [key, inner] of Object.entries(value)) if (key !== 'span') reachable(inner, out)
+  for (const [key, inner] of Object.entries(value))
+    if (key !== 'span') reachable(inner, out)
 }
 
 // the nodes a walk by node-children meets, for `skip`
@@ -88,7 +117,11 @@ function nodesOf(program: Node[], skip: string[]): Set<object> {
 // the objects and lists of the copy that hold a node of the copy at any depth (or are one), and that the input holds
 // too: what the copy shares with its input. A record that holds no node (a variable's binding, a dock literal) is a
 // leaf the step keeps, as it keeps a span
-function sharedWithInput(input: Node[], copy: Node[], skip: string[]): number {
+function sharedWithInput(
+  input: Node[],
+  copy: Node[],
+  skip: string[],
+): number {
   const before = new Set<object>()
   reachable(input, before)
   const nodes = nodesOf(copy, skip)
@@ -100,12 +133,20 @@ function sharedWithInput(input: Node[], copy: Node[], skip: string[]): number {
     if (known !== undefined) return known
     holding.set(value, false)
     let holds = nodes.has(value)
-    const entries = Array.isArray(value) ? value.map((one, at) => [String(at), one] as const) : Object.entries(value)
+    const entries = Array.isArray(value)
+      ? value.map((one, at) => [String(at), one] as const)
+      : Object.entries(value)
     for (const [key, inner] of entries) {
       if (key === 'span') continue
       // a skipped key, and a match arm's type (node-children never enters it), stay as they were
       if (!Array.isArray(value) && skip.includes(key)) continue
-      if (!Array.isArray(value) && key === 'type' && 'label' in value && 'body' in value) continue
+      if (
+        !Array.isArray(value) &&
+        key === 'type' &&
+        'label' in value &&
+        'body' in value
+      )
+        continue
       if (walk(inner, key)) holds = true
     }
     holding.set(value, holds)
@@ -120,8 +161,28 @@ function sharedWithInput(input: Node[], copy: Node[], skip: string[]): number {
 
 const units = shared.corpus({ sample: SAMPLE, seed: SEED })
 const totals = {
-  checked: { programs: 0, nodes: 0, unequal: 0, moved: 0, sharedObjects: 0, sharedPlaces: 0, inputShared: 0, threw: 0, notBuilt: 0 },
-  lowered: { programs: 0, nodes: 0, unequal: 0, moved: 0, sharedObjects: 0, sharedPlaces: 0, inputShared: 0, threw: 0, notBuilt: 0 },
+  checked: {
+    programs: 0,
+    nodes: 0,
+    unequal: 0,
+    moved: 0,
+    sharedObjects: 0,
+    sharedPlaces: 0,
+    inputShared: 0,
+    threw: 0,
+    notBuilt: 0,
+  },
+  lowered: {
+    programs: 0,
+    nodes: 0,
+    unequal: 0,
+    moved: 0,
+    sharedObjects: 0,
+    sharedPlaces: 0,
+    inputShared: 0,
+    threw: 0,
+    notBuilt: 0,
+  },
 }
 let skippedUnequal = 0
 let firstFailure = ''
@@ -144,27 +205,35 @@ for (const unit of units) {
       copy = rebuildProgram(program, [], count)
     } catch (error) {
       total.threw++
-      if (!firstFailure) firstFailure = `${unit.file} ${stage}: threw ${(error as Error).message}`
+      if (!firstFailure)
+        firstFailure = `${unit.file} ${stage}: threw ${(error as Error).message}`
       continue
     }
     total.nodes += count.nodes
     if (programJson([], copy as never) !== before) {
       total.unequal++
-      if (!firstFailure) firstFailure = `${unit.file} ${stage}: program-json differs`
+      if (!firstFailure)
+        firstFailure = `${unit.file} ${stage}: program-json differs`
     }
     if (programJson([], program as never) !== before) total.moved++
     const sharing = sharedWithInput(program, copy, [])
     total.sharedObjects += sharing
-    if (sharing > 0 && !firstFailure) firstFailure = `${unit.file} ${stage}: ${sharing} objects shared with the input`
+    if (sharing > 0 && !firstFailure)
+      firstFailure = `${unit.file} ${stage}: ${sharing} objects shared with the input`
     total.sharedPlaces += shared.census(copy, false).sharedPlaces
     if (stage === 'lowered') {
       const skip = ['type', 'span']
       try {
         const skipped = rebuildProgram(program, skip)
-        if (programJson([], skipped as never) !== before || sharedWithInput(program, skipped, skip) > 0) skippedUnequal++
+        if (
+          programJson([], skipped as never) !== before ||
+          sharedWithInput(program, skipped, skip) > 0
+        )
+          skippedUnequal++
       } catch (error) {
         skippedUnequal++
-        if (!firstFailure) firstFailure = `${unit.file} skip type: threw ${(error as Error).message}`
+        if (!firstFailure)
+          firstFailure = `${unit.file} skip type: threw ${(error as Error).message}`
       }
     }
   }
@@ -178,17 +247,40 @@ for (const stage of ['checked', 'lowered'] as const) {
   )
 }
 if (firstFailure) console.log(`first failure: ${firstFailure}`)
-ok('the corpus built programs at both stages', totals.checked.programs > 0 && totals.lowered.programs > 0)
-ok('the lowered corpus shares nodes, so the copy has sharing to undo', totals.lowered.inputShared > 0, `${totals.lowered.inputShared}`)
+ok(
+  'the corpus built programs at both stages',
+  totals.checked.programs > 0 && totals.lowered.programs > 0,
+)
+ok(
+  'the lowered corpus shares nodes, so the copy has sharing to undo',
+  totals.lowered.inputShared > 0,
+  `${totals.lowered.inputShared}`,
+)
 for (const stage of ['checked', 'lowered'] as const) {
   const t = totals[stage]
   ok(`${stage}: every rebuild ran`, t.threw === 0, `${t.threw}`)
-  ok(`${stage}: every copy is node-json-equal to its input`, t.unequal === 0, `${t.unequal}`)
+  ok(
+    `${stage}: every copy is node-json-equal to its input`,
+    t.unequal === 0,
+    `${t.unequal}`,
+  )
   ok(`${stage}: no input was written`, t.moved === 0, `${t.moved}`)
-  ok(`${stage}: no copy shares a node or a record holding one with its input`, t.sharedObjects === 0, `${t.sharedObjects}`)
-  ok(`${stage}: no copy shares a place within itself`, t.sharedPlaces === 0, `${t.sharedPlaces}`)
+  ok(
+    `${stage}: no copy shares a node or a record holding one with its input`,
+    t.sharedObjects === 0,
+    `${t.sharedObjects}`,
+  )
+  ok(
+    `${stage}: no copy shares a place within itself`,
+    t.sharedPlaces === 0,
+    `${t.sharedPlaces}`,
+  )
 }
-ok('with skip type and span, every lowered copy is equal and shares nothing entered', skippedUnequal === 0, `${skippedUnequal}`)
+ok(
+  'with skip type and span, every lowered copy is equal and shares nothing entered',
+  skippedUnequal === 0,
+  `${skippedUnequal}`,
+)
 
 // ---- built by hand ----
 
@@ -210,54 +302,133 @@ task second
   like number
   back add(a, 2)
 `
-const hand = shared.build({ file: 'test/compile/node-rebuild-hand.tree', text: HAND }, false)
-ok('the hand program compiles', hand.program !== undefined, hand.reason ?? '')
+const hand = shared.build(
+  { file: 'test/compile/node-rebuild-hand.tree', text: HAND },
+  false,
+)
+ok(
+  'the hand program compiles',
+  hand.program !== undefined,
+  hand.reason ?? '',
+)
 if (hand.program) {
   const program = hand.program
-  const span = { start: { line: 1, column: 1 }, end: { line: 1, column: 2 } }
-  const first = program.find(s => s.form === 'function' && s.name === 'first')!
-  const second = program.find(s => s.form === 'function' && s.name === 'second')!
-  const record = program.find(s => s.form === 'record-type' && s.name === 'upload-excess')!
+  const span = {
+    start: { line: 1, column: 1 },
+    end: { line: 1, column: 2 },
+  }
+  const first = program.find(
+    s => s.form === 'function' && s.name === 'first',
+  )!
+  const second = program.find(
+    s => s.form === 'function' && s.name === 'second',
+  )!
+  const record = program.find(
+    s => s.form === 'record-type' && s.name === 'upload-excess',
+  )!
   // one literal at two places
   const literal = { form: 'string', value: 'twice 😀 𝔸', span }
-  first.body = [{ form: 'return', value: { form: 'binary', op: '+', left: literal, right: literal, span }, span }]
+  first.body = [
+    {
+      form: 'return',
+      value: {
+        form: 'binary',
+        op: '+',
+        left: literal,
+        right: literal,
+        span,
+      },
+      span,
+    },
+  ]
   // one named type with a value argument, as two functions' result
-  const named = { kind: 'named', name: 'vec', valueArgs: [{ form: 'integer', value: 3, span }] }
+  const named = {
+    kind: 'named',
+    name: 'vec',
+    valueArgs: [{ form: 'integer', value: 3, span }],
+  }
   first.result = named
   second.result = named
   // one pin record in extend.pins and pins
-  const pin = record.extend?.pins?.[0] ?? { name: 'note', value: { form: 'string', value: 'Upload 😀 𝔸 too large', span } }
+  const pin = record.extend?.pins?.[0] ?? {
+    name: 'note',
+    value: { form: 'string', value: 'Upload 😀 𝔸 too large', span },
+  }
   if (record.extend) record.extend.pins = [pin]
   record.pins = [pin]
-  ok('the hand record-type has an extend to share a pin through', record.extend !== undefined)
+  ok(
+    'the hand record-type has an extend to share a pin through',
+    record.extend !== undefined,
+  )
 
   const before = programJson([], program as never)
   const copy = rebuildProgram(program, [])
-  const copyFirst = copy.find(s => s.form === 'function' && s.name === 'first')!
-  const copySecond = copy.find(s => s.form === 'function' && s.name === 'second')!
-  const copyRecord = copy.find(s => s.form === 'record-type' && s.name === 'upload-excess')!
+  const copyFirst = copy.find(
+    s => s.form === 'function' && s.name === 'first',
+  )!
+  const copySecond = copy.find(
+    s => s.form === 'function' && s.name === 'second',
+  )!
+  const copyRecord = copy.find(
+    s => s.form === 'record-type' && s.name === 'upload-excess',
+  )!
   const sum = copyFirst.body[0].value
-  ok('one literal at two places comes back as two objects', sum.left !== sum.right && sum.left !== literal && sum.right !== literal)
-  ok('both literals keep the astral text', sum.left.value === 'twice 😀 𝔸' && sum.right.value === 'twice 😀 𝔸')
-  ok('the input still holds one literal object', first.body[0].value.left === first.body[0].value.right)
+  ok(
+    'one literal at two places comes back as two objects',
+    sum.left !== sum.right &&
+      sum.left !== literal &&
+      sum.right !== literal,
+  )
+  ok(
+    'both literals keep the astral text',
+    sum.left.value === 'twice 😀 𝔸' && sum.right.value === 'twice 😀 𝔸',
+  )
+  ok(
+    'the input still holds one literal object',
+    first.body[0].value.left === first.body[0].value.right,
+  )
   ok(
     'one named type at two results comes back as two, each value argument its own',
-    copyFirst.result !== copySecond.result && copyFirst.result !== named && copyFirst.result.valueArgs[0] !== copySecond.result.valueArgs[0],
+    copyFirst.result !== copySecond.result &&
+      copyFirst.result !== named &&
+      copyFirst.result.valueArgs[0] !== copySecond.result.valueArgs[0],
   )
-  ok('the input still shares its named type', first.result === second.result)
+  ok(
+    'the input still shares its named type',
+    first.result === second.result,
+  )
   ok(
     'one pin record at extend.pins and pins comes back as two',
-    copyRecord.extend.pins[0] !== copyRecord.pins[0] && copyRecord.pins[0] !== pin && copyRecord.pins[0].value !== copyRecord.extend.pins[0].value,
+    copyRecord.extend.pins[0] !== copyRecord.pins[0] &&
+      copyRecord.pins[0] !== pin &&
+      copyRecord.pins[0].value !== copyRecord.extend.pins[0].value,
   )
-  ok('the input still shares its pin', record.extend.pins[0] === record.pins[0])
-  ok('the hand copy is node-json-equal to its input', programJson([], copy as never) === before)
-  ok('the hand input is unchanged', programJson([], program as never) === before)
-  ok('the hand copy shares nothing holding a node with its input', sharedWithInput(program, copy, []) === 0)
+  ok(
+    'the input still shares its pin',
+    record.extend.pins[0] === record.pins[0],
+  )
+  ok(
+    'the hand copy is node-json-equal to its input',
+    programJson([], copy as never) === before,
+  )
+  ok(
+    'the hand input is unchanged',
+    programJson([], program as never) === before,
+  )
+  ok(
+    'the hand copy shares nothing holding a node with its input',
+    sharedWithInput(program, copy, []) === 0,
+  )
 
   // the children must be node-children's list exactly
   const binary = statementHandle(first.body[0])
   const valueHandle = nodeChildren(binary, [])[0]!
-  const raises = (name: string, children: NodeHandle[], handle: NodeHandle, want: string): void => {
+  const raises = (
+    name: string,
+    children: NodeHandle[],
+    handle: NodeHandle,
+    want: string,
+  ): void => {
     let message = ''
     try {
       rebuildNode(handle, children, [])
@@ -268,9 +439,24 @@ if (hand.program) {
   }
   const sumHandle = valueHandle
   const sumChildren = nodeChildren(sumHandle, [])
-  raises('one child too few raises', sumChildren.slice(1), sumHandle, 'past the')
-  raises('one child too many raises', [...sumChildren, sumChildren[0]!], sumHandle, 'children were given')
-  raises('a child of another kind raises', [statementHandle(first.body[0]), ...sumChildren.slice(1)], sumHandle, 'another kind')
+  raises(
+    'one child too few raises',
+    sumChildren.slice(1),
+    sumHandle,
+    'past the',
+  )
+  raises(
+    'one child too many raises',
+    [...sumChildren, sumChildren[0]!],
+    sumHandle,
+    'children were given',
+  )
+  raises(
+    'a child of another kind raises',
+    [statementHandle(first.body[0]), ...sumChildren.slice(1)],
+    sumHandle,
+    'another kind',
+  )
 }
 
 console.log(`\nnode-rebuild: ${pass} pass, ${fail} fail`)

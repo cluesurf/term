@@ -10,7 +10,12 @@
 // `realpath` (make/code/resolve.ts), as `link/` already did.
 // Run: npx tsx test/compile/linked-stdlib.ts
 
-import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  realpathSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import { compileSeparate } from '@term/make/code/compile/separate'
@@ -141,7 +146,10 @@ writeFileSync(entryFile, entry)
 
 const pinned = process.env.TERM_STDLIB
 
-type Built = { ok: boolean; diagnostics?: { name: string; message: string }[] }
+type Built = {
+  ok: boolean
+  diagnostics?: { name: string; message: string }[]
+}
 
 function build(stdlib: string, how: 'merged' | 'separate'): Built {
   process.env.TERM_STDLIB = stdlib
@@ -171,14 +179,27 @@ function build(stdlib: string, how: 'merged' | 'separate'): Built {
   }
 }
 
-const said = (r: Built): string => (r.ok ? 'ok' : (r.diagnostics ?? []).map(d => `${d.name}: ${d.message}`).join(' | '))
+const said = (r: Built): string =>
+  r.ok
+    ? 'ok'
+    : (r.diagnostics ?? [])
+        .map(d => `${d.name}: ${d.message}`)
+        .join(' | ')
 
 for (const how of ['merged', 'separate'] as const) {
   const plain = build(join(real, 'base'), how)
-  ok(`${how}: the stdlib by its real path builds`, plain.ok, said(plain))
+  ok(
+    `${how}: the stdlib by its real path builds`,
+    plain.ok,
+    said(plain),
+  )
 
   const linked = build(join(link, 'base'), how)
-  ok(`${how}: the stdlib through a linked folder builds`, linked.ok, said(linked))
+  ok(
+    `${how}: the stdlib through a linked folder builds`,
+    linked.ok,
+    said(linked),
+  )
 }
 
 {
@@ -194,8 +215,16 @@ for (const how of ['merged', 'separate'] as const) {
     process.env.TERM_STDLIB = pinned
   }
 
-  ok('the stdlib resolver answers the real path', stdlib?.file === realpathSync(join(code, 'num.tree')), String(stdlib?.file))
-  ok('the sibling resolver answers the real path', sibling?.file === realpathSync(join(host, 'scan.tree')), String(sibling?.file))
+  ok(
+    'the stdlib resolver answers the real path',
+    stdlib?.file === realpathSync(join(code, 'num.tree')),
+    String(stdlib?.file),
+  )
+  ok(
+    'the sibling resolver answers the real path',
+    sibling?.file === realpathSync(join(host, 'scan.tree')),
+    String(sibling?.file),
+  )
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

@@ -61,7 +61,12 @@ const scaled = ([high, low]: Word): bigint => {
   const exponent = (high >>> 20) & 0x7ff
   const mantissa = (BigInt(high & 0xfffff) << 32n) | BigInt(low)
 
-  return sign * (exponent === 0 ? mantissa : (mantissa | (1n << 52n)) << BigInt(exponent - 1))
+  return (
+    sign *
+    (exponent === 0
+      ? mantissa
+      : (mantissa | (1n << 52n)) << BigInt(exponent - 1))
+  )
 }
 
 const absolute = (x: bigint): bigint => (x < 0n ? -x : x)
@@ -84,7 +89,11 @@ function randomFloat(): number {
   const bits = next()
   const exponent = 1023 + Number(bits % 401n) - 200
   const mantissa = (bits >> 12n) & ((1n << 52n) - 1n)
-  const high = Number(((bits >> 63n) << 31n) | (BigInt(exponent) << 20n) | (mantissa >> 32n))
+  const high = Number(
+    ((bits >> 63n) << 31n) |
+      (BigInt(exponent) << 20n) |
+      (mantissa >> 32n),
+  )
 
   return floatOf([high, Number(mantissa & 0xffffffffn)])
 }
@@ -94,7 +103,8 @@ const MAX = Number.MAX_VALUE
 const TINY = floatOf([0, 1])
 
 // ordered so that |a| >= |b|, which fast-two-sum needs
-const order = (a: number, b: number): [number, number] => (Math.abs(a) >= Math.abs(b) ? [a, b] : [b, a])
+const order = (a: number, b: number): [number, number] =>
+  Math.abs(a) >= Math.abs(b) ? [a, b] : [b, a]
 
 const PAIRS: [number, number][] = []
 
@@ -155,11 +165,16 @@ for (let from = 0; from < ALL.length; from += CHUNK) {
   chunks.push(
     ALL.slice(from, from + CHUNK)
       .flatMap(([a, b]) => [...wordsOf(a), ...wordsOf(b)])
-      .join(',')
+      .join(','),
   )
 }
 
-const chunkTasks = chunks.map((words, at) => `task chunk-${at}\n  like text\n  send back, text <${words}>\n`).join('\n')
+const chunkTasks = chunks
+  .map(
+    (words, at) =>
+      `task chunk-${at}\n  like text\n  send back, text <${words}>\n`,
+  )
+  .join('\n')
 const chunkCalls = chunks.map((_, at) => `{chunk-${at}()}`).join(',')
 
 const PROGRAM = `load @term/base/float/bits
@@ -338,7 +353,13 @@ const wordList = (text: string): Word[] => {
 }
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'float-bits' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'float-bits',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
@@ -346,7 +367,11 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
   }
 
   if (ran.form !== 'ran') {
-    ok(`${backend}: the float bits program builds and runs`, false, `${ran.stage}: ${ran.reason}`)
+    ok(
+      `${backend}: the float bits program builds and runs`,
+      false,
+      `${ran.stage}: ${ran.reason}`,
+    )
     continue
   }
 
@@ -363,24 +388,43 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
     const doubled = wordsOf(x + x)
 
     if (key([got[0]!, got[1]!]) !== key(value)) {
-      tripFails.push(`round trip ${key(value)} gave ${got[0]} ${got[1]}`)
+      tripFails.push(
+        `round trip ${key(value)} gave ${got[0]} ${got[1]}`,
+      )
     }
 
     if (key([got[2]!, got[3]!]) !== key(doubled)) {
-      tripFails.push(`doubling ${key(value)} gave ${got[2]} ${got[3]}, want ${key(doubled)}`)
+      tripFails.push(
+        `doubling ${key(value)} gave ${got[2]} ${got[3]}, want ${key(doubled)}`,
+      )
     }
   })
 
-  ok(`${backend}: words round trip and double like a real float (${VALUES.length} values)`, trips.length === VALUES.length && tripFails.length === 0, tripFails.slice(0, 5).join(' | '))
-  ok(`${backend}: float-high-word of the literal 1.0 and of the built one is 1072693248`, literalText === '1072693248 1072693248', `got ${literalText}`)
+  ok(
+    `${backend}: words round trip and double like a real float (${VALUES.length} values)`,
+    trips.length === VALUES.length && tripFails.length === 0,
+    tripFails.slice(0, 5).join(' | '),
+  )
+  ok(
+    `${backend}: float-high-word of the literal 1.0 and of the built one is 1072693248`,
+    literalText === '1072693248 1072693248',
+    `got ${literalText}`,
+  )
 
   // arithmetic
-  const fails: Record<string, string[]> = { 'two-sum': [], 'fast-two-sum': [], 'two-product': [], 'double-double-add': [], 'double-double-multiply': [] }
+  const fails: Record<string, string[]> = {
+    'two-sum': [],
+    'fast-two-sum': [],
+    'two-product': [],
+    'double-double-add': [],
+    'double-double-multiply': [],
+  }
   let checks = 0
 
   ALL.forEach(([a, b], at) => {
     const parts = (lines[at] ?? '').split(' ').map(Number)
-    const pairAt = (n: number): Word[] => wordList(parts.slice(n * 4, n * 4 + 4).join(' '))
+    const pairAt = (n: number): Word[] =>
+      wordList(parts.slice(n * 4, n * 4 + 4).join(' '))
     const A = scaled(wordsOf(a))
     const B = scaled(wordsOf(b))
     const sum = A + B
@@ -409,10 +453,16 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
 
     // the product is exact at scale 2^2148 and the two words at scale 2^1074, so compare them at one scale
     const exactProduct = A * B
-    const gotProduct = (scaled(productHigh) + scaled(productLow)) << 1074n
+    const gotProduct =
+      (scaled(productHigh) + scaled(productLow)) << 1074n
 
-    if (gotProduct !== exactProduct || key(productHigh) !== key(wordsOf(a * b))) {
-      fails['two-product']!.push(`${a} ${b}: ${key(productHigh)} + ${key(productLow)}`)
+    if (
+      gotProduct !== exactProduct ||
+      key(productHigh) !== key(wordsOf(a * b))
+    ) {
+      fails['two-product']!.push(
+        `${a} ${b}: ${key(productHigh)} + ${key(productLow)}`,
+      )
     }
 
     // x = a * b and y = a + b as exact numerators over 2^2148
@@ -435,10 +485,18 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
     }
   })
 
-  ok(`${backend}: one result line per pair (${ALL.length})`, lines.length === ALL.length, `got ${lines.length}`)
+  ok(
+    `${backend}: one result line per pair (${ALL.length})`,
+    lines.length === ALL.length,
+    `got ${lines.length}`,
+  )
 
   for (const [name, list] of Object.entries(fails)) {
-    ok(`${backend}: ${name}, ${list.length} fail of ${checks} checks across all five`, list.length === 0, `${list.length} failed, first: ${list.slice(0, 3).join(' | ')}`)
+    ok(
+      `${backend}: ${name}, ${list.length} fail of ${checks} checks across all five`,
+      list.length === 0,
+      `${list.length} failed, first: ${list.slice(0, 3).join(' | ')}`,
+    )
   }
 }
 

@@ -26,31 +26,52 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-type Built = { ok: boolean; warnings?: { message: string; file?: string }[]; diagnostics?: { message: string }[] }
-
-const slug = (file: string): string => `./${file.replace(/\.tree$/, '').replace(/\W/g, '_')}.mjs`
-
-const resolverOf = (files: Record<string, string>): Resolver => path => {
-  const name = path.replace(/^\.\//, '')
-  const text = files[name]
-
-  return text === undefined ? undefined : { file: `${name}.tree`, text }
+type Built = {
+  ok: boolean
+  warnings?: { message: string; file?: string }[]
+  diagnostics?: { message: string }[]
 }
 
+const slug = (file: string): string =>
+  `./${file.replace(/\.tree$/, '').replace(/\W/g, '_')}.mjs`
+
+const resolverOf =
+  (files: Record<string, string>): Resolver =>
+  path => {
+    const name = path.replace(/^\.\//, '')
+    const text = files[name]
+
+    return text === undefined
+      ? undefined
+      : { file: `${name}.tree`, text }
+  }
+
 // the entry's own cycle warnings, in each build
-function cycles(entry: string, files: Record<string, string>): { merged: string[]; separate: string[] } {
+function cycles(
+  entry: string,
+  files: Record<string, string>,
+): { merged: string[]; separate: string[] } {
   const resolve = resolverOf(files)
   const own = (r: Built): string[] => {
     if (!r.ok) {
-      return [`REFUSED ${(r.diagnostics ?? []).map(d => d.message.slice(0, 160)).join(' | ')}`]
+      return [
+        `REFUSED ${(r.diagnostics ?? []).map(d => d.message.slice(0, 160)).join(' | ')}`,
+      ]
     }
 
     return (r.warnings ?? [])
-      .filter(w => w.file === 'entry.tree' && /cycle|calls itself/.test(w.message))
+      .filter(
+        w =>
+          w.file === 'entry.tree' &&
+          /cycle|calls itself/.test(w.message),
+      )
       .map(w => w.message)
       .sort()
   }
-  const merged = compile({ file: 'entry.tree', text: entry }, { resolve, cache: new CompileCache() }) as Built
+  const merged = compile(
+    { file: 'entry.tree', text: entry },
+    { resolve, cache: new CompileCache() },
+  ) as Built
   const separate = compileSeparate(
     { file: 'entry.tree', text: entry },
     { resolve, cache: new CompileCache(), modules: slug },
@@ -88,8 +109,16 @@ task body
 `
 
 const local = cycles(LOCAL_ENTRY, { shape: SHAPE })
-ok('a local named like a task closes no cycle, merged', local.merged.length === 0, JSON.stringify(local.merged))
-ok('a local named like a task closes no cycle, separate', local.separate.length === 0, JSON.stringify(local.separate))
+ok(
+  'a local named like a task closes no cycle, merged',
+  local.merged.length === 0,
+  JSON.stringify(local.merged),
+)
+ok(
+  'a local named like a task closes no cycle, separate',
+  local.separate.length === 0,
+  JSON.stringify(local.separate),
+)
 
 // A REAL CYCLE THROUGH ANOTHER FILE: the entry hands `again` to the model's `apply`, which calls it, and `again` calls
 // `apply` with itself. Nothing descends: both builds must say so
@@ -113,9 +142,21 @@ task again
 `
 
 const value = cycles(VALUE_ENTRY, { apply: APPLY })
-ok('a cycle through a task handed to another file is reported, merged', value.merged.length > 0, JSON.stringify(value.merged))
-ok('a cycle through a task handed to another file is reported, separate', value.separate.length > 0, JSON.stringify(value.separate))
-ok('both builds say the same of it', JSON.stringify(value.merged) === JSON.stringify(value.separate), JSON.stringify(value))
+ok(
+  'a cycle through a task handed to another file is reported, merged',
+  value.merged.length > 0,
+  JSON.stringify(value.merged),
+)
+ok(
+  'a cycle through a task handed to another file is reported, separate',
+  value.separate.length > 0,
+  JSON.stringify(value.separate),
+)
+ok(
+  'both builds say the same of it',
+  JSON.stringify(value.merged) === JSON.stringify(value.separate),
+  JSON.stringify(value),
+)
 
 // A MUTUAL RECURSION BETWEEN TWO FILES THAT LOAD EACH OTHER (one unit of two files), with no descent
 const PING = `load ./entry
@@ -137,9 +178,21 @@ task pong
 `
 
 const mutual = cycles(PONG_ENTRY, { ping: PING, entry: PONG_ENTRY })
-ok('a mutual recursion across two files is reported, merged', mutual.merged.some(m => /mutual-recursion cycle/.test(m)), JSON.stringify(mutual.merged))
-ok('a mutual recursion across two files is reported, separate', mutual.separate.some(m => /mutual-recursion cycle/.test(m)), JSON.stringify(mutual.separate))
-ok('both builds say the same of it', JSON.stringify(mutual.merged) === JSON.stringify(mutual.separate), JSON.stringify(mutual))
+ok(
+  'a mutual recursion across two files is reported, merged',
+  mutual.merged.some(m => /mutual-recursion cycle/.test(m)),
+  JSON.stringify(mutual.merged),
+)
+ok(
+  'a mutual recursion across two files is reported, separate',
+  mutual.separate.some(m => /mutual-recursion cycle/.test(m)),
+  JSON.stringify(mutual.separate),
+)
+ok(
+  'both builds say the same of it',
+  JSON.stringify(mutual.merged) === JSON.stringify(mutual.separate),
+  JSON.stringify(mutual),
+)
 
 console.log(`\ntermination-across-units: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)

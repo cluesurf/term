@@ -19,11 +19,18 @@ export const lineLayout: Rule = {
       return
     }
 
-    const reports = lineLayoutReports(tree, context.source, context.file, (parsed, file, lean) => {
-      const program = programOf(parsed, file, lean)
+    const reports = lineLayoutReports(
+      tree,
+      context.source,
+      context.file,
+      (parsed, file, lean) => {
+        const program = programOf(parsed, file, lean)
 
-      return program === undefined ? { form: 'none' } : { form: 'some', value: program }
-    })
+        return program === undefined
+          ? { form: 'none' }
+          : { form: 'some', value: program }
+      },
+    )
 
     for (const report of reports) {
       const fix = report.fix
@@ -31,7 +38,9 @@ export const lineLayout: Rule = {
       context.report({
         message: report.message,
         span: report.span,
-        ...(fix && fix.form === 'put' ? { fix: { span: fix.span, text: fix.text } } : {}),
+        ...(fix?.form === 'put'
+          ? { fix: { span: fix.span, text: fix.text } }
+          : {}),
       })
     }
   },

@@ -67,22 +67,57 @@ task by-nested
   back get(grid, 3)
 `
 
-const built = compile({ file: 'computed-key.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!), library: true, leanOf: () => true } as never)
+const built = compile({ file: 'computed-key.tree', text }, {
+  resolve: withNativeEnv('node', stdlibResolver()!),
+  library: true,
+  leanOf: () => true,
+} as never)
 
 if (!built.ok) {
-  ok('the program builds', false, built.diagnostics.map(d => d.message.split('\n').join(' ')).join(' | '))
+  ok(
+    'the program builds',
+    false,
+    built.diagnostics
+      .map(d => d.message.split('\n').join(' '))
+      .join(' | '),
+  )
 } else {
   const ts = built.typescript
-  ok('no segment indexes by a task', !/\[multiply\]|grid, multiply\b|\[add\]/.test(ts), ts.split('\n').filter(l => /multiply|add\(/.test(l)).join(' | '))
+  ok(
+    'no segment indexes by a task',
+    !/\[multiply\]|grid, multiply\b|\[add\]/.test(ts),
+    ts
+      .split('\n')
+      .filter(l => /multiply|add\(/.test(l))
+      .join(' | '),
+  )
 
   const dir = mkdtempSync(join(tmpdir(), 'term-computed-key-'))
   const file = join(dir, 'module.mjs')
-  writeFileSync(file, transformSync(ts, { loader: 'ts', format: 'esm' }).code)
-  const mod = (await import(pathToFileURL(file).href)) as Record<string, (...a: unknown[]) => unknown>
+  writeFileSync(
+    file,
+    transformSync(ts, { loader: 'ts', format: 'esm' }).code,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as Record<
+    string,
+    (...a: unknown[]) => unknown
+  >
 
-  ok('a call as the key writes and reads the place it computes', mod.byCall!(1) === 7, String(mod.byCall!(1)))
-  ok('a variable as the key still does', mod.byName!(3) === 5, String(mod.byName!(3)))
-  ok('a nested call as the key does', mod.byNested!(1) === 9, String(mod.byNested!(1)))
+  ok(
+    'a call as the key writes and reads the place it computes',
+    mod.byCall!(1) === 7,
+    String(mod.byCall!(1)),
+  )
+  ok(
+    'a variable as the key still does',
+    mod.byName!(3) === 5,
+    String(mod.byName!(3)),
+  )
+  ok(
+    'a nested call as the key does',
+    mod.byNested!(1) === 9,
+    String(mod.byNested!(1)),
+  )
 }
 
 console.log(`\ncomputed-key: ${pass} pass, ${fail} fail`)

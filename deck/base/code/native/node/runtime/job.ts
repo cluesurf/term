@@ -24,9 +24,14 @@ const __termJobNever = (): Promise<void> => new Promise<void>(() => {})
 
 // what every runtime wait does as it ends: stop here when the job running it was cancelled. Kept on globalThis, so the
 // clock's `delay` reaches it without loading this runtime (native/node/clock.tree)
-const __termJobStop = (): Promise<void> | undefined => (__termJobCurrent.getStore()?.state === 'cancelled' ? __termJobNever() : undefined)
+const __termJobStop = (): Promise<void> | undefined =>
+  __termJobCurrent.getStore()?.state === 'cancelled'
+    ? __termJobNever()
+    : undefined
 
-;(globalThis as { __term_job_stop?: () => Promise<void> | undefined }).__term_job_stop = __termJobStop
+;(
+  globalThis as { __term_job_stop?: () => Promise<void> | undefined }
+).__term_job_stop = __termJobStop
 
 type SeedJob = {
   promise: Promise<void>
@@ -152,7 +157,10 @@ const job = {
         }
       }
 
-      if (jobs.length === 0 || jobs.some(one => one.state !== 'running')) {
+      if (
+        jobs.length === 0 ||
+        jobs.some(one => one.state !== 'running')
+      ) {
         finish()
 
         return

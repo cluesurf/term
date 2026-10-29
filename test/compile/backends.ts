@@ -27,11 +27,15 @@ function ok(name: string, cond: boolean, info = ''): void {
 function frontEnd(text: string): Program {
   const parsed = parse({ file: 'b.tree', text })
 
-  if (!parsed.ok) {throw new Error('parse failed')}
+  if (!parsed.ok) {
+    throw new Error('parse failed')
+  }
 
   const built = mill(parsed.tree, 'b.tree')
 
-  if (!built.ok) {throw new Error('mill failed')}
+  if (!built.ok) {
+    throw new Error('mill failed')
+  }
 
   resolve(built.program, 'b.tree')
   check(built.program, 'b.tree')
@@ -70,7 +74,8 @@ function main(): void {
     'swift: function signature',
     // a task's inputs are labeled by name on Swift, and every call passes the label (compile/swift.ts `label`). An
     // unproven Int `-` stops on overflow through the prelude's termSubtract (term-stdlib-parity-0014)
-    swift.includes('func fibonacci(n: Int) -> Int') && swift.includes('fibonacci(n: (termSubtract(n, 1)))'),
+    swift.includes('func fibonacci(n: Int) -> Int') &&
+      swift.includes('fibonacci(n: (termSubtract(n, 1)))'),
     swift,
   )
   ok(
@@ -159,8 +164,9 @@ task danger
   )
   ok(
     'swift: a text raises failure through the TermException carrier',
-    sw.includes('TermException(host: "", form: "failure", note: "oops"') &&
-      sw.includes('struct TermException: Error'),
+    sw.includes(
+      'TermException(host: "", form: "failure", note: "oops"',
+    ) && sw.includes('struct TermException: Error'),
     sw,
   )
 
@@ -177,7 +183,8 @@ task danger
     // `when (self) { is BoxFull -> }`, or with a field-less case `when { self is BoxFull -> ... self === BoxEmpty }`,
     // which compares that case's one object by identity (kotlin.ts, `byIdentity`). Either way `is` smart-casts
     ((ko.includes('when (self)') && ko.includes('is BoxFull ->')) ||
-      (ko.includes('self is BoxFull ->') && ko.includes('self === BoxEmpty ->'))) &&
+      (ko.includes('self is BoxFull ->') &&
+        ko.includes('self === BoxEmpty ->'))) &&
       ko.includes('self.value'),
     ko,
   )

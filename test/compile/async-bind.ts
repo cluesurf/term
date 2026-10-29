@@ -30,8 +30,17 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 const run = (program: string): { output: string; emitted: string } => {
   const dir = mkdtempSync(join(tmpdir(), 'async-bind-'))
-  const ran = runOn({ backend: 'typescript', program, resolve: env => projectResolver(ROOT, env, ROOT), dir, name: 'bind' })
-  const output = ran.form === 'ran' ? ran.output : `${ran.form}: ${ran.reason.slice(0, 600)}`
+  const ran = runOn({
+    backend: 'typescript',
+    program,
+    resolve: env => projectResolver(ROOT, env, ROOT),
+    dir,
+    name: 'bind',
+  })
+  const output =
+    ran.form === 'ran'
+      ? ran.output
+      : `${ran.form}: ${ran.reason.slice(0, 600)}`
   let emitted = ''
 
   try {
@@ -43,9 +52,20 @@ const run = (program: string): { output: string; emitted: string } => {
 
 // the refusals of a program that should not build, or BUILT
 const refusals = (text: string): string => {
-  const result = compile({ file: join(ROOT, 'tmp/async-bind.tree'), text }, { resolve: projectResolver(ROOT, 'node', ROOT), leanOf: () => true })
+  const result = compile(
+    { file: join(ROOT, 'tmp/async-bind.tree'), text },
+    {
+      resolve: projectResolver(ROOT, 'node', ROOT),
+      leanOf: () => true,
+    },
+  )
 
-  return result.ok ? 'BUILT' : result.diagnostics.filter(d => d.severity !== 'warning').map(d => `${d.name}: ${d.message}`).join(' | ')
+  return result.ok
+    ? 'BUILT'
+    : result.diagnostics
+        .filter(d => d.severity !== 'warning')
+        .map(d => `${d.name}: ${d.message}`)
+        .join(' | ')
 }
 
 const answer = `form answer
@@ -53,7 +73,9 @@ const answer = `form answer
 `
 
 // a bind whose host code answers a promise of an answer with two problems, marked or not, the mark where `where` says
-const answerLater = (where: 'none' | 'before' | 'after'): string => `${answer}
+const answerLater = (
+  where: 'none' | 'before' | 'after',
+): string => `${answer}
 bind answer-later
 ${where === 'before' ? '  mark async\n' : ''}  like dynamic
 ${where === 'after' ? '  mark async\n' : ''}  case node
@@ -72,9 +94,22 @@ task run
   like text
   back <{count-problems()}>
 `)
-ok('a field read off a marked bind\'s answer reads the answer', direct.output === '2', direct.output)
-ok('the call is written awaited', /await Promise\.resolve\(/.test(direct.emitted), direct.emitted.slice(0, 800))
-ok('its caller becomes async, and the caller of that', /async function countProblems/.test(direct.emitted) && /async function run/.test(direct.emitted), direct.emitted.slice(0, 800))
+ok(
+  "a field read off a marked bind's answer reads the answer",
+  direct.output === '2',
+  direct.output,
+)
+ok(
+  'the call is written awaited',
+  /await Promise\.resolve\(/.test(direct.emitted),
+  direct.emitted.slice(0, 800),
+)
+ok(
+  'its caller becomes async, and the caller of that',
+  /async function countProblems/.test(direct.emitted) &&
+    /async function run/.test(direct.emitted),
+  direct.emitted.slice(0, 800),
+)
 
 const after = run(`${answerLater('after')}
 task run
@@ -82,7 +117,11 @@ task run
   save result, answer-later()
   back <{result/problems/length}>
 `)
-ok('`mark async` may follow the bind\'s like, as on a task', after.output === '2', after.output)
+ok(
+  "`mark async` may follow the bind's like, as on a task",
+  after.output === '2',
+  after.output,
+)
 
 const through = run(`${answerLater('before')}
 task start-answer
@@ -94,7 +133,11 @@ task run
   save result, start-answer()
   back <{result/problems/length}>
 `)
-ok('a plain task handing the marked bind\'s answer back is async, and its caller reads the answer (the T-0334 shape)', through.output === '2', through.output)
+ok(
+  "a plain task handing the marked bind's answer back is async, and its caller reads the answer (the T-0334 shape)",
+  through.output === '2',
+  through.output,
+)
 
 const written = run(`${answerLater('before')}
 task run
@@ -104,7 +147,11 @@ task run
       wait true
   back <{result/problems/length}>
 `)
-ok('a written wait on the call reads and means the same', written.output === '2', written.output)
+ok(
+  'a written wait on the call reads and means the same',
+  written.output === '2',
+  written.output,
+)
 
 const ticked = refusals(`load @term/base/task
   find handle
@@ -115,12 +162,20 @@ task run
   save job, tick answer-later()
   back job/problems/length
 `)
-ok('a tick of a marked bind is its pending job, so a field of the answer read off it is refused', /"handle" has no field "problems"/.test(ticked), ticked)
+ok(
+  'a tick of a marked bind is its pending job, so a field of the answer read off it is refused',
+  /"handle" has no field "problems"/.test(ticked),
+  ticked,
+)
 
 const outside = refusals(`${answerLater('before')}
 host found, answer-later()
 `)
-ok('outside every task an unticked call to a marked bind is refused, naming tick', /async-outside-task|tick/.test(outside) && outside !== 'BUILT', outside)
+ok(
+  'outside every task an unticked call to a marked bind is refused, naming tick',
+  /async-outside-task|tick/.test(outside) && outside !== 'BUILT',
+  outside,
+)
 
 // ---- the missing mark, caught where the build can tell ----
 
@@ -130,7 +185,11 @@ task count-problems
   save result, answer-later()
   back result/problems/length
 `)
-ok('a field read off an unmarked bind whose text answers a promise is refused as missing-wait', /missing-wait: "problems" is read off the promise/.test(unmarked), unmarked)
+ok(
+  'a field read off an unmarked bind whose text answers a promise is refused as missing-wait',
+  /missing-wait: "problems" is read off the promise/.test(unmarked),
+  unmarked,
+)
 
 const viaTask = refusals(`${answerLater('none')}
 task start-answer
@@ -143,7 +202,11 @@ task count-problems
   save result, start-answer()
   back result/problems/length
 `)
-ok('and through a plain task that hands it back', /missing-wait: "problems" is read off the promise/.test(viaTask), viaTask)
+ok(
+  'and through a plain task that hands it back',
+  /missing-wait: "problems" is read off the promise/.test(viaTask),
+  viaTask,
+)
 
 const chained = refusals(`${answer}
 bind answer-later
@@ -155,7 +218,11 @@ task count-problems
   like number
   back answer-later()/problems/length
 `)
-ok('a text ending in a .then chain is known to answer a promise', /missing-wait/.test(chained), chained)
+ok(
+  'a text ending in a .then chain is known to answer a promise',
+  /missing-wait/.test(chained),
+  chained,
+)
 
 const handed = refusals(`${answerLater('none')}
 bind settle-count
@@ -170,7 +237,11 @@ task count-problems
   save result, answer-later()
   back wait settle-count(result)
 `)
-ok('an unmarked promise handed on as a value to more host code builds', handed === 'BUILT', handed)
+ok(
+  'an unmarked promise handed on as a value to more host code builds',
+  handed === 'BUILT',
+  handed,
+)
 
 const unknown = refusals(`${answer}
 bind answer-later
@@ -185,7 +256,11 @@ task count-problems
   save result, answer-later(make-one)
   back result/problems/length
 `)
-ok('a text whose shape does not say it answers a promise is the mark\'s to say (the stated gap)', unknown === 'BUILT', unknown)
+ok(
+  "a text whose shape does not say it answers a promise is the mark's to say (the stated gap)",
+  unknown === 'BUILT',
+  unknown,
+)
 
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail > 0 ? 1 : 0)

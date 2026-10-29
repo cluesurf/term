@@ -12,7 +12,8 @@
 import { compile } from '@term/make/code/compile/compile'
 import * as sharedNodes from '../../../../../../task/term/shared-nodes'
 
-const census = ((sharedNodes as any).census ?? (sharedNodes as any).default.census) as typeof sharedNodes.census
+const census = ((sharedNodes as any).census ??
+  (sharedNodes as any).default.census) as typeof sharedNodes.census
 
 let pass = 0
 let fail = 0
@@ -132,18 +133,28 @@ const SOURCES: Record<string, string> = {
 }
 
 for (const [name, text] of Object.entries(SOURCES)) {
-  const out = compile({ file: '/gate/code/walk.tree', text }, { optimize: false } as never) as {
+  const out = compile({ file: '/gate/code/walk.tree', text }, {
+    optimize: false,
+  } as never) as {
     ok: boolean
     program?: Record<string, any>[]
     diagnostics?: { message: string }[]
   }
   if (!out.ok || !out.program) {
-    ok(`${name}: builds`, false, out.diagnostics?.map(d => d.message).join(' | ') ?? 'no program')
+    ok(
+      `${name}: builds`,
+      false,
+      out.diagnostics?.map(d => d.message).join(' | ') ?? 'no program',
+    )
     continue
   }
   const counted = census(out.program, false)
   // a census that counted nothing would pass vacuously: the walk's `while` must be among its places
-  ok(`${name}: ${counted.places} places, ${counted.shared.size} shared`, counted.places > 10 && counted.shared.size === 0, `first at ${counted.firstShared?.root}`)
+  ok(
+    `${name}: ${counted.places} places, ${counted.shared.size} shared`,
+    counted.places > 10 && counted.shared.size === 0,
+    `first at ${counted.firstShared?.root}`,
+  )
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

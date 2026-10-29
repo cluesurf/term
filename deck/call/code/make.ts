@@ -16,16 +16,27 @@ import {
   isLookStylesheet,
 } from '@term/make/code/compile/compile'
 import { compileSeparate } from '@term/make/code/compile/separate'
-import type { SeparateResult, UnitExplain, UnitMemo } from '@term/make/code/compile/separate'
+import type {
+  SeparateResult,
+  UnitExplain,
+  UnitMemo,
+} from '@term/make/code/compile/separate'
 import { hashText } from '@term/make/code/term/hash'
 import { staleEntries } from '@term/make/code/compile/reach'
 import { isDataFile } from '@term/make/code/compile/host'
 import { toCamel, toPascal } from '@term/make/code/compile/typescript'
 import { CompileCache } from '@term/make/code/compile/cache'
 import { makeParseMemo } from '@term/make/code/compile/load'
-import { projectCache, projectCacheDir } from '@term/call/code/cache-store'
+import {
+  projectCache,
+  projectCacheDir,
+} from '@term/call/code/cache-store'
 import { readable } from '@term/call/code/test-preprocess'
-import { isLockfileAt, isRoleFileAt, manifestNameOf } from '@term/call/code/manifest-name'
+import {
+  isLockfileAt,
+  isRoleFileAt,
+  manifestNameOf,
+} from '@term/call/code/manifest-name'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import type { DeckOf, Roll } from '@term/make/code/compile/roll'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
@@ -39,7 +50,13 @@ import {
 } from '@term/make/code/compile/feed-mill'
 import { withNativeEnv } from '@term/make/code/compile/native'
 import type { NativeEnv } from '@term/make/code/compile/native'
-import type { LoadHow, ParseMemo, Resolver, Source, WalkMemo } from '@term/make/code/compile/load'
+import type {
+  LoadHow,
+  ParseMemo,
+  Resolver,
+  Source,
+  WalkMemo,
+} from '@term/make/code/compile/load'
 // from the compiler, where they live, not through call/code/walk.ts's re-export: walk.ts imports esbuild (for the
 // REPL), and the language server imports `projectResolver` from here into a bundle that ships no node_modules
 import {
@@ -51,13 +68,25 @@ import {
 import { packageRest } from '@term/make/code/deck/resolve'
 import { renderDiagnostic } from '@term/call/code/report'
 import { declaresDraft } from '@term/call/code/draft'
-import { FACE_NATIVE_PATH, contractFindings } from '@term/call/code/face-contract'
+import {
+  FACE_NATIVE_PATH,
+  contractFindings,
+} from '@term/call/code/face-contract'
 import type { ContractFinding } from '@term/call/code/face-contract'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { addOwed, describeOwed } from '@term/make/code/check/holds'
 import type { Owed } from '@term/make/code/check/holds'
 import * as plan from '@term/call/code/make-plan'
-import { closeRun, count, failRun, field, openRun, outputOptions, report, reportProblems } from '@term/call/code/output'
+import {
+  closeRun,
+  count,
+  failRun,
+  field,
+  openRun,
+  outputOptions,
+  report,
+  reportProblems,
+} from '@term/call/code/output'
 
 // one problem of a build, whole: the diagnostic, and the text it was compiled from when that is not the file on disk
 // (the test preprocessor rewrote it, or it is a generated grammar reader), so its code frame shows the right lines
@@ -108,7 +137,12 @@ const FEED_CURSOR = '@term/mill/feed'
 function feedGrammarOf(
   file: string,
   text: string,
-): { grammar: ReturnType<typeof readFeedMineGrammar>; faults: string[] } | undefined {
+):
+  | {
+      grammar: ReturnType<typeof readFeedMineGrammar>
+      faults: string[]
+    }
+  | undefined {
   if (path.basename(file) !== 'mine.tree') {
     return undefined
   }
@@ -148,7 +182,11 @@ export function buildable(
   source: string,
   role?: string | null,
 ):
-  | { text: string; generated: boolean; place: (diagnostic: Diagnostic) => BuildProblem }
+  | {
+      text: string
+      generated: boolean
+      place: (diagnostic: Diagnostic) => BuildProblem
+    }
   | { faults: string[] } {
   const read = role === 'mill' ? undefined : feedGrammarOf(file, source)
 
@@ -172,9 +210,18 @@ export function buildable(
     // the grammar's own `load` blocks come through verbatim: a `mine value` may call a real helper, and where that
     // helper lives is a fact only the grammar knows. Its diagnostics are framed against the generated reader, the
     // only text they have lines in
-    const generated = compileFeedMine(read.grammar, substrate, FEED_CURSOR, feedMineLoads(file, source))
+    const generated = compileFeedMine(
+      read.grammar,
+      substrate,
+      FEED_CURSOR,
+      feedMineLoads(file, source),
+    )
 
-    return { text: generated, generated: true, place: diagnostic => ({ diagnostic, text: generated }) }
+    return {
+      text: generated,
+      generated: true,
+      place: diagnostic => ({ diagnostic, text: generated }),
+    }
   }
 
   const unit = readable(source)
@@ -322,12 +369,16 @@ export function resolveTreeFile(base: string): string | undefined {
 // falls back to `path.resolve`, which is the same answer as before for a case where there is nothing to resolve.
 function safeReal(p: string): string {
   const full = path.resolve(p)
+
   let dir = full
+
   const rest: string[] = []
 
   for (;;) {
     try {
-      return rest.length > 0 ? path.join(realpathSync(dir), ...rest) : realpathSync(dir)
+      return rest.length > 0
+        ? path.join(realpathSync(dir), ...rest)
+        : realpathSync(dir)
     } catch {
       const up = path.dirname(dir)
 
@@ -343,7 +394,9 @@ function safeReal(p: string): string {
 
 // is `child` inside `parent` (or equal to it)? compared on normalized paths.
 function isWithin(child: string, parent: string): boolean {
-  if (child === parent) {return true}
+  if (child === parent) {
+    return true
+  }
 
   const rel = path.relative(parent, child)
 
@@ -385,17 +438,25 @@ export type EntryOutcome = {
 
 export function buildSession(root: string): BuildSession {
   let kept = keptResolver(projectResolver(root))
+
   const walked: WalkMemo = new Map()
   const entries = new Map<string, EntryOutcome>()
   const rolls = new Map<string, Roll>()
   // each walked module's stamp as of the last build
   const stamps = new Map<string, string>()
   // the files that say how every module is read, rather than being one
-  const settings = ['deck.tree', 'lock.tree', 'role.tree', 'base/role.tree'].map(name => path.join(root, name))
+  const settings = [
+    'deck.tree',
+    'lock.tree',
+    'role.tree',
+    'base/role.tree',
+  ].map(name => path.join(root, name))
+
   let known: string | undefined
 
   return {
-    resolve: (importPath, fromFile, how) => kept.resolve(importPath, fromFile, how),
+    resolve: (importPath, fromFile, how) =>
+      kept.resolve(importPath, fromFile, how),
     parsed: makeParseMemo(),
     units: new Map(),
     walked,
@@ -405,9 +466,14 @@ export function buildSession(root: string): BuildSession {
       kept.turn()
 
       const listed = files.join('\n')
-      const moved = [...stamps].filter(([file, stamp]) => kept.stamp(file) !== stamp).map(([file]) => file)
+      const moved = [...stamps]
+        .filter(([file, stamp]) => kept.stamp(file) !== stamp)
+        .map(([file]) => file)
 
-      if (listed === known && !moved.some(file => settings.includes(file))) {
+      if (
+        listed === known &&
+        !moved.some(file => settings.includes(file))
+      ) {
         return moved
       }
 
@@ -442,7 +508,8 @@ export function buildSession(root: string): BuildSession {
 // one of the things it has to be able to say
 export function explainStore(root: string): UnitExplain {
   const dir = path.join(projectCacheDir(root), 'explain')
-  const fileOf = (id: string): string => path.join(dir, `${hashText(id)}.json`)
+  const fileOf = (id: string): string =>
+    path.join(dir, `${hashText(id)}.json`)
 
   return {
     reasons: new Map(),
@@ -494,7 +561,11 @@ export function explainStore(root: string): UnitExplain {
 // read for its own life (`projectResolver`'s read cache) and would hand back the old text, which is how the first
 // version of this served an edited module as it was (task/term/edit-replay.ts found it on its first run). A later ask
 // in the same build is a map lookup. `turn` starts a build
-export function keptResolver(base: Resolver): { resolve: Resolver; turn: () => void; stamp: (file: string) => string } {
+export function keptResolver(base: Resolver): {
+  resolve: Resolver
+  turn: () => void
+  stamp: (file: string) => string
+} {
   const answers = new Map<string, Source | undefined>()
   // each file handed out, the text it was handed out with and the stamp that text was read at
   const texts = new Map<string, { stamp: string; text: string }>()
@@ -524,6 +595,7 @@ export function keptResolver(base: Resolver): { resolve: Resolver; turn: () => v
   // `found` with its file's text as it is now
   const current = (found: Source): Source => {
     const now = stampOf(found.file)
+
     let had = texts.get(found.file)
 
     if (had === undefined) {
@@ -539,11 +611,14 @@ export function keptResolver(base: Resolver): { resolve: Resolver; turn: () => v
       }
     }
 
-    return had.text === found.text ? found : { ...found, text: had.text }
+    return had.text === found.text
+      ? found
+      : { ...found, text: had.text }
   }
 
   const resolve: Resolver = (importPath, fromFile, how) => {
     const key = `${importPath}\u0000${fromFile}\u0000${how?.base ?? ''}`
+
     let found: Source | undefined
 
     if (answers.has(key)) {
@@ -739,7 +814,9 @@ export function projectResolver(
     // path resolves the same from every importer EXCEPT through the own-package and project fallbacks, which read
     // the importer's package, so those are keyed by it too
     const memoKey =
-      (relative ? `${path.dirname(fromFile)}\0${importPath}` : `${packageRootOf(fromFile)}\0${importPath}`) +
+      (relative
+        ? `${path.dirname(fromFile)}\0${importPath}`
+        : `${packageRootOf(fromFile)}\0${importPath}`) +
       (how?.base !== undefined ? `\0base:${how.base}` : '')
 
     const memoHit = resolveMemo.get(memoKey)
@@ -755,8 +832,17 @@ export function projectResolver(
   }
 
   // a package path inside one package directory, by THE rule (code root, then package root, or `base`)
-  const inPackage = (dir: string, rest: string, how?: LoadHow): Source | undefined => {
-    const { file, shadowed } = resolvePackagePath({ dir, rest, base: how?.base })
+  const inPackage = (
+    dir: string,
+    rest: string,
+    how?: LoadHow,
+  ): Source | undefined => {
+    const { file, shadowed } = resolvePackagePath({
+      dir,
+      rest,
+      base: how?.base,
+    })
+
     const source = file ? readFile(file) : undefined
 
     // the read is cached and shared, so the shadow is reported on a copy of it
@@ -829,7 +915,11 @@ export function projectResolver(
     const ownPackage = packageNameOf(fromFile)
 
     if (ownPackage && named.pkg === ownPackage) {
-      const withinSelf = inPackage(packageRootOf(fromFile) ?? root, named.rest, how)
+      const withinSelf = inPackage(
+        packageRootOf(fromFile) ?? root,
+        named.rest,
+        how,
+      )
 
       if (withinSelf) {
         return withinSelf
@@ -848,7 +938,11 @@ export function projectResolver(
   // Building face itself, the project's file IS face's, so nothing changes. note/project/term/app/11-uniform-interface.md
   // Either spelling of the path reaches it: `@term/face/component/native/...` (the code root, the short form) and
   // the older `@term/face/code/component/native/...`, and the app's file is found by the package path rule.
-  const FACE_NATIVE = ['@term/face/component/native/', '@term/face/code/component/native/']
+  const FACE_NATIVE = [
+    '@term/face/component/native/',
+    '@term/face/code/component/native/',
+  ]
+
   const rootFace = path.join(rootReal, 'deck.tree')
 
   const shadowed: Resolver = (importPath, fromFile, how) => {
@@ -858,7 +952,10 @@ export function projectResolver(
       existsSync(rootFace) &&
       manifestNameOf(rootFace) !== '@term/face'
     ) {
-      const own = inPackage(rootReal, importPath.slice('@term/face/'.length))
+      const own = inPackage(
+        rootReal,
+        importPath.slice('@term/face/'.length),
+      )
 
       if (own) {
         return own
@@ -929,7 +1026,11 @@ export function compileProject(
     // a file carrying `test <phrase>` blocks is not plain Term until the test preprocessor has rewritten them into
     // tasks. `term test` does that before compiling; a plain build has to as well, or every test file in the project
     // fails here on a construct the compiler is never meant to see.
-    const unit = buildable(file, readFileSync(file, 'utf8'), roleOf(file))
+    const unit = buildable(
+      file,
+      readFileSync(file, 'utf8'),
+      roleOf(file),
+    )
 
     if ('faults' in unit) {
       failed++
@@ -946,7 +1047,9 @@ export function compileProject(
 
     // a problem in this file, framed against what the person wrote
     const framed = (diagnostic: Diagnostic): BuildProblem =>
-      diagnostic.file !== file ? { diagnostic, text: undefined } : unit.place(diagnostic)
+      diagnostic.file !== file
+        ? { diagnostic, text: undefined }
+        : unit.place(diagnostic)
 
     const result = compile(
       { file, text },
@@ -977,9 +1080,14 @@ export function compileProject(
     // author never wrote, and it was printed at a line of the generated source, `mine.tree:37` in a 20-line grammar
     // (guides: parsers/grammars, 2026-10-04)
     for (const warning of result.warnings) {
-      if (warning.file === file && !(grammar && warning.name === 'unused-binding')) {
+      if (
+        warning.file === file &&
+        !(grammar && warning.name === 'unused-binding')
+      ) {
         const problem = framed(warning)
-        warnings.push(renderDiagnostic(problem.diagnostic, problem.text))
+        warnings.push(
+          renderDiagnostic(problem.diagnostic, problem.text),
+        )
         problems.push(problem)
       }
     }
@@ -1025,7 +1133,10 @@ export function compileProject(
 
     // and its style tables, light and dark, for a host with no CSS engine (native-dom-0008, 0048)
     const tables: [string, string | undefined][] = isCss
-      ? [['.style', result.style], ['.dark.style', result.styleDark]]
+      ? [
+          ['.style', result.style],
+          ['.dark.style', result.styleDark],
+        ]
       : []
 
     for (const [extension, table] of tables) {
@@ -1034,6 +1145,7 @@ export function compileProject(
       }
 
       const stylePath = outPath.replace(/\.css$/, extension)
+
       let held: string | undefined
 
       try {
@@ -1054,6 +1166,7 @@ export function compileProject(
   // (native-dom-0025). Face's own are held by test/compile/face-contract.ts.
   for (const finding of appShadowFindings(root, resolve)) {
     failed++
+
     const fault = `${path.relative(root, finding.file)}: shadows face's ${finding.component} on ${finding.rung} and ${finding.problem}`
     errors.push(fault)
     faults.push(fault)
@@ -1073,22 +1186,34 @@ export function compileProject(
 }
 
 // the contract findings for a project's own `code/component/native/` against face's generics, none for face itself
-function appShadowFindings(root: string, resolve: Resolver): ContractFinding[] {
+function appShadowFindings(
+  root: string,
+  resolve: Resolver,
+): ContractFinding[] {
   const own = path.join(root, FACE_NATIVE_PATH)
   const manifest = path.join(root, 'deck.tree')
 
-  if (!existsSync(own) || (existsSync(manifest) && manifestNameOf(manifest) === '@term/face')) {
+  if (
+    !existsSync(own) ||
+    (existsSync(manifest) && manifestNameOf(manifest) === '@term/face')
+  ) {
     return []
   }
 
   // face's generics, found the way an import finds them
-  const generic = resolve('@term/face/code/component/switch', path.join(root, 'deck.tree'))
+  const generic = resolve(
+    '@term/face/code/component/switch',
+    path.join(root, 'deck.tree'),
+  )
 
   if (!generic) {
     return []
   }
 
-  return contractFindings(path.join(path.dirname(generic.file), 'native'), own)
+  return contractFindings(
+    path.join(path.dirname(generic.file), 'native'),
+    own,
+  )
 }
 
 // stable, flat artifact name per source module under host/.unit/: its deck's name and its path inside the deck
@@ -1097,9 +1222,15 @@ function appShadowFindings(root: string, resolve: Resolver): ContractFinding[] {
 // project built it: it was the path relative to the project root, and the standard library's units one project built
 // imported `./.._base_code_string` into a project whose own copy was `./.._term_deck_term_deck_base_code_string`. A
 // file in no deck keeps the path relative to the root
-export function unitSlug(root: string, file: string, deckOf: DeckOf = projectDeckOf()): string {
+export function unitSlug(
+  root: string,
+  file: string,
+  deckOf: DeckOf = projectDeckOf(),
+): string {
   const deck = deckOf(file)
-  const named = deck ? `${deck.name}/${path.relative(deck.root, file)}` : path.relative(root, file)
+  const named = deck
+    ? `${deck.name}/${path.relative(deck.root, file)}`
+    : path.relative(root, file)
 
   return plan.unitSlugOf(named)
 }
@@ -1111,20 +1242,34 @@ export function unitSlug(root: string, file: string, deckOf: DeckOf = projectDec
 export function entryShim(
   root: string,
   file: string,
-  exports: { name: string; exported: string; file: string; type: boolean }[],
+  exports: {
+    name: string
+    exported: string
+    file: string
+    type: boolean
+  }[],
   slug: (file: string) => string,
 ): string {
-  const outPath = path.join(root, 'host', path.relative(root, file).replace(/\.tree$/, '.ts'))
+  const outPath = path.join(
+    root,
+    'host',
+    path.relative(root, file).replace(/\.tree$/, '.ts'),
+  )
 
   const unitOf = (module: string): string => {
     const relative = path
-      .relative(path.dirname(outPath), path.join(root, 'host', '.unit', slug(module)))
+      .relative(
+        path.dirname(outPath),
+        path.join(root, 'host', '.unit', slug(module)),
+      )
       .split(path.sep)
       .join('/')
 
     // `./` or `../` makes it a relative import. A shim at the root of host/ reaches `.unit/x`, which begins with a
     // dot and is a PACKAGE name all the same, so a bundler left it external and node failed to find it
-    return relative.startsWith('./') || relative.startsWith('../') ? relative : `./${relative}`
+    return relative.startsWith('./') || relative.startsWith('../')
+      ? relative
+      : `./${relative}`
   }
 
   // the grouping and the lines are Term, make-plan.tree `entry-shim-text`; the spellings and the paths stay here
@@ -1133,8 +1278,17 @@ export function entryShim(
 
 // a file that is not a program, and so is compiled whole rather than cut into units: a mill definition, a data file,
 // a look stylesheet
-export function isWholeFile(file: string, text: string, role: string | null | undefined): boolean {
-  return role === 'mill' || role === 'host' || (!role && isDataFile({ file, text })) || isLookStylesheet({ file, text })
+export function isWholeFile(
+  file: string,
+  text: string,
+  role: string | null | undefined,
+): boolean {
+  return (
+    role === 'mill' ||
+    role === 'host' ||
+    (!role && isDataFile({ file, text })) ||
+    isLookStylesheet({ file, text })
+  )
 }
 
 // Separate compilation for the whole project (`term make --separate`): every module of every entry's closure is
@@ -1179,7 +1333,18 @@ export function compileProjectSeparate(
   // say what moved
   const moved = session.turn(files)
   const stale =
-    moved === undefined ? undefined : new Set(staleEntries(new Map([...walked].map(([file, one]) => [file, one.edges])), files, moved))
+    moved === undefined
+      ? undefined
+      : new Set(
+          staleEntries(
+            new Map(
+              [...walked].map(([file, one]) => [file, one.edges]),
+            ),
+            files,
+            moved,
+          ),
+        )
+
   const deckOf = projectDeckOf()
   const roleOf = projectRoleOf(root)
   const leanOf = projectLeanOf(root)
@@ -1234,14 +1399,19 @@ export function compileProjectSeparate(
   }
 
   for (const file of files) {
-    const replay = stale?.has(file) === false ? session.entries.get(file) : undefined
+    const replay =
+      stale?.has(file) === false ? session.entries.get(file) : undefined
 
     if (replay) {
       compiled++
       reused += replay.units
       closures.set(file, replay.closureKey)
       problems.push(...replay.problems)
-      warnings.push(...replay.problems.map(problem => renderDiagnostic(problem.diagnostic, problem.text)))
+      warnings.push(
+        ...replay.problems.map(problem =>
+          renderDiagnostic(problem.diagnostic, problem.text),
+        ),
+      )
       replay.open.forEach(claim => open.add(claim))
       addOwed(obligations, replay.obligations)
       continue
@@ -1250,7 +1420,11 @@ export function compileProjectSeparate(
     session.entries.delete(file)
 
     // a file of `test` blocks, or a feed grammar, is built as compileProject builds it (`buildable`)
-    const unit = buildable(file, readFileSync(file, 'utf8'), roleOf(file))
+    const unit = buildable(
+      file,
+      readFileSync(file, 'utf8'),
+      roleOf(file),
+    )
 
     if ('faults' in unit) {
       failed++
@@ -1265,7 +1439,9 @@ export function compileProjectSeparate(
 
     const { text, generated: grammar } = unit
     const framed = (diagnostic: Diagnostic): BuildProblem =>
-      diagnostic.file !== file ? { diagnostic, text: undefined } : unit.place(diagnostic)
+      diagnostic.file !== file
+        ? { diagnostic, text: undefined }
+        : unit.place(diagnostic)
 
     // a file that is not a program has no module graph to split: a look stylesheet (CSS), a data file (a JSON
     // module) and a mill definition (checked, never built). Each goes through compile() exactly as the merged build
@@ -1273,13 +1449,18 @@ export function compileProjectSeparate(
     const role = roleOf(file)
 
     if (isWholeFile(file, text, role)) {
-      const one = compile({ file, text }, { resolve, cache, parsed, walked, deckOf, roleOf, leanOf })
+      const one = compile(
+        { file, text },
+        { resolve, cache, parsed, walked, deckOf, roleOf, leanOf },
+      )
 
       if (!one.ok) {
         failed++
 
         for (const problem of one.diagnostics.map(framed)) {
-          errors.push(renderDiagnostic(problem.diagnostic, problem.text))
+          errors.push(
+            renderDiagnostic(problem.diagnostic, problem.text),
+          )
           problems.push(problem)
         }
 
@@ -1293,12 +1474,21 @@ export function compileProjectSeparate(
       }
 
       const isCss = typeof one.css === 'string'
-      const outPath = path.join(root, 'host', path.relative(root, file).replace(/\.tree$/, isCss ? '.css' : '.ts'))
+      const outPath = path.join(
+        root,
+        'host',
+        path
+          .relative(root, file)
+          .replace(/\.tree$/, isCss ? '.css' : '.ts'),
+      )
 
       writeArtifact(outPath, isCss ? one.css! : one.typescript)
 
       // and its style tables, light and dark, for a host with no CSS engine (native-dom-0008, 0048)
-      for (const [extension, table] of [['.style', one.style], ['.dark.style', one.styleDark]] as const) {
+      for (const [extension, table] of [
+        ['.style', one.style],
+        ['.dark.style', one.styleDark],
+      ] as const) {
         if (isCss && table !== undefined) {
           writeArtifact(outPath.replace(/\.css$/, extension), table)
         }
@@ -1308,23 +1498,25 @@ export function compileProjectSeparate(
     }
 
     // a parallel pass may have built it already (build-separate-parallel.ts), with these same options in a worker
-    const result = precomputed?.get(file) ?? compileSeparate(
-      { file, text },
-      // roleOf comes along: a unit compiled separately has to be asked the same question about its role as one
-      // compiled through the merged path, or the two disagree about whether a `hook` is a command or a route
-      {
-        resolve,
-        cache,
-        modules: f => `./${slug(f)}`,
-        roleOf,
-        leanOf,
-        deckOf,
-        parsed,
-        units,
-        walked,
-        explain,
-      },
-    )
+    const result =
+      precomputed?.get(file) ??
+      compileSeparate(
+        { file, text },
+        // roleOf comes along: a unit compiled separately has to be asked the same question about its role as one
+        // compiled through the merged path, or the two disagree about whether a `hook` is a command or a route
+        {
+          resolve,
+          cache,
+          modules: f => `./${slug(f)}`,
+          roleOf,
+          leanOf,
+          deckOf,
+          parsed,
+          units,
+          walked,
+          explain,
+        },
+      )
 
     if (!result.ok) {
       failed++
@@ -1346,9 +1538,14 @@ export function compileProjectSeparate(
     const own: BuildProblem[] = []
 
     for (const warning of result.warnings) {
-      if (warning.file === file && !(grammar && warning.name === 'unused-binding')) {
+      if (
+        warning.file === file &&
+        !(grammar && warning.name === 'unused-binding')
+      ) {
         const problem = framed(warning)
-        warnings.push(renderDiagnostic(problem.diagnostic, problem.text))
+        warnings.push(
+          renderDiagnostic(problem.diagnostic, problem.text),
+        )
         problems.push(problem)
         own.push(problem)
       }
@@ -1383,14 +1580,21 @@ export function compileProjectSeparate(
 
     // the entry shim, written by the worker that built the entry when a parallel pass did (`shim`)
     writeArtifact(
-      path.join(root, 'host', path.relative(root, file).replace(/\.tree$/, '.ts')),
-      'shim' in result && typeof result.shim === 'string' ? result.shim : entryShim(root, file, result.exports, slug),
+      path.join(
+        root,
+        'host',
+        path.relative(root, file).replace(/\.tree$/, '.ts'),
+      ),
+      'shim' in result && typeof result.shim === 'string'
+        ? result.shim
+        : entryShim(root, file, result.exports, slug),
     )
   }
 
   // an app's shadows of face's platform implementations take exactly face's contract, as compileProject holds them
   for (const finding of appShadowFindings(root, resolve)) {
     failed++
+
     const fault = `${path.relative(root, finding.file)}: shadows face's ${finding.component} on ${finding.rung} and ${finding.problem}`
     errors.push(fault)
     faults.push(fault)
@@ -1418,7 +1622,10 @@ export function compileProjectSeparate(
 // the rolls of the units some entry still reaches: the session keeps every unit's roll it was handed, and in a watch an
 // edit that drops an import leaves that unit's roll behind, which no entry builds from any more. Every module's edges
 // are in the session's walk
-function liveRolls(session: BuildSession, closures: Map<string, string>): Map<string, Roll> {
+function liveRolls(
+  session: BuildSession,
+  closures: Map<string, string>,
+): Map<string, Roll> {
   const reached = new Set<string>()
   const stack = [...closures.keys()]
 
@@ -1434,7 +1641,11 @@ function liveRolls(session: BuildSession, closures: Map<string, string>): Map<st
   }
 
   // a unit is labelled by its files, joined (compile/separate.ts)
-  return new Map([...session.rolls].filter(([label]) => label.split('+').some(file => reached.has(file))))
+  return new Map(
+    [...session.rolls].filter(([label]) =>
+      label.split('+').some(file => reached.has(file)),
+    ),
+  )
 }
 
 // watch the project's .tree files and recompile incrementally on change (a shared cache reuses unchanged modules).
@@ -1446,21 +1657,36 @@ export function watchProject(root: string, merged = false): void {
   // answered from memory (`BuildSession`)
   const session = buildSession(root)
 
-  openRun({ verb: 'make', root, facts: ['watching', ...(merged ? ['merged'] : [])] })
+  openRun({
+    verb: 'make',
+    root,
+    facts: ['watching', ...(merged ? ['merged'] : [])],
+  })
   stopOnInterrupt()
 
   // one `build` item per build, its problems before it, the file that changed as its subject. The run never closes
   // until ctrl-c: it is a stream (section 11)
   const build = (changed: string): void => {
     const started = Date.now()
-    const result = merged ? compileProject(root, cache) : compileProjectSeparate(root, cache, 'node', session)
+    const result = merged
+      ? compileProject(root, cache)
+      : compileProjectSeparate(root, cache, 'node', session)
+
     reportProblems(result.problems, root, result.faults)
     report({
       glyph: result.failed > 0 ? 'failed' : 'done',
       verb: 'build',
       subject: changed,
       duration: Date.now() - started,
-      counts: [count(result.compiled, 'files', 'file', result.compiled + result.failed), count(result.written, 'written')],
+      counts: [
+        count(
+          result.compiled,
+          'files',
+          'file',
+          result.compiled + result.failed,
+        ),
+        count(result.written, 'written'),
+      ],
     })
   }
 
@@ -1471,7 +1697,13 @@ export function watchProject(root: string, merged = false): void {
 // a watch ends on ctrl-c, with its closing item and exit 130 (section 18)
 function stopOnInterrupt(): void {
   process.once('SIGINT', () => {
-    process.exit(closeRun({ verdict: 'Stopped', failure: 'interrupted', uptime: true }))
+    process.exit(
+      closeRun({
+        verdict: 'Stopped',
+        failure: 'interrupted',
+        uptime: true,
+      }),
+    )
   })
 }
 
@@ -1491,6 +1723,7 @@ export function watchTreeFiles(
   const fire = async (name: string): Promise<void> => {
     if (running) {
       pending = true
+
       return
     }
 
@@ -1508,19 +1741,26 @@ export function watchTreeFiles(
     }
   }
 
-  const watcher = fsWatch(root, { recursive: true }, (_event, filename) => {
-    const name = typeof filename === 'string' ? filename : ''
+  const watcher = fsWatch(
+    root,
+    { recursive: true },
+    (_event, filename) => {
+      const name = typeof filename === 'string' ? filename : ''
 
-    if (!name.endsWith('.tree') || ignore.some(dir => name.includes(dir))) {
-      return
-    }
+      if (
+        !name.endsWith('.tree') ||
+        ignore.some(dir => name.includes(dir))
+      ) {
+        return
+      }
 
-    if (timer) {
-      clearTimeout(timer)
-    }
+      if (timer) {
+        clearTimeout(timer)
+      }
 
-    timer = setTimeout(() => void fire(name), 30)
-  })
+      timer = setTimeout(() => void fire(name), 30)
+    },
+  )
 
   return { close: () => watcher.close() }
 }
@@ -1528,12 +1768,22 @@ export function watchTreeFiles(
 // watch and re-run the project's own build script (`pnpm run make`) on each change. Used when the project defines a
 // custom build, so the watcher respects it rather than the built-in .tree -> host compile.
 function watchScript(root: string): void {
-  openRun({ verb: 'make', root, facts: ['package.json make', 'watching'] })
+  openRun({
+    verb: 'make',
+    root,
+    facts: ['package.json make', 'watching'],
+  })
   stopOnInterrupt()
 
   const run = async (changed: string): Promise<void> => {
     const started = Date.now()
-    const done = await runCaptured({ cmd: 'pnpm', args: ['run', 'make'], cwd: root, raw: outputOptions().raw })
+    const done = await runCaptured({
+      cmd: 'pnpm',
+      args: ['run', 'make'],
+      cwd: root,
+      raw: outputOptions().raw,
+    })
+
     report({
       glyph: done.code === 0 ? 'done' : 'failed',
       verb: 'run',
@@ -1541,7 +1791,8 @@ function watchScript(root: string): void {
       duration: Date.now() - started,
       exit: done.code,
       facts: ['pnpm run make'],
-      quote: done.code === 0 && !outputOptions().verbose ? [] : done.lines,
+      quote:
+        done.code === 0 && !outputOptions().verbose ? [] : done.lines,
     })
   }
 
@@ -1589,18 +1840,35 @@ export async function callMake(input: {
       } else {
         // the package's own build: its output quoted under the `run` item, in full when it failed or under
         // --verbose, the last 20 lines of it otherwise kept out of the way
-        openRun({ verb: 'make', root: input.root, facts: ['package.json make'] })
+        openRun({
+          verb: 'make',
+          root: input.root,
+          facts: ['package.json make'],
+        })
+
         const started = Date.now()
-        const run = await runCaptured({ cmd: 'pnpm', args: ['run', 'make'], cwd: input.root, raw: outputOptions().raw })
+        const run = await runCaptured({
+          cmd: 'pnpm',
+          args: ['run', 'make'],
+          cwd: input.root,
+          raw: outputOptions().raw,
+        })
+
         report({
           glyph: run.code === 0 ? 'done' : 'failed',
           verb: 'run',
           subject: 'pnpm run make',
           duration: Date.now() - started,
           exit: run.code,
-          quote: run.code === 0 && !outputOptions().verbose ? [] : run.lines,
+          quote:
+            run.code === 0 && !outputOptions().verbose ? [] : run.lines,
         })
-        closeRun({ verdict: run.code === 0 ? 'Built by its package script' : 'Its package script failed' })
+        closeRun({
+          verdict:
+            run.code === 0
+              ? 'Built by its package script'
+              : 'Its package script failed',
+        })
       }
 
       return
@@ -1618,12 +1886,16 @@ export async function callMake(input: {
     // setting up the pool falls back to the sequential build, so a worker problem never breaks `term make`.
     const fileCount = findTreeFiles(input.root).length
     // `--trees` beside a package script is a choice worth saying: the script did not run
-    openRun({ verb: 'make', root: input.root, counts: [count(fileCount, 'files', 'file')], facts: hasMakeScript ? ['--trees'] : [] })
+    openRun({
+      verb: 'make',
+      root: input.root,
+      counts: [count(fileCount, 'files', 'file')],
+      facts: hasMakeScript ? ['--trees'] : [],
+    })
 
     {
       const separate = !input.merged
-      const parallel =
-        !separate && fileCount >= 16 && cpus().length > 2
+      const parallel = !separate && fileCount >= 16 && cpus().length > 2
 
       let result: {
         compiled: number
@@ -1638,6 +1910,7 @@ export async function callMake(input: {
       }
 
       const started = Date.now()
+
       // the separate path's own counts, units built against units replayed from the cache
       let units: { built: number; reused: number } | undefined
       // and each entry's closure key, which the roll below is cached by, and each unit's roll it is assembled from
@@ -1646,17 +1919,28 @@ export async function callMake(input: {
 
       if (separate) {
         const session = buildSession(input.root)
+
         let precomputed: Map<string, SeparateResult> | undefined
         let pooled = 0
-        const explain = input.explain ? explainStore(input.root) : undefined
+
+        const explain = input.explain
+          ? explainStore(input.root)
+          : undefined
 
         // a big project's units are built across worker threads first, in dependency order, and the build below then
         // writes what they answered (build-separate-parallel.ts). A pool that cannot start leaves it to the build
         if (!explain && fileCount >= 16 && cpus().length > 2) {
           try {
-            const { compileUnitsParallel } = await import('@term/call/code/build-separate-parallel')
+            const { compileUnitsParallel } =
+              await import('@term/call/code/build-separate-parallel')
+
             const pooledAt = Date.now()
-            const pool = await compileUnitsParallel(input.root, findTreeFiles(input.root, [], 'node'), session)
+            const pool = await compileUnitsParallel(
+              input.root,
+              findTreeFiles(input.root, [], 'node'),
+              session,
+            )
+
             precomputed = pool.results
             pooled = pool.built
 
@@ -1666,21 +1950,34 @@ export async function callMake(input: {
               verb: 'build',
               subject: 'units in parallel',
               duration: Date.now() - pooledAt,
-              counts: [count(pool.jobs, 'units', 'unit'), count(pool.workers, 'workers', 'worker')],
+              counts: [
+                count(pool.jobs, 'units', 'unit'),
+                count(pool.workers, 'workers', 'worker'),
+              ],
               // where the time went: the walk before the pool, and the workers' building and rolling, summed
               facts: [
                 `walk ${Math.round(pool.spent.walking / 1000)}s`,
                 `build ${Math.round(pool.spent.building / 1000)}s of workers`,
                 `roll ${Math.round(pool.spent.rolling / 1000)}s of workers`,
               ],
-              ...(pool.failures.length > 0 ? { message: pool.failures.slice(0, 5) } : {}),
+              ...(pool.failures.length > 0
+                ? { message: pool.failures.slice(0, 5) }
+                : {}),
             })
           } catch {
             precomputed = undefined
           }
         }
 
-        const built = compileProjectSeparate(input.root, undefined, 'node', session, precomputed, explain)
+        const built = compileProjectSeparate(
+          input.root,
+          undefined,
+          'node',
+          session,
+          precomputed,
+          explain,
+        )
+
         result = built
         units = { built: built.built + pooled, reused: built.reused }
         closures = built.closures
@@ -1690,16 +1987,25 @@ export async function callMake(input: {
         for (const [label, reasons] of explain?.reasons ?? []) {
           const subject = label
             .split('+')
-            .map(file => (isWithin(file, input.root) ? path.relative(input.root, file) : file))
+            .map(file =>
+              isWithin(file, input.root)
+                ? path.relative(input.root, file)
+                : file,
+            )
             .join(' + ')
 
-          report({ glyph: 'info', verb: 'built', subject, message: reasons })
+          report({
+            glyph: 'info',
+            verb: 'built',
+            subject,
+            message: reasons,
+          })
         }
       } else if (parallel) {
         try {
-          const { compileProjectParallel } = await import(
-            '@term/call/code/build-parallel'
-          )
+          const { compileProjectParallel } =
+            await import('@term/call/code/build-parallel')
+
           result = await compileProjectParallel(input.root)
         } catch {
           result = compileProject(input.root)
@@ -1712,13 +2018,18 @@ export async function callMake(input: {
       // each entry's own open claims, which both paths report: the separate path carries the entry unit's
       const openClaims =
         'open' in result && Array.isArray(result.open)
-          ? (result.open as string[])
+          ? (result.open)
           : undefined
 
       // every error and the project's own warnings, as Problem items with their code frames (section 12)
       reportProblems(result.problems, input.root, result.faults)
-      const warnings = result.problems.filter(one => one.diagnostic.severity === 'warning').length
-      const errorCount = result.problems.length - warnings + result.faults.length
+
+      const warnings = result.problems.filter(
+        one => one.diagnostic.severity === 'warning',
+      ).length
+
+      const errorCount =
+        result.problems.length - warnings + result.faults.length
 
       const facts: string[] = []
 
@@ -1734,8 +2045,15 @@ export async function callMake(input: {
         duration: Date.now() - started,
         counts: [
           count(compiled, 'files', 'file', fileCount),
-          ...(result.written !== undefined ? [count(result.written, 'written')] : []),
-          ...(units ? [count(units.built, 'units built', 'unit built'), count(units.reused, 'reused')] : []),
+          ...(result.written !== undefined
+            ? [count(result.written, 'written')]
+            : []),
+          ...(units
+            ? [
+                count(units.built, 'units built', 'unit built'),
+                count(units.reused, 'reused'),
+              ]
+            : []),
         ],
         facts,
       })
@@ -1743,14 +2061,22 @@ export async function callMake(input: {
       if (failed > 0) {
         closeRun({
           verdict: 'Build failed',
-          counts: [count(errorCount, 'errors', 'error'), ...(warnings ? [count(warnings, 'warnings', 'warning')] : [])],
+          counts: [
+            count(errorCount, 'errors', 'error'),
+            ...(warnings
+              ? [count(warnings, 'warnings', 'warning')]
+              : []),
+          ],
         })
 
         return
       }
 
       if (compiled === 0) {
-        closeRun({ verdict: 'Nothing to build', message: ['There is no .tree file here.'] })
+        closeRun({
+          verdict: 'Nothing to build',
+          message: ['There is no .tree file here.'],
+        })
 
         return
       }
@@ -1783,7 +2109,9 @@ export async function callMake(input: {
           verb: 'prove',
           // each kind named with its own count: a walk's termination was counted under the first two
           subject: `tier 0: ${describeOwed(obligations)}`,
-          counts: [count(obligations.proven, 'proven', '', obligations.total)],
+          counts: [
+            count(obligations.proven, 'proven', '', obligations.total),
+          ],
           facts: ['term hold gates the rest'],
         })
       }
@@ -1796,11 +2124,26 @@ export async function callMake(input: {
         const { projectRoll } = await import('@term/call/code/roll')
         const rolledAt = Date.now()
 
-        if (rolls === undefined && fileCount >= 16 && cpus().length > 2) {
+        if (
+          rolls === undefined &&
+          fileCount >= 16 &&
+          cpus().length > 2
+        ) {
           try {
-            const { compileUnitsParallel } = await import('@term/call/code/build-separate-parallel')
-            const pool = await compileUnitsParallel(input.root, findTreeFiles(input.root, [], 'node'), buildSession(input.root))
-            rolls = new Map([...pool.results.values()].flatMap(result => (result.ok ? result.rolls : [])))
+            const { compileUnitsParallel } =
+              await import('@term/call/code/build-separate-parallel')
+
+            const pool = await compileUnitsParallel(
+              input.root,
+              findTreeFiles(input.root, [], 'node'),
+              buildSession(input.root),
+            )
+
+            rolls = new Map(
+              [...pool.results.values()].flatMap(result =>
+                result.ok ? result.rolls : [],
+              ),
+            )
           } catch {
             rolls = undefined
           }
@@ -1837,12 +2180,21 @@ export async function callMake(input: {
           ],
         })
       } catch (error) {
-        report({ glyph: 'warning', verb: 'write', subject: 'host/roll.json was not written', message: [error instanceof Error ? error.message : String(error)] })
+        report({
+          glyph: 'warning',
+          verb: 'write',
+          subject: 'host/roll.json was not written',
+          message: [
+            error instanceof Error ? error.message : String(error),
+          ],
+        })
       }
 
       closeRun({
         verdict: `${compiled} file${compiled === 1 ? '' : 's'} built`,
-        counts: warnings ? [count(warnings, 'warnings', 'warning')] : [],
+        counts: warnings
+          ? [count(warnings, 'warnings', 'warning')]
+          : [],
       })
     }
   } catch (err) {
@@ -1939,10 +2291,21 @@ function runCommand(input: {
 // a child run for its output: every line it writes, both streams in the order they arrive, and its exit code. Never
 // rejects. The output is QUOTED under the item that ran it (section 15), so nothing it prints mixes into the tool's
 // own lines; `--raw` (`raw`) passes it through untouched instead, and then `lines` is empty
-function runCaptured(input: { cmd: string; args: string[]; cwd: string; raw: boolean }): Promise<{ code: number; lines: string[] }> {
+function runCaptured(input: {
+  cmd: string
+  args: string[]
+  cwd: string
+  raw: boolean
+}): Promise<{ code: number; lines: string[] }> {
   return new Promise(resolve => {
-    const child = spawn(input.cmd, input.args, { cwd: input.cwd, stdio: input.raw ? 'inherit' : 'pipe', shell: true })
+    const child = spawn(input.cmd, input.args, {
+      cwd: input.cwd,
+      stdio: input.raw ? 'inherit' : 'pipe',
+      shell: true,
+    })
+
     const lines: string[] = []
+
     let partial = ''
 
     const take = (chunk: Buffer): void => {
@@ -1961,7 +2324,9 @@ function runCaptured(input: { cmd: string; args: string[]; cwd: string; raw: boo
 
       resolve({ code: code ?? (signal ? 130 : 1), lines })
     })
-    child.on('error', error => resolve({ code: 127, lines: [...lines, String(error)] }))
+    child.on('error', error =>
+      resolve({ code: 127, lines: [...lines, String(error)] }),
+    )
   })
 }
 

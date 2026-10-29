@@ -8,7 +8,12 @@ const runner = {
     _directory: string,
     _environment: Map<string, string> | undefined,
     _limit: number,
-  ): Promise<{ code: number; output: string; error: string; signal: number }> => ({
+  ): Promise<{
+    code: number
+    output: string
+    error: string
+    signal: number
+  }> => ({
     code: -1,
     output: '',
     error: 'subprocess is not available in the browser',
@@ -28,7 +33,12 @@ const runner = {
     _directory: string,
     _environment: Map<string, string> | undefined,
     _limit: number,
-  ): Promise<{ code: number; output: string; error: string; signal: number }> => ({
+  ): Promise<{
+    code: number
+    output: string
+    error: string
+    signal: number
+  }> => ({
     code: -1,
     output: '',
     error: 'subprocess is not available in the browser',

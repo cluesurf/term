@@ -73,18 +73,34 @@ task run
 const dir = mkdtempSync(join(tmpdir(), 'term-tick-native-'))
 const only = process.env.TICK_ONLY ?? ''
 
-for (const backend of (['typescript', 'rust', 'swift', 'kotlin'] as Backend[]).filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'tick' })
+for (const backend of (
+  ['typescript', 'rust', 'swift', 'kotlin'] as Backend[]
+).filter(b => !only || b === only)) {
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'tick',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
     continue
   }
 
-  ok(`${backend}: compiles, builds and runs`, ran.form === 'ran', ran.form === 'failed' ? `${ran.stage}: ${ran.reason}` : '')
+  ok(
+    `${backend}: compiles, builds and runs`,
+    ran.form === 'ran',
+    ran.form === 'failed' ? `${ran.stage}: ${ran.reason}` : '',
+  )
 
   if (ran.form === 'ran') {
-    ok(`${backend}: three ticked calls, two plain and one from a handler, each ran at once, before run-pending, and all by the time it returns`, ran.output === '3 3', `got ${JSON.stringify(ran.output)}`)
+    ok(
+      `${backend}: three ticked calls, two plain and one from a handler, each ran at once, before run-pending, and all by the time it returns`,
+      ran.output === '3 3',
+      `got ${JSON.stringify(ran.output)}`,
+    )
   }
 }
 

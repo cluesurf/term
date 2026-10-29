@@ -6,16 +6,27 @@
 // directory every Rust harness shares, so the crates build once. Swift and Kotlin take the stdlib's dependency flags.
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
-import { nativePrelude, withNativeEnv } from '@term/make/code/compile/native'
+import {
+  nativePrelude,
+  withNativeEnv,
+} from '@term/make/code/compile/native'
 import { emitRust } from '@term/make/code/compile/rust'
 import { emitSwift } from '@term/make/code/compile/swift'
-import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
+import {
+  emitKotlin,
+  hoistKotlinImports,
+} from '@term/make/code/compile/kotlin'
 import { nativeFlags } from './native-flags'
 import { runDir } from './run-dir'
 
@@ -38,18 +49,39 @@ export const readRuntime = (path: string): string | undefined => {
   return existsSync(file) ? readFileSync(file, 'utf8') : undefined
 }
 
-const CARGO_TOML = readFileSync(join(ROOT, 'task/term/native-gate.ts'), 'utf8')
+const CARGO_TOML = readFileSync(
+  join(ROOT, 'task/term/native-gate.ts'),
+  'utf8',
+)
   .match(/const CARGO_TOML = `([\s\S]*?)`/)![1]!
   .replace('term-native-gate', 'term-pattern-native')
 
 const BIG = { maxBuffer: 256 * 1024 * 1024 }
 
 // the program's printed answer, or a thrown Error carrying the first lines of the compiler's or toolchain's errors
-export function runProgram(backend: Backend, text: string, entry: string): string {
-  const compiled = compile({ file: entry, text }, { resolve: withNativeEnv(backend, stdlibResolver()!), env: backend })
+export function runProgram(
+  backend: Backend,
+  text: string,
+  entry: string,
+): string {
+  const compiled = compile(
+    { file: entry, text },
+    {
+      resolve: withNativeEnv(backend, stdlibResolver()!),
+      env: backend,
+    },
+  )
 
   if (!compiled.ok) {
-    throw new Error(`did not compile: ${compiled.diagnostics.slice(0, 3).map(d => `${d.file.split('/').slice(-2).join('/')}:${d.span.start.line + 1} ${d.message}`).join('; ')}`)
+    throw new Error(
+      `did not compile: ${compiled.diagnostics
+        .slice(0, 3)
+        .map(
+          d =>
+            `${d.file.split('/').slice(-2).join('/')}:${d.span.start.line + 1} ${d.message}`,
+        )
+        .join('; ')}`,
+    )
   }
 
   const dir = runDir(`term-pattern-${backend}-`)
@@ -57,29 +89,69 @@ export function runProgram(backend: Backend, text: string, entry: string): strin
   try {
     if (backend === 'node') {
       const file = join(dir, 'program.ts')
-      writeFileSync(file, `${nativePrelude(compiled.program, 'node', readRuntime)}\n${compiled.typescript}\nprocess.stdout.write(String(compute()))\n`)
+      writeFileSync(
+        file,
+        `${nativePrelude(compiled.program, 'node', readRuntime)}\n${compiled.typescript}\nprocess.stdout.write(String(compute()))\n`,
+      )
 
-      return execFileSync('npx', ['tsx', file], { ...BIG, stdio: ['ignore', 'pipe', 'pipe'] }).toString()
+      return execFileSync('npx', ['tsx', file], {
+        ...BIG,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).toString()
     }
 
     if (backend === 'rust') {
       const emitted = emitRust(compiled.program)
-      const answer = /fn compute\(\) -> std::result::Result</.test(emitted) ? 'match compute() { Ok(v) => v, Err(e) => e.to_string() }' : 'compute()'
+      const answer = /fn compute\(\) -> std::result::Result</.test(
+        emitted,
+      )
+        ? 'match compute() { Ok(v) => v, Err(e) => e.to_string() }'
+        : 'compute()'
       mkdirSync(join(dir, 'src'), { recursive: true })
       writeFileSync(join(dir, 'Cargo.toml'), CARGO_TOML)
-      writeFileSync(join(dir, 'src', 'main.rs'), `#![allow(warnings)]\n${nativePrelude(compiled.program, 'rust', readRuntime, emitted)}\n${emitted}\nfn main() { print!("{}", ${answer}); }\n`)
-      const env = { ...process.env, CARGO_TARGET_DIR: join(tmpdir(), 'seed-rust-runtime', 'target') }
-      execFileSync('cargo', ['build', '--release', '--quiet'], { ...BIG, cwd: dir, env, stdio: ['ignore', 'pipe', 'pipe'] })
+      writeFileSync(
+        join(dir, 'src', 'main.rs'),
+        `#![allow(warnings)]\n${nativePrelude(compiled.program, 'rust', readRuntime, emitted)}\n${emitted}\nfn main() { print!("{}", ${answer}); }\n`,
+      )
+      const env = {
+        ...process.env,
+        CARGO_TARGET_DIR: join(tmpdir(), 'seed-rust-runtime', 'target'),
+      }
+      execFileSync('cargo', ['build', '--release', '--quiet'], {
+        ...BIG,
+        cwd: dir,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
 
-      return execFileSync(join(env.CARGO_TARGET_DIR, 'release', 'term-pattern-native'), [], BIG).toString()
+      return execFileSync(
+        join(env.CARGO_TARGET_DIR, 'release', 'term-pattern-native'),
+        [],
+        BIG,
+      ).toString()
     }
 
     if (backend === 'swift') {
       const emitted = emitSwift(compiled.program)
-      const answer = /func compute\(\) throws/.test(emitted) ? 'try! compute()' : 'compute()'
+      const answer = /func compute\(\) throws/.test(emitted)
+        ? 'try! compute()'
+        : 'compute()'
       const file = join(dir, 'program.swift')
-      writeFileSync(file, `${nativePrelude(compiled.program, 'swift', readRuntime, emitted)}\n${emitted}\nprint(${answer}, terminator: "")\n`)
-      execFileSync('swiftc', [...nativeFlags('swift'), '-O', '-o', join(dir, 'program'), file], { ...BIG, stdio: ['ignore', 'pipe', 'pipe'] })
+      writeFileSync(
+        file,
+        `${nativePrelude(compiled.program, 'swift', readRuntime, emitted)}\n${emitted}\nprint(${answer}, terminator: "")\n`,
+      )
+      execFileSync(
+        'swiftc',
+        [
+          ...nativeFlags('swift'),
+          '-O',
+          '-o',
+          join(dir, 'program'),
+          file,
+        ],
+        { ...BIG, stdio: ['ignore', 'pipe', 'pipe'] },
+      )
 
       return execFileSync(join(dir, 'program'), [], BIG).toString()
     }
@@ -87,15 +159,33 @@ export function runProgram(backend: Backend, text: string, entry: string): strin
     const emitted = emitKotlin(compiled.program)
     const file = join(dir, 'program.kt')
     const jar = join(dir, 'program.jar')
-    writeFileSync(file, hoistKotlinImports(`${nativePrelude(compiled.program, 'kotlin', readRuntime, emitted)}\n${emitted}\nfun main() { print(compute()) }\n`))
-    execFileSync('kotlinc', [file, ...nativeFlags('kotlin'), '-include-runtime', '-d', jar], { ...BIG, stdio: ['ignore', 'pipe', 'pipe'] })
+    writeFileSync(
+      file,
+      hoistKotlinImports(
+        `${nativePrelude(compiled.program, 'kotlin', readRuntime, emitted)}\n${emitted}\nfun main() { print(compute()) }\n`,
+      ),
+    )
+    execFileSync(
+      'kotlinc',
+      [file, ...nativeFlags('kotlin'), '-include-runtime', '-d', jar],
+      { ...BIG, stdio: ['ignore', 'pipe', 'pipe'] },
+    )
 
-    return execFileSync('java', ['-Xss64m', '-jar', jar], BIG).toString()
+    return execFileSync(
+      'java',
+      ['-Xss64m', '-jar', jar],
+      BIG,
+    ).toString()
   } catch (error) {
     const text = String((error as { stderr?: Buffer }).stderr ?? error)
-    const lines = text.split('\n').filter(line => /error/.test(line)).slice(0, 6)
+    const lines = text
+      .split('\n')
+      .filter(line => /error/.test(line))
+      .slice(0, 6)
 
-    throw new Error(`build or run failed\n        ${(lines.length ? lines : text.split('\n').slice(0, 6)).join('\n        ')}`)
+    throw new Error(
+      `build or run failed\n        ${(lines.length ? lines : text.split('\n').slice(0, 6)).join('\n        ')}`,
+    )
   }
 }
 

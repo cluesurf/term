@@ -26,7 +26,9 @@ function accepted(text: string): { accepted: boolean; errors: string } {
 
   return {
     accepted: result.ok,
-    errors: result.ok ? '' : result.diagnostics.map(d => d.name).join(','),
+    errors: result.ok
+      ? ''
+      : result.diagnostics.map(d => d.name).join(','),
   }
 }
 
@@ -150,7 +152,11 @@ rule compose-is-associative
           read p
   fold m, n, p
 `)
-  ok('a law over record variables closes by splitting their fields', out.accepted, out.errors)
+  ok(
+    'a law over record variables closes by splitting their fields',
+    out.accepted,
+    out.errors,
+  )
 }
 
 {
@@ -168,7 +174,11 @@ rule compose-is-commutative
         read m
   fold m, n
 `)
-  ok('a false law over the same records is refused', !out.accepted, out.errors)
+  ok(
+    'a false law over the same records is refused',
+    !out.accepted,
+    out.errors,
+  )
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

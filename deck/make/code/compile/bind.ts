@@ -4,7 +4,10 @@
 // leaving a direct bind call. See note/project/term/archive/computation/plans/20-specialization-and-bind.md. Pure and
 // browser-safe.
 
-import { envFallback, type NativeEnv } from '@term/make/code/compile/native-env'
+import {
+  envFallback,
+  type NativeEnv,
+} from '@term/make/code/compile/native-env'
 import type {
   Expression,
   Statement,
@@ -16,7 +19,9 @@ type Maybe<T> = { form: 'some'; value: T } | { form: 'none' }
 
 // index every declarative binding by name, for call-site rendering across a program. As the Term port answers it
 // (compile/bind.tree): a bind is a statement, and an answer that may be absent a maybe
-export function collectBinds(program: Statement[]): Map<string, Statement> {
+export function collectBinds(
+  program: Statement[],
+): Map<string, Statement> {
   const binds = new Map<string, Statement>()
 
   for (const statement of program) {
@@ -180,7 +185,10 @@ export function referencedBinds(
 // a browser page whose natives go over the cask bridge, so a bind with a `browser` case and no `webview` case is
 // right for it, the way `withNativeEnv` borrows the browser natives for it. Without this every inline bind (float's
 // `to-decimal`, and the rest) emitted the SEED_UNSUPPORTED sentinel into a cask page.
-export function bindTargetOf(one: Statement, env: string): Maybe<Target> {
+export function bindTargetOf(
+  one: Statement,
+  env: string,
+): Maybe<Target> {
   if (one.form !== 'bind') {
     return { form: 'none' }
   }
@@ -194,7 +202,9 @@ export function bindTargetOf(one: Statement, env: string): Maybe<Target> {
   // the fallback chain in order, so `ios` reaches a `swift` case the way the resolver reaches a `swift` impl
   // an env the build does not know borrows nothing (compile/native-env.tree `env-fallback`)
   for (const borrowed of envFallback(env as NativeEnv)) {
-    const found = one.targets.find(candidate => candidate.env === borrowed)
+    const found = one.targets.find(
+      candidate => candidate.env === borrowed,
+    )
 
     if (found) {
       return { form: 'some', value: found }
@@ -216,7 +226,9 @@ export function bindImports(
   for (const bind of binds.values()) {
     const target = bindTargetOf(bind, env)
 
-    for (const need of target.form === 'some' ? target.value.imports : []) {
+    for (const need of target.form === 'some'
+      ? target.value.imports
+      : []) {
       const key = `${need.module}|${need.alias ?? ''}`
 
       if (seen.has(key)) {

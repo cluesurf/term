@@ -43,7 +43,12 @@ load @term/base/exception
   find outage
 `
 
-type Case = { name: string; says: string; want: (output: string) => boolean; program: string }
+type Case = {
+  name: string
+  says: string
+  want: (output: string) => boolean
+  program: string
+}
 
 const CASES: Case[] = [
   {
@@ -77,7 +82,8 @@ task run
   {
     name: 'gather',
     says: 'a gather answers in source order, and two 200 ms waits take about 200 ms, not 400',
-    want: output => /^AB [0-9]+$/.test(output) && Number(output.split(' ')[1]) < 330,
+    want: output =>
+      /^AB [0-9]+$/.test(output) && Number(output.split(' ')[1]) < 330,
     program: `${HEAD}
 task run
   mark async
@@ -130,7 +136,9 @@ task run
   {
     name: 'within',
     says: 'wait-within past its limit raises timeout, and does not wait out the work',
-    want: output => /^timeout [0-9]+$/.test(output) && Number(output.split(' ')[1]) < 250,
+    want: output =>
+      /^timeout [0-9]+$/.test(output) &&
+      Number(output.split(' ')[1]) < 250,
     program: `${HEAD}
 task run
   mark async
@@ -160,7 +168,9 @@ task run
   {
     name: 'pending',
     says: 'a ticked call used as a value is its pending job: started at once, read with wait, and two of them wait together',
-    want: output => /^10 12 [0-9]+$/.test(output) && Number(output.split(' ')[2]) < 330,
+    want: output =>
+      /^10 12 [0-9]+$/.test(output) &&
+      Number(output.split(' ')[2]) < 330,
     program: `${HEAD}
 task double
   mark async
@@ -315,7 +325,13 @@ const only = process.env.SPAWN_ONLY ?? ''
 
 for (const one of CASES) {
   for (const backend of BACKENDS.filter(b => !only || b === only)) {
-    const ran = runOn({ backend, program: one.program, resolve: env => projectResolver(process.cwd(), env), dir, name: one.name })
+    const ran = runOn({
+      backend,
+      program: one.program,
+      resolve: env => projectResolver(process.cwd(), env),
+      dir,
+      name: one.name,
+    })
 
     if (ran.form === 'skipped') {
       console.log(`skip  ${backend}: ${ran.reason}`)
@@ -325,7 +341,9 @@ for (const one of CASES) {
     ok(
       `${backend}: ${one.says} (${one.name})`,
       ran.form === 'ran' && one.want(ran.output),
-      ran.form === 'ran' ? `got ${JSON.stringify(ran.output)}` : `${ran.stage}: ${ran.reason}`,
+      ran.form === 'ran'
+        ? `got ${JSON.stringify(ran.output)}`
+        : `${ran.stage}: ${ran.reason}`,
     )
   }
 }

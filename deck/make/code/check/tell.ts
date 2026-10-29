@@ -7,7 +7,10 @@ import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import type { Program, Statement } from '@term/make/code/compile/node'
 import { raiseSetsOf } from '@term/make/code/check/effects'
-import { exceptionForm, isGenericException } from '@term/make/code/check/extend'
+import {
+  exceptionForm,
+  isGenericException,
+} from '@term/make/code/check/extend'
 
 const EXCEPTION_FORM = exceptionForm()
 import { deckFromPath } from '@term/make/code/compile/roll'
@@ -19,11 +22,13 @@ export function checkTells(
   decks: { file: string; name: string }[],
 ): Diagnostic[] {
   const named = new Map(decks.map(d => [d.file, d.name]))
+
   const deckOf = (one: string): { name: string } | undefined => {
     const name = named.get(one)
 
     return name === undefined ? undefined : { name }
   }
+
   const tells = program.filter(
     (s): s is Extract<Statement, { form: 'tell' }> => s.form === 'tell',
   )
@@ -55,7 +60,11 @@ export function checkTells(
   // A tell takes effect only where an entry loads it, and THAT compile is the one that judges it. Judged here, a
   // `code/tell.tree` was refused as "not an exception in this build" however the app used it (guides: language/errors,
   // library/exceptions, 2026-10-04).
-  const judges = program.some(s => (s.form === 'function' || s.form === 'dock') && fileOf(s) === file)
+  const judges = program.some(
+    s =>
+      (s.form === 'function' || s.form === 'dock') &&
+      fileOf(s) === file,
+  )
 
   if (!judges) {
     return []
@@ -63,7 +72,10 @@ export function checkTells(
 
   // what the app's own tasks and every route can raise: every task of the deck that tells, in whichever of its files
   // it is, and not the standard library's, which raise everything and would make every tell look live
-  const sets = raiseSetsOf(program, [...new Set([...exceptions.values()].map(e => e.name))])
+  const sets = raiseSetsOf(program, [
+    ...new Set([...exceptions.values()].map(e => e.name)),
+  ])
+
   const reachable = new Set<string>()
   const telling = new Set(tells.map(hostOf))
 
@@ -96,21 +108,33 @@ export function checkTells(
   const wire = new Map<string, Statement>()
 
   for (const tell of tells) {
-    const error = (message: string, name: 'stale-tell' | 'type-mismatch' = 'type-mismatch'): void => {
-      diagnostics.push(diagnose(name, { file: fileOf(tell), span: tell.span, message }))
+    const error = (
+      message: string,
+      name: 'stale-tell' | 'type-mismatch' = 'type-mismatch',
+    ): void => {
+      diagnostics.push(
+        diagnose(name, {
+          file: fileOf(tell),
+          span: tell.span,
+          message,
+        }),
+      )
     }
 
     const exception = exceptions.get(tell.name)
 
     if (!exception) {
       const bare = tell.name.slice(tell.name.lastIndexOf('/') + 1)
-      const candidates = [...exceptions.keys()].filter(k => k.endsWith(`/${bare}`))
+      const candidates = [...exceptions.keys()].filter(k =>
+        k.endsWith(`/${bare}`),
+      )
 
       // a standard exception missing from the build is one nothing raises: the build drops an unraised form
       error(
         candidates.length
           ? `"${tell.name}" is not an exception in this build. Did you mean ${candidates.join(' or ')}?`
-          : tell.name.startsWith('@term/base/') && isGenericException(bare)
+          : tell.name.startsWith('@term/base/') &&
+              isGenericException(bare)
             ? `"${tell.name}" is a standard exception, but nothing in this program raises it, so this tell is stale`
             : `"${tell.name}" is not an exception in this build`,
         'stale-tell',
@@ -119,7 +143,10 @@ export function checkTells(
     }
 
     if (!reachable.has(exception.name)) {
-      error(`"${tell.name}" is declared but nothing in this program can raise it, so this tell is stale`, 'stale-tell')
+      error(
+        `"${tell.name}" is declared but nothing in this program can raise it, so this tell is stale`,
+        'stale-tell',
+      )
     }
 
     if (told.has(tell.name)) {
@@ -132,14 +159,19 @@ export function checkTells(
       error(`"${tell.name}" is told without a note (\`note <...>\`)`)
     }
 
-    const props = exception.props ? types.get(exception.props) : undefined
+    const props = exception.props
+      ? types.get(exception.props)
+      : undefined
+
     const propNames = new Set((props?.fields ?? []).map(f => f.name))
 
     for (const link of tell.links) {
       if (!propNames.has(link)) {
         error(
           `"${tell.name}" has no prop "${link}"${
-            propNames.size ? ` (it has ${[...propNames].join(', ')})` : ''
+            propNames.size
+              ? ` (it has ${[...propNames].join(', ')})`
+              : ''
           }`,
         )
       }
@@ -148,7 +180,7 @@ export function checkTells(
     const name = tell.alias ?? exception.name
     const other = wire.get(name)
 
-    if (other && other.form === 'tell') {
+    if (other?.form === 'tell') {
       error(
         `"${tell.name}" and "${other.name}" would both be "${name}" on the wire. Give one a \`name\``,
       )

@@ -38,9 +38,15 @@ function calledNames(program: Program): Set<string> {
     }
 
     const record = node as Record<string, unknown>
-    const callee = record.callee as { form?: string; name?: string } | undefined
+    const callee = record.callee as
+      | { form?: string; name?: string }
+      | undefined
 
-    if (record.form === 'call' && callee?.form === 'variable' && callee.name) {
+    if (
+      record.form === 'call' &&
+      callee?.form === 'variable' &&
+      callee.name
+    ) {
       out.add(callee.name)
     }
 
@@ -68,7 +74,10 @@ export function checkBindTargets(
     const called = calledNames(program)
 
     for (const bind of binds) {
-      if (called.has(bind.name) && bindTargetOf(bind, env).form === 'none') {
+      if (
+        called.has(bind.name) &&
+        bindTargetOf(bind, env).form === 'none'
+      ) {
         errors.push(
           diagnose('unknown-name', {
             file: bind.span.file ?? file,
@@ -86,7 +95,9 @@ export function checkBindTargets(
       continue
     }
 
-    const missing = BACKENDS.filter(backend => bindTargetOf(bind, backend).form === 'none')
+    const missing = BACKENDS.filter(
+      backend => bindTargetOf(bind, backend).form === 'none',
+    )
 
     // an ERROR since 2026-10-05: as a warning the bind built for the backends it had, and a program calling it failed
     // only once it was built for another, far from the bind. Every shared bind in the standard library covers all five.

@@ -52,7 +52,10 @@ const taps = buildTaps(
 )
 ok('the UI test that taps the prompt builds', taps.built, taps.errors)
 
-const program = (_leg: Leg, _shot: string): string => `load @term/site/code/dom/native/toolkit/dom
+const program = (
+  _leg: Leg,
+  _shot: string,
+): string => `load @term/site/code/dom/native/toolkit/dom
   find open-root
   find launch
   find run-app
@@ -97,13 +100,19 @@ task main
 `
 
 function step(output: string, name: string): string {
-  const line = output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
+  const line =
+    output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
 
-  return line.slice(line.indexOf(`step ${name} `) + `step ${name} `.length).trim()
+  return line
+    .slice(line.indexOf(`step ${name} `) + `step ${name} `.length)
+    .trim()
 }
 
 // started once the app is installed and before it launches: the UI test waits for the prompt the launch brings up
-function prepare(leg: Leg, target: { udid?: string; identifier: string }): void {
+function prepare(
+  leg: Leg,
+  target: { udid?: string; identifier: string },
+): void {
   if (leg === 'ios' && target.udid && taps.built) {
     taps.start(target.udid)
   }
@@ -111,21 +120,52 @@ function prepare(leg: Leg, target: { udid?: string; identifier: string }): void 
 
 function judge(leg: Leg, toolkit: string, output: string): void {
   const named = `${leg} (${toolkit})`
-  ok(`${named}: before asking, the grant is not-determined`, step(output, 'before') === 'not-determined', step(output, 'before'))
-  ok(`${named}: the prompt was tapped, and the request answers granted`, step(output, 'asked') === 'granted', step(output, 'asked'))
-  ok(`${named}: the notification is posted`, step(output, 'posted') === 'shown', step(output, 'posted'))
+  ok(
+    `${named}: before asking, the grant is not-determined`,
+    step(output, 'before') === 'not-determined',
+    step(output, 'before'),
+  )
+  ok(
+    `${named}: the prompt was tapped, and the request answers granted`,
+    step(output, 'asked') === 'granted',
+    step(output, 'asked'),
+  )
+  ok(
+    `${named}: the notification is posted`,
+    step(output, 'posted') === 'shown',
+    step(output, 'posted'),
+  )
 }
 
 async function main(): Promise<void> {
-  runToolkits({ root: process.cwd(), dir, name: 'Notice', iosIdentifier: APP, androidIdentifier: 'surf.term.notice', program, judge, ok, shots: {}, prepare }, 'ios')
+  runToolkits(
+    {
+      root: process.cwd(),
+      dir,
+      name: 'Notice',
+      iosIdentifier: APP,
+      androidIdentifier: 'surf.term.notice',
+      program,
+      judge,
+      ok,
+      shots: {},
+      prepare,
+    },
+    'ios',
+  )
   const tapped = await taps.finish()
 
   if (tapped) {
     // the witness: SpringBoard drew a banner with the notification's title, which only the platform can do
     ok(
       'ios: SpringBoard showed the prompt, took the tap, and drew the banner with its title',
-      tapped.status === 0 && tapped.log.includes('taps: allowed, banner shown'),
-      tapped.log.split('\n').filter(line => /error|failed|XCTAssert/i.test(line)).join('\n').slice(0, 1200),
+      tapped.status === 0 &&
+        tapped.log.includes('taps: allowed, banner shown'),
+      tapped.log
+        .split('\n')
+        .filter(line => /error|failed|XCTAssert/i.test(line))
+        .join('\n')
+        .slice(0, 1200),
     )
   }
 

@@ -24,8 +24,20 @@ function ok(name: string, holds: boolean, detail = ''): void {
 
 // whether every `*` by the literal `by` in the program is proven, or undefined when there is none. `op` and `divisor`
 // ask instead about every `/` or `%` whose divisor is the variable `divisor`
-function proven(text: string, by: number, op = '*', divisor?: string): boolean | undefined {
-  const built = compile({ file: 'main.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!), env: 'node', entryPoints: ['main'] })
+function proven(
+  text: string,
+  by: number,
+  op = '*',
+  divisor?: string,
+): boolean | undefined {
+  const built = compile(
+    { file: 'main.tree', text },
+    {
+      resolve: withNativeEnv('node', stdlibResolver()!),
+      env: 'node',
+      entryPoints: ['main'],
+    },
+  )
 
   if (!built.ok) {
     throw new Error(built.diagnostics.map(d => d.message).join(' | '))
@@ -46,10 +58,18 @@ function proven(text: string, by: number, op = '*', divisor?: string): boolean |
       return
     }
 
-    const node = value as { form?: string; op?: string; right?: { form?: string; value?: unknown; name?: string } }
+    const node = value as {
+      form?: string
+      op?: string
+      right?: { form?: string; value?: unknown; name?: string }
+    }
     const matches = divisor
-      ? node.op === op && node.right?.form === 'variable' && node.right.name === divisor
-      : node.op === op && node.right?.form === 'integer' && Number(node.right.value) === by
+      ? node.op === op &&
+        node.right?.form === 'variable' &&
+        node.right.name === divisor
+      : node.op === op &&
+        node.right?.form === 'integer' &&
+        Number(node.right.value) === by
 
     if (node.form === 'binary' && matches) {
       found.push(facts.has(node as Expression))
@@ -73,7 +93,12 @@ const lists = `load @term/base/list
 `
 
 // a record owning a list, built by `make-bag` from `item` and rewritten through its path by `body`
-const bag = (item: string, body: string, extra = '', arg = 'read k'): string => `${lists}
+const bag = (
+  item: string,
+  body: string,
+  extra = '',
+  arg = 'read k',
+): string => `${lists}
 form bag
   link id, like number
   link xs, like list, like number
@@ -151,19 +176,16 @@ ${extraWrite}
               read bs/{k}/xs/{i}`
 
 // 1. the elements of an owned list are what is put in: remainders by 1000, so `old * 31` is bounded
-ok('an owned list written with remainders bounds its slots', proven(bag(modItem, rewrite(31)), 31) === true)
+ok(
+  'an owned list written with remainders bounds its slots',
+  proven(bag(modItem, rewrite(31)), 31) === true,
+)
 
 // 2. the same list also given a parameter through its path: its slots are unknown
 ok(
   'a slot written with a parameter is unknown',
   proven(
-    bag(
-      modItem,
-      rewrite(
-        37,
-        `          save bs/{k}/xs/{i}, read n`,
-      ),
-    ),
+    bag(modItem, rewrite(37, `          save bs/{k}/xs/{i}, read n`)),
     37,
   ) === false,
 )
@@ -308,14 +330,26 @@ const rem = (by: number): string =>
       read r
       code ${by}`)
 
-ok('a remainder times 10^12 fits', proven(rem(1000000000000), 1000000000000) === true)
-ok('a remainder times 10^14 does not', proven(rem(100000000000000), 100000000000000) === false)
+ok(
+  'a remainder times 10^12 fits',
+  proven(rem(1000000000000), 1000000000000) === true,
+)
+ok(
+  'a remainder times 10^14 does not',
+  proven(rem(100000000000000), 100000000000000) === false,
+)
 
 // 9. a parameter times a literal: unknown
-ok('a parameter is unknown', proven(task(`  save out
+ok(
+  'a parameter is unknown',
+  proven(
+    task(`  save out
     call multiply
       read n
-      code 5`), 5) === false)
+      code 5`),
+    5,
+  ) === false,
+)
 
 // 10. a task outside the public surface: its parameter is the hull of what it is passed. 5 * 10^15 fits, and passed
 // the entry's parameter as well it does not
@@ -348,8 +382,14 @@ ${also}
       read b
 `
 
-ok('a parameter passed only literals is their hull', proven(scaled(''), big) === true)
-ok('a parameter also passed the entry\'s parameter is unknown', proven(scaled('  host c, call scale(read n)'), big) === false)
+ok(
+  'a parameter passed only literals is their hull',
+  proven(scaled(''), big) === true,
+)
+ok(
+  "a parameter also passed the entry's parameter is unknown",
+  proven(scaled('  host c, call scale(read n)'), big) === false,
+)
 
 // 10b. the same task also handed on as a value: whoever holds it may pass anything, so `x` is unknown
 ok(
@@ -379,7 +419,7 @@ task main`,
 
 // 11. the entry itself, called again from inside with a literal: anything outside may call it, so `n` stays unknown
 ok(
-  'the entry\'s parameter is unknown however it calls itself',
+  "the entry's parameter is unknown however it calls itself",
   proven(
     `task main
   take n, like number
@@ -433,8 +473,14 @@ const stepBy = (amount: string, by: number): string =>
           read k
           code ${by}`)
 
-ok('a step by an amount that is not negative is bounded by its condition', proven(stepBy('i', 10000000000000), 10000000000000) === true)
-ok('a step by an amount that may be negative is not', proven(stepBy('d', 10000000000001), 10000000000001) === false)
+ok(
+  'a step by an amount that is not negative is bounded by its condition',
+  proven(stepBy('i', 10000000000000), 10000000000000) === true,
+)
+ok(
+  'a step by an amount that may be negative is not',
+  proven(stepBy('d', 10000000000001), 10000000000001) === false,
+)
 
 // 13. a quotient and a remainder by a parameter whose every argument excludes zero cannot fail; one also passed 0 can
 const divided = (second: number, first = 4): string => `task split
@@ -468,12 +514,27 @@ task main
       read b
 `
 
-ok('a quotient by a divisor that excludes zero is proven', proven(divided(7), 0, '/', 'd') === true)
-ok('a remainder by a divisor that excludes zero is proven', proven(divided(7), 0, '%', 'd') === true)
-ok('a quotient by a divisor that may be zero is not', proven(divided(0), 0, '/', 'd') === false)
-ok('a remainder by a divisor that may be zero is not', proven(divided(0), 0, '%', 'd') === false)
+ok(
+  'a quotient by a divisor that excludes zero is proven',
+  proven(divided(7), 0, '/', 'd') === true,
+)
+ok(
+  'a remainder by a divisor that excludes zero is proven',
+  proven(divided(7), 0, '%', 'd') === true,
+)
+ok(
+  'a quotient by a divisor that may be zero is not',
+  proven(divided(0), 0, '/', 'd') === false,
+)
+ok(
+  'a remainder by a divisor that may be zero is not',
+  proven(divided(0), 0, '%', 'd') === false,
+)
 // d in [-2, -1] excludes zero, but the minimum divided by -1 overflows and the dividend is the entry's own
-ok('a quotient of an unknown by a divisor that may be -1 is not', proven(divided(-1, -2), 0, '/', 'd') === false)
+ok(
+  'a quotient of an unknown by a divisor that may be -1 is not',
+  proven(divided(-1, -2), 0, '/', 'd') === false,
+)
 
 // 14. branch facts. The entry's own `n`, unknown, after two branches that leave when it is outside [0, 100]
 const early = (low: boolean, by: number): string => `task main
@@ -503,8 +564,14 @@ ${
       code ${by}
 `
 
-ok('a name past two branches that leave outside [0, 100] is bounded', proven(early(true, 10000000000000), 10000000000000) === true)
-ok('one branch bounds one side only', proven(early(false, 10000000000001), 10000000000001) === false)
+ok(
+  'a name past two branches that leave outside [0, 100] is bounded',
+  proven(early(true, 10000000000000), 10000000000000) === true,
+)
+ok(
+  'one branch bounds one side only',
+  proven(early(false, 10000000000001), 10000000000001) === false,
+)
 
 // a recursion that stops at a column: `c` is 0, or `c + 1` where `c` is not `stop`, so it settles at [0, stop]
 const columns = (stop: number): string => `task depth
@@ -546,8 +613,14 @@ task main
   send back, call depth(code 0)
 `
 
-ok('a recursion that stops at column 7 bounds its column', proven(columns(7), 1001000000000000) === true)
-ok('one that stops at column 9 does not fit', proven(columns(9), 1001000000000000) === false)
+ok(
+  'a recursion that stops at column 7 bounds its column',
+  proven(columns(7), 1001000000000000) === true,
+)
+ok(
+  'one that stops at column 9 does not fit',
+  proven(columns(9), 1001000000000000) === false,
+)
 
 // a name tested and then assigned: the test says nothing about what it holds afterwards
 ok(
@@ -604,9 +677,18 @@ ${write}
       call area(read(c))
 `
 
-ok('a field given only 3 and 5 is their hull', proven(boxes('code 5'), big) === true)
-ok('a field also given the entry\'s parameter is unknown', proven(boxes('read n'), big) === false)
-ok('a field written through a path with the entry\'s parameter is unknown', proven(boxes('code 5', '  save a/size, read n'), big) === false)
+ok(
+  'a field given only 3 and 5 is their hull',
+  proven(boxes('code 5'), big) === true,
+)
+ok(
+  "a field also given the entry's parameter is unknown",
+  proven(boxes('read n'), big) === false,
+)
+ok(
+  "a field written through a path with the entry's parameter is unknown",
+  proven(boxes('code 5', '  save a/size, read n'), big) === false,
+)
 
 // 16. what a task answers: the hull of its returns. `pick` answers 3 or 5, `echo` its argument, `grow` its own answer
 // plus one, which climbs every round of the fixpoint and is widened
@@ -655,9 +737,18 @@ task main
       code ${big}
 `
 
-ok('a task answering 3 or 5 is their hull', proven(answers('pick'), big) === true)
-ok('a task answering its unknown argument is unknown', proven(answers('echo'), big) === false)
-ok('a task answering its own answer plus one is widened', proven(answers('grow'), big) === false)
+ok(
+  'a task answering 3 or 5 is their hull',
+  proven(answers('pick'), big) === true,
+)
+ok(
+  'a task answering its unknown argument is unknown',
+  proven(answers('echo'), big) === false,
+)
+ok(
+  'a task answering its own answer plus one is widened',
+  proven(answers('grow'), big) === false,
+)
 
 // 17. flow: a value at its own point. `x` clamped into [0, 500] by two branches that each assign it (AWFY's Bounce)
 const clamp = (both: boolean, by: number): string =>
@@ -688,8 +779,14 @@ ${
       read x
       code ${by}`)
 
-ok('a value clamped by two assigning branches is bounded after them', proven(clamp(true, 10000000000000), 10000000000000) === true)
-ok('one clamped on one side only is not', proven(clamp(false, 10000000000001), 10000000000001) === false)
+ok(
+  'a value clamped by two assigning branches is bounded after them',
+  proven(clamp(true, 10000000000000), 10000000000000) === true,
+)
+ok(
+  'one clamped on one side only is not',
+  proven(clamp(false, 10000000000001), 10000000000001) === false,
+)
 
 // a counter under a large literal leaves its loop bounded: the loop widens, then narrows back to `i <= 1000`
 ok(

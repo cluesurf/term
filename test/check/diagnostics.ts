@@ -48,8 +48,16 @@ task welcome
     call greet
       code 36
 `)
-  ok('a number passed for text says `expected text`', /expected text, found number/.test(argument), argument)
-  ok('and never the TypeScript name', !/string/.test(argument), argument)
+  ok(
+    'a number passed for text says `expected text`',
+    /expected text, found number/.test(argument),
+    argument,
+  )
+  ok(
+    'and never the TypeScript name',
+    !/string/.test(argument),
+    argument,
+  )
 
   const nothing = said(`task greet
   take name, like text
@@ -63,7 +71,11 @@ task welcome
     call greet
       read n
 `)
-  ok('a void is `void`, not `unit`', /found void/.test(nothing) && !/unit/.test(nothing), nothing)
+  ok(
+    'a void is `void`, not `unit`',
+    /found void/.test(nothing) && !/unit/.test(nothing),
+    nothing,
+  )
 }
 
 // ---- the printer itself, one line per shape a message can hold ----
@@ -71,15 +83,39 @@ task welcome
   const text = { kind: 'string' } as const
   const number = { kind: 'number' } as const
 
-  ok('a list of text', showType({ kind: 'array', element: text }) === 'list, like text')
-  ok('a hash from text to numbers', showType({ kind: 'map', key: text, value: number }) === 'hash, like text, like number')
-  ok('a list whose element is not solved is a bare list, not `?2[]`', showType({ kind: 'array', element: { kind: 'variable', id: 2 } }) === 'list')
-  ok('a generic form with its argument', showType({ kind: 'named', name: 'chain', args: [number] }) === 'chain, like number')
+  ok(
+    'a list of text',
+    showType({ kind: 'array', element: text }) === 'list, like text',
+  )
+  ok(
+    'a hash from text to numbers',
+    showType({ kind: 'map', key: text, value: number }) ===
+      'hash, like text, like number',
+  )
+  ok(
+    'a list whose element is not solved is a bare list, not `?2[]`',
+    showType({
+      kind: 'array',
+      element: { kind: 'variable', id: 2 },
+    }) === 'list',
+  )
+  ok(
+    'a generic form with its argument',
+    showType({ kind: 'named', name: 'chain', args: [number] }) ===
+      'chain, like number',
+  )
   ok(
     'a task, its compound parameter wrapped so its commas stay its own',
-    showType({ kind: 'function', params: [{ kind: 'array', element: text }, number], result: { kind: 'unit' } }) ===
-      'task((list, like text), number) -> void',
-    showType({ kind: 'function', params: [{ kind: 'array', element: text }, number], result: { kind: 'unit' } }),
+    showType({
+      kind: 'function',
+      params: [{ kind: 'array', element: text }, number],
+      result: { kind: 'unit' },
+    }) === 'task((list, like text), number) -> void',
+    showType({
+      kind: 'function',
+      params: [{ kind: 'array', element: text }, number],
+      result: { kind: 'unit' },
+    }),
   )
 }
 
@@ -100,25 +136,59 @@ task find-user
     },
     { roll: true },
   )
-  const task = out.ok ? out.roll?.task.find(t => t.name === 'find-user') : undefined
+  const task = out.ok
+    ? out.roll?.task.find(t => t.name === 'find-user')
+    : undefined
 
-  ok('a task\'s site is its line counted from one, as an error frame counts', task?.site.endsWith('store.tree:5:1') === true, task?.site)
+  ok(
+    "a task's site is its line counted from one, as an error frame counts",
+    task?.site.endsWith('store.tree:5:1') === true,
+    task?.site,
+  )
   ok(
     'and its signature reads `text`',
-    task !== undefined && JSON.stringify(task).includes('"like":"text"') && !JSON.stringify(task).includes('string'),
+    task !== undefined &&
+      JSON.stringify(task).includes('"like":"text"') &&
+      !JSON.stringify(task).includes('string'),
     JSON.stringify(task),
   )
 }
 
 // ---- commands/lint: a lint rule's code is printed as the rule is numbered ----
 {
-  const span = { start: { line: 0, column: 0, offset: 0 }, end: { line: 0, column: 4, offset: 4 } }
-  const base = { name: 'line-layout', message: 'x', file: 'a.tree', span, markers: [{ span }], severity: 'warning' as const }
-  const lint = renderKink({ ...base, code: 23, rule: 'L023' }, ['task'], false)
-  const compiler = renderKink({ ...base, code: 0x7, name: 'type-mismatch' }, ['task'], false)
+  const span = {
+    start: { line: 0, column: 0, offset: 0 },
+    end: { line: 0, column: 4, offset: 4 },
+  }
+  const base = {
+    name: 'line-layout',
+    message: 'x',
+    file: 'a.tree',
+    span,
+    markers: [{ span }],
+    severity: 'warning' as const,
+  }
+  const lint = renderKink(
+    { ...base, code: 23, rule: 'L023' },
+    ['task'],
+    false,
+  )
+  const compiler = renderKink(
+    { ...base, code: 0x7, name: 'type-mismatch' },
+    ['task'],
+    false,
+  )
 
-  ok('L023 prints as `L023`, not `0017`', /code <L023>/.test(lint) && !/0017/.test(lint), lint)
-  ok('and a compiler code still prints in its own hexadecimal', /code <0007>/.test(compiler), compiler)
+  ok(
+    'L023 prints as `L023`, not `0017`',
+    /code <L023>/.test(lint) && !/0017/.test(lint),
+    lint,
+  )
+  ok(
+    'and a compiler code still prints in its own hexadecimal',
+    /code <0007>/.test(compiler),
+    compiler,
+  )
 }
 
 // ---- commands/test: an error in a test file points at the line as written ----
@@ -137,18 +207,33 @@ test greets
 `
   const unit = readable(source)
   // with the resolver `term test` compiles it with: a `want` that compares two values loads the exception it raises
-  const out = compile({ file: '/gate/test/greet.tree', text: unit.text }, { resolve: projectResolver(TERM) })
+  const out = compile(
+    { file: '/gate/test/greet.tree', text: unit.text },
+    { resolve: projectResolver(TERM) },
+  )
   const first = out.ok ? undefined : out.diagnostics[0]
   const placed = first ? unit.place(first) : undefined
 
-  ok('a test file with a type error does not build', first !== undefined, first?.message)
-  ok('the compiler places it in the rewritten text, a line the person never wrote', first?.span.start.line !== 8, JSON.stringify(first?.span))
+  ok(
+    'a test file with a type error does not build',
+    first !== undefined,
+    first?.message,
+  )
+  ok(
+    'the compiler places it in the rewritten text, a line the person never wrote',
+    first?.span.start.line !== 8,
+    JSON.stringify(first?.span),
+  )
   ok(
     'and the error is placed on the line the person wrote',
-    placed?.diagnostic.span.start.line === 8 && source.split('\n')[8]!.includes('greet(36)'),
+    placed?.diagnostic.span.start.line === 8 &&
+      source.split('\n')[8]!.includes('greet(36)'),
     JSON.stringify(placed?.diagnostic.span),
   )
-  ok('framed against the source, not the rewritten text', placed?.text === source)
+  ok(
+    'framed against the source, not the rewritten text',
+    placed?.text === source,
+  )
 }
 
 // ---- language/data, commands/mold: a key given twice is reported where it is given the second time ----
@@ -164,11 +249,27 @@ test greets
     },
     {},
   )
-  const twice = out.ok ? undefined : out.diagnostics.find(d => /"retries" is given twice/.test(d.message))
+  const twice = out.ok
+    ? undefined
+    : out.diagnostics.find(d =>
+        /"retries" is given twice/.test(d.message),
+      )
 
-  ok('a key given twice is refused', twice !== undefined, out.ok ? 'built' : out.diagnostics.map(d => d.message).join(' | '))
-  ok('at the second `retries`, line 4', twice?.span.start.line === 3, JSON.stringify(twice?.span))
-  ok('with a note that says what to do, not the generic syntax note', /keep one of the two/.test(twice?.hint ?? ''), twice?.hint)
+  ok(
+    'a key given twice is refused',
+    twice !== undefined,
+    out.ok ? 'built' : out.diagnostics.map(d => d.message).join(' | '),
+  )
+  ok(
+    'at the second `retries`, line 4',
+    twice?.span.start.line === 3,
+    JSON.stringify(twice?.span),
+  )
+  ok(
+    'with a note that says what to do, not the generic syntax note',
+    /keep one of the two/.test(twice?.hint ?? ''),
+    twice?.hint,
+  )
 }
 
 // ---- proofs/equality: a kernel error names variables and cases as the source does ----
@@ -211,10 +312,20 @@ task use-first
     },
     {},
   )
-  const said = out.ok ? 'built' : out.diagnostics.map(d => d.message).join(' | ')
+  const said = out.ok
+    ? 'built'
+    : out.diagnostics.map(d => d.message).join(' | ')
 
-  ok('a call with an empty vector is refused by the kernel', /kernel: type mismatch/.test(said), said)
-  ok('naming the cases `succ` and `zero`, not `nat__succ`', /\(vec \(succ zero\)\)/.test(said) && !/__/.test(said), said)
+  ok(
+    'a call with an empty vector is refused by the kernel',
+    /kernel: type mismatch/.test(said),
+    said,
+  )
+  ok(
+    'naming the cases `succ` and `zero`, not `nat__succ`',
+    /\(vec \(succ zero\)\)/.test(said) && !/__/.test(said),
+    said,
+  )
 }
 
 // ---- proofs/equality: the convoy's wrong `refl` names `c` and `z`, which printed as `#1` and `#3` ----
@@ -264,11 +375,29 @@ task chain
           back make equal/refl, bind c, c
 `
   const file = join(TERM, 'test/check/convoy.tree')
-  const out = compile({ file, text: chain }, { resolve: projectResolver(TERM, 'node'), env: 'node', leanOf: () => true })
-  const said = out.ok ? 'built' : out.diagnostics.map(d => d.message).join(' | ')
+  const out = compile(
+    { file, text: chain },
+    {
+      resolve: projectResolver(TERM, 'node'),
+      env: 'node',
+      leanOf: () => true,
+    },
+  )
+  const said = out.ok
+    ? 'built'
+    : out.diagnostics.map(d => d.message).join(' | ')
 
-  ok('the convoy with `refl` for `r` is refused by the kernel', /kernel: type mismatch/.test(said), said)
-  ok('naming the arm\'s variable and the parameter', /expected \(\(\(equal a\) c\) z\)/.test(said) && /found\s+\(\(\(equal a\) c\) c\)/.test(said), said)
+  ok(
+    'the convoy with `refl` for `r` is refused by the kernel',
+    /kernel: type mismatch/.test(said),
+    said,
+  )
+  ok(
+    "naming the arm's variable and the parameter",
+    /expected \(\(\(equal a\) c\) z\)/.test(said) &&
+      /found\s+\(\(\(equal a\) c\) c\)/.test(said),
+    said,
+  )
   ok('and no de Bruijn index', !/#\d/.test(said), said)
 }
 
@@ -300,18 +429,45 @@ task use
     },
     {},
   )
-  const all = out.ok ? [...(out as { warnings?: { name: string; message: string; hint?: string }[] }).warnings ?? []] : out.diagnostics
+  const all = out.ok
+    ? [
+        ...((
+          out as {
+            warnings?: {
+              name: string
+              message: string
+              hint?: string
+            }[]
+          }
+        ).warnings ?? []),
+      ]
+    : out.diagnostics
   const hold = all.find(d => d.name === 'unchecked-hold')
 
-  ok('a hold over a call to another task is reported as out of reach', hold !== undefined, JSON.stringify(all.map(d => d.name)))
-  ok('saying it was neither proven nor refuted', /neither proven nor refuted/.test(hold?.message ?? ''), hold?.message)
-  ok('and offering `mark open` only on a claim', /a `rule` with no `show`/.test(hold?.hint ?? ''), hold?.hint)
+  ok(
+    'a hold over a call to another task is reported as out of reach',
+    hold !== undefined,
+    JSON.stringify(all.map(d => d.name)),
+  )
+  ok(
+    'saying it was neither proven nor refuted',
+    /neither proven nor refuted/.test(hold?.message ?? ''),
+    hold?.message,
+  )
+  ok(
+    'and offering `mark open` only on a claim',
+    /a `rule` with no `show`/.test(hold?.hint ?? ''),
+    hold?.hint,
+  )
 }
 
 // ---- language/errors, library/exceptions: bounds and tells name the exception problem ----
 {
   const linked = (file: string, text: string) =>
-    compile({ file: join(TERM, 'test/check', file), text }, { resolve: projectResolver(TERM, 'node'), env: 'node' })
+    compile(
+      { file: join(TERM, 'test/check', file), text },
+      { resolve: projectResolver(TERM, 'node'), env: 'node' },
+    )
   const CHECK = `load @term/base/exception
   find absence
   find excess
@@ -334,22 +490,55 @@ task check-size
   send back, read size
 `
   const bound = linked('bound.tree', CHECK)
-  const boundSaid = bound.ok ? 'built' : bound.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | ')
+  const boundSaid = bound.ok
+    ? 'built'
+    : bound.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | ')
 
-  ok('a bound on a standard exception the body never raises is refused', !bound.ok, boundSaid)
-  ok('saying nothing it calls raises it, not that it is no exception form', /nothing it calls raises "absence"/.test(boundSaid) && !/not an exception form/.test(boundSaid), boundSaid)
-  ok('under a name about raise bounds', /raise-bound/.test(boundSaid), boundSaid)
+  ok(
+    'a bound on a standard exception the body never raises is refused',
+    !bound.ok,
+    boundSaid,
+  )
+  ok(
+    'saying nothing it calls raises it, not that it is no exception form',
+    /nothing it calls raises "absence"/.test(boundSaid) &&
+      !/not an exception form/.test(boundSaid),
+    boundSaid,
+  )
+  ok(
+    'under a name about raise bounds',
+    /raise-bound/.test(boundSaid),
+    boundSaid,
+  )
 
-  const alone = linked('tells.tree', 'tell @term/base/excess, note <Too large>\n')
+  const alone = linked(
+    'tells.tree',
+    'tell @term/base/excess, note <Too large>\n',
+  )
 
-  ok('a file of tells alone is not judged on what the app reaches', alone.ok, alone.ok ? '' : alone.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'a file of tells alone is not judged on what the app reaches',
+    alone.ok,
+    alone.ok ? '' : alone.diagnostics.map(d => d.message).join(' | '),
+  )
 
-  const stale = linked('stale.tree', `${CHECK.replace('  halt absence\n', '')}
+  const stale = linked(
+    'stale.tree',
+    `${CHECK.replace('  halt absence\n', '')}
 tell @term/base/overage, note <Too many requests>
-`)
-  const staleSaid = stale.ok ? 'built' : stale.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | ')
+`,
+  )
+  const staleSaid = stale.ok
+    ? 'built'
+    : stale.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | ')
 
-  ok('a tell nothing raises is refused as `stale-tell`', /stale-tell: "@term\/base\/overage" is a standard exception, but nothing in this program raises it/.test(staleSaid), staleSaid)
+  ok(
+    'a tell nothing raises is refused as `stale-tell`',
+    /stale-tell: "@term\/base\/overage" is a standard exception, but nothing in this program raises it/.test(
+      staleSaid,
+    ),
+    staleSaid,
+  )
 }
 
 // ---- language/notes: the build line names each obligation's kind ----
@@ -371,10 +560,21 @@ tell @term/base/overage, note <Too many requests>
     },
     {},
   )
-  const owed = out.ok ? (out as { obligations?: Owed }).obligations : undefined
+  const owed = out.ok
+    ? (out as { obligations?: Owed }).obligations
+    : undefined
 
-  ok('a walk that may not end owes a termination proof, counted as one', owed?.kinds?.ends?.total === 1, JSON.stringify(owed))
-  ok('and the build line names it, not list reads and division', owed !== undefined && describeOwed(owed) === '0 of 1 walks shown to end', owed && describeOwed(owed))
+  ok(
+    'a walk that may not end owes a termination proof, counted as one',
+    owed?.kinds?.ends?.total === 1,
+    JSON.stringify(owed),
+  )
+  ok(
+    'and the build line names it, not list reads and division',
+    owed !== undefined &&
+      describeOwed(owed) === '0 of 1 walks shown to end',
+    owed && describeOwed(owed),
+  )
 }
 
 // ---- language/tasks: a required argument left out is reported once ----
@@ -396,8 +596,16 @@ task use
 `)
   const lines = once.split(' | ')
 
-  ok('a left-out argument is refused, naming it', /"area" needs "h", which this call leaves out/.test(once), once)
-  ok('and only once, not again as a mismatch with `void`', lines.length === 1 && !/void/.test(once), once)
+  ok(
+    'a left-out argument is refused, naming it',
+    /"area" needs "h", which this call leaves out/.test(once),
+    once,
+  )
+  ok(
+    'and only once, not again as a mismatch with `void`',
+    lines.length === 1 && !/void/.test(once),
+    once,
+  )
 }
 
 // ---- commands/view: a refused document says what a document allows, not where the brackets go ----
@@ -415,10 +623,25 @@ task steal
     },
     { roleOf: () => 'view' },
   )
-  const refused = out.ok ? undefined : out.diagnostics.find(d => /"task" is not part of a document/.test(d.message))
+  const refused = out.ok
+    ? undefined
+    : out.diagnostics.find(d =>
+        /"task" is not part of a document/.test(d.message),
+      )
 
-  ok('a task in a document is refused', refused !== undefined, out.ok ? 'built' : out.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
-  ok('as `document-refused`, with advice about documents', refused?.name === 'document-refused' && !/brackets/.test(refused.hint ?? ''), `${refused?.name} ${refused?.hint}`)
+  ok(
+    'a task in a document is refused',
+    refused !== undefined,
+    out.ok
+      ? 'built'
+      : out.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
+  ok(
+    'as `document-refused`, with advice about documents',
+    refused?.name === 'document-refused' &&
+      !/brackets/.test(refused.hint ?? ''),
+    `${refused?.name} ${refused?.hint}`,
+  )
 }
 
 // ---- language/templates: an error in an expansion points at the fuse that caused it ----
@@ -447,13 +670,23 @@ fuse is-tag
     },
     { leanOf: () => true },
   )
-  const lines = out.ok ? [] : out.diagnostics.map(d => d.span.start.line)
+  const lines = out.ok
+    ? []
+    : out.diagnostics.map(d => d.span.start.line)
 
-  ok('a fuse that leaves out a hole fails the build', !out.ok, out.ok ? 'built' : '')
+  ok(
+    'a fuse that leaves out a hole fails the build',
+    !out.ok,
+    out.ok ? 'built' : '',
+  )
   ok(
     'and every error is in that fuse, lines 15 and 16, not at the `tree` on line 1',
     lines.length > 0 && lines.every(line => line === 14 || line === 15),
-    out.ok ? '' : out.diagnostics.map(d => `${d.span.start.line + 1}: ${d.message}`).join(' | '),
+    out.ok
+      ? ''
+      : out.diagnostics
+          .map(d => `${d.span.start.line + 1}: ${d.message}`)
+          .join(' | '),
   )
 }
 
@@ -469,8 +702,18 @@ fuse is-tag
   send back, read n
 `)
 
-  ok('an unreadable `fork` names the `fork` line', /`fork` is a statement, and its grammar could not read this line/.test(typo), typo)
-  ok('and nothing else: not `test`, `hodl` or `back` as undefined names', typo.split(' | ').length === 1, typo)
+  ok(
+    'an unreadable `fork` names the `fork` line',
+    /`fork` is a statement, and its grammar could not read this line/.test(
+      typo,
+    ),
+    typo,
+  )
+  ok(
+    'and nothing else: not `test`, `hodl` or `back` as undefined names',
+    typo.split(' | ').length === 1,
+    typo,
+  )
 
   const comma = said(`task double
   take n, like number
@@ -490,7 +733,11 @@ task more
         code 1
 `)
 
-  ok('an argument too many names the call it landed in', /"double" takes 1 argument, and this is one more/.test(comma), comma)
+  ok(
+    'an argument too many names the call it landed in',
+    /"double" takes 1 argument, and this is one more/.test(comma),
+    comma,
+  )
 }
 
 // ---- a warning names the file it is about ----
@@ -515,17 +762,41 @@ task main
       code 3
 `,
     },
-    { resolve: path => (path === './helper' ? { file: '/gate/code/helper.tree', text: helper } : undefined) },
+    {
+      resolve: path =>
+        path === './helper'
+          ? { file: '/gate/code/helper.tree', text: helper }
+          : undefined,
+    },
   )
-  const warnings = (out as { warnings?: { message: string; span?: { file?: string } }[] }).warnings ?? []
+  const warnings =
+    (
+      out as {
+        warnings?: { message: string; span?: { file?: string } }[]
+      }
+    ).warnings ?? []
   const named = warnings.map(w => w.message).join(' | ')
 
-  ok('the entry file\'s own unused binding is reported', /"extra" is never used/.test(named), named)
-  ok('and a loaded module\'s is not stamped with the entry file\'s name', !/"spare"/.test(named), named)
+  ok(
+    "the entry file's own unused binding is reported",
+    /"extra" is never used/.test(named),
+    named,
+  )
+  ok(
+    "and a loaded module's is not stamped with the entry file's name",
+    !/"spare"/.test(named),
+    named,
+  )
   ok(
     'every warning names the file its span is in',
-    warnings.every(w => w.span?.file === undefined || (w as { file?: string }).file === w.span.file),
-    JSON.stringify(warnings.map(w => [(w as { file?: string }).file, w.span?.file])),
+    warnings.every(
+      w =>
+        w.span?.file === undefined ||
+        (w as { file?: string }).file === w.span.file,
+    ),
+    JSON.stringify(
+      warnings.map(w => [(w as { file?: string }).file, w.span?.file]),
+    ),
   )
 }
 

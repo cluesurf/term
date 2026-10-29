@@ -6,6 +6,15 @@ import * as port from '@term/deck/code/object/id-signing'
 
 export type Keypair = { publicKey: string; privateKey: string }
 
-export const generateKeypair = (): Keypair => port.generateKeypair() as Keypair
-export const signId = (input: { id: string; privateKey: string }): string => port.signId(input.id, input.privateKey) as string
-export const verifyId = (input: { id: string; sig: string; publicKey: string }): boolean => port.verifyId(input.id, input.sig, input.publicKey) as boolean
+export const generateKeypair = (): Keypair =>
+  port.generateKeypair() as Keypair
+export const signId = (input: {
+  id: string
+  privateKey: string
+}): string => port.signId(input.id, input.privateKey)
+export const verifyId = (input: {
+  id: string
+  sig: string
+  publicKey: string
+}): boolean =>
+  port.verifyId(input.id, input.sig, input.publicKey)

@@ -8,7 +8,12 @@ import { compile } from '@term/make/code/compile/compile'
 let pass = 0
 let fail = 0
 
-function expect(name: string, source: string, budget: string | undefined, want: string): void {
+function expect(
+  name: string,
+  source: string,
+  budget: string | undefined,
+  want: string,
+): void {
   if (budget === undefined) {
     delete process.env.TERM_PROOF_BUDGET
   } else {
@@ -16,15 +21,22 @@ function expect(name: string, source: string, budget: string | undefined, want: 
   }
 
   const result = compile({ file: 'b.tree', text: source })
-  const messages = result.ok ? [] : result.diagnostics.map(d => `${d.name}: ${d.message}`)
-  const good = want === 'ok' ? result.ok : !result.ok && messages.some(m => m.includes(want))
+  const messages = result.ok
+    ? []
+    : result.diagnostics.map(d => `${d.name}: ${d.message}`)
+  const good =
+    want === 'ok'
+      ? result.ok
+      : !result.ok && messages.some(m => m.includes(want))
 
   if (good) {
     pass++
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (ok=${result.ok}, wanted ${want})\n      ${messages.join('\n      ')}`)
+    console.log(
+      `FAIL  ${name}  (ok=${result.ok}, wanted ${want})\n      ${messages.join('\n      ')}`,
+    )
   }
 }
 
@@ -62,15 +74,30 @@ rule shifted-bound
       code 3
 `
 
-expect('the default budget proves a product goal', SQUARE, undefined, 'ok')
+expect(
+  'the default budget proves a product goal',
+  SQUARE,
+  undefined,
+  'ok',
+)
 expect(
   'a budget too small for it STOPS the search, and says so: not false, not proven',
   SQUARE,
   '10',
   'was not proven within the proof budget (10 units of exact search)',
 )
-expect('a goal the linear prover closes needs no budget', LINEAR, '10', 'ok')
-expect('and the budget is per run: unset, the product goal is proven again', SQUARE, undefined, 'ok')
+expect(
+  'a goal the linear prover closes needs no budget',
+  LINEAR,
+  '10',
+  'ok',
+)
+expect(
+  'and the budget is per run: unset, the product goal is proven again',
+  SQUARE,
+  undefined,
+  'ok',
+)
 
 delete process.env.TERM_PROOF_BUDGET
 

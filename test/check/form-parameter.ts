@@ -60,15 +60,27 @@ const built = compile({ file: '/gate/code/form-parameter.tree', text })
 ok(
   'a task whose parameter shares its form name, returning that form, builds',
   built.ok,
-  built.ok ? '' : built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  built.ok
+    ? ''
+    : built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
 )
 
 if (built.ok) {
   const dir = mkdtempSync(join(tmpdir(), 'term-form-parameter-'))
   const file = join(dir, 'module.mjs')
-  writeFileSync(file, transformSync(built.typescript, { loader: 'ts', format: 'esm' }).code)
-  const mod = (await import(pathToFileURL(file).href)) as { run: () => number }
-  ok('and runs: grow(box 2, by 3) has size 5', mod.run() === 5, String(mod.run()))
+  writeFileSync(
+    file,
+    transformSync(built.typescript, { loader: 'ts', format: 'esm' })
+      .code,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as {
+    run: () => number
+  }
+  ok(
+    'and runs: grow(box 2, by 3) has size 5',
+    mod.run() === 5,
+    String(mod.run()),
+  )
 }
 
 // a genuine mismatch is still caught: a parameter named like the form, returning a number where the form is declared
@@ -81,11 +93,17 @@ task bad
   send back, read box/size
 `
 
-const refused = compile({ file: '/gate/code/form-parameter-wrong.tree', text: wrong })
+const refused = compile({
+  file: '/gate/code/form-parameter-wrong.tree',
+  text: wrong,
+})
 ok(
   'a real mismatch beside the same names is still refused',
-  !refused.ok && refused.diagnostics.some(d => d.name === 'type-mismatch'),
-  refused.ok ? 'it built' : refused.diagnostics.map(d => d.message).join(' | '),
+  !refused.ok &&
+    refused.diagnostics.some(d => d.name === 'type-mismatch'),
+  refused.ok
+    ? 'it built'
+    : refused.diagnostics.map(d => d.message).join(' | '),
 )
 
 console.log(`\nform-parameter: ${pass} pass, ${fail} fail`)

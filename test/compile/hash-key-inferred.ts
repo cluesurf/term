@@ -50,29 +50,50 @@ const dir = mkdtempSync(join(tmpdir(), 'term-hash-key-'))
 const only = process.env.HASH_ONLY ?? ''
 
 {
-  const built = compile({ file: join(dir, 'keys.tree'), text: PROGRAM }, { resolve: projectResolver(process.cwd(), 'node'), env: 'node' })
-  const ts = built.ok ? built.typescript : built.diagnostics.map(d => d.message).join(' | ')
+  const built = compile(
+    { file: join(dir, 'keys.tree'), text: PROGRAM },
+    { resolve: projectResolver(process.cwd(), 'node'), env: 'node' },
+  )
+  const ts = built.ok
+    ? built.typescript
+    : built.diagnostics.map(d => d.message).join(' | ')
   const declared = ts.match(/const seen: [^=]+=/)?.[0] ?? '(no seen)'
 
-  ok('typescript: the local is `Map<string, number>`, its key the text written', declared.includes('Map<string, number>'), declared)
+  ok(
+    'typescript: the local is `Map<string, number>`, its key the text written',
+    declared.includes('Map<string, number>'),
+    declared,
+  )
 
   const refused = compile(
     {
       file: join(dir, 'mixed.tree'),
-      text: PROGRAM.replace('    save seen/{w}, 1\n', '    save seen/{w}, 1\n    save three, 3\n    save seen/{three}, 1\n'),
+      text: PROGRAM.replace(
+        '    save seen/{w}, 1\n',
+        '    save seen/{w}, 1\n    save three, 3\n    save seen/{three}, 1\n',
+      ),
     },
     { resolve: projectResolver(process.cwd(), 'node'), env: 'node' },
   )
 
   ok(
     'a number key written into the same hash is refused as a map key',
-    !refused.ok && refused.diagnostics.some(d => d.message.includes('map key')),
-    refused.ok ? 'it built' : refused.diagnostics.map(d => d.message).join(' | '),
+    !refused.ok &&
+      refused.diagnostics.some(d => d.message.includes('map key')),
+    refused.ok
+      ? 'it built'
+      : refused.diagnostics.map(d => d.message).join(' | '),
   )
 }
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'keys' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'keys',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
@@ -82,7 +103,9 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
   ok(
     `${backend}: three distinct words counted through a hash keyed by text`,
     ran.form === 'ran' && ran.output === '3',
-    ran.form === 'ran' ? `got ${JSON.stringify(ran.output)}` : `${ran.stage}: ${ran.reason}`,
+    ran.form === 'ran'
+      ? `got ${JSON.stringify(ran.output)}`
+      : `${ran.stage}: ${ran.reason}`,
   )
 }
 

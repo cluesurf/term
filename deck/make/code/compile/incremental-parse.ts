@@ -8,7 +8,11 @@
 // (self-hosting, 2026-10-07). It shifts in copies, so this face writes what it hands back into the cache its caller
 // holds, and no tree an earlier call returned is moved by a later one.
 
-import { feedLine, finishBlocks, makeBlockSplitter } from '@term/make/code/compile/block-split'
+import {
+  feedLine,
+  finishBlocks,
+  makeBlockSplitter,
+} from '@term/make/code/compile/block-split'
 import * as parsing from '@term/make/code/compile/incremental-parsing'
 import type { RootNode, GroupNode } from '@term/make/code/parser/narrow'
 
@@ -54,15 +58,26 @@ export function incrementalParse(
   source: string,
   cache: ParseCache,
 ): { tree: RootNode; reused: number; parsed: number } {
-  const result = parsing.incrementalParse(file, splitTopLevel(source), cache as Map<string, parsing.BlockEntry>)
+  const result = parsing.incrementalParse(
+    file,
+    splitTopLevel(source),
+    cache as Map<string, parsing.BlockEntry>,
+  )
 
   // the cache after this call: the entries the file still holds, shifted, and the blocks parsed this time, in the
   // order the original's writes would have left them
   cache.clear()
 
   for (const [hash, entry] of result.cache) {
-    cache.set(hash, entry as ParseCache extends Map<string, infer V> ? V : never)
+    cache.set(
+      hash,
+      entry as ParseCache extends Map<string, infer V> ? V : never,
+    )
   }
 
-  return { tree: result.tree as RootNode, reused: result.reused, parsed: result.parsed }
+  return {
+    tree: result.tree as RootNode,
+    reused: result.reused,
+    parsed: result.parsed,
+  }
 }

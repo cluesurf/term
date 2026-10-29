@@ -24,7 +24,12 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-type Case = { name: string; says: string; want: string; program: string }
+type Case = {
+  name: string
+  says: string
+  want: string
+  program: string
+}
 
 const CASES: Case[] = [
   {
@@ -94,7 +99,13 @@ const only = process.env.TAG_ONLY ?? ''
 
 for (const one of CASES) {
   for (const backend of BACKENDS.filter(b => !only || b === only)) {
-    const ran = runOn({ backend, program: one.program, resolve: env => projectResolver(process.cwd(), env), dir, name: one.name })
+    const ran = runOn({
+      backend,
+      program: one.program,
+      resolve: env => projectResolver(process.cwd(), env),
+      dir,
+      name: one.name,
+    })
 
     if (ran.form === 'skipped') {
       console.log(`skip  ${backend}: ${ran.reason}`)
@@ -104,7 +115,9 @@ for (const one of CASES) {
     ok(
       `${backend}: ${one.says} (${one.name})`,
       ran.form === 'ran' && ran.output === one.want,
-      ran.form === 'ran' ? `got ${JSON.stringify(ran.output)}` : `${ran.stage}: ${ran.reason}`,
+      ran.form === 'ran'
+        ? `got ${JSON.stringify(ran.output)}`
+        : `${ran.stage}: ${ran.reason}`,
     )
   }
 }
@@ -119,7 +132,16 @@ if (!only || only === 'typescript') {
     },
     { resolve: projectResolver(process.cwd(), 'node'), env: 'node' },
   )
-  ok('a write to the tag is refused, naming the form', !written.ok && written.diagnostics.some(d => d.message.includes('is the tag of "shape"')), written.ok ? 'built' : written.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'a write to the tag is refused, naming the form',
+    !written.ok &&
+      written.diagnostics.some(d =>
+        d.message.includes('is the tag of "shape"'),
+      ),
+    written.ok
+      ? 'built'
+      : written.diagnostics.map(d => d.message).join(' | '),
+  )
 }
 
 console.log(`\ntag-native: ${pass} pass, ${fail} fail`)

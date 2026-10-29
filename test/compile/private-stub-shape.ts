@@ -26,18 +26,31 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-type Built = { ok: boolean; diagnostics?: { name: string; message: string }[] }
-
-const said = (r: Built): string => (r.ok ? 'ok' : (r.diagnostics ?? []).map(d => `${d.name}: ${d.message}`).join(' | '))
-
-const slug = (file: string): string => `./${file.replace(/\.tree$/, '').replace(/\W/g, '_')}.mjs`
-
-const resolverOf = (files: Record<string, string>): Resolver => path => {
-  const name = path.replace(/^\.\//, '')
-  const text = files[name]
-
-  return text === undefined ? undefined : { file: `${name}.tree`, text }
+type Built = {
+  ok: boolean
+  diagnostics?: { name: string; message: string }[]
 }
+
+const said = (r: Built): string =>
+  r.ok
+    ? 'ok'
+    : (r.diagnostics ?? [])
+        .map(d => `${d.name}: ${d.message}`)
+        .join(' | ')
+
+const slug = (file: string): string =>
+  `./${file.replace(/\.tree$/, '').replace(/\W/g, '_')}.mjs`
+
+const resolverOf =
+  (files: Record<string, string>): Resolver =>
+  path => {
+    const name = path.replace(/^\.\//, '')
+    const text = files[name]
+
+    return text === undefined
+      ? undefined
+      : { file: `${name}.tree`, text }
+  }
 
 const EARLY = `task pick
   take a, like boolean
@@ -125,18 +138,33 @@ task run
   send back, uses(pick(true, false))
 `
 
-const resolve = resolverOf({ early: EARLY, priv: PRIV, pub: PUB, mid: MID })
+const resolve = resolverOf({
+  early: EARLY,
+  priv: PRIV,
+  pub: PUB,
+  mid: MID,
+})
 
 for (const [how, entry] of [
   ['early, priv, mid', ENTRY],
   ['mid, priv, early', ENTRY_LATE],
   ['priv, early, mid', ENTRY_PRIV_FIRST],
 ] as const) {
-  const merged = compile({ file: 'entry.tree', text: entry }, { resolve, cache: new CompileCache() }) as Built
-  const separate = compileSeparate({ file: 'entry.tree', text: entry }, { resolve, cache: new CompileCache(), modules: slug }) as Built
+  const merged = compile(
+    { file: 'entry.tree', text: entry },
+    { resolve, cache: new CompileCache() },
+  ) as Built
+  const separate = compileSeparate(
+    { file: 'entry.tree', text: entry },
+    { resolve, cache: new CompileCache(), modules: slug },
+  ) as Built
 
   ok(`${how}: the merged build is clean`, merged.ok, said(merged))
-  ok(`${how}: the separate build is clean, as the merged one`, separate.ok, said(separate))
+  ok(
+    `${how}: the separate build is clean, as the merged one`,
+    separate.ok,
+    said(separate),
+  )
 }
 
 // the check still refuses a real use: an entry calling priv's private task through its own find
@@ -150,12 +178,30 @@ task run
 `
 
 for (const [how, build] of [
-  ['merged', () => compile({ file: 'entry.tree', text: REAL }, { resolve, cache: new CompileCache() }) as Built],
-  ['separate', () => compileSeparate({ file: 'entry.tree', text: REAL }, { resolve, cache: new CompileCache(), modules: slug }) as Built],
+  [
+    'merged',
+    () =>
+      compile(
+        { file: 'entry.tree', text: REAL },
+        { resolve, cache: new CompileCache() },
+      ) as Built,
+  ],
+  [
+    'separate',
+    () =>
+      compileSeparate(
+        { file: 'entry.tree', text: REAL },
+        { resolve, cache: new CompileCache(), modules: slug },
+      ) as Built,
+  ],
 ] as const) {
   const r = build()
 
-  ok(`${how}: a find of the private task is still refused`, !r.ok && said(r).includes('private-name'), said(r))
+  ok(
+    `${how}: a find of the private task is still refused`,
+    !r.ok && said(r).includes('private-name'),
+    said(r),
+  )
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

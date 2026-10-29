@@ -33,11 +33,23 @@ function repo(remote?: string): string {
 }
 
 const CASES: [string, string][] = [
-  ['git@github.com:cluesurf/zone.git', 'https://github.com/cluesurf/zone'],
+  [
+    'git@github.com:cluesurf/zone.git',
+    'https://github.com/cluesurf/zone',
+  ],
   ['git@github.com:cluesurf/zone', 'https://github.com/cluesurf/zone'],
-  ['ssh://git@github.com/cluesurf/zone.git', 'https://github.com/cluesurf/zone'],
-  ['https://github.com/cluesurf/zone.git', 'https://github.com/cluesurf/zone'],
-  ['https://x-access-token:ghp_secret@github.com/cluesurf/zone.git', 'https://github.com/cluesurf/zone'],
+  [
+    'ssh://git@github.com/cluesurf/zone.git',
+    'https://github.com/cluesurf/zone',
+  ],
+  [
+    'https://github.com/cluesurf/zone.git',
+    'https://github.com/cluesurf/zone',
+  ],
+  [
+    'https://x-access-token:ghp_secret@github.com/cluesurf/zone.git',
+    'https://github.com/cluesurf/zone',
+  ],
 ]
 
 for (const [remote, source] of CASES) {
@@ -46,7 +58,10 @@ for (const [remote, source] of CASES) {
 }
 
 ok('no origin is undefined', gitSource(repo()) === undefined)
-ok('outside a repository is undefined', gitSource(tempDir('term-git-source-none-')) === undefined)
+ok(
+  'outside a repository is undefined',
+  gitSource(tempDir('term-git-source-none-')) === undefined,
+)
 
 console.log(`\ngit-source: ${pass} pass, ${fail} fail`)
 

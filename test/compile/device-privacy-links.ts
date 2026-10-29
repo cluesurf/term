@@ -45,28 +45,131 @@ const PRIVACY: Record<string, string | undefined> = {
 
 // one capability, the task it calls, its arguments as written, the privacy frameworks it may import, and the usage
 // strings it must be declared with (AVFoundation's string depends on what is captured, so it is named per capability)
-type Case = { module: string; task: string; args: string[]; frameworks: string[]; usage: string[] }
+type Case = {
+  module: string
+  task: string
+  args: string[]
+  frameworks: string[]
+  usage: string[]
+}
 
 const CASES: Case[] = [
-  { module: 'permission', task: 'permission-status', args: ['text <camera>'], frameworks: [], usage: [] },
-  { module: 'notification', task: 'show-notification', args: ['text <a>', 'text <b>'], frameworks: ['UserNotifications'], usage: [] },
-  { module: 'camera', task: 'take-photo', args: [], frameworks: ['AVFoundation'], usage: ['NSCameraUsageDescription'] },
-  { module: 'torch', task: 'torch-state', args: [], frameworks: ['AVFoundation'], usage: ['NSCameraUsageDescription'] },
-  { module: 'microphone', task: 'record-audio', args: ['code 1'], frameworks: ['AVFoundation'], usage: ['NSMicrophoneUsageDescription'] },
-  { module: 'audio', task: 'audio-length', args: ['text <a>'], frameworks: ['AVFoundation'], usage: ['NSMicrophoneUsageDescription'] },
-  { module: 'location', task: 'current-position', args: [], frameworks: ['CoreLocation'], usage: ['NSLocationWhenInUseUsageDescription'] },
-  { module: 'contacts', task: 'find-contacts', args: ['text <a>'], frameworks: ['Contacts'], usage: ['NSContactsUsageDescription'] },
-  { module: 'calendar', task: 'find-events', args: ['text <a>', 'text <b>'], frameworks: ['EventKit'], usage: ['NSCalendarsFullAccessUsageDescription'] },
-  { module: 'photos', task: 'find-photos', args: ['code 1'], frameworks: ['Photos'], usage: ['NSPhotoLibraryUsageDescription'] },
-  { module: 'biometric', task: 'biometric-kind', args: [], frameworks: ['LocalAuthentication'], usage: ['NSFaceIDUsageDescription'] },
-  { module: 'clipboard', task: 'read-clipboard', args: [], frameworks: [], usage: [] },
-  { module: 'battery', task: 'battery-status', args: [], frameworks: [], usage: [] },
-  { module: 'network', task: 'network-status', args: [], frameworks: [], usage: [] },
-  { module: 'vibration', task: 'vibrate', args: ['text <light>'], frameworks: [], usage: [] },
-  { module: 'secret', task: 'read-secret', args: ['text <a>'], frameworks: [], usage: [] },
+  {
+    module: 'permission',
+    task: 'permission-status',
+    args: ['text <camera>'],
+    frameworks: [],
+    usage: [],
+  },
+  {
+    module: 'notification',
+    task: 'show-notification',
+    args: ['text <a>', 'text <b>'],
+    frameworks: ['UserNotifications'],
+    usage: [],
+  },
+  {
+    module: 'camera',
+    task: 'take-photo',
+    args: [],
+    frameworks: ['AVFoundation'],
+    usage: ['NSCameraUsageDescription'],
+  },
+  {
+    module: 'torch',
+    task: 'torch-state',
+    args: [],
+    frameworks: ['AVFoundation'],
+    usage: ['NSCameraUsageDescription'],
+  },
+  {
+    module: 'microphone',
+    task: 'record-audio',
+    args: ['code 1'],
+    frameworks: ['AVFoundation'],
+    usage: ['NSMicrophoneUsageDescription'],
+  },
+  {
+    module: 'audio',
+    task: 'audio-length',
+    args: ['text <a>'],
+    frameworks: ['AVFoundation'],
+    usage: ['NSMicrophoneUsageDescription'],
+  },
+  {
+    module: 'location',
+    task: 'current-position',
+    args: [],
+    frameworks: ['CoreLocation'],
+    usage: ['NSLocationWhenInUseUsageDescription'],
+  },
+  {
+    module: 'contacts',
+    task: 'find-contacts',
+    args: ['text <a>'],
+    frameworks: ['Contacts'],
+    usage: ['NSContactsUsageDescription'],
+  },
+  {
+    module: 'calendar',
+    task: 'find-events',
+    args: ['text <a>', 'text <b>'],
+    frameworks: ['EventKit'],
+    usage: ['NSCalendarsFullAccessUsageDescription'],
+  },
+  {
+    module: 'photos',
+    task: 'find-photos',
+    args: ['code 1'],
+    frameworks: ['Photos'],
+    usage: ['NSPhotoLibraryUsageDescription'],
+  },
+  {
+    module: 'biometric',
+    task: 'biometric-kind',
+    args: [],
+    frameworks: ['LocalAuthentication'],
+    usage: ['NSFaceIDUsageDescription'],
+  },
+  {
+    module: 'clipboard',
+    task: 'read-clipboard',
+    args: [],
+    frameworks: [],
+    usage: [],
+  },
+  {
+    module: 'battery',
+    task: 'battery-status',
+    args: [],
+    frameworks: [],
+    usage: [],
+  },
+  {
+    module: 'network',
+    task: 'network-status',
+    args: [],
+    frameworks: [],
+    usage: [],
+  },
+  {
+    module: 'vibration',
+    task: 'vibrate',
+    args: ['text <light>'],
+    frameworks: [],
+    usage: [],
+  },
+  {
+    module: 'secret',
+    task: 'read-secret',
+    args: ['text <a>'],
+    frameworks: [],
+    usage: [],
+  },
 ]
 
-const readRuntime = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, 'utf8') : undefined)
+const readRuntime = (file: string): string | undefined =>
+  existsSync(file) ? readFileSync(file, 'utf8') : undefined
 
 for (const one of CASES) {
   // every program also asks the permission module, so a grant it reads is one the capability registered or none
@@ -87,21 +190,57 @@ for (const one of CASES) {
     ...one.args.map(arg => `      ${arg}`),
     '',
   ].join('\n')
-  const result = compile({ file: join(ROOT, 'tmp', `privacy-${one.module}.tree`), text }, { resolve: projectResolver(ROOT, 'ios'), env: 'ios' })
+  const result = compile(
+    { file: join(ROOT, 'tmp', `privacy-${one.module}.tree`), text },
+    { resolve: projectResolver(ROOT, 'ios'), env: 'ios' },
+  )
 
   if (!result.ok) {
-    ok(`${one.module}: compiles for iOS`, false, result.diagnostics.slice(0, 3).map(d => d.message).join('; '))
+    ok(
+      `${one.module}: compiles for iOS`,
+      false,
+      result.diagnostics
+        .slice(0, 3)
+        .map(d => d.message)
+        .join('; '),
+    )
     continue
   }
 
   const swift = emitSwift(result.program)
-  const prelude = nativePrelude(result.program, 'ios', readRuntime, swift)
-  const imported = [...new Set([...prelude.matchAll(/^import (\w+)/gm)].map(m => m[1]!))].filter(name => name in PRIVACY).sort()
-  ok(`${one.module}: links ${one.frameworks.join(', ') || 'no privacy framework'}`, imported.join(',') === [...one.frameworks].sort().join(','), imported.join(', ') || 'none')
+  const prelude = nativePrelude(
+    result.program,
+    'ios',
+    readRuntime,
+    swift,
+  )
+  const imported = [
+    ...new Set(
+      [...prelude.matchAll(/^import (\w+)/gm)].map(m => m[1]!),
+    ),
+  ]
+    .filter(name => name in PRIVACY)
+    .sort()
+  ok(
+    `${one.module}: links ${one.frameworks.join(', ') || 'no privacy framework'}`,
+    imported.join(',') === [...one.frameworks].sort().join(','),
+    imported.join(', ') || 'none',
+  )
 
   const declared = appleUsage(prelude)
-  const owed = [...new Set([...one.usage, ...imported.map(name => PRIVACY[name]).filter((key): key is string => key !== undefined)])]
-  ok(`${one.module}: and is declared with ${owed.join(', ') || 'no usage string'}`, owed.every(key => key in declared), Object.keys(declared).join(', ') || 'none')
+  const owed = [
+    ...new Set([
+      ...one.usage,
+      ...imported
+        .map(name => PRIVACY[name])
+        .filter((key): key is string => key !== undefined),
+    ]),
+  ]
+  ok(
+    `${one.module}: and is declared with ${owed.join(', ') || 'no usage string'}`,
+    owed.every(key => key in declared),
+    Object.keys(declared).join(', ') || 'none',
+  )
 }
 
 console.log(`\ndevice-privacy-links: ${pass} pass, ${fail} fail`)

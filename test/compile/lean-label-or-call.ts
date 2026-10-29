@@ -41,23 +41,42 @@ task greet
   back name
 `
 
-type Built = { ok: true; answer: unknown; typescript: string } | { ok: false; diagnostics: { name: string; message: string; severity: string }[] }
+type Built =
+  | { ok: true; answer: unknown; typescript: string }
+  | {
+      ok: false
+      diagnostics: { name: string; message: string; severity: string }[]
+    }
 
 async function build(run: string): Promise<Built> {
-  const result = compile({ file: '/gate/code/label.tree', text: `${head}\n${run}` }, { leanOf: () => true })
+  const result = compile(
+    { file: '/gate/code/label.tree', text: `${head}\n${run}` },
+    { leanOf: () => true },
+  )
 
   if (!result.ok) {
     return { ok: false, diagnostics: result.diagnostics as never }
   }
 
   const file = join(folder, `out-${count++}.mjs`)
-  writeFileSync(file, transformSync(result.typescript, { loader: 'ts', format: 'esm' }).code)
+  writeFileSync(
+    file,
+    transformSync(result.typescript, { loader: 'ts', format: 'esm' })
+      .code,
+  )
   const module = await import(pathToFileURL(file).href)
 
-  return { ok: true, answer: module.run(), typescript: result.typescript }
+  return {
+    ok: true,
+    answer: module.run(),
+    typescript: result.typescript,
+  }
 }
 
-const said = (built: Built): string => (built.ok ? `built, answered ${JSON.stringify(built.answer)}` : built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+const said = (built: Built): string =>
+  built.ok
+    ? `built, answered ${JSON.stringify(built.answer)}`
+    : built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | ')
 
 // the call-shaped part naming both the parameter and the task
 const both = await build(`task run
@@ -66,12 +85,24 @@ const both = await build(`task run
 `)
 
 ok('greet(name(<x>)) is refused', !both.ok, said(both))
-ok('  as label-or-call, an error', !both.ok && both.diagnostics.some(d => d.name === 'label-or-call' && d.severity === 'error'), said(both))
+ok(
+  '  as label-or-call, an error',
+  !both.ok &&
+    both.diagnostics.some(
+      d => d.name === 'label-or-call' && d.severity === 'error',
+    ),
+  said(both),
+)
 ok(
   '  naming the argument, the task and both spellings',
   !both.ok &&
     both.diagnostics.some(
-      d => d.message.includes('"name(<x>)" under "greet"') && d.message.includes('argument "name"') && d.message.includes('task "name"') && d.message.includes('name <x>') && d.message.includes('call name(<x>)'),
+      d =>
+        d.message.includes('"name(<x>)" under "greet"') &&
+        d.message.includes('argument "name"') &&
+        d.message.includes('task "name"') &&
+        d.message.includes('name <x>') &&
+        d.message.includes('call name(<x>)'),
     ),
   said(both),
 )
@@ -82,7 +113,11 @@ const called = await build(`task run
   back greet(call name(<x>))
 `)
 
-ok('greet(call name(<x>)) answers named', called.ok && called.answer === 'named', said(called))
+ok(
+  'greet(call name(<x>)) answers named',
+  called.ok && called.answer === 'named',
+  said(called),
+)
 
 // the label, written so
 const labeled = await build(`task run
@@ -93,7 +128,11 @@ const labeled = await build(`task run
   back said
 `)
 
-ok('greet / name <x> answers x with no diagnostic', labeled.ok && labeled.answer === 'x', said(labeled))
+ok(
+  'greet / name <x> answers x with no diagnostic',
+  labeled.ok && labeled.answer === 'x',
+  said(labeled),
+)
 
 // a call-shaped label whose head names nothing callable is unchanged
 {
@@ -116,11 +155,21 @@ task run
 
   if (result.ok) {
     const file = join(folder, `out-${count++}.mjs`)
-    writeFileSync(file, transformSync(result.typescript, { loader: 'ts', format: 'esm' }).code)
+    writeFileSync(
+      file,
+      transformSync(result.typescript, { loader: 'ts', format: 'esm' })
+        .code,
+    )
     answer = (await import(pathToFileURL(file).href)).run()
   }
 
-  ok('greet(who(<x>)) with no task who answers x', result.ok && answer === 'x', result.ok ? JSON.stringify(answer) : result.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'greet(who(<x>)) with no task who answers x',
+    result.ok && answer === 'x',
+    result.ok
+      ? JSON.stringify(answer)
+      : result.diagnostics.map(d => d.message).join(' | '),
+  )
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

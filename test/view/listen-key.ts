@@ -110,26 +110,51 @@ ${PRESSED.map(key => `  call press-key\n    read root\n    text <${key}>`).join(
 function pinned(env: string): Resolver {
   const base = projectResolver(process.cwd(), env)
 
-  return (importPath, fromFile) => base(importPath.replace(/native\/\{platform\}\/(dom|view)$/, 'native/terminal/$1'), fromFile)
+  return (importPath, fromFile) =>
+    base(
+      importPath.replace(
+        /native\/\{platform\}\/(dom|view)$/,
+        'native/terminal/$1',
+      ),
+      fromFile,
+    )
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'term-listen-key-'))
 const only = process.env.KEY_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: pinned, dir, name: 'keys' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: pinned,
+    dir,
+    name: 'keys',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
     continue
   }
 
-  ok(`${backend}: the keyboard program compiles, builds and runs`, ran.form === 'ran', ran.form === 'failed' ? `${ran.stage}: ${ran.reason}` : '')
+  ok(
+    `${backend}: the keyboard program compiles, builds and runs`,
+    ran.form === 'ran',
+    ran.form === 'failed' ? `${ran.stage}: ${ran.reason}` : '',
+  )
 
   if (ran.form === 'ran') {
     const [keys, before, after] = ran.output.split('|')
-    ok(`${backend}: every key reaches the listener under its web name`, keys === HEARD, `got ${JSON.stringify(keys)}`)
-    ok(`${backend}: an armed disclosure is open before Escape and closed after it`, before === 'open' && after === 'closed', `${before} then ${after}`)
+    ok(
+      `${backend}: every key reaches the listener under its web name`,
+      keys === HEARD,
+      `got ${JSON.stringify(keys)}`,
+    )
+    ok(
+      `${backend}: an armed disclosure is open before Escape and closed after it`,
+      before === 'open' && after === 'closed',
+      `${before} then ${after}`,
+    )
   }
 }
 

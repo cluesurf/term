@@ -16,10 +16,17 @@
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildCompose, buildComposeAndroid } from '@term/call/code/compose'
+import {
+  buildCompose,
+  buildComposeAndroid,
+} from '@term/call/code/compose'
 import { runCompose } from './shared/compose-build'
 import { runComposeAndroid } from './shared/compose-android'
-import { LAYOUT_LABELS, LAYOUT_ROWS, judgeLayout } from './shared/layout-rows'
+import {
+  LAYOUT_LABELS,
+  LAYOUT_ROWS,
+  judgeLayout,
+} from './shared/layout-rows'
 
 // the style table (native-dom-0008's format, `<class>|<state>|<property>: <value>` rows joined by `;`), light and dark
 const STYLE_LIGHT = [
@@ -34,20 +41,27 @@ const STYLE_LIGHT = [
   'label||font-weight: 600',
   'kbd||background: #e4e4e7',
 ].join(';')
-const STYLE_DARK = STYLE_LIGHT.replace('#f4f4f5', '#09090b').replace('#18181b', '#f4f4f5').replace('#d4d4d8', '#27272a')
+const STYLE_DARK = STYLE_LIGHT.replace('#f4f4f5', '#09090b')
+  .replace('#18181b', '#f4f4f5')
+  .replace('#d4d4d8', '#27272a')
 
 // what the style run must read back, worked out from the table: the panel's fill (off the pixels), edge, corners and
 // the color its words inherit; the overlay hidden, then shown by its state; the label's size and weight; the inline
 // fill winning over the class's while the class's edge stays; the chip's fill, then none once its class is gone
-const WANT_STYLES = 'styles #f4f4f5 1px #d4d4d8 8px #18181b 0 1 14px 600 #102030 1px #d4d4d8 #e4e4e7 none'
+const WANT_STYLES =
+  'styles #f4f4f5 1px #d4d4d8 8px #18181b 0 1 14px 600 #102030 1px #d4d4d8 #e4e4e7 none'
 const WANT_DARK = 'styles dark #09090b #f4f4f5'
 
 // every layout row mounted on the root, then each one's frames said, for the one judge the web and every toolkit answer
 // to (./shared/layout-rows.ts)
 const LAYOUT_CALLS =
-  LAYOUT_LABELS.map(([, view]) => `      save ${view}-box, call box-in(read root)\n      call ${view}\n        read ${view}-box\n`).join('') +
   LAYOUT_LABELS.map(
-    ([label, view]) => `      call say-row\n        text <${label}>\n        call child-at\n          read ${view}-box\n          code 0\n`,
+    ([, view]) =>
+      `      save ${view}-box, call box-in(read root)\n      call ${view}\n        read ${view}-box\n`,
+  ).join('') +
+  LAYOUT_LABELS.map(
+    ([label, view]) =>
+      `      call say-row\n        text <${label}>\n        call child-at\n          read ${view}-box\n          code 0\n`,
   ).join('')
 
 let pass = 0
@@ -65,8 +79,11 @@ function check(name: string, cond: boolean, info = ''): void {
 
 const ROOT = join(import.meta.dirname, '../..')
 const dir = mkdtempSync(join(tmpdir(), 'term-compose-view-'))
-const desktopShot = process.env.SNAPSHOT_COMPOSE ?? join(dir, 'compose.png')
-const androidShot = process.env.SNAPSHOT_COMPOSE_ANDROID ?? join(dir, 'compose-android.png')
+const desktopShot =
+  process.env.SNAPSHOT_COMPOSE ?? join(dir, 'compose.png')
+const androidShot =
+  process.env.SNAPSHOT_COMPOSE_ANDROID ??
+  join(dir, 'compose-android.png')
 const ANDROID_IDENTIFIER = 'surf.term.composeview'
 
 // what the tree must read back as, worked out by hand: the tally pressed 5 times, then the switch pressed and the
@@ -77,7 +94,9 @@ const WANT = [
 ]
 
 // the program, writing its PNG at `shot` (a path on the desktop, a file name in the app's files directory on Android)
-const program = (shot: string): string => `load @term/site/code/view/reactive
+const program = (
+  shot: string,
+): string => `load @term/site/code/view/reactive
   find make-signal
   find read-signal
   find write-signal
@@ -800,7 +819,12 @@ ${LAYOUT_CALLS}      save note-row
 // the desktop: Compose Multiplatform on the JVM, headless (./shared/compose-build.ts, which also checks no Android class
 // reached the prelude)
 function desktop(): void {
-  const built = buildCompose({ root: ROOT, dir, name: 'compose', text: program(desktopShot) })
+  const built = buildCompose({
+    root: ROOT,
+    dir,
+    name: 'compose',
+    text: program(desktopShot),
+  })
 
   if (built.form === 'skipped') {
     console.log(`skip  desktop: ${built.reason}`)
@@ -808,21 +832,35 @@ function desktop(): void {
     return
   }
 
-  check('desktop: the program compiles for the toolkit dom and kotlinc builds it with the Compose plugin', built.form === 'built', built.form === 'failed' ? `${built.stage}: ${built.reason}` : '')
+  check(
+    'desktop: the program compiles for the toolkit dom and kotlinc builds it with the Compose plugin',
+    built.form === 'built',
+    built.form === 'failed' ? `${built.stage}: ${built.reason}` : '',
+  )
 
   if (built.form !== 'built') {
     return
   }
 
   const ran = runCompose(built)
-  check('desktop: the app said it exits 0', ran.output.includes('native-view exit 0') && ran.status === 0, `status ${ran.status}: ${ran.error.slice(-1200)}`)
+  check(
+    'desktop: the app said it exits 0',
+    ran.output.includes('native-view exit 0') && ran.status === 0,
+    `status ${ran.status}: ${ran.error.slice(-1200)}`,
+  )
   judge('desktop', ran.output, desktopShot)
 }
 
 // Android: Jetpack Compose, an APK made with no Android Gradle plugin (./shared/compose-android.ts), installed on the
 // emulator, its lines read from logcat and its PNG pulled off the device
 function android(): void {
-  const built = buildComposeAndroid({ root: ROOT, dir, name: 'compose', text: program('compose.png'), identifier: ANDROID_IDENTIFIER })
+  const built = buildComposeAndroid({
+    root: ROOT,
+    dir,
+    name: 'compose',
+    text: program('compose.png'),
+    identifier: ANDROID_IDENTIFIER,
+  })
 
   if (built.form === 'skipped') {
     console.log(`skip  android: ${built.reason}`)
@@ -830,13 +868,22 @@ function android(): void {
     return
   }
 
-  check('android: the APK builds from Compose\'s Android libraries, resources linked by aapt2 and dexed by d8', built.form === 'built', built.form === 'failed' ? `${built.stage}: ${built.reason}` : '')
+  check(
+    "android: the APK builds from Compose's Android libraries, resources linked by aapt2 and dexed by d8",
+    built.form === 'built',
+    built.form === 'failed' ? `${built.stage}: ${built.reason}` : '',
+  )
 
   if (built.form !== 'built') {
     return
   }
 
-  const ran = runComposeAndroid({ apk: built.apk, identifier: ANDROID_IDENTIFIER, shot: 'compose.png', pulled: androidShot })
+  const ran = runComposeAndroid({
+    apk: built.apk,
+    identifier: ANDROID_IDENTIFIER,
+    shot: 'compose.png',
+    pulled: androidShot,
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  android: ${ran.reason}`)
@@ -845,42 +892,114 @@ function android(): void {
   }
 
   check('android: it installs on the emulator', ran.installed)
-  check('android: the app said it exits 0', ran.exited, ran.output.slice(-1600))
+  check(
+    'android: the app said it exits 0',
+    ran.exited,
+    ran.output.slice(-1600),
+  )
   judge('android', ran.output, androidShot)
 }
 
 // every judgment, the same on both legs, each worked out by hand
 function judge(leg: string, said: string, shot: string): void {
-  const ok = (name: string, cond: boolean, info = ''): void => check(`${leg}: ${name}`, cond, info)
-  const lines = said.split('\n').filter(one => one.trim() !== '' && !one.startsWith('---------'))
-  const line = (prefix: string): string | undefined => lines.find(one => one.startsWith(prefix))?.slice(prefix.length)
+  const ok = (name: string, cond: boolean, info = ''): void =>
+    check(`${leg}: ${name}`, cond, info)
+  const lines = said
+    .split('\n')
+    .filter(one => one.trim() !== '' && !one.startsWith('---------'))
+  const line = (prefix: string): string | undefined =>
+    lines.find(one => one.startsWith(prefix))?.slice(prefix.length)
 
-  ok(`five presses read back from Compose: ${WANT[0]}`, lines[0] === WANT[0], JSON.stringify(lines[0]))
-  ok(`the switch and six more read back from Compose: ${WANT[1]}`, lines[1] === WANT[1], JSON.stringify(lines[1]))
+  ok(
+    `five presses read back from Compose: ${WANT[0]}`,
+    lines[0] === WANT[0],
+    JSON.stringify(lines[0]),
+  )
+  ok(
+    `the switch and six more read back from Compose: ${WANT[1]}`,
+    lines[1] === WANT[1],
+    JSON.stringify(lines[1]),
+  )
 
-  const frame = (name: string) => line(`frame ${name} `)?.split(',').map(Number)
-  const [row, first, second] = [frame('row'), frame('first'), frame('second')]
+  const frame = (name: string) =>
+    line(`frame ${name} `)?.split(',').map(Number)
+  const [row, first, second] = [
+    frame('row'),
+    frame('first'),
+    frame('second'),
+  ]
   const near = (a: number, b: number) => Math.abs(a - b) <= 1
-  ok('the gap is the row arrangement\'s spacing, 12', !!first && !!second && near(second[0]!, first[0]! + first[2]! + 12), JSON.stringify({ first, second }))
+  ok(
+    "the gap is the row arrangement's spacing, 12",
+    !!first && !!second && near(second[0]!, first[0]! + first[2]! + 12),
+    JSON.stringify({ first, second }),
+  )
   // across, exactly 8. Down, at least 8: a Material button draws 36dp tall inside the 48dp touch target Compose
   // reserves for every control (its accessibility minimum), so the drawn button sits 6dp below the inset, as the
   // Android leg allows for its own controls
-  ok('the padding is the row\'s inset, 8', !!row && !!first && near(first[0]! - row[0]!, 8) && first[1]! - row[1]! >= 7, JSON.stringify({ row, first }))
+  ok(
+    "the padding is the row's inset, 8",
+    !!row &&
+      !!first &&
+      near(first[0]! - row[0]!, 8) &&
+      first[1]! - row[1]! >= 7,
+    JSON.stringify({ row, first }),
+  )
   ok(
     'align-items center puts both buttons on one line',
-    !!first && !!second && near(first[1]! + first[3]! / 2, second[1]! + second[3]! / 2),
+    !!first &&
+      !!second &&
+      near(first[1]! + first[3]! / 2, second[1]! + second[3]! / 2),
     JSON.stringify({ first, second }),
   )
 
-  ok('the slider shows the range\'s 40, read off its progress', line('slider shown ') === '<div><slider value="40"></slider></div>', String(line('slider shown ')))
-  ok('a move to 37.5, half a step, made through the slider\'s own action, is written into the range', Number(line('slider heard ')) === 37.5, String(line('slider heard ')))
-  ok('the range written to 20 moves the slider', line('slider moved ') === '<div><slider value="20"></slider></div>', String(line('slider moved ')))
-  ok('the select shows the signal\'s medium', line('select shown ') === '<div><select value="medium"></select></div>', String(line('select shown ')))
-  ok('large chosen is written into the signal', line('select heard ') === 'large', String(line('select heard ')))
-  ok('the signal written to small moves the select', line('select moved ') === '<div><select value="small"></select></div>', String(line('select moved ')))
-  ok('the input shows the signal\'s hello, read off the field\'s text', line('input shown ') === '<div><input value="hello"></input></div>', String(line('input shown ')))
-  ok('hello world typed into the field is written into the signal', line('input heard ') === 'hello world', String(line('input heard ')))
-  ok('the signal written to bye shows in the field', line('input moved ') === '<div><input value="bye"></input></div>', String(line('input moved ')))
+  ok(
+    "the slider shows the range's 40, read off its progress",
+    line('slider shown ') === '<div><slider value="40"></slider></div>',
+    String(line('slider shown ')),
+  )
+  ok(
+    "a move to 37.5, half a step, made through the slider's own action, is written into the range",
+    Number(line('slider heard ')) === 37.5,
+    String(line('slider heard ')),
+  )
+  ok(
+    'the range written to 20 moves the slider',
+    line('slider moved ') === '<div><slider value="20"></slider></div>',
+    String(line('slider moved ')),
+  )
+  ok(
+    "the select shows the signal's medium",
+    line('select shown ') ===
+      '<div><select value="medium"></select></div>',
+    String(line('select shown ')),
+  )
+  ok(
+    'large chosen is written into the signal',
+    line('select heard ') === 'large',
+    String(line('select heard ')),
+  )
+  ok(
+    'the signal written to small moves the select',
+    line('select moved ') ===
+      '<div><select value="small"></select></div>',
+    String(line('select moved ')),
+  )
+  ok(
+    "the input shows the signal's hello, read off the field's text",
+    line('input shown ') === '<div><input value="hello"></input></div>',
+    String(line('input shown ')),
+  )
+  ok(
+    'hello world typed into the field is written into the signal',
+    line('input heard ') === 'hello world',
+    String(line('input heard ')),
+  )
+  ok(
+    'the signal written to bye shows in the field',
+    line('input moved ') === '<div><input value="bye"></input></div>',
+    String(line('input moved ')),
+  )
   // the layout model (compose-target-0002), by the one judge the web and every toolkit are held to
   for (const [name, passed, info] of judgeLayout(said)) {
     ok(`layout: ${name}`, passed, info)
@@ -889,19 +1008,22 @@ function judge(leg: string, said: string, shot: string): void {
   // the list: two notes added through the field and the button, in order, and the sibling after the list still last
   ok(
     'two notes typed and added are drawn as the list, in order, before the sibling after it',
-    line('notes ') === '<div><div><input value=""></input><button>add</button></div><p>hi</p><p>yo</p><span>end</span></div>',
+    line('notes ') ===
+      '<div><div><input value=""></input><button>add</button></div><p>hi</p><p>yo</p><span>end</span></div>',
     String(line('notes ')),
   )
   // the exception carrier: the raise in a click handler ends nothing, its note reaches the span, and the next click
   // is still handled
   ok(
     'a raise in a click handler is caught, and its note reaches the UI',
-    line('raise refused ') === '<div><button>refuse</button><button>count</button><span>0</span><span>no more</span></div>',
+    line('raise refused ') ===
+      '<div><button>refuse</button><button>count</button><span>0</span><span>no more</span></div>',
     String(line('raise refused ')),
   )
   ok(
     'after the raise the app keeps handling clicks',
-    line('raise counted ') === '<div><button>refuse</button><button>count</button><span>1</span><span>no more</span></div>',
+    line('raise counted ') ===
+      '<div><button>refuse</button><button>count</button><span>1</span><span>no more</span></div>',
     String(line('raise counted ')),
   )
   // the dialog: what it holds while closed, out of the page; presented by Compose when the disclosure opens; ended by
@@ -909,24 +1031,42 @@ function judge(leg: string, said: string, shot: string): void {
   // dialog draws it since 2026-10-07 (face/code/component/native/toolkit/dialog.tree, the same rows toolkit-view.ts reads)
   ok(
     'the dialog holds its content, closed, and is not in the page it was given',
-    line('dialog closed ') === '<sheet open="false"><h2>Delete it?</h2><span>Sure?</span></sheet> page <div></div>',
+    line('dialog closed ') ===
+      '<sheet open="false"><h2>Delete it?</h2><span>Sure?</span></sheet> page <div></div>',
     String(line('dialog closed ')),
   )
   ok(
     'opening the disclosure has Compose compose the dialog',
-    line('dialog opened ') === '<sheet open="true"><h2>Delete it?</h2><span>Sure?</span></sheet>',
+    line('dialog opened ') ===
+      '<sheet open="true"><h2>Delete it?</h2><span>Sure?</span></sheet>',
     String(line('dialog opened ')),
   )
   ok(
-    'the person\'s dismissal ends the dialog and closes the disclosure',
-    line('dialog dismissed ') === '<sheet open="false"><h2>Delete it?</h2><span>Sure?</span></sheet> false',
+    "the person's dismissal ends the dialog and closes the disclosure",
+    line('dialog dismissed ') ===
+      '<sheet open="false"><h2>Delete it?</h2><span>Sure?</span></sheet> false',
     String(line('dialog dismissed ')),
   )
   // the style table: classes, a state, an inline fill, a class removed, then the dark scheme, the fill off the pixels
-  const styles = lines.find(one => one.startsWith('styles #') || one.startsWith('styles none'))
-  ok(`the style table drawn by Compose: ${WANT_STYLES}`, styles === WANT_STYLES, String(styles))
-  ok(`the scheme turned dark restyles the panel from the dark table: ${WANT_DARK}`, line('styles dark ') === WANT_DARK.slice('styles dark '.length), String(line('styles dark ')))
-  ok('a PNG of what Compose drew was written', existsSync(shot) && readFileSync(shot).subarray(1, 4).toString() === 'PNG', shot)
+  const styles = lines.find(
+    one => one.startsWith('styles #') || one.startsWith('styles none'),
+  )
+  ok(
+    `the style table drawn by Compose: ${WANT_STYLES}`,
+    styles === WANT_STYLES,
+    String(styles),
+  )
+  ok(
+    `the scheme turned dark restyles the panel from the dark table: ${WANT_DARK}`,
+    line('styles dark ') === WANT_DARK.slice('styles dark '.length),
+    String(line('styles dark ')),
+  )
+  ok(
+    'a PNG of what Compose drew was written',
+    existsSync(shot) &&
+      readFileSync(shot).subarray(1, 4).toString() === 'PNG',
+    shot,
+  )
 }
 
 // COMPOSE_VIEW_ONLY=desktop (or android) runs one leg

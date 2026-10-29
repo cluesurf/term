@@ -9,13 +9,40 @@ import { compileSeparate } from '@term/make/code/compile/separate'
 import type { Roll } from '@term/make/code/compile/roll'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
-import { deckFromPath, makeRollMerger, showRoll } from '@term/make/code/compile/roll'
-import { buildable, buildSession, findTreeFiles, isWholeFile, unitSlug } from '@term/call/code/make'
+import {
+  deckFromPath,
+  makeRollMerger,
+  showRoll,
+} from '@term/make/code/compile/roll'
+import {
+  buildable,
+  buildSession,
+  findTreeFiles,
+  isWholeFile,
+  unitSlug,
+} from '@term/call/code/make'
 import type { BuildProblem } from '@term/call/code/make'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { projectCache } from '@term/call/code/cache-store'
-import { closeRun, count, field, location, openRun, outputOptions, printData, printProfile, report, reportProblems } from '@term/call/code/output'
-import { addReach, diffRolls, ownHost, reachGains, rollBefore } from '@term/call/code/roll-diff'
+import {
+  closeRun,
+  count,
+  field,
+  location,
+  openRun,
+  outputOptions,
+  printData,
+  printProfile,
+  report,
+  reportProblems,
+} from '@term/call/code/output'
+import {
+  addReach,
+  diffRolls,
+  ownHost,
+  reachGains,
+  rollBefore,
+} from '@term/call/code/roll-diff'
 // what `term roll` decides beside the roll's own shape: the kinds, each exception's tell and routes, and what it says
 import * as words from '@term/call/code/roll-words'
 
@@ -37,7 +64,10 @@ export const ROLL_KINDS = words.rollKinds()
 // roll`, `term make --merged`) each entry is built from units here, from the cache when the build ran, writing nothing.
 // task/term/roll-units.ts holds the result to every entry's own roll: every entry it lists, the same where the entries
 // agree and one of their answers where they do not
-export function projectRoll(root: string, rolls?: Map<string, Roll>): {
+export function projectRoll(
+  root: string,
+  rolls?: Map<string, Roll>,
+): {
   roll: Roll
   failed: string[]
   problems: BuildProblem[]
@@ -65,7 +95,14 @@ export function projectRoll(root: string, rolls?: Map<string, Roll>): {
   }
 
   merger.add({
-    deck: [...decks].map(([host, files]) => ({ host, kind: 'deck', name: host, site: '', file: files.length, __files: files })),
+    deck: [...decks].map(([host, files]) => ({
+      host,
+      kind: 'deck',
+      name: host,
+      site: '',
+      file: files.length,
+      __files: files,
+    })),
     exception: [],
     task: [],
     dock: [],
@@ -76,7 +113,9 @@ export function projectRoll(root: string, rolls?: Map<string, Roll>): {
   const roll = merger.done()
 
   if (profile) {
-    printProfile(`roll pass: ${Date.now() - startedAt} ms over ${units.size} units`)
+    printProfile(
+      `roll pass: ${Date.now() - startedAt} ms over ${units.size} units`,
+    )
   }
 
   return { roll, failed, problems }
@@ -84,9 +123,16 @@ export function projectRoll(root: string, rolls?: Map<string, Roll>): {
 
 // every unit's roll of the project's entries, each entry built from units as `term make` builds it, writing nothing: the
 // cache answers every unit the last build built. An entry that does not build is in `failed` with its diagnostics
-function unitRolls(root: string, failed: string[], problems: BuildProblem[]): Map<string, Roll> {
+function unitRolls(
+  root: string,
+  failed: string[],
+  problems: BuildProblem[],
+): Map<string, Roll> {
   const link = path.join(root, 'link') + path.sep
-  const files = findTreeFiles(root, [], 'node').filter(f => !f.startsWith(link))
+  const files = findTreeFiles(root, [], 'node').filter(
+    f => !f.startsWith(link),
+  )
+
   const session = buildSession(root)
   const cache = projectCache(root)
   const deckOf = projectDeckOf()
@@ -99,7 +145,11 @@ function unitRolls(root: string, failed: string[], problems: BuildProblem[]): Ma
   session.turn(files)
 
   for (const file of files) {
-    const unit = buildable(file, readFileSync(file, 'utf8'), roleOf(file))
+    const unit = buildable(
+      file,
+      readFileSync(file, 'utf8'),
+      roleOf(file),
+    )
 
     if ('faults' in unit) {
       failed.push(path.relative(root, file))
@@ -130,7 +180,11 @@ function unitRolls(root: string, failed: string[], problems: BuildProblem[]): Ma
       failed.push(path.relative(root, file))
 
       for (const diagnostic of result.diagnostics) {
-        problems.push(diagnostic.file === file ? unit.place(diagnostic) : { diagnostic, text: undefined })
+        problems.push(
+          diagnostic.file === file
+            ? unit.place(diagnostic)
+            : { diagnostic, text: undefined },
+        )
       }
 
       continue
@@ -149,14 +203,27 @@ function unitRolls(root: string, failed: string[], problems: BuildProblem[]): Ma
 // one entry's roll, and its diagnostics when it does not build: the whole-program compile the roll is read from, with
 // only the roll and the diagnostics cached (compile's `rollOnly`). Called here and by a worker of the parallel build
 // (separate-worker.ts), which computes each entry's roll beside its units, under the same key
-export type EntryRoll = { ok: boolean; roll?: Roll; diagnostics: Diagnostic[] }
+export type EntryRoll = {
+  ok: boolean
+  roll?: Roll
+  diagnostics: Diagnostic[]
+}
 
 type CompileOptions = NonNullable<Parameters<typeof compile>[1]>
 
-export function entryRoll(source: { file: string; text: string }, options: Omit<CompileOptions, 'roll' | 'rollOnly'>): EntryRoll {
-  const one = compile(source, { ...options, roll: true, rollOnly: true })
+export function entryRoll(
+  source: { file: string; text: string },
+  options: Omit<CompileOptions, 'roll' | 'rollOnly'>,
+): EntryRoll {
+  const one = compile(source, {
+    ...options,
+    roll: true,
+    rollOnly: true,
+  })
 
-  return one.ok ? { ok: true, roll: one.roll, diagnostics: [] } : { ok: false, diagnostics: one.diagnostics }
+  return one.ok
+    ? { ok: true, roll: one.roll, diagnostics: [] }
+    : { ok: false, diagnostics: one.diagnostics }
 }
 
 // where an entry's roll is kept, by its closure key (`SeparateResult.closureKey`)
@@ -187,7 +254,11 @@ export async function callRoll(input: {
   path?: boolean
   diff?: string
 }): Promise<void> {
-  openRun({ verb: 'roll', root: input.root, facts: input.kind ? [input.kind] : [] })
+  openRun({
+    verb: 'roll',
+    root: input.root,
+    facts: input.kind ? [input.kind] : [],
+  })
 
   const { roll, failed, problems } = projectRoll(input.root)
 
@@ -195,14 +266,34 @@ export async function callRoll(input: {
   addReach(roll, input.root)
 
   if (input.diff !== undefined) {
-    rollDiff({ root: input.root, before: input.diff, roll, failed, problems, json: input.json === true })
+    rollDiff({
+      root: input.root,
+      before: input.diff,
+      roll,
+      failed,
+      problems,
+      json: input.json === true,
+    })
 
     return
   }
 
   // a kind is built in, or declared by a deck of this build (`roll <name>`)
-  if (input.kind && !words.isRollKind(input.kind, roll.kind.map(k => k.name))) {
-    report({ glyph: 'failed', kind: 'problem', subject: `There is no roll kind named ${input.kind}`, fields: [field('kinds', words.kindsField(roll.kind.map(k => k.name)))] })
+  if (
+    input.kind &&
+    !words.isRollKind(
+      input.kind,
+      roll.kind.map(k => k.name),
+    )
+  ) {
+    report({
+      glyph: 'failed',
+      kind: 'problem',
+      subject: `There is no roll kind named ${input.kind}`,
+      fields: [
+        field('kinds', words.kindsField(roll.kind.map(k => k.name))),
+      ],
+    })
     closeRun({ verdict: 'Nothing rolled' })
 
     return
@@ -216,21 +307,38 @@ export async function callRoll(input: {
 
   if (input.private) {
     const told = roll.tell.map(t => t.name)
-    roll.exception = roll.exception.filter(e => words.isPrivate(e.host, e.name, told))
+    roll.exception = roll.exception.filter(e =>
+      words.isPrivate(e.host, e.name, told),
+    )
   }
 
   // which tell covers each exception, and which routes can answer with it
-  const tells = roll.tell.map(t => ({ name: t.name, note: t.note as string }))
-  const routes = roll.dock.map(d => ({ name: d.name, halt: d.halt as string[] }))
+  const tells = roll.tell.map(t => ({
+    name: t.name,
+    note: t.note as string,
+  }))
+
+  const routes = roll.dock.map(d => ({
+    name: d.name,
+    halt: d.halt as string[],
+  }))
 
   for (const exception of roll.exception) {
-    const cover = words.coverOf(exception.host, exception.name, tells, routes)
+    const cover = words.coverOf(
+      exception.host,
+      exception.name,
+      tells,
+      routes,
+    )
+
     exception.tell = cover.tell
     exception.dock = cover.dock
   }
 
   // what was asked for: one kind's entries after `--host` and `--private`, or the whole roll
-  const shown: Array<unknown> | undefined = input.kind ? ((roll as unknown as Record<string, unknown[]>)[input.kind] ?? []) : undefined
+  const shown: unknown[] | undefined = input.kind
+    ? ((roll as unknown as Record<string, unknown[]>)[input.kind] ?? [])
+    : undefined
 
   // the roll is the answer the user asked for: data on stdout, as a tree or as the JSON `term make` writes. The
   // block alone, ended by one newline: the run's own blank lines already stand before and after it on a terminal,
@@ -260,7 +368,7 @@ export async function callRoll(input: {
   closeRun({
     verdict: failed.length ? 'Rolled, with files missing' : 'Rolled',
     counts: shown
-      ? [count(shown.length, ...rollNoun(input.kind as string))]
+      ? [count(shown.length, ...rollNoun(input.kind!))]
       : [
           count(roll.exception.length, 'exceptions', 'exception'),
           count(roll.task.length, 'tasks', 'task'),
@@ -271,8 +379,16 @@ export async function callRoll(input: {
 
 // `--diff <before>`: the roll now against the roll at `before` (call/code/roll-diff.ts). Each task that changed what it
 // can reach or raise is an item, a gained reach a warning, so `--strict` fails a change that widened what code can do
-function rollDiff(input: { root: string; before: string; roll: Roll; failed: string[]; problems: BuildProblem[]; json: boolean }): void {
+function rollDiff(input: {
+  root: string
+  before: string
+  roll: Roll
+  failed: string[]
+  problems: BuildProblem[]
+  json: boolean
+}): void {
   let failedBefore = 0
+
   const before = rollBefore(input.root, input.before, at => {
     const old = projectRoll(at)
 
@@ -283,19 +399,30 @@ function rollDiff(input: { root: string; before: string; roll: Roll; failed: str
 
   if ('error' in before) {
     if (input.json) {
-      printData(`${JSON.stringify({ error: 'no-before', message: before.error })}\n`)
+      printData(
+        `${JSON.stringify({ error: 'no-before', message: before.error })}\n`,
+      )
       process.exitCode = 1
 
       return
     }
 
     report({ glyph: 'failed', kind: 'problem', subject: before.error })
-    closeRun({ verdict: 'Nothing compared', next: 'term roll --json > before.json, before the change, then term roll --diff before.json' })
+    closeRun({
+      verdict: 'Nothing compared',
+      next: 'term roll --json > before.json, before the change, then term roll --diff before.json',
+    })
 
     return
   }
 
-  const diff = diffRolls(input.before, before.roll, input.roll, ownHost(input.root))
+  const diff = diffRolls(
+    input.before,
+    before.roll,
+    input.roll,
+    ownHost(input.root),
+  )
+
   const gains = reachGains(diff)
 
   if (input.json) {
@@ -330,33 +457,64 @@ function rollDiff(input: { root: string; before: string; roll: Roll; failed: str
       subject: `${task.name} changed what it can do`,
       fields: [
         location(task.site),
-        ...(task.reach.added.length ? [field('reaches now', list(task.reach.added))] : []),
-        ...(task.reach.removed.length ? [field('reaches no longer', list(task.reach.removed))] : []),
-        ...(task.halt.added.length ? [field('raises now', list(task.halt.added))] : []),
-        ...(task.halt.removed.length ? [field('raises no longer', list(task.halt.removed))] : []),
-        ...(task.async ? [field('async', task.async.after ? 'now' : 'no longer')] : []),
+        ...(task.reach.added.length
+          ? [field('reaches now', list(task.reach.added))]
+          : []),
+        ...(task.reach.removed.length
+          ? [field('reaches no longer', list(task.reach.removed))]
+          : []),
+        ...(task.halt.added.length
+          ? [field('raises now', list(task.halt.added))]
+          : []),
+        ...(task.halt.removed.length
+          ? [field('raises no longer', list(task.halt.removed))]
+          : []),
+        ...(task.async
+          ? [field('async', task.async.after ? 'now' : 'no longer')]
+          : []),
       ],
     })
   }
 
   for (const task of diff.tasks.removed) {
-    report({ glyph: 'removed', kind: 'change', subject: `Task ${task.name} is gone`, fields: [location(task.site)] })
+    report({
+      glyph: 'removed',
+      kind: 'change',
+      subject: `Task ${task.name} is gone`,
+      fields: [location(task.site)],
+    })
   }
 
   for (const name of diff.exceptions.added) {
-    report({ glyph: 'added', kind: 'change', subject: `New exception ${name}` })
+    report({
+      glyph: 'added',
+      kind: 'change',
+      subject: `New exception ${name}`,
+    })
   }
 
   for (const name of diff.exceptions.removed) {
-    report({ glyph: 'removed', kind: 'change', subject: `Exception ${name} is gone` })
+    report({
+      glyph: 'removed',
+      kind: 'change',
+      subject: `Exception ${name} is gone`,
+    })
   }
 
   for (const name of diff.routes.added) {
-    report({ glyph: 'added', kind: 'change', subject: `New route ${name}` })
+    report({
+      glyph: 'added',
+      kind: 'change',
+      subject: `New route ${name}`,
+    })
   }
 
   for (const name of diff.routes.removed) {
-    report({ glyph: 'removed', kind: 'change', subject: `Route ${name} is gone` })
+    report({
+      glyph: 'removed',
+      kind: 'change',
+      subject: `Route ${name} is gone`,
+    })
   }
 
   for (const route of diff.routes.changed) {
@@ -365,8 +523,12 @@ function rollDiff(input: { root: string; before: string; roll: Roll; failed: str
       kind: 'change',
       subject: `Route ${route.name} changed what it can raise`,
       fields: [
-        ...(route.halt.added.length ? [field('raises now', list(route.halt.added))] : []),
-        ...(route.halt.removed.length ? [field('raises no longer', list(route.halt.removed))] : []),
+        ...(route.halt.added.length
+          ? [field('raises now', list(route.halt.added))]
+          : []),
+        ...(route.halt.removed.length
+          ? [field('raises no longer', list(route.halt.removed))]
+          : []),
       ],
     })
   }
@@ -376,12 +538,23 @@ function rollDiff(input: { root: string; before: string; roll: Roll; failed: str
     report({
       glyph: 'changed',
       kind: 'change',
-      subject: words.deckChange(deck.host, deck.tasks.added, deck.tasks.removed, deck.tasks.changed, deck.exceptions.added, deck.exceptions.removed),
+      subject: words.deckChange(
+        deck.host,
+        deck.tasks.added,
+        deck.tasks.removed,
+        deck.tasks.changed,
+        deck.exceptions.added,
+        deck.exceptions.removed,
+      ),
     })
   }
 
   if (!diff.reach) {
-    report({ glyph: 'warning', verb: 'roll', subject: `${input.before} was written before tasks carried their reach, so only raises are compared` })
+    report({
+      glyph: 'warning',
+      verb: 'roll',
+      subject: `${input.before} was written before tasks carried their reach, so only raises are compared`,
+    })
   }
 
   reportProblems(input.problems, input.root)
@@ -391,14 +564,22 @@ function rollDiff(input: { root: string; before: string; roll: Roll; failed: str
       glyph: 'warning',
       verb: 'roll',
       subject: `Files that did not compile are not compared: ${input.failed.length} now, ${failedBefore} before`,
-      ...(input.failed.length ? { message: [input.failed.join(', ')] } : {}),
+      ...(input.failed.length
+        ? { message: [input.failed.join(', ')] }
+        : {}),
     })
   }
 
   const changes =
-    diff.tasks.added.length + diff.tasks.changed.length + diff.tasks.removed.length +
-    diff.exceptions.added.length + diff.exceptions.removed.length +
-    diff.routes.added.length + diff.routes.removed.length + diff.routes.changed.length + diff.decks.length
+    diff.tasks.added.length +
+    diff.tasks.changed.length +
+    diff.tasks.removed.length +
+    diff.exceptions.added.length +
+    diff.exceptions.removed.length +
+    diff.routes.added.length +
+    diff.routes.removed.length +
+    diff.routes.changed.length +
+    diff.decks.length
 
   closeRun({
     verdict: words.diffVerdict(changes, input.before),

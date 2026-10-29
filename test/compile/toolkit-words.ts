@@ -44,8 +44,15 @@ function redPng(width: number, height: number): Buffer {
   header.writeUInt32BE(height, 4)
   // 8 bits per sample, color type 2 (RGB), deflate, no filter method beyond 0, no interlace
   header.set([8, 2, 0, 0, 0], 8)
-  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: width }, () => [255, 0, 0]).flat())])
-  const pixels = Buffer.concat(Array.from({ length: height }, () => row))
+  const row = Buffer.concat([
+    Buffer.from([0]),
+    Buffer.from(
+      Array.from({ length: width }, () => [255, 0, 0]).flat(),
+    ),
+  ])
+  const pixels = Buffer.concat(
+    Array.from({ length: height }, () => row),
+  )
 
   return Buffer.concat([
     Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
@@ -58,9 +65,15 @@ function redPng(width: number, height: number): Buffer {
 const PICTURE = `data:image/png;base64,${redPng(4, 3).toString('base64')}`
 const ITEMS = 12
 
-const scrollItems = Array.from({ length: ITEMS }, (_, i) => `    view button\n      text <${i + 1}>\n`).join('')
+const scrollItems = Array.from(
+  { length: ITEMS },
+  (_, i) => `    view button\n      text <${i + 1}>\n`,
+).join('')
 
-const program = (_leg: Leg, shot: string): string => `load @term/site/code/dom/dom
+const program = (
+  _leg: Leg,
+  shot: string,
+): string => `load @term/site/code/dom/dom
   find view
 
 load @term/site/code/dom/native/toolkit/dom
@@ -206,20 +219,37 @@ const near = (a: number, b: number) => Math.abs(a - b) <= 1
 
 // the text after `<marker> ` on the line holding it
 function after(output: string, marker: string): string {
-  const line = output.split('\n').find(l => l.includes(`${marker} `)) ?? ''
+  const line =
+    output.split('\n').find(l => l.includes(`${marker} `)) ?? ''
 
-  return line.slice(line.indexOf(`${marker} `) + marker.length + 1).trim()
+  return line
+    .slice(line.indexOf(`${marker} `) + marker.length + 1)
+    .trim()
 }
 
 const frames = (output: string, label: string): number[][] =>
-  after(output, `frames ${label}`).split(' ').map(part => part.split(',').map(Number))
+  after(output, `frames ${label}`)
+    .split(' ')
+    .map(part => part.split(',').map(Number))
 
-function judge(leg: Leg, toolkit: string, output: string, shot: string): void {
+function judge(
+  leg: Leg,
+  toolkit: string,
+  output: string,
+  shot: string,
+): void {
   // spacer: a growing empty child pushes `bb` to the row's far edge
   const [row, a, spacer, bb] = frames(output, 'spacer')
   ok(
     `${leg}: the spacer takes the rest of a 300 row, so the last button ends at its edge (${toolkit})`,
-    !!row && !!a && !!spacer && !!bb && near(row[2]!, 300) && near(a[0]!, row[0]!) && near(bb[0]! + bb[2]!, row[0]! + 300) && near(spacer[2]!, 300 - a[2]! - bb[2]!),
+    !!row &&
+      !!a &&
+      !!spacer &&
+      !!bb &&
+      near(row[2]!, 300) &&
+      near(a[0]!, row[0]!) &&
+      near(bb[0]! + bb[2]!, row[0]! + 300) &&
+      near(spacer[2]!, 300 - a[2]! - bb[2]!),
     JSON.stringify({ row, a, spacer, bb }),
   )
 
@@ -227,30 +257,77 @@ function judge(leg: Leg, toolkit: string, output: string, shot: string): void {
   const [column, top, line, bottom] = frames(output, 'divider')
   ok(
     `${leg}: the divider is a hairline across the 200 column, between its neighbors`,
-    !!column && !!top && !!line && !!bottom && near(line[2]!, 200) && line[3]! >= 0 && line[3]! <= 2 && line[1]! >= top[1]! + top[3]! - 1 && bottom[1]! >= line[1]! + line[3]! - 1,
+    !!column &&
+      !!top &&
+      !!line &&
+      !!bottom &&
+      near(line[2]!, 200) &&
+      line[3]! >= 0 &&
+      line[3]! <= 2 &&
+      line[1]! >= top[1]! + top[3]! - 1 &&
+      bottom[1]! >= line[1]! + line[3]! - 1,
     JSON.stringify({ column, top, line, bottom }),
   )
-  ok(`${leg}: the divider reads back as one`, after(output, 'tree divider').includes('<hr></hr>'), after(output, 'tree divider'))
+  ok(
+    `${leg}: the divider reads back as one`,
+    after(output, 'tree divider').includes('<hr></hr>'),
+    after(output, 'tree divider'),
+  )
 
   // image: the platform holds the 4 by 3 picture and the words for it
   const image = after(output, 'tree image')
-  ok(`${leg}: the image holds the 4x3 picture, decoded by the platform`, image.includes('size="4x3"'), image)
-  ok(`${leg}: the image's words are the platform's accessibility label`, image.includes('alt="A red dot"'), image)
+  ok(
+    `${leg}: the image holds the 4x3 picture, decoded by the platform`,
+    image.includes('size="4x3"'),
+    image,
+  )
+  ok(
+    `${leg}: the image's words are the platform's accessibility label`,
+    image.includes('alt="A red dot"'),
+    image,
+  )
 
   // scroll: a 100 tall frame around content taller than it, holding every item
   const scroll = after(output, 'tree scroll')
   const scrollFrame = scroll.split(' ')[0]!.split(',').map(Number)
   const extent = /extent="(\d+),(\d+)"/.exec(scroll)
-  ok(`${leg}: the scroll's frame is its 100 height`, near(scrollFrame[3]!, 100), scroll.slice(0, 200))
-  ok(`${leg}: its content is taller than its frame, so it scrolls`, !!extent && Number(extent[2]) > 100, scroll.slice(0, 200))
-  ok(`${leg}: its content holds all ${ITEMS} items`, (scroll.match(/<button>/g) ?? []).length === ITEMS, scroll.slice(0, 200))
+  ok(
+    `${leg}: the scroll's frame is its 100 height`,
+    near(scrollFrame[3]!, 100),
+    scroll.slice(0, 200),
+  )
+  ok(
+    `${leg}: its content is taller than its frame, so it scrolls`,
+    !!extent && Number(extent[2]) > 100,
+    scroll.slice(0, 200),
+  )
+  ok(
+    `${leg}: its content holds all ${ITEMS} items`,
+    (scroll.match(/<button>/g) ?? []).length === ITEMS,
+    scroll.slice(0, 200),
+  )
 
   // frame bounds: a minimum widens a block past its button, a maximum narrows a long button
-  const [least, most] = after(output, 'bounds').split(' ').map(part => part.split(',').map(Number))
-  ok(`${leg}: min-width 250 holds a block at least 250 wide`, !!least && least[2]! >= 249, JSON.stringify(least))
-  ok(`${leg}: max-width 60 holds a long button to 60`, !!most && most[2]! <= 61 && most[2]! > 0, JSON.stringify(most))
+  const [least, most] = after(output, 'bounds')
+    .split(' ')
+    .map(part => part.split(',').map(Number))
+  ok(
+    `${leg}: min-width 250 holds a block at least 250 wide`,
+    !!least && least[2]! >= 249,
+    JSON.stringify(least),
+  )
+  ok(
+    `${leg}: max-width 60 holds a long button to 60`,
+    !!most && most[2]! <= 61 && most[2]! > 0,
+    JSON.stringify(most),
+  )
 
-  ok(`${leg}: a PNG of the screen was written`, existsSync(shot) && readFileSync(shot).subarray(1, 4).toString() === 'PNG', shot)
+  ok(
+    `${leg}: a PNG of the screen was written`,
+    existsSync(shot) &&
+      readFileSync(shot).subarray(1, 4).toString() === 'PNG',
+    shot,
+  )
 }
 
 runToolkits(

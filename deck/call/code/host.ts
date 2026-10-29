@@ -17,15 +17,33 @@ import {
   pingIndex,
   ensurePublisher,
 } from '@cluesurf/deck.tree'
-import type { DeckManifest, Keypair, OciRoute } from '@cluesurf/deck.tree'
+import type {
+  DeckManifest,
+  Keypair,
+  OciRoute,
+} from '@cluesurf/deck.tree'
 
 import { execFileSync } from 'child_process'
 import { existsSync } from 'fs'
 import nodePath from 'path'
 
 import { callBoot } from '@term/call/code/boot'
-import { env, keptAt, userHome, legacyUserHome } from '@term/call/code/home'
-import { closeRun, count, failRun, field, location, openRun, printData, report } from '@term/call/code/output'
+import {
+  env,
+  keptAt,
+  userHome,
+  legacyUserHome,
+} from '@term/call/code/home'
+import {
+  closeRun,
+  count,
+  failRun,
+  field,
+  location,
+  openRun,
+  printData,
+  report,
+} from '@term/call/code/output'
 // what `term host` decides without the registry, the key or the terminal: the package's name, the source address a
 // git remote names, the annotations, the sentences and the ping's facts
 import * as words from '@term/call/code/host-words'
@@ -47,7 +65,11 @@ export async function callHost(input: {
   // announce the already-published version to the package index, and build and push nothing
   ping?: boolean
 }): Promise<void> {
-  openRun({ verb: 'host', root: input.root, facts: input.dryRun ? ['--dry'] : input.ping ? ['--ping'] : [] })
+  openRun({
+    verb: 'host',
+    root: input.root,
+    facts: input.dryRun ? ['--dry'] : input.ping ? ['--ping'] : [],
+  })
 
   try {
     const manifest = await loadManifest({ dir: input.root })
@@ -56,10 +78,19 @@ export async function callHost(input: {
     if (errors.length > 0) {
       // each a Problem item, `at` the manifest (section 12)
       for (const err of errors) {
-        report({ glyph: 'failed', kind: 'problem', verb: 'check', subject: sentence(err), fields: [location('deck.tree')] })
+        report({
+          glyph: 'failed',
+          kind: 'problem',
+          verb: 'check',
+          subject: sentence(err),
+          fields: [location('deck.tree')],
+        })
       }
 
-      closeRun({ verdict: 'Nothing was published', counts: [count(errors.length, 'errors', 'error')] })
+      closeRun({
+        verdict: 'Nothing was published',
+        counts: [count(errors.length, 'errors', 'error')],
+      })
 
       return
     }
@@ -72,19 +103,35 @@ export async function callHost(input: {
     // the newest tag there. A source artifact under it took 2.6.0 for good on 2026-10-04 and pushed the first release
     // to 2.6.2; one at a higher version would make every install fail
     if (words.isReleased(name)) {
-      report({ glyph: 'failed', kind: 'problem', verb: 'check', subject: `${name} is released with pnpm term:release, not published with term host` })
+      report({
+        glyph: 'failed',
+        kind: 'problem',
+        verb: 'check',
+        subject: `${name} is released with pnpm term:release, not published with term host`,
+      })
       closeRun({ verdict: 'Nothing was published', failure: 'usage' })
 
       return
     }
+
     const route = routeOf({ name, registry: input.registry, manifest })
 
     if (input.trust || input.untrust) {
       const keypair = await loadPublishKeypair({ mint: false })
 
       if (!keypair) {
-        report({ glyph: 'failed', kind: 'problem', verb: 'sign', subject: 'There is no signing key on this machine, so it cannot sign a new key set' })
-        closeRun({ verdict: 'The key set was not changed', next: 'term host, once, to publish and make a key', failure: 'environment' })
+        report({
+          glyph: 'failed',
+          kind: 'problem',
+          verb: 'sign',
+          subject:
+            'There is no signing key on this machine, so it cannot sign a new key set',
+        })
+        closeRun({
+          verdict: 'The key set was not changed',
+          next: 'term host, once, to publish and make a key',
+          failure: 'environment',
+        })
 
         return
       }
@@ -107,7 +154,12 @@ export async function callHost(input: {
         duration: Date.now() - started,
         counts: [count(rotated.keys.length, 'keys', 'key')],
         facts: [`generation ${rotated.sequence}`],
-        fields: [field('ref', `${route.registry.host}/${route.keysRepository}:keys`)],
+        fields: [
+          field(
+            'ref',
+            `${route.registry.host}/${route.keysRepository}:keys`,
+          ),
+        ],
       })
       closeRun({ verdict: 'Key set rotated' })
 
@@ -119,23 +171,51 @@ export async function callHost(input: {
     // build carries its own time, so it is a new digest under a write-once tag and is refused
     if (input.ping) {
       const keypair = await loadPublishKeypair({ mint: false })
-      const held = await transportFor({ host: route.registry.host }).getManifest({ repository: route.repository.name, reference: version })
+      const held = await transportFor({
+        host: route.registry.host,
+      }).getManifest({
+        repository: route.repository.name,
+        reference: version,
+      })
 
       if (!held) {
-        report({ glyph: 'failed', kind: 'problem', verb: 'ping', subject: `${name}@${version} is not published at ${route.registry.host}/${route.repository.name}` })
-        closeRun({ verdict: 'Nothing was announced', next: 'term host', failure: 'usage' })
+        report({
+          glyph: 'failed',
+          kind: 'problem',
+          verb: 'ping',
+          subject: `${name}@${version} is not published at ${route.registry.host}/${route.repository.name}`,
+        })
+        closeRun({
+          verdict: 'Nothing was announced',
+          next: 'term host',
+          failure: 'usage',
+        })
 
         return
       }
 
       if (!keypair) {
-        report({ glyph: 'failed', kind: 'problem', verb: 'ping', subject: 'There is no signing key on this machine, so it cannot claim the version' })
-        closeRun({ verdict: 'Nothing was announced', failure: 'environment' })
+        report({
+          glyph: 'failed',
+          kind: 'problem',
+          verb: 'ping',
+          subject:
+            'There is no signing key on this machine, so it cannot claim the version',
+        })
+        closeRun({
+          verdict: 'Nothing was announced',
+          failure: 'environment',
+        })
 
         return
       }
 
-      report({ glyph: 'info', verb: 'read', subject: `${name}@${version}`, fields: [field('digest', held.digest)] })
+      report({
+        glyph: 'info',
+        verb: 'read',
+        subject: `${name}@${version}`,
+        fields: [field('digest', held.digest)],
+      })
 
       // the index checks the signer against the scope's key set, so it must exist, and this key must be in it. The
       // same step a publish runs: created on the scope's first use, a refusal when this key is not a member. A ping
@@ -148,12 +228,32 @@ export async function callHost(input: {
       })
 
       if (keys.created) {
-        report({ glyph: 'changed', kind: 'change', verb: 'create', subject: `key set of ${route.scope}`, fields: [field('ref', `${route.registry.host}/${route.keysRepository}`)] })
+        report({
+          glyph: 'changed',
+          kind: 'change',
+          verb: 'create',
+          subject: `key set of ${route.scope}`,
+          fields: [
+            field(
+              'ref',
+              `${route.registry.host}/${route.keysRepository}`,
+            ),
+          ],
+        })
       }
 
-      const sent = await announce({ route, digest: held.digest, keypair })
+      const sent = await announce({
+        route,
+        digest: held.digest,
+        keypair,
+      })
 
-      closeRun({ verdict: sent ? `Announced ${name}@${version}` : 'The index did not take it', failure: sent ? undefined : 'environment' })
+      closeRun({
+        verdict: sent
+          ? `Announced ${name}@${version}`
+          : 'The index did not take it',
+        failure: sent ? undefined : 'environment',
+      })
 
       return
     }
@@ -164,11 +264,19 @@ export async function callHost(input: {
     const include: string[] = []
 
     if (manifest.line) {
-      const entry = nodePath.join(input.root, manifest.line, 'base.tree')
+      const entry = nodePath.join(
+        input.root,
+        manifest.line,
+        'base.tree',
+      )
 
       if (existsSync(entry)) {
         // built inside this run: callBoot reports its own `build` item into it rather than opening another
-        await callBoot({ root: input.root, entry, out: nodePath.join(input.root, 'host', 'line') })
+        await callBoot({
+          root: input.root,
+          entry,
+          out: nodePath.join(input.root, 'host', 'line'),
+        })
         include.push('host/line')
       }
     }
@@ -180,6 +288,7 @@ export async function callHost(input: {
       deck: dep.name,
       code: writeCodeHold({ hold: dep.mark }),
     }))
+
     const annotations: Record<string, string> = {}
 
     // the package's source repository. GHCR reads this annotation to LINK the package to that repository (its readme,
@@ -187,9 +296,16 @@ export async function callHost(input: {
     // deck.tree wins; without one, the git remote the package directory pushes to. What a catalog or a search index
     // reads without fetching any blob: the `head` and `make` lines of deck.tree. Not `term`, which the grammar defines
     // as "a licence or keyword term" and so cannot be read as either
-    const source = manifest.site?.startsWith('https://') ? manifest.site : gitSource(input.root)
+    const source = manifest.site?.startsWith('https://')
+      ? manifest.site
+      : gitSource(input.root)
 
-    for (const one of words.annotationsOf(source ?? '', manifest.lock ?? '', manifest.head ?? '', manifest.make ?? [])) {
+    for (const one of words.annotationsOf(
+      source ?? '',
+      manifest.lock ?? '',
+      manifest.head ?? '',
+      manifest.make ?? [],
+    )) {
       annotations[one.key] = one.value
     }
 
@@ -209,9 +325,15 @@ export async function callHost(input: {
 
     if (input.dryRun) {
       // a dry run never mints a key: an existing one signs, or a throwaway one does
-      const keypair = (await loadPublishKeypair({ mint: false })) ?? generateKeypair()
+      const keypair =
+        (await loadPublishKeypair({ mint: false })) ?? generateKeypair()
+
       const started = Date.now()
-      const { release, artifact } = await buildOciArtifact({ ...common, keypair })
+      const { release, artifact } = await buildOciArtifact({
+        ...common,
+        keypair,
+      })
+
       const target = `${route.registry.host}/${route.repository.name}:${artifact.config.tag}`
 
       report({
@@ -227,7 +349,10 @@ export async function callHost(input: {
           count(artifact.files.packs.length, 'packs', 'pack'),
           count(artifact.loose, 'loose'),
         ],
-        fields: [field('commit', release.commit), field('digest', artifact.digest)],
+        fields: [
+          field('commit', release.commit),
+          field('digest', artifact.digest),
+        ],
       })
       report({
         glyph: 'info',
@@ -239,9 +364,14 @@ export async function callHost(input: {
             : 'There is no term.surf token (TERM_TOKEN or the auth file), so the ping would be anonymous.',
         ],
       })
-      closeRun({ verdict: 'Dry run, nothing uploaded', facts: [target] })
+      closeRun({
+        verdict: 'Dry run, nothing uploaded',
+        facts: [target],
+      })
       // the manifest itself is the data a dry run is asked for: stdout, as it is
-      printData(`${JSON.stringify(JSON.parse(artifact.manifest.toString('utf8')), null, 2)}\n`)
+      printData(
+        `${JSON.stringify(JSON.parse(artifact.manifest.toString('utf8')), null, 2)}\n`,
+      )
 
       return
     }
@@ -257,11 +387,24 @@ export async function callHost(input: {
       keysRepository: route.keysRepository,
       keypair,
       // each step of the push, a debug item: shown under --verbose
-      log: message => report({ glyph: 'info', verb: 'push', subject: sentence(message), level: 'debug' }),
+      log: message =>
+        report({
+          glyph: 'info',
+          verb: 'push',
+          subject: sentence(message),
+          level: 'debug',
+        }),
     })
 
     if (result.unchanged) {
-      report({ glyph: 'skipped', verb: 'push', subject: `${name}@${version}`, duration: Date.now() - started, facts: ['already published'], fields: [field('digest', result.digest)] })
+      report({
+        glyph: 'skipped',
+        verb: 'push',
+        subject: `${name}@${version}`,
+        duration: Date.now() - started,
+        facts: ['already published'],
+        fields: [field('digest', result.digest)],
+      })
       // the index may still lack it: the first ping can fail (a private package) after the push landed, and this is
       // the run that follows the fix
       await announce({ route, digest: result.digest, keypair })
@@ -276,7 +419,15 @@ export async function callHost(input: {
       subject: result.reference,
       duration: Date.now() - started,
       bytes: result.bytes.uploaded,
-      counts: [count(result.blobs.uploaded, 'blobs', 'blob', result.blobs.total), count(result.layers, 'layers', 'layer')],
+      counts: [
+        count(
+          result.blobs.uploaded,
+          'blobs',
+          'blob',
+          result.blobs.total,
+        ),
+        count(result.layers, 'layers', 'layer'),
+      ],
       fields: [field('manifest', `${result.manifestSize} B`)],
     })
 
@@ -290,9 +441,18 @@ export async function callHost(input: {
 // A hint to the package index; its crawl finds what a lost ping misses, so this never fails a publish. A term.surf
 // token, when there is one, credits the version to its account. Reports the outcome and returns whether it was sent.
 // `pnpm term:release` calls it too, for `@term/code`: a release is a package version like any other
-export async function announce(input: { route: OciRoute; digest: string; keypair: Keypair }): Promise<boolean> {
+export async function announce(input: {
+  route: OciRoute
+  digest: string
+  keypair: Keypair
+}): Promise<boolean> {
   const token = await readIndexToken()
-  const ping = await pingIndex({ repository: input.route.repository, digest: input.digest, token, keypair: input.keypair })
+  const ping = await pingIndex({
+    repository: input.route.repository,
+    digest: input.digest,
+    token,
+    keypair: input.keypair,
+  })
 
   report(
     ping.form === 'sent'
@@ -300,9 +460,19 @@ export async function announce(input: { route: OciRoute; digest: string; keypair
           glyph: 'done',
           verb: 'ping',
           subject: 'package index',
-          facts: words.pingFacts(ping.outcome ?? '', ping.publisher ?? '', Boolean(token)),
+          facts: words.pingFacts(
+            ping.outcome ?? '',
+            ping.publisher ?? '',
+            Boolean(token),
+          ),
         }
-      : { glyph: 'warning', verb: 'ping', subject: 'package index', facts: [ping.form], message: [sentence(ping.reason)] },
+      : {
+          glyph: 'warning',
+          verb: 'ping',
+          subject: 'package index',
+          facts: [ping.form],
+          message: [sentence(ping.reason)],
+        },
   )
 
   return ping.form === 'sent'
@@ -315,8 +485,15 @@ function sentence(text: string): string {
 
 // The registry a package publishes to: `--registry` when given, else the package's own `base` line for its scope,
 // else the scope's default (`@term`'s built in, any other `ghcr.io/<scope>`). Every one must be OCI.
-function routeOf(input: { name: string; registry?: string; manifest: DeckManifest }): OciRoute {
-  const flag = input.registry === undefined ? undefined : normalizeRegistry(input.registry)
+function routeOf(input: {
+  name: string
+  registry?: string
+  manifest: DeckManifest
+}): OciRoute {
+  const flag =
+    input.registry === undefined
+      ? undefined
+      : normalizeRegistry(input.registry)
 
   if (flag !== undefined && !isOciRegistry(flag)) {
     throw refusal(
@@ -334,6 +511,7 @@ function routeOf(input: { name: string; registry?: string; manifest: DeckManifes
           ...hostScopeRegistries({ manifest: input.manifest }),
         },
       }
+
   const route = ociRouteOf({ name: input.name, config })
 
   // An UNSCOPED package (`deck hello`, which is what `term wake hello` writes) has no scope to pick a registry by.
@@ -353,10 +531,14 @@ export function gitSource(dir: string): string | undefined {
   let remote: string
 
   try {
-    remote = execFileSync('git', ['-C', dir, 'config', '--get', 'remote.origin.url'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim()
+    remote = execFileSync(
+      'git',
+      ['-C', dir, 'config', '--get', 'remote.origin.url'],
+      {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      },
+    ).trim()
   } catch {
     return undefined
   }
@@ -384,7 +566,12 @@ async function readIndexToken(): Promise<string | undefined> {
   const fs = await import('fs/promises')
 
   try {
-    const fromFile = (await fs.readFile(keptAt(userHome('auth'), legacyUserHome('auth')), 'utf-8')).trim()
+    const fromFile = (
+      await fs.readFile(
+        keptAt(userHome('auth'), legacyUserHome('auth')),
+        'utf-8',
+      )
+    ).trim()
 
     return fromFile || undefined
   } catch {
@@ -394,7 +581,9 @@ async function readIndexToken(): Promise<string | undefined> {
 
 // The signing keypair. A release is signed so authorship cannot be forged, and the scope's key set says which keys
 // may sign it. Minted on the first publish from this machine, at mode 0600.
-export async function loadPublishKeypair(input: { mint: boolean }): Promise<Keypair | undefined> {
+export async function loadPublishKeypair(input: {
+  mint: boolean
+}): Promise<Keypair | undefined> {
   const fs = await import('fs/promises')
   const file = keptAt(userHome('key'), legacyUserHome('key'))
 
@@ -406,8 +595,14 @@ export async function loadPublishKeypair(input: { mint: boolean }): Promise<Keyp
     }
 
     const pair = generateKeypair()
-    await fs.mkdir(nodePath.dirname(file), { recursive: true, mode: 0o700 })
-    await fs.writeFile(file, JSON.stringify(pair, null, 2), { mode: 0o600, flag: 'wx' })
+    await fs.mkdir(nodePath.dirname(file), {
+      recursive: true,
+      mode: 0o700,
+    })
+    await fs.writeFile(file, JSON.stringify(pair, null, 2), {
+      mode: 0o600,
+      flag: 'wx',
+    })
 
     return pair
   }

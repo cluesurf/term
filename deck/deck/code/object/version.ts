@@ -16,9 +16,15 @@ type VersionInput = {
   include?: string[]
 }
 
-export type BuiltVersion = { root: string; files: never[]; treeChunks: never }
+export type BuiltVersion = {
+  root: string
+  files: never[]
+  treeChunks: never
+}
 
-const argumentsOf = (input: VersionInput): [string, never, ChunkParams, string[], string[]] => [
+const argumentsOf = (
+  input: VersionInput,
+): [string, never, ChunkParams, string[], string[]] => [
   input.dir,
   input.store as never,
   input.params ?? chunking.defaultChunkParams(),
@@ -26,5 +32,11 @@ const argumentsOf = (input: VersionInput): [string, never, ChunkParams, string[]
   input.include ?? [],
 ]
 
-export const readVersionFiles = (input: VersionInput): Promise<never[]> => port.readVersionFiles(...argumentsOf(input)) as Promise<never[]>
-export const buildVersion = (input: VersionInput): Promise<BuiltVersion> => port.buildVersion(...argumentsOf(input)) as Promise<BuiltVersion>
+export const readVersionFiles = (
+  input: VersionInput,
+): Promise<never[]> =>
+  port.readVersionFiles(...argumentsOf(input)) as Promise<never[]>
+export const buildVersion = (
+  input: VersionInput,
+): Promise<BuiltVersion> =>
+  port.buildVersion(...argumentsOf(input)) as Promise<BuiltVersion>

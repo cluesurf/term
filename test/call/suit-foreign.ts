@@ -12,7 +12,6 @@ import { dirname, join } from 'node:path'
 import { tempDir } from '../temp'
 import { LINE } from './cli'
 
-
 let pass = 0
 let fail = 0
 
@@ -26,8 +25,16 @@ function ok(name: string, good: boolean, detail = ''): void {
   }
 }
 
-function term(cwd: string, ...args: string[]): { status: number | null; out: string } {
-  const run = spawnSync('node', [LINE, ...args], { cwd, encoding: 'utf8', timeout: 600_000, env: { ...process.env, NO_COLOR: '1' } })
+function term(
+  cwd: string,
+  ...args: string[]
+): { status: number | null; out: string } {
+  const run = spawnSync('node', [LINE, ...args], {
+    cwd,
+    encoding: 'utf8',
+    timeout: 600_000,
+    env: { ...process.env, NO_COLOR: '1' },
+  })
 
   return { status: run.status, out: `${run.stdout}${run.stderr}` }
 }
@@ -113,10 +120,22 @@ test a-suit-for-a-foreign-form-dispatches
 
 function project(worn: string): string {
   const root = tempDir('term-suit-foreign-')
-  write(root, 'deck.tree', 'deck @fixture/app\n  mark <0.0.2>\n  link @fixture/shape, mark <0.0.x>\n  link @fixture/sizer, mark <0.0.x>\n')
-  write(root, 'link/@fixture/shape/deck.tree', 'deck @fixture/shape\n  mark <0.0.2>\n')
+  write(
+    root,
+    'deck.tree',
+    'deck @fixture/app\n  mark <0.0.2>\n  link @fixture/shape, mark <0.0.x>\n  link @fixture/sizer, mark <0.0.x>\n',
+  )
+  write(
+    root,
+    'link/@fixture/shape/deck.tree',
+    'deck @fixture/shape\n  mark <0.0.2>\n',
+  )
   write(root, 'link/@fixture/shape/code/base.tree', SHAPE)
-  write(root, 'link/@fixture/sizer/deck.tree', 'deck @fixture/sizer\n  mark <0.0.2>\n')
+  write(
+    root,
+    'link/@fixture/sizer/deck.tree',
+    'deck @fixture/sizer\n  mark <0.0.2>\n',
+  )
   write(root, 'link/@fixture/sizer/code/base.tree', SIZER)
   write(root, 'code/base.tree', app(worn))
   write(root, 'test/base.tree', TEST)
@@ -128,22 +147,38 @@ function project(worn: string): string {
   const root = project(FITS)
 
   const separate = term(root, 'make')
-  ok('a suit for a form of another package builds one unit at a time', separate.status === 0, separate.out)
+  ok(
+    'a suit for a form of another package builds one unit at a time',
+    separate.status === 0,
+    separate.out,
+  )
 
   const merged = term(root, 'make', '--merged')
   ok('and merged', merged.status === 0, merged.out)
 
   const node = term(root, 'test')
-  ok('and its method answers through a bounded generic on node', node.status === 0 && /1 passed/.test(node.out), node.out)
+  ok(
+    'and its method answers through a bounded generic on node',
+    node.status === 0 && /1 passed/.test(node.out),
+    node.out,
+  )
 
-  for (const [env, tool] of [['rust', 'cargo'], ['swift', 'swiftc'], ['kotlin', 'kotlinc']] as const) {
+  for (const [env, tool] of [
+    ['rust', 'cargo'],
+    ['swift', 'swiftc'],
+    ['kotlin', 'kotlinc'],
+  ] as const) {
     if (!has(tool)) {
       console.log(`skip  on ${env}: no ${tool}`)
       continue
     }
 
     const native = term(root, 'test', '--env', env)
-    ok(`and on ${env}`, native.status === 0 && /1 passed/.test(native.out), native.out)
+    ok(
+      `and on ${env}`,
+      native.status === 0 && /1 passed/.test(native.out),
+      native.out,
+    )
   }
 }
 
@@ -153,7 +188,8 @@ function project(worn: string): string {
   const built = term(root, 'make')
   ok(
     'a suit whose task does not fit the foreign mask is refused',
-    built.status !== 0 && /answers number, and this one\s+answers text/.test(built.out),
+    built.status !== 0 &&
+      /answers number, and this one\s+answers text/.test(built.out),
     built.out,
   )
 }

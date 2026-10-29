@@ -5,10 +5,21 @@
 // emits must name a module beside it.
 // Run: npx tsx test/compile/unit-imports.ts
 
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildSession, compileProjectSeparate } from '@term/call/code/make'
+import {
+  buildSession,
+  compileProjectSeparate,
+} from '@term/call/code/make'
 import { sharedCacheStore } from '@term/call/code/cache-store'
 import { CompileCache } from '@term/make/code/compile/cache'
 
@@ -32,21 +43,39 @@ const shared = join(base, 'shared')
 const project = (name: string, at: string): string => {
   const root = join(base, at)
   mkdirSync(join(root, 'code'), { recursive: true })
-  writeFileSync(join(root, 'deck.tree'), `deck @probe/${name}\n  mark <0.0.1>\n`)
-  writeFileSync(join(root, 'code', 'base.tree'), `load @term/base/text\n  find trim\n\nload @term/base/list\n  find sort\n\ntask ${name}\n  like text\n  back trim(< ${name} >)\n`)
+  writeFileSync(
+    join(root, 'deck.tree'),
+    `deck @probe/${name}\n  mark <0.0.1>\n`,
+  )
+  writeFileSync(
+    join(root, 'code', 'base.tree'),
+    `load @term/base/text\n  find trim\n\nload @term/base/list\n  find sort\n\ntask ${name}\n  like text\n  back trim(< ${name} >)\n`,
+  )
 
   return root
 }
 
 const build = (root: string) =>
-  compileProjectSeparate(root, new CompileCache(sharedCacheStore(join(root, '.base/cache'), shared, 'probe'), 'probe'), 'node', buildSession(root))
+  compileProjectSeparate(
+    root,
+    new CompileCache(
+      sharedCacheStore(join(root, '.base/cache'), shared, 'probe'),
+      'probe',
+    ),
+    'node',
+    buildSession(root),
+  )
 
 // every `from "./x"` in host/.unit that names no file there
 const dangling = (root: string): string[] => {
   const dir = join(root, 'host', '.unit')
 
   return readdirSync(dir).flatMap(name =>
-    [...readFileSync(join(dir, name), 'utf8').matchAll(/from ["']\.\/([^"']+)["']/g)]
+    [
+      ...readFileSync(join(dir, name), 'utf8').matchAll(
+        /from ["']\.\/([^"']+)["']/g,
+      ),
+    ]
       .map(found => found[1]!)
       .filter(target => !existsSync(join(dir, `${target}.ts`)))
       .map(target => `${name} -> ${target}`),
@@ -57,14 +86,34 @@ const shallow = project('shallow', 'one')
 const deep = project('deep', 'one/two/three')
 
 const first = build(shallow)
-ok('the shallow project builds', first.failed === 0, first.errors.join(' | '))
+ok(
+  'the shallow project builds',
+  first.failed === 0,
+  first.errors.join(' | '),
+)
 
 const second = build(deep)
-ok('the deep project builds', second.failed === 0, second.errors.join(' | '))
-ok('reading the standard library units the shallow one built', second.built === 1, `${second.built} built`)
+ok(
+  'the deep project builds',
+  second.failed === 0,
+  second.errors.join(' | '),
+)
+ok(
+  'reading the standard library units the shallow one built',
+  second.built === 1,
+  `${second.built} built`,
+)
 
-ok('every import the shallow project emits names a module it has', dangling(shallow).length === 0, dangling(shallow).slice(0, 3).join(', '))
-ok('every import the deep project emits names a module it has', dangling(deep).length === 0, dangling(deep).slice(0, 3).join(', '))
+ok(
+  'every import the shallow project emits names a module it has',
+  dangling(shallow).length === 0,
+  dangling(shallow).slice(0, 3).join(', '),
+)
+ok(
+  'every import the deep project emits names a module it has',
+  dangling(deep).length === 0,
+  dangling(deep).slice(0, 3).join(', '),
+)
 
 console.log(`\nunit-imports: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)

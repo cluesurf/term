@@ -8,7 +8,12 @@
 // Skips without cargo. Run: npx tsx test/call/update-rust.ts
 
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { buildRustProgram } from '@term/call/code/cask'
 import { publishUpdate, stampUpdateKey } from '@term/call/code/update'
@@ -40,7 +45,12 @@ const identifier = 'surf.term.update-rust-test'
 const keyFile = join(dir, 'key.pem')
 const runtimeVersion = 'a'.repeat(64)
 // the publisher's platform name for this machine, the one the client builds its manifest path from
-const platform = ({ darwin: 'macos', linux: 'linux', win32: 'windows' } as Record<string, string>)[process.platform]!
+const platform = (
+  { darwin: 'macos', linux: 'linux', win32: 'windows' } as Record<
+    string,
+    string
+  >
+)[process.platform]!
 
 // the driver: one step per launch, as the arguments say
 const driver = [
@@ -53,9 +63,22 @@ const driver = [
   '  }',
 ].join('\n')
 
-const built = buildRustProgram({ root: CASK, entry: join(CASK, 'test/update/rust.tree'), driver, work: join(dir, 'work'), crate: 'update_rust', target: 'linux' })
-ok('the program builds through the cask pipeline, and cargo check holds it to the runtime', built.native.includes('mod cask_update'))
-execFileSync('cargo', ['build', '--release', '--quiet'], { cwd: built.project, stdio: 'inherit' })
+const built = buildRustProgram({
+  root: CASK,
+  entry: join(CASK, 'test/update/rust.tree'),
+  driver,
+  work: join(dir, 'work'),
+  crate: 'update_rust',
+  target: 'linux',
+})
+ok(
+  'the program builds through the cask pipeline, and cargo check holds it to the runtime',
+  built.native.includes('mod cask_update'),
+)
+execFileSync('cargo', ['build', '--release', '--quiet'], {
+  cwd: built.project,
+  stdio: 'inherit',
+})
 const exe = join(built.project, 'target/release/update_rust')
 
 // the app as shipped: its runtime version and public key in its resources, and its own page
@@ -74,67 +97,147 @@ function published(name: string): { served: string; id: string } {
   const page = join(dir, `page-${name}`)
   mkdirSync(page, { recursive: true })
   writeFileSync(join(page, 'index.html'), `<p>${name}</p>`)
-  writeFileSync(join(page, 'app.js'), `console.log(${JSON.stringify(name)})`)
+  writeFileSync(
+    join(page, 'app.js'),
+    `console.log(${JSON.stringify(name)})`,
+  )
   const served = join(dir, `served-${name}`)
-  const result = publishUpdate({ page, out: served, identifier, platform, runtimeVersion, channel: 'main', keyFile })
+  const result = publishUpdate({
+    page,
+    out: served,
+    identifier,
+    platform,
+    runtimeVersion,
+    channel: 'main',
+    keyFile,
+  })
 
   return { served, id: result.manifest.id }
 }
 
-const run = (...args: string[]): string => spawnSync(exe, args, { encoding: 'utf8', timeout: 60_000 }).stdout.trim()
-const page = (resources: string, data: string) => run('launch', resources, data).replace(/^page /, '')
-const check = (resources: string, data: string, served: string) => run('check', resources, data, `file://${served}`).replace(/^status /, '')
+const run = (...args: string[]): string =>
+  spawnSync(exe, args, {
+    encoding: 'utf8',
+    timeout: 60_000,
+  }).stdout.trim()
+const page = (resources: string, data: string) =>
+  run('launch', resources, data).replace(/^page /, '')
+const check = (resources: string, data: string, served: string) =>
+  run('check', resources, data, `file://${served}`).replace(
+    /^status /,
+    '',
+  )
 
 const resources = resourcesWith(keyFile)
 const update = published('next')
 
 {
   const data = mkdtempSync(join(dir, 'data-'))
-  ok('with nothing downloaded the shipped page loads', page(resources, data) === join(resources, 'webview'))
-  ok('a check applies the published update', check(resources, data, update.served) === `applied ${update.id}`)
-  ok('a second check finds it current', check(resources, data, update.served) === 'current')
+  ok(
+    'with nothing downloaded the shipped page loads',
+    page(resources, data) === join(resources, 'webview'),
+  )
+  ok(
+    'a check applies the published update',
+    check(resources, data, update.served) === `applied ${update.id}`,
+  )
+  ok(
+    'a second check finds it current',
+    check(resources, data, update.served) === 'current',
+  )
   const loaded = page(resources, data)
-  ok('the next launch loads the update', loaded === join(data, 'updates', update.id) && readFileSync(join(loaded, 'index.html'), 'utf8') === '<p>next</p>', loaded)
+  ok(
+    'the next launch loads the update',
+    loaded === join(data, 'updates', update.id) &&
+      readFileSync(join(loaded, 'index.html'), 'utf8') ===
+        '<p>next</p>',
+    loaded,
+  )
   run('ready', data)
-  ok('a launch that reached ready keeps it', page(resources, data) === join(data, 'updates', update.id))
+  ok(
+    'a launch that reached ready keeps it',
+    page(resources, data) === join(data, 'updates', update.id),
+  )
   // this launch never says ready, so the one after it rolls back
   const after = page(resources, data)
-  ok('a launch that never reached ready is rolled back to the shipped page', after === join(resources, 'webview'), after)
-  ok('and the update it ran is refused from then on', check(resources, data, update.served) === `refused: ${update.id} failed a launch`)
+  ok(
+    'a launch that never reached ready is rolled back to the shipped page',
+    after === join(resources, 'webview'),
+    after,
+  )
+  ok(
+    'and the update it ran is refused from then on',
+    check(resources, data, update.served) ===
+      `refused: ${update.id} failed a launch`,
+  )
 }
 
 {
   // the signature over other bytes: the manifest is edited after signing
   const data = mkdtempSync(join(dir, 'data-'))
   const tampered = published('tampered')
-  const manifest = join(tampered.served, platform, runtimeVersion, 'main.json')
-  writeFileSync(manifest, readFileSync(manifest, 'utf8').replace('"main"', '"main" '))
-  ok('a manifest changed after signing is refused', check(resources, data, tampered.served) === 'refused: the signature does not verify')
+  const manifest = join(
+    tampered.served,
+    platform,
+    runtimeVersion,
+    'main.json',
+  )
+  writeFileSync(
+    manifest,
+    readFileSync(manifest, 'utf8').replace('"main"', '"main" '),
+  )
+  ok(
+    'a manifest changed after signing is refused',
+    check(resources, data, tampered.served) ===
+      'refused: the signature does not verify',
+  )
 }
 
 {
   // an app holding another key refuses an update this key signed
   const data = mkdtempSync(join(dir, 'data-'))
   const stranger = resourcesWith(join(dir, 'other-key.pem'))
-  ok('an update signed by another key is refused', check(stranger, data, update.served) === 'refused: the signature does not verify')
+  ok(
+    'an update signed by another key is refused',
+    check(stranger, data, update.served) ===
+      'refused: the signature does not verify',
+  )
 }
 
 {
   // an asset changed on the server after publishing: the signed manifest still names the old hash
   const data = mkdtempSync(join(dir, 'data-'))
   const swapped = published('swapped')
-  const manifest = JSON.parse(readFileSync(join(swapped.served, platform, runtimeVersion, 'main.json'), 'utf8')) as {
+  const manifest = JSON.parse(
+    readFileSync(
+      join(swapped.served, platform, runtimeVersion, 'main.json'),
+      'utf8',
+    ),
+  ) as {
     assets: { key: string; url: string }[]
   }
   const script = manifest.assets.find(asset => asset.key === 'app.js')!
-  writeFileSync(join(swapped.served, script.url), 'console.log("not what was signed")')
-  ok('an asset that does not match its hash is refused', check(resources, data, swapped.served) === 'refused: app.js does not match its hash')
-  ok('and nothing of it is current', page(resources, data) === join(resources, 'webview'))
+  writeFileSync(
+    join(swapped.served, script.url),
+    'console.log("not what was signed")',
+  )
+  ok(
+    'an asset that does not match its hash is refused',
+    check(resources, data, swapped.served) ===
+      'refused: app.js does not match its hash',
+  )
+  ok(
+    'and nothing of it is current',
+    page(resources, data) === join(resources, 'webview'),
+  )
 }
 
 {
   const data = mkdtempSync(join(dir, 'data-'))
-  ok('a base with nothing published is none', check(resources, data, join(dir, 'nothing-here')) === 'none')
+  ok(
+    'a base with nothing published is none',
+    check(resources, data, join(dir, 'nothing-here')) === 'none',
+  )
 }
 
 console.log(`\nupdate-rust: ${pass} pass, ${fail} fail`)

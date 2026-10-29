@@ -20,11 +20,31 @@ import { huntSeedCompiler, renderHunt } from '@term/test/code/seed-hunt'
 async function main(): Promise<void> {
   const argv = await yargs(hideBin(process.argv))
     .scriptName('seed-audit')
-    .option('glob', { type: 'string', default: 'deck/base/code', describe: 'directory of .tree files to audit' })
-    .option('runs', { type: 'number', default: 3000, describe: 'fuzz inputs per seed' })
-    .option('seeds', { type: 'number', default: 4, describe: 'distinct fuzz seeds' })
-    .option('perf-budget', { type: 'number', default: 1000, describe: 'per-file slow threshold (ms)' })
-    .option('fuzz-timeout', { type: 'number', default: 90, describe: 'watchdog seconds per fuzz seed' })
+    .option('glob', {
+      type: 'string',
+      default: 'deck/base/code',
+      describe: 'directory of .tree files to audit',
+    })
+    .option('runs', {
+      type: 'number',
+      default: 3000,
+      describe: 'fuzz inputs per seed',
+    })
+    .option('seeds', {
+      type: 'number',
+      default: 4,
+      describe: 'distinct fuzz seeds',
+    })
+    .option('perf-budget', {
+      type: 'number',
+      default: 1000,
+      describe: 'per-file slow threshold (ms)',
+    })
+    .option('fuzz-timeout', {
+      type: 'number',
+      default: 90,
+      describe: 'watchdog seconds per fuzz seed',
+    })
     .strict()
     .help()
     .parse()

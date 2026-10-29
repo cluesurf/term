@@ -20,12 +20,19 @@
 //
 // Run: npx tsx test/compile/feed-mill-build.ts
 
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { compileProject } from '@term/call/code/make'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 
 let pass = 0
@@ -63,9 +70,15 @@ const DECK = 'deck @term/probe\n'
 // type checker", which was true of a grammar compiled as CODE and is the thing this change retires: what has to
 // pass the checker is the reader generated FROM it.
 
-const hex = readFileSync(join(TERM, 'deck/mill/code/text/hex/mine.tree'), 'utf8')
+const hex = readFileSync(
+  join(TERM, 'deck/mill/code/text/hex/mine.tree'),
+  'utf8',
+)
   .split('\n')
-  .filter(line => line.trim() !== 'mark draft' && line.trim() !== 'note draft')
+  .filter(
+    line =>
+      line.trim() !== 'mark draft' && line.trim() !== 'note draft',
+  )
   .join('\n')
 
 // The helper hex's `mine value` calls, which the grammar imports with its own `load ./code`. The real dialect has
@@ -95,7 +108,11 @@ ok(
 
 const emitted = join(built, 'host/code/hex/mine.ts')
 
-ok('the reader is emitted at the grammar\'s own path', existsSync(emitted), emitted)
+ok(
+  "the reader is emitted at the grammar's own path",
+  existsSync(emitted),
+  emitted,
+)
 
 if (existsSync(emitted)) {
   const js = readFileSync(emitted, 'utf8')
@@ -106,7 +123,10 @@ if (existsSync(emitted)) {
   const wanted = ['readHex', 'readHexByte', 'readHexDigit']
 
   for (const name of wanted) {
-    ok(`the emitted module defines ${name}`, js.includes(`function ${name}`))
+    ok(
+      `the emitted module defines ${name}`,
+      js.includes(`function ${name}`),
+    )
   }
 
   // it reads a TEXT cursor, which is what the substrate inferred, and the proof it was not guessed the other way.
@@ -123,7 +143,7 @@ if (existsSync(emitted)) {
   ok(
     'the helper the grammar imports is in scope',
     js.includes('hexDigitValue'),
-    'the grammar\'s own load block was dropped',
+    "the grammar's own load block was dropped",
   )
 }
 

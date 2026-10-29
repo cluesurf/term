@@ -25,27 +25,48 @@ export function makePhoto(name: string): string {
   bmp.writeUInt16LE(24, 28)
 
   for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) bmp.writeUIntLE((Math.floor((x * 255) / width) << 16) | (Math.floor((y * 255) / height) << 8) | 128, 54 + y * row + x * 3, 3)
+    for (let x = 0; x < width; x++)
+      bmp.writeUIntLE(
+        (Math.floor((x * 255) / width) << 16) |
+          (Math.floor((y * 255) / height) << 8) |
+          128,
+        54 + y * row + x * 3,
+        3,
+      )
   }
 
   const dir = mkdtempSync(join(tmpdir(), 'term-photo-'))
   writeFileSync(join(dir, 'photo.bmp'), bmp)
   const photo = join(dir, name)
-  spawnSync('sips', ['-s', 'format', 'jpeg', join(dir, 'photo.bmp'), '--out', photo])
+  spawnSync('sips', [
+    '-s',
+    'format',
+    'jpeg',
+    join(dir, 'photo.bmp'),
+    '--out',
+    photo,
+  ])
 
   return photo
 }
 
 // a JPEG's size from its first frame header (SOF0 to SOF2), or undefined when the bytes are not a JPEG
-export function jpegSize(bytes: Buffer): { width: number; height: number } | undefined {
-  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return undefined
+export function jpegSize(
+  bytes: Buffer,
+): { width: number; height: number } | undefined {
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8)
+    return undefined
 
   let at = 2
 
   while (at + 9 < bytes.length && bytes[at] === 0xff) {
     const marker = bytes[at + 1]!
 
-    if (marker >= 0xc0 && marker <= 0xc2) return { height: bytes.readUInt16BE(at + 5), width: bytes.readUInt16BE(at + 7) }
+    if (marker >= 0xc0 && marker <= 0xc2)
+      return {
+        height: bytes.readUInt16BE(at + 5),
+        width: bytes.readUInt16BE(at + 7),
+      }
 
     at += 2 + bytes.readUInt16BE(at + 2)
   }

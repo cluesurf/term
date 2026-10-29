@@ -106,7 +106,10 @@ function millText(text: string) {
     throw new Error('parse failed')
   }
 
-  return { viaMill: mill(parsed.tree, 'main.tree'), viaGrammar: millByGrammar(parsed.tree, 'main.tree') }
+  return {
+    viaMill: mill(parsed.tree, 'main.tree'),
+    viaGrammar: millByGrammar(parsed.tree, 'main.tree'),
+  }
 }
 
 const strip = (value: unknown): string =>
@@ -117,45 +120,109 @@ const alone = millText(REFERENCE).viaGrammar
 const both = millText(`${REFERENCE}\n${TWINS}`).viaGrammar
 
 ok('the reference mills', alone.ok)
-ok('the reference with twins beside it mills', both.ok, both.ok ? '' : JSON.stringify((both as { diagnostics: unknown }).diagnostics).slice(0, 300))
+ok(
+  'the reference with twins beside it mills',
+  both.ok,
+  both.ok
+    ? ''
+    : JSON.stringify(
+        (both as { diagnostics: unknown }).diagnostics,
+      ).slice(0, 300),
+)
 
 if (alone.ok && both.ok) {
-  ok('the twins add no statement: the program is the reference program', strip(alone.program) === strip(both.program))
+  ok(
+    'the twins add no statement: the program is the reference program',
+    strip(alone.program) === strip(both.program),
+  )
 
   const twins: Twin[] = both.twins ?? []
-  ok('both twins are returned beside the program', twins.length === 2, `got ${twins.length}`)
+  ok(
+    'both twins are returned beside the program',
+    twins.length === 2,
+    `got ${twins.length}`,
+  )
 
   const tally = twins.find(t => t.name === 'tally')
   const dense = twins.find(t => t.name === 'dense')
 
-  ok('a twin names the task it twins', tally?.of === 'count-each' && dense?.of === 'count-each')
-  ok('its parameters are names, in order', JSON.stringify(tally?.params) === '["values","queries"]')
-  ok('its body is read as an ordinary body', (tally?.body.length ?? 0) === 4, `got ${tally?.body.length}`)
+  ok(
+    'a twin names the task it twins',
+    tally?.of === 'count-each' && dense?.of === 'count-each',
+  )
+  ok(
+    'its parameters are names, in order',
+    JSON.stringify(tally?.params) === '["values","queries"]',
+  )
+  ok(
+    'its body is read as an ordinary body',
+    (tally?.body.length ?? 0) === 4,
+    `got ${tally?.body.length}`,
+  )
   // `call add` lowers to the builtin `+`, as it does anywhere else
-  ok('`cost` is read as one expression', tally?.cost?.form === 'binary' && tally.cost.op === '+')
+  ok(
+    '`cost` is read as one expression',
+    tally?.cost?.form === 'binary' && tally.cost.op === '+',
+  )
   ok('a twin with no cost has none', dense?.cost === undefined)
-  ok('`have` is read', dense?.have.length === 1 && dense.have[0]?.form === 'call')
-  ok('`hook test` is read', dense?.test.length === 1 && dense.test[0]?.form === 'call')
-  ok('`ease` names a relaxation', JSON.stringify(dense?.ease) === '["float-order"]')
-  ok('`mark` declares a knob with its type', dense?.knobs[0]?.name === 'width' && dense.knobs[0]?.type?.kind === 'number')
-  ok('`mark platform, name rust` names the target', JSON.stringify(dense?.platform) === '["rust"]', JSON.stringify(dense?.platform))
-  ok('`mark trust` is read', dense?.trust === true && tally?.trust === false)
-  ok('a twin with nothing said is eligible everywhere and trusts nothing', JSON.stringify(tally?.platform) === '[]' && tally?.ease.length === 0)
+  ok(
+    '`have` is read',
+    dense?.have.length === 1 && dense.have[0]?.form === 'call',
+  )
+  ok(
+    '`hook test` is read',
+    dense?.test.length === 1 && dense.test[0]?.form === 'call',
+  )
+  ok(
+    '`ease` names a relaxation',
+    JSON.stringify(dense?.ease) === '["float-order"]',
+  )
+  ok(
+    '`mark` declares a knob with its type',
+    dense?.knobs[0]?.name === 'width' &&
+      dense.knobs[0]?.type?.kind === 'number',
+  )
+  ok(
+    '`mark platform, name rust` names the target',
+    JSON.stringify(dense?.platform) === '["rust"]',
+    JSON.stringify(dense?.platform),
+  )
+  ok(
+    '`mark trust` is read',
+    dense?.trust === true && tally?.trust === false,
+  )
+  ok(
+    'a twin with nothing said is eligible everywhere and trusts nothing',
+    JSON.stringify(tally?.platform) === '[]' &&
+      tally?.ease.length === 0,
+  )
 }
 
 // the compiler's own entry point keeps the twins too, so nothing between the mill and a later pass loses them
 const viaMill = millText(`${REFERENCE}\n${TWINS}`).viaMill
-ok('mill() carries the twins through', viaMill.ok && (viaMill.twins?.length ?? 0) === 2)
-
-// refusals: a typed parameter (the type is the task's), and a twin with no label
-const typed = millText(`${REFERENCE}\ntwin count-each, name typed\n  take values, like list\n  take queries\n  send back\n    make list\n`).viaGrammar
 ok(
-  "a twin's parameter with a type is refused, saying where the type comes from",
-  !typed.ok && JSON.stringify(typed.diagnostics).includes('take their types from'),
+  'mill() carries the twins through',
+  viaMill.ok && (viaMill.twins?.length ?? 0) === 2,
 )
 
-const unlabelled = millText(`${REFERENCE}\ntwin count-each\n  take values\n  take queries\n  send back\n    make list\n`).viaGrammar
-ok('a twin with no label is refused', !unlabelled.ok && JSON.stringify(unlabelled.diagnostics).includes('name <label>'))
+// refusals: a typed parameter (the type is the task's), and a twin with no label
+const typed = millText(
+  `${REFERENCE}\ntwin count-each, name typed\n  take values, like list\n  take queries\n  send back\n    make list\n`,
+).viaGrammar
+ok(
+  "a twin's parameter with a type is refused, saying where the type comes from",
+  !typed.ok &&
+    JSON.stringify(typed.diagnostics).includes('take their types from'),
+)
+
+const unlabelled = millText(
+  `${REFERENCE}\ntwin count-each\n  take values\n  take queries\n  send back\n    make list\n`,
+).viaGrammar
+ok(
+  'a twin with no label is refused',
+  !unlabelled.ok &&
+    JSON.stringify(unlabelled.diagnostics).includes('name <label>'),
+)
 
 // ---- what the compiler refuses about a twin without running anything (check/twin.ts, optimize-0006) ----
 
@@ -189,20 +256,57 @@ function refusedFor(text: string): string[] {
 function accepted(text: string): { ok: boolean; twins: number } {
   const built = compile({ file: 'main.tree', text })
 
-  return { ok: built.ok, twins: built.ok ? (built.twins?.length ?? 0) : 0 }
+  return {
+    ok: built.ok,
+    twins: built.ok ? (built.twins?.length ?? 0) : 0,
+  }
 }
 
-const good = accepted(`${PURE}\ntwin double, name shift\n  take n\n  send back\n    call multiply\n      read n\n      code 2\n`)
-ok('a pure twin of a pure task compiles, and the build carries it', good.ok && good.twins === 1, JSON.stringify(good))
+const good = accepted(
+  `${PURE}\ntwin double, name shift\n  take n\n  send back\n    call multiply\n      read n\n      code 2\n`,
+)
+ok(
+  'a pure twin of a pure task compiles, and the build carries it',
+  good.ok && good.twins === 1,
+  JSON.stringify(good),
+)
 
 const cases: [string, string, string][] = [
-  ['a twin of no task', 'twin-unknown', `${PURE}\ntwin triple, name x\n  take n\n  send back, read n\n`],
-  ['a twin of an impure task', 'twin-of-impure', `${IMPURE}\ntwin stamp, name x\n  take n\n  send back, read n\n`],
-  ['a twin with other parameters', 'twin-signature', `${PURE}\ntwin double, name x\n  take m\n  send back, read m\n`],
-  ['an impure twin', 'twin-impure', `${IMPURE}\n${PURE}\ntwin double, name x\n  take n\n  send back\n    call stamp\n      read n\n`],
-  ['a twin that never ends', 'twin-loops', `${PURE}\ntask spin\n  take n, like number\n  like number\n  send back\n    call spin\n      read n\n\ntwin double, name x\n  take n\n  send back\n    call spin\n      read n\n`],
-  ['an impure run-time check', 'guard-impure', `${IMPURE}\n${PURE}\ntwin double, name x\n  take n\n  hook test\n    call is-above\n      call stamp\n        read n\n      code 0\n  send back\n    call multiply\n      read n\n      code 2\n`],
-  ['an undefined relaxation', 'ease-unknown', `${PURE}\ntwin double, name x\n  take n\n  ease anything-goes\n  send back\n    call multiply\n      read n\n      code 2\n`],
+  [
+    'a twin of no task',
+    'twin-unknown',
+    `${PURE}\ntwin triple, name x\n  take n\n  send back, read n\n`,
+  ],
+  [
+    'a twin of an impure task',
+    'twin-of-impure',
+    `${IMPURE}\ntwin stamp, name x\n  take n\n  send back, read n\n`,
+  ],
+  [
+    'a twin with other parameters',
+    'twin-signature',
+    `${PURE}\ntwin double, name x\n  take m\n  send back, read m\n`,
+  ],
+  [
+    'an impure twin',
+    'twin-impure',
+    `${IMPURE}\n${PURE}\ntwin double, name x\n  take n\n  send back\n    call stamp\n      read n\n`,
+  ],
+  [
+    'a twin that never ends',
+    'twin-loops',
+    `${PURE}\ntask spin\n  take n, like number\n  like number\n  send back\n    call spin\n      read n\n\ntwin double, name x\n  take n\n  send back\n    call spin\n      read n\n`,
+  ],
+  [
+    'an impure run-time check',
+    'guard-impure',
+    `${IMPURE}\n${PURE}\ntwin double, name x\n  take n\n  hook test\n    call is-above\n      call stamp\n        read n\n      code 0\n  send back\n    call multiply\n      read n\n      code 2\n`,
+  ],
+  [
+    'an undefined relaxation',
+    'ease-unknown',
+    `${PURE}\ntwin double, name x\n  take n\n  ease anything-goes\n  send back\n    call multiply\n      read n\n      code 2\n`,
+  ],
   [
     'two twins that call each other',
     'twin-cycle',
@@ -212,12 +316,22 @@ const cases: [string, string, string][] = [
 
 for (const [label, want, text] of cases) {
   const got = refusedFor(text)
-  ok(`${label} is refused as \`${want}\``, got.includes(want), `got ${JSON.stringify(got)}`)
+  ok(
+    `${label} is refused as \`${want}\``,
+    got.includes(want),
+    `got ${JSON.stringify(got)}`,
+  )
 }
 
 // `mark trust` admits an impure twin: trust excuses a proof, never the check that it is admitted as trusted
-const trusted = accepted(`${IMPURE}\n${PURE}\ntwin double, name x\n  take n\n  mark trust\n  send back\n    call stamp\n      read n\n`)
-ok('an impure twin that says `mark trust` compiles', trusted.ok && trusted.twins === 1, JSON.stringify(trusted))
+const trusted = accepted(
+  `${IMPURE}\n${PURE}\ntwin double, name x\n  take n\n  mark trust\n  send back\n    call stamp\n      read n\n`,
+)
+ok(
+  'an impure twin that says `mark trust` compiles',
+  trusted.ok && trusted.twins === 1,
+  JSON.stringify(trusted),
+)
 
 console.log(`\ntwin: ${pass} pass, ${fail} fail`)
 

@@ -35,10 +35,26 @@ export type FeedMineRule =
   // `mine not / mine any / mine char ...`: negative lookahead
   | { kind: 'not'; codes: number[] }
   // `mine mark / bind width, code 4 / mine form, form hex-digit`: the nested rule exactly `width` times
-  | { kind: 'mark'; width: number; children: FeedMineRule[]; send?: string }
-  | { kind: 'int'; width: number; order: 'big' | 'little'; sign: 'signed' | 'unsigned'; send?: string }
+  | {
+      kind: 'mark'
+      width: number
+      children: FeedMineRule[]
+      send?: string
+    }
+  | {
+      kind: 'int'
+      width: number
+      order: 'big' | 'little'
+      sign: 'signed' | 'unsigned'
+      send?: string
+    }
   | { kind: 'bytes'; width: GroupNode; send?: string }
-  | { kind: 'maybe'; test?: GroupNode; children: FeedMineRule[]; send?: string }
+  | {
+      kind: 'maybe'
+      test?: GroupNode
+      children: FeedMineRule[]
+      send?: string
+    }
   | { kind: 'until'; terminator: number; send?: string }
   | { kind: 'let'; name: string; expr: GroupNode }
   // `bind value / mine text / <rules>`: a SPAN CAPTURE, the text its children consumed
@@ -47,7 +63,13 @@ export type FeedMineRule =
   | { kind: 'start'; name: string; fall?: Node }
   // `check bitwise-and / bind start, share value-format / bind front, share 0x0001 / <body>`: a read gated on a
   // condition, which compiles as a `maybe` with that test
-  | { kind: 'check'; op: string; base: Node; head: Node; children: FeedMineRule[] }
+  | {
+      kind: 'check'
+      op: string
+      base: Node
+      head: Node
+      children: FeedMineRule[]
+    }
 
 // an argument at a call: `bind separator, share separator`
 export type FeedMineArg = { name: string; value: Node }
@@ -58,7 +80,9 @@ export type FeedMineGrammar = Map<string, FeedMineRule[]>
 export type Substrate = 'byte' | 'text'
 
 // the port's grammar, whose rules are this face's shape, every kind spelled as here (item 0379)
-const portGrammar = (grammar: FeedMineGrammar): Map<string, port.FeedRule[]> => grammar as never
+const portGrammar = (
+  grammar: FeedMineGrammar,
+): Map<string, port.FeedRule[]> => grammar as never
 
 // ---- reading and checking a grammar ----
 
@@ -74,7 +98,9 @@ export function readFeedMineGrammar(tree: RootNode): FeedMineGrammar {
 
 // Which substrate a grammar reads: bytes or characters, INFERRED from the constructs it uses. A grammar that uses
 // both, or neither, answers undefined rather than a guess.
-export function feedMineSubstrate(grammar: FeedMineGrammar): Substrate | undefined {
+export function feedMineSubstrate(
+  grammar: FeedMineGrammar,
+): Substrate | undefined {
   const substrate = port.feedMineSubstrate(portGrammar(grammar))
 
   return substrate === '' ? undefined : (substrate as Substrate)
@@ -87,7 +113,9 @@ export function feedMineLoads(file: string, text: string): string[] {
 }
 
 // The rule NAMES a grammar refers to and never defines, sorted
-export function feedMineUnknownRefs(grammar: FeedMineGrammar): string[] {
+export function feedMineUnknownRefs(
+  grammar: FeedMineGrammar,
+): string[] {
   return port.feedMineUnknownRefs(portGrammar(grammar))
 }
 
@@ -121,5 +149,11 @@ export function compileFeedMine(
   cursorImportPath: string,
   extraImports: string[] = [],
 ): string {
-  return port.compileFeedMine(portGrammar(grammar), substrate, cursorImportPath, extraImports, STATE)
+  return port.compileFeedMine(
+    portGrammar(grammar),
+    substrate,
+    cursorImportPath,
+    extraImports,
+    STATE,
+  )
 }

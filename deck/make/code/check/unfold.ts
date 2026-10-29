@@ -5,15 +5,24 @@
 // proof.
 
 import type { Expression, Program } from '@term/make/code/compile/node'
-import { substitute as substituteIn, unfoldOver } from '@term/make/code/check/unfolding'
+import {
+  substitute as substituteIn,
+  unfoldOver,
+} from '@term/make/code/check/unfolding'
 
 // substitute each parameter by its argument, simultaneously (an argument is never re-substituted). Also how the kernel
 // instantiates a universal hypothesis at a goal's terms (check/elaborate.ts universalInstances)
-export function substitute(e: Expression, binding: Map<string, Expression>): Expression {
+export function substitute(
+  e: Expression,
+  binding: Map<string, Expression>,
+): Expression {
   return substituteIn(e, binding)
 }
 
 // unfold every call to a non-recursive single-expression task, innermost arguments first
-export function unfoldDefinitions(e: Expression, program: Program): Expression {
+export function unfoldDefinitions(
+  e: Expression,
+  program: Program,
+): Expression {
   return unfoldOver(e, program)
 }

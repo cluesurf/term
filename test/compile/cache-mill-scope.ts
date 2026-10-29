@@ -16,7 +16,10 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import { CompileCache } from '@term/make/code/compile/cache'
-import { compilerVersions, sharedCacheStore } from '@term/call/code/cache-store'
+import {
+  compilerVersions,
+  sharedCacheStore,
+} from '@term/call/code/cache-store'
 import { CACHE_SCOPE } from '@term/make/code/compile/cache-scope.generated'
 
 if (process.argv.includes('--versions')) {
@@ -48,10 +51,14 @@ const MILL_FILES = [
 ]
 
 function versionsNow(): Record<string, string> {
-  const run = spawnSync(process.execPath, [...process.execArgv, process.argv[1]!, '--versions'], {
-    cwd: TERM,
-    encoding: 'utf8',
-  })
+  const run = spawnSync(
+    process.execPath,
+    [...process.execArgv, process.argv[1]!, '--versions'],
+    {
+      cwd: TERM,
+      encoding: 'utf8',
+    },
+  )
 
   if (run.status !== 0) {
     throw new Error(`versions child failed: ${run.stderr}`)
@@ -61,11 +68,20 @@ function versionsNow(): Record<string, string> {
 }
 
 const output = new Set(CACHE_SCOPE['output'] ?? [])
-const escaped = (CACHE_SCOPE['mill'] ?? []).filter(file => !output.has(file))
-ok('every mill-scope file is in the output scope', escaped.length === 0, escaped.join(', '))
+const escaped = (CACHE_SCOPE['mill'] ?? []).filter(
+  file => !output.has(file),
+)
+ok(
+  'every mill-scope file is in the output scope',
+  escaped.length === 0,
+  escaped.join(', '),
+)
 
 for (const file of MILL_FILES) {
-  ok(`${file} is in the mill scope`, (CACHE_SCOPE['mill'] ?? []).includes(file))
+  ok(
+    `${file} is in the mill scope`,
+    (CACHE_SCOPE['mill'] ?? []).includes(file),
+  )
 }
 
 const SOURCE = `
@@ -78,7 +94,9 @@ task double
       code 2
 `
 
-const work = fs.mkdtempSync(path.join(os.tmpdir(), 'term-cache-mill-scope-'))
+const work = fs.mkdtempSync(
+  path.join(os.tmpdir(), 'term-cache-mill-scope-'),
+)
 const main = path.join(work, 'main.tree')
 fs.writeFileSync(main, SOURCE)
 const local = path.join(work, 'local')
@@ -86,21 +104,41 @@ const shared = path.join(work, 'shared')
 fs.mkdirSync(local, { recursive: true })
 fs.mkdirSync(shared, { recursive: true })
 
-function build(versions: Record<string, string>): { cache: CompileCache; ok: boolean; text: string } {
+function build(versions: Record<string, string>): {
+  cache: CompileCache
+  ok: boolean
+  text: string
+} {
   const forKind = (kind: string): string => versions[kind] ?? ''
-  const cache = new CompileCache(sharedCacheStore(local, shared, forKind), forKind)
+  const cache = new CompileCache(
+    sharedCacheStore(local, shared, forKind),
+    forKind,
+  )
   const result = compile({ file: main, text: SOURCE }, { cache })
 
-  return { cache, ok: result.ok, text: result.ok ? result.typescript : '' }
+  return {
+    cache,
+    ok: result.ok,
+    text: result.ok ? result.typescript : '',
+  }
 }
 
-const mtimes = new Map(MILL_FILES.map(file => [file, Math.floor(fs.statSync(path.join(TERM, file)).mtimeMs)]))
+const mtimes = new Map(
+  MILL_FILES.map(file => [
+    file,
+    Math.floor(fs.statSync(path.join(TERM, file)).mtimeMs),
+  ]),
+)
 const before = versionsNow()
 const first = build(before)
 ok('the program compiles', first.ok)
 const again = build(before)
-ok('an unchanged compiler hits', again.cache.misses === 0 && again.cache.hits + again.cache.diskHits > 0,
-  `${again.cache.misses} misses`)
+ok(
+  'an unchanged compiler hits',
+  again.cache.misses === 0 &&
+    again.cache.hits + again.cache.diskHits > 0,
+  `${again.cache.misses} misses`,
+)
 
 try {
   for (const file of MILL_FILES) {
@@ -114,12 +152,25 @@ try {
       fs.utimesSync(full, stat.atime, at)
       const now = versionsNow()
 
-      ok(`touching ${file} moves the mill version`, now['mill'] !== was['mill'])
-      ok(`touching ${file} moves the output version`, now['output'] !== was['output'])
+      ok(
+        `touching ${file} moves the mill version`,
+        now['mill'] !== was['mill'],
+      )
+      ok(
+        `touching ${file} moves the output version`,
+        now['output'] !== was['output'],
+      )
 
       const rebuilt = build(now)
-      ok(`touching ${file} rebuilds the output`, rebuilt.cache.misses > 0, `${rebuilt.cache.misses} misses`)
-      ok(`touching ${file} builds the same answer`, rebuilt.text === first.text)
+      ok(
+        `touching ${file} rebuilds the output`,
+        rebuilt.cache.misses > 0,
+        `${rebuilt.cache.misses} misses`,
+      )
+      ok(
+        `touching ${file} builds the same answer`,
+        rebuilt.text === first.text,
+      )
     } finally {
       fs.utimesSync(full, stat.atime, stat.mtime)
     }
@@ -129,8 +180,16 @@ try {
 }
 
 // the files themselves, not the versions: another session's edit to any scoped file moves a version too
-const moved = MILL_FILES.filter(file => Math.floor(fs.statSync(path.join(TERM, file)).mtimeMs) !== mtimes.get(file))
-ok('every touched mtime is restored', moved.length === 0, moved.join(', '))
+const moved = MILL_FILES.filter(
+  file =>
+    Math.floor(fs.statSync(path.join(TERM, file)).mtimeMs) !==
+    mtimes.get(file),
+)
+ok(
+  'every touched mtime is restored',
+  moved.length === 0,
+  moved.join(', '),
+)
 
 console.log(`\ncache-mill-scope: ${pass} passed, ${fail} failed`)
 

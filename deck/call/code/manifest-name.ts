@@ -16,7 +16,8 @@
 import { readFileSync } from 'node:fs'
 import * as port from '@term/call/code/manifest-read'
 
-const given = (value: port.Maybe<string>): string | undefined => (value.form === 'some' ? value.value : undefined)
+const given = (value: port.Maybe<string>): string | undefined =>
+  value.form === 'some' ? value.value : undefined
 
 // the first argument of a manifest's `<head>` statement (`deck @term/site` -> `@term/site`, `role ./roles` ->
 // `./roles`), or undefined when the manifest has none. It is found under the `deck` statement first, then at the top
@@ -46,7 +47,10 @@ export function manifestValueOf(
 // It required an `@` until 2026-10-02, and that was the bug: `term wake hello` writes `deck hello`, so `term make`
 // did not see a manifest, compiled the scaffold's deck.tree as CODE into host/deck.ts, and reported "Compiled 2
 // files" for a project holding one.
-export function manifestName(text: string, file: string): string | undefined {
+export function manifestName(
+  text: string,
+  file: string,
+): string | undefined {
   return given(port.manifestName(text, file))
 }
 

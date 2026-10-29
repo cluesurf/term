@@ -6,8 +6,15 @@ import * as port from '@term/deck/code/object/object-address'
 
 export type ObjectKind = 'chunk' | 'blob' | 'tree' | 'commit' | 'pack'
 
-export const hashObject = (input: { kind: ObjectKind; bytes: Buffer }): string => port.hashObject(input.kind, input.bytes)
-export const hashObjectText = (input: { kind: ObjectKind; text: string }): string => port.hashObjectText(input.kind, input.text)
-export const isObjectId = (value: string): boolean => port.isObjectId(value)
+export const hashObject = (input: {
+  kind: ObjectKind
+  bytes: Buffer
+}): string => port.hashObject(input.kind, input.bytes)
+export const hashObjectText = (input: {
+  kind: ObjectKind
+  text: string
+}): string => port.hashObjectText(input.kind, input.text)
+export const isObjectId = (value: string): boolean =>
+  port.isObjectId(value)
 export const idShard = (id: string): string => port.idShard(id)
 export const idHex = (id: string): string => port.idHex(id)

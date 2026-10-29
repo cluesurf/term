@@ -232,10 +232,7 @@ async function main(): Promise<void> {
 
   const mod = (await import(pathToFileURL(file).href)) as {
     boot: () => Promise<unknown>
-    bootSecure: (
-      certificate: string,
-      key: string,
-    ) => Promise<unknown>
+    bootSecure: (certificate: string, key: string) => Promise<unknown>
     shutdown: (server: unknown) => Promise<void>
   }
 

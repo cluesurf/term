@@ -29,7 +29,6 @@ import { parseManifest } from '../../deck/deck/code/package/manifest'
 import { tempDir } from '../temp'
 import { LINE } from './cli'
 
-
 let pass = 0
 let fail = 0
 
@@ -64,24 +63,36 @@ term(box, 'wake', 'demo')
 
 const root = join(box, 'demo')
 
-ok('`wake` scaffolds a project to work on', existsSync(join(root, 'deck.tree')))
+ok(
+  '`wake` scaffolds a project to work on',
+  existsSync(join(root, 'deck.tree')),
+)
 
 // what the scaffold declares, before any verb touches it. Read with the manifest reader rather than by matching:
 // this is the same function the package manager uses, so it cannot disagree with it about what the file says.
-const before = parseManifest({ text: readFileSync(join(root, 'deck.tree'), 'utf8') })
+const before = parseManifest({
+  text: readFileSync(join(root, 'deck.tree'), 'utf8'),
+})
 
 // the scaffold writes no `code` line: `./code` is the default code root, and `bear ./code`, which it used to write,
 // was the old spelling of that same default (note/project/term/manifest/manifest-mark-and-code-root.md)
 // it starts at 0.0.1: which patches an author publishes is their own convention, and the toolchain holds none
 // (deck/call/code/wake.ts, 2026-10-03)
-ok('the scaffold declares an entry and a version, and no code root', Boolean(before.boot) && before.mark.patch === 1 && before.code === undefined)
+ok(
+  'the scaffold declares an entry and a version, and no code root',
+  Boolean(before.boot) &&
+    before.mark.patch === 1 &&
+    before.code === undefined,
+)
 
 // ---- toss: the destructive round trip ----
 //
 // A dependency that was never there. The manifest should come back saying exactly what it said.
 
 const tossed = term(root, 'toss', '@nothing')
-const afterToss = parseManifest({ text: readFileSync(join(root, 'deck.tree'), 'utf8') })
+const afterToss = parseManifest({
+  text: readFileSync(join(root, 'deck.tree'), 'utf8'),
+})
 
 ok('`toss` answers', /Removed/.test(tossed), tossed)
 
@@ -110,9 +121,15 @@ ok(
 // written before the fetch either way. What is asserted is the manifest edit, which is `save`'s own work.
 
 const saved = term(root, 'save', '@term/base')
-const afterSave = parseManifest({ text: readFileSync(join(root, 'deck.tree'), 'utf8') })
+const afterSave = parseManifest({
+  text: readFileSync(join(root, 'deck.tree'), 'utf8'),
+})
 
-ok('`save` records the dependency', afterSave.link.some(l => l.name === '@term/base'), saved)
+ok(
+  '`save` records the dependency',
+  afterSave.link.some(l => l.name === '@term/base'),
+  saved,
+)
 
 ok(
   '`save` keeps `code` and `boot`',
@@ -123,7 +140,9 @@ ok(
 // and `toss` takes back what `save` put in
 term(root, 'toss', '@term/base')
 
-const afterUndo = parseManifest({ text: readFileSync(join(root, 'deck.tree'), 'utf8') })
+const afterUndo = parseManifest({
+  text: readFileSync(join(root, 'deck.tree'), 'utf8'),
+})
 
 ok(
   '`toss` removes the dependency `save` added',
@@ -133,7 +152,9 @@ ok(
 // ---- move: the version bump ----
 
 const moved = term(root, 'move', 'mark', '3')
-const bumped = parseManifest({ text: readFileSync(join(root, 'deck.tree'), 'utf8') })
+const bumped = parseManifest({
+  text: readFileSync(join(root, 'deck.tree'), 'utf8'),
+})
 
 ok(
   `\`move mark 3\` moves ${before.mark.major}.${before.mark.minor}.${before.mark.patch} to ${bumped.mark.major}.${bumped.mark.minor}.${bumped.mark.patch}`,
@@ -153,7 +174,9 @@ ok(
 // `move` writes the version as `mark`, never in the old `code <...>` spelling
 ok(
   '`move` writes `mark <version>`',
-  /^\s+mark <0\.0\.2>$/m.test(readFileSync(join(root, 'deck.tree'), 'utf8')) &&
+  /^\s+mark <0\.0\.2>$/m.test(
+    readFileSync(join(root, 'deck.tree'), 'utf8'),
+  ) &&
     !/^\s+code </m.test(readFileSync(join(root, 'deck.tree'), 'utf8')),
   readFileSync(join(root, 'deck.tree'), 'utf8'),
 )
@@ -165,7 +188,11 @@ ok(
 
 const linked = term(root, 'link')
 
-ok('`link` registers the package for development', /demo/.test(linked), linked)
+ok(
+  '`link` registers the package for development',
+  /demo/.test(linked),
+  linked,
+)
 
 ok(
   '`link` wrote into the redirected HOME and nowhere else',
@@ -175,7 +202,10 @@ ok(
 )
 
 // and the project it registered still builds, which is the property every verb here shares
-ok('the project still builds after `link`', BUILT.test(term(root, 'make')))
+ok(
+  'the project still builds after `link`',
+  BUILT.test(term(root, 'make')),
+)
 
 console.log(`\ndeck-verbs: ${pass} pass, ${fail} fail`)
 

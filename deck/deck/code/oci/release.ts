@@ -7,7 +7,10 @@ import { ociErrorOf, type OciTransport } from './transport'
 import type { Keypair } from '../object/sign'
 import type { OciRoute } from './client'
 
-const p = port as unknown as Record<string, (...args: unknown[]) => unknown>
+const p = port as unknown as Record<
+  string,
+  (...args: unknown[]) => unknown
+>
 
 function lift<T>(work: () => T): T {
   try {
@@ -26,22 +29,69 @@ async function liftAsync<T>(work: () => Promise<T>): Promise<T> {
 }
 
 export const RELEASE_ARTIFACT_TYPE = p.releaseArtifactType!() as string
-export const RELEASE_CONFIG_MEDIA_TYPE = p.releaseConfigMediaType!() as string
-export const RELEASE_LAYER_MEDIA_TYPE = p.releaseLayerMediaType!() as string
-export const RELEASE_PLATFORMS = p.releasePlatforms!() as Record<string, { os: string; architecture: string }>
+export const RELEASE_CONFIG_MEDIA_TYPE =
+  p.releaseConfigMediaType!() as string
+export const RELEASE_LAYER_MEDIA_TYPE =
+  p.releaseLayerMediaType!() as string
+export const RELEASE_PLATFORMS = p.releasePlatforms!() as Record<
+  string,
+  { os: string; architecture: string }
+>
 
-export type ReleaseConfig = { v: 1; package: string; version: string; platform: string; layer: string; key: string; sig: string }
-export type ReleaseEntry = { platform: string; manifest: string; size: number }
+export type ReleaseConfig = {
+  v: 1
+  package: string
+  version: string
+  platform: string
+  layer: string
+  key: string
+  sig: string
+}
+export type ReleaseEntry = {
+  platform: string
+  manifest: string
+  size: number
+}
 
-export const releaseRoute = (input: { package: string; env?: NodeJS.ProcessEnv }): OciRoute => lift(() => p.releaseRoute!(input.package, input.env) as OciRoute)
+export const releaseRoute = (input: {
+  package: string
+  env?: NodeJS.ProcessEnv
+}): OciRoute =>
+  lift(() => p.releaseRoute!(input.package, input.env) as OciRoute)
 
-export const releaseStatement = (input: { package: string; version: string; platform: string; layer: string }): string =>
-  p.releaseStatement!(input.package, input.version, input.platform, input.layer) as string
+export const releaseStatement = (input: {
+  package: string
+  version: string
+  platform: string
+  layer: string
+}): string =>
+  p.releaseStatement!(
+    input.package,
+    input.version,
+    input.platform,
+    input.layer,
+  ) as string
 
-export const currentPlatform = (): string | undefined => p.currentPlatform!() as string | undefined
+export const currentPlatform = (): string | undefined =>
+  p.currentPlatform!() as string | undefined
 
-export const verifyReleaseConfig = (input: { config: ReleaseConfig; package: string; version: string; platform: string; layer: string }): void =>
-  lift(() => p.verifyReleaseConfig!(input.config, input.package, input.version, input.platform, input.layer) as void)
+export const verifyReleaseConfig = (input: {
+  config: ReleaseConfig
+  package: string
+  version: string
+  platform: string
+  layer: string
+}): void =>
+  lift(
+    () =>
+      p.verifyReleaseConfig!(
+        input.config,
+        input.package,
+        input.version,
+        input.platform,
+        input.layer,
+      ) as void,
+  )
 
 export const publishRelease = (input: {
   transport: OciTransport
@@ -52,17 +102,59 @@ export const publishRelease = (input: {
   keypair: Keypair
   annotations?: Record<string, string>
   log?: (message: string) => void
-}): Promise<{ index: string; entries: (ReleaseEntry & { layer: string })[] }> =>
+}): Promise<{
+  index: string
+  entries: (ReleaseEntry & { layer: string })[]
+}> =>
   liftAsync(
     () =>
-      p.publishRelease!(input.transport, input.repository, input.package, input.version, input.payloads, input.keypair, input.annotations, input.log) as Promise<{
+      p.publishRelease!(
+        input.transport,
+        input.repository,
+        input.package,
+        input.version,
+        input.payloads,
+        input.keypair,
+        input.annotations,
+        input.log,
+      ) as Promise<{
         index: string
         entries: (ReleaseEntry & { layer: string })[]
       }>,
   )
 
-export const readReleaseIndex = (input: { transport: OciTransport; repository: string; version: string }): Promise<{ digest: string; platforms: string[] } | undefined> =>
-  liftAsync(() => p.readReleaseIndex!(input.transport, input.repository, input.version) as Promise<{ digest: string; platforms: string[] } | undefined>)
+export const readReleaseIndex = (input: {
+  transport: OciTransport
+  repository: string
+  version: string
+}): Promise<{ digest: string; platforms: string[] } | undefined> =>
+  liftAsync(
+    () =>
+      p.readReleaseIndex!(
+        input.transport,
+        input.repository,
+        input.version,
+      ) as Promise<{ digest: string; platforms: string[] } | undefined>,
+  )
 
-export const readRelease = (input: { transport: OciTransport; repository: string; package: string; version: string; platform: string }): Promise<{ config: ReleaseConfig; layer: string; size: number }> =>
-  liftAsync(() => p.readRelease!(input.transport, input.repository, input.package, input.version, input.platform) as Promise<{ config: ReleaseConfig; layer: string; size: number }>)
+export const readRelease = (input: {
+  transport: OciTransport
+  repository: string
+  package: string
+  version: string
+  platform: string
+}): Promise<{ config: ReleaseConfig; layer: string; size: number }> =>
+  liftAsync(
+    () =>
+      p.readRelease!(
+        input.transport,
+        input.repository,
+        input.package,
+        input.version,
+        input.platform,
+      ) as Promise<{
+        config: ReleaseConfig
+        layer: string
+        size: number
+      }>,
+  )

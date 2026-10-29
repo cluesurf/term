@@ -13,7 +13,10 @@ import {
 } from 'node:tls'
 
 // each listening server's connections not yet accepted, and the accepts still waiting for one
-const queues = new WeakMap<Server, { waiting: Socket[]; takers: ((socket: Socket) => void)[] }>()
+const queues = new WeakMap<
+  Server,
+  { waiting: Socket[]; takers: ((socket: Socket) => void)[] }
+>()
 
 const tcp = {
   connect: (

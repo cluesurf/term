@@ -130,7 +130,10 @@ const job = {
         }
       }
 
-      if (jobs.length === 0 || jobs.some(one => one.state !== 'running')) {
+      if (
+        jobs.length === 0 ||
+        jobs.some(one => one.state !== 'running')
+      ) {
         finish()
 
         return

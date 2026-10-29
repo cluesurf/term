@@ -46,13 +46,29 @@ function ok(name: string, cond: boolean, info = ''): void {
 // `@app/<name>` modules beside the real packages, every file lean
 function build(files: Record<string, string>, main: string) {
   const resolve = (path: string, from?: string): Source | undefined =>
-    files[path] !== undefined ? { file: `${path.slice('@app/'.length)}.tree`, text: files[path]! } : project(path, from)
+    files[path] !== undefined
+      ? {
+          file: `${path.slice('@app/'.length)}.tree`,
+          text: files[path]!,
+        }
+      : project(path, from)
 
-  return compile({ file: 'main.tree', text: main }, { resolve, leanOf: () => true, library: true })
+  return compile(
+    { file: 'main.tree', text: main },
+    { resolve, leanOf: () => true, library: true },
+  )
 }
 
-const said = (result: { ok: boolean; diagnostics: { severity?: string; message: string }[] }): string =>
-  result.ok ? 'ok' : result.diagnostics.filter(d => d.severity !== 'warning').map(d => d.message).join(' | ')
+const said = (result: {
+  ok: boolean
+  diagnostics: { severity?: string; message: string }[]
+}): string =>
+  result.ok
+    ? 'ok'
+    : result.diagnostics
+        .filter(d => d.severity !== 'warning')
+        .map(d => d.message)
+        .join(' | ')
 
 // ---- a union named like another form's case ----
 
@@ -61,21 +77,39 @@ const SELECTION = `load @app/diagnostic\n  find diagnose\n\nform twin-choice\n  
 
 {
   const result = build({ '@app/diagnostic': DIAGNOSTIC }, SELECTION)
-  ok('a union named like a case: the construction is the case, the file the entry', result.ok, said(result))
+  ok(
+    'a union named like a case: the construction is the case, the file the entry',
+    result.ok,
+    said(result),
+  )
 }
 
 {
   const main = `load @app/selection\n  find pick\n\ntask run\n  like text\n  back pick()\n`
-  const result = build({ '@app/diagnostic': DIAGNOSTIC, '@app/selection': SELECTION }, main)
-  ok('a union named like a case: the construction is the case, the file loaded', result.ok, said(result))
+  const result = build(
+    { '@app/diagnostic': DIAGNOSTIC, '@app/selection': SELECTION },
+    main,
+  )
+  ok(
+    'a union named like a case: the construction is the case, the file loaded',
+    result.ok,
+    said(result),
+  )
 }
 
 {
   // a RECORD form named like a case is still built by its own file's construction (check/scope, the pair case)
   const own = `load @app/diagnostic\n  find diagnose\n\nform twin-choice\n  link label, like text\n\ntask pick\n  like text\n  save k\n    make twin-choice\n      bind label, <x>\n  back k/label\n`
   const main = `load @app/own\n  find pick\n\ntask run\n  like text\n  back pick()\n`
-  const result = build({ '@app/diagnostic': DIAGNOSTIC, '@app/own': own }, main)
-  ok('a record form named like a case: its own file still builds the form', result.ok, said(result))
+  const result = build(
+    { '@app/diagnostic': DIAGNOSTIC, '@app/own': own },
+    main,
+  )
+  ok(
+    'a record form named like a case: its own file still builds the form',
+    result.ok,
+    said(result),
+  )
 }
 
 // ---- a RECORD form named like a case the file never imports (term-self-host-001-0295, decision 045) ----
@@ -87,31 +121,70 @@ const OTHER = `load @app/diagnostic\n  find diagnose\n\ntask other\n  like text\
 
 {
   const main = `load @app/other\n  find other\n\nload @app/diagnostic\n  find diagnose\n\n${OWN_BODY}`
-  const result = build({ '@app/diagnostic': DIAGNOSTIC, '@app/other': OTHER }, main)
-  ok('a record form named like an unimported case: built as the form, the file the entry', result.ok, said(result))
+  const result = build(
+    { '@app/diagnostic': DIAGNOSTIC, '@app/other': OTHER },
+    main,
+  )
+  ok(
+    'a record form named like an unimported case: built as the form, the file the entry',
+    result.ok,
+    said(result),
+  )
   ok(
     'a record form named like a case: the entry exports it by its written name',
-    result.ok && /^export type TwinChoice = TwinChoiceForm$/m.test(result.typescript),
-    result.ok ? result.typescript.split('\n').filter(line => line.includes('TwinChoice')).join(' | ') : '',
+    result.ok &&
+      /^export type TwinChoice = TwinChoiceForm$/m.test(
+        result.typescript,
+      ),
+    result.ok
+      ? result.typescript
+          .split('\n')
+          .filter(line => line.includes('TwinChoice'))
+          .join(' | ')
+      : '',
   )
 }
 
 {
   const main = `load @app/other\n  find other\n\n${OWN_BODY}`
-  const result = build({ '@app/diagnostic': DIAGNOSTIC, '@app/other': OTHER }, main)
-  ok('a record form named like a case only another module loads: built as the form, the file the entry', result.ok, said(result))
+  const result = build(
+    { '@app/diagnostic': DIAGNOSTIC, '@app/other': OTHER },
+    main,
+  )
+  ok(
+    'a record form named like a case only another module loads: built as the form, the file the entry',
+    result.ok,
+    said(result),
+  )
 }
 
 {
   const main = `load @app/own\n  find pick\n\nload @app/other\n  find other\n\ntask run\n  like text\n  back pick()\n`
-  const result = build({ '@app/diagnostic': DIAGNOSTIC, '@app/own': OWN_BODY, '@app/other': OTHER }, main)
-  ok('a record form named like an unimported case: built as the form, the file loaded', result.ok, said(result))
+  const result = build(
+    {
+      '@app/diagnostic': DIAGNOSTIC,
+      '@app/own': OWN_BODY,
+      '@app/other': OTHER,
+    },
+    main,
+  )
+  ok(
+    'a record form named like an unimported case: built as the form, the file loaded',
+    result.ok,
+    said(result),
+  )
 }
 
 {
   // no case of the name in the closure: nothing is renamed, and nothing is aliased
   const result = build({}, OWN_BODY)
-  ok('a record form no case shares: kept by its name, no alias', result.ok && /\bTwinChoice\b/.test(result.typescript) && !/TwinChoiceForm/.test(result.typescript), said(result))
+  ok(
+    'a record form no case shares: kept by its name, no alias',
+    result.ok &&
+      /\bTwinChoice\b/.test(result.typescript) &&
+      !/TwinChoiceForm/.test(result.typescript),
+    said(result),
+  )
 }
 
 // ---- a case two forms share, the importer's form renamed by what else the closure holds (T-0079, 0310) ----
@@ -126,14 +199,22 @@ const KINDS = `form analysis-kind\n  mark text\n  case view\n  case code\n\nform
 {
   const main = `load @app/doc\n  find lower\n\ntask run\n  like number\n  back lower()/length\n`
   const result = build({ '@app/node': NODE, '@app/doc': DOC }, main)
-  ok('a shared case built by an importer: told the imported owner, nothing renamed', result.ok, said(result))
+  ok(
+    'a shared case built by an importer: told the imported owner, nothing renamed',
+    result.ok,
+    said(result),
+  )
 }
 
 {
   const main = `load @app/doc\n  find lower\n\n${KINDS}\ntask run\n  like number\n  back lower()/length\n`
   const result = build({ '@app/node': NODE, '@app/doc': DOC }, main)
   // since term-self-host-001-0378 a union keeps its name whatever cases the closure holds, so nothing is renamed here
-  ok('a shared case built by an importer: told the imported owner, with a case named like its form in the closure', result.ok, said(result))
+  ok(
+    'a shared case built by an importer: told the imported owner, with a case named like its form in the closure',
+    result.ok,
+    said(result),
+  )
 }
 
 // ---- a record form found by name beside a union whose case has the name (term-self-host-001-0332, decision 049) ----
@@ -149,23 +230,55 @@ const FINDS_UNION = `load @app/expr\n  find expr\n  find show-expr\n\nload @app/
 const LOADS_MADE = `load @app/user\n  find made\n\ntask run\n  like text\n  back made()\n`
 
 {
-  const result = build({ '@app/expr': EXPR, '@app/state': STATE }, FINDS_BOTH)
-  ok('a record form found by name beside a union with its case: built as the form, the file the entry', result.ok, said(result))
+  const result = build(
+    { '@app/expr': EXPR, '@app/state': STATE },
+    FINDS_BOTH,
+  )
+  ok(
+    'a record form found by name beside a union with its case: built as the form, the file the entry',
+    result.ok,
+    said(result),
+  )
 }
 
 {
-  const result = build({ '@app/expr': EXPR, '@app/state': STATE, '@app/user': FINDS_BOTH }, LOADS_MADE)
-  ok('a record form found by name beside a union with its case: built as the form, the file loaded', result.ok, said(result))
+  const result = build(
+    { '@app/expr': EXPR, '@app/state': STATE, '@app/user': FINDS_BOTH },
+    LOADS_MADE,
+  )
+  ok(
+    'a record form found by name beside a union with its case: built as the form, the file loaded',
+    result.ok,
+    said(result),
+  )
 }
 
 {
-  const result = build({ '@app/expr': EXPR, '@app/state': STATE }, FINDS_UNION)
-  ok('the union alone found, the record form in the closure: built as the case, the file the entry', result.ok, said(result))
+  const result = build(
+    { '@app/expr': EXPR, '@app/state': STATE },
+    FINDS_UNION,
+  )
+  ok(
+    'the union alone found, the record form in the closure: built as the case, the file the entry',
+    result.ok,
+    said(result),
+  )
 }
 
 {
-  const result = build({ '@app/expr': EXPR, '@app/state': STATE, '@app/user': FINDS_UNION }, LOADS_MADE)
-  ok('the union alone found, the record form in the closure: built as the case, the file loaded', result.ok, said(result))
+  const result = build(
+    {
+      '@app/expr': EXPR,
+      '@app/state': STATE,
+      '@app/user': FINDS_UNION,
+    },
+    LOADS_MADE,
+  )
+  ok(
+    'the union alone found, the record form in the closure: built as the case, the file loaded',
+    result.ok,
+    said(result),
+  )
 }
 
 // ---- a lean label under a method a form shares its name with ----
@@ -177,14 +290,32 @@ const OTHER_WALK = `task walk-statement\n  take x, like text\n  take y, like tex
 const SET_FORM = `form set\n  link x, like number\n\ntask make-set\n  like number\n  save s\n    make set\n      bind x, 1\n  back s/x\n`
 
 {
-  const result = build({ '@app/other': OTHER_WALK, '@app/set': SET_FORM }, `load @app/other\n  find other-walk\n\nload @app/set\n  find make-set\n\n${WALKING}\ntask run\n  like text\n  make-set()\n  back other-walk()\n`)
-  ok('a label under a method a form shares: nested, the file the entry', result.ok, said(result))
+  const result = build(
+    { '@app/other': OTHER_WALK, '@app/set': SET_FORM },
+    `load @app/other\n  find other-walk\n\nload @app/set\n  find make-set\n\n${WALKING}\ntask run\n  like text\n  make-set()\n  back other-walk()\n`,
+  )
+  ok(
+    'a label under a method a form shares: nested, the file the entry',
+    result.ok,
+    said(result),
+  )
 }
 
 {
   const main = `load @app/walking\n  find swap\n\nload @app/other\n  find other-walk\n\nload @app/set\n  find make-set\n\ntask run\n  take xs, like list, like number\n  like text\n  swap(xs)\n  make-set()\n  back other-walk()\n`
-  const result = build({ '@app/walking': WALKING, '@app/other': OTHER_WALK, '@app/set': SET_FORM }, main)
-  ok('a label under a method a form shares: nested, the file loaded', result.ok, said(result))
+  const result = build(
+    {
+      '@app/walking': WALKING,
+      '@app/other': OTHER_WALK,
+      '@app/set': SET_FORM,
+    },
+    main,
+  )
+  ok(
+    'a label under a method a form shares: nested, the file loaded',
+    result.ok,
+    said(result),
+  )
 }
 
 // ---- the real modules: check/disambiguate and ir/selection beside compile/rolling's closure ----
@@ -192,15 +323,29 @@ const SET_FORM = `form set\n  link x, like number\n\ntask make-set\n  like numbe
 const PROBE = join(root, 'code/compile/program-gate-probe.tree')
 
 {
-  const result = compile({ file: PROBE, text: readFileSync(PROBE, 'utf8') }, { resolve: project, leanOf: projectLeanOf(root), library: true })
-  ok('compile/program-gate-probe.tree builds as the entry', result.ok, said(result))
+  const result = compile(
+    { file: PROBE, text: readFileSync(PROBE, 'utf8') },
+    { resolve: project, leanOf: projectLeanOf(root), library: true },
+  )
+  ok(
+    'compile/program-gate-probe.tree builds as the entry',
+    result.ok,
+    said(result),
+  )
 }
 
 {
   const file = join(root, 'code/compile/program-gate-probe-loader.tree')
   const text = `load ./program-gate-probe\n  find probe-gate\n\nload ./node\n  find statement\n  find twin\n\nload ./import-scope\n  find file-scope\n\ntask probe-loaded\n  take program, like list, like statement\n  take scopes, like list, like file-scope\n  take twins, like list, like twin\n  like list, like statement\n\n  back probe-gate(program, scopes, twins)\n`
-  const result = compile({ file, text }, { resolve: project, leanOf: projectLeanOf(root), library: true })
-  ok('compile/program-gate-probe.tree builds loaded by another file', result.ok, said(result))
+  const result = compile(
+    { file, text },
+    { resolve: project, leanOf: projectLeanOf(root), library: true },
+  )
+  ok(
+    'compile/program-gate-probe.tree builds loaded by another file',
+    result.ok,
+    said(result),
+  )
 }
 
 console.log(`\n${pass} pass, ${fail} fail`)

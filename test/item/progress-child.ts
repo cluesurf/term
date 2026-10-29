@@ -6,7 +6,13 @@
 //                reads every byte of it through the pipe
 //   otherwise    the clock is moved 4 seconds per update, so a 24-second step without a terminal is seen in a moment
 
-import { closeRun, openRun, progress, report, setOutput } from '@term/call/code/output'
+import {
+  closeRun,
+  openRun,
+  progress,
+  report,
+  setOutput,
+} from '@term/call/code/output'
 
 const tty = process.argv.includes('--tty')
 
@@ -20,13 +26,27 @@ if (!tty) {
   Date.now = () => clock
 }
 
-setOutput({ log: process.argv.includes('--log-json') ? 'json' : undefined, motion: !process.argv.includes('--no-motion') }, '2.8.0')
+setOutput(
+  {
+    log: process.argv.includes('--log-json') ? 'json' : undefined,
+    motion: !process.argv.includes('--no-motion'),
+  },
+  '2.8.0',
+)
 openRun({ verb: 'release', root: process.cwd() })
 
-const pause = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
+const pause = (ms: number): Promise<void> =>
+  new Promise(resolve => setTimeout(resolve, ms))
 
 for (let done = 0; done <= 6; done++) {
-  progress({ verb: 'port', subject: 'toolchain modules', done, total: 6, noun: 'modules', one: 'module' })
+  progress({
+    verb: 'port',
+    subject: 'toolchain modules',
+    done,
+    total: 6,
+    noun: 'modules',
+    one: 'module',
+  })
 
   if (tty) {
     // past the redraw limit, so each update draws a frame
@@ -36,5 +56,10 @@ for (let done = 0; done <= 6; done++) {
   }
 }
 
-report({ glyph: 'done', verb: 'port', subject: 'toolchain modules', counts: [{ amount: 0, noun: 'built', one: '', total: -1 }] })
+report({
+  glyph: 'done',
+  verb: 'port',
+  subject: 'toolchain modules',
+  counts: [{ amount: 0, noun: 'built', one: '', total: -1 }],
+})
 closeRun({ verdict: 'Built, nothing published' })

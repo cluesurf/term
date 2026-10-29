@@ -93,4 +93,6 @@ expect(
 
 console.log(`\nwatch: ${pass} pass, ${fail} fail`)
 
-if (fail > 0) {process.exit(1)}
+if (fail > 0) {
+  process.exit(1)
+}

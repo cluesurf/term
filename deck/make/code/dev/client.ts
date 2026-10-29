@@ -19,7 +19,7 @@ export type HmrMessage =
   | { type: 'error'; errors: string[] }
 
 // what the client needs from its environment (the browser provides these; a test provides fakes)
-export interface HmrEnvironment {
+export type HmrEnvironment = {
   reload(): void
   // re-import a module URL cache-busted by timestamp, returning the fresh module namespace
   reimport(url: string, timestamp: number): Promise<unknown>

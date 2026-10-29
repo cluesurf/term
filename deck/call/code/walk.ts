@@ -7,7 +7,14 @@ import { transformSync } from 'esbuild'
 import { compile } from '@term/make/code/compile/compile'
 import type { Resolver } from '@term/make/code/compile/load'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
-import { closeRun, failRun, field, openRun, printData, report } from '@term/call/code/output'
+import {
+  closeRun,
+  failRun,
+  field,
+  openRun,
+  printData,
+  report,
+} from '@term/call/code/output'
 import { projectResolver } from '@term/call/code/make'
 
 // the module resolvers now live in the compiler (make), so the CLI, dev server, and language server share them. Kept
@@ -71,7 +78,11 @@ export class Repl {
 
       // a `load` of a path nothing answers is refused, not `added`: it was accepted, and the first call to a name it
       // was to bring failed as an unknown name
-      if (port.trimStart(trimmed).startsWith('load ') && this.resolve && !this.resolve(name, this.file)) {
+      if (
+        port.trimStart(trimmed).startsWith('load ') &&
+        this.resolve &&
+        !this.resolve(name, this.file)
+      ) {
         return { kind: 'error', text: `nothing answers load ${name}` }
       }
 
@@ -126,7 +137,9 @@ async function run(typescript: string): Promise<unknown> {
       seedReplEval?: () => unknown
     }
 
-    return await (module.seedReplEval ? module.seedReplEval() : undefined)
+    return await (module.seedReplEval
+      ? module.seedReplEval()
+      : undefined)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -152,21 +165,26 @@ function formatDiagnostics(diagnostics: Diagnostic[]): string {
 // THE SESSION IS AN INTERACTION, so its dialog is data on stdout: the prompt, each value, `added <name>` for a
 // definition, and `bye`, exactly as typed and answered. Around it the run is items on stderr: the opening with how to
 // use it, a ✗ Problem item per input that did not compile or threw, and the closing item
-export async function callWalk(input: {
-  root: string
-}): Promise<void> {
+export async function callWalk(input: { root: string }): Promise<void> {
   openRun({ verb: 'walk', root: input.root, subject: 'Term REPL' })
   report({
     glyph: 'info',
     verb: 'walk',
-    subject: 'Type a definition to add it, an expression to evaluate it, or exit',
-    message: ['A definition is task, form or load. Finish a multi-line block with a blank line.'],
+    subject:
+      'Type a definition to add it, an expression to evaluate it, or exit',
+    message: [
+      'A definition is task, form or load. Finish a multi-line block with a blank line.',
+    ],
   })
 
   // the project the session was started in, as `term make` resolves it: its own files by a relative path and its
   // linked decks as well as the standard library. It saw the standard library alone, so `load ./code/count` printed
   // `added` and the next call to a name from it failed as `unknown-name` (guides: commands/walk, 2026-10-04)
-  const repl = new Repl(projectResolver(input.root, 'node', input.root), join(input.root, 'repl.tree'))
+  const repl = new Repl(
+    projectResolver(input.root, 'node', input.root),
+    join(input.root, 'repl.tree'),
+  )
+
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -193,10 +211,27 @@ export async function callWalk(input: {
       // the message is the subject and the name a fact (section 12); the session's text is not a file, so no `at`
       for (const diagnostic of result.diagnostics) {
         const [first = '', ...rest] = diagnostic.message.split('\n')
-        report({ glyph: diagnostic.severity === 'warning' ? 'warning' : 'failed', kind: 'problem', verb: 'check', subject: first.charAt(0).toUpperCase() + first.slice(1), facts: [diagnostic.name], message: rest, fields: diagnostic.hint ? [field('next', diagnostic.hint)] : [] })
+        report({
+          glyph:
+            diagnostic.severity === 'warning' ? 'warning' : 'failed',
+          kind: 'problem',
+          verb: 'check',
+          subject: first.charAt(0).toUpperCase() + first.slice(1),
+          facts: [diagnostic.name],
+          message: rest,
+          fields: diagnostic.hint
+            ? [field('next', diagnostic.hint)]
+            : [],
+        })
       }
     } else if (result.kind === 'error') {
-      report({ glyph: 'failed', kind: 'problem', verb: 'run', subject: result.text.charAt(0).toUpperCase() + result.text.slice(1) })
+      report({
+        glyph: 'failed',
+        kind: 'problem',
+        verb: 'run',
+        subject:
+          result.text.charAt(0).toUpperCase() + result.text.slice(1),
+      })
     }
   }
 
@@ -246,7 +281,10 @@ export async function callWalk(input: {
         buffer.push(line)
 
         // a single-line expression evaluates immediately; an indented block waits for a blank line
-        if (buffer.length === 1 && !port.isDefinition(port.trimStart(line))) {
+        if (
+          buffer.length === 1 &&
+          !port.isDefinition(port.trimStart(line))
+        ) {
           await flush()
         }
       }
@@ -260,7 +298,11 @@ export async function callWalk(input: {
     void work
       .then(flush)
       .catch(error => {
-        report({ glyph: 'failed', kind: 'problem', subject: String((error as Error).message ?? error) })
+        report({
+          glyph: 'failed',
+          kind: 'problem',
+          subject: String((error as Error).message ?? error),
+        })
       })
       .then(() => {
         printData('bye\n')

@@ -64,12 +64,19 @@ const ACCELERATION = ['1.50', '2.50', '9.50']
 const TITLE = `Term device ${process.pid}`
 // an address the emulator's phone app handles, read back from the activity manager
 const PHONE = '5550100'
-const STATUSES = ['granted', 'denied', 'not-determined', 'restricted', 'unavailable']
+const STATUSES = [
+  'granted',
+  'denied',
+  'not-determined',
+  'restricted',
+  'unavailable',
+]
 // a secret and the name it is kept under, both unique to this run
 const SECRET_NAME = `term-device-${process.pid}`
 const SECRET = `term-secret-${process.pid}-${Date.now()}`
 
-const phone = (leg: Leg): boolean => leg === 'ios' || leg === 'android' || leg === 'compose-android'
+const phone = (leg: Leg): boolean =>
+  leg === 'ios' || leg === 'android' || leg === 'compose-android'
 
 // two contacts unique to this run, written through the platform (a vCard on the simulator, the provider on the
 // emulator): one with a number and one without, found by a query in another case, and answered sorted by name
@@ -86,14 +93,19 @@ const EVENT = `Term event ${process.pid}`
 const KEPT_EVENT = `${EVENT} kept`
 const HOUR = 3_600_000
 const EVENT_BASE = Date.UTC(2031, 0, 1) + (process.pid % 50_000) * HOUR
-const utc = (ms: number): string => new Date(ms).toISOString().replace('.000Z', 'Z')
-const plusOne = (ms: number): string => new Date(ms + HOUR).toISOString().replace('.000Z', '+01:00')
+const utc = (ms: number): string =>
+  new Date(ms).toISOString().replace('.000Z', 'Z')
+const plusOne = (ms: number): string =>
+  new Date(ms + HOUR).toISOString().replace('.000Z', '+01:00')
 const EVENTS = {
   first: [EVENT_BASE + 9 * HOUR, EVENT_BASE + 10 * HOUR],
   kept: [EVENT_BASE + 11 * HOUR, EVENT_BASE + 12 * HOUR],
   span: [utc(EVENT_BASE + 8 * HOUR), utc(EVENT_BASE + 14 * HOUR)],
 }
-const BOTH_EVENTS = [`${utc(EVENTS.first[0]!)}\t${utc(EVENTS.first[1]!)}\t${EVENT}`, `${utc(EVENTS.kept[0]!)}\t${utc(EVENTS.kept[1]!)}\t${KEPT_EVENT}`].join('\n')
+const BOTH_EVENTS = [
+  `${utc(EVENTS.first[0]!)}\t${utc(EVENTS.first[1]!)}\t${EVENT}`,
+  `${utc(EVENTS.kept[0]!)}\t${utc(EVENTS.kept[1]!)}\t${KEPT_EVENT}`,
+].join('\n')
 
 // a photo of a size no camera makes, put in the emulator's library (`adb push` into its Pictures, then scanned), found
 // again as the newest by its size, and copied out as a JPEG of that size. The simulator's half is photos-prompt.ts
@@ -102,7 +114,13 @@ const PHOTO = { ...SAMPLE, name: `term-photo-${process.pid}.jpg` }
 // lines a step's answer is turned into after it is said: the first event's id, read off `added <id>`, and the newest
 // photo's, the first line's text before its tab
 const AFTER: Record<string, string[]> = {
-  'calendar-add': ['      save event-id', '        call replace-all', '          read said-calendar-add', '          text <added >', '          text <>'],
+  'calendar-add': [
+    '      save event-id',
+    '        call replace-all',
+    '          read said-calendar-add',
+    '          text <added >',
+    '          text <>',
+  ],
   'photos-newest': [
     '      save photo-id',
     '        call substring',
@@ -117,8 +135,15 @@ const AFTER: Record<string, string[]> = {
 // the steps whose answer is lines: printed with each line break as ` | ` and each tab as ` ~ `, since every step is one
 // printed line (and logcat splits a message at its breaks), and read back the same way. A step is read trimmed, so
 // the expected text is trimmed too: the last contact has no number, and its line ends at the tab
-const FLAT = new Set(['contacts', 'contacts-none', 'calendar-find', 'calendar-after', 'photos-newest'])
-const flat = (text: string): string => text.replaceAll('\n', ' | ').replaceAll('\t', ' ~ ')
+const FLAT = new Set([
+  'contacts',
+  'contacts-none',
+  'calendar-find',
+  'calendar-after',
+  'photos-newest',
+])
+const flat = (text: string): string =>
+  text.replaceAll('\n', ' | ').replaceAll('\t', ' ~ ')
 
 // how long the recording runs, and so how many bytes of samples its WAV must hold: 16,000 a second, two bytes each
 const RECORDING = 1
@@ -126,32 +151,65 @@ const RECORDED = RECORDING * 16_000 * 2
 
 // one call a leg makes: the step it prints under, the contract task, and its arguments, a number written as one and
 // `{ read }` a name the program saved
-type Call = [step: string, task: string, args: (string | number | { read: string })[]]
+type Call = [
+  step: string,
+  task: string,
+  args: (string | number | { read: string })[],
+]
 
 // the calls each leg makes, each printed once
 function calls(leg: Leg): Call[] {
-  const only = (when: boolean, call: Call): Call[] => (when ? [call] : [])
+  const only = (when: boolean, call: Call): Call[] =>
+    when ? [call] : []
 
   return [
     ['permission-camera', 'permission-status', ['camera']],
     ['permission-microphone', 'permission-status', ['microphone']],
     ['permission-contacts', 'permission-status', ['contacts']],
     // the contacts the platform was given, and a name nobody has. Not on the Mac, whose address book is the person's
-    ...only(leg !== 'macos', ['contacts', 'find-contacts', [FAMILY.toUpperCase()]]),
-    ...only(leg !== 'macos', ['contacts-none', 'find-contacts', [`nobody-${process.pid}`]]),
+    ...only(leg !== 'macos', [
+      'contacts',
+      'find-contacts',
+      [FAMILY.toUpperCase()],
+    ]),
+    ...only(leg !== 'macos', [
+      'contacts-none',
+      'find-contacts',
+      [`nobody-${process.pid}`],
+    ]),
     // the calendar: two events added, both found, the first removed, the second found alone, the first removed again
     // finding nothing, and a time that is no time. Not on the Mac, whose calendar is the person's
     ['permission-calendar', 'permission-status', ['calendar']],
     ...(leg === 'macos'
       ? []
       : ([
-          ['calendar-add', 'add-event', [EVENT, utc(EVENTS.first[0]!), utc(EVENTS.first[1]!)]],
-          ['calendar-kept', 'add-event', [KEPT_EVENT, plusOne(EVENTS.kept[0]!), plusOne(EVENTS.kept[1]!)]],
+          [
+            'calendar-add',
+            'add-event',
+            [EVENT, utc(EVENTS.first[0]!), utc(EVENTS.first[1]!)],
+          ],
+          [
+            'calendar-kept',
+            'add-event',
+            [
+              KEPT_EVENT,
+              plusOne(EVENTS.kept[0]!),
+              plusOne(EVENTS.kept[1]!),
+            ],
+          ],
           ['calendar-find', 'find-events', EVENTS.span],
           ['calendar-remove', 'remove-event', [{ read: 'event-id' }]],
           ['calendar-after', 'find-events', EVENTS.span],
-          ['calendar-remove-again', 'remove-event', [{ read: 'event-id' }]],
-          ['calendar-invalid', 'add-event', [EVENT, 'no time at all', utc(EVENTS.first[1]!)]],
+          [
+            'calendar-remove-again',
+            'remove-event',
+            [{ read: 'event-id' }],
+          ],
+          [
+            'calendar-invalid',
+            'add-event',
+            [EVENT, 'no time at all', utc(EVENTS.first[1]!)],
+          ],
         ] satisfies Call[])),
     // the photo library: the newest photo is the one the platform was given, and its copy is a JPEG of its size. Not on
     // the Mac, whose library is the person's
@@ -174,13 +232,29 @@ function calls(leg: Leg): Call[] {
     ['torch-after', 'torch-state', []],
     // off again before anything opens the camera, which takes the light with it
     ['torch-off', 'set-torch', ['off']],
-    ['notification', 'show-notification', [TITLE, 'posted by device-features']],
-    ...only(leg !== 'compose', ['open', 'open-address', ['term-no-handler://nothing']]),
-    ...only(phone(leg), ['share', 'share-text', ['shared by device-features']]),
+    [
+      'notification',
+      'show-notification',
+      [TITLE, 'posted by device-features'],
+    ],
+    ...only(leg !== 'compose', [
+      'open',
+      'open-address',
+      ['term-no-handler://nothing'],
+    ]),
+    ...only(phone(leg), [
+      'share',
+      'share-text',
+      ['shared by device-features'],
+    ]),
     ['motion', 'read-motion', []],
     // biometrics: the hardware everywhere, and the sheet itself where nobody's own face or finger would be asked
     ['biometric-kind', 'biometric-kind', []],
-    ...only(leg !== 'macos', ['biometric', 'authenticate', ['Prove it is you']]),
+    ...only(leg !== 'macos', [
+      'biometric',
+      'authenticate',
+      ['Prove it is you'],
+    ]),
     // the vault: kept, read back, removed, gone, and a second removal finding nothing
     ['secret-save', 'save-secret', [SECRET_NAME, SECRET]],
     ['secret-read', 'read-secret', [SECRET_NAME]],
@@ -189,14 +263,30 @@ function calls(leg: Leg): Call[] {
     ['secret-remove-again', 'remove-secret', [SECRET_NAME]],
     // and one kept past the run on Android, whose preferences file is then read as root: it must hold the secret only
     // as ciphertext. Not on the Mac, where a kept item would be left in the person's login keychain
-    ...only(leg === 'android' || leg === 'compose-android', ['secret-kept', 'save-secret', [`${SECRET_NAME}-kept`, SECRET]]),
+    ...only(leg === 'android' || leg === 'compose-android', [
+      'secret-kept',
+      'save-secret',
+      [`${SECRET_NAME}-kept`, SECRET],
+    ]),
     // a recording: on Android from the emulator's virtual microphone, which hears nothing of the Mac's; on the iPhone
     // simulator with no grant, since a granted one would record the Mac's own microphone. Not on the Mac, for the same
     // reason
-    ...only(leg !== 'macos', ['microphone', 'record-audio', [RECORDING]]),
-    ...only(leg !== 'macos' && leg !== 'compose', ['camera', 'take-photo', []]),
+    ...only(leg !== 'macos', [
+      'microphone',
+      'record-audio',
+      [RECORDING],
+    ]),
+    ...only(leg !== 'macos' && leg !== 'compose', [
+      'camera',
+      'take-photo',
+      [],
+    ]),
     // last, because it puts another app in front, and a camera does not open for an app in the background
-    ...only(leg === 'android' || leg === 'compose-android', ['open-handled', 'open-address', [`tel:${PHONE}`]]),
+    ...only(leg === 'android' || leg === 'compose-android', [
+      'open-handled',
+      'open-address',
+      [`tel:${PHONE}`],
+    ]),
   ]
 }
 
@@ -205,7 +295,13 @@ const written = ([step, task, args]: Call): string =>
   [
     `      save said-${step}`,
     `        call ${task}`,
-    ...args.map(arg => (typeof arg === 'number' ? `          code ${arg}` : typeof arg === 'object' ? `          read ${arg.read}` : `          text <${arg}>`)),
+    ...args.map(arg =>
+      typeof arg === 'number'
+        ? `          code ${arg}`
+        : typeof arg === 'object'
+          ? `          read ${arg.read}`
+          : `          text <${arg}>`,
+    ),
     ...(AFTER[step] ?? []),
     ...(FLAT.has(step)
       ? [
@@ -223,7 +319,10 @@ const written = ([step, task, args]: Call): string =>
     `        text <step ${step} {said-${step}}>`,
   ].join('\n')
 
-const program = (leg: Leg, shot: string): string => `load @term/site/code/dom/dom
+const program = (
+  leg: Leg,
+  shot: string,
+): string => `load @term/site/code/dom/dom
   find view
 
 load @term/site/code/dom/native/toolkit/dom
@@ -332,12 +431,18 @@ ${calls(leg).map(written).join('\n')}
 `
 
 function step(output: string, name: string): string {
-  const line = output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
+  const line =
+    output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
 
-  return line.slice(line.indexOf(`step ${name} `) + `step ${name} `.length).trim()
+  return line
+    .slice(line.indexOf(`step ${name} `) + `step ${name} `.length)
+    .trim()
 }
 
-const adb = (serial: string, ...args: string[]) => spawnSync(androidTools().adb, ['-s', serial, ...args], { encoding: 'utf8' })
+const adb = (serial: string, ...args: string[]) =>
+  spawnSync(androidTools().adb, ['-s', serial, ...args], {
+    encoding: 'utf8',
+  })
 
 // the emulator's serial, each Android leg's package, and the torch-on lines the camera service had logged before each
 // leg ran, all kept from `prepare` for the read-backs after the run
@@ -349,9 +454,14 @@ const torchesBefore: Partial<Record<Leg, Set<string>>> = {}
 // but it is a fixed-size ring, so once full a new line pushes an old one out and a COUNT stays flat. A line the
 // before-set lacks is the one this leg wrote.
 const torchesLit = (): Set<string> =>
-  new Set((adb(serial, 'shell', 'dumpsys', 'media.camera').stdout ?? '').match(/^.*Torch for camera id \S+ turned on.*$/gm) ?? [])
+  new Set(
+    (
+      adb(serial, 'shell', 'dumpsys', 'media.camera').stdout ?? ''
+    ).match(/^.*Torch for camera id \S+ turned on.*$/gm) ?? [],
+  )
 const torchLitSince = (before: Set<string> | undefined): boolean =>
-  before !== undefined && [...torchesLit()].some(line => !before.has(line))
+  before !== undefined &&
+  [...torchesLit()].some(line => !before.has(line))
 
 // the simulator the iOS leg ran on, for reading its calendar store afterwards
 let simulator = ''
@@ -366,10 +476,31 @@ const photo = (): string => (photoFile ||= makePhoto(PHOTO.name))
 function pushPhoto(on: string): void {
   const where = `/storage/emulated/0/Pictures/${PHOTO.name}`
   spawnSync(androidTools().adb, ['-s', on, 'push', photo(), where])
-  adb(on, 'shell', 'am', 'broadcast', '-a', 'android.intent.action.MEDIA_SCANNER_SCAN_FILE', '-d', `file://${where}`)
+  adb(
+    on,
+    'shell',
+    'am',
+    'broadcast',
+    '-a',
+    'android.intent.action.MEDIA_SCANNER_SCAN_FILE',
+    '-d',
+    `file://${where}`,
+  )
 
   for (let turn = 0; turn < 20; turn++) {
-    const row = adb(on, 'shell', 'content', 'query', '--uri', 'content://media/external/images/media', '--projection', 'is_pending', '--where', `"_display_name='${PHOTO.name}'"`).stdout ?? ''
+    const row =
+      adb(
+        on,
+        'shell',
+        'content',
+        'query',
+        '--uri',
+        'content://media/external/images/media',
+        '--projection',
+        'is_pending',
+        '--where',
+        `"_display_name='${PHOTO.name}'"`,
+      ).stdout ?? ''
 
     if (row.includes('is_pending=0')) return
 
@@ -383,9 +514,25 @@ function pushPhoto(on: string): void {
 // seconds since 2001
 function storedEvents(leg: Leg): string {
   if (leg === 'ios') {
-    const store = join(process.env.HOME ?? '', 'Library/Developer/CoreSimulator/Devices', simulator, 'data/Library/Calendar/Calendar.sqlitedb')
-    const rows = spawnSync('sqlite3', ['-readonly', '-separator', ' ', store, `select summary, start_date, end_date from CalendarItem where summary like '${EVENT}%' order by start_date`], { encoding: 'utf8' })
-    const since2001 = (seconds: string) => String(Math.round((Number(seconds) + 978_307_200) * 1000))
+    const store = join(
+      process.env.HOME ?? '',
+      'Library/Developer/CoreSimulator/Devices',
+      simulator,
+      'data/Library/Calendar/Calendar.sqlitedb',
+    )
+    const rows = spawnSync(
+      'sqlite3',
+      [
+        '-readonly',
+        '-separator',
+        ' ',
+        store,
+        `select summary, start_date, end_date from CalendarItem where summary like '${EVENT}%' order by start_date`,
+      ],
+      { encoding: 'utf8' },
+    )
+    const since2001 = (seconds: string) =>
+      String(Math.round((Number(seconds) + 978_307_200) * 1000))
 
     return (rows.stdout ?? rows.stderr ?? '')
       .trim()
@@ -400,9 +547,23 @@ function storedEvents(leg: Leg): string {
       .join(' | ')
   }
 
-  const rows = adb(serial, 'shell', 'content', 'query', '--uri', 'content://com.android.calendar/events', '--projection', 'title:dtstart:dtend', '--where', `"title LIKE '${EVENT}%' AND deleted=0"`).stdout ?? ''
+  const rows =
+    adb(
+      serial,
+      'shell',
+      'content',
+      'query',
+      '--uri',
+      'content://com.android.calendar/events',
+      '--projection',
+      'title:dtstart:dtend',
+      '--where',
+      `"title LIKE '${EVENT}%' AND deleted=0"`,
+    ).stdout ?? ''
 
-  return [...rows.matchAll(/title=(.*?), dtstart=(\d+), dtend=(\d+)/g)].map(([, title, start, end]) => `${title} ${start} ${end}`).join(' | ')
+  return [...rows.matchAll(/title=(.*?), dtstart=(\d+), dtend=(\d+)/g)]
+    .map(([, title, start, end]) => `${title} ${start} ${end}`)
+    .join(' | ')
 }
 
 // the raw contacts this run wrote on the emulator, removed again once the run is over
@@ -414,49 +575,146 @@ function addContacts(on: string): void {
   if (contactRows.length > 0) return
 
   for (const one of PEOPLE) {
-    adb(on, 'shell', 'content', 'insert', '--uri', 'content://com.android.contacts/raw_contacts', '--bind', 'account_name:n:', '--bind', 'account_type:n:')
-    const rows = adb(on, 'shell', 'content', 'query', '--uri', 'content://com.android.contacts/raw_contacts', '--projection', '_id', '--sort', "'_id DESC'").stdout ?? ''
+    adb(
+      on,
+      'shell',
+      'content',
+      'insert',
+      '--uri',
+      'content://com.android.contacts/raw_contacts',
+      '--bind',
+      'account_name:n:',
+      '--bind',
+      'account_type:n:',
+    )
+    const rows =
+      adb(
+        on,
+        'shell',
+        'content',
+        'query',
+        '--uri',
+        'content://com.android.contacts/raw_contacts',
+        '--projection',
+        '_id',
+        '--sort',
+        "'_id DESC'",
+      ).stdout ?? ''
     const id = /_id=(\d+)/.exec(rows)?.[1]
 
     if (!id) continue
 
     contactRows.push(id)
     const data = (...binds: string[]) =>
-      adb(on, 'shell', 'content', 'insert', '--uri', 'content://com.android.contacts/data', '--bind', `raw_contact_id:i:${id}`, ...binds.flatMap(bind => ['--bind', bind]))
-    data('mimetype:s:vnd.android.cursor.item/name', `'data1:s:${one.given} ${FAMILY}'`, `data2:s:${one.given}`, `data3:s:${FAMILY}`)
+      adb(
+        on,
+        'shell',
+        'content',
+        'insert',
+        '--uri',
+        'content://com.android.contacts/data',
+        '--bind',
+        `raw_contact_id:i:${id}`,
+        ...binds.flatMap(bind => ['--bind', bind]),
+      )
+    data(
+      'mimetype:s:vnd.android.cursor.item/name',
+      `'data1:s:${one.given} ${FAMILY}'`,
+      `data2:s:${one.given}`,
+      `data3:s:${FAMILY}`,
+    )
 
-    if (one.number) data('mimetype:s:vnd.android.cursor.item/phone_v2', `data1:s:${one.number}`, 'data2:i:2')
+    if (one.number)
+      data(
+        'mimetype:s:vnd.android.cursor.item/phone_v2',
+        `data1:s:${one.number}`,
+        'data2:i:2',
+      )
   }
 }
 
-function prepare(leg: Leg, target: { udid?: string; serial?: string; identifier: string }): void {
+function prepare(
+  leg: Leg,
+  target: { udid?: string; serial?: string; identifier: string },
+): void {
   if (leg === 'ios' && target.udid) {
     simulator = target.udid
 
     for (const service of ['location', 'camera', 'calendar']) {
-      spawnSync('xcrun', ['simctl', 'privacy', target.udid, 'grant', service, target.identifier])
+      spawnSync('xcrun', [
+        'simctl',
+        'privacy',
+        target.udid,
+        'grant',
+        service,
+        target.identifier,
+      ])
     }
 
     // never asked, so the recording must answer not-determined and never reach the Mac's microphone
-    spawnSync('xcrun', ['simctl', 'privacy', target.udid, 'reset', 'microphone', target.identifier])
+    spawnSync('xcrun', [
+      'simctl',
+      'privacy',
+      target.udid,
+      'reset',
+      'microphone',
+      target.identifier,
+    ])
 
     // the two contacts, as one vCard file, into the simulator's address book, and the grant to read it
     const cards = PEOPLE.map(one =>
-      ['BEGIN:VCARD', 'VERSION:3.0', `N:${FAMILY};${one.given};;;`, `FN:${one.given} ${FAMILY}`, ...(one.number ? [`TEL;TYPE=CELL:${one.number}`] : []), 'END:VCARD'].join('\r\n'),
+      [
+        'BEGIN:VCARD',
+        'VERSION:3.0',
+        `N:${FAMILY};${one.given};;;`,
+        `FN:${one.given} ${FAMILY}`,
+        ...(one.number ? [`TEL;TYPE=CELL:${one.number}`] : []),
+        'END:VCARD',
+      ].join('\r\n'),
     )
-    const vcard = join(mkdtempSync(join(tmpdir(), 'term-contacts-')), 'people.vcf')
+    const vcard = join(
+      mkdtempSync(join(tmpdir(), 'term-contacts-')),
+      'people.vcf',
+    )
     writeFileSync(vcard, `${cards.join('\r\n')}\r\n`)
     spawnSync('xcrun', ['simctl', 'addmedia', target.udid, vcard])
-    spawnSync('xcrun', ['simctl', 'privacy', target.udid, 'grant', 'contacts', target.identifier])
+    spawnSync('xcrun', [
+      'simctl',
+      'privacy',
+      target.udid,
+      'grant',
+      'contacts',
+      target.identifier,
+    ])
     // the photo library grant, which on iOS 26 lands in TCC.db and is not read by PhotoKit (photos-prompt.ts taps the
     // real prompt instead): the leg shows the honest answer to the grant as simctl gives it
-    spawnSync('xcrun', ['simctl', 'privacy', target.udid, 'grant', 'photos', target.identifier])
+    spawnSync('xcrun', [
+      'simctl',
+      'privacy',
+      target.udid,
+      'grant',
+      'photos',
+      target.identifier,
+    ])
 
-    spawnSync('xcrun', ['simctl', 'location', target.udid, 'set', `${PLACE.latitude},${PLACE.longitude}`])
+    spawnSync('xcrun', [
+      'simctl',
+      'location',
+      target.udid,
+      'set',
+      `${PLACE.latitude},${PLACE.longitude}`,
+    ])
 
     // a face enrolled, as Features > Face ID > Enrolled does, then a match signaled every second while the app's sheet
     // waits, as Features > Face ID > Matching Face does, until this test has gone
-    const notify = (...args: string[]) => spawnSync('xcrun', ['simctl', 'spawn', target.udid!, 'notifyutil', ...args])
+    const notify = (...args: string[]) =>
+      spawnSync('xcrun', [
+        'simctl',
+        'spawn',
+        target.udid!,
+        'notifyutil',
+        ...args,
+      ])
     notify('-s', 'com.apple.BiometricKit.enrollmentChanged', '1')
     notify('-p', 'com.apple.BiometricKit.enrollmentChanged')
     const script = `
@@ -466,27 +724,79 @@ function prepare(leg: Leg, target: { udid?: string; serial?: string; identifier:
         spawnSync('xcrun', ['simctl', 'spawn', ${JSON.stringify(target.udid)}, 'notifyutil', '-p', 'com.apple.BiometricKit_Sim.pearl.match'])
         spawnSync('sleep', ['1'])
       }`
-    spawn(process.execPath, ['-e', script], { detached: true, stdio: 'ignore' }).unref()
+    spawn(process.execPath, ['-e', script], {
+      detached: true,
+      stdio: 'ignore',
+    }).unref()
   }
 
-  if ((leg === 'android' || leg === 'compose-android') && target.serial) {
+  if (
+    (leg === 'android' || leg === 'compose-android') &&
+    target.serial
+  ) {
     serial = target.serial
     packages[leg] = target.identifier
 
-    for (const permission of ['CAMERA', 'RECORD_AUDIO', 'READ_CONTACTS', 'READ_CALENDAR', 'WRITE_CALENDAR', 'READ_MEDIA_IMAGES', 'ACCESS_FINE_LOCATION', 'POST_NOTIFICATIONS']) {
-      adb(target.serial, 'shell', 'pm', 'grant', target.identifier, `android.permission.${permission}`)
+    for (const permission of [
+      'CAMERA',
+      'RECORD_AUDIO',
+      'READ_CONTACTS',
+      'READ_CALENDAR',
+      'WRITE_CALENDAR',
+      'READ_MEDIA_IMAGES',
+      'ACCESS_FINE_LOCATION',
+      'POST_NOTIFICATIONS',
+    ]) {
+      adb(
+        target.serial,
+        'shell',
+        'pm',
+        'grant',
+        target.identifier,
+        `android.permission.${permission}`,
+      )
     }
 
     addContacts(target.serial)
     pushPhoto(target.serial)
 
-    adb(target.serial, 'emu', 'geo', 'fix', PLACE.longitude, PLACE.latitude)
+    adb(
+      target.serial,
+      'emu',
+      'geo',
+      'fix',
+      PLACE.longitude,
+      PLACE.latitude,
+    )
     // unplugged AND discharging: `unplug` leaves the status the emulator had, which reads charging
     adb(target.serial, 'shell', 'dumpsys', 'battery', 'unplug')
-    adb(target.serial, 'shell', 'dumpsys', 'battery', 'set', 'status', '3')
-    adb(target.serial, 'shell', 'dumpsys', 'battery', 'set', 'level', String(LEVEL))
+    adb(
+      target.serial,
+      'shell',
+      'dumpsys',
+      'battery',
+      'set',
+      'status',
+      '3',
+    )
+    adb(
+      target.serial,
+      'shell',
+      'dumpsys',
+      'battery',
+      'set',
+      'level',
+      String(LEVEL),
+    )
     torchesBefore[leg] = torchesLit()
-    adb(target.serial, 'emu', 'sensor', 'set', 'acceleration', ACCELERATION.join(':'))
+    adb(
+      target.serial,
+      'emu',
+      'sensor',
+      'set',
+      'acceleration',
+      ACCELERATION.join(':'),
+    )
   }
 }
 
@@ -495,241 +805,602 @@ function judge(leg: Leg, toolkit: string, output: string): void {
   const named = `${leg} (${toolkit})`
   const android = leg === 'android' || leg === 'compose-android'
 
-  ok(`${named}: the clipboard takes a line and gives it back`, said('clipboard') === `written ${TOKEN}`, said('clipboard') || output.slice(-600))
+  ok(
+    `${named}: the clipboard takes a line and gives it back`,
+    said('clipboard') === `written ${TOKEN}`,
+    said('clipboard') || output.slice(-600),
+  )
 
-  if ((leg === 'macos' || leg === 'compose') && process.platform === 'darwin') {
+  if (
+    (leg === 'macos' || leg === 'compose') &&
+    process.platform === 'darwin'
+  ) {
     const pasted = spawnSync('pbpaste', [], { encoding: 'utf8' }).stdout
-    ok(`${named}: the Mac's pasteboard holds it after the app has gone (pbpaste)`, pasted === TOKEN, pasted.slice(0, 200))
+    ok(
+      `${named}: the Mac's pasteboard holds it after the app has gone (pbpaste)`,
+      pasted === TOKEN,
+      pasted.slice(0, 200),
+    )
   }
 
   // permissions
-  for (const name of ['camera', 'microphone', 'location', 'notification']) {
-    ok(`${named}: the ${name} grant reads one of the five statuses`, STATUSES.includes(said(`permission-${name}`)), said(`permission-${name}`))
+  for (const name of [
+    'camera',
+    'microphone',
+    'location',
+    'notification',
+  ]) {
+    ok(
+      `${named}: the ${name} grant reads one of the five statuses`,
+      STATUSES.includes(said(`permission-${name}`)),
+      said(`permission-${name}`),
+    )
   }
 
   if (leg === 'compose') {
-    ok(`${named}: a desktop JVM has no grants to give`, ['camera', 'microphone', 'location', 'notification'].every(name => said(`permission-${name}`) === 'unavailable'))
+    ok(
+      `${named}: a desktop JVM has no grants to give`,
+      ['camera', 'microphone', 'location', 'notification'].every(
+        name => said(`permission-${name}`) === 'unavailable',
+      ),
+    )
   }
 
   if (leg === 'ios' || android) {
-    ok(`${named}: the location and camera grants the platform was given read granted`, said('permission-location') === 'granted' && said('permission-camera') === 'granted', `${said('permission-location')} ${said('permission-camera')}`)
+    ok(
+      `${named}: the location and camera grants the platform was given read granted`,
+      said('permission-location') === 'granted' &&
+        said('permission-camera') === 'granted',
+      `${said('permission-location')} ${said('permission-camera')}`,
+    )
   }
 
   // location
   if (leg === 'ios' || android) {
     const [latitude = '', longitude = ''] = said('position').split(' ')
-    const near = Math.abs(Number(latitude) - Number(PLACE.latitude)) < 0.0005 && Math.abs(Number(longitude) - Number(PLACE.longitude)) < 0.0005
-    ok(`${named}: the position is the one the platform was told`, near, said('position'))
+    const near =
+      Math.abs(Number(latitude) - Number(PLACE.latitude)) < 0.0005 &&
+      Math.abs(Number(longitude) - Number(PLACE.longitude)) < 0.0005
+    ok(
+      `${named}: the position is the one the platform was told`,
+      near,
+      said('position'),
+    )
   } else if (leg === 'compose') {
-    ok(`${named}: no location service on a desktop JVM`, said('position') === 'unavailable', said('position'))
+    ok(
+      `${named}: no location service on a desktop JVM`,
+      said('position') === 'unavailable',
+      said('position'),
+    )
   }
 
   // battery
   if (android) {
-    ok(`${named}: the battery reads the level the emulator was set to, unplugged`, said('battery') === `${(LEVEL / 100).toFixed(2)} unplugged`, said('battery'))
+    ok(
+      `${named}: the battery reads the level the emulator was set to, unplugged`,
+      said('battery') === `${(LEVEL / 100).toFixed(2)} unplugged`,
+      said('battery'),
+    )
   } else if (leg === 'macos') {
-    const percent = /(\d+)%/.exec(spawnSync('pmset', ['-g', 'batt'], { encoding: 'utf8' }).stdout)?.[1]
+    const percent = /(\d+)%/.exec(
+      spawnSync('pmset', ['-g', 'batt'], { encoding: 'utf8' }).stdout,
+    )?.[1]
     const level = Number(said('battery').split(' ')[0])
     ok(
       `${named}: the battery agrees with pmset`,
-      percent === undefined ? said('battery') === 'unavailable' : Math.abs(level * 100 - Number(percent)) <= 1,
+      percent === undefined
+        ? said('battery') === 'unavailable'
+        : Math.abs(level * 100 - Number(percent)) <= 1,
       `${said('battery')} against ${percent ?? 'no battery'}%`,
     )
   } else {
-    ok(`${named}: the battery answers in the contract's shape`, /^(\d\.\d\d|unknown) (charging|full|unplugged|unknown)$|^unavailable$/.test(said('battery')), said('battery'))
+    ok(
+      `${named}: the battery answers in the contract's shape`,
+      /^(\d\.\d\d|unknown) (charging|full|unplugged|unknown)$|^unavailable$/.test(
+        said('battery'),
+      ),
+      said('battery'),
+    )
   }
 
-  ok(`${named}: the network is online`, /^online (wifi|cellular|wired|other)$/.test(said('network')), said('network'))
+  ok(
+    `${named}: the network is online`,
+    /^online (wifi|cellular|wired|other)$/.test(said('network')),
+    said('network'),
+  )
 
   // vibration
-  ok(`${named}: a vibration answers what it did`, leg === 'compose' ? said('vibrate') === 'unavailable' : said('vibrate') === 'played', said('vibrate'))
+  ok(
+    `${named}: a vibration answers what it did`,
+    leg === 'compose'
+      ? said('vibrate') === 'unavailable'
+      : said('vibrate') === 'played',
+    said('vibrate'),
+  )
 
   if (android && said('vibrate') === 'played') {
-    const record = adb(serial, 'shell', 'dumpsys', 'vibrator_manager').stdout ?? ''
-    ok(`${named}: and the vibrator manager recorded it for this app`, record.includes(packages[leg] ?? '?'), record.slice(0, 400))
+    const record =
+      adb(serial, 'shell', 'dumpsys', 'vibrator_manager').stdout ?? ''
+    ok(
+      `${named}: and the vibrator manager recorded it for this app`,
+      record.includes(packages[leg] ?? '?'),
+      record.slice(0, 400),
+    )
   }
 
   // torch: the emulator's camera has a flash unit, and the camera service logs every torch turned on; nothing else here
   // has one
-  const torch = ['torch-state', 'torch-set', 'torch-after', 'torch-off'].map(said).join(' ')
+  const torch = ['torch-state', 'torch-set', 'torch-after', 'torch-off']
+    .map(said)
+    .join(' ')
 
   if (android) {
-    ok(`${named}: the torch goes on, reads on, and goes off again`, torch === 'off on on off', torch)
-    ok(`${named}: and the camera service logged it turned on`, torchLitSince(torchesBefore[leg]), `${torchesBefore[leg]?.size ?? 'none'} lines before`)
+    ok(
+      `${named}: the torch goes on, reads on, and goes off again`,
+      torch === 'off on on off',
+      torch,
+    )
+    ok(
+      `${named}: and the camera service logged it turned on`,
+      torchLitSince(torchesBefore[leg]),
+      `${torchesBefore[leg]?.size ?? 'none'} lines before`,
+    )
   } else {
-    ok(`${named}: no torch here, said so every time`, torch === 'unavailable unavailable unavailable unavailable', torch)
+    ok(
+      `${named}: no torch here, said so every time`,
+      torch === 'unavailable unavailable unavailable unavailable',
+      torch,
+    )
   }
 
   // notification
   if (android) {
-    ok(`${named}: the notification is shown`, said('notification') === 'shown', said('notification'))
-    const listed = adb(serial, 'shell', 'dumpsys', 'notification', '--noredact').stdout ?? ''
-    ok(`${named}: and the platform lists it by its title`, listed.includes(TITLE), '')
+    ok(
+      `${named}: the notification is shown`,
+      said('notification') === 'shown',
+      said('notification'),
+    )
+    const listed =
+      adb(serial, 'shell', 'dumpsys', 'notification', '--noredact')
+        .stdout ?? ''
+    ok(
+      `${named}: and the platform lists it by its title`,
+      listed.includes(TITLE),
+      '',
+    )
   } else {
-    ok(`${named}: the notification answers from the closed set`, ['shown', 'not-determined', 'denied', 'unavailable', 'failed'].includes(said('notification')), said('notification'))
+    ok(
+      `${named}: the notification answers from the closed set`,
+      [
+        'shown',
+        'not-determined',
+        'denied',
+        'unavailable',
+        'failed',
+      ].includes(said('notification')),
+      said('notification'),
+    )
   }
 
   if (leg !== 'compose') {
-    ok(`${named}: an address nothing handles is unavailable, and opens nothing`, said('open') === 'unavailable', said('open'))
+    ok(
+      `${named}: an address nothing handles is unavailable, and opens nothing`,
+      said('open') === 'unavailable',
+      said('open'),
+    )
   }
 
   if (phone(leg)) {
-    ok(`${named}: the share sheet comes up`, said('share') === 'shown', said('share'))
+    ok(
+      `${named}: the share sheet comes up`,
+      said('share') === 'shown',
+      said('share'),
+    )
   }
 
   if (android) {
-    ok(`${named}: an address an app handles is opened`, said('open-handled') === 'opened', said('open-handled'))
-    const resumed = (adb(serial, 'shell', 'dumpsys', 'activity', 'activities').stdout ?? '').split('\n').filter(line => /ResumedActivity/.test(line)).join(' ')
-    ok(`${named}: and the phone app is the one in front`, /dialer/i.test(resumed), resumed.slice(0, 300))
+    ok(
+      `${named}: an address an app handles is opened`,
+      said('open-handled') === 'opened',
+      said('open-handled'),
+    )
+    const resumed = (
+      adb(serial, 'shell', 'dumpsys', 'activity', 'activities')
+        .stdout ?? ''
+    )
+      .split('\n')
+      .filter(line => /ResumedActivity/.test(line))
+      .join(' ')
+    ok(
+      `${named}: and the phone app is the one in front`,
+      /dialer/i.test(resumed),
+      resumed.slice(0, 300),
+    )
     // the phone app out of the way of the next leg
     adb(serial, 'shell', 'input', 'keyevent', 'KEYCODE_HOME')
   }
 
   // motion
   if (android) {
-    ok(`${named}: the acceleration is the one the emulator was told`, said('motion') === ACCELERATION.join(' '), said('motion'))
+    ok(
+      `${named}: the acceleration is the one the emulator was told`,
+      said('motion') === ACCELERATION.join(' '),
+      said('motion'),
+    )
   } else {
-    ok(`${named}: no accelerometer here, said so`, said('motion') === 'unavailable', said('motion'))
+    ok(
+      `${named}: no accelerometer here, said so`,
+      said('motion') === 'unavailable',
+      said('motion'),
+    )
   }
 
   // biometrics
   if (android) {
-    ok(`${named}: the emulator has fingerprint hardware, and nothing enrolled`, said('biometric-kind') === 'fingerprint' && said('biometric') === 'not-enrolled', `${said('biometric-kind')} ${said('biometric')}`)
+    ok(
+      `${named}: the emulator has fingerprint hardware, and nothing enrolled`,
+      said('biometric-kind') === 'fingerprint' &&
+        said('biometric') === 'not-enrolled',
+      `${said('biometric-kind')} ${said('biometric')}`,
+    )
   } else if (leg === 'compose') {
-    ok(`${named}: a desktop JVM has no biometric, said both ways`, said('biometric-kind') === 'unavailable' && said('biometric') === 'unavailable', `${said('biometric-kind')} ${said('biometric')}`)
+    ok(
+      `${named}: a desktop JVM has no biometric, said both ways`,
+      said('biometric-kind') === 'unavailable' &&
+        said('biometric') === 'unavailable',
+      `${said('biometric-kind')} ${said('biometric')}`,
+    )
   } else if (leg === 'macos') {
-    ok(`${named}: the Mac names its hardware without asking anything`, ['fingerprint', 'none'].includes(said('biometric-kind')), said('biometric-kind'))
+    ok(
+      `${named}: the Mac names its hardware without asking anything`,
+      ['fingerprint', 'none'].includes(said('biometric-kind')),
+      said('biometric-kind'),
+    )
   } else {
-    ok(`${named}: the simulator's face was enrolled and matched, so the sheet answers passed`, said('biometric-kind') === 'face' && said('biometric') === 'passed', `${said('biometric-kind')} ${said('biometric')}`)
+    ok(
+      `${named}: the simulator's face was enrolled and matched, so the sheet answers passed`,
+      said('biometric-kind') === 'face' &&
+        said('biometric') === 'passed',
+      `${said('biometric-kind')} ${said('biometric')}`,
+    )
   }
 
   // the vault
-  const vault = ['secret-save', 'secret-read', 'secret-remove', 'secret-again', 'secret-remove-again'].map(said)
+  const vault = [
+    'secret-save',
+    'secret-read',
+    'secret-remove',
+    'secret-again',
+    'secret-remove-again',
+  ].map(said)
 
   if (leg === 'compose') {
-    ok(`${named}: a desktop JVM has no vault, and says so`, vault.join('|') === 'unavailable||unavailable||unavailable', vault.join('|'))
+    ok(
+      `${named}: a desktop JVM has no vault, and says so`,
+      vault.join('|') === 'unavailable||unavailable||unavailable',
+      vault.join('|'),
+    )
   } else {
-    ok(`${named}: a secret is kept, read back, removed, gone, and a second removal finds nothing`, vault.join('|') === `saved|${SECRET}|removed||absent`, vault.join('|'))
+    ok(
+      `${named}: a secret is kept, read back, removed, gone, and a second removal finds nothing`,
+      vault.join('|') === `saved|${SECRET}|removed||absent`,
+      vault.join('|'),
+    )
   }
 
   if (leg === 'macos' && process.platform === 'darwin') {
     // asked without -w, so the keychain answers whether the item is there and is never asked for its value
-    const left = spawnSync('security', ['find-generic-password', '-s', 'term', '-a', SECRET_NAME], { encoding: 'utf8' })
-    ok(`${named}: and the login keychain holds nothing under the name afterwards`, left.status !== 0, `${left.status} ${left.stdout.slice(0, 200)}`)
+    const left = spawnSync(
+      'security',
+      ['find-generic-password', '-s', 'term', '-a', SECRET_NAME],
+      { encoding: 'utf8' },
+    )
+    ok(
+      `${named}: and the login keychain holds nothing under the name afterwards`,
+      left.status !== 0,
+      `${left.status} ${left.stdout.slice(0, 200)}`,
+    )
   }
 
   if (android) {
-    ok(`${named}: the kept secret saves`, said('secret-kept') === 'saved', said('secret-kept'))
-    const file = adb(serial, 'shell', 'su', '0', 'cat', `/data/data/${packages[leg] ?? '?'}/shared_prefs/term-secret.xml`).stdout ?? ''
-    ok(`${named}: and the app's preferences hold it, but only as ciphertext`, file.includes(`${SECRET_NAME}-kept`) && !file.includes(SECRET), file.slice(0, 300))
+    ok(
+      `${named}: the kept secret saves`,
+      said('secret-kept') === 'saved',
+      said('secret-kept'),
+    )
+    const file =
+      adb(
+        serial,
+        'shell',
+        'su',
+        '0',
+        'cat',
+        `/data/data/${packages[leg] ?? '?'}/shared_prefs/term-secret.xml`,
+      ).stdout ?? ''
+    ok(
+      `${named}: and the app's preferences hold it, but only as ciphertext`,
+      file.includes(`${SECRET_NAME}-kept`) && !file.includes(SECRET),
+      file.slice(0, 300),
+    )
   }
 
   // camera
   if (android) {
     const where = said('camera').replace(/^photo /, '')
-    const bytes = said('camera').startsWith('photo ') ? spawnSync(androidTools().adb, ['-s', serial, 'exec-out', 'cat', where]).stdout : Buffer.alloc(0)
-    ok(`${named}: the camera takes a photo, a JPEG on the device`, bytes.length > 1000 && bytes[0] === 0xff && bytes[1] === 0xd8, `${said('camera')}, ${bytes.length} bytes`)
+    const bytes = said('camera').startsWith('photo ')
+      ? spawnSync(androidTools().adb, [
+          '-s',
+          serial,
+          'exec-out',
+          'cat',
+          where,
+        ]).stdout
+      : Buffer.alloc(0)
+    ok(
+      `${named}: the camera takes a photo, a JPEG on the device`,
+      bytes.length > 1000 && bytes[0] === 0xff && bytes[1] === 0xd8,
+      `${said('camera')}, ${bytes.length} bytes`,
+    )
   } else if (leg === 'ios') {
-    ok(`${named}: the simulator has no camera, said so`, said('camera') === 'unavailable', said('camera'))
+    ok(
+      `${named}: the simulator has no camera, said so`,
+      said('camera') === 'unavailable',
+      said('camera'),
+    )
   }
 
   // contacts
   if (leg === 'ios' || android) {
-    ok(`${named}: the contacts grant the platform was given reads granted`, said('permission-contacts') === 'granted', said('permission-contacts'))
-    ok(`${named}: the two contacts the platform was given are found, sorted, the one with no number ending at its tab`, said('contacts') === flat(FOUND).trim(), said('contacts'))
-    ok(`${named}: a name nobody has finds none`, said('contacts-none') === 'none', said('contacts-none'))
+    ok(
+      `${named}: the contacts grant the platform was given reads granted`,
+      said('permission-contacts') === 'granted',
+      said('permission-contacts'),
+    )
+    ok(
+      `${named}: the two contacts the platform was given are found, sorted, the one with no number ending at its tab`,
+      said('contacts') === flat(FOUND).trim(),
+      said('contacts'),
+    )
+    ok(
+      `${named}: a name nobody has finds none`,
+      said('contacts-none') === 'none',
+      said('contacts-none'),
+    )
   } else if (leg === 'compose') {
-    ok(`${named}: a desktop JVM has no address book, said so`, said('contacts') === 'unavailable' && said('permission-contacts') === 'unavailable', `${said('contacts')} ${said('permission-contacts')}`)
+    ok(
+      `${named}: a desktop JVM has no address book, said so`,
+      said('contacts') === 'unavailable' &&
+        said('permission-contacts') === 'unavailable',
+      `${said('contacts')} ${said('permission-contacts')}`,
+    )
   } else {
-    ok(`${named}: the contacts grant reads one of the five statuses`, STATUSES.includes(said('permission-contacts')), said('permission-contacts'))
+    ok(
+      `${named}: the contacts grant reads one of the five statuses`,
+      STATUSES.includes(said('permission-contacts')),
+      said('permission-contacts'),
+    )
   }
 
   // calendar
-  const calendar = ['calendar-add', 'calendar-kept', 'calendar-find', 'calendar-remove', 'calendar-after', 'calendar-remove-again', 'calendar-invalid'].map(said)
+  const calendar = [
+    'calendar-add',
+    'calendar-kept',
+    'calendar-find',
+    'calendar-remove',
+    'calendar-after',
+    'calendar-remove-again',
+    'calendar-invalid',
+  ].map(said)
 
   if (leg === 'ios' || android) {
-    const [added, kept, found, removed, after, again, invalid] = calendar
+    const [added, kept, found, removed, after, again, invalid] =
+      calendar
     const keptOnly = flat(BOTH_EVENTS.split('\n')[1]!)
-    ok(`${named}: the calendar grant the platform was given reads granted`, said('permission-calendar') === 'granted', said('permission-calendar'))
-    ok(`${named}: both events are added, each with the platform's identifier`, /^added \S/.test(added ?? '') && /^added \S/.test(kept ?? ''), `${added} | ${kept}`)
-    ok(`${named}: both are found in the span, in UTC, the +01:00 one too, sorted by start`, found === flat(BOTH_EVENTS), found)
-    ok(`${named}: the first is removed, the second then found alone, and the first is absent the second time`, removed === 'removed' && after === keptOnly && again === 'absent', `${removed} | ${after} | ${again}`)
-    ok(`${named}: a time that is no time is invalid`, invalid === 'invalid', invalid)
+    ok(
+      `${named}: the calendar grant the platform was given reads granted`,
+      said('permission-calendar') === 'granted',
+      said('permission-calendar'),
+    )
+    ok(
+      `${named}: both events are added, each with the platform's identifier`,
+      /^added \S/.test(added ?? '') && /^added \S/.test(kept ?? ''),
+      `${added} | ${kept}`,
+    )
+    ok(
+      `${named}: both are found in the span, in UTC, the +01:00 one too, sorted by start`,
+      found === flat(BOTH_EVENTS),
+      found,
+    )
+    ok(
+      `${named}: the first is removed, the second then found alone, and the first is absent the second time`,
+      removed === 'removed' && after === keptOnly && again === 'absent',
+      `${removed} | ${after} | ${again}`,
+    )
+    ok(
+      `${named}: a time that is no time is invalid`,
+      invalid === 'invalid',
+      invalid,
+    )
     const stored = storedEvents(leg)
-    ok(`${named}: and the platform's own store holds the kept event at its times, and not the removed one`, stored === `${KEPT_EVENT} ${EVENTS.kept[0]} ${EVENTS.kept[1]}`, stored)
+    ok(
+      `${named}: and the platform's own store holds the kept event at its times, and not the removed one`,
+      stored === `${KEPT_EVENT} ${EVENTS.kept[0]} ${EVENTS.kept[1]}`,
+      stored,
+    )
   } else if (leg === 'compose') {
-    ok(`${named}: a desktop JVM has no calendar, said by every task`, calendar.every(one => one === 'unavailable') && said('permission-calendar') === 'unavailable', calendar.join(' | '))
+    ok(
+      `${named}: a desktop JVM has no calendar, said by every task`,
+      calendar.every(one => one === 'unavailable') &&
+        said('permission-calendar') === 'unavailable',
+      calendar.join(' | '),
+    )
   } else {
-    ok(`${named}: the calendar grant reads one of the five statuses`, STATUSES.includes(said('permission-calendar')), said('permission-calendar'))
+    ok(
+      `${named}: the calendar grant reads one of the five statuses`,
+      STATUSES.includes(said('permission-calendar')),
+      said('permission-calendar'),
+    )
   }
 
   // photo library
   if (leg === 'ios') {
     // simctl's grant reaches TCC.db and not PhotoKit, so every task answers as an app never asked would. The grant
     // given through the prompt, and the read after it, are photos-prompt.ts
-    const photos = ['permission-photos', 'photos-newest', 'photos-copy'].map(said)
-    ok(`${named}: the photo library, never asked through PhotoKit, says not-determined from every task`, photos.every(one => one === 'not-determined'), photos.join(' | '))
+    const photos = [
+      'permission-photos',
+      'photos-newest',
+      'photos-copy',
+    ].map(said)
+    ok(
+      `${named}: the photo library, never asked through PhotoKit, says not-determined from every task`,
+      photos.every(one => one === 'not-determined'),
+      photos.join(' | '),
+    )
   } else if (android) {
-    ok(`${named}: the photo library grant the platform was given reads granted`, said('permission-photos') === 'granted', said('permission-photos'))
+    ok(
+      `${named}: the photo library grant the platform was given reads granted`,
+      said('permission-photos') === 'granted',
+      said('permission-photos'),
+    )
     const fields = said('photos-newest').split(' ~ ')
     ok(
       `${named}: the newest photo is the one the platform was given, by its size, with a UTC time`,
-      fields.length === 3 && fields[0] !== '' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(fields[1] ?? '') && fields[2] === `${PHOTO.width}x${PHOTO.height}`,
+      fields.length === 3 &&
+        fields[0] !== '' &&
+        /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(fields[1] ?? '') &&
+        fields[2] === `${PHOTO.width}x${PHOTO.height}`,
       said('photos-newest'),
     )
     const where = said('photos-copy').replace(/^photo /, '')
-    const bytes = said('photos-copy').startsWith('photo ') ? spawnSync(androidTools().adb, ['-s', serial, 'exec-out', 'cat', where]).stdout : Buffer.alloc(0)
+    const bytes = said('photos-copy').startsWith('photo ')
+      ? spawnSync(androidTools().adb, [
+          '-s',
+          serial,
+          'exec-out',
+          'cat',
+          where,
+        ]).stdout
+      : Buffer.alloc(0)
     const size = jpegSize(bytes)
-    ok(`${named}: and its copy is a JPEG of that size`, size?.width === PHOTO.width && size?.height === PHOTO.height, `${said('photos-copy')}, ${JSON.stringify(size)} from ${bytes.length} bytes`)
-    ok(`${named}: an identifier no photo has is absent`, said('photos-absent') === 'absent', said('photos-absent'))
+    ok(
+      `${named}: and its copy is a JPEG of that size`,
+      size?.width === PHOTO.width && size?.height === PHOTO.height,
+      `${said('photos-copy')}, ${JSON.stringify(size)} from ${bytes.length} bytes`,
+    )
+    ok(
+      `${named}: an identifier no photo has is absent`,
+      said('photos-absent') === 'absent',
+      said('photos-absent'),
+    )
   } else if (leg === 'compose') {
-    ok(`${named}: a desktop JVM has no photo library, said so`, said('photos-newest') === 'unavailable' && said('photos-copy') === 'unavailable', `${said('photos-newest')} ${said('photos-copy')}`)
+    ok(
+      `${named}: a desktop JVM has no photo library, said so`,
+      said('photos-newest') === 'unavailable' &&
+        said('photos-copy') === 'unavailable',
+      `${said('photos-newest')} ${said('photos-copy')}`,
+    )
   } else {
-    ok(`${named}: the photo library grant reads one of the five statuses`, STATUSES.includes(said('permission-photos')), said('permission-photos'))
+    ok(
+      `${named}: the photo library grant reads one of the five statuses`,
+      STATUSES.includes(said('permission-photos')),
+      said('permission-photos'),
+    )
   }
 
   // microphone
   if (android) {
-    ok(`${named}: the microphone grant the emulator was given reads granted`, said('permission-microphone') === 'granted', said('permission-microphone'))
+    ok(
+      `${named}: the microphone grant the emulator was given reads granted`,
+      said('permission-microphone') === 'granted',
+      said('permission-microphone'),
+    )
     const where = said('microphone').replace(/^audio /, '')
-    const bytes = said('microphone').startsWith('audio ') ? spawnSync(androidTools().adb, ['-s', serial, 'exec-out', 'cat', where]).stdout : Buffer.alloc(0)
+    const bytes = said('microphone').startsWith('audio ')
+      ? spawnSync(androidTools().adb, [
+          '-s',
+          serial,
+          'exec-out',
+          'cat',
+          where,
+        ]).stdout
+      : Buffer.alloc(0)
     const wave = readWave(bytes)
     ok(
       `${named}: the recording is a WAV of 16-bit PCM, mono, 16,000 a second, ${RECORDING} second long`,
-      wave !== undefined && wave.format === 1 && wave.channels === 1 && wave.rate === 16_000 && wave.bits === 16 && wave.data === RECORDED,
+      wave !== undefined &&
+        wave.format === 1 &&
+        wave.channels === 1 &&
+        wave.rate === 16_000 &&
+        wave.bits === 16 &&
+        wave.data === RECORDED,
       `${said('microphone')}, ${JSON.stringify(wave)} from ${bytes.length} bytes`,
     )
   } else if (leg === 'ios') {
     ok(
       `${named}: never asked, so the recording says so and hears nothing`,
-      said('permission-microphone') === 'not-determined' && said('microphone') === 'not-determined',
+      said('permission-microphone') === 'not-determined' &&
+        said('microphone') === 'not-determined',
       `${said('permission-microphone')} ${said('microphone')}`,
     )
   } else if (leg === 'compose') {
-    ok(`${named}: a desktop JVM records nothing, said so`, said('microphone') === 'unavailable', said('microphone'))
+    ok(
+      `${named}: a desktop JVM records nothing, said so`,
+      said('microphone') === 'unavailable',
+      said('microphone'),
+    )
   }
 }
 
 // a WAV's header, read field by field from its RIFF chunks, and the loudest sample, so a silent recording is told
 // apart from a missing one in the failure line. Undefined when the bytes are not a WAV
-function readWave(bytes: Buffer): { format: number; channels: number; rate: number; bits: number; data: number; peak: number } | undefined {
-  if (bytes.length < 44 || bytes.toString('ascii', 0, 4) !== 'RIFF' || bytes.toString('ascii', 8, 12) !== 'WAVE') return undefined
+function readWave(bytes: Buffer):
+  | {
+      format: number
+      channels: number
+      rate: number
+      bits: number
+      data: number
+      peak: number
+    }
+  | undefined {
+  if (
+    bytes.length < 44 ||
+    bytes.toString('ascii', 0, 4) !== 'RIFF' ||
+    bytes.toString('ascii', 8, 12) !== 'WAVE'
+  )
+    return undefined
 
   let at = 12
-  let format: { format: number; channels: number; rate: number; bits: number } | undefined
+  let format:
+    | { format: number; channels: number; rate: number; bits: number }
+    | undefined
 
   while (at + 8 <= bytes.length) {
     const id = bytes.toString('ascii', at, at + 4)
     const size = bytes.readUInt32LE(at + 4)
 
     if (id === 'fmt ') {
-      format = { format: bytes.readUInt16LE(at + 8), channels: bytes.readUInt16LE(at + 10), rate: bytes.readUInt32LE(at + 12), bits: bytes.readUInt16LE(at + 22) }
+      format = {
+        format: bytes.readUInt16LE(at + 8),
+        channels: bytes.readUInt16LE(at + 10),
+        rate: bytes.readUInt32LE(at + 12),
+        bits: bytes.readUInt16LE(at + 22),
+      }
     } else if (id === 'data' && format) {
       let peak = 0
 
-      for (let one = at + 8; one + 1 < Math.min(bytes.length, at + 8 + size); one += 2) peak = Math.max(peak, Math.abs(bytes.readInt16LE(one)))
+      for (
+        let one = at + 8;
+        one + 1 < Math.min(bytes.length, at + 8 + size);
+        one += 2
+      )
+        peak = Math.max(peak, Math.abs(bytes.readInt16LE(one)))
 
-      return { ...format, data: Math.min(size, bytes.length - at - 8), peak }
+      return {
+        ...format,
+        data: Math.min(size, bytes.length - at - 8),
+        peak,
+      }
     }
 
     at += 8 + size + (size % 2)
@@ -739,7 +1410,10 @@ function readWave(bytes: Buffer): { format: number; channels: number; rate: numb
 }
 
 // the person's clipboard, kept across the run
-const kept = process.platform === 'darwin' ? spawnSync('pbpaste', [], { encoding: 'utf8' }).stdout : undefined
+const kept =
+  process.platform === 'darwin'
+    ? spawnSync('pbpaste', [], { encoding: 'utf8' }).stdout
+    : undefined
 
 try {
   runToolkits(
@@ -769,12 +1443,39 @@ try {
     adb(serial, 'shell', 'dumpsys', 'battery', 'reset')
 
     for (const id of contactRows) {
-      adb(serial, 'shell', 'content', 'delete', '--uri', 'content://com.android.contacts/raw_contacts', '--where', `'_id=${id}'`)
+      adb(
+        serial,
+        'shell',
+        'content',
+        'delete',
+        '--uri',
+        'content://com.android.contacts/raw_contacts',
+        '--where',
+        `'_id=${id}'`,
+      )
     }
 
-    adb(serial, 'shell', 'content', 'delete', '--uri', 'content://com.android.calendar/events', '--where', `"title LIKE '${EVENT}%'"`)
+    adb(
+      serial,
+      'shell',
+      'content',
+      'delete',
+      '--uri',
+      'content://com.android.calendar/events',
+      '--where',
+      `"title LIKE '${EVENT}%'"`,
+    )
     // the photo, through the media provider, which removes its file with its row
-    adb(serial, 'shell', 'content', 'delete', '--uri', 'content://media/external/images/media', '--where', `"_display_name='${PHOTO.name}'"`)
+    adb(
+      serial,
+      'shell',
+      'content',
+      'delete',
+      '--uri',
+      'content://media/external/images/media',
+      '--where',
+      `"_display_name='${PHOTO.name}'"`,
+    )
   }
 }
 

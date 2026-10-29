@@ -8,18 +8,36 @@
 import * as port from '@term/deck/code/oci/oci-routing'
 import { liftRecord, ociErrorOf } from './transport'
 
-export type OciRoute = { registry: any; repository: any; scope: string; keysRepository: string }
+export type OciRoute = {
+  registry: any
+  repository: any
+  scope: string
+  keysRepository: string
+}
 
-export const KEYS_REPOSITORY = port.keysRepository() as string
-export const storeDir = (): string => port.storeDir() as string
-export const trustDir = (): string => port.trustDir() as string
-export const localStore = (): any => liftRecord(port.localStore() as object)
-export const storeTransport = (host: string): any => liftRecord(port.storeTransport(host) as object)
-export const transportFor = (input: { host: string; offline?: boolean }): any => liftRecord(port.transportFor(input.host, input.offline ?? false) as object)
+export const KEYS_REPOSITORY = port.keysRepository()
+export const storeDir = (): string => port.storeDir()
+export const trustDir = (): string => port.trustDir()
+export const localStore = (): any =>
+  liftRecord(port.localStore() as object)
+export const storeTransport = (host: string): any =>
+  liftRecord(port.storeTransport(host) as object)
+export const transportFor = (input: {
+  host: string
+  offline?: boolean
+}): any =>
+  liftRecord(
+    port.transportFor(input.host, input.offline ?? false) as object,
+  )
 
-export const ociRouteOf = (input: { name: string; config: unknown }): OciRoute | undefined => {
+export const ociRouteOf = (input: {
+  name: string
+  config: unknown
+}): OciRoute | undefined => {
   try {
-    return port.ociRouteOf(input.name, input.config) as OciRoute | undefined
+    return port.ociRouteOf(input.name, input.config) as
+      | OciRoute
+      | undefined
   } catch (error) {
     throw ociErrorOf(error)
   }

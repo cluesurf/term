@@ -11,7 +11,13 @@
 
 import { runDir } from './run-dir'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -57,7 +63,8 @@ function have(tool: string): boolean {
 const HERE = dirname(fileURLToPath(import.meta.url))
 const TERM = resolvePath(HERE, '..', '..')
 
-const readRuntime = (path: string): string | undefined => (existsSync(path) ? readFileSync(path, 'utf8') : undefined)
+const readRuntime = (path: string): string | undefined =>
+  existsSync(path) ? readFileSync(path, 'utf8') : undefined
 
 // the exception raised, and a probe that reads the hive after a caught raise: decks woken, exception entries,
 // and the last entry's name (the raise the tell appended)
@@ -174,20 +181,41 @@ const root = join(dir, 'probe')
 mkdirSync(join(root, 'link/@term'), { recursive: true })
 mkdirSync(join(root, 'code'), { recursive: true })
 symlinkSync(join(TERM, 'deck/base'), join(root, 'link/@term/base'))
-writeFileSync(join(root, 'deck.tree'), 'deck @probe/hive\n  code <0.0.0>\n')
+writeFileSync(
+  join(root, 'deck.tree'),
+  'deck @probe/hive\n  code <0.0.0>\n',
+)
 const entry = join(root, 'code/main.tree')
 writeFileSync(entry, PROGRAM)
 
 // the program as `term make --emit <env>` makes it: compiled for the env, then emitted through `emitTarget` with the
 // compile's own wake, and the groups that wake carried
 function built(env: Env): { source: string; wake: WakeGroup[] } {
-  const result = compile({ file: entry, text: PROGRAM }, { resolve: projectResolver(root, env), deckOf: projectDeckOf(), env })
+  const result = compile(
+    { file: entry, text: PROGRAM },
+    {
+      resolve: projectResolver(root, env),
+      deckOf: projectDeckOf(),
+      env,
+    },
+  )
 
   if (!result.ok) {
-    throw new Error(`compile failed: ${result.diagnostics.slice(0, 5).map(d => d.message).join(' | ')}`)
+    throw new Error(
+      `compile failed: ${result.diagnostics
+        .slice(0, 5)
+        .map(d => d.message)
+        .join(' | ')}`,
+    )
   }
 
-  const source = emitTarget({ program: result.program as Program, typescript: '', target: env, readRuntime, wake: result.wake })
+  const source = emitTarget({
+    program: result.program as Program,
+    typescript: '',
+    target: env,
+    readRuntime,
+    wake: result.wake,
+  })
 
   return { source, wake: result.wake ?? [] }
 }
@@ -197,7 +225,9 @@ function nameOf(entry: RollValue): string | undefined {
   if (entry.form !== 'pair-values') return undefined
   const found = entry.pairs.find(pair => pair.key === 'name')
 
-  return found?.value.form === 'text-value' ? found.value.value : undefined
+  return found?.value.form === 'text-value'
+    ? found.value.value
+    : undefined
 }
 
 // the compile's wake names this deck, with its exception and its tell in the typed groups
@@ -206,9 +236,19 @@ function judgeWake(env: Env, wake: WakeGroup[]): void {
   ok(
     `${env}: the compile's wake holds the deck, its static exception and its tell`,
     own !== undefined &&
-      own.typed.exceptions.some(one => nameOf(one) === 'user-absence') &&
-      own.typed.tells.some(one => nameOf(one) === '@probe/hive/user-absence'),
-    JSON.stringify(wake.map(group => ({ deck: group.deck, exceptions: group.typed.exceptions.map(nameOf), tells: group.typed.tells.map(nameOf) }))),
+      own.typed.exceptions.some(
+        one => nameOf(one) === 'user-absence',
+      ) &&
+      own.typed.tells.some(
+        one => nameOf(one) === '@probe/hive/user-absence',
+      ),
+    JSON.stringify(
+      wake.map(group => ({
+        deck: group.deck,
+        exceptions: group.typed.exceptions.map(nameOf),
+        tells: group.typed.tells.map(nameOf),
+      })),
+    ),
   )
 }
 
@@ -220,11 +260,17 @@ const TYPED: Env[] = ['rust', 'swift', 'kotlin']
 const STATIC = 'absence: No such user'
 const TOLD = 'Who is that? (key)'
 
-function judge(env: Env, run: { status: number | null; stdout: string; stderr: string }): void {
+function judge(
+  env: Env,
+  run: { status: number | null; stdout: string; stderr: string },
+): void {
   const counted = WANT.exec(run.stdout.trim().split('\n')[0] ?? '')
   ok(
     `${env}: the wake chain fills the roll and a native raise tells the hive`,
-    run.status === 0 && counted !== null && Number(counted[1]) >= 1 && Number(counted[2]) === Number(counted[1]) + 1,
+    run.status === 0 &&
+      counted !== null &&
+      Number(counted[1]) >= 1 &&
+      Number(counted[2]) === Number(counted[1]) + 1,
     `exit ${run.status}: ${(run.stdout + run.stderr).slice(0, 300)}`,
   )
 
@@ -276,18 +322,42 @@ function runRust(): void {
     join(proj, 'src', 'main.rs'),
     `${source}\nfn main() { wake_hive(); println!("{}", check_hive()); println!("{}", static_roll()); println!("{}", static_tell()); }\n`,
   )
-  const env = { ...process.env, CARGO_TARGET_DIR: join(tmpdir(), 'seed-rust-runtime', 'target') }
+  const env = {
+    ...process.env,
+    CARGO_TARGET_DIR: join(tmpdir(), 'seed-rust-runtime', 'target'),
+  }
 
   try {
-    execFileSync('cargo', ['build', '--quiet'], { cwd: proj, stdio: 'pipe', env })
+    execFileSync('cargo', ['build', '--quiet'], {
+      cwd: proj,
+      stdio: 'pipe',
+      env,
+    })
   } catch (e) {
-    ok('rust: the hive program builds', false, String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 600))
+    ok(
+      'rust: the hive program builds',
+      false,
+      String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 600),
+    )
 
     return
   }
 
   ok('rust: the hive program builds', true)
-  judge('rust', spawnSync(join(tmpdir(), 'seed-rust-runtime', 'target', 'debug', 'term-hive-native'), [], { encoding: 'utf8' }))
+  judge(
+    'rust',
+    spawnSync(
+      join(
+        tmpdir(),
+        'seed-rust-runtime',
+        'target',
+        'debug',
+        'term-hive-native',
+      ),
+      [],
+      { encoding: 'utf8' },
+    ),
+  )
 }
 
 function runSwift(): void {
@@ -298,18 +368,30 @@ function runSwift(): void {
   const { source, wake } = built('swift')
   judgeWake('swift', wake)
   const main = join(dir, 'main.swift')
-  writeFileSync(main, `${source}\nwakeHive()\nprint(checkHive())\nprint(staticRoll())\nprint(staticTell())\n`)
+  writeFileSync(
+    main,
+    `${source}\nwakeHive()\nprint(checkHive())\nprint(staticRoll())\nprint(staticTell())\n`,
+  )
 
   try {
-    execFileSync('swiftc', ['-o', join(dir, 'swift-main'), main], { stdio: 'pipe' })
+    execFileSync('swiftc', ['-o', join(dir, 'swift-main'), main], {
+      stdio: 'pipe',
+    })
   } catch (e) {
-    ok('swift: the hive program builds', false, String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 600))
+    ok(
+      'swift: the hive program builds',
+      false,
+      String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 600),
+    )
 
     return
   }
 
   ok('swift: the hive program builds', true)
-  judge('swift', spawnSync(join(dir, 'swift-main'), [], { encoding: 'utf8' }))
+  judge(
+    'swift',
+    spawnSync(join(dir, 'swift-main'), [], { encoding: 'utf8' }),
+  )
 }
 
 function runKotlin(): void {
@@ -320,19 +402,31 @@ function runKotlin(): void {
   const { source, wake } = built('kotlin')
   judgeWake('kotlin', wake)
   const file = join(dir, 'main.kt')
-  writeFileSync(file, `${source}\nfun main() { wakeHive(); println(checkHive()); println(staticRoll()); println(staticTell()) }\n`)
+  writeFileSync(
+    file,
+    `${source}\nfun main() { wakeHive(); println(checkHive()); println(staticRoll()); println(staticTell()) }\n`,
+  )
   const jar = join(dir, 'main.jar')
 
   try {
-    execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], { stdio: 'pipe' })
+    execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], {
+      stdio: 'pipe',
+    })
   } catch (e) {
-    ok('kotlin: the hive program builds', false, String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 600))
+    ok(
+      'kotlin: the hive program builds',
+      false,
+      String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 600),
+    )
 
     return
   }
 
   ok('kotlin: the hive program builds', true)
-  judge('kotlin', spawnSync('java', ['-jar', jar], { encoding: 'utf8' }))
+  judge(
+    'kotlin',
+    spawnSync('java', ['-jar', jar], { encoding: 'utf8' }),
+  )
 }
 
 if (!only || only === 'rust') {
@@ -347,7 +441,9 @@ if (!only || only === 'kotlin') {
   runKotlin()
 }
 
-console.log(`\nhive-native: ${pass} pass, ${fail} fail, ${skip} skipped`)
+console.log(
+  `\nhive-native: ${pass} pass, ${fail} fail, ${skip} skipped`,
+)
 
 if (fail > 0) {
   process.exit(1)

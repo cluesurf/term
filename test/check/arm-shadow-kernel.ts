@@ -52,13 +52,33 @@ const cases: [string, string][] = [
 for (const [label, other] of cases) {
   const built = compile(
     { file: 'shadow.tree', text: program(other) },
-    { resolve: withNativeEnv('node', stdlibResolver()!), entryPoints: ['run'] },
+    {
+      resolve: withNativeEnv('node', stdlibResolver()!),
+      entryPoints: ['run'],
+    },
   )
 
-  ok(`${label}: the field shadows the parameter, and the program builds`, built.ok, built.ok ? '' : built.diagnostics.map(d => d.message.split('\n').join(' ')).join(' | '))
+  ok(
+    `${label}: the field shadows the parameter, and the program builds`,
+    built.ok,
+    built.ok
+      ? ''
+      : built.diagnostics
+          .map(d => d.message.split('\n').join(' '))
+          .join(' | '),
+  )
 
   if (built.ok) {
-    ok(`${label}: the arm returns the field`, /const value = __at\d+\.value\s+return value/.test(built.typescript), built.typescript.split('\n').filter(l => /value/.test(l)).join(' | '))
+    ok(
+      `${label}: the arm returns the field`,
+      /const value = __at\d+\.value\s+return value/.test(
+        built.typescript,
+      ),
+      built.typescript
+        .split('\n')
+        .filter(l => /value/.test(l))
+        .join(' | '),
+    )
   }
 }
 

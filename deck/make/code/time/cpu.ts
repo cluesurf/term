@@ -7,11 +7,21 @@ import { spawn } from 'node:child_process'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import type { Resolver } from '@term/make/code/compile/load'
-import { cleanupDir, prepareModuleDir } from '@term/make/code/time/execute'
+import {
+  cleanupDir,
+  prepareModuleDir,
+} from '@term/make/code/time/execute'
 import { compileBenchmarks } from '@term/make/code/time/runner'
 import type { Benchmark } from '@term/make/code/time/runner'
-import { formatCpuResult, summarize } from '@term/make/code/time/profile'
-import type { CpuFrame, CpuResult, V8Profile } from '@term/make/code/time/profile'
+import {
+  formatCpuResult,
+  summarize,
+} from '@term/make/code/time/profile'
+import type {
+  CpuFrame,
+  CpuResult,
+  V8Profile,
+} from '@term/make/code/time/profile'
 
 export { formatCpuResult }
 export type { CpuFrame, CpuResult }
@@ -57,7 +67,9 @@ export async function runCpuProfile(input: {
   })
 
   if (benchmarks.length === 0) {
-    throw new Error('There is no `time-*` task to profile: the profile runs each one, as `term time` times them')
+    throw new Error(
+      'There is no `time-*` task to profile: the profile runs each one, as `term time` times them',
+    )
   }
 
   const dir = await prepareModuleDir({
@@ -67,14 +79,22 @@ export async function runCpuProfile(input: {
   })
 
   try {
-    return await profileIn(dir, harness(benchmarks, input.spend ?? 500), input)
+    return await profileIn(
+      dir,
+      harness(benchmarks, input.spend ?? 500),
+      input,
+    )
   } finally {
     // the folder is scratch, as the timing run's is: it was left under `.base/@cluesurf/term/tmp/` every run
     await cleanupDir(dir)
   }
 }
 
-async function profileIn(dir: string, script: string, input: { name: string; top?: number }): Promise<CpuResult> {
+async function profileIn(
+  dir: string,
+  script: string,
+  input: { name: string; top?: number },
+): Promise<CpuResult> {
   await fs.writeFile(path.join(dir, 'harness.mjs'), script)
 
   await new Promise<void>((resolve, reject) => {
@@ -107,6 +127,7 @@ async function profileIn(dir: string, script: string, input: { name: string; top
     path.join(dir, 'run.cpuprofile'),
     'utf-8',
   )
+
   const profile = JSON.parse(raw) as V8Profile
 
   return summarize(profile, input.name, input.top ?? 15)

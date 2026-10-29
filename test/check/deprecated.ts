@@ -54,18 +54,54 @@ task outside
 `
 
 const stdlib = stdlibResolver()!
-const resolve: Resolver = (path, from, how) => (path === './old' ? { file: '/probe/code/old.tree', text: OLD } : stdlib(path, from, how))
+const resolve: Resolver = (path, from, how) =>
+  path === './old'
+    ? { file: '/probe/code/old.tree', text: OLD }
+    : stdlib(path, from, how)
 
-const built = compile({ file: '/probe/code/main.tree', text: ENTRY }, { resolve, env: 'node' })
-const warned = built.ok ? (built.warnings ?? []).filter(w => /is marked deprecated/.test(w.message)) : []
-const said = built.ok ? warned.map(w => `${w.file}:${w.span.start.line + 1} ${w.message}`).join(' | ') : built.diagnostics.map(d => d.message).join(' | ')
-const at = (line: number, name: string): boolean => warned.some(w => w.span.start.line + 1 === line && w.message.includes(`"${name}"`))
+const built = compile(
+  { file: '/probe/code/main.tree', text: ENTRY },
+  { resolve, env: 'node' },
+)
+const warned = built.ok
+  ? (built.warnings ?? []).filter(w =>
+      /is marked deprecated/.test(w.message),
+    )
+  : []
+const said = built.ok
+  ? warned
+      .map(w => `${w.file}:${w.span.start.line + 1} ${w.message}`)
+      .join(' | ')
+  : built.diagnostics.map(d => d.message).join(' | ')
+const at = (line: number, name: string): boolean =>
+  warned.some(
+    w =>
+      w.span.start.line + 1 === line && w.message.includes(`"${name}"`),
+  )
 
 ok('the program builds', built.ok, said)
-ok('a call of a deprecated task from another file warns', at(13, 'old-way'), said)
-ok('a make of a deprecated form from another file warns', at(12, 'old-box'), said)
-ok('a task taking a deprecated form from another file warns', warned.some(w => w.message.includes('"old-box"') && w.span.start.line + 1 === 5), said)
-ok('the defining file uses its own with no word', !warned.some(w => (w.file ?? '').endsWith('old.tree')), said)
+ok(
+  'a call of a deprecated task from another file warns',
+  at(13, 'old-way'),
+  said,
+)
+ok(
+  'a make of a deprecated form from another file warns',
+  at(12, 'old-box'),
+  said,
+)
+ok(
+  'a task taking a deprecated form from another file warns',
+  warned.some(
+    w => w.message.includes('"old-box"') && w.span.start.line + 1 === 5,
+  ),
+  said,
+)
+ok(
+  'the defining file uses its own with no word',
+  !warned.some(w => (w.file ?? '').endsWith('old.tree')),
+  said,
+)
 
 const BOTH = `form plain-box
   link value, like number
@@ -75,8 +111,16 @@ task use
   save b, make plain-box, bind value, 3
   back b/value
 `
-const plain = compile({ file: '/probe/code/plain.tree', text: BOTH }, { resolve, env: 'node' })
-ok('a form not marked is no warning', plain.ok && !(plain.warnings ?? []).some(w => /deprecated/.test(w.message)), plain.ok ? '' : plain.diagnostics.map(d => d.message).join(' | '))
+const plain = compile(
+  { file: '/probe/code/plain.tree', text: BOTH },
+  { resolve, env: 'node' },
+)
+ok(
+  'a form not marked is no warning',
+  plain.ok &&
+    !(plain.warnings ?? []).some(w => /deprecated/.test(w.message)),
+  plain.ok ? '' : plain.diagnostics.map(d => d.message).join(' | '),
+)
 
 console.log(`\ndeprecated: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)

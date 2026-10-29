@@ -126,31 +126,68 @@ function pinned(env: string): Resolver {
   // the dom contract read as the terminal's. On node the app host is pinned too, to the one that runs routes in a
   // terminal: it is otherwise the HTTP server, which docks hono, and a terminal program has no server to start. Swift
   // and Kotlin keep the abstract host, which mounts nothing, since they have no terminal loop
-  const host = env === 'node' ? 'view/native/rust/host' : 'view/native/{platform}/host'
+  const host =
+    env === 'node'
+      ? 'view/native/rust/host'
+      : 'view/native/{platform}/host'
 
   return (importPath, fromFile) =>
-    base(importPath.replace(/native\/\{platform\}\/(dom|view)$/, 'native/terminal/$1').replace(/view\/native\/\{platform\}\/host$/, host), fromFile)
+    base(
+      importPath
+        .replace(
+          /native\/\{platform\}\/(dom|view)$/,
+          'native/terminal/$1',
+        )
+        .replace(/view\/native\/\{platform\}\/host$/, host),
+      fromFile,
+    )
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'term-terminal-routes-'))
 const only = process.env.TERMINAL_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: pinned, dir, name: 'routes' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: pinned,
+    dir,
+    name: 'routes',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
     continue
   }
 
-  ok(`${backend}: the route table compiles, builds and runs in the terminal host`, ran.form === 'ran', ran.form === 'failed' ? `${ran.stage}: ${ran.reason}` : '')
+  ok(
+    `${backend}: the route table compiles, builds and runs in the terminal host`,
+    ran.form === 'ran',
+    ran.form === 'failed' ? `${ran.stage}: ${ran.reason}` : '',
+  )
 
   if (ran.form === 'ran') {
     const screens = ran.output.split('|')
-    ok(`${backend}: / draws the home page`, screens[0] === WANT[0], JSON.stringify(screens[0]))
-    ok(`${backend}: a signal the page reads, written with no move, redraws the page's text`, screens[1] === WANT[1], JSON.stringify(screens[1]))
-    ok(`${backend}: navigating to /users/7 draws the user page with the id the path carried`, screens[2] === WANT[2], JSON.stringify(screens[2]))
-    ok(`${backend}: Escape goes back, and home is drawn again`, screens[3] === WANT[3], JSON.stringify(screens[3]))
+    ok(
+      `${backend}: / draws the home page`,
+      screens[0] === WANT[0],
+      JSON.stringify(screens[0]),
+    )
+    ok(
+      `${backend}: a signal the page reads, written with no move, redraws the page's text`,
+      screens[1] === WANT[1],
+      JSON.stringify(screens[1]),
+    )
+    ok(
+      `${backend}: navigating to /users/7 draws the user page with the id the path carried`,
+      screens[2] === WANT[2],
+      JSON.stringify(screens[2]),
+    )
+    ok(
+      `${backend}: Escape goes back, and home is drawn again`,
+      screens[3] === WANT[3],
+      JSON.stringify(screens[3]),
+    )
   }
 }
 

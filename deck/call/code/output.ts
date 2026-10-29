@@ -16,19 +16,45 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import type { ChildProcess } from 'node:child_process'
 import type { Readable } from 'node:stream'
-import { beginRun, endRun, printData as printDataOut, report as reportOut } from '@term/call/code/work/item/emit'
+import {
+  beginRun,
+  endRun,
+  printData as printDataOut,
+  report as reportOut,
+} from '@term/call/code/work/item/emit'
 // the port's module whole, for a task read at CALL time: task/port-build.ts loads this file while it is building that
 // port, so a name new to emit.tree cannot be a static import here, or the build that would make it refuses to start
 import * as emitPort from '@term/call/code/work/item/emit'
 import { adaptLine } from '@term/call/code/work/item/adapt'
 import type { Runner } from '@term/call/code/work/item/emit'
-import { arrangeProblems, makeOpening, makeOptions, makeCrash } from '@term/call/code/work/item/run'
+import {
+  arrangeProblems,
+  makeOpening,
+  makeOptions,
+  makeCrash,
+} from '@term/call/code/work/item/run'
 import type { RunOptions } from '@term/call/code/work/item/run'
-import { blankEvent, plainField, plainSubject } from '@term/call/code/work/item/event'
-import type { Event, Frame, ItemField, Tally } from '@term/call/code/work/item/event'
+import {
+  blankEvent,
+  plainField,
+  plainSubject,
+} from '@term/call/code/work/item/event'
+import type {
+  Event,
+  Frame,
+  ItemField,
+  Tally,
+} from '@term/call/code/work/item/event'
 import { makeStandard } from '@term/call/code/work/item/standard'
 import { formatPath } from '@term/call/code/work/item/format'
-import { isProgressDue, isRunning, makeProgressItem, placeItem, planFrame, writeFrame } from '@term/call/code/work/item/live'
+import {
+  isProgressDue,
+  isRunning,
+  makeProgressItem,
+  placeItem,
+  planFrame,
+  writeFrame,
+} from '@term/call/code/work/item/live'
 import type { Region } from '@term/call/code/work/item/live'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import * as plan from '@term/call/code/output-plan'
@@ -64,13 +90,18 @@ let version = ''
 let runner: Runner | undefined
 let started = 0
 let verb = ''
+
 // how deep in other runs this process's run is (section 15), passed to every child, and what it was before the run opened
 const DEPTH_VARIABLE = 'TERM_DEPTH'
+
 let outerDepth: string | undefined
 
 // the flags, read once before any command runs (line.ts, a yargs middleware), the tool's version for the opening item,
 // and the command's own verb (`argv._[0]`), so a failure before the command opens its run is still under its verb
-export function setOutput(flags: OutputFlags & { _?: (string | number)[] }, toolVersion: string): void {
+export function setOutput(
+  flags: OutputFlags & { _?: (string | number)[] },
+  toolVersion: string,
+): void {
   version = toolVersion
   showAll = flags.all ?? false
 
@@ -84,7 +115,10 @@ export function setOutput(flags: OutputFlags & { _?: (string | number)[] }, tool
     verbose: flags.verbose ?? false,
     trace: flags.trace ?? false,
     json: flags.log === 'json',
-    color: flags.color === 'always' || flags.color === 'never' ? flags.color : 'auto',
+    color:
+      flags.color === 'always' || flags.color === 'never'
+        ? flags.color
+        : 'auto',
     utc: flags.utc ?? false,
     plain: flags.plain ?? false,
     strict: flags.strict ?? false,
@@ -131,34 +165,65 @@ export type ItemInput = {
 
 // an event from what a command has. Every quantity stays a number: the library formats it
 export function makeItem(input: ItemInput): Event {
-  const one: Event = { ...blankEvent(), glyph: input.glyph ?? 'info', clock: input.clock ?? Date.now() }
+  const one: Event = {
+    ...blankEvent(),
+    glyph: input.glyph ?? 'info',
+    clock: input.clock ?? Date.now(),
+  }
 
-  if (input.kind !== undefined) one.kind = input.kind
-  if (input.verb !== undefined) one.verb = input.verb
-  if (input.subject !== undefined) one.subject = plainSubject(input.subject)
-  if (input.source !== undefined) one.source = input.source
-  if (input.code !== undefined) one.code = input.code
-  if (input.duration !== undefined) one.duration = input.duration
-  if (input.budget !== undefined) one.budget = input.budget
-  if (input.http !== undefined) one.status = { kind: 'http', value: input.http, name: '' }
-  if (input.exit !== undefined) one.status = { kind: 'exit', value: input.exit, name: '' }
-  if (input.bytes !== undefined) one.bytes = input.bytes
-  if (input.counts !== undefined) one.tallies = input.counts
-  if (input.facts !== undefined) one.facts = input.facts
-  if (input.message !== undefined) one.message = input.message
-  if (input.fields !== undefined) one.fields = input.fields
-  if (input.frames !== undefined) one.frames = input.frames
-  if (input.quote !== undefined) one.quote = input.quote
-  if (input.done !== undefined) one.done = input.done
-  if (input.total !== undefined) one.total = input.total
-  if (input.level !== undefined) one.level = input.level
-  if (input.place !== undefined) one.place = input.place
+  if (input.kind !== undefined) {one.kind = input.kind}
+
+  if (input.verb !== undefined) {one.verb = input.verb}
+
+  if (input.subject !== undefined)
+    {one.subject = plainSubject(input.subject)}
+
+  if (input.source !== undefined) {one.source = input.source}
+
+  if (input.code !== undefined) {one.code = input.code}
+
+  if (input.duration !== undefined) {one.duration = input.duration}
+
+  if (input.budget !== undefined) {one.budget = input.budget}
+
+  if (input.http !== undefined)
+    {one.status = { kind: 'http', value: input.http, name: '' }}
+
+  if (input.exit !== undefined)
+    {one.status = { kind: 'exit', value: input.exit, name: '' }}
+
+  if (input.bytes !== undefined) {one.bytes = input.bytes}
+
+  if (input.counts !== undefined) {one.tallies = input.counts}
+
+  if (input.facts !== undefined) {one.facts = input.facts}
+
+  if (input.message !== undefined) {one.message = input.message}
+
+  if (input.fields !== undefined) {one.fields = input.fields}
+
+  if (input.frames !== undefined) {one.frames = input.frames}
+
+  if (input.quote !== undefined) {one.quote = input.quote}
+
+  if (input.done !== undefined) {one.done = input.done}
+
+  if (input.total !== undefined) {one.total = input.total}
+
+  if (input.level !== undefined) {one.level = input.level}
+
+  if (input.place !== undefined) {one.place = input.place}
 
   return one
 }
 
 // a count: number then noun (`42 files`), or part of a total (`31/46 files`). `one` is the singular beside 1
-export function count(amount: number, noun: string, one = '', total = -1): Tally {
+export function count(
+  amount: number,
+  noun: string,
+  one = '',
+  total = -1,
+): Tally {
   return { amount, noun, one, total }
 }
 
@@ -169,7 +234,10 @@ export function field(key: string, value: string): ItemField {
 
 // a location field, `at`, which breaks only after `/` and links to its file
 export function location(where: string): ItemField {
-  return { ...plainField(STANDARD.fields.locationKey, where), location: true }
+  return {
+    ...plainField(STANDARD.fields.locationKey, where),
+    location: true,
+  }
 }
 
 // ---- the run ----
@@ -183,16 +251,36 @@ export function showPath(where: string, root = ''): string {
 // context counts (section 3)
 // (`started`: when the work began, for a run that opens its item only after it, as `term hunt` does while its fuzz
 // children own the terminal. The opening clock and the closing total are then the work's, not the print's)
-export function openRun(input: { verb: string; root: string; subject?: string; counts?: Tally[]; facts?: string[]; tool?: string; started?: number }): void {
+export function openRun(input: {
+  verb: string
+  root: string
+  subject?: string
+  counts?: Tally[]
+  facts?: string[]
+  tool?: string
+  started?: number
+}): void {
   verb = input.verb
   started = input.started ?? Date.now()
+
   // section 15: a run started by a command of another Term run is drawn under that run's elbow. The depth comes in through
   // the environment, and every child this run starts while it is open is one level deeper
-  const depth = Math.max(0, Number(process.env[DEPTH_VARIABLE] ?? 0) || 0)
+  const depth = Math.max(
+    0,
+    Number(process.env[DEPTH_VARIABLE] ?? 0) || 0,
+  )
+
   outerDepth = process.env[DEPTH_VARIABLE]
   options = { ...options, depth }
   process.env[DEPTH_VARIABLE] = String(depth + 1)
-  const opening = makeOpening(input.verb, input.subject ?? showPath(input.root), started, input.tool ?? (version ? `term ${version}` : 'term'))
+
+  const opening = makeOpening(
+    input.verb,
+    input.subject ?? showPath(input.root),
+    started,
+    input.tool ?? (version ? `term ${version}` : 'term'),
+  )
+
   opening.tallies = input.counts ?? []
   opening.facts = input.facts ?? []
   runner = beginRun(input.verb, opening, options, STANDARD)
@@ -208,7 +296,9 @@ export function report(input: ItemInput | Event): void {
     openRun({ verb: verb || 'term', root: process.cwd() })
   }
 
-  const made = 'tallies' in input ? (input as Event) : makeItem(input as ItemInput)
+  const made =
+    'tallies' in input ? (input) : makeItem(input)
+
   const event = made.verb === '' ? { ...made, verb } : made
 
   steps.delete(stepKey(event))
@@ -248,7 +338,11 @@ function progressView(): 'live' | 'interval' | 'none' {
     return 'none'
   }
 
-  if (options.plain || options.depth > 0 || process.stderr.isTTY !== true) {
+  if (
+    options.plain ||
+    options.depth > 0 ||
+    process.stderr.isTTY !== true
+  ) {
     return 'interval'
   }
 
@@ -256,7 +350,15 @@ function progressView(): 'live' | 'interval' | 'none' {
 }
 
 // a step under way: `done` of `total` (a total below 0 is unknown, and draws no bar), counted in `noun`
-export function progress(input: { verb: string; subject: string; done?: number; total?: number; noun?: string; one?: string; source?: string }): void {
+export function progress(input: {
+  verb: string
+  subject: string
+  done?: number
+  total?: number
+  noun?: string
+  one?: string
+  source?: string
+}): void {
   if (!runner) {
     openRun({ verb: verb || 'term', root: process.cwd() })
   }
@@ -271,10 +373,14 @@ export function progress(input: { verb: string; subject: string; done?: number; 
     subject: input.subject,
     source: input.source,
     clock: now,
-    counts: input.noun !== undefined && done >= 0 ? [count(done, input.noun, input.one ?? '', total)] : [],
+    counts:
+      input.noun !== undefined && done >= 0
+        ? [count(done, input.noun, input.one ?? '', total)]
+        : [],
     done,
     total,
   })
+
   const key = stepKey(step)
   const known = steps.get(key) ?? { started: now, reported: -1 }
   steps.set(key, known)
@@ -291,12 +397,21 @@ export function progress(input: { verb: string; subject: string; done?: number; 
     if (!ticker && options.motion) {
       // the spinner and the elapsed time move while the step works, between its own updates. Unref'd: a run that is
       // done never waits on it
-      ticker = setInterval(() => drawLive(false), STANDARD.lives.redrawMs)
+      ticker = setInterval(
+        () => drawLive(false),
+        STANDARD.lives.redrawMs,
+      )
       ticker.unref()
     }
-  } else if (view === 'interval' && isProgressDue(known.started, known.reported, now, STANDARD)) {
+  } else if (
+    view === 'interval' &&
+    isProgressDue(known.started, known.reported, now, STANDARD)
+  ) {
     known.reported = now
-    runner = reportOut(runner!, makeProgressItem(step, known.started, now))
+    runner = reportOut(
+      runner!,
+      makeProgressItem(step, known.started, now),
+    )
   }
 }
 
@@ -308,11 +423,32 @@ function drawLive(force: boolean): void {
 
   const now = Date.now()
   const room = runner.output.room
-  live = { ...live, items: live.items.map(each => (isRunning(each) ? { ...each, duration: now - each.clock } : each)) }
-  const plan = planFrame(live, [], now, force, options.motion, room, options.source === '')
+  live = {
+    ...live,
+    items: live.items.map(each =>
+      isRunning(each) ? { ...each, duration: now - each.clock } : each,
+    ),
+  }
+
+  const plan = planFrame(
+    live,
+    [],
+    now,
+    force,
+    options.motion,
+    room,
+    options.source === '',
+  )
 
   if (plan.draw) {
-    emitPort.printRawError(writeFrame(plan, live.height, runner.output.palette, room.standard))
+    emitPort.printRawError(
+      writeFrame(
+        plan,
+        live.height,
+        runner.output.palette,
+        room.standard,
+      ),
+    )
     live = plan.region
   }
 }
@@ -321,7 +457,14 @@ function drawLive(force: boolean): void {
 function eraseLive(): void {
   if (runner && live.height > 0) {
     const blank = { region: live, committed: [], lines: [], draw: true }
-    emitPort.printRawError(writeFrame(blank, live.height, runner.output.palette, runner.output.room.standard))
+    emitPort.printRawError(
+      writeFrame(
+        blank,
+        live.height,
+        runner.output.palette,
+        runner.output.room.standard,
+      ),
+    )
   }
 
   live = { ...live, height: 0, drawnAt: -1 }
@@ -366,6 +509,7 @@ function settleLive(): void {
   }
 
   eraseLive()
+
   const items = live.items
   live = { items: [], height: 0, drawnAt: -1, turn: 0 }
 
@@ -382,7 +526,16 @@ function settleLive(): void {
 // (`done`: the run did its work through change items, `+ − ~`, which rank below ✓ in section 4's order, so a wash
 // that removed three folders would close `·`, the glyph of a run that did nothing. With it, the closing is ✓ unless
 // something worse happened. A plan that only says what it WOULD change leaves it off and closes `·`)
-export function closeRun(input: { verdict: string; counts?: Tally[]; facts?: string[]; message?: string[]; next?: string; failure?: string; uptime?: boolean; done?: boolean }): number {
+export function closeRun(input: {
+  verdict: string
+  counts?: Tally[]
+  facts?: string[]
+  message?: string[]
+  next?: string
+  failure?: string
+  uptime?: boolean
+  done?: boolean
+}): number {
   if (!runner) {
     openRun({ verb: verb || 'term', root: process.cwd() })
   }
@@ -392,8 +545,23 @@ export function closeRun(input: { verdict: string; counts?: Tally[]; facts?: str
   const now = Date.now()
   // under --strict a run whose worst item is a warning closes ✗ and exits 1 (section 18), whatever its verdict says
   // ("1 file built"): the closing says why, so the glyph and the verdict do not seem to disagree
-  const strictly = options.strict && !input.failure && runner?.session.worstGlyph === 'warning' ? ['Warnings fail the run under --strict.'] : []
-  const closing = makeItem({ verb, subject: input.verdict, clock: now, duration: now - started, counts: input.counts, facts: input.facts, message: [...(input.message ?? []), ...strictly] })
+  const strictly =
+    options.strict &&
+    !input.failure &&
+    runner?.session.worstGlyph === 'warning'
+      ? ['Warnings fail the run under --strict.']
+      : []
+
+  const closing = makeItem({
+    verb,
+    subject: input.verdict,
+    clock: now,
+    duration: now - started,
+    counts: input.counts,
+    facts: input.facts,
+    message: [...(input.message ?? []), ...strictly],
+  })
+
   closing.uptime = input.uptime ?? false
 
   if (input.next) {
@@ -401,14 +569,22 @@ export function closeRun(input: { verdict: string; counts?: Tally[]; facts?: str
   }
 
   let one = runner!
-  const doneRank = STANDARD.glyphs.find(glyph => glyph.name === 'done')?.rank ?? 0
+
+  const doneRank =
+    STANDARD.glyphs.find(glyph => glyph.name === 'done')?.rank ?? 0
 
   if (input.done && one.session.worst < doneRank) {
-    one = { ...one, session: { ...one.session, worst: doneRank, worstGlyph: 'done' } }
+    one = {
+      ...one,
+      session: { ...one.session, worst: doneRank, worstGlyph: 'done' },
+    }
   }
 
   if (input.failure) {
-    one = { ...one, session: { ...one.session, failure: input.failure } }
+    one = {
+      ...one,
+      session: { ...one.session, failure: input.failure },
+    }
   }
 
   const code = endRun(one, closing)
@@ -430,17 +606,29 @@ export function printData(value: string): void {
   // the blank line after the opening is owed to the first thing under it, and data on the same terminal is that
   // thing: `term look` drew its table directly under the opening item (guides: commands/look, 2026-10-04). Paid on
   // stderr, and only when both streams are the terminal, so a pipe never gets a line it did not ask for
-  if (runner?.session.owed && process.stdout.isTTY && process.stderr.isTTY) {
+  if (
+    runner?.session.owed &&
+    process.stdout.isTTY &&
+    process.stderr.isTTY
+  ) {
     // a standard that spaces its runs (v2); v3 draws no blank lines, and the data follows the opening directly
     if (STANDARD.layout.spacing) {
       process.stderr.write('\n')
     }
+
     runner = { ...runner, session: { ...runner.session, owed: false } }
   }
 
   // section 15: after an item, on the terminal the run is on, data hangs under that item's elbow so the run keeps its left
   // edge (`term self load` prints the `export PATH=...` line it names). A pipe, `--log json` and `--plain` get it as it is
-  if (runner && runner.session.printed > 0 && process.stdout.isTTY && process.stderr.isTTY && !options.json && !options.plain) {
+  if (
+    runner &&
+    runner.session.printed > 0 &&
+    process.stdout.isTTY &&
+    process.stderr.isTTY &&
+    !options.json &&
+    !options.plain
+  ) {
     emitPort.printDataUnder(runner, value)
 
     return
@@ -467,7 +655,11 @@ export function printProfile(line: string): void {
 // handed back. On failure the step throws an error that names the tool and its exit, carrying the output as `quote`,
 // which `failRun` draws under the ✗ item. A tool that is not installed is `environment`, exit 3. Under `--raw` the
 // tool writes to the terminal as it runs, as it always did
-export function runTool(cmd: string, args: string[], spawnOptions: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): string {
+export function runTool(
+  cmd: string,
+  args: string[],
+  spawnOptions: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+): string {
   if (options.raw) {
     execFileSync(cmd, args, { ...spawnOptions, stdio: 'inherit' })
 
@@ -475,13 +667,35 @@ export function runTool(cmd: string, args: string[], spawnOptions: { cwd?: strin
   }
 
   try {
-    return execFileSync(cmd, args, { ...spawnOptions, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
+    return execFileSync(cmd, args, {
+      ...spawnOptions,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      encoding: 'utf8',
+      maxBuffer: 256 * 1024 * 1024,
+    })
   } catch (error) {
-    const failed = error as { status?: number | null; signal?: string | null; stdout?: string; stderr?: string; code?: string }
-    const missing = failed.code === 'ENOENT'
-    const said = plan.toolFailureOf(path.basename(cmd), missing, failed.signal || '', failed.status ?? 1, `${failed.stdout ?? ''}${failed.stderr ?? ''}`)
+    const failed = error as {
+      status?: number | null
+      signal?: string | null
+      stdout?: string
+      stderr?: string
+      code?: string
+    }
 
-    throw Object.assign(new Error(said.message), { expected: true, quote: said.quote, failure: missing ? 'environment' : undefined })
+    const missing = failed.code === 'ENOENT'
+    const said = plan.toolFailureOf(
+      path.basename(cmd),
+      missing,
+      failed.signal || '',
+      failed.status ?? 1,
+      `${failed.stdout ?? ''}${failed.stderr ?? ''}`,
+    )
+
+    throw Object.assign(new Error(said.message), {
+      expected: true,
+      quote: said.quote,
+      failure: missing ? 'environment' : undefined,
+    })
   }
 }
 
@@ -509,7 +723,12 @@ export function followChild(child: ChildProcess, source: string): void {
 
     const quote = pending
     pending = []
-    report({ glyph: 'info', verb: STANDARD.children.defaultVerb, subject: source, quote })
+    report({
+      glyph: 'info',
+      verb: STANDARD.children.defaultVerb,
+      subject: source,
+      quote,
+    })
   }
 
   const take = (line: string, fromError: boolean): void => {
@@ -528,7 +747,13 @@ export function followChild(child: ChildProcess, source: string): void {
     }
 
     const room = runner!.output.room
-    const adapted = adaptLine(line, Date.now(), room.offset, false, room)
+    const adapted = adaptLine(
+      line,
+      Date.now(),
+      room.offset,
+      false,
+      room,
+    )
 
     if (adapted.kind === 'item') {
       flush()
@@ -548,7 +773,10 @@ export function followChild(child: ChildProcess, source: string): void {
 
   child.on('close', flush)
 
-  const follow = (stream: Readable | null, fromError: boolean): void => {
+  const follow = (
+    stream: Readable | null,
+    fromError: boolean,
+  ): void => {
     let partial = ''
 
     stream?.on('data', (chunk: Buffer) => {
@@ -574,7 +802,11 @@ export function followChild(child: ChildProcess, source: string): void {
 // ---- problems ----
 
 // a source location as `path:line:col`, 1-based, relative to the root
-function placeOf(file: string, span: Diagnostic['span'], root: string): string {
+function placeOf(
+  file: string,
+  span: Diagnostic['span'],
+  root: string,
+): string {
   return `${showPath(file, root)}:${span.start.line + 1}:${span.start.column + 1}`
 }
 
@@ -592,16 +824,29 @@ function sourceLines(file: string, text: string | undefined): string[] {
 
 // the code frame of a diagnostic: the primary span's line with one line of context before it when that line has
 // text, and the line of every related marker, `⋮` between lines that are not adjacent (section 7)
-function frameOf(diagnostic: Diagnostic, lines: string[]): Frame | undefined {
-  const made = plan.frameOf(diagnostic as plan.Diagnostic, lines, STANDARD.frames.tabWidth)
+function frameOf(
+  diagnostic: Diagnostic,
+  lines: string[],
+): Frame | undefined {
+  const made = plan.frameOf(
+    diagnostic as plan.Diagnostic,
+    lines,
+    STANDARD.frames.tabWidth,
+  )
 
   return made.form === 'some' ? (made.value as Frame) : undefined
 }
 
 // a diagnostic as a Problem item (section 12): the message is the subject, the location an `at` field, the source a
 // code frame, the hint a `next` field. A proof obligation's verb is `prove`, everything else `check`
-export function problemOf(diagnostic: Diagnostic, root: string, text?: string): Event {
-  const fields: ItemField[] = [location(placeOf(diagnostic.file, diagnostic.span, root))]
+export function problemOf(
+  diagnostic: Diagnostic,
+  root: string,
+  text?: string,
+): Event {
+  const fields: ItemField[] = [
+    location(placeOf(diagnostic.file, diagnostic.span, root)),
+  ]
 
   if (diagnostic.hint) {
     fields.push(field(STANDARD.fields.nextKey, diagnostic.hint))
@@ -621,35 +866,61 @@ export function problemOf(diagnostic: Diagnostic, root: string, text?: string): 
     code: words.code,
     fields,
     frames: frame ? [frame] : [],
-    place: { path: showPath(diagnostic.file, root), line: diagnostic.span.start.line + 1, column: diagnostic.span.start.column + 1 },
+    place: {
+      path: showPath(diagnostic.file, root),
+      line: diagnostic.span.start.line + 1,
+      column: diagnostic.span.start.column + 1,
+    },
   })
 }
 
-export function reportProblem(diagnostic: Diagnostic, root: string, text?: string): void {
+export function reportProblem(
+  diagnostic: Diagnostic,
+  root: string,
+  text?: string,
+): void {
   report(problemOf(diagnostic, root, text))
 }
 
 // a batch of diagnostics as section 12 prints them: sorted by path, line and column, one caused by an earlier one
 // hidden, and past the standard's cap one `… n more problems` item. A line with no diagnostic behind it (`faults`)
 // is a problem item of its own, after them
-export function reportProblems(list: { diagnostic: Diagnostic; text?: string }[], root: string, faults: string[] = []): void {
+export function reportProblems(
+  list: { diagnostic: Diagnostic; text?: string }[],
+  root: string,
+  faults: string[] = [],
+): void {
   if (!runner) {
     openRun({ verb: verb || 'term', root })
   }
 
   // ONE item per problem: a diagnostic in a module several entries load comes back once per entry, and the build
   // printed a stdlib module's two errors four times each. The same file, place, name and message is the same problem
-  const kept = plan.uniqueProblems(list.map(each => each.diagnostic as plan.Diagnostic))
+  const kept = plan.uniqueProblems(
+    list.map(each => each.diagnostic as plan.Diagnostic),
+  )
+
   const unique = list.filter((_, at) => kept[at])
 
-  const standard = showAll ? { ...STANDARD, caps: { ...STANDARD.caps, problems: 0 } } : STANDARD
+  const standard = showAll
+    ? { ...STANDARD, caps: { ...STANDARD.caps, problems: 0 } }
+    : STANDARD
 
-  for (const one of arrangeProblems(unique.map(each => problemOf(each.diagnostic, root, each.text)), standard, runner!.output.room)) {
+  for (const one of arrangeProblems(
+    unique.map(each => problemOf(each.diagnostic, root, each.text)),
+    standard,
+    runner!.output.room,
+  )) {
     report(one)
   }
 
   for (const fault of faults) {
-    report({ glyph: 'failed', kind: 'problem', verb: 'check', subject: fault })
+    report({
+      glyph: 'failed',
+      kind: 'problem',
+      verb: 'check',
+      subject: fault,
+    })
   }
 }
 
@@ -660,11 +931,23 @@ export function reportProblems(list: { diagnostic: Diagnostic; text?: string }[]
 // error, a TypeError, a ReferenceError, a RangeError and the like, which no input should be able to cause: it says
 // so, writes the stack to a crash log instead of the human view, and exits 70 (section 12). Any thrown Error used to
 // count, which reported a missing file as an internal crash
-const BUG_ERRORS = [TypeError, ReferenceError, RangeError, SyntaxError, EvalError, URIError]
+const BUG_ERRORS = [
+  TypeError,
+  ReferenceError,
+  RangeError,
+  SyntaxError,
+  EvalError,
+  URIError,
+]
 
 // the failures a thrown error may name for itself, `error.failure`, each its own exit (section 18): a missing
 // toolchain is `environment` (3), a bad invocation `usage` (2)
-const FAILURE_KINDS = new Set(['usage', 'environment', 'bug', 'interrupted'])
+const FAILURE_KINDS = new Set([
+  'usage',
+  'environment',
+  'bug',
+  'interrupted',
+])
 
 export function failRun(error: unknown, root: string): number {
   if (runner) {
@@ -672,25 +955,54 @@ export function failRun(error: unknown, root: string): number {
   }
 
   const message = error instanceof Error ? error.message : String(error)
-  const named = error instanceof Error ? (error as { failure?: string }).failure : undefined
+  const named =
+    error instanceof Error
+      ? (error as { failure?: string }).failure
+      : undefined
+
   const failure = named && FAILURE_KINDS.has(named) ? named : undefined
-  const bug = failure === 'bug' || (!failure && (error as { expected?: boolean })?.expected !== true && BUG_ERRORS.some(kind => error instanceof kind))
+  const bug =
+    failure === 'bug' ||
+    (!failure &&
+      (error as { expected?: boolean })?.expected !== true &&
+      BUG_ERRORS.some(kind => error instanceof kind))
 
   if (!bug || !(error instanceof Error)) {
     // a tool's own output rides on the error (`runTool`), quoted under the item: the library keeps its last lines
     const quote = (error as { quote?: string[] })?.quote ?? []
     // written as thrown: a thrown message often opens with a name (`shelf has no scope`), and a capital would change it
-    report({ glyph: 'failed', kind: 'problem', subject: message, quote })
+    report({
+      glyph: 'failed',
+      kind: 'problem',
+      subject: message,
+      quote,
+    })
 
     return closeRun({ verdict: 'Failed', failure })
   }
 
   const log = writeCrashLog(error, root)
-  const crash = makeCrash(verb || 'term', `Term stopped on an internal error: ${message}`, '', log ? showPath(log, root) : '', Date.now(), STANDARD)
-  crash.fields.push(field(STANDARD.fields.nextKey, 'this is a bug in Term and your code may be fine; term report files it'))
+  const crash = makeCrash(
+    verb || 'term',
+    `Term stopped on an internal error: ${message}`,
+    '',
+    log ? showPath(log, root) : '',
+    Date.now(),
+    STANDARD,
+  )
+
+  crash.fields.push(
+    field(
+      STANDARD.fields.nextKey,
+      'this is a bug in Term and your code may be fine; term report files it',
+    ),
+  )
   report(crash)
 
-  return closeRun({ verdict: 'Stopped by an internal error', failure: 'bug' })
+  return closeRun({
+    verdict: 'Stopped by an internal error',
+    failure: 'bug',
+  })
 }
 
 function writeCrashLog(error: Error, root: string): string {

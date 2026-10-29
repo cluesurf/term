@@ -31,7 +31,10 @@ function ok(name: string, cond: boolean, info = ''): void {
 const ESC = '\u001b'
 
 // the blog's golden grid, kept with the project it proves (terminal-target-0005)
-const BLOG_GOLDEN = join(import.meta.dirname, '../../../../../../note/project/term/archive/terminal-target/blog.golden')
+const BLOG_GOLDEN = join(
+  import.meta.dirname,
+  '../../../../../../note/project/term/archive/terminal-target/blog.golden',
+)
 
 // an app run in a terminal: its program, the terminal's size, the keys typed once its screen is up (ctrl-c follows),
 // the screen it must leave, and the backends it runs on
@@ -225,7 +228,10 @@ task run
 `
 
 // the note app again, in line mode: the same view, owned by `run-terminal-lines`
-const LINES_PROGRAM = NOTES_PROGRAM.replace('  find run-terminal\n', '  find run-terminal-lines\n').replace(
+const LINES_PROGRAM = NOTES_PROGRAM.replace(
+  '  find run-terminal\n',
+  '  find run-terminal-lines\n',
+).replace(
   '  call run-terminal\n    read root\n',
   '  call run-terminal-lines\n    read root\n',
 )
@@ -339,13 +345,25 @@ const APPS: App[] = [
 function pinned(env: string): Resolver {
   const base = projectResolver(process.cwd(), env)
 
-  return (importPath, fromFile) => base(importPath.replace(/native\/\{platform\}\/(dom|view)$/, 'native/terminal/$1'), fromFile)
+  return (importPath, fromFile) =>
+    base(
+      importPath.replace(
+        /native\/\{platform\}\/(dom|view)$/,
+        'native/terminal/$1',
+      ),
+      fromFile,
+    )
 }
 
 // the screen a stream of output leaves: printable code points at the cursor, CR, LF, and the three controls the app
 // writes (`ESC [ row ; column H`, `ESC [ K`, `ESC [ 2 J`). Anything else is skipped
-function replay(output: string, { rows: ROWS, columns: COLUMNS }: { rows: number; columns: number }): string[] {
-  const screen = Array.from({ length: ROWS }, () => Array<string>(COLUMNS).fill(' '))
+function replay(
+  output: string,
+  { rows: ROWS, columns: COLUMNS }: { rows: number; columns: number },
+): string[] {
+  const screen = Array.from({ length: ROWS }, () =>
+    Array<string>(COLUMNS).fill(' '),
+  )
   const runes = [...output]
   let row = 0
   let column = 0
@@ -363,11 +381,17 @@ function replay(output: string, { rows: ROWS, columns: COLUMNS }: { rows: number
       }
 
       const final = runes[at]
-      const numbers = parameters.replace('?', '').split(';').map(n => Number(n) || 0)
+      const numbers = parameters
+        .replace('?', '')
+        .split(';')
+        .map(n => Number(n) || 0)
 
       if (final === 'H' && !parameters.startsWith('?')) {
         row = Math.min(ROWS - 1, Math.max(0, (numbers[0] || 1) - 1))
-        column = Math.min(COLUMNS - 1, Math.max(0, (numbers[1] || 1) - 1))
+        column = Math.min(
+          COLUMNS - 1,
+          Math.max(0, (numbers[1] || 1) - 1),
+        )
       } else if (final === 'K') {
         for (let c = column; c < COLUMNS; c++) {
           screen[row]![c] = ' '
@@ -464,11 +488,22 @@ sys.exit(os.WEXITSTATUS(status) if os.WIFEXITED(status) else 1)
 
 // run `command` in a pseudo-terminal of the app's size, type its keys once the screen is up, then stop it. `before` is
 // the output that had come back when the stop was sent
-function inTerminal(command: string[], app: App): Promise<{ status: number | null; output: string; before: string }> {
-  const child = spawn('python3', ['-c', PTY, String(app.columns), String(app.rows), ...command], {
-    stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, TERM_RESIZE: app.resize ?? '', TERM_JOBS: app.jobs ? '1' : '' },
-  })
+function inTerminal(
+  command: string[],
+  app: App,
+): Promise<{ status: number | null; output: string; before: string }> {
+  const child = spawn(
+    'python3',
+    ['-c', PTY, String(app.columns), String(app.rows), ...command],
+    {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        TERM_RESIZE: app.resize ?? '',
+        TERM_JOBS: app.jobs ? '1' : '',
+      },
+    },
+  )
   let output = ''
   let before = ''
   let typing = false
@@ -481,20 +516,27 @@ function inTerminal(command: string[], app: App): Promise<{ status: number | nul
 
       // the first screen is up once the app has cleared it: type then, a key at a time, and stop with ctrl-c
       // a line-mode app clears nothing, so its first line is the cue
-      if (!typing && (output.includes(`${ESC}[2J`) || (app.transcript !== undefined && output.includes('\n')))) {
+      if (
+        !typing &&
+        (output.includes(`${ESC}[2J`) ||
+          (app.transcript !== undefined && output.includes('\n')))
+      ) {
         typing = true
         const stop = (app.stop ?? CTRL_C).key
         const keys = [...app.keys, stop]
         keys.forEach((key, i) =>
-          setTimeout(() => {
-            if (key === stop) {
-              before = output
-            }
+          setTimeout(
+            () => {
+              if (key === stop) {
+                before = output
+              }
 
-            if (key !== '') {
-              child.stdin.write(key)
-            }
-          }, 300 + i * 200),
+              if (key !== '') {
+                child.stdin.write(key)
+              }
+            },
+            300 + i * 200,
+          ),
         )
       }
     })
@@ -508,25 +550,39 @@ function inTerminal(command: string[], app: App): Promise<{ status: number | nul
 
 const dir = mkdtempSync(join(tmpdir(), 'term-terminal-pty-'))
 const only = process.env.TERMINAL_ONLY ?? ''
-const hasPty = spawnSync('python3', ['-c', 'import pty'], { encoding: 'utf8' }).status === 0
+const hasPty =
+  spawnSync('python3', ['-c', 'import pty'], { encoding: 'utf8' })
+    .status === 0
 
 for (const app of APPS) {
   for (const backend of app.backends.filter(b => !only || b === only)) {
     const label = `${backend} ${app.name}`
 
     if (!hasPty) {
-      console.log(`skip  ${label}: no python3 with \`pty\` to make a pseudo-terminal`)
+      console.log(
+        `skip  ${label}: no python3 with \`pty\` to make a pseudo-terminal`,
+      )
       continue
     }
 
-    const built = buildOn({ backend, program: app.program, resolve: pinned, dir, name: app.name })
+    const built = buildOn({
+      backend,
+      program: app.program,
+      resolve: pinned,
+      dir,
+      name: app.name,
+    })
 
     if (built.form === 'skipped') {
       console.log(`skip  ${label}: ${built.reason}`)
       continue
     }
 
-    ok(`${label}: compiles and builds against the terminal`, built.form === 'built', built.form === 'failed' ? `${built.stage}: ${built.reason}` : '')
+    ok(
+      `${label}: compiles and builds against the terminal`,
+      built.form === 'built',
+      built.form === 'failed' ? `${built.stage}: ${built.reason}` : '',
+    )
 
     if (built.form !== 'built') {
       continue
@@ -535,12 +591,22 @@ for (const app of APPS) {
     const ran = await inTerminal(built.command, app)
     const stop = app.stop ?? CTRL_C
     const stopName = stop === CTRL_C ? 'ctrl-c' : 'SIGTERM'
-    ok(`${label}: it ends on ${stopName} with status ${stop.status}`, ran.status === stop.status, `status ${ran.status}: ${JSON.stringify(ran.output.slice(-300))}`)
+    ok(
+      `${label}: it ends on ${stopName} with status ${stop.status}`,
+      ran.status === stop.status,
+      `status ${ran.status}: ${JSON.stringify(ran.output.slice(-300))}`,
+    )
 
     if (app.transcript) {
       // line mode: plain lines only, no control sequence a reader would have to skip, and the expected lines in order
-      const lines = ran.output.split(/\r?\n/).map(line => line.replace(/\r/g, ''))
-      ok(`${label}: no control sequences, only lines`, !ran.output.includes(ESC), JSON.stringify(ran.output.slice(0, 200)))
+      const lines = ran.output
+        .split(/\r?\n/)
+        .map(line => line.replace(/\r/g, ''))
+      ok(
+        `${label}: no control sequences, only lines`,
+        !ran.output.includes(ESC),
+        JSON.stringify(ran.output.slice(0, 200)),
+      )
       let at = 0
       const missing = app.transcript.find(want => {
         const found = lines.indexOf(want, at)
@@ -553,7 +619,11 @@ for (const app of APPS) {
 
         return false
       })
-      ok(`${label}: every change and every focus move is a line, in order`, missing === undefined, `missing ${JSON.stringify(missing)} in ${JSON.stringify(lines)}`)
+      ok(
+        `${label}: every change and every focus move is a line, in order`,
+        missing === undefined,
+        `missing ${JSON.stringify(missing)} in ${JSON.stringify(lines)}`,
+      )
       continue
     }
 
@@ -570,13 +640,22 @@ for (const app of APPS) {
 
         return false
       })
-      ok(`${label}: the output holds what it must, in order`, missing === undefined, `missing ${JSON.stringify(missing)}`)
+      ok(
+        `${label}: the output holds what it must, in order`,
+        missing === undefined,
+        `missing ${JSON.stringify(missing)}`,
+      )
     }
 
     const screen = replay(app.settled ? ran.before : ran.output, app)
     // shown again AFTER the stop: the cursor is the visible half of giving the terminal back
-    const shownAgain = ran.output.slice(ran.before.length).includes(`${ESC}[?25h`)
-    ok(`${label}: it hides the cursor while it runs and shows it again when it leaves`, ran.output.includes(`${ESC}[?25l`) && shownAgain)
+    const shownAgain = ran.output
+      .slice(ran.before.length)
+      .includes(`${ESC}[?25h`)
+    ok(
+      `${label}: it hides the cursor while it runs and shows it again when it leaves`,
+      ran.output.includes(`${ESC}[?25l`) && shownAgain,
+    )
     const judged = app.settled ? ran.before : ran.output
     const lastClear = judged.lastIndexOf(`${ESC}[2J`)
     ok(

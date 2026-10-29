@@ -8,7 +8,10 @@
 
 import { readFileSync } from 'node:fs'
 import { compile } from '@term/make/code/compile/compile'
-import { statementJson, typeJson } from '@term/make/code/compile/node-json'
+import {
+  statementJson,
+  typeJson,
+} from '@term/make/code/compile/node-json'
 import type { Statement } from '@term/make/code/compile/node'
 import { projectResolver } from '@term/call/code/make'
 
@@ -82,11 +85,20 @@ task gather
   send back, read root
 `
 
-const out = compile({ file: '/gate/code/line/base.tree', text: CONSOLE }, asCall)
-ok('the console compiles', out.ok, out.ok ? '' : out.diagnostics.map(d => d.message).join(' | '))
+const out = compile(
+  { file: '/gate/code/line/base.tree', text: CONSOLE },
+  asCall,
+)
+ok(
+  'the console compiles',
+  out.ok,
+  out.ok ? '' : out.diagnostics.map(d => d.message).join(' | '),
+)
 
 const program = out.ok ? out.program : []
-const dock = program.find((s): s is Dock => s.form === 'dock' && s.route.path === 'tool')
+const dock = program.find(
+  (s): s is Dock => s.form === 'dock' && s.route.path === 'tool',
+)
 ok('the program hook is one route', dock !== undefined)
 
 const json = dock ? statementJson(['span', 'type'], dock) : ''
@@ -99,11 +111,19 @@ const takesOf = (path: string): string => {
   }
 
   // the takes list ends where the route's methods begin
-  return json.slice(start + '"takes":'.length, json.indexOf(',"methods":', start))
+  return json.slice(
+    start + '"takes":'.length,
+    json.indexOf(',"methods":', start),
+  )
 }
 
-const quiet = '{"name":"quiet","required":false,"short":"q","note":"Print less"}'
-ok('the program keeps its own take', takesOf('tool') === `[${quiet}]`, takesOf('tool'))
+const quiet =
+  '{"name":"quiet","required":false,"short":"q","note":"Print less"}'
+ok(
+  'the program keeps its own take',
+  takesOf('tool') === `[${quiet}]`,
+  takesOf('tool'),
+)
 
 const make = [
   '{"name":"file","required":false,"note":"the file to build","positional":true}',
@@ -121,15 +141,23 @@ const gather = [
   '{"name":"root","required":true,"positional":true}',
   '{"name":"paths","required":false,"variadic":true,"positional":true}',
 ]
-ok('a need-true slot is required, a list slot is variadic too', takesOf('gather') === `[${gather.join(',')}]`, takesOf('gather'))
+ok(
+  'a need-true slot is required, a list slot is variadic too',
+  takesOf('gather') === `[${gather.join(',')}]`,
+  takesOf('gather'),
+)
 
 ok(
-  'the commands are the program route\'s children, in order',
-  JSON.stringify(dock?.route.children.map(child => child.path)) === '["make","gather"]',
+  "the commands are the program route's children, in order",
+  JSON.stringify(dock?.route.children.map(child => child.path)) ===
+    '["make","gather"]',
 )
 
 const refusals = (text: string): string[] => {
-  const result = compile({ file: '/gate/code/line/base.tree', text }, asCall)
+  const result = compile(
+    { file: '/gate/code/line/base.tree', text },
+    asCall,
+  )
 
   return result.ok ? [] : result.diagnostics.map(d => d.message)
 }
@@ -153,14 +181,22 @@ task one
   },
   asCall,
 )
-ok('a list-typed take under a command compiles', listTake.ok, listTake.ok ? '' : listTake.diagnostics.map(d => d.message).join(' | '))
+ok(
+  'a list-typed take under a command compiles',
+  listTake.ok,
+  listTake.ok
+    ? ''
+    : listTake.diagnostics.map(d => d.message).join(' | '),
+)
 const lawTake = (listTake.ok ? listTake.program : [])
   .find((s): s is Dock => s.form === 'dock')
   ?.route.children.find(child => child.path === 'one')?.takes[0]
 ok(
   'a list take is a repeatable option: list-typed, not positional, not variadic',
   // a `need false` field at its default and the field absent are one value (decision 034 section 2, decision 071)
-  lawTake?.type?.kind === 'array' && (lawTake.positional ?? false) === false && (lawTake.variadic ?? false) === false,
+  lawTake?.type?.kind === 'array' &&
+    (lawTake.positional ?? false) === false &&
+    (lawTake.variadic ?? false) === false,
   JSON.stringify(lawTake),
 )
 
@@ -177,20 +213,28 @@ task one
 
   send back, read x
 `)
-ok('a slot with a code line is refused, not dropped', coded.some(m => m.includes('slot')), coded.join(' | '))
+ok(
+  'a slot with a code line is refused, not dropped',
+  coded.some(m => m.includes('slot')),
+  coded.join(' | '),
+)
 
-const taskSlot = compile(
-  {
-    file: '/gate/code/echo.tree',
-    text: `task echo
+const taskSlot = compile({
+  file: '/gate/code/echo.tree',
+  text: `task echo
   slot p, like text
   like text
 
   send back, read p
 `,
-  },
+})
+ok(
+  "a task's slot parameter still compiles",
+  taskSlot.ok,
+  taskSlot.ok
+    ? ''
+    : taskSlot.diagnostics.map(d => d.message).join(' | '),
 )
-ok('a task\'s slot parameter still compiles', taskSlot.ok, taskSlot.ok ? '' : taskSlot.diagnostics.map(d => d.message).join(' | '))
 
 // `mark pass` under a command (decision cli-in-term/008 part 2): the route says `passes`, in the JSON too, and the
 // mark is not the command's help
@@ -211,18 +255,53 @@ task zone
 
   send back, <z>
 `
-const passing = compile({ file: '/gate/code/line/base.tree', text: PASSING }, asCall)
-ok('a passing console compiles', passing.ok, passing.ok ? '' : passing.diagnostics.map(d => d.message).join(' | '))
-const passingDock = (passing.ok ? passing.program : []).find((s): s is Dock => s.form === 'dock')
-const zoneRoute = passingDock?.route.children.find(child => child.path === 'zone')
-const otherRoute = passingDock?.route.children.find(child => child.path === 'other')
-ok('mark pass sets passes on the route', zoneRoute?.passes === true, JSON.stringify(zoneRoute?.passes))
-ok('a hook without the mark does not pass', otherRoute !== undefined && (otherRoute.passes ?? false) === false, JSON.stringify(otherRoute?.passes))
-ok('the mark is not the help', zoneRoute?.note === 'Run another console', JSON.stringify(zoneRoute?.note))
-const passingJson = passingDock ? statementJson(['span', 'type'], passingDock) : ''
-ok('passes reaches the route JSON once', passingJson.split('"passes":true').length === 2, passingJson)
+const passing = compile(
+  { file: '/gate/code/line/base.tree', text: PASSING },
+  asCall,
+)
+ok(
+  'a passing console compiles',
+  passing.ok,
+  passing.ok ? '' : passing.diagnostics.map(d => d.message).join(' | '),
+)
+const passingDock = (passing.ok ? passing.program : []).find(
+  (s): s is Dock => s.form === 'dock',
+)
+const zoneRoute = passingDock?.route.children.find(
+  child => child.path === 'zone',
+)
+const otherRoute = passingDock?.route.children.find(
+  child => child.path === 'other',
+)
+ok(
+  'mark pass sets passes on the route',
+  zoneRoute?.passes === true,
+  JSON.stringify(zoneRoute?.passes),
+)
+ok(
+  'a hook without the mark does not pass',
+  otherRoute !== undefined && (otherRoute.passes ?? false) === false,
+  JSON.stringify(otherRoute?.passes),
+)
+ok(
+  'the mark is not the help',
+  zoneRoute?.note === 'Run another console',
+  JSON.stringify(zoneRoute?.note),
+)
+const passingJson = passingDock
+  ? statementJson(['span', 'type'], passingDock)
+  : ''
+ok(
+  'passes reaches the route JSON once',
+  passingJson.split('"passes":true').length === 2,
+  passingJson,
+)
 
-const passRefused = (body: string, want: string, name: string): void => {
+const passRefused = (
+  body: string,
+  want: string,
+  name: string,
+): void => {
   const found = refusals(`hook tool
   hook zone
     mark pass
@@ -235,13 +314,33 @@ task zone
 
   send back, <z>
 `)
-  ok(name, found.some(m => m.includes(want)), found.join(' | '))
+  ok(
+    name,
+    found.some(m => m.includes(want)),
+    found.join(' | '),
+  )
 }
 
-passRefused('    slot rest, like list, like text\n    take quiet, like boolean', 'mark pass', 'a passing hook with a take is refused')
-passRefused('    slot rest, like text', 'mark pass', 'a passing hook whose slot is not a list of text is refused')
-passRefused('    slot rest, like list, like text\n    slot more, like list, like text', 'mark pass', 'a passing hook with two slots is refused')
-passRefused('    slot rest, like list, like text\n    hook inner\n      task zone', 'mark pass', 'a passing hook with a nested hook is refused')
+passRefused(
+  '    slot rest, like list, like text\n    take quiet, like boolean',
+  'mark pass',
+  'a passing hook with a take is refused',
+)
+passRefused(
+  '    slot rest, like text',
+  'mark pass',
+  'a passing hook whose slot is not a list of text is refused',
+)
+passRefused(
+  '    slot rest, like list, like text\n    slot more, like list, like text',
+  'mark pass',
+  'a passing hook with two slots is refused',
+)
+passRefused(
+  '    slot rest, like list, like text\n    hook inner\n      task zone',
+  'mark pass',
+  'a passing hook with a nested hook is refused',
+)
 
 const otherMark = refusals(`hook tool
   hook zone
@@ -255,7 +354,11 @@ task zone
 
   send back, <z>
 `)
-ok('another mark word under a command is refused', otherMark.some(m => m.includes('mark async')), otherMark.join(' | '))
+ok(
+  'another mark word under a command is refused',
+  otherMark.some(m => m.includes('mark async')),
+  otherMark.join(' | '),
+)
 
 const taskPass = refusals(`task zone
   mark pass
@@ -263,7 +366,11 @@ const taskPass = refusals(`task zone
 
   send back, <z>
 `)
-ok('mark pass under a task is refused', taskPass.some(m => m.includes('mark pass')), taskPass.join(' | '))
+ok(
+  'mark pass under a task is refused',
+  taskPass.some(m => m.includes('mark pass')),
+  taskPass.join(' | '),
+)
 
 const routePass = compile(
   {
@@ -276,8 +383,14 @@ const routePass = compile(
   },
   { roleOf: (): string => 'site' },
 )
-const routePassMessages = routePass.ok ? [] : routePass.diagnostics.map(d => d.message)
-ok('mark pass under a URL route is refused', routePassMessages.some(m => m.includes('mark pass')), routePassMessages.join(' | '))
+const routePassMessages = routePass.ok
+  ? []
+  : routePass.diagnostics.map(d => d.message)
+ok(
+  'mark pass under a URL route is refused',
+  routePassMessages.some(m => m.includes('mark pass')),
+  routePassMessages.join(' | '),
+)
 
 // A LAST LIST SLOT MARKED `mark pass` (decision cli-in-term/012 part 2): the take says `passes`, in the JSON too, the
 // mark is not the slot's help, and a list slot without it does not pass
@@ -308,26 +421,66 @@ task call
 
   send back, read name
 `
-const slotPassing = compile({ file: '/gate/code/line/base.tree', text: SLOT_PASSING }, asCall)
-ok('a console with a passing slot compiles', slotPassing.ok, slotPassing.ok ? '' : slotPassing.diagnostics.map(d => d.message).join(' | '))
-const slotDock = (slotPassing.ok ? slotPassing.program : []).find((s): s is Dock => s.form === 'dock')
-const callRoute = slotDock?.route.children.find(child => child.path === 'call')
+const slotPassing = compile(
+  { file: '/gate/code/line/base.tree', text: SLOT_PASSING },
+  asCall,
+)
+ok(
+  'a console with a passing slot compiles',
+  slotPassing.ok,
+  slotPassing.ok
+    ? ''
+    : slotPassing.diagnostics.map(d => d.message).join(' | '),
+)
+const slotDock = (slotPassing.ok ? slotPassing.program : []).find(
+  (s): s is Dock => s.form === 'dock',
+)
+const callRoute = slotDock?.route.children.find(
+  child => child.path === 'call',
+)
 const listSlot = callRoute?.takes.find(take => take.name === 'list')
-ok('mark pass on the last slot sets passes on that take', listSlot?.passes === true && listSlot.positional === true, JSON.stringify(listSlot))
-ok('the other takes do not pass', callRoute?.takes.filter(take => take.passes).length === 1)
-ok('the slot mark is not the slot\'s help', listSlot?.note === 'the command\'s own arguments', JSON.stringify(listSlot?.note))
-ok('the hook itself does not pass', callRoute !== undefined && (callRoute.passes ?? false) === false)
-const formSlot = slotDock?.route.children.find(child => child.path === 'form')?.takes[0]
-ok('a list slot without the mark does not pass', formSlot !== undefined && (formSlot.passes ?? false) === false)
-const slotJson = slotDock ? statementJson(['span', 'type'], slotDock) : ''
+ok(
+  'mark pass on the last slot sets passes on that take',
+  listSlot?.passes === true && listSlot.positional === true,
+  JSON.stringify(listSlot),
+)
+ok(
+  'the other takes do not pass',
+  callRoute?.takes.filter(take => take.passes).length === 1,
+)
+ok(
+  "the slot mark is not the slot's help",
+  listSlot?.note === "the command's own arguments",
+  JSON.stringify(listSlot?.note),
+)
+ok(
+  'the hook itself does not pass',
+  callRoute !== undefined && (callRoute.passes ?? false) === false,
+)
+const formSlot = slotDock?.route.children.find(
+  child => child.path === 'form',
+)?.takes[0]
+ok(
+  'a list slot without the mark does not pass',
+  formSlot !== undefined && (formSlot.passes ?? false) === false,
+)
+const slotJson = slotDock
+  ? statementJson(['span', 'type'], slotDock)
+  : ''
 ok(
   'passes reaches the take JSON once',
-  slotJson.includes('{"name":"list","required":false,"note":"the command\'s own arguments","variadic":true,"positional":true,"passes":true}') &&
-    slotJson.split('"passes":true').length === 2,
+  slotJson.includes(
+    '{"name":"list","required":false,"note":"the command\'s own arguments","variadic":true,"positional":true,"passes":true}',
+  ) && slotJson.split('"passes":true').length === 2,
   slotJson,
 )
 
-const slotPassRefused = (lines: string, want: string, name: string, hookMark = ''): void => {
+const slotPassRefused = (
+  lines: string,
+  want: string,
+  name: string,
+  hookMark = '',
+): void => {
   const found = refusals(`hook tool
   hook call
 ${hookMark}${lines}
@@ -339,16 +492,49 @@ task call
 
   send back, <z>
 `)
-  ok(name, found.some(m => m.includes(want)), found.join(' | '))
+  ok(
+    name,
+    found.some(m => m.includes(want)),
+    found.join(' | '),
+  )
 }
 
-slotPassRefused('    slot rest\n      mark pass\n      like list, like text\n    slot last, like text', 'not the hook\'s last', 'mark pass on a slot that is not the last is refused')
-slotPassRefused('    slot rest\n      mark pass\n      like text', 'not `like list, like text`', 'mark pass on a slot that is not a list of text is refused')
-slotPassRefused('    slot rest\n      mark pass\n      like list, like number', 'not `like list, like text`', 'mark pass on a list of numbers is refused')
-slotPassRefused('    slot first\n      mark pass\n      like list, like text\n    slot rest\n      mark pass\n      like list, like text', 'only one slot', 'mark pass on two slots is refused')
-slotPassRefused('    slot rest\n      mark pass\n      like list, like text', 'itself `mark pass`', 'mark pass on a slot under a passing hook is refused', '    mark pass\n')
-slotPassRefused('    slot rest\n      mark async\n      like list, like text', '`mark async` is not read under a slot', 'another mark word on a slot is refused')
-slotPassRefused('    take rest\n      mark pass\n      like list, like text', 'mark pass', 'mark pass under a take is refused')
+slotPassRefused(
+  '    slot rest\n      mark pass\n      like list, like text\n    slot last, like text',
+  "not the hook's last",
+  'mark pass on a slot that is not the last is refused',
+)
+slotPassRefused(
+  '    slot rest\n      mark pass\n      like text',
+  'not `like list, like text`',
+  'mark pass on a slot that is not a list of text is refused',
+)
+slotPassRefused(
+  '    slot rest\n      mark pass\n      like list, like number',
+  'not `like list, like text`',
+  'mark pass on a list of numbers is refused',
+)
+slotPassRefused(
+  '    slot first\n      mark pass\n      like list, like text\n    slot rest\n      mark pass\n      like list, like text',
+  'only one slot',
+  'mark pass on two slots is refused',
+)
+slotPassRefused(
+  '    slot rest\n      mark pass\n      like list, like text',
+  'itself `mark pass`',
+  'mark pass on a slot under a passing hook is refused',
+  '    mark pass\n',
+)
+slotPassRefused(
+  '    slot rest\n      mark async\n      like list, like text',
+  '`mark async` is not read under a slot',
+  'another mark word on a slot is refused',
+)
+slotPassRefused(
+  '    take rest\n      mark pass\n      like list, like text',
+  'mark pass',
+  'mark pass under a take is refused',
+)
 
 // zone's own console marks `call`'s and `load`'s last slot (decision cli-in-term/012 part 2)
 const zoneRoot = `${process.cwd()}/../../../zone`
@@ -357,16 +543,36 @@ const zoneBuilt = compile(
   { file: zoneFile, text: readFileSync(zoneFile, 'utf8') },
   { ...asCall, resolve: projectResolver(zoneRoot) },
 )
-ok('zone\'s console compiles', zoneBuilt.ok, zoneBuilt.ok ? '' : zoneBuilt.diagnostics.slice(0, 3).map(d => d.message).join(' | '))
-const zoneConsole = (zoneBuilt.ok ? zoneBuilt.program : []).find((s): s is Dock => s.form === 'dock')
-const zonePassing = (zoneConsole?.route.children ?? []).flatMap(route =>
-  route.takes.filter(take => take.passes).map(take => `${route.path} ${take.name}`),
+ok(
+  "zone's console compiles",
+  zoneBuilt.ok,
+  zoneBuilt.ok
+    ? ''
+    : zoneBuilt.diagnostics
+        .slice(0, 3)
+        .map(d => d.message)
+        .join(' | '),
 )
-ok('zone call and zone load pass at their list slot, and nothing else does', JSON.stringify(zonePassing) === '["call list","load list"]', JSON.stringify(zonePassing))
+const zoneConsole = (zoneBuilt.ok ? zoneBuilt.program : []).find(
+  (s): s is Dock => s.form === 'dock',
+)
+const zonePassing = (zoneConsole?.route.children ?? []).flatMap(route =>
+  route.takes
+    .filter(take => take.passes)
+    .map(take => `${route.path} ${take.name}`),
+)
+ok(
+  'zone call and zone load pass at their list slot, and nothing else does',
+  JSON.stringify(zonePassing) === '["call list","load list"]',
+  JSON.stringify(zonePassing),
+)
 
 // A MAYBE TAKE OR SLOT CAN BE ABSENT (decision cli-in-term/008 part 1): its route keeps the whole `maybe` type with
 // its item, and `need true`, a `bind` default or a maybe of a list is refused, naming the take
-const maybeConsole = (lines: string, param: string): string => `load @term/base/maybe
+const maybeConsole = (
+  lines: string,
+  param: string,
+): string => `load @term/base/maybe
   find maybe
 
 hook tool
@@ -380,27 +586,73 @@ task hunt
 
   send back, <z>
 `
-const maybeOk = compile({ file: `${process.cwd()}/test/compile/maybe-line.tree`, text: maybeConsole('    take runs\n      like maybe, like number\n    slot glob\n      like maybe, like text', 'runs, like maybe, like number\n  take glob, like maybe, like text') }, { ...asCall, resolve: projectResolver(process.cwd()) })
-ok('a console of maybe takes compiles', maybeOk.ok, maybeOk.ok ? '' : maybeOk.diagnostics.map(d => d.message).join(' | '))
-const maybeRoute = (maybeOk.ok ? maybeOk.program : []).find((s): s is Dock => s.form === 'dock')?.route.children[0]
-const runsType = maybeRoute?.takes.find(take => take.name === 'runs')?.type
+const maybeOk = compile(
+  {
+    file: `${process.cwd()}/test/compile/maybe-line.tree`,
+    text: maybeConsole(
+      '    take runs\n      like maybe, like number\n    slot glob\n      like maybe, like text',
+      'runs, like maybe, like number\n  take glob, like maybe, like text',
+    ),
+  },
+  { ...asCall, resolve: projectResolver(process.cwd()) },
+)
+ok(
+  'a console of maybe takes compiles',
+  maybeOk.ok,
+  maybeOk.ok ? '' : maybeOk.diagnostics.map(d => d.message).join(' | '),
+)
+const maybeRoute = (maybeOk.ok ? maybeOk.program : []).find(
+  (s): s is Dock => s.form === 'dock',
+)?.route.children[0]
+const runsType = maybeRoute?.takes.find(
+  take => take.name === 'runs',
+)?.type
 // node-json, which writes a `need false` field at its default as absent (decision 034 section 2, decision 071)
 const runsJson = runsType ? typeJson([], runsType) : ''
 ok(
   'a maybe take keeps the maybe type with its item',
-  runsJson === '{"kind":"named","name":"maybe","args":[{"kind":"number"}]}',
+  runsJson ===
+    '{"kind":"named","name":"maybe","args":[{"kind":"number"}]}',
   runsJson,
 )
-ok('a maybe slot stays positional', maybeRoute?.takes.find(take => take.name === 'glob')?.positional === true)
+ok(
+  'a maybe slot stays positional',
+  maybeRoute?.takes.find(take => take.name === 'glob')?.positional ===
+    true,
+)
 
-const maybeRefused = (lines: string, param: string, want: string, name: string): void => {
+const maybeRefused = (
+  lines: string,
+  param: string,
+  want: string,
+  name: string,
+): void => {
   const found = refusals(maybeConsole(lines, param))
-  ok(name, found.some(m => m.includes(want)), found.join(' | '))
+  ok(
+    name,
+    found.some(m => m.includes(want)),
+    found.join(' | '),
+  )
 }
 
-maybeRefused('    take runs\n      like maybe, like number\n      need true', 'runs, like maybe, like number', '`runs` is a maybe', 'a maybe take with need true is refused')
-maybeRefused('    take runs\n      like maybe, like number\n      bind code 3', 'runs, like maybe, like number', '`runs` is a maybe', 'a maybe take with a default is refused')
-maybeRefused('    slot globs\n      like maybe, like list, like text', 'globs, like maybe, like list, like text', '`globs` is a maybe of a list', 'a maybe list slot is refused')
+maybeRefused(
+  '    take runs\n      like maybe, like number\n      need true',
+  'runs, like maybe, like number',
+  '`runs` is a maybe',
+  'a maybe take with need true is refused',
+)
+maybeRefused(
+  '    take runs\n      like maybe, like number\n      bind code 3',
+  'runs, like maybe, like number',
+  '`runs` is a maybe',
+  'a maybe take with a default is refused',
+)
+maybeRefused(
+  '    slot globs\n      like maybe, like list, like text',
+  'globs, like maybe, like list, like text',
+  '`globs` is a maybe of a list',
+  'a maybe list slot is refused',
+)
 
 console.log(`\nhook-route: ${pass} pass, ${fail} fail`)
 

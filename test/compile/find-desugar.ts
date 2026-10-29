@@ -21,12 +21,20 @@ import { join } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
 import { compile } from '@term/make/code/compile/compile'
 import { loadRoleGrammar } from '@term/make/code/compile/mill-load'
-import { runCodeMint, runMine, runMint } from '@term/make/code/compile/mill-run'
-import type { MillMatch, Minted } from '@term/make/code/compile/mill-run'
+import {
+  runCodeMint,
+  runMine,
+  runMint,
+} from '@term/make/code/compile/mill-run'
+import type {
+  MillMatch,
+  Minted,
+} from '@term/make/code/compile/mill-run'
 import * as lowering from '@term/make/code/compile/find-lower'
 import { projectResolver } from '@term/call/code/make'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const ROOT = join(HERE, '../..')
 const MILL = join(ROOT, 'deck/mill/code/tree')
 
@@ -45,14 +53,21 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 const grammar = loadRoleGrammar(MILL, 'code')
 
-ok('the code grammar loads clean', grammar.problems.length === 0 && grammar.collisions.length === 0, JSON.stringify(grammar.problems))
+ok(
+  'the code grammar loads clean',
+  grammar.problems.length === 0 && grammar.collisions.length === 0,
+  JSON.stringify(grammar.problems),
+)
 
 // ---- reading a statement both ways ----
 
 type Problem = { code: string; message: string; span?: unknown }
 
 // a source minted through `flow`, as a task body's statements, lowered (`runCodeMint`) or not (`runMint`)
-function minted(source: string, lowered: boolean): { values: Minted[]; problems: Problem[] } | undefined {
+function minted(
+  source: string,
+  lowered: boolean,
+): { values: Minted[]; problems: Problem[] } | undefined {
   const parsed = parse({ file: 'find.tree', text: source })
 
   if (!parsed.ok) return undefined
@@ -61,7 +76,10 @@ function minted(source: string, lowered: boolean): { values: Minted[]; problems:
   const problems: Problem[] = []
 
   for (const group of parsed.tree.nodes) {
-    const mined = runMine(grammar.mine, 'flow', { kind: 'root', nodes: [group] })
+    const mined = runMine(grammar.mine, 'flow', {
+      kind: 'root',
+      nodes: [group],
+    })
 
     if (!mined.ok) return undefined
 
@@ -70,11 +88,23 @@ function minted(source: string, lowered: boolean): { values: Minted[]; problems:
         if (capture.kind !== 'match') continue
 
         if (lowered) {
-          const result = runCodeMint(grammar.mint, capture.rule, capture.match as MillMatch, capture.node)
+          const result = runCodeMint(
+            grammar.mint,
+            capture.rule,
+            capture.match as MillMatch,
+            capture.node,
+          )
           values.push(...result.values)
           problems.push(...result.problems)
         } else {
-          values.push(...runMint(grammar.mint, capture.rule, capture.match as MillMatch, capture.node))
+          values.push(
+            ...runMint(
+              grammar.mint,
+              capture.rule,
+              capture.match as MillMatch,
+              capture.node,
+            ),
+          )
         }
       }
     }
@@ -87,14 +117,16 @@ function minted(source: string, lowered: boolean): { values: Minted[]; problems:
 function canon(value: Minted): string {
   if (value.kind === 'word') return `w:${value.value}`
   if (value.kind === 'text') return `t:${JSON.stringify(value.value)}`
-  if (value.kind === 'number') return `n:${value.value}${value.decimal ? '.' : ''}`
+  if (value.kind === 'number')
+    return `n:${value.value}${value.decimal ? '.' : ''}`
 
   const parts: string[] = []
 
   for (const key of Object.keys(value.fields).sort()) {
     const list = value.fields[key]!
 
-    if (list.length > 0) parts.push(`${key}=[${list.map(canon).join(' ')}]`)
+    if (list.length > 0)
+      parts.push(`${key}=[${list.map(canon).join(' ')}]`)
   }
 
   return `${value.form}(${parts.join(' ')})`
@@ -123,8 +155,14 @@ function pretty(value: Minted, depth = 0): string {
 
 // the first line on which two trees differ, to point at it
 function firstDifference(a: Minted[], b: Minted[]): string {
-  const left = a.map(value => pretty(value)).join('\n').split('\n')
-  const right = b.map(value => pretty(value)).join('\n').split('\n')
+  const left = a
+    .map(value => pretty(value))
+    .join('\n')
+    .split('\n')
+  const right = b
+    .map(value => pretty(value))
+    .join('\n')
+    .split('\n')
 
   for (let at = 0; at < Math.max(left.length, right.length); at++) {
     if (left[at] !== right[at]) {
@@ -165,8 +203,14 @@ type Parts = {
   wait?: string
 }
 
-function query(count: string, base: string, line: string, parts: Parts = {}): string {
-  const list = (items: string[] = []): string => items.map(item => shift(item, 8)).join('')
+function query(
+  count: string,
+  base: string,
+  line: string,
+  parts: Parts = {},
+): string {
+  const list = (items: string[] = []): string =>
+    items.map(item => shift(item, 8)).join('')
 
   return `bind query
   make find-query
@@ -199,7 +243,9 @@ function call(name: string, queryText: string, bodyText = ''): string {
 }
 
 const RUN = 'read it\n  link run, <npm dev>\n'
-const SERVER_PANE = step('pane', '', [haveTest('have', 'title', 'server')])
+const SERVER_PANE = step('pane', '', [
+  haveTest('have', 'title', 'server'),
+])
 
 type Fixture = { name: string; find: string; hand: string }
 
@@ -207,29 +253,48 @@ const FIXTURES: Fixture[] = [
   {
     name: 'the example of spec 6.2: find pane / have title, run',
     find: 'find pane\n  have title, <server>\n  run <npm dev>',
-    hand: call('find-one', query('one', SERVER_PANE, 'find one pane'), body('it', 'pane', RUN)),
+    hand: call(
+      'find-one',
+      query('one', SERVER_PANE, 'find one pane'),
+      body('it', 'pane', RUN),
+    ),
   },
   {
     name: 'its explicit spelling: find one / base pane',
     find: 'find one\n  base pane\n    have title, <server>\n\n  run <npm dev>',
-    hand: call('find-one', query('one', SERVER_PANE, 'find one pane'), body('it', 'pane', RUN)),
+    hand: call(
+      'find-one',
+      query('one', SERVER_PANE, 'find one pane'),
+      body('it', 'pane', RUN),
+    ),
   },
   {
     name: 'find all: a base with no test, the body once per hit',
     find: 'find all\n  base pane\n\n  clear',
-    hand: call('find-all', query('all', step('pane', '', []), 'find all pane'), body('it', 'pane', 'read it\n  link clear\n')),
+    hand: call(
+      'find-all',
+      query('all', step('pane', '', []), 'find all pane'),
+      body('it', 'pane', 'read it\n  link clear\n'),
+    ),
   },
   {
     name: 'find some: no body, a yes or no',
     find: 'find some\n  base pane\n    have title, <server>',
-    hand: call('find-some', query('some', SERVER_PANE, 'find some pane')),
+    hand: call(
+      'find-some',
+      query('some', SERVER_PANE, 'find some pane'),
+    ),
   },
   {
     name: 'a lack, and the result named by `, name`',
     find: 'find pane, name server\n  lack title, <shell>\n  focus',
     hand: call(
       'find-one',
-      query('one', step('pane', '', [haveTest('lack', 'title', 'shell')]), 'find one pane'),
+      query(
+        'one',
+        step('pane', '', [haveTest('lack', 'title', 'shell')]),
+        'find one pane',
+      ),
       body('server', 'pane', 'read server\n  link focus\n'),
     ),
   },
@@ -238,9 +303,17 @@ const FIXTURES: Fixture[] = [
     find: 'find one\n  base window\n    have title, <Term>\n\n  link tab\n\n  link pane\n    have title, <server>\n\n  run <npm dev>',
     hand: call(
       'find-one',
-      query('one', step('window', '', [haveTest('have', 'title', 'Term')]), 'find one window tab pane', {
-        path: [step('tab', '', []), step('pane', '', [haveTest('have', 'title', 'server')])],
-      }),
+      query(
+        'one',
+        step('window', '', [haveTest('have', 'title', 'Term')]),
+        'find one window tab pane',
+        {
+          path: [
+            step('tab', '', []),
+            step('pane', '', [haveTest('have', 'title', 'server')]),
+          ],
+        },
+      ),
       body('it', 'pane', RUN),
     ),
   },
@@ -249,7 +322,9 @@ const FIXTURES: Fixture[] = [
     find: 'find one\n  base person\n\n  link person, like follows\n\n  click',
     hand: call(
       'find-one',
-      query('one', step('person', '', []), 'find one person person', { path: [step('person', 'follows', [])] }),
+      query('one', step('person', '', []), 'find one person person', {
+        path: [step('person', 'follows', [])],
+      }),
       body('it', 'person', 'read it\n  link click\n'),
     ),
   },
@@ -273,15 +348,33 @@ function run(fixture: Fixture): void {
   const lowered = minted(fixture.find, true)
   const hand = minted(fixture.hand, false)
 
-  ok(`${fixture.name}: the find reads`, lowered !== undefined && lowered.values.length === 1, JSON.stringify(lowered?.problems))
-  ok(`${fixture.name}: the hand-written program reads`, hand !== undefined && hand.values.length === 1, fixture.hand)
+  ok(
+    `${fixture.name}: the find reads`,
+    lowered !== undefined && lowered.values.length === 1,
+    JSON.stringify(lowered?.problems),
+  )
+  ok(
+    `${fixture.name}: the hand-written program reads`,
+    hand !== undefined && hand.values.length === 1,
+    fixture.hand,
+  )
 
   if (!lowered || !hand) return
 
-  const same = lowered.values.map(canon).join('\n') === hand.values.map(canon).join('\n')
+  const same =
+    lowered.values.map(canon).join('\n') ===
+    hand.values.map(canon).join('\n')
 
-  ok(`${fixture.name}: the lowered tree is the hand-written tree`, same, same ? '' : firstDifference(lowered.values, hand.values))
-  ok(`${fixture.name}: nothing was left unlowered`, lowered.problems.length === 0, JSON.stringify(lowered.problems))
+  ok(
+    `${fixture.name}: the lowered tree is the hand-written tree`,
+    same,
+    same ? '' : firstDifference(lowered.values, hand.values),
+  )
+  ok(
+    `${fixture.name}: nothing was left unlowered`,
+    lowered.problems.length === 0,
+    JSON.stringify(lowered.problems),
+  )
 
   if (process.env.PRINT) {
     console.log(lowered.values.map(value => pretty(value)).join('\n'))
@@ -293,32 +386,75 @@ for (const fixture of FIXTURES) run(fixture)
 // ---- the shorthand and the explicit spelling are one tree ----
 
 {
-  const short = minted('find pane\n  have title, <server>\n  run <npm dev>', true)
-  const explicit = minted('find one\n  base pane\n    have title, <server>\n\n  run <npm dev>', true)
+  const short = minted(
+    'find pane\n  have title, <server>\n  run <npm dev>',
+    true,
+  )
+  const explicit = minted(
+    'find one\n  base pane\n    have title, <server>\n\n  run <npm dev>',
+    true,
+  )
 
   ok(
     'shorthand and explicit lower to one tree',
-    short !== undefined && explicit !== undefined && short.values.map(canon).join() === explicit.values.map(canon).join(),
+    short !== undefined &&
+      explicit !== undefined &&
+      short.values.map(canon).join() ===
+        explicit.values.map(canon).join(),
   )
 }
 
 // ---- the body ----
 
 {
-  const pipe = minted('find pane\n  run <npm dev>\n  click\n  call own\n  save line, <x>', true)
+  const pipe = minted(
+    'find pane\n  run <npm dev>\n  click\n  call own\n  save line, <x>',
+    true,
+  )
   const text = pipe?.values[0] ? canon(pipe.values[0]) : ''
 
-  ok('a body with a bare head, a bare word, a call and a keyword lowers', pipe !== undefined && pipe.problems.length === 0)
-  ok('a bare head with arguments is a pipe from the result', text.includes('seed-read(link=[call-link(name=[w:run] seed=[t:"npm dev"])] path=[w:it])'), text)
-  ok('a bare word is a pipe from the result', text.includes('seed-read(link=[call-link(name=[w:click])] path=[w:it])'), text)
+  ok(
+    'a body with a bare head, a bare word, a call and a keyword lowers',
+    pipe !== undefined && pipe.problems.length === 0,
+  )
+  ok(
+    'a bare head with arguments is a pipe from the result',
+    text.includes(
+      'seed-read(link=[call-link(name=[w:run] seed=[t:"npm dev"])] path=[w:it])',
+    ),
+    text,
+  )
+  ok(
+    'a bare word is a pipe from the result',
+    text.includes(
+      'seed-read(link=[call-link(name=[w:click])] path=[w:it])',
+    ),
+    text,
+  )
   ok('`call x` stays a call', text.includes('call(name=[w:own])'), text)
-  ok('a keyword form keeps its meaning', text.includes('save(name=[w:line]'), text)
+  ok(
+    'a keyword form keeps its meaning',
+    text.includes('save(name=[w:line]'),
+    text,
+  )
 
   // `wait true`, `take z` and a lone `tick` mint as a call or a word for lack of a form of their own: still keywords
-  const kept = minted('find pane\n  wait true\n  take z\n  tick\n  halt', true)
+  const kept = minted(
+    'find pane\n  wait true\n  take z\n  tick\n  halt',
+    true,
+  )
   const keptText = kept?.values[0] ? canon(kept.values[0]) : ''
 
-  ok('a keyword head that mints as a call or a word is not piped', kept !== undefined && keptText.includes('seed-call-open(name=[w:wait]') && keptText.includes('seed-call-open(name=[w:take]') && keptText.includes('w:tick') && !keptText.includes('call-link(name=[w:wait]') && !keptText.includes('call-link(name=[w:tick]'), keptText)
+  ok(
+    'a keyword head that mints as a call or a word is not piped',
+    kept !== undefined &&
+      keptText.includes('seed-call-open(name=[w:wait]') &&
+      keptText.includes('seed-call-open(name=[w:take]') &&
+      keptText.includes('w:tick') &&
+      !keptText.includes('call-link(name=[w:wait]') &&
+      !keptText.includes('call-link(name=[w:tick]'),
+    keptText,
+  )
 }
 
 // ---- the query parts ----
@@ -330,42 +466,92 @@ for (const fixture of FIXTURES) run(fixture)
   )
   const text = parts?.values[0] ? canon(parts.values[0]) : ''
 
-  if (process.env.PRINT && parts) console.log(parts.values.map(value => pretty(value)).join('\n'))
+  if (process.env.PRINT && parts)
+    console.log(parts.values.map(value => pretty(value)).join('\n'))
 
-  ok('every query part lowers', parts !== undefined && parts.problems.length === 0, JSON.stringify(parts?.problems))
+  ok(
+    'every query part lowers',
+    parts !== undefined && parts.problems.length === 0,
+    JSON.stringify(parts?.problems),
+  )
   ok(
     'the base holds its haves, then its holds',
-    text.indexOf('make(bind=[bind(name=[w:name] seed=[seed-text(value=[t:"status"])])') >= 0 &&
-      text.indexOf('seed-text(value=[t:"status"])') < text.indexOf('seed-text(value=[t:"is-minimum"])'),
+    text.indexOf(
+      'make(bind=[bind(name=[w:name] seed=[seed-text(value=[t:"status"])])',
+    ) >= 0 &&
+      text.indexOf('seed-text(value=[t:"status"])') <
+        text.indexOf('seed-text(value=[t:"is-minimum"])'),
     text,
   )
   ok(
     'a hold names its predicate and reads its operands from the component or from a value',
-    text.includes('bind(name=[w:a] seed=[make(bind=[bind(name=[w:name] seed=[seed-text(value=[t:"age"])])] name=[w:self])])') &&
-      text.includes('bind(name=[w:b] seed=[make(bind=[bind(name=[w:value] seed=[make(bind=[bind(name=[w:value] seed=[seed-code(value=[n:18])])] name=[w:number])])] name=[w:value])])'),
+    text.includes(
+      'bind(name=[w:a] seed=[make(bind=[bind(name=[w:name] seed=[seed-text(value=[t:"age"])])] name=[w:self])])',
+    ) &&
+      text.includes(
+        'bind(name=[w:b] seed=[make(bind=[bind(name=[w:value] seed=[make(bind=[bind(name=[w:value] seed=[seed-code(value=[n:18])])] name=[w:number])])] name=[w:value])])',
+      ),
     text,
   )
-  ok('a link is a step with its relation', text.includes('bind(name=[w:like] seed=[seed-text(value=[t:"follows"])])'), text)
+  ok(
+    'a link is a step with its relation',
+    text.includes(
+      'bind(name=[w:like] seed=[seed-text(value=[t:"follows"])])',
+    ),
+    text,
+  )
   ok(
     'a back reads the property of that name, or the one after it',
-    text.includes('make(bind=[bind(name=[w:name] seed=[seed-text(value=[t:"name"])]) bind(name=[w:from] seed=[make(bind=[bind(name=[w:name] seed=[seed-text(value=[t:"name"])])] name=[w:self])])] name=[w:find-back])') &&
-      text.includes('bind(name=[w:name] seed=[seed-text(value=[t:"first-name"])])'),
+    text.includes(
+      'make(bind=[bind(name=[w:name] seed=[seed-text(value=[t:"name"])]) bind(name=[w:from] seed=[make(bind=[bind(name=[w:name] seed=[seed-text(value=[t:"name"])])] name=[w:self])])] name=[w:find-back])',
+    ) &&
+      text.includes(
+        'bind(name=[w:name] seed=[seed-text(value=[t:"first-name"])])',
+      ),
     text,
   )
-  ok('a sort says fall as a flag', text.includes('bind(name=[w:fall] seed=[w:true])'), text)
-  ok('size and head are the expressions written', text.includes('bind(name=[w:size] seed=[n:50])') && text.includes('bind(name=[w:head] seed=[n:3])'), text)
-  ok('a wait of 10s is from-seconds of 10', text.includes('call(name=[w:from-seconds] seed=[seed-code(value=[n:10])])'), text)
-  ok('with back lines the body takes the record, named by `, name`', text.includes('take(like=[like(name=[w:unknown])] name=[w:rows])'), text)
+  ok(
+    'a sort says fall as a flag',
+    text.includes('bind(name=[w:fall] seed=[w:true])'),
+    text,
+  )
+  ok(
+    'size and head are the expressions written',
+    text.includes('bind(name=[w:size] seed=[n:50])') &&
+      text.includes('bind(name=[w:head] seed=[n:3])'),
+    text,
+  )
+  ok(
+    'a wait of 10s is from-seconds of 10',
+    text.includes(
+      'call(name=[w:from-seconds] seed=[seed-code(value=[n:10])])',
+    ),
+    text,
+  )
+  ok(
+    'with back lines the body takes the record, named by `, name`',
+    text.includes('take(like=[like(name=[w:unknown])] name=[w:rows])'),
+    text,
+  )
 }
 
 {
-  const meet = minted('find all\n  base user\n    meet lack\n      have status, <banned>\n\n  back id', true)
+  const meet = minted(
+    'find all\n  base user\n    meet lack\n      have status, <banned>\n\n  back id',
+    true,
+  )
   const text = meet?.values[0] ? canon(meet.values[0]) : ''
 
-  ok('a meet lowers to a test with its members', meet !== undefined && meet.problems.length === 0, JSON.stringify(meet?.problems))
+  ok(
+    'a meet lowers to a test with its members',
+    meet !== undefined && meet.problems.length === 0,
+    JSON.stringify(meet?.problems),
+  )
   ok(
     'the meet carries its kind and its tests',
-    text.includes('make(bind=[bind(name=[w:kind] seed=[seed-text(value=[t:"lack"])]) bind(name=[w:test] seed=[make(name=[w:list] seed=[make(bind=[bind(name=[w:name] seed=[seed-text(value=[t:"status"])])'),
+    text.includes(
+      'make(bind=[bind(name=[w:kind] seed=[seed-text(value=[t:"lack"])]) bind(name=[w:test] seed=[make(name=[w:list] seed=[make(bind=[bind(name=[w:name] seed=[seed-text(value=[t:"status"])])',
+    ),
     text,
   )
 }
@@ -374,27 +560,62 @@ for (const fixture of FIXTURES) run(fixture)
   const waits = minted('find pane\n  wait <500ms>', true)
   const text = waits?.values[0] ? canon(waits.values[0]) : ''
 
-  ok('a wait in milliseconds is from-milliseconds', text.includes('call(name=[w:from-milliseconds] seed=[seed-code(value=[n:500])])'), text)
+  ok(
+    'a wait in milliseconds is from-milliseconds',
+    text.includes(
+      'call(name=[w:from-milliseconds] seed=[seed-code(value=[n:500])])',
+    ),
+    text,
+  )
 
   const minutes = minted('find pane\n  wait <2m>', true)
 
-  ok('a wait in minutes is from-minutes', minutes !== undefined && canon(minutes.values[0]!).includes('w:from-minutes'))
+  ok(
+    'a wait in minutes is from-minutes',
+    minutes !== undefined &&
+      canon(minutes.values[0]!).includes('w:from-minutes'),
+  )
 }
 
 // ---- a find as a value and nested ----
 
 {
-  const value = minted('save known\n  find some\n    base person\n      have name, <Alice>', true)
+  const value = minted(
+    'save known\n  find some\n    base person\n      have name, <Alice>',
+    true,
+  )
   const text = value?.values[0] ? canon(value.values[0]) : ''
 
-  ok('a find in value position lowers to the call', value !== undefined && text.includes('call(') && text.includes('name=[w:find-some]'), text)
-  ok('and no find-query form is left', !text.includes('find-query('), text)
+  ok(
+    'a find in value position lowers to the call',
+    value !== undefined &&
+      text.includes('call(') &&
+      text.includes('name=[w:find-some]'),
+    text,
+  )
+  ok(
+    'and no find-query form is left',
+    !text.includes('find-query('),
+    text,
+  )
 
-  const nested = minted('find window\n  have title, <Term>\n  find button\n    have text, <Save>\n    click', true)
+  const nested = minted(
+    'find window\n  have title, <Term>\n  find button\n    have text, <Save>\n    click',
+    true,
+  )
   const nestedText = nested?.values[0] ? canon(nested.values[0]) : ''
 
-  ok('a nested find lowers inside the outer body', nested !== undefined && nested.problems.length === 0, JSON.stringify(nested?.problems))
-  ok('both finds are calls and no find-query form is left', (nestedText.match(/name=\[w:find-one\]/g) ?? []).length === 2 && !nestedText.includes('find-query('), nestedText)
+  ok(
+    'a nested find lowers inside the outer body',
+    nested !== undefined && nested.problems.length === 0,
+    JSON.stringify(nested?.problems),
+  )
+  ok(
+    'both finds are calls and no find-query form is left',
+    (nestedText.match(/name=\[w:find-one\]/g) ?? []).length === 2 &&
+      !nestedText.includes('find-query('),
+    nestedText,
+  )
 }
 
 // ---- no change for a program with no find ----
@@ -416,40 +637,89 @@ for (const fixture of FIXTURES) run(fixture)
         lowered !== undefined &&
         lowered.problems.length === 0 &&
         plain.values.length > 0 &&
-        plain.values.map(canon).join() === lowered.values.map(canon).join(),
+        plain.values.map(canon).join() ===
+          lowered.values.map(canon).join(),
     )
   }
 
   // the same object back: the pass is handed a list and a form and returns them, not copies of them
   const word: Minted = { kind: 'word', value: 'x' }
-  const inner: Minted = { kind: 'form', form: 'call', fields: new Map([['name', [word]]]) as never }
+  const inner: Minted = {
+    kind: 'form',
+    form: 'call',
+    fields: new Map([['name', [word]]]) as never,
+  }
   const list = [inner, word]
   const out = lowering.lowerFinds(list as never)
 
-  ok('no find: the list comes back as the same object', (out.values as unknown) === (list as unknown), 'a copy')
+  ok(
+    'no find: the list comes back as the same object',
+    (out.values as unknown) === (list as unknown),
+    'a copy',
+  )
   ok('no find: no problems', out.problems.length === 0)
-  ok('no find: the form inside is the same object', (out.values as unknown as Minted[])[0] === inner)
+  ok(
+    'no find: the form inside is the same object',
+    (out.values as unknown as Minted[])[0] === inner,
+  )
 }
 
 // ---- what is not lowered is said, with the span of the find ----
 
 {
   const cases: { name: string; source: string; code: string }[] = [
-    { name: 'find read <value>', source: 'find read tool\n  find pane\n    run <x>', code: 'find-read' },
-    { name: 'take on a named find', source: 'find all, name rows\n  take role, like text\n\n  base user', code: 'find-take' },
-    { name: 'a test under the find itself', source: 'find one\n  have title, <x>\n\n  base pane', code: 'find-test-place' },
-    { name: 'no base', source: 'find all\n  link tab', code: 'find-no-base' },
-    { name: 'two bases', source: 'find one\n  base pane\n\n  base window', code: 'find-two-bases' },
-    { name: 'a body under find some', source: 'find some\n  base pane\n\n  click', code: 'find-body-on-some' },
-    { name: 'a wait that is no whole unit', source: 'find pane\n  wait <soon>', code: 'find-wait-unit' },
+    {
+      name: 'find read <value>',
+      source: 'find read tool\n  find pane\n    run <x>',
+      code: 'find-read',
+    },
+    {
+      name: 'take on a named find',
+      source:
+        'find all, name rows\n  take role, like text\n\n  base user',
+      code: 'find-take',
+    },
+    {
+      name: 'a test under the find itself',
+      source: 'find one\n  have title, <x>\n\n  base pane',
+      code: 'find-test-place',
+    },
+    {
+      name: 'no base',
+      source: 'find all\n  link tab',
+      code: 'find-no-base',
+    },
+    {
+      name: 'two bases',
+      source: 'find one\n  base pane\n\n  base window',
+      code: 'find-two-bases',
+    },
+    {
+      name: 'a body under find some',
+      source: 'find some\n  base pane\n\n  click',
+      code: 'find-body-on-some',
+    },
+    {
+      name: 'a wait that is no whole unit',
+      source: 'find pane\n  wait <soon>',
+      code: 'find-wait-unit',
+    },
   ]
 
   for (const one of cases) {
     const result = minted(one.source, true)
     const codes = result?.problems.map(p => p.code) ?? []
 
-    ok(`${one.name}: a problem is raised`, codes.includes(one.code), `${JSON.stringify(result?.problems)} ${one.source}`)
-    ok(`${one.name}: it carries the span of the find`, (result?.problems.length ?? 0) > 0 && (result?.problems.every(p => p.span !== undefined) ?? false))
+    ok(
+      `${one.name}: a problem is raised`,
+      codes.includes(one.code),
+      `${JSON.stringify(result?.problems)} ${one.source}`,
+    )
+    ok(
+      `${one.name}: it carries the span of the find`,
+      (result?.problems.length ?? 0) > 0 &&
+        (result?.problems.every(p => p.span !== undefined) ?? false),
+    )
   }
 }
 
@@ -479,39 +749,100 @@ load @term/base/duration
 
 `
 
-function typescript(file: string, text: string): { ok: boolean; text: string } {
-  const result = compile({ file: join(ROOT, 'tmp', file), text }, { resolve, env: 'node' })
+function typescript(
+  file: string,
+  text: string,
+): { ok: boolean; text: string } {
+  const result = compile(
+    { file: join(ROOT, 'tmp', file), text },
+    { resolve, env: 'node' },
+  )
 
   return result.ok
     ? { ok: true, text: result.typescript }
-    : { ok: false, text: result.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | ') }
+    : {
+        ok: false,
+        text: result.diagnostics
+          .map(d => `${d.name}: ${d.message}`)
+          .join(' | '),
+      }
 }
 
 {
-  const inTask = (text: string): string => `${LOADS}task go\n${shift(text, 2)}`
-  const hand = typescript('find-hand.tree', inTask(call('find-one', query('one', SERVER_PANE, 'find one pane'), body('it', 'pane', RUN))))
-  const short = typescript('find-short.tree', inTask('find pane\n  have title, <server>\n  run <npm dev>\n'))
-  const explicit = typescript('find-explicit.tree', inTask('find one\n  base pane\n    have title, <server>\n\n  run <npm dev>\n'))
+  const inTask = (text: string): string =>
+    `${LOADS}task go\n${shift(text, 2)}`
+  const hand = typescript(
+    'find-hand.tree',
+    inTask(
+      call(
+        'find-one',
+        query('one', SERVER_PANE, 'find one pane'),
+        body('it', 'pane', RUN),
+      ),
+    ),
+  )
+  const short = typescript(
+    'find-short.tree',
+    inTask('find pane\n  have title, <server>\n  run <npm dev>\n'),
+  )
+  const explicit = typescript(
+    'find-explicit.tree',
+    inTask(
+      'find one\n  base pane\n    have title, <server>\n\n  run <npm dev>\n',
+    ),
+  )
 
   ok('the hand-written program compiles', hand.ok, hand.text)
   ok('the shorthand find compiles', short.ok, short.text)
   ok('the explicit find compiles', explicit.ok, explicit.text)
   // a raising call carries its Term frame, `<task> <file>:<line>` (term/hive decision 001): the three programs are three
   // files of different lengths, so the frame texts are set aside and the rest must be the same
-  const framed = (text: string): string => text.replace(/"[^"\n]* find-(hand|short|explicit)\.tree:\d+"/g, '"<frame>"')
-  ok('the shorthand emits the TypeScript of the hand-written program', hand.ok && short.ok && framed(short.text) === framed(hand.text), 'differs')
-  ok('the explicit spelling emits it too', hand.ok && explicit.ok && framed(explicit.text) === framed(hand.text), 'differs')
-  ok('the emitted program calls find-one with the query and a body', short.ok && /findOne\(/.test(short.text), short.ok ? short.text.slice(-600) : '')
+  const framed = (text: string): string =>
+    text.replace(
+      /"[^"\n]* find-(hand|short|explicit)\.tree:\d+"/g,
+      '"<frame>"',
+    )
+  ok(
+    'the shorthand emits the TypeScript of the hand-written program',
+    hand.ok && short.ok && framed(short.text) === framed(hand.text),
+    'differs',
+  )
+  ok(
+    'the explicit spelling emits it too',
+    hand.ok &&
+      explicit.ok &&
+      framed(explicit.text) === framed(hand.text),
+    'differs',
+  )
+  ok(
+    'the emitted program calls find-one with the query and a body',
+    short.ok && /findOne\(/.test(short.text),
+    short.ok ? short.text.slice(-600) : '',
+  )
 
   // a find with a refusal in it fails the build, naming the find
-  const bad = typescript('find-bad.tree', inTask('find all\n  link tab\n'))
+  const bad = typescript(
+    'find-bad.tree',
+    inTask('find all\n  link tab\n'),
+  )
 
-  ok('a find the pass cannot lower fails the build', !bad.ok && bad.text.includes('a path starts with base'), bad.text)
+  ok(
+    'a find the pass cannot lower fails the build',
+    !bad.ok && bad.text.includes('a path starts with base'),
+    bad.text,
+  )
 
   // a file that does not load what the lowered code names says so, at the find
-  const bare = typescript('find-bare.tree', 'task go\n  find pane\n    run <npm dev>\n')
+  const bare = typescript(
+    'find-bare.tree',
+    'task go\n  find pane\n    run <npm dev>\n',
+  )
 
-  ok('a file without the loads fails the build, by name', !bare.ok && bare.text.includes('find-query'), bare.text)
+  ok(
+    'a file without the loads fails the build, by name',
+    !bare.ok && bare.text.includes('find-query'),
+    bare.text,
+  )
 }
 
 console.log(`\nfind-desugar: ${pass} passed, ${fail} failed`)

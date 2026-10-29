@@ -28,17 +28,52 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const TERM = join(import.meta.dirname ?? new URL('.', import.meta.url).pathname, '../..')
+const TERM = join(
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname,
+  '../..',
+)
 
 // the generator: file/stat crosses, as a record, through fill and melt
-const report = generateBridge({ page: join(TERM, 'deck/cask/test/data/page.tree'), out: join(TERM, 'deck/cask/test/data'), commit: false })
-ok('file/stat is carried, not refused', !report.refused.some(r => r.module === 'file' && r.task === 'stat'), JSON.stringify(report.refused))
-ok('the bridge on disk is what the generator writes', report.drift.length === 0, JSON.stringify(report.drift))
-const shim = readFileSync(join(TERM, 'deck/base/code/native/webview/file.tree'), 'utf8')
-const statShim = shim.slice(shim.indexOf('task stat-file'), shim.indexOf('\ntask ', shim.indexOf('task stat-file') + 1))
-ok('the page fills the reply into path-info', /call fill\n\s+call data-from-text[\s\S]*like path-info/.test(statShim), statShim)
-const dispatch = readFileSync(join(TERM, 'deck/cask/test/data/dispatch.tree'), 'utf8')
-ok('the cask melts its answer to text', /call data-to-text\n\s+call melt\n\s+read answer\n\s+like path-info/.test(dispatch))
+const report = generateBridge({
+  page: join(TERM, 'deck/cask/test/data/page.tree'),
+  out: join(TERM, 'deck/cask/test/data'),
+  commit: false,
+})
+ok(
+  'file/stat is carried, not refused',
+  !report.refused.some(r => r.module === 'file' && r.task === 'stat'),
+  JSON.stringify(report.refused),
+)
+ok(
+  'the bridge on disk is what the generator writes',
+  report.drift.length === 0,
+  JSON.stringify(report.drift),
+)
+const shim = readFileSync(
+  join(TERM, 'deck/base/code/native/webview/file.tree'),
+  'utf8',
+)
+const statShim = shim.slice(
+  shim.indexOf('task stat-file'),
+  shim.indexOf('\ntask ', shim.indexOf('task stat-file') + 1),
+)
+ok(
+  'the page fills the reply into path-info',
+  /call fill\n\s+call data-from-text[\s\S]*like path-info/.test(
+    statShim,
+  ),
+  statShim,
+)
+const dispatch = readFileSync(
+  join(TERM, 'deck/cask/test/data/dispatch.tree'),
+  'utf8',
+)
+ok(
+  'the cask melts its answer to text',
+  /call data-to-text\n\s+call melt\n\s+read answer\n\s+like path-info/.test(
+    dispatch,
+  ),
+)
 
 // the converters, run: a round trip, and the named exception for a field that is missing or of the wrong kind
 const PROGRAM = `load @term/host/code/text
@@ -81,30 +116,64 @@ task cross-and-back
 `
 
 const file = join(TERM, 'test/call/cask-record.tree')
-const result = compile({ file, text: PROGRAM }, { resolve: projectResolver(TERM, 'node'), env: 'node' })
-ok('the converters compile', result.ok, result.ok ? '' : result.diagnostics.slice(0, 3).map(d => d.message).join(' | '))
+const result = compile(
+  { file, text: PROGRAM },
+  { resolve: projectResolver(TERM, 'node'), env: 'node' },
+)
+ok(
+  'the converters compile',
+  result.ok,
+  result.ok
+    ? ''
+    : result.diagnostics
+        .slice(0, 3)
+        .map(d => d.message)
+        .join(' | '),
+)
 
 if (result.ok) {
-  const prelude = nativePrelude(result.program, 'node', path => (existsSync(path) ? readFileSync(path, 'utf8') : undefined))
-  const js = transformSync(`${prelude}\n${result.typescript}`, { loader: 'ts', format: 'esm' }).code
+  const prelude = nativePrelude(result.program, 'node', path =>
+    existsSync(path) ? readFileSync(path, 'utf8') : undefined,
+  )
+  const js = transformSync(`${prelude}\n${result.typescript}`, {
+    loader: 'ts',
+    format: 'esm',
+  }).code
   const out = join(tempDir('term-cask-record-'), 'record.mjs')
   writeFileSync(out, js)
   const mod = await import(pathToFileURL(out).href)
 
-  ok('a path-info crosses and comes back whole', mod.crossAndBack(4096) === '4096 false', String(mod.crossAndBack(4096)))
+  ok(
+    'a path-info crosses and comes back whole',
+    mod.crossAndBack(4096) === '4096 false',
+    String(mod.crossAndBack(4096)),
+  )
 
   const refusal = (text: string): string => {
     try {
       mod.landInfo(text)
       return 'no exception'
     } catch (error) {
-      const e = error as { form?: string; link?: { path?: string; reason?: string } }
+      const e = error as {
+        form?: string
+        link?: { path?: string; reason?: string }
+      }
       return `${e.form} ${e.link?.path} ${e.link?.reason}`
     }
   }
 
-  ok('a missing field is the named data-mismatch, with its path', refusal('host size, 12\n') === 'data-mismatch directory is missing', refusal('host size, 12\n'))
-  ok('a field of the wrong kind is named too', refusal('host size, <twelve>\nhost directory, false\n').startsWith('data-mismatch size '), refusal('host size, <twelve>\nhost directory, false\n'))
+  ok(
+    'a missing field is the named data-mismatch, with its path',
+    refusal('host size, 12\n') === 'data-mismatch directory is missing',
+    refusal('host size, 12\n'),
+  )
+  ok(
+    'a field of the wrong kind is named too',
+    refusal('host size, <twelve>\nhost directory, false\n').startsWith(
+      'data-mismatch size ',
+    ),
+    refusal('host size, <twelve>\nhost directory, false\n'),
+  )
 }
 
 console.log(`\ncask-record: ${pass} pass, ${fail} fail`)

@@ -38,7 +38,13 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 // ---- the mill: each call to `f`, its arguments as written, and the names a named argument carries ----
 
-type Shape = { name: string; text: string; args: string; names?: string; lean?: boolean }
+type Shape = {
+  name: string
+  text: string
+  args: string
+  names?: string
+  lean?: boolean
+}
 
 const SHAPES: Shape[] = [
   {
@@ -111,7 +117,10 @@ function callsOf(value: unknown, out: Record<string, unknown>[]): void {
     return
   }
   const record = value as Record<string, unknown>
-  if (record.form === 'call' && (record.callee as { name?: string })?.name === 'f') {
+  if (
+    record.form === 'call' &&
+    (record.callee as { name?: string })?.name === 'f'
+  ) {
     out.push(record)
   }
   for (const [key, child] of Object.entries(record)) {
@@ -128,18 +137,39 @@ for (const shape of SHAPES) {
     ok(`mill: ${shape.name}`, false, 'parse failed')
     continue
   }
-  const expanded = expandScopes(expandTemplates(parsed.tree) as never, file)
-  const milled = millByGrammar(expanded.tree as RootNode, file, undefined, undefined, shape.lean === true)
+  const expanded = expandScopes(
+    expandTemplates(parsed.tree) as never,
+    file,
+  )
+  const milled = millByGrammar(
+    expanded.tree as RootNode,
+    file,
+    undefined,
+    undefined,
+    shape.lean === true,
+  )
   const calls: Record<string, unknown>[] = []
   if (milled.ok) {
     callsOf(milled.program, calls)
   }
   const call = calls[0]
-  const args = call ? (call.args as Record<string, unknown>[]).map(label).join(' ') : ''
-  ok(`mill: ${shape.name}: arguments in written order`, args === shape.args, `got ${JSON.stringify(args)}, want ${JSON.stringify(shape.args)}`)
+  const args = call
+    ? (call.args as Record<string, unknown>[]).map(label).join(' ')
+    : ''
+  ok(
+    `mill: ${shape.name}: arguments in written order`,
+    args === shape.args,
+    `got ${JSON.stringify(args)}, want ${JSON.stringify(shape.args)}`,
+  )
   if (shape.names !== undefined) {
-    const names = ((call?.names as string[] | undefined) ?? []).join(',')
-    ok(`mill: ${shape.name}: names beside their arguments`, names === shape.names, `got ${JSON.stringify(names)}`)
+    const names = ((call?.names as string[] | undefined) ?? []).join(
+      ',',
+    )
+    ok(
+      `mill: ${shape.name}: names beside their arguments`,
+      names === shape.names,
+      `got ${JSON.stringify(names)}`,
+    )
   }
 }
 
@@ -194,18 +224,34 @@ const WANT = '1 2 7 8 9|-2|1 2 3 4 5|1 2 5'
 const dir = mkdtempSync(join(tmpdir(), 'term-mixed-call-order-'))
 const only = process.env.MIXED_ONLY ?? ''
 
-for (const backend of (['typescript', 'rust', 'swift', 'kotlin'] as Backend[]).filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'mixed' })
+for (const backend of (
+  ['typescript', 'rust', 'swift', 'kotlin'] as Backend[]
+).filter(b => !only || b === only)) {
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'mixed',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
     continue
   }
 
-  ok(`${backend}: compiles, builds and runs`, ran.form === 'ran', ran.form === 'failed' ? `${ran.stage}: ${ran.reason}` : '')
+  ok(
+    `${backend}: compiles, builds and runs`,
+    ran.form === 'ran',
+    ran.form === 'failed' ? `${ran.stage}: ${ran.reason}` : '',
+  )
 
   if (ran.form === 'ran') {
-    ok(`${backend}: every mixed call takes its arguments in written order`, ran.output === WANT, `got ${JSON.stringify(ran.output)}, want ${JSON.stringify(WANT)}`)
+    ok(
+      `${backend}: every mixed call takes its arguments in written order`,
+      ran.output === WANT,
+      `got ${JSON.stringify(ran.output)}, want ${JSON.stringify(WANT)}`,
+    )
   }
 }
 

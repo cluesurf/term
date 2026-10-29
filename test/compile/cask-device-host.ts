@@ -22,29 +22,62 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 const ROOT = process.cwd()
-const PROGRAM = 'load @term/site/view/hosted\n  find has-device-host\n\ntask main\n  call has-device-host\n'
+const PROGRAM =
+  'load @term/site/view/hosted\n  find has-device-host\n\ntask main\n  call has-device-host\n'
 
 // the hosted module each env's resolution reached, by its folder
 function hostedFor(env: string): string {
-  const sources = collectModules({ file: join(ROOT, 'tmp/cask-device-host.tree'), text: PROGRAM }, projectResolver(ROOT, env as never)).sources
-  const found = sources.map(one => one.file).find(file => /\/view\/native\/(?:[a-z-]+\/)?hosted\.tree$/.test(file)) ?? ''
+  const sources = collectModules(
+    { file: join(ROOT, 'tmp/cask-device-host.tree'), text: PROGRAM },
+    projectResolver(ROOT, env as never),
+  ).sources
+  const found =
+    sources
+      .map(one => one.file)
+      .find(file =>
+        /\/view\/native\/(?:[a-z-]+\/)?hosted\.tree$/.test(file),
+      ) ?? ''
 
-  return /\/native\/toolkit\/hosted\.tree$/.test(found) ? 'toolkit' : /\/native\/hosted\.tree$/.test(found) ? 'fallback' : `none (${found})`
+  return /\/native\/toolkit\/hosted\.tree$/.test(found)
+    ? 'toolkit'
+    : /\/native\/hosted\.tree$/.test(found)
+      ? 'fallback'
+      : `none (${found})`
 }
 
 for (const env of ['macos', 'ios', 'android']) {
-  ok(`a cask built for ${env} has the device hosts`, hostedFor(env) === 'toolkit', hostedFor(env))
+  ok(
+    `a cask built for ${env} has the device hosts`,
+    hostedFor(env) === 'toolkit',
+    hostedFor(env),
+  )
 }
 
-ok('a cask built for rust has none, so its page asks the WebView', hostedFor('rust') === 'fallback', hostedFor('rust'))
+ok(
+  'a cask built for rust has none, so its page asks the WebView',
+  hostedFor('rust') === 'fallback',
+  hostedFor('rust'),
+)
 
 const SITE = join(ROOT, 'deck/site/code/view/native/webview')
-const dispatch = readFileSync(join(ROOT, 'deck/cask/test/device/dispatch.tree'), 'utf8')
-ok('the device dispatcher answers unhosted where there is no host', dispatch.includes('task device-answer') && dispatch.includes('text <unhosted>') && dispatch.includes('call has-device-host'))
+const dispatch = readFileSync(
+  join(ROOT, 'deck/cask/test/device/dispatch.tree'),
+  'utf8',
+)
+ok(
+  'the device dispatcher answers unhosted where there is no host',
+  dispatch.includes('task device-answer') &&
+    dispatch.includes('text <unhosted>') &&
+    dispatch.includes('call has-device-host'),
+)
 
 for (const shim of ['battery', 'clipboard', 'vibration']) {
   const text = readFileSync(join(SITE, `${shim}.tree`), 'utf8')
-  ok(`the ${shim} shim asks its WebView on unhosted, and never on unavailable`, text.includes('text <unhosted>') && !text.includes('text <unavailable>'))
+  ok(
+    `the ${shim} shim asks its WebView on unhosted, and never on unavailable`,
+    text.includes('text <unhosted>') &&
+      !text.includes('text <unavailable>'),
+  )
 }
 
 console.log(`\ncask-device-host: ${pass} pass, ${fail} fail`)

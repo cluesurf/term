@@ -9,7 +9,11 @@ import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
 import { withNativeEnv } from '@term/make/code/compile/native'
 import { gatedTasks, listFacts } from '@term/make/code/compile/backend'
-import { placeWrites, privateForms, valuePlaces } from '@term/make/code/compile/place'
+import {
+  placeWrites,
+  privateForms,
+  valuePlaces,
+} from '@term/make/code/compile/place'
 import { emitTypeScript } from '@term/make/code/compile/typescript'
 import { emitSwift } from '@term/make/code/compile/swift'
 import type { Program } from '@term/make/code/compile/node'
@@ -29,18 +33,29 @@ function ok(name: string, holds: boolean, detail = ''): void {
 
 const stdlib = stdlibResolver()!
 
-function facts(text: string): { forms: Set<string>; writes: string[]; program: Program } {
-  const built = compile({ file: 'main.tree', text }, { resolve: withNativeEnv('node', stdlib), env: 'node' })
+function facts(text: string): {
+  forms: Set<string>
+  writes: string[]
+  program: Program
+} {
+  const built = compile(
+    { file: 'main.tree', text },
+    { resolve: withNativeEnv('node', stdlib), env: 'node' },
+  )
 
   if (!built.ok) {
     throw new Error(built.diagnostics.map(d => d.message).join(' | '))
   }
 
   const program = built.program
-  const masks = new Set(program.flatMap(n => (n.form === 'mask' ? n.methods : [])))
+  const masks = new Set(
+    program.flatMap(n => (n.form === 'mask' ? n.methods : [])),
+  )
   const { lend, fresh } = listFacts(program, gatedTasks(program, masks))
   const forms = privateForms(program, lend, fresh)
-  const writes = [...placeWrites(program, forms).values()].map(w => `${w.local}:${w.fields.map(f => f.name).join(',')}`)
+  const writes = [...placeWrites(program, forms).values()].map(
+    w => `${w.local}:${w.fields.map(f => f.name).join(',')}`,
+  )
 
   return { forms, writes, program }
 }
@@ -48,15 +63,41 @@ function facts(text: string): { forms: Set<string>; writes: string[]; program: P
 const TERM = join(import.meta.dirname, '..', '..')
 
 // 1. the meaning fixture: the pair loop in place, the three hazards not
-const fixture = facts(readFileSync(join(TERM, 'test/compile/meaning-native/place.tree'), 'utf8'))
-ok('point is slot-private, pin is not', fixture.forms.has('point') && !fixture.forms.has('pin'), [...fixture.forms].join(' '))
-ok('only the pair loop is written in place, both of its writes', JSON.stringify(fixture.writes) === JSON.stringify(['p:a', 'q:b']), fixture.writes.join(' | '))
+const fixture = facts(
+  readFileSync(
+    join(TERM, 'test/compile/meaning-native/place.tree'),
+    'utf8',
+  ),
+)
+ok(
+  'point is slot-private, pin is not',
+  fixture.forms.has('point') && !fixture.forms.has('pin'),
+  [...fixture.forms].join(' '),
+)
+ok(
+  'only the pair loop is written in place, both of its writes',
+  JSON.stringify(fixture.writes) === JSON.stringify(['p:a', 'q:b']),
+  fixture.writes.join(' | '),
+)
 
 // 2. n-body: the four writes, and the TypeScript it drives
-const nbody = facts(readFileSync(join(TERM, 'deck/mark/kernels/n-body/term.tree'), 'utf8'))
-ok('n-body writes all four in place', nbody.writes.length === 4, nbody.writes.join(' | '))
+const nbody = facts(
+  readFileSync(
+    join(TERM, 'deck/mark/kernels/n-body/term.tree'),
+    'utf8',
+  ),
+)
+ok(
+  'n-body writes all four in place',
+  nbody.writes.length === 4,
+  nbody.writes.join(' | '),
+)
 const ts = emitTypeScript(nbody.program)
-ok('TypeScript assigns the changed fields and allocates nothing', /bi\.vx = bi\.vx - dx \* mj/.test(ts) && !/__termPut\(bodies/.test(ts))
+ok(
+  'TypeScript assigns the changed fields and allocates nothing',
+  /bi\.vx = bi\.vx - dx \* mj/.test(ts) &&
+    !/__termPut\(bodies/.test(ts),
+)
 
 const base = `load @term/base/list
   find list
@@ -95,7 +136,9 @@ task bump
 `
 
 // 3-7. what must NOT be private, each beside the same program without the hazard
-ok('the plain program is private and written in place', facts(`${base}
+ok(
+  'the plain program is private and written in place',
+  facts(`${base}
 task compute
   like number
   save xs
@@ -107,7 +150,8 @@ task compute
       read xs
       code 0
   send back, read s/a
-`).writes.length === 1)
+`).writes.length === 1,
+)
 
 // a second name for the list is the same list (lists are references on all four backends today; D1's list values
 // arrive with self-hosting-0026), so a write through it is a write to the same slot. A COPY is the hazard: it holds
@@ -220,8 +264,13 @@ task compute
 )
 
 // 9-11. Swift, where a record is a value: the slot locals read through their slot, and the hazards kept as copies
-const swiftFacts = (text: string): { locals: string[]; swift: string } => {
-  const built = compile({ file: 'main.tree', text }, { resolve: withNativeEnv('swift', stdlib), env: 'swift' })
+const swiftFacts = (
+  text: string,
+): { locals: string[]; swift: string } => {
+  const built = compile(
+    { file: 'main.tree', text },
+    { resolve: withNativeEnv('swift', stdlib), env: 'swift' },
+  )
 
   if (!built.ok) {
     throw new Error(built.diagnostics.map(d => d.message).join(' | '))
@@ -229,20 +278,38 @@ const swiftFacts = (text: string): { locals: string[]; swift: string } => {
 
   const { locals } = valuePlaces(built.program)
 
-  return { locals: [...locals.keys()].map(s => (s as { name?: string }).name ?? ''), swift: emitSwift(built.program) }
+  return {
+    locals: [...locals.keys()].map(
+      s => (s as { name?: string }).name ?? '',
+    ),
+    swift: emitSwift(built.program),
+  }
 }
 
-const swiftBody = swiftFacts(readFileSync(join(TERM, 'deck/mark/kernels/n-body/term.tree'), 'utf8'))
+const swiftBody = swiftFacts(
+  readFileSync(
+    join(TERM, 'deck/mark/kernels/n-body/term.tree'),
+    'utf8',
+  ),
+)
 ok(
-  'Swift reads n-body\'s bodies through their slots and writes only the changed fields',
-  /bodies\[i\]\.vx = \(bodies\[i\]\.vx - \(dx \* mj\)\)/.test(swiftBody.swift) && !/let bi = /.test(swiftBody.swift),
+  "Swift reads n-body's bodies through their slots and writes only the changed fields",
+  /bodies\[i\]\.vx = \(bodies\[i\]\.vx - \(dx \* mj\)\)/.test(
+    swiftBody.swift,
+  ) && !/let bi = /.test(swiftBody.swift),
   swiftBody.locals.join(' '),
 )
 
-const swiftFixture = swiftFacts(readFileSync(join(TERM, 'test/compile/meaning-native/place.tree'), 'utf8'))
+const swiftFixture = swiftFacts(
+  readFileSync(
+    join(TERM, 'test/compile/meaning-native/place.tree'),
+    'utf8',
+  ),
+)
 ok(
-  'in the fixture, the pair loop\'s locals and the plain reads are read through the slot, and no hazard\'s local is',
-  JSON.stringify(swiftFixture.locals.sort()) === JSON.stringify(['first', 'p', 'p0', 'p1', 'p2', 'q']),
+  "in the fixture, the pair loop's locals and the plain reads are read through the slot, and no hazard's local is",
+  JSON.stringify(swiftFixture.locals.sort()) ===
+    JSON.stringify(['first', 'p', 'p0', 'p1', 'p2', 'q']),
   swiftFixture.locals.join(' '),
 )
 

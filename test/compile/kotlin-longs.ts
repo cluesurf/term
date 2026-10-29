@@ -110,7 +110,9 @@ fun main() {
 )
 
 const jar = join(dir, 'longs.jar')
-execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], { stdio: ['ignore', 'pipe', 'inherit'] })
+execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], {
+  stdio: ['ignore', 'pipe', 'inherit'],
+})
 const ran = spawnSync('java', ['-jar', jar], { encoding: 'utf8' })
 process.stdout.write(ran.stdout)
 process.stderr.write(ran.stderr)

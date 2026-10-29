@@ -47,12 +47,23 @@ form statement
   case stop
 `
 
-function build(body: string): { ok: boolean; messages: string; typescript: string } {
-  const result = compile({ file: 'qualified.tree', text: `${forms}\n${body}` }, { resolve: withNativeEnv('node', stdlibResolver()!) })
+function build(body: string): {
+  ok: boolean
+  messages: string
+  typescript: string
+} {
+  const result = compile(
+    { file: 'qualified.tree', text: `${forms}\n${body}` },
+    { resolve: withNativeEnv('node', stdlibResolver()!) },
+  )
 
   return {
     ok: result.ok,
-    messages: result.ok ? '' : result.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+    messages: result.ok
+      ? ''
+      : result.diagnostics
+          .map(d => `${d.name}: ${d.message}`)
+          .join(' | '),
     typescript: result.ok ? result.typescript : '',
   }
 }
@@ -63,7 +74,11 @@ const literal = build(`task one
     make literal/integer
       bind value, code 1
 `)
-ok('a qualified construction of a shared case builds', literal.ok, literal.messages)
+ok(
+  'a qualified construction of a shared case builds',
+  literal.ok,
+  literal.messages,
+)
 
 const outcome = build(`task one
   like outcome
@@ -71,7 +86,11 @@ const outcome = build(`task one
     make outcome/integer
       bind value, text <seven>
 `)
-ok('the other owner of the same case builds with its own field type', outcome.ok, outcome.messages)
+ok(
+  'the other owner of the same case builds with its own field type',
+  outcome.ok,
+  outcome.messages,
+)
 
 const renamed = build(`task one
   like expression
@@ -81,7 +100,11 @@ const renamed = build(`task one
         make literal/integer
           bind value, code 4
 `)
-ok('a form renamed for a case of its name is qualified by the written name', renamed.ok, renamed.messages)
+ok(
+  'a form renamed for a case of its name is qualified by the written name',
+  renamed.ok,
+  renamed.messages,
+)
 
 const wrong = build(`task one
   like outcome
@@ -89,7 +112,11 @@ const wrong = build(`task one
     make outcome/integer
       bind value, code 7
 `)
-ok('the named owner is the one checked: a field of the other owner is refused', !wrong.ok, wrong.messages || 'it built')
+ok(
+  'the named owner is the one checked: a field of the other owner is refused',
+  !wrong.ok,
+  wrong.messages || 'it built',
+)
 
 const unknown = build(`task one
   like outcome
@@ -97,7 +124,11 @@ const unknown = build(`task one
     make nowhere/integer
       bind value, code 7
 `)
-ok('an owner that names no form is refused', !unknown.ok && /names no form/.test(unknown.messages), unknown.messages || 'it built')
+ok(
+  'an owner that names no form is refused',
+  !unknown.ok && /names no form/.test(unknown.messages),
+  unknown.messages || 'it built',
+)
 
 console.log(`\nqualified-case: ${pass} pass, ${fail} fail`)
 

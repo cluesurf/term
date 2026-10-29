@@ -25,7 +25,11 @@ function ok(name: string, holds: boolean, detail = ''): void {
 }
 
 const build = (text: string) =>
-  compile({ file: 'kernel.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!), library: true, leanOf: () => true } as never)
+  compile({ file: 'kernel.tree', text }, {
+    resolve: withNativeEnv('node', stdlibResolver()!),
+    library: true,
+    leanOf: () => true,
+  } as never)
 
 const named = build(`form type
   mark tag, name kind
@@ -39,7 +43,15 @@ task number-type
   back make number
 `)
 
-ok('a task answering a form named type builds', named.ok, named.ok ? '' : named.diagnostics.map(d => d.message.split('\n').join(' ')).join(' | '))
+ok(
+  'a task answering a form named type builds',
+  named.ok,
+  named.ok
+    ? ''
+    : named.diagnostics
+        .map(d => d.message.split('\n').join(' '))
+        .join(' | '),
+)
 
 const optional = build(`form shape
   case open
@@ -54,10 +66,25 @@ task open-shape
   back make open
 `)
 
-ok('a construction leaving a need false field out builds', optional.ok, optional.ok ? '' : optional.diagnostics.map(d => d.message.split('\n').join(' ')).join(' | '))
+ok(
+  'a construction leaving a need false field out builds',
+  optional.ok,
+  optional.ok
+    ? ''
+    : optional.diagnostics
+        .map(d => d.message.split('\n').join(' '))
+        .join(' | '),
+)
 
 if (optional.ok) {
-  ok('and the field is left out of what it builds', /\{ form: "open" \}/.test(optional.typescript), optional.typescript.split('\n').filter(l => /open/.test(l)).join(' | '))
+  ok(
+    'and the field is left out of what it builds',
+    /\{ form: "open" \}/.test(optional.typescript),
+    optional.typescript
+      .split('\n')
+      .filter(l => /open/.test(l))
+      .join(' | '),
+  )
 }
 
 console.log(`\nform-named-type: ${pass} pass, ${fail} fail`)

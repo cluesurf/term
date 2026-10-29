@@ -9,7 +9,10 @@ import type { DeckOf } from '@term/make/code/compile/roll'
 import { manifestNameOf } from '@term/call/code/manifest-name'
 
 export function projectDeckOf(): DeckOf {
-  const byDir = new Map<string, { name: string; root: string } | undefined>()
+  const byDir = new Map<
+    string,
+    { name: string; root: string } | undefined
+  >()
 
   return file => {
     const dir = path.dirname(file)

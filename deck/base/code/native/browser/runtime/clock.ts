@@ -12,6 +12,6 @@ const clock = {
     clockOrigin ??= at
     return Math.round((at - clockOrigin) * 1e6)
   },
-  delay:(duration: number): Promise<void> =>
+  delay: (duration: number): Promise<void> =>
     new Promise(resolve => setTimeout(resolve, duration)),
 }

@@ -11,6 +11,10 @@ import type { DeckHome } from '@term/make/code/check/private'
 import { checkHiddenMakes as checkIn } from '@term/make/code/check/hide-guard'
 
 // every make of a hidden form from outside its declaring file, in program order
-export function checkHiddenMakes(program: Program, file: string, decks: DeckHome[]): Diagnostic[] {
+export function checkHiddenMakes(
+  program: Program,
+  file: string,
+  decks: DeckHome[],
+): Diagnostic[] {
   return checkIn(program as never, file, decks) as Diagnostic[]
 }

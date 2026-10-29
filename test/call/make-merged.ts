@@ -31,54 +31,99 @@ function project(broken: boolean): string {
   // a prefix without the word the build's output is searched for
   const root = tempDir('term-pool-')
   mkdirSync(join(root, 'code'), { recursive: true })
-  writeFileSync(join(root, 'deck.tree'), 'deck @probe/make-merged\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\n')
+  writeFileSync(
+    join(root, 'deck.tree'),
+    'deck @probe/make-merged\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\n',
+  )
 
   for (let n = 1; n <= FILES; n++) {
-    writeFileSync(join(root, `code/times-${n}.tree`), `task times-${n}\n  take x, like number\n  like number\n  back multiply(x, ${n})\n`)
+    writeFileSync(
+      join(root, `code/times-${n}.tree`),
+      `task times-${n}\n  take x, like number\n  like number\n  back multiply(x, ${n})\n`,
+    )
   }
 
   if (broken) {
-    writeFileSync(join(root, 'code/broken.tree'), 'task wrong\n  like number\n  back <not a number>\n')
+    writeFileSync(
+      join(root, 'code/broken.tree'),
+      'task wrong\n  like number\n  back <not a number>\n',
+    )
   }
 
   return root
 }
 
 const term = (root: string, ...args: string[]) => {
-  const ran = spawnSync(process.execPath, [LINE, ...args], { cwd: root, encoding: 'utf8', maxBuffer: 1 << 26 })
+  const ran = spawnSync(process.execPath, [LINE, ...args], {
+    cwd: root,
+    encoding: 'utf8',
+    maxBuffer: 1 << 26,
+  })
 
   return { status: ran.status, out: `${ran.stdout}\n${ran.stderr}` }
 }
 
 const pooled = cpus().length > 2
 if (!pooled) {
-  console.log(`skip  the pool needs more than two cores, this machine has ${cpus().length}`)
+  console.log(
+    `skip  the pool needs more than two cores, this machine has ${cpus().length}`,
+  )
 }
 
 // 1. a clean project: the merged build passes and writes every file
 {
   const root = project(false)
   const merged = term(root, 'make', '--merged')
-  ok('merged build of a pooled project exits 0', merged.status === 0, `${merged.status} ${merged.out}`)
-  ok('merged build never stops on an internal error', !/internal error|not iterable/.test(merged.out), merged.out)
-  ok('merged build says it was merged', /merged/.test(merged.out), merged.out)
+  ok(
+    'merged build of a pooled project exits 0',
+    merged.status === 0,
+    `${merged.status} ${merged.out}`,
+  )
+  ok(
+    'merged build never stops on an internal error',
+    !/internal error|not iterable/.test(merged.out),
+    merged.out,
+  )
+  ok(
+    'merged build says it was merged',
+    /merged/.test(merged.out),
+    merged.out,
+  )
   ok(
     'merged build writes every module',
-    Array.from({ length: FILES }, (_, i) => existsSync(join(root, `host/code/times-${i + 1}.ts`))).every(Boolean),
+    Array.from({ length: FILES }, (_, i) =>
+      existsSync(join(root, `host/code/times-${i + 1}.ts`)),
+    ).every(Boolean),
     merged.out,
   )
 
   const separate = term(root, 'make')
-  ok('separate build of the same project exits 0', separate.status === 0, `${separate.status} ${separate.out}`)
+  ok(
+    'separate build of the same project exits 0',
+    separate.status === 0,
+    `${separate.status} ${separate.out}`,
+  )
 }
 
 // 2. a project with one file that does not check: the merged build reads the pool's problems and reports that file
 {
   const root = project(true)
   const merged = term(root, 'make', '--merged')
-  ok('merged build of a failing file exits 1', merged.status === 1, `${merged.status} ${merged.out}`)
-  ok('merged build never stops on an internal error (failing file)', !/internal error|not iterable/.test(merged.out), merged.out)
-  ok('merged build names the failing file', /broken\.tree/.test(merged.out), merged.out)
+  ok(
+    'merged build of a failing file exits 1',
+    merged.status === 1,
+    `${merged.status} ${merged.out}`,
+  )
+  ok(
+    'merged build never stops on an internal error (failing file)',
+    !/internal error|not iterable/.test(merged.out),
+    merged.out,
+  )
+  ok(
+    'merged build names the failing file',
+    /broken\.tree/.test(merged.out),
+    merged.out,
+  )
 }
 
 console.log(`\nmake-merged: ${pass} pass, ${fail} fail`)

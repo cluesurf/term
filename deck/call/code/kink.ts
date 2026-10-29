@@ -6,11 +6,21 @@
 // A compiler code is printed in hexadecimal and padded (`0036`) and is a number in JSON (`54`), so a lookup reads four
 // digits as the printed form, `0x` as hexadecimal, and any other run of digits as the JSON number.
 
-import { diagnosticNames, entryOf, nearest } from '@term/make/code/parser/diagnostic'
+import {
+  diagnosticNames,
+  entryOf,
+  nearest,
+} from '@term/make/code/parser/diagnostic'
 import { FIXABLE } from '@term/make/code/fix'
 import { lintCatalog } from '@term/make/code/lint/lint'
 import { MANIFEST_CATALOG } from '@term/call/code/lint'
-import { closeRun, field, openRun, printData, report } from '@term/call/code/output'
+import {
+  closeRun,
+  field,
+  openRun,
+  printData,
+  report,
+} from '@term/call/code/output'
 import * as port from '@term/call/code/kink-find'
 
 export type Kink = {
@@ -54,15 +64,17 @@ export function kinkCatalog(): Kink[] {
 
   const lint = [...lintCatalog(), ...MANIFEST_CATALOG]
     .sort((a, b) => a.code.localeCompare(b.code))
-    .map((rule): Kink => ({
-      kind: 'lint',
-      name: rule.name,
-      code: rule.code,
-      label: rule.code,
-      severity: rule.severity,
-      says: rule.docs,
-      fixable: rule.fixable,
-    }))
+    .map(
+      (rule): Kink => ({
+        kind: 'lint',
+        name: rule.name,
+        code: rule.code,
+        label: rule.code,
+        severity: rule.severity,
+        says: rule.docs,
+        fixable: rule.fixable,
+      }),
+    )
 
   return [...compiler, ...lint]
 }
@@ -89,7 +101,9 @@ export function findKink(query: string): Kink | undefined {
   const asked = all.map(portKink)
   const found = port.findKink(query, asked)
 
-  return found.form === 'some' ? all[asked.indexOf(found.value)] : undefined
+  return found.form === 'some'
+    ? all[asked.indexOf(found.value)]
+    : undefined
 }
 
 function asJson(kink: Kink): Record<string, unknown> {
@@ -106,7 +120,11 @@ function asJson(kink: Kink): Record<string, unknown> {
   }
 }
 
-export function showKink(input: { root: string; query?: string; json: boolean }): void {
+export function showKink(input: {
+  root: string
+  query?: string
+  json: boolean
+}): void {
   if (input.query === undefined) {
     const all = kinkCatalog()
 
@@ -122,18 +140,31 @@ export function showKink(input: { root: string; query?: string; json: boolean })
   const kink = findKink(input.query)
 
   if (!kink) {
-    const near = nearest(input.query.toLowerCase(), kinkCatalog().map(one => one.name))
+    const near = nearest(
+      input.query.toLowerCase(),
+      kinkCatalog().map(one => one.name),
+    )
 
     if (input.json) {
-      printData(`${JSON.stringify({ error: 'not-found', query: input.query, ...(near ? { nearest: near } : {}) })}\n`)
+      printData(
+        `${JSON.stringify({ error: 'not-found', query: input.query, ...(near ? { nearest: near } : {}) })}\n`,
+      )
       process.exitCode = 1
 
       return
     }
 
     openRun({ verb: 'show', root: input.root })
-    report({ glyph: 'failed', kind: 'problem', subject: `There is no diagnostic named ${input.query}`, ...(near ? { fields: [field('near', near)] } : {}) })
-    closeRun({ verdict: 'Nothing shown', next: 'term show kink, which lists every name and code' })
+    report({
+      glyph: 'failed',
+      kind: 'problem',
+      subject: `There is no diagnostic named ${input.query}`,
+      ...(near ? { fields: [field('near', near)] } : {}),
+    })
+    closeRun({
+      verdict: 'Nothing shown',
+      next: 'term show kink, which lists every name and code',
+    })
 
     return
   }

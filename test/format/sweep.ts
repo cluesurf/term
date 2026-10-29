@@ -31,7 +31,12 @@
 //
 // Run: npx tsx test/format/sweep.ts
 
-import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs'
+import {
+  readdirSync,
+  readFileSync,
+  statSync,
+  existsSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { formatReport } from '@term/make/code/format/format'
 import { parse } from '@term/make/code/parser/tree'
@@ -39,7 +44,8 @@ import { importsOf, programOf } from '@term/make/code/format/meaning'
 import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import { makeMemo } from '../memo'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 
 // Files the formatter changes the meaning of, or cannot settle on. A BASELINE, not permission: the sweep fails
@@ -72,7 +78,11 @@ function treeFiles(dir: string, out: string[] = []): string[] {
   }
 
   for (const entry of entries) {
-    if (entry === 'node_modules' || entry === '.base' || entry.startsWith('.')) {
+    if (
+      entry === 'node_modules' ||
+      entry === '.base' ||
+      entry.startsWith('.')
+    ) {
       continue
     }
 
@@ -93,7 +103,11 @@ function treeFiles(dir: string, out: string[] = []): string[] {
 }
 
 // the mill's Program with spans dropped and template pieces merged, so only the MEANING is compared
-function program(file: string, text: string, lean: boolean): string | undefined {
+function program(
+  file: string,
+  text: string,
+  lean: boolean,
+): string | undefined {
   const parsed = parse({ file, text })
 
   return parsed.ok ? programOf(parsed.tree, file, lean) : undefined
@@ -110,10 +124,18 @@ function commentWords(file: string, text: string): string {
       return
     }
 
-    const record = node as { comments?: { text: string }[]; nodes?: unknown[] }
+    const record = node as {
+      comments?: { text: string }[]
+      nodes?: unknown[]
+    }
 
     for (const comment of record.comments ?? []) {
-      words.push(...comment.text.replace(/^\s*#+/, '').split(/\s+/).filter(Boolean))
+      words.push(
+        ...comment.text
+          .replace(/^\s*#+/, '')
+          .split(/\s+/)
+          .filter(Boolean),
+      )
     }
 
     for (const child of record.nodes ?? []) {
@@ -136,7 +158,9 @@ const leanOf = projectLeanOf(TERM)
 // drift (the file is unchanged), but a layout the rules ask for and the formatter could not prove, so it is listed
 let refused = 0
 
-const files = treeFiles(join(TERM, 'deck')).concat(treeFiles(join(TERM, 'test')))
+const files = treeFiles(join(TERM, 'deck')).concat(
+  treeFiles(join(TERM, 'test')),
+)
 
 console.log(`${files.length} .tree files`)
 
@@ -195,10 +219,14 @@ for (const file of files) {
 
     if (report.refused) {
       refused++
-      note(`${label}: the formatter's meaning check refused its own layout (${report.refused})`)
+      note(
+        `${label}: the formatter's meaning check refused its own layout (${report.refused})`,
+      )
     }
   } catch (error) {
-    note(`${label}: the formatter threw: ${(error as Error).message.slice(0, 160)}`)
+    note(
+      `${label}: the formatter threw: ${(error as Error).message.slice(0, 160)}`,
+    )
     continue
   }
 
@@ -209,9 +237,15 @@ for (const file of files) {
   const same = after !== undefined && after === before
 
   if (KNOWN_MEANING.includes(label)) {
-    same ? note(`${label}: meaning is preserved now, so take it off KNOWN_MEANING`) : knownMeaning++
+    same
+      ? note(
+          `${label}: meaning is preserved now, so take it off KNOWN_MEANING`,
+        )
+      : knownMeaning++
   } else if (!same) {
-    note(`${label}: formatting changed the mill Program${after === undefined ? ' (the formatted file does not compile)' : ''}`)
+    note(
+      `${label}: formatting changed the mill Program${after === undefined ? ' (the formatted file does not compile)' : ''}`,
+    )
   } else {
     pass++
   }
@@ -241,14 +275,20 @@ for (const file of files) {
   try {
     twice = formatReport({ file, text: once }, { lean, role }).text
   } catch (error) {
-    note(`${label}: the formatter threw on its own output: ${(error as Error).message.slice(0, 160)}`)
+    note(
+      `${label}: the formatter threw on its own output: ${(error as Error).message.slice(0, 160)}`,
+    )
     continue
   }
 
   const stable = twice === once
 
   if (KNOWN_UNSTABLE.includes(label)) {
-    stable ? note(`${label}: formatting is stable now, so take it off KNOWN_UNSTABLE`) : knownUnstable++
+    stable
+      ? note(
+          `${label}: formatting is stable now, so take it off KNOWN_UNSTABLE`,
+        )
+      : knownUnstable++
   } else if (!stable) {
     note(`${label}: formatting is not idempotent`)
   } else {
@@ -264,7 +304,9 @@ for (const file of files) {
 const { reused } = memo.save()
 
 if (reused > 0) {
-  console.log(`${reused} file(s) unchanged since they last passed, not checked again (TERM_MEMO=off checks them)`)
+  console.log(
+    `${reused} file(s) unchanged since they last passed, not checked again (TERM_MEMO=off checks them)`,
+  )
 }
 
 for (const line of failures) {

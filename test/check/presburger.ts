@@ -47,7 +47,10 @@ ok(
 )
 
 // 3. integer floor: 2x <= 3 implies x <= 1 (since x <= 1.5 and x is an integer). Over the rationals it would not.
-ok('integer: 2x <= 3 implies x <= 1', proves([atMost(twoX, k(3))], atMost(x, k(1))))
+ok(
+  'integer: 2x <= 3 implies x <= 1',
+  proves([atMost(twoX, k(3))], atMost(x, k(1))),
+)
 
 // 4. SOUNDNESS: 2x <= 3 does NOT imply x <= 0 (x = 1 satisfies the premise).
 ok(
@@ -58,20 +61,26 @@ ok(
 // 5. divisibility with a larger modulus: 4x = 6 is unsatisfiable over the integers (gcd 4 does not divide 6).
 ok(
   'integer: 4x = 6 is unsatisfiable',
-  proves([atMost(linear({ x: 4 }), k(6)), atLeast(linear({ x: 4 }), k(6))], contradiction),
+  proves(
+    [atMost(linear({ x: 4 }), k(6)), atLeast(linear({ x: 4 }), k(6))],
+    contradiction,
+  ),
 )
 
 // 6. SOUNDNESS: 3x = 6 is satisfiable (x = 2).
 ok(
   'soundness: 3x = 6 is satisfiable (not refuted)',
-  !proves([atMost(linear({ x: 3 }), k(6)), atLeast(linear({ x: 3 }), k(6))], contradiction),
+  !proves(
+    [atMost(linear({ x: 3 }), k(6)), atLeast(linear({ x: 3 }), k(6))],
+    contradiction,
+  ),
 )
 
 const y = linear({ y: 1 })
-const eq = (a: ReturnType<typeof linear>, b: ReturnType<typeof linear>) => [
-  atMost(a, b),
-  atLeast(a, b),
-]
+const eq = (
+  a: ReturnType<typeof linear>,
+  b: ReturnType<typeof linear>,
+) => [atMost(a, b), atLeast(a, b)]
 
 // 7. MULTI-VARIABLE divisibility: 2x = y AND y = 3 is unsatisfiable -- exact (unit-coefficient) elimination of `y`
 // reduces it to 2x = 3, which the integer tightening then refutes. Plain Fourier-Motzkin, eliminating `x` first, would

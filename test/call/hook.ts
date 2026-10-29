@@ -3,11 +3,19 @@
 
 import { compile } from '@term/make/code/compile/compile'
 // the Term dispatcher (work/hook/parsing.tree and running.tree), the ports of hook-dispatch.ts (term-cli-in-term-0225)
-import { commandRoutes, dispatch, programOf } from '@term/call/code/work/hook/parsing'
+import {
+  commandRoutes,
+  dispatch,
+  programOf,
+} from '@term/call/code/work/hook/parsing'
 import { runCommandLine } from '@term/call/code/work/hook/running'
 import { projectResolver } from '@term/call/code/make'
 // the TypeScript dispatcher boot.ts still reads, for decision 060's empty choices (item 0363)
-import { commandRoutes as hookCommandRoutes, dispatch as hookDispatch, renderHelp } from '@term/call/code/hook-dispatch'
+import {
+  commandRoutes as hookCommandRoutes,
+  dispatch as hookDispatch,
+  renderHelp,
+} from '@term/call/code/hook-dispatch'
 
 let pass = 0
 let fail = 0
@@ -127,21 +135,48 @@ async function main(): Promise<void> {
   // A LIST SLOT IS THE REST OF THE WORDS: its type says so, with no marker (`many` until 2026-10-05), whether the
   // element is written (`like list, like text`) or not (`like list`). A list `take` under a command is a repeatable
   // option instead (decision cli-in-term/010, below)
-  const join = dispatch(routes, ['join', 'The', 'Name', 'of', 'the', 'Rose'])
-  expect('a list take collects every word left', join.ok && join.args.words, ['The', 'Name', 'of', 'the', 'Rose'])
+  const join = dispatch(routes, [
+    'join',
+    'The',
+    'Name',
+    'of',
+    'the',
+    'Rose',
+  ])
+  expect(
+    'a list take collects every word left',
+    join.ok && join.args.words,
+    ['The', 'Name', 'of', 'the', 'Rose'],
+  )
   const gather = dispatch(routes, ['gather', 'a.txt', 'b.txt'])
-  expect('a bare `like list` collects them too', gather.ok && gather.args.items, ['a.txt', 'b.txt'])
+  expect(
+    'a bare `like list` collects them too',
+    gather.ok && gather.args.items,
+    ['a.txt', 'b.txt'],
+  )
   const one = dispatch(routes, ['load', 'one'])
-  expect('a text take still holds one word', one.ok && one.args.name, 'one')
+  expect(
+    'a text take still holds one word',
+    one.ok && one.args.name,
+    'one',
+  )
 
   // and the retired marker is REFUSED by name. Unread, it was dropped in silence and the take held one word of text
   const retired = compile(
-    { file: 'many.tree', text: 'task join\n  take words, like text\n  send back\n    code 0\n\nhook join\n  take words\n    like text\n    many\n  task join\n' },
+    {
+      file: 'many.tree',
+      text: 'task join\n  take words, like text\n  send back\n    code 0\n\nhook join\n  take words\n    like text\n    many\n  task join\n',
+    },
     {},
   )
   expect(
     'a `many` is refused, naming the list type',
-    !retired.ok && retired.diagnostics.some(d => d.message.includes('`many` is retired') && d.message.includes('like list')),
+    !retired.ok &&
+      retired.diagnostics.some(
+        d =>
+          d.message.includes('`many` is retired') &&
+          d.message.includes('like list'),
+      ),
     true,
   )
 
@@ -220,7 +255,10 @@ async function main(): Promise<void> {
 
   // the task's parameters are filled by name, whatever order the hook lists its takes in
   const pairCall = routes.find(route => route.path === 'pair')?.calls[0]
-  expect('a bound call carries its task parameters', pairCall?.params, ['first', 'second'])
+  expect('a bound call carries its task parameters', pairCall?.params, [
+    'first',
+    'second',
+  ])
 
   // ONE PROGRAM HOOK (decision term/003 part 3): its nested hooks are the commands and its takes the global options,
   // accepted on every command and handed to the console (`globals`), never to the task. A positional binds to a slot
@@ -250,23 +288,63 @@ hook tool
   const built = compile({ file: 'program.tree', text: PROGRAM }, {})
 
   if (!built.ok) {
-    console.log('FAIL compile program', JSON.stringify(built.diagnostics.slice(0, 3)))
+    console.log(
+      'FAIL compile program',
+      JSON.stringify(built.diagnostics.slice(0, 3)),
+    )
     process.exit(1)
   }
 
   const program = commandRoutes(built.program)
-  expect('the program is read as its commands', programOf(program).commands.map(route => route.path), ['build'])
-  const run = dispatch(program, ['build', 'a.tree', '--watch', '-q', '--color', 'never'])
-  expect('a slot takes the positional', run.ok && run.args.file, 'a.tree')
+  expect(
+    'the program is read as its commands',
+    programOf(program).commands.map(route => route.path),
+    ['build'],
+  )
+  const run = dispatch(program, [
+    'build',
+    'a.tree',
+    '--watch',
+    '-q',
+    '--color',
+    'never',
+  ])
+  expect(
+    'a slot takes the positional',
+    run.ok && run.args.file,
+    'a.tree',
+  )
   expect('a long alias reaches its take', run.ok && run.args.ride, true)
-  expect('a global is the console\'s', run.ok && run.globals, { quiet: true, color: 'never' })
-  expect('and never the task\'s', run.ok && Object.keys(run.args).sort(), ['file', 'ride'])
-  const noSlot = dispatch(program, ['build', '--ride', 'a.tree', 'b.tree'])
+  expect("a global is the console's", run.ok && run.globals, {
+    quiet: true,
+    color: 'never',
+  })
+  expect(
+    "and never the task's",
+    run.ok && Object.keys(run.args).sort(),
+    ['file', 'ride'],
+  )
+  const noSlot = dispatch(program, [
+    'build',
+    '--ride',
+    'a.tree',
+    'b.tree',
+  ])
   expect('a word no slot holds is refused', noSlot.ok, false)
   const badGlobal = dispatch(program, ['build', '--color', 'red'])
-  expect('a global\'s choices are checked', badGlobal.ok, false)
-  const dashed = dispatch(program, ['build', 'a.tree', '--', 'run', '--help'])
-  expect('words after -- no slot holds are left to the task, not refused', [dashed.ok, dashed.ok && dashed.args.file], [true, 'a.tree'])
+  expect("a global's choices are checked", badGlobal.ok, false)
+  const dashed = dispatch(program, [
+    'build',
+    'a.tree',
+    '--',
+    'run',
+    '--help',
+  ])
+  expect(
+    'words after -- no slot holds are left to the task, not refused',
+    [dashed.ok, dashed.ok && dashed.args.file],
+    [true, 'a.tree'],
+  )
 
   // A LIST TAKE IS A REPEATABLE OPTION (decision cli-in-term/010): every occurrence in line order, `--x=v` too; left
   // out, the task gets the empty list; a positional never fills it
@@ -287,36 +365,72 @@ hook tool
   const repeatBuilt = compile({ file: 'repeat.tree', text: REPEAT }, {})
 
   if (!repeatBuilt.ok) {
-    console.log('FAIL compile repeat', JSON.stringify(repeatBuilt.diagnostics.slice(0, 3)))
+    console.log(
+      'FAIL compile repeat',
+      JSON.stringify(repeatBuilt.diagnostics.slice(0, 3)),
+    )
     process.exit(1)
   }
 
   const repeat = commandRoutes(repeatBuilt.program)
-  const laws = dispatch(repeat, ['knit', '--law', 'one', '--law=two', 'a', 'spec'])
-  expect('a list option collects every occurrence in order', laws.ok && laws.args.law, ['one', 'two'])
-  expect('and the positionals still go to the list slot', laws.ok && laws.args.spec, ['a', 'spec'])
+  const laws = dispatch(repeat, [
+    'knit',
+    '--law',
+    'one',
+    '--law=two',
+    'a',
+    'spec',
+  ])
+  expect(
+    'a list option collects every occurrence in order',
+    laws.ok && laws.args.law,
+    ['one', 'two'],
+  )
+  expect(
+    'and the positionals still go to the list slot',
+    laws.ok && laws.args.spec,
+    ['a', 'spec'],
+  )
   const oneLaw = dispatch(repeat, ['knit', '--law', 'one'])
-  expect('one occurrence is a list of one', oneLaw.ok && oneLaw.args.law, ['one'])
+  expect(
+    'one occurrence is a list of one',
+    oneLaw.ok && oneLaw.args.law,
+    ['one'],
+  )
   const handed: unknown[][] = []
   await runCommandLine({
     name: 'tool',
     routes: repeat,
     argv: ['knit', 'x'],
-    resolve: () => (...args: unknown[]) => {
-      handed.push(args)
-      return 0
-    },
+    resolve:
+      () =>
+      (...args: unknown[]) => {
+        handed.push(args)
+        return 0
+      },
     out: () => undefined,
     err: () => undefined,
   })
-  expect('a list option left out reaches the task as the empty list', handed[0], [['x'], []])
+  expect(
+    'a list option left out reaches the task as the empty list',
+    handed[0],
+    [['x'], []],
+  )
 
   // FLAGS INTERLEAVE WITH POSITIONALS up to `--` (decision cli-in-term/012 part 1): a list slot alone no longer stops
   // flag parsing, as yargs read `knit [spec..]` and `lint [paths..]`
   const between = dispatch(repeat, ['knit', 'a', '--law', 'x', 'b'])
-  expect('knit a --law x b: spec [a, b], law [x]', between.ok && [between.args.spec, between.args.law], [['a', 'b'], ['x']])
+  expect(
+    'knit a --law x b: spec [a, b], law [x]',
+    between.ok && [between.args.spec, between.args.law],
+    [['a', 'b'], ['x']],
+  )
   const after = dispatch(repeat, ['knit', 'a', 'b', '--law', 'x'])
-  expect('knit a b --law x: spec [a, b], law [x]', after.ok && [after.args.spec, after.args.law], [['a', 'b'], ['x']])
+  expect(
+    'knit a b --law x: spec [a, b], law [x]',
+    after.ok && [after.args.spec, after.args.law],
+    [['a', 'b'], ['x']],
+  )
   const LINT = `task lint
   take paths, like list, like text
   take fix, like boolean
@@ -334,15 +448,26 @@ hook tool
   const lintBuilt = compile({ file: 'lint.tree', text: LINT }, {})
 
   if (!lintBuilt.ok) {
-    console.log('FAIL compile lint', JSON.stringify(lintBuilt.diagnostics.slice(0, 3)))
+    console.log(
+      'FAIL compile lint',
+      JSON.stringify(lintBuilt.diagnostics.slice(0, 3)),
+    )
     process.exit(1)
   }
 
   const lint = commandRoutes(lintBuilt.program)
   const fixing = dispatch(lint, ['lint', 'a', '--fix', 'b'])
-  expect('lint a --fix b: paths [a, b], fix true', fixing.ok && [fixing.args.paths, fixing.args.fix], [['a', 'b'], true])
+  expect(
+    'lint a --fix b: paths [a, b], fix true',
+    fixing.ok && [fixing.args.paths, fixing.args.fix],
+    [['a', 'b'], true],
+  )
   const odd = dispatch(lint, ['lint', '--', '-odd'])
-  expect('lint -- -odd: a positional starting with - is written after --', odd.ok && odd.args.paths, ['-odd'])
+  expect(
+    'lint -- -odd: a positional starting with - is written after --',
+    odd.ok && odd.args.paths,
+    ['-odd'],
+  )
 
   // A LAST LIST SLOT MARKED `mark pass` (decision cli-in-term/012 part 2) halts the command's flags at its first
   // positional: from there every word is the child's, verbatim, `--` and `--help` included
@@ -392,31 +517,80 @@ hook zone
   const childBuilt = compile({ file: 'child.tree', text: CHILD }, {})
 
   if (!childBuilt.ok) {
-    console.log('FAIL compile child', JSON.stringify(childBuilt.diagnostics.slice(0, 3)))
+    console.log(
+      'FAIL compile child',
+      JSON.stringify(childBuilt.diagnostics.slice(0, 3)),
+    )
     process.exit(1)
   }
 
   const child = commandRoutes(childBuilt.program)
-  const called = dispatch(child, ['call', '-t', 'dev', 'node', '-e', 'x', '--', '--port', '3'])
+  const called = dispatch(child, [
+    'call',
+    '-t',
+    'dev',
+    'node',
+    '-e',
+    'x',
+    '--',
+    '--port',
+    '3',
+  ])
   expect(
     'call -t dev node -e x -- --port 3: sort dev, name node, list [-e, x, --, --port, 3]',
     called.ok && [called.args.sort, called.args.name, called.args.list],
     ['dev', 'node', ['-e', 'x', '--', '--port', '3']],
   )
   const plain = dispatch(child, ['call', 'node', '-e', 'x'])
-  expect('call node -e x: name node, list [-e, x]', plain.ok && [plain.args.name, plain.args.list], ['node', ['-e', 'x']])
+  expect(
+    'call node -e x: name node, list [-e, x]',
+    plain.ok && [plain.args.name, plain.args.list],
+    ['node', ['-e', 'x']],
+  )
   const dashedFirst = dispatch(child, ['call', '--', 'node', '-e', 'x'])
-  expect('a -- before the first positional is consumed', dashedFirst.ok && [dashedFirst.args.name, dashedFirst.args.list], ['node', ['-e', 'x']])
-  const npm = dispatch(child, ['call', 'npm', 'run', 'dev', '--', '--port', '3'])
-  expect('a -- after the halt reaches the child', npm.ok && npm.args.list, ['run', 'dev', '--', '--port', '3'])
-  const over = dispatch(child, ['load', '--over', 'dev', 'node', '-e', 'x'])
+  expect(
+    'a -- before the first positional is consumed',
+    dashedFirst.ok && [dashedFirst.args.name, dashedFirst.args.list],
+    ['node', ['-e', 'x']],
+  )
+  const npm = dispatch(child, [
+    'call',
+    'npm',
+    'run',
+    'dev',
+    '--',
+    '--port',
+    '3',
+  ])
+  expect(
+    'a -- after the halt reaches the child',
+    npm.ok && npm.args.list,
+    ['run', 'dev', '--', '--port', '3'],
+  )
+  const over = dispatch(child, [
+    'load',
+    '--over',
+    'dev',
+    'node',
+    '-e',
+    'x',
+  ])
   expect(
     'load --over dev node -e x: over true, spot dev, main node, list [-e, x]',
-    over.ok && [over.args.over, over.args.spot, over.args.main, over.args.list],
+    over.ok && [
+      over.args.over,
+      over.args.spot,
+      over.args.main,
+      over.args.list,
+    ],
     [true, 'dev', 'node', ['-e', 'x']],
   )
   const late = dispatch(child, ['load', 'dev', '--over', 'node'])
-  expect('a flag after the first positional is the child\'s: main --over', late.ok && [late.args.main, late.args.list, late.args.over], ['--over', ['node'], false])
+  expect(
+    "a flag after the first positional is the child's: main --over",
+    late.ok && [late.args.main, late.args.list, late.args.over],
+    ['--over', ['node'], false],
+  )
 
   const childHanded: unknown[][] = []
   const childShown: string[] = []
@@ -424,14 +598,20 @@ hook zone
     name: 'zone',
     routes: child,
     argv: ['call', 'node', '--help'],
-    resolve: () => (...args: unknown[]) => {
-      childHanded.push(args)
-      return 0
-    },
+    resolve:
+      () =>
+      (...args: unknown[]) => {
+        childHanded.push(args)
+        return 0
+      },
     out: line => childShown.push(line),
     err: line => childShown.push(line),
   })
-  expect('call node --help hands list [--help] to the task and prints no help', [childCode, childHanded[0], childShown], [0, ['', 'node', ['--help']], []])
+  expect(
+    'call node --help hands list [--help] to the task and prints no help',
+    [childCode, childHanded[0], childShown],
+    [0, ['', 'node', ['--help']], []],
+  )
   childShown.length = 0
   const ownHelp = await runCommandLine({
     name: 'zone',
@@ -441,7 +621,11 @@ hook zone
     out: line => childShown.push(line),
     err: line => childShown.push(line),
   })
-  expect('--help before the first positional is the command\'s help', [ownHelp, childShown[0]?.startsWith('zone call')], [0, true])
+  expect(
+    "--help before the first positional is the command's help",
+    [ownHelp, childShown[0]?.startsWith('zone call')],
+    [0, true],
+  )
 
   // A PASSING COMMAND (`mark pass`, decision cli-in-term/008 part 2): every word after its path reaches its one slot
   // verbatim, `--help`, `--` and unknown or global flags included; words before it are still the console's
@@ -462,18 +646,35 @@ hook tool
   const passBuilt = compile({ file: 'passing.tree', text: PASSING }, {})
 
   if (!passBuilt.ok) {
-    console.log('FAIL compile passing', JSON.stringify(passBuilt.diagnostics.slice(0, 3)))
+    console.log(
+      'FAIL compile passing',
+      JSON.stringify(passBuilt.diagnostics.slice(0, 3)),
+    )
     process.exit(1)
   }
 
   const passing = commandRoutes(passBuilt.program)
   const helped = dispatch(passing, ['zone', '--help'])
-  expect('a passing route gets --help', helped.ok && helped.args.rest, ['--help'])
+  expect('a passing route gets --help', helped.ok && helped.args.rest, [
+    '--help',
+  ])
   const listed = dispatch(passing, ['zone', 'list', '--quiet'])
-  expect('a passing route gets its words and flags in order', listed.ok && listed.args.rest, ['list', '--quiet'])
-  expect('a global after a passing command is not the console\'s', listed.ok && listed.globals, {})
+  expect(
+    'a passing route gets its words and flags in order',
+    listed.ok && listed.args.rest,
+    ['list', '--quiet'],
+  )
+  expect(
+    "a global after a passing command is not the console's",
+    listed.ok && listed.globals,
+    {},
+  )
   const raw = dispatch(passing, ['zone', '-h', '--', '--typo', 'x'])
-  expect('-h, -- and an unknown flag pass verbatim', raw.ok && raw.args.rest, ['-h', '--', '--typo', 'x'])
+  expect(
+    '-h, -- and an unknown flag pass verbatim',
+    raw.ok && raw.args.rest,
+    ['-h', '--', '--typo', 'x'],
+  )
 
   const seen: unknown[] = []
   const shown: string[] = []
@@ -492,12 +693,20 @@ hook tool
 
   return runPassing(['zone', '--help'])
     .then(code => {
-      expect('runCommandLine hands --help after a passing command to it', [code, seen[0]], [0, ['--help']])
+      expect(
+        'runCommandLine hands --help after a passing command to it',
+        [code, seen[0]],
+        [0, ['--help']],
+      )
       shown.length = 0
       return runPassing(['--help', 'zone'])
     })
     .then(code => {
-      expect('--help before a passing command is the console\'s help of it', [code, seen.length, shown[0]?.startsWith('tool zone')], [0, 1, true])
+      expect(
+        "--help before a passing command is the console's help of it",
+        [code, seen.length, shown[0]?.startsWith('tool zone')],
+        [0, 1, true],
+      )
       shown.length = 0
       return runCommandLine({
         name: 'tool',
@@ -509,14 +718,20 @@ hook tool
       })
     })
     .then(code => {
-      expect('--help after a literal -- is not the console\'s help', [code, shown.some(line => line.startsWith('tool build'))], [0, false])
+      expect(
+        "--help after a literal -- is not the console's help",
+        [code, shown.some(line => line.startsWith('tool build'))],
+        [0, false],
+      )
 
       return maybes().then(emptyChoices)
     })
     .then(() => {
       console.log(`\nhook: ${pass} pass, ${fail} fail`)
 
-      if (fail) {process.exit(1)}
+      if (fail) {
+        process.exit(1)
+      }
     })
 }
 
@@ -547,7 +762,10 @@ task probe
   )
 
   if (!built.ok) {
-    console.log('FAIL compile maybe', JSON.stringify(built.diagnostics.slice(0, 3).map(d => d.message)))
+    console.log(
+      'FAIL compile maybe',
+      JSON.stringify(built.diagnostics.slice(0, 3).map(d => d.message)),
+    )
     process.exit(1)
   }
 
@@ -558,9 +776,11 @@ task probe
       name: 'tool',
       routes,
       argv,
-      resolve: () => (...args: unknown[]) => {
-        got = args
-      },
+      resolve:
+        () =>
+        (...args: unknown[]) => {
+          got = args
+        },
       out: () => undefined,
       err: line => console.log(`  err: ${line}`),
     })
@@ -568,12 +788,32 @@ task probe
   }
 
   const none = { form: 'none' }
-  expect('a maybe text slot absent is none, a maybe number absent none', await run(['probe']), [none, none, false])
-  expect('a maybe text slot given "" is some("")', (await run(['probe', '']))[0], { form: 'some', value: '' })
-  expect('a maybe number take --runs 0 is some(0), a number', (await run(['probe', '--runs', '0']))[1], { form: 'some', value: 0 })
-  expect('a maybe take given reads its item: --runs=3', (await run(['probe', 'x', '--runs=3'])), [{ form: 'some', value: 'x' }, { form: 'some', value: 3 }, false])
+  expect(
+    'a maybe text slot absent is none, a maybe number absent none',
+    await run(['probe']),
+    [none, none, false],
+  )
+  expect(
+    'a maybe text slot given "" is some("")',
+    (await run(['probe', '']))[0],
+    { form: 'some', value: '' },
+  )
+  expect(
+    'a maybe number take --runs 0 is some(0), a number',
+    (await run(['probe', '--runs', '0']))[1],
+    { form: 'some', value: 0 },
+  )
+  expect(
+    'a maybe take given reads its item: --runs=3',
+    await run(['probe', 'x', '--runs=3']),
+    [{ form: 'some', value: 'x' }, { form: 'some', value: 3 }, false],
+  )
   const refused = dispatch(routes, ['probe', '--runs', 'many'])
-  expect('a maybe number take refuses a word that is no number', refused.ok, false)
+  expect(
+    'a maybe number take refuses a word that is no number',
+    refused.ok,
+    false,
+  )
 }
 
 // AN EMPTY `choices` IS NO CHOICES (decision 060 of term/self-host/change/001, item 0363): the mill writes `choices`
@@ -596,19 +836,43 @@ hook paint
   const built = compile({ file: 'picked.tree', text: PICKED }, {})
 
   if (!built.ok) {
-    console.log('FAIL compile picked', JSON.stringify(built.diagnostics.slice(0, 3).map(d => d.message)))
+    console.log(
+      'FAIL compile picked',
+      JSON.stringify(built.diagnostics.slice(0, 3).map(d => d.message)),
+    )
     process.exit(1)
   }
 
   const picked = hookCommandRoutes(built.program)
   const given = hookDispatch(picked, ['paint', '--tone', 'bright'])
-  expect('hook-dispatch: a take with choices refuses a value outside them', given.ok, false)
-  expect('hook-dispatch: its help line names them', renderHelp(picked[0]!, 'tool').includes('one of soft|loud'), true)
+  expect(
+    'hook-dispatch: a take with choices refuses a value outside them',
+    given.ok,
+    false,
+  )
+  expect(
+    'hook-dispatch: its help line names them',
+    renderHelp(picked[0]!, 'tool').includes('one of soft|loud'),
+    true,
+  )
 
-  const emptied = picked.map(route => ({ ...route, takes: route.takes.map(take => (take.name === 'tone' ? { ...take, choices: [] } : take)) }))
+  const emptied = picked.map(route => ({
+    ...route,
+    takes: route.takes.map(take =>
+      take.name === 'tone' ? { ...take, choices: [] } : take,
+    ),
+  }))
   const any = hookDispatch(emptied, ['paint', '--tone', 'bright'])
-  expect('hook-dispatch: a take whose choices is [] accepts any text', [any.ok, any.ok && any.args.tone], [true, 'bright'])
-  expect('hook-dispatch: and its help line names no choices', renderHelp(emptied[0]!, 'tool').includes('one of'), false)
+  expect(
+    'hook-dispatch: a take whose choices is [] accepts any text',
+    [any.ok, any.ok && any.args.tone],
+    [true, 'bright'],
+  )
+  expect(
+    'hook-dispatch: and its help line names no choices',
+    renderHelp(emptied[0]!, 'tool').includes('one of'),
+    false,
+  )
 }
 
 main()

@@ -15,9 +15,15 @@ const blocking = {
   // a symbolic link is followed, so a link to nothing is not there
   existsPath: (at: string): boolean => blockingFs.existsSync(at),
 
-  statPath: (at: string): { kind: string; size: number; changed: number } => {
+  statPath: (
+    at: string,
+  ): { kind: string; size: number; changed: number } => {
     const stats = blockingFs.statSync(at)
-    const kind = stats.isDirectory() ? 'directory' : stats.isFile() ? 'file' : 'other'
+    const kind = stats.isDirectory()
+      ? 'directory'
+      : stats.isFile()
+        ? 'file'
+        : 'other'
 
     return { kind, size: stats.size, changed: stats.mtimeMs }
   },

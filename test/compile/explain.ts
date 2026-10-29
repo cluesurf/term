@@ -27,7 +27,10 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 const root = mkdtempSync(join(tmpdir(), 'explain-'))
 mkdirSync(join(root, 'code'), { recursive: true })
-writeFileSync(join(root, 'deck.tree'), `deck @probe/explain\n  mark <0.0.1>\n`)
+writeFileSync(
+  join(root, 'deck.tree'),
+  `deck @probe/explain\n  mark <0.0.1>\n`,
+)
 
 const helper = join(root, 'code', 'helper.tree')
 const entry = join(root, 'code', 'base.tree')
@@ -40,36 +43,102 @@ const kept = new Map<string, UnitInputs>()
 const build = (helperText: string, cache: CompileCache) => {
   writeFileSync(helper, helperText)
 
-  const explain: UnitExplain = { reasons: new Map(), recall: id => kept.get(id), remember: (id, inputs) => kept.set(id, inputs) }
-  const result = compileSeparate({ file: entry, text: entryText }, { resolve: projectResolver(root), cache, modules: f => `./${f}`, explain })
-  const reasonsOf = (name: string): string[] => [...explain.reasons].find(([label]) => label.endsWith(`/code/${name}.tree`))?.[1] ?? []
+  const explain: UnitExplain = {
+    reasons: new Map(),
+    recall: id => kept.get(id),
+    remember: (id, inputs) => kept.set(id, inputs),
+  }
+  const result = compileSeparate(
+    { file: entry, text: entryText },
+    {
+      resolve: projectResolver(root),
+      cache,
+      modules: f => `./${f}`,
+      explain,
+    },
+  )
+  const reasonsOf = (name: string): string[] =>
+    [...explain.reasons].find(([label]) =>
+      label.endsWith(`/code/${name}.tree`),
+    )?.[1] ?? []
 
-  return { ok: result.ok, helper: reasonsOf('helper'), entry: reasonsOf('base'), built: explain.reasons.size }
+  return {
+    ok: result.ok,
+    helper: reasonsOf('helper'),
+    entry: reasonsOf('base'),
+    built: explain.reasons.size,
+  }
 }
 
-const greet = (params: string): string => `task greet\n${params}  like text\n  save said, <hello>\n  back said\n`
+const greet = (params: string): string =>
+  `task greet\n${params}  like text\n  save said, <hello>\n  back said\n`
 const cache = new CompileCache(undefined, 'one')
 
 const first = build(greet('  take who, like text\n'), cache)
 ok('the first build builds', first.ok)
-ok('a unit never built before says so', first.helper.some(reason => reason.startsWith('nothing recorded')), first.helper.join(' | '))
+ok(
+  'a unit never built before says so',
+  first.helper.some(reason => reason.startsWith('nothing recorded')),
+  first.helper.join(' | '),
+)
 
-const body = build(`task greet\n  take who, like text\n  like text\n  save said, <hello there>\n  back said\n`, cache)
+const body = build(
+  `task greet\n  take who, like text\n  like text\n  save said, <hello there>\n  back said\n`,
+  cache,
+)
 ok('a body edit builds', body.ok)
-ok('the edited unit names its own text', body.helper.some(reason => reason.startsWith('its own text changed') && reason.endsWith('helper.tree')), body.helper.join(' | '))
-ok('and its importer is not built at all', body.entry.length === 0, body.entry.join(' | '))
+ok(
+  'the edited unit names its own text',
+  body.helper.some(
+    reason =>
+      reason.startsWith('its own text changed') &&
+      reason.endsWith('helper.tree'),
+  ),
+  body.helper.join(' | '),
+)
+ok(
+  'and its importer is not built at all',
+  body.entry.length === 0,
+  body.entry.join(' | '),
+)
 
-const signature = build(greet('  take who, like text\n  take how, like text, fall <!>\n'), cache)
+const signature = build(
+  greet('  take who, like text\n  take how, like text, fall <!>\n'),
+  cache,
+)
 ok('a signature edit builds', signature.ok)
-ok('the importer names the name that changed', signature.entry.includes('`greet` changed'), signature.entry.join(' | '))
-ok('and nothing else', signature.entry.length === 1, signature.entry.join(' | '))
+ok(
+  'the importer names the name that changed',
+  signature.entry.includes('`greet` changed'),
+  signature.entry.join(' | '),
+)
+ok(
+  'and nothing else',
+  signature.entry.length === 1,
+  signature.entry.join(' | '),
+)
 
-const compiler = build(greet('  take who, like text\n  take how, like text, fall <!>\n'), new CompileCache(undefined, 'two'))
+const compiler = build(
+  greet('  take who, like text\n  take how, like text, fall <!>\n'),
+  new CompileCache(undefined, 'two'),
+)
 ok('a new compiler builds', compiler.ok)
-ok('and every unit says the compiler changed', compiler.helper.includes('the compiler changed') && compiler.entry.includes('the compiler changed'), `${compiler.helper.join(' | ')} / ${compiler.entry.join(' | ')}`)
+ok(
+  'and every unit says the compiler changed',
+  compiler.helper.includes('the compiler changed') &&
+    compiler.entry.includes('the compiler changed'),
+  `${compiler.helper.join(' | ')} / ${compiler.entry.join(' | ')}`,
+)
 
-const again = build(greet('  take who, like text\n  take how, like text, fall <!>\n'), new CompileCache(undefined, 'two'))
-ok('a fresh cache with nothing changed says the stored answer was missing', again.helper.includes('its stored answer was missing'), again.helper.join(' | '))
+const again = build(
+  greet('  take who, like text\n  take how, like text, fall <!>\n'),
+  new CompileCache(undefined, 'two'),
+)
+ok(
+  'a fresh cache with nothing changed says the stored answer was missing',
+  again.helper.includes('its stored answer was missing'),
+  again.helper.join(' | '),
+)
 
 console.log(`\nexplain: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)

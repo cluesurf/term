@@ -32,18 +32,32 @@ async function run(
   lean: boolean,
   check: (mod: Record<string, (...a: unknown[]) => unknown>) => boolean,
 ): Promise<void> {
-  const built = compile({ file: `/gate/code/${name.replace(/\W+/g, '-')}.tree`, text }, { leanOf: () => lean })
+  const built = compile(
+    { file: `/gate/code/${name.replace(/\W+/g, '-')}.tree`, text },
+    { leanOf: () => lean },
+  )
 
   if (!built.ok) {
-    ok(name, false, built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+    ok(
+      name,
+      false,
+      built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+    )
 
     return
   }
 
   const dir = mkdtempSync(join(tmpdir(), 'term-make-under-name-'))
   const file = join(dir, 'module.mjs')
-  writeFileSync(file, transformSync(built.typescript, { loader: 'ts', format: 'esm' }).code)
-  const mod = (await import(pathToFileURL(file).href)) as Record<string, (...a: unknown[]) => unknown>
+  writeFileSync(
+    file,
+    transformSync(built.typescript, { loader: 'ts', format: 'esm' })
+      .code,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as Record<
+    string,
+    (...a: unknown[]) => unknown
+  >
   ok(name, check(mod), JSON.stringify(Object.keys(mod)))
 }
 
@@ -57,7 +71,8 @@ form pair
   slot right, like number
 `
 
-const unwrap = (value: unknown): unknown => (value as { value?: unknown }).value
+const unwrap = (value: unknown): unknown =>
+  (value as { value?: unknown }).value
 
 for (const [label, body] of [
   ['make some(x)', 'back make some(x)'],
@@ -114,9 +129,21 @@ await run(
 // the stdlib's generic `maybe`, imported, where the value was dropped in SILENCE rather than refused
 {
   const text = `load @term/base/maybe\n  find maybe\n\ntask wrap\n  take x, like number\n  like maybe number\n  back make some(x)\n`
-  const built = compile({ file: '/gate/code/generic-maybe.tree', text }, { leanOf: () => true, resolve: projectResolver(process.cwd(), 'node') })
-  const body = built.ok ? (/function wrap[^]*?\n}/.exec(built.typescript)?.[0] ?? '') : built.diagnostics.map(d => d.message).join(' | ')
-  ok('lean: the imported maybe keeps its value', /value: x\b/.test(body) && !/undefined as any/.test(body), body)
+  const built = compile(
+    { file: '/gate/code/generic-maybe.tree', text },
+    {
+      leanOf: () => true,
+      resolve: projectResolver(process.cwd(), 'node'),
+    },
+  )
+  const body = built.ok
+    ? (/function wrap[^]*?\n}/.exec(built.typescript)?.[0] ?? '')
+    : built.diagnostics.map(d => d.message).join(' | ')
+  ok(
+    'lean: the imported maybe keeps its value',
+    /value: x\b/.test(body) && !/undefined as any/.test(body),
+    body,
+  )
 }
 
 console.log(`\nmake-under-name: ${pass} pass, ${fail} fail`)

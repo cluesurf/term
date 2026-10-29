@@ -13,7 +13,11 @@ import type { Span } from '@term/make/code/parser/diagnostic'
 import type { Node, ParseResult } from '@term/make/code/parser/tree'
 import type { GroupNode, RootNode } from '@term/make/code/parser/narrow'
 import { groupsOf } from '@term/make/code/parser/narrow'
-import { headWord, spanOfNode, wordOf } from '@term/make/code/compile/mill-run'
+import {
+  headWord,
+  spanOfNode,
+  wordOf,
+} from '@term/make/code/compile/mill-run'
 
 // the heads `mine seed` reads as a construct before it tries a bare call
 const VALUE_WORDS = new Set([
@@ -40,8 +44,17 @@ export function valueWords(): string[] {
 export type KeywordFind = { word: string; span: Span }
 
 // does a parsed module define a top-level `task <word>`
-export function definesTask(parsed: ParseResult, word: string): boolean {
-  return parsed.ok && groupsOf(parsed.tree.nodes).some(group => headWord(group) === 'task' && wordOf(group.nodes[1]) === word)
+export function definesTask(
+  parsed: ParseResult,
+  word: string,
+): boolean {
+  return (
+    parsed.ok &&
+    groupsOf(parsed.tree.nodes).some(
+      group =>
+        headWord(group) === 'task' && wordOf(group.nodes[1]) === word,
+    )
+  )
 }
 
 // every `find <word>` under a top-level `load` that imports one of the words with no `name`, where the file writes
@@ -64,11 +77,23 @@ export function keywordCandidates(tree: RootNode): KeywordFind[] {
       }
 
       const word = wordOf(child.nodes[1])
-      const aliased = child.nodes.slice(2).some(part => part.kind === 'group' && headWord(part as GroupNode) === 'name')
+      const aliased = child.nodes
+        .slice(2)
+        .some(
+          part =>
+            part.kind === 'group' &&
+            headWord(part) === 'name',
+        )
 
       const span = spanOfNode(child)
 
-      if (word !== undefined && VALUE_WORDS.has(word) && !aliased && span && called.has(word)) {
+      if (
+        word !== undefined &&
+        VALUE_WORDS.has(word) &&
+        !aliased &&
+        span &&
+        called.has(word)
+      ) {
         found.push({ word, span })
       }
     }
@@ -87,7 +112,12 @@ function calledWords(tree: RootNode): Set<string> {
       const last = node.parts.at(-1)
       const word = wordOf(node)
 
-      if (word !== undefined && VALUE_WORDS.has(word) && last?.kind === 'chunk' && last.follows !== undefined) {
+      if (
+        word !== undefined &&
+        VALUE_WORDS.has(word) &&
+        last?.kind === 'chunk' &&
+        last.follows !== undefined
+      ) {
         words.add(word)
       }
 

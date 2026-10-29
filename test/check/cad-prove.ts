@@ -82,15 +82,27 @@ const y2 = mul(y, y)
 // monomials, so only the Sturm route proves it.
 ok(
   'x^4 - 3x^2 + 3 > 0 for all x (beyond sum-of-squares)',
-  proves(goal('quartic_positive', ['x'], 'is-above',
-    add(sub(mul(x2, x2), mul(lit(3), x2)), lit(3)))),
+  proves(
+    goal(
+      'quartic_positive',
+      ['x'],
+      'is-above',
+      add(sub(mul(x2, x2), mul(lit(3), x2)), lit(3)),
+    ),
+  ),
 )
 
 // 2. the same polynomial as a NON-STRICT goal -- strict positivity implies it.
 ok(
   'x^4 - 3x^2 + 3 >= 0 for all x',
-  proves(goal('quartic_nonneg', ['x'], 'is-minimum',
-    add(sub(mul(x2, x2), mul(lit(3), x2)), lit(3)))),
+  proves(
+    goal(
+      'quartic_nonneg',
+      ['x'],
+      'is-minimum',
+      add(sub(mul(x2, x2), mul(lit(3), x2)), lit(3)),
+    ),
+  ),
 )
 
 // 3. SOUNDNESS: `x^2 - 1 > 0` is FALSE (negative on (-1, 1)). Sturm finds the real roots and declines.
@@ -108,22 +120,36 @@ ok(
 // 5. `x^4 + 1 > 0` for all x -- no real root, beyond the degree-two PSD certificate.
 ok(
   'x^4 + 1 > 0 for all x',
-  proves(goal('quartic_shift', ['x'], 'is-above', add(mul(x2, x2), lit(1)))),
+  proves(
+    goal('quartic_shift', ['x'], 'is-above', add(mul(x2, x2), lit(1))),
+  ),
 )
 
 // 6. COMPLETE univariate non-negativity, a touching-zero case: `(x^2 - 1)^2 = x^4 - 2x^2 + 1 >= 0`. Zero at x = +/-1 but
 // never negative -- proven by the cell decomposition (the strict `>` would fail here).
 ok(
   '(x^2 - 1)^2 >= 0 for all x (touches zero)',
-  proves(goal('even_square', ['x'], 'is-minimum',
-    add(sub(mul(x2, x2), mul(lit(2), x2)), lit(1)))),
+  proves(
+    goal(
+      'even_square',
+      ['x'],
+      'is-minimum',
+      add(sub(mul(x2, x2), mul(lit(2), x2)), lit(1)),
+    ),
+  ),
 )
 
 // 7. SOUNDNESS of complete non-negativity: `x^2 - 3x + 2 >= 0` is FALSE (dips below zero on (1, 2)).
 ok(
   'soundness: x^2 - 3x + 2 >= 0 is rejected (dips negative)',
-  !proves(goal('dips_negative', ['x'], 'is-minimum',
-    add(sub(x2, mul(lit(3), x)), lit(2)))),
+  !proves(
+    goal(
+      'dips_negative',
+      ['x'],
+      'is-minimum',
+      add(sub(x2, mul(lit(3), x)), lit(2)),
+    ),
+  ),
 )
 
 // 8. MULTIVARIATE CAD, the showcase: the MOTZKIN polynomial `x^4 y^2 + x^2 y^4 - 3 x^2 y^2 + 1 >= 0` for all x, y. It is
@@ -131,31 +157,49 @@ ok(
 // certificate exists.
 ok(
   'MOTZKIN x^4 y^2 + x^2 y^4 - 3 x^2 y^2 + 1 >= 0 (not a sum of squares)',
-  proves(goal('motzkin', ['x', 'y'], 'is-minimum',
-    add(
-      sub(
-        add(mul(mul(x2, x2), y2), mul(x2, mul(y2, y2))),
-        mul(lit(3), mul(x2, y2)),
+  proves(
+    goal(
+      'motzkin',
+      ['x', 'y'],
+      'is-minimum',
+      add(
+        sub(
+          add(mul(mul(x2, x2), y2), mul(x2, mul(y2, y2))),
+          mul(lit(3), mul(x2, y2)),
+        ),
+        lit(1),
       ),
-      lit(1),
-    ))),
+    ),
+  ),
 )
 
 // 9. SOUNDNESS: drop the +1 -> x^2 y^2 (x^2 + y^2 - 3), NEGATIVE at x = y = 1. The bivariate decision rejects it.
 ok(
   'soundness: Motzkin minus its constant is rejected (dips negative)',
-  !proves(goal('motzkin_no_const', ['x', 'y'], 'is-minimum',
-    sub(
-      add(mul(mul(x2, x2), y2), mul(x2, mul(y2, y2))),
-      mul(lit(3), mul(x2, y2)),
-    ))),
+  !proves(
+    goal(
+      'motzkin_no_const',
+      ['x', 'y'],
+      'is-minimum',
+      sub(
+        add(mul(mul(x2, x2), y2), mul(x2, mul(y2, y2))),
+        mul(lit(3), mul(x2, y2)),
+      ),
+    ),
+  ),
 )
 
 // 10. a bivariate square `(x - y)^2 = x^2 - 2xy + y^2 >= 0` (touches zero on the line x = y).
 ok(
   '(x - y)^2 >= 0 for all x, y (touches zero on a line)',
-  proves(goal('diff_square', ['x', 'y'], 'is-minimum',
-    add(sub(x2, mul(lit(2), mul(x, y))), y2))),
+  proves(
+    goal(
+      'diff_square',
+      ['x', 'y'],
+      'is-minimum',
+      add(sub(x2, mul(lit(2), mul(x, y))), y2),
+    ),
+  ),
 )
 
 // 11. SOUNDNESS: `x^2 - y^2 >= 0` is FALSE (a saddle, negative when |y| > |x|).
@@ -168,14 +212,27 @@ ok(
 const xyMinusZ = sub(mul(x, y), z)
 ok(
   '(xy - z)^2 >= 0 for all x, y, z (trivariate, touches zero on a surface)',
-  proves(goal('tri_square', ['x', 'y', 'z'], 'is-minimum', mul(xyMinusZ, xyMinusZ))),
+  proves(
+    goal(
+      'tri_square',
+      ['x', 'y', 'z'],
+      'is-minimum',
+      mul(xyMinusZ, xyMinusZ),
+    ),
+  ),
 )
 
 // 13. SOUNDNESS: the trivariate saddle `x^2 + y^2 - z^2 >= 0` is FALSE (negative for large z).
 ok(
   'soundness: x^2 + y^2 - z^2 >= 0 is rejected (trivariate saddle)',
-  !proves(goal('tri_saddle', ['x', 'y', 'z'], 'is-minimum',
-    sub(add(x2, mul(y, y)), mul(z, z)))),
+  !proves(
+    goal(
+      'tri_saddle',
+      ['x', 'y', 'z'],
+      'is-minimum',
+      sub(add(x2, mul(y, y)), mul(z, z)),
+    ),
+  ),
 )
 
 console.log(`\ncad-prove: ${pass} pass, ${fail} fail`)

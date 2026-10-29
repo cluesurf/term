@@ -26,8 +26,19 @@ function ok(name: string, holds: boolean, detail = ''): void {
 
 const TERM = join(import.meta.dirname, '../..')
 const stdlib = stdlibResolver()!
-const swift = (file: string, entry: string, text = readFileSync(file, 'utf8')): string => {
-  const built = compile({ file, text }, { resolve: withNativeEnv('swift', stdlib), env: 'swift', entryPoints: [entry] })
+const swift = (
+  file: string,
+  entry: string,
+  text = readFileSync(file, 'utf8'),
+): string => {
+  const built = compile(
+    { file, text },
+    {
+      resolve: withNativeEnv('swift', stdlib),
+      env: 'swift',
+      entryPoints: [entry],
+    },
+  )
 
   if (!built.ok) {
     throw new Error(`${file}: ${built.diagnostics[0]?.message}`)
@@ -35,20 +46,58 @@ const swift = (file: string, entry: string, text = readFileSync(file, 'utf8')): 
 
   return emitSwift(built.program)
 }
-const lines = (text: string, pattern: RegExp): string => text.split('\n').filter(l => pattern.test(l)).join(' | ')
+const lines = (text: string, pattern: RegExp): string =>
+  text
+    .split('\n')
+    .filter(l => pattern.test(l))
+    .join(' | ')
 
 // 1. Towers: the move pops a node at its local's last read and pushes one, so `stack` is a node class, the pop's match
 // consumes its subject and keeps the node, and the push builds in the spare
 const towers = swift(join(TERM, 'mark/towers/term.tree'), 'towers')
-ok('towers: the payload case holds a final class', /case disk\(StackDisk\)/.test(towers) && /final class StackDisk \{/.test(towers) && !/indirect enum Stack/.test(towers), lines(towers, /Stack/))
-ok('towers: the pop consumes its subject and keeps the node', /switch consume top\d*/.test(towers) && /isKnownUniquelyReferenced\(&__node\) \{ __spareStack = __node \}/.test(towers), lines(towers, /consume|isKnown/))
-ok('towers: the push builds in the spare', /termNodeStackDisk\(&__spareStack, /.test(towers), lines(towers, /termNode/))
-ok('towers: the class compares by its fields', /a === b \|\| \(a\.size == b\.size && a\.below == b\.below\)/.test(towers), lines(towers, /extension StackDisk/))
-ok('towers: a task that only builds builds new', /\.disk\(StackDisk\(size: i, below: top\d*\)\)/.test(towers), lines(towers, /\.disk\(/))
+ok(
+  'towers: the payload case holds a final class',
+  /case disk\(StackDisk\)/.test(towers) &&
+    /final class StackDisk \{/.test(towers) &&
+    !/indirect enum Stack/.test(towers),
+  lines(towers, /Stack/),
+)
+ok(
+  'towers: the pop consumes its subject and keeps the node',
+  /switch consume top\d*/.test(towers) &&
+    /isKnownUniquelyReferenced\(&__node\) \{ __spareStack = __node \}/.test(
+      towers,
+    ),
+  lines(towers, /consume|isKnown/),
+)
+ok(
+  'towers: the push builds in the spare',
+  /termNodeStackDisk\(&__spareStack, /.test(towers),
+  lines(towers, /termNode/),
+)
+ok(
+  'towers: the class compares by its fields',
+  /a === b \|\| \(a\.size == b\.size && a\.below == b\.below\)/.test(
+    towers,
+  ),
+  lines(towers, /extension StackDisk/),
+)
+ok(
+  'towers: a task that only builds builds new',
+  /\.disk\(StackDisk\(size: i, below: top\d*\)\)/.test(towers),
+  lines(towers, /\.disk\(/),
+)
 
 // 2. binary-trees builds trees and reads them through a parameter, opening nothing at a local's last read: `indirect`
-const trees = swift(join(TERM, 'mark/binary-trees/term.tree'), 'binary-trees')
-ok('binary-trees: the tree stays an indirect enum', /indirect enum Tree/.test(trees) && !/final class Tree/.test(trees), lines(trees, /enum Tree|class Tree/))
+const trees = swift(
+  join(TERM, 'mark/binary-trees/term.tree'),
+  'binary-trees',
+)
+ok(
+  'binary-trees: the tree stays an indirect enum',
+  /indirect enum Tree/.test(trees) && !/final class Tree/.test(trees),
+  lines(trees, /enum Tree|class Tree/),
+)
 
 // 3. a node opened only from a parameter, then built: a parameter cannot be consumed, so nothing is kept
 const param = swift(
@@ -77,7 +126,11 @@ task use
           bind rest, read rest
 `,
 )
-ok('a node opened only from a parameter: indirect', /indirect enum Chain/.test(param) && !/__spare/.test(param), lines(param, /Chain|__spare/))
+ok(
+  'a node opened only from a parameter: indirect',
+  /indirect enum Chain/.test(param) && !/__spare/.test(param),
+  lines(param, /Chain|__spare/),
+)
 
 // 4. a form with two cases that hold it: no one payload case, so `indirect`
 const two = swift(
@@ -113,7 +166,11 @@ task use
       send back, code 2
 `,
 )
-ok('two cases holding the form: indirect', /indirect enum Knot/.test(two) && !/final class Knot/.test(two), lines(two, /enum Knot|final class/))
+ok(
+  'two cases holding the form: indirect',
+  /indirect enum Knot/.test(two) && !/final class Knot/.test(two),
+  lines(two, /enum Knot|final class/),
+)
 
 console.log(`\nswift-node: ${pass} pass, ${fail} fail`)
 

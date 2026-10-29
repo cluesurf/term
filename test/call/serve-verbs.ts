@@ -27,7 +27,6 @@ import { join } from 'node:path'
 import { tempDir } from '../temp'
 import { LINE } from './cli'
 
-
 let pass = 0
 let fail = 0
 
@@ -48,7 +47,11 @@ mkdirSync(home, { recursive: true })
 
 const env = { ...process.env, HOME: home }
 
-spawnSync('node', [LINE, 'wake', 'demo'], { cwd: box, env, timeout: 120000 })
+spawnSync('node', [LINE, 'wake', 'demo'], {
+  cwd: box,
+  env,
+  timeout: 120000,
+})
 
 const root = join(box, 'demo')
 
@@ -60,7 +63,8 @@ function freePort(): Promise<number> {
     server.on('error', stop)
     server.listen(0, () => {
       const address = server.address()
-      const port = typeof address === 'object' && address ? address.port : 0
+      const port =
+        typeof address === 'object' && address ? address.port : 0
 
       server.close(() => done(port))
     })
@@ -101,8 +105,10 @@ async function serving<T>(
   }
 }
 
-const BROKEN = 'task bad\n  take n, like number\n  like text\n  send back\n    read n\n'
-const FINE = 'task fine\n  take n, like number\n  like number\n  send back\n    read n\n'
+const BROKEN =
+  'task bad\n  take n, like number\n  like text\n  send back\n    read n\n'
+const FINE =
+  'task fine\n  take n, like number\n  like number\n  send back\n    read n\n'
 
 // ---- work: the warm compiler, and it must actually compile ----
 
@@ -149,13 +155,20 @@ ok(
 // ---- the browser development server, and it must serve ----
 // `term boot --env browser`, which was `term feed` until 2026-10-05
 
-const served = await serving<number>(['boot', '--env', 'browser'], async port => {
-  const answer = await fetch(`http://localhost:${port}/`)
+const served = await serving<number>(
+  ['boot', '--env', 'browser'],
+  async port => {
+    const answer = await fetch(`http://localhost:${port}/`)
 
-  return answer.status
-})
+    return answer.status
+  },
+)
 
-ok('`boot --env browser` starts and serves the scaffolded app', served !== undefined && served < 500, String(served))
+ok(
+  '`boot --env browser` starts and serves the scaffolded app',
+  served !== undefined && served < 500,
+  String(served),
+)
 
 // ---- zone: the secret console, which is a Term app ----
 //
@@ -171,12 +184,27 @@ const zone = spawnSync('node', [LINE, 'zone'], {
 })
 const zoneOut = `${zone.stdout ?? ''}${zone.stderr ?? ''}`
 
-ok('`zone` boots and prints its usage', /usage: zone\b/.test(zoneOut), zoneOut)
+ok(
+  '`zone` boots and prints its usage',
+  /usage: zone\b/.test(zoneOut),
+  zoneOut,
+)
 
 // every command the usage advertises. A console that lists a command it does not have is worse than one that
 // lists none, and this is the list a person reads first.
-for (const command of ['bind', 'call', 'code', 'load', 'list', 'save', 'read']) {
-  ok(`\`zone\` offers \`${command}\``, new RegExp(`\\b${command}\\b`).test(zoneOut))
+for (const command of [
+  'bind',
+  'call',
+  'code',
+  'load',
+  'list',
+  'save',
+  'read',
+]) {
+  ok(
+    `\`zone\` offers \`${command}\``,
+    new RegExp(`\\b${command}\\b`).test(zoneOut),
+  )
 }
 
 // ---- cast: build the app into a deployable worker ----
@@ -202,11 +230,19 @@ const castOut = `${cast.stdout ?? ''}${cast.stderr ?? ''}`
 // that rather than writing a Worker with no `fetch` (guides: commands/cast; test/call/cast.ts casts a real page
 // application). What this case holds is the original defect: the program COMPILES for Cloudflare, so the refusal is
 // the one about `boot`, not a stdlib name that does not exist
-ok('`cast` compiles the scaffolded app for Cloudflare', !/is not defined/.test(castOut) && !/✗ check/.test(castOut), castOut)
+ok(
+  '`cast` compiles the scaffolded app for Cloudflare',
+  !/is not defined/.test(castOut) && !/✗ check/.test(castOut),
+  castOut,
+)
 
 ok(
   'and refuses it as no server, writing no worker entry, exit 1',
-  cast.status === 1 && /`boot` returns no fetch handler, so the Worker would have none/.test(castOut) && !existsSync(join(root, 'work/index.ts')),
+  cast.status === 1 &&
+    /`boot` returns no fetch handler, so the Worker would have none/.test(
+      castOut,
+    ) &&
+    !existsSync(join(root, 'work/index.ts')),
   castOut,
 )
 

@@ -47,22 +47,26 @@ const watchRuntime = {
     }
 
     try {
-      held.watcher = fs.watch(at, { recursive: deep }, (event, name) => {
-        // node reports 'rename' for both a create and a remove, so which one it was is whether the path is
-        // still there. Anything else is a content change.
-        const whole = name ? path.join(at, name.toString()) : at
+      held.watcher = fs.watch(
+        at,
+        { recursive: deep },
+        (event, name) => {
+          // node reports 'rename' for both a create and a remove, so which one it was is whether the path is
+          // still there. Anything else is a content change.
+          const whole = name ? path.join(at, name.toString()) : at
 
-        if (event === 'rename') {
-          post({
-            kind: fs.existsSync(whole) ? 'create' : 'remove',
-            path: whole,
-          })
+          if (event === 'rename') {
+            post({
+              kind: fs.existsSync(whole) ? 'create' : 'remove',
+              path: whole,
+            })
 
-          return
-        }
+            return
+          }
 
-        post({ kind: 'change', path: whole })
-      })
+          post({ kind: 'change', path: whole })
+        },
+      )
     } catch {
       held.closed = true
     }

@@ -142,14 +142,23 @@ const near = (a: number, b: number) => Math.abs(a - b) <= 1
 
 // the frames of one row out of a host's output: a line `rows <label> x,y,w,h x,y,w,h x,y,w,h`, the row then its children
 function rowsOf(output: string, label: string): number[][] | undefined {
-  const line = output.split('\n').map(l => l.trim()).find(l => l.includes(`rows ${label} `))
-  const parts = line?.slice(line.indexOf(`rows ${label} `) + `rows ${label} `.length).split(' ')
+  const line = output
+    .split('\n')
+    .map(l => l.trim())
+    .find(l => l.includes(`rows ${label} `))
+  const parts = line
+    ?.slice(line.indexOf(`rows ${label} `) + `rows ${label} `.length)
+    .split(' ')
 
-  return parts?.length === 3 ? parts.map(part => part.split(',').map(Number)) : undefined
+  return parts?.length === 3
+    ? parts.map(part => part.split(',').map(Number))
+    : undefined
 }
 
 // every check, as [name, passed, the frames it read]
-export function judgeLayout(output: string): [string, boolean, string][] {
+export function judgeLayout(
+  output: string,
+): [string, boolean, string][] {
   const spread = rowsOf(output, 'spread')
   const grow = rowsOf(output, 'grow')
   const stretch = rowsOf(output, 'stretch')
@@ -166,63 +175,107 @@ export function judgeLayout(output: string): [string, boolean, string][] {
   return [
     [
       'a flex row of height 60 with no align-items stretches both children to 60 tall, at its top',
-      !!stretchRow && near(stretchRow[0]![3]!, 60) && near(stretchRow[1]![3]!, 60) && near(stretchRow[2]![3]!, 60) &&
+      !!stretchRow &&
+        near(stretchRow[0]![3]!, 60) &&
+        near(stretchRow[1]![3]!, 60) &&
+        near(stretchRow[2]![3]!, 60) &&
         near(stretchRow[1]![1]!, stretchRow[0]![1]!),
       JSON.stringify(stretchRow),
     ],
     [
       'justify-content center leaves equal room before the first child and after the last in a 300 row',
-      !!center && near(center[0]![2]!, 300) && center[1]![0]! - center[0]![0]! > 1 &&
-        Math.abs((center[1]![0]! - center[0]![0]!) - (center[0]![0]! + 300 - (center[2]![0]! + center[2]![2]!))) <= 2,
+      !!center &&
+        near(center[0]![2]!, 300) &&
+        center[1]![0]! - center[0]![0]! > 1 &&
+        Math.abs(
+          center[1]![0]! -
+            center[0]![0]! -
+            (center[0]![0]! + 300 - (center[2]![0]! + center[2]![2]!)),
+        ) <= 2,
       JSON.stringify(center),
     ],
     [
       'justify-content end puts the last child at the right edge of a 300 row and the first away from the left',
-      !!end && near(end[0]![2]!, 300) && near(end[2]![0]! + end[2]![2]!, end[0]![0]! + 300) && end[1]![0]! - end[0]![0]! > 1,
+      !!end &&
+        near(end[0]![2]!, 300) &&
+        near(end[2]![0]! + end[2]![2]!, end[0]![0]! + 300) &&
+        end[1]![0]! - end[0]![0]! > 1,
       JSON.stringify(end),
     ],
     [
       'align-items start keeps both children of a 200 column at their own width, at the left edge',
-      !!startColumn && near(startColumn[1]![0]!, startColumn[0]![0]!) && startColumn[1]![2]! < 190 && startColumn[2]![2]! < 190,
+      !!startColumn &&
+        near(startColumn[1]![0]!, startColumn[0]![0]!) &&
+        startColumn[1]![2]! < 190 &&
+        startColumn[2]![2]! < 190,
       JSON.stringify(startColumn),
     ],
     [
       'align-items end keeps both children of a 200 column at their own width, against the right edge',
-      !!endColumn && near(endColumn[1]![0]! + endColumn[1]![2]!, endColumn[0]![0]! + 200) &&
-        near(endColumn[2]![0]! + endColumn[2]![2]!, endColumn[0]![0]! + 200) && endColumn[1]![2]! < 190,
+      !!endColumn &&
+        near(
+          endColumn[1]![0]! + endColumn[1]![2]!,
+          endColumn[0]![0]! + 200,
+        ) &&
+        near(
+          endColumn[2]![0]! + endColumn[2]![2]!,
+          endColumn[0]![0]! + 200,
+        ) &&
+        endColumn[1]![2]! < 190,
       JSON.stringify(endColumn),
     ],
     // native-dom-0037: CSS's defaults, which every native host had the other way round
     [
       "a block container's block children fill its 300 width, one under the other",
-      !!block && near(block[1]![2]!, 300) && near(block[2]![2]!, 300) && block[2]![1]! >= block[1]![1]! + block[1]![3]! - 1,
+      !!block &&
+        near(block[1]![2]!, 300) &&
+        near(block[2]![2]!, 300) &&
+        block[2]![1]! >= block[1]![1]! + block[1]![3]! - 1,
       JSON.stringify(block),
     ],
     [
       'display flex with no direction is a row',
-      !!flex && near(flex[1]![1]!, flex[2]![1]!) && flex[2]![0]! >= flex[1]![0]! + flex[1]![2]! - 1,
+      !!flex &&
+        near(flex[1]![1]!, flex[2]![1]!) &&
+        flex[2]![0]! >= flex[1]![0]! + flex[1]![2]! - 1,
       JSON.stringify(flex),
     ],
     [
       'a flex column with no align-items stretches its children to its 200 width',
-      !!column && near(column[1]![2]!, 200) && near(column[2]![2]!, 200),
+      !!column &&
+        near(column[1]![2]!, 200) &&
+        near(column[2]![2]!, 200),
       JSON.stringify(column),
     ],
     [
       'width 300 and justify-content space-between put the children at both edges',
-      !!spread && near(spread[0]![2]!, 300) && near(spread[1]![0]!, spread[0]![0]!) && near(spread[2]![0]! + spread[2]![2]!, spread[0]![0]! + 300),
+      !!spread &&
+        near(spread[0]![2]!, 300) &&
+        near(spread[1]![0]!, spread[0]![0]!) &&
+        near(spread[2]![0]! + spread[2]![2]!, spread[0]![0]! + 300),
       JSON.stringify(spread),
     ],
     [
       "flex-grow 1 takes the rest of a 300 row, the two adjacent as with CSS's zero gap",
-      !!grow && near(grow[0]![2]!, 300) && grow[1]![2]! > grow[2]![2]! && near(grow[1]![2]! + grow[2]![2]!, 300) && near(grow[2]![0]!, grow[1]![0]! + grow[1]![2]!),
+      !!grow &&
+        near(grow[0]![2]!, 300) &&
+        grow[1]![2]! > grow[2]![2]! &&
+        near(grow[1]![2]! + grow[2]![2]!, 300) &&
+        near(grow[2]![0]!, grow[1]![0]! + grow[1]![2]!),
       JSON.stringify(grow),
     ],
     [
       'align-items stretch makes both children of a 200 column 200 wide',
-      !!stretch && near(stretch[0]![2]!, 200) && near(stretch[1]![2]!, 200) && near(stretch[2]![2]!, 200),
+      !!stretch &&
+        near(stretch[0]![2]!, 200) &&
+        near(stretch[1]![2]!, 200) &&
+        near(stretch[2]![2]!, 200),
       JSON.stringify(stretch),
     ],
-    ["height 60 is the row's height", !!tall && near(tall[0]![3]!, 60), JSON.stringify(tall)],
+    [
+      "height 60 is the row's height",
+      !!tall && near(tall[0]![3]!, 60),
+      JSON.stringify(tall),
+    ],
   ]
 }

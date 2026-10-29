@@ -46,27 +46,51 @@ const ACCELERATIONS = [
   ['0.50', '3.50', '8.50'],
 ]
 
-const android = (leg: Leg): boolean => leg === 'android' || leg === 'compose-android'
+const android = (leg: Leg): boolean =>
+  leg === 'android' || leg === 'compose-android'
 
 // each watcher a leg starts, what it watches, whether the platform here is made to change it, and whether the app drops
 // it the moment it has started
-type Watcher = { name: string; task: string; changes: boolean; dropped?: boolean }
+type Watcher = {
+  name: string
+  task: string
+  changes: boolean
+  dropped?: boolean
+}
 
 // The second battery watcher shares the first one's subscription and must hear every change too. The dropped motion
 // watcher is dropped as soon as it is made, so it may hear the value that was current then and nothing after
 function watchers(leg: Leg): Watcher[] {
   return [
-    ...(leg === 'macos' ? [] : [{ name: 'position', task: 'watch-position', changes: leg === 'ios' || android(leg) }]),
+    ...(leg === 'macos'
+      ? []
+      : [
+          {
+            name: 'position',
+            task: 'watch-position',
+            changes: leg === 'ios' || android(leg),
+          },
+        ]),
     { name: 'battery', task: 'watch-battery', changes: android(leg) },
-    { name: 'battery-again', task: 'watch-battery', changes: android(leg) },
+    {
+      name: 'battery-again',
+      task: 'watch-battery',
+      changes: android(leg),
+    },
     { name: 'network', task: 'watch-network', changes: false },
     { name: 'motion', task: 'watch-motion', changes: android(leg) },
-    { name: 'motion-dropped', task: 'watch-motion', changes: false, dropped: true },
+    {
+      name: 'motion-dropped',
+      task: 'watch-motion',
+      changes: false,
+      dropped: true,
+    },
   ]
 }
 
 // what a watcher's answers are, read off its task
-const kind = (watcher: Watcher): string => watcher.task.replace(/^watch-/, '')
+const kind = (watcher: Watcher): string =>
+  watcher.task.replace(/^watch-/, '')
 
 // the app's own test of done: every watcher that changes has changed, every other one has been heard, written as nested
 // forks ending in the exit
@@ -128,7 +152,10 @@ function written(watcher: Watcher, list: Watcher[]): string {
     '                    call write-signal',
     `                      bind self, read seen-${name}`,
     '                      bind value, text <yes>',
-    finished(list.filter(one => !one.dropped), '                '),
+    finished(
+      list.filter(one => !one.dropped),
+      '                ',
+    ),
     ...(watcher.dropped ? [`      call drop-${name}`] : []),
   ].join('\n')
 }
@@ -136,8 +163,16 @@ function written(watcher: Watcher, list: Watcher[]): string {
 // every watcher's signals made before any watch starts, since a handler may be told at once and reads all of them
 function program(leg: Leg, _shot: string): string {
   const list = watchers(leg)
-  const signals = list.flatMap(({ name }) => ['last', 'seen', 'changed'].map(kind => `${kind}-${name}`))
-  const made = signals.map(name => [`      save ${name}`, '        call make-signal', '          bind value, text <none>'].join('\n'))
+  const signals = list.flatMap(({ name }) =>
+    ['last', 'seen', 'changed'].map(kind => `${kind}-${name}`),
+  )
+  const made = signals.map(name =>
+    [
+      `      save ${name}`,
+      '        call make-signal',
+      '          bind value, text <none>',
+    ].join('\n'),
+  )
   const watches = list.map(watcher => written(watcher, list))
 
   return `load @term/site/code/view/reactive
@@ -191,23 +226,51 @@ function answers(output: string, name: string): string[] {
     .map(line => line.slice(line.indexOf(at) + at.length).trim())
 }
 
-const adb = (serial: string, ...args: string[]) => spawnSync(androidTools().adb, ['-s', serial, ...args], { encoding: 'utf8' })
+const adb = (serial: string, ...args: string[]) =>
+  spawnSync(androidTools().adb, ['-s', serial, ...args], {
+    encoding: 'utf8',
+  })
 
 // the emulator's serial, kept for the battery reset after the run
 let serial = ''
 
 // The changer: a detached Node process telling the platform the next place, level and acceleration every two seconds,
 // until this test's own process is gone. From this machine, as the permission prompt's tapper is
-function prepare(leg: Leg, target: { udid?: string; serial?: string; identifier: string }): void {
+function prepare(
+  leg: Leg,
+  target: { udid?: string; serial?: string; identifier: string },
+): void {
   if (leg === 'ios' && target.udid) {
-    spawnSync('xcrun', ['simctl', 'privacy', target.udid, 'grant', 'location', target.identifier])
+    spawnSync('xcrun', [
+      'simctl',
+      'privacy',
+      target.udid,
+      'grant',
+      'location',
+      target.identifier,
+    ])
   }
 
   if (android(leg) && target.serial) {
     serial = target.serial
-    adb(target.serial, 'shell', 'pm', 'grant', target.identifier, 'android.permission.ACCESS_FINE_LOCATION')
+    adb(
+      target.serial,
+      'shell',
+      'pm',
+      'grant',
+      target.identifier,
+      'android.permission.ACCESS_FINE_LOCATION',
+    )
     adb(target.serial, 'shell', 'dumpsys', 'battery', 'unplug')
-    adb(target.serial, 'shell', 'dumpsys', 'battery', 'set', 'status', '3')
+    adb(
+      target.serial,
+      'shell',
+      'dumpsys',
+      'battery',
+      'set',
+      'status',
+      '3',
+    )
   }
 
   if (!target.udid && !target.serial) {
@@ -238,13 +301,22 @@ function prepare(leg: Leg, target: { udid?: string; serial?: string; identifier:
     if (serial) {
       spawnSync(adb, ['-s', serial, 'shell', 'dumpsys', 'battery', 'reset'])
     }`
-  spawn(process.execPath, ['-e', script], { detached: true, stdio: 'ignore' }).unref()
+  spawn(process.execPath, ['-e', script], {
+    detached: true,
+    stdio: 'ignore',
+  }).unref()
 }
 
-const near = (said: string, [latitude, longitude]: string[]): boolean => {
+const near = (
+  said: string,
+  [latitude, longitude]: string[],
+): boolean => {
   const [a = '', b = ''] = said.split(' ')
 
-  return Math.abs(Number(a) - Number(latitude)) < 0.0005 && Math.abs(Number(b) - Number(longitude)) < 0.0005
+  return (
+    Math.abs(Number(a) - Number(latitude)) < 0.0005 &&
+    Math.abs(Number(b) - Number(longitude)) < 0.0005
+  )
 }
 
 function judge(leg: Leg, toolkit: string, output: string): void {
@@ -255,16 +327,28 @@ function judge(leg: Leg, toolkit: string, output: string): void {
     const heard = answers(output, name)
 
     if (watcher.dropped) {
-      ok(`${named}: the ${name} watcher hears nothing after its drop`, heard.length <= 1, heard.join(' | '))
+      ok(
+        `${named}: the ${name} watcher hears nothing after its drop`,
+        heard.length <= 1,
+        heard.join(' | '),
+      )
       continue
     }
 
     if (!changes) {
-      ok(`${named}: the ${name} watcher answers`, heard.length >= 1, heard.join(' | ') || output.slice(-400))
+      ok(
+        `${named}: the ${name} watcher answers`,
+        heard.length >= 1,
+        heard.join(' | ') || output.slice(-400),
+      )
       continue
     }
 
-    ok(`${named}: the ${name} watcher heard the platform change it`, new Set(heard).size >= 2, heard.join(' | ') || output.slice(-400))
+    ok(
+      `${named}: the ${name} watcher heard the platform change it`,
+      new Set(heard).size >= 2,
+      heard.join(' | ') || output.slice(-400),
+    )
 
     // and every answer after the first is one this test told the platform
     const told = heard.slice(1).every(said => {
@@ -273,12 +357,20 @@ function judge(leg: Leg, toolkit: string, output: string): void {
       }
 
       if (kind(watcher) === 'battery') {
-        return LEVELS.some(level => said === `${(level / 100).toFixed(2)} unplugged`)
+        return LEVELS.some(
+          level => said === `${(level / 100).toFixed(2)} unplugged`,
+        )
       }
 
-      return ACCELERATIONS.some(acceleration => said === acceleration.join(' '))
+      return ACCELERATIONS.some(
+        acceleration => said === acceleration.join(' '),
+      )
     })
-    ok(`${named}: and each change is one the platform was told`, told, heard.join(' | '))
+    ok(
+      `${named}: and each change is one the platform was told`,
+      told,
+      heard.join(' | '),
+    )
   }
 
   for (const watcher of watchers(leg)) {
@@ -290,13 +382,31 @@ function judge(leg: Leg, toolkit: string, output: string): void {
     }
 
     if (kind(watcher) === 'network') {
-      ok(`${named}: the ${name} watcher's first answer is online`, /^online (wifi|cellular|wired|other)$/.test(first), first)
+      ok(
+        `${named}: the ${name} watcher's first answer is online`,
+        /^online (wifi|cellular|wired|other)$/.test(first),
+        first,
+      )
     } else if (kind(watcher) === 'motion') {
-      ok(`${named}: no accelerometer here, the ${name} watcher said so once`, first === 'unavailable', first)
+      ok(
+        `${named}: no accelerometer here, the ${name} watcher said so once`,
+        first === 'unavailable',
+        first,
+      )
     } else if (kind(watcher) === 'battery') {
-      ok(`${named}: the ${name} watcher answers in the contract's shape`, /^(\d\.\d\d|unknown) (charging|full|unplugged|unknown)$|^unavailable$/.test(first), first)
+      ok(
+        `${named}: the ${name} watcher answers in the contract's shape`,
+        /^(\d\.\d\d|unknown) (charging|full|unplugged|unknown)$|^unavailable$/.test(
+          first,
+        ),
+        first,
+      )
     } else {
-      ok(`${named}: the ${name} watcher answers once`, first !== '', first)
+      ok(
+        `${named}: the ${name} watcher answers once`,
+        first !== '',
+        first,
+      )
     }
   }
 }

@@ -41,7 +41,10 @@ export function lint(
   _rules?: Rule[],
 ): Finding[] {
   return port.lintProgram(program as never, file, source, {
-    severity: config.severity === undefined ? undefined : new Map(Object.entries(config.severity)),
+    severity:
+      config.severity === undefined
+        ? undefined
+        : new Map(Object.entries(config.severity)),
     suppress: config.suppress as never,
     lean: config.lean,
   }) as Finding[]

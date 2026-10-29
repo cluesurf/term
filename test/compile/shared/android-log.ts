@@ -15,13 +15,25 @@ import { join } from 'node:path'
 
 // the app's `native-dom` lines, each with logcat's prefix removed, once it has said it exits, crashed, or two minutes
 // have gone. `adb` is the tool's path and `serial` the emulator's; the app must have been started already
-export function followAppLog({ adb, serial, identifier }: { adb: string; serial: string; identifier: string }): string {
-  const shell = (...args: string[]) => spawnSync(adb, ['-s', serial, ...args], { encoding: 'utf8' })
+export function followAppLog({
+  adb,
+  serial,
+  identifier,
+}: {
+  adb: string
+  serial: string
+  identifier: string
+}): string {
+  const shell = (...args: string[]) =>
+    spawnSync(adb, ['-s', serial, ...args], { encoding: 'utf8' })
   let pid = ''
   const started = Date.now() + 20_000
 
   while (!pid && Date.now() < started) {
-    pid = (shell('shell', 'pidof', identifier).stdout ?? '').trim().split(/\s+/)[0] ?? ''
+    pid =
+      (shell('shell', 'pidof', identifier).stdout ?? '')
+        .trim()
+        .split(/\s+/)[0] ?? ''
 
     if (!pid) {
       spawnSync('sleep', ['0.5'])
@@ -29,16 +41,34 @@ export function followAppLog({ adb, serial, identifier }: { adb: string; serial:
   }
 
   const byProcess = pid ? ['--pid', pid] : []
-  const file = join(tmpdir(), `term-android-${identifier}-${process.pid}-${Date.now()}.log`)
+  const file = join(
+    tmpdir(),
+    `term-android-${identifier}-${process.pid}-${Date.now()}.log`,
+  )
   const into = openSync(file, 'w')
-  const reader = spawn(adb, ['-s', serial, 'logcat', ...byProcess, '-s', 'native-dom:I', 'AndroidRuntime:E'], { stdio: ['ignore', into, into] })
+  const reader = spawn(
+    adb,
+    [
+      '-s',
+      serial,
+      'logcat',
+      ...byProcess,
+      '-s',
+      'native-dom:I',
+      'AndroidRuntime:E',
+    ],
+    { stdio: ['ignore', into, into] },
+  )
   let log = ''
   const deadline = Date.now() + 120_000
 
   while (Date.now() < deadline) {
     log = readFileSync(file, 'utf8')
 
-    if (log.includes('native-view exit') || log.includes('FATAL EXCEPTION')) {
+    if (
+      log.includes('native-view exit') ||
+      log.includes('FATAL EXCEPTION')
+    ) {
       break
     }
 
@@ -51,6 +81,12 @@ export function followAppLog({ adb, serial, identifier }: { adb: string; serial:
 
   return log
     .split('\n')
-    .map(line => (line.includes('native-dom:') ? line.slice(line.indexOf('native-dom:') + 'native-dom:'.length).trim() : line))
+    .map(line =>
+      line.includes('native-dom:')
+        ? line
+            .slice(line.indexOf('native-dom:') + 'native-dom:'.length)
+            .trim()
+        : line,
+    )
     .join('\n')
 }

@@ -3,7 +3,12 @@
 // ordinary parse/mill/check pipeline, and checks its output against the same fixed fixtures the hand-written
 // reader already passes in deck/mill/test/feed/*.tree. Run: npx tsx test/compile/feed-mill-run.ts
 
-import { existsSync, readFileSync, writeFileSync, mkdtempSync } from 'node:fs'
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  mkdtempSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
@@ -16,12 +21,21 @@ import { resolveAsync } from '@term/make/code/check/async-resolve'
 import { simplify } from '@term/make/code/ir/simplify'
 import { collectModules } from '@term/make/code/compile/load'
 import type { Source } from '@term/make/code/compile/load'
-import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
+import {
+  withNativeEnv,
+  nativePrelude,
+} from '@term/make/code/compile/native'
 import { expandTemplates } from '@term/make/code/compile/template'
-import { bindModules, stampModule } from '@term/make/code/check/bind-modules'
+import {
+  bindModules,
+  stampModule,
+} from '@term/make/code/check/bind-modules'
 import { emitTypeScript } from '@term/make/code/compile/typescript'
 import type { Program } from '@term/make/code/compile/node'
-import { readFeedMineGrammar, compileFeedMine } from '@term/make/code/compile/feed-mill'
+import {
+  readFeedMineGrammar,
+  compileFeedMine,
+} from '@term/make/code/compile/feed-mill'
 import type { Substrate } from '@term/make/code/compile/feed-mill'
 
 let pass = 0
@@ -37,9 +51,13 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
-const PACKS: Record<string, string> = { base: join(TERM, 'deck/base'), mill: join(TERM, 'deck/mill') }
+const PACKS: Record<string, string> = {
+  base: join(TERM, 'deck/base'),
+  mill: join(TERM, 'deck/mill'),
+}
 
 const resolver = (path: string, from: string): Source | undefined => {
   if (path.startsWith('./') || path.startsWith('../')) {
@@ -61,24 +79,33 @@ const resolver = (path: string, from: string): Source | undefined => {
   }
 
   // inside the package by the package path rule every resolver calls (code root, then package root)
-  return sourceOf(resolvePackagePath({ dir: PACKS[found[1]!]!, rest: found[2]! }))
+  return sourceOf(
+    resolvePackagePath({ dir: PACKS[found[1]!]!, rest: found[2]! }),
+  )
 }
 
 function frontEnd(text: string, roots: string[]): Program {
-  const { sources, scope } = collectModules({ file: 'main.tree', text }, withNativeEnv('node', resolver))
+  const { sources, scope } = collectModules(
+    { file: 'main.tree', text },
+    withNativeEnv('node', resolver),
+  )
   const program: Program = []
 
   for (const unit of sources) {
     const parsed = parse(unit)
 
     if (!parsed.ok) {
-      throw new Error(`parse failed: ${unit.file}: ${parsed.diagnostics.map(d => d.message).join(', ')}`)
+      throw new Error(
+        `parse failed: ${unit.file}: ${parsed.diagnostics.map(d => d.message).join(', ')}`,
+      )
     }
 
     const built = mill(expandTemplates(parsed.tree), unit.file)
 
     if (!built.ok) {
-      throw new Error(`mill failed: ${unit.file}: ${built.diagnostics.map(d => d.message).join(', ')}`)
+      throw new Error(
+        `mill failed: ${unit.file}: ${built.diagnostics.map(d => d.message).join(', ')}`,
+      )
     }
 
     stampModule(built.program, unit.file)
@@ -89,10 +116,17 @@ function frontEnd(text: string, roots: string[]): Program {
   bindModules(program, scope, 'main.tree')
   resolveNames(program, 'main.tree')
 
-  const errors = check(program, 'main.tree').filter(d => d.severity !== 'warning')
+  const errors = check(program, 'main.tree').filter(
+    d => d.severity !== 'warning',
+  )
 
   if (errors.length) {
-    throw new Error(`check failed: ${errors.slice(0, 8).map(d => d.message).join(' | ')}`)
+    throw new Error(
+      `check failed: ${errors
+        .slice(0, 8)
+        .map(d => d.message)
+        .join(' | ')}`,
+    )
   }
 
   resolveAsync(program)
@@ -100,7 +134,8 @@ function frontEnd(text: string, roots: string[]): Program {
   return simplify(program, new Set(roots))
 }
 
-const readRuntime = (p: string): string | undefined => (existsSync(p) ? readFileSync(p, 'utf8') : undefined)
+const readRuntime = (p: string): string | undefined =>
+  existsSync(p) ? readFileSync(p, 'utf8') : undefined
 
 interface Suite {
   label: string
@@ -119,16 +154,29 @@ function runSuite(suite: Suite): void {
   const mineParsed = parse({ file: suite.mineFile, text: mineText })
 
   if (!mineParsed.ok) {
-    ok(`${suite.label}: parses`, false, mineParsed.diagnostics.map(d => d.message).join(', '))
+    ok(
+      `${suite.label}: parses`,
+      false,
+      mineParsed.diagnostics.map(d => d.message).join(', '),
+    )
 
     return
   }
 
   const grammar = readFeedMineGrammar(mineParsed.tree)
 
-  ok(`${suite.label}: grammar reads ${suite.expectRules} named rules`, grammar.size === suite.expectRules, `got ${[...grammar.keys()].join(', ')}`)
+  ok(
+    `${suite.label}: grammar reads ${suite.expectRules} named rules`,
+    grammar.size === suite.expectRules,
+    `got ${[...grammar.keys()].join(', ')}`,
+  )
 
-  const generated = compileFeedMine(grammar, suite.substrate, suite.cursorImportPath, suite.extraImports)
+  const generated = compileFeedMine(
+    grammar,
+    suite.substrate,
+    suite.cursorImportPath,
+    suite.extraImports,
+  )
   const entry = `${generated}\n${suite.entryTaskBody}\n`
 
   console.log(`--- ${suite.label} generated .tree source ---`)
@@ -143,21 +191,36 @@ function runSuite(suite: Suite): void {
 
     const dir = mkdtempSync(join(tmpdir(), 'feed-mill-run-'))
     const file = join(dir, 'generated.ts')
-    const jsName = suite.entryTaskName.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())
+    const jsName = suite.entryTaskName.replace(
+      /-([a-z0-9])/g,
+      (_, c: string) => c.toUpperCase(),
+    )
     const inputs = suite.cases.map(([, input]) => JSON.stringify(input))
     const main = `\nfor (const input of [${inputs.join(', ')}]) { console.log(${jsName}(input)) }\n`
 
     writeFileSync(file, `${ts}${main}`)
 
-    const output = execFileSync('npx', ['tsx', file], { encoding: 'utf8' }).trim().split('\n')
+    const output = execFileSync('npx', ['tsx', file], {
+      encoding: 'utf8',
+    })
+      .trim()
+      .split('\n')
 
     suite.cases.forEach(([name, , want], i) => {
       const got = output[i]
 
-      ok(`${suite.label}: ${name}`, got === want, `got ${JSON.stringify(got)} want ${JSON.stringify(want)}`)
+      ok(
+        `${suite.label}: ${name}`,
+        got === want,
+        `got ${JSON.stringify(got)} want ${JSON.stringify(want)}`,
+      )
     })
   } catch (error) {
-    ok(`${suite.label}: compiles through the ordinary pipeline`, false, String((error as Error).stack ?? error))
+    ok(
+      `${suite.label}: compiles through the ordinary pipeline`,
+      false,
+      String((error as Error).stack ?? error),
+    )
   }
 }
 
@@ -167,7 +230,11 @@ runSuite({
   mineFile: join(TERM, 'deck/mill/code/text/hex/mine.tree'),
   substrate: 'text',
   cursorImportPath: '@term/mill/feed',
-  extraImports: ['load @term/mill/text/hex/code', '  find hex-digit-value', ''],
+  extraImports: [
+    'load @term/mill/text/hex/code',
+    '  find hex-digit-value',
+    '',
+  ],
   entryTaskName: 'round-generated-hex',
   entryTaskBody: [
     'task round-generated-hex',
@@ -184,7 +251,11 @@ runSuite({
     ['lowercase round trips', '00ff7a', '00ff7a'],
     ['uppercase input still lower-cases', '00FF7A', '00ff7a'],
     ['the empty string round trips to itself', '', ''],
-    ['a longer real-looking value', 'deadbeefcafef00d', 'deadbeefcafef00d'],
+    [
+      'a longer real-looking value',
+      'deadbeefcafef00d',
+      'deadbeefcafef00d',
+    ],
   ],
   expectRules: 3,
 })

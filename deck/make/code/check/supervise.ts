@@ -11,7 +11,11 @@
 // A work given by name rather than written in place is not judged, since what it raises is the named task's set and a
 // worker built from a parameter can be anything.
 
-import type { Expression, Program, Statement } from '@term/make/code/compile/node'
+import type {
+  Expression,
+  Program,
+  Statement,
+} from '@term/make/code/compile/node'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { raiseSetsOf } from '@term/make/code/check/effects'
@@ -47,7 +51,10 @@ function recordsIn(node: unknown, into: Record[]): void {
 const field = (record: Record, name: string): Expression | undefined =>
   record.fields.find(f => f.name === name)?.value
 
-export function checkSupervision(program: Program, file: string): Diagnostic[] {
+export function checkSupervision(
+  program: Program,
+  file: string,
+): Diagnostic[] {
   // only a program that has the stdlib supervisor's own worker variant: a `worker` of some other form is not this
   const supervised = program.some(
     s =>
@@ -91,9 +98,14 @@ export function checkSupervision(program: Program, file: string): Diagnostic[] {
   // by the same fixed point every other raise set is
   const exceptions = new Set(
     program
-      .filter((s): s is Extract<Statement, { form: 'record-type' }> => s.form === 'record-type' && Boolean(s.chain?.includes('exception')))
+      .filter(
+        (s): s is Extract<Statement, { form: 'record-type' }> =>
+          s.form === 'record-type' &&
+          Boolean(s.chain?.includes('exception')),
+      )
       .map(s => s.name),
   )
+
   const probes = workers.map(
     ({ work }, i): Extract<Statement, { form: 'function' }> => ({
       form: 'function',
@@ -104,6 +116,7 @@ export function checkSupervision(program: Program, file: string): Diagnostic[] {
       span: work.span,
     }),
   )
+
   const sets = raiseSetsOf([...program, ...probes], [...exceptions])
   const diagnostics: Diagnostic[] = []
 

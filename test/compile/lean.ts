@@ -944,7 +944,9 @@ for (const pair of PAIRS) {
   ok(
     pair.name,
     lean === long && !lean.startsWith('DIAGNOSTICS'),
-    lean === long ? lean : `\n--- lean ---\n${lean}\n--- long ---\n${long}`,
+    lean === long
+      ? lean
+      : `\n--- lean ---\n${lean}\n--- long ---\n${long}`,
   )
 }
 
@@ -1173,7 +1175,10 @@ for (const refusal of REFUSALS) {
 {
   const body = PAIRS[0]!.long
 
-  ok('the long form means the same with the flag on', emit(body, true) === emit(body, false))
+  ok(
+    'the long form means the same with the flag on',
+    emit(body, true) === emit(body, false),
+  )
 }
 
 // ---- the host role: a data file ----
@@ -1221,7 +1226,9 @@ for (const pair of DATA_PAIRS) {
   ok(
     pair.name,
     lean === long && !lean.startsWith('DIAGNOSTICS'),
-    lean === long ? lean : `\n--- lean ---\n${lean}\n--- long ---\n${long}`,
+    lean === long
+      ? lean
+      : `\n--- lean ---\n${lean}\n--- long ---\n${long}`,
   )
 }
 
@@ -1231,7 +1238,8 @@ for (const pair of DATA_PAIRS) {
 
   ok(
     'host refuses: two values under a bare head, and says to write list',
-    out.startsWith('DIAGNOSTICS') && out.includes('A list is written "list states"'),
+    out.startsWith('DIAGNOSTICS') &&
+      out.includes('A list is written "list states"'),
     out,
   )
 }
@@ -1294,13 +1302,18 @@ for (const pair of VIEW_PAIRS) {
   ok(
     pair.name,
     lean === long && !lean.startsWith('DIAGNOSTICS'),
-    lean === long ? lean : `\n--- lean ---\n${lean}\n--- long ---\n${long}`,
+    lean === long
+      ? lean
+      : `\n--- lean ---\n${lean}\n--- long ---\n${long}`,
   )
 }
 
 // a component input takes one value
 {
-  const out = emitView(`view page\n  view text/term\n    label <a>, <b>\n`, true)
+  const out = emitView(
+    `view page\n  view text/term\n    label <a>, <b>\n`,
+    true,
+  )
 
   ok(
     'view refuses: two values into one input',

@@ -120,11 +120,12 @@ const program = analyze({ file: 'good.tree', text: GOOD }).program!
 
 let literalStart: { line: number; character: number } | undefined
 forEachExpression(program, node => {
-  if (node.form === 'integer' && node.value === 1)
-    {literalStart = {
+  if (node.form === 'integer' && node.value === 1) {
+    literalStart = {
       line: node.span.start.line,
       character: node.span.start.column,
-    }}
+    }
+  }
 })
 
 const hover = await server.dispatch({
@@ -152,44 +153,91 @@ expect(
 
 // hover on a call shows the callee's `#` doc comment under its signature, as `term look` prints it
 {
-  const DOCUMENTED = '# Add one to a number.\ntask helper\n  take n, like number\n  like number\n  back\n    call add\n      read n\n      code 1\n\ntask runner\n  like number\n  back\n    call helper\n      code 5\n'
+  const DOCUMENTED =
+    '# Add one to a number.\ntask helper\n  take n, like number\n  like number\n  back\n    call add\n      read n\n      code 1\n\ntask runner\n  like number\n  back\n    call helper\n      code 5\n'
   const docServer = new LanguageServer()
-  await docServer.dispatch({ jsonrpc: '2.0', method: 'textDocument/didOpen', params: { textDocument: { uri: 'doc.tree', text: DOCUMENTED } } })
-  const line = DOCUMENTED.split('\n').findIndex(text => text.includes('call helper'))
+  await docServer.dispatch({
+    jsonrpc: '2.0',
+    method: 'textDocument/didOpen',
+    params: { textDocument: { uri: 'doc.tree', text: DOCUMENTED } },
+  })
+  const line = DOCUMENTED.split('\n').findIndex(text =>
+    text.includes('call helper'),
+  )
   const shown = await docServer.dispatch({
     jsonrpc: '2.0',
     id: 9,
     method: 'textDocument/hover',
-    params: { textDocument: { uri: 'doc.tree' }, position: { line, character: DOCUMENTED.split('\n')[line]!.indexOf('helper') + 1 } },
+    params: {
+      textDocument: { uri: 'doc.tree' },
+      position: {
+        line,
+        character: DOCUMENTED.split('\n')[line]!.indexOf('helper') + 1,
+      },
+    },
   })
-  const value = (shown[0]!.result as { contents: { value: string } } | null)?.contents.value ?? ''
+  const value =
+    (shown[0]!.result as { contents: { value: string } } | null)
+      ?.contents.value ?? ''
 
-  expect('hover: a definition shows its doc comment under the signature', /```\n\nAdd one to a number\./.test(value), true)
+  expect(
+    'hover: a definition shows its doc comment under the signature',
+    /```\n\nAdd one to a number\./.test(value),
+    true,
+  )
 }
 
 // an open file not yet saved is loaded by path from another open file: the resolver asked the disk, so it was not
 {
   const dir = mkdtempSync(joinPath(tmpdir(), 'term-unsaved-'))
   mkdirSync(joinPath(dir, 'code'))
-  writeFileSync(joinPath(dir, 'deck.tree'), 'deck @probe/unsaved\n  mark <0.0.1>\n')
+  writeFileSync(
+    joinPath(dir, 'deck.tree'),
+    'deck @probe/unsaved\n  mark <0.0.1>\n',
+  )
   const saved = joinPath(dir, 'code/a.tree')
   const unsaved = joinPath(dir, 'code/b.tree')
-  const A = 'load ./b\n  find double\n\ntask quad\n  take n, like number\n  like number\n  back\n    call double\n      call double\n        read n\n'
+  const A =
+    'load ./b\n  find double\n\ntask quad\n  take n, like number\n  like number\n  back\n    call double\n      call double\n        read n\n'
   writeFileSync(saved, A)
 
   const editor = new LanguageServer()
   await editor.dispatch({
     jsonrpc: '2.0',
     method: 'textDocument/didOpen',
-    params: { textDocument: { uri: fileUrl(unsaved).href, text: 'task double\n  take n, like number\n  like number\n  back\n    call multiply\n      read n\n      code 2\n' } },
+    params: {
+      textDocument: {
+        uri: fileUrl(unsaved).href,
+        text: 'task double\n  take n, like number\n  like number\n  back\n    call multiply\n      read n\n      code 2\n',
+      },
+    },
   })
-  const opened = await editor.dispatch({ jsonrpc: '2.0', method: 'textDocument/didOpen', params: { textDocument: { uri: fileUrl(saved).href, text: A } } })
+  const opened = await editor.dispatch({
+    jsonrpc: '2.0',
+    method: 'textDocument/didOpen',
+    params: { textDocument: { uri: fileUrl(saved).href, text: A } },
+  })
   const errors = opened
-    .filter(each => (each.params as { uri?: string } | undefined)?.uri === fileUrl(saved).href)
-    .flatMap(each => (each.params as { diagnostics: { severity: number; message: string }[] }).diagnostics)
+    .filter(
+      each =>
+        (each.params as { uri?: string } | undefined)?.uri ===
+        fileUrl(saved).href,
+    )
+    .flatMap(
+      each =>
+        (
+          each.params as {
+            diagnostics: { severity: number; message: string }[]
+          }
+        ).diagnostics,
+    )
     .filter(each => each.severity === 1)
 
-  expect('an open file not yet saved is loaded by path from another open file', errors.map(each => each.message).join(' | '), '')
+  expect(
+    'an open file not yet saved is loaded by path from another open file',
+    errors.map(each => each.message).join(' | '),
+    '',
+  )
 }
 
 // close the document: diagnostics are cleared
@@ -201,8 +249,7 @@ const closed = await server.dispatch({
 
 expect(
   'didClose: clears diagnostics',
-  (closed[0]!.params as { diagnostics: unknown[] }).diagnostics
-    .length,
+  (closed[0]!.params as { diagnostics: unknown[] }).diagnostics.length,
   0,
 )
 
@@ -281,7 +328,10 @@ const renameEdits =
         string,
         {
           newText: string
-          range: { start: { line: number; character: number }; end: { line: number; character: number } }
+          range: {
+            start: { line: number; character: number }
+            end: { line: number; character: number }
+          }
         }[]
       >
     } | null
@@ -299,19 +349,30 @@ expect(
 const renamed = (() => {
   const lines = NAV.split('\n')
 
-  for (const edit of [...renameEdits].sort((a, b) => b.range.start.line - a.range.start.line || b.range.start.character - a.range.start.character)) {
+  for (const edit of [...renameEdits].sort(
+    (a, b) =>
+      b.range.start.line - a.range.start.line ||
+      b.range.start.character - a.range.start.character,
+  )) {
     if (edit.range.start.line !== edit.range.end.line) {
       return '<a multi-line edit>'
     }
 
     const line = lines[edit.range.start.line]!
-    lines[edit.range.start.line] = line.slice(0, edit.range.start.character) + edit.newText + line.slice(edit.range.end.character)
+    lines[edit.range.start.line] =
+      line.slice(0, edit.range.start.character) +
+      edit.newText +
+      line.slice(edit.range.end.character)
   }
 
   return lines.join('\n')
 })()
 
-expect('rename: edits name spans only (the program survives)', renamed, NAV.replaceAll('helper', 'assist'))
+expect(
+  'rename: edits name spans only (the program survives)',
+  renamed,
+  NAV.replaceAll('helper', 'assist'),
+)
 
 const syms = await navServer.dispatch({
   jsonrpc: '2.0',
@@ -629,31 +690,42 @@ const actionsFor = async (id: number, context: unknown) =>
       jsonrpc: '2.0',
       id,
       method: 'textDocument/codeAction',
-      params: { textDocument: { uri: projUri }, range: unknownRange, context },
+      params: {
+        textDocument: { uri: projUri },
+        range: unknownRange,
+        context,
+      },
     })
   )[0]!.result as { title: string }[]
 
 expect(
   'codeAction: a save (`source.fixAll` only) offers no import',
-  (await actionsFor(45, { diagnostics: [{ range: unknownRange }], only: ['source.fixAll'] })).some(a =>
-    a.title.startsWith('Import '),
-  ),
+  (
+    await actionsFor(45, {
+      diagnostics: [{ range: unknownRange }],
+      only: ['source.fixAll'],
+    })
+  ).some(a => a.title.startsWith('Import ')),
   false,
 )
 
 expect(
   'codeAction: a lint finding is not searched for as a name',
-  (await actionsFor(46, { diagnostics: [{ range: unknownRange, code: 'L019' }] })).some(a =>
-    a.title.startsWith('Import '),
-  ),
+  (
+    await actionsFor(46, {
+      diagnostics: [{ range: unknownRange, code: 'L019' }],
+    })
+  ).some(a => a.title.startsWith('Import ')),
   false,
 )
 
 expect(
   'codeAction: an `unknown-name` diagnostic still offers the import',
-  (await actionsFor(47, { diagnostics: [{ range: unknownRange, code: 'unknown-name' }] })).some(a =>
-    a.title.includes('@term/base/text'),
-  ),
+  (
+    await actionsFor(47, {
+      diagnostics: [{ range: unknownRange, code: 'unknown-name' }],
+    })
+  ).some(a => a.title.includes('@term/base/text')),
   true,
 )
 
@@ -783,4 +855,6 @@ expect(
 
 console.log(`\nserver: ${pass} pass, ${fail} fail`)
 
-if (fail > 0) {process.exit(1)}
+if (fail > 0) {
+  process.exit(1)
+}

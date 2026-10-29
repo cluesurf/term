@@ -5,7 +5,8 @@ import * as emitted from '@term/flow/code/framing'
 
 // deck/flow/package.json is the VS Code manifest and says no `"type": "module"`, so under tsx the emitted port loads
 // as CommonJS and an ESM importer may see its exports under `default`
-const port = ((emitted as { default?: unknown }).default ?? emitted) as any
+const port = ((emitted as { default?: unknown }).default ??
+  emitted) as any
 
 export type Message = {
   jsonrpc: '2.0'
@@ -24,6 +25,8 @@ export class MessageReader {
   private reader = port.makeReader()
 
   append(chunk: string | Uint8Array): Message[] {
-    return typeof chunk === 'string' ? port.appendText(this.reader, chunk) : port.appendBytes(this.reader, chunk)
+    return typeof chunk === 'string'
+      ? port.appendText(this.reader, chunk)
+      : port.appendBytes(this.reader, chunk)
   }
 }

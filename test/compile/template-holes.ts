@@ -22,11 +22,19 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const built = (text: string) => compile({ file: 'holes.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!) })
+const built = (text: string) =>
+  compile(
+    { file: 'holes.tree', text },
+    { resolve: withNativeEnv('node', stdlibResolver()!) },
+  )
 const messages = (text: string): string => {
   const out = built(text)
 
-  return out.ok ? '' : out.diagnostics.map(d => `${d.span.start.line}: ${d.message}`).join(' | ')
+  return out.ok
+    ? ''
+    : out.diagnostics
+        .map(d => `${d.span.start.line}: ${d.message}`)
+        .join(' | ')
 }
 
 const TREE = `tree badge
@@ -57,29 +65,61 @@ task run
   back <{badge-warn()} / {badge-shout()}>
 `)
 
-ok('holes of each kind fill, and a hole with `fall` may be left out', typed.ok && /careful 3/.test(typed.typescript) && /hey 9!/.test(typed.typescript), typed.ok ? typed.typescript.slice(-400) : typed.diagnostics.map(d => d.message).join(' | '))
+ok(
+  'holes of each kind fill, and a hole with `fall` may be left out',
+  typed.ok &&
+    /careful 3/.test(typed.typescript) &&
+    /hey 9!/.test(typed.typescript),
+  typed.ok
+    ? typed.typescript.slice(-400)
+    : typed.diagnostics.map(d => d.message).join(' | '),
+)
 
 const missing = messages(`${TREE}
 fuse badge, warn, 3
 `)
 // spans count lines from 0: the fuse is the file's fourteenth line
-ok('a hole left out is refused at the fuse, naming it', /^13: `fuse badge` leaves out `label`, which the template takes/.test(missing) && !/`loud`/.test(missing), missing)
+ok(
+  'a hole left out is refused at the fuse, naming it',
+  /^13: `fuse badge` leaves out `label`, which the template takes/.test(
+    missing,
+  ) && !/`loud`/.test(missing),
+  missing,
+)
 
 const extra = messages(`${TREE}
 fuse badge, warn, 3, <careful>, true, more
 `)
-ok('a value too many is refused, with the count', /`fuse badge` gives 5 values in order, and the template takes 4/.test(extra), extra)
+ok(
+  'a value too many is refused, with the count',
+  /`fuse badge` gives 5 values in order, and the template takes 4/.test(
+    extra,
+  ),
+  extra,
+)
 
 const unknown = messages(`${TREE}
 fuse badge, warn, 3, <careful>
   bind colour, red
 `)
-ok('a `bind` the template does not take is refused, naming what it takes', /`fuse badge` binds `colour`, and the template takes `name`, `size`, `label`, `loud`/.test(unknown), unknown)
+ok(
+  'a `bind` the template does not take is refused, naming what it takes',
+  /`fuse badge` binds `colour`, and the template takes `name`, `size`, `label`, `loud`/.test(
+    unknown,
+  ),
+  unknown,
+)
 
 const kind = messages(`${TREE}
 fuse badge, warn, big, <careful>
 `)
-ok('a value of the wrong kind is refused, naming the kind the hole takes', /`fuse badge` gives `size` a name, and the template takes a number there \(`take size, like number`\)/.test(kind), kind)
+ok(
+  'a value of the wrong kind is refused, naming the kind the hole takes',
+  /`fuse badge` gives `size` a name, and the template takes a number there \(`take size, like number`\)/.test(
+    kind,
+  ),
+  kind,
+)
 
 // with a task beside it, so the file is code: a file of nothing but `fuse` lines is data (compile/host.ts), which
 // refuses an unknown fuse in its own words
@@ -89,7 +129,11 @@ task run
   like number
   back 0
 `)
-ok('a fuse of a template nothing defines is refused', /`fuse nowhere` names no template/.test(nothing), nothing)
+ok(
+  'a fuse of a template nothing defines is refused',
+  /`fuse nowhere` names no template/.test(nothing),
+  nothing,
+)
 
 const site = messages(`tree record-of
   take name
@@ -102,7 +146,13 @@ fuse record-of
   beam feilds
     link x, like number
 `)
-ok('a `beam` naming no site is refused, naming the sites', /`fuse record-of` beams `feilds`, and the template has the sites `fields`/.test(site), site)
+ok(
+  'a `beam` naming no site is refused, naming the sites',
+  /`fuse record-of` beams `feilds`, and the template has the sites `fields`/.test(
+    site,
+  ),
+  site,
+)
 
 const untyped = built(`tree is-tag
   take name
@@ -117,7 +167,11 @@ fuse is-tag
   bind name, red
   bind tag, 0
 `)
-ok('an untyped hole holds any word or literal, as before', untyped.ok, untyped.ok ? '' : untyped.diagnostics.map(d => d.message).join(' | '))
+ok(
+  'an untyped hole holds any word or literal, as before',
+  untyped.ok,
+  untyped.ok ? '' : untyped.diagnostics.map(d => d.message).join(' | '),
+)
 
 console.log(`\ntemplate-holes: ${pass} pass, ${fail} fail`)
 

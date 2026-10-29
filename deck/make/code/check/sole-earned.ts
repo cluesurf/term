@@ -10,6 +10,9 @@ import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { checkSoleEarned as earnedIn } from '@term/make/code/check/sole-holding'
 
 // every form that holds a sole value in a field, directly or through other forms, and does not say `mark sole`
-export function checkSoleEarned(program: Program, file: string): Diagnostic[] {
+export function checkSoleEarned(
+  program: Program,
+  file: string,
+): Diagnostic[] {
   return earnedIn(program as never, file) as Diagnostic[]
 }

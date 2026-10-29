@@ -43,7 +43,9 @@ function expect(name: string, got: unknown, want: unknown): void {
 function compiles(file: string): boolean {
   const text = readFileSync(join(codeDir, file), 'utf8')
 
-  if (!text.trim()) {return true} // an empty placeholder is not a failure
+  if (!text.trim()) {
+    return true
+  } // an empty placeholder is not a failure
 
   try {
     return compile({ file, text }, { resolve: resolver }).ok
@@ -90,10 +92,14 @@ let ok = 0
 for (const file of all) {
   const text = readFileSync(join(codeDir, file), 'utf8')
 
-  if (!text.trim()) {continue}
+  if (!text.trim()) {
+    continue
+  }
 
   try {
-    if (compile({ file, text }, { resolve: resolver }).ok) {ok++}
+    if (compile({ file, text }, { resolve: resolver }).ok) {
+      ok++
+    }
   } catch {
     crashed++
     console.log(`  crash: ${file}`)
@@ -107,8 +113,13 @@ expect('every non-empty core module compiles', ok >= 58, true)
 // build (call/code/draft.ts, the test the build walk makes) and is skipped, said so: color.tree and input.tree name
 // types they never declare, which built while an unknown type name was read as a hole
 for (const file of CORE) {
-  if (existsSync(join(codeDir, file)) && declaresDraft(readFileSync(join(codeDir, file), 'utf8'))) {
-    console.log(`skip  core module compiles: ${file}  (shelved with mark draft)`)
+  if (
+    existsSync(join(codeDir, file)) &&
+    declaresDraft(readFileSync(join(codeDir, file), 'utf8'))
+  ) {
+    console.log(
+      `skip  core module compiles: ${file}  (shelved with mark draft)`,
+    )
     continue
   }
 
@@ -123,4 +134,6 @@ console.log(
   `\nstdlib survey: ${pass} pass, ${fail} fail  (${ok}/${all.length} modules compile)`,
 )
 
-if (fail > 0) {process.exit(1)}
+if (fail > 0) {
+  process.exit(1)
+}

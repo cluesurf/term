@@ -6,6 +6,11 @@ import * as port from '@term/deck/code/object/file-treatment'
 
 export type ContentType = 'binary' | 'text' | 'tree'
 
-export const extensionOf = (path: string): string => port.extensionOf(path)
-export const looksTextual = (bytes: Buffer): boolean => port.looksTextual(bytes)
-export const classify = (input: { path: string; bytes: Buffer }): ContentType => port.classify(input.path, input.bytes) as ContentType
+export const extensionOf = (path: string): string =>
+  port.extensionOf(path)
+export const looksTextual = (bytes: Buffer): boolean =>
+  port.looksTextual(bytes)
+export const classify = (input: {
+  path: string
+  bytes: Buffer
+}): ContentType => port.classify(input.path, input.bytes) as ContentType

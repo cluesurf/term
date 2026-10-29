@@ -29,13 +29,20 @@ function ok(name: string, cond: boolean, info = ''): void {
 // a package of `@app/<name>` modules, and a main file loading some of them
 function build(files: Record<string, string>, main: string) {
   const resolve = (path: string): Source | undefined =>
-    files[path] !== undefined ? { file: `${path.slice('@app/'.length)}.tree`, text: files[path]! } : undefined
+    files[path] !== undefined
+      ? {
+          file: `${path.slice('@app/'.length)}.tree`,
+          text: files[path]!,
+        }
+      : undefined
 
   return compile({ file: 'main.tree', text: main }, { resolve })
 }
 
 const said = (result: ReturnType<typeof build>): string =>
-  result.ok ? result.typescript : result.diagnostics.map(d => d.message).join(' | ')
+  result.ok
+    ? result.typescript
+    : result.diagnostics.map(d => d.message).join(' | ')
 
 // two modules define `pick` at DIFFERENT parameter types: over text, and over numbers
 const PICK_TEXT = `task pick\n  take x, like text\n  like text\n  send back, text <text>\n`
@@ -46,7 +53,11 @@ const PICK_NUMBER = `task pick\n  take x, like number\n  like text\n  send back,
   const main = `load @app/a\n  find pick\n\nload @app/b\n  find other\n\ntask run\n  like text\n  send back\n    call pick\n      text <x>\n`
   const b = `${PICK_NUMBER}\ntask other\n  like text\n  send back, text <o>\n`
   const result = build({ '@app/a': PICK_TEXT, '@app/b': b }, main)
-  ok('a call binds to the definition its file imported', result.ok && /"text"/.test(result.typescript), said(result))
+  ok(
+    'a call binds to the definition its file imported',
+    result.ok && /"text"/.test(result.typescript),
+    said(result),
+  )
 }
 
 {
@@ -60,7 +71,11 @@ const PICK_NUMBER = `task pick\n  take x, like number\n  like text\n  send back,
     !result.ok || !/"number"/.test(result.typescript),
     said(result),
   )
-  ok('the argument that does not fit the imported one is refused', !result.ok, said(result))
+  ok(
+    'the argument that does not fit the imported one is refused',
+    !result.ok,
+    said(result),
+  )
 }
 
 // two modules define `pick` at DIFFERENT arities
@@ -73,7 +88,11 @@ const PICK_TWO = `task pick\n  take x, like text\n  take y, like text\n  like te
   const main = `load @app/a\n  find pick\n\nload @app/b\n  find other\n\ntask run\n  like text\n  send back\n    call pick\n      text <x>\n      text <y>\n`
   const b = `${PICK_TWO}\ntask other\n  like text\n  send back, text <o>\n`
   const result = build({ '@app/a': PICK_ONE, '@app/b': b }, main)
-  ok('a call with an arity only the unimported module takes does not reach it', !result.ok || !/"two"/.test(result.typescript), said(result))
+  ok(
+    'a call with an arity only the unimported module takes does not reach it',
+    !result.ok || !/"two"/.test(result.typescript),
+    said(result),
+  )
 }
 
 {
@@ -83,7 +102,11 @@ const PICK_TWO = `task pick\n  take x, like text\n  take y, like text\n  like te
   const a = `${PICK_ONE}\ntask other\n  like text\n  send back, text <o>\n`
   const b = `${PICK_TWO}\ntask another\n  like text\n  send back, text <p>\n`
   const result = build({ '@app/a': a, '@app/b': b }, main)
-  ok('an unimported call that only one module\'s arity takes still binds to it', result.ok && /"two"/.test(result.typescript), said(result))
+  ok(
+    "an unimported call that only one module's arity takes still binds to it",
+    result.ok && /"two"/.test(result.typescript),
+    said(result),
+  )
 }
 
 {
@@ -91,7 +114,11 @@ const PICK_TWO = `task pick\n  take x, like text\n  take y, like text\n  like te
   const main = `load @app/a\n  find pick\n\nload @app/b\n  find other\n\ntask apply\n  take f\n    like task\n      take x, like text\n      like text\n  like text\n  send back\n    call f\n      text <x>\n\ntask run\n  like text\n  send back\n    call apply\n      read pick\n`
   const b = `${PICK_NUMBER}\ntask other\n  like text\n  send back, text <o>\n`
   const result = build({ '@app/a': PICK_TEXT, '@app/b': b }, main)
-  ok('a task passed as a value is the one its file imported', result.ok && !/"number"/.test(result.typescript), said(result))
+  ok(
+    'a task passed as a value is the one its file imported',
+    result.ok && !/"number"/.test(result.typescript),
+    said(result),
+  )
 }
 
 {
@@ -100,8 +127,16 @@ const PICK_TWO = `task pick\n  take x, like text\n  take y, like text\n  like te
   const main = `load @app/b\n  find other\n\n${PICK_TEXT}\ntask run\n  like text\n  send back\n    call pick\n      text <x>\n\ntask run-other\n  like text\n  send back, call other\n`
   const b = `${PICK_NUMBER}\ntask other\n  like text\n  send back, call pick(code 1)\n`
   const result = build({ '@app/b': b }, main)
-  ok('the entry file\'s own definition keeps its name', result.ok && /export function pick\(/.test(result.typescript), said(result))
-  ok('and the other module\'s call reaches its own', result.ok && /"number"/.test(result.typescript), said(result))
+  ok(
+    "the entry file's own definition keeps its name",
+    result.ok && /export function pick\(/.test(result.typescript),
+    said(result),
+  )
+  ok(
+    "and the other module's call reaches its own",
+    result.ok && /"number"/.test(result.typescript),
+    said(result),
+  )
 }
 
 // module-scope-0003: two FORMS of one name in two files, each with fields of its own and a method of its own
@@ -113,15 +148,25 @@ const POINT_C = `load @app/b\n  find point\n\ntask place\n  like text\n  save p\
 {
   // main imports a's point and builds it with a's fields, c builds b's with b's: both are in one program, apart
   const main = `load @app/a\n  find point\n\nload @app/c\n  find place\n\ntask run\n  like number\n  save p\n    make point\n      bind x, code 1\n      bind y, code 2\n  send back, read p/x\n\ntask run-place\n  like text\n  send back, call place\n`
-  const result = build({ '@app/a': POINT_A, '@app/b': POINT_B, '@app/c': POINT_C }, main)
-  ok('two forms of one name in two files compile side by side, each importer building its own', result.ok, said(result))
+  const result = build(
+    { '@app/a': POINT_A, '@app/b': POINT_B, '@app/c': POINT_C },
+    main,
+  )
+  ok(
+    'two forms of one name in two files compile side by side, each importer building its own',
+    result.ok,
+    said(result),
+  )
 }
 
 {
   // a's form's method reaches a's form, b's reaches b's: the method follows its form when the form is split
   const main = `load @app/a\n  find point\n\nload @app/c\n  find place\n\ntask run\n  like number\n  save p\n    make point\n      bind x, code 1\n      bind y, code 2\n  send back\n    call total\n      read p\n\ntask run-place\n  like text\n  send back, call place\n`
-  const result = build({ '@app/a': POINT_A, '@app/b': POINT_B, '@app/c': POINT_C }, main)
-  ok('a form\'s method follows its own form', result.ok, said(result))
+  const result = build(
+    { '@app/a': POINT_A, '@app/b': POINT_B, '@app/c': POINT_C },
+    main,
+  )
+  ok("a form's method follows its own form", result.ok, said(result))
 }
 
 {
@@ -129,7 +174,11 @@ const POINT_C = `load @app/b\n  find point\n\ntask place\n  like text\n  save p\
   // as the generated bind package relies on, until the strict step (module-scope-0006) refuses it
   const main = `load @app/a\n  find point\n\nload @app/b\n  find point\n\ntask run\n  like text\n  save p\n    make point\n      bind lat, text <n>\n      bind long, text <w>\n  send back, read p/lat\n`
   const result = build({ '@app/a': POINT_A, '@app/b': POINT_B }, main)
-  ok('a form imported from two definers is the one merged last, as the flat program had it', result.ok, said(result))
+  ok(
+    'a form imported from two definers is the one merged last, as the flat program had it',
+    result.ok,
+    said(result),
+  )
 }
 
 {
@@ -137,8 +186,15 @@ const POINT_C = `load @app/b\n  find point\n\ntask place\n  like text\n  save p\
   // nothing that builds today stops building (the strict step, module-scope-0006, refuses it)
   const main = `load @app/c\n  find place\n\nload @app/a\n  find other\n\ntask run\n  take p, like point\n  like number\n  send back, code 1\n\ntask run-place\n  like text\n  send back, call place\n`
   const a = `${POINT_A}\ntask other\n  like number\n  send back, code 1\n`
-  const result = build({ '@app/a': a, '@app/b': POINT_B, '@app/c': POINT_C }, main)
-  ok('an unimported form reference still builds, as the flat program built it', result.ok, said(result))
+  const result = build(
+    { '@app/a': a, '@app/b': POINT_B, '@app/c': POINT_C },
+    main,
+  )
+  ok(
+    'an unimported form reference still builds, as the flat program built it',
+    result.ok,
+    said(result),
+  )
 }
 
 // module-scope-0004: two COMPONENTS of one name in two files, each drawing its own element
@@ -149,17 +205,34 @@ const BADGE_D = `load @term/site/code/dom/dom\n  find view\n\nload @app/b\n  fin
 
 {
   const main = `load @term/site/code/dom/dom\n  find view\n\nload @app/a\n  find badge\n\nload @app/d\n  find card\n\nview page\n  take host, like view\n  view badge\n  view card\n`
-  const files = { '@app/a': BADGE_A, '@app/b': BADGE_B, '@app/d': BADGE_D }
+  const files = {
+    '@app/a': BADGE_A,
+    '@app/b': BADGE_B,
+    '@app/d': BADGE_D,
+  }
   // the app's modules by name, everything else (the dom, and the render runtime with its relative loads) from the real
   // packages, resolved from the file that asked
   const resolve = (path: string, from: string): Source | undefined =>
     files[path as keyof typeof files] !== undefined
-      ? { file: `${path.slice('@app/'.length)}.tree`, text: files[path as keyof typeof files] }
+      ? {
+          file: `${path.slice('@app/'.length)}.tree`,
+          text: files[path as keyof typeof files],
+        }
       : projectResolve(path, from)
   const result = compile({ file: 'main.tree', text: main }, { resolve })
-  ok('two components of one name in two files compile side by side', result.ok, said(result))
+  ok(
+    'two components of one name in two files compile side by side',
+    result.ok,
+    said(result),
+  )
   // page places a's badge (a span), card places b's (an em): both elements are drawn
-  ok('each placement draws the component its file imported', result.ok && /"span"/.test(result.typescript) && /"em"/.test(result.typescript), said(result))
+  ok(
+    'each placement draws the component its file imported',
+    result.ok &&
+      /"span"/.test(result.typescript) &&
+      /"em"/.test(result.typescript),
+    said(result),
+  )
 }
 
 // module-scope-0005: ONE NAME, TWO KINDS, told apart by where it stands. A task `point` and a form `point`, each from its
@@ -169,9 +242,20 @@ const FORM_POINT = `form point\n  link x, like number\n  link total, like number
 
 {
   const main = `load @app/t\n  find point\n\nload @app/f\n  find point\n\ntask run\n  like number\n  save p, like point\n    make point\n      bind x, code 1\n      bind total, code 5\n  send back\n    call point\n      read p/x\n`
-  const result = build({ '@app/t': TASK_POINT, '@app/f': FORM_POINT }, main)
-  ok('a task and a form of one name, both imported plainly, compile with no alias', result.ok, said(result))
-  ok('`call point` is the task and `make point` / `like point` the form', result.ok && /\+ 10|10\)/.test(result.typescript), said(result))
+  const result = build(
+    { '@app/t': TASK_POINT, '@app/f': FORM_POINT },
+    main,
+  )
+  ok(
+    'a task and a form of one name, both imported plainly, compile with no alias',
+    result.ok,
+    said(result),
+  )
+  ok(
+    '`call point` is the task and `make point` / `like point` the form',
+    result.ok && /\+ 10|10\)/.test(result.typescript),
+    said(result),
+  )
 }
 
 // a top-level task named like a FIELD and like a METHOD of a form, from a module the file never imported for it
@@ -182,7 +266,11 @@ const TOTAL_TASK = `task total\n  take n, like number\n  like number\n  send bac
   const main = `load @app/f\n  find point\n\nload @app/g\n  find other\n\ntask run\n  like number\n  save p, like point\n    make point\n      bind x, code 1\n      bind total, code 5\n  send back, read p/total\n`
   const g = `${TOTAL_TASK}\ntask other\n  like number\n  send back\n    call total\n      code 1\n`
   const result = build({ '@app/f': FORM_POINT, '@app/g': g }, main)
-  ok('a field read is the field, not a same-named task of another module', result.ok && !/99/.test(result.typescript), said(result))
+  ok(
+    'a field read is the field, not a same-named task of another module',
+    result.ok && !/99/.test(result.typescript),
+    said(result),
+  )
 }
 
 {
@@ -191,7 +279,11 @@ const TOTAL_TASK = `task total\n  take n, like number\n  like number\n  send bac
   const main = `load @app/f\n  find point\n\nload @app/g\n  find other\n\ntask run\n  like number\n  save p, like point\n    make point\n      bind x, code 7\n      bind total, code 5\n  send back\n    call sum\n      read p\n`
   const g = `${TOTAL_TASK}\ntask other\n  like number\n  send back\n    call sum\n      code 1\n`
   const result = build({ '@app/f': FORM_POINT, '@app/g': g }, main)
-  ok('a method call on a value is its form\'s method, not a same-named task of another module', result.ok && !/98/.test(result.typescript), said(result))
+  ok(
+    "a method call on a value is its form's method, not a same-named task of another module",
+    result.ok && !/98/.test(result.typescript),
+    said(result),
+  )
 }
 
 {
@@ -200,7 +292,11 @@ const TOTAL_TASK = `task total\n  take n, like number\n  like number\n  send bac
   // (deck/base/code/native/node/clock/measurement.tree)
   const main = `form mark\n  link start, like number\n\ntask start\n  like mark\n  send back\n    make mark\n      bind start, code 3\n\ntask since\n  take m, like mark\n  like number\n  fork case, read m\n    case mark\n      link start\n      send back\n        call subtract\n          code 10\n          read start\n`
   const result = build({}, main)
-  ok('a field bound by a record\'s own arm is the field, not a same-named task', result.ok, said(result))
+  ok(
+    "a field bound by a record's own arm is the field, not a same-named task",
+    result.ok,
+    said(result),
+  )
 }
 
 // a `host` VALUE in one module and a TASK of the same name in another (terminal-target-0003: the terminal host's
@@ -212,11 +308,30 @@ const LEVEL_TASK = `task level\n  take n, like number\n  like number\n  send bac
 {
   const main = `load @app/v\n  find read-level\n\nload @app/t\n  find level\n\ntask run\n  like number\n  send back\n    call add\n      call read-level\n      call level\n        code 1\n`
   const result = build({ '@app/v': GAUGE, '@app/t': LEVEL_TASK }, main)
-  const declared = result.ok ? (result.typescript.match(/(?:const|let|var|function) level\b/g) ?? []).length : -1
-  ok('a host value and a same-named task of another module compile side by side', result.ok, said(result))
+  const declared = result.ok
+    ? (
+        result.typescript.match(
+          /(?:const|let|var|function) level\b/g,
+        ) ?? []
+      ).length
+    : -1
+  ok(
+    'a host value and a same-named task of another module compile side by side',
+    result.ok,
+    said(result),
+  )
   // at most once: the optimizer may inline the task, and two is what the collision produced
-  ok('the output never declares the name twice: the value has its own', declared >= 0 && declared <= 1, `${declared} declarations of "level"`)
-  ok('the value reference still reads the host', result.ok && /level__value\d*\.n|levelValue\d*\.n/.test(result.typescript), said(result))
+  ok(
+    'the output never declares the name twice: the value has its own',
+    declared >= 0 && declared <= 1,
+    `${declared} declarations of "level"`,
+  )
+  ok(
+    'the value reference still reads the host',
+    result.ok &&
+      /level__value\d*\.n|levelValue\d*\.n/.test(result.typescript),
+    said(result),
+  )
 }
 
 // the ENTRY file's task keeps its name beside another module's task of the same name at another arity. An abstract
@@ -228,9 +343,21 @@ const RUN_SIGNATURE = `task run\n  take sql, like text\n  take params, like text
 {
   const main = `load @app/sig\n  find run\n\ntask run\n  like text\n  send back, text <done>\n\ntask other\n  like text\n  send back\n    call run\n      text <a>\n      text <b>\n`
   const result = build({ '@app/sig': RUN_SIGNATURE }, main)
-  ok('an entry task and an imported signature of one name at two arities compile', result.ok, said(result))
-  ok('the entry\'s task keeps its own name', result.ok && /function run\(\)/.test(result.typescript), said(result))
-  ok('the other arity is still told apart', result.ok && !/function run\(sql/.test(result.typescript), said(result))
+  ok(
+    'an entry task and an imported signature of one name at two arities compile',
+    result.ok,
+    said(result),
+  )
+  ok(
+    "the entry's task keeps its own name",
+    result.ok && /function run\(\)/.test(result.typescript),
+    said(result),
+  )
+  ok(
+    'the other arity is still told apart',
+    result.ok && !/function run\(sql/.test(result.typescript),
+    said(result),
+  )
 }
 
 // an import ALIAS of a name the file also defines. `find measure, name module-measure` is rewritten to the imported
@@ -239,27 +366,50 @@ const RUN_SIGNATURE = `task run\n  take sql, like text\n  take params, like text
 // is run, so an inlined call is held to its answer rather than its spelling
 const MEASURE_MODULE = `task measure\n  take x, like number\n  like text\n  send back, text <module>\n`
 
-async function runOf(typescript: string): Promise<Record<string, () => unknown>> {
+async function runOf(
+  typescript: string,
+): Promise<Record<string, () => unknown>> {
   const { transformSync } = await import('esbuild')
   const { mkdtempSync, writeFileSync } = await import('node:fs')
   const { tmpdir } = await import('node:os')
   const { join } = await import('node:path')
   const { pathToFileURL } = await import('node:url')
-  const file = join(mkdtempSync(join(tmpdir(), 'term-module-scope-')), 'module.mjs')
-  writeFileSync(file, transformSync(typescript, { loader: 'ts', format: 'esm' }).code)
+  const file = join(
+    mkdtempSync(join(tmpdir(), 'term-module-scope-')),
+    'module.mjs',
+  )
+  writeFileSync(
+    file,
+    transformSync(typescript, { loader: 'ts', format: 'esm' }).code,
+  )
 
-  return (await import(pathToFileURL(file).href)) as Record<string, () => unknown>
+  return (await import(pathToFileURL(file).href)) as Record<
+    string,
+    () => unknown
+  >
 }
 
 {
   const main = `load @app/m\n  find measure, name module-measure\n\nform box\n  link n, like number\n\ntask measure\n  take b, like box\n  like text\n  send back, text <own>\n\ntask run\n  like text\n  send back\n    call module-measure\n      code 3\n\ntask mine\n  like text\n  save b\n    make box\n      bind n, code 1\n  send back\n    call measure\n      read b\n`
   const result = build({ '@app/m': MEASURE_MODULE }, main)
-  ok('an aliased import of a name the file defines compiles', result.ok, said(result))
+  ok(
+    'an aliased import of a name the file defines compiles',
+    result.ok,
+    said(result),
+  )
 
   if (result.ok) {
     const mod = await runOf(result.typescript)
-    ok('the alias reaches the imported task', mod.run?.() === 'module', String(mod.run?.()))
-    ok('the bare name is still the file\'s own', mod.mine?.() === 'own', String(mod.mine?.()))
+    ok(
+      'the alias reaches the imported task',
+      mod.run?.() === 'module',
+      String(mod.run?.()),
+    )
+    ok(
+      "the bare name is still the file's own",
+      mod.mine?.() === 'own',
+      String(mod.mine?.()),
+    )
   }
 }
 
@@ -270,12 +420,24 @@ const MEASURE_NATIVE = `bind measure\n  take x, like number\n  like number\n  ca
 {
   const main = `load @app/n\n  find measure, name native-measure\n\nform box\n  link n, like number\n\ntask measure\n  take b, like box\n  like number\n  send back, code 7\n\ntask run\n  like number\n  send back\n    call native-measure\n      code 3\n\ntask mine\n  like number\n  save b\n    make box\n      bind n, code 1\n  send back\n    call measure\n      read b\n`
   const result = build({ '@app/n': MEASURE_NATIVE }, main)
-  ok('an aliased import of a native binding the file names a task compiles', result.ok, said(result))
+  ok(
+    'an aliased import of a native binding the file names a task compiles',
+    result.ok,
+    said(result),
+  )
 
   if (result.ok) {
     const mod = await runOf(result.typescript)
-    ok('the alias reaches the native binding', mod.run?.() === 103, String(mod.run?.()))
-    ok('the bare name is still the file\'s own task', mod.mine?.() === 7, String(mod.mine?.()))
+    ok(
+      'the alias reaches the native binding',
+      mod.run?.() === 103,
+      String(mod.run?.()),
+    )
+    ok(
+      "the bare name is still the file's own task",
+      mod.mine?.() === 7,
+      String(mod.mine?.()),
+    )
   }
 }
 
@@ -288,22 +450,38 @@ const ROOT_MODULE = `task root\n  like text\n  send back, text <here>\n`
 {
   const main = `load @app/r\n  find root, name project-root\n\ntask run\n  like text\n  save root, call project-root\n  send back, read root\n`
   const result = build({ '@app/r': ROOT_MODULE }, main)
-  ok('a local named like the aliased task, saved from the alias, compiles', result.ok, said(result))
+  ok(
+    'a local named like the aliased task, saved from the alias, compiles',
+    result.ok,
+    said(result),
+  )
 
   if (result.ok) {
     const mod = await runOf(result.typescript)
-    ok('the local holds the import\'s answer', mod.run?.() === 'here', String(mod.run?.()))
+    ok(
+      "the local holds the import's answer",
+      mod.run?.() === 'here',
+      String(mod.run?.()),
+    )
   }
 }
 
 {
   const main = `load @app/r\n  find root, name project-root\n\ntask run\n  like text\n  save root, text <x>\n  save other, call project-root\n  send back, read other\n`
   const result = build({ '@app/r': ROOT_MODULE }, main)
-  ok('an alias called after a local of the imported name exists is still the task', result.ok, said(result))
+  ok(
+    'an alias called after a local of the imported name exists is still the task',
+    result.ok,
+    said(result),
+  )
 
   if (result.ok) {
     const mod = await runOf(result.typescript)
-    ok('the later call reaches the import', mod.run?.() === 'here', String(mod.run?.()))
+    ok(
+      'the later call reaches the import',
+      mod.run?.() === 'here',
+      String(mod.run?.()),
+    )
   }
 }
 
@@ -313,14 +491,33 @@ const ROOT_MODULE = `task root\n  like text\n  send back, text <here>\n`
 {
   const main = `task front-dir\n  like text\n  send back, text <none>\n\ntask front-dir\n  take home, like text\n  like text\n  send back, text <{home}/front>\n\ntask other\n  like text\n  send back, text <o>\n`
   const result = build({}, main)
-  ok('an entry\'s two arities of one name compile', result.ok, said(result))
+  ok(
+    "an entry's two arities of one name compile",
+    result.ok,
+    said(result),
+  )
 
   if (result.ok) {
-    const mod = (await runOf(result.typescript)) as Record<string, (...args: unknown[]) => unknown>
-    const made = Object.entries(mod).filter(([name]) => /^frontDir/.test(name))
-    const answers = made.map(([, one]) => (one.length === 0 ? one() : one('h'))).sort()
-    ok('both arities are in the module', made.length === 2, result.typescript)
-    ok('and each answers its own body', answers.join(',') === 'h/front,none', answers.join(','))
+    const mod = (await runOf(result.typescript)) as Record<
+      string,
+      (...args: unknown[]) => unknown
+    >
+    const made = Object.entries(mod).filter(([name]) =>
+      /^frontDir/.test(name),
+    )
+    const answers = made
+      .map(([, one]) => (one.length === 0 ? one() : one('h')))
+      .sort()
+    ok(
+      'both arities are in the module',
+      made.length === 2,
+      result.typescript,
+    )
+    ok(
+      'and each answers its own body',
+      answers.join(',') === 'h/front,none',
+      answers.join(','),
+    )
   }
 }
 
@@ -333,12 +530,24 @@ const ROOT_MODULE = `task root\n  like text\n  send back, text <here>\n`
   const chart = `form element\n  link size, like number\n`
   const main = `load @app/page\n  find element\n\nload @app/chart\n  find element, name chart-element\n\ntask title\n  like text\n  save e\n    make element\n      bind name, text <title>\n  send back, read e/name\n\ntask bar\n  take c, like chart-element\n  like number\n  send back, read c/size\n\ntask run\n  like number\n  save c\n    make chart-element\n      bind size, code 3\n  send back\n    call bar\n      read c\n`
   const result = build({ '@app/page': page, '@app/chart': chart }, main)
-  ok('an alias keeps two same-named forms apart, in a `make` and in a `like`', result.ok, said(result))
+  ok(
+    'an alias keeps two same-named forms apart, in a `make` and in a `like`',
+    result.ok,
+    said(result),
+  )
 
   if (result.ok) {
     const mod = await runOf(result.typescript)
-    ok('the bare name builds the first module\'s form', mod.title?.() === 'title', String(mod.title?.()))
-    ok('the alias builds and takes the second\'s', mod.run?.() === 3, String(mod.run?.()))
+    ok(
+      "the bare name builds the first module's form",
+      mod.title?.() === 'title',
+      String(mod.title?.()),
+    )
+    ok(
+      "the alias builds and takes the second's",
+      mod.run?.() === 3,
+      String(mod.run?.()),
+    )
   }
 }
 
@@ -350,11 +559,19 @@ const ROOT_MODULE = `task root\n  like text\n  send back, text <here>\n`
   const csv = `task parse\n  take text, like text\n  like text\n  send back, text <csv>\n`
   const main = `load @app/json\n  find parse\n\nload @app/csv\n  find parse, name parse-csv\n\ntask both\n  like text\n  send back, <{parse(<a>)}{parse-csv(<b>)}>\n`
   const result = build({ '@app/json': json, '@app/csv': csv }, main)
-  ok('one file loads two same-named tasks, one under an alias', result.ok, said(result))
+  ok(
+    'one file loads two same-named tasks, one under an alias',
+    result.ok,
+    said(result),
+  )
 
   if (result.ok) {
     const mod = await runOf(result.typescript)
-    ok('each name reaches its own module', mod.both?.() === 'jsoncsv', String(mod.both?.()))
+    ok(
+      'each name reaches its own module',
+      mod.both?.() === 'jsoncsv',
+      String(mod.both?.()),
+    )
   }
 }
 
@@ -370,14 +587,25 @@ const ROOT_MODULE = `task root\n  like text\n  send back, text <here>\n`
   const files = { '@app/fault': fault, '@app/names': names }
   const resolve = (path: string, from: string): Source | undefined =>
     files[path as keyof typeof files] !== undefined
-      ? { file: `${path.slice('@app/'.length)}.tree`, text: files[path as keyof typeof files] }
+      ? {
+          file: `${path.slice('@app/'.length)}.tree`,
+          text: files[path as keyof typeof files],
+        }
       : projectResolve(path, from)
   const result = compile({ file: 'main.tree', text: main }, { resolve })
-  ok('an arm over a caught exception reaches a form renamed apart from a case', result.ok, said(result))
+  ok(
+    'an arm over a caught exception reaches a form renamed apart from a case',
+    result.ok,
+    said(result),
+  )
 
   if (result.ok) {
     const mod = await runOf(result.typescript)
-    ok('the arm catches it and reads its field', mod.run?.() === 7, String(mod.run?.()))
+    ok(
+      'the arm catches it and reads its field',
+      mod.run?.() === 7,
+      String(mod.run?.()),
+    )
   }
 }
 
@@ -389,11 +617,19 @@ const ROOT_MODULE = `task root\n  like text\n  send back, text <here>\n`
   const b = `load @app/l\n  find bag\n  find join\n\ntask glue\n  take b, like bag\n  like text\n  send back\n    call join\n      read b\n      text </>\n`
   const main = `load @app/b\n  find glue\n\nload @app/l\n  find bag\n\ntask join\n  take paths, like list, like text\n  like text\n  save b\n    make bag\n      bind items, read paths\n  save g, call glue(read b)\n  send back, <[{g}]>\n`
   const result = build({ '@app/l': l, '@app/b': b }, main)
-  ok('a loaded module\'s call to a method it imported is not taken by the entry\'s task of the name', result.ok, said(result))
+  ok(
+    "a loaded module's call to a method it imported is not taken by the entry's task of the name",
+    result.ok,
+    said(result),
+  )
 
   if (result.ok) {
     const mod = await runOf(result.typescript)
-    ok('the entry\'s task calls the module, and the module its method', mod.join?.(['a', 'b']) === '[2/]', String(mod.join?.(['a', 'b'])))
+    ok(
+      "the entry's task calls the module, and the module its method",
+      mod.join?.(['a', 'b']) === '[2/]',
+      String(mod.join?.(['a', 'b'])),
+    )
   }
 }
 

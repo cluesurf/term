@@ -122,8 +122,9 @@ rejects(
     // Type0 must fail.
     const universe = infer(context, ty(0)).type
 
-    if (!(universe.v === 'type' && universe.level.constant === 0))
-      {throw new Error('Type 0 is not in Type 0')}
+    if (!(universe.v === 'type' && universe.level.constant === 0)) {
+      throw new Error('Type 0 is not in Type 0')
+    }
   },
 )
 

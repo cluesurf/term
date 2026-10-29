@@ -160,9 +160,20 @@ const dir = mkdtempSync(join(tmpdir(), 'term-arithmetic-masks-'))
 const only = process.env.MASK_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const said = (program: string, name: string) => runOn({ backend, program, resolve: env => projectResolver(process.cwd(), env), dir, name })
+  const said = (program: string, name: string) =>
+    runOn({
+      backend,
+      program,
+      resolve: env => projectResolver(process.cwd(), env),
+      dir,
+      name,
+    })
   const shown = (ran: ReturnType<typeof said>): string =>
-    ran.form === 'ran' ? `got ${JSON.stringify(ran.output)}` : ran.form === 'skipped' ? ran.reason : `${ran.stage}: ${ran.reason}`
+    ran.form === 'ran'
+      ? `got ${JSON.stringify(ran.output)}`
+      : ran.form === 'skipped'
+        ? ran.reason
+        : `${ran.stage}: ${ran.reason}`
 
   const money = said(MONEY, 'money')
 
@@ -171,27 +182,58 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
     continue
   }
 
-  ok(`${backend}: a form wearing addition is added directly and by a bounded task`, money.form === 'ran' && money.output === '7 7 7', shown(money))
+  ok(
+    `${backend}: a form wearing addition is added directly and by a bounded task`,
+    money.form === 'ran' && money.output === '7 7 7',
+    shown(money),
+  )
 
   const big = said(BIG, 'big')
-  ok(`${backend}: big integers take add, subtract, multiply and divide, and the bounded task`, big.form === 'ran' && big.output === BIG_EXPECTED, shown(big))
+  ok(
+    `${backend}: big integers take add, subtract, multiply and divide, and the bounded task`,
+    big.form === 'ran' && big.output === BIG_EXPECTED,
+    shown(big),
+  )
 
   // a float prints its own way on each backend (`-5.0` on Kotlin and Swift), so the two parts are read as numbers
   const others = said(OTHERS, 'others')
-  const normal = others.form === 'ran' ? others.output.replace(/(-?\d+)\.0\b/g, '$1') : ''
-  ok(`${backend}: rationals, complex numbers and decimals take the same words, and plus still answers`, normal === OTHERS_EXPECTED, shown(others))
+  const normal =
+    others.form === 'ran'
+      ? others.output.replace(/(-?\d+)\.0\b/g, '$1')
+      : ''
+  ok(
+    `${backend}: rationals, complex numbers and decimals take the same words, and plus still answers`,
+    normal === OTHERS_EXPECTED,
+    shown(others),
+  )
 
   const raised = said(RAISE, 'raise')
-  ok(`${backend}: a raise through a mask in a bounded task reaches the caller's guard`, raised.form === 'ran' && raised.output === 'caught', shown(raised))
+  ok(
+    `${backend}: a raise through a mask in a bounded task reaches the caller's guard`,
+    raised.form === 'ran' && raised.output === 'caught',
+    shown(raised),
+  )
 }
 
 if (!only || only === 'typescript') {
   // a form that wears no arithmetic mask is refused as before, naming the number it is not
   const refused = compile(
-    { file: join(dir, 'refused.tree'), text: 'form point\n  link x, like number\n\ntask run\n  like point\n  save p, make point, bind x, 1\n  back add(p, p)\n' },
+    {
+      file: join(dir, 'refused.tree'),
+      text: 'form point\n  link x, like number\n\ntask run\n  like point\n  save p, make point, bind x, 1\n  back add(p, p)\n',
+    },
     { resolve: projectResolver(process.cwd(), 'node'), env: 'node' },
   )
-  ok('a form that wears no mask is not added', !refused.ok && refused.diagnostics.some(d => d.message.includes('expected number')), refused.ok ? 'it built' : refused.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'a form that wears no mask is not added',
+    !refused.ok &&
+      refused.diagnostics.some(d =>
+        d.message.includes('expected number'),
+      ),
+    refused.ok
+      ? 'it built'
+      : refused.diagnostics.map(d => d.message).join(' | '),
+  )
 
   // `like self` is the wearer: a task taking another form where the mask says self is refused
   const mismatch = compile(
@@ -201,7 +243,16 @@ if (!only || only === 'typescript') {
     },
     { resolve: projectResolver(process.cwd(), 'node'), env: 'node' },
   )
-  ok('a worn task must take the wearer where the mask says like self', !mismatch.ok && mismatch.diagnostics.some(d => d.message.includes('wears "addition"')), mismatch.ok ? 'it built' : mismatch.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'a worn task must take the wearer where the mask says like self',
+    !mismatch.ok &&
+      mismatch.diagnostics.some(d =>
+        d.message.includes('wears "addition"'),
+      ),
+    mismatch.ok
+      ? 'it built'
+      : mismatch.diagnostics.map(d => d.message).join(' | '),
+  )
 }
 
 console.log(`\narithmetic-masks: ${pass} pass, ${fail} fail`)

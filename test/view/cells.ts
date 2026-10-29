@@ -11,7 +11,12 @@
 // Run: npx tsx test/view/cells.ts
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
@@ -19,7 +24,10 @@ import { nativePrelude } from '@term/make/code/compile/native'
 import { projectResolver } from '@term/call/code/make'
 
 // the width every Node terminal library uses, from mesh, where it is installed; the grid's table is generated from it
-const STRING_WIDTH = join(import.meta.dirname, '../../../../../../mesh/node_modules/string-width/index.js')
+const STRING_WIDTH = join(
+  import.meta.dirname,
+  '../../../../../../mesh/node_modules/string-width/index.js',
+)
 
 let pass = 0
 let fail = 0
@@ -42,7 +50,13 @@ const JAMO = '\u{1100}\u{1161}\u{11A8}'
 const HEART = '\u{2764}\u{FE0F}'
 
 // each case: what it holds, the Term expression building its tree, the grid's size, and the grid by hand
-type Case = { name: string; tree: string; width: number; height: number; want: string }
+type Case = {
+  name: string
+  tree: string
+  width: number
+  height: number
+  want: string
+}
 
 const CASES: Case[] = [
   {
@@ -229,7 +243,20 @@ const CASES: Case[] = [
 ]
 
 // whole texts measured by the grid beside string-width, which measures by grapheme cluster
-const CLUSTER_SAMPLES = [FAMILY, FLAG, JAMO, '\u{AC00}\u{11A8}', '\u{1100}\u{1161}', HEART, 'e\u{301}', `${FLAG}${FLAG}`, `a${FAMILY}b`, '#\u{FE0F}\u{20E3}', '\u{1F44D}\u{1F3FD}', '日本']
+const CLUSTER_SAMPLES = [
+  FAMILY,
+  FLAG,
+  JAMO,
+  '\u{AC00}\u{11A8}',
+  '\u{1100}\u{1161}',
+  HEART,
+  'e\u{301}',
+  `${FLAG}${FLAG}`,
+  `a${FAMILY}b`,
+  '#\u{FE0F}\u{20E3}',
+  '\u{1F44D}\u{1F3FD}',
+  '日本',
+]
 
 // the tree builders the cases call, and one line per case into the output
 const PROGRAM = `load @term/site/code/view/cells/grid
@@ -424,21 +451,48 @@ function termOf(expression: string, depth: number): string {
     args.push(inside.slice(start))
   }
 
-  return [`${pad}call ${name}`, ...args.map(arg => termOf(arg, depth + 1))].join('\n')
+  return [
+    `${pad}call ${name}`,
+    ...args.map(arg => termOf(arg, depth + 1)),
+  ].join('\n')
 }
 
-const program = PROGRAM + '\n' + CASES.map((one, i) =>
-  [`task case-${i}`, '  like text', '  send back', '    call lay-out', termOf(one.tree, 3), `      code ${one.width}`, `      code ${one.height}`].join('\n'),
-).join('\n\n') + '\n'
+const program =
+  PROGRAM +
+  '\n' +
+  CASES.map((one, i) =>
+    [
+      `task case-${i}`,
+      '  like text',
+      '  send back',
+      '    call lay-out',
+      termOf(one.tree, 3),
+      `      code ${one.width}`,
+      `      code ${one.height}`,
+    ].join('\n'),
+  ).join('\n\n') +
+  '\n'
 
 const dir = mkdtempSync(join(tmpdir(), 'term-cells-'))
 const entry = join(dir, 'cells.tree')
 writeFileSync(entry, program)
-const result = compile({ file: entry, text: program }, { resolve: projectResolver(process.cwd(), 'node'), env: 'node' })
-ok('the cell grid and the cases compile', result.ok, result.ok ? '' : [...new Set(result.diagnostics.map(d => d.message))].slice(0, 6).join(' | '))
+const result = compile(
+  { file: entry, text: program },
+  { resolve: projectResolver(process.cwd(), 'node'), env: 'node' },
+)
+ok(
+  'the cell grid and the cases compile',
+  result.ok,
+  result.ok
+    ? ''
+    : [...new Set(result.diagnostics.map(d => d.message))]
+        .slice(0, 6)
+        .join(' | '),
+)
 
 if (result.ok) {
-  const readRuntime = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, 'utf8') : undefined)
+  const readRuntime = (file: string): string | undefined =>
+    existsSync(file) ? readFileSync(file, 'utf8') : undefined
   const file = join(dir, 'cells.ts')
   const calls = CASES.map((_, i) => `case${i}()`).join(', ')
   // every code point through the grid's cell-width beside string-width's, the disagreements counted and the first eight kept
@@ -453,27 +507,52 @@ if (result.ok) {
     '}',
     `const clusters = ${JSON.stringify(CLUSTER_SAMPLES)}.map(text => [text, clusterCells(text), stringWidth(text)])`,
   ].join('\n')
-  writeFileSync(file, `${nativePrelude(result.program, 'node', readRuntime, result.typescript)}\n${result.typescript}\n${witness}\nconsole.log(JSON.stringify({ grids: [${calls}], count, disagree, clusters }))\n`)
+  writeFileSync(
+    file,
+    `${nativePrelude(result.program, 'node', readRuntime, result.typescript)}\n${result.typescript}\n${witness}\nconsole.log(JSON.stringify({ grids: [${calls}], count, disagree, clusters }))\n`,
+  )
   const ran = spawnSync('npx', ['tsx', file], { encoding: 'utf8' })
   ok('it runs', ran.status === 0, ran.stderr.slice(0, 600))
 
   if (ran.status === 0) {
-    const { grids, count, disagree, clusters } = JSON.parse(ran.stdout.trim().split('\n').pop()!) as {
+    const { grids, count, disagree, clusters } = JSON.parse(
+      ran.stdout.trim().split('\n').pop()!,
+    ) as {
       grids: string[]
       count: number
       disagree: [number, number, number][]
       clusters: [string, number, number][]
     }
-    const shown = disagree.map(([rune, ours, theirs]) => `U+${rune.toString(16).toUpperCase()} ${ours} not ${theirs}`)
-    ok('cell-width agrees with string-width on all 1,114,112 code points', count === 0, `${count} disagree: ${shown.join(', ')}`)
+    const shown = disagree.map(
+      ([rune, ours, theirs]) =>
+        `U+${rune.toString(16).toUpperCase()} ${ours} not ${theirs}`,
+    )
+    ok(
+      'cell-width agrees with string-width on all 1,114,112 code points',
+      count === 0,
+      `${count} disagree: ${shown.join(', ')}`,
+    )
 
     for (const [text, ours, theirs] of clusters) {
-      const spelled = [...text].map(rune => `U+${rune.codePointAt(0)!.toString(16).toUpperCase()}`).join(' ')
-      ok(`${spelled} takes ${theirs} cells, as string-width measures the cluster`, ours === theirs, `got ${ours}`)
+      const spelled = [...text]
+        .map(
+          rune =>
+            `U+${rune.codePointAt(0)!.toString(16).toUpperCase()}`,
+        )
+        .join(' ')
+      ok(
+        `${spelled} takes ${theirs} cells, as string-width measures the cluster`,
+        ours === theirs,
+        `got ${ours}`,
+      )
     }
 
     for (const [i, one] of CASES.entries()) {
-      ok(one.name, grids[i] === one.want, `got ${JSON.stringify(grids[i])}, want ${JSON.stringify(one.want)}`)
+      ok(
+        one.name,
+        grids[i] === one.want,
+        `got ${JSON.stringify(grids[i])}, want ${JSON.stringify(one.want)}`,
+      )
     }
   }
 }

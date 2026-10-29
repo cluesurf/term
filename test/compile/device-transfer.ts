@@ -14,7 +14,12 @@
 //
 // TRANSFER_ONLY=macos or ios runs one. Run: npx tsx test/compile/device-transfer.ts
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -38,7 +43,9 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 // every byte value, four times over, and a few more: a payload no text decoding could pass through unchanged
-const PAYLOAD = Buffer.from(Array.from({ length: 1030 }, (_, index) => index % 256))
+const PAYLOAD = Buffer.from(
+  Array.from({ length: 1030 }, (_, index) => index % 256),
+)
 const FILE = `term-transfer-${process.pid}.bin`
 const IOS_ID = 'surf.term.device-transfer-test'
 
@@ -54,8 +61,14 @@ const SERVE = `
   const alive = pid => { try { process.kill(pid, 0); return true } catch { return false } }
   setInterval(() => { if (!alive(${process.pid})) process.exit(0) }, 1000)
 `
-const serving = spawn(process.execPath, ['-e', SERVE], { stdio: ['ignore', 'pipe', 'ignore'] })
-const port = await new Promise<number>(settle => serving.stdout.once('data', chunk => settle(Number(String(chunk).trim()))))
+const serving = spawn(process.execPath, ['-e', SERVE], {
+  stdio: ['ignore', 'pipe', 'ignore'],
+})
+const port = await new Promise<number>(settle =>
+  serving.stdout.once('data', chunk =>
+    settle(Number(String(chunk).trim())),
+  ),
+)
 const origin = `http://127.0.0.1:${port}`
 // a port nothing listens on: one this test held a moment ago and let go
 const closed = await new Promise<number>(settle => {
@@ -65,9 +78,15 @@ const closed = await new Promise<number>(settle => {
   })
 })
 
-const say = (step: string): string[] => ['      call say', `        text <step ${step} {said-${step}}>`]
+const say = (step: string): string[] => [
+  '      call say',
+  `        text <step ${step} {said-${step}}>`,
+]
 
-const program = (leg: Leg, _shot: string): string => `load @term/site/code/dom/native/toolkit/dom
+const program = (
+  leg: Leg,
+  _shot: string,
+): string => `load @term/site/code/dom/native/toolkit/dom
   find open-root
   find launch
   find run-app
@@ -150,9 +169,12 @@ ${
 `
 
 function step(output: string, name: string): string {
-  const line = output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
+  const line =
+    output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
 
-  return line.slice(line.indexOf(`step ${name} `) + `step ${name} `.length).trim()
+  return line
+    .slice(line.indexOf(`step ${name} `) + `step ${name} `.length)
+    .trim()
 }
 
 // the UI test for the pick and the share: the picker's dismiss button, `Close` (an X in the navigation bar
@@ -160,15 +182,20 @@ function step(output: string, name: string): string {
 // a picker that never came up answers `unavailable` (native-files.swift), and only this tap shows the picker was there to
 // cancel. Then the share sheet: an element whose label holds the shared file's name, the sheet's header
 const dir = mkdtempSync(join(tmpdir(), 'term-transfer-'))
-const LEGS = process.env.TRANSFER_ONLY ? [process.env.TRANSFER_ONLY] : ['macos', 'ios']
+const LEGS = process.env.TRANSFER_ONLY
+  ? [process.env.TRANSFER_ONLY]
+  : ['macos', 'ios']
 // a requested iOS leg with no booted simulator does not run: it is counted as skipped on the last line, never a pass
 const booted = LEGS.includes('ios') ? bootedSimulator() : undefined
 const iosSkipped = booted !== undefined && 'missing' in booted
-const taps = !LEGS.includes('ios') || iosSkipped || spawnSync('xcodebuild', ['-version']).status !== 0
-  ? undefined
-  : buildTaps(
-      dir,
-      `        let app = XCUIApplication(bundleIdentifier: "${IOS_ID}")
+const taps =
+  !LEGS.includes('ios') ||
+  iosSkipped ||
+  spawnSync('xcodebuild', ['-version']).status !== 0
+    ? undefined
+    : buildTaps(
+        dir,
+        `        let app = XCUIApplication(bundleIdentifier: "${IOS_ID}")
         let close = app.navigationBars["FullDocumentManagerViewControllerNavigationBar"].buttons["Close"]
         let cancel = app.buttons["Cancel"]
         // what is on the screen while the app waits on its pick, for when no button is found: the tree and a PNG
@@ -209,16 +236,23 @@ const taps = !LEGS.includes('ios') || iosSkipped || spawnSync('xcodebuild', ['-v
         if dismiss.exists {
             dismiss.tap()
         }`,
-    )
+      )
 
 if (taps) {
-  ok('the UI test that cancels the picker builds', taps.built, taps.errors)
+  ok(
+    'the UI test that cancels the picker builds',
+    taps.built,
+    taps.errors,
+  )
 }
 
 // the simulator the iOS leg used, kept so the app can be ended after it
 let usedUdid: string | undefined
 
-function prepare(leg: Leg, target: { udid?: string; identifier: string }): void {
+function prepare(
+  leg: Leg,
+  target: { udid?: string; identifier: string },
+): void {
   if (leg === 'ios') {
     usedUdid = target.udid
   }
@@ -232,24 +266,64 @@ function judge(leg: Leg, toolkit: string, output: string): void {
   const said = (name: string) => step(output, name)
   const named = `${leg} (${toolkit})`
   const where = said('target')
-  const written = existsSync(where) ? readFileSync(where) : Buffer.alloc(0)
+  const written = existsSync(where)
+    ? readFileSync(where)
+    : Buffer.alloc(0)
 
-  ok(`${named}: the download answers its length`, said('download') === `downloaded ${PAYLOAD.length}`, said('download'))
-  ok(`${named}: a 404 is failed 404, and a closed port failed 0`, said('missing') === 'failed 404' && said('closed') === 'failed 0', `${said('missing')} ${said('closed')}`)
+  ok(
+    `${named}: the download answers its length`,
+    said('download') === `downloaded ${PAYLOAD.length}`,
+    said('download'),
+  )
+  ok(
+    `${named}: a 404 is failed 404, and a closed port failed 0`,
+    said('missing') === 'failed 404' && said('closed') === 'failed 0',
+    `${said('missing')} ${said('closed')}`,
+  )
   // the program downloads the good file first, then the 404 and the closed port to the SAME path, so this read, after
   // all three, is what the failures left
-  ok(`${named}: the file holds every byte the server sent, after a 404 and a closed port to the same path`, written.equals(PAYLOAD), `${written.length} bytes at ${where}`)
-  ok(`${named}: a path that is no file has nothing to share`, said('share-none') === 'unavailable', said('share-none'))
+  ok(
+    `${named}: the file holds every byte the server sent, after a 404 and a closed port to the same path`,
+    written.equals(PAYLOAD),
+    `${written.length} bytes at ${where}`,
+  )
+  ok(
+    `${named}: a path that is no file has nothing to share`,
+    said('share-none') === 'unavailable',
+    said('share-none'),
+  )
 
   if (leg === 'ios') {
-    ok(`${named}: the share sheet comes up for the file`, said('share') === 'shown', said('share'))
-    ok(`${named}: the picker came up and was cancelled`, said('pick') === 'cancelled', said('pick'))
+    ok(
+      `${named}: the share sheet comes up for the file`,
+      said('share') === 'shown',
+      said('share'),
+    )
+    ok(
+      `${named}: the picker came up and was cancelled`,
+      said('pick') === 'cancelled',
+      said('pick'),
+    )
   }
 }
 
 try {
   for (const leg of LEGS) {
-    runToolkits({ root: process.cwd(), dir: mkdtempSync(join(tmpdir(), 'term-transfer-')), name: 'Transfer', iosIdentifier: IOS_ID, androidIdentifier: 'surf.term.devicetransfer', program, judge, ok, shots: {}, prepare }, leg)
+    runToolkits(
+      {
+        root: process.cwd(),
+        dir: mkdtempSync(join(tmpdir(), 'term-transfer-')),
+        name: 'Transfer',
+        iosIdentifier: IOS_ID,
+        androidIdentifier: 'surf.term.devicetransfer',
+        program,
+        judge,
+        ok,
+        shots: {},
+        prepare,
+      },
+      leg,
+    )
   }
 
   const tapped = await taps?.finish()
@@ -259,17 +333,32 @@ try {
     console.log(`taps log: ${join(dir, 'taps.log')}`)
     const failures = tapped.log
       .split('\n')
-      .filter(line => !/^taps: (share )?tree/.test(line) && /error|failed|XCTAssert/i.test(line))
+      .filter(
+        line =>
+          !/^taps: (share )?tree/.test(line) &&
+          /error|failed|XCTAssert/i.test(line),
+      )
       .join('\n')
       .slice(0, 1200)
 
-    ok('ios: the UI test found the picker and tapped Close', tapped.status === 0 && tapped.log.includes('taps: picker cancelled'), failures)
-    ok("ios (UIKit): the share sheet showed the file's name", tapped.log.includes('taps: share sheet shows the file'), failures)
+    ok(
+      'ios: the UI test found the picker and tapped Close',
+      tapped.status === 0 &&
+        tapped.log.includes('taps: picker cancelled'),
+      failures,
+    )
+    ok(
+      "ios (UIKit): the share sheet showed the file's name",
+      tapped.log.includes('taps: share sheet shows the file'),
+      failures,
+    )
   }
 } finally {
   // a picker left up must not stay on the shared simulator's screen: the app is ended, its failure ignored
   if (usedUdid) {
-    spawnSync('xcrun', ['simctl', 'terminate', usedUdid, IOS_ID], { stdio: 'ignore' })
+    spawnSync('xcrun', ['simctl', 'terminate', usedUdid, IOS_ID], {
+      stdio: 'ignore',
+    })
     console.log(`terminated ${IOS_ID} on ${usedUdid}`)
   }
 
@@ -277,7 +366,9 @@ try {
 }
 
 // runToolkits printed the `skip  ios  (reason)` line itself
-console.log(`\ndevice-transfer: ${pass} pass, ${fail} fail${iosSkipped ? ', 1 skipped' : ''}`)
+console.log(
+  `\ndevice-transfer: ${pass} pass, ${fail} fail${iosSkipped ? ', 1 skipped' : ''}`,
+)
 
 if (fail > 0) {
   process.exit(1)

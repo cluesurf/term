@@ -12,14 +12,29 @@ import { overloadBound } from '@term/make/code/check/overload'
 import * as port from '@term/make/code/check/views-lowered'
 
 // the copy to check later, or nothing when the file defines no component
-export function copyForViews(program: Program, file: string): Program | undefined {
-  const copy = port.copyForViews(program as never, file) as { form: string; value?: unknown }
+export function copyForViews(
+  program: Program,
+  file: string,
+): Program | undefined {
+  const copy = port.copyForViews(program as never, file) as {
+    form: string
+    value?: unknown
+  }
 
   return copy.form === 'some' ? (copy.value as Program) : undefined
 }
 
 // the copy's views lowered and checked: the errors inside a component of this file, the surface pass's first. The
 // runtime names the lowering writes are what the last binding left (decision 069), read now
-export function checkLoweredViews(copy: Program, file: string, merged?: boolean): Diagnostic[] {
-  return port.checkLoweredViews(copy as never, file, merged === true, overloadBound.runtime) as unknown as Diagnostic[]
+export function checkLoweredViews(
+  copy: Program,
+  file: string,
+  merged?: boolean,
+): Diagnostic[] {
+  return port.checkLoweredViews(
+    copy as never,
+    file,
+    merged === true,
+    overloadBound.runtime,
+  ) as unknown as Diagnostic[]
 }

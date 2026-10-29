@@ -18,19 +18,36 @@
 import { readFileSync } from 'node:fs'
 import { Worker } from 'node:worker_threads'
 import { cpus } from 'node:os'
-import { compilerVersions, projectCache } from '@term/call/code/cache-store'
+import {
+  compilerVersions,
+  projectCache,
+} from '@term/call/code/cache-store'
 import { buildable, isWholeFile } from '@term/call/code/make'
 import type { BuildSession } from '@term/call/code/make'
 import { bundleWorker } from '@term/call/code/build-parallel'
 import { collectModules } from '@term/make/code/compile/load'
 import { units as unitsOf } from '@term/make/code/compile/separate'
 import type { SeparateResult } from '@term/make/code/compile/separate'
-import { finish, first, makeSchedule } from '@term/make/code/compile/schedule'
+import {
+  finish,
+  first,
+  makeSchedule,
+} from '@term/make/code/compile/schedule'
 import { stdlibBase } from '@term/make/code/resolve'
 import { projectRoleOf } from '@term/call/code/role-of'
-import { isOutOfMemory, outOfMemoryDiagnostic, workerHeapMb } from '@term/call/code/worker-heap'
+import {
+  isOutOfMemory,
+  outOfMemoryDiagnostic,
+  workerHeapMb,
+} from '@term/call/code/worker-heap'
 
-type Reply = { file: string; result?: SeparateResult; error?: string; built?: number; spent?: { building: number; rolling: number } }
+type Reply = {
+  file: string
+  result?: SeparateResult
+  error?: string
+  built?: number
+  spent?: { building: number; rolling: number }
+}
 
 export async function compileUnitsParallel(
   root: string,
@@ -60,9 +77,16 @@ export async function compileUnitsParallel(
   const modules = new Set<string>()
 
   for (const file of files) {
-    const unit = buildable(file, readFileSync(file, 'utf8'), roleOf(file))
+    const unit = buildable(
+      file,
+      readFileSync(file, 'utf8'),
+      roleOf(file),
+    )
 
-    if ('faults' in unit || isWholeFile(file, unit.text, roleOf(file))) {
+    if (
+      'faults' in unit ||
+      isWholeFile(file, unit.text, roleOf(file))
+    ) {
       continue
     }
 
@@ -72,7 +96,8 @@ export async function compileUnitsParallel(
       { file, text: unit.text },
       session.resolve,
       session.parsed,
-      (source, compute) => cache.scanned(source.file, source.text, compute),
+      (source, compute) =>
+        cache.scanned(source.file, source.text, compute),
       session.walked,
     )
 
@@ -87,11 +112,21 @@ export async function compileUnitsParallel(
   const edges = new Map<string, string[]>()
 
   for (const file of modules) {
-    edges.set(file, (session.walked.get(file)?.edges ?? []).filter(edge => modules.has(edge)))
+    edges.set(
+      file,
+      (session.walked.get(file)?.edges ?? []).filter(edge =>
+        modules.has(edge),
+      ),
+    )
   }
 
   const units = unitsOf([...modules], edges)
-  const spent = { walking: Date.now() - walkedAt, building: 0, rolling: 0 }
+  const spent = {
+    walking: Date.now() - walkedAt,
+    building: 0,
+    rolling: 0,
+  }
+
   const unitOf = new Map<string, string>()
 
   for (const unit of units) {
@@ -126,7 +161,15 @@ export async function compileUnitsParallel(
 
   // at most eight: each worker holds every unit it has read, which on @term/bind is the standard library and more, and
   // fourteen of them held more than the machine had
-  const size = Math.max(1, Math.min(options?.concurrency ?? Math.min(8, Math.max(1, cpus().length - 1)), graph.size))
+  const size = Math.max(
+    1,
+    Math.min(
+      options?.concurrency ??
+        Math.min(8, Math.max(1, cpus().length - 1)),
+      graph.size,
+    ),
+  )
+
   const bundle = bundleWorker('separate-worker')
   const stdlib = stdlibBase()
 
@@ -143,8 +186,11 @@ export async function compileUnitsParallel(
     new Worker(bundle, {
       workerData: { version: compilerVersions() },
       resourceLimits: { maxOldGenerationSizeMb: heapMb },
-      ...(profile ? { execArgv: ['--cpu-prof', `--cpu-prof-dir=${profile}`] } : {}),
+      ...(profile
+        ? { execArgv: ['--cpu-prof', `--cpu-prof-dir=${profile}`] }
+        : {}),
     })
+
   const workers = Array.from({ length: size }, spawn)
   const plan = makeSchedule(graph)
   const ready = first(plan)
@@ -156,6 +202,7 @@ export async function compileUnitsParallel(
   const idle: Worker[] = []
   // the job each busy worker holds
   const holding = new Map<Worker, string>()
+
   let alive = workers.length
   let done = 0
   let built = 0
@@ -166,7 +213,12 @@ export async function compileUnitsParallel(
         const file = ready.shift()!
         const worker = idle.pop()!
         holding.set(worker, file)
-        worker.postMessage({ type: 'job', root, file, entry: entries.has(file) })
+        worker.postMessage({
+          type: 'job',
+          root,
+          file,
+          entry: entries.has(file),
+        })
       }
 
       // every job answered, or nobody left to answer the rest, which the main build then compiles itself (all but an
@@ -211,6 +263,7 @@ export async function compileUnitsParallel(
       worker.on('error', error => {
         const file = holding.get(worker)
         holding.delete(worker)
+
         if (idle.includes(worker)) {
           idle.splice(idle.indexOf(worker), 1)
         }
@@ -221,7 +274,10 @@ export async function compileUnitsParallel(
         if (isOutOfMemory(error)) {
           if (file !== undefined) {
             outOfMemory.add(file)
-            results.set(file, { ok: false, diagnostics: [outOfMemoryDiagnostic(file, heapMb)] })
+            results.set(file, {
+              ok: false,
+              diagnostics: [outOfMemoryDiagnostic(file, heapMb)],
+            })
           }
 
           const replacement = spawn()
@@ -249,5 +305,14 @@ export async function compileUnitsParallel(
 
   await Promise.all(workers.map(worker => worker.terminate()))
 
-  return { results, jobs: graph.size, workers: size, failures, outOfMemory, heapMb, built, spent }
+  return {
+    results,
+    jobs: graph.size,
+    workers: size,
+    failures,
+    outOfMemory,
+    heapMb,
+    built,
+    spent,
+  }
 }

@@ -15,14 +15,17 @@ let fail = 0
 function expect(name: string, source: string, want: string): void {
   const result = compile({ file: 's.tree', text: source })
   const codes = result.ok ? [] : result.diagnostics.map(d => d.name)
-  const good = want === 'ok' ? result.ok : !result.ok && codes.includes(want)
+  const good =
+    want === 'ok' ? result.ok : !result.ok && codes.includes(want)
 
   if (good) {
     pass++
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (ok=${result.ok}, codes=${codes.join(',')}, wanted ${want})`)
+    console.log(
+      `FAIL  ${name}  (ok=${result.ok}, codes=${codes.join(',')}, wanted ${want})`,
+    )
   }
 }
 

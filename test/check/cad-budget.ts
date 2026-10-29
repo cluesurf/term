@@ -140,7 +140,10 @@ rule choi-lam
   calm hold
 `
 
-function run(source: string, budget: string | undefined): { ok: boolean; messages: string[]; ms: number } {
+function run(
+  source: string,
+  budget: string | undefined,
+): { ok: boolean; messages: string[]; ms: number } {
   if (budget === undefined) {
     delete process.env.TERM_PROOF_BUDGET
   } else {
@@ -150,7 +153,9 @@ function run(source: string, budget: string | undefined): { ok: boolean; message
   const started = Date.now()
   const result = compile({ file: 'cad-budget.tree', text: source })
   const ms = Date.now() - started
-  const messages = result.ok ? [] : result.diagnostics.map(d => `${d.name}: ${d.message}`)
+  const messages = result.ok
+    ? []
+    : result.diagnostics.map(d => `${d.name}: ${d.message}`)
 
   return { ok: result.ok, messages, ms }
 }
@@ -163,22 +168,38 @@ ok(
 )
 ok(
   'and the prover goes on past the lift to the counterexample at zero',
-  stopped.messages.some(m => m.includes('this rule is FALSE') && m.includes('a = 0, b = 0, c = 0, d = 0')),
+  stopped.messages.some(
+    m =>
+      m.includes('this rule is FALSE') &&
+      m.includes('a = 0, b = 0, c = 0, d = 0'),
+  ),
   stopped.messages.join(' | ').slice(0, 400),
 )
 
 const small = run(ROUND_65, '1000000')
-ok('a small budget stops it at once', !small.ok && small.ms < 30_000, `ok=${small.ok} ${small.ms} ms`)
+ok(
+  'a small budget stops it at once',
+  !small.ok && small.ms < 30_000,
+  `ok=${small.ok} ${small.ms} ms`,
+)
 
 const choiLam = run(CHOI_LAM, undefined)
 ok(
   'a true goal whose lift costs more than the budget is stopped at the budget, not refuted',
-  !choiLam.ok && choiLam.ms < 120_000 && choiLam.messages.some(m => m.includes('was not proven within the proof budget')),
+  !choiLam.ok &&
+    choiLam.ms < 120_000 &&
+    choiLam.messages.some(m =>
+      m.includes('was not proven within the proof budget'),
+    ),
   `ok=${choiLam.ok} ${choiLam.ms} ms ${choiLam.messages.join(' | ').slice(0, 400)}`,
 )
 
 const decided = run(THREE_SQUARES, undefined)
-ok('a three-variable goal the lift can decide is still proven', decided.ok, decided.messages.join(' | ').slice(0, 400))
+ok(
+  'a three-variable goal the lift can decide is still proven',
+  decided.ok,
+  decided.messages.join(' | ').slice(0, 400),
+)
 
 delete process.env.TERM_PROOF_BUDGET
 

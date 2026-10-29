@@ -31,26 +31,47 @@ function ok(name: string, holds: boolean, detail = ''): void {
 
 const root = join(process.cwd(), 'deck', 'test')
 const file = join(root, 'code', 'weakest-precondition.tree')
-const built = compile(
-  { file, text: readFileSync(file, 'utf8') },
-  { resolve: withNativeEnv('swift', projectResolver(root)), env: 'swift', entryPoints: ['verify-procedure'], leanOf: projectLeanOf(root) } as never,
-)
+const built = compile({ file, text: readFileSync(file, 'utf8') }, {
+  resolve: withNativeEnv('swift', projectResolver(root)),
+  env: 'swift',
+  entryPoints: ['verify-procedure'],
+  leanOf: projectLeanOf(root),
+} as never)
 
 if (!built.ok) {
-  ok('weakest-precondition builds for swift', false, built.diagnostics.slice(0, 3).map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'weakest-precondition builds for swift',
+    false,
+    built.diagnostics
+      .slice(0, 3)
+      .map(d => `${d.name}: ${d.message}`)
+      .join(' | '),
+  )
 } else {
   const swift = emitSwift(built.program)
   const lines = swift.split('\n')
-  const field = lines.find(l => /^\s+var values: /.test(l) && lines[lines.indexOf(l) - 2]?.includes('struct Verdict')) ?? ''
+  const field =
+    lines.find(
+      l =>
+        /^\s+var values: /.test(l) &&
+        lines[lines.indexOf(l) - 2]?.includes('struct Verdict'),
+    ) ?? ''
   const owned = /var values: \[Int\]/.test(field)
 
-  ok('the program reaches the owned-field path (Verdict.values is a plain array)', owned, field.trim())
+  ok(
+    'the program reaches the owned-field path (Verdict.values is a plain array)',
+    owned,
+    field.trim(),
+  )
 
   if (owned) {
-    const constructions = lines.filter(l => /Verdict\(status: .*values: none/.test(l))
+    const constructions = lines.filter(l =>
+      /Verdict\(status: .*values: none/.test(l),
+    )
     ok(
-      'the async task\'s empty SeedList goes in as its data',
-      constructions.length > 0 && constructions.every(l => /values: none\.data\)/.test(l)),
+      "the async task's empty SeedList goes in as its data",
+      constructions.length > 0 &&
+        constructions.every(l => /values: none\.data\)/.test(l)),
       constructions.map(l => l.trim()).join(' | '),
     )
   }

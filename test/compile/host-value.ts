@@ -50,14 +50,37 @@ task run
     save answer, <{problem/form}: {problem/link/reason}>
   back <{joined} {answer}>
 `
-const ran = runOn({ backend: 'typescript', program, resolve: env => projectResolver(ROOT, env, ROOT), dir, name: 'host' })
-const output = ran.form === 'ran' ? ran.output : `${ran.form}: ${ran.reason.slice(0, 400)}`
+const ran = runOn({
+  backend: 'typescript',
+  program,
+  resolve: env => projectResolver(ROOT, env, ROOT),
+  dir,
+  name: 'host',
+})
+const output =
+  ran.form === 'ran'
+    ? ran.output
+    : `${ran.form}: ${ran.reason.slice(0, 400)}`
 
-ok('a host value of the declared type passes through', output.startsWith('code/boot.tree '), output)
-ok('a host value of another type raises data-mismatch at the binding', output.endsWith('data-mismatch: is a text where a number belongs'), output)
+ok(
+  'a host value of the declared type passes through',
+  output.startsWith('code/boot.tree '),
+  output,
+)
+ok(
+  'a host value of another type raises data-mismatch at the binding',
+  output.endsWith('data-mismatch: is a text where a number belongs'),
+  output,
+)
 
 const emitted = readFileSync(join(dir, 'host-typescript.ts'), 'utf8')
-ok('the check is written on the binding', emitted.includes('__termHost(path.join("a", "b"), "number", "count")'), emitted.slice(0, 400))
+ok(
+  'the check is written on the binding',
+  emitted.includes(
+    '__termHost(path.join("a", "b"), "number", "count")',
+  ),
+  emitted.slice(0, 400),
+)
 
 const plain = `dock load
   load <node:path>, name path
@@ -68,9 +91,19 @@ task run
   back joined
 `
 const loose = mkdtempSync(join(tmpdir(), 'host-value-'))
-runOn({ backend: 'typescript', program: plain, resolve: env => projectResolver(ROOT, env, ROOT), dir: loose, name: 'host' })
+runOn({
+  backend: 'typescript',
+  program: plain,
+  resolve: env => projectResolver(ROOT, env, ROOT),
+  dir: loose,
+  name: 'host',
+})
 const untyped = readFileSync(join(loose, 'host-typescript.ts'), 'utf8')
-ok('a host value given no type is left alone', !untyped.includes('__termHost('), untyped.slice(0, 400))
+ok(
+  'a host value given no type is left alone',
+  !untyped.includes('__termHost('),
+  untyped.slice(0, 400),
+)
 
 const handle = `dock type
   load <any>, name url-handle
@@ -94,9 +127,18 @@ task run
   save url, parse-url(<https://term.surf/guides>)
   back url/host
 `
-const read = compile({ file: join(ROOT, 'tmp/host-handle.tree'), text: handle }, { resolve: projectResolver(ROOT, 'node', ROOT) })
-const refused = read.ok ? 'BUILT' : read.diagnostics.map(d => d.message).join(' | ')
-ok('a field read off an opaque handle is refused', /"host" is read off a `url-handle`/.test(refused), refused)
+const read = compile(
+  { file: join(ROOT, 'tmp/host-handle.tree'), text: handle },
+  { resolve: projectResolver(ROOT, 'node', ROOT) },
+)
+const refused = read.ok
+  ? 'BUILT'
+  : read.diagnostics.map(d => d.message).join(' | ')
+ok(
+  'a field read off an opaque handle is refused',
+  /"host" is read off a `url-handle`/.test(refused),
+  refused,
+)
 
 // THE SAME CHECK ON EVERY BACKEND. A host value Rust, Swift or Kotlin cannot type statically is the boxed dynamic, and
 // bound with a primitive `like` it is checked where it is bound, as on TypeScript: `a/b` held as a number raised
@@ -134,15 +176,28 @@ task run
 const nativeDir = mkdtempSync(join(tmpdir(), 'host-value-native-'))
 
 for (const backend of BACKENDS) {
-  const done = runOn({ backend, program: dynamicHost, resolve: env => projectResolver(ROOT, env, ROOT), dir: nativeDir, name: 'dynamic' })
+  const done = runOn({
+    backend,
+    program: dynamicHost,
+    resolve: env => projectResolver(ROOT, env, ROOT),
+    dir: nativeDir,
+    name: 'dynamic',
+  })
 
   if (done.form === 'skipped') {
     console.log(`skip  ${backend}: ${done.reason}`)
     continue
   }
 
-  const said = done.form === 'ran' ? done.output : `${done.form}: ${done.reason.slice(0, 400)}`
-  ok(`${backend}: a host value of the declared type passes, and one of another type raises data-mismatch`, said === 'a/b data-mismatch: Data does not fit the shape', said)
+  const said =
+    done.form === 'ran'
+      ? done.output
+      : `${done.form}: ${done.reason.slice(0, 400)}`
+  ok(
+    `${backend}: a host value of the declared type passes, and one of another type raises data-mismatch`,
+    said === 'a/b data-mismatch: Data does not fit the shape',
+    said,
+  )
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

@@ -5,24 +5,50 @@
 
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import type { Program, Statement } from '@term/make/code/compile/node'
-import { collectModules, makeParseMemo } from '@term/make/code/compile/load'
-import type { ParseMemo, Resolver, WalkMemo } from '@term/make/code/compile/load'
-import { awaitsOutsideTasks, compileProgram, milledModule } from '@term/make/code/compile/compile'
+import {
+  collectModules,
+  makeParseMemo,
+} from '@term/make/code/compile/load'
+import type {
+  ParseMemo,
+  Resolver,
+  WalkMemo,
+} from '@term/make/code/compile/load'
+import {
+  awaitsOutsideTasks,
+  compileProgram,
+  milledModule,
+} from '@term/make/code/compile/compile'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
 import type { Roll } from '@term/make/code/compile/roll'
 import { units as unitsOf } from '@term/make/code/compile/unit-graph'
 import type { UnitInputs } from '@term/make/code/compile/explain'
-import { reviveBigint, storeBigint } from '@term/make/code/compile/cache'
+import {
+  reviveBigint,
+  storeBigint,
+} from '@term/make/code/compile/cache'
 import type { CompileCache } from '@term/make/code/compile/cache'
 import type { Template } from '@term/make/code/compile/template'
-import { checkerSwitchKey, unknownSeamOn } from '@term/make/code/check/strict'
+import {
+  checkerSwitchKey,
+  unknownSeamOn,
+} from '@term/make/code/check/strict'
 import type { Tally } from '@term/make/code/check/holds'
 import * as port from '@term/make/code/compile/separate-units'
 
 // `term make --explain`: the inputs each unit was last built from, by its identity, and why each unit built this run was
-export type UnitExplain = { recall: (id: string) => UnitInputs | undefined; remember: (id: string, inputs: UnitInputs) => void; reasons: Map<string, string[]> }
+export type UnitExplain = {
+  recall: (id: string) => UnitInputs | undefined
+  remember: (id: string, inputs: UnitInputs) => void
+  reasons: Map<string, string[]>
+}
 
-type Export = { name: string; exported: string; file: string; type: boolean }
+type Export = {
+  name: string
+  exported: string
+  file: string
+  type: boolean
+}
 export type SeparateResult =
   | {
       ok: true
@@ -45,39 +71,115 @@ export type SeparateResult =
 
 // the unit answers of one run, shared by a batch build's entries (each the port's `unit-answer`)
 export type UnitMemo = Map<string, unknown>
-export type Portable = { out: (text: string) => string; in: (text: string) => string }
+export type Portable = {
+  out: (text: string) => string
+  in: (text: string) => string
+}
 
-const [none, some] = [{ form: 'none' } as const, <T>(value: T) => ({ form: 'some', value }) as const]
-const given = <T>(value: T | undefined | null) => (value ? some(value) : none)
+const [none, some] = [
+  { form: 'none' } as const,
+  <T>(value: T) => ({ form: 'some', value }) as const,
+]
 
-const tasksOf = (held: port.Portable): Portable & port.PortableTasks => {
-  const [out, inward] = [(text: string) => port.portableWrite(held, text), (text: string) => port.portableRead(held, text)]
+const given = <T>(value: T | undefined | null) =>
+  value ? some(value) : none
+
+const tasksOf = (
+  held: port.Portable,
+): Portable & port.PortableTasks => {
+  const [out, inward] = [
+    (text: string) => port.portableWrite(held, text),
+    (text: string) => port.portableRead(held, text),
+  ]
+
   return { out, in: inward, outward: out, inward }
 }
 
 // `portableBy`'s two closures over the port's `portable` form
-export const portableBy = (decks: { name: string; root: string }[]): Portable => tasksOf(port.portableBy(decks as never))
+export const portableBy = (
+  decks: { name: string; root: string }[],
+): Portable => tasksOf(port.portableBy(decks as never))
 
 // Tarjan strongly connected components, dependencies first: compile/unit-graph.tree
-export const units = (files: string[], edges: Map<string, string[]>): string[][] => unitsOf(files, edges)
+export const units = (
+  files: string[],
+  edges: Map<string, string[]>,
+): string[][] => unitsOf(files, edges)
 
 // a unit's answer as the stored entry, key for key the original's, and back: what does not read back is a miss
-const kept = (key: string, value: { form: string; value?: unknown }) => (value.form === 'some' ? { [key]: value.value } : {})
+const kept = (key: string, value: { form: string; value?: unknown }) =>
+  value.form === 'some' ? { [key]: value.value } : {}
+
 function stored(answer: port.UnitAnswer): unknown {
-  if (answer.refused.form === 'some') return { diagnostics: answer.refused.value }
+  if (answer.refused.form === 'some')
+    {return { diagnostics: answer.refused.value }}
+
   const b = (answer.build as { value: port.UnitBuild }).value
-  const head = { files: b.files.map(f => [f.file, f.emit]), stubs: b.stubs.map(s => [s.file, s.statements]), interfaceHash: b.interfaceHash }
-  return { ...head, ...kept('defs', b.defs), ...kept('docks', b.docks), ...kept('roll', b.roll), warnings: b.warnings, ...kept('openClaims', b.openClaims), ...kept('obligations', b.obligations) }
+  const head = {
+    files: b.files.map(f => [f.file, f.emit]),
+    stubs: b.stubs.map(s => [s.file, s.statements]),
+    interfaceHash: b.interfaceHash,
+  }
+
+  return {
+    ...head,
+    ...kept('defs', b.defs),
+    ...kept('docks', b.docks),
+    ...kept('roll', b.roll),
+    warnings: b.warnings,
+    ...kept('openClaims', b.openClaims),
+    ...kept('obligations', b.obligations),
+  }
 }
 
-function restored(text: string): ReturnType<port.SeparateGiven['restore']> {
+function restored(
+  text: string,
+): ReturnType<port.SeparateGiven['restore']> {
   try {
     const v = JSON.parse(text, reviveBigint) as Record<string, any>
-    if (Array.isArray(v.diagnostics)) return some({ refused: some(v.diagnostics), build: none }) as never
-    if (!Array.isArray(v.files) || !Array.isArray(v.stubs) || typeof v.interfaceHash !== 'string' || typeof v.roll !== 'object') return none
-    const [files, stubs] = [v.files.map(([file, emit]: [string, unknown]) => ({ file, emit })), v.stubs.map(([file, statements]: [string, unknown]) => ({ file, statements }))]
-    const [defs, docks] = [v.defs != null ? some(v.defs) : none, v.docks != null ? some(v.docks) : none]
-    const build = { files, stubs, interfaceHash: v.interfaceHash, defs, docks, roll: given(v.roll), warnings: v.warnings, openClaims: given(v.openClaims), obligations: given(v.obligations) }
+
+    if (Array.isArray(v.diagnostics))
+      {return some({
+        refused: some(v.diagnostics),
+        build: none,
+      }) as never}
+
+    if (
+      !Array.isArray(v.files) ||
+      !Array.isArray(v.stubs) ||
+      typeof v.interfaceHash !== 'string' ||
+      typeof v.roll !== 'object'
+    )
+      {return none}
+
+    const [files, stubs] = [
+      v.files.map(([file, emit]: [string, unknown]) => ({
+        file,
+        emit,
+      })),
+      v.stubs.map(([file, statements]: [string, unknown]) => ({
+        file,
+        statements,
+      })),
+    ]
+
+    const [defs, docks] = [
+      v.defs != null ? some(v.defs) : none,
+      v.docks != null ? some(v.docks) : none,
+    ]
+
+    const build = {
+      files,
+      stubs,
+      interfaceHash: v.interfaceHash,
+      defs,
+      docks,
+      roll: given(v.roll),
+      warnings: v.warnings,
+      openClaims: given(v.openClaims),
+      obligations: given(v.obligations),
+    }
+
     return some({ refused: none, build: some(build) }) as never
   } catch {
     return none
@@ -93,7 +195,9 @@ export function compileSeparate(
     env?: string
     roleOf?: (file: string) => string | null | undefined
     leanOf?: (file: string) => boolean | undefined
-    deckOf?: (file: string) => { name: string; root: string } | undefined
+    deckOf?: (
+      file: string,
+    ) => { name: string; root: string } | undefined
     parsed?: ParseMemo
     units?: UnitMemo
     walked?: WalkMemo
@@ -104,45 +208,174 @@ export function compileSeparate(
 ): SeparateResult {
   const parsed = options.parsed ?? makeParseMemo()
   const { cache, explain } = options
-  const [role, lean] = [(file: string) => options.roleOf?.(file) ?? undefined, (file: string) => options.leanOf?.(file) ?? false]
-  const compileUnit: port.SeparateGiven['compileUnit'] = (program, checkedAs, scope, naming, files) => {
-    const r = compileProgram(program as never, checkedAs, undefined, true, options.modules, undefined, options.env, false, false, options.deckOf, scope as never, undefined, undefined, naming, new Set(files))
-    if (!r.ok) return { ok: false, diagnostics: r.diagnostics, program: [], modules: [], warnings: [], roll: none, openClaims: [], obligations: none } as never
-    const modules = [...(r.modules ?? [])].map(([file, emit]) => ({ file, emit }))
-    return { ok: true, diagnostics: [], program: r.program, modules, warnings: r.warnings, roll: given(r.roll), openClaims: r.openClaims ?? [], obligations: given(r.obligations) } as never
+  const [role, lean] = [
+    (file: string) => options.roleOf?.(file) ?? undefined,
+    (file: string) => options.leanOf?.(file) ?? false,
+  ]
+
+  const compileUnit: port.SeparateGiven['compileUnit'] = (
+    program,
+    checkedAs,
+    scope,
+    naming,
+    files,
+  ) => {
+    const r = compileProgram(
+      program as never,
+      checkedAs,
+      undefined,
+      true,
+      options.modules,
+      undefined,
+      options.env,
+      false,
+      false,
+      options.deckOf,
+      scope as never,
+      undefined,
+      undefined,
+      naming,
+      new Set(files),
+    )
+
+    if (!r.ok)
+      {return {
+        ok: false,
+        diagnostics: r.diagnostics,
+        program: [],
+        modules: [],
+        warnings: [],
+        roll: none,
+        openClaims: [],
+        obligations: none,
+      } as never}
+
+    const modules = [...(r.modules ?? [])].map(([file, emit]) => ({
+      file,
+      emit,
+    }))
+
+    return {
+      ok: true,
+      diagnostics: [],
+      program: r.program,
+      modules,
+      warnings: r.warnings,
+      roll: given(r.roll),
+      openClaims: r.openClaims ?? [],
+      obligations: given(r.obligations),
+    } as never
   }
+
   const answer = port.compileSeparate(source, {
-    collect: () => collectModules(source, options.resolve, parsed, cache ? (unit, compute) => cache.scanned(unit.file, unit.text, compute) : undefined, options.walked),
+    collect: () =>
+      collectModules(
+        source,
+        options.resolve,
+        parsed,
+        cache
+          ? (unit, compute) =>
+              cache.scanned(unit.file, unit.text, compute)
+          : undefined,
+        options.walked,
+      ),
     deckOf: file => given(options.deckOf?.(file)),
     roleOf: file => role(file) ?? '',
     leanOf: lean,
     moduleOf: file => options.modules(file),
     parsed,
-    milled: (unit, templates, templateKey) => milledModule(unit, { parsed, templates: templates as Map<string, Template>, templateKey, cache, role: role(unit.file), lean: lean(unit.file) }),
+    milled: (unit, templates, templateKey) =>
+      milledModule(unit, {
+        parsed,
+        templates: templates as Map<string, Template>,
+        templateKey,
+        cache,
+        role: role(unit.file),
+        lean: lean(unit.file),
+      }),
     compileUnit,
-    hasStubExport: s => (s as { stubExport?: string }).stubExport !== undefined,
+    hasStubExport: s =>
+      (s as { stubExport?: string }).stubExport !== undefined,
     portableTasks: tasksOf,
-    switchKey: () => checkerSwitchKey(awaitsOutsideTasks(), unknownSeamOn()),
+    switchKey: () =>
+      checkerSwitchKey(awaitsOutsideTasks(), unknownSeamOn()),
     env: options.env ?? '',
     hasCache: cache !== undefined,
     unitVersion: () => cache?.versionOf('unit') ?? '',
-    cachedUnit: (key, job) => cache!.unit<{ portable: string }>(key, () => ({ portable: port.jobStored(job) })).portable,
-    cachedNameKey: (key, job) => cache!.unit<{ portable: string }>(key, () => ({ portable: port.jobNamedKey(job) })).portable,
+    cachedUnit: (key, job) =>
+      cache!.unit<{ portable: string }>(key, () => ({
+        portable: port.jobStored(job),
+      })).portable,
+    cachedNameKey: (key, job) =>
+      cache!.unit<{ portable: string }>(key, () => ({
+        portable: port.jobNamedKey(job),
+      })).portable,
     store: unit => JSON.stringify(stored(unit), storeBigint),
     restore: restored,
     hasUnits: options.units !== undefined,
     units: (options.units ?? new Map()) as never,
     hasExplain: explain !== undefined,
     recall: id => given(explain?.recall(id)) as never,
-    remember: (id, inputs) => (explain?.remember(id, inputs as never), true),
-    giveReasons: (label, reasons) => (explain?.reasons.set(label, reasons), true),
+    remember: (id, inputs) => (
+      explain?.remember(id, inputs as never),
+      true
+    ),
+    giveReasons: (label, reasons) => (
+      explain?.reasons.set(label, reasons),
+      true
+    ),
     keepProgram: options.keepProgram === true,
   } as never)
 
-  if (answer.refused.form === 'some') return { ok: false, diagnostics: answer.refused.value as Diagnostic[] }
-  const kept = options.keepProgram ? { surface: answer.surface as Program, ...(answer.program.form === 'some' ? { program: answer.program.value as Program } : {}) } : {}
-  const claims = answer.openClaims.form === 'some' ? { openClaims: answer.openClaims.value } : {}
-  const owed = answer.obligations.form === 'some' ? { obligations: answer.obligations.value as Tally } : {}
-  const { modules, warnings, exports, built, reused, closureKey, natives, docks } = answer as never as Extract<SeparateResult, { ok: true }>
-  return { ok: true, modules, warnings, ...claims, ...owed, exports, built, reused, closureKey, natives, docks, rolls: answer.rolls.map(r => [r.label, r.roll as Roll]), ...kept }
+  if (answer.refused.form === 'some')
+    {return {
+      ok: false,
+      diagnostics: answer.refused.value as Diagnostic[],
+    }}
+
+  const kept = options.keepProgram
+    ? {
+        surface: answer.surface as Program,
+        ...(answer.program.form === 'some'
+          ? { program: answer.program.value as Program }
+          : {}),
+      }
+    : {}
+
+  const claims =
+    answer.openClaims.form === 'some'
+      ? { openClaims: answer.openClaims.value }
+      : {}
+
+  const owed =
+    answer.obligations.form === 'some'
+      ? { obligations: answer.obligations.value as Tally }
+      : {}
+
+  const {
+    modules,
+    warnings,
+    exports,
+    built,
+    reused,
+    closureKey,
+    natives,
+    docks,
+  } = answer as never as Extract<SeparateResult, { ok: true }>
+
+  return {
+    ok: true,
+    modules,
+    warnings,
+    ...claims,
+    ...owed,
+    exports,
+    built,
+    reused,
+    closureKey,
+    natives,
+    docks,
+    rolls: answer.rolls.map(r => [r.label, r.roll as Roll]),
+    ...kept,
+  }
 }

@@ -38,7 +38,12 @@
 // Run: npx tsx test/compile/feed-mill-bench.ts
 
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
+import {
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
@@ -50,9 +55,15 @@ import { resolveAsync } from '@term/make/code/check/async-resolve'
 import { simplify } from '@term/make/code/ir/simplify'
 import { collectModules } from '@term/make/code/compile/load'
 import type { Source } from '@term/make/code/compile/load'
-import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
+import {
+  withNativeEnv,
+  nativePrelude,
+} from '@term/make/code/compile/native'
 import { expandTemplates } from '@term/make/code/compile/template'
-import { bindModules, stampModule } from '@term/make/code/check/bind-modules'
+import {
+  bindModules,
+  stampModule,
+} from '@term/make/code/check/bind-modules'
 import { emitTypeScript } from '@term/make/code/compile/typescript'
 import { emitRust } from '@term/make/code/compile/rust'
 import { emitSwift } from '@term/make/code/compile/swift'
@@ -64,7 +75,8 @@ import {
   readFeedMineGrammar,
 } from '@term/make/code/compile/feed-mill'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const PACKS: Record<string, string> = {
   base: join(TERM, 'deck/base'),
@@ -120,7 +132,14 @@ const NATIVE = [
     tool: 'rustc',
     ext: 'rs',
     emit: (program: Program) => emitRust(program),
-    build: (src: string, exe: string) => ['-A', 'warnings', '-O', src, '-o', exe],
+    build: (src: string, exe: string) => [
+      '-A',
+      'warnings',
+      '-O',
+      src,
+      '-o',
+      exe,
+    ],
     // the reader can raise, so on Rust it comes back as a `Result`. Unwrapped here rather than handled: a
     // benchmark that swallowed a read failure would be timing the failure path.
     main: `fn main() {
@@ -152,7 +171,13 @@ const NATIVE = [
     tool: 'swiftc',
     ext: 'swift',
     emit: (program: Program) => emitSwift(program),
-    build: (src: string, exe: string) => ['-O', '-suppress-warnings', src, '-o', exe],
+    build: (src: string, exe: string) => [
+      '-O',
+      '-suppress-warnings',
+      src,
+      '-o',
+      exe,
+    ],
     main: `let input = String(repeating: "deadbeefcafef00d", count: 64)
 let runs = 200
 let a = try! runGenerated(input: input)
@@ -182,8 +207,16 @@ print("{\\"agree\\":true,\\"bytes\\":\\(a),\\"generated\\":\\(g),\\"hand\\":\\(h
     tool: 'kotlinc',
     ext: 'kt',
     emit: (program: Program) => emitKotlin(program),
-    build: (src: string, exe: string) => [src, '-include-runtime', '-d', `${exe}.jar`],
-    run: (exe: string) => ({ command: 'java', args: ['-jar', `${exe}.jar`] }),
+    build: (src: string, exe: string) => [
+      src,
+      '-include-runtime',
+      '-d',
+      `${exe}.jar`,
+    ],
+    run: (exe: string) => ({
+      command: 'java',
+      args: ['-jar', `${exe}.jar`],
+    }),
     main: `fun main() {
     val input = "deadbeefcafef00d".repeat(64)
     val runs = 200
@@ -230,13 +263,17 @@ function frontEnd(
     const parsed = parse(unit)
 
     if (!parsed.ok) {
-      throw new Error(`parse failed: ${unit.file}: ${parsed.diagnostics.map(d => d.message).join(', ')}`)
+      throw new Error(
+        `parse failed: ${unit.file}: ${parsed.diagnostics.map(d => d.message).join(', ')}`,
+      )
     }
 
     const built = mill(expandTemplates(parsed.tree), unit.file)
 
     if (!built.ok) {
-      throw new Error(`mill failed: ${unit.file}: ${built.diagnostics.map(d => d.message).join(', ')}`)
+      throw new Error(
+        `mill failed: ${unit.file}: ${built.diagnostics.map(d => d.message).join(', ')}`,
+      )
     }
 
     stampModule(built.program, unit.file)
@@ -247,10 +284,17 @@ function frontEnd(
   bindModules(program, scope, 'main.tree')
   resolveNames(program, 'main.tree')
 
-  const errors = check(program, 'main.tree').filter(d => d.severity !== 'warning')
+  const errors = check(program, 'main.tree').filter(
+    d => d.severity !== 'warning',
+  )
 
   if (errors.length) {
-    throw new Error(`check failed: ${errors.slice(0, 8).map(d => d.message).join(' | ')}`)
+    throw new Error(
+      `check failed: ${errors
+        .slice(0, 8)
+        .map(d => d.message)
+        .join(' | ')}`,
+    )
   }
 
   resolveAsync(program)
@@ -262,7 +306,10 @@ function frontEnd(
 // ---- hex: the dialect with both a generated and a hand-written reader ----
 
 const mineFile = join(TERM, 'deck/mill/code/text/hex/mine.tree')
-const mineParsed = parse({ file: mineFile, text: readFileSync(mineFile, 'utf8') })
+const mineParsed = parse({
+  file: mineFile,
+  text: readFileSync(mineFile, 'utf8'),
+})
 
 ok('the hex grammar parses', mineParsed.ok)
 
@@ -274,14 +321,23 @@ if (!mineParsed.ok) {
 const grammar = readFeedMineGrammar(mineParsed.tree)
 const substrate = feedMineSubstrate(grammar)
 
-ok('the substrate infers as text', substrate === 'text', String(substrate))
+ok(
+  'the substrate infers as text',
+  substrate === 'text',
+  String(substrate),
+)
 
-const generated = compileFeedMine(grammar, substrate ?? 'text', '@term/mill/feed', [
-  'load @term/mill/text/hex/code',
-  '  find hex-digit-value',
-  '  find read-hex, name hand-read-hex',
-  '',
-])
+const generated = compileFeedMine(
+  grammar,
+  substrate ?? 'text',
+  '@term/mill/feed',
+  [
+    'load @term/mill/text/hex/code',
+    '  find hex-digit-value',
+    '  find read-hex, name hand-read-hex',
+    '',
+  ],
+)
 
 // one entry per reader, over the same input
 const entry = `${generated}
@@ -345,7 +401,10 @@ console.log(JSON.stringify({
 
   writeFileSync(file, `${ts}${main}`)
 
-  const output = execFileSync('npx', ['tsx', file], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }).trim()
+  const output = execFileSync('npx', ['tsx', file], {
+    encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
+  }).trim()
   const result = JSON.parse(output.split('\n').pop() ?? '{}') as {
     agree: boolean
     bytes?: number
@@ -353,10 +412,15 @@ console.log(JSON.stringify({
     hand?: number
   }
 
-  ok('the two readers read the same bytes', result.agree === true, output)
+  ok(
+    'the two readers read the same bytes',
+    result.agree === true,
+    output,
+  )
 
   if (result.agree) {
-    const ratio = (result.generated ?? 0) / Math.max(result.hand ?? 0, 0.001)
+    const ratio =
+      (result.generated ?? 0) / Math.max(result.hand ?? 0, 0.001)
 
     console.log(
       `  ${result.bytes} bytes x 200 runs: generated ${result.generated?.toFixed(1)}ms, hand ${result.hand?.toFixed(1)}ms`,
@@ -379,11 +443,17 @@ console.log(JSON.stringify({
   // toolchain is absent, the way test/compile/roundtrip.ts gates its own native runs.
   for (const backend of NATIVE) {
     if (!have(backend.tool)) {
-      console.log(`skip  ${backend.name}: ${backend.tool} not installed`)
+      console.log(
+        `skip  ${backend.name}: ${backend.tool} not installed`,
+      )
       continue
     }
 
-    const nativeProgram = frontEnd(entry, ['run-generated', 'run-hand'], backend.name)
+    const nativeProgram = frontEnd(
+      entry,
+      ['run-generated', 'run-hand'],
+      backend.name,
+    )
     // the runtime shims for every global the program DOCKS, prepended, exactly as the TypeScript path does.
     // Without them the emitted source names modules that do not exist (`bit`, and whatever else the closure
     // reaches) and the toolchain refuses it.
@@ -393,32 +463,57 @@ console.log(JSON.stringify({
     writeFileSync(src, `${source}\n${backend.main}`)
 
     const exe = join(dir, `bench-${backend.name}`)
-    const built = spawnSync(backend.tool, backend.build(src, exe), { encoding: 'utf8' })
+    const built = spawnSync(backend.tool, backend.build(src, exe), {
+      encoding: 'utf8',
+    })
 
     if (built.status !== 0) {
-      ok(`${backend.name}: both readers compile into one binary`, false, built.stderr ?? '')
+      ok(
+        `${backend.name}: both readers compile into one binary`,
+        false,
+        built.stderr ?? '',
+      )
       continue
     }
 
     ok(`${backend.name}: both readers compile into one binary`, true)
 
-    const runner = backend.run ? backend.run(exe) : { command: exe, args: [] as string[] }
-    const ran = spawnSync(runner.command, runner.args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })
+    const runner = backend.run
+      ? backend.run(exe)
+      : { command: exe, args: [] as string[] }
+    const ran = spawnSync(runner.command, runner.args, {
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+    })
     const line = (ran.stdout ?? '').trim().split('\n').pop() ?? '{}'
 
-    let native: { agree?: boolean; bytes?: number; generated?: number; hand?: number }
+    let native: {
+      agree?: boolean
+      bytes?: number
+      generated?: number
+      hand?: number
+    }
 
     try {
       native = JSON.parse(line)
     } catch {
-      ok(`${backend.name}: the benchmark reports its timings`, false, `${line}${ran.stderr ?? ''}`.slice(0, 300))
+      ok(
+        `${backend.name}: the benchmark reports its timings`,
+        false,
+        `${line}${ran.stderr ?? ''}`.slice(0, 300),
+      )
       continue
     }
 
-    ok(`${backend.name}: the two readers read the same bytes`, native.agree === true, line)
+    ok(
+      `${backend.name}: the two readers read the same bytes`,
+      native.agree === true,
+      line,
+    )
 
     if (native.agree) {
-      const ratio = (native.generated ?? 0) / Math.max(native.hand ?? 0, 0.001)
+      const ratio =
+        (native.generated ?? 0) / Math.max(native.hand ?? 0, 0.001)
 
       console.log(
         `  ${backend.name}: ${native.bytes} bytes x 200 runs: generated ${native.generated?.toFixed(1)}ms, hand ${native.hand?.toFixed(1)}ms`,
@@ -432,7 +527,11 @@ console.log(JSON.stringify({
     }
   }
 } catch (error) {
-  ok('both readers compile into one module', false, String((error as Error).message ?? error).slice(0, 300))
+  ok(
+    'both readers compile into one module',
+    false,
+    String((error as Error).message ?? error).slice(0, 300),
+  )
 }
 
 console.log(`\nfeed-mill-bench: ${pass} pass, ${fail} fail`)

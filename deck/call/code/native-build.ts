@@ -18,16 +18,27 @@ import { execFileSync, spawnSync } from 'child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { buildSync } from 'esbuild'
-import { cratesNamed, entryOf, nativeMain } from '@term/make/code/compile/native-main'
+import {
+  cratesNamed,
+  entryOf,
+  nativeMain,
+} from '@term/make/code/compile/native-main'
 import { hoistKotlinImports } from '@term/make/code/compile/kotlin'
 import type { EmitTarget } from '@term/make/code/compile/emit-target'
 import { swiftFlags } from '@term/call/code/cask'
 import { stdlibBase } from '@term/make/code/resolve'
 
-export type Built = { ok: true; command: string[]; artifact: string } | { ok: false; reason: string }
+export type Built =
+  | { ok: true; command: string[]; artifact: string }
+  | { ok: false; reason: string }
 
 // the toolchain each target needs
-const TOOLS: Record<EmitTarget, string[]> = { node: [], rust: ['rustc'], swift: ['swiftc'], kotlin: ['kotlinc', 'java', 'jar'] }
+const TOOLS: Record<EmitTarget, string[]> = {
+  node: [],
+  rust: ['rustc'],
+  swift: ['swiftc'],
+  kotlin: ['kotlinc', 'java', 'jar'],
+}
 
 function have(tool: string): boolean {
   return spawnSync('which', [tool], { encoding: 'utf8' }).status === 0
@@ -36,12 +47,19 @@ function have(tool: string): boolean {
 // a toolchain's errors, not the warnings in front of them
 function errorsOf(error: unknown): string {
   const text = String((error as { stderr?: Buffer }).stderr ?? error)
-  const errors = text.split('\n').filter(line => /error:|^e: |^error\[|^\s+--> /.test(line))
+  const errors = text
+    .split('\n')
+    .filter(line => /error:|^e: |^error\[|^\s+--> /.test(line))
 
   return (errors.length > 0 ? errors.join('\n') : text).slice(0, 4000)
 }
 
-function tool(command: string, args: string[], cwd?: string, env?: NodeJS.ProcessEnv): string | undefined {
+function tool(
+  command: string,
+  args: string[],
+  cwd?: string,
+  env?: NodeJS.ProcessEnv,
+): string | undefined {
   try {
     execFileSync(command, args, { stdio: 'pipe', cwd, env })
 
@@ -52,11 +70,20 @@ function tool(command: string, args: string[], cwd?: string, env?: NodeJS.Proces
 }
 
 // build `source` (the emitted program, prelude and all, no main) for `target` into `folder`, as `name`
-export function buildNative(input: { source: string; target: EmitTarget; folder: string; name: string; entry?: string }): Built {
+export function buildNative(input: {
+  source: string
+  target: EmitTarget
+  folder: string
+  name: string
+  entry?: string
+}): Built {
   const missing = TOOLS[input.target].filter(one => !have(one))
 
   if (missing.length > 0) {
-    return { ok: false, reason: `${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} not installed, which a ${input.target} build needs` }
+    return {
+      ok: false,
+      reason: `${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} not installed, which a ${input.target} build needs`,
+    }
   }
 
   const entry = entryOf(input.target, input.source, input.entry)
@@ -71,15 +98,27 @@ export function buildNative(input: { source: string; target: EmitTarget; folder:
   }
 
   mkdirSync(input.folder, { recursive: true })
+
   const stem = path.join(input.folder, input.name)
 
   if (input.target === 'node') {
     const file = `${stem}.ts`
-    writeFileSync(file, `${input.source}\n${nativeMain('node', input.source, entry)}\n`) // output: generated
+    writeFileSync(
+      file,
+      `${input.source}\n${nativeMain('node', input.source, entry)}\n`,
+    ) // output: generated
+
     const artifact = `${stem}.mjs`
 
     try {
-      buildSync({ entryPoints: [file], bundle: true, platform: 'node', format: 'esm', outfile: artifact, logLevel: 'silent' })
+      buildSync({
+        entryPoints: [file],
+        bundle: true,
+        platform: 'node',
+        format: 'esm',
+        outfile: artifact,
+        logLevel: 'silent',
+      })
     } catch (error) {
       return { ok: false, reason: errorsOf(error) }
     }
@@ -90,21 +129,43 @@ export function buildNative(input: { source: string; target: EmitTarget; folder:
   if (input.target === 'rust') {
     const source = `${input.source}\n${nativeMain('rust', input.source, entry)}\n`
     const stdlib = stdlibBase()
-    const cargoToml = stdlib ? path.join(stdlib, 'code/native/rust/Cargo.toml') : undefined
-    const crates = cratesNamed(source, cargoToml && existsSync(cargoToml) ? readFileSync(cargoToml, 'utf8') : '')
+    const cargoToml = stdlib
+      ? path.join(stdlib, 'code/native/rust/Cargo.toml')
+      : undefined
+
+    const crates = cratesNamed(
+      source,
+      cargoToml && existsSync(cargoToml)
+        ? readFileSync(cargoToml, 'utf8')
+        : '',
+    )
 
     // a program that names a crate is a cargo project with those crates alone
     if (crates.length > 0) {
       if (!have('cargo')) {
-        return { ok: false, reason: `cargo is not installed, and the program names ${crates.map(line => line.split(/\s*=/)[0]).join(', ')}` }
+        return {
+          ok: false,
+          reason: `cargo is not installed, and the program names ${crates.map(line => line.split(/\s*=/)[0]).join(', ')}`,
+        }
       }
 
       const project = `${stem}-cargo`
-      const binary = input.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()
+      const binary = input.name
+        .replace(/[^a-z0-9]/gi, '-')
+        .toLowerCase()
+
       mkdirSync(path.join(project, 'src'), { recursive: true })
-      writeFileSync(path.join(project, 'Cargo.toml'), `[package]\nname = "${binary}"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\n${crates.join('\n')}\n\n[profile.release]\npanic = "abort"\n`)
+      writeFileSync(
+        path.join(project, 'Cargo.toml'),
+        `[package]\nname = "${binary}"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\n${crates.join('\n')}\n\n[profile.release]\npanic = "abort"\n`,
+      )
       writeFileSync(path.join(project, 'src', 'main.rs'), source)
-      const failed = tool('cargo', ['build', '--release', '--quiet'], project)
+
+      const failed = tool(
+        'cargo',
+        ['build', '--release', '--quiet'],
+        project,
+      )
 
       if (failed) {
         return { ok: false, reason: failed }
@@ -117,24 +178,61 @@ export function buildNative(input: { source: string; target: EmitTarget; folder:
 
     const file = `${stem}.rs`
     writeFileSync(file, source)
-    const failed = tool('rustc', ['--edition', '2021', '-O', '-A', 'warnings', '-o', stem, file])
 
-    return failed ? { ok: false, reason: failed } : { ok: true, command: [stem], artifact: stem }
+    const failed = tool('rustc', [
+      '--edition',
+      '2021',
+      '-O',
+      '-A',
+      'warnings',
+      '-o',
+      stem,
+      file,
+    ])
+
+    return failed
+      ? { ok: false, reason: failed }
+      : { ok: true, command: [stem], artifact: stem }
   }
 
   if (input.target === 'swift') {
     const file = `${stem}.swift`
-    writeFileSync(file, `import Foundation\n${input.source}\n${nativeMain('swift', input.source, entry)}\n`)
-    const failed = tool('swiftc', [...swiftFlags(), '-O', '-o', stem, file])
+    writeFileSync(
+      file,
+      `import Foundation\n${input.source}\n${nativeMain('swift', input.source, entry)}\n`,
+    )
 
-    return failed ? { ok: false, reason: failed } : { ok: true, command: [stem], artifact: stem }
+    const failed = tool('swiftc', [
+      ...swiftFlags(),
+      '-O',
+      '-o',
+      stem,
+      file,
+    ])
+
+    return failed
+      ? { ok: false, reason: failed }
+      : { ok: true, command: [stem], artifact: stem }
   }
 
   const file = `${stem}.kt`
-  writeFileSync(file, hoistKotlinImports(`${input.source}\n${nativeMain('kotlin', input.source, entry)}\n`))
+  writeFileSync(
+    file,
+    hoistKotlinImports(
+      `${input.source}\n${nativeMain('kotlin', input.source, entry)}\n`,
+    ),
+  )
+
   const artifact = `${stem}.jar`
   const classpath = kotlinClasspath()
-  const failed = tool('kotlinc', [file, ...(classpath ? ['-classpath', classpath] : []), '-include-runtime', '-nowarn', '-d', artifact])
+  const failed = tool('kotlinc', [
+    file,
+    ...(classpath ? ['-classpath', classpath] : []),
+    '-include-runtime',
+    '-nowarn',
+    '-d',
+    artifact,
+  ])
 
   if (failed) {
     return { ok: false, reason: failed }
@@ -144,7 +242,14 @@ export function buildNative(input: { source: string; target: EmitTarget; folder:
   // jar handed out and run with a plain `java -jar` prints no restricted-method warning either. An older JDK ignores it
   const manifest = `${stem}-manifest.txt`
   writeFileSync(manifest, 'Enable-Native-Access: ALL-UNNAMED\n')
-  const updated = tool('jar', ['--update', '--file', artifact, '--manifest', manifest])
+
+  const updated = tool('jar', [
+    '--update',
+    '--file',
+    artifact,
+    '--manifest',
+    manifest,
+  ])
 
   if (updated) {
     return { ok: false, reason: updated }
@@ -154,10 +259,17 @@ export function buildNative(input: { source: string; target: EmitTarget; folder:
   // Native access is granted because the process runner spawns through java.lang.foreign (JDK 22 and newer), and
   // without it JDK 24 and newer print a restricted-method warning on stderr that no other target prints
   const access = '--enable-native-access=ALL-UNNAMED'
+
   return {
     ok: true,
     command: classpath
-      ? ['java', access, '-cp', `${artifact}:${classpath}`, kotlinMainClass(input.name)]
+      ? [
+          'java',
+          access,
+          '-cp',
+          `${artifact}:${classpath}`,
+          kotlinMainClass(input.name),
+        ]
       : ['java', access, '-jar', artifact],
     artifact,
   }
@@ -166,10 +278,15 @@ export function buildNative(input: { source: string; target: EmitTarget; folder:
 // the classpath the Kotlin backend's runtime needs (coroutines, ktor), where task/term/native/kotlin.sh `deps` keeps
 // it: the same cache the Swift flags are read from. Absent, a program that reaches neither still builds
 function kotlinClasspath(): string | undefined {
-  const cache = process.env.TERM_NATIVE_CACHE ?? path.join(process.env.TMPDIR ?? tmpdir(), 'term-native')
+  const cache =
+    process.env.TERM_NATIVE_CACHE ??
+    path.join(process.env.TMPDIR ?? tmpdir(), 'term-native')
+
   const file = path.join(cache, 'kotlin', 'classpath.txt')
 
-  return existsSync(file) ? readFileSync(file, 'utf8').trim() || undefined : undefined
+  return existsSync(file)
+    ? readFileSync(file, 'utf8').trim() || undefined
+    : undefined
 }
 
 // the class kotlinc puts a file's top-level `main` in: `term-test.kt` is `Term_testKt`
@@ -191,48 +308,102 @@ function kotlinMainClass(name: string): string {
 export type ThroughRust = 'llvm' | 'wasm'
 
 const host = (): string => {
-  const verbose = spawnSync('rustc', ['--version', '--verbose'], { encoding: 'utf8' }).stdout ?? ''
+  const verbose =
+    spawnSync('rustc', ['--version', '--verbose'], { encoding: 'utf8' })
+      .stdout ?? ''
 
   return /^host: (.+)$/m.exec(verbose)?.[1]?.trim() ?? ''
 }
 
-const sysroot = (): string => (spawnSync('rustc', ['--print', 'sysroot'], { encoding: 'utf8' }).stdout ?? '').trim()
+const sysroot = (): string =>
+  (
+    spawnSync('rustc', ['--print', 'sysroot'], { encoding: 'utf8' })
+      .stdout ?? ''
+  ).trim()
 
 // the IR (`llvm`) or the module (`wasm`) of the program's Rust source, written to `folder`, built and runnable when the
 // tools are there
-export function buildThroughRust(input: { source: string; target: ThroughRust; folder: string; name: string; entry?: string; build: boolean }): Built {
+export function buildThroughRust(input: {
+  source: string
+  target: ThroughRust
+  folder: string
+  name: string
+  entry?: string
+  build: boolean
+}): Built {
   if (!have('rustc')) {
-    return { ok: false, reason: 'rustc is not installed, which both llvm and wasm are built through' }
+    return {
+      ok: false,
+      reason:
+        'rustc is not installed, which both llvm and wasm are built through',
+    }
   }
 
   const entry = entryOf('rust', input.source, input.entry)
 
   if (!entry) {
-    return { ok: false, reason: 'the program has no `run`, `boot` or `main` task taking nothing to start it. Name one with --main' }
+    return {
+      ok: false,
+      reason:
+        'the program has no `run`, `boot` or `main` task taking nothing to start it. Name one with --main',
+    }
   }
 
   const stdlib = stdlibBase()
-  const cargoToml = stdlib ? path.join(stdlib, 'code/native/rust/Cargo.toml') : undefined
+  const cargoToml = stdlib
+    ? path.join(stdlib, 'code/native/rust/Cargo.toml')
+    : undefined
+
   const source = `${input.source}\n${nativeMain('rust', input.source, entry, input.target !== 'wasm')}\n`
-  const crates = cratesNamed(source, cargoToml && existsSync(cargoToml) ? readFileSync(cargoToml, 'utf8') : '')
+  const crates = cratesNamed(
+    source,
+    cargoToml && existsSync(cargoToml)
+      ? readFileSync(cargoToml, 'utf8')
+      : '',
+  )
 
   if (crates.length > 0) {
-    return { ok: false, reason: `the program names ${crates.map(line => line.split(/\s*=/)[0]).join(', ')}, and a ${input.target} build takes no crates` }
+    return {
+      ok: false,
+      reason: `the program names ${crates.map(line => line.split(/\s*=/)[0]).join(', ')}, and a ${input.target} build takes no crates`,
+    }
   }
 
   mkdirSync(input.folder, { recursive: true })
+
   const stem = path.join(input.folder, input.name)
   writeFileSync(`${stem}.rs`, source)
 
   if (input.target === 'wasm') {
-    const libdir = path.join(sysroot(), 'lib', 'rustlib', 'wasm32-wasip1', 'lib')
+    const libdir = path.join(
+      sysroot(),
+      'lib',
+      'rustlib',
+      'wasm32-wasip1',
+      'lib',
+    )
 
     if (!existsSync(libdir)) {
-      return { ok: false, reason: 'the wasm32-wasip1 target is not installed: rustup target add wasm32-wasip1' }
+      return {
+        ok: false,
+        reason:
+          'the wasm32-wasip1 target is not installed: rustup target add wasm32-wasip1',
+      }
     }
 
     const module = `${stem}.wasm`
-    const failed = tool('rustc', ['--edition', '2021', '-O', '-A', 'warnings', '--target', 'wasm32-wasip1', '-o', module, `${stem}.rs`])
+    const failed = tool('rustc', [
+      '--edition',
+      '2021',
+      '-O',
+      '-A',
+      'warnings',
+      '--target',
+      'wasm32-wasip1',
+      '-o',
+      module,
+      `${stem}.rs`,
+    ])
 
     if (failed) {
       return { ok: false, reason: failed }
@@ -245,12 +416,26 @@ export function buildThroughRust(input: { source: string; target: ThroughRust; f
       `import { readFileSync } from 'node:fs'\nimport { WASI } from 'node:wasi'\nconst wasi = new WASI({ version: 'preview1', args: [], env: {}, returnOnExit: true })\nconst { instance } = await WebAssembly.instantiate(readFileSync(new URL('./${input.name}.wasm', import.meta.url)), wasi.getImportObject())\nprocess.exitCode = wasi.start(instance)\n`,
     )
 
-    return { ok: true, command: [process.execPath, '--no-warnings', runner], artifact: module }
+    return {
+      ok: true,
+      command: [process.execPath, '--no-warnings', runner],
+      artifact: module,
+    }
   }
 
   // llvm: the IR, always; built only when asked
   const ir = `${stem}.ll`
-  const emitted = tool('rustc', ['--edition', '2021', '-O', '-A', 'warnings', '--emit=llvm-ir', '-o', ir, `${stem}.rs`])
+  const emitted = tool('rustc', [
+    '--edition',
+    '2021',
+    '-O',
+    '-A',
+    'warnings',
+    '--emit=llvm-ir',
+    '-o',
+    ir,
+    `${stem}.rs`,
+  ])
 
   if (emitted) {
     return { ok: false, reason: emitted }
@@ -261,10 +446,20 @@ export function buildThroughRust(input: { source: string; target: ThroughRust; f
   }
 
   const triple = host()
-  const llc = path.join(sysroot(), 'lib', 'rustlib', triple, 'bin', 'llc')
+  const llc = path.join(
+    sysroot(),
+    'lib',
+    'rustlib',
+    triple,
+    'bin',
+    'llc',
+  )
 
   if (!existsSync(llc)) {
-    return { ok: false, reason: `llc is not installed: it comes with rustup's llvm-tools, whose LLVM is rustc's own: rustup component add llvm-tools` }
+    return {
+      ok: false,
+      reason: `llc is not installed: it comes with rustup's llvm-tools, whose LLVM is rustc's own: rustup component add llvm-tools`,
+    }
   }
 
   const object = `${stem}.o`
@@ -276,20 +471,36 @@ export function buildThroughRust(input: { source: string; target: ThroughRust; f
 
   // linked against rustc's own std, the dynamic one, found again at run time through the rpath
   const libdir = path.join(sysroot(), 'lib', 'rustlib', triple, 'lib')
-  const std = spawnSync('ls', [libdir], { encoding: 'utf8' }).stdout.split('\n').find(one => /^libstd-.*\.(dylib|so)$/.test(one))
+  const std = spawnSync('ls', [libdir], { encoding: 'utf8' })
+    .stdout.split('\n')
+    .find(one => /^libstd-.*\.(dylib|so)$/.test(one))
 
   if (!std) {
-    return { ok: false, reason: `rustc's dynamic std is not in ${libdir}` }
+    return {
+      ok: false,
+      reason: `rustc's dynamic std is not in ${libdir}`,
+    }
   }
 
-  const linked = tool('cc', [object, '-o', stem, `-L${libdir}`, `-l${std.replace(/^lib/, '').replace(/\.(dylib|so)$/, '')}`, `-Wl,-rpath,${libdir}`])
+  const linked = tool('cc', [
+    object,
+    '-o',
+    stem,
+    `-L${libdir}`,
+    `-l${std.replace(/^lib/, '').replace(/\.(dylib|so)$/, '')}`,
+    `-Wl,-rpath,${libdir}`,
+  ])
 
-  return linked ? { ok: false, reason: linked } : { ok: true, command: [stem], artifact: stem }
+  return linked
+    ? { ok: false, reason: linked }
+    : { ok: true, command: [stem], artifact: stem }
 }
 
 // run a built program, its output and its exit code passed through
 export function runBuilt(command: string[]): number {
-  const ran = spawnSync(command[0]!, command.slice(1), { stdio: 'inherit' })
+  const ran = spawnSync(command[0]!, command.slice(1), {
+    stdio: 'inherit',
+  })
 
   return ran.status ?? 1
 }

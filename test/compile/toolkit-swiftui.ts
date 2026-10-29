@@ -31,9 +31,13 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 // the slot element each platform hosts its own declarative views in: SwiftUI's on Apple, a composable's on Compose
-const slotOf = (leg: Leg): string => (leg.startsWith('compose') ? 'composable' : 'swiftui')
+const slotOf = (leg: Leg): string =>
+  leg.startsWith('compose') ? 'composable' : 'swiftui'
 
-const program = (leg: Leg, shot: string): string => `load @term/site/code/dom/dom
+const program = (
+  leg: Leg,
+  shot: string,
+): string => `load @term/site/code/dom/dom
   find view
   find get-value
 
@@ -149,14 +153,27 @@ task main
 
 // the text after `step <name> `
 function step(output: string, name: string): string {
-  const line = output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
+  const line =
+    output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
 
-  return line.slice(line.indexOf(`step ${name} `) + `step ${name} `.length).trim()
+  return line
+    .slice(line.indexOf(`step ${name} `) + `step ${name} `.length)
+    .trim()
 }
 
 // every `<swiftui name=".." size="w,h">` (or `<composable ...>`) the tree read back holds, with its size
-function hosted(tree: string): { name: string; width: number; height: number }[] {
-  return [...tree.matchAll(/<(?:swiftui|composable) name="([^"]*)" size="(\d+),(\d+)">/g)].map(m => ({ name: m[1]!, width: Number(m[2]), height: Number(m[3]) }))
+function hosted(
+  tree: string,
+): { name: string; width: number; height: number }[] {
+  return [
+    ...tree.matchAll(
+      /<(?:swiftui|composable) name="([^"]*)" size="(\d+),(\d+)">/g,
+    ),
+  ].map(m => ({
+    name: m[1]!,
+    width: Number(m[2]),
+    height: Number(m[3]),
+  }))
 }
 
 function judge(leg: Leg, toolkit: string, output: string): void {
@@ -166,21 +183,38 @@ function judge(leg: Leg, toolkit: string, output: string): void {
 
   const kind = leg.startsWith('compose') ? 'Compose' : 'SwiftUI'
   const start = step(output, 'start')
-  ok(`${leg}: both ${kind} views are installed in the tree (${toolkit})`, start.startsWith('stepper progress '), start.slice(0, 200))
+  ok(
+    `${leg}: both ${kind} views are installed in the tree (${toolkit})`,
+    start.startsWith('stepper progress '),
+    start.slice(0, 200),
+  )
   const views = hosted(start)
   ok(
     `${leg}: ${kind} laid each one out to a size above zero`,
-    views.length === 2 && views.every(v => v.width > 0 && v.height > 0) && views[0]!.name === 'stepper' && views[1]!.name === 'progress',
+    views.length === 2 &&
+      views.every(v => v.width > 0 && v.height > 0) &&
+      views[0]!.name === 'stepper' &&
+      views[1]!.name === 'progress',
     JSON.stringify(views),
   )
   const pressed = step(output, 'pressed')
-  ok(`${leg}: two presses reached the program's handler, and the count went back into the stepper's input`, pressed.startsWith('2 '), pressed)
-  ok(`${leg}: the span the program draws reads the count`, pressed.includes('2'), pressed)
+  ok(
+    `${leg}: two presses reached the program's handler, and the count went back into the stepper's input`,
+    pressed.startsWith('2 '),
+    pressed,
+  )
+  ok(
+    `${leg}: the span the program draws reads the count`,
+    pressed.includes('2'),
+    pressed,
+  )
 }
 
 // Apple's SwiftUI slot and Compose's composable slot. Android views has no declarative toolkit to host: its slot is
 // Jetpack Compose's leg
-for (const leg of process.env.SWIFTUI_ONLY ? [process.env.SWIFTUI_ONLY] : ['macos', 'ios', 'compose', 'compose-android']) {
+for (const leg of process.env.SWIFTUI_ONLY
+  ? [process.env.SWIFTUI_ONLY]
+  : ['macos', 'ios', 'compose', 'compose-android']) {
   runToolkits(
     {
       root: process.cwd(),

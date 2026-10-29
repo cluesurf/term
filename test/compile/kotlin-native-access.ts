@@ -49,19 +49,29 @@ task run
   back <ran {probe/code}>
 `
 
-const have = (tool: string): boolean => spawnSync('which', [tool], { encoding: 'utf8' }).status === 0
+const have = (tool: string): boolean =>
+  spawnSync('which', [tool], { encoding: 'utf8' }).status === 0
 
 if (!['kotlinc', 'java', 'jar'].every(have)) {
-  console.log('skip  kotlin-native-access: kotlinc, java or jar not installed')
+  console.log(
+    'skip  kotlin-native-access: kotlinc, java or jar not installed',
+  )
   process.exit(0)
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'term-kotlin-native-access-'))
 const file = join(dir, 'access.tree')
 const resolve = projectResolver(process.cwd(), 'kotlin')
-const result = compile({ file, text: PROGRAM }, { resolve, env: 'kotlin' })
+const result = compile(
+  { file, text: PROGRAM },
+  { resolve, env: 'kotlin' },
+)
 
-ok('the program compiles for Kotlin', result.ok, result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '))
+ok(
+  'the program compiles for Kotlin',
+  result.ok,
+  result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '),
+)
 
 if (!result.ok) {
   process.exit(1)
@@ -69,7 +79,12 @@ if (!result.ok) {
 
 const kotlin = emitKotlin(result.program)
 const source = `${nativePrelude(result.program, 'kotlin', file => (existsSync(file) ? readFileSync(file, 'utf8') : undefined), kotlin)}\n${kotlin}`
-const built = buildNative({ source, target: 'kotlin', folder: dir, name: 'access' })
+const built = buildNative({
+  source,
+  target: 'kotlin',
+  folder: dir,
+  name: 'access',
+})
 
 ok('the program builds', built.ok, built.ok ? '' : built.reason)
 
@@ -77,29 +92,66 @@ if (!built.ok) {
   process.exit(1)
 }
 
-const read = (command: string[]): { out: string; err: string; status: number | null } => {
-  const ran = spawnSync(command[0]!, command.slice(1), { encoding: 'utf8' })
+const read = (
+  command: string[],
+): { out: string; err: string; status: number | null } => {
+  const ran = spawnSync(command[0]!, command.slice(1), {
+    encoding: 'utf8',
+  })
 
-  return { out: String(ran.stdout), err: String(ran.stderr), status: ran.status }
+  return {
+    out: String(ran.stdout),
+    err: String(ran.stderr),
+    status: ran.status,
+  }
 }
 
 const viaCommand = read(built.command)
-ok('command: prints the answer and nothing on stderr', viaCommand.out === 'ran 0' && viaCommand.err === '', JSON.stringify(viaCommand))
+ok(
+  'command: prints the answer and nothing on stderr',
+  viaCommand.out === 'ran 0' && viaCommand.err === '',
+  JSON.stringify(viaCommand),
+)
 
 const plain = read(['java', '-jar', built.artifact])
-ok('plain java -jar: prints the answer and nothing on stderr', plain.out === 'ran 0' && plain.err === '', JSON.stringify(plain))
+ok(
+  'plain java -jar: prints the answer and nothing on stderr',
+  plain.out === 'ran 0' && plain.err === '',
+  JSON.stringify(plain),
+)
 
-const listed = read(['jar', '--describe-module', '--file', built.artifact])
-const manifest = spawnSync('unzip', ['-p', built.artifact, 'META-INF/MANIFEST.MF'], { encoding: 'utf8' })
-ok('manifest: holds Enable-Native-Access', /Enable-Native-Access: ALL-UNNAMED/.test(String(manifest.stdout)), `${listed.err}${manifest.stdout}`)
+const listed = read([
+  'jar',
+  '--describe-module',
+  '--file',
+  built.artifact,
+])
+const manifest = spawnSync(
+  'unzip',
+  ['-p', built.artifact, 'META-INF/MANIFEST.MF'],
+  { encoding: 'utf8' },
+)
+ok(
+  'manifest: holds Enable-Native-Access',
+  /Enable-Native-Access: ALL-UNNAMED/.test(String(manifest.stdout)),
+  `${listed.err}${manifest.stdout}`,
+)
 
-const version = Number(/version "(\d+)/.exec(read(['java', '-version']).err)?.[1] ?? '0')
+const version = Number(
+  /version "(\d+)/.exec(read(['java', '-version']).err)?.[1] ?? '0',
+)
 const control = read(['java', '-cp', built.artifact, 'AccessKt'])
 
 if (version >= 24) {
-  ok(`control: without the grant JDK ${version} warns`, /restricted method|native access/i.test(control.err), JSON.stringify(control))
+  ok(
+    `control: without the grant JDK ${version} warns`,
+    /restricted method|native access/i.test(control.err),
+    JSON.stringify(control),
+  )
 } else {
-  console.log(`skip  control: JDK ${version} prints no restricted-method warning`)
+  console.log(
+    `skip  control: JDK ${version} prints no restricted-method warning`,
+  )
 }
 
 console.log(`\nkotlin-native-access: ${pass} pass, ${fail} fail`)

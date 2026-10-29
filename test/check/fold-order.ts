@@ -12,14 +12,17 @@ let fail = 0
 function expect(name: string, source: string, want: string): void {
   const result = compile({ file: 's.tree', text: source })
   const codes = result.ok ? [] : result.diagnostics.map(d => d.name)
-  const good = want === 'ok' ? result.ok : !result.ok && codes.includes(want)
+  const good =
+    want === 'ok' ? result.ok : !result.ok && codes.includes(want)
 
   if (good) {
     pass++
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (ok=${result.ok}, codes=${codes.join(',')}, wanted ${want})`)
+    console.log(
+      `FAIL  ${name}  (ok=${result.ok}, codes=${codes.join(',')}, wanted ${want})`,
+    )
   }
 }
 
@@ -55,7 +58,8 @@ const TASK = `task doubled-cosh
 
 expect(
   'the growth of the doubling sequence is proven',
-  TASK + `
+  TASK +
+    `
 rule doubling-grows-at-least-linearly
   seat p, like integer
   seat k, like integer
@@ -94,7 +98,8 @@ rule doubling-grows-at-least-linearly
 
 expect(
   'a bound passed by an explicit witness is proven',
-  TASK + `
+  TASK +
+    `
 rule doubling-passes-every-bound
   seat p, like integer
   seat m, like integer
@@ -121,7 +126,8 @@ rule doubling-passes-every-bound
 
 expect(
   'a step that fails is refused',
-  TASK + `
+  TASK +
+    `
 rule control-a-step-that-fails
   seat p, like integer
   seat k, like integer
@@ -146,7 +152,8 @@ rule control-a-step-that-fails
 
 expect(
   'a base that fails is refused',
-  TASK + `
+  TASK +
+    `
 rule control-a-base-that-fails
   seat p, like integer
   seat k, like integer
@@ -181,7 +188,8 @@ rule control-a-base-that-fails
 
 expect(
   'a conjunction missing a hypothesis is refused',
-  TASK + `
+  TASK +
+    `
 rule control-growth-without-a-cosh
   seat p, like integer
   seat k, like integer
@@ -216,7 +224,8 @@ rule control-growth-without-a-cosh
 
 expect(
   'one past the witness is refused',
-  TASK + `
+  TASK +
+    `
 rule control-passing-one-more
   seat p, like integer
   seat m, like integer
@@ -243,7 +252,8 @@ rule control-passing-one-more
 
 expect(
   'a hypothesis about the counter is refused',
-  TASK + `
+  TASK +
+    `
 rule control-a-hypothesis-about-the-counter
   seat p, like integer
   seat k, like integer

@@ -25,12 +25,19 @@ export type Template = {
 // value of the wrong kind, a template that fuses itself. Reported at the fuse, before anything of the expansion is
 // read. `empty-site` (a site its fuse beams nothing into) is the one warning: the build goes on and says so
 export type TemplateProblem = {
-  code: 'unknown-name' | 'unexpected-node' | 'type-mismatch' | 'empty-site'
+  code:
+    | 'unknown-name'
+    | 'unexpected-node'
+    | 'type-mismatch'
+    | 'empty-site'
   message: string
   span: Span
 }
 
-type PortTemplate = ReturnType<typeof port.collectTemplates> extends Map<string, infer T> ? T : never
+type PortTemplate =
+  ReturnType<typeof port.collectTemplates> extends Map<string, infer T>
+    ? T
+    : never
 
 function toPort(template: Template): PortTemplate {
   return {
@@ -51,12 +58,21 @@ function fromPort(template: PortTemplate): Template {
 }
 
 // extract the `tree` template definitions from a parse tree
-export function collectTemplates(tree: RootNode): Map<string, Template> {
-  return new Map([...port.collectTemplates(tree)].map(([name, template]) => [name, fromPort(template)]))
+export function collectTemplates(
+  tree: RootNode,
+): Map<string, Template> {
+  return new Map(
+    [...port.collectTemplates(tree)].map(([name, template]) => [
+      name,
+      fromPort(template),
+    ]),
+  )
 }
 
 // extract `host <name> / term <a> / term <b> / ...` enumerations, so a meta-loop can iterate their items
-export function collectEnumerations(tree: RootNode): Map<string, string[]> {
+export function collectEnumerations(
+  tree: RootNode,
+): Map<string, string[]> {
   return port.collectEnumerations(tree)
 }
 
@@ -69,7 +85,17 @@ export function expandTemplates(
   externalEnums?: Map<string, string[]>,
   problems: TemplateProblem[] = [],
 ): RootNode {
-  const templates = new Map([...(externalTemplates ?? [])].map(([name, template]) => [name, toPort(template)]))
+  const templates = new Map(
+    [...(externalTemplates ?? [])].map(([name, template]) => [
+      name,
+      toPort(template),
+    ]),
+  )
 
-  return port.expandTemplates(tree, templates, externalEnums ?? new Map(), problems)
+  return port.expandTemplates(
+    tree,
+    templates,
+    externalEnums ?? new Map(),
+    problems,
+  )
 }

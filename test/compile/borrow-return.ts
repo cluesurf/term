@@ -57,17 +57,34 @@ task find-symbol
   back <>
 `
 
-const built = compile({ file: '/gate/code/borrow.tree', text: SOURCE }, { leanOf: () => true, env: 'rust' })
+const built = compile(
+  { file: '/gate/code/borrow.tree', text: SOURCE },
+  { leanOf: () => true, env: 'rust' },
+)
 
 if (!built.ok) {
-  ok('the program compiles', false, built.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'the program compiles',
+    false,
+    built.diagnostics.map(d => d.message).join(' | '),
+  )
 } else if (!have('rustc')) {
   skip++
-  console.log('skip  rust: borrowed field return  (rustc not installed)')
+  console.log(
+    'skip  rust: borrowed field return  (rustc not installed)',
+  )
 } else {
   const rust = emitRust(built.program)
-  ok('the walk holds the item by reference', /let one = __item;/.test(rust), rust.slice(0, 400))
-  ok('a returned field is cloned out of the borrow', /return one\.ascii\.clone\(\);/.test(rust) && /return one\.unicode\.clone\(\);/.test(rust))
+  ok(
+    'the walk holds the item by reference',
+    /let one = __item;/.test(rust),
+    rust.slice(0, 400),
+  )
+  ok(
+    'a returned field is cloned out of the borrow',
+    /return one\.ascii\.clone\(\);/.test(rust) &&
+      /return one\.unicode\.clone\(\);/.test(rust),
+  )
 
   const dir = runDir('term-borrow-return-')
   const main = join(dir, 'main.rs')
@@ -77,16 +94,33 @@ if (!built.ok) {
   )
 
   try {
-    execFileSync('rustc', ['--edition', '2021', '-o', join(dir, 'main'), main], { stdio: 'pipe' })
+    execFileSync(
+      'rustc',
+      ['--edition', '2021', '-o', join(dir, 'main'), main],
+      { stdio: 'pipe' },
+    )
     ok('rust: it builds', true)
     const run = spawnSync(join(dir, 'main'), [], { encoding: 'utf8' })
-    ok('rust: it answers', run.stdout.trim() === '...|…|', JSON.stringify(run.stdout + run.stderr))
+    ok(
+      'rust: it answers',
+      run.stdout.trim() === '...|…|',
+      JSON.stringify(run.stdout + run.stderr),
+    )
   } catch (error) {
-    ok('rust: it builds', false, String((error as { stderr?: Buffer }).stderr ?? error).slice(0, 600))
+    ok(
+      'rust: it builds',
+      false,
+      String((error as { stderr?: Buffer }).stderr ?? error).slice(
+        0,
+        600,
+      ),
+    )
   }
 }
 
-console.log(`\nborrow-return: ${pass} pass, ${fail} fail${skip ? `, ${skip} skipped` : ''}`)
+console.log(
+  `\nborrow-return: ${pass} pass, ${fail} fail${skip ? `, ${skip} skipped` : ''}`,
+)
 
 if (fail > 0) {
   process.exit(1)

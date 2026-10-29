@@ -26,7 +26,10 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const program = (_leg: Leg, shot: string): string => `load @term/site/code/dom/dom
+const program = (
+  _leg: Leg,
+  shot: string,
+): string => `load @term/site/code/dom/dom
   find view
 
 load @term/site/code/view/reactive
@@ -114,14 +117,21 @@ task main
 `
 
 function step(output: string, name: string): string {
-  const line = output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
+  const line =
+    output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
 
-  return line.slice(line.indexOf(`step ${name} `) + `step ${name} `.length).trim()
+  return line
+    .slice(line.indexOf(`step ${name} `) + `step ${name} `.length)
+    .trim()
 }
 
 function judge(leg: Leg, toolkit: string, output: string): void {
   const drawn = step(output, 'keys')
-  ok(`${leg}: three keys pressed through the platform reach the listener under their web names (${toolkit})`, drawn.includes('keys: Escape a ArrowUp'), drawn)
+  ok(
+    `${leg}: three keys pressed through the platform reach the listener under their web names (${toolkit})`,
+    drawn.includes('keys: Escape a ArrowUp'),
+    drawn,
+  )
 }
 
 runToolkits(

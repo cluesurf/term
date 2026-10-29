@@ -109,25 +109,41 @@ writeFileSync(file, SRC)
 
 // the loader this process runs under (tsx) runs the check too
 const run = (args: string[]) =>
-  spawnSync(process.execPath, [...process.execArgv, CHECK, ...args], { cwd: TERM, encoding: 'utf8' })
+  spawnSync(process.execPath, [...process.execArgv, CHECK, ...args], {
+    cwd: TERM,
+    encoding: 'utf8',
+  })
 
 const routes = run(['--file', file, '--routes'])
-const commands = JSON.parse(routes.stdout || '[]') as { path: string; task?: string }[]
-expect('the commands read', commands.map(command => `${command.path}:${command.task}`), [
-  'ship:ship-project',
-  'pack:pack-project',
-  'half:half-project',
-])
+const commands = JSON.parse(routes.stdout || '[]') as {
+  path: string
+  task?: string
+}[]
+expect(
+  'the commands read',
+  commands.map(command => `${command.path}:${command.task}`),
+  ['ship:ship-project', 'pack:pack-project', 'half:half-project'],
+)
 
 const checked = run(['--file', file])
-const lines = checked.stdout.split('\n').filter(line => line.startsWith('dropped: '))
+const lines = checked.stdout
+  .split('\n')
+  .filter(line => line.startsWith('dropped: '))
 expect('the drops', lines, [
   'dropped: pack --out (pack-project never reads it)',
   'dropped: half --out (half never reads it)',
   'dropped: half --extra (half-project has no parameter for it)',
 ])
-expect('the passing wrapper drops nothing', lines.filter(line => line.includes(' ship ')), [])
-expect('the count', checked.stdout.includes('take-reach: 3 dropped'), true)
+expect(
+  'the passing wrapper drops nothing',
+  lines.filter(line => line.includes(' ship ')),
+  [],
+)
+expect(
+  'the count',
+  checked.stdout.includes('take-reach: 3 dropped'),
+  true,
+)
 expect('exit 1 on a drop', checked.status, 1)
 
 if (checked.status !== 1 || lines.length === 0) {

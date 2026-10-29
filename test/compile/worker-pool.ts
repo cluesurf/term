@@ -34,11 +34,15 @@ function manyFunctions(count: number): Program {
 
   const parsed = parse({ file: 'many.tree', text: source })
 
-  if (!parsed.ok) {throw new Error('parse failed')}
+  if (!parsed.ok) {
+    throw new Error('parse failed')
+  }
 
   const milled = mill(parsed.tree, 'many.tree')
 
-  if (!milled.ok) {throw new Error('mill failed')}
+  if (!milled.ok) {
+    throw new Error('mill failed')
+  }
 
   return milled.program
 }
@@ -108,7 +112,9 @@ async function main(): Promise<void> {
 
   console.log(`\nworker-pool: ${pass} pass, ${fail} fail`)
 
-  if (fail > 0) {process.exit(1)}
+  if (fail > 0) {
+    process.exit(1)
+  }
 }
 
 void main()

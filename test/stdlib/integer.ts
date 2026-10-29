@@ -66,7 +66,9 @@ function stoppedAt(run: () => unknown): string {
   } catch (error) {
     const stop = error as { name?: string; message?: string }
 
-    return stop.name === '__TermStop' ? (/^(\w+):/.exec(stop.message ?? '')?.[1] ?? 'unnamed') : 'not a stop'
+    return stop.name === '__TermStop'
+      ? (/^(\w+):/.exec(stop.message ?? '')?.[1] ?? 'unnamed')
+      : 'not a stop'
   }
 }
 
@@ -118,12 +120,17 @@ async function load(
 async function main(): Promise<void> {
   const i8 = await load('integer/8.tree')
   eq('i8 add wraps (100 + 50 = -106)', i8.i8Add(100, 50), -106)
-  eq('i8 add wraps negative (-100 + -50 = 106)', i8.i8Add(-100, -50), 106)
+  eq(
+    'i8 add wraps negative (-100 + -50 = 106)',
+    i8.i8Add(-100, -50),
+    106,
+  )
   eq('i8 add in range (10 + 20 = 30)', i8.i8Add(10, 20), 30)
-  eq('i8 bounds (-128 .. 127)', [
-    i8.i8MinimumValue(),
-    i8.i8MaximumValue(),
-  ], [-128, 127])
+  eq(
+    'i8 bounds (-128 .. 127)',
+    [i8.i8MinimumValue(), i8.i8MaximumValue()],
+    [-128, 127],
+  )
   eq('i8 checked add overflows to none', i8.i8CheckedAdd(100, 50), {
     form: 'none',
   })
@@ -131,26 +138,54 @@ async function main(): Promise<void> {
     form: 'some',
     value: 30,
   })
-  eq('i8 saturating add clamps to max', i8.i8SaturatingAdd(100, 50), 127)
-  eq('i8 negate of min is min (two-complement)', i8.i8Negate(-128), -128)
+  eq(
+    'i8 saturating add clamps to max',
+    i8.i8SaturatingAdd(100, 50),
+    127,
+  )
+  eq(
+    'i8 negate of min is min (two-complement)',
+    i8.i8Negate(-128),
+    -128,
+  )
   eq('to-i8 keeps -128', i8.toI8(-128), -128)
-  eq('to-i8 stops below -128 with shortage', raisedForm(() => i8.toI8(-129)), 'shortage')
-  eq('to-i8 stops past 127 with excess', raisedForm(() => i8.toI8(128)), 'excess')
+  eq(
+    'to-i8 stops below -128 with shortage',
+    raisedForm(() => i8.toI8(-129)),
+    'shortage',
+  )
+  eq(
+    'to-i8 stops past 127 with excess',
+    raisedForm(() => i8.toI8(128)),
+    'excess',
+  )
 
   const i16 = await load('integer/16.tree')
   eq('i16 add wraps (32767 + 1)', i16.i16Add(32767, 1), -32768)
-  eq('i16 multiply wraps (200 * 200)', i16.i16Multiply(200, 200), -25536)
+  eq(
+    'i16 multiply wraps (200 * 200)',
+    i16.i16Multiply(200, 200),
+    -25536,
+  )
 
   const i32 = await load('integer/32.tree')
-  eq('i32 add wraps (2147483647 + 1)', i32.i32Add(2147483647, 1), -2147483648)
+  eq(
+    'i32 add wraps (2147483647 + 1)',
+    i32.i32Add(2147483647, 1),
+    -2147483648,
+  )
   eq(
     'i32 saturating add clamps',
     i32.i32SaturatingAdd(2147483647, 1),
     2147483647,
   )
-  eq('i32 checked add overflows to none', i32.i32CheckedAdd(2147483647, 1), {
-    form: 'none',
-  })
+  eq(
+    'i32 checked add overflows to none',
+    i32.i32CheckedAdd(2147483647, 1),
+    {
+      form: 'none',
+    },
+  )
 
   const u = await load('integer/unsigned.tree')
   eq('u8 add wraps (255 + 1 = 0)', u.u8Add(255, 1), 0)
@@ -162,18 +197,38 @@ async function main(): Promise<void> {
 
   // `to-u8` and its kin check where `-from-number` wraps (D12): the value itself, or a stop naming the width
   eq('to-u8 keeps a value that fits', u.toU8(200), 200)
-  eq('to-u8 stops past 255 with excess', raisedForm(() => u.toU8(256)), 'excess')
-  eq('to-u8 stops below 0 with shortage', raisedForm(() => u.toU8(-1)), 'shortage')
+  eq(
+    'to-u8 stops past 255 with excess',
+    raisedForm(() => u.toU8(256)),
+    'excess',
+  )
+  eq(
+    'to-u8 stops below 0 with shortage',
+    raisedForm(() => u.toU8(-1)),
+    'shortage',
+  )
   eq('to-u16 keeps 65535', u.toU16(65535), 65535)
-  eq('to-u32 stops past 4294967295', raisedForm(() => u.toU32(4294967296)), 'excess')
+  eq(
+    'to-u32 stops past 4294967295',
+    raisedForm(() => u.toU32(4294967296)),
+    'excess',
+  )
 
   // 64-bit: the native platform integer (no masking)
   const i64 = await load('integer/64.tree')
   eq('i64 add (native)', i64.i64Add(1000000000, 2000000000), 3000000000)
   eq('i64 negate', i64.i64Negate(42), -42)
   // -2^63 is past 2^53, so on TypeScript the bound STOPS with `shortage` (integer/64.tree, guides: library/numbers)
-  eq('i64 minimum bound stops below 2^53', stoppedAt(() => i64.i64MinimumValue()), 'shortage')
-  eq('i64 maximum bound stops past 2^53', stoppedAt(() => i64.i64MaximumValue()), 'shortage')
+  eq(
+    'i64 minimum bound stops below 2^53',
+    stoppedAt(() => i64.i64MinimumValue()),
+    'shortage',
+  )
+  eq(
+    'i64 maximum bound stops past 2^53',
+    stoppedAt(() => i64.i64MaximumValue()),
+    'shortage',
+  )
   eq('u64 minimum is 0', i64.u64MinimumValue(), 0)
 
   // floats: f32 rounds every result to single precision; f64 is the native double
@@ -183,7 +238,11 @@ async function main(): Promise<void> {
     f32.f32Add(0.1, 0.2),
     Math.fround(0.1 + 0.2),
   )
-  eq('f32 multiply rounds', f32.f32Multiply(1.1, 1.1), Math.fround(1.1 * 1.1))
+  eq(
+    'f32 multiply rounds',
+    f32.f32Multiply(1.1, 1.1),
+    Math.fround(1.1 * 1.1),
+  )
   const f64 = await load('float/64.tree')
   eq('f64 add is the native double', f64.f64Add(0.1, 0.2), 0.1 + 0.2)
   eq('f64 divide is the native double', f64.f64Divide(1, 4), 0.25)
@@ -209,7 +268,10 @@ async function main(): Promise<void> {
   eq(
     'decimal 0.1 + 0.2 = 0.3 exactly (no 0.30000000000000004)',
     dec.bigDecimalText(
-      dec.bigDecimalAdd(dec.makeBigDecimal('0.1'), dec.makeBigDecimal('0.2')),
+      dec.bigDecimalAdd(
+        dec.makeBigDecimal('0.1'),
+        dec.makeBigDecimal('0.2'),
+      ),
     ),
     '0.3',
   )
@@ -226,7 +288,10 @@ async function main(): Promise<void> {
   eq(
     'decimal 2.5 * 4 = 10.0 (scales add)',
     dec.bigDecimalText(
-      dec.bigDecimalMultiply(dec.makeBigDecimal('2.5'), dec.makeBigDecimal('4')),
+      dec.bigDecimalMultiply(
+        dec.makeBigDecimal('2.5'),
+        dec.makeBigDecimal('4'),
+      ),
     ),
     '10.0',
   )

@@ -69,7 +69,13 @@ const only = process.env.SHADOW_ONLY
 const dir = mkdtempSync(join(tmpdir(), 'term-save-shadow-'))
 
 for (const backend of BACKENDS.filter(one => !only || one === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'shadow' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'shadow',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
@@ -77,7 +83,11 @@ for (const backend of BACKENDS.filter(one => !only || one === only)) {
   }
 
   // the circle: (3 + 1) * 2; the square, its side; the constant, one past itself; the bumped field, 1 + 10
-  ok(`${backend}: a save reading its own name reads the field, and the uses after it the new local`, ran.form === 'ran' && ran.output === '8|7|6|11', ran.form === 'ran' ? ran.output : `${ran.stage}: ${ran.reason}`)
+  ok(
+    `${backend}: a save reading its own name reads the field, and the uses after it the new local`,
+    ran.form === 'ran' && ran.output === '8|7|6|11',
+    ran.form === 'ran' ? ran.output : `${ran.stage}: ${ran.reason}`,
+  )
 }
 
 // an arm whose field hides an outer variable, and which WRITES that name: the write is the field's and is lost, and
@@ -99,18 +109,31 @@ ${body}
       save radius, side
   back radius
 `
-const written = compile({ file: 'h.tree', text: HIDDEN('      save radius, add(radius, 1)') })
+const written = compile({
+  file: 'h.tree',
+  text: HIDDEN('      save radius, add(radius, 1)'),
+})
 ok(
   'an arm that writes a name its field hides is refused, naming both',
-  !written.ok && written.diagnostics.some(d => /writes the field, not the "radius" outside it/.test(d.message)),
-  written.ok ? 'compiled' : written.diagnostics.map(d => d.message).join(' | '),
+  !written.ok &&
+    written.diagnostics.some(d =>
+      /writes the field, not the "radius" outside it/.test(d.message),
+    ),
+  written.ok
+    ? 'compiled'
+    : written.diagnostics.map(d => d.message).join(' | '),
 )
 
-const readOnly = compile({ file: 'h.tree', text: HIDDEN('      back add(radius, 1)') })
+const readOnly = compile({
+  file: 'h.tree',
+  text: HIDDEN('      back add(radius, 1)'),
+})
 ok(
   'an arm that only reads the hidden name still builds, with its warning',
   readOnly.ok && readOnly.warnings.some(w => w.name === 'arm-shadow'),
-  readOnly.ok ? readOnly.warnings.map(w => w.name).join(',') : readOnly.diagnostics.map(d => d.message).join(' | '),
+  readOnly.ok
+    ? readOnly.warnings.map(w => w.name).join(',')
+    : readOnly.diagnostics.map(d => d.message).join(' | '),
 )
 
 console.log(`\nsave-shadow: ${pass} pass, ${fail} fail`)

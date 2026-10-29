@@ -4,7 +4,11 @@
 // offsets into code point offsets.
 const regex = {
   compiled: new Map<string, RegExp>(),
-  search: (pattern: string, text: string, from: number): Array<number> => {
+  search: (
+    pattern: string,
+    text: string,
+    from: number,
+  ): Array<number> => {
     let engine = regex.compiled.get(pattern)
     if (engine === undefined) {
       // an engine that refuses the pattern answers [-2], never "no match": Term answers it with its own tier
@@ -66,7 +70,11 @@ const regex = {
     let cursorUnit = 0
     let cursorPoint = 0
     // counted on from a known offset, or from the text's start for a group a lookbehind found before that offset
-    const pointAt = (at: number, fromUnit: number, fromPoint: number): number => {
+    const pointAt = (
+      at: number,
+      fromUnit: number,
+      fromPoint: number,
+    ): number => {
       let u = at < fromUnit ? 0 : fromUnit
       let p = at < fromUnit ? 0 : fromPoint
       while (u < at) {
@@ -90,13 +98,17 @@ const regex = {
         if (span === undefined) {
           out.push(-1, -1)
         } else {
-          out.push(pointAt(span[0], startUnit, startPoint), pointAt(span[1], startUnit, startPoint))
+          out.push(
+            pointAt(span[0], startUnit, startPoint),
+            pointAt(span[1], startUnit, startPoint),
+          )
         }
       }
       if (endUnit > startUnit) {
         unit = endUnit
       } else {
-        unit = endUnit + ((text.codePointAt(endUnit) ?? 0) > 0xffff ? 2 : 1)
+        unit =
+          endUnit + ((text.codePointAt(endUnit) ?? 0) > 0xffff ? 2 : 1)
       }
     }
     return out

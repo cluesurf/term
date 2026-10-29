@@ -21,12 +21,18 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 const messages = (text: string): string[] => {
-  const built = compile({ file: '/gate/code/maybe-case.tree', text }, { resolve: projectResolver(process.cwd(), 'node'), env: 'node' })
+  const built = compile(
+    { file: '/gate/code/maybe-case.tree', text },
+    { resolve: projectResolver(process.cwd(), 'node'), env: 'node' },
+  )
 
   return built.ok ? [] : built.diagnostics.map(d => d.message)
 }
 
-const over = (field: string, read: string): string => `load @term/base/maybe
+const over = (
+  field: string,
+  read: string,
+): string => `load @term/base/maybe
   find maybe
 
 form opts
@@ -53,14 +59,21 @@ for (const [kind, field] of [
 
   ok(
     `a sift over a ${kind} with \`case some\` and \`case none\` is refused, naming the type`,
-    said.some(m => m.includes('`case some` tests a maybe')) && said.some(m => m.includes('`case none` tests a maybe')),
+    said.some(m => m.includes('`case some` tests a maybe')) &&
+      said.some(m => m.includes('`case none` tests a maybe')),
     said.join(' | ') || 'it built',
   )
 }
 
-const maybe = messages(over('    like maybe, like boolean\n    need false', 'o/quiet'))
+const maybe = messages(
+  over('    like maybe, like boolean\n    need false', 'o/quiet'),
+)
 
-ok('a sift over a need-false maybe with the same arms still builds', maybe.length === 0, maybe.join(' | '))
+ok(
+  'a sift over a need-false maybe with the same arms still builds',
+  maybe.length === 0,
+  maybe.join(' | '),
+)
 
 console.log(`\nmaybe-case-refused: ${pass} pass, ${fail} fail`)
 

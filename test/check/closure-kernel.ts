@@ -21,16 +21,27 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-async function runOf(typescript: string): Promise<Record<string, () => unknown>> {
+async function runOf(
+  typescript: string,
+): Promise<Record<string, () => unknown>> {
   const { transformSync } = await import('esbuild')
   const { mkdtempSync, writeFileSync } = await import('node:fs')
   const { tmpdir } = await import('node:os')
   const { join } = await import('node:path')
   const { pathToFileURL } = await import('node:url')
-  const file = join(mkdtempSync(join(tmpdir(), 'term-closure-kernel-')), 'module.mjs')
-  writeFileSync(file, transformSync(typescript, { loader: 'ts', format: 'esm' }).code)
+  const file = join(
+    mkdtempSync(join(tmpdir(), 'term-closure-kernel-')),
+    'module.mjs',
+  )
+  writeFileSync(
+    file,
+    transformSync(typescript, { loader: 'ts', format: 'esm' }).code,
+  )
 
-  return (await import(pathToFileURL(file).href)) as Record<string, () => unknown>
+  return (await import(pathToFileURL(file).href)) as Record<
+    string,
+    () => unknown
+  >
 }
 
 const CASES: { name: string; text: string; answer: unknown }[] = [
@@ -57,8 +68,15 @@ const CASES: { name: string; text: string; answer: unknown }[] = [
 ]
 
 for (const one of CASES) {
-  const result = compile({ file: 'main.tree', text: one.text }, { resolve: () => undefined })
-  ok(one.name, result.ok, result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '))
+  const result = compile(
+    { file: 'main.tree', text: one.text },
+    { resolve: () => undefined },
+  )
+  ok(
+    one.name,
+    result.ok,
+    result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '),
+  )
 
   if (result.ok) {
     const mod = await runOf(result.typescript)

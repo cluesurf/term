@@ -73,7 +73,8 @@ task run
 
 type Outcome = { code: number | null; signal: string | null }
 
-const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
+const sleep = (ms: number): Promise<void> =>
+  new Promise(resolve => setTimeout(resolve, ms))
 
 const alive = (pid: number): boolean => {
   try {
@@ -88,7 +89,9 @@ const alive = (pid: number): boolean => {
 // the direct children of a process, by pgrep
 const childrenOf = (pid: number): number[] => {
   try {
-    return execFileSync('pgrep', ['-P', String(pid)], { encoding: 'utf8' })
+    return execFileSync('pgrep', ['-P', String(pid)], {
+      encoding: 'utf8',
+    })
       .split('\n')
       .filter(line => line !== '')
       .map(Number)
@@ -107,8 +110,15 @@ type Run = {
 }
 
 // start the command in a process group of its own, and answer once the child shell has set its trap
-async function start(command: string[], ready: string): Promise<Run | undefined> {
-  const process_ = spawn(command[0]!, command.slice(1), { detached: true, stdio: 'ignore', env: { ...process.env, TERM_SIGNAL_READY: ready } })
+async function start(
+  command: string[],
+  ready: string,
+): Promise<Run | undefined> {
+  const process_ = spawn(command[0]!, command.slice(1), {
+    detached: true,
+    stdio: 'ignore',
+    env: { ...process.env, TERM_SIGNAL_READY: ready },
+  })
   const parent = process_.pid!
   const done = new Promise<Outcome | 'timeout'>(resolve => {
     process_.on('exit', (code, signal) => resolve({ code, signal }))
@@ -116,7 +126,10 @@ async function start(command: string[], ready: string): Promise<Run | undefined>
   })
 
   for (let waited = 0; waited < 8000; waited += 20) {
-    if (existsSync(ready) && readFileSync(ready, 'utf8').trim() !== '') {
+    if (
+      existsSync(ready) &&
+      readFileSync(ready, 'utf8').trim() !== ''
+    ) {
       const child = Number(readFileSync(ready, 'utf8').trim())
       let sleeper = 0
 
@@ -163,7 +176,10 @@ type Case = {
   drive: (run: Run) => Promise<{ passed: boolean; info: string }>
 }
 
-const outcome = (got: Outcome | 'timeout'): string => (got === 'timeout' ? 'still running after 9 s' : `exit ${got.code} signal ${got.signal}`)
+const outcome = (got: Outcome | 'timeout'): string =>
+  got === 'timeout'
+    ? 'still running after 9 s'
+    : `exit ${got.code} signal ${got.signal}`
 
 const CASES: Case[] = [
   {
@@ -173,7 +189,11 @@ const CASES: Case[] = [
       signalTo(run.parent, 'SIGTERM')
       const got = await run.done
 
-      return { passed: got !== 'timeout' && got.code === 7 && got.signal === null, info: outcome(got) }
+      return {
+        passed:
+          got !== 'timeout' && got.code === 7 && got.signal === null,
+        info: outcome(got),
+      }
     },
   },
   {
@@ -183,7 +203,11 @@ const CASES: Case[] = [
       signalTo(run.parent, 'SIGHUP')
       const got = await run.done
 
-      return { passed: got !== 'timeout' && got.code === 129 && got.signal === null, info: outcome(got) }
+      return {
+        passed:
+          got !== 'timeout' && got.code === 129 && got.signal === null,
+        info: outcome(got),
+      }
     },
   },
   {
@@ -199,7 +223,12 @@ const CASES: Case[] = [
       await sleep(100)
 
       return {
-        passed: waiting && got !== 'timeout' && got.code === 7 && got.signal === null && !alive(run.child),
+        passed:
+          waiting &&
+          got !== 'timeout' &&
+          got.code === 7 &&
+          got.signal === null &&
+          !alive(run.child),
         info: `waiting after INT and QUIT ${waiting}, then ${outcome(got)}, child alive ${alive(run.child)}`,
       }
     },
@@ -211,7 +240,11 @@ const CASES: Case[] = [
       signalTo(run.child, 'SIGKILL')
       const got = await run.done
 
-      return { passed: got !== 'timeout' && got.code === 137 && got.signal === null, info: outcome(got) }
+      return {
+        passed:
+          got !== 'timeout' && got.code === 137 && got.signal === null,
+        info: outcome(got),
+      }
     },
   },
   {
@@ -223,7 +256,14 @@ const CASES: Case[] = [
       const got = await run.done
       await sleep(100)
 
-      return { passed: got !== 'timeout' && got.code === 9 && got.signal === null && !alive(run.child), info: `${outcome(got)}, child alive ${alive(run.child)}` }
+      return {
+        passed:
+          got !== 'timeout' &&
+          got.code === 9 &&
+          got.signal === null &&
+          !alive(run.child),
+        info: `${outcome(got)}, child alive ${alive(run.child)}`,
+      }
     },
   },
 ]
@@ -232,31 +272,54 @@ const dir = mkdtempSync(join(tmpdir(), 'term-run-signal-'))
 const only = process.env.SIGNAL_ONLY ?? ''
 const oneCase = process.env.SIGNAL_CASE ?? ''
 
-for (const backend of (['typescript', 'rust'] as Backend[]).filter(b => !only || b === only)) {
-  const built = buildOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'signal' })
+for (const backend of (['typescript', 'rust'] as Backend[]).filter(
+  b => !only || b === only,
+)) {
+  const built = buildOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'signal',
+  })
 
   if (built.form === 'skipped') {
     console.log(`skip  ${backend}: ${built.reason}`)
     continue
   }
 
-  ok(`${backend}: the program compiles and builds`, built.form === 'built', built.form === 'failed' ? `${built.stage}: ${built.reason}` : '')
+  ok(
+    `${backend}: the program compiles and builds`,
+    built.form === 'built',
+    built.form === 'failed' ? `${built.stage}: ${built.reason}` : '',
+  )
 
   if (built.form !== 'built') {
     continue
   }
 
   for (const one of CASES.filter(c => !oneCase || c.name === oneCase)) {
-    const run = await start(built.command, join(dir, `ready-${backend}-${one.name}`))
+    const run = await start(
+      built.command,
+      join(dir, `ready-${backend}-${one.name}`),
+    )
 
     if (run === undefined) {
-      ok(`${backend}: ${one.says} (${one.name})`, false, 'the child shell never said it was ready')
+      ok(
+        `${backend}: ${one.says} (${one.name})`,
+        false,
+        'the child shell never said it was ready',
+      )
       continue
     }
 
     const result = await one.drive(run)
     clean(run)
-    ok(`${backend}: ${one.says} (${one.name})`, result.passed, result.info)
+    ok(
+      `${backend}: ${one.says} (${one.name})`,
+      result.passed,
+      result.info,
+    )
   }
 }
 

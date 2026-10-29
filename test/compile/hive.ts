@@ -228,12 +228,19 @@ task listen-tell
 async function main(): Promise<void> {
   const result = compile(
     { file: '/tmp/hive-test/h.tree', text: SOURCE },
-    { resolve: withNativeEnv('node', stdlibResolver()), deckOf: projectDeckOf() },
+    {
+      resolve: withNativeEnv('node', stdlibResolver()),
+      deckOf: projectDeckOf(),
+    },
   )
   ok(
     'an app that loads the hive compiles',
     result.ok,
-    result.ok ? '' : result.diagnostics.map(d => `${d.file}: ${d.message ?? d.name}`).join(' | '),
+    result.ok
+      ? ''
+      : result.diagnostics
+          .map(d => `${d.file}: ${d.message ?? d.name}`)
+          .join(' | '),
   )
 
   if (!result.ok) {
@@ -242,8 +249,14 @@ async function main(): Promise<void> {
   }
 
   const ts = result.typescript
-  ok('the wake chain is emitted', ts.includes('export function wakeHive()'))
-  ok('the chain wakes the stdlib deck', ts.includes('hiveWake("@term/base"'))
+  ok(
+    'the wake chain is emitted',
+    ts.includes('export function wakeHive()'),
+  )
+  ok(
+    'the chain wakes the stdlib deck',
+    ts.includes('hiveWake("@term/base"'),
+  )
   ok('the chain hooks raises into the hive', ts.includes('__termRaise'))
 
   const dir = mkdtempSync(join(tmpdir(), 'term-hive-'))
@@ -257,9 +270,18 @@ async function main(): Promise<void> {
   mod.wakeHive()
   ok('decks woke', mod.decks() >= 1)
 
-  const exceptions = mod.exceptions() as { host: string; name: string }[]
-  ok('the roster lists the stdlib exceptions', exceptions.some(e => e.name === 'absence'))
-  ok('the roster lists the app exception', exceptions.some(e => e.name === 'user-absence'))
+  const exceptions = mod.exceptions() as {
+    host: string
+    name: string
+  }[]
+  ok(
+    'the roster lists the stdlib exceptions',
+    exceptions.some(e => e.name === 'absence'),
+  )
+  ok(
+    'the roster lists the app exception',
+    exceptions.some(e => e.name === 'user-absence'),
+  )
 
   const heard: { name: string }[] = []
   mod.listen((entry: { name: string }) => heard.push(entry))
@@ -270,34 +292,99 @@ async function main(): Promise<void> {
     // expected
   }
 
-  ok('an ear hears the raise', heard.some(e => e.name === 'user-absence'))
-  ok('the happy path is unheard', heard.length === 1 && mod.findUser('a') === 'alice' && heard.length === 1)
+  ok(
+    'an ear hears the raise',
+    heard.some(e => e.name === 'user-absence'),
+  )
+  ok(
+    'the happy path is unheard',
+    heard.length === 1 &&
+      mod.findUser('a') === 'alice' &&
+      heard.length === 1,
+  )
 
   // a kind the app declares (`roll metric`): its constant is on the roster at boot, by reference, as a typed value
-  const metrics = mod.metrics() as { name: string; kind: string; base: { name: string; unit: string } }[]
-  ok('a declared kind wakes into the hive', metrics.length === 1 && metrics[0]!.kind === 'metric' && metrics[0]!.name === 'request-count', JSON.stringify(metrics))
-  ok('its entry is the constant\'s value, typed', metrics[0]?.base.name === 'requests' && metrics[0]?.base.unit === 'count', JSON.stringify(metrics[0]?.base))
+  const metrics = mod.metrics() as {
+    name: string
+    kind: string
+    base: { name: string; unit: string }
+  }[]
+  ok(
+    'a declared kind wakes into the hive',
+    metrics.length === 1 &&
+      metrics[0]!.kind === 'metric' &&
+      metrics[0]!.name === 'request-count',
+    JSON.stringify(metrics),
+  )
+  ok(
+    "its entry is the constant's value, typed",
+    metrics[0]?.base.name === 'requests' &&
+      metrics[0]?.base.unit === 'count',
+    JSON.stringify(metrics[0]?.base),
+  )
 
   // THE COMPILER'S TYPED WAKE (seam-0003): `wakeHive` hands each deck's static exceptions to `hiveWakeTyped` as
   // `exception-roll` records, so a declared exception's `like` and `note` read back as text
-  ok('the chain wakes the typed rolls', ts.includes('hiveWakeTyped("@term/base"'))
-  ok('a static exception reads back through hive-exceptions with its like and note', mod.staticException('user-absence') === 'absence: No such user', String(mod.staticException('user-absence')))
-  console.log(`      hive-exceptions user-absence: ${mod.staticException('user-absence')}`)
-  ok('a stdlib exception is in the typed list too', mod.staticException('absence') !== 'none', String(mod.staticException('absence')))
+  ok(
+    'the chain wakes the typed rolls',
+    ts.includes('hiveWakeTyped("@term/base"'),
+  )
+  ok(
+    'a static exception reads back through hive-exceptions with its like and note',
+    mod.staticException('user-absence') === 'absence: No such user',
+    String(mod.staticException('user-absence')),
+  )
+  console.log(
+    `      hive-exceptions user-absence: ${mod.staticException('user-absence')}`,
+  )
+  ok(
+    'a stdlib exception is in the typed list too',
+    mod.staticException('absence') !== 'none',
+    String(mod.staticException('absence')),
+  )
 
   // the typed wake: the three static kinds are kept in typed lists AND told, so the roster still sees them
-  type Entry = { name: string; kind: string; base: Record<string, unknown> }
+  type Entry = {
+    name: string
+    kind: string
+    base: Record<string, unknown>
+  }
   const heardTells: Entry[] = []
   mod.listenTell((entry: Entry) => heardTells.push(entry))
-  ok('the typed lists are empty before a typed wake', mod.tellCount() === 0 && mod.dockCount() === 0)
+  ok(
+    'the typed lists are empty before a typed wake',
+    mod.tellCount() === 0 && mod.dockCount() === 0,
+  )
   mod.wakeTyped()
-  ok('a tell reads back through hive-tells with its note as text', mod.firstTellNote() === 'Not here', String(mod.firstTellNote()))
+  ok(
+    'a tell reads back through hive-tells with its note as text',
+    mod.firstTellNote() === 'Not here',
+    String(mod.firstTellNote()),
+  )
   console.log(`      hive-tells note: ${mod.firstTellNote()}`)
-  ok('an exception reads back through hive-exceptions', mod.exceptionNote() === 'Gone', String(mod.exceptionNote()))
-  ok('a dock reads back through hive-docks', mod.dockCount() === 1, String(mod.dockCount()))
+  ok(
+    'an exception reads back through hive-exceptions',
+    mod.exceptionNote() === 'Gone',
+    String(mod.exceptionNote()),
+  )
+  ok(
+    'a dock reads back through hive-docks',
+    mod.dockCount() === 1,
+    String(mod.dockCount()),
+  )
   const rolled = mod.tellEntries() as Entry[]
-  ok('hive-roll answers the typed tell too', rolled.length === 1 && rolled[0]!.name === 'typed-absence' && rolled[0]!.base.note === 'Not here', JSON.stringify(rolled))
-  ok('an ear on tell hears the typed tell once', heardTells.filter(e => e.kind === 'tell').length === 1, JSON.stringify(heardTells.map(e => e.kind)))
+  ok(
+    'hive-roll answers the typed tell too',
+    rolled.length === 1 &&
+      rolled[0]!.name === 'typed-absence' &&
+      rolled[0]!.base.note === 'Not here',
+    JSON.stringify(rolled),
+  )
+  ok(
+    'an ear on tell hears the typed tell once',
+    heardTells.filter(e => e.kind === 'tell').length === 1,
+    JSON.stringify(heardTells.map(e => e.kind)),
+  )
 
   // the typed wake is idempotent on the deck name, as `hive-wake` is (seam-0015): a second wake of every deck, and a
   // second typed wake of one, add no entry to the roster or to a typed list
@@ -307,11 +394,18 @@ async function main(): Promise<void> {
   mod.wakeTyped()
   ok(
     'a second wake adds nothing',
-    (mod.exceptions() as unknown[]).length === rosterBefore && mod.decks() === decksBefore && mod.tellCount() === 1 && mod.dockCount() === 1 && mod.tellEntries().length === 1,
+    (mod.exceptions() as unknown[]).length === rosterBefore &&
+      mod.decks() === decksBefore &&
+      mod.tellCount() === 1 &&
+      mod.dockCount() === 1 &&
+      mod.tellEntries().length === 1,
     `${rosterBefore} -> ${(mod.exceptions() as unknown[]).length}, tells ${mod.tellCount()}, docks ${mod.dockCount()}`,
   )
   mod.clearTells()
-  ok('hive-clear on tell empties the roll and the typed list', mod.tellEntries().length === 0 && mod.tellCount() === 0)
+  ok(
+    'hive-clear on tell empties the roll and the typed list',
+    mod.tellEntries().length === 0 && mod.tellCount() === 0,
+  )
   ok('hive-clear on tell leaves the other kinds', mod.dockCount() === 1)
 
   console.log(`\nhive: ${pass} pass, ${fail} fail`)

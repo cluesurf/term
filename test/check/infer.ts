@@ -153,7 +153,13 @@ task good
     const warned = (text: string): string[] => {
       const result = compile({ file: 'i.tree', text })
 
-      return result.ok ? result.warnings.filter(w => w.name === 'unused-binding').map(w => w.message) : [`did not compile: ${result.diagnostics.map(d => d.message).join('; ')}`]
+      return result.ok
+        ? result.warnings
+            .filter(w => w.name === 'unused-binding')
+            .map(w => w.message)
+        : [
+            `did not compile: ${result.diagnostics.map(d => d.message).join('; ')}`,
+          ]
     }
     const closureRead = warned(`${apply}
 task outer
@@ -167,10 +173,14 @@ task outer
 
     if (closureRead.length === 0) {
       pass++
-      console.log('ok    a save read only inside a task closure is not warned as unused')
+      console.log(
+        'ok    a save read only inside a task closure is not warned as unused',
+      )
     } else {
       fail++
-      console.log(`FAIL  a save read only inside a task closure is not warned as unused  (${closureRead.join(' | ')})`)
+      console.log(
+        `FAIL  a save read only inside a task closure is not warned as unused  (${closureRead.join(' | ')})`,
+      )
     }
 
     const nothingReads = warned(`${apply}
@@ -185,10 +195,14 @@ task outer
 
     if (nothingReads.some(message => message.includes('spare'))) {
       pass++
-      console.log('ok    a save read nowhere is still warned beside a closure')
+      console.log(
+        'ok    a save read nowhere is still warned beside a closure',
+      )
     } else {
       fail++
-      console.log(`FAIL  a save read nowhere is still warned beside a closure  (${nothingReads.join(' | ') || 'no warning'})`)
+      console.log(
+        `FAIL  a save read nowhere is still warned beside a closure  (${nothingReads.join(' | ') || 'no warning'})`,
+      )
     }
   }
 
@@ -452,7 +466,9 @@ task render
         fail++
         console.log(
           `FAIL  ${name}  (ok=${result.ok}, codes=${
-            result.ok ? '' : result.diagnostics.map(d => d.name).join(',')
+            result.ok
+              ? ''
+              : result.diagnostics.map(d => d.name).join(',')
           })`,
         )
       }

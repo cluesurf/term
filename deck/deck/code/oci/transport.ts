@@ -8,7 +8,10 @@
 import * as port from '@term/deck/code/oci/registry-transport'
 import type { OciCredentials } from './auth'
 
-const p = port as unknown as Record<string, (...args: unknown[]) => unknown>
+const p = port as unknown as Record<
+  string,
+  (...args: unknown[]) => unknown
+>
 
 export const MANIFEST_MEDIA_TYPE = p.manifestMediaType!() as string
 export const INDEX_MEDIA_TYPE = p.indexMediaType!() as string
@@ -22,19 +25,48 @@ export type Descriptor = {
   annotations?: Record<string, string>
 }
 
-export type FetchedManifest = { digest: string; mediaType: string; bytes: Buffer }
+export type FetchedManifest = {
+  digest: string
+  mediaType: string
+  bytes: Buffer
+}
 
 export type BlobOutcome = 'present' | 'mounted' | 'uploaded'
 
 export type OciTransport = {
   label: string
-  hasBlob(input: { repository: string; digest: string }): Promise<boolean>
-  getBlob(input: { repository: string; digest: string; size?: number; limit: number }): Promise<Buffer>
-  putBlob(input: { repository: string; digest: string; bytes: Buffer; mountFrom?: string }): Promise<BlobOutcome>
-  getManifest(input: { repository: string; reference: string }): Promise<FetchedManifest | undefined>
-  putManifest(input: { repository: string; reference: string; bytes: Buffer; mediaType: string }): Promise<{ digest: string; subjectAccepted: boolean }>
+  hasBlob(input: {
+    repository: string
+    digest: string
+  }): Promise<boolean>
+  getBlob(input: {
+    repository: string
+    digest: string
+    size?: number
+    limit: number
+  }): Promise<Buffer>
+  putBlob(input: {
+    repository: string
+    digest: string
+    bytes: Buffer
+    mountFrom?: string
+  }): Promise<BlobOutcome>
+  getManifest(input: {
+    repository: string
+    reference: string
+  }): Promise<FetchedManifest | undefined>
+  putManifest(input: {
+    repository: string
+    reference: string
+    bytes: Buffer
+    mediaType: string
+  }): Promise<{ digest: string; subjectAccepted: boolean }>
   listTags(input: { repository: string }): Promise<string[]>
-  referrers(input: { repository: string; digest: string; artifactType?: string }): Promise<Descriptor[] | undefined>
+  referrers(input: {
+    repository: string
+    digest: string
+    artifactType?: string
+  }): Promise<Descriptor[] | undefined>
 }
 
 export class OciError extends Error {
@@ -49,12 +81,22 @@ export class OciError extends Error {
 
 /** The port's oci-failure carrier as the original's class; anything else as it is. */
 export function ociErrorOf(error: unknown): unknown {
-  const caught = error as { form?: unknown; link?: { thing?: unknown; status?: unknown } } | null
+  const caught = error as {
+    form?: unknown
+    link?: { thing?: unknown; status?: unknown }
+  } | null
 
-  if (caught !== null && typeof caught === 'object' && caught.form === 'oci-failure') {
+  if (
+    caught !== null &&
+    typeof caught === 'object' &&
+    caught.form === 'oci-failure'
+  ) {
     const status = caught.link?.status
 
-    return new OciError(String(caught.link?.thing ?? ''), typeof status === 'number' ? status : undefined)
+    return new OciError(
+      String(caught.link?.thing ?? ''),
+      typeof status === 'number' ? status : undefined,
+    )
   }
 
   return error
@@ -85,7 +127,9 @@ export function liftRecord<T extends object>(made: T): T {
       typeof value === 'function'
         ? async (...args: unknown[]) => {
             try {
-              return await (value as (...a: unknown[]) => unknown)(...args)
+              return await (value as (...a: unknown[]) => unknown)(
+                ...args,
+              )
             } catch (error) {
               throw ociErrorOf(error)
             }
@@ -96,16 +140,30 @@ export function liftRecord<T extends object>(made: T): T {
   return out as T
 }
 
-export const sha256Digest = (bytes: Buffer | Uint8Array): string => p.sha256Digest!(bytes) as string
+export const sha256Digest = (bytes: Buffer | Uint8Array): string =>
+  p.sha256Digest!(bytes) as string
 
-export const verifyDigest = (input: { digest: string; bytes: Buffer; what: string }): void =>
-  lift(() => p.verifyDigest!(input.digest, input.bytes, input.what) as void)
+export const verifyDigest = (input: {
+  digest: string
+  bytes: Buffer
+  what: string
+}): void =>
+  lift(
+    () =>
+      p.verifyDigest!(input.digest, input.bytes, input.what) as void,
+  )
 
-export const assertRepository = (repository: string): void => lift(() => p.assertRepository!(repository) as void)
+export const assertRepository = (repository: string): void =>
+  lift(() => p.assertRepository!(repository) as void)
 
-export const isDescriptor = (value: unknown): value is Descriptor => p.isDescriptor!(value) as boolean
+export const isDescriptor = (value: unknown): value is Descriptor =>
+  p.isDescriptor!(value) as boolean
 
-export const readLimited = (response: Response, limit: number): Promise<Buffer> => liftAsync(() => p.readLimited!(response, limit) as Promise<Buffer>)
+export const readLimited = (
+  response: Response,
+  limit: number,
+): Promise<Buffer> =>
+  liftAsync(() => p.readLimited!(response, limit) as Promise<Buffer>)
 
 export function httpTransport(input: {
   host: string
@@ -118,7 +176,17 @@ export function httpTransport(input: {
   env?: NodeJS.ProcessEnv
 }): OciTransport {
   const made = lift(
-    () => p.httpTransport!(input.host, input.credentials, input.insecure, input.fetch, input.chunkSize, input.monolithic, input.retries, input.env) as OciTransport,
+    () =>
+      p.httpTransport!(
+        input.host,
+        input.credentials,
+        input.insecure,
+        input.fetch,
+        input.chunkSize,
+        input.monolithic,
+        input.retries,
+        input.env,
+      ) as OciTransport,
   )
 
   return {

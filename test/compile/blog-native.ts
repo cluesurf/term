@@ -36,7 +36,10 @@ function ok(name: string, cond: boolean, info = ''): void {
 const RUN = Date.now()
 const title = (leg: Leg): string => `Native post ${leg} ${RUN}`
 
-const program = (leg: Leg, shot: string): string => `load @term/site/test/site/face/base
+const program = (
+  leg: Leg,
+  shot: string,
+): string => `load @term/site/test/site/face/base
   find boot
 
 load @term/site/code/dom/dom
@@ -109,21 +112,43 @@ task main
 `
 
 // what every platform must print: the blog read back from its own views, before and after the post
-function judge(leg: Leg, toolkit: string, output: string, shot: string): void {
+function judge(
+  leg: Leg,
+  toolkit: string,
+  output: string,
+  shot: string,
+): void {
   const heading = title(leg)
   // the blog's own lines are `before <tree>` and `after <tree>`: a log shared with another app on the device (the
   // toolkit suite's `turn before compact`) must not pass for one
   const tree = (word: string): string => {
-    const line = output.split('\n').find(l => l.includes(`${word} <`)) ?? ''
+    const line =
+      output.split('\n').find(l => l.includes(`${word} <`)) ?? ''
 
     return line.slice(line.indexOf(`${word} <`)).trim()
   }
   const before = tree('before')
   const after = tree('after')
-  ok(`${leg}: the blog mounted on the window, inputs and a button read back from ${toolkit}`, /<input/.test(before) && /<button/.test(before), before.slice(0, 300))
-  ok(`${leg}: the new post was not there before`, !before.includes(heading))
-  ok(`${leg}: the post typed into the native fields and added by the native button is drawn`, after.includes(heading), after.slice(0, 400))
-  ok(`${leg}: a PNG of the screen was written`, existsSync(shot) && readFileSync(shot).subarray(1, 4).toString() === 'PNG', shot)
+  ok(
+    `${leg}: the blog mounted on the window, inputs and a button read back from ${toolkit}`,
+    /<input/.test(before) && /<button/.test(before),
+    before.slice(0, 300),
+  )
+  ok(
+    `${leg}: the new post was not there before`,
+    !before.includes(heading),
+  )
+  ok(
+    `${leg}: the post typed into the native fields and added by the native button is drawn`,
+    after.includes(heading),
+    after.slice(0, 400),
+  )
+  ok(
+    `${leg}: a PNG of the screen was written`,
+    existsSync(shot) &&
+      readFileSync(shot).subarray(1, 4).toString() === 'PNG',
+    shot,
+  )
 }
 
 runToolkits(

@@ -15,7 +15,11 @@ export const nativeVibration = {
   async play(kind: string): Promise<string> {
     const pattern = nativeVibration.patterns[kind]
 
-    if (!pattern || typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') {
+    if (
+      !pattern ||
+      typeof navigator === 'undefined' ||
+      typeof navigator.vibrate !== 'function'
+    ) {
       return 'unavailable'
     }
 

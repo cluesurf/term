@@ -41,7 +41,8 @@ const BUILT_IN = `task run
   back <{a} {o} {x} {n} {wide} {down} {logical} {mask} {high}>
 `
 
-const BUILT_IN_EXPECTED = '8 14 6 -1 1099511627776 -4 15 255 1099511627776'
+const BUILT_IN_EXPECTED =
+  '8 14 6 -1 1099511627776 -4 15 255 1099511627776'
 
 // the module loaded by hand, as before: the same answers
 const LOADED = `load @term/base/bit
@@ -73,9 +74,20 @@ const dir = mkdtempSync(join(tmpdir(), 'term-bit-builtin-'))
 const only = process.env.BIT_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const said = (program: string, name: string) => runOn({ backend, program, resolve: env => projectResolver(process.cwd(), env), dir, name })
+  const said = (program: string, name: string) =>
+    runOn({
+      backend,
+      program,
+      resolve: env => projectResolver(process.cwd(), env),
+      dir,
+      name,
+    })
   const shown = (ran: ReturnType<typeof said>): string =>
-    ran.form === 'ran' ? `got ${JSON.stringify(ran.output)}` : ran.form === 'skipped' ? ran.reason : `${ran.stage}: ${ran.reason}`
+    ran.form === 'ran'
+      ? `got ${JSON.stringify(ran.output)}`
+      : ran.form === 'skipped'
+        ? ran.reason
+        : `${ran.stage}: ${ran.reason}`
 
   const builtIn = said(BUILT_IN, 'builtin')
 
@@ -84,13 +96,25 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
     continue
   }
 
-  ok(`${backend}: the seven bit words need no load, 64-bit`, builtIn.form === 'ran' && builtIn.output === BUILT_IN_EXPECTED, shown(builtIn))
+  ok(
+    `${backend}: the seven bit words need no load, 64-bit`,
+    builtIn.form === 'ran' && builtIn.output === BUILT_IN_EXPECTED,
+    shown(builtIn),
+  )
 
   const loaded = said(LOADED, 'loaded')
-  ok(`${backend}: a module that loads them itself answers the same`, loaded.form === 'ran' && loaded.output === '8 1099511627776', shown(loaded))
+  ok(
+    `${backend}: a module that loads them itself answers the same`,
+    loaded.form === 'ran' && loaded.output === '8 1099511627776',
+    shown(loaded),
+  )
 
   const own = said(OWN, 'own')
-  ok(`${backend}: a task of the module's own by a bit word's name is its own`, own.form === 'ran' && own.output === '41 3', shown(own))
+  ok(
+    `${backend}: a task of the module's own by a bit word's name is its own`,
+    own.form === 'ran' && own.output === '41 3',
+    shown(own),
+  )
 }
 
 console.log(`\nbit-builtin: ${pass} pass, ${fail} fail`)

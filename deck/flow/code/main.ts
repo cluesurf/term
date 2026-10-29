@@ -6,6 +6,7 @@
 import * as emitted from '@term/flow/code/pump'
 
 // the emitted port may load as CommonJS (deck/flow/package.json has no `"type": "module"`), its exports under `default`
-const port = ((emitted as { default?: unknown }).default ?? emitted) as { serveStdio: () => void }
+const port = ((emitted as { default?: unknown }).default ??
+  emitted) as { serveStdio: () => void }
 
 port.serveStdio()

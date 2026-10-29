@@ -46,7 +46,11 @@ const SPACE = 'TermExport'
 export type LeanSource = { file: string; text: string }
 
 // one exported definition: its Term name, whether it is a claim (a `rule` with no `show`), and the axioms it rests on
-export type LeanEntry = { name: string; claim: boolean; axioms: string[] }
+export type LeanEntry = {
+  name: string
+  claim: boolean
+  axioms: string[]
+}
 
 export type LeanExport = {
   // the Lean 4 source, ready for `lean <file>`
@@ -60,7 +64,11 @@ export type LeanExport = {
   // every constant written as an axiom
   axioms: string[]
   // what the kernel itself said about the source
-  kernel: { proven: string[]; declined: { name: string; reason: string }[]; diagnostics: string[] }
+  kernel: {
+    proven: string[]
+    declined: { name: string; reason: string }[]
+    diagnostics: string[]
+  }
   // the kernel's own terms, for a caller that re-checks them (the test does, with the judge)
   terms: Map<string, { type: Term; value: Term }>
   signature: { name: string; type: Term }[]
@@ -84,8 +92,12 @@ class Names {
   private count = 0
 
   fresh(hint = 'x'): string {
-    const base = hint.replace(/[^A-Za-z0-9]/g, '_').replace(/^[^A-Za-z]+/, '') || 'x'
+    const base =
+      hint.replace(/[^A-Za-z0-9]/g, '_').replace(/^[^A-Za-z]+/, '') ||
+      'x'
+
     this.count++
+
     return `${base}_${this.count}`
   }
 }
@@ -95,47 +107,86 @@ function named(term: Term, env: string[], names: Names): Named {
   switch (term.tag) {
     case 'var': {
       const name = env[env.length - 1 - term.index]
+
       if (name === undefined) {
         throw new Refuse(`a variable out of scope (#${term.index})`)
       }
+
       return { k: 'var', name }
     }
+
     case 'const':
       return { k: 'const', name: term.name }
     case 'type':
       return { k: 'type', level: term.level }
+
     case 'pi': {
       const name = names.fresh()
-      return { k: 'pi', name, domain: named(term.domain, env, names), codomain: named(term.codomain, [...env, name], names) }
+
+      return {
+        k: 'pi',
+        name,
+        domain: named(term.domain, env, names),
+        codomain: named(term.codomain, [...env, name], names),
+      }
     }
+
     case 'lam': {
       const name = names.fresh(term.name)
-      return { k: 'lam', name, body: named(term.body, [...env, name], names) }
+
+      return {
+        k: 'lam',
+        name,
+        body: named(term.body, [...env, name], names),
+      }
     }
+
     case 'app':
-      return { k: 'app', fun: named(term.fun, env, names), arg: named(term.arg, env, names) }
+      return {
+        k: 'app',
+        fun: named(term.fun, env, names),
+        arg: named(term.arg, env, names),
+      }
     case 'ann':
-      return { k: 'ann', term: named(term.term, env, names), type: named(term.type, env, names) }
+      return {
+        k: 'ann',
+        term: named(term.term, env, names),
+        type: named(term.type, env, names),
+      }
     case 'meta':
       throw new Refuse('an unsolved metavariable')
     case 'id':
     case 'refl':
     case 'j':
-      throw new Refuse(`the built-in identity type (${term.tag}), whose Lean reading is not decided`)
+      throw new Refuse(
+        `the built-in identity type (${term.tag}), whose Lean reading is not decided`,
+      )
     case 'sigma':
     case 'pair':
     case 'fst':
     case 'snd':
-      throw new Refuse(`a built-in sigma (${term.tag}), whose Lean reading is not decided`)
+      throw new Refuse(
+        `a built-in sigma (${term.tag}), whose Lean reading is not decided`,
+      )
     case 'self':
       throw new Refuse('a self type, which Lean has no reading of')
   }
 }
 
 // peel up to `count` leading pis of a type, naming each binder by `hints` where given
-function peelPis(type: Term, count: number, hints: string[], names: Names): { binders: { name: string; domain: Named }[]; rest: Named; env: string[] } {
+function peelPis(
+  type: Term,
+  count: number,
+  hints: string[],
+  names: Names,
+): {
+  binders: { name: string; domain: Named }[]
+  rest: Named
+  env: string[]
+} {
   const binders: { name: string; domain: Named }[] = []
   const env: string[] = []
+
   let at = type
 
   while (binders.length < count && at.tag === 'pi') {
@@ -149,8 +200,12 @@ function peelPis(type: Term, count: number, hints: string[], names: Names): { bi
 }
 
 // peel the leading lambdas of a value onto names already given to its type's binders
-function peelLams(value: Term, env: string[]): { body: Term; bound: string[] } {
+function peelLams(
+  value: Term,
+  env: string[],
+): { body: Term; bound: string[] } {
   let at = value
+
   const bound: string[] = []
 
   while (bound.length < env.length && at.tag === 'lam') {
@@ -163,6 +218,7 @@ function peelLams(value: Term, env: string[]): { body: Term; bound: string[] } {
 
 function spine(term: Named): { head: Named; args: Named[] } {
   const args: Named[] = []
+
   let at = term
 
   while (at.k === 'app') {
@@ -174,7 +230,10 @@ function spine(term: Named): { head: Named; args: Named[] } {
 }
 
 function applyAll(head: Named, args: Named[]): Named {
-  return args.reduce<Named>((fun, arg) => ({ k: 'app', fun, arg }), head)
+  return args.reduce<Named>(
+    (fun, arg) => ({ k: 'app', fun, arg }),
+    head,
+  )
 }
 
 // replace free names. Every binder name is unique in the export, so no binder can capture a replacement
@@ -186,13 +245,25 @@ function substitute(term: Named, map: Map<string, Named>): Named {
     case 'type':
       return term
     case 'pi':
-      return { ...term, domain: substitute(term.domain, map), codomain: substitute(term.codomain, map) }
+      return {
+        ...term,
+        domain: substitute(term.domain, map),
+        codomain: substitute(term.codomain, map),
+      }
     case 'lam':
       return { ...term, body: substitute(term.body, map) }
     case 'app':
-      return { k: 'app', fun: substitute(term.fun, map), arg: substitute(term.arg, map) }
+      return {
+        k: 'app',
+        fun: substitute(term.fun, map),
+        arg: substitute(term.arg, map),
+      }
     case 'ann':
-      return { k: 'ann', term: substitute(term.term, map), type: substitute(term.type, map) }
+      return {
+        k: 'ann',
+        term: substitute(term.term, map),
+        type: substitute(term.type, map),
+      }
   }
 }
 
@@ -205,7 +276,9 @@ function mentions(term: Named, name: string): boolean {
     case 'type':
       return false
     case 'pi':
-      return mentions(term.domain, name) || mentions(term.codomain, name)
+      return (
+        mentions(term.domain, name) || mentions(term.codomain, name)
+      )
     case 'lam':
       return mentions(term.body, name)
     case 'app':
@@ -219,7 +292,10 @@ function mentions(term: Named, name: string): boolean {
 // motive `T -> Type 1` (the large eliminator `matchType__T`) also takes a motive into `Type 0`, which every dependent
 // match on a form with no indices is. Lean has no cumulativity, so the motive's sort is a universe variable: the
 // eliminator is defined once for every universe, and Lean checks the definition at all of them
-const MOTIVE_LEVEL: Level = { constant: 0, vars: new Map([['motive', 0]]) }
+const MOTIVE_LEVEL: Level = {
+  constant: 0,
+  vars: new Map([['motive', 0]]),
+}
 
 function anySort(domain: Named): Named {
   switch (domain.k) {
@@ -237,6 +313,7 @@ function anySort(domain: Named): Named {
 function beta(fun: Named, args: Named[]): Named {
   let at = fun
   let used = 0
+
   const map = new Map<string, Named>()
 
   while (at.k === 'lam' && used < args.length) {
@@ -275,33 +352,67 @@ function constants(term: Named, into: Set<string>): Set<string> {
   return into
 }
 
-function sameNamed(a: Named, b: Named, renaming: Map<string, string> = new Map()): boolean {
+function sameNamed(
+  a: Named,
+  b: Named,
+  renaming = new Map<string, string>(),
+): boolean {
   if (a.k !== b.k) {
     return false
   }
 
   switch (a.k) {
     case 'var':
-      return (renaming.get(a.name) ?? a.name) === (b as { name: string }).name
+      return (
+        (renaming.get(a.name) ?? a.name) ===
+        (b as { name: string }).name
+      )
     case 'const':
       return a.name === (b as { name: string }).name
     case 'type':
-      return levelText(a.level) === levelText((b as { level: Level }).level)
+      return (
+        levelText(a.level) === levelText((b as { level: Level }).level)
+      )
+
     case 'pi': {
       const other = b as Extract<Named, { k: 'pi' }>
-      return sameNamed(a.domain, other.domain, renaming) && sameNamed(a.codomain, other.codomain, new Map([...renaming, [a.name, other.name]]))
+
+      return (
+        sameNamed(a.domain, other.domain, renaming) &&
+        sameNamed(
+          a.codomain,
+          other.codomain,
+          new Map([...renaming, [a.name, other.name]]),
+        )
+      )
     }
+
     case 'lam': {
       const other = b as Extract<Named, { k: 'lam' }>
-      return sameNamed(a.body, other.body, new Map([...renaming, [a.name, other.name]]))
+
+      return sameNamed(
+        a.body,
+        other.body,
+        new Map([...renaming, [a.name, other.name]]),
+      )
     }
+
     case 'app': {
       const other = b as Extract<Named, { k: 'app' }>
-      return sameNamed(a.fun, other.fun, renaming) && sameNamed(a.arg, other.arg, renaming)
+
+      return (
+        sameNamed(a.fun, other.fun, renaming) &&
+        sameNamed(a.arg, other.arg, renaming)
+      )
     }
+
     case 'ann': {
       const other = b as Extract<Named, { k: 'ann' }>
-      return sameNamed(a.term, other.term, renaming) && sameNamed(a.type, other.type, renaming)
+
+      return (
+        sameNamed(a.term, other.term, renaming) &&
+        sameNamed(a.type, other.type, renaming)
+      )
     }
   }
 }
@@ -324,13 +435,18 @@ function universeName(name: string): string {
 
 // Term's `Type n` is Lean's `Type n` (Sort (n+1)); a level over variables is Lean's `max` of the same parts
 function levelText(level: Level): string {
-  const parts = levelVars(level).map(([name, offset]) => (offset === 0 ? universeName(name) : `${universeName(name)}+${offset}`))
+  const parts = levelVars(level).map(([name, offset]) =>
+    offset === 0
+      ? universeName(name)
+      : `${universeName(name)}+${offset}`,
+  )
 
   if (parts.length === 0) {
     return String(level.constant)
   }
 
-  const all = level.constant > 0 ? [String(level.constant), ...parts] : parts
+  const all =
+    level.constant > 0 ? [String(level.constant), ...parts] : parts
 
   return all.reduce((left, right) => `max (${left}) (${right})`)
 }
@@ -348,20 +464,30 @@ class Printer {
         return term.name
       case 'const':
         return this.constName(term.name)
+
       case 'type': {
         const text = levelText(term.level)
-        return text === '0' ? 'Type' : /^\d+$/.test(text) ? `Type ${text}` : `Type (${text})`
+
+        return text === '0'
+          ? 'Type'
+          : /^\d+$/.test(text)
+            ? `Type ${text}`
+            : `Type (${text})`
       }
+
       case 'pi':
         return `((${term.name} : ${this.print(term.domain)}) → ${this.print(term.codomain)})`
       case 'lam':
         return `(fun ${term.name} => ${this.print(term.body)})`
+
       case 'app': {
         // one flat spine: `(@T.casesOn a b c)`, never `((@T.casesOn a) b)`, where Lean would insert the implicit
         // arguments `@` turned off after the first
         const { head, args } = spine(term)
+
         return `(${this.print(head)} ${args.map(arg => this.print(arg)).join(' ')})`
       }
+
       case 'ann':
         return `(${this.print(term.term)} : ${this.print(term.type)})`
     }
@@ -371,29 +497,47 @@ class Printer {
 // ---- the front end, as the build runs it up to the kernel (compile/compile.ts, from the parse to `elaborateReport`)
 // ----
 
-function frontEnd(source: LeanSource): { program: Program; claims: string[] } {
+function frontEnd(source: LeanSource): {
+  program: Program
+  claims: string[]
+} {
   const parsed = parse({ file: source.file, text: source.text })
 
   if (!parsed.ok) {
-    throw new Error(`parse failed: ${parsed.diagnostics.map(d => d.message).join('; ')}`)
+    throw new Error(
+      `parse failed: ${parsed.diagnostics.map(d => d.message).join('; ')}`,
+    )
   }
 
   const built = mill(expandTemplates(parsed.tree), source.file)
 
   if (!built.ok) {
-    throw new Error(`mill failed: ${built.diagnostics.map(d => d.message).join('; ')}`)
+    throw new Error(
+      `mill failed: ${built.diagnostics.map(d => d.message).join('; ')}`,
+    )
   }
 
   resolve(built.program, source.file)
 
-  const claims = built.program.flatMap(s => (s.form === 'function' && s.claim === true && !s.theorem ? [s.name] : []))
-  const program = fillClaims(built.program as never) as unknown as Program
+  const claims = built.program.flatMap(s =>
+    s.form === 'function' && s.claim === true && !s.theorem
+      ? [s.name]
+      : [],
+  )
+
+  const program = fillClaims(
+    built.program as never,
+  ) as unknown as Program
 
   for (const statement of program) {
     if (statement.form === 'function') {
       statement.declared = {
-        params: statement.params.map(p => (p.type ? { type: structuredClone(p.type) } : {})),
-        ...(statement.result ? { result: structuredClone(statement.result) } : {}),
+        params: statement.params.map(p =>
+          p.type ? { type: structuredClone(p.type) } : {},
+        ),
+        ...(statement.result
+          ? { result: structuredClone(statement.result) }
+          : {}),
       }
     }
   }
@@ -430,7 +574,9 @@ export function exportLean(source: LeanSource): LeanExport {
   ) as unknown as Data
 
   const report = elaborateReport(program, source.file)
-  const definitions = (judgeState() as unknown as { definition: Map<string, unknown> }).definition
+  const definitions = (
+    judgeState() as unknown as { definition: Map<string, unknown> }
+  ).definition
 
   // the signature, the last entry of a name winning as it does in the kernel's context
   const signature = new Map<string, Term>()
@@ -446,20 +592,40 @@ export function exportLean(source: LeanSource): LeanExport {
   const cases = new Map<string, Case[]>()
 
   for (const [form, variants] of data.variantNames) {
-    cases.set(form, variants.map(variant => ({ variant, key: `${form}__${variant}` })))
+    cases.set(
+      form,
+      variants.map(variant => ({
+        variant,
+        key: `${form}__${variant}`,
+      })),
+    )
   }
 
   // a record's projections, `R__field`, each defined by the record's `casesOn`
-  const projections = new Map<string, { form: string; index: number; count: number }>()
+  const projections = new Map<
+    string,
+    { form: string; index: number; count: number }
+  >()
 
-  for (const [form, fields] of data.recordFields ?? new Map<string, string[]>()) {
+  for (const [form, fields] of data.recordFields ??
+    new Map<string, string[]>()) {
     if (!cases.has(form) && signature.has(`make__${form}`)) {
       cases.set(form, [{ variant: 'make', key: `make__${form}` }])
-      fields.forEach((field, index) => projections.set(`${form}__${field}`, { form, index, count: fields.length }))
+      fields.forEach((field, index) =>
+        projections.set(`${form}__${field}`, {
+          form,
+          index,
+          count: fields.length,
+        }),
+      )
     }
   }
 
-  if (!cases.has('Unit') && signature.has('Unit') && signature.has('unitValue')) {
+  if (
+    !cases.has('Unit') &&
+    signature.has('Unit') &&
+    signature.has('unitValue')
+  ) {
     cases.set('Unit', [{ variant: 'unitValue', key: 'unitValue' }])
   }
 
@@ -468,7 +634,12 @@ export function exportLean(source: LeanSource): LeanExport {
   // (check/judging.tree `reduce-array`) is the one Lean's recursor has, and no list reaches Lean as an axiom
   const ARRAY_ARITY = 1
 
-  if (!cases.has('Array') && signature.has('Array') && signature.has('arrayEmpty') && signature.has('arrayPush')) {
+  if (
+    !cases.has('Array') &&
+    signature.has('Array') &&
+    signature.has('arrayEmpty') &&
+    signature.has('arrayPush')
+  ) {
     cases.set('Array', [
       { variant: 'arrayEmpty', key: 'arrayEmpty' },
       { variant: 'arrayPush', key: 'arrayPush' },
@@ -476,9 +647,14 @@ export function exportLean(source: LeanSource): LeanExport {
   }
 
   const formArity = (form: string): number =>
-    form === 'Array' && !data.typeFormerArity.has(form) ? ARRAY_ARITY : (data.typeFormerArity.get(form) ?? 0)
+    form === 'Array' && !data.typeFormerArity.has(form)
+      ? ARRAY_ARITY
+      : (data.typeFormerArity.get(form) ?? 0)
 
-  const constructors = new Map<string, { form: string; variant: string }>()
+  const constructors = new Map<
+    string,
+    { form: string; variant: string }
+  >()
 
   for (const [form, list] of cases) {
     for (const one of list) {
@@ -493,7 +669,10 @@ export function exportLean(source: LeanSource): LeanExport {
     eliminators.set(`matchType__${form}`, form)
   }
 
-  const enumDefs = new Map(data.enumDefs.map(entry => [entry.name, entry.term]))
+  const enumDefs = new Map(
+    data.enumDefs.map(entry => [entry.name, entry.term]),
+  )
+
   const proven = new Set(report.proven)
   const names = new Names()
   const terms = new Map<string, { type: Term; value: Term }>()
@@ -501,7 +680,10 @@ export function exportLean(source: LeanSource): LeanExport {
 
   for (const statement of program) {
     if (statement.form === 'function') {
-      paramHints.set(statement.name, [...statement.generics.map(g => g.name), ...statement.params.map(p => p.name)])
+      paramHints.set(statement.name, [
+        ...statement.generics.map(g => g.name),
+        ...statement.params.map(p => p.name),
+      ])
     }
   }
 
@@ -535,7 +717,8 @@ export function exportLean(source: LeanSource): LeanExport {
 
   const noteUniverses = (term: Named): void => {
     if (term.k === 'type') {
-      for (const [name] of levelVars(term.level)) universes.add(universeName(name))
+      for (const [name] of levelVars(term.level))
+        {universes.add(universeName(name))}
     } else if (term.k === 'pi') {
       noteUniverses(term.domain)
       noteUniverses(term.codomain)
@@ -576,20 +759,32 @@ export function exportLean(source: LeanSource): LeanExport {
     const value = enumDefs.get(name)
 
     if (!type || !value) {
-      throw new Refuse(`the eliminator ${name} has no type or no definition`)
+      throw new Refuse(
+        `the eliminator ${name} has no type or no definition`,
+      )
     }
 
-    const { binders, rest, env } = peelPis(type, Number.MAX_SAFE_INTEGER, [], names)
+    const { binders, rest, env } = peelPis(
+      type,
+      Number.MAX_SAFE_INTEGER,
+      [],
+      names,
+    )
+
     const { body, bound } = peelLams(value, env)
 
     if (bound.length !== binders.length) {
-      throw new Refuse(`the eliminator ${name} takes ${bound.length} arguments where its type has ${binders.length}`)
+      throw new Refuse(
+        `the eliminator ${name} takes ${bound.length} arguments where its type has ${binders.length}`,
+      )
     }
 
     const shape = spine(named(body, bound, names))
 
     if (shape.head.k !== 'var' || shape.args.length < 1) {
-      throw new Refuse(`the eliminator ${name} is not a match on one of its arguments`)
+      throw new Refuse(
+        `the eliminator ${name} is not a match on one of its arguments`,
+      )
     }
 
     const major = shape.head.name
@@ -597,7 +792,9 @@ export function exportLean(source: LeanSource): LeanExport {
     const typed = spine(majorBinder.domain)
 
     if (typed.head.k !== 'const' || typed.head.name !== form) {
-      throw new Refuse(`the eliminator ${name} matches a value that is not a ${form}`)
+      throw new Refuse(
+        `the eliminator ${name} matches a value that is not a ${form}`,
+      )
     }
 
     const arity = formArity(form)
@@ -611,13 +808,20 @@ export function exportLean(source: LeanSource): LeanExport {
       motive: shape.args[0]!,
       minors: shape.args.slice(1),
     }
+
     eliminatorCache.set(name, read)
 
     return read
   }
 
-  const binderText = (binders: { name: string; domain: Named }[]): string =>
-    binders.map(binder => ` (${binder.name} : ${printer.print(binder.domain)})`).join('')
+  const binderText = (
+    binders: { name: string; domain: Named }[],
+  ): string =>
+    binders
+      .map(
+        binder => ` (${binder.name} : ${printer.print(binder.domain)})`,
+      )
+      .join('')
 
   // write one constant and, first, everything it reaches. Returns false when it could not be written
   const emit = (name: string): boolean => {
@@ -630,7 +834,9 @@ export function exportLean(source: LeanSource): LeanExport {
     }
 
     if (visiting.has(name)) {
-      throw new Refuse(`${name} is reached through itself by another definition (mutual recursion)`)
+      throw new Refuse(
+        `${name} is reached through itself by another definition (mutual recursion)`,
+      )
     }
 
     visiting.add(name)
@@ -650,7 +856,11 @@ export function exportLean(source: LeanSource): LeanExport {
         emitEliminator(name)
       } else if (name === 'arrayElim' && cases.has('Array')) {
         emitArrayEliminator(name)
-      } else if (proven.has(name) && definitions.has(name) && data.functionType.has(name)) {
+      } else if (
+        proven.has(name) &&
+        definitions.has(name) &&
+        data.functionType.has(name)
+      ) {
         emitTask(name)
       } else {
         emitAxiom(name)
@@ -662,6 +872,7 @@ export function exportLean(source: LeanSource): LeanExport {
     } catch (error) {
       if (error instanceof Refuse) {
         refused.set(name, error.message)
+
         return false
       }
 
@@ -686,7 +897,9 @@ export function exportLean(source: LeanSource): LeanExport {
       }
 
       if (!emit(owner)) {
-        throw new Refuse(`it reaches ${owner}, which was refused: ${refused.get(owner)}`)
+        throw new Refuse(
+          `it reaches ${owner}, which was refused: ${refused.get(owner)}`,
+        )
       }
 
       set.add(owner)
@@ -701,35 +914,48 @@ export function exportLean(source: LeanSource): LeanExport {
     const formerType = signature.get(form)
 
     if (!formerType) {
-      throw new Refuse(`the form ${form} has no type former in the signature`)
+      throw new Refuse(
+        `the form ${form} has no type former in the signature`,
+      )
     }
 
     const arity = formArity(form)
     const former = peelPis(formerType, arity, [], names)
 
     if (former.binders.length !== arity) {
-      throw new Refuse(`the form ${form} has ${former.binders.length} parameters where ${arity} were expected`)
+      throw new Refuse(
+        `the form ${form} has ${former.binders.length} parameters where ${arity} were expected`,
+      )
     }
 
     const used = constants(former.rest, new Set())
     former.binders.forEach(binder => constants(binder.domain, used))
     noteUniverses(former.rest)
+
     const lines: string[] = []
 
     for (const { variant, key } of cases.get(form) ?? []) {
       const ctorType = signature.get(key)
 
       if (!ctorType) {
-        throw new Refuse(`the case ${variant} of ${form} has no constructor in the signature`)
+        throw new Refuse(
+          `the case ${variant} of ${form} has no constructor in the signature`,
+        )
       }
 
       // the constructor's leading binders are the form's parameters, bound to the same names
       let at = ctorType
+
       const env: string[] = []
 
       for (const binder of former.binders) {
-        if (at.tag !== 'pi' || !sameNamed(named(at.domain, env, names), binder.domain)) {
-          throw new Refuse(`the case ${variant} of ${form} does not take the form's parameters first`)
+        if (
+          at.tag !== 'pi' ||
+          !sameNamed(named(at.domain, env, names), binder.domain)
+        ) {
+          throw new Refuse(
+            `the case ${variant} of ${form} does not take the form's parameters first`,
+          )
         }
 
         env.push(binder.name)
@@ -737,6 +963,7 @@ export function exportLean(source: LeanSource): LeanExport {
       }
 
       const rest = named(at, env, names)
+
       let result = rest
 
       while (result.k === 'pi') {
@@ -746,11 +973,18 @@ export function exportLean(source: LeanSource): LeanExport {
       const shape = spine(result)
       const passes = former.binders.every((binder, i) => {
         const arg = shape.args[i]
+
         return arg?.k === 'var' && arg.name === binder.name
       })
 
-      if (shape.head.k !== 'const' || shape.head.name !== form || !passes) {
-        throw new Refuse(`the case ${variant} of ${form} does not build a ${form} of its own parameters`)
+      if (
+        shape.head.k !== 'const' ||
+        shape.head.name !== form ||
+        !passes
+      ) {
+        throw new Refuse(
+          `the case ${variant} of ${form} does not build a ${form} of its own parameters`,
+        )
       }
 
       constants(rest, used)
@@ -762,7 +996,10 @@ export function exportLean(source: LeanSource): LeanExport {
     needAll(form, used)
     blocks.set(
       form,
-      [`inductive ${constName(form)}${binderText(former.binders)} : ${printer.print(former.rest)} where`, ...lines].join('\n'),
+      [
+        `inductive ${constName(form)}${binderText(former.binders)} : ${printer.print(former.rest)} where`,
+        ...lines,
+      ].join('\n'),
     )
   }
 
@@ -771,15 +1008,22 @@ export function exportLean(source: LeanSource): LeanExport {
   const emitEliminator = (name: string): void => {
     const read = readEliminator(name)
     const binders = read.binders.map(binder =>
-      read.motive.k === 'var' && binder.name === read.motive.name ? { ...binder, domain: anySort(binder.domain) } : binder,
+      read.motive.k === 'var' && binder.name === read.motive.name
+        ? { ...binder, domain: anySort(binder.domain) }
+        : binder,
     )
-    const body = applyAll({ k: 'const', name: `${read.form}.casesOn` }, [
-      ...read.params,
-      read.motive,
-      ...read.indices,
-      { k: 'var', name: read.major },
-      ...read.minors,
-    ])
+
+    const body = applyAll(
+      { k: 'const', name: `${read.form}.casesOn` },
+      [
+        ...read.params,
+        read.motive,
+        ...read.indices,
+        { k: 'var', name: read.major },
+        ...read.minors,
+      ],
+    )
+
     const used = constants(body, new Set())
     binders.forEach(binder => constants(binder.domain, used))
     constants(read.result, used)
@@ -787,7 +1031,10 @@ export function exportLean(source: LeanSource): LeanExport {
     used.add(read.form)
     needAll(name, used)
     binders.forEach(binder => noteUniverses(binder.domain))
-    blocks.set(name, `def ${constName(name)}${binderText(binders)} : ${printer.print(read.result)} :=\n  ${printer.print(body)}`)
+    blocks.set(
+      name,
+      `def ${constName(name)}${binderText(binders)} : ${printer.print(read.result)} :=\n  ${printer.print(body)}`,
+    )
   }
 
   // `arrayElim` by `Array.rec`: the element type, the motive, the two minors and the list, in the order both take them.
@@ -799,23 +1046,37 @@ export function exportLean(source: LeanSource): LeanExport {
       throw new Refuse(`the eliminator ${name} is in no signature`)
     }
 
-    const { binders, rest } = peelPis(type, 5, ['A', 'motive', 'empty', 'push', 'list'], names)
+    const { binders, rest } = peelPis(
+      type,
+      5,
+      ['A', 'motive', 'empty', 'push', 'list'],
+      names,
+    )
 
     if (binders.length !== 5) {
-      throw new Refuse(`the eliminator ${name} takes ${binders.length} arguments where Array.rec takes 5`)
+      throw new Refuse(
+        `the eliminator ${name} takes ${binders.length} arguments where Array.rec takes 5`,
+      )
     }
 
-    const typed = binders.map((binder, i) => (i === 1 ? { ...binder, domain: anySort(binder.domain) } : binder))
+    const typed = binders.map((binder, i) =>
+      i === 1 ? { ...binder, domain: anySort(binder.domain) } : binder,
+    )
+
     const body = applyAll(
       { k: 'const', name: 'Array.rec' },
       binders.map(binder => ({ k: 'var', name: binder.name }) as Named),
     )
+
     const used = constants(rest, new Set())
     typed.forEach(binder => constants(binder.domain, used))
     used.add('Array')
     needAll(name, used)
     typed.forEach(binder => noteUniverses(binder.domain))
-    blocks.set(name, `def ${constName(name)}${binderText(typed)} : ${printer.print(rest)} :=\n  ${printer.print(body)}`)
+    blocks.set(
+      name,
+      `def ${constName(name)}${binderText(typed)} : ${printer.print(rest)} :=\n  ${printer.print(body)}`,
+    )
   }
 
   // a record's projection `R__field` by `R.casesOn`, its one case returning the field. Lean checks it against the type
@@ -831,35 +1092,60 @@ export function exportLean(source: LeanSource): LeanExport {
     const { binders, rest } = peelPis(type, 1, ['r'], names)
 
     if (binders.length !== 1) {
-      throw new Refuse(`the projection ${name} does not take its record`)
+      throw new Refuse(
+        `the projection ${name} does not take its record`,
+      )
     }
 
-    const fields = Array.from({ length: count }, () => names.fresh('field'))
+    const fields = Array.from({ length: count }, () =>
+      names.fresh('field'),
+    )
+
     const body = applyAll({ k: 'const', name: `${form}.casesOn` }, [
       { k: 'lam', name: names.fresh('m'), body: rest },
       { k: 'var', name: binders[0]!.name },
-      fields.reduceRight<Named>((inner, field) => ({ k: 'lam', name: field, body: inner }), { k: 'var', name: fields[index]! }),
+      fields.reduceRight<Named>(
+        (inner, field) => ({ k: 'lam', name: field, body: inner }),
+        { k: 'var', name: fields[index]! },
+      ),
     ])
+
     const used = constants(rest, new Set())
     constants(binders[0]!.domain, used)
     used.add(form)
     needAll(name, used)
-    blocks.set(name, `def ${constName(name)}${binderText(binders)} : ${printer.print(rest)} :=\n  ${printer.print(body)}`)
+    blocks.set(
+      name,
+      `def ${constName(name)}${binderText(binders)} : ${printer.print(rest)} :=\n  ${printer.print(body)}`,
+    )
   }
 
   // a task the kernel proved: its type, its value, and when it calls itself, the call turned into `T.rec`
   const emitTask = (name: string): void => {
     const type = data.functionType.get(name)!
-    const value = quote(0, definitions.get(name) as never) as Term
+    const value = quote(0, definitions.get(name) as never)
     terms.set(name, { type, value })
-    const { binders, rest, env } = peelPis(type, Number.MAX_SAFE_INTEGER, paramHints.get(name) ?? [], names)
+
+    const { binders, rest, env } = peelPis(
+      type,
+      Number.MAX_SAFE_INTEGER,
+      paramHints.get(name) ?? [],
+      names,
+    )
+
     const { body, bound } = peelLams(value, env)
     // binders the value does not open stay in the type: the value is then a function, written as one
     const outer = binders.slice(0, bound.length)
     const result = binders.slice(bound.length).reduceRight<Named>(
-      (codomain, binder) => ({ k: 'pi', name: binder.name, domain: binder.domain, codomain }),
+      (codomain, binder) => ({
+        k: 'pi',
+        name: binder.name,
+        domain: binder.domain,
+        codomain,
+      }),
       rest,
     )
+
     let term = named(body, bound, names)
 
     if (constants(term, new Set()).has(name)) {
@@ -870,6 +1156,7 @@ export function exportLean(source: LeanSource): LeanExport {
     binders.forEach(binder => constants(binder.domain, used))
     constants(rest, used)
     used.delete(name)
+
     // `T.rec` stands for its form
     for (const one of [...used]) {
       if (one.endsWith('.rec')) {
@@ -881,7 +1168,10 @@ export function exportLean(source: LeanSource): LeanExport {
     needAll(name, used)
     noteUniverses(result)
     outer.forEach(binder => noteUniverses(binder.domain))
-    blocks.set(name, `def ${constName(name)}${binderText(outer)} : ${printer.print(result)} :=\n  ${printer.print(term)}`)
+    blocks.set(
+      name,
+      `def ${constName(name)}${binderText(outer)} : ${printer.print(result)} :=\n  ${printer.print(term)}`,
+    )
   }
 
   // A TASK THAT CALLS ITSELF, inside a match on one of its own parameters, each call on a field of the matched value:
@@ -897,27 +1187,42 @@ export function exportLean(source: LeanSource): LeanExport {
   // Anything else is refused: a call on something not a field (well-founded recursion) needs a termination argument
   // the kernel's term does not carry (Term checks it beside the kernel, check/totality.ts), and never reaches Lean
   // with `partial` or a `sorry`
-  const recursion = (name: string, body: Named, params: { name: string; domain: Named }[]): Named => {
+  const recursion = (
+    name: string,
+    body: Named,
+    params: { name: string; domain: Named }[],
+  ): Named => {
     const paramNames = params.map(param => param.name)
     const shape = spine(body)
 
     if (shape.head.k !== 'const' || !eliminators.has(shape.head.name)) {
-      throw new Refuse('it calls itself outside a match on one of its parameters')
+      throw new Refuse(
+        'it calls itself outside a match on one of its parameters',
+      )
     }
 
     const read = readEliminator(shape.head.name)
 
     if (shape.args.length < read.binders.length) {
-      throw new Refuse('it calls itself in a match not applied to all of its arguments')
+      throw new Refuse(
+        'it calls itself in a match not applied to all of its arguments',
+      )
     }
 
-    const map = new Map(read.binders.map((binder, i) => [binder.name, shape.args[i]!] as [string, Named]))
+    const map = new Map(
+      read.binders.map(
+        (binder, i) => [binder.name, shape.args[i]!] as [string, Named],
+      ),
+    )
+
     // a match whose result is a function, applied on (a convoy): the arguments after the eliminator's own
     const extra = shape.args.slice(read.binders.length)
     const major = map.get(read.major)!
 
     if (major.k !== 'var' || !paramNames.includes(major.name)) {
-      throw new Refuse('it calls itself in a match on something other than one of its parameters')
+      throw new Refuse(
+        'it calls itself in a match on something other than one of its parameters',
+      )
     }
 
     const position = paramNames.indexOf(major.name)
@@ -928,7 +1233,9 @@ export function exportLean(source: LeanSource): LeanExport {
     const arity = formArity(read.form)
 
     if (read.minors.length !== variants.length) {
-      throw new Refuse(`its match has ${read.minors.length} cases where ${read.form} has ${variants.length}`)
+      throw new Refuse(
+        `its match has ${read.minors.length} cases where ${read.form} has ${variants.length}`,
+      )
     }
 
     // the task's parameters the matched value's indices are: parameter position to index position
@@ -949,6 +1256,7 @@ export function exportLean(source: LeanSource): LeanExport {
       const env: string[] = []
       const fromParams = new Map<string, Named>()
       const fields: Field[] = []
+
       let minor = substitute(piece, map)
       let at = ctorType
       let count = 0
@@ -966,12 +1274,25 @@ export function exportLean(source: LeanSource): LeanExport {
             minor = minor.body
           } else {
             field = names.fresh('field')
-            minor = { k: 'app', fun: minor, arg: { k: 'var', name: field } }
+            minor = {
+              k: 'app',
+              fun: minor,
+              arg: { k: 'var', name: field },
+            }
           }
 
-          const type = spine(substitute(named(at.domain, env, names), fromParams))
-          const recursive = type.head.k === 'const' && type.head.name === read.form
-          fields.push({ name: field, recursive, indices: recursive ? type.args.slice(arity) : [] })
+          const type = spine(
+            substitute(named(at.domain, env, names), fromParams),
+          )
+
+          const recursive =
+            type.head.k === 'const' && type.head.name === read.form
+
+          fields.push({
+            name: field,
+            recursive,
+            indices: recursive ? type.args.slice(arity) : [],
+          })
           env.push(field)
         }
 
@@ -990,16 +1311,23 @@ export function exportLean(source: LeanSource): LeanExport {
 
       if (call.head.k === 'const' && call.head.name === name) {
         if (call.args.length !== params.length) {
-          throw new Refuse(`it calls itself with ${call.args.length} arguments where it takes ${params.length}`)
+          throw new Refuse(
+            `it calls itself with ${call.args.length} arguments where it takes ${params.length}`,
+          )
         }
 
         call.args.forEach((arg, i) => {
-          if (i !== position && !indexAt.has(i) && !(arg.k === 'var' && arg.name === paramNames[i])) {
+          if (
+            i !== position &&
+            !indexAt.has(i) &&
+            !(arg.k === 'var' && arg.name === paramNames[i])
+          ) {
             varying.add(i)
           }
 
           scan(arg)
         })
+
         return
       }
 
@@ -1008,21 +1336,26 @@ export function exportLean(source: LeanSource): LeanExport {
           if (term.name === name) {
             throw new Refuse('it uses itself other than by a call')
           }
+
           return
         case 'pi':
           scan(term.domain)
           scan(term.codomain)
+
           return
         case 'lam':
           scan(term.body)
+
           return
         case 'app':
           scan(term.fun)
           scan(term.arg)
+
           return
         case 'ann':
           scan(term.term)
           scan(term.type)
+
           return
         default:
           return
@@ -1036,28 +1369,60 @@ export function exportLean(source: LeanSource): LeanExport {
 
     for (const term of [...formParams, ...indices]) {
       if ([...generalNames].some(one => mentions(term, one))) {
-        throw new Refuse(`a parameter its calls change is in the type of the matched value, so the motive cannot be generalized over it`)
+        throw new Refuse(
+          `a parameter its calls change is in the type of the matched value, so the motive cannot be generalized over it`,
+        )
       }
     }
 
     // the generalized parameters, renamed inside the motive and the minors
     const fresh = general.map(i => names.fresh(paramNames[i]))
-    const rename = new Map<string, Named>(general.map((i, k) => [paramNames[i]!, { k: 'var', name: fresh[k]! }]))
+    const rename = new Map<string, Named>(
+      general.map((i, k) => [
+        paramNames[i]!,
+        { k: 'var', name: fresh[k]! },
+      ]),
+    )
 
     // the motive, over the indices and the matched value, quantified over the generalized parameters
-    const motiveBinders = [...indices.map(() => names.fresh('i')), names.fresh('x')]
+    const motiveBinders = [
+      ...indices.map(() => names.fresh('i')),
+      names.fresh('x'),
+    ]
+
     const generalized = fresh.reduceRight<Named>(
-      (inner, binder, k) => ({ k: 'pi', name: binder, domain: substitute(params[general[k]!]!.domain, rename), codomain: inner }),
-      substitute(beta(motive, motiveBinders.map(binder => ({ k: 'var', name: binder }))), rename),
+      (inner, binder, k) => ({
+        k: 'pi',
+        name: binder,
+        domain: substitute(params[general[k]!]!.domain, rename),
+        codomain: inner,
+      }),
+      substitute(
+        beta(
+          motive,
+          motiveBinders.map(binder => ({ k: 'var', name: binder })),
+        ),
+        rename,
+      ),
     )
-    const newMotive = motiveBinders.reduceRight<Named>((inner, binder) => ({ k: 'lam', name: binder, body: inner }), generalized)
+
+    const newMotive = motiveBinders.reduceRight<Named>(
+      (inner, binder) => ({ k: 'lam', name: binder, body: inner }),
+      generalized,
+    )
 
     const minors = pieces.map(({ fields, minor }) => {
-      const hypotheses = new Map<string, { hypothesis: string; field: Field }>()
+      const hypotheses = new Map<
+        string,
+        { hypothesis: string; field: Field }
+      >()
 
       for (const field of fields) {
         if (field.recursive) {
-          hypotheses.set(field.name, { hypothesis: names.fresh('ih'), field })
+          hypotheses.set(field.name, {
+            hypothesis: names.fresh('ih'),
+            field,
+          })
         }
       }
 
@@ -1066,15 +1431,20 @@ export function exportLean(source: LeanSource): LeanExport {
 
         if (call.head.k === 'const' && call.head.name === name) {
           const on = call.args[position]!
-          const found = on.k === 'var' ? hypotheses.get(on.name) : undefined
+          const found =
+            on.k === 'var' ? hypotheses.get(on.name) : undefined
 
           if (!found) {
-            throw new Refuse('it calls itself on something other than a field of the matched value (well-founded, not structural, recursion)')
+            throw new Refuse(
+              'it calls itself on something other than a field of the matched value (well-founded, not structural, recursion)',
+            )
           }
 
           for (const [i, j] of indexAt) {
             if (!sameNamed(call.args[i]!, found.field.indices[j]!)) {
-              throw new Refuse(`it calls itself with an index of the matched value other than the field's own (argument ${i + 1})`)
+              throw new Refuse(
+                `it calls itself with an index of the matched value other than the field's own (argument ${i + 1})`,
+              )
             }
           }
 
@@ -1090,13 +1460,25 @@ export function exportLean(source: LeanSource): LeanExport {
           case 'const':
             return term
           case 'pi':
-            return { ...term, domain: replace(term.domain), codomain: replace(term.codomain) }
+            return {
+              ...term,
+              domain: replace(term.domain),
+              codomain: replace(term.codomain),
+            }
           case 'lam':
             return { ...term, body: replace(term.body) }
           case 'app':
-            return { k: 'app', fun: replace(term.fun), arg: replace(term.arg) }
+            return {
+              k: 'app',
+              fun: replace(term.fun),
+              arg: replace(term.arg),
+            }
           case 'ann':
-            return { k: 'ann', term: replace(term.term), type: replace(term.type) }
+            return {
+              k: 'ann',
+              term: replace(term.term),
+              type: replace(term.type),
+            }
         }
       }
 
@@ -1104,9 +1486,20 @@ export function exportLean(source: LeanSource): LeanExport {
         (inner, binder) => ({ k: 'lam', name: binder, body: inner }),
         substitute(replace(minor), rename),
       )
-      const binders = [...fields.map(field => field.name), ...fields.flatMap(field => (hypotheses.has(field.name) ? [hypotheses.get(field.name)!.hypothesis] : []))]
 
-      return binders.reduceRight<Named>((inner, binder) => ({ k: 'lam', name: binder, body: inner }), rewritten)
+      const binders = [
+        ...fields.map(field => field.name),
+        ...fields.flatMap(field =>
+          hypotheses.has(field.name)
+            ? [hypotheses.get(field.name)!.hypothesis]
+            : [],
+        ),
+      ]
+
+      return binders.reduceRight<Named>(
+        (inner, binder) => ({ k: 'lam', name: binder, body: inner }),
+        rewritten,
+      )
     })
 
     const term = applyAll({ k: 'const', name: `${read.form}.rec` }, [
@@ -1115,7 +1508,9 @@ export function exportLean(source: LeanSource): LeanExport {
       ...minors,
       ...indices,
       major,
-      ...general.map(i => ({ k: 'var', name: paramNames[i]! }) as Named),
+      ...general.map(
+        i => ({ k: 'var', name: paramNames[i]! }) as Named,
+      ),
       ...extra,
     ])
 
@@ -1140,18 +1535,27 @@ export function exportLean(source: LeanSource): LeanExport {
     needAll(name, used)
     noteUniverses(term)
     axioms.add(name)
-    blocks.set(name, `axiom ${constName(name)} : ${printer.print(term)}`)
+    blocks.set(
+      name,
+      `axiom ${constName(name)} : ${printer.print(term)}`,
+    )
   }
 
   for (const claim of claims) {
     if (!proven.has(claim)) {
       const declined = report.declined.find(d => d.name === claim)
-      refused.set(claim, `the kernel did not prove it${declined ? `: ${declined.reason}` : ''}`)
+      refused.set(
+        claim,
+        `the kernel did not prove it${declined ? `: ${declined.reason}` : ''}`,
+      )
       continue
     }
 
     if (!definitions.has(claim)) {
-      refused.set(claim, 'the kernel proved it but kept no term (not both pure and terminating)')
+      refused.set(
+        claim,
+        'the kernel proved it but kept no term (not both pure and terminating)',
+      )
       continue
     }
 
@@ -1159,7 +1563,10 @@ export function exportLean(source: LeanSource): LeanExport {
   }
 
   // the axioms each definition rests on, transitively
-  const axiomsOf = (name: string, seen = new Set<string>()): Set<string> => {
+  const axiomsOf = (
+    name: string,
+    seen = new Set<string>(),
+  ): Set<string> => {
     const found = new Set<string>()
 
     if (seen.has(name)) {
@@ -1173,7 +1580,7 @@ export function exportLean(source: LeanSource): LeanExport {
     }
 
     for (const other of reaches.get(name) ?? []) {
-      for (const axiom of axiomsOf(other, seen)) found.add(axiom)
+      for (const axiom of axiomsOf(other, seen)) {found.add(axiom)}
     }
 
     return found
@@ -1181,14 +1588,25 @@ export function exportLean(source: LeanSource): LeanExport {
 
   const claimSet = new Set(claims)
   const exported = order
-    .filter(name => blocks.has(name) && !axioms.has(name) && (claimSet.has(name) || proven.has(name)))
-    .map(name => ({ name, claim: claimSet.has(name), axioms: [...axiomsOf(name)].sort() }))
+    .filter(
+      name =>
+        blocks.has(name) &&
+        !axioms.has(name) &&
+        (claimSet.has(name) || proven.has(name)),
+    )
+    .map(name => ({
+      name,
+      claim: claimSet.has(name),
+      axioms: [...axiomsOf(name)].sort(),
+    }))
 
   const lean = [
     `-- Generated by deck/make/code/check/lean-export.ts from ${source.file}. Do not edit: export again.`,
-    '-- Term\'s Type n is Lean\'s Type n, so a proof that used Term\'s impredicative Type 0 is refused here.',
+    "-- Term's Type n is Lean's Type n, so a proof that used Term's impredicative Type 0 is refused here.",
     '-- The translation: note/project/term/proof/lean-export/spec.md',
-    ...(universes.size > 0 ? [`universe ${[...universes].sort().join(' ')}`] : []),
+    ...(universes.size > 0
+      ? [`universe ${[...universes].sort().join(' ')}`]
+      : []),
     '',
     // Lean promotes an index that every constructor fills with its own binder (equal's first value) to a parameter,
     // which puts one more argument before the motive of `casesOn` than Term's form has. Keep the form as Term has it.
@@ -1201,7 +1619,9 @@ export function exportLean(source: LeanSource): LeanExport {
     ...order.flatMap(name => [blocks.get(name)!, '']),
     'end',
     '',
-    ...exported.filter(entry => entry.claim).map(entry => `#print axioms ${constName(entry.name)}`),
+    ...exported
+      .filter(entry => entry.claim)
+      .map(entry => `#print axioms ${constName(entry.name)}`),
     '',
   ].join('\n')
 
@@ -1223,7 +1643,11 @@ export function exportLean(source: LeanSource): LeanExport {
 
 // a planted twin: the same export with one definition's body replaced by another term, written in the same names.
 // Lean must refuse the file. The test plants a wrong proof this way
-export function plantLean(lean: string, name: string, body: string): string {
+export function plantLean(
+  lean: string,
+  name: string,
+  body: string,
+): string {
   const head = `def ${SPACE}.${quoteName(name)}`
   const start = lean.indexOf(head)
 
@@ -1247,7 +1671,9 @@ export function joinSources(sources: LeanSource[]): LeanSource {
       const parsed = parse({ file: source.file, text: source.text })
 
       if (!parsed.ok) {
-        throw new Error(`parse failed in ${source.file}: ${parsed.diagnostics.map(d => d.message).join('; ')}`)
+        throw new Error(
+          `parse failed in ${source.file}: ${parsed.diagnostics.map(d => d.message).join('; ')}`,
+        )
       }
 
       const dropped = new Set<number>()
@@ -1256,13 +1682,19 @@ export function joinSources(sources: LeanSource[]): LeanSource {
         if (node.kind === 'group' && headWord(node) === 'load') {
           const lines = linesOf(node)
 
-          for (let line = Math.min(...lines); line <= Math.max(...lines); line++) {
+          for (
+            let line = Math.min(...lines);
+            line <= Math.max(...lines);
+            line++
+          ) {
             dropped.add(line)
           }
         }
       }
 
-      const out = source.text.split('\n').filter((_, index) => !dropped.has(index + LINE_BASE))
+      const out = source.text
+        .split('\n')
+        .filter((_, index) => !dropped.has(index + LINE_BASE))
 
       return `# ---- ${source.file}\n${out.join('\n')}`
     })
@@ -1281,7 +1713,12 @@ function linesOf(node: Node): number[] {
     case 'group':
       return node.nodes.flatMap(child => [
         ...linesOf(child),
-        ...('comments' in child ? (child.comments ?? []).flatMap(c => [c.span.start.line, c.span.end.line]) : []),
+        ...('comments' in child
+          ? (child.comments ?? []).flatMap(c => [
+              c.span.start.line,
+              c.span.end.line,
+            ])
+          : []),
       ])
     case 'name':
     case 'text':

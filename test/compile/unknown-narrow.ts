@@ -204,7 +204,8 @@ task run
   back <{describe(p)}, {describe(names)}, {describe(table)}, {describe(7)}, {describe(counts)}, {describe(other)}, {describe(l)}, {describe(<x>)}>
 `
 
-const SHAPES_EXPECTED = 'point 3, names ada+bo, hash 2, number 7, other, other, other, other'
+const SHAPES_EXPECTED =
+  'point 3, names ada+bo, hash 2, number 7, other, other, other, other'
 
 // A FORM WITH CASES OUT OF AN UNKNOWN (seam decision 003): `case shape` tests for a value of any of its cases (natively
 // the enum, on TypeScript its tag and that case's fields), a `mark tag` form by its own tag field, a `mark text` form
@@ -297,7 +298,8 @@ task run
   back <{describe(d)}, {describe(b)}, {describe(u)}, {describe(n)}, {describe(w)}, {describe(c)}, {describe(shapes)}, {describe(table)}, {describe(p)}, {describe(7)}>
 `
 
-const CASED_EXPECTED = 'dot, box 3, up, down 2, warm, cool, shapes 2, table 1, other, other'
+const CASED_EXPECTED =
+  'dot, box 3, up, down 2, warm, cool, shapes 2, table 1, other, other'
 
 // A TEST OF A FORM'S CASE NARROWS (gap 105): `is-some(m)` is the `sift m` arm `case some`, so inside the branch
 // `m/value` reads, and the other case is the rest. A field named like a local in scope is not bound over it
@@ -364,7 +366,13 @@ const dir = mkdtempSync(join(tmpdir(), 'term-narrow-'))
 const only = process.env.NARROW_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'narrow' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'narrow',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
@@ -374,47 +382,99 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
   ok(
     `${backend}: an unknown is narrowed by a type arm, its subject typed inside it, a link names it apart, and a miss takes the rest`,
     ran.form === 'ran' && ran.output === EXPECTED,
-    ran.form === 'ran' ? `got ${JSON.stringify(ran.output)}` : `${ran.stage}: ${ran.reason}`,
+    ran.form === 'ran'
+      ? `got ${JSON.stringify(ran.output)}`
+      : `${ran.stage}: ${ran.reason}`,
   )
 
-  const flow = runOn({ backend, program: FLOW, resolve: env => projectResolver(process.cwd(), env), dir, name: 'flow' })
+  const flow = runOn({
+    backend,
+    program: FLOW,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'flow',
+  })
 
   ok(
     `${backend}: a test of what an unknown holds narrows it in the branch it guards, through a chain and with no miss`,
     flow.form === 'ran' && flow.output === FLOW_EXPECTED,
-    flow.form === 'ran' ? `got ${JSON.stringify(flow.output)}` : flow.form === 'skipped' ? flow.reason : `${flow.stage}: ${flow.reason}`,
+    flow.form === 'ran'
+      ? `got ${JSON.stringify(flow.output)}`
+      : flow.form === 'skipped'
+        ? flow.reason
+        : `${flow.stage}: ${flow.reason}`,
   )
 
-  const shapes = runOn({ backend, program: SHAPES, resolve: env => projectResolver(process.cwd(), env), dir, name: 'shapes' })
+  const shapes = runOn({
+    backend,
+    program: SHAPES,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'shapes',
+  })
 
   ok(
     `${backend}: a form, a list of text and a hash are narrowed out of an unknown, and a value of another shape goes to the miss`,
     shapes.form === 'ran' && shapes.output === SHAPES_EXPECTED,
-    shapes.form === 'ran' ? `got ${JSON.stringify(shapes.output)}` : shapes.form === 'skipped' ? shapes.reason : `${shapes.stage}: ${shapes.reason}`,
+    shapes.form === 'ran'
+      ? `got ${JSON.stringify(shapes.output)}`
+      : shapes.form === 'skipped'
+        ? shapes.reason
+        : `${shapes.stage}: ${shapes.reason}`,
   )
 
-  const cased = runOn({ backend, program: CASED, resolve: env => projectResolver(process.cwd(), env), dir, name: 'cased' })
+  const cased = runOn({
+    backend,
+    program: CASED,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'cased',
+  })
 
   ok(
     `${backend}: a form with cases, a mark tag form, a mark text form and a list and hash of one are narrowed out of an unknown, a record and a number go to the miss`,
     cased.form === 'ran' && cased.output === CASED_EXPECTED,
-    cased.form === 'ran' ? `got ${JSON.stringify(cased.output)}` : cased.form === 'skipped' ? cased.reason : `${cased.stage}: ${cased.reason}`,
+    cased.form === 'ran'
+      ? `got ${JSON.stringify(cased.output)}`
+      : cased.form === 'skipped'
+        ? cased.reason
+        : `${cased.stage}: ${cased.reason}`,
   )
 
-  const cases = runOn({ backend, program: CASES, resolve: env => projectResolver(process.cwd(), env), dir, name: 'cases' })
+  const cases = runOn({
+    backend,
+    program: CASES,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'cases',
+  })
 
   ok(
     `${backend}: a test of a form's case narrows the value to that case in the branch it guards`,
     cases.form === 'ran' && cases.output === CASES_EXPECTED,
-    cases.form === 'ran' ? `got ${JSON.stringify(cases.output)}` : cases.form === 'skipped' ? cases.reason : `${cases.stage}: ${cases.reason}`,
+    cases.form === 'ran'
+      ? `got ${JSON.stringify(cases.output)}`
+      : cases.form === 'skipped'
+        ? cases.reason
+        : `${cases.stage}: ${cases.reason}`,
   )
 
-  const borrowed = runOn({ backend, program: BORROWED, resolve: env => projectResolver(process.cwd(), env), dir, name: 'borrowed' })
+  const borrowed = runOn({
+    backend,
+    program: BORROWED,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'borrowed',
+  })
 
   ok(
     `${backend}: a number read out of a sift arm over a maybe parameter is a number`,
     borrowed.form === 'ran' && borrowed.output === BORROWED_EXPECTED,
-    borrowed.form === 'ran' ? `got ${JSON.stringify(borrowed.output)}` : borrowed.form === 'skipped' ? borrowed.reason : `${borrowed.stage}: ${borrowed.reason}`,
+    borrowed.form === 'ran'
+      ? `got ${JSON.stringify(borrowed.output)}`
+      : borrowed.form === 'skipped'
+        ? borrowed.reason
+        : `${borrowed.stage}: ${borrowed.reason}`,
   )
 }
 
@@ -423,50 +483,143 @@ if (!only || only === 'typescript') {
   setUnknownSeam(true)
 
   const refused = (text: string): string[] => {
-    const built = compile({ file: join(dir, 'refused.tree'), text }, { resolve: projectResolver(process.cwd(), 'node'), env: 'node' })
+    const built = compile(
+      { file: join(dir, 'refused.tree'), text },
+      { resolve: projectResolver(process.cwd(), 'node'), env: 'node' },
+    )
 
     return built.ok ? [] : built.diagnostics.map(d => d.message)
   }
 
   // the guide's seam: text through an unknown to a task that wants a number
-  const seam = refused(`task bump\n  take n, like number\n\n  like number\n\n  back add(n, 1)\n\ntask pass-through\n  take value, like unknown\n\n  like number\n\n  back bump(value)\n`)
-  ok('an unknown handed to a number is refused, naming the narrowing', seam.some(m => m.includes('an unknown value where a number is wanted') && m.includes('sift')), seam.join(' | '))
+  const seam = refused(
+    `task bump\n  take n, like number\n\n  like number\n\n  back add(n, 1)\n\ntask pass-through\n  take value, like unknown\n\n  like number\n\n  back bump(value)\n`,
+  )
+  ok(
+    'an unknown handed to a number is refused, naming the narrowing',
+    seam.some(
+      m =>
+        m.includes('an unknown value where a number is wanted') &&
+        m.includes('sift'),
+    ),
+    seam.join(' | '),
+  )
 
-  const returned = refused(`task give\n  take value, like unknown\n\n  like text\n\n  back value\n`)
-  ok('an unknown returned where text is the result is refused', returned.some(m => m.includes('an unknown value where a text is wanted')), returned.join(' | '))
+  const returned = refused(
+    `task give\n  take value, like unknown\n\n  like text\n\n  back value\n`,
+  )
+  ok(
+    'an unknown returned where text is the result is refused',
+    returned.some(m =>
+      m.includes('an unknown value where a text is wanted'),
+    ),
+    returned.join(' | '),
+  )
 
-  const added = refused(`task plus-one\n  take value, like unknown\n\n  like number\n\n  back add(value, 1)\n`)
-  ok('arithmetic on an unknown is refused', added.length > 0, 'compiled')
+  const added = refused(
+    `task plus-one\n  take value, like unknown\n\n  like number\n\n  back add(value, 1)\n`,
+  )
+  ok(
+    'arithmetic on an unknown is refused',
+    added.length > 0,
+    'compiled',
+  )
 
-  const missing = refused(`task f\n  take value, like unknown\n\n  like number\n\n  sift value\n    case number\n      back value\n  back 0\n`)
-  ok('a sift over an unknown with no miss is refused', missing.some(m => m.includes('needs a `miss`')), missing.join(' | '))
+  const missing = refused(
+    `task f\n  take value, like unknown\n\n  like number\n\n  sift value\n    case number\n      back value\n  back 0\n`,
+  )
+  ok(
+    'a sift over an unknown with no miss is refused',
+    missing.some(m => m.includes('needs a `miss`')),
+    missing.join(' | '),
+  )
 
-  const form = refused(`form point\n  link x, like number\n\ntask f\n  take value, like unknown\n\n  like number\n\n  sift value\n    case point\n      back value/x\n    miss\n      back 0\n`)
-  ok('a form arm over an unknown builds, its subject the form inside it', form.length === 0, form.join(' | '))
+  const form = refused(
+    `form point\n  link x, like number\n\ntask f\n  take value, like unknown\n\n  like number\n\n  sift value\n    case point\n      back value/x\n    miss\n      back 0\n`,
+  )
+  ok(
+    'a form arm over an unknown builds, its subject the form inside it',
+    form.length === 0,
+    form.join(' | '),
+  )
 
-  const cased = refused(`form shape\n  case dot\n  case box\n    link side, like number\n\ntask f\n  take value, like unknown\n\n  like number\n\n  sift value\n    case shape\n      back 1\n    miss\n      back 0\n`)
-  ok('an arm naming a form with cases builds (seam decision 003)', cased.length === 0, cased.join(' | '))
+  const cased = refused(
+    `form shape\n  case dot\n  case box\n    link side, like number\n\ntask f\n  take value, like unknown\n\n  like number\n\n  sift value\n    case shape\n      back 1\n    miss\n      back 0\n`,
+  )
+  ok(
+    'an arm naming a form with cases builds (seam decision 003)',
+    cased.length === 0,
+    cased.join(' | '),
+  )
 
-  const generic = refused(`form held\n  head t\n  case empty\n  case full\n    link item, like t\n\ntask f\n  take value, like unknown\n\n  like number\n\n  sift value\n    case held\n      back 1\n    miss\n      back 0\n`)
-  ok('an arm naming a form with cases and a type parameter is refused, saying what can be told apart', generic.some(m => m.includes('a form with type parameters') && m.includes('a form with cases')), generic.join(' | '))
+  const generic = refused(
+    `form held\n  head t\n  case empty\n  case full\n    link item, like t\n\ntask f\n  take value, like unknown\n\n  like number\n\n  sift value\n    case held\n      back 1\n    miss\n      back 0\n`,
+  )
+  ok(
+    'an arm naming a form with cases and a type parameter is refused, saying what can be told apart',
+    generic.some(
+      m =>
+        m.includes('a form with type parameters') &&
+        m.includes('a form with cases'),
+    ),
+    generic.join(' | '),
+  )
 
-  const bare = refused(`task f\n  take value, like unknown\n\n  like number\n\n  sift value\n    case list\n      back 1\n    miss\n      back 0\n`)
-  ok('a list arm that does not say what the list holds is refused', bare.some(m => m.includes('says what it holds')), bare.join(' | '))
+  const bare = refused(
+    `task f\n  take value, like unknown\n\n  like number\n\n  sift value\n    case list\n      back 1\n    miss\n      back 0\n`,
+  )
+  ok(
+    'a list arm that does not say what the list holds is refused',
+    bare.some(m => m.includes('says what it holds')),
+    bare.join(' | '),
+  )
 
-  const stray = refused(`task f\n  take value, like text\n\n  like number\n\n  sift value\n    case text\n      like number\n      back 1\n    miss\n      back 0\n`)
-  ok('a `like` under an arm of a sift over a typed value is refused', stray.some(m => m.includes('names the type an unknown is tested for')), stray.join(' | '))
+  const stray = refused(
+    `task f\n  take value, like text\n\n  like number\n\n  sift value\n    case text\n      like number\n      back 1\n    miss\n      back 0\n`,
+  )
+  ok(
+    'a `like` under an arm of a sift over a typed value is refused',
+    stray.some(m =>
+      m.includes('names the type an unknown is tested for'),
+    ),
+    stray.join(' | '),
+  )
 
-  const wrong = refused(`form point\n  link x, like number\n\ntask f\n  take value, like unknown\n\n  like text\n\n  sift value\n    case list\n      like text\n      link names\n      back names\n    miss\n      back <>\n`)
-  ok('a list of text narrowed is a list of text, not text', wrong.some(m => m.includes('expected')), wrong.join(' | '))
+  const wrong = refused(
+    `form point\n  link x, like number\n\ntask f\n  take value, like unknown\n\n  like text\n\n  sift value\n    case list\n      like text\n      link names\n      back names\n    miss\n      back <>\n`,
+  )
+  ok(
+    'a list of text narrowed is a list of text, not text',
+    wrong.some(m => m.includes('expected')),
+    wrong.join(' | '),
+  )
 
-  const fine = refused(`task same\n  take a, like unknown\n  take b, like unknown\n\n  like boolean\n\n  back is-equal(a, b)\n\ntask use\n  like boolean\n\n  back same(1, <a>)\n`)
-  ok('any value into an unknown, and an unknown into an unknown, still build', fine.length === 0, fine.join(' | '))
+  const fine = refused(
+    `task same\n  take a, like unknown\n  take b, like unknown\n\n  like boolean\n\n  back is-equal(a, b)\n\ntask use\n  like boolean\n\n  back same(1, <a>)\n`,
+  )
+  ok(
+    'any value into an unknown, and an unknown into an unknown, still build',
+    fine.length === 0,
+    fine.join(' | '),
+  )
 
-  const typed = refused(`task f\n  take value, like text\n\n  like text\n\n  fork test, is-text(value)\n    hold\n      back value\n  back <>\n`)
-  ok('a type test over a value already typed is refused, saying there is nothing to narrow', typed.some(m => m.includes('"value" is text already')), typed.join(' | '))
+  const typed = refused(
+    `task f\n  take value, like text\n\n  like text\n\n  fork test, is-text(value)\n    hold\n      back value\n  back <>\n`,
+  )
+  ok(
+    'a type test over a value already typed is refused, saying there is nothing to narrow',
+    typed.some(m => m.includes('"value" is text already')),
+    typed.join(' | '),
+  )
 
-  const native = refused(`dock load\n  load <global:host>, name host\n\ntask f\n  take value, like dynamic\n\n  like number\n\n  back value\n`)
-  ok('a dynamic, the FFI any, still passes both ways', native.length === 0, native.join(' | '))
+  const native = refused(
+    `dock load\n  load <global:host>, name host\n\ntask f\n  take value, like dynamic\n\n  like number\n\n  back value\n`,
+  )
+  ok(
+    'a dynamic, the FFI any, still passes both ways',
+    native.length === 0,
+    native.join(' | '),
+  )
 }
 
 console.log(`\nunknown-narrow: ${pass} pass, ${fail} fail`)

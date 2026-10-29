@@ -13,10 +13,7 @@ import * as path from 'node:path'
 import { buildSync } from 'esbuild'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { emitTypeScript } from '@term/make/code/compile/typescript'
-import type {
-  Program,
-  Statement,
-} from '@term/make/code/compile/node'
+import type { Program, Statement } from '@term/make/code/compile/node'
 import {
   processDef,
   buildDefContext,
@@ -30,10 +27,10 @@ import type { Scope } from '@term/make/code/check/resolve'
 type FunctionDef = Extract<Statement, { form: 'function' }>
 
 // one Def's compiled result plus the worker thread that produced it (for observability / tests)
-export interface DefResult extends DefOutput {
+export type DefResult = {
   name: string
   threadId: number
-}
+} & DefOutput
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const WORKER_SOURCE = path.join(HERE, 'def-worker.ts')
@@ -77,7 +74,12 @@ function workerHeapMb(workers: number): number {
     return Math.floor(given)
   }
 
-  return Math.max(2048, Math.floor((totalmem() * 0.75) / Math.max(1, workers) / (1024 * 1024)))
+  return Math.max(
+    2048,
+    Math.floor(
+      (totalmem() * 0.75) / Math.max(1, workers) / (1024 * 1024),
+    ),
+  )
 }
 
 type WorkerEntry = {
@@ -106,7 +108,10 @@ export class WorkerPool {
   // each worker's heap limit in MB: one that runs out of memory fails only the job it held, and is replaced
   private readonly heapMb: number
 
-  constructor(size: number = Math.max(1, cpus().length - 1), heapMb: number = workerHeapMb(size)) {
+  constructor(
+    size: number = Math.max(1, cpus().length - 1),
+    heapMb: number = workerHeapMb(size),
+  ) {
     this.heapMb = heapMb
 
     // the bundle lives under /tmp, from where stdlibBase() cannot walk up to deck/seed: pin the stdlib for it
@@ -124,7 +129,10 @@ export class WorkerPool {
   }
 
   private spawn(): WorkerEntry {
-    const worker = new Worker(ensureWorkerBundle(), { resourceLimits: { maxOldGenerationSizeMb: this.heapMb } })
+    const worker = new Worker(ensureWorkerBundle(), {
+      resourceLimits: { maxOldGenerationSizeMb: this.heapMb },
+    })
+
     const entry: WorkerEntry = { worker, busy: false, revision: -1 }
     worker.on('message', message => this.onMessage(entry, message))
     worker.on('error', error => this.onError(entry, error))
@@ -245,13 +253,20 @@ export class WorkerPool {
 
   private onError(entry: WorkerEntry, error: Error): void {
     // a worker that ran out of its heap fails only the job it held, and a new worker takes its place
-    if ((error as { code?: unknown }).code === 'ERR_WORKER_OUT_OF_MEMORY') {
+    if (
+      (error as { code?: unknown }).code === 'ERR_WORKER_OUT_OF_MEMORY'
+    ) {
       const id = (entry as WorkerEntry & { current?: number }).current
-      const pending = id === undefined ? undefined : this.pending.get(id)
+      const pending =
+        id === undefined ? undefined : this.pending.get(id)
 
       if (id !== undefined && pending) {
         this.pending.delete(id)
-        pending.reject(new Error(`${pending.source.name}: out-of-memory at the worker's ${this.heapMb} MB heap limit`))
+        pending.reject(
+          new Error(
+            `${pending.source.name}: out-of-memory at the worker's ${this.heapMb} MB heap limit`,
+          ),
+        )
       }
 
       this.workers.splice(this.workers.indexOf(entry), 1, this.spawn())
@@ -287,7 +302,7 @@ export class WorkerPool {
 }
 
 // the result of a parallel program build: the assembled TypeScript and the diagnostics, in program order
-export interface ParallelEmit {
+export type ParallelEmit = {
   ts: string
   diagnostics: Diagnostic[]
   // the distinct worker thread ids that contributed (empty for an inline build), for observability / tests

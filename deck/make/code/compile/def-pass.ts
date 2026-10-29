@@ -8,21 +8,18 @@ import { resolve as resolveNames } from '@term/make/code/check/resolve'
 import type { Scope } from '@term/make/code/check/resolve'
 import { check as inferTypes } from '@term/make/code/check/infer'
 import { emitTypeScript } from '@term/make/code/compile/typescript'
-import type {
-  Program,
-  Statement,
-} from '@term/make/code/compile/node'
+import type { Program, Statement } from '@term/make/code/compile/node'
 
 type FunctionDef = Extract<Statement, { form: 'function' }>
 
-export interface DefContext {
+export type DefContext = {
   // names -> kind/arity + intrinsics, built once over the merged program
   scope: Scope
   // the merged program with every function body stripped to []: signatures + forms, never bodies (the firewall)
   signatureContext: Program
 }
 
-export interface DefOutput {
+export type DefOutput = {
   typed: FunctionDef
   diagnostics: Diagnostic[]
   ts: string

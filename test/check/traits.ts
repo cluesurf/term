@@ -26,9 +26,18 @@ function expectOk(name: string, source: string, needle?: string): void {
 }
 
 // refused with this code, and, when given, a message holding `needle`
-function expectError(name: string, source: string, code: string, needle?: string): void {
+function expectError(
+  name: string,
+  source: string,
+  code: string,
+  needle?: string,
+): void {
   const result = compile({ file: 't.tree', text: source })
-  const found = result.ok ? undefined : result.diagnostics.find(d => d.name === code && (!needle || d.message.includes(needle)))
+  const found = result.ok
+    ? undefined
+    : result.diagnostics.find(
+        d => d.name === code && (!needle || d.message.includes(needle)),
+      )
 
   if (found) {
     pass++
@@ -37,7 +46,11 @@ function expectError(name: string, source: string, code: string, needle?: string
     fail++
     console.log(
       `FAIL  ${name}  (ok=${result.ok}, ${
-        result.ok ? '' : result.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | ')
+        result.ok
+          ? ''
+          : result.diagnostics
+              .map(d => `${d.name}: ${d.message}`)
+              .join(' | ')
       })`,
     )
   }
@@ -207,7 +220,7 @@ form box
 
   // a worn task that leaves a type off takes the mask's: `by` is a number, so a text there is refused at the call
   expectError(
-    'a worn task with no types takes the mask\'s',
+    "a worn task with no types takes the mask's",
     `mask sizer
   task scale
     take self

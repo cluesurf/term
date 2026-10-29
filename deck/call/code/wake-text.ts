@@ -5,7 +5,8 @@
 
 import * as port from '@term/call/code/wake-files'
 
-export const DECK_TREE = (project: string): string => port.deckTree(project)
+export const DECK_TREE = (project: string): string =>
+  port.deckTree(project)
 
 export const BOOT_TREE = port.bootTree()
 

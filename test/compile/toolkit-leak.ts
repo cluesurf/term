@@ -27,7 +27,10 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 const SWAPS = 40
 
-const program = (_leg: Leg, shot: string): string => `load @term/site/code/dom/dom
+const program = (
+  _leg: Leg,
+  shot: string,
+): string => `load @term/site/code/dom/dom
   find view
 
 load @term/site/code/view/reactive
@@ -142,17 +145,25 @@ task main
 `
 
 function step(output: string, name: string): string {
-  const line = output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
+  const line =
+    output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
 
-  return line.slice(line.indexOf(`step ${name} `) + `step ${name} `.length).trim()
+  return line
+    .slice(line.indexOf(`step ${name} `) + `step ${name} `.length)
+    .trim()
 }
 
 function judge(leg: Leg, toolkit: string, output: string): void {
   const [early, late] = step(output, 'live').split(' ').map(Number)
-  console.log(`      ${leg}: ${early} nodes alive after 2 swaps, ${late} after ${SWAPS}`)
+  console.log(
+    `      ${leg}: ${early} nodes alive after 2 swaps, ${late} after ${SWAPS}`,
+  )
   ok(
     `${leg}: forty swaps of a five button branch leave as many nodes alive as two did (${toolkit})`,
-    Number.isFinite(early) && Number.isFinite(late) && early! > 0 && late! <= early! + 1,
+    Number.isFinite(early) &&
+      Number.isFinite(late) &&
+      early! > 0 &&
+      late! <= early! + 1,
     `after 2 swaps ${early}, after ${SWAPS} ${late}`,
   )
 }

@@ -8,7 +8,10 @@
 import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
 import { withNativeEnv } from '@term/make/code/compile/native'
-import { setAmbiguousRefused, setInferStrict } from '@term/make/code/check/strict'
+import {
+  setAmbiguousRefused,
+  setInferStrict,
+} from '@term/make/code/check/strict'
 
 let pass = 0
 let fail = 0
@@ -24,7 +27,10 @@ function ok(name: string, holds: boolean, detail = ''): void {
 }
 
 const said = (text: string): string[] => {
-  const built = compile({ file: 'main.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!), env: 'node' })
+  const built = compile(
+    { file: 'main.tree', text },
+    { resolve: withNativeEnv('node', stdlibResolver()!), env: 'node' },
+  )
 
   return built.ok ? [] : built.diagnostics.map(d => d.message)
 }
@@ -75,32 +81,54 @@ task use
 `
 
 setInferStrict(false)
-ok('off: an unconstrained parameter builds', said(LONELY).length === 0, said(LONELY).join(' | '))
+ok(
+  'off: an unconstrained parameter builds',
+  said(LONELY).length === 0,
+  said(LONELY).join(' | '),
+)
 // D10, decided 2026-10-07: the ambiguous-call refusal is on by default, the strict switch off
 ok(
   'default: a call two definitions fit equally is refused, the strict switch off',
-  said(AMBIGUOUS).some(m => m.startsWith('ambiguous call: 2 definitions of "show"')),
+  said(AMBIGUOUS).some(m =>
+    m.startsWith('ambiguous call: 2 definitions of "show"'),
+  ),
   said(AMBIGUOUS).join(' | '),
 )
 setAmbiguousRefused(false)
-ok('TERM_INFER_AMBIGUOUS=0: an ambiguous call builds', said(AMBIGUOUS).length === 0, said(AMBIGUOUS).join(' | '))
+ok(
+  'TERM_INFER_AMBIGUOUS=0: an ambiguous call builds',
+  said(AMBIGUOUS).length === 0,
+  said(AMBIGUOUS).join(' | '),
+)
 setAmbiguousRefused(true)
 
 setInferStrict(true)
 ok(
   'on: a parameter no call and no use types is refused, naming it',
-  said(LONELY).some(m => m.includes('"value" of "lonely" is never given a type')),
+  said(LONELY).some(m =>
+    m.includes('"value" of "lonely" is never given a type'),
+  ),
   said(LONELY).join(' | '),
 )
-ok('on: a parameter a call types builds', said(CALLED).length === 0, said(CALLED).join(' | '))
+ok(
+  'on: a parameter a call types builds',
+  said(CALLED).length === 0,
+  said(CALLED).join(' | '),
+)
 ok(
   'on: a call two definitions fit equally is refused, naming both',
-  said(AMBIGUOUS).some(m => m.startsWith('ambiguous call: 2 definitions of "show"') && m.includes('(number)') && m.includes('(text)')),
+  said(AMBIGUOUS).some(
+    m =>
+      m.startsWith('ambiguous call: 2 definitions of "show"') &&
+      m.includes('(number)') &&
+      m.includes('(text)'),
+  ),
   said(AMBIGUOUS).join(' | '),
 )
 ok(
   'on: a call one definition fits is not',
-  said(AMBIGUOUS).filter(m => m.startsWith('ambiguous call')).length === 1,
+  said(AMBIGUOUS).filter(m => m.startsWith('ambiguous call')).length ===
+    1,
   said(AMBIGUOUS).join(' | '),
 )
 

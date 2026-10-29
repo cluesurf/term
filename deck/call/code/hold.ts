@@ -38,9 +38,16 @@ import { compile } from '@term/make/code/compile/compile'
 import { withNativeEnv } from '@term/make/code/compile/native'
 import { pureFunctions } from '@term/make/code/check/facts'
 import type { Program } from '@term/make/code/compile/node'
-import { buildable, findTreeFiles, projectResolver } from '@term/call/code/make'
+import {
+  buildable,
+  findTreeFiles,
+  projectResolver,
+} from '@term/call/code/make'
 import { collectTreeFiles } from '@term/call/code/files'
-import { compilerVersion, projectCache } from '@term/call/code/cache-store'
+import {
+  compilerVersion,
+  projectCache,
+} from '@term/call/code/cache-store'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
 import { renderDiagnostic } from '@term/call/code/report'
@@ -52,7 +59,16 @@ import {
   memoryObligationCache,
 } from '@term/test/code/obligation-store'
 import { renderReport } from '@term/test/code/file-proof'
-import { closeRun, count, field, openRun, printData, problemOf, report, reportProblems } from '@term/call/code/output'
+import {
+  closeRun,
+  count,
+  field,
+  openRun,
+  printData,
+  problemOf,
+  report,
+  reportProblems,
+} from '@term/call/code/output'
 import { projectHome } from '@term/call/code/home'
 import * as plan from '@term/call/code/hold-plan'
 import { holdLean, reportLean } from '@term/call/code/hold-lean'
@@ -62,7 +78,10 @@ import type { HoldReport } from '@term/call/code/hold-report'
 
 // where `holdProject` puts what it found, whole, for the caller to draw as Problem items: every diagnostic of a file
 // that did not compile, and each failed tier-0 obligation by its key. It prints nothing itself
-export type HoldFound = { compile: BuildProblem[]; obligations: Map<string, BuildProblem> }
+export type HoldFound = {
+  compile: BuildProblem[]
+  obligations: Map<string, BuildProblem>
+}
 
 // the baseline: the tier-0 obligations that were unproven when the gate went up, one key per obligation
 type Baseline = { obligations: string[] }
@@ -114,7 +133,9 @@ function readBaseline(root: string): Baseline | undefined {
   }
 
   try {
-    const parsed = JSON.parse(readFileSync(file, 'utf8')) as Partial<Baseline>
+    const parsed = JSON.parse(
+      readFileSync(file, 'utf8'),
+    ) as Partial<Baseline>
 
     return { obligations: parsed.obligations ?? [] }
   } catch {
@@ -127,11 +148,18 @@ function readBaseline(root: string): Baseline | undefined {
 function ownTasks(program: Program, file: string) {
   return program.filter(
     (s): s is Extract<Program[number], { form: 'function' }> =>
-      s.form === 'function' && !s.claim && !s.stub && s.span.file === file,
+      s.form === 'function' &&
+      !s.claim &&
+      !s.stub &&
+      s.span.file === file,
   )
 }
 
-export function holdProject(root: string, files: string[], found?: HoldFound): HoldSummary {
+export function holdProject(
+  root: string,
+  files: string[],
+  found?: HoldFound,
+): HoldSummary {
   const resolve = withNativeEnv('node', projectResolver(root))
   const cache = projectCache(root)
   const deckOf = projectDeckOf()
@@ -141,19 +169,31 @@ export function holdProject(root: string, files: string[], found?: HoldFound): H
   const failed: string[] = []
   const open = new Set<string>()
   const failures: Failure[] = []
-  const ledger: Ledger = { native: [], axioms: [], unending: [], roaming: [] }
+  const ledger: Ledger = {
+    native: [],
+    axioms: [],
+    unending: [],
+    roaming: [],
+  }
+
   let total = 0
   let proven = 0
+
   const kernel = { proven: 0, commands: 0, declined: 0 }
   // every declined task's reason, by its kind, in the order met
   const kinds: string[] = []
   // and every task checked statement by statement, by why it was not lowered
   const lowering: string[] = []
+
   let uncertified = 0
 
   for (const file of files) {
     const rel = path.relative(root, file)
-    const unit = buildable(file, readFileSync(file, 'utf8'), roleOf(file))
+    const unit = buildable(
+      file,
+      readFileSync(file, 'utf8'),
+      roleOf(file),
+    )
 
     if ('faults' in unit) {
       failed.push(rel)
@@ -166,8 +206,12 @@ export function holdProject(root: string, files: string[], found?: HoldFound): H
 
       return renderDiagnostic(at.diagnostic, at.text)
     }
+
     const framed = (diagnostic: Diagnostic): BuildProblem =>
-      diagnostic.file === file ? unit.place(diagnostic) : { diagnostic, text: undefined }
+      diagnostic.file === file
+        ? unit.place(diagnostic)
+        : { diagnostic, text: undefined }
+
     const result = compile(
       { file, text: unit.text },
       { resolve, cache, deckOf, roleOf, leanOf },
@@ -210,7 +254,13 @@ export function holdProject(root: string, files: string[], found?: HoldFound): H
       proven += tally.proven
 
       for (const failure of tally.failed) {
-        const key = plan.obligationKey(rel, failure.task, failure.origin, failure.ordinal)
+        const key = plan.obligationKey(
+          rel,
+          failure.task,
+          failure.origin,
+          failure.ordinal,
+        )
+
         failures.push({
           key,
           message: failure.diagnostic.message,
@@ -226,7 +276,12 @@ export function holdProject(root: string, files: string[], found?: HoldFound): H
       const pure = pureFunctions(result.program)
 
       for (const task of own) {
-        const name = plan.ledgerName(rel, task.method?.form ?? '', task.method?.name ?? '', task.name)
+        const name = plan.ledgerName(
+          rel,
+          task.method?.form ?? '',
+          task.method?.name ?? '',
+          task.name,
+        )
 
         if (task.roam) {
           ledger.roaming.push(name)
@@ -253,7 +308,10 @@ export function holdProject(root: string, files: string[], found?: HoldFound): H
     }
   }
 
-  const split = plan.baselineSplitOf(readBaseline(root)?.obligations ?? [], failures.map(f => f.key))
+  const split = plan.baselineSplitOf(
+    readBaseline(root)?.obligations ?? [],
+    failures.map(f => f.key),
+  )
 
   return {
     files: files.length,
@@ -267,8 +325,12 @@ export function holdProject(root: string, files: string[], found?: HoldFound): H
     ledger,
     kernel: {
       ...kernel,
-      reasons: plan.reasonsOf(kinds).map(one => [one.reason, one.count] as [string, number]),
-      statementwise: plan.reasonsOf(lowering).map(one => [one.reason, one.count] as [string, number]),
+      reasons: plan
+        .reasonsOf(kinds)
+        .map(one => [one.reason, one.count] as [string, number]),
+      statementwise: plan
+        .reasonsOf(lowering)
+        .map(one => [one.reason, one.count] as [string, number]),
     },
     uncertified,
   }
@@ -297,11 +359,22 @@ export async function callHold(input: {
     verb: 'hold',
     root,
     counts: [count(files.length, 'files', 'file')],
-    facts: [...(input.commit ? ['--commit'] : []), ...(input.lean ? ['--lean'] : []), ...(input.report ? ['--report'] : [])],
+    facts: [
+      ...(input.commit ? ['--commit'] : []),
+      ...(input.lean ? ['--lean'] : []),
+      ...(input.report ? ['--report'] : []),
+    ],
   })
 
   if (files.length === 0) {
-    report({ glyph: 'failed', kind: 'problem', subject: 'There is no .tree file to hold', message: input.paths.length ? [`Looked in ${input.paths.join(', ')}.`] : [] })
+    report({
+      glyph: 'failed',
+      kind: 'problem',
+      subject: 'There is no .tree file to hold',
+      message: input.paths.length
+        ? [`Looked in ${input.paths.join(', ')}.`]
+        : [],
+    })
     process.exit(closeRun({ verdict: 'Nothing to hold' }))
   }
 
@@ -313,7 +386,11 @@ export async function callHold(input: {
   reportProblems(found.compile, root)
 
   if (input.commit) {
-    const keys = plan.commitKeys(readBaseline(root)?.obligations ?? [], summary.gone, summary.fresh.map(f => f.key))
+    const keys = plan.commitKeys(
+      readBaseline(root)?.obligations ?? [],
+      summary.gone,
+      summary.fresh.map(f => f.key),
+    )
 
     writeFileSync(
       path.join(root, BASELINE),
@@ -337,15 +414,29 @@ export async function callHold(input: {
   }
 
   // the second checker, when asked for: every claim exported and re-checked by Lean 4
-  const lean: HoldLean | undefined = input.lean ? holdLean(root, files) : undefined
+  const lean: HoldLean | undefined = input.lean
+    ? holdLean(root, files)
+    : undefined
 
   // the MVP report, when asked for: one row per law of laws.tree, written under the project's home
-  const page: HoldReport | undefined = input.report ? holdReport({ root, files, summary, found, lean }) : undefined
+  const page: HoldReport | undefined = input.report
+    ? holdReport({ root, files, summary, found, lean })
+    : undefined
 
   // the summary is data the user asked for, on stdout, the same object it always was, with `lean` under --lean and
   // `report` under --report. Without --json the report's page is the data
   if (input.json) {
-    printData(JSON.stringify({ ...summary, ...(lean ? { lean } : {}), ...(page ? { report: page } : {}) }, null, 2) + '\n')
+    printData(
+      JSON.stringify(
+        {
+          ...summary,
+          ...(lean ? { lean } : {}),
+          ...(page ? { report: page } : {}),
+        },
+        null,
+        2,
+      ) + '\n',
+    )
   } else if (page) {
     printData(page.page)
   }
@@ -355,9 +446,18 @@ export async function callHold(input: {
     const placed = found.obligations.get(failure.key)
 
     if (placed) {
-      report({ ...problemOf(placed.diagnostic, root, placed.text), verb: 'prove' })
+      report({
+        ...problemOf(placed.diagnostic, root, placed.text),
+        verb: 'prove',
+      })
     } else {
-      report({ glyph: 'failed', kind: 'problem', verb: 'prove', subject: failure.message, facts: [failure.key] })
+      report({
+        glyph: 'failed',
+        kind: 'problem',
+        verb: 'prove',
+        subject: failure.message,
+        facts: [failure.key],
+      })
     }
   }
 
@@ -373,7 +473,9 @@ export async function callHold(input: {
       count(kernel.declined, 'declined'),
     ],
     // one line per reason, most common first: `An expression the kernel cannot represent: 1`
-    message: plan.reasonLines(kernel.reasons.map(([reason, n]) => ({ reason, count: n }))),
+    message: plan.reasonLines(
+      kernel.reasons.map(([reason, n]) => ({ reason, count: n })),
+    ),
   })
 
   // and why each task checked statement by statement was not lowered to one term: what the lowering does not cover yet
@@ -382,7 +484,12 @@ export async function callHold(input: {
       glyph: 'info',
       verb: 'prove',
       subject: 'Why a task was checked statement by statement',
-      message: plan.reasonLines(kernel.statementwise.map(([reason, n]) => ({ reason, count: n }))),
+      message: plan.reasonLines(
+        kernel.statementwise.map(([reason, n]) => ({
+          reason,
+          count: n,
+        })),
+      ),
     })
   }
 
@@ -394,11 +501,20 @@ export async function callHold(input: {
     counts: [
       count(ledger.native.length, 'impure tasks', 'impure task'),
       count(ledger.axioms.length, 'axioms', 'axiom'),
-      count(ledger.unending.length, 'recursions not shown to end', 'recursion not shown to end'),
+      count(
+        ledger.unending.length,
+        'recursions not shown to end',
+        'recursion not shown to end',
+      ),
       count(ledger.roaming.length, 'marked roam'),
     ],
-    message: ['An impure task reaches native code, is async, or has no body. One assumption: native code handed only scalars reaches no Term value.'],
-    fields: ledger.axioms.length > 0 ? [field('axioms', ledger.axioms.join(', '))] : [],
+    message: [
+      'An impure task reaches native code, is async, or has no body. One assumption: native code handed only scalars reaches no Term value.',
+    ],
+    fields:
+      ledger.axioms.length > 0
+        ? [field('axioms', ledger.axioms.join(', '))]
+        : [],
   })
 
   // the linear prover's refutations and the sum-of-squares provers' Gram matrices are replayed by a separate
@@ -407,8 +523,11 @@ export async function callHold(input: {
   report({
     glyph: summary.uncertified > 0 ? 'warning' : 'info',
     verb: 'certify',
-    subject: 'Every linear refutation and sum-of-squares certificate replayed by the checker',
-    counts: [count(summary.uncertified, 'found by the search and refused')],
+    subject:
+      'Every linear refutation and sum-of-squares certificate replayed by the checker',
+    counts: [
+      count(summary.uncertified, 'found by the search and refused'),
+    ],
     message: ['Sturm and CAD are trusted as written.'],
   })
 
@@ -417,7 +536,9 @@ export async function callHold(input: {
       glyph: 'info',
       verb: 'hold',
       subject: plan.goneSubject(summary.gone.length),
-      fields: [field('next', `term hold --commit, to shrink ${BASELINE}`)],
+      fields: [
+        field('next', `term hold --commit, to shrink ${BASELINE}`),
+      ],
     })
   }
 
@@ -461,20 +582,35 @@ export async function callHold(input: {
     for (const outcome of result.outcomes) {
       if (!outcome.ok && outcome.report) {
         // say which it is: a file the checker refused never reached a backend to disagree
-        const subject = outcome.report.compiles ? 'The backends disagree' : `${path.relative(root, outcome.file)} does not compile`
+        const subject = outcome.report.compiles
+          ? 'The backends disagree'
+          : `${path.relative(root, outcome.file)} does not compile`
 
         // paths relative to the project, as every other item names them: the report's own were absolute (guides:
         // tests/backends, 2026-10-05)
-        const quoted = renderReport(outcome.report).split('\n').map(line => line.split(`${root}${path.sep}`).join(''))
+        const quoted = renderReport(outcome.report)
+          .split('\n')
+          .map(line => line.split(`${root}${path.sep}`).join(''))
 
-        report({ glyph: 'failed', kind: 'problem', verb: 'cross', subject, quote: quoted })
+        report({
+          glyph: 'failed',
+          kind: 'problem',
+          verb: 'cross',
+          subject,
+          quote: quoted,
+        })
       }
     }
 
     crossOk = result.ok
 
     if (crossOk) {
-      report({ glyph: 'done', verb: 'cross', subject: 'Every backend agrees', counts: [count(files.length, 'files', 'file')] })
+      report({
+        glyph: 'done',
+        verb: 'cross',
+        subject: 'Every backend agrees',
+        counts: [count(files.length, 'files', 'file')],
+      })
     }
   }
 
@@ -492,16 +628,35 @@ export async function callHold(input: {
     })
   }
 
-  const gate = plan.gateOf(summary.proven, summary.total, summary.baselined, summary.failed.length, summary.open.length, summary.fresh.length, crossOk, BASELINE)
-  const holds = gate.holds && (lean?.ok ?? true) && (page?.holds ?? true)
+  const gate = plan.gateOf(
+    summary.proven,
+    summary.total,
+    summary.baselined,
+    summary.failed.length,
+    summary.open.length,
+    summary.fresh.length,
+    crossOk,
+    BASELINE,
+  )
+
+  const holds =
+    gate.holds && (lean?.ok ?? true) && (page?.holds ?? true)
+
   const counts = gate.counts
 
   // a gate that passed says so with a ✓ of its own: the items above are `·` summaries, and a run of `·` items closes
   // `·` (section 4), which reads as "nothing was done" for the one command whose whole job is a verdict
   if (gate.holds) {
-    report({ glyph: 'done', verb: 'prove', subject: 'Every obligation is proven or in the baseline', counts: [count(summary.proven, 'proven', '', summary.total)] })
+    report({
+      glyph: 'done',
+      verb: 'prove',
+      subject: 'Every obligation is proven or in the baseline',
+      counts: [count(summary.proven, 'proven', '', summary.total)],
+    })
   }
 
   // THE GATE: exit 0 when everything holds, 1 when anything does not. Exits at once, as it always has
-  process.exit(closeRun({ verdict: holds ? 'Holds' : 'Does not hold', counts }))
+  process.exit(
+    closeRun({ verdict: holds ? 'Holds' : 'Does not hold', counts }),
+  )
 }

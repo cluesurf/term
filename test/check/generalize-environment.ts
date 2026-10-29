@@ -8,11 +8,18 @@
 
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { freshType, newSubstitution } from '@term/make/code/check/substitution'
+import {
+  freshType,
+  newSubstitution,
+} from '@term/make/code/check/substitution'
 import type { Type } from '@term/make/code/compile/node'
 
 type Scheme = { vars: number[]; type: Type }
-type Generalize = (type: Type, env: Map<string, Scheme>, sub: unknown) => number[]
+type Generalize = (
+  type: Type,
+  env: Map<string, Scheme>,
+  sub: unknown,
+) => number[]
 
 let pass = 0
 let fail = 0
@@ -40,33 +47,84 @@ async function main(): Promise<void> {
     const sub = newSubstitution()
     const a = freshType(sub) as Type & { id: number }
     const b = freshType(sub) as Type & { id: number }
-    const env = new Map<string, Scheme>([['found', { vars: [], type: { kind: 'named', name: 'maybe', args: [a] } as Type }]])
-    const given: Type = { kind: 'function', params: [a, b], result: a } as Type
+    const env = new Map<string, Scheme>([
+      [
+        'found',
+        {
+          vars: [],
+          type: { kind: 'named', name: 'maybe', args: [a] } as Type,
+        },
+      ],
+    ])
+    const given: Type = {
+      kind: 'function',
+      params: [a, b],
+      result: a,
+    } as Type
     const out = scheme.generalize(given, env, sub)
 
-    ok('a variable held in a form argument stays free', !out.includes(a.id), `generalized ${JSON.stringify(out)}`)
-    ok('a variable the environment does not hold is generalized', out.includes(b.id), `generalized ${JSON.stringify(out)}`)
+    ok(
+      'a variable held in a form argument stays free',
+      !out.includes(a.id),
+      `generalized ${JSON.stringify(out)}`,
+    )
+    ok(
+      'a variable the environment does not hold is generalized',
+      out.includes(b.id),
+      `generalized ${JSON.stringify(out)}`,
+    )
   }
 
   // deeper: the form's argument is itself a list of a function returning a
   {
     const sub = newSubstitution()
     const a = freshType(sub) as Type & { id: number }
-    const inner: Type = { kind: 'array', element: { kind: 'function', params: [], result: a } } as Type
-    const env = new Map<string, Scheme>([['found', { vars: [], type: { kind: 'named', name: 'pair', args: [{ kind: 'number' }, inner] } as Type }]])
+    const inner: Type = {
+      kind: 'array',
+      element: { kind: 'function', params: [], result: a },
+    } as Type
+    const env = new Map<string, Scheme>([
+      [
+        'found',
+        {
+          vars: [],
+          type: {
+            kind: 'named',
+            name: 'pair',
+            args: [{ kind: 'number' }, inner],
+          } as Type,
+        },
+      ],
+    ])
     const out = scheme.generalize(a, env, sub)
 
-    ok('a variable nested under a form argument stays free', out.length === 0, `generalized ${JSON.stringify(out)}`)
+    ok(
+      'a variable nested under a form argument stays free',
+      out.length === 0,
+      `generalized ${JSON.stringify(out)}`,
+    )
   }
 
   // a variable the binding's own scheme quantifies is not the environment's
   {
     const sub = newSubstitution()
     const a = freshType(sub) as Type & { id: number }
-    const env = new Map<string, Scheme>([['id', { vars: [a.id], type: { kind: 'named', name: 'maybe', args: [a] } as Type }]])
+    const env = new Map<string, Scheme>([
+      [
+        'id',
+        {
+          vars: [a.id],
+          type: { kind: 'named', name: 'maybe', args: [a] } as Type,
+        },
+      ],
+    ])
     const out = scheme.generalize(a, env, sub)
 
-    ok('a quantified variable in the environment does not hold', out.length === 1 && out[0] === a.id, `generalized ${JSON.stringify(out)}`)
+    ok(
+      'a quantified variable in the environment does not hold',
+      out.length === 1 && out[0] === a.id,
+      `generalized ${JSON.stringify(out)}`,
+    )
   }
 
   console.log(`\ngeneralize-environment: ${pass} pass, ${fail} fail`)

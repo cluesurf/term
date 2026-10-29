@@ -24,10 +24,16 @@ function ok(name: string, cond: boolean, info = ''): void {
 const console_ = (takes: string): string =>
   `hook tool\n${takes}  hook run\n    task run\n\ntask run\n  like text\n\n  send back, <z>\n`
 
-type Take = { name: string; fallback?: { form: string; value: unknown } }
+type Take = {
+  name: string
+  fallback?: { form: string; value: unknown }
+}
 
 const takesOf = (text: string): Take[] | string => {
-  const out = compile({ file: '/gate/code/line/base.tree', text }, { roleOf: () => 'call' })
+  const out = compile(
+    { file: '/gate/code/line/base.tree', text },
+    { roleOf: () => 'call' },
+  )
 
   if (!out.ok) {
     return out.diagnostics.map(d => d.message).join(' | ')
@@ -35,7 +41,9 @@ const takesOf = (text: string): Take[] | string => {
 
   const dock = out.program.find(s => s.form === 'dock')
 
-  return dock && 'route' in dock ? (dock.route.takes as Take[]) : 'no route'
+  return dock && 'route' in dock
+    ? (dock.route.takes as Take[])
+    : 'no route'
 }
 
 const takes = takesOf(
@@ -53,17 +61,40 @@ const takes = takesOf(
 if (typeof takes === 'string') {
   ok('the console builds', false, takes)
 } else {
-  const fallback = (name: string) => JSON.stringify(takes.find(take => take.name === name)?.fallback)
+  const fallback = (name: string) =>
+    JSON.stringify(takes.find(take => take.name === name)?.fallback)
 
-  ok('`bind true` keeps its default', fallback('one') === '{"form":"flag","value":true}', fallback('one'))
-  ok('`bind false` keeps its default', fallback('two') === '{"form":"flag","value":false}', fallback('two'))
-  ok('`bind code true` still keeps its default', fallback('three') === '{"form":"flag","value":true}', fallback('three'))
-  ok('`bind <line>` still keeps its default', fallback('four') === '{"form":"text","value":"line"}', fallback('four'))
-  ok('`bind 3000` still keeps its default', fallback('five') === '{"form":"number","value":3000}', fallback('five'))
+  ok(
+    '`bind true` keeps its default',
+    fallback('one') === '{"form":"flag","value":true}',
+    fallback('one'),
+  )
+  ok(
+    '`bind false` keeps its default',
+    fallback('two') === '{"form":"flag","value":false}',
+    fallback('two'),
+  )
+  ok(
+    '`bind code true` still keeps its default',
+    fallback('three') === '{"form":"flag","value":true}',
+    fallback('three'),
+  )
+  ok(
+    '`bind <line>` still keeps its default',
+    fallback('four') === '{"form":"text","value":"line"}',
+    fallback('four'),
+  )
+  ok(
+    '`bind 3000` still keeps its default',
+    fallback('five') === '{"form":"number","value":3000}',
+    fallback('five'),
+  )
 }
 
 // a lone word that is no literal is no default either: refused, never dropped
-const refused = takesOf(console_('  take mode\n    like text\n    bind fast\n'))
+const refused = takesOf(
+  console_('  take mode\n    like text\n    bind fast\n'),
+)
 
 ok(
   'a lone word default is refused, naming the literal spellings',

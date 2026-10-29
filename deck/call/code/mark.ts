@@ -17,7 +17,12 @@ import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { closeRun, field, openRun, report } from '@term/call/code/output'
+import {
+  closeRun,
+  field,
+  openRun,
+  report,
+} from '@term/call/code/output'
 
 const MARK_MANIFEST = /^deck @term\/mark$/m
 
@@ -26,7 +31,10 @@ const MARK_MANIFEST = /^deck @term\/mark$/m
 function isSuite(dir: string): boolean {
   const manifest = join(dir, 'deck.tree')
 
-  return existsSync(manifest) && MARK_MANIFEST.test(readFileSync(manifest, 'utf8'))
+  return (
+    existsSync(manifest) &&
+    MARK_MANIFEST.test(readFileSync(manifest, 'utf8'))
+  )
 }
 
 /**
@@ -59,7 +67,10 @@ export function findSuite(root: string): string | undefined {
 
   const here = dirname(fileURLToPath(import.meta.url))
 
-  return [resolve(here, '../deck/mark'), resolve(here, '../../mark')].find(isSuite)
+  return [
+    resolve(here, '../deck/mark'),
+    resolve(here, '../../mark'),
+  ].find(isSuite)
 }
 
 /**
@@ -70,13 +81,25 @@ export function markArguments(rest: string[]): string[] {
   const listing = rest[0] === 'list' || rest.includes('--list')
 
   if (listing) {
-    return ['list', ...rest.filter((one, index) => one !== '--list' && !(index === 0 && one === 'list'))]
+    return [
+      'list',
+      ...rest.filter(
+        (one, index) =>
+          one !== '--list' && !(index === 0 && one === 'list'),
+      ),
+    ]
   }
 
   return ['run', ...(rest[0] === 'run' ? rest.slice(1) : rest)]
 }
 
-export async function callMark({ root, argv }: { root: string; argv: string[] }): Promise<void> {
+export async function callMark({
+  root,
+  argv,
+}: {
+  root: string
+  argv: string[]
+}): Promise<void> {
   const suite = findSuite(root)
 
   if (!suite) {
@@ -89,9 +112,19 @@ export async function callMark({ root, argv }: { root: string; argv: string[] })
       message: [
         'It is the deck/mark/ directory of the Term repository (deck/term/deck/term/deck/mark in the cluesurf checkout), and this CLI was not started from inside one or installed from one.',
       ],
-      fields: [field('next', 'node <checkout>/deck/term/deck/term/host/line.js mark')],
+      fields: [
+        field(
+          'next',
+          'node <checkout>/deck/term/deck/term/host/line.js mark',
+        ),
+      ],
     })
-    process.exit(closeRun({ verdict: 'Nothing benchmarked', failure: 'environment' }))
+    process.exit(
+      closeRun({
+        verdict: 'Nothing benchmarked',
+        failure: 'environment',
+      }),
+    )
   }
 
   // the whole process argument vector from yargs, sliced after `mark`; the ported console (work/tool-verbs.tree)
@@ -102,11 +135,15 @@ export async function callMark({ root, argv }: { root: string; argv: string[] })
 
   // booted in the suite's directory: `term boot` runs a command-line program in its own cwd, and the runner finds
   // its programs, the compiler and the session directory from there
-  const child = spawn(process.execPath, [cli, 'boot', 'code/line.tree', '--', ...markArguments(rest)], {
-    cwd: suite,
-    stdio: 'inherit',
-    env: { ...process.env, TERM_LINE_NAME: 'term mark' },
-  })
+  const child = spawn(
+    process.execPath,
+    [cli, 'boot', 'code/line.tree', '--', ...markArguments(rest)],
+    {
+      cwd: suite,
+      stdio: 'inherit',
+      env: { ...process.env, TERM_LINE_NAME: 'term mark' },
+    },
+  )
 
   await new Promise<void>(done => {
     child.on('exit', (code, signal) => {

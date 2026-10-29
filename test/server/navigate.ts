@@ -21,18 +21,28 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-type Range = { start: { line: number; character: number }; end: { line: number; character: number } }
+type Range = {
+  start: { line: number; character: number }
+  end: { line: number; character: number }
+}
 type Location = { uri: string; range: Range }
 
 const term = process.cwd()
 const server = new LanguageServer()
 let id = 1
 
-async function openFile(rel: string, text?: string): Promise<{ uri: string; text: string }> {
+async function openFile(
+  rel: string,
+  text?: string,
+): Promise<{ uri: string; text: string }> {
   const file = join(term, rel)
   const uri = pathToFileURL(file).href
   const body = text ?? readFileSync(file, 'utf8')
-  await server.dispatch({ jsonrpc: '2.0', method: 'textDocument/didOpen', params: { textDocument: { uri, text: body, version: 1 } } })
+  await server.dispatch({
+    jsonrpc: '2.0',
+    method: 'textDocument/didOpen',
+    params: { textDocument: { uri, text: body, version: 1 } },
+  })
 
   return { uri, text: body }
 }
@@ -40,23 +50,49 @@ async function openFile(rel: string, text?: string): Promise<{ uri: string; text
 // work/halt.tree as it stood when this suite was written, opened at its own path with the fixture as the editor's
 // buffer: the file on disk is rewritten by the CLI's port lanes (its lines moved to work/small/halting.tree on
 // 2026-10-23), and a suite that reads it from disk measured that churn instead of the server
-const HALT = readFileSync(join(term, 'test/server/fixture/navigate/halt.tree'), 'utf8')
-const openHalt = (): Promise<{ uri: string; text: string }> => openFile('deck/call/code/work/halt.tree', HALT)
+const HALT = readFileSync(
+  join(term, 'test/server/fixture/navigate/halt.tree'),
+  'utf8',
+)
+const openHalt = (): Promise<{ uri: string; text: string }> =>
+  openFile('deck/call/code/work/halt.tree', HALT)
 
 // the position of `needle` on the first line holding `line`, `offset` characters into the needle
-function at(text: string, line: string | number, needle: string, offset = 1): { line: number; character: number } {
+function at(
+  text: string,
+  line: string | number,
+  needle: string,
+  offset = 1,
+): { line: number; character: number } {
   const lines = text.split('\n')
-  const n = typeof line === 'number' ? line : lines.findIndex(l => l.includes(line))
+  const n =
+    typeof line === 'number'
+      ? line
+      : lines.findIndex(l => l.includes(line))
 
   return { line: n, character: lines[n]!.indexOf(needle) + offset }
 }
 
-async function definition(uri: string, position: { line: number; character: number }): Promise<Location | null> {
-  const out = await server.dispatch({ jsonrpc: '2.0', id: id++, method: 'textDocument/definition', params: { textDocument: { uri }, position } })
+async function definition(
+  uri: string,
+  position: { line: number; character: number },
+): Promise<Location | null> {
+  const out = await server.dispatch({
+    jsonrpc: '2.0',
+    id: id++,
+    method: 'textDocument/definition',
+    params: { textDocument: { uri }, position },
+  })
   const answer = out.find(m => m.id === id - 1)!
 
   if (answer.error) {
-    return { uri: `error ${answer.error.message}`, range: { start: { line: -1, character: 0 }, end: { line: -1, character: 0 } } }
+    return {
+      uri: `error ${answer.error.message}`,
+      range: {
+        start: { line: -1, character: 0 },
+        end: { line: -1, character: 0 },
+      },
+    }
   }
 
   return answer.result as Location | null
@@ -68,122 +104,361 @@ function lineAt(location: Location | null): string {
     return ''
   }
 
-  return readFileSync(fileURLToPath(location.uri), 'utf8').split('\n')[location.range.start.line] ?? ''
+  return (
+    readFileSync(fileURLToPath(location.uri), 'utf8').split('\n')[
+      location.range.start.line
+    ] ?? ''
+  )
 }
 
-const ends = (location: Location | null, suffix: string): boolean => !!location && location.uri.endsWith(suffix)
+const ends = (location: Location | null, suffix: string): boolean =>
+  !!location && location.uri.endsWith(suffix)
 
 // ---- 1. names, across files, through load / find ----
 {
   const halt = await openHalt()
 
-  const lean = await definition(halt.uri, at(halt.text, 'log-good <Nothing to stop>', 'log-good'))
-  ok('name: a bare lean call goes to its task in the module that exports it', ends(lean, 'work/tint.tree') && /log-good/.test(lineAt(lean)), JSON.stringify(lean))
+  const lean = await definition(
+    halt.uri,
+    at(halt.text, 'log-good <Nothing to stop>', 'log-good'),
+  )
+  ok(
+    'name: a bare lean call goes to its task in the module that exports it',
+    ends(lean, 'work/tint.tree') && /log-good/.test(lineAt(lean)),
+    JSON.stringify(lean),
+  )
 
-  const form = await definition(halt.uri, at(halt.text, 'make run-ask', 'run-ask'))
-  ok('name: a `make` form goes to its `form` in this file', form?.uri === halt.uri && halt.text.split('\n')[form!.range.start.line]!.startsWith('form run-ask'), JSON.stringify(form))
+  const form = await definition(
+    halt.uri,
+    at(halt.text, 'make run-ask', 'run-ask'),
+  )
+  ok(
+    'name: a `make` form goes to its `form` in this file',
+    form?.uri === halt.uri &&
+      halt.text
+        .split('\n')
+        [form!.range.start.line]!.startsWith('form run-ask'),
+    JSON.stringify(form),
+  )
 
-  const own = await definition(halt.uri, at(halt.text, 'call first-number', 'first-number'))
-  ok('name: a call of a task in this file goes to it', own?.uri === halt.uri && halt.text.split('\n')[own!.range.start.line]!.startsWith('task first-number'), JSON.stringify(own))
+  const own = await definition(
+    halt.uri,
+    at(halt.text, 'call first-number', 'first-number'),
+  )
+  ok(
+    'name: a call of a task in this file goes to it',
+    own?.uri === halt.uri &&
+      halt.text
+        .split('\n')
+        [own!.range.start.line]!.startsWith('task first-number'),
+    JSON.stringify(own),
+  )
 
   const list = await openFile('deck/base/code/list.tree')
   // found by its text, not a line number: list.tree is edited often, and a number drifts in silence
-  const like = await definition(list.uri, at(list.text, '      like ordering', 'ordering'))
-  ok('name: a type after `like` goes to its `form` in the loaded module', ends(like, 'base/code/ordering.tree') && /ordering/.test(lineAt(like)), JSON.stringify(like))
+  const like = await definition(
+    list.uri,
+    at(list.text, '      like ordering', 'ordering'),
+  )
+  ok(
+    'name: a type after `like` goes to its `form` in the loaded module',
+    ends(like, 'base/code/ordering.tree') &&
+      /ordering/.test(lineAt(like)),
+    JSON.stringify(like),
+  )
 
-  const keyword = await definition(halt.uri, at(halt.text, 'call first-number', 'call'))
-  ok('name: `call` itself is no definition of its own (the call it heads is)', keyword === null || /first-number/.test(halt.text.split('\n')[keyword.range.start.line] ?? lineAt(keyword)), JSON.stringify(keyword))
+  const keyword = await definition(
+    halt.uri,
+    at(halt.text, 'call first-number', 'call'),
+  )
+  ok(
+    'name: `call` itself is no definition of its own (the call it heads is)',
+    keyword === null ||
+      /first-number/.test(
+        halt.text.split('\n')[keyword.range.start.line] ??
+          lineAt(keyword),
+      ),
+    JSON.stringify(keyword),
+  )
 }
 
 // ---- 2. the path of a load ----
 {
   const halt = await openHalt()
   // the short form: `@term/call/work/tint` resolves in @term/call's code root first
-  const tint = await definition(halt.uri, at(halt.text, 'load @term/call/work/tint', 'work/tint'))
-  ok('path: a package path opens the module, line 1', ends(tint, 'deck/call/code/work/tint.tree') && tint!.range.start.line === 0, JSON.stringify(tint))
+  const tint = await definition(
+    halt.uri,
+    at(halt.text, 'load @term/call/work/tint', 'work/tint'),
+  )
+  ok(
+    'path: a package path opens the module, line 1',
+    ends(tint, 'deck/call/code/work/tint.tree') &&
+      tint!.range.start.line === 0,
+    JSON.stringify(tint),
+  )
 
-  const text = await definition(halt.uri, at(halt.text, 'load @term/base/text', '@term'))
-  ok('path: a stdlib path opens the stdlib module', ends(text, 'deck/base/code/text.tree'), JSON.stringify(text))
+  const text = await definition(
+    halt.uri,
+    at(halt.text, 'load @term/base/text', '@term'),
+  )
+  ok(
+    'path: a stdlib path opens the stdlib module',
+    ends(text, 'deck/base/code/text.tree'),
+    JSON.stringify(text),
+  )
 
   const time = await openFile('deck/base/code/time.tree')
-  const native = await definition(time.uri, at(time.text, '{platform}/time', '{platform}', 2))
-  ok('path: a `{platform}` path opens the node implementation', ends(native, 'deck/base/code/native/node/time.tree'), JSON.stringify(native))
+  const native = await definition(
+    time.uri,
+    at(time.text, '{platform}/time', '{platform}', 2),
+  )
+  ok(
+    'path: a `{platform}` path opens the node implementation',
+    ends(native, 'deck/base/code/native/node/time.tree'),
+    JSON.stringify(native),
+  )
 
   const risk = await openFile('deck/mill/code/tree/code/task/mine.tree')
-  const relative = await definition(risk.uri, at(risk.text, 'load ./risk/mine', './risk'))
-  ok('path: a relative path opens the file beside it', ends(relative, 'deck/mill/code/tree/code/task/risk/mine.tree') && relative!.range.start.line === 0, JSON.stringify(relative))
+  const relative = await definition(
+    risk.uri,
+    at(risk.text, 'load ./risk/mine', './risk'),
+  )
+  ok(
+    'path: a relative path opens the file beside it',
+    ends(relative, 'deck/mill/code/tree/code/task/risk/mine.tree') &&
+      relative!.range.start.line === 0,
+    JSON.stringify(relative),
+  )
 }
 
 // ---- 3. a `find` under a load ----
 {
   const halt = await openHalt()
-  const found = await definition(halt.uri, at(halt.text, '  find log-step', 'log-step'))
-  ok('find: goes to the name in the module the load opens', ends(found, 'work/tint.tree') && /log-step/.test(lineAt(found)), JSON.stringify(found))
+  const found = await definition(
+    halt.uri,
+    at(halt.text, '  find log-step', 'log-step'),
+  )
+  ok(
+    'find: goes to the name in the module the load opens',
+    ends(found, 'work/tint.tree') && /log-step/.test(lineAt(found)),
+    JSON.stringify(found),
+  )
 
-  const split = await definition(halt.uri, at(halt.text, '  find split', 'split'))
-  ok('find: in a stdlib module', ends(split, 'deck/base/code/text.tree') && /split/.test(lineAt(split)), JSON.stringify(split))
+  const split = await definition(
+    halt.uri,
+    at(halt.text, '  find split', 'split'),
+  )
+  ok(
+    'find: in a stdlib module',
+    ends(split, 'deck/base/code/text.tree') &&
+      /split/.test(lineAt(split)),
+    JSON.stringify(split),
+  )
 }
 
 // ---- 4. a path that does not resolve ----
 {
-  const broken = 'load @term/base/code/no-such-module\n  find nothing-at-all\n\nload ./not-here\n\ntask f\n  like number\n  send back, code 1\n'
-  const doc = await openFile('deck/base/code/zz-navigate-probe.tree', broken)
-  const missing = await definition(doc.uri, at(broken, 'no-such-module', 'no-such'))
-  ok('unresolved: a package path that names nothing answers null', missing === null, JSON.stringify(missing))
+  const broken =
+    'load @term/base/code/no-such-module\n  find nothing-at-all\n\nload ./not-here\n\ntask f\n  like number\n  send back, code 1\n'
+  const doc = await openFile(
+    'deck/base/code/zz-navigate-probe.tree',
+    broken,
+  )
+  const missing = await definition(
+    doc.uri,
+    at(broken, 'no-such-module', 'no-such'),
+  )
+  ok(
+    'unresolved: a package path that names nothing answers null',
+    missing === null,
+    JSON.stringify(missing),
+  )
 
-  const relative = await definition(doc.uri, at(broken, 'load ./not-here', './not'))
-  ok('unresolved: a relative path that names nothing answers null', relative === null, JSON.stringify(relative))
+  const relative = await definition(
+    doc.uri,
+    at(broken, 'load ./not-here', './not'),
+  )
+  ok(
+    'unresolved: a relative path that names nothing answers null',
+    relative === null,
+    JSON.stringify(relative),
+  )
 
-  const find = await definition(doc.uri, at(broken, 'find nothing-at-all', 'nothing'))
-  ok('unresolved: a `find` under it answers null, never a same-named word elsewhere', find === null, JSON.stringify(find))
+  const find = await definition(
+    doc.uri,
+    at(broken, 'find nothing-at-all', 'nothing'),
+  )
+  ok(
+    'unresolved: a `find` under it answers null, never a same-named word elsewhere',
+    find === null,
+    JSON.stringify(find),
+  )
 
-  const links = (await server.dispatch({ jsonrpc: '2.0', id: id++, method: 'textDocument/documentLink', params: { textDocument: { uri: doc.uri } } }))[0]!.result as unknown[]
-  ok('unresolved: no link for a path that names nothing', Array.isArray(links) && links.length === 0, JSON.stringify(links))
+  const links = (
+    await server.dispatch({
+      jsonrpc: '2.0',
+      id: id++,
+      method: 'textDocument/documentLink',
+      params: { textDocument: { uri: doc.uri } },
+    })
+  )[0]!.result as unknown[]
+  ok(
+    'unresolved: no link for a path that names nothing',
+    Array.isArray(links) && links.length === 0,
+    JSON.stringify(links),
+  )
 }
 
 // ---- 5. mill definitions and manifests ----
 {
   const mine = await openFile('deck/mill/code/tree/code/fork/mine.tree')
   // the short form: `@term/mill/<path>` resolves in the mill's code root, deck/mill/code, first
-  const path = await definition(mine.uri, at(mine.text, 'load @term/mill/tree/code/form/link/mine', 'form/link'))
-  ok('mill: a grammar `load` path opens the grammar file', ends(path, 'deck/mill/code/tree/code/form/link/mine.tree') && path!.range.start.line === 0, JSON.stringify(path))
+  const path = await definition(
+    mine.uri,
+    at(
+      mine.text,
+      'load @term/mill/tree/code/form/link/mine',
+      'form/link',
+    ),
+  )
+  ok(
+    'mill: a grammar `load` path opens the grammar file',
+    ends(path, 'deck/mill/code/tree/code/form/link/mine.tree') &&
+      path!.range.start.line === 0,
+    JSON.stringify(path),
+  )
 
-  const find = await definition(mine.uri, at(mine.text, '  find link', 'link'))
-  ok('mill: a `find` goes to the rule in that grammar file', ends(find, 'form/link/mine.tree') && lineAt(find).split(' ').slice(0, 2).join(' ') === 'mine link', JSON.stringify(find))
+  const find = await definition(
+    mine.uri,
+    at(mine.text, '  find link', 'link'),
+  )
+  ok(
+    'mill: a `find` goes to the rule in that grammar file',
+    ends(find, 'form/link/mine.tree') &&
+      lineAt(find).split(' ').slice(0, 2).join(' ') === 'mine link',
+    JSON.stringify(find),
+  )
 
-  const rule = await definition(mine.uri, at(mine.text, 'mine form, like fork-test', 'fork-test'))
-  ok('mill: a rule named after `like` goes to its `mine` rule in this file', rule?.uri === mine.uri && mine.text.split('\n')[rule!.range.start.line]!.startsWith('mine fork-test'), JSON.stringify(rule))
+  const rule = await definition(
+    mine.uri,
+    at(mine.text, 'mine form, like fork-test', 'fork-test'),
+  )
+  ok(
+    'mill: a rule named after `like` goes to its `mine` rule in this file',
+    rule?.uri === mine.uri &&
+      mine.text
+        .split('\n')
+        [rule!.range.start.line]!.startsWith('mine fork-test'),
+    JSON.stringify(rule),
+  )
 
-  const seed = await definition(mine.uri, at(mine.text, 'mine form, like seed', 'seed'))
-  ok('mill: a rule a loaded grammar file declares goes there', ends(seed, 'code/seed/mine.tree') && lineAt(seed).split(' ').slice(0, 2).join(' ') === 'mine seed', JSON.stringify(seed))
+  const seed = await definition(
+    mine.uri,
+    at(mine.text, 'mine form, like seed', 'seed'),
+  )
+  ok(
+    'mill: a rule a loaded grammar file declares goes there',
+    ends(seed, 'code/seed/mine.tree') &&
+      lineAt(seed).split(' ').slice(0, 2).join(' ') === 'mine seed',
+    JSON.stringify(seed),
+  )
 
   const base = await openFile('deck/mill/code/tree/code/fork/base.tree')
-  const nested = await definition(base.uri, at(base.text, 'bind mine, load ./mine', './mine'))
-  ok('mill: the nested `load ./mine` of a dialect\'s base.tree opens its mine.tree', ends(nested, 'code/fork/mine.tree'), JSON.stringify(nested))
+  const nested = await definition(
+    base.uri,
+    at(base.text, 'bind mine, load ./mine', './mine'),
+  )
+  ok(
+    "mill: the nested `load ./mine` of a dialect's base.tree opens its mine.tree",
+    ends(nested, 'code/fork/mine.tree'),
+    JSON.stringify(nested),
+  )
 
-  const links = (await server.dispatch({ jsonrpc: '2.0', id: id++, method: 'textDocument/documentLink', params: { textDocument: { uri: base.uri } } }))[0]!.result as { target: string }[]
-  ok('mill: base.tree links both its grammar files', links.length === 2 && links.some(l => l.target.endsWith('fork/mine.tree')) && links.some(l => l.target.endsWith('fork/mint.tree')), JSON.stringify(links))
+  const links = (
+    await server.dispatch({
+      jsonrpc: '2.0',
+      id: id++,
+      method: 'textDocument/documentLink',
+      params: { textDocument: { uri: base.uri } },
+    })
+  )[0]!.result as { target: string }[]
+  ok(
+    'mill: base.tree links both its grammar files',
+    links.length === 2 &&
+      links.some(l => l.target.endsWith('fork/mine.tree')) &&
+      links.some(l => l.target.endsWith('fork/mint.tree')),
+    JSON.stringify(links),
+  )
 
   // `code ./code` is the default and no manifest in the tree writes it, so the buffer says it
-  const manifest = await openFile('deck/base/deck.tree', 'deck @term/base\n  mark <0.0.16>\n  code ./code\n  lock mit\n')
-  const code = await definition(manifest.uri, at(manifest.text, 'code ./code', './code'))
-  ok('manifest: `code ./code` opens the code root\'s entry file', !!code && code.uri.startsWith(pathToFileURL(join(term, 'deck/base/code')).href) && code.range.start.line === 0, JSON.stringify(code))
+  const manifest = await openFile(
+    'deck/base/deck.tree',
+    'deck @term/base\n  mark <0.0.16>\n  code ./code\n  lock mit\n',
+  )
+  const code = await definition(
+    manifest.uri,
+    at(manifest.text, 'code ./code', './code'),
+  )
+  ok(
+    "manifest: `code ./code` opens the code root's entry file",
+    !!code &&
+      code.uri.startsWith(
+        pathToFileURL(join(term, 'deck/base/code')).href,
+      ) &&
+      code.range.start.line === 0,
+    JSON.stringify(code),
+  )
 
-  const version = await definition(manifest.uri, at(manifest.text, 'mark <0.0.16>', '0.0.16'))
-  ok('manifest: the version `mark <0.0.16>` names no file', version === null, JSON.stringify(version))
+  const version = await definition(
+    manifest.uri,
+    at(manifest.text, 'mark <0.0.16>', '0.0.16'),
+  )
+  ok(
+    'manifest: the version `mark <0.0.16>` names no file',
+    version === null,
+    JSON.stringify(version),
+  )
 
   const site = await openFile('deck/site/deck.tree')
-  const link = await definition(site.uri, at(site.text, 'link @term/base', '@term/base'))
-  ok('manifest: `link @term/base` opens the package\'s entry file', !!link && link.uri.startsWith(pathToFileURL(join(term, 'deck/base')).href), JSON.stringify(link))
+  const link = await definition(
+    site.uri,
+    at(site.text, 'link @term/base', '@term/base'),
+  )
+  ok(
+    "manifest: `link @term/base` opens the package's entry file",
+    !!link &&
+      link.uri.startsWith(pathToFileURL(join(term, 'deck/base')).href),
+    JSON.stringify(link),
+  )
 
-  const siteLinks = (await server.dispatch({ jsonrpc: '2.0', id: id++, method: 'textDocument/documentLink', params: { textDocument: { uri: site.uri } } }))[0]!.result as { target: string }[]
-  ok('manifest: its links resolve where the compiler resolves them', siteLinks.some(l => l.target.startsWith(pathToFileURL(join(term, 'deck/base')).href)), JSON.stringify(siteLinks))
+  const siteLinks = (
+    await server.dispatch({
+      jsonrpc: '2.0',
+      id: id++,
+      method: 'textDocument/documentLink',
+      params: { textDocument: { uri: site.uri } },
+    })
+  )[0]!.result as { target: string }[]
+  ok(
+    'manifest: its links resolve where the compiler resolves them',
+    siteLinks.some(l =>
+      l.target.startsWith(pathToFileURL(join(term, 'deck/base')).href),
+    ),
+    JSON.stringify(siteLinks),
+  )
 }
 
 // ---- links in a code file ----
 {
   const halt = await openHalt()
-  const links = (await server.dispatch({ jsonrpc: '2.0', id: id++, method: 'textDocument/documentLink', params: { textDocument: { uri: halt.uri } } }))[0]!.result as { range: Range; target: string }[]
+  const links = (
+    await server.dispatch({
+      jsonrpc: '2.0',
+      id: id++,
+      method: 'textDocument/documentLink',
+      params: { textDocument: { uri: halt.uri } },
+    })
+  )[0]!.result as { range: Range; target: string }[]
   const first = halt.text.split('\n')[0]!
   ok(
     'links: every resolvable `load` path is a link, ranged on the path alone',

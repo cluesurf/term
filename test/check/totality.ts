@@ -46,15 +46,18 @@ function record(name: string, fieldType: Type): Program {
 function frontEnd(text: string): Program {
   const parsed = parse({ file: 't.tree', text })
 
-  if (!parsed.ok) {throw new Error('parse failed')}
+  if (!parsed.ok) {
+    throw new Error('parse failed')
+  }
 
   const built = mill(parsed.tree, 't.tree')
 
-  if (!built.ok)
-    {throw new Error(
+  if (!built.ok) {
+    throw new Error(
       'mill failed: ' +
         built.diagnostics.map(d => d.message).join('; '),
-    )}
+    )
+  }
 
   resolve(built.program, 't.tree')
   check(built.program, 't.tree')
@@ -223,7 +226,10 @@ function main(): void {
     JSON.stringify(mutual.warnings.map(d => d.message)),
   )
 
-  const natural = checkTotality(frontEnd(countDown('natural-number', 0)), 't.tree')
+  const natural = checkTotality(
+    frontEnd(countDown('natural-number', 0)),
+    't.tree',
+  )
   ok(
     'a natural number past n == 0 descends by n - 1',
     natural.warnings.every(d => d.name !== 'non-terminating'),
@@ -231,7 +237,10 @@ function main(): void {
   )
 
   // n != 5 beside n >= 0 is not n >= 1: from 0 the recursion runs down forever
-  const pastFive = checkTotality(frontEnd(countDown('natural-number', 5)), 't.tree')
+  const pastFive = checkTotality(
+    frontEnd(countDown('natural-number', 5)),
+    't.tree',
+  )
   ok(
     'but past n == 5 it does not: n = 0 is not 5 and runs down',
     pastFive.warnings.some(d => d.name === 'non-terminating'),
@@ -239,7 +248,10 @@ function main(): void {
   )
 
   // and an integer past n == 0 may be negative
-  const integer = checkTotality(frontEnd(countDown('number', 0)), 't.tree')
+  const integer = checkTotality(
+    frontEnd(countDown('number', 0)),
+    't.tree',
+  )
   ok(
     'nor does an integer past n == 0, which may be negative',
     integer.warnings.some(d => d.name === 'non-terminating'),

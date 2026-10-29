@@ -55,24 +55,50 @@ task hush
       back one
 `
 
-const built = compile({ file: 'arm-write.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!), library: true, leanOf: () => true } as never)
+const built = compile({ file: 'arm-write.tree', text }, {
+  resolve: withNativeEnv('node', stdlibResolver()!),
+  library: true,
+  leanOf: () => true,
+} as never)
 
 if (!built.ok) {
-  ok('a write to the matched case builds', false, built.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'a write to the matched case builds',
+    false,
+    built.diagnostics.map(d => d.message).join(' | '),
+  )
 } else {
   ok('a write to the matched case builds', true)
   const at = built.typescript.indexOf('function hush')
   const body = built.typescript.slice(at, at + 300)
-  ok('the subject is matched by its own name, so the write is narrowed', /if \(one\.form === "call"\)/.test(body) && !/__at/.test(body), body)
+  ok(
+    'the subject is matched by its own name, so the write is narrowed',
+    /if \(one\.form === "call"\)/.test(body) && !/__at/.test(body),
+    body,
+  )
 
   const dir = mkdtempSync(join(tmpdir(), 'term-arm-write-'))
   const file = join(dir, 'module.mjs')
-  writeFileSync(file, transformSync(built.typescript, { loader: 'ts', format: 'esm' }).code)
-  const mod = (await import(pathToFileURL(file).href)) as Record<string, (...a: unknown[]) => any>
+  writeFileSync(
+    file,
+    transformSync(built.typescript, { loader: 'ts', format: 'esm' })
+      .code,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as Record<
+    string,
+    (...a: unknown[]) => any
+  >
 
   const called = mod.hush!({ form: 'call', name: 'go' })
-  ok('the fields of the case are written', called.quiet === true && called.name === 'go!', JSON.stringify(called))
-  ok('in the other case too', mod.hush!({ form: 'dot', size: 2 }).size === 3)
+  ok(
+    'the fields of the case are written',
+    called.quiet === true && called.name === 'go!',
+    JSON.stringify(called),
+  )
+  ok(
+    'in the other case too',
+    mod.hush!({ form: 'dot', size: 2 }).size === 3,
+  )
 }
 
 // an arm that declares a name its case has as a field (`save names, make list` under `case call`, beside the call's own
@@ -99,16 +125,34 @@ task fresh-names
     case other
       back 0
 `
-  const built = compile({ file: 'arm-own.tree', text: own }, { resolve: withNativeEnv('node', stdlibResolver()!), library: true, leanOf: () => true } as never)
+  const built = compile({ file: 'arm-own.tree', text: own }, {
+    resolve: withNativeEnv('node', stdlibResolver()!),
+    library: true,
+    leanOf: () => true,
+  } as never)
 
   if (!built.ok) {
-    ok('an arm declaring a name its case has builds', false, built.diagnostics.map(d => d.message).join(' | '))
+    ok(
+      'an arm declaring a name its case has builds',
+      false,
+      built.diagnostics.map(d => d.message).join(' | '),
+    )
   } else {
     const dir = mkdtempSync(join(tmpdir(), 'term-arm-own-'))
     const file = join(dir, 'module.mjs')
-    writeFileSync(file, transformSync(built.typescript, { loader: 'ts', format: 'esm' }).code)
-    const mod = (await import(pathToFileURL(file).href)) as Record<string, (...a: unknown[]) => any>
-    ok('an arm declaring a name its case has loads, and reads its own', mod.freshNames!({ form: 'call', names: ['x'] }) === 2)
+    writeFileSync(
+      file,
+      transformSync(built.typescript, { loader: 'ts', format: 'esm' })
+        .code,
+    )
+    const mod = (await import(pathToFileURL(file).href)) as Record<
+      string,
+      (...a: unknown[]) => any
+    >
+    ok(
+      'an arm declaring a name its case has loads, and reads its own',
+      mod.freshNames!({ form: 'call', names: ['x'] }) === 2,
+    )
   }
 }
 

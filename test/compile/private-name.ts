@@ -22,15 +22,28 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 // `@app/<path>` resolves to `/pkg/<path>.tree`, so a file under `/pkg/test/` is a test of the package
-function build(files: Record<string, string>, main: string, file = '/pkg/code/main.tree') {
+function build(
+  files: Record<string, string>,
+  main: string,
+  file = '/pkg/code/main.tree',
+) {
   const resolve = (p: string): Source | undefined =>
-    files[p] !== undefined ? { file: `/pkg/${p.slice('@app/'.length)}.tree`, text: files[p]! } : undefined
+    files[p] !== undefined
+      ? {
+          file: `/pkg/${p.slice('@app/'.length)}.tree`,
+          text: files[p]!,
+        }
+      : undefined
 
   return compile({ file, text: main }, { resolve })
 }
 
 const said = (result: ReturnType<typeof build>): string =>
-  result.ok ? result.typescript : result.diagnostics.map(d => `${d.name}: ${d.message} (${d.hint ?? ''})`).join(' | ')
+  result.ok
+    ? result.typescript
+    : result.diagnostics
+        .map(d => `${d.name}: ${d.message} (${d.hint ?? ''})`)
+        .join(' | ')
 
 const refusedAsPrivate = (result: ReturnType<typeof build>): boolean =>
   !result.ok && result.diagnostics.some(d => d.name === 'private-name')
@@ -52,9 +65,20 @@ task shout
 
 {
   // the defining file uses its own private task
-  const result = build({}, `${A}\ntask run\n  like text\n  send back\n    call helper\n      text <hi>\n`)
-  ok('a private task called from its own file compiles', result.ok, said(result))
-  ok('and emits no warning for `mark private`', result.ok && !result.warnings.some(w => w.name === 'note-private'), said(result))
+  const result = build(
+    {},
+    `${A}\ntask run\n  like text\n  send back\n    call helper\n      text <hi>\n`,
+  )
+  ok(
+    'a private task called from its own file compiles',
+    result.ok,
+    said(result),
+  )
+  ok(
+    'and emits no warning for `mark private`',
+    result.ok && !result.warnings.some(w => w.name === 'note-private'),
+    said(result),
+  )
 }
 
 {
@@ -62,17 +86,37 @@ task shout
   const main = `load @app/a\n  find shout\n\ntask run\n  like text\n  send back\n    call helper\n      text <hi>\n`
   const result = build({ '@app/a': A }, main)
   const message = said(result)
-  ok('a private task called from another file is refused', refusedAsPrivate(result), message)
-  ok('the refusal names the defining file', message.includes('in /pkg/a.tree'), message)
-  ok('the hint says how to fix it', message.includes('remove `mark private` from helper in'), message)
-  ok('the refusal points at the calling file', !result.ok && result.diagnostics[0]!.file === '/pkg/code/main.tree', message)
+  ok(
+    'a private task called from another file is refused',
+    refusedAsPrivate(result),
+    message,
+  )
+  ok(
+    'the refusal names the defining file',
+    message.includes('in /pkg/a.tree'),
+    message,
+  )
+  ok(
+    'the hint says how to fix it',
+    message.includes('remove `mark private` from helper in'),
+    message,
+  )
+  ok(
+    'the refusal points at the calling file',
+    !result.ok && result.diagnostics[0]!.file === '/pkg/code/main.tree',
+    message,
+  )
 }
 
 {
   // another file passes the private task as a value
   const main = `load @app/a\n  find shout\n\ntask run\n  like text\n  save f, read helper\n  send back, text <x>\n`
   const result = build({ '@app/a': A }, main)
-  ok('a private task referenced as a value from another file is refused', refusedAsPrivate(result), said(result))
+  ok(
+    'a private task referenced as a value from another file is refused',
+    refusedAsPrivate(result),
+    said(result),
+  )
 }
 
 {
@@ -80,8 +124,16 @@ task shout
   const main = `load @app/a\n  find helper\n\ntask run\n  like text\n  send back, text <x>\n`
   const result = build({ '@app/a': A }, main)
   const message = said(result)
-  ok('a `find` of a private task is refused', refusedAsPrivate(result), message)
-  ok('the find refusal points at the `find` line', !result.ok && result.diagnostics[0]!.span.start.line === 1, message)
+  ok(
+    'a `find` of a private task is refused',
+    refusedAsPrivate(result),
+    message,
+  )
+  ok(
+    'the find refusal points at the `find` line',
+    !result.ok && result.diagnostics[0]!.span.start.line === 1,
+    message,
+  )
 }
 
 {
@@ -106,7 +158,11 @@ task loud
       text <hi>
 `
   const result = build({ '@app/a': A }, main)
-  ok('a same-named parameter or local in another file is not refused', result.ok, said(result))
+  ok(
+    'a same-named parameter or local in another file is not refused',
+    result.ok,
+    said(result),
+  )
 }
 
 {
@@ -114,32 +170,65 @@ task loud
   const b = `task helper\n  take x, like number\n  like text\n  send back, text <n>\n`
   const main = `load @app/a\n  find shout\n\nload @app/b\n  find helper\n\ntask run\n  like text\n  send back\n    call helper\n      code 3\n`
   const result = build({ '@app/a': A, '@app/b': b }, main)
-  ok('a call that may bind to a public overload is not refused', result.ok, said(result))
+  ok(
+    'a call that may bind to a public overload is not refused',
+    result.ok,
+    said(result),
+  )
 }
 
 {
   // a test of the package may use the package's private task
   const main = `load @app/code/a\n  find shout\n\ntask check-helper\n  like text\n  send back\n    call helper\n      text <hi>\n`
   const result = build({ '@app/code/a': A }, main, '/pkg/test/a.tree')
-  ok("a file under the package's test/ may call its private task", result.ok, said(result))
+  ok(
+    "a file under the package's test/ may call its private task",
+    result.ok,
+    said(result),
+  )
 
   // the same file outside test/ may not
-  const outside = build({ '@app/code/a': A }, main, '/pkg/code/check.tree')
-  ok('the same call from outside test/ is refused', refusedAsPrivate(outside), said(outside))
+  const outside = build(
+    { '@app/code/a': A },
+    main,
+    '/pkg/code/check.tree',
+  )
+  ok(
+    'the same call from outside test/ is refused',
+    refusedAsPrivate(outside),
+    said(outside),
+  )
 }
 
 {
   // `note private`: the old spelling, honored and warned about
   const old = A.replace('mark private', 'note private')
-  const own = build({}, `${old}\ntask run\n  like text\n  send back\n    call helper\n      text <hi>\n`)
+  const own = build(
+    {},
+    `${old}\ntask run\n  like text\n  send back\n    call helper\n      text <hi>\n`,
+  )
   ok('`note private` still compiles in its own file', own.ok, said(own))
-  const warning = own.ok ? own.warnings.find(w => w.name === 'note-private') : undefined
-  ok('`note private` warns as note-private', warning !== undefined && warning.severity === 'warning', said(own))
-  ok('the warning says to write `mark private`', (warning?.hint ?? '').includes('`mark private`'), warning?.hint ?? '')
+  const warning = own.ok
+    ? own.warnings.find(w => w.name === 'note-private')
+    : undefined
+  ok(
+    '`note private` warns as note-private',
+    warning !== undefined && warning.severity === 'warning',
+    said(own),
+  )
+  ok(
+    'the warning says to write `mark private`',
+    (warning?.hint ?? '').includes('`mark private`'),
+    warning?.hint ?? '',
+  )
 
   const main = `load @app/a\n  find shout\n\ntask run\n  like text\n  send back\n    call helper\n      text <hi>\n`
   const result = build({ '@app/a': old }, main)
-  ok('`note private` is still enforced across files', refusedAsPrivate(result), said(result))
+  ok(
+    '`note private` is still enforced across files',
+    refusedAsPrivate(result),
+    said(result),
+  )
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

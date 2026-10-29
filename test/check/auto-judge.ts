@@ -63,14 +63,18 @@ function auto(hyps: Hyp[], goal: Term): Term | null {
 
   // 1. assumption: a hypothesis whose type is the goal.
   for (const h of hyps) {
-    if (holds(context, kc(h.name), goal)) {return kc(h.name)}
+    if (holds(context, kc(h.name), goal)) {
+      return kc(h.name)
+    }
   }
 
   // 2. reflexivity: an Id goal whose two sides are convertible.
   if (goal.tag === 'id') {
     const candidate = refl(goal.type, goal.left)
 
-    if (holds(context, candidate, goal)) {return candidate}
+    if (holds(context, candidate, goal)) {
+      return candidate
+    }
   }
 
   // 3. one-step application: a function hypothesis applied to another hypothesis.
@@ -78,7 +82,9 @@ function auto(hyps: Hyp[], goal: Term): Term | null {
     for (const x of hyps) {
       const candidate = app(kc(f.name), kc(x.name))
 
-      if (holds(context, candidate, goal)) {return candidate}
+      if (holds(context, candidate, goal)) {
+        return candidate
+      }
     }
   }
 

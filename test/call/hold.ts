@@ -79,7 +79,11 @@ const roots: string[] = []
       summary.fresh.length === 0 &&
       summary.total === 1 &&
       summary.proven === 1,
-    JSON.stringify({ ...summary, ledger: undefined, kernel: undefined }),
+    JSON.stringify({
+      ...summary,
+      ledger: undefined,
+      kernel: undefined,
+    }),
   )
 }
 
@@ -115,7 +119,10 @@ const roots: string[] = []
   ok(
     'the same obligation named in hold.json holds',
     after.fresh.length === 0 && after.baselined === 1,
-    JSON.stringify({ fresh: after.fresh.map(f => f.key), baselined: after.baselined }),
+    JSON.stringify({
+      fresh: after.fresh.map(f => f.key),
+      baselined: after.baselined,
+    }),
   )
 
   // the key names the file, the task and the kind, never a line, so an edit above the task does not churn it
@@ -181,7 +188,8 @@ const roots: string[] = []
   const summary = hold(root)
   ok(
     'a `mark roam` task is counted as roaming and not as impure',
-    summary.ledger.roaming.length === 1 && summary.ledger.native.length === 0,
+    summary.ledger.roaming.length === 1 &&
+      summary.ledger.native.length === 0,
     JSON.stringify(summary.ledger),
   )
 }

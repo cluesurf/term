@@ -40,10 +40,30 @@ const SOURCE = 'test/item/parity.tree'
 const dir = runDir('term-item-parity-')
 
 // one program for one backend, emitted by the CLI from the package, so its role (lean) applies
-function emit(target: string, out: string): { ok: boolean; why: string } {
-  const run = spawnSync(process.execPath, [CLI, 'make', '--emit', target, SOURCE, '--out', out, '--log', 'json'], { cwd: PACKAGE, encoding: 'utf8' })
+function emit(
+  target: string,
+  out: string,
+): { ok: boolean; why: string } {
+  const run = spawnSync(
+    process.execPath,
+    [
+      CLI,
+      'make',
+      '--emit',
+      target,
+      SOURCE,
+      '--out',
+      out,
+      '--log',
+      'json',
+    ],
+    { cwd: PACKAGE, encoding: 'utf8' },
+  )
 
-  return { ok: run.status === 0, why: `${run.stdout}${run.stderr}`.slice(0, 1200) }
+  return {
+    ok: run.status === 0,
+    why: `${run.stdout}${run.stderr}`.slice(0, 1200),
+  }
 }
 
 if (!have('rustc')) {
@@ -62,30 +82,61 @@ ok('the program emits for rust', rust.ok, rust.why)
 if (node.ok && rust.ok) {
   // each backend's entry: the program declares `draw-samples` and the harness prints what it answers
   const js = join(dir, 'parity.mjs')
-  writeFileSync(js, `${transformSync(readFileSync(ts, 'utf8'), { loader: 'ts', format: 'esm' }).code}\nprocess.stdout.write(drawSamples())\n`)
-  const fromNode = spawnSync(process.execPath, [js], { encoding: 'utf8' })
-  writeFileSync(rs, `${readFileSync(rs, 'utf8')}\nfn main() { print!("{}", draw_samples()); }\n`)
+  writeFileSync(
+    js,
+    `${transformSync(readFileSync(ts, 'utf8'), { loader: 'ts', format: 'esm' }).code}\nprocess.stdout.write(drawSamples())\n`,
+  )
+  const fromNode = spawnSync(process.execPath, [js], {
+    encoding: 'utf8',
+  })
+  writeFileSync(
+    rs,
+    `${readFileSync(rs, 'utf8')}\nfn main() { print!("{}", draw_samples()); }\n`,
+  )
 
   const binary = join(dir, 'parity')
-  const built = spawnSync('rustc', ['--edition', '2021', '-O', '-A', 'warnings', '-o', binary, rs], { encoding: 'utf8' })
-  ok('the program builds with rustc', built.status === 0, built.stderr.slice(0, 1200))
+  const built = spawnSync(
+    'rustc',
+    ['--edition', '2021', '-O', '-A', 'warnings', '-o', binary, rs],
+    { encoding: 'utf8' },
+  )
+  ok(
+    'the program builds with rustc',
+    built.status === 0,
+    built.stderr.slice(0, 1200),
+  )
 
   if (built.status === 0) {
     const fromRust = spawnSync(binary, [], { encoding: 'utf8' })
     const a = fromNode.stdout.split('\n')
     const b = fromRust.stdout.split('\n')
-    ok('node drew the samples', fromNode.status === 0 && a.length > 40, fromNode.stderr.slice(0, 600))
-    ok('rust drew the samples', fromRust.status === 0 && b.length > 40, fromRust.stderr.slice(0, 600))
+    ok(
+      'node drew the samples',
+      fromNode.status === 0 && a.length > 40,
+      fromNode.stderr.slice(0, 600),
+    )
+    ok(
+      'rust drew the samples',
+      fromRust.status === 0 && b.length > 40,
+      fromRust.stderr.slice(0, 600),
+    )
 
     const differ = a
-      .map((line, at) => ({ at, node: line, rust: b[at] ?? '<missing>' }))
+      .map((line, at) => ({
+        at,
+        node: line,
+        rust: b[at] ?? '<missing>',
+      }))
       .filter(one => one.node !== one.rust)
     ok(
       `every line the same on both (${a.length} lines)`,
       differ.length === 0 && a.length === b.length,
       differ
         .slice(0, 6)
-        .map(one => `  line ${one.at}\n    node |${one.node}|\n    rust |${one.rust}|`)
+        .map(
+          one =>
+            `  line ${one.at}\n    node |${one.node}|\n    rust |${one.rust}|`,
+        )
         .join('\n'),
     )
   }

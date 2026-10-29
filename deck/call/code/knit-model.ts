@@ -11,12 +11,20 @@ import type { Usage } from '@term/call/code/knit-plan'
 // one content block as the API returns it and takes it back: passed back UNCHANGED, thinking blocks included
 export type Block = { type: string; [field: string]: unknown }
 
-export type Message = { role: 'user' | 'assistant'; content: string | Block[] }
+export type Message = {
+  role: 'user' | 'assistant'
+  content: string | Block[]
+}
 
 export type Tool = {
   name: string
   description: string
-  input_schema: { type: 'object'; properties: Record<string, unknown>; required: string[]; additionalProperties: false }
+  input_schema: {
+    type: 'object'
+    properties: Record<string, unknown>
+    required: string[]
+    additionalProperties: false
+  }
 }
 
 export type Turn = {
@@ -35,7 +43,11 @@ export type Turn = {
 // speaker and no network
 export type Speaker = {
   model: string
-  ask(input: { system: string; tools: Tool[]; messages: Message[] }): Promise<Turn>
+  ask(input: {
+    system: string
+    tools: Tool[]
+    messages: Message[]
+  }): Promise<Turn>
 }
 
 export class KnitSetup extends Error {
@@ -58,12 +70,23 @@ export class KnitRequest extends Error {
 }
 
 // the models the server-side refusal fallback takes (claude-api skill: on by default for these)
-const FALLBACK = new Set(['claude-opus-5-5', 'claude-opus-5', 'claude-fable-5-1'])
+const FALLBACK = new Set([
+  'claude-opus-5-5',
+  'claude-opus-5',
+  'claude-fable-5-1',
+])
 
 // the request body for one turn: adaptive thinking (the only mode Opus 5.5 takes) at the effort asked, the fixed system
 // prompt and the growing conversation cached for an hour (a turn plus a round of `term hold` can pass five minutes; a
 // longer TTL may not follow a shorter one, so both are an hour), strict tools, and the refusal fallback
-export function bodyOf(input: { model: string; effort: string; maxTokens: number; system: string; tools: Tool[]; messages: Message[] }): { body: Record<string, unknown>; betas: string[] } {
+export function bodyOf(input: {
+  model: string
+  effort: string
+  maxTokens: number
+  system: string
+  tools: Tool[]
+  messages: Message[]
+}): { body: Record<string, unknown>; betas: string[] } {
   const fallback = FALLBACK.has(input.model)
 
   return {
@@ -72,7 +95,13 @@ export function bodyOf(input: { model: string; effort: string; maxTokens: number
       max_tokens: input.maxTokens,
       thinking: { type: 'adaptive' },
       output_config: { effort: input.effort },
-      system: [{ type: 'text', text: input.system, cache_control: { type: 'ephemeral', ttl: '1h' } }],
+      system: [
+        {
+          type: 'text',
+          text: input.system,
+          cache_control: { type: 'ephemeral', ttl: '1h' },
+        },
+      ],
       cache_control: { type: 'ephemeral', ttl: '1h' },
       tools: input.tools.map(tool => ({ ...tool, strict: true })),
       messages: input.messages,
@@ -82,7 +111,11 @@ export function bodyOf(input: { model: string; effort: string; maxTokens: number
   }
 }
 
-export async function claudeSpeaker(input: { model: string; effort: string; maxTokens: number }): Promise<Speaker> {
+export async function claudeSpeaker(input: {
+  model: string
+  effort: string
+  maxTokens: number
+}): Promise<Speaker> {
   const key = process.env.ANTHROPIC_API_KEY
 
   if (!key) {
@@ -92,23 +125,48 @@ export async function claudeSpeaker(input: { model: string; effort: string; maxT
     )
   }
 
-  const { streamMessage } = await import('../../../../../../make/code/code/api-client')
+  const { streamMessage } =
+    await import('../../../../../../make/code/code/api-client')
 
   return {
     model: input.model,
     async ask({ system, tools, messages }) {
-      const { body, betas } = bodyOf({ ...input, system, tools, messages })
+      const { body, betas } = bodyOf({
+        ...input,
+        system,
+        tools,
+        messages,
+      })
+
       let message: Awaited<ReturnType<typeof streamMessage>>
 
       try {
-        message = await streamMessage({ apiKey: key, body, betas, retries: 4, retryBroken: false })
+        message = await streamMessage({
+          apiKey: key,
+          body,
+          betas,
+          retries: 4,
+          retryBroken: false,
+        })
       } catch (error) {
-        const broken = ((error as { brokenUsage?: Usage[] } | null)?.brokenUsage ?? []) as Usage[]
-        throw new KnitRequest(error instanceof Error ? error.message : String(error), broken)
+        const broken = ((error as { brokenUsage?: Usage[] } | null)
+          ?.brokenUsage ?? [])
+
+        throw new KnitRequest(
+          error instanceof Error ? error.message : String(error),
+          broken,
+        )
       }
 
-      const usage = message.usage as Usage & { iterations?: { type?: string }[] }
-      const stopDetails = message.stop_details as { category?: string | null; explanation?: string } | null | undefined
+      const usage = message.usage as Usage & {
+        iterations?: { type?: string }[]
+      }
+
+      const stopDetails = message.stop_details as
+        | { category?: string | null; explanation?: string }
+        | null
+        | undefined
+
       const broken = (message.broken_usage as Usage[] | undefined) ?? []
 
       return {
@@ -116,8 +174,14 @@ export async function claudeSpeaker(input: { model: string; effort: string; maxT
         usage,
         stopReason: String(message.stop_reason ?? ''),
         model: String(message.model ?? input.model),
-        fellBack: (usage.iterations ?? []).some(one => one.type === 'fallback_message'),
-        ...(message.stop_reason === 'refusal' ? { refusal: `${stopDetails?.category ?? 'no category'}: ${stopDetails?.explanation ?? ''}` } : {}),
+        fellBack: (usage.iterations ?? []).some(
+          one => one.type === 'fallback_message',
+        ),
+        ...(message.stop_reason === 'refusal'
+          ? {
+              refusal: `${stopDetails?.category ?? 'no category'}: ${stopDetails?.explanation ?? ''}`,
+            }
+          : {}),
         ...(broken.length > 0 ? { broken } : {}),
       }
     },

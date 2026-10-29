@@ -16,10 +16,7 @@ import type {
 } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import * as report from '@term/make/code/check/elaborating-report'
-import type {
-  Expression,
-  Program,
-} from '@term/make/code/compile/node'
+import type { Expression, Program } from '@term/make/code/compile/node'
 import { judgeState, kernel } from '@term/make/code/check/judge'
 import { terminatingFunctions } from '@term/make/code/check/totality'
 import { effectRows } from '@term/make/code/check/effects'
@@ -31,7 +28,9 @@ import { unfoldDefinitions } from '@term/make/code/check/unfold'
 // which surfaces as the kernel's TypeError). A declined function is left to the surface checker and counted, with
 // the reason, in the report's `declined`.
 class Decline extends Error {
-  constructor(readonly reason: string = 'an expression the kernel cannot represent') {
+  constructor(
+    readonly reason = 'an expression the kernel cannot represent',
+  ) {
     super(reason)
   }
 }
@@ -41,7 +40,11 @@ class Decline extends Error {
 function asDecline(error: unknown): unknown {
   const raised = error as { form?: unknown; note?: unknown } | undefined
 
-  if (raised && raised.form === 'failure' && typeof raised.note === 'string' && raised.note.startsWith('decline:')) {
+  if (
+    raised?.form === 'failure' &&
+    typeof raised.note === 'string' &&
+    raised.note.startsWith('decline:')
+  ) {
     return new Decline(raised.note.slice('decline:'.length))
   }
 
@@ -75,7 +78,9 @@ export function elaborate(
 }
 
 // what the run asks of TypeScript, for one file
-function hostFor(file: string): Parameters<typeof report.elaborateReport>[3] {
+function hostFor(
+  file: string,
+): Parameters<typeof report.elaborateReport>[3] {
   return {
     // best-effort: a failure means no function is treated as transparent, a sound fallback, never a compiler crash
     terminatingFunctions: (program: unknown) => {
@@ -92,17 +97,43 @@ function hostFor(file: string): Parameters<typeof report.elaborateReport>[3] {
         return new Map()
       }
     },
-    unfoldDefinitions: (expression: unknown, program: unknown) => unfoldDefinitions(expression as Expression, program as Program),
-    checkFold: (program: unknown, goal: unknown, inductVar: string) => checkFold(program as Program, goal as Expression, inductVar),
-    checkFoldOrder: (program: unknown, goal: unknown, inductVar: string, guards: unknown) =>
-      checkFoldOrder(program as Program, goal as Expression, inductVar, guards as Expression[]),
+    unfoldDefinitions: (expression: unknown, program: unknown) =>
+      unfoldDefinitions(expression as Expression, program as Program),
+    checkFold: (program: unknown, goal: unknown, inductVar: string) =>
+      checkFold(program as Program, goal as Expression, inductVar),
+    checkFoldOrder: (
+      program: unknown,
+      goal: unknown,
+      inductVar: string,
+      guards: unknown,
+    ) =>
+      checkFoldOrder(
+        program as Program,
+        goal as Expression,
+        inductVar,
+        guards as Expression[],
+      ),
     isLinearGoal: (goal: unknown) => isLinearGoal(goal as Expression),
-    orderFollows: (goal: unknown, facts: unknown) => orderFollows(goal as Expression, facts as Expression[]),
-    diagnose: (name: string, span: unknown, message: string, hint: string) =>
-      diagnose(name as never, { file, span: span as Span, message, ...(hint ? { hint } : {}) }),
+    orderFollows: (goal: unknown, facts: unknown) =>
+      orderFollows(goal as Expression, facts as Expression[]),
+    diagnose: (
+      name: string,
+      span: unknown,
+      message: string,
+      hint: string,
+    ) =>
+      diagnose(name as never, {
+        file,
+        span: span as Span,
+        message,
+        ...(hint ? { hint } : {}),
+      }),
     trace: (name: string, message: string) => {
       // TERM_KERNEL_TRACE=1 prints where the kernel failed on a task, which the decline reason alone cannot say
-      if (typeof process !== 'undefined' && process.env?.TERM_KERNEL_TRACE) {
+      if (
+        typeof process !== 'undefined' &&
+        process.env?.TERM_KERNEL_TRACE
+      ) {
         console.error(`kernel trace for ${name}:`, message)
       }
 
@@ -116,7 +147,14 @@ export function elaborateReport(
   file: string,
 ): ElaborationReport {
   try {
-    return kernel(() => report.elaborateReport(judgeState(), written as never, file, hostFor(file))) as unknown as ElaborationReport
+    return kernel(() =>
+      report.elaborateReport(
+        judgeState(),
+        written as never,
+        file,
+        hostFor(file),
+      ),
+    ) as unknown as ElaborationReport
   } catch (error) {
     throw asDecline(error)
   }

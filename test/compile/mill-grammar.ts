@@ -9,7 +9,12 @@
 // Term is reached by a find (rule 2), and every matcher kind and rule a grammar names resolves in its role's load
 // closure (rule 3), with a case for each refused and accepted. Run: npx tsx test/compile/mill-grammar.ts
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+} from 'node:fs'
 import { join, relative } from 'node:path'
 import type { Node } from '@term/make/code/parser/tree'
 import type { GroupNode } from '@term/make/code/parser/narrow'
@@ -22,9 +27,16 @@ import {
   millFormReferences,
   millLoadTargets,
 } from '@term/make/code/compile/mill-check'
-import type { MillClosure, MillContext, MillLoad } from '@term/make/code/compile/mill-check'
+import type {
+  MillClosure,
+  MillContext,
+  MillLoad,
+} from '@term/make/code/compile/mill-check'
 import { loadRoleGrammar } from '@term/make/code/compile/mill-load'
-import { collectModules, makeParseMemo } from '@term/make/code/compile/load'
+import {
+  collectModules,
+  makeParseMemo,
+} from '@term/make/code/compile/load'
 import { withNativeEnv } from '@term/make/code/compile/native'
 import { mill } from '@term/make/code/compile/mill'
 import { expandTemplates } from '@term/make/code/compile/template'
@@ -81,12 +93,21 @@ function topLevel(file: string, text: string, head: string): string[] {
   return out
 }
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const MILL = join(TERM, 'deck/mill/code/tree')
 
 // the roles held to zero problems
-const HELD = new Set(['host', 'mill', 'deck', 'note', 'code', 'test', 'view'])
+const HELD = new Set([
+  'host',
+  'mill',
+  'deck',
+  'note',
+  'code',
+  'test',
+  'view',
+])
 
 function walk(dir: string, into: string[] = []): string[] {
   for (const name of readdirSync(dir).sort()) {
@@ -109,7 +130,11 @@ function walk(dir: string, into: string[] = []): string[] {
 const resolveBuild = projectResolver(TERM)
 
 function resolveLoad(target: string, from: string): string | undefined {
-  if (!target.startsWith('@') && !target.startsWith('./') && !target.startsWith('../')) {
+  if (
+    !target.startsWith('@') &&
+    !target.startsWith('./') &&
+    !target.startsWith('../')
+  ) {
     return undefined
   }
 
@@ -119,14 +144,18 @@ function resolveLoad(target: string, from: string): string | undefined {
 function headOf(group: GroupNode): string {
   const head = group.nodes[0]
 
-  return head?.kind === 'name' ? head.parts.map(p => (p.kind === 'chunk' ? p.text : '')).join('') : ''
+  return head?.kind === 'name'
+    ? head.parts.map(p => (p.kind === 'chunk' ? p.text : '')).join('')
+    : ''
 }
 
 function wordAt(group: GroupNode, at: number): string {
   const node: Node | undefined = group.nodes[at]
 
   if (node?.kind === 'name') {
-    return node.parts.map(p => (p.kind === 'chunk' ? p.text : '')).join('')
+    return node.parts
+      .map(p => (p.kind === 'chunk' ? p.text : ''))
+      .join('')
   }
 
   if (node?.kind === 'group') {
@@ -148,7 +177,19 @@ function declared(file: string): Set<string> {
   for (const group of parsed.tree.nodes) {
     const head = headOf(group)
 
-    if (['form', 'task', 'mine', 'mint', 'mill', 'bind', 'mask', 'host', 'tree'].includes(head)) {
+    if (
+      [
+        'form',
+        'task',
+        'mine',
+        'mint',
+        'mill',
+        'bind',
+        'mask',
+        'host',
+        'tree',
+      ].includes(head)
+    ) {
       names.add(wordAt(group, 1))
     }
   }
@@ -165,14 +206,22 @@ let parsed = 0
 // THE CHECKS ARE compile/mill-check.ts, the `mill` role's reader, which the compiler and the language server call
 // for a file whose role is `mill` (deck/mill/role.tree). This gate supplies the resolver and holds every file to
 // it, so a grammar file the gate passes is one the editor shows clean, and the other way round.
-const resolveSource = (target: string, from: string): { file: string; text: string } | undefined => {
+const resolveSource = (
+  target: string,
+  from: string,
+): { file: string; text: string } | undefined => {
   const found = resolveLoad(target, from)
 
-  return found ? { file: found, text: readFileSync(found, 'utf8') } : undefined
+  return found
+    ? { file: found, text: readFileSync(found, 'utf8') }
+    : undefined
 }
 
 // each `load` the file writes, resolved in order through the build's resolver, as compile.ts checkMillSource does
-function resolvedLoads(source: { file: string; text: string }): MillLoad[] {
+function resolvedLoads(source: {
+  file: string
+  text: string
+}): MillLoad[] {
   return millLoadTargets(source).map(target => {
     let found: { file: string; text: string } | undefined
 
@@ -199,23 +248,47 @@ const memo = makeParseMemo()
 const buildRoleOf = projectRoleOf(TERM)
 const buildLeanOf = projectLeanOf(TERM)
 const millPortable = walk(MILL_CODE).filter(
-  file => !relative(MILL_CODE, file).split('/').includes('native') && !declaresDraft(readFileSync(file, 'utf8')),
+  file =>
+    !relative(MILL_CODE, file).split('/').includes('native') &&
+    !declaresDraft(readFileSync(file, 'utf8')),
 )
 const loadPathOf = (file: string): string => {
-  const [pkg, ...rest] = relative(DECKS, file).replace(/\.tree$/, '').split('/')
+  const [pkg, ...rest] = relative(DECKS, file)
+    .replace(/\.tree$/, '')
+    .split('/')
 
   return `@term/${pkg}/${(rest[0] === 'code' ? rest.slice(1) : rest).join('/')}`
 }
 
-for (const env of ['node', 'browser', 'macos', 'android', 'rust'] as const) {
+for (const env of [
+  'node',
+  'browser',
+  'macos',
+  'android',
+  'rust',
+] as const) {
   const entry = {
     file: join(TERM, 'deck/mill/mill-grammar-entry.tree'),
-    text: millPortable.map(file => `load ./${relative(join(TERM, 'deck/mill'), file).replace(/\.tree$/, '')}`).join('\n'),
+    text: millPortable
+      .map(
+        file =>
+          `load ./${relative(join(TERM, 'deck/mill'), file).replace(/\.tree$/, '')}`,
+      )
+      .join('\n'),
   }
-  const { sources } = collectModules(entry, withNativeEnv(env, projectResolver(TERM, env)), memo)
+  const { sources } = collectModules(
+    entry,
+    withNativeEnv(env, projectResolver(TERM, env)),
+    memo,
+  )
 
   for (const source of sources) {
-    if (source.file === entry.file || source.file.startsWith(`${MILL}/`) || !source.text || millDeclaredForms(source).length === 0) {
+    if (
+      source.file === entry.file ||
+      source.file.startsWith(`${MILL}/`) ||
+      !source.text ||
+      millDeclaredForms(source).length === 0
+    ) {
       continue
     }
 
@@ -224,19 +297,30 @@ for (const env of ['node', 'browser', 'macos', 'android', 'rust'] as const) {
     // an expression) defines nothing
     const parsedSource = memo(source)
     const built = parsedSource.ok
-      ? mill(expandTemplates(parsedSource.tree), source.file, buildRoleOf(source.file) ?? undefined, buildLeanOf(source.file))
+      ? mill(
+          expandTemplates(parsedSource.tree),
+          source.file,
+          buildRoleOf(source.file) ?? undefined,
+          buildLeanOf(source.file),
+        )
       : undefined
 
     for (const one of built?.ok ? built.program : []) {
       const name =
         one.form === 'record-type' || one.form === 'mask'
           ? one.name
-          : one.form === 'native' && (one as { kind?: unknown }).kind === 'type'
+          : one.form === 'native' &&
+              (one as { kind?: unknown }).kind === 'type'
             ? one.alias
             : undefined
 
       if (name) {
-        formDefiners.set(name, (formDefiners.get(name) ?? new Set()).add(loadPathOf(source.file)))
+        formDefiners.set(
+          name,
+          (formDefiners.get(name) ?? new Set()).add(
+            loadPathOf(source.file),
+          ),
+        )
       }
     }
   }
@@ -245,12 +329,18 @@ for (const env of ['node', 'browser', 'macos', 'android', 'rust'] as const) {
 const closures = new Map<string, MillClosure[]>()
 
 for (const role of readdirSync(MILL).sort()) {
-  if (!existsSync(join(MILL, role, 'mine.tree')) && !existsSync(join(MILL, role, 'mint.tree'))) {
+  if (
+    !existsSync(join(MILL, role, 'mine.tree')) &&
+    !existsSync(join(MILL, role, 'mint.tree'))
+  ) {
     continue
   }
 
   const grammar = loadRoleGrammar(MILL, role)
-  const closure: MillClosure = { mine: new Set(grammar.mine.keys()), mint: new Set(grammar.mint.keys()) }
+  const closure: MillClosure = {
+    mine: new Set(grammar.mine.keys()),
+    mint: new Set(grammar.mint.keys()),
+  }
 
   for (const file of grammar.files) {
     closures.set(file, [...(closures.get(file) ?? []), closure])
@@ -265,7 +355,11 @@ function closureOf(file: string): MillClosure | undefined {
   }
 
   const both = (pick: (c: MillClosure) => ReadonlySet<string>) =>
-    new Set([...pick(all[0]!)].filter(name => all.every(c => pick(c).has(name))))
+    new Set(
+      [...pick(all[0]!)].filter(name =>
+        all.every(c => pick(c).has(name)),
+      ),
+    )
 
   return { mine: both(c => c.mine), mint: both(c => c.mint) }
 }
@@ -280,7 +374,8 @@ const contextOf = (file: string): MillContext => ({
 // grammar reads (a dead `mine number`, the book grammar's sub-grammars never loaded), which is its own item
 // (term-module-scope-0006's log entry names it), never a side effect of a find
 const RULE_3_HELD = new Set(['host', 'mill'])
-const isRule3 = (what: string): boolean => what.startsWith('matches ') || what.startsWith('mints a case ')
+const isRule3 = (what: string): boolean =>
+  what.startsWith('matches ') || what.startsWith('mints a case ')
 const owed: Problem[] = []
 
 for (const file of files) {
@@ -289,7 +384,10 @@ for (const file of files) {
   const checked = checkMillDefinition({ file, text }, true, loads)
 
   if (!checked.parsed) {
-    problems.push({ file, what: `does not parse: ${checked.diagnostics[0]?.message ?? ''}` })
+    problems.push({
+      file,
+      what: `does not parse: ${checked.diagnostics[0]?.message ?? ''}`,
+    })
     continue
   }
 
@@ -299,8 +397,15 @@ for (const file of files) {
     problems.push({ file, what: problem.what })
   }
 
-  for (const problem of checkMillDefinition({ file, text }, true, loads, contextOf(file)).problems.slice(checked.problems.length)) {
-    const held = !isRule3(problem.what) || RULE_3_HELD.has(relative(MILL, file).split('/')[0] ?? '')
+  for (const problem of checkMillDefinition(
+    { file, text },
+    true,
+    loads,
+    contextOf(file),
+  ).problems.slice(checked.problems.length)) {
+    const held =
+      !isRule3(problem.what) ||
+      RULE_3_HELD.has(relative(MILL, file).split('/')[0] ?? '')
     const into = held ? problems : owed
     into.push({ file, what: problem.what })
   }
@@ -310,16 +415,24 @@ for (const file of files) {
 ok(
   'the mill checker reads the declared names this gate reads',
   files.every(file => {
-    const mine = new Set(millDeclared({ file, text: readFileSync(file, 'utf8') }))
+    const mine = new Set(
+      millDeclared({ file, text: readFileSync(file, 'utf8') }),
+    )
     const gate = declared(file)
 
-    return mine.size === gate.size && [...gate].every(name => mine.has(name))
+    return (
+      mine.size === gate.size && [...gate].every(name => mine.has(name))
+    )
   }),
 )
 
-ok(`every grammar file parses (${parsed} of ${files.length})`, parsed === files.length)
+ok(
+  `every grammar file parses (${parsed} of ${files.length})`,
+  parsed === files.length,
+)
 
-const roleOf = (file: string): string => relative(MILL, file).split('/')[0] ?? ''
+const roleOf = (file: string): string =>
+  relative(MILL, file).split('/')[0] ?? ''
 const held = problems.filter(p => HELD.has(roleOf(p.file)))
 const rest = problems.filter(p => !HELD.has(roleOf(p.file)))
 
@@ -336,20 +449,40 @@ for (const role of HELD) {
 const hostMine = readFileSync(join(MILL, 'host/mine.tree'), 'utf8')
 
 for (const head of ['host', 'list', 'mesh', 'tree', 'fuse']) {
-  ok(`the host grammar reads "${head}"`, new RegExp(`mine term, term ${head}\\b`).test(hostMine))
+  ok(
+    `the host grammar reads "${head}"`,
+    new RegExp(`mine term, term ${head}\\b`).test(hostMine),
+  )
 }
 
-ok('the host grammar captures text', /mine text\n\s+site text/.test(hostMine))
-ok('the host grammar captures a number', /mine code\n\s+site number/.test(hostMine))
+ok(
+  'the host grammar captures text',
+  /mine text\n\s+site text/.test(hostMine),
+)
+ok(
+  'the host grammar captures a number',
+  /mine code\n\s+site number/.test(hostMine),
+)
 
 for (const word of ['true', 'false', 'void']) {
-  ok(`the host grammar reads the word "${word}"`, new RegExp(`mine term, term ${word}\\b`).test(hostMine))
+  ok(
+    `the host grammar reads the word "${word}"`,
+    new RegExp(`mine term, term ${word}\\b`).test(hostMine),
+  )
 }
 
 // the view grammar reads every head of the sandboxed dialect, and reaches none of what a document may not have
 const viewMine = [
-  'mine', 'load/mine', 'host/mine', 'find/mine', 'hold/mine', 'meet/mine',
-  'sort/mine', 'seed/mine', 'def/mine', 'node/mine',
+  'mine',
+  'load/mine',
+  'host/mine',
+  'find/mine',
+  'hold/mine',
+  'meet/mine',
+  'sort/mine',
+  'seed/mine',
+  'def/mine',
+  'node/mine',
 ]
   .map(part => readFileSync(join(MILL, `view/${part}.tree`), 'utf8'))
   .join('\n')
@@ -368,7 +501,19 @@ for (const head of ['load', 'host', 'find', 'view']) {
   )
 }
 
-for (const head of ['task', 'hold', 'meet', 'sort', 'walk', 'fork', 'text', 'call', 'bind', 'read', 'take']) {
+for (const head of [
+  'task',
+  'hold',
+  'meet',
+  'sort',
+  'walk',
+  'fork',
+  'text',
+  'call',
+  'bind',
+  'read',
+  'take',
+]) {
   ok(
     `the view grammar reads "${head}"`,
     new RegExp(`mine term, term ${head}\\b`).test(viewMine),
@@ -381,8 +526,16 @@ for (const head of ['task', 'hold', 'meet', 'sort', 'walk', 'fork', 'text', 'cal
 // BUILD one. Asserted against what the mint targets, not against the word: the value grammar's own rules are
 // named `view-seed` after the stdlib's `seed`, so a bare substring would match the dialect's own spelling.
 const viewMintText = [
-  'mint', 'load/mint', 'host/mint', 'find/mint', 'hold/mint', 'meet/mint',
-  'sort/mint', 'seed/mint', 'def/mint', 'node/mint',
+  'mint',
+  'load/mint',
+  'host/mint',
+  'find/mint',
+  'hold/mint',
+  'meet/mint',
+  'sort/mint',
+  'seed/mint',
+  'def/mint',
+  'node/mint',
 ]
   .map(part => readFileSync(join(MILL, `view/${part}.tree`), 'utf8'))
   .join('\n')
@@ -405,13 +558,22 @@ ok(
 )
 ok(
   'the view grammar has no statement head that declares a function',
-  !/mine term, term task\n\s+site name/.test(viewRules) && !/mine term, term dock\b/.test(viewRules),
+  !/mine term, term task\n\s+site name/.test(viewRules) &&
+    !/mine term, term dock\b/.test(viewRules),
 )
 
 // a rule name defined twice in one role's load closure: the later definition silently clobbers the earlier in a
 // merged grammar, and the failure surfaces as an unrelated rule refusing input (the lace `walk` ate the loop
 // `walk` this way). Held to zero for every role with a start file.
-for (const role of ['code', 'deck', 'note', 'test', 'view', 'host', 'mill']) {
+for (const role of [
+  'code',
+  'deck',
+  'note',
+  'test',
+  'view',
+  'host',
+  'mill',
+]) {
   const start = join(MILL, role, 'mine.tree')
 
   if (!existsSync(start)) {
@@ -446,7 +608,11 @@ for (const role of ['code', 'deck', 'note', 'test', 'view', 'host', 'mill']) {
   const where = new Map<string, string[]>()
 
   for (const file of files) {
-    for (const name of topLevel(file, readFileSync(file, 'utf8'), 'mine')) {
+    for (const name of topLevel(
+      file,
+      readFileSync(file, 'utf8'),
+      'mine',
+    )) {
       const list = where.get(name) ?? []
       list.push(relative(MILL, file))
       where.set(name, list)
@@ -457,67 +623,129 @@ for (const role of ['code', 'deck', 'note', 'test', 'view', 'host', 'mill']) {
   ok(
     `the ${role} role defines every rule once`,
     dups.length === 0,
-    dups.map(([name, list]) => `${name} in ${list.join(' + ')}`).join('; '),
+    dups
+      .map(([name, list]) => `${name} in ${list.join(' + ')}`)
+      .join('; '),
   )
 }
 
 // DECISION 003's rules, each refused without what it owes and accepted with it, on sources written here
-const FORMS = { file: '/fixture/forms.tree', text: 'form thing\n  link x, like text\n' }
-const GRAMMAR = { file: '/fixture/thing-mint.tree', text: 'mint thing\n  case x\n' }
+const FORMS = {
+  file: '/fixture/forms.tree',
+  text: 'form thing\n  link x, like text\n',
+}
+const GRAMMAR = {
+  file: '/fixture/thing-mint.tree',
+  text: 'mint thing\n  case x\n',
+}
 const fixtureContext: MillContext = {
   formDefiners: name => (name === 'thing' ? ['@fixture/forms'] : []),
   closure: { mine: new Set(['a', 'b']), mint: new Set(['a', 'b']) },
 }
 
 function fixtureProblems(text: string, loads: MillLoad[]): string[] {
-  return checkMillDefinition({ file: '/fixture/check.tree', text }, true, loads, fixtureContext).problems.map(p => p.what)
+  return checkMillDefinition(
+    { file: '/fixture/check.tree', text },
+    true,
+    loads,
+    fixtureContext,
+  ).problems.map(p => p.what)
 }
 
-const MAKE_THING = 'mint a\n  case x\n  hook make\n    make thing\n      bind x, read x\n'
-const formsLoad = (): MillLoad[] => [{ target: '@fixture/forms', found: FORMS }]
-const withoutFind = fixtureProblems(`load @fixture/forms\n\n${MAKE_THING}`, formsLoad())
+const MAKE_THING =
+  'mint a\n  case x\n  hook make\n    make thing\n      bind x, read x\n'
+const formsLoad = (): MillLoad[] => [
+  { target: '@fixture/forms', found: FORMS },
+]
+const withoutFind = fixtureProblems(
+  `load @fixture/forms\n\n${MAKE_THING}`,
+  formsLoad(),
+)
 ok(
   'rule 2: a "hook make / make F" of a form no find reaches is refused, naming its module',
-  withoutFind.length === 1 && withoutFind[0]!.includes('"thing"') && withoutFind[0]!.includes('@fixture/forms'),
+  withoutFind.length === 1 &&
+    withoutFind[0]!.includes('"thing"') &&
+    withoutFind[0]!.includes('@fixture/forms'),
   withoutFind.join(' | '),
 )
 ok(
   'rule 2: the same make with "find F" under the load of its module is accepted',
-  fixtureProblems(`load @fixture/forms\n  find thing\n\n${MAKE_THING}`, formsLoad()).length === 0,
+  fixtureProblems(
+    `load @fixture/forms\n  find thing\n\n${MAKE_THING}`,
+    formsLoad(),
+  ).length === 0,
 )
 ok(
   'rule 2: a "mint N, like F" is held the same way: a find of F reaches it',
-  fixtureProblems('load @fixture/forms\n  find thing\n\nmint a, like thing\n  case x\n', formsLoad()).length === 0 &&
+  fixtureProblems(
+    'load @fixture/forms\n  find thing\n\nmint a, like thing\n  case x\n',
+    formsLoad(),
+  ).length === 0 &&
     millFormReferences(
-      { file: '/fixture/check.tree', text: 'load @fixture/forms\n  find thing\n\nmint a, like thing\n  case x\n' },
+      {
+        file: '/fixture/check.tree',
+        text: 'load @fixture/forms\n  find thing\n\nmint a, like thing\n  case x\n',
+      },
       formsLoad(),
     ).every(ref => ref.found),
 )
 ok(
-  'rule 2: a find of a grammar rule that shares the form\'s name reaches no form',
-  fixtureProblems(`load @fixture/thing-mint\n  find thing\n\n${MAKE_THING}`, [{ target: '@fixture/thing-mint', found: GRAMMAR }])
-    .some(what => what.includes('"thing"')),
+  "rule 2: a find of a grammar rule that shares the form's name reaches no form",
+  fixtureProblems(
+    `load @fixture/thing-mint\n  find thing\n\n${MAKE_THING}`,
+    [{ target: '@fixture/thing-mint', found: GRAMMAR }],
+  ).some(what => what.includes('"thing"')),
 )
 ok(
   'rule 2: a make of a name no module defines is a mint tag, not a reference',
-  fixtureProblems('mint a\n  case x\n  hook make\n    make some-tag\n', []).length === 0,
+  fixtureProblems(
+    'mint a\n  case x\n  hook make\n    make some-tag\n',
+    [],
+  ).length === 0,
 )
 
-const kindProblems = fixtureProblems('mine a\n  mine any\n    mine number\n      site x\n', [])
-ok('rule 3: a matcher kind the mine reader does not know is refused', kindProblems.length === 1 && kindProblems[0]!.includes('mine number'), kindProblems.join(' | '))
+const kindProblems = fixtureProblems(
+  'mine a\n  mine any\n    mine number\n      site x\n',
+  [],
+)
+ok(
+  'rule 3: a matcher kind the mine reader does not know is refused',
+  kindProblems.length === 1 && kindProblems[0]!.includes('mine number'),
+  kindProblems.join(' | '),
+)
 ok(
   'rule 3: every kind the mine reader knows is accepted',
-  ['term', 'text', 'code', 'path', 'node', 'word', 'open', 'maybe', 'case', 'list', 'any', 'form'].every(isMatcherKind) &&
-    fixtureProblems('mine a\n  mine any\n    mine code\n      site x\n    mine form, like b\n      site y\n', []).length === 0,
+  [
+    'term',
+    'text',
+    'code',
+    'path',
+    'node',
+    'word',
+    'open',
+    'maybe',
+    'case',
+    'list',
+    'any',
+    'form',
+  ].every(isMatcherKind) &&
+    fixtureProblems(
+      'mine a\n  mine any\n    mine code\n      site x\n    mine form, like b\n      site y\n',
+      [],
+    ).length === 0,
 )
 ok(
   'rule 3: a "mine form, like R" naming no rule of the closure is refused',
-  fixtureProblems('mine a\n  mine form, like nowhere\n    site x\n', []).some(what => what.includes('like nowhere')),
+  fixtureProblems(
+    'mine a\n  mine form, like nowhere\n    site x\n',
+    [],
+  ).some(what => what.includes('like nowhere')),
 )
 ok(
   'rule 3: a "case X, mint Y" naming no mint rule of the closure is refused, and one naming a rule is accepted',
-  fixtureProblems('mint a\n  case x, mint nowhere\n', []).some(what => what.includes('mint nowhere')) &&
-    fixtureProblems('mint a\n  case x, mint b\n', []).length === 0,
+  fixtureProblems('mint a\n  case x, mint nowhere\n', []).some(what =>
+    what.includes('mint nowhere'),
+  ) && fixtureProblems('mint a\n  case x, mint b\n', []).length === 0,
 )
 
 const byRole = new Map<string, number>()
@@ -527,7 +755,9 @@ for (const p of rest) {
 }
 
 console.log(
-  `\n${rest.length} problem${rest.length === 1 ? '' : 's'} in the roles not held (${[...byRole]
+  `\n${rest.length} problem${rest.length === 1 ? '' : 's'} in the roles not held (${[
+    ...byRole,
+  ]
     .map(([role, count]) => `${role} ${count}`)
     .join(', ')}); the self-hosting mill closes them`,
 )
@@ -541,7 +771,10 @@ if (process.env.MILL_ALL) {
 const owedByRole = new Map<string, number>()
 
 for (const p of owed) {
-  owedByRole.set(roleOf(p.file), (owedByRole.get(roleOf(p.file)) ?? 0) + 1)
+  owedByRole.set(
+    roleOf(p.file),
+    (owedByRole.get(roleOf(p.file)) ?? 0) + 1,
+  )
 }
 
 console.log(

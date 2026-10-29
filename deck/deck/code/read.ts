@@ -79,7 +79,7 @@ function unescape(text: string): string {
 }
 
 type NodeLike = {
-  parts: ReadonlyArray<{ kind: string; text?: string }>
+  parts: readonly { kind: string; text?: string }[]
 }
 
 // the outermost token positions under a node, descending through interpolation groups so
@@ -97,7 +97,7 @@ function tokenExtent(
 
     const record = value as Record<string, unknown>
     // a chunk or a literal carries its token's span (parser/tree), and a group or a name none of its own
-    const span = record['span'] as Span | undefined
+    const span = record.span as Span | undefined
 
     if (span) {
       if (!start || before(span.start, start)) {
@@ -117,7 +117,7 @@ function tokenExtent(
       }
     }
 
-    visit(record['group'])
+    visit(record.group)
   }
 
   visit(node)
@@ -206,6 +206,7 @@ function readInto(form: Form, node: Node, source: Source): void {
 
     case 'integer':
     case 'decimal':
+
     case 'radix': {
       const text = String(node.value)
 
@@ -246,7 +247,10 @@ function readInto(form: Form, node: Node, source: Source): void {
 // Parse `.tree` source into top-level forms. Returns the parser's own diagnostics on
 // failure rather than inventing an error, so a malformed manifest reports with a span
 // and a caret like every other Term error.
-export function readTree(input: { file: string; text: string }):
+export function readTree(input: {
+  file: string
+  text: string
+}):
   | { ok: true; forms: Form[] }
   | { ok: false; diagnostics: Diagnostic[] } {
   const result = parse({ file: input.file, text: input.text })
@@ -255,7 +259,10 @@ export function readTree(input: { file: string; text: string }):
     return { ok: false, diagnostics: result.diagnostics }
   }
 
-  return { ok: true, forms: formsOf(result.tree, new Source(input.text)) }
+  return {
+    ok: true,
+    forms: formsOf(result.tree, new Source(input.text)),
+  }
 }
 
 function formsOf(tree: RootNode, source: Source): Form[] {
@@ -273,10 +280,7 @@ function formsOf(tree: RootNode, source: Source): Form[] {
 }
 
 // the first nested form with this head
-export function formOf(
-  form: Form,
-  head: string,
-): Form | undefined {
+export function formOf(form: Form, head: string): Form | undefined {
   return form.forms.find(f => f.head === head)
 }
 
@@ -286,28 +290,19 @@ export function formsWith(form: Form, head: string): Form[] {
 }
 
 // the `<...>` value of the first nested form with this head
-export function valueOf(
-  form: Form,
-  head: string,
-): string | undefined {
+export function valueOf(form: Form, head: string): string | undefined {
   return formOf(form, head)?.value
 }
 
 // the first bare-word argument of the first nested form with this head
-export function termOf(
-  form: Form,
-  head: string,
-): string | undefined {
+export function termOf(form: Form, head: string): string | undefined {
   return formOf(form, head)?.terms[0]
 }
 
 // A COMMA CHAIN NESTS. `link @x, code <1.x.x>, have 1` does not put `code` and `have`
 // side by side under `link`: each part becomes a child of the one before it, so `have`
 // hangs off `code`. Search the whole chain rather than only the first level.
-export function deepFormOf(
-  form: Form,
-  head: string,
-): Form | undefined {
+export function deepFormOf(form: Form, head: string): Form | undefined {
   for (const nested of form.forms) {
     if (nested.head === head) {
       return nested

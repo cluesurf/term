@@ -4,4 +4,7 @@
 // The original is kept byte for byte at deck/term/deck/term/tmp/retired/make/deck-object-http.
 import * as port from '@term/deck/code/object/registry-client'
 
-export const httpRegistry = (input: { baseUrl: string; token?: string }): never => port.httpRegistry(input.baseUrl, input.token) as never
+export const httpRegistry = (input: {
+  baseUrl: string
+  token?: string
+}): never => port.httpRegistry(input.baseUrl, input.token) as never

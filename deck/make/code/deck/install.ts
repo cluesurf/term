@@ -42,11 +42,16 @@ const disk = {
   makeDirs: (path: string): void => {
     mkdirSync(path, { recursive: true })
   },
-  copyTree: (from: string, to: string): void => cpSync(from, to, { recursive: true }),
-  removeTree: (path: string): void => rmSync(path, { recursive: true, force: true }),
-  linkTo: (target: string, path: string): void => symlinkSync(target, path),
-  writeFile: (path: string, text: string): void => writeFileSync(path, text),
-  sha512Hex: (text: string): string => createHash('sha512').update(text).digest('hex'),
+  copyTree: (from: string, to: string): void =>
+    cpSync(from, to, { recursive: true }),
+  removeTree: (path: string): void =>
+    rmSync(path, { recursive: true, force: true }),
+  linkTo: (target: string, path: string): void =>
+    symlinkSync(target, path),
+  writeFile: (path: string, text: string): void =>
+    writeFileSync(path, text),
+  sha512Hex: (text: string): string =>
+    createHash('sha512').update(text).digest('hex'),
 }
 
 // install a project's dependencies. registryDir holds <host>/<deck>/<version>/ packages; storeHome is the
@@ -56,7 +61,14 @@ export function install(
   registryDir: string,
   storeHome: string,
 ): InstallResult {
-  const answer = installing.install(disk, projectDir, registryDir, storeHome)
+  const answer = installing.install(
+    disk,
+    projectDir,
+    registryDir,
+    storeHome,
+  )
 
-  return answer.form === 'installed' ? { ok: true, lockfile: answer.lockfile as Lockfile } : { ok: false, error: answer.error }
+  return answer.form === 'installed'
+    ? { ok: true, lockfile: answer.lockfile as Lockfile }
+    : { ok: false, error: answer.error }
 }

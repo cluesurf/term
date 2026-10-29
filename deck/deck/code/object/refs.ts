@@ -11,12 +11,32 @@ export type RefError =
   | null
 
 export type RefStore = {
-  getVersion(input: { package: string; version: string }): Promise<string | null>
-  createVersion(input: { package: string; version: string; commit: string }): Promise<RefError>
-  listVersions(pkg: string): Promise<{ version: string; commit: string }[]>
-  getBranch(input: { package: string; branch: string }): Promise<string | null>
-  setBranch(input: { package: string; branch: string; commit: string; expected?: string | null }): Promise<RefError>
-  listBranches(pkg: string): Promise<{ branch: string; commit: string }[]>
+  getVersion(input: {
+    package: string
+    version: string
+  }): Promise<string | null>
+  createVersion(input: {
+    package: string
+    version: string
+    commit: string
+  }): Promise<RefError>
+  listVersions(
+    pkg: string,
+  ): Promise<{ version: string; commit: string }[]>
+  getBranch(input: {
+    package: string
+    branch: string
+  }): Promise<string | null>
+  setBranch(input: {
+    package: string
+    branch: string
+    commit: string
+    expected?: string | null
+  }): Promise<RefError>
+  listBranches(
+    pkg: string,
+  ): Promise<{ branch: string; commit: string }[]>
 }
 
-export const memoryRefStore = (): RefStore => port.memoryRefStore() as unknown as RefStore
+export const memoryRefStore = (): RefStore =>
+  port.memoryRefStore() as unknown as RefStore

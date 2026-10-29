@@ -101,32 +101,85 @@ task label-of
           back <unlabelled>
 `
 
-const built = compile({ file: 'maybe-field.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!), library: true, leanOf: () => true } as never)
+const built = compile({ file: 'maybe-field.tree', text }, {
+  resolve: withNativeEnv('node', stdlibResolver()!),
+  library: true,
+  leanOf: () => true,
+} as never)
 
 if (!built.ok) {
-  ok('the program builds', false, built.diagnostics.map(d => d.message.split('\n').join(' ')).join(' | '))
+  ok(
+    'the program builds',
+    false,
+    built.diagnostics
+      .map(d => d.message.split('\n').join(' '))
+      .join(' | '),
+  )
 } else {
   const ts = built.typescript
-  ok('the emitted field is the value type, optional', /hint\?: string\b/.test(ts) && /label\?: string\b/.test(ts), ts.split('\n').filter(l => /hint|label/.test(l) && /:/.test(l)).slice(0, 4).join(' | '))
-  ok('no field is typed as a Maybe', !/hint\?: Maybe|label\?: Maybe/.test(ts))
+  ok(
+    'the emitted field is the value type, optional',
+    /hint\?: string\b/.test(ts) && /label\?: string\b/.test(ts),
+    ts
+      .split('\n')
+      .filter(l => /hint|label/.test(l) && /:/.test(l))
+      .slice(0, 4)
+      .join(' | '),
+  )
+  ok(
+    'no field is typed as a Maybe',
+    !/hint\?: Maybe|label\?: Maybe/.test(ts),
+  )
 
   const dir = mkdtempSync(join(tmpdir(), 'term-maybe-field-'))
   const file = join(dir, 'module.mjs')
-  writeFileSync(file, transformSync(ts, { loader: 'ts', format: 'esm' }).code)
-  const mod = (await import(pathToFileURL(file).href)) as Record<string, (...a: unknown[]) => any>
+  writeFileSync(
+    file,
+    transformSync(ts, { loader: 'ts', format: 'esm' }).code,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as Record<
+    string,
+    (...a: unknown[]) => any
+  >
 
   // a TypeScript caller's records, written the TypeScript way
-  ok('a caller that set the field is read as some', mod.hintOf!({ body: 'b', hint: 'look' }) === 'look')
-  ok('a caller that left it out is read as none', mod.hintOf!({ body: 'b' }) === 'none')
-  ok('a plain need false field left out is its empty value, as it is natively', mod.countOf!({ body: 'b' }) === 0, String(mod.countOf!({ body: 'b' })))
+  ok(
+    'a caller that set the field is read as some',
+    mod.hintOf!({ body: 'b', hint: 'look' }) === 'look',
+  )
+  ok(
+    'a caller that left it out is read as none',
+    mod.hintOf!({ body: 'b' }) === 'none',
+  )
+  ok(
+    'a plain need false field left out is its empty value, as it is natively',
+    mod.countOf!({ body: 'b' }) === 0,
+    String(mod.countOf!({ body: 'b' })),
+  )
 
   const made = mod.withHint!('here')
-  ok('a construction writes the value inside the maybe', made.hint === 'here', JSON.stringify(made))
+  ok(
+    'a construction writes the value inside the maybe',
+    made.hint === 'here',
+    JSON.stringify(made),
+  )
   const bare = mod.withoutHint!()
-  ok('and leaves the field absent for none', bare.hint === undefined, JSON.stringify(bare))
+  ok(
+    'and leaves the field absent for none',
+    bare.hint === undefined,
+    JSON.stringify(bare),
+  )
   const set = mod.setHint!({ body: 'b' }, 'later')
-  ok('an assignment writes the value inside the maybe', set.hint === 'later', JSON.stringify(set))
-  ok('a case arm binds the field as a maybe', mod.labelOf!({ form: 'mark', label: 'x' }) === 'x' && mod.labelOf!({ form: 'mark' }) === 'unlabelled')
+  ok(
+    'an assignment writes the value inside the maybe',
+    set.hint === 'later',
+    JSON.stringify(set),
+  )
+  ok(
+    'a case arm binds the field as a maybe',
+    mod.labelOf!({ form: 'mark', label: 'x' }) === 'x' &&
+      mod.labelOf!({ form: 'mark' }) === 'unlabelled',
+  )
 }
 
 console.log(`\nmaybe-field: ${pass} pass, ${fail} fail`)

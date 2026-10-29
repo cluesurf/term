@@ -21,15 +21,21 @@ function ok(name: string, cond: boolean, info = ''): void {
 function bodyOf(text: string): Statement[] {
   const parsed = parse({ file: 'c.tree', text })
 
-  if (!parsed.ok) {throw new Error('parse failed')}
+  if (!parsed.ok) {
+    throw new Error('parse failed')
+  }
 
   const built = mill(parsed.tree, 'c.tree')
 
-  if (!built.ok) {throw new Error('mill failed')}
+  if (!built.ok) {
+    throw new Error('mill failed')
+  }
 
   const fn = built.program.find(s => s.form === 'function')
 
-  if (fn?.form !== 'function') {throw new Error('no function')}
+  if (fn?.form !== 'function') {
+    throw new Error('no function')
+  }
 
   return fn.body
 }
@@ -79,12 +85,14 @@ function main(): void {
   let backEdge = false
 
   if (header) {
-    for (const b of loop.blocks)
-      {if (
+    for (const b of loop.blocks) {
+      if (
         successors(b.terminator).includes(header.id) &&
         b.id !== header.id
-      )
-        {backEdge = true}}
+      ) {
+        backEdge = true
+      }
+    }
   }
 
   ok('a while loop has a header branch', header !== undefined)

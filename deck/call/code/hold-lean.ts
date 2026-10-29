@@ -20,8 +20,16 @@ import { groupsOf } from '@term/make/code/parser/narrow'
 import { headWord } from '@term/make/code/compile/mill-run'
 import { millLoadTargets } from '@term/make/code/compile/mill-check'
 import { expandTemplates } from '@term/make/code/compile/template'
-import { exportLean, joinSources } from '@term/make/code/check/lean-export'
-import { findLean, leanVersion, LEAN_INSTALL, runLean } from '@term/make/code/check/lean-run'
+import {
+  exportLean,
+  joinSources,
+} from '@term/make/code/check/lean-export'
+import {
+  findLean,
+  leanVersion,
+  LEAN_INSTALL,
+  runLean,
+} from '@term/make/code/check/lean-run'
 import { projectResolver, resolveTreeFile } from '@term/call/code/make'
 import { withNativeEnv } from '@term/make/code/compile/native'
 import { projectHome } from '@term/call/code/home'
@@ -77,7 +85,9 @@ function readFile(file: string): { claims: string[]; loads: string[] } {
       continue
     }
 
-    const shows = [...group.nodes, ...name.nodes].some(child => child.kind === 'group' && headWord(child) === 'show')
+    const shows = [...group.nodes, ...name.nodes].some(
+      child => child.kind === 'group' && headWord(child) === 'show',
+    )
 
     const word = headWord(name)
 
@@ -92,7 +102,9 @@ function readFile(file: string): { claims: string[]; loads: string[] } {
 export function holdLean(root: string, files: string[]): HoldLean {
   const read = new Map(files.map(file => [file, readFile(file)]))
   const resolver = withNativeEnv('node', projectResolver(root))
-  const stating = files.filter(file => read.get(file)!.claims.length > 0)
+  const stating = files.filter(
+    file => read.get(file)!.claims.length > 0,
+  )
 
   // the files to join: each stating file and what it loads by a relative path, every file after what it loads
   const order: string[] = []
@@ -105,6 +117,7 @@ export function holdLean(root: string, files: string[]): HoldLean {
     }
 
     seen.add(file)
+
     const own = read.get(file) ?? readFile(file)
     read.set(file, own)
 
@@ -118,7 +131,9 @@ export function holdLean(root: string, files: string[]): HoldLean {
       if (found) {
         visit(found)
       } else {
-        dropped.push(`${path.relative(root, file)}: ${target || 'a native load'}`)
+        dropped.push(
+          `${path.relative(root, file)}: ${target || 'a native load'}`,
+        )
       }
     }
 
@@ -131,34 +146,75 @@ export function holdLean(root: string, files: string[]): HoldLean {
   const own = new Set(files)
   const stated = order
     .filter(file => own.has(file))
-    .flatMap(file => read.get(file)!.claims.map(name => ({ name, file: path.relative(root, file) })))
+    .flatMap(file =>
+      read.get(file)!.claims.map(name => ({
+        name,
+        file: path.relative(root, file),
+      })),
+    )
+
   const lean = findLean()
-  const result: HoldLean = { missing: lean === undefined, claims: [], dropped, diagnostics: [], ok: false }
+  const result: HoldLean = {
+    missing: lean === undefined,
+    claims: [],
+    dropped,
+    diagnostics: [],
+    ok: false,
+  }
 
   if (stated.length === 0) {
     result.ok = lean !== undefined
+
     return result
   }
 
   let exported: ReturnType<typeof exportLean>
 
   try {
-    exported = exportLean(joinSources(order.map(file => ({ file: path.relative(root, file), text: readFileSync(file, 'utf8') }))))
+    exported = exportLean(
+      joinSources(
+        order.map(file => ({
+          file: path.relative(root, file),
+          text: readFileSync(file, 'utf8'),
+        })),
+      ),
+    )
   } catch (cause) {
     const reason = `the exporter stopped: ${cause instanceof Error ? cause.message : String(cause)}`
-    result.claims = stated.map(({ name, file }) => ({ name, file, verdict: 'declined', axioms: [], reason }))
+    result.claims = stated.map(({ name, file }) => ({
+      name,
+      file,
+      verdict: 'declined',
+      axioms: [],
+      reason,
+    }))
+
     return result
   }
 
   result.diagnostics = exported.kernel.diagnostics
+
   const file = projectHome(root, 'lean', 'hold.lean')
   mkdirSync(path.dirname(file), { recursive: true })
   writeFileSync(file, exported.lean)
   result.file = file
 
-  const refused = new Map(exported.refused.map(one => [one.name, one.reason]))
-  const leaning = stated.filter(({ name }) => exported.exported.some(entry => entry.claim && entry.name === name))
-  const run = lean ? runLean({ lean, file, source: exported.lean, claims: leaning.map(one => one.name) }) : undefined
+  const refused = new Map(
+    exported.refused.map(one => [one.name, one.reason]),
+  )
+
+  const leaning = stated.filter(({ name }) =>
+    exported.exported.some(entry => entry.claim && entry.name === name),
+  )
+
+  const run = lean
+    ? runLean({
+        lean,
+        file,
+        source: exported.lean,
+        claims: leaning.map(one => one.name),
+      })
+    : undefined
 
   if (lean) {
     result.lean = lean
@@ -169,18 +225,38 @@ export function holdLean(root: string, files: string[]): HoldLean {
     const verdict = run?.claims.find(one => one.name === name)
 
     if (verdict) {
-      return { name, file: from, verdict: verdict.verdict, axioms: verdict.axioms, ...(verdict.error ? { reason: verdict.error } : {}) }
+      return {
+        name,
+        file: from,
+        verdict: verdict.verdict,
+        axioms: verdict.axioms,
+        ...(verdict.error ? { reason: verdict.error } : {}),
+      }
     }
 
     if (refused.has(name) || !leaning.some(one => one.name === name)) {
-      return { name, file: from, verdict: 'declined', axioms: [], reason: refused.get(name) ?? 'the exporter did not write it' }
+      return {
+        name,
+        file: from,
+        verdict: 'declined',
+        axioms: [],
+        reason: refused.get(name) ?? 'the exporter did not write it',
+      }
     }
 
     // exported, and Lean is missing: not checked, and the gate says so through `missing`
-    return { name, file: from, verdict: 'refused', axioms: [], reason: 'Lean did not run' }
+    return {
+      name,
+      file: from,
+      verdict: 'refused',
+      axioms: [],
+      reason: 'Lean did not run',
+    }
   })
 
-  result.ok = !result.missing && result.claims.every(one => one.verdict === 'checked')
+  result.ok =
+    !result.missing &&
+    result.claims.every(one => one.verdict === 'checked')
 
   return result
 }
@@ -200,15 +276,34 @@ export function reportLean(result: HoldLean): void {
 
   for (const claim of result.claims) {
     if (claim.verdict === 'checked') {
-      report({ glyph: 'done', verb: 'lean', subject: `${claim.name} checked` })
+      report({
+        glyph: 'done',
+        verb: 'lean',
+        subject: `${claim.name} checked`,
+      })
     } else if (claim.verdict === 'axioms') {
-      report({ glyph: 'failed', kind: 'problem', verb: 'lean', subject: `${claim.name} checked, rests on ${claim.axioms.join(', ')}` })
+      report({
+        glyph: 'failed',
+        kind: 'problem',
+        verb: 'lean',
+        subject: `${claim.name} checked, rests on ${claim.axioms.join(', ')}`,
+      })
     } else if (claim.verdict === 'refused') {
       if (!result.missing) {
-        report({ glyph: 'failed', kind: 'problem', verb: 'lean', subject: `${claim.name} refused: ${claim.reason ?? ''}` })
+        report({
+          glyph: 'failed',
+          kind: 'problem',
+          verb: 'lean',
+          subject: `${claim.name} refused: ${claim.reason ?? ''}`,
+        })
       }
     } else {
-      report({ glyph: 'failed', kind: 'problem', verb: 'lean', subject: `${claim.name} declined: ${claim.reason ?? ''}` })
+      report({
+        glyph: 'failed',
+        kind: 'problem',
+        verb: 'lean',
+        subject: `${claim.name} declined: ${claim.reason ?? ''}`,
+      })
     }
   }
 
@@ -216,12 +311,14 @@ export function reportLean(result: HoldLean): void {
     report({
       glyph: 'warning',
       verb: 'lean',
-      subject: 'Loads left out of the joined program: the exporter reads no module binding yet',
+      subject:
+        'Loads left out of the joined program: the exporter reads no module binding yet',
       message: result.dropped,
     })
   }
 
-  const of = (verdict: HoldLeanClaim['verdict']): number => result.claims.filter(one => one.verdict === verdict).length
+  const of = (verdict: HoldLeanClaim['verdict']): number =>
+    result.claims.filter(one => one.verdict === verdict).length
 
   report({
     glyph: result.ok ? 'done' : 'failed',
@@ -229,7 +326,11 @@ export function reportLean(result: HoldLean): void {
     subject: result.missing
       ? 'No claim was re-checked in Lean'
       : `${of('checked')} of ${result.claims.length} claims checked by Lean${result.version ? ` ${result.version}` : ''}`,
-    counts: [count(of('refused'), 'refused'), count(of('axioms'), 'on an axiom'), count(of('declined'), 'declined')],
+    counts: [
+      count(of('refused'), 'refused'),
+      count(of('axioms'), 'on an axiom'),
+      count(of('declined'), 'declined'),
+    ],
     ...(result.file ? { fields: [field('file', result.file)] } : {}),
   })
 }

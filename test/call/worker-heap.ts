@@ -26,7 +26,9 @@ function ok(name: string, good: boolean, detail = ''): void {
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}${detail ? `  ${detail.slice(0, 4000)}` : ''}`)
+    console.log(
+      `FAIL  ${name}${detail ? `  ${detail.slice(0, 4000)}` : ''}`,
+    )
   }
 }
 
@@ -36,10 +38,16 @@ function task(name: string, value: number): string {
 
 const project = tempDir('term-worker-heap-')
 mkdirSync(join(project, 'code'))
-writeFileSync(join(project, 'deck.tree'), 'deck @probe/heap\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\n')
+writeFileSync(
+  join(project, 'deck.tree'),
+  'deck @probe/heap\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\n',
+)
 
 for (let i = 0; i < 15; i++) {
-  writeFileSync(join(project, 'code', `small-${i}.tree`), task(`small-${i}`, i))
+  writeFileSync(
+    join(project, 'code', `small-${i}.tree`),
+    task(`small-${i}`, i),
+  )
 }
 
 const big: string[] = []
@@ -61,17 +69,52 @@ const out = `${run.stdout}${run.stderr}`
 // the report wraps long lines, so a phrase is looked for with its spaces and line breaks made one space
 const flat = out.replace(/\s+/g, ' ')
 
-ok('the build ends on its own (no signal, no timeout)', run.signal === null && run.status !== null, `signal ${run.signal}`)
-ok('the build exits non-zero', run.status !== 0 && run.status !== null, `status ${run.status}`)
-ok('the build never dies of a fatal heap (exit 134)', run.status !== 134, out)
-ok('the units were built across the worker pool', /units in parallel/.test(out), out)
+ok(
+  'the build ends on its own (no signal, no timeout)',
+  run.signal === null && run.status !== null,
+  `signal ${run.signal}`,
+)
+ok(
+  'the build exits non-zero',
+  run.status !== 0 && run.status !== null,
+  `status ${run.status}`,
+)
+ok(
+  'the build never dies of a fatal heap (exit 134)',
+  run.status !== 134,
+  out,
+)
+ok(
+  'the units were built across the worker pool',
+  /units in parallel/.test(out),
+  out,
+)
 
 const reported = flat.match(/ran out of memory at its/g) ?? []
 
-ok('the big file is reported out of memory', /out of memory at its \d+ MB heap limit out-of-memory file code\/big\.tree/.test(flat), out)
-ok('the limit and the remedy are named', flat.includes(`${HEAP_MB} MB heap limit`) && flat.includes('raise TERM_WORKER_HEAP_MB'), out)
-ok('no small file is reported out of memory', !/out-of-memory file code\/small-\d+\.tree/.test(flat), out)
-ok('exactly one unit is reported out of memory', reported.length === 1, out)
+ok(
+  'the big file is reported out of memory',
+  /out of memory at its \d+ MB heap limit out-of-memory file code\/big\.tree/.test(
+    flat,
+  ),
+  out,
+)
+ok(
+  'the limit and the remedy are named',
+  flat.includes(`${HEAP_MB} MB heap limit`) &&
+    flat.includes('raise TERM_WORKER_HEAP_MB'),
+  out,
+)
+ok(
+  'no small file is reported out of memory',
+  !/out-of-memory file code\/small-\d+\.tree/.test(flat),
+  out,
+)
+ok(
+  'exactly one unit is reported out of memory',
+  reported.length === 1,
+  out,
+)
 
 let built = 0
 
@@ -81,8 +124,16 @@ for (let i = 0; i < 15; i++) {
   }
 }
 
-ok('the other 15 files are built', built === 15, `${built} of 15 built\n${out}`)
-ok('the big file is not built', !existsSync(join(project, 'host', 'code', 'big.ts')), out)
+ok(
+  'the other 15 files are built',
+  built === 15,
+  `${built} of 15 built\n${out}`,
+)
+ok(
+  'the big file is not built',
+  !existsSync(join(project, 'host', 'code', 'big.ts')),
+  out,
+)
 
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail > 0 ? 1 : 0)

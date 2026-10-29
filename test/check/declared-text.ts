@@ -85,17 +85,31 @@ task f
 
 for (const env of ['node', 'swift', 'kotlin'] as const) {
   for (const [name, text] of Object.entries(cases)) {
-    const result = compile({ file: '/tmp/declared-text.tree', text }, { resolve: projectResolver(process.cwd(), env), env })
-    ok(`${env}: ${name} is refused`, !result.ok, result.ok ? 'it compiled' : '')
+    const result = compile(
+      { file: '/tmp/declared-text.tree', text },
+      { resolve: projectResolver(process.cwd(), env), env },
+    )
+    ok(
+      `${env}: ${name} is refused`,
+      !result.ok,
+      result.ok ? 'it compiled' : '',
+    )
   }
 }
 
 // the control: the same getter with text in it compiles, so the refusals above are about the number
 const control = compile(
-  { file: '/tmp/declared-text.tree', text: `${GETTER}\ntask f\n  like text\n  send back\n    call show-it\n      task inner\n        like text\n        send back, text <three>\n` },
+  {
+    file: '/tmp/declared-text.tree',
+    text: `${GETTER}\ntask f\n  like text\n  send back\n    call show-it\n      task inner\n        like text\n        send back, text <three>\n`,
+  },
   { resolve: projectResolver(process.cwd(), 'node'), env: 'node' },
 )
-ok('the control, text in the getter, compiles', control.ok, control.ok ? '' : control.diagnostics.map(d => d.message).join(' | '))
+ok(
+  'the control, text in the getter, compiles',
+  control.ok,
+  control.ok ? '' : control.diagnostics.map(d => d.message).join(' | '),
+)
 
 console.log(`\ndeclared-text: ${pass} pass, ${fail} fail`)
 

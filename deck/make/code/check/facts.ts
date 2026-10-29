@@ -20,7 +20,11 @@ import type { ProgramFacts } from '@term/make/code/check/program-facts'
 
 export type { ProgramFacts } from '@term/make/code/check/program-facts'
 
-export type Purity = { pure: Set<string>; impure: Set<string>; writes: Map<string, Set<number>> }
+export type Purity = {
+  pure: Set<string>
+  impure: Set<string>
+  writes: Map<string, Set<number>>
+}
 
 // every fact of the program, each computed once (check/program-facts.tree)
 export function programFacts(program: Program): ProgramFacts {
@@ -37,12 +41,20 @@ export function purity(program: Program): Purity {
   return {
     pure: new Set(answer.pure),
     impure: new Set(answer.impure),
-    writes: new Map([...answer.writes].map(([name, at]) => [name, new Set(at)])),
+    writes: new Map(
+      [...answer.writes].map(([name, at]) => [name, new Set(at)]),
+    ),
   }
 }
 
 export function stateFreeFunctions(program: Program): Set<string> {
-  return new Set(stateFreeIn(program, purityIn(program).pure, returnsFreshIn(program)))
+  return new Set(
+    stateFreeIn(
+      program,
+      purityIn(program).pure,
+      returnsFreshIn(program),
+    ),
+  )
 }
 
 export function returnsFreshFunctions(program: Program): Set<string> {

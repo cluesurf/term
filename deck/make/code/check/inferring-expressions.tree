@@ -2261,7 +2261,7 @@ task check-assign
       link assigned-span
       save value-found, infer-expression(st, assigned-value, env)
       save node/value, value-found/node
-      save target-found, infer-expression(st, assigned-target, env)
+      save target-found, infer-target(st, assigned-target, env)
       save target-node, target-found/node
       save node/target, target-node
       sift target-node
@@ -3214,6 +3214,35 @@ task check-match
             save nothing, 0
         push(cleared, branch)
       save node/cases, cleared
+      # `case some` and `case none` test a maybe. Over a boolean, a number, a text or a collection, which is never one,
+      # neither arm is ever taken: a `need false` boolean's `sift` with them was accepted until item 0056
+      save no-maybe, false
+      sift subject-type
+        case boolean
+          save no-maybe, true
+        case number
+          save no-maybe, true
+        case float
+          save no-maybe, true
+        case string
+          save no-maybe, true
+        case unit
+          save no-maybe, true
+        case bytes
+          save no-maybe, true
+        case array
+          save no-maybe, true
+        case map
+          save no-maybe, true
+        miss
+          save nothing, 0
+      fork test, no-maybe
+        hold
+          walk cleared
+            take branch
+            fork test, or(is-equal(branch/label, <some>), is-equal(branch/label, <none>))
+              hold
+                say-hinted(st, make(type-mismatch), match-span, <`case {branch/label}` tests a maybe, and this sift is over {show-type(subject-type)}, which is never one, so the arm is never taken>, <test the value itself (`fork test` on a boolean), or declare it `like maybe` if it can be absent>)
       save subject-var, <>
       sift subject-node
         case variable
@@ -4375,7 +4404,7 @@ task infer-expression
           save nothing, 0
       back inferred-of(found-type, with-type(node, found-type))
     case member
-      back infer-member(st, node, env)
+      back infer-member(st, node, env, <value>)
     case call
       back infer-call(st, node, env)
     case closure
@@ -4883,12 +4912,28 @@ task infer-construction
 
 # ---- a member ----
 
+# what an assignment writes, inferred: a member there on a map writes a key
+task infer-target
+  take st, like infer-state
+  take node, like expression
+  take env, like hash, like text, like scheme
+  like inferred
+  mark private
+
+  sift node
+    case member
+      back infer-member(st, node, env, <target>)
+    miss
+      back infer-expression(st, node, env)
+
 # A MEMBER READ: a narrowed case subject's variant field, a host handle refused, a form's tag, a record's field or
 # method, a list's or text's length, a map's size, an element or value read by index, a task refused, a host value's
 task infer-member
   take st, like infer-state
   take node, like expression
   take env, like hash, like text, like scheme
+  # where the member stands: <target> what an assignment writes, <value> anything else (a read, a call's callee)
+  take use, like text
   like inferred
   mark private
 
@@ -5056,7 +5101,20 @@ task infer-member
               expect(st, index-found/type, target-key, expression-span(index-found/node), <map key>)
               back inferred-of(target-value, with-type(node, target-value))
             case none
-              save nothing, 0
+              # A PLAIN SEGMENT WRITTEN ON A MAP IS A LITERAL KEY, as `xs/0` is a literal index: `save st/needs/exception,
+              # true` writes the key "exception", so a `has` or a `get` finds it. Until item 0054 it set a property of
+              # the map object on TypeScript, which no map read ever found, and named no member natively. A read is
+              # left as it was (a key is read with `get`)
+              fork test, and(is-equal(use, <target>), not(is-digits(member-name)))
+                hold
+                  save key-literal
+                    make expression/string
+                      bind value, member-name
+                      bind span, member-span
+                      bind type, make(some, string-type())
+                  expect(st, string-type(), target-key, member-span, <map key>)
+                  save node/index, make(some, key-literal)
+                  back inferred-of(target-value, with-type(node, target-value))
         case function
           # a task has no fields: `read make-box/size` read a member off the task itself
           save named, <>

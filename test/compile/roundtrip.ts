@@ -18,7 +18,10 @@ import { resolveAsync } from '@term/make/code/check/async-resolve'
 import { asyncSlots } from '@term/make/code/check/async-slots'
 import { simplify } from '@term/make/code/ir/simplify'
 import { collectModules } from '@term/make/code/compile/load'
-import { bindModules, stampModule } from '@term/make/code/check/bind-modules'
+import {
+  bindModules,
+  stampModule,
+} from '@term/make/code/check/bind-modules'
 import type { Source } from '@term/make/code/compile/load'
 import {
   withNativeEnv,
@@ -47,7 +50,7 @@ const RT_ONLY = process.env.RT_ONLY ?? ''
 const TOOLCHAINS = new Set(['rust', 'swift', 'kotlin'])
 
 function toolchainOf(name: string): string {
-  return (/^([a-z]+)/.exec(name)?.[1] ?? '')
+  return /^([a-z]+)/.exec(name)?.[1] ?? ''
 }
 
 function skip_filtered(name: string): boolean {
@@ -113,9 +116,13 @@ const stdlib = stdlibResolver()!
 // now resolves shims next to the module that docks them (an absolute path), so try that directly first; fall back to
 // the `@term/base/...` import-path form for any dock whose origin file was not recorded.
 const readRuntime = (path: string): string | undefined => {
-  if (existsSync(path)) {return readFileSync(path, 'utf8')}
+  if (existsSync(path)) {
+    return readFileSync(path, 'utf8')
+  }
 
-  if (!STDLIB_PREFIX.test(path)) {return undefined}
+  if (!STDLIB_PREFIX.test(path)) {
+    return undefined
+  }
 
   const file = join(baseTree, path.replace(STDLIB_PREFIX, ''))
 
@@ -131,8 +138,12 @@ function frontEnd(
 ): Program {
   const resolver = env ? withNativeEnv(env, stdlib) : stdlib
   // what each module imports, so a name two modules define binds per file as `compile` binds it
-  const collected = withStdlib ? collectModules({ file: 'main.tree', text }, resolver) : undefined
-  const sources = collected ? collected.sources : [{ file: 'main.tree', text }]
+  const collected = withStdlib
+    ? collectModules({ file: 'main.tree', text }, resolver)
+    : undefined
+  const sources = collected
+    ? collected.sources
+    : [{ file: 'main.tree', text }]
   const scope = collected?.scope
 
   const program: Program = []
@@ -143,19 +154,26 @@ function frontEnd(
   for (const unit of sources) {
     const parsed = parse(unit)
 
-    if (!parsed.ok) {throw new Error('parse failed')}
+    if (!parsed.ok) {
+      throw new Error('parse failed')
+    }
 
     const built = mill(parsed.tree, unit.file)
 
-    if (!built.ok)
-      {throw new Error(
+    if (!built.ok) {
+      throw new Error(
         'mill failed: ' +
           built.diagnostics.map(d => d.message).join(', '),
-      )}
+      )
+    }
 
-    if (unit.file === 'main.tree')
-      {for (const node of built.program)
-        {if (node.form === 'function') {roots.add(node.name)}}}
+    if (unit.file === 'main.tree') {
+      for (const node of built.program) {
+        if (node.form === 'function') {
+          roots.add(node.name)
+        }
+      }
+    }
 
     stampModule(built.program, unit.file)
     program.push(...built.program)
@@ -183,9 +201,13 @@ function runSwift(
   callExpr: string,
   want: number,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('swiftc')) {return skipped(name, 'swiftc not installed')}
+  if (!have('swiftc')) {
+    return skipped(name, 'swiftc not installed')
+  }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
   writeFileSync(file, `${emitSwift(program)}\nprint(${callExpr})\n`)
@@ -193,7 +215,12 @@ function runSwift(
   const exe = file.replace(/\.swift$/, '')
 
   deferNative(name, async () => {
-    const built = await run('swiftc', [...nativeFlags('swift'), '-o', exe, file])
+    const built = await run('swiftc', [
+      ...nativeFlags('swift'),
+      '-o',
+      exe,
+      file,
+    ])
 
     if (built.status !== 0) {
       nativeFailure(name, 'swiftc', built.stderr)
@@ -219,14 +246,27 @@ function deferNative(name: string, work: () => Promise<void>): void {
 }
 
 // a process, awaited: its output and exit status
-function run(command: string, argv: string[]): Promise<{ status: number | null; stdout: string; stderr: string }> {
+function run(
+  command: string,
+  argv: string[],
+): Promise<{ status: number | null; stdout: string; stderr: string }> {
   return new Promise(resolve => {
     const child = spawn(command, argv)
     let stdout = ''
     let stderr = ''
-    child.stdout.on('data', chunk => { stdout += String(chunk) })
-    child.stderr.on('data', chunk => { stderr += String(chunk) })
-    child.on('error', error => resolve({ status: null, stdout, stderr: `${stderr}\n${String(error)}` }))
+    child.stdout.on('data', chunk => {
+      stdout += String(chunk)
+    })
+    child.stderr.on('data', chunk => {
+      stderr += String(chunk)
+    })
+    child.on('error', error =>
+      resolve({
+        status: null,
+        stdout,
+        stderr: `${stderr}\n${String(error)}`,
+      }),
+    )
     child.on('close', status => resolve({ status, stdout, stderr }))
   })
 }
@@ -236,10 +276,16 @@ function run(command: string, argv: string[]): Promise<{ status: number | null; 
 function errorLines(text: string): string {
   const errors = text.split('\n').filter(line => /\berror\b/.test(line))
 
-  return errors.length > 0 ? errors.slice(0, 6).join('\n') : text.slice(0, 300)
+  return errors.length > 0
+    ? errors.slice(0, 6).join('\n')
+    : text.slice(0, 300)
 }
 
-function nativeFailure(name: string, tool: string, stderr: string): void {
+function nativeFailure(
+  name: string,
+  tool: string,
+  stderr: string,
+): void {
   fail++
   console.log(`FAIL  ${name}  (${tool} error: ${errorLines(stderr)})`)
 }
@@ -248,7 +294,12 @@ function nativeFailure(name: string, tool: string, stderr: string): void {
 // cargo project with one binary each; `cargo run --bin` per program was ten serial builds and links. The flush runs
 // one `cargo build --bins` (cargo parallelises inside it) and then runs each binary from target/debug through the
 // pool. A build that fails falls back to `cargo run --bin` per program, so the failure is attributed.
-type CargoJob = { name: string; proj: string; bin: string; check: (out: string) => void }
+type CargoJob = {
+  name: string
+  proj: string
+  bin: string
+  check: (out: string) => void
+}
 
 const cargoJobs: CargoJob[] = []
 
@@ -262,11 +313,20 @@ async function flushCargo(): Promise<void> {
   const projects = [...new Set(jobs.map(j => j.proj))]
 
   for (const proj of projects) {
-    const built = await new Promise<{ status: number | null; stderr: string }>(resolve => {
-      const child = spawn('cargo', ['build', '--quiet', '--bins'], { cwd: proj })
+    const built = await new Promise<{
+      status: number | null
+      stderr: string
+    }>(resolve => {
+      const child = spawn('cargo', ['build', '--quiet', '--bins'], {
+        cwd: proj,
+      })
       let stderr = ''
-      child.stderr.on('data', chunk => { stderr += String(chunk) })
-      child.on('error', error => resolve({ status: null, stderr: String(error) }))
+      child.stderr.on('data', chunk => {
+        stderr += String(chunk)
+      })
+      child.on('error', error =>
+        resolve({ status: null, stderr: String(error) }),
+      )
       child.on('close', status => resolve({ status, stderr }))
     })
 
@@ -276,9 +336,19 @@ async function flushCargo(): Promise<void> {
       // attribute: one cargo run per program
       for (const job of own) {
         try {
-          job.check(execFileSync('cargo', ['run', '--quiet', '--bin', job.bin], { cwd: proj, stdio: ['ignore', 'pipe', 'pipe'] }).toString())
+          job.check(
+            execFileSync(
+              'cargo',
+              ['run', '--quiet', '--bin', job.bin],
+              { cwd: proj, stdio: ['ignore', 'pipe', 'pipe'] },
+            ).toString(),
+          )
         } catch (e) {
-          nativeFailure(job.name, 'cargo', String((e as { stderr?: Buffer }).stderr ?? e))
+          nativeFailure(
+            job.name,
+            'cargo',
+            String((e as { stderr?: Buffer }).stderr ?? e),
+          )
         }
       }
 
@@ -287,7 +357,10 @@ async function flushCargo(): Promise<void> {
 
     for (const job of own) {
       deferNative(job.name, async () => {
-        const ran = await run(join(proj, 'target', 'debug', job.bin), [])
+        const ran = await run(
+          join(proj, 'target', 'debug', job.bin),
+          [],
+        )
 
         if (ran.status !== 0) {
           nativeFailure(job.name, 'cargo', ran.stderr)
@@ -323,7 +396,9 @@ async function flushNative(): Promise<void> {
     }
   }
 
-  await Promise.all(Array.from({ length: Math.min(width, jobs.length) }, worker))
+  await Promise.all(
+    Array.from({ length: Math.min(width, jobs.length) }, worker),
+  )
   flushKotlin()
 }
 
@@ -334,17 +409,29 @@ async function flushNative(): Promise<void> {
 // `java -cp <jar> p<i>.<File>Kt`. A batch that fails to compile falls back to one compile per file, so the failure
 // is still attributed to the program that caused it (or skipped, for the one site that treats a build failure as a
 // missing toolchain feature).
-type KotlinJob = { name: string; file: string; check: (out: string) => void; onBuildFailure: 'fail' | 'skip' }
+type KotlinJob = {
+  name: string
+  file: string
+  check: (out: string) => void
+  onBuildFailure: 'fail' | 'skip'
+}
 
 const kotlinJobs: KotlinJob[] = []
 
-function deferKotlin(name: string, file: string, check: (out: string) => void, onBuildFailure: 'fail' | 'skip' = 'fail'): void {
+function deferKotlin(
+  name: string,
+  file: string,
+  check: (out: string) => void,
+  onBuildFailure: 'fail' | 'skip' = 'fail',
+): void {
   kotlinJobs.push({ name, file, check, onBuildFailure })
 }
 
 // the class a Kotlin file's top-level functions compile to: `foo.kt` is `FooKt`
 function kotlinFacade(file: string): string {
-  const base = file.slice(file.lastIndexOf('/') + 1).replace(/\.kt$/, '')
+  const base = file
+    .slice(file.lastIndexOf('/') + 1)
+    .replace(/\.kt$/, '')
 
   return `${base.charAt(0).toUpperCase()}${base.slice(1)}Kt`
 }
@@ -365,10 +452,18 @@ function kotlinFailure(job: KotlinJob, e: unknown): void {
 function runKotlinJob(job: KotlinJob, jar: string, at: number): void {
   try {
     // bounded: a program that never answers fails here, named, rather than holding the whole suite to its limit
-    job.check(execFileSync('java', ['-cp', jar, `p${at}.${kotlinFacade(job.file)}`], { stdio: 'pipe', timeout: 120_000 }).toString())
+    job.check(
+      execFileSync(
+        'java',
+        ['-cp', jar, `p${at}.${kotlinFacade(job.file)}`],
+        { stdio: 'pipe', timeout: 120_000 },
+      ).toString(),
+    )
   } catch (e) {
     fail++
-    console.log(`FAIL  ${job.name}  (java error: ${String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 300)})`)
+    console.log(
+      `FAIL  ${job.name}  (java error: ${String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 300)})`,
+    )
   }
 }
 
@@ -381,7 +476,10 @@ function flushKotlin(): void {
 
   // one package per program, so fifty `fun main`s and fifty copies of a runtime shim never collide
   jobs.forEach((job, i) => {
-    writeFileSync(job.file, `package p${i}\n\n${readFileSync(job.file, 'utf8')}`)
+    writeFileSync(
+      job.file,
+      `package p${i}\n\n${readFileSync(job.file, 'utf8')}`,
+    )
   })
 
   // compile the batch; a file kotlinc names in an error is taken out and the rest compiled again, at most a few
@@ -394,11 +492,25 @@ function flushKotlin(): void {
     jar = join(dir, `kotlin-batch-${round}.jar`)
 
     try {
-      execFileSync('kotlinc', [...batch.map(b => b.job.file), ...nativeFlags('kotlin'), '-include-runtime', '-d', jar], { stdio: 'pipe' })
+      execFileSync(
+        'kotlinc',
+        [
+          ...batch.map(b => b.job.file),
+          ...nativeFlags('kotlin'),
+          '-include-runtime',
+          '-d',
+          jar,
+        ],
+        { stdio: 'pipe' },
+      )
       break
     } catch (e) {
       const text = String((e as { stderr?: Buffer }).stderr ?? e)
-      const bad = new Set([...text.matchAll(/^(\S+\.kt):\d+:\d+: error:/gm)].map(m => m[1]!.slice(m[1]!.lastIndexOf('/') + 1)))
+      const bad = new Set(
+        [...text.matchAll(/^(\S+\.kt):\d+:\d+: error:/gm)].map(m =>
+          m[1]!.slice(m[1]!.lastIndexOf('/') + 1),
+        ),
+      )
 
       if (bad.size === 0) {
         // an error kotlinc did not pin to a file: attribute it to each program alone
@@ -411,12 +523,21 @@ function flushKotlin(): void {
       }
 
       for (const entry of batch) {
-        if (bad.has(entry.job.file.slice(entry.job.file.lastIndexOf('/') + 1))) {
+        if (
+          bad.has(
+            entry.job.file.slice(entry.job.file.lastIndexOf('/') + 1),
+          )
+        ) {
           dropped.push({ ...entry, error: text })
         }
       }
 
-      batch = batch.filter(entry => !bad.has(entry.job.file.slice(entry.job.file.lastIndexOf('/') + 1)))
+      batch = batch.filter(
+        entry =>
+          !bad.has(
+            entry.job.file.slice(entry.job.file.lastIndexOf('/') + 1),
+          ),
+      )
       jar = ''
     }
   }
@@ -425,7 +546,10 @@ function flushKotlin(): void {
     if (jar) {
       runKotlinJob(job, jar, at)
     } else {
-      kotlinFailure(job, new Error('the batch did not build in four rounds'))
+      kotlinFailure(
+        job,
+        new Error('the batch did not build in four rounds'),
+      )
     }
   }
 
@@ -434,7 +558,17 @@ function flushKotlin(): void {
     const own = join(dir, `kotlin-single-${at}.jar`)
 
     try {
-      execFileSync('kotlinc', [job.file, ...nativeFlags('kotlin'), '-include-runtime', '-d', own], { stdio: 'pipe' })
+      execFileSync(
+        'kotlinc',
+        [
+          job.file,
+          ...nativeFlags('kotlin'),
+          '-include-runtime',
+          '-d',
+          own,
+        ],
+        { stdio: 'pipe' },
+      )
     } catch (e) {
       kotlinFailure(job, e)
       continue
@@ -450,10 +584,13 @@ function runKotlin(
   callExpr: string,
   want: number,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('kotlinc') || !have('java'))
-    {return skipped(name, 'kotlinc/java not installed')}
+  if (!have('kotlinc') || !have('java')) {
+    return skipped(name, 'kotlinc/java not installed')
+  }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   writeFileSync(
@@ -473,9 +610,13 @@ function runRust(
   callExpr: string,
   want: number,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('rustc')) {return skipped(name, 'rustc not installed')}
+  if (!have('rustc')) {
+    return skipped(name, 'rustc not installed')
+  }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
   writeFileSync(
@@ -488,7 +629,14 @@ function runRust(
   const exe = file.replace(/\.rs$/, '')
 
   deferNative(name, async () => {
-    const built = await run('rustc', ['-A', 'warnings', '-O', file, '-o', exe])
+    const built = await run('rustc', [
+      '-A',
+      'warnings',
+      '-O',
+      file,
+      '-o',
+      exe,
+    ])
 
     if (built.status !== 0) {
       nativeFailure(name, 'rustc', built.stderr)
@@ -511,20 +659,26 @@ function frontEndAsync(
   const resolver = env ? withNativeEnv(env, stdlib) : stdlib
   const parsed = parse({ file: 'main.tree', text })
 
-  if (!parsed.ok) {throw new Error('parse failed')}
+  if (!parsed.ok) {
+    throw new Error('parse failed')
+  }
 
   const built = mill(parsed.tree, 'main.tree')
 
-  if (!built.ok)
-    {throw new Error(
+  if (!built.ok) {
+    throw new Error(
       'mill failed: ' +
         built.diagnostics.map(d => d.message).join(', '),
-    )}
+    )
+  }
 
   const roots = new Set<string>()
 
-  for (const node of built.program)
-    {if (node.form === 'function') {roots.add(node.name)}}
+  for (const node of built.program) {
+    if (node.form === 'function') {
+      roots.add(node.name)
+    }
+  }
 
   resolveNames(built.program, 'main.tree')
   check(built.program, 'main.tree')
@@ -544,9 +698,13 @@ function runRustAsync(
   callExpr: string,
   want: number,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('rustc')) {return skipped(name, 'rustc not installed')}
+  if (!have('rustc')) {
+    return skipped(name, 'rustc not installed')
+  }
 
   const blockOn = `
 use std::future::Future as _SeedFuture; use std::pin::Pin as _SeedPin;
@@ -566,7 +724,15 @@ fn main() { std::process::exit((seed_block_on(${callExpr})) as i32); }
   const exe = file.replace(/\.rs$/, '')
 
   deferNative(name, async () => {
-    const built = await run('rustc', ['-A', 'warnings', '--edition', '2021', file, '-o', exe])
+    const built = await run('rustc', [
+      '-A',
+      'warnings',
+      '--edition',
+      '2021',
+      file,
+      '-o',
+      exe,
+    ])
 
     if (built.status !== 0) {
       nativeFailure(name, 'rustc', built.stderr)
@@ -586,18 +752,30 @@ function runSwiftAsync(
   callExpr: string,
   want: number,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('swiftc')) {return skipped(name, 'swiftc not installed')}
+  if (!have('swiftc')) {
+    return skipped(name, 'swiftc not installed')
+  }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
   const driver = `let _seedSem = DispatchSemaphore(value: 0)\nvar _seedOut = 0\nTask { _seedOut = await ${callExpr}; _seedSem.signal() }\n_seedSem.wait()\nprint(_seedOut)\n`
-  writeFileSync(file, `import Foundation\n${emitSwift(program)}\n${driver}`)
+  writeFileSync(
+    file,
+    `import Foundation\n${emitSwift(program)}\n${driver}`,
+  )
 
   const exe = file.replace(/\.swift$/, '')
 
   deferNative(name, async () => {
-    const built = await run('swiftc', [...nativeFlags('swift'), '-o', exe, file])
+    const built = await run('swiftc', [
+      ...nativeFlags('swift'),
+      '-o',
+      exe,
+      file,
+    ])
 
     if (built.status !== 0) {
       nativeFailure(name, 'swiftc', built.stderr)
@@ -618,10 +796,13 @@ function runKotlinAsync(
   callExpr: string,
   want: number,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('kotlinc') || !have('java'))
-    {return skipped(name, 'kotlinc/java not installed')}
+  if (!have('kotlinc') || !have('java')) {
+    return skipped(name, 'kotlinc/java not installed')
+  }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   const driver = `import kotlin.coroutines.*\nfun <T> seedDrive(b: suspend () -> T): T { var r: T? = null; b.startCoroutine(object: Continuation<T>{ override val context = EmptyCoroutineContext; override fun resumeWith(x: Result<T>){ r = x.getOrThrow() } }); return r!! }\nfun main() { println(seedDrive { ${callExpr} }) }\n`
@@ -639,17 +820,30 @@ function runKotlinAsync(
 // right shape. The whole native/rust/file module comes in with it, whose watch shim names tokio and notify, so it builds
 // in the shared cargo project, driven by the compiler's own main (compile/native-main.ts)
 function runRustIo(name: string, program: Program, want: string): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('cargo')) {return skipped(name, 'cargo not installed')}
+  if (!have('cargo')) {
+    return skipped(name, 'cargo not installed')
+  }
 
   const proj = join(tmpdir(), 'seed-rust-runtime')
   mkdirSync(join(proj, 'src', 'bin'), { recursive: true })
   writeFileSync(join(proj, 'Cargo.toml'), RUST_CARGO_TOML)
   const rust = emitRust(program)
-  const bin = `p_${name.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}`.slice(0, 80)
-  writeFileSync(join(proj, 'src', 'bin', `${bin}.rs`), `${nativePrelude(program, 'rust', readRuntime, rust)}\n${rust}\n${nativeMain('rust', rust)}\n`)
-  cargoJobs.push({ name, proj, bin, check: out => ok(name, out.trim(), want) })
+  const bin =
+    `p_${name.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}`.slice(0, 80)
+  writeFileSync(
+    join(proj, 'src', 'bin', `${bin}.rs`),
+    `${nativePrelude(program, 'rust', readRuntime, rust)}\n${rust}\n${nativeMain('rust', rust)}\n`,
+  )
+  cargoJobs.push({
+    name,
+    proj,
+    bin,
+    check: out => ok(name, out.trim(), want),
+  })
 }
 
 // Swift file IO end to end: prepend the io runtime shim (from base.tree), write + read a temp file through emitted Swift.
@@ -658,18 +852,30 @@ function runSwiftIo(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('swiftc')) {return skipped(name, 'swiftc not installed')}
+  if (!have('swiftc')) {
+    return skipped(name, 'swiftc not installed')
+  }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
   const swift = emitSwift(program)
-  writeFileSync(file, `import Foundation\n${nativePrelude(program, 'swift', readRuntime, swift)}\n${swift}\n${nativeMain('swift', swift)}\n`)
+  writeFileSync(
+    file,
+    `import Foundation\n${nativePrelude(program, 'swift', readRuntime, swift)}\n${swift}\n${nativeMain('swift', swift)}\n`,
+  )
 
   const exe = file.replace(/\.swift$/, '')
 
   deferNative(name, async () => {
-    const built = await run('swiftc', [...nativeFlags('swift'), '-o', exe, file])
+    const built = await run('swiftc', [
+      ...nativeFlags('swift'),
+      '-o',
+      exe,
+      file,
+    ])
 
     if (built.status !== 0) {
       nativeFailure(name, 'swiftc', built.stderr)
@@ -688,14 +894,22 @@ function runKotlinIo(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('kotlinc') || !have('java'))
-    {return skipped(name, 'kotlinc/java not installed')}
+  if (!have('kotlinc') || !have('java')) {
+    return skipped(name, 'kotlinc/java not installed')
+  }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   const kotlin = emitKotlin(program)
-  writeFileSync(file, hoistKotlinImports(`${nativePrelude(program, 'kotlin', readRuntime, kotlin)}\n${kotlin}\n${nativeMain('kotlin', kotlin)}\n`))
+  writeFileSync(
+    file,
+    hoistKotlinImports(
+      `${nativePrelude(program, 'kotlin', readRuntime, kotlin)}\n${kotlin}\n${nativeMain('kotlin', kotlin)}\n`,
+    ),
+  )
 
   deferKotlin(name, file, out => ok(name, out.trim(), want))
 }
@@ -707,9 +921,13 @@ function runRustMath(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('rustc')) {return skipped(name, 'rustc not installed')}
+  if (!have('rustc')) {
+    return skipped(name, 'rustc not installed')
+  }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
   writeFileSync(
@@ -722,7 +940,14 @@ function runRustMath(
   const exe = file.replace(/\.rs$/, '')
 
   deferNative(name, async () => {
-    const built = await run('rustc', ['-A', 'warnings', '-O', file, '-o', exe])
+    const built = await run('rustc', [
+      '-A',
+      'warnings',
+      '-O',
+      file,
+      '-o',
+      exe,
+    ])
 
     if (built.status !== 0) {
       nativeFailure(name, 'rustc', built.stderr)
@@ -740,9 +965,13 @@ function runSwiftMath(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('swiftc')) {return skipped(name, 'swiftc not installed')}
+  if (!have('swiftc')) {
+    return skipped(name, 'swiftc not installed')
+  }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
   writeFileSync(
@@ -755,7 +984,12 @@ function runSwiftMath(
   const exe = file.replace(/\.swift$/, '')
 
   deferNative(name, async () => {
-    const built = await run('swiftc', [...nativeFlags('swift'), '-o', exe, file])
+    const built = await run('swiftc', [
+      ...nativeFlags('swift'),
+      '-o',
+      exe,
+      file,
+    ])
 
     if (built.status !== 0) {
       nativeFailure(name, 'swiftc', built.stderr)
@@ -773,10 +1007,13 @@ function runKotlinMath(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('kotlinc') || !have('java'))
-    {return skipped(name, 'kotlinc/java not installed')}
+  if (!have('kotlinc') || !have('java')) {
+    return skipped(name, 'kotlinc/java not installed')
+  }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   writeFileSync(
@@ -799,14 +1036,20 @@ function runSwiftCrypto(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('swiftc')) {return skipped(name, 'swiftc not installed')}
+  if (!have('swiftc')) {
+    return skipped(name, 'swiftc not installed')
+  }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
   const emitted = emitSwift(program)
   // a `compute` that can raise (`fetch` raises on a refused connection) is called with `try`
-  const call = /func compute\(\)[^{]*\bthrows\b/.test(emitted) ? 'try await compute()' : 'await compute()'
+  const call = /func compute\(\)[^{]*\bthrows\b/.test(emitted)
+    ? 'try await compute()'
+    : 'await compute()'
   writeFileSync(
     file,
     `${nativePrelude(program, 'swift', readRuntime)}\n${emitted}\nprint(${call}, terminator: "")\n`,
@@ -815,11 +1058,20 @@ function runSwiftCrypto(
   const exe = file.replace(/\.swift$/, '')
 
   deferNative(name, async () => {
-    const built = await run('swiftc', [...nativeFlags('swift'), '-o', exe, file])
+    const built = await run('swiftc', [
+      ...nativeFlags('swift'),
+      '-o',
+      exe,
+      file,
+    ])
 
     // only a missing framework is the toolchain's; any other build error is the emitted code's, and fails
     if (built.status !== 0) {
-      const error = built.stderr.split('\n').find(line => line.includes('error:')) ?? built.stderr.slice(0, 200)
+      const error =
+        built.stderr
+          .split('\n')
+          .find(line => line.includes('error:')) ??
+        built.stderr.slice(0, 200)
 
       if (/no such module/.test(built.stderr)) {
         skipped(name, `swiftc could not resolve a framework: ${error}`)
@@ -840,10 +1092,13 @@ function runKotlinCrypto(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('kotlinc') || !have('java'))
-    {return skipped(name, 'kotlinc/java not installed')}
+  if (!have('kotlinc') || !have('java')) {
+    return skipped(name, 'kotlinc/java not installed')
+  }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   // the shared main (compile/main-entry.tree): a suspending `compute` runs on `termLoop.block`, so a completion the
@@ -852,7 +1107,9 @@ function runKotlinCrypto(
   const kotlin = emitKotlin(program)
   writeFileSync(
     file,
-    hoistKotlinImports(`${nativePrelude(program, 'kotlin', readRuntime, kotlin)}\n${kotlin}\n${nativeMain('kotlin', kotlin, 'compute')}\n`),
+    hoistKotlinImports(
+      `${nativePrelude(program, 'kotlin', readRuntime, kotlin)}\n${kotlin}\n${nativeMain('kotlin', kotlin, 'compute')}\n`,
+    ),
   )
 
   deferKotlin(name, file, out => ok(name, out.trim(), want), 'skip')
@@ -864,9 +1121,13 @@ function runRustText(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('rustc')) {return skipped(name, 'rustc not installed')}
+  if (!have('rustc')) {
+    return skipped(name, 'rustc not installed')
+  }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
   writeFileSync(
@@ -879,7 +1140,14 @@ function runRustText(
   const exe = file.replace(/\.rs$/, '')
 
   deferNative(name, async () => {
-    const built = await run('rustc', ['-A', 'warnings', '-O', file, '-o', exe])
+    const built = await run('rustc', [
+      '-A',
+      'warnings',
+      '-O',
+      file,
+      '-o',
+      exe,
+    ])
 
     if (built.status !== 0) {
       nativeFailure(name, 'rustc', built.stderr)
@@ -898,9 +1166,13 @@ function runSwiftText(
   want: string,
   isAsync = false,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('swiftc')) {return skipped(name, 'swiftc not installed')}
+  if (!have('swiftc')) {
+    return skipped(name, 'swiftc not installed')
+  }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
   const emitted = emitSwift(program)
@@ -915,7 +1187,12 @@ function runSwiftText(
   const exe = file.replace(/\.swift$/, '')
 
   deferNative(name, async () => {
-    const built = await run('swiftc', [...nativeFlags('swift'), '-o', exe, file])
+    const built = await run('swiftc', [
+      ...nativeFlags('swift'),
+      '-o',
+      exe,
+      file,
+    ])
 
     if (built.status !== 0) {
       nativeFailure(name, 'swiftc', built.stderr)
@@ -934,19 +1211,26 @@ function runKotlinText(
   want: string,
   isAsync = false,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('kotlinc') || !have('java'))
-    {return skipped(name, 'kotlinc/java not installed')}
+  if (!have('kotlinc') || !have('java')) {
+    return skipped(name, 'kotlinc/java not installed')
+  }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   // an asynchronous `compute` runs through the shared main on `termLoop.block`, which runs what the runtime posts to
   // the loop; a bare `suspend fun main()` never drives it (runKotlinCrypto)
   const kotlin = emitKotlin(program)
-  const main = isAsync ? nativeMain('kotlin', kotlin, 'compute') : 'fun main() { print(compute()) }'
+  const main = isAsync
+    ? nativeMain('kotlin', kotlin, 'compute')
+    : 'fun main() { print(compute()) }'
   writeFileSync(
     file,
-    hoistKotlinImports(`${nativePrelude(program, 'kotlin', readRuntime, kotlin)}\n${kotlin}\n${main}\n`),
+    hoistKotlinImports(
+      `${nativePrelude(program, 'kotlin', readRuntime, kotlin)}\n${kotlin}\n${main}\n`,
+    ),
   )
 
   deferKotlin(name, file, out => ok(name, out.trim(), want))
@@ -991,9 +1275,13 @@ function runRustCargo(
   want: string,
   isAsync: boolean,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('cargo')) {return skipped(name, 'cargo not installed')}
+  if (!have('cargo')) {
+    return skipped(name, 'cargo not installed')
+  }
 
   // one cargo project for every program, so the crates build once and are shared, and ONE BINARY PER PROGRAM
   // (`src/bin/<name>.rs`, `cargo run --bin <name>`): a shared `src/main.rs` rewritten within the same second as the
@@ -1010,13 +1298,18 @@ function runRustCargo(
   const emitted = emitRust(program)
   // a `compute` that can raise returns `Result<T, TermException>` (the result lowering), so main reports the raise
   // and exits non-zero, the way an unhandled raise ends a program on every backend
-  const raising = /fn compute\(\)[^{]*-> std::result::Result</.test(emitted)
+  const raising = /fn compute\(\)[^{]*-> std::result::Result</.test(
+    emitted,
+  )
   const value = isAsync ? 'compute().await' : 'compute()'
-  const shown = raising ? `${value}.unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) })` : value
+  const shown = raising
+    ? `${value}.unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) })`
+    : value
   const main = isAsync
     ? `\n#[tokio::main]\nasync fn main() { print!("{}", ${shown}); }\n`
     : `\nfn main() { print!("{}", ${shown}); }\n`
-  const bin = `p_${name.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}`.slice(0, 80)
+  const bin =
+    `p_${name.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}`.slice(0, 80)
 
   writeFileSync(
     join(proj, 'src', 'bin', `${bin}.rs`),
@@ -1024,7 +1317,12 @@ function runRustCargo(
   )
 
   // built with every other cargo program in one `cargo build --bins` at the flush, then run from target/debug
-  cargoJobs.push({ name, proj, bin, check: out => ok(name, out.trim(), want) })
+  cargoJobs.push({
+    name,
+    proj,
+    bin,
+    check: out => ok(name, out.trim(), want),
+  })
 }
 
 // rust console uses println! (std, no crate), so bare rustc suffices; compute() prints, main calls it bare.
@@ -1033,9 +1331,13 @@ function runRustConsole(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('rustc')) {return skipped(name, 'rustc not installed')}
+  if (!have('rustc')) {
+    return skipped(name, 'rustc not installed')
+  }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
   writeFileSync(
@@ -1048,7 +1350,14 @@ function runRustConsole(
   const exe = file.replace(/\.rs$/, '')
 
   deferNative(name, async () => {
-    const built = await run('rustc', ['-A', 'warnings', '-O', file, '-o', exe])
+    const built = await run('rustc', [
+      '-A',
+      'warnings',
+      '-O',
+      file,
+      '-o',
+      exe,
+    ])
 
     if (built.status !== 0) {
       nativeFailure(name, 'rustc', built.stderr)
@@ -1067,9 +1376,13 @@ function runSwiftConsole(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('swiftc')) {return skipped(name, 'swiftc not installed')}
+  if (!have('swiftc')) {
+    return skipped(name, 'swiftc not installed')
+  }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
   writeFileSync(
@@ -1082,7 +1395,12 @@ function runSwiftConsole(
   const exe = file.replace(/\.swift$/, '')
 
   deferNative(name, async () => {
-    const built = await run('swiftc', [...nativeFlags('swift'), '-o', exe, file])
+    const built = await run('swiftc', [
+      ...nativeFlags('swift'),
+      '-o',
+      exe,
+      file,
+    ])
 
     if (built.status !== 0) {
       nativeFailure(name, 'swiftc', built.stderr)
@@ -1100,10 +1418,13 @@ function runKotlinConsole(
   program: Program,
   want: string,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('kotlinc') || !have('java'))
-    {return skipped(name, 'kotlinc/java not installed')}
+  if (!have('kotlinc') || !have('java')) {
+    return skipped(name, 'kotlinc/java not installed')
+  }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.kt`)
   writeFileSync(
@@ -2936,7 +3257,9 @@ function runNodeExpr(
   call: string,
   want: string,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.ts`)
   writeFileSync(
@@ -2972,9 +3295,13 @@ function runRustExpr(
   call: string,
   want: string,
 ): void {
-  if (skip_filtered(name)) {return}
+  if (skip_filtered(name)) {
+    return
+  }
 
-  if (!have('rustc')) {return skipped(name, 'rustc not installed')}
+  if (!have('rustc')) {
+    return skipped(name, 'rustc not installed')
+  }
 
   const file = join(dir, `${name.replace(/\W/g, '')}.rs`)
   writeFileSync(
@@ -2985,7 +3312,14 @@ function runRustExpr(
   const exe = file.replace(/\.rs$/, '')
 
   deferNative(name, async () => {
-    const built = await run('rustc', ['-A', 'warnings', '-O', file, '-o', exe])
+    const built = await run('rustc', [
+      '-A',
+      'warnings',
+      '-O',
+      file,
+      '-o',
+      exe,
+    ])
 
     if (built.status !== 0) {
       nativeFailure(name, 'rustc', built.stderr)
@@ -3104,16 +3438,46 @@ async function main(): Promise<void> {
     ['deque', DEQUE_GENERIC, 7],
   ] as const) {
     const built = frontEnd(prog, true)
-    runRust(`rust: generic ${label}<T> (struct + maybe<t> pop)`, built, 'run()', want)
-    runSwift(`swift: generic ${label}<T> (struct + maybe<t> pop)`, built, 'run()', want)
-    runKotlin(`kotlin: generic ${label}<T> (struct + maybe<t> pop)`, built, 'run()', want)
+    runRust(
+      `rust: generic ${label}<T> (struct + maybe<t> pop)`,
+      built,
+      'run()',
+      want,
+    )
+    runSwift(
+      `swift: generic ${label}<T> (struct + maybe<t> pop)`,
+      built,
+      'run()',
+      want,
+    )
+    runKotlin(
+      `kotlin: generic ${label}<T> (struct + maybe<t> pop)`,
+      built,
+      'run()',
+      want,
+    )
   }
 
   // code-point runes on every backend: to-runes count ("A😀b" -> 3) and a to-runes/from-runes text round-trip.
   const runeCount = frontEnd(RUNE_COUNT, true)
-  runRust('rust: to-runes code-point count (astral)', runeCount, 'run()', 3)
-  runSwift('swift: to-runes code-point count (astral)', runeCount, 'run()', 3)
-  runKotlin('kotlin: to-runes code-point count (astral)', runeCount, 'run()', 3)
+  runRust(
+    'rust: to-runes code-point count (astral)',
+    runeCount,
+    'run()',
+    3,
+  )
+  runSwift(
+    'swift: to-runes code-point count (astral)',
+    runeCount,
+    'run()',
+    3,
+  )
+  runKotlin(
+    'kotlin: to-runes code-point count (astral)',
+    runeCount,
+    'run()',
+    3,
+  )
   runRustText(
     'rust: to-runes/from-runes text round-trip',
     frontEnd(RUNE_ROUND, true, 'rust'),
@@ -3172,17 +3536,38 @@ async function main(): Promise<void> {
   // the per-target io runtime shim (the same public-style file ops, three different platform file systems)
   runRustIo(
     'rust + io runtime: file write then read round-trips',
-    frontEnd(ioProgram('rust', join(dir, 'seed_rust_io_roundtrip.txt'), 'hello rust io'), true),
+    frontEnd(
+      ioProgram(
+        'rust',
+        join(dir, 'seed_rust_io_roundtrip.txt'),
+        'hello rust io',
+      ),
+      true,
+    ),
     'hello rust io',
   )
   runSwiftIo(
     'swift + io runtime: file write then read round-trips',
-    frontEnd(ioProgram('swift', join(dir, 'seed_swift_io.txt'), 'hello swift io'), true),
+    frontEnd(
+      ioProgram(
+        'swift',
+        join(dir, 'seed_swift_io.txt'),
+        'hello swift io',
+      ),
+      true,
+    ),
     'hello swift io',
   )
   runKotlinIo(
     'kotlin + io runtime: file write then read round-trips',
-    frontEnd(ioProgram('kotlin', join(dir, 'seed_kotlin_io.txt'), 'hello kotlin io'), true),
+    frontEnd(
+      ioProgram(
+        'kotlin',
+        join(dir, 'seed_kotlin_io.txt'),
+        'hello kotlin io',
+      ),
+      true,
+    ),
     'hello kotlin io',
   )
 
@@ -3608,9 +3993,24 @@ async function main(): Promise<void> {
     true,
   )
   // structured concurrency: a typed task result and a gather, on the job shim each backend now has
-  runRustCargo('rust + cargo: job spawn + wait + gather', frontEnd(JOB_PROG, true, 'rust'), 'true', true)
-  runKotlinText('kotlin + job: spawn + wait + gather', frontEnd(JOB_PROG, true, 'kotlin'), 'true', true)
-  runSwiftText('swift + job: spawn + wait + gather', frontEnd(JOB_PROG, true, 'swift'), 'true', true)
+  runRustCargo(
+    'rust + cargo: job spawn + wait + gather',
+    frontEnd(JOB_PROG, true, 'rust'),
+    'true',
+    true,
+  )
+  runKotlinText(
+    'kotlin + job: spawn + wait + gather',
+    frontEnd(JOB_PROG, true, 'kotlin'),
+    'true',
+    true,
+  )
+  runSwiftText(
+    'swift + job: spawn + wait + gather',
+    frontEnd(JOB_PROG, true, 'swift'),
+    'true',
+    true,
+  )
   // preemption budget: the long asynchronous loop checks it, the short constant-bounded one does not, and it runs
   if (!skip_filtered('rust: budget check in the long loop only')) {
     const emitted = emitRust(frontEnd(BUDGET_PROG, true, 'rust'))
@@ -3619,11 +4019,31 @@ async function main(): Promise<void> {
     ok('rust: budget check in the long loop only', String(checks), '1')
   }
 
-  runRustCargo('rust + cargo: a budgeted loop runs to its answer', frontEnd(BUDGET_PROG, true, 'rust'), 'true', true)
+  runRustCargo(
+    'rust + cargo: a budgeted loop runs to its answer',
+    frontEnd(BUDGET_PROG, true, 'rust'),
+    'true',
+    true,
+  )
   // a typed channel carrying a variant form
-  runRustCargo('rust + cargo: channel of a variant form', frontEnd(VARIANT_CHANNEL_PROG, true, 'rust'), 'true', true)
-  runKotlinText('kotlin + channel: a variant form', frontEnd(VARIANT_CHANNEL_PROG, true, 'kotlin'), 'true', true)
-  runSwiftText('swift + channel: a variant form', frontEnd(VARIANT_CHANNEL_PROG, true, 'swift'), 'true', true)
+  runRustCargo(
+    'rust + cargo: channel of a variant form',
+    frontEnd(VARIANT_CHANNEL_PROG, true, 'rust'),
+    'true',
+    true,
+  )
+  runKotlinText(
+    'kotlin + channel: a variant form',
+    frontEnd(VARIANT_CHANNEL_PROG, true, 'kotlin'),
+    'true',
+    true,
+  )
+  runSwiftText(
+    'swift + channel: a variant form',
+    frontEnd(VARIANT_CHANNEL_PROG, true, 'swift'),
+    'true',
+    true,
+  )
   // concurrency: atomic counter increase + load
   runRustCargo(
     'rust + cargo: atomic increase + load (AtomicI64)',
@@ -4173,9 +4593,11 @@ async function main(): Promise<void> {
   const waiter = new Int32Array(new SharedArrayBuffer(4))
 
   for (let i = 0; i < 100 && !port; i++) {
-    if (existsSync(portFile))
-      {port = readFileSync(portFile, 'utf8').trim()}
-    else {Atomics.wait(waiter, 0, 0, 50)}
+    if (existsSync(portFile)) {
+      port = readFileSync(portFile, 'utf8').trim()
+    } else {
+      Atomics.wait(waiter, 0, 0, 50)
+    }
   }
 
   if (port) {
@@ -4210,17 +4632,23 @@ async function main(): Promise<void> {
   // behind the one async connect / send / receive interface, buffering frames so send-then-receive never races.
   const wsPortFile = join(dir, 'ws-port.txt')
   const wsServerCode = `const http=require('http'),crypto=require('crypto'),fs=require('fs');function dec(b){const op=b[0]&15,mk=(b[1]&128)!==0;let n=b[1]&127,o=2;if(n===126){n=b.readUInt16BE(2);o=4}else if(n===127){n=Number(b.readBigUInt64BE(2));o=10}let m=Buffer.alloc(0);if(mk){m=b.subarray(o,o+4);o+=4}const p=b.subarray(o,o+n),out=Buffer.alloc(p.length);for(let i=0;i<p.length;i++)out[i]=p[i]^(mk?m[i%4]:0);return{op,d:out.toString('utf8')}}function enc(t){const p=Buffer.from(t,'utf8'),n=p.length;let h;if(n<126)h=Buffer.from([0x81,n]);else{h=Buffer.alloc(4);h[0]=0x81;h[1]=126;h.writeUInt16BE(n,2)}return Buffer.concat([h,p])}const s=http.createServer();s.on('upgrade',(q,sock)=>{const k=q.headers['sec-websocket-key'],a=crypto.createHash('sha1').update(k+'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');sock.write('HTTP/1.1 101 Switching Protocols\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\nSec-WebSocket-Accept: '+a+'\\r\\n\\r\\n');sock.on('data',b=>{const f=dec(b);if(f.op===8){sock.end();return}if(f.op===1)sock.write(enc(f.d))})});s.listen(0,'127.0.0.1',()=>fs.writeFileSync(process.argv[1],String(s.address().port)))`
-  const wsServer = spawn(process.execPath, ['-e', wsServerCode, wsPortFile], {
-    stdio: 'ignore',
-  })
+  const wsServer = spawn(
+    process.execPath,
+    ['-e', wsServerCode, wsPortFile],
+    {
+      stdio: 'ignore',
+    },
+  )
 
   let wsPort = ''
   const wsWaiter = new Int32Array(new SharedArrayBuffer(4))
 
   for (let i = 0; i < 100 && !wsPort; i++) {
-    if (existsSync(wsPortFile))
-      {wsPort = readFileSync(wsPortFile, 'utf8').trim()}
-    else {Atomics.wait(wsWaiter, 0, 0, 50)}
+    if (existsSync(wsPortFile)) {
+      wsPort = readFileSync(wsPortFile, 'utf8').trim()
+    } else {
+      Atomics.wait(wsWaiter, 0, 0, 50)
+    }
   }
 
   if (wsPort) {
@@ -4265,7 +4693,9 @@ task compute
         )
       } catch (e) {
         fail++
-        console.log(`FAIL  ${wsNodeName}  (${String((e as { message?: string }).message ?? e).slice(0, 120)})`)
+        console.log(
+          `FAIL  ${wsNodeName}  (${String((e as { message?: string }).message ?? e).slice(0, 120)})`,
+        )
       }
     }
     runRustCargo(
@@ -4287,7 +4717,10 @@ task compute
       true,
     )
   } else {
-    skipped('websocket round-trips', 'could not start the local ws server')
+    skipped(
+      'websocket round-trips',
+      'could not start the local ws server',
+    )
   }
 
   // the queued Kotlin programs that talk to this server run before it goes
@@ -4300,7 +4733,9 @@ task compute
     `\nroundtrip: ${pass} pass, ${fail} fail, ${skip} skipped  (compiled + ran on the real toolchain)`,
   )
 
-  if (fail > 0) {process.exit(1)}
+  if (fail > 0) {
+    process.exit(1)
+  }
 }
 
 main()

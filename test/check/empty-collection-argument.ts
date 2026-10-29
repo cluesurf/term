@@ -72,32 +72,63 @@ task empty-hash-into-list
   send back, read outer
 `
 
-const names = ['into-hash', 'into-hash-saved', 'into-list', 'empty-hash-into-list']
+const names = [
+  'into-hash',
+  'into-hash-saved',
+  'into-list',
+  'empty-hash-into-list',
+]
 const want: Record<string, string> = {
   'into-hash': '{"kind":"array","element":{"kind":"string"}}',
   'into-hash-saved': '{"kind":"array","element":{"kind":"string"}}',
   'into-list': '{"kind":"array","element":{"kind":"number"}}',
-  'empty-hash-into-list': '{"kind":"map","key":{"kind":"string"},"value":{"kind":"boolean"}}',
+  'empty-hash-into-list':
+    '{"kind":"map","key":{"kind":"string"},"value":{"kind":"boolean"}}',
 }
 
 const built = compile(
   { file: 'empty-argument.tree', text },
-  { resolve: withNativeEnv('swift', stdlibResolver()!), env: 'swift', entryPoints: names },
+  {
+    resolve: withNativeEnv('swift', stdlibResolver()!),
+    env: 'swift',
+    entryPoints: names,
+  },
 )
 
 if (!built.ok) {
-  ok('the program builds for swift', false, built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the program builds for swift',
+    false,
+    built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
 } else {
   for (const name of names) {
-    const task = built.program.find(d => (d as { name?: string }).name === name) as unknown as { body: { form: string; name?: string; type?: unknown }[] }
-    const none = task.body.find(s => s.form === 'let' && s.name === 'none')
+    const task = built.program.find(
+      d => (d as { name?: string }).name === name,
+    ) as unknown as {
+      body: { form: string; name?: string; type?: unknown }[]
+    }
+    const none = task.body.find(
+      s => s.form === 'let' && s.name === 'none',
+    )
 
-    ok(`${name}: the empty collection takes the slot's type`, JSON.stringify(none?.type) === want[name], JSON.stringify(none?.type))
+    ok(
+      `${name}: the empty collection takes the slot's type`,
+      JSON.stringify(none?.type) === want[name],
+      JSON.stringify(none?.type),
+    )
   }
 
   const swift = emitSwift(built.program)
 
-  ok('Swift spells no element as Any', !/SeedList<Any>|\[Any\]|SeedMap<String, Any>/.test(swift), swift.split('\n').filter(line => /Any/.test(line) && /none/.test(line)).join(' | '))
+  ok(
+    'Swift spells no element as Any',
+    !/SeedList<Any>|\[Any\]|SeedMap<String, Any>/.test(swift),
+    swift
+      .split('\n')
+      .filter(line => /Any/.test(line) && /none/.test(line))
+      .join(' | '),
+  )
 }
 
 console.log(`\nempty-collection-argument: ${pass} pass, ${fail} fail`)

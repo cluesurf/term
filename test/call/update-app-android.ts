@@ -10,7 +10,15 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { androidDevice, androidTools, assembleApk, buildAndroidProgram, buildPage, caskAndroidDriver, stampRuntimeVersion } from '@term/call/code/cask'
+import {
+  androidDevice,
+  androidTools,
+  assembleApk,
+  buildAndroidProgram,
+  buildPage,
+  caskAndroidDriver,
+  stampRuntimeVersion,
+} from '@term/call/code/cask'
 import { publishUpdate, stampUpdateKey } from '@term/call/code/update'
 import { holdDeviceSync } from '../compile/shared/device-hold'
 import { tempDir } from '../temp'
@@ -46,7 +54,10 @@ const served = join(dir, 'served')
 const PORT = 5287
 const entry = `import { boot } from './app'\nboot()\n`
 const tools = androidTools()
-const adb = (...args: string[]) => spawnSync(tools.adb, ['-s', found.serial, ...args], { encoding: 'utf8' })
+const adb = (...args: string[]) =>
+  spawnSync(tools.adb, ['-s', found.serial, ...args], {
+    encoding: 'utf8',
+  })
 
 // the update server, its own process so it answers while this one waits on the emulator
 const server = spawn(
@@ -85,24 +96,66 @@ async function main(): Promise<void> {
   const work = join(dir, 'work')
   const assets = join(work, 'assets')
   mkdirSync(assets, { recursive: true })
-  await buildPage({ root: TERM, page: join(APP, 'page.tree'), entry, into: join(assets, 'webview'), title: 'Term update', work: join(work, 'page') })
+  await buildPage({
+    root: TERM,
+    page: join(APP, 'page.tree'),
+    entry,
+    into: join(assets, 'webview'),
+    title: 'Term update',
+    work: join(work, 'page'),
+  })
   const { dex, native } = buildAndroidProgram({
     root: CASK,
     entry: join(APP, 'main.tree'),
     identifier,
     // the app's own files directory as its resources, the update server through adb reverse
-    driver: caskAndroidDriver(`boot(cask.bundlePath(), "http://localhost:${PORT}")`),
+    driver: caskAndroidDriver(
+      `boot(cask.bundlePath(), "http://localhost:${PORT}")`,
+    ),
     work,
   })
-  const version = stampRuntimeVersion({ target: 'android', native, into: assets })
+  const version = stampRuntimeVersion({
+    target: 'android',
+    native,
+    into: assets,
+  })
   stampUpdateKey({ identifier, into: assets, keyFile })
-  const apk = assembleApk({ out: work, name: 'TermUpdate', identifier, version: '0.0.2', dex, assets, work })
-  ok('the APK builds with its runtime version and update key', version.hex.length === 64)
+  const apk = assembleApk({
+    out: work,
+    name: 'TermUpdate',
+    identifier,
+    version: '0.0.2',
+    dex,
+    assets,
+    work,
+  })
+  ok(
+    'the APK builds with its runtime version and update key',
+    version.hex.length === 64,
+  )
 
   const next = join(dir, 'next')
-  await buildPage({ root: TERM, page: join(APP, 'page-next.tree'), entry, into: next, title: 'Term update', work: join(work, 'next') })
-  const published = publishUpdate({ page: next, out: served, identifier, platform: 'android', runtimeVersion: version.hex, channel: 'main', keyFile })
-  ok('the update is published for android', published.manifest.metadata.platform === 'android')
+  await buildPage({
+    root: TERM,
+    page: join(APP, 'page-next.tree'),
+    entry,
+    into: next,
+    title: 'Term update',
+    work: join(work, 'next'),
+  })
+  const published = publishUpdate({
+    page: next,
+    out: served,
+    identifier,
+    platform: 'android',
+    runtimeVersion: version.hex,
+    channel: 'main',
+    keyFile,
+  })
+  ok(
+    'the update is published for android',
+    published.manifest.metadata.platform === 'android',
+  )
 
   // the emulator is one device the whole machine shares: held from the first adb call to the last (D017)
   const release = holdDeviceSync('emulator', 'update-app-android')
@@ -113,9 +166,17 @@ async function main(): Promise<void> {
     ok('the APK installs', adb('install', '-r', apk).status === 0)
 
     const first = launch()
-    ok('the first launch runs the shipped page', first === 11, `exit ${first}`)
+    ok(
+      'the first launch runs the shipped page',
+      first === 11,
+      `exit ${first}`,
+    )
     const second = launch()
-    ok('the second launch runs the update', second === 12, `exit ${second}`)
+    ok(
+      'the second launch runs the update',
+      second === 12,
+      `exit ${second}`,
+    )
     const third = launch()
     ok('and keeps running it', third === 12, `exit ${third}`)
 
@@ -134,6 +195,8 @@ async function main(): Promise<void> {
 
 main().catch(error => {
   server.kill()
-  console.log(`FAIL  update-app-android  ${String(error).slice(0, 1200)}`)
+  console.log(
+    `FAIL  update-app-android  ${String(error).slice(0, 1200)}`,
+  )
   process.exit(1)
 })

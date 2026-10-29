@@ -14,9 +14,21 @@
 const __bitSigned32 = (x: number): boolean => (x | 0) === x
 const __bitUnsigned32 = (x: number): boolean => x >>> 0 === x
 const __bitShiftable = (value: number, count: number): boolean =>
-  Number.isSafeInteger(value) && Number.isInteger(count) && count >= 0 && count < 64
-const __bitWide = (op: (a: bigint, b: bigint) => bigint, left: number, right: number): number =>
-  Number(BigInt.asIntN(64, op(BigInt(Math.trunc(left)), BigInt(Math.trunc(right)))))
+  Number.isSafeInteger(value) &&
+  Number.isInteger(count) &&
+  count >= 0 &&
+  count < 64
+const __bitWide = (
+  op: (a: bigint, b: bigint) => bigint,
+  left: number,
+  right: number,
+): number =>
+  Number(
+    BigInt.asIntN(
+      64,
+      op(BigInt(Math.trunc(left)), BigInt(Math.trunc(right))),
+    ),
+  )
 const bit = {
   and: (left: number, right: number): number =>
     __bitSigned32(left) && __bitSigned32(right)
@@ -37,7 +49,9 @@ const bit = {
         ? (left ^ right) >>> 0
         : __bitWide((a, b) => a ^ b, left, right),
   not: (value: number): number =>
-    __bitSigned32(value) ? ~value : Number(BigInt.asIntN(64, ~BigInt(Math.trunc(value)))),
+    __bitSigned32(value)
+      ? ~value
+      : Number(BigInt.asIntN(64, ~BigInt(Math.trunc(value)))),
   shiftLeft: (value: number, count: number): number => {
     if (__bitShiftable(value, count)) {
       const shifted = value * 2 ** count
@@ -47,11 +61,16 @@ const bit = {
   },
   // arithmetic (sign-preserving), matching the compiled backends
   shiftRight: (value: number, count: number): number =>
-    __bitShiftable(value, count) ? Math.floor(value / 2 ** count) + 0 : __bitWide((a, b) => a >> b, value, count),
+    __bitShiftable(value, count)
+      ? Math.floor(value / 2 ** count) + 0
+      : __bitWide((a, b) => a >> b, value, count),
   shiftRightUnsigned: (value: number, count: number): number =>
     __bitShiftable(value, count) && value >= 0
       ? Math.floor(value / 2 ** count)
-      : Number(BigInt.asUintN(64, BigInt(Math.trunc(value))) >> BigInt(Math.trunc(count))),
+      : Number(
+          BigInt.asUintN(64, BigInt(Math.trunc(value))) >>
+            BigInt(Math.trunc(count)),
+        ),
   // A SIGNED 32-BIT MULTIPLY WITH WRAPAROUND. `Math.imul` exactly: the high bits are DISCARDED, which is what
   // the classic string hashes are defined in terms of. The other ops here are 64-bit; this one is deliberately not,
   // because a 64-bit product would give a different number and cyrb53 would stop being cyrb53.

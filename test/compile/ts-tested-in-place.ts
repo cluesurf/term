@@ -10,7 +10,11 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
-import { withNativeEnv, nativePrelude, joinTypeScriptPrelude } from '@term/make/code/compile/native'
+import {
+  withNativeEnv,
+  nativePrelude,
+  joinTypeScriptPrelude,
+} from '@term/make/code/compile/native'
 import { runDir } from './run-dir'
 
 let pass = 0
@@ -65,25 +69,49 @@ task compute
       code 10
 `
 
-const built = compile({ file: 'main.tree', text: PROGRAM }, { resolve: withNativeEnv('node', stdlibResolver()!), env: 'node' })
+const built = compile(
+  { file: 'main.tree', text: PROGRAM },
+  { resolve: withNativeEnv('node', stdlibResolver()!), env: 'node' },
+)
 
 if (!built.ok) {
   throw new Error(built.diagnostics.map(d => d.message).join(' | '))
 }
 
 const ts = built.typescript
-const at = (pattern: RegExp): string => ts.split('\n').filter(l => pattern.test(l)).map(l => l.trim()).join(' | ')
+const at = (pattern: RegExp): string =>
+  ts
+    .split('\n')
+    .filter(l => pattern.test(l))
+    .map(l => l.trim())
+    .join(' | ')
 
 ok(
   'a `return` of one checked sum is tested in place',
-  /const (__n\d+) = x \+ 1; if \(!\(\1 <= 9007199254740991 && \1 >= -9007199254740991\)\) __termIntStop\(\1\); return \1/.test(ts),
+  /const (__n\d+) = x \+ 1; if \(!\(\1 <= 9007199254740991 && \1 >= -9007199254740991\)\) __termIntStop\(\1\); return \1/.test(
+    ts,
+  ),
   at(/x \+ 1/),
 )
-ok('a `let` of one checked sum is tested in place', /const (__n\d+) = x \+ 1; if \(.*\) __termIntStop\(\1\); const y\b/.test(ts), at(/const y/))
-ok('a write of one checked sum is tested in place, the write last', /const (__n\d+) = x \+ 9007199254740991; if \(.*\) __termIntStop\(\1\); x = \1/.test(ts), at(/9007199254740991; if|x \+ 9007199254740991/))
+ok(
+  'a `let` of one checked sum is tested in place',
+  /const (__n\d+) = x \+ 1; if \(.*\) __termIntStop\(\1\); const y\b/.test(
+    ts,
+  ),
+  at(/const y/),
+)
+ok(
+  'a write of one checked sum is tested in place, the write last',
+  /const (__n\d+) = x \+ 9007199254740991; if \(.*\) __termIntStop\(\1\); x = \1/.test(
+    ts,
+  ),
+  at(/9007199254740991; if|x \+ 9007199254740991/),
+)
 ok(
   'a value holding a second check keeps the call for the inner one, and only the outer is in place',
-  /const (__n\d+) = y \+ (__termInt\(x \+ 1\)|next\(x\)); if \(.*\) __termIntStop\(\1\); x = \1/.test(ts),
+  /const (__n\d+) = y \+ (__termInt\(x \+ 1\)|next\(x\)); if \(.*\) __termIntStop\(\1\); x = \1/.test(
+    ts,
+  ),
   at(/y \+/),
 )
 
@@ -92,9 +120,19 @@ ok(
 // so the run ends non-zero with `excess` on stderr and nothing on stdout
 const dir = runDir('ts-tested-in-place-')
 const file = join(dir, 'main.ts')
-writeFileSync(file, `${joinTypeScriptPrelude(nativePrelude(built.program, 'node', () => undefined), ts)}\nprocess.stdout.write(String(compute()))\n`)
+writeFileSync(
+  file,
+  `${joinTypeScriptPrelude(
+    nativePrelude(built.program, 'node', () => undefined),
+    ts,
+  )}\nprocess.stdout.write(String(compute()))\n`,
+)
 const run = spawnSync('npx', ['tsx', file], { encoding: 'utf8' })
-ok('the overflow is a stop the guard does not catch: `excess` on stderr, no handler answer', run.status !== 0 && run.stdout === '' && /excess/.test(run.stderr), `${run.status} ${JSON.stringify(run.stdout)} ${run.stderr.slice(0, 160)}`)
+ok(
+  'the overflow is a stop the guard does not catch: `excess` on stderr, no handler answer',
+  run.status !== 0 && run.stdout === '' && /excess/.test(run.stderr),
+  `${run.status} ${JSON.stringify(run.stdout)} ${run.stderr.slice(0, 160)}`,
+)
 
 console.log(`\nts-tested-in-place: ${pass} pass, ${fail} fail`)
 

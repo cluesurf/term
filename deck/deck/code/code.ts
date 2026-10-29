@@ -6,7 +6,13 @@
 import { Code, CodeHold, MarkWild } from './form'
 import * as version from '@term/deck/code/version'
 
-type PortCode = { major: number; minor: number; patch: number; prerelease: string; build: string }
+type PortCode = {
+  major: number
+  minor: number
+  patch: number
+  prerelease: string
+  build: string
+}
 type PortHold =
   | { form: 'exact'; code: PortCode }
   | { form: 'wild'; major: number; minor: number; patch: number }
@@ -14,7 +20,13 @@ type PortHold =
   | { form: 'test'; list: PortHold[] }
 
 function toPort(code: Code): PortCode {
-  return { major: code.major, minor: code.minor, patch: code.patch, prerelease: code.prerelease ?? '', build: code.build ?? '' }
+  return {
+    major: code.major,
+    minor: code.minor,
+    patch: code.patch,
+    prerelease: code.prerelease ?? '',
+    build: code.build ?? '',
+  }
 }
 
 // `parseCode` answers `prerelease` always (undefined when there is none) and `build` only when there is one
@@ -55,9 +67,20 @@ function fromPortHold(hold: PortHold, text: string): CodeHold {
     case 'wild':
       return wildOf(hold)
     case 'band':
-      return { form: 'band', base: fromParsed(hold.base), head: text.includes('..') ? fromParsed(hold.head) : fromBuilt(hold.head) }
+      return {
+        form: 'band',
+        base: fromParsed(hold.base),
+        head: text.includes('..')
+          ? fromParsed(hold.head)
+          : fromBuilt(hold.head),
+      }
     case 'test':
-      return { form: 'test', list: hold.list.map(member => wildOf(member as Extract<PortHold, { form: 'wild' }>)) }
+      return {
+        form: 'test',
+        list: hold.list.map(member =>
+          wildOf(member as Extract<PortHold, { form: 'wild' }>),
+        ),
+      }
   }
 }
 
@@ -66,9 +89,18 @@ function toPortHold(hold: CodeHold): PortHold {
     case 'exact':
       return { form: 'exact', code: toPort(hold.code) }
     case 'wild':
-      return { form: 'wild', major: hold.major, minor: hold.minor ?? -1, patch: hold.patch ?? -1 }
+      return {
+        form: 'wild',
+        major: hold.major,
+        minor: hold.minor ?? -1,
+        patch: hold.patch ?? -1,
+      }
     case 'band':
-      return { form: 'band', base: toPort(hold.base), head: toPort(hold.head) }
+      return {
+        form: 'band',
+        base: toPort(hold.base),
+        head: toPort(hold.head),
+      }
     case 'test':
       return { form: 'test', list: hold.list.map(toPortHold) }
   }
@@ -90,7 +122,10 @@ export function parseCode(text: string): Code {
 }
 
 export function parseCodeHold(text: string): CodeHold {
-  return fromPortHold(refused(() => version.parseCodeHold(text) as PortHold), text)
+  return fromPortHold(
+    refused(() => version.parseCodeHold(text) as PortHold),
+    text,
+  )
 }
 
 export function showCode(code: Code): string {
@@ -102,24 +137,53 @@ export function compareCode(a: Code, b: Code): number {
 }
 
 export function codeMatch(code: Code, hold: CodeHold): boolean {
-  return version.codeMatch(toPort(code) as never, toPortHold(hold) as never)
+  return version.codeMatch(
+    toPort(code) as never,
+    toPortHold(hold) as never,
+  )
 }
 
 // the original answered one of the codes it was given, so the face hands back that very object
-export function pickBestCode(input: { versions: Code[]; hold: CodeHold }): Code | undefined {
-  const best = version.pickBestCode(input.versions.map(toPort) as never, toPortHold(input.hold) as never) as { found: boolean; code: PortCode }
+export function pickBestCode(input: {
+  versions: Code[]
+  hold: CodeHold
+}): Code | undefined {
+  const best = version.pickBestCode(
+    input.versions.map(toPort) as never,
+    toPortHold(input.hold) as never,
+  ) as { found: boolean; code: PortCode }
 
   if (!best.found) {
     return undefined
   }
 
-  return input.versions.find(v => compareCode(v, best.code as Code) === 0 && (v.build ?? '') === best.code.build)
+  return input.versions.find(
+    v =>
+      compareCode(v, best.code as Code) === 0 &&
+      (v.build ?? '') === best.code.build,
+  )
 }
 
-export function bumpCode(input: { code: Code; level: 1 | 2 | 3 }): Code {
-  return fromBuilt(version.bumpCode(toPort(input.code) as never, input.level) as PortCode)
+export function bumpCode(input: {
+  code: Code
+  level: 1 | 2 | 3
+}): Code {
+  return fromBuilt(
+    version.bumpCode(
+      toPort(input.code) as never,
+      input.level,
+    ) as PortCode,
+  )
 }
 
-export function bumpPrerelease(input: { code: Code; id: string }): Code {
-  return fromBuilt(version.bumpPrerelease(toPort(input.code) as never, input.id) as PortCode)
+export function bumpPrerelease(input: {
+  code: Code
+  id: string
+}): Code {
+  return fromBuilt(
+    version.bumpPrerelease(
+      toPort(input.code) as never,
+      input.id,
+    ) as PortCode,
+  )
 }

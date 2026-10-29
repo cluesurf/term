@@ -17,7 +17,8 @@ import { join } from 'node:path'
 import { parse, printTree } from '@term/make/code/parser/tree'
 import { diagnosticNames } from '@term/make/code/parser/diagnostic'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const DIR = join(HERE, 'file')
 const FIND = process.env.FIND
 
@@ -49,7 +50,9 @@ function runTree(file: string, source: string, expected: string): void {
 
   if (!result.ok) {
     fail++
-    failures.push(`${file}\n  refused: ${result.diagnostics.map(d => d.message).join('; ')}`)
+    failures.push(
+      `${file}\n  refused: ${result.diagnostics.map(d => d.message).join('; ')}`,
+    )
 
     return
   }
@@ -63,7 +66,9 @@ function runTree(file: string, source: string, expected: string): void {
   }
 
   fail++
-  failures.push(`${file}\n--- got ---\n${got}\n--- want ---\n${expected}`)
+  failures.push(
+    `${file}\n--- got ---\n${got}\n--- want ---\n${expected}`,
+  )
 }
 
 // every diagnostic NAME the kink fixtures actually produce, for the coverage check below
@@ -96,7 +101,9 @@ function runKink(file: string, source: string, expected: string): void {
   }
 
   fail++
-  failures.push(`${file}\n--- got ---\n${got}\n--- want ---\n${expected}`)
+  failures.push(
+    `${file}\n--- got ---\n${got}\n--- want ---\n${expected}`,
+  )
 }
 
 function walk(dir: string, kink: boolean): void {
@@ -150,7 +157,10 @@ walk(join(DIR, 'kink'), true)
 const parserSource = ['tree.ts', 'token.ts', 'event.ts']
   .map(name => {
     try {
-      return readFileSync(join(HERE, '../../deck/make/code/parser', name), 'utf8')
+      return readFileSync(
+        join(HERE, '../../deck/make/code/parser', name),
+        'utf8',
+      )
     } catch {
       return ''
     }
@@ -181,7 +191,9 @@ for (const line of diverged) {
   console.log(`note  ${line}`)
 }
 
-console.log(`\nparser fixtures: ${pass} pass, ${fail} fail, ${divergent} documented divergence(s) from the original grammar`)
+console.log(
+  `\nparser fixtures: ${pass} pass, ${fail} fail, ${divergent} documented divergence(s) from the original grammar`,
+)
 
 if (fail > 0) {
   process.exit(1)

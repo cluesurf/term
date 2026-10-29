@@ -80,16 +80,31 @@ const want = '5'
 
 const built = compile(
   { file: 'function-list.tree', text },
-  { resolve: withNativeEnv('rust', stdlibResolver()!), env: 'rust', entryPoints: ['run'] },
+  {
+    resolve: withNativeEnv('rust', stdlibResolver()!),
+    env: 'rust',
+    entryPoints: ['run'],
+  },
 )
 
 if (!built.ok) {
-  ok('the program builds for rust', false, built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the program builds for rust',
+    false,
+    built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
 } else {
   const rust = emitRust(built.program)
-  const line = rust.split('\n').find(text => /vec!\[/.test(text) && /double/.test(text)) ?? ''
+  const line =
+    rust
+      .split('\n')
+      .find(text => /vec!\[/.test(text) && /double/.test(text)) ?? ''
 
-  ok('each task in the list is cast to the element', /double\) as std::rc::Rc<dyn Fn/.test(line), line.trim())
+  ok(
+    'each task in the list is cast to the element',
+    /double\) as std::rc::Rc<dyn Fn/.test(line),
+    line.trim(),
+  )
 
   const rustc = spawnSync('rustc', ['--version'], { encoding: 'utf8' })
 
@@ -97,14 +112,40 @@ if (!built.ok) {
     console.log('skip  rustc  (not installed)')
   } else {
     const dir = mkdtempSync(join(tmpdir(), 'term-rust-function-list-'))
-    writeFileSync(join(dir, 'main.rs'), `${rust}\nfn main() {\n    println!("{}", run());\n}\n`)
+    writeFileSync(
+      join(dir, 'main.rs'),
+      `${rust}\nfn main() {\n    println!("{}", run());\n}\n`,
+    )
     const binary = join(dir, 'main')
-    const out = spawnSync('rustc', ['--edition', '2021', '-A', 'warnings', '-o', binary, join(dir, 'main.rs')], { encoding: 'utf8' })
-    ok('rustc compiles it', out.status === 0, out.stderr.split('\n').filter(l => /^error/.test(l)).join(' | '))
+    const out = spawnSync(
+      'rustc',
+      [
+        '--edition',
+        '2021',
+        '-A',
+        'warnings',
+        '-o',
+        binary,
+        join(dir, 'main.rs'),
+      ],
+      { encoding: 'utf8' },
+    )
+    ok(
+      'rustc compiles it',
+      out.status === 0,
+      out.stderr
+        .split('\n')
+        .filter(l => /^error/.test(l))
+        .join(' | '),
+    )
 
     if (out.status === 0) {
       const ran = spawnSync(binary, [], { encoding: 'utf8' })
-      ok('Rust answers 10 + -5', ran.stdout.trim() === want, (ran.stdout + ran.stderr).trim())
+      ok(
+        'Rust answers 10 + -5',
+        ran.stdout.trim() === want,
+        (ran.stdout + ran.stderr).trim(),
+      )
     }
   }
 }
@@ -113,16 +154,37 @@ if (!built.ok) {
 // invariant `MutableList<Function1<..>>` parameter refuses, so the element is spelled
 const onKotlin = compile(
   { file: 'function-list.tree', text },
-  { resolve: withNativeEnv('kotlin', stdlibResolver()!), env: 'kotlin', entryPoints: ['run'] },
+  {
+    resolve: withNativeEnv('kotlin', stdlibResolver()!),
+    env: 'kotlin',
+    entryPoints: ['run'],
+  },
 )
 
 if (!onKotlin.ok) {
-  ok('the program builds for kotlin', false, onKotlin.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the program builds for kotlin',
+    false,
+    onKotlin.diagnostics
+      .map(d => `${d.name}: ${d.message}`)
+      .join(' | '),
+  )
 } else {
-  const kotlin = (await import('@term/make/code/compile/kotlin')).emitKotlin(onKotlin.program)
-  const line = kotlin.split('\n').find(text => /mutableListOf/.test(text) && /double/.test(text)) ?? ''
+  const kotlin = (
+    await import('@term/make/code/compile/kotlin')
+  ).emitKotlin(onKotlin.program)
+  const line =
+    kotlin
+      .split('\n')
+      .find(
+        text => /mutableListOf/.test(text) && /double/.test(text),
+      ) ?? ''
 
-  ok('Kotlin spells the list of functions its element', /mutableListOf<\(Long\) -> Long>\(/.test(line), line.trim())
+  ok(
+    'Kotlin spells the list of functions its element',
+    /mutableListOf<\(Long\) -> Long>\(/.test(line),
+    line.trim(),
+  )
 }
 
 console.log(`\nrust-function-list: ${pass} pass, ${fail} fail`)

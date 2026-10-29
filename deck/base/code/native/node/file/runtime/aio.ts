@@ -21,7 +21,12 @@ import { randomUUID } from 'node:crypto'
 type Handle = { file: fs.FileHandle; at: number }
 // a reader keeps one streaming decoder, so a character whose bytes a chunk boundary splits is held until the next
 // chunk completes it (decision 067 section 3, term-self-host-001-0380)
-type Reader = { file: fs.FileHandle; at: number; left: number | undefined; decoder: TextDecoder }
+type Reader = {
+  file: fs.FileHandle
+  at: number
+  left: number | undefined
+  decoder: TextDecoder
+}
 type Writer = Handle
 
 const aio = {
@@ -51,7 +56,10 @@ const aio = {
     }
   },
 
-  fileWriteBytes: async (at: string, data: Uint8Array): Promise<void> => {
+  fileWriteBytes: async (
+    at: string,
+    data: Uint8Array,
+  ): Promise<void> => {
     try {
       await fs.writeFile(at, data)
     } catch {
@@ -67,7 +75,11 @@ const aio = {
     }
   },
 
-  fileCopy: async (from: string, to: string, deep: boolean): Promise<void> => {
+  fileCopy: async (
+    from: string,
+    to: string,
+    deep: boolean,
+  ): Promise<void> => {
     try {
       if (deep) {
         await fs.cp(from, to, { recursive: true })
@@ -121,7 +133,11 @@ const aio = {
 
   // ---- link ----
 
-  linkMake: async (from: string, to: string, hard: boolean): Promise<void> => {
+  linkMake: async (
+    from: string,
+    to: string,
+    hard: boolean,
+  ): Promise<void> => {
     try {
       if (hard) {
         await fs.link(from, to)
@@ -196,7 +212,10 @@ const aio = {
     prefix: string,
     suffix: string,
   ): Promise<string> => {
-    const at = path.join(os.tmpdir(), `${prefix}${randomUUID()}${suffix}`)
+    const at = path.join(
+      os.tmpdir(),
+      `${prefix}${randomUUID()}${suffix}`,
+    )
 
     try {
       if (kind === 'directory') {
@@ -334,7 +353,9 @@ const aio = {
         }
 
         const want =
-          stream.left === undefined ? 65536 : Math.min(stream.left, 65536)
+          stream.left === undefined
+            ? 65536
+            : Math.min(stream.left, 65536)
         const buffer = Buffer.alloc(want)
         const got = await stream.file.read(buffer, 0, want, stream.at)
 
@@ -348,7 +369,10 @@ const aio = {
           stream.left -= got.bytesRead
         }
 
-        const text = stream.decoder.decode(buffer.subarray(0, got.bytesRead), { stream: true })
+        const text = stream.decoder.decode(
+          buffer.subarray(0, got.bytesRead),
+          { stream: true },
+        )
 
         if (text !== '') {
           return text

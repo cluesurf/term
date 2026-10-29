@@ -5,7 +5,12 @@
 // Run: npx tsx test/view/vocabulary.ts
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
@@ -95,15 +100,42 @@ writeFileSync(entry, PROGRAM)
 // the dom is the memory host, so the tree can be read back
 const base = projectResolver(ROOT, 'node')
 const resolve = (importPath: string, fromFile: string) =>
-  base(importPath.replace(/dom\/native\/\{platform\}\/(dom|view)$/, 'dom/native/memory/$1'), fromFile)
-const result = compile({ file: entry, text: PROGRAM }, { resolve, env: 'node' })
-ok('a page placing every new word compiles', result.ok, result.ok ? '' : result.diagnostics.slice(0, 4).map(d => d.message).join(' | '))
+  base(
+    importPath.replace(
+      /dom\/native\/\{platform\}\/(dom|view)$/,
+      'dom/native/memory/$1',
+    ),
+    fromFile,
+  )
+const result = compile(
+  { file: entry, text: PROGRAM },
+  { resolve, env: 'node' },
+)
+ok(
+  'a page placing every new word compiles',
+  result.ok,
+  result.ok
+    ? ''
+    : result.diagnostics
+        .slice(0, 4)
+        .map(d => d.message)
+        .join(' | '),
+)
 
 if (result.ok) {
-  const readRuntime = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, 'utf8') : undefined)
-  const prelude = nativePrelude(result.program, 'node', readRuntime, result.typescript)
+  const readRuntime = (file: string): string | undefined =>
+    existsSync(file) ? readFileSync(file, 'utf8') : undefined
+  const prelude = nativePrelude(
+    result.program,
+    'node',
+    readRuntime,
+    result.typescript,
+  )
   const file = join(dir, 'page.ts')
-  writeFileSync(file, `${prelude}\n${result.typescript}\nconsole.log(run())\n`)
+  writeFileSync(
+    file,
+    `${prelude}\n${result.typescript}\nconsole.log(run())\n`,
+  )
   const ran = spawnSync('npx', ['tsx', file], { encoding: 'utf8' })
   const tree = ran.stdout.trim()
   const has = (part: string) => tree.includes(part)
@@ -118,28 +150,68 @@ if (result.ok) {
       has('justify-content: space-between'),
     tree.slice(0, 400),
   )
-  ok('text with level 1 is an h1', /<h1 data-slot="text">Title<\/h1>/.test(tree), tree)
-  ok('text with a link is an a with its href', /<a data-slot="text" href="\/home">Home<\/a>/.test(tree), tree)
-  ok('text with neither is a span', /<span data-slot="text">plain<\/span>/.test(tree), tree)
-  ok('spacer is a div that grows, out of the accessibility tree', /<div data-slot="spacer" style="flex-grow: 1" aria-hidden="true"><\/div>/.test(tree), tree)
-  ok('divider is an hr', /<hr data-slot="divider"><\/hr>/.test(tree), tree)
+  ok(
+    'text with level 1 is an h1',
+    /<h1 data-slot="text">Title<\/h1>/.test(tree),
+    tree,
+  )
+  ok(
+    'text with a link is an a with its href',
+    /<a data-slot="text" href="\/home">Home<\/a>/.test(tree),
+    tree,
+  )
+  ok(
+    'text with neither is a span',
+    /<span data-slot="text">plain<\/span>/.test(tree),
+    tree,
+  )
+  ok(
+    'spacer is a div that grows, out of the accessibility tree',
+    /<div data-slot="spacer" style="flex-grow: 1" aria-hidden="true"><\/div>/.test(
+      tree,
+    ),
+    tree,
+  )
+  ok(
+    'divider is an hr',
+    /<hr data-slot="divider"><\/hr>/.test(tree),
+    tree,
+  )
   ok(
     'image is an img with its source, its words and its fit',
-    has('<img data-slot="image"') && has('src="a.png"') && has('alt="A dot"') && has('object-fit: cover'),
+    has('<img data-slot="image"') &&
+      has('src="a.png"') &&
+      has('alt="A dot"') &&
+      has('object-fit: cover'),
     tree,
   )
   ok(
     'frame sets only the bounds it was given',
-    has('data-slot="frame"') && has('width: 200px; ') && has('max-height: 50px; ') && !has('min-width'),
+    has('data-slot="frame"') &&
+      has('width: 200px; ') &&
+      has('max-height: 50px; ') &&
+      !has('min-width'),
     tree,
   )
-  ok('frame holds its child directly', /data-slot="frame"[^>]*><span data-slot="text">framed<\/span><\/div>/.test(tree), tree)
+  ok(
+    'frame holds its child directly',
+    /data-slot="frame"[^>]*><span data-slot="text">framed<\/span><\/div>/.test(
+      tree,
+    ),
+    tree,
+  )
   ok(
     'scroll is a scroll element that overflows on its own',
-    /<scroll data-slot="scroll" style="display: block; overflow-y: auto"><span data-slot="text">inside<\/span><\/scroll>/.test(tree),
+    /<scroll data-slot="scroll" style="display: block; overflow-y: auto"><span data-slot="text">inside<\/span><\/scroll>/.test(
+      tree,
+    ),
     tree,
   )
-  ok('no seed-fragment sits between a component and its children', !has('seed-fragment'), tree)
+  ok(
+    'no seed-fragment sits between a component and its children',
+    !has('seed-fragment'),
+    tree,
+  )
 }
 
 console.log(`\nvocabulary: ${pass} pass, ${fail} fail`)

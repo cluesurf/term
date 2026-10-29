@@ -21,29 +21,68 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const dock = (name: string) => ({ form: 'native', module: `global:${name}`, alias: name, file: '/app/code/view/thing.tree' })
-const program = [dock('native-a'), dock('native-b'), dock('native-c')] as unknown as Program
+const dock = (name: string) => ({
+  form: 'native',
+  module: `global:${name}`,
+  alias: name,
+  file: '/app/code/view/thing.tree',
+})
+const program = [
+  dock('native-a'),
+  dock('native-b'),
+  dock('native-c'),
+] as unknown as Program
 
 const SHIMS: Record<string, string> = {
-  '/app/code/view/runtime/native-a.swift': 'enum nativeA { static func run() { nativeB.help() } }',
-  '/app/code/view/runtime/native-b.swift': 'enum nativeB { static func help() {} }',
-  '/app/code/view/runtime/native-c.swift': 'enum nativeC { static func idle() {} }',
+  '/app/code/view/runtime/native-a.swift':
+    'enum nativeA { static func run() { nativeB.help() } }',
+  '/app/code/view/runtime/native-b.swift':
+    'enum nativeB { static func help() {} }',
+  '/app/code/view/runtime/native-c.swift':
+    'enum nativeC { static func idle() {} }',
 }
 const read = (path: string): string | undefined => SHIMS[path]
 
 const reached = nativePrelude(program, 'swift', read, 'nativeA.run()')
-ok('the shim the program calls is taken', reached.includes('enum nativeA'), reached)
-ok('and the shim only that shim calls is taken with it', reached.includes('enum nativeB'), reached)
-ok('and the shim nothing calls stays out', !reached.includes('enum nativeC'), reached)
+ok(
+  'the shim the program calls is taken',
+  reached.includes('enum nativeA'),
+  reached,
+)
+ok(
+  'and the shim only that shim calls is taken with it',
+  reached.includes('enum nativeB'),
+  reached,
+)
+ok(
+  'and the shim nothing calls stays out',
+  !reached.includes('enum nativeC'),
+  reached,
+)
 
 const none = nativePrelude(program, 'swift', read, 'print(1)')
 ok('a program that calls none of them takes none', none === '', none)
 
 const all = nativePrelude(program, 'swift', read)
-ok('without the emitted code every dock is taken, as before', ['nativeA', 'nativeB', 'nativeC'].every(name => all.includes(`enum ${name}`)), all)
+ok(
+  'without the emitted code every dock is taken, as before',
+  ['nativeA', 'nativeB', 'nativeC'].every(name =>
+    all.includes(`enum ${name}`),
+  ),
+  all,
+)
 
-const once = nativePrelude([...program, dock('native-b')] as unknown as Program, 'swift', read, 'nativeA.run() nativeB.help()')
-ok('a shim two docks reach is taken once', once.split('enum nativeB').length === 2, once)
+const once = nativePrelude(
+  [...program, dock('native-b')] as unknown as Program,
+  'swift',
+  read,
+  'nativeA.run() nativeB.help()',
+)
+ok(
+  'a shim two docks reach is taken once',
+  once.split('enum nativeB').length === 2,
+  once,
+)
 
 console.log(`\nprelude-reach: ${pass} pass, ${fail} fail`)
 

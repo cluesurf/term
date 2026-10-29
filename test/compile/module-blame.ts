@@ -64,7 +64,11 @@ task run
 `
 
 const resolve = (path: string): Source | undefined =>
-  path === '@app/deep' ? deep : path === '@app/middle' ? middle : undefined
+  path === '@app/deep'
+    ? deep
+    : path === '@app/middle'
+      ? middle
+      : undefined
 
 const result = compile({ file: 'entry.tree', text: entry }, { resolve })
 
@@ -83,7 +87,7 @@ ok(
 )
 
 ok(
-  "the entry file is not blamed for a dependency mistake",
+  'the entry file is not blamed for a dependency mistake',
   !blamed.has('entry.tree'),
   `blamed ${[...blamed].join(', ')}`,
 )

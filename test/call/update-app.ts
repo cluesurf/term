@@ -15,7 +15,13 @@
 
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
-import { assembleBundle, buildPage, buildProgram, signBundle, stampRuntimeVersion } from '@term/call/code/cask'
+import {
+  assembleBundle,
+  buildPage,
+  buildProgram,
+  signBundle,
+  stampRuntimeVersion,
+} from '@term/call/code/cask'
 import { publishUpdate, stampUpdateKey } from '@term/call/code/update'
 import { tempDir } from '../temp'
 
@@ -33,7 +39,9 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 if (process.platform !== 'darwin') {
-  console.log('skip  update-app  (the update tasks are the Swift cask\'s, and this builds a macOS app)')
+  console.log(
+    "skip  update-app  (the update tasks are the Swift cask's, and this builds a macOS app)",
+  )
   console.log('\nupdate-app: 0 pass, 0 fail, 1 skipped')
   process.exit(0)
 }
@@ -51,9 +59,21 @@ const entry = `import { boot } from './app'\nboot()\n`
 async function scenario(label: string, cask: string): Promise<void> {
   const at = join(dir, label)
   const served = join(at, 'served')
-  const bundle = assembleBundle({ out: join(at, 'app'), name: 'TermUpdate', identifier, version: '0.0.2' })
+  const bundle = assembleBundle({
+    out: join(at, 'app'),
+    name: 'TermUpdate',
+    identifier,
+    version: '0.0.2',
+  })
   const pageDir = join(bundle.resources, 'webview')
-  await buildPage({ root: TERM, page: join(APP, 'page.tree'), entry, into: pageDir, title: 'Term update', work: join(at, 'work/page') })
+  await buildPage({
+    root: TERM,
+    page: join(APP, 'page.tree'),
+    entry,
+    into: pageDir,
+    title: 'Term update',
+    work: join(at, 'work/page'),
+  })
   const program = buildProgram({
     root: CASK,
     entry: join(APP, cask),
@@ -63,25 +83,63 @@ async function scenario(label: string, cask: string): Promise<void> {
     exe: bundle.exe,
     work: join(at, 'work'),
   })
-  const version = stampRuntimeVersion({ target: 'macos', native: program.native, into: bundle.resources })
+  const version = stampRuntimeVersion({
+    target: 'macos',
+    native: program.native,
+    into: bundle.resources,
+  })
   stampUpdateKey({ identifier, into: bundle.resources, keyFile })
   signBundle({ app: bundle.app })
-  ok(`${label}: the app builds with its runtime version and update key`, version.hex.length === 64)
+  ok(
+    `${label}: the app builds with its runtime version and update key`,
+    version.hex.length === 64,
+  )
 
   // the update: the other page, built the same way, published for exactly this runtime version
   const next = join(at, 'next')
-  await buildPage({ root: TERM, page: join(APP, 'page-next.tree'), entry, into: next, title: 'Term update', work: join(at, 'work/next') })
-  const published = publishUpdate({ page: next, out: served, identifier, platform: 'macos', runtimeVersion: version.hex, channel: 'main', keyFile })
-  ok(`${label}: the update is published`, published.manifest.runtimeVersion === version.hex)
+  await buildPage({
+    root: TERM,
+    page: join(APP, 'page-next.tree'),
+    entry,
+    into: next,
+    title: 'Term update',
+    work: join(at, 'work/next'),
+  })
+  const published = publishUpdate({
+    page: next,
+    out: served,
+    identifier,
+    platform: 'macos',
+    runtimeVersion: version.hex,
+    channel: 'main',
+    keyFile,
+  })
+  ok(
+    `${label}: the update is published`,
+    published.manifest.runtimeVersion === version.hex,
+  )
 
-  const launch = () => spawnSync(bundle.exe, [], { encoding: 'utf8', timeout: Number(process.env.UPDATE_APP_TIMEOUT ?? 60_000) })
-  const said = (run: ReturnType<typeof launch>) => `exit ${run.status} ${run.signal ?? ''}: ${(run.stdout + run.stderr).slice(-400)}`
+  const launch = () =>
+    spawnSync(bundle.exe, [], {
+      encoding: 'utf8',
+      timeout: Number(process.env.UPDATE_APP_TIMEOUT ?? 60_000),
+    })
+  const said = (run: ReturnType<typeof launch>) =>
+    `exit ${run.status} ${run.signal ?? ''}: ${(run.stdout + run.stderr).slice(-400)}`
 
   const first = launch()
-  ok(`${label}: the first launch runs the shipped page`, first.status === 11, said(first))
+  ok(
+    `${label}: the first launch runs the shipped page`,
+    first.status === 11,
+    said(first),
+  )
 
   const second = launch()
-  ok(`${label}: the second launch runs the update`, second.status === 12, said(second))
+  ok(
+    `${label}: the second launch runs the update`,
+    second.status === 12,
+    said(second),
+  )
 
   const third = launch()
   ok(`${label}: and keeps running it`, third.status === 12, said(third))

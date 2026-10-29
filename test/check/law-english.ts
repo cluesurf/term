@@ -32,39 +32,174 @@ function ok(name: string, cond: boolean, info = ''): void {
 const BASE = new URL('../../deck/base/', import.meta.url).pathname
 const SEED = new URL('../../../seed.tree/', import.meta.url).pathname
 
-const roleOf = { [BASE]: projectRoleOf(BASE), [SEED]: projectRoleOf(SEED) }
-const leanOf = { [BASE]: projectLeanOf(BASE), [SEED]: projectLeanOf(SEED) }
+const roleOf = {
+  [BASE]: projectRoleOf(BASE),
+  [SEED]: projectRoleOf(SEED),
+}
+const leanOf = {
+  [BASE]: projectLeanOf(BASE),
+  [SEED]: projectLeanOf(SEED),
+}
 
-function lawsOfFile(root: string, file: string): ReturnType<typeof lawSentencesOf> {
+function lawsOfFile(
+  root: string,
+  file: string,
+): ReturnType<typeof lawSentencesOf> {
   const path = join(root, file)
-  return lawSentencesOf({ file: path, text: readFileSync(path, 'utf8'), role: roleOf[root]!(path) ?? undefined, lean: leanOf[root]!(path) })
+  return lawSentencesOf({
+    file: path,
+    text: readFileSync(path, 'utf8'),
+    role: roleOf[root]!(path) ?? undefined,
+    lean: leanOf[root]!(path),
+  })
 }
 
 // written by hand from each rule's `.tree` text, not from the renderer's output
-const TARGETS: { root: string; file: string; rule: string; english: string }[] = [
-  { root: BASE, file: 'code/proof/equal/refl.tree', rule: 'refl', english: 'For every type a and every value x of type a, x equals x.' },
-  { root: BASE, file: 'code/proof/equal/symmetry.tree', rule: 'symmetry', english: 'For every type a and all values x and y of type a, if x equals y, then y equals x.' },
-  { root: BASE, file: 'code/proof/equal/transitivity.tree', rule: 'transitivity', english: 'For every type a and all values x, y and z of type a, if x equals y and y equals z, then x equals z.' },
-  { root: BASE, file: 'code/proof/equal/congruence.tree', rule: 'congruence', english: 'For all types a and b, every function f from a to b and all values x and y of type a, if x equals y, then f of x equals f of y.' },
-  { root: BASE, file: 'code/proof/equal/substitution.tree', rule: 'substitution', english: 'For every type a, every property p of values of type a and all values x and y of type a, if x equals y and p holds of x, then p holds of y.' },
-  { root: BASE, file: 'code/proof/absurd.tree', rule: 'absurd', english: 'For every type a, if there is a value of never, the type with no values, then there is a value of type a.' },
-  { root: SEED, file: 'code/order/law.tree', rule: 'order-is-reflexive', english: 'For every number a, a is at most a.' },
-  { root: SEED, file: 'code/order/law.tree', rule: 'order-is-antisymmetric', english: 'For all numbers a and b, if a is at most b and b is at most a, then a equals b.' },
+const TARGETS: {
+  root: string
+  file: string
+  rule: string
+  english: string
+}[] = [
+  {
+    root: BASE,
+    file: 'code/proof/equal/refl.tree',
+    rule: 'refl',
+    english:
+      'For every type a and every value x of type a, x equals x.',
+  },
+  {
+    root: BASE,
+    file: 'code/proof/equal/symmetry.tree',
+    rule: 'symmetry',
+    english:
+      'For every type a and all values x and y of type a, if x equals y, then y equals x.',
+  },
+  {
+    root: BASE,
+    file: 'code/proof/equal/transitivity.tree',
+    rule: 'transitivity',
+    english:
+      'For every type a and all values x, y and z of type a, if x equals y and y equals z, then x equals z.',
+  },
+  {
+    root: BASE,
+    file: 'code/proof/equal/congruence.tree',
+    rule: 'congruence',
+    english:
+      'For all types a and b, every function f from a to b and all values x and y of type a, if x equals y, then f of x equals f of y.',
+  },
+  {
+    root: BASE,
+    file: 'code/proof/equal/substitution.tree',
+    rule: 'substitution',
+    english:
+      'For every type a, every property p of values of type a and all values x and y of type a, if x equals y and p holds of x, then p holds of y.',
+  },
+  {
+    root: BASE,
+    file: 'code/proof/absurd.tree',
+    rule: 'absurd',
+    english:
+      'For every type a, if there is a value of never, the type with no values, then there is a value of type a.',
+  },
+  {
+    root: SEED,
+    file: 'code/order/law.tree',
+    rule: 'order-is-reflexive',
+    english: 'For every number a, a is at most a.',
+  },
+  {
+    root: SEED,
+    file: 'code/order/law.tree',
+    rule: 'order-is-antisymmetric',
+    english:
+      'For all numbers a and b, if a is at most b and b is at most a, then a equals b.',
+  },
   // `show miss is-below a a`: the mill negates the comparison, so the sentence says what the prover checks
-  { root: SEED, file: 'code/order/law.tree', rule: 'strict-order-is-irreflexive', english: 'For every number a, a is at least a.' },
-  { root: SEED, file: 'code/order/law.tree', rule: 'strict-order-is-translation-invariant', english: 'For all numbers a, b and c, if a is less than b, then a plus c is less than b plus c.' },
-  { root: SEED, file: 'code/order/law.tree', rule: 'strict-order-is-transitive', english: 'For all numbers a, b and c, if a is less than b and b is less than c, then a is less than c.' },
-  { root: SEED, file: 'code/type/roll.tree', rule: 'length-of-nil-is-zero', english: 'The length of nil equals zero.' },
-  { root: SEED, file: 'code/type/roll.tree', rule: 'append-nil-left-is-identity', english: 'For every roll ys, nil followed by ys equals ys.' },
-  { root: SEED, file: 'code/type/roll.tree', rule: 'append-is-associative', english: 'For all rolls xs, ys and zs, (xs followed by ys) followed by zs equals xs followed by (ys followed by zs).' },
-  { root: SEED, file: 'code/type/roll.tree', rule: 'length-of-append-adds', english: 'For all rolls xs and ys, the length of (xs followed by ys) equals (the length of xs) plus (the length of ys).' },
-  { root: SEED, file: 'code/type/roll.tree', rule: 'reverse-reverse-is-identity', english: 'For every roll xs, the reverse of the reverse of xs equals xs.' },
-  { root: SEED, file: 'code/type/roll.tree', rule: 'length-of-cons-steps', english: 'For every natural h and every roll t, the length of (cons with item h and more t) equals succ with prior (the length of t).' },
+  {
+    root: SEED,
+    file: 'code/order/law.tree',
+    rule: 'strict-order-is-irreflexive',
+    english: 'For every number a, a is at least a.',
+  },
+  {
+    root: SEED,
+    file: 'code/order/law.tree',
+    rule: 'strict-order-is-translation-invariant',
+    english:
+      'For all numbers a, b and c, if a is less than b, then a plus c is less than b plus c.',
+  },
+  {
+    root: SEED,
+    file: 'code/order/law.tree',
+    rule: 'strict-order-is-transitive',
+    english:
+      'For all numbers a, b and c, if a is less than b and b is less than c, then a is less than c.',
+  },
+  {
+    root: SEED,
+    file: 'code/type/roll.tree',
+    rule: 'length-of-nil-is-zero',
+    english: 'The length of nil equals zero.',
+  },
+  {
+    root: SEED,
+    file: 'code/type/roll.tree',
+    rule: 'append-nil-left-is-identity',
+    english: 'For every roll ys, nil followed by ys equals ys.',
+  },
+  {
+    root: SEED,
+    file: 'code/type/roll.tree',
+    rule: 'append-is-associative',
+    english:
+      'For all rolls xs, ys and zs, (xs followed by ys) followed by zs equals xs followed by (ys followed by zs).',
+  },
+  {
+    root: SEED,
+    file: 'code/type/roll.tree',
+    rule: 'length-of-append-adds',
+    english:
+      'For all rolls xs and ys, the length of (xs followed by ys) equals (the length of xs) plus (the length of ys).',
+  },
+  {
+    root: SEED,
+    file: 'code/type/roll.tree',
+    rule: 'reverse-reverse-is-identity',
+    english:
+      'For every roll xs, the reverse of the reverse of xs equals xs.',
+  },
+  {
+    root: SEED,
+    file: 'code/type/roll.tree',
+    rule: 'length-of-cons-steps',
+    english:
+      'For every natural h and every roll t, the length of (cons with item h and more t) equals succ with prior (the length of t).',
+  },
   // first written without the parentheses, which reads two ways ("both a and (b equals ...)"). The renderer's grouping
   // rule was right and the hand-written target was corrected to it, the one target changed after the renderer ran
-  { root: SEED, file: 'code/logic/boolean.tree', rule: 'both-commutes', english: 'For all flags a and b, (both a and b) equals (both b and a).' },
-  { root: SEED, file: 'code/function/property.tree', rule: 'compose-associates', english: 'For all types a, b, c and d, every function h from c to d, every function g from b to c, every function f from a to b and every value x of type a, (h after (g after f)) applied to x equals ((h after g) after f) applied to x.' },
-  { root: SEED, file: 'code/function/property.tree', rule: 'left-inverse-gives-injective', english: 'For all types a and b, every function f from a to b, every function g from b to a and all values x and y of type a, if for every value u of type a, g of f of u equals u, and f of x equals f of y, then x equals y.' },
+  {
+    root: SEED,
+    file: 'code/logic/boolean.tree',
+    rule: 'both-commutes',
+    english:
+      'For all flags a and b, (both a and b) equals (both b and a).',
+  },
+  {
+    root: SEED,
+    file: 'code/function/property.tree',
+    rule: 'compose-associates',
+    english:
+      'For all types a, b, c and d, every function h from c to d, every function g from b to c, every function f from a to b and every value x of type a, (h after (g after f)) applied to x equals ((h after g) after f) applied to x.',
+  },
+  {
+    root: SEED,
+    file: 'code/function/property.tree',
+    rule: 'left-inverse-gives-injective',
+    english:
+      'For all types a and b, every function f from a to b, every function g from b to a and all values x and y of type a, if for every value u of type a, g of f of u equals u, and f of x equals f of y, then x equals y.',
+  },
 ]
 
 const cache = new Map<string, ReturnType<typeof lawsOfFile>>()
@@ -77,9 +212,15 @@ for (const target of TARGETS) {
   }
 
   const read = cache.get(key)!
-  const law = read.ok ? read.laws.find(l => l.name === target.rule) : undefined
+  const law = read.ok
+    ? read.laws.find(l => l.name === target.rule)
+    : undefined
 
-  ok(`target ${target.rule}`, law?.text === target.english, `\n      want: ${target.english}\n      got:  ${law?.text ?? law?.refused ?? (read.ok ? 'no such rule' : read.error)}`)
+  ok(
+    `target ${target.rule}`,
+    law?.text === target.english,
+    `\n      want: ${target.english}\n      got:  ${law?.text ?? law?.refused ?? (read.ok ? 'no such rule' : read.error)}`,
+  )
 }
 
 // A WRONG LAW. Its name and its comment both say transitivity, and its conclusion is reversed. A person who reads only
@@ -108,20 +249,36 @@ const wrongText = wrong.ok ? wrong.laws[0]?.text : wrong.error
 
 ok(
   'a wrong law reads wrong',
-  wrongText === 'For all numbers a, b and c, if a is less than b and b is less than c, then c is less than a.',
+  wrongText ===
+    'For all numbers a, b and c, if a is less than b and b is less than c, then c is less than a.',
   String(wrongText),
 )
 
 // the same rule renamed and recommented: the sentence cannot depend on either
-const renamed = WRONG.replace('strict-order-is-transitive', 'c-wins').replace(/^# .*$/m, '# anything at all, even a false description')
-const renamedRead = lawSentencesOf({ file: 'renamed.tree', text: renamed })
-ok('the name and the comment are not read', renamedRead.ok && renamedRead.laws[0]?.text === wrongText, JSON.stringify(renamedRead))
+const renamed = WRONG.replace(
+  'strict-order-is-transitive',
+  'c-wins',
+).replace(/^# .*$/m, '# anything at all, even a false description')
+const renamedRead = lawSentencesOf({
+  file: 'renamed.tree',
+  text: renamed,
+})
+ok(
+  'the name and the comment are not read',
+  renamedRead.ok && renamedRead.laws[0]?.text === wrongText,
+  JSON.stringify(renamedRead),
+)
 
 // ---- the census ----
 
 function treeFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
-    if (entry === 'node_modules' || entry === 'tmp' || entry === 'host' || entry.startsWith('.')) {
+    if (
+      entry === 'node_modules' ||
+      entry === 'tmp' ||
+      entry === 'host' ||
+      entry.startsWith('.')
+    ) {
       continue
     }
 
@@ -165,14 +322,20 @@ if (process.argv.includes('--census')) {
         read = lawsOfFile(root, path.slice(root.length))
       } catch (error) {
         // how many rules it holds is unknown: -1 says so
-        read = { ok: false, error: `threw: ${String(error)}`, rules: -1 }
+        read = {
+          ok: false,
+          error: `threw: ${String(error)}`,
+          rules: -1,
+        }
       }
 
       if (!read.ok) {
         if (read.rules !== 0) {
           filesFailed++
           unreached += Math.max(0, read.rules)
-          unmilled.push(`  file not milled (${read.rules} rules): ${path.slice(root.length)}: ${read.error.slice(0, 120)}`)
+          unmilled.push(
+            `  file not milled (${read.rules} rules): ${path.slice(root.length)}: ${read.error.slice(0, 120)}`,
+          )
         }
         continue
       }
@@ -185,19 +348,31 @@ if (process.argv.includes('--census')) {
           reasons.set(law.refused, (reasons.get(law.refused) ?? 0) + 1)
         } else if (law.words.length > 0) {
           needsWord++
-          law.words.forEach(word => missing.set(word, (missing.get(word) ?? 0) + 1))
+          law.words.forEach(word =>
+            missing.set(word, (missing.get(word) ?? 0) + 1),
+          )
         } else {
           rendered++
         }
       }
     }
 
-    const top = [...missing.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15)
+    const top = [...missing.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 15)
     console.log(`\ncensus ${root}${sub}/`)
-    console.log(`  rules ${rendered + needsWord + refused} (${[...kinds.entries()].map(([k, v]) => `${k} ${v}`).join(', ')}), files with rules not milled ${filesFailed} (${unreached} rules unread)`)
-    console.log(`  rendered ${rendered}, needs a word ${needsWord}, refused ${refused}`)
-    console.log(`  distinct missing words ${missing.size}, most used: ${top.map(([w, n]) => `${w} ${n}`).join(', ')}`)
-    console.log(`  refusals: ${[...reasons.entries()].map(([r, n]) => `${n} ${r}`).join('; ') || 'none'}`)
+    console.log(
+      `  rules ${rendered + needsWord + refused} (${[...kinds.entries()].map(([k, v]) => `${k} ${v}`).join(', ')}), files with rules not milled ${filesFailed} (${unreached} rules unread)`,
+    )
+    console.log(
+      `  rendered ${rendered}, needs a word ${needsWord}, refused ${refused}`,
+    )
+    console.log(
+      `  distinct missing words ${missing.size}, most used: ${top.map(([w, n]) => `${w} ${n}`).join(', ')}`,
+    )
+    console.log(
+      `  refusals: ${[...reasons.entries()].map(([r, n]) => `${n} ${r}`).join('; ') || 'none'}`,
+    )
     unmilled.forEach(line => console.log(line))
   }
 }

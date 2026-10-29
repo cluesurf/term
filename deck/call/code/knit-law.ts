@@ -17,20 +17,29 @@
 // what is proven is the library's law of the app's own forms and tasks. Lean re-checks it under `--lean`.
 
 import path from 'node:path'
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { parse } from '@term/make/code/parser/tree'
 import { groupsOf } from '@term/make/code/parser/narrow'
 import type { RootNode } from '@term/make/code/parser/narrow'
 import type { Node } from '@term/make/code/parser/tree'
 import { headWord } from '@term/make/code/compile/mill-run'
-import { collectTemplates, expandTemplates } from '@term/make/code/compile/template'
+import {
+  collectTemplates,
+  expandTemplates,
+} from '@term/make/code/compile/template'
 import { mill } from '@term/make/code/compile/mill'
 import { lawSentences } from '@term/make/code/check/law-english'
 import type { LawInstance } from '@term/call/code/knit-plan'
 
 // the line the library's text is appended under. Everything from it to the end of a file is the loop's, written again
 // before every round, so a model that edits it changes nothing
-export const LIBRARY_MARK = '# ---- THE LAW LIBRARY (@term/site/law), appended by term knit before every round. Never edit below this line ----'
+export const LIBRARY_MARK =
+  '# ---- THE LAW LIBRARY (@term/site/law), appended by term knit before every round. Never edit below this line ----'
 
 export type LibraryLaw = {
   // the law, and the claim the template makes
@@ -61,7 +70,10 @@ export function libraryNames(root: string): string[] {
 }
 
 // one law of the library: its file must parse and define the template `<name>-law`
-export function libraryLaw(root: string, name: string): LibraryLaw | undefined {
+export function libraryLaw(
+  root: string,
+  name: string,
+): LibraryLaw | undefined {
   const file = path.join(libraryDir(root), `${name}.tree`)
 
   if (!libraryNames(root).includes(name)) {
@@ -78,7 +90,9 @@ export function libraryLaw(root: string, name: string): LibraryLaw | undefined {
   const template = `${name}-law`
   const found = collectTemplates(parsed.tree).get(template)
 
-  return found ? { name, template, file, text, params: found.params } : undefined
+  return found
+    ? { name, template, file, text, params: found.params }
+    : undefined
 }
 
 // ---- reading a file's own text ----
@@ -104,14 +118,22 @@ export function markLine(text: string): number | undefined {
 
 // one word: a group holding one name and nothing else
 function wordOf(node: Node | undefined): string | undefined {
-  if (node?.kind !== 'group' || node.nodes.length !== 1 || node.nodes[0]?.kind !== 'name') {
+  if (
+    node?.kind !== 'group' ||
+    node.nodes.length !== 1 ||
+    node.nodes[0]?.kind !== 'name'
+  ) {
     return undefined
   }
 
   return headWord(node)
 }
 
-export type Fuse = { template: string; fill: Record<string, string>; problems: string[] }
+export type Fuse = {
+  template: string
+  fill: Record<string, string>
+  problems: string[]
+}
 
 // every top-level `fuse` of a parse tree, and its fill as `bind <hole>, <name>` lines
 export function fusesOf(tree: RootNode): Fuse[] {
@@ -133,7 +155,9 @@ export function fusesOf(tree: RootNode): Fuse[] {
 
     for (const child of group.nodes.slice(2)) {
       if (child.kind !== 'group' || headWord(child) !== 'bind') {
-        problems.push('every line under the fuse is `bind <hole>, <name>`')
+        problems.push(
+          'every line under the fuse is `bind <hole>, <name>`',
+        )
         continue
       }
 
@@ -141,7 +165,9 @@ export function fusesOf(tree: RootNode): Fuse[] {
       const value = wordOf(child.nodes[2])
 
       if (!hole || !value || child.nodes.length !== 3) {
-        problems.push('a `bind` under the fuse names one hole and one form or task: `bind view, view`')
+        problems.push(
+          'a `bind` under the fuse names one hole and one form or task: `bind view, view`',
+        )
         continue
       }
 
@@ -158,7 +184,11 @@ export function fusesOf(tree: RootNode): Fuse[] {
 function rulesOf(tree: RootNode): string[] {
   return groupsOf(tree.nodes).flatMap(group => {
     const named = group.nodes[1]
-    const name = headWord(group) === 'rule' && named?.kind === 'group' ? headWord(named) : undefined
+    const name =
+      headWord(group) === 'rule' && named?.kind === 'group'
+        ? headWord(named)
+        : undefined
+
     return name ? [name] : []
   })
 }
@@ -167,8 +197,11 @@ function rulesOf(tree: RootNode): string[] {
 
 function treeFiles(project: string): string[] {
   const out: string[] = []
+
   const walk = (dir: string): void => {
-    for (const name of existsSync(dir) ? readdirSync(dir, { withFileTypes: true }) : []) {
+    for (const name of existsSync(dir)
+      ? readdirSync(dir, { withFileTypes: true })
+      : []) {
       const file = path.join(dir, name.name)
 
       if (name.isDirectory()) {
@@ -178,6 +211,7 @@ function treeFiles(project: string): string[] {
       }
     }
   }
+
   walk(path.join(project, 'code'))
 
   return out.sort()
@@ -187,9 +221,14 @@ function treeFiles(project: string): string[] {
 export function sealed(text: string, laws: LibraryLaw[]): string {
   const own = ownText(text)
   const parsed = parse({ file: 'x.tree', text: own })
-  const fused = parsed.ok ? new Set(fusesOf(parsed.tree).map(fuse => fuse.template)) : new Set<string>()
+  const fused = parsed.ok
+    ? new Set(fusesOf(parsed.tree).map(fuse => fuse.template))
+    : new Set<string>()
+
   // by name, so a file seals to the same text whatever order the laws were given in
-  const needed = laws.filter(law => fused.has(law.template)).sort((a, b) => a.name.localeCompare(b.name))
+  const needed = laws
+    .filter(law => fused.has(law.template))
+    .sort((a, b) => a.name.localeCompare(b.name))
 
   if (needed.length === 0) {
     return own
@@ -219,32 +258,55 @@ export function seal(project: string, laws: LibraryLaw[]): string[] {
 
 export type Instance = LawInstance
 
-type Statement = Record<string, unknown> & { form?: string; name?: unknown; claim?: boolean; theorem?: boolean; axiom?: boolean }
+type Statement = Record<string, unknown> & {
+  form?: string
+  name?: unknown
+  claim?: boolean
+  theorem?: boolean
+  axiom?: boolean
+}
 
-const isRule = (s: Statement): boolean => s.form === 'function' && (s.claim === true || s.theorem === true || s.axiom === true)
+const isRule = (s: Statement): boolean =>
+  s.form === 'function' &&
+  (s.claim === true || s.theorem === true || s.axiom === true)
 
 // a milled statement as data, its positions set aside, so two spellings at different places compare equal
 function shapeOf(statement: unknown): string {
-  return JSON.stringify(statement, (key, value) => (key === 'span' || key === 'file' ? undefined : value))
+  return JSON.stringify(statement, (key, value) =>
+    key === 'span' || key === 'file' ? undefined : value,
+  )
 }
 
-function milled(file: string, text: string, role: string | undefined, lean: boolean): { ok: true; program: Statement[] } | { ok: false; error: string } {
+function milled(
+  file: string,
+  text: string,
+  role: string | undefined,
+  lean: boolean,
+): { ok: true; program: Statement[] } | { ok: false; error: string } {
   const parsed = parse({ file, text })
 
   if (!parsed.ok) {
-    return { ok: false, error: `it does not parse: ${parsed.diagnostics[0]?.message ?? 'failed'}` }
+    return {
+      ok: false,
+      error: `it does not parse: ${parsed.diagnostics[0]?.message ?? 'failed'}`,
+    }
   }
 
   const built = mill(expandTemplates(parsed.tree), file, role, lean)
 
   if (!built.ok) {
-    return { ok: false, error: `it does not mill: ${built.diagnostics[0]?.message ?? 'failed'}` }
+    return {
+      ok: false,
+      error: `it does not mill: ${built.diagnostics[0]?.message ?? 'failed'}`,
+    }
   }
 
   return { ok: true, program: built.program as unknown as Statement[] }
 }
 
-function sentenceOf(statement: Statement | undefined): string | undefined {
+function sentenceOf(
+  statement: Statement | undefined,
+): string | undefined {
   if (!statement) {
     return undefined
   }
@@ -254,13 +316,24 @@ function sentenceOf(statement: Statement | undefined): string | undefined {
   return said?.text
 }
 
-export function fuseText(law: LibraryLaw, fill: Record<string, string>): string {
-  return [`fuse ${law.template}`, ...law.params.map(param => `  bind ${param}, ${fill[param] ?? param}`)].join('\n')
+export function fuseText(
+  law: LibraryLaw,
+  fill: Record<string, string>,
+): string {
+  return [
+    `fuse ${law.template}`,
+    ...law.params.map(
+      param => `  bind ${param}, ${fill[param] ?? param}`,
+    ),
+  ].join('\n')
 }
 
 // how a law is stated: the fuse to write, each hole a name of the app's
 export function howToState(law: LibraryLaw): string {
-  return [`fuse ${law.template}`, ...law.params.map(param => `  bind ${param}, <your ${param}>`)].join('\n')
+  return [
+    `fuse ${law.template}`,
+    ...law.params.map(param => `  bind ${param}, <your ${param}>`),
+  ].join('\n')
 }
 
 // THE INSTANCE CHECK, over the project's files as they are on disk (sealed or not: the marker and what is under it are
@@ -276,49 +349,95 @@ export function checkInstances(input: {
     const text = readFileSync(file, 'utf8')
     const own = ownText(text)
     const parsed = parse({ file, text: own })
-    return { file, rel: path.relative(input.project, file), text, own, tree: parsed.ok ? parsed.tree : undefined }
+
+    return {
+      file,
+      rel: path.relative(input.project, file),
+      text,
+      own,
+      tree: parsed.ok ? parsed.tree : undefined,
+    }
   })
 
   // what each file defines, by name: the app's forms and tasks, read from the model's own text
   const defined = new Map<string, Set<string>>()
 
   for (const one of files) {
-    const read = milled(one.file, one.own, input.roleOf(one.file) ?? undefined, input.leanOf(one.file))
-    defined.set(one.file, new Set(read.ok ? read.program.filter(s => !isRule(s) && typeof s.name === 'string').map(s => s.name as string) : []))
+    const read = milled(
+      one.file,
+      one.own,
+      input.roleOf(one.file) ?? undefined,
+      input.leanOf(one.file),
+    )
+
+    defined.set(
+      one.file,
+      new Set(
+        read.ok
+          ? read.program
+              .filter(s => !isRule(s) && typeof s.name === 'string')
+              .map(s => s.name as string)
+          : [],
+      ),
+    )
   }
 
   return input.required.map((name): Instance => {
     const law = input.laws.find(one => one.name === name)
 
     if (!law) {
-      return { law: name, ok: false, problem: `there is no law named ${name} in the law library` }
+      return {
+        law: name,
+        ok: false,
+        problem: `there is no law named ${name} in the law library`,
+      }
     }
 
-    const refuse = (problem: string, more: Partial<Instance> = {}): Instance => ({ law: name, ok: false, problem, ...more })
+    const refuse = (
+      problem: string,
+      more: Partial<Instance> = {},
+    ): Instance => ({ law: name, ok: false, problem, ...more })
+
     const statesBy = `State it with\n\n${howToState(law)}\n\nin code/law.tree, each hole bound to the name of your app's own form or task, and prove the claim it makes with \`task ${name}\`.`
 
     // a claim of the same name written by hand
-    const byHand = files.filter(one => one.tree && rulesOf(one.tree).includes(name))
+    const byHand = files.filter(
+      one => one.tree && rulesOf(one.tree).includes(name),
+    )
 
     if (byHand.length > 0) {
-      return refuse(`\`rule ${name}\` is written by hand in ${byHand.map(one => one.rel).join(', ')}. ${name} is a law of the library and may not be restated: remove that rule. ${statesBy}`)
+      return refuse(
+        `\`rule ${name}\` is written by hand in ${byHand.map(one => one.rel).join(', ')}. ${name} is a law of the library and may not be restated: remove that rule. ${statesBy}`,
+      )
     }
 
     // a template of the library's name written by hand
-    const ownTemplate = files.filter(one => one.tree && collectTemplates(one.tree).has(law.template))
+    const ownTemplate = files.filter(
+      one => one.tree && collectTemplates(one.tree).has(law.template),
+    )
 
     if (ownTemplate.length > 0) {
-      return refuse(`\`tree ${law.template}\` is written by hand in ${ownTemplate.map(one => one.rel).join(', ')}. The template is the library's, and the loop appends it: remove yours.`)
+      return refuse(
+        `\`tree ${law.template}\` is written by hand in ${ownTemplate.map(one => one.rel).join(', ')}. The template is the library's, and the loop appends it: remove yours.`,
+      )
     }
 
-    const fusing = files.flatMap(one => (one.tree ? fusesOf(one.tree).filter(fuse => fuse.template === law.template).map(fuse => ({ one, fuse })) : []))
+    const fusing = files.flatMap(one =>
+      one.tree
+        ? fusesOf(one.tree)
+            .filter(fuse => fuse.template === law.template)
+            .map(fuse => ({ one, fuse }))
+        : [],
+    )
 
     if (fusing.length === 0) {
       return refuse(`${name} is not stated. ${statesBy}`)
     }
 
     if (fusing.length > 1) {
-      return refuse(`${name} is fused ${fusing.length} times (${fusing.map(f => f.one.rel).join(', ')}): fuse it once.`)
+      return refuse(
+        `${name} is fused ${fusing.length} times (${fusing.map(f => f.one.rel).join(', ')}): fuse it once.`,
+      )
     }
 
     const { one, fuse } = fusing[0]!
@@ -326,11 +445,16 @@ export function checkInstances(input: {
     const at = { file: one.rel, fill }
 
     if (fuse.problems.length > 0) {
-      return refuse(`the fuse of ${law.template} in ${one.rel}: ${fuse.problems[0]}. ${statesBy}`, at)
+      return refuse(
+        `the fuse of ${law.template} in ${one.rel}: ${fuse.problems[0]}. ${statesBy}`,
+        at,
+      )
     }
 
     const missing = law.params.filter(param => !(param in fill))
-    const unknown = Object.keys(fill).filter(hole => !law.params.includes(hole))
+    const unknown = Object.keys(fill).filter(
+      hole => !law.params.includes(hole),
+    )
 
     if (missing.length > 0 || unknown.length > 0) {
       return refuse(
@@ -340,8 +464,15 @@ export function checkInstances(input: {
     }
 
     // each hole names the app's own form or task, defined in a file other than the one stating the law
-    const elsewhere = new Set(files.filter(other => other.file !== one.file).flatMap(other => [...(defined.get(other.file) ?? [])]))
-    const foreign = law.params.filter(param => !elsewhere.has(fill[param]!))
+    const elsewhere = new Set(
+      files
+        .filter(other => other.file !== one.file)
+        .flatMap(other => [...(defined.get(other.file) ?? [])]),
+    )
+
+    const foreign = law.params.filter(
+      param => !elsewhere.has(fill[param]!),
+    )
 
     if (foreign.length > 0) {
       return refuse(
@@ -356,16 +487,34 @@ export function checkInstances(input: {
     const project = milled(one.file, one.text, role, lean)
 
     if (!project.ok) {
-      return refuse(`${one.rel} could not be read, so ${name} could not be checked: ${project.error}`, at)
+      return refuse(
+        `${one.rel} could not be read, so ${name} could not be checked: ${project.error}`,
+        at,
+      )
     }
 
-    const claims = project.program.filter(s => isRule(s) && s.name === name)
-    const reference = milled(law.file, `${law.text.trimEnd()}\n\n${fuseText(law, fill)}\n`, role, lean)
-    const expected = reference.ok ? reference.program.find(s => isRule(s) && s.name === name) : undefined
+    const claims = project.program.filter(
+      s => isRule(s) && s.name === name,
+    )
+
+    const reference = milled(
+      law.file,
+      `${law.text.trimEnd()}\n\n${fuseText(law, fill)}\n`,
+      role,
+      lean,
+    )
+
+    const expected = reference.ok
+      ? reference.program.find(s => isRule(s) && s.name === name)
+      : undefined
+
     const english = sentenceOf(expected)
 
     if (!expected) {
-      return refuse(`the library's ${name} could not be made with this fill${reference.ok ? '' : `: ${reference.error}`}`, at)
+      return refuse(
+        `the library's ${name} could not be made with this fill${reference.ok ? '' : `: ${reference.error}`}`,
+        at,
+      )
     }
 
     if (claims.length !== 1) {
@@ -384,6 +533,11 @@ export function checkInstances(input: {
       )
     }
 
-    return { law: name, ok: true, ...at, ...(english ? { english } : {}) }
+    return {
+      law: name,
+      ok: true,
+      ...at,
+      ...(english ? { english } : {}),
+    }
   })
 }

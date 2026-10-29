@@ -110,25 +110,44 @@ task use
 `
 
 function resolver(model: string): Resolver {
-  return path => (path === './model' ? { file: 'model.tree', text: model } : undefined)
+  return path =>
+    path === './model' ? { file: 'model.tree', text: model } : undefined
 }
 
-const slug = (file: string): string => `./${file.replace(/\.tree$/, '').replace(/\W/g, '_')}.mjs`
+const slug = (file: string): string =>
+  `./${file.replace(/\.tree$/, '').replace(/\W/g, '_')}.mjs`
 
 const build = (entry: string, model: string, cache: CompileCache) =>
-  compileSeparate({ file: 'entry.tree', text: entry }, { resolve: resolver(model), cache, modules: slug })
+  compileSeparate(
+    { file: 'entry.tree', text: entry },
+    { resolve: resolver(model), cache, modules: slug },
+  )
 
-const codes = (result: ReturnType<typeof build>): string[] => (result.ok ? [] : result.diagnostics.map(d => d.name))
+const codes = (result: ReturnType<typeof build>): string[] =>
+  result.ok ? [] : result.diagnostics.map(d => d.name)
 
 const proofCache = new CompileCache()
 const proven = build(LAW, MODEL, proofCache)
-ok('a claim over a task of another file is proven in the unit build', proven.ok, JSON.stringify(codes(proven)))
+ok(
+  'a claim over a task of another file is proven in the unit build',
+  proven.ok,
+  JSON.stringify(codes(proven)),
+)
 
 const refused = build(FALSE_LAW, MODEL, new CompileCache())
 ok(
   'its false twin is refused by the kernel, not for want of the body',
-  !refused.ok && refused.diagnostics.some(d => d.name === 'unverified-proof' && /does not check against its claim/.test(d.message)),
-  JSON.stringify(refused.ok ? [] : refused.diagnostics.map(d => d.message.slice(0, 200))),
+  !refused.ok &&
+    refused.diagnostics.some(
+      d =>
+        d.name === 'unverified-proof' &&
+        /does not check against its claim/.test(d.message),
+    ),
+  JSON.stringify(
+    refused.ok
+      ? []
+      : refused.diagnostics.map(d => d.message.slice(0, 200)),
+  ),
 )
 
 // under a proof a body edit reaches the proof, which ran the old body: the law is checked again
@@ -136,18 +155,32 @@ const edited = build(LAW, MODEL_EDIT, proofCache)
 ok(
   'under a proof, a body edit rebuilds the proving unit',
   edited.ok && edited.built.includes('entry.tree'),
-  JSON.stringify(edited.ok ? { built: edited.built, reused: edited.reused } : codes(edited)),
+  JSON.stringify(
+    edited.ok
+      ? { built: edited.built, reused: edited.reused }
+      : codes(edited),
+  ),
 )
 
 // under no proof the early cutoff holds as before: the body edit rebuilds the model alone
 const plainCache = new CompileCache()
 const plain = build(USER, MODEL, plainCache)
-ok('a caller with no rule builds', plain.ok, JSON.stringify(codes(plain)))
+ok(
+  'a caller with no rule builds',
+  plain.ok,
+  JSON.stringify(codes(plain)),
+)
 const plainEdit = build(USER, MODEL_EDIT, plainCache)
 ok(
   'under no proof, a body edit is cut off at the stub',
-  plainEdit.ok && plainEdit.built.join(',') === 'model.tree' && plainEdit.reused.join(',') === 'entry.tree',
-  JSON.stringify(plainEdit.ok ? { built: plainEdit.built, reused: plainEdit.reused } : codes(plainEdit)),
+  plainEdit.ok &&
+    plainEdit.built.join(',') === 'model.tree' &&
+    plainEdit.reused.join(',') === 'entry.tree',
+  JSON.stringify(
+    plainEdit.ok
+      ? { built: plainEdit.built, reused: plainEdit.reused }
+      : codes(plainEdit),
+  ),
 )
 
 console.log(`\nclaim-across-units: ${pass} pass, ${fail} fail`)

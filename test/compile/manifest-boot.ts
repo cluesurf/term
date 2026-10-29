@@ -18,7 +18,13 @@
 // The fixtures are under a fresh folder of the operating system's temp folder, never in the repository. Run:
 // sh tmp/beat-tsx.sh test/compile/manifest-boot.ts
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { makeCompose } from '@term/call/code/compose'
@@ -55,8 +61,16 @@ const LOADS = `load @term/site/code/dom/native/toolkit/dom
 
 // a program whose started task prints `entry <said>` and exits 0, the toolkit's own way (test/compile/uikit-make.ts).
 // More pairs of task and printed line add more tasks to the same file
-function program(task: string, said: string, ...more: [string, string][]): string {
-  return [LOADS, started(task, said), ...more.map(([t, w]) => started(t, w))].join('')
+function program(
+  task: string,
+  said: string,
+  ...more: [string, string][]
+): string {
+  return [
+    LOADS,
+    started(task, said),
+    ...more.map(([t, w]) => started(t, w)),
+  ].join('')
 }
 
 function started(task: string, said: string): string {
@@ -131,23 +145,53 @@ const suffix = fixture('suffixapp', {
 
 console.log(`fixtures under ${HERE}`)
 
-const swiftOf = (root: string): string => readFileSync(join(root, 'host', 'uikit', uikitIdentity(root).name, 'main.swift'), 'utf8')
+const swiftOf = (root: string): string =>
+  readFileSync(
+    join(root, 'host', 'uikit', uikitIdentity(root).name, 'main.swift'),
+    'utf8',
+  )
 
 // the last statement of the emitted Swift: the start line the program ends with
-const startOf = (swift: string): string => swift.trimEnd().split('\n').pop() ?? ''
+const startOf = (swift: string): string =>
+  swift.trimEnd().split('\n').pop() ?? ''
 
 async function uikit(): Promise<void> {
-  if (process.platform !== 'darwin' || spawnSync('xcodebuild', ['-version']).status !== 0) {
+  if (
+    process.platform !== 'darwin' ||
+    spawnSync('xcodebuild', ['-version']).status !== 0
+  ) {
     console.log('skip  uikit: needs macOS with Xcode')
 
     return
   }
 
-  const found = NO_LAUNCH ? { missing: 'MANIFEST_BOOT_NO_LAUNCH is set' } : bootedSimulator()
-  const launched: { root: string; want: string; never: string; call: string }[] = [
-    { root: booted, want: 'entry boot', never: 'entry app-main', call: 'boot()' },
-    { root: legacy, want: 'entry main', never: 'entry stray-boot', call: 'main()' },
-    { root: both, want: 'entry boot', never: 'entry main', call: 'boot()' },
+  const found = NO_LAUNCH
+    ? { missing: 'MANIFEST_BOOT_NO_LAUNCH is set' }
+    : bootedSimulator()
+  const launched: {
+    root: string
+    want: string
+    never: string
+    call: string
+  }[] = [
+    {
+      root: booted,
+      want: 'entry boot',
+      never: 'entry app-main',
+      call: 'boot()',
+    },
+    {
+      root: legacy,
+      want: 'entry main',
+      never: 'entry stray-boot',
+      call: 'main()',
+    },
+    {
+      root: both,
+      want: 'entry boot',
+      never: 'entry main',
+      call: 'boot()',
+    },
   ]
 
   // booted, legacy and both: emitted, built for a device, then built for the simulator and launched
@@ -157,15 +201,26 @@ async function uikit(): Promise<void> {
     try {
       await makeUikit({ root, team: '' })
     } catch (e) {
-      ok(`uikit ${name}: makeUikit builds`, false, String((e as Error).message ?? e))
+      ok(
+        `uikit ${name}: makeUikit builds`,
+        false,
+        String((e as Error).message ?? e),
+      )
       continue
     }
 
     const start = startOf(swiftOf(root))
-    ok(`uikit ${name}: the emitted start line calls ${call}`, start.includes(call) && !(call === 'boot()' && start.includes('main()')), start)
+    ok(
+      `uikit ${name}: the emitted start line calls ${call}`,
+      start.includes(call) &&
+        !(call === 'boot()' && start.includes('main()')),
+      start,
+    )
 
     if ('missing' in found) {
-      console.log(`skip  uikit ${name}: the simulator (${found.missing})`)
+      console.log(
+        `skip  uikit ${name}: the simulator (${found.missing})`,
+      )
       continue
     }
 
@@ -173,30 +228,99 @@ async function uikit(): Promise<void> {
     const derived = join(root, 'host', 'uikit', 'derived-simulator')
     const built = spawnSync(
       'xcodebuild',
-      ['build', '-project', project, '-scheme', name, '-configuration', 'Release', '-destination', 'generic/platform=iOS Simulator', '-derivedDataPath', derived, 'CODE_SIGNING_ALLOWED=NO', '-quiet'],
+      [
+        'build',
+        '-project',
+        project,
+        '-scheme',
+        name,
+        '-configuration',
+        'Release',
+        '-destination',
+        'generic/platform=iOS Simulator',
+        '-derivedDataPath',
+        derived,
+        'CODE_SIGNING_ALLOWED=NO',
+        '-quiet',
+      ],
       { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 },
     )
-    const app = join(derived, 'Build', 'Products', 'Release-iphonesimulator', `${name}.app`)
-    ok(`uikit ${name}: the project builds for the simulator`, built.status === 0 && existsSync(app), `${built.stdout}${built.stderr}`.split('\n').filter(line => /error/.test(line)).join('\n'))
+    const app = join(
+      derived,
+      'Build',
+      'Products',
+      'Release-iphonesimulator',
+      `${name}.app`,
+    )
+    ok(
+      `uikit ${name}: the project builds for the simulator`,
+      built.status === 0 && existsSync(app),
+      `${built.stdout}${built.stderr}`
+        .split('\n')
+        .filter(line => /error/.test(line))
+        .join('\n'),
+    )
 
     if (!existsSync(app)) {
       continue
     }
 
     // the simulator is one device the whole machine shares: held from the first simctl call to the last (D017)
-    const release = holdDeviceSync('simulator', `manifest-boot uikit ${name}`)
+    const release = holdDeviceSync(
+      'simulator',
+      `manifest-boot uikit ${name}`,
+    )
 
     try {
-      spawnSync('xcrun', ['simctl', 'terminate', found.udid, identifier], { stdio: 'ignore' })
-      spawnSync('xcrun', ['simctl', 'uninstall', found.udid, identifier], { stdio: 'ignore' })
-      spawnSync('xcrun', ['simctl', 'install', found.udid, app], { stdio: 'ignore' })
-      const ran = spawnSync('xcrun', ['simctl', 'launch', '--console', '--terminate-running-process', found.udid, identifier], { encoding: 'utf8', timeout: 120_000 })
-      const lines = `${ran.stdout ?? ''}${ran.stderr ?? ''}`.split('\n').map(line => line.trim())
-      ok(`uikit ${name}: the simulator's console prints \`${want}\``, lines.includes(want), lines.join('\n').slice(-800))
-      ok(`uikit ${name}: and never \`${never}\``, !lines.includes(never), lines.join('\n').slice(-800))
+      spawnSync(
+        'xcrun',
+        ['simctl', 'terminate', found.udid, identifier],
+        { stdio: 'ignore' },
+      )
+      spawnSync(
+        'xcrun',
+        ['simctl', 'uninstall', found.udid, identifier],
+        { stdio: 'ignore' },
+      )
+      spawnSync('xcrun', ['simctl', 'install', found.udid, app], {
+        stdio: 'ignore',
+      })
+      const ran = spawnSync(
+        'xcrun',
+        [
+          'simctl',
+          'launch',
+          '--console',
+          '--terminate-running-process',
+          found.udid,
+          identifier,
+        ],
+        { encoding: 'utf8', timeout: 120_000 },
+      )
+      const lines = `${ran.stdout ?? ''}${ran.stderr ?? ''}`
+        .split('\n')
+        .map(line => line.trim())
+      ok(
+        `uikit ${name}: the simulator's console prints \`${want}\``,
+        lines.includes(want),
+        lines.join('\n').slice(-800),
+      )
+      ok(
+        `uikit ${name}: and never \`${never}\``,
+        !lines.includes(never),
+        lines.join('\n').slice(-800),
+      )
     } finally {
-      spawnSync('xcrun', ['simctl', 'terminate', found.udid, identifier], { stdio: 'ignore' })
-      spawnSync('xcrun', ['simctl', 'uninstall', found.udid, identifier], { stdio: 'ignore' })
+      spawnSync(
+        'xcrun',
+        ['simctl', 'terminate', found.udid, identifier],
+        { stdio: 'ignore' },
+      )
+      spawnSync(
+        'xcrun',
+        ['simctl', 'uninstall', found.udid, identifier],
+        { stdio: 'ignore' },
+      )
       release()
     }
   }
@@ -205,41 +329,74 @@ async function uikit(): Promise<void> {
   try {
     await makeUikit({ root: mainOnly, team: '' })
     const start = startOf(swiftOf(mainOnly))
-    ok('uikit main-only: the emitted start line calls main()', start.includes('main()') && !start.includes('boot()'), start)
+    ok(
+      'uikit main-only: the emitted start line calls main()',
+      start.includes('main()') && !start.includes('boot()'),
+      start,
+    )
   } catch (e) {
-    ok('uikit main-only: makeUikit builds', false, String((e as Error).message ?? e))
+    ok(
+      'uikit main-only: makeUikit builds',
+      false,
+      String((e as Error).message ?? e),
+    )
   }
 
   // suffix: a boot line that spells `.tree`, emitted and not launched
   try {
     await makeUikit({ root: suffix, team: '' })
     const start = startOf(swiftOf(suffix))
-    ok('uikit suffix: the emitted start line calls boot()', start.includes('boot()') && !start.includes('main()'), start)
+    ok(
+      'uikit suffix: the emitted start line calls boot()',
+      start.includes('boot()') && !start.includes('main()'),
+      start,
+    )
   } catch (e) {
-    ok('uikit suffix: makeUikit builds', false, String((e as Error).message ?? e))
+    ok(
+      'uikit suffix: makeUikit builds',
+      false,
+      String((e as Error).message ?? e),
+    )
   }
 
   // neither: refused, naming the `boot` task
   try {
     await makeUikit({ root: neither, team: '' })
-    ok('uikit neither: makeUikit refuses an entry with neither task', false, 'it did not throw')
+    ok(
+      'uikit neither: makeUikit refuses an entry with neither task',
+      false,
+      'it did not throw',
+    )
   } catch (e) {
     const message = String((e as Error).message ?? e)
-    ok('uikit neither: makeUikit refuses an entry with neither task, naming `boot`', message.includes('has no `boot` task'), message)
+    ok(
+      'uikit neither: makeUikit refuses an entry with neither task, naming `boot`',
+      message.includes('has no `boot` task'),
+      message,
+    )
   }
 }
 
 // the emitted Kotlin of a Compose build: the program's own file in the build's work folder
-async function emittedKotlin(root: string): Promise<string | undefined> {
+async function emittedKotlin(
+  root: string,
+): Promise<string | undefined> {
   try {
     await makeCompose({ root, target: 'compose' })
   } catch (e) {
-    ok(`compose ${root.split('/').pop()}: makeCompose builds`, false, String((e as Error).message ?? e))
+    ok(
+      `compose ${root.split('/').pop()}: makeCompose builds`,
+      false,
+      String((e as Error).message ?? e),
+    )
 
     return undefined
   }
 
-  return readFileSync(join(root, 'host', 'compose', 'work', 'app.kt'), 'utf8')
+  return readFileSync(
+    join(root, 'host', 'compose', 'work', 'app.kt'),
+    'utf8',
+  )
 }
 
 function have(tool: string): boolean {
@@ -256,25 +413,57 @@ async function compose(): Promise<void> {
   const first = await emittedKotlin(booted)
 
   if (first !== undefined) {
-    ok('compose booted: the emitted driver is `fun main() { boot() }`', first.includes('fun main() { boot() }') && !first.includes('fun main() { main_() }'), first.split('\n').filter(line => line.startsWith('fun main')).join('\n'))
+    ok(
+      'compose booted: the emitted driver is `fun main() { boot() }`',
+      first.includes('fun main() { boot() }') &&
+        !first.includes('fun main() { main_() }'),
+      first
+        .split('\n')
+        .filter(line => line.startsWith('fun main'))
+        .join('\n'),
+    )
   }
 
   const third = await emittedKotlin(both)
 
   if (third !== undefined) {
-    ok('compose both: the emitted driver is `fun main() { boot() }`', third.includes('fun main() { boot() }') && !third.includes('fun main() { main_() }'), third.split('\n').filter(line => line.startsWith('fun main')).join('\n'))
+    ok(
+      'compose both: the emitted driver is `fun main() { boot() }`',
+      third.includes('fun main() { boot() }') &&
+        !third.includes('fun main() { main_() }'),
+      third
+        .split('\n')
+        .filter(line => line.startsWith('fun main'))
+        .join('\n'),
+    )
   }
 
   const fourth = await emittedKotlin(mainOnly)
 
   if (fourth !== undefined) {
-    ok('compose main-only: the emitted driver is `fun main() { main_() }`', fourth.includes('fun main() { main_() }') && !fourth.includes('fun main() { boot() }'), fourth.split('\n').filter(line => line.startsWith('fun main')).join('\n'))
+    ok(
+      'compose main-only: the emitted driver is `fun main() { main_() }`',
+      fourth.includes('fun main() { main_() }') &&
+        !fourth.includes('fun main() { boot() }'),
+      fourth
+        .split('\n')
+        .filter(line => line.startsWith('fun main'))
+        .join('\n'),
+    )
   }
 
   const second = await emittedKotlin(legacy)
 
   if (second !== undefined) {
-    ok('compose legacy: the emitted driver is `fun main() { main_() }`', second.includes('fun main() { main_() }') && !second.includes('fun main() { boot() }'), second.split('\n').filter(line => line.startsWith('fun main')).join('\n'))
+    ok(
+      'compose legacy: the emitted driver is `fun main() { main_() }`',
+      second.includes('fun main() { main_() }') &&
+        !second.includes('fun main() { boot() }'),
+      second
+        .split('\n')
+        .filter(line => line.startsWith('fun main'))
+        .join('\n'),
+    )
   }
 }
 

@@ -26,7 +26,9 @@ function accepted(text: string): { accepted: boolean; errors: string } {
 
   return {
     accepted: result.ok,
-    errors: result.ok ? '' : result.diagnostics.map(d => d.name).join(','),
+    errors: result.ok
+      ? ''
+      : result.diagnostics.map(d => d.name).join(','),
   }
 }
 
@@ -90,12 +92,20 @@ rule norm-is-multiplicative
 
 {
   const out = accepted(multiplicative('subtract'))
-  ok('a ring identity through a named task is proved', out.accepted, out.errors)
+  ok(
+    'a ring identity through a named task is proved',
+    out.accepted,
+    out.errors,
+  )
 }
 
 {
   const out = accepted(multiplicative('add'))
-  ok('a false identity through the same task is refused', !out.accepted, out.errors)
+  ok(
+    'a false identity through the same task is refused',
+    !out.accepted,
+    out.errors,
+  )
 }
 
 // nested: a task that calls another unfoldable task
@@ -128,7 +138,11 @@ rule double-norm-is-twice
           read a
           read b
 `)
-  ok('a task calling a task unfolds through both', out.accepted, out.errors)
+  ok(
+    'a task calling a task unfolds through both',
+    out.accepted,
+    out.errors,
+  )
 }
 
 // a recursive task is never unfolded, so a goal that needs its unfolding stays unproved
@@ -179,7 +193,11 @@ rule monus-then-add-returns
         read b
       read a
 `)
-  ok('a task over natural-number is not unfolded', !out.accepted, out.errors)
+  ok(
+    'a task over natural-number is not unfolded',
+    !out.accepted,
+    out.errors,
+  )
 }
 
 // a named task inside a `have` is unfolded too: a unit boost (d^2 - n^2 = 1) keeps the interval t^2 - x^2
@@ -235,12 +253,20 @@ rule a-unit-boost-keeps-the-interval
 
 {
   const out = accepted(unitBoost('1'))
-  ok('a named task in a hypothesis is unfolded', out.accepted, out.errors)
+  ok(
+    'a named task in a hypothesis is unfolded',
+    out.accepted,
+    out.errors,
+  )
 }
 
 {
   const out = accepted(unitBoost('2'))
-  ok('the same identity under a false premise for it is refused', !out.accepted, out.errors)
+  ok(
+    'the same identity under a false premise for it is refused',
+    !out.accepted,
+    out.errors,
+  )
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

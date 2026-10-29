@@ -38,8 +38,19 @@ export type RuntimeVersion = {
 }
 
 // every field length-prefixed, so no two different inputs can frame to the same bytes
-export function runtimeVersion(input: RuntimeVersionInput): RuntimeVersion {
-  const frame = port.frame(input.target, input.minimum, input.toolchain, input.sources.map(source => ({ name: source.name, text: source.text })))
+export function runtimeVersion(
+  input: RuntimeVersionInput,
+): RuntimeVersion {
+  const frame = port.frame(
+    input.target,
+    input.minimum,
+    input.toolchain,
+    input.sources.map(source => ({
+      name: source.name,
+      text: source.text,
+    })),
+  )
+
   const hex = createHash('sha256').update(frame).digest('hex')
 
   return { hex, tone: toneOf(hex) }
@@ -67,6 +78,7 @@ export function toolchainOf(target: string): string {
       : target === 'android'
         ? ['kotlinc', ['-version']]
         : ['rustc', ['--version']]
+
   const key = command[0]
   const known = toolchains.get(key)
 
@@ -76,10 +88,18 @@ export function toolchainOf(target: string): string {
 
   // kotlinc prints its version on stderr and exits 0, swiftc and rustc print on stdout, so both are read
   // through work/small/tool-asking.tree: swiftc --version leaves a folder in TMPDIR, so it is asked in one it removes
-  const run = askTool(command[0], command[1], 0) as { stdout?: string; stderr?: string; error?: Error }
+  const run = askTool(command[0], command[1], 0) as {
+    stdout?: string
+    stderr?: string
+    error?: Error
+  }
+
   const line =
     run.error === undefined
-      ? (`${run.stdout ?? ''}\n${run.stderr ?? ''}`.split('\n').find(l => l.trim())?.trim() ?? 'none')
+      ? (`${run.stdout ?? ''}\n${run.stderr ?? ''}`
+          .split('\n')
+          .find(l => l.trim())
+          ?.trim() ?? 'none')
       : 'none'
 
   toolchains.set(key, line)

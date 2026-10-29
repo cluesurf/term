@@ -9,7 +9,13 @@
 import { parentPort, workerData } from 'node:worker_threads'
 import { readFileSync } from 'node:fs'
 import { compileSeparate } from '@term/make/code/compile/separate'
-import { buildable, buildSession, entryShim, isWholeFile, unitSlug } from '@term/call/code/make'
+import {
+  buildable,
+  buildSession,
+  entryShim,
+  isWholeFile,
+  unitSlug,
+} from '@term/call/code/make'
 import type { BuildSession } from '@term/call/code/make'
 import { projectCache } from '@term/call/code/cache-store'
 import type { CompileCache } from '@term/make/code/compile/cache'
@@ -29,7 +35,9 @@ const WORKER_UNITS = 8000
 
 // the compiler fingerprint per cache kind, handed down by the parent: a bundle in the temp directory cannot find the
 // package root to work it out (see build-worker.ts)
-const VERSION = (workerData as { version?: Record<string, string> } | undefined)?.version
+const VERSION = (
+  workerData as { version?: Record<string, string> } | undefined
+)?.version
 
 let root: string | undefined
 let session: BuildSession | undefined
@@ -77,7 +85,10 @@ parentPort?.on('message', (job: Job) => {
     if (job.entry) {
       const unit = buildable(job.file, text, roleOf!(job.file))
 
-      if ('faults' in unit || isWholeFile(job.file, unit.text, roleOf!(job.file))) {
+      if (
+        'faults' in unit ||
+        isWholeFile(job.file, unit.text, roleOf!(job.file))
+      ) {
         parentPort!.postMessage({ file: job.file })
 
         return
@@ -93,7 +104,7 @@ parentPort?.on('message', (job: Job) => {
       {
         resolve: session!.resolve,
         cache,
-        modules: f => `./${unitSlug(job.root, f, deckOf!)}`,
+        modules: f => `./${unitSlug(job.root, f, deckOf)}`,
         roleOf: roleOf!,
         leanOf: leanOf!,
         deckOf: deckOf!,
@@ -117,21 +128,43 @@ parentPort?.on('message', (job: Job) => {
     // writes a module the first time any answer carries it, so one copy is all it needs. And the entry's shim as the
     // text it is, in place of every public name of its closure it is made from
     if (job.entry && result.ok) {
-      const fresh = new Map([...result.modules].filter(([file]) => !sent.has(file)))
+      const fresh = new Map(
+        [...result.modules].filter(([file]) => !sent.has(file)),
+      )
+
       fresh.forEach((_, file) => sent.add(file))
 
       // and each unit's roll once, as each module's code is
-      const rolls = result.rolls.filter(([label]) => !sentRolls.has(label))
+      const rolls = result.rolls.filter(
+        ([label]) => !sentRolls.has(label),
+      )
+
       rolls.forEach(([label]) => sentRolls.add(label))
 
-      const shim = entryShim(job.root, job.file, result.exports, file => unitSlug(job.root, file, deckOf!))
-      parentPort!.postMessage({ file: job.file, result: { ...result, modules: fresh, rolls, exports: [], shim }, built: result.built.length, spent })
+      const shim = entryShim(job.root, job.file, result.exports, file =>
+        unitSlug(job.root, file, deckOf),
+      )
+
+      parentPort!.postMessage({
+        file: job.file,
+        result: { ...result, modules: fresh, rolls, exports: [], shim },
+        built: result.built.length,
+        spent,
+      })
 
       return
     }
 
-    parentPort!.postMessage({ file: job.file, result: job.entry ? result : undefined, built: result.ok ? result.built.length : 0, spent })
+    parentPort!.postMessage({
+      file: job.file,
+      result: job.entry ? result : undefined,
+      built: result.ok ? result.built.length : 0,
+      spent,
+    })
   } catch (error) {
-    parentPort!.postMessage({ file: job.file, error: String((error as Error)?.stack ?? error) })
+    parentPort!.postMessage({
+      file: job.file,
+      error: String((error as Error)?.stack ?? error),
+    })
   }
 })

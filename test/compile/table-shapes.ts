@@ -15,12 +15,20 @@
 // Run: npx tsx test/compile/table-shapes.ts (after `pnpm run make:line`: it runs host/line.js)
 
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const LINE = join(dirname(fileURLToPath(import.meta.url)), '../../host/line.js')
+const LINE = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../host/line.js',
+)
 
 let pass = 0
 let fail = 0
@@ -42,8 +50,10 @@ for (let i = 0; i < 200; i++) {
 }
 
 const files: Record<string, string> = {
-  'deck.tree': 'deck @gate/table-shapes\n  mark <0.0.1>\n  link @term/base, mark <0.0.x>\n  test ./test\n',
-  'base/role.tree': 'load @term/code\n  find code\n\nrole code\n  mark lean\n  take @/code/**/*.tree\n',
+  'deck.tree':
+    'deck @gate/table-shapes\n  mark <0.0.1>\n  link @term/base, mark <0.0.x>\n  test ./test\n',
+  'base/role.tree':
+    'load @term/code\n  find code\n\nrole code\n  mark lean\n  take @/code/**/*.tree\n',
   'code/shape.tree': [
     'load @term/base/list',
     '  find list',
@@ -118,20 +128,49 @@ for (const mode of ['--merged', '--separate']) {
     writeFileSync(join(dir, path), text)
   }
 
-  const run = spawnSync(process.execPath, [LINE, 'make', mode, '--plain', '--color', 'never'], { cwd: dir, encoding: 'utf8' })
+  const run = spawnSync(
+    process.execPath,
+    [LINE, 'make', mode, '--plain', '--color', 'never'],
+    { cwd: dir, encoding: 'utf8' },
+  )
   const said = `${run.stdout}${run.stderr}`
-  ok(`${mode}: the package builds`, run.status === 0, said.split('\n').filter(l => l.startsWith('failed')).join(' | ') || said.slice(-600))
+  ok(
+    `${mode}: the package builds`,
+    run.status === 0,
+    said
+      .split('\n')
+      .filter(l => l.startsWith('failed'))
+      .join(' | ') || said.slice(-600),
+  )
 
   if (run.status !== 0) {
     continue
   }
 
   const shape = readFileSync(join(dir, 'host/code/shape.ts'), 'utf8')
-  const units = mode === '--separate' ? readFileSync(join(dir, 'host/.unit/_gate_table-shapes_code_shape.ts'), 'utf8') : shape
-  const longest = Math.max(...units.split('\n').map(line => line.length))
-  ok(`${mode}: no line of the 200-row table passes 1,000 characters`, longest <= 1000, `longest ${longest}`)
-  ok(`${mode}: one row per line`, units.includes('\n{ name: "row-1", tags: ["t1"] },\n'))
-  ok(`${mode}: a short list keeps its one-line spelling`, units.includes('= ["a", "b"]'))
+  const units =
+    mode === '--separate'
+      ? readFileSync(
+          join(dir, 'host/.unit/_gate_table-shapes_code_shape.ts'),
+          'utf8',
+        )
+      : shape
+  const longest = Math.max(
+    ...units.split('\n').map(line => line.length),
+  )
+  ok(
+    `${mode}: no line of the 200-row table passes 1,000 characters`,
+    longest <= 1000,
+    `longest ${longest}`,
+  )
+  ok(
+    `${mode}: one row per line`,
+    units.includes('\n{ name: "row-1", tags: ["t1"] },\n'),
+  )
+  ok(
+    `${mode}: a short list keeps its one-line spelling`,
+    units.includes('= ["a", "b"]'),
+  )
 }
 
 console.log(`\ntable-shapes: ${pass} pass, ${fail} fail`)

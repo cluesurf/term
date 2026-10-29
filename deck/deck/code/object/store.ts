@@ -12,9 +12,17 @@ export type ObjectStore = {
   missing(ids: string[]): Promise<string[]>
 }
 
-export const verifyObject = (input: { id: string; kind: string; bytes: Buffer }): boolean => port.verifyObject(input.id, input.kind, input.bytes)
+export const verifyObject = (input: {
+  id: string
+  kind: string
+  bytes: Buffer
+}): boolean => port.verifyObject(input.id, input.kind, input.bytes)
 
 // the user's store is an OCI image layout (oci-routing.tree's local-store), whose refusals are oci-failure: lifted to
 // the original's OciError for a TypeScript caller
-export const localObjectStore = (input?: { root: string }): ObjectStore =>
-  (input ? port.rootedObjectStore(input.root) : liftRecord(port.localObjectStore() as object)) as ObjectStore
+export const localObjectStore = (input?: {
+  root: string
+}): ObjectStore =>
+  (input
+    ? port.rootedObjectStore(input.root)
+    : liftRecord(port.localObjectStore() as object)) as ObjectStore

@@ -93,10 +93,22 @@ task caught-up
 
 async function main(): Promise<void> {
   const result = compile(
-    { file: join(process.cwd(), 'test', 'compile', 'inline-capture.tree'), text: SOURCE },
+    {
+      file: join(
+        process.cwd(),
+        'test',
+        'compile',
+        'inline-capture.tree',
+      ),
+      text: SOURCE,
+    },
     { resolve: withNativeEnv('node', stdlibResolver()!), env: 'node' },
   )
-  ok('the program compiles', result.ok, result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'the program compiles',
+    result.ok,
+    result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '),
+  )
 
   if (!result.ok) {
     return
@@ -104,7 +116,11 @@ async function main(): Promise<void> {
 
   const dir = mkdtempSync(join(tmpdir(), 'term-inline-capture-'))
   const file = join(dir, 'p.mjs')
-  writeFileSync(file, transformSync(result.typescript, { loader: 'ts', format: 'esm' }).code)
+  writeFileSync(
+    file,
+    transformSync(result.typescript, { loader: 'ts', format: 'esm' })
+      .code,
+  )
   const mod = await import(pathToFileURL(file).href)
 
   let union: unknown
@@ -122,8 +138,16 @@ async function main(): Promise<void> {
     caught = `raised: ${error instanceof Error ? error.message : String(error)}`
   }
 
-  ok('a union arm binding `time` still calls the module', typeof union === 'number' && union > 5, String(union))
-  ok('an exception arm binding `time` still calls the module', typeof caught === 'number' && caught > 1, String(caught))
+  ok(
+    'a union arm binding `time` still calls the module',
+    typeof union === 'number' && union > 5,
+    String(union),
+  )
+  ok(
+    'an exception arm binding `time` still calls the module',
+    typeof caught === 'number' && caught > 1,
+    String(caught),
+  )
 }
 
 await main()

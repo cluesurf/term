@@ -9,28 +9,47 @@
 import { spawn } from 'node:child_process'
 import { constants as runnerConstants } from 'node:os'
 
-type RunnerResult = { code: number; output: string; error: string; signal: number }
+type RunnerResult = {
+  code: number
+  output: string
+  error: string
+  signal: number
+}
 type RunnerChild = ReturnType<typeof spawn>
 
 // the number of a signal's name, 0 when node has none for it
 const signalNumber = (name: string | null): number =>
-  name === null ? 0 : ((runnerConstants.signals as Record<string, number>)[name] ?? 0)
+  name === null
+    ? 0
+    : ((runnerConstants.signals as Record<string, number>)[name] ?? 0)
 
 // the exit code a close answers: the child's own, or 128 plus its signal
-const closeCode = (code: number | null, name: string | null): number => {
+const closeCode = (
+  code: number | null,
+  name: string | null,
+): number => {
   const signal = signalNumber(name)
 
   return signal > 0 ? 128 + signal : (code ?? 0)
 }
 
-const runnerOptions = (directory: string, environment: Map<string, string> | undefined) => ({
+const runnerOptions = (
+  directory: string,
+  environment: Map<string, string> | undefined,
+) => ({
   cwd: directory === '' ? undefined : directory,
-  env: { ...process.env, ...Object.fromEntries(environment ?? new Map()) },
+  env: {
+    ...process.env,
+    ...Object.fromEntries(environment ?? new Map()),
+  },
 })
 
 // the limit's timers on a running child: TERM at the limit, KILL 2000 ms after. `ended` says whether the limit fired,
 // and `clear` stops whichever timers are still waiting
-const runnerLimit = (child: RunnerChild, limit: number): { ended: () => boolean; clear: () => void } => {
+const runnerLimit = (
+  child: RunnerChild,
+  limit: number,
+): { ended: () => boolean; clear: () => void } => {
   let fired = false
   let term: ReturnType<typeof setTimeout> | undefined
   let kill: ReturnType<typeof setTimeout> | undefined
@@ -60,7 +79,11 @@ const runnerLimit = (child: RunnerChild, limit: number): { ended: () => boolean;
 
 // a captured child's answer, at its close, or under a limit 500 ms after its exit if the pipes are still open; code -2
 // for a run its limit ended
-const runnerCapture = (child: RunnerChild, limit: number, resolve: (result: RunnerResult) => void): void => {
+const runnerCapture = (
+  child: RunnerChild,
+  limit: number,
+  resolve: (result: RunnerResult) => void,
+): void => {
   let output = ''
   let error = ''
   let done = false
@@ -85,7 +108,12 @@ const runnerCapture = (child: RunnerChild, limit: number, resolve: (result: Runn
     error += chunk.toString()
   })
   child.on('error', (cause: Error) => {
-    finish({ code: -1, output, error: error + String(cause), signal: 0 })
+    finish({
+      code: -1,
+      output,
+      error: error + String(cause),
+      signal: 0,
+    })
   })
   // under a limit a grandchild holding a pipe cannot hold the answer: 500 ms after the exit it is taken as it stands
   child.on('exit', (code: number | null, name: string | null) => {
@@ -97,7 +125,12 @@ const runnerCapture = (child: RunnerChild, limit: number, resolve: (result: Runn
         finish(
           timer.ended()
             ? { code: -2, output, error, signal: 0 }
-            : { code: closeCode(code, name), output, error, signal: signalNumber(name) },
+            : {
+                code: closeCode(code, name),
+                output,
+                error,
+                signal: signalNumber(name),
+              },
         )
       }, 500)
     }
@@ -106,7 +139,12 @@ const runnerCapture = (child: RunnerChild, limit: number, resolve: (result: Runn
     if (timer.ended()) {
       finish({ code: -2, output, error, signal: 0 })
     } else {
-      finish({ code: closeCode(code, name), output, error, signal: signalNumber(name) })
+      finish({
+        code: closeCode(code, name),
+        output,
+        error,
+        signal: signalNumber(name),
+      })
     }
   })
 }
@@ -121,9 +159,22 @@ const runner = {
   ): Promise<RunnerResult> =>
     new Promise(resolve => {
       try {
-        runnerCapture(spawn(command, argumentList, runnerOptions(directory, environment)), limit, resolve)
+        runnerCapture(
+          spawn(
+            command,
+            argumentList,
+            runnerOptions(directory, environment),
+          ),
+          limit,
+          resolve,
+        )
       } catch (cause) {
-        resolve({ code: -1, output: '', error: String(cause), signal: 0 })
+        resolve({
+          code: -1,
+          output: '',
+          error: String(cause),
+          signal: 0,
+        })
       }
     }),
   // the command on this terminal: it reads the keyboard and writes as it goes (a password prompt, a progress bar),
@@ -141,7 +192,10 @@ const runner = {
   ): Promise<number> =>
     new Promise(resolve => {
       try {
-        const child = spawn(command, argumentList, { ...runnerOptions(directory, environment), stdio: 'inherit' })
+        const child = spawn(command, argumentList, {
+          ...runnerOptions(directory, environment),
+          stdio: 'inherit',
+        })
         const timer = runnerLimit(child, limit)
         const forward = (name: NodeJS.Signals) => () => {
           child.kill(name)
@@ -165,10 +219,13 @@ const runner = {
           release()
           resolve(-1)
         })
-        child.on('close', (code: number | null, name: string | null) => {
-          release()
-          resolve(timer.ended() ? -2 : closeCode(code, name))
-        })
+        child.on(
+          'close',
+          (code: number | null, name: string | null) => {
+            release()
+            resolve(timer.ended() ? -2 : closeCode(code, name))
+          },
+        )
       } catch {
         resolve(-1)
       }
@@ -185,12 +242,21 @@ const runner = {
   ): Promise<RunnerResult> =>
     new Promise(resolve => {
       try {
-        const child = spawn(command, argumentList, runnerOptions(directory, environment))
+        const child = spawn(
+          command,
+          argumentList,
+          runnerOptions(directory, environment),
+        )
         runnerCapture(child, limit, resolve)
         child.stdin.on('error', () => {})
         child.stdin.end(input)
       } catch (cause) {
-        resolve({ code: -1, output: '', error: String(cause), signal: 0 })
+        resolve({
+          code: -1,
+          output: '',
+          error: String(cause),
+          signal: 0,
+        })
       }
     }),
 }

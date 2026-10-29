@@ -10,7 +10,12 @@
 // Run: npx tsx test/compile/kotlin-shadowed-class.ts
 
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -34,18 +39,26 @@ function ok(name: string, holds: boolean, detail = ''): void {
 }
 
 // every `.kt` under deck/base/code/native, found without a glob
-const nativeRoot = join(dirname(fileURLToPath(import.meta.url)), '../../deck/base/code/native')
+const nativeRoot = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../deck/base/code/native',
+)
 
 const kotlinFilesOf = (dir: string): string[] =>
   readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
     const path = join(dir, entry.name)
 
-    return entry.isDirectory() ? kotlinFilesOf(path) : entry.name.endsWith('.kt') ? [path] : []
+    return entry.isDirectory()
+      ? kotlinFilesOf(path)
+      : entry.name.endsWith('.kt')
+        ? [path]
+        : []
   })
 
 // a bare `Exception` (no `.` or word character before it, none after it, so `kotlin.Exception`, `java.lang.Exception`
 // and `IOException` pass) after `:`, `is`, `as` or `as?`, or inside `<...>`
-const bareException = /(?:[:<]\s*|\b(?:is|as\??)\s+)(?<![\w.])Exception\b(?![\w.(])/
+const bareException =
+  /(?:[:<]\s*|\b(?:is|as\??)\s+)(?<![\w.])Exception\b(?![\w.(])/
 
 const bareExceptionAt = (line: string): boolean => {
   const code = line.replace(/\/\/.*$/, '')
@@ -54,27 +67,62 @@ const bareExceptionAt = (line: string): boolean => {
 }
 
 // the scan's own rule: each spelling it must flag, each it must let pass
-const flagged = ['} catch (e: Exception) {', 'x as? Exception', 'if (x is Exception)', 'val f: Exception? = null', 'List<Exception>']
-const passed = ['} catch (e: kotlin.Exception) {', '} catch (e: java.lang.Exception) {', 'catch (e: IOException)', 'catch (e: Throwable)', '// catch (e: Exception)', 'throw RuntimeException("x")']
+const flagged = [
+  '} catch (e: Exception) {',
+  'x as? Exception',
+  'if (x is Exception)',
+  'val f: Exception? = null',
+  'List<Exception>',
+]
+const passed = [
+  '} catch (e: kotlin.Exception) {',
+  '} catch (e: java.lang.Exception) {',
+  'catch (e: IOException)',
+  'catch (e: Throwable)',
+  '// catch (e: Exception)',
+  'throw RuntimeException("x")',
+]
 
-ok('the scan flags a bare Exception in each type position', flagged.every(bareExceptionAt), flagged.filter(line => !bareExceptionAt(line)).join(' | '))
-ok('the scan passes kotlin.Exception, java.lang.Exception, Throwable, longer names and comments', passed.every(line => !bareExceptionAt(line)), passed.filter(bareExceptionAt).join(' | '))
+ok(
+  'the scan flags a bare Exception in each type position',
+  flagged.every(bareExceptionAt),
+  flagged.filter(line => !bareExceptionAt(line)).join(' | '),
+)
+ok(
+  'the scan passes kotlin.Exception, java.lang.Exception, Throwable, longer names and comments',
+  passed.every(line => !bareExceptionAt(line)),
+  passed.filter(bareExceptionAt).join(' | '),
+)
 
 const shims = kotlinFilesOf(nativeRoot)
 
-ok(`the scan reads the Kotlin shims (${shims.length})`, shims.length > 0, nativeRoot)
+ok(
+  `the scan reads the Kotlin shims (${shims.length})`,
+  shims.length > 0,
+  nativeRoot,
+)
 
 for (const file of shims) {
   readFileSync(file, 'utf8')
     .split('\n')
     .forEach((line, index) => {
       if (bareExceptionAt(line)) {
-        ok(`${relative(nativeRoot, file)}:${index + 1} spells kotlin.Exception`, false, line.trim())
+        ok(
+          `${relative(nativeRoot, file)}:${index + 1} spells kotlin.Exception`,
+          false,
+          line.trim(),
+        )
       }
     })
 }
 
-ok('no shim names a bare Exception in a type position', shims.every(file => !readFileSync(file, 'utf8').split('\n').some(bareExceptionAt)))
+ok(
+  'no shim names a bare Exception in a type position',
+  shims.every(
+    file =>
+      !readFileSync(file, 'utf8').split('\n').some(bareExceptionAt),
+  ),
+)
 
 const text = `form system
   link steps, like integer
@@ -104,30 +152,75 @@ task total
 
 const want = '7'
 
-const node = compile({ file: 'shadow.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!), entryPoints: ['total'] })
+const node = compile(
+  { file: 'shadow.tree', text },
+  {
+    resolve: withNativeEnv('node', stdlibResolver()!),
+    entryPoints: ['total'],
+  },
+)
 
 if (!node.ok) {
-  ok('the program builds for node', false, node.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the program builds for node',
+    false,
+    node.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
 } else {
   const dir = mkdtempSync(join(tmpdir(), 'term-kotlin-shadow-'))
   const file = join(dir, 'module.mjs')
-  writeFileSync(file, transformSync(node.typescript, { loader: 'ts', format: 'esm' }).code)
-  const mod = (await import(pathToFileURL(file).href)) as { total: () => number | bigint }
-  ok('TypeScript answers 7', String(mod.total()) === want, String(mod.total()))
+  writeFileSync(
+    file,
+    transformSync(node.typescript, { loader: 'ts', format: 'esm' })
+      .code,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as {
+    total: () => number | bigint
+  }
+  ok(
+    'TypeScript answers 7',
+    String(mod.total()) === want,
+    String(mod.total()),
+  )
 }
 
-const built = compile({ file: 'shadow.tree', text }, { resolve: withNativeEnv('kotlin', stdlibResolver()!), env: 'kotlin', entryPoints: ['total'] })
+const built = compile(
+  { file: 'shadow.tree', text },
+  {
+    resolve: withNativeEnv('kotlin', stdlibResolver()!),
+    env: 'kotlin',
+    entryPoints: ['total'],
+  },
+)
 
 if (!built.ok) {
-  ok('the program builds for kotlin', false, built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the program builds for kotlin',
+    false,
+    built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
 } else {
   // the stand-in for a runtime shim: bare `System` and `Math`, as clock.kt and compare.kt write them
-  const shim = 'object stamp {\n    fun now(): Long = System.currentTimeMillis()\n    fun gap(a: Double, b: Double): Double = Math.abs(a - b)\n}\n'
+  const shim =
+    'object stamp {\n    fun now(): Long = System.currentTimeMillis()\n    fun gap(a: Double, b: Double): Double = Math.abs(a - b)\n}\n'
   const kotlin = `${shim}\n${emitKotlin(built.program)}\nfun main() {\n    stamp.now()\n    println(total())\n}\n`
-  ok('the forms are declared with the prefix', /class TermSystem\b/.test(kotlin) && /class TermMath\b/.test(kotlin), kotlin.split('\n').filter(l => /class /.test(l)).join(' | '))
-  ok('no class takes a java.lang name', !/class (System|Math)\b/.test(kotlin))
+  ok(
+    'the forms are declared with the prefix',
+    /class TermSystem\b/.test(kotlin) &&
+      /class TermMath\b/.test(kotlin),
+    kotlin
+      .split('\n')
+      .filter(l => /class /.test(l))
+      .join(' | '),
+  )
+  ok(
+    'no class takes a java.lang name',
+    !/class (System|Math)\b/.test(kotlin),
+  )
 
-  const kotlinc = spawnSync('kotlinc', ['-version'], { encoding: 'utf8' })
+  const kotlinc = spawnSync('kotlinc', ['-version'], {
+    encoding: 'utf8',
+  })
 
   if (kotlinc.status !== 0) {
     console.log('skip  kotlinc  (not installed)')
@@ -135,12 +228,27 @@ if (!built.ok) {
     const dir = mkdtempSync(join(tmpdir(), 'term-kotlin-shadow-'))
     writeFileSync(join(dir, 'main.kt'), kotlin)
     const jar = join(dir, 'main.jar')
-    const out = spawnSync('kotlinc', [join(dir, 'main.kt'), '-include-runtime', '-nowarn', '-d', jar], { encoding: 'utf8' })
-    ok('kotlinc compiles it, the shim reaching java.lang', out.status === 0, out.stderr.split('\n').filter(l => /error:/.test(l)).join(' | '))
+    const out = spawnSync(
+      'kotlinc',
+      [join(dir, 'main.kt'), '-include-runtime', '-nowarn', '-d', jar],
+      { encoding: 'utf8' },
+    )
+    ok(
+      'kotlinc compiles it, the shim reaching java.lang',
+      out.status === 0,
+      out.stderr
+        .split('\n')
+        .filter(l => /error:/.test(l))
+        .join(' | '),
+    )
 
     if (out.status === 0) {
       const ran = spawnSync('java', ['-jar', jar], { encoding: 'utf8' })
-      ok('Kotlin answers what TypeScript does', ran.stdout.trim() === want, (ran.stdout + ran.stderr).trim())
+      ok(
+        'Kotlin answers what TypeScript does',
+        ran.stdout.trim() === want,
+        (ran.stdout + ran.stderr).trim(),
+      )
     }
   }
 }

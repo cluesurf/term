@@ -34,14 +34,23 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const SCREEN = 'display: flex; flex-direction: column; gap: 12px; padding: 12px 0px 0px 0px; align-items: stretch; flex-grow: 1'
-const NESTED = 'display: flex; flex-direction: column; gap: 12px; align-items: stretch; flex-grow: 1'
-const HUG = 'display: flex; flex-direction: column; gap: 12px; padding: 12px 0px 0px 0px; align-items: stretch'
+const SCREEN =
+  'display: flex; flex-direction: column; gap: 12px; padding: 12px 0px 0px 0px; align-items: stretch; flex-grow: 1'
+const NESTED =
+  'display: flex; flex-direction: column; gap: 12px; align-items: stretch; flex-grow: 1'
+const HUG =
+  'display: flex; flex-direction: column; gap: 12px; padding: 12px 0px 0px 0px; align-items: stretch'
 
 const rows = (count: number): string =>
-  Array.from({ length: count }, () => '      view div\n        bind style, text <height: 64px>\n').join('')
+  Array.from(
+    { length: count },
+    () => '      view div\n        bind style, text <height: 64px>\n',
+  ).join('')
 
-const program = (_leg: Leg, shot: string): string => `load @term/site/code/dom/dom
+const program = (
+  _leg: Leg,
+  shot: string,
+): string => `load @term/site/code/dom/dom
   find view
 
 load @term/site/code/dom/native/toolkit/dom
@@ -519,82 +528,164 @@ task main
 
 // the text after `<marker> ` on the line holding it
 function after(output: string, marker: string): string {
-  const line = output.split('\n').find(l => l.startsWith(`${marker} `) || l.includes(`${marker} `)) ?? ''
+  const line =
+    output
+      .split('\n')
+      .find(
+        l => l.startsWith(`${marker} `) || l.includes(`${marker} `),
+      ) ?? ''
 
-  return line.slice(line.indexOf(`${marker} `) + marker.length + 1).trim()
+  return line
+    .slice(line.indexOf(`${marker} `) + marker.length + 1)
+    .trim()
 }
 
 const frames = (output: string, marker: string): number[][] =>
-  after(output, marker).split(' ').map(part => part.split(',').map(Number))
+  after(output, marker)
+    .split(' ')
+    .map(part => part.split(',').map(Number))
 
-const near = (a: number | undefined, b: number | undefined, by = 1): boolean => a !== undefined && b !== undefined && Math.abs(a - b) <= by
+const near = (
+  a: number | undefined,
+  b: number | undefined,
+  by = 1,
+): boolean =>
+  a !== undefined && b !== undefined && Math.abs(a - b) <= by
 
-const equal = (a: number[] | undefined, b: number[] | undefined): boolean =>
-  !!a && !!b && a.length === 4 && b.length === 4 && a.every((value, index) => near(value, b[index], 0.5))
+const equal = (
+  a: number[] | undefined,
+  b: number[] | undefined,
+): boolean =>
+  !!a &&
+  !!b &&
+  a.length === 4 &&
+  b.length === 4 &&
+  a.every((value, index) => near(value, b[index], 0.5))
 
 function judge(leg: Leg, toolkit: string, output: string): void {
   if (leg !== 'ios' && leg !== 'macos') {
-    console.log(`skip  ${leg}  (D021 and D028 do not cover the Android hosts)`)
+    console.log(
+      `skip  ${leg}  (D021 and D028 do not cover the Android hosts)`,
+    )
 
     return
   }
   for (const name of ['tall', 'short']) {
     const line = after(output, `grow ${name}`)
     const [safe, root, screen, scroll] = frames(output, `grow ${name}`)
-    ok(`${leg}: ${name}: the root equals the safe area (${toolkit})`, equal(root, safe), line)
+    ok(
+      `${leg}: ${name}: the root equals the safe area (${toolkit})`,
+      equal(root, safe),
+      line,
+    )
     ok(
       `${leg}: ${name}: the screen's top and bottom equal the root's`,
-      !!screen && !!root && near(screen[1], root[1]) && near(screen[1]! + screen[3]!, root[1]! + root[3]!),
+      !!screen &&
+        !!root &&
+        near(screen[1], root[1]) &&
+        near(screen[1]! + screen[3]!, root[1]! + root[3]!),
       line,
     )
     ok(
       `${leg}: ${name}: the scroll ends at the safe area's bottom`,
-      !!scroll && !!safe && near(scroll[1]! + scroll[3]!, safe[1]! + safe[3]!),
+      !!scroll &&
+        !!safe &&
+        near(scroll[1]! + scroll[3]!, safe[1]! + safe[3]!),
       line,
     )
-    ok(`${leg}: ${name}: the scroll is at least 300 tall`, !!scroll && scroll[3]! >= 300, line)
+    ok(
+      `${leg}: ${name}: the scroll is at least 300 tall`,
+      !!scroll && scroll[3]! >= 300,
+      line,
+    )
   }
   const line = after(output, 'grow hug')
   const [safe, screen] = frames(output, 'grow hug')
-  ok(`${leg}: hug: a screen with no flex-grow keeps its own height`, !!screen && screen[3]! < 200, line)
-  ok(`${leg}: hug: its top is the safe area's top`, !!screen && !!safe && near(screen[1], safe[1]), line)
+  ok(
+    `${leg}: hug: a screen with no flex-grow keeps its own height`,
+    !!screen && screen[3]! < 200,
+    line,
+  )
+  ok(
+    `${leg}: hug: its top is the safe area's top`,
+    !!screen && !!safe && near(screen[1], safe[1]),
+    line,
+  )
 
   {
     const line = after(output, 'grow nested')
-    const [safe, root, screen, body, scroll] = frames(output, 'grow nested')
+    const [safe, root, screen, body, scroll] = frames(
+      output,
+      'grow nested',
+    )
     const bottom = safe && safe[1]! + safe[3]!
-    ok(`${leg}: nested: the scroll ends at the safe area's bottom`, !!scroll && near(scroll[1]! + scroll[3]!, bottom), line)
-    ok(`${leg}: nested: the body ends at the safe area's bottom`, !!body && near(body[1]! + body[3]!, bottom), line)
-    ok(`${leg}: nested: the screen is the root's height`, !!screen && !!root && near(screen[3], root[3]), line)
+    ok(
+      `${leg}: nested: the scroll ends at the safe area's bottom`,
+      !!scroll && near(scroll[1]! + scroll[3]!, bottom),
+      line,
+    )
+    ok(
+      `${leg}: nested: the body ends at the safe area's bottom`,
+      !!body && near(body[1]! + body[3]!, bottom),
+      line,
+    )
+    ok(
+      `${leg}: nested: the screen is the root's height`,
+      !!screen && !!root && near(screen[3], root[3]),
+      line,
+    )
   }
   {
     const line = after(output, 'grow inner')
     const [, root, screen, body] = frames(output, 'grow inner')
     ok(
       `${leg}: inner: the screen's top and bottom are the root's`,
-      !!screen && !!root && near(screen[1], root[1]) && near(screen[1]! + screen[3]!, root[1]! + root[3]!),
+      !!screen &&
+        !!root &&
+        near(screen[1], root[1]) &&
+        near(screen[1]! + screen[3]!, root[1]! + root[3]!),
       line,
     )
-    ok(`${leg}: inner: the column with no growing child is below 100 tall`, !!body && body[3]! < 100, line)
+    ok(
+      `${leg}: inner: the column with no growing child is below 100 tall`,
+      !!body && body[3]! < 100,
+      line,
+    )
   }
   {
     const line = after(output, 'grow two')
     const [safe, , first, second] = frames(output, 'grow two')
-    ok(`${leg}: two: the scrolls' heights differ by 1 or less`, !!first && !!second && near(first[3], second[3]), line)
-    ok(`${leg}: two: each is at least 200 tall`, !!first && !!second && first[3]! >= 200 && second[3]! >= 200, line)
+    ok(
+      `${leg}: two: the scrolls' heights differ by 1 or less`,
+      !!first && !!second && near(first[3], second[3]),
+      line,
+    )
+    ok(
+      `${leg}: two: each is at least 200 tall`,
+      !!first && !!second && first[3]! >= 200 && second[3]! >= 200,
+      line,
+    )
     ok(
       `${leg}: two: the second ends at the safe area's bottom`,
-      !!second && !!safe && near(second[1]! + second[3]!, safe[1]! + safe[3]!),
+      !!second &&
+        !!safe &&
+        near(second[1]! + second[3]!, safe[1]! + safe[3]!),
       line,
     )
   }
   {
     const line = after(output, 'grow empty')
     const [safe, box, scroll] = frames(output, 'grow empty')
-    ok(`${leg}: empty: the empty div is 0 tall`, !!box && box[3]! < 1, line)
+    ok(
+      `${leg}: empty: the empty div is 0 tall`,
+      !!box && box[3]! < 1,
+      line,
+    )
     ok(
       `${leg}: empty: the scroll ends at the safe area's bottom`,
-      !!scroll && !!safe && near(scroll[1]! + scroll[3]!, safe[1]! + safe[3]!),
+      !!scroll &&
+        !!safe &&
+        near(scroll[1]! + scroll[3]!, safe[1]! + safe[3]!),
       line,
     )
   }
@@ -603,44 +694,90 @@ function judge(leg: Leg, toolkit: string, output: string): void {
     const [safe, screen, box, footer] = frames(output, 'grow spacer')
     ok(
       `${leg}: spacer: the footer ends at the safe area's bottom`,
-      !!footer && !!safe && near(footer[1]! + footer[3]!, safe[1]! + safe[3]!),
+      !!footer &&
+        !!safe &&
+        near(footer[1]! + footer[3]!, safe[1]! + safe[3]!),
       line,
     )
-    ok(`${leg}: spacer: the screen with no flex-grow is below 200 tall`, !!screen && screen[3]! < 200, line)
-    ok(`${leg}: spacer: the growing div is at least 300 tall`, !!box && box[3]! >= 300, line)
+    ok(
+      `${leg}: spacer: the screen with no flex-grow is below 200 tall`,
+      !!screen && screen[3]! < 200,
+      line,
+    )
+    ok(
+      `${leg}: spacer: the growing div is at least 300 tall`,
+      !!box && box[3]! >= 300,
+      line,
+    )
   }
   {
     const line = after(output, 'grow row')
-    const [safe, screen, row, title, scroll] = frames(output, 'grow row')
-    ok(`${leg}: row: the row is as wide as the screen`, !!row && !!screen && near(row[2], screen[2]), line)
-    ok(`${leg}: row: the title keeps its own width (below 150)`, !!title && title[2]! < 150, line)
+    const [safe, screen, row, title, scroll] = frames(
+      output,
+      'grow row',
+    )
+    ok(
+      `${leg}: row: the row is as wide as the screen`,
+      !!row && !!screen && near(row[2], screen[2]),
+      line,
+    )
+    ok(
+      `${leg}: row: the title keeps its own width (below 150)`,
+      !!title && title[2]! < 150,
+      line,
+    )
     // without a rest spacer in the row, Back is stretched and the title is pushed to the far edge
-    ok(`${leg}: row: the title sits next to Back (left edge below 150)`, !!title && title[0]! < 150, line)
+    ok(
+      `${leg}: row: the title sits next to Back (left edge below 150)`,
+      !!title && title[0]! < 150,
+      line,
+    )
     ok(
       `${leg}: row: the scroll ends at the safe area's bottom`,
-      !!scroll && !!safe && near(scroll[1]! + scroll[3]!, safe[1]! + safe[3]!),
+      !!scroll &&
+        !!safe &&
+        near(scroll[1]! + scroll[3]!, safe[1]! + safe[3]!),
       line,
     )
   }
   {
     const line = after(output, 'grow cross')
-    const [, left, right, leftText, rightText] = frames(output, 'grow cross')
-    ok(`${leg}: cross: each column is 200 tall`, !!left && !!right && near(left[3], 200) && near(right[3], 200), line)
+    const [, left, right, leftText, rightText] = frames(
+      output,
+      'grow cross',
+    )
+    ok(
+      `${leg}: cross: each column is 200 tall`,
+      !!left && !!right && near(left[3], 200) && near(right[3], 200),
+      line,
+    )
     ok(
       `${leg}: cross: each label is below 60 tall`,
-      !!leftText && !!rightText && leftText[3]! < 60 && rightText[3]! < 60,
+      !!leftText &&
+        !!rightText &&
+        leftText[3]! < 60 &&
+        rightText[3]! < 60,
       line,
     )
     ok(
       `${leg}: cross: each label's top is its column's top`,
-      !!left && !!right && !!leftText && !!rightText && near(leftText[1], left[1]) && near(rightText[1], right[1]),
+      !!left &&
+        !!right &&
+        !!leftText &&
+        !!rightText &&
+        near(leftText[1], left[1]) &&
+        near(rightText[1], right[1]),
       line,
     )
   }
   {
     const line = after(output, 'grow still')
     const [, scroll] = frames(output, 'grow still')
-    ok(`${leg}: still: a scroll with no flex-grow is 216 tall (its rows)`, !!scroll && near(scroll[3], 216), line)
+    ok(
+      `${leg}: still: a scroll with no flex-grow is 216 tall (its rows)`,
+      !!scroll && near(scroll[3], 216),
+      line,
+    )
   }
 }
 

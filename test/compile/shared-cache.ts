@@ -41,7 +41,10 @@ const localA = path.join(root, 'a')
 const localB = path.join(root, 'b')
 
 // project A compiles its app (mill of the lib goes to the SHARED store, output to A-local)
-const cacheA = new CompileCache(sharedCacheStore(localA, shared, 'v1'), 'v1')
+const cacheA = new CompileCache(
+  sharedCacheStore(localA, shared, 'v1'),
+  'v1',
+)
 const a = compile(
   { file: 'a.tree', text: entry(1) },
   { resolve, cache: cacheA },
@@ -59,7 +62,10 @@ ok(
 )
 
 // project B (different entry, fresh in-memory cache, its own local dir) reuses the shared lib mill
-const cacheB = new CompileCache(sharedCacheStore(localB, shared, 'v1'), 'v1')
+const cacheB = new CompileCache(
+  sharedCacheStore(localB, shared, 'v1'),
+  'v1',
+)
 const b = compile(
   { file: 'b.tree', text: entry(2) },
   { resolve, cache: cacheB },
@@ -79,4 +85,6 @@ ok(
 fs.rmSync(root, { recursive: true, force: true })
 console.log(`\nshared-cache: ${pass} pass, ${fail} fail`)
 
-if (fail > 0) {process.exit(1)}
+if (fail > 0) {
+  process.exit(1)
+}

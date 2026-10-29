@@ -64,8 +64,9 @@ async function main(): Promise<void> {
   const result = compile({ file: 'enum.tree', text: EXHAUSTIVE })
 
   if (!result.ok) {
-    for (const d of result.diagnostics)
-      {console.log(render(d, EXHAUSTIVE.split('\n'), false))}
+    for (const d of result.diagnostics) {
+      console.log(render(d, EXHAUSTIVE.split('\n'), false))
+    }
 
     console.log('\nenum: 0 pass, 1 fail')
 
@@ -83,7 +84,8 @@ async function main(): Promise<void> {
     'emits match as form switch',
     // a field-less case only ever its frozen constant is tested by identity through its guard (typescript.ts,
     // `identityCases`); one that is not, by its tag
-    result.typescript.includes('.form === "red"') || /__termIsRed\(\w+\)/.test(result.typescript),
+    result.typescript.includes('.form === "red"') ||
+      /__termIsRed\(\w+\)/.test(result.typescript),
   )
 
   // run it: name-of(green) === "green"
@@ -110,7 +112,9 @@ async function main(): Promise<void> {
   if (!bad.ok) {
     const d = bad.diagnostics.find(x => x.name === 'non-exhaustive')
 
-    if (d) {console.log(`      (${d.message})`)}
+    if (d) {
+      console.log(`      (${d.message})`)
+    }
   }
 
   // a literal index is a plain path segment, read on the way out through the checked list read (it stops out of range,
@@ -122,8 +126,15 @@ async function main(): Promise<void> {
   ok(
     'a literal index reads through the checked list read',
     // the shared `__termAt`, or the same check written in place for a plain list and index
-    indexed.ok && /return (__termAt\(items, 0\)|\(0 < items\.length \? items\[0\]! : __termReadPast\(items, 0\)\))/.test(indexed.typescript),
-    indexed.ok ? indexed.typescript.slice(indexed.typescript.indexOf('function first')) : '',
+    indexed.ok &&
+      /return (__termAt\(items, 0\)|\(0 < items\.length \? items\[0\]! : __termReadPast\(items, 0\)\))/.test(
+        indexed.typescript,
+      ),
+    indexed.ok
+      ? indexed.typescript.slice(
+          indexed.typescript.indexOf('function first'),
+        )
+      : '',
   )
 
   // a `link` past the variant's last field binds nothing, so it is refused rather than silently ignored
@@ -133,8 +144,16 @@ async function main(): Promise<void> {
   })
   ok(
     'a link past the last field is refused and names the fields',
-    !strayLink.ok && strayLink.diagnostics.some(d => d.message.includes('"link py" under "case dot" binds nothing') && d.message.includes('(x)')),
-    strayLink.ok ? 'compiled' : strayLink.diagnostics.map(d => d.message).join(' | '),
+    !strayLink.ok &&
+      strayLink.diagnostics.some(
+        d =>
+          d.message.includes(
+            '"link py" under "case dot" binds nothing',
+          ) && d.message.includes('(x)'),
+      ),
+    strayLink.ok
+      ? 'compiled'
+      : strayLink.diagnostics.map(d => d.message).join(' | '),
   )
 
   // the same arm with one rename is the ordinary rename form
@@ -142,7 +161,11 @@ async function main(): Promise<void> {
     file: 'r.tree',
     text: 'form shape\n  case dot\n    link x, like number\n  case line\n    link a, like number\n    link b, like number\n\ntask size\n  take s, like shape\n  like number\n  fork case, read s\n    case dot\n      link px\n      send back, read px\n    case line\n      send back, read a\n',
   })
-  ok('a rename within the field count is accepted', rename.ok, rename.ok ? '' : rename.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'a rename within the field count is accepted',
+    rename.ok,
+    rename.ok ? '' : rename.diagnostics.map(d => d.message).join(' | '),
+  )
 
   // `case full, like text` is a payload variant: its one value is the `value` field, so an arm reads it as `value` or
   // renames it with a link
@@ -152,16 +175,28 @@ async function main(): Promise<void> {
   })
   ok(
     'a payload variant binds its value through a link',
-    payload.ok && payload.typescript.includes('const content = b.value'),
-    payload.ok ? payload.typescript.split('\n').filter(l => /content|value/.test(l)).join(' | ') : payload.diagnostics.map(d => d.message).join(' | '),
+    payload.ok &&
+      payload.typescript.includes('const content = b.value'),
+    payload.ok
+      ? payload.typescript
+          .split('\n')
+          .filter(l => /content|value/.test(l))
+          .join(' | ')
+      : payload.diagnostics.map(d => d.message).join(' | '),
   )
 
   if (payload.ok) {
     const dir = mkdtempSync(join(tmpdir(), 'term-enum-'))
     const file = join(dir, 'module.ts')
     writeFileSync(file, payload.typescript)
-    const mod = (await import(pathToFileURL(file).href)) as { run: () => string }
-    ok('a payload variant runs', mod.run() === 'filled', String(mod.run()))
+    const mod = (await import(pathToFileURL(file).href)) as {
+      run: () => string
+    }
+    ok(
+      'a payload variant runs',
+      mod.run() === 'filled',
+      String(mod.run()),
+    )
   }
 
   console.log(`\nenum: ${pass} pass, ${fail} fail`)

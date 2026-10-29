@@ -316,7 +316,11 @@ task use
   send back, read items/0
 `
 
-  tally('tier 0: an accessor owes its read to its callers, not itself', first, { total: 0, proven: 0 })
+  tally(
+    'tier 0: an accessor owes its read to its callers, not itself',
+    first,
+    { total: 0, proven: 0 },
+  )
 
   tally(
     'tier 0: an unguarded caller of an accessor is counted as not proven',
@@ -485,7 +489,7 @@ task use
   // ---- a caller is owed its callee's `must` ----
 
   expect(
-    "must at the call: a caller may use what the callee promises",
+    'must at the call: a caller may use what the callee promises',
     `task bump
   take n, like natural-number
   like number
@@ -635,8 +639,16 @@ task use
         bind red, code ${red}
 `
 
-  expect('have on a field: a record built in place that meets it is proven', channel('200'), proven)
-  expect('have on a field: one that does not is refused', channel('300'), refused('unproven'))
+  expect(
+    'have on a field: a record built in place that meets it is proven',
+    channel('200'),
+    proven,
+  )
+  expect(
+    'have on a field: one that does not is refused',
+    channel('300'),
+    refused('unproven'),
+  )
 
   // a `must` on a field of the record a task returns
   const madeBox = (size: string): string => `form box
@@ -655,8 +667,16 @@ task make-box
   send back, read b
 `
 
-  expect('must on a returned field: a record that keeps it is proven', madeBox('read n'), proven)
-  expect('must on a returned field: one that breaks it is refused', madeBox('code 7'), refused('unproven'))
+  expect(
+    'must on a returned field: a record that keeps it is proven',
+    madeBox('read n'),
+    proven,
+  )
+  expect(
+    'must on a returned field: one that breaks it is refused',
+    madeBox('code 7'),
+    refused('unproven'),
+  )
 
   // a walk with no condition compiled to a loop that never ran: refused now
   expect(
@@ -779,8 +799,14 @@ task some-number
   expect(
     'an inner walk whose counter is not reset each turn is not counted',
     fill
-      .replace(`    hook hold\n      save r, code 0\n      walk test`, `    hook hold\n      walk test`)
-      .replace(`  save c, code 0\n`, `  save c, code 0\n  save r, code 0\n`),
+      .replace(
+        `    hook hold\n      save r, code 0\n      walk test`,
+        `    hook hold\n      walk test`,
+      )
+      .replace(
+        `  save c, code 0\n`,
+        `  save c, code 0\n  save r, code 0\n`,
+      ),
     refused('unproven'),
   )
 
@@ -919,7 +945,11 @@ ${rebind}  call m/push
       code 2
 `
 
-  expect('a push to a fresh list keeps a parameter length', paramAndFresh(''), proven)
+  expect(
+    'a push to a fresh list keeps a parameter length',
+    paramAndFresh(''),
+    proven,
+  )
 
   // the fresh list is pushed INTO the parameter, so the parameter's last element IS the fresh list
   expect(
@@ -976,8 +1006,16 @@ ${rebind}  call m/push
     proven,
   )
 
-  expect('a push to one fresh list keeps another fresh list length', twoLists('make list'), proven)
-  expect('a push through a second name for the same list does not', twoLists('read a'), refused('unproven'))
+  expect(
+    'a push to one fresh list keeps another fresh list length',
+    twoLists('make list'),
+    proven,
+  )
+  expect(
+    'a push through a second name for the same list does not',
+    twoLists('read a'),
+    refused('unproven'),
+  )
 
   tally(
     'tier 0: a set owes its index like a read',

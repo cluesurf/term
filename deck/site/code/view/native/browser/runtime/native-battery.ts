@@ -3,8 +3,19 @@
 
 export const nativeBattery = {
   // the browser's battery manager, or nothing where it has none
-  manager(): Promise<{ level: number; charging: boolean } & EventTarget> | undefined {
-    const read = typeof navigator === 'undefined' ? undefined : (navigator as unknown as { getBattery?: () => Promise<{ level: number; charging: boolean } & EventTarget> }).getBattery
+  manager():
+    | Promise<{ level: number; charging: boolean } & EventTarget>
+    | undefined {
+    const read =
+      typeof navigator === 'undefined'
+        ? undefined
+        : (
+            navigator as unknown as {
+              getBattery?: () => Promise<
+                { level: number; charging: boolean } & EventTarget
+              >
+            }
+          ).getBattery
 
     return typeof read === 'function' ? read.call(navigator) : undefined
   },
@@ -18,7 +29,11 @@ export const nativeBattery = {
     }
 
     const battery = await manager
-    const state = battery.charging ? (battery.level >= 1 ? 'full' : 'charging') : 'unplugged'
+    const state = battery.charging
+      ? battery.level >= 1
+        ? 'full'
+        : 'charging'
+      : 'unplugged'
 
     return `${battery.level.toFixed(2)} ${state}`
   },

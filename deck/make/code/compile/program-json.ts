@@ -44,17 +44,23 @@ function rawOf(value: unknown, omit?: string): canon.RawValue {
   }
 
   if (Array.isArray(value)) {
-    return { form: 'raw-items', items: value.map(item => rawOf(item, omit)) }
+    return {
+      form: 'raw-items',
+      items: value.map(item => rawOf(item, omit)),
+    }
   }
 
   const pairs: canon.RawPair[] = []
 
-  for (const key of Object.keys(value as object)) {
+  for (const key of Object.keys(value)) {
     if (key === omit) {
       continue
     }
 
-    pairs.push({ key, value: rawOf((value as Record<string, unknown>)[key], omit) })
+    pairs.push({
+      key,
+      value: rawOf((value as Record<string, unknown>)[key], omit),
+    })
   }
 
   return { form: 'raw-record', pairs }
@@ -71,8 +77,9 @@ function plainOf(value: canon.CanonicalValue): CanonicalValue {
       return value.value
     case 'canon-items':
       return value.items.map(plainOf)
+
     case 'canon-record': {
-      const out: { [key: string]: CanonicalValue } = {}
+      const out: Record<string, CanonicalValue> = {}
 
       for (const pair of value.pairs) {
         Object.defineProperty(out, pair.key, {
@@ -129,7 +136,9 @@ export function diffCanonical(
 export function censusProgram(program: Program): Map<string, number> {
   const counts = new Map<string, number>()
 
-  for (const { form, count } of canon.censusRaw(rawOf(program, 'node'))) {
+  for (const { form, count } of canon.censusRaw(
+    rawOf(program, 'node'),
+  )) {
     counts.set(form, count)
   }
 

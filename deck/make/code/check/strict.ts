@@ -30,7 +30,8 @@ export const checkerSwitches: CheckerSwitches = switchesFromEnv()
 // substitution, so it is written where the instance is made, as check/width-range.ts wrote it whenever this module
 // loaded it, and again by every `setWidthRanges`. It goes when substitution.tree's `width-switch` bind reads the
 // record (item 0248)
-;(globalThis as { termWidthRanges?: boolean }).termWidthRanges = checkerSwitches.widths
+;(globalThis as { termWidthRanges?: boolean }).termWidthRanges =
+  checkerSwitches.widths
 
 export function setAmbiguousRefused(value: boolean): void {
   checkerSwitches.ambiguous = value
@@ -65,6 +66,9 @@ export function inferStrict(): boolean {
 
 // THE CHECKER'S SWITCHES AS ONE KEY PART, for every compile cache (checker-switches.tree `switch-key`). The await
 // switch and the seam are handed in, as they always were; the rest are the instance's
-export function checkerSwitchKey(awaitOutside: boolean, seam: boolean): string {
+export function checkerSwitchKey(
+  awaitOutside: boolean,
+  seam: boolean,
+): string {
   return switchKey({ ...checkerSwitches, awaitOutside, seam })
 }

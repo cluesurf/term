@@ -24,7 +24,7 @@ import { planModules } from '@term/make/code/compile/module-emit'
 
 // one emitted module: its JS (well, TS) code, the source files it imports (the dependency edges the dev server's
 // module graph + HMR need), and whether it is a `zone` module (a self-accepting HMR boundary)
-export interface ModuleEmit {
+export type ModuleEmit = {
   code: string
   imports: string[]
   isZone: boolean
@@ -41,7 +41,11 @@ function hotPrelude(): string {
 // `accept` with the fresh module (re-mount each remembered host from the new code, restoring the snapshot).
 // `spell` writes a render runtime name the way the zone emitter does, the name the build bound it by (D020)
 function hotEpilogue(spell: (name: string) => string): string {
-  const [readSignal, disposeScope, remove] = [spell('read-signal'), spell('dispose-scope'), spell('remove')]
+  const [readSignal, disposeScope, remove] = [
+    spell('read-signal'),
+    spell('dispose-scope'),
+    spell('remove'),
+  ]
 
   return `if (hot) {
   hot.dispose((data) => {
@@ -80,24 +84,33 @@ export function emitModules(
     urlForFile,
     toCamel,
     toPascal,
-    (statement: Statement) => 'stubExport' in statement && statement.stubExport !== undefined,
-    only === undefined ? { form: 'none' } : { form: 'some', value: [...only] },
+    (statement: Statement) =>
+      'stubExport' in statement && statement.stubExport !== undefined,
+    only === undefined
+      ? { form: 'none' }
+      : { form: 'some', value: [...only] },
     runtime as never,
   )
-  const spell = (name: string): string => toCamel(runtime.find(pair => pair.name === name)?.bound ?? name)
+
+  const spell = (name: string): string =>
+    toCamel(runtime.find(pair => pair.name === name)?.bound ?? name)
+
   const variants = new Set(plans.variants)
   const out = new Map<string, ModuleEmit>()
 
   for (const plan of plans.plans) {
     // zone modules emit HMR-aware component bodies (signals seeded from the kept snapshot, instances registered)
     // the whole program as context: a `case` here on a form another module defines needs its fields (`context`)
-    const body = emitTypeScript([...plan.borrowed, ...plan.statements] as Program, {
-      hmr: plan.isZone,
-      variants,
-      exportConstants: true,
-      context: program,
-      runtime,
-    })
+    const body = emitTypeScript(
+      [...plan.borrowed, ...plan.statements] as Program,
+      {
+        hmr: plan.isZone,
+        variants,
+        exportConstants: true,
+        context: program,
+        runtime,
+      },
+    )
 
     const pieces = [
       plan.lines.join('\n'),

@@ -26,15 +26,25 @@ function ok(name: string, holds: boolean, detail = ''): void {
   }
 }
 
-function build(text: string, env: 'rust' | 'node', entryPoints: string[]) {
+function build(
+  text: string,
+  env: 'rust' | 'node',
+  entryPoints: string[],
+) {
   return compile(
     { file: 'main.tree', text },
-    { resolve: withNativeEnv(env, stdlibResolver()!), env, entryPoints },
+    {
+      resolve: withNativeEnv(env, stdlibResolver()!),
+      env,
+      entryPoints,
+    },
   )
 }
 
 const said = (built: ReturnType<typeof build>): string =>
-  built.ok ? '' : built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | ')
+  built.ok
+    ? ''
+    : built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | ')
 
 // text pushed into a list of numbers
 {
@@ -52,7 +62,10 @@ task fill
 
   ok(
     'text pushed into a list of numbers is refused',
-    !built.ok && built.diagnostics.some(d => d.name === 'type-mismatch' && /argument/.test(d.message)),
+    !built.ok &&
+      built.diagnostics.some(
+        d => d.name === 'type-mismatch' && /argument/.test(d.message),
+      ),
     said(built) || 'it built',
   )
 }
@@ -74,7 +87,8 @@ task look
 
   ok(
     'a number looked up in a hash keyed by text is refused',
-    !built.ok && built.diagnostics.some(d => d.name === 'type-mismatch'),
+    !built.ok &&
+      built.diagnostics.some(d => d.name === 'type-mismatch'),
     said(built) || 'it built',
   )
 }
@@ -118,7 +132,10 @@ task loop
 
   ok(
     'a list pushed into itself is named as a type with no end',
-    !built.ok && built.diagnostics.some(d => /"xs" would hold a value of its own type/.test(d.message)),
+    !built.ok &&
+      built.diagnostics.some(d =>
+        /"xs" would hold a value of its own type/.test(d.message),
+      ),
     said(built) || 'it built',
   )
 }
@@ -143,20 +160,44 @@ task run
 `
 
   const node = build(text, 'node', ['run'])
-  ok('a value of an open type pins the element (TypeScript)', node.ok, said(node))
+  ok(
+    'a value of an open type pins the element (TypeScript)',
+    node.ok,
+    said(node),
+  )
 
   if (node.ok) {
     const ts = emitTypeScript(node.program)
-    const line = ts.split('\n').filter(l => /\bout\b/.test(l)).join(' | ')
-    ok('the list is a list of numbers on TypeScript', /out: number\[\]|out = \[\] as number\[\]|Array<number>/.test(ts) || !/any/.test(line), line)
+    const line = ts
+      .split('\n')
+      .filter(l => /\bout\b/.test(l))
+      .join(' | ')
+    ok(
+      'the list is a list of numbers on TypeScript',
+      /out: number\[\]|out = \[\] as number\[\]|Array<number>/.test(
+        ts,
+      ) || !/any/.test(line),
+      line,
+    )
   }
 
   const rust = build(text, 'rust', ['run'])
-  ok('a value of an open type pins the element (Rust)', rust.ok, said(rust))
+  ok(
+    'a value of an open type pins the element (Rust)',
+    rust.ok,
+    said(rust),
+  )
 
   if (rust.ok) {
     const emitted = emitRust(rust.program)
-    ok('the list is not a list of the boxed unknown on Rust', !/dyn std::any::Any/.test(emitted), emitted.split('\n').filter(l => /out/.test(l)).join(' | '))
+    ok(
+      'the list is not a list of the boxed unknown on Rust',
+      !/dyn std::any::Any/.test(emitted),
+      emitted
+        .split('\n')
+        .filter(l => /out/.test(l))
+        .join(' | '),
+    )
   }
 }
 

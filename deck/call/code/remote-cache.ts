@@ -18,17 +18,20 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import path from 'path'
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
-import { entryPathBySlug, storedEntries } from '@term/call/code/cache-store'
+import {
+  entryPathBySlug,
+  storedEntries,
+} from '@term/call/code/cache-store'
 
 // `unit` is the separate build's (compile/separate.ts), keyed by content alone like the mill
 const KINDS = ['mill', 'output', 'unit'] as const
 type Kind = (typeof KINDS)[number]
 
-const isKind = (kind: string): kind is Kind => (KINDS as readonly string[]).includes(kind)
+const isKind = (kind: string): kind is Kind =>
+  (KINDS as readonly string[]).includes(kind)
 
 // an entry's address: its kind, the compiler-version namespace it belongs to, and its key
 type Address = { kind: Kind; version: string; key: string }
-
 
 function authHeaders(token?: string): Record<string, string> {
   return token ? { authorization: `Bearer ${token}` } : {}
@@ -79,7 +82,13 @@ export async function pullRemoteCache(
       continue
     }
 
-    const file = entryPathBySlug(cacheDir, entry.kind, entry.version, entry.key)
+    const file = entryPathBySlug(
+      cacheDir,
+      entry.kind,
+      entry.version,
+      entry.key,
+    )
+
     mkdirSync(path.dirname(file), { recursive: true })
     writeFileSync(file, Buffer.from(await response.arrayBuffer()))
     pulled += 1
@@ -132,7 +141,7 @@ export async function pushRemoteCache(
   return pushed
 }
 
-export interface RemoteCacheServer {
+export type RemoteCacheServer = {
   port: number
   close(): void
 }

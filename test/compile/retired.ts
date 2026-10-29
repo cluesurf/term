@@ -46,10 +46,22 @@ function refusal(text: string): string | undefined {
 // each retired spelling, and the word its message must name so a reader learns the replacement
 const RETIRED: [string, string, string][] = [
   ['bust', 'task t\n  like void\n  bust <nope>\n', 'halt'],
-  ['send kink', 'task t\n  like void\n  send kink, text <nope>\n', 'halt'],
-  ['find X as Y', 'load @term/base/code/list\n  find get as list-get\n', 'name'],
+  [
+    'send kink',
+    'task t\n  like void\n  send kink, text <nope>\n',
+    'halt',
+  ],
+  [
+    'find X as Y',
+    'load @term/base/code/list\n  find get as list-get\n',
+    'name',
+  ],
   // retired 2026-08-31: one word meant both the native FFI binding and a URL route
-  ['dock </path>', 'view page\n  view text, text <hi>\n\ndock /\n  view page\n', 'hook </path>'],
+  [
+    'dock </path>',
+    'view page\n  view text, text <hi>\n\ndock /\n  view page\n',
+    'hook </path>',
+  ],
 ]
 
 for (const [name, text, names] of RETIRED) {
@@ -76,28 +88,41 @@ for (const [name, text, names] of RETIRED) {
 
 ok(
   '`mark async` still marks a task async, the same as `note async`',
-  refusal('task t\n  mark async\n  like void\n  send back\n') === undefined,
+  refusal('task t\n  mark async\n  like void\n  send back\n') ===
+    undefined,
   refusal('task t\n  mark async\n  like void\n  send back\n') ?? '',
 )
 
 ok(
   '`link <field>, mark private` still mills, which is most of the real uses',
-  refusal('form thing\n  link dock, mark private\n  link name, like text\n') === undefined,
-  refusal('form thing\n  link dock, mark private\n  link name, like text\n') ?? '',
+  refusal(
+    'form thing\n  link dock, mark private\n  link name, like text\n',
+  ) === undefined,
+  refusal(
+    'form thing\n  link dock, mark private\n  link name, like text\n',
+  ) ?? '',
 )
 
 ok(
   '`mark <uuid>` still mills',
-  refusal('form thing\n  mark <0f7c8a12-4b3e-4c1d-9a2f-6e5d4c3b2a19>\n  link name, like text\n') === undefined,
-  refusal('form thing\n  mark <0f7c8a12-4b3e-4c1d-9a2f-6e5d4c3b2a19>\n  link name, like text\n') ?? '',
+  refusal(
+    'form thing\n  mark <0f7c8a12-4b3e-4c1d-9a2f-6e5d4c3b2a19>\n  link name, like text\n',
+  ) === undefined,
+  refusal(
+    'form thing\n  mark <0f7c8a12-4b3e-4c1d-9a2f-6e5d4c3b2a19>\n  link name, like text\n',
+  ) ?? '',
 )
 
 // ---- and the FFI forms are what `dock` means now ----
 
 ok(
   '`dock load` and `dock type` still mill',
-  refusal('dock load\n  load <global:console>, name console\n\ndock type\n  load <any>, name handle\n') === undefined,
-  refusal('dock load\n  load <global:console>, name console\n\ndock type\n  load <any>, name handle\n') ?? '',
+  refusal(
+    'dock load\n  load <global:console>, name console\n\ndock type\n  load <any>, name handle\n',
+  ) === undefined,
+  refusal(
+    'dock load\n  load <global:console>, name console\n\ndock type\n  load <any>, name handle\n',
+  ) ?? '',
 )
 
 // ---- what is retired but reports poorly ----

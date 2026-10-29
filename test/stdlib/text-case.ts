@@ -45,7 +45,14 @@ const CASES: ['upper' | 'lower', string, string][] = [
   ['lower', 'ΟΔΟΣ', 'el'],
 ]
 
-const literal = (text: string): string => [...text].map(c => (c === '<' || c === '>' || c === '{' || c === '}' || c === '\\' ? `\\${c}` : c)).join('')
+const literal = (text: string): string =>
+  [...text]
+    .map(c =>
+      c === '<' || c === '>' || c === '{' || c === '}' || c === '\\'
+        ? `\\${c}`
+        : c,
+    )
+    .join('')
 
 const PROGRAM = `load @term/base/text/case
   find upper-case-in
@@ -63,14 +70,22 @@ ${CASES.map(([direction, text, language]) => `  push(out, ${direction}-case-in(<
 `
 
 const EXPECTED = CASES.map(([direction, text, language]) =>
-  direction === 'upper' ? text.toLocaleUpperCase(language) : text.toLocaleLowerCase(language),
+  direction === 'upper'
+    ? text.toLocaleUpperCase(language)
+    : text.toLocaleLowerCase(language),
 ).join('|')
 
 const dir = mkdtempSync(join(tmpdir(), 'term-case-'))
 const only = process.env.CASE_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'case' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'case',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
@@ -79,12 +94,20 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
 
   const got = ran.form === 'ran' ? ran.output.split('|') : []
   const want = EXPECTED.split('|')
-  const differ = CASES.flatMap((one, at) => (got[at] === want[at] ? [] : [`${one[0]} ${JSON.stringify(one[1])} in ${one[2]}: got ${JSON.stringify(got[at])}, node ${JSON.stringify(want[at])}`]))
+  const differ = CASES.flatMap((one, at) =>
+    got[at] === want[at]
+      ? []
+      : [
+          `${one[0]} ${JSON.stringify(one[1])} in ${one[2]}: got ${JSON.stringify(got[at])}, node ${JSON.stringify(want[at])}`,
+        ],
+  )
 
   ok(
     `${backend}: casing by language answers as node does`,
     ran.form === 'ran' && differ.length === 0,
-    ran.form === 'ran' ? differ.join(' | ') : `${ran.stage}: ${ran.reason}`,
+    ran.form === 'ran'
+      ? differ.join(' | ')
+      : `${ran.stage}: ${ran.reason}`,
   )
 }
 

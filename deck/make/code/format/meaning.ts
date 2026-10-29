@@ -22,8 +22,13 @@ export { importsOf } from '@term/make/code/format/milled-meaning'
 // The mill's Program for a tree, spans dropped and template pieces merged, or undefined when it does not mill.
 // `lean` is the file's `mark lean`: a lean file milled as longhand is a different program, and `f()` against a bare
 // `f` is a difference only the lean reading shows in full.
-export function programOf(tree: RootNode, file: string, lean = false): string | undefined {
+export function programOf(
+  tree: RootNode,
+  file: string,
+  lean = false,
+): string | undefined {
   const meaning = port.programOf(tree as never, file, lean)
+
   return meaning.form === 'some' ? meaning.value : undefined
 }
 

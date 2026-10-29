@@ -19,10 +19,14 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
-import { readMineGrammar, runMine } from '@term/make/code/compile/mill-run'
+import {
+  readMineGrammar,
+  runMine,
+} from '@term/make/code/compile/mill-run'
 import type { GroupNode } from '@term/make/code/parser/narrow'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const GRAMMAR = join(TERM, 'deck/mill/code/tree/operand/mine.tree')
 const TABLE = join(TERM, 'deck/bind/code/linux/operand.tree')
@@ -51,7 +55,7 @@ const grammarParsed = parse({
 ok(
   'the operand grammar parses',
   grammarParsed.ok,
-  grammarParsed.ok ? '' : grammarParsed.diagnostics[0]?.message ?? '',
+  grammarParsed.ok ? '' : (grammarParsed.diagnostics[0]?.message ?? ''),
 )
 
 if (!grammarParsed.ok) {
@@ -71,7 +75,10 @@ if (!parsed.ok) {
   process.exit(1)
 }
 
-ok('the whole table reads through the grammar', runMine(grammar, 'operand', parsed.tree).ok)
+ok(
+  'the whole table reads through the grammar',
+  runMine(grammar, 'operand', parsed.tree).ok,
+)
 
 // per instruction, so a refusal names the line
 const head = (group: GroupNode): string => {
@@ -109,8 +116,16 @@ for (const group of parsed.tree.nodes) {
   }
 }
 
-ok(`every instruction reads (${read} of ${read + refused})`, refused === 0, misses.join('; '))
-ok(`the table still holds ${INSTRUCTIONS} instructions`, read + refused === INSTRUCTIONS, `found ${read + refused}`)
+ok(
+  `every instruction reads (${read} of ${read + refused})`,
+  refused === 0,
+  misses.join('; '),
+)
+ok(
+  `the table still holds ${INSTRUCTIONS} instructions`,
+  read + refused === INSTRUCTIONS,
+  `found ${read + refused}`,
+)
 
 console.log(`\noperand-mill: ${pass} pass, ${fail} fail`)
 

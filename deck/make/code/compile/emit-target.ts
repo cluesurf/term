@@ -14,16 +14,23 @@
 // TypeScript today, and the prelude closed over the caller's way to read a shim.
 
 import type { Program } from '@term/make/code/compile/node'
-import { joinTypeScriptPrelude, nativePrelude } from '@term/make/code/compile/native'
+import {
+  joinTypeScriptPrelude,
+  nativePrelude,
+} from '@term/make/code/compile/native'
 import { emitRust } from '@term/make/code/compile/rust'
 import { emitSwift } from '@term/make/code/compile/swift'
-import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
+import {
+  emitKotlin,
+  hoistKotlinImports,
+} from '@term/make/code/compile/kotlin'
 import * as source from '@term/make/code/compile/target-source'
 import type { WakeGroup } from '@term/make/code/compile/program-warnings'
 
 export type EmitTarget = 'node' | 'rust' | 'swift' | 'kotlin'
 
-export const EMIT_TARGETS = source.listEmitTargets() as unknown as readonly EmitTarget[]
+export const EMIT_TARGETS =
+  source.listEmitTargets() as unknown as readonly EmitTarget[]
 
 export function isEmitTarget(value: string): value is EmitTarget {
   return source.isEmitTarget(value)
@@ -46,7 +53,8 @@ export function emitTarget(input: {
     input.program,
     input.typescript,
     input.target,
-    (program, target) => nativePrelude(program, target, input.readRuntime),
+    (program, target) =>
+      nativePrelude(program, target, input.readRuntime),
     joinTypeScriptPrelude,
     program => emitRust(program, { wake }),
     program => emitSwift(program, { wake }),
@@ -75,12 +83,18 @@ export function emitTargetUnits(input: {
   const written = source.emitTargetUnits(
     input.program,
     input.target,
-    (program, target) => nativePrelude(program, target, input.readRuntime),
+    (program, target) =>
+      nativePrelude(program, target, input.readRuntime),
     program => emitRust(program, { units: true, wake }),
     program => emitSwift(program, { units: true, wake }),
     program => emitKotlin(program, { units: true, wake }),
     hoistKotlinImports,
   )
 
-  return { main: written.main, files: written.files.map(file => [file.name, file.text] as [string, string]) }
+  return {
+    main: written.main,
+    files: written.files.map(
+      file => [file.name, file.text] as [string, string],
+    ),
+  }
 }

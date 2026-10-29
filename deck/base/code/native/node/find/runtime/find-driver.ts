@@ -11,10 +11,14 @@ type FindDriverEntry = {
   waiting: Map<number, (line: string) => void>
 }
 
-type FindMounted = { tool: unknown; command: string; argumentList: string[] }
+type FindMounted = {
+  tool: unknown
+  command: string
+  argumentList: string[]
+}
 
 let findMountedNow: FindMounted | undefined
-const findDriverTable =new Map<string, FindDriverEntry>()
+const findDriverTable = new Map<string, FindDriverEntry>()
 let findDriverKey = ''
 let findDriverCommand = ''
 let findDriverArguments: string[] = []
@@ -38,7 +42,11 @@ const findDriverFailure = (id: number, detail: string): string =>
 
 // a driver with nothing pending does not hold this process open
 const findDriverSettle = (entry: FindDriverEntry): void => {
-  const streams = [entry.child.stdout, entry.child.stderr, entry.child.stdin] as unknown as ({
+  const streams = [
+    entry.child.stdout,
+    entry.child.stderr,
+    entry.child.stdin,
+  ] as unknown as ({
     ref?: () => void
     unref?: () => void
   } | null)[]
@@ -77,8 +85,14 @@ const findDriverStart = (): FindDriverEntry | undefined => {
   }
 
   try {
-    const child = spawn(findDriverCommand, findDriverArguments, { stdio: ['pipe', 'pipe', 'inherit'] })
-    const entry: FindDriverEntry = { child, buffer: '', waiting: new Map() }
+    const child = spawn(findDriverCommand, findDriverArguments, {
+      stdio: ['pipe', 'pipe', 'inherit'],
+    })
+    const entry: FindDriverEntry = {
+      child,
+      buffer: '',
+      waiting: new Map(),
+    }
     const fail = (detail: string) => {
       for (const [id, resolve] of [...entry.waiting]) {
         resolve(findDriverFailure(id, detail))
@@ -127,7 +141,11 @@ const findDriver = {
   },
 
   // mount a tool: make it and its driver the context, answer the context there was (nothing when none), to restore
-  mount: (tool: unknown, command: string, argumentList: string[]): unknown => {
+  mount: (
+    tool: unknown,
+    command: string,
+    argumentList: string[],
+  ): unknown => {
     const before = findMountedNow
 
     findMountedNow = { tool, command, argumentList }
@@ -145,11 +163,17 @@ const findDriver = {
     findMountedNow = previous
     findDriverCommand = previous ? previous.command : ''
     findDriverArguments = previous ? previous.argumentList : []
-    findDriverKey = JSON.stringify([findDriverCommand, ...findDriverArguments])
+    findDriverKey = JSON.stringify([
+      findDriverCommand,
+      ...findDriverArguments,
+    ])
   },
 
   // run `work`, then put the context back, whether or not it raised: the raise goes on, unchanged
-  runMounted: async (work: () => Promise<unknown>, before: unknown): Promise<void> => {
+  runMounted: async (
+    work: () => Promise<unknown>,
+    before: unknown,
+  ): Promise<void> => {
     try {
       await work()
     } finally {

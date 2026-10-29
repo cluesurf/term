@@ -22,13 +22,17 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 function build(files: Record<string, string>, main: string) {
   const resolve = (p: string): Source | undefined =>
-    files[p] !== undefined ? { file: `${p.slice('@app/'.length)}.tree`, text: files[p]! } : undefined
+    files[p] !== undefined
+      ? { file: `${p.slice('@app/'.length)}.tree`, text: files[p]! }
+      : undefined
 
   return compile({ file: 'main.tree', text: main }, { resolve })
 }
 
 function said(result: ReturnType<typeof build>): string {
-  return result.ok ? result.typescript : result.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | ')
+  return result.ok
+    ? result.typescript
+    : result.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | ')
 }
 
 // a guard whose caught binder is named `binder`, read as a value in its handler
@@ -55,13 +59,24 @@ function defines(name: string, answer: string): string {
   // two files define a task `refused`, a third reads its guard binder `refused`, and the program holds all three
   const main = `load @app/a\n  find other-a\n\nload @app/b\n  find other-b\n\nload @app/g\n  find run-guarded\n\ntask run\n  like text\n  send back, call run-guarded\n`
   const result = build(
-    { '@app/a': defines('refused', 'a'), '@app/b': defines('refused', 'b'), '@app/g': guarded('run-guarded', 'refused', 'g') },
+    {
+      '@app/a': defines('refused', 'a'),
+      '@app/b': defines('refused', 'b'),
+      '@app/g': guarded('run-guarded', 'refused', 'g'),
+    },
     main,
   )
-  ok('a guard binder named like a task two files define builds', result.ok, said(result))
+  ok(
+    'a guard binder named like a task two files define builds',
+    result.ok,
+    said(result),
+  )
   ok(
     'it is no duplicate-definition',
-    !(!result.ok && result.diagnostics.some(d => d.name === 'duplicate-definition')),
+    !(
+      !result.ok &&
+      result.diagnostics.some(d => d.name === 'duplicate-definition')
+    ),
     said(result),
   )
 }
@@ -69,8 +84,18 @@ function defines(name: string, answer: string): string {
 {
   // one other file defines `refused`: the binder must not be bound to that file's task either
   const main = `load @app/a\n  find other-a\n\nload @app/g\n  find run-guarded\n\ntask run\n  like text\n  send back, call run-guarded\n`
-  const result = build({ '@app/a': defines('refused', 'a'), '@app/g': guarded('run-guarded', 'refused', 'g') }, main)
-  ok('a guard binder named like one other file\'s task builds', result.ok, said(result))
+  const result = build(
+    {
+      '@app/a': defines('refused', 'a'),
+      '@app/g': guarded('run-guarded', 'refused', 'g'),
+    },
+    main,
+  )
+  ok(
+    "a guard binder named like one other file's task builds",
+    result.ok,
+    said(result),
+  )
   ok(
     'and the handler reads the caught value, not the task',
     result.ok && !/refused__in|refusedIn\d/.test(result.typescript),
@@ -81,8 +106,18 @@ function defines(name: string, answer: string): string {
 {
   // two modules each with a guard binding the same take name, a third loading both
   const main = `load @app/g1\n  find first\n\nload @app/g2\n  find second\n\ntask run\n  like text\n  send back, call first\n`
-  const result = build({ '@app/g1': guarded('first', 'problem', 'one'), '@app/g2': guarded('second', 'problem', 'two') }, main)
-  ok('two modules guarding with one binder name, loaded by a third, build', result.ok, said(result))
+  const result = build(
+    {
+      '@app/g1': guarded('first', 'problem', 'one'),
+      '@app/g2': guarded('second', 'problem', 'two'),
+    },
+    main,
+  )
+  ok(
+    'two modules guarding with one binder name, loaded by a third, build',
+    result.ok,
+    said(result),
+  )
 }
 
 {
@@ -91,9 +126,20 @@ function defines(name: string, answer: string): string {
   const g2 = `${guarded('second', 'problem', 'two')}\n${defines('problem', 'p2')}`
   const main = `load @app/g1\n  find first\n\nload @app/g2\n  find second\n\ntask run\n  like text\n  send back, call first\n`
   const result = build({ '@app/g1': g1, '@app/g2': g2 }, main)
-  ok('guard binders named like a task their own files define build', result.ok, said(result))
+  ok(
+    'guard binders named like a task their own files define build',
+    result.ok,
+    said(result),
+  )
   // the split renames each file's `problem` task apart, so a handler bound to its file's task reads a renamed name
-  ok('and each handler reads its caught value, not its own file\'s task', result.ok && !/problem__in|problemIn\d/.test(result.typescript.replace(/function problem\w*\([^]*?\n}/g, '')), said(result))
+  ok(
+    "and each handler reads its caught value, not its own file's task",
+    result.ok &&
+      !/problem__in|problemIn\d/.test(
+        result.typescript.replace(/function problem\w*\([^]*?\n}/g, ''),
+      ),
+    said(result),
+  )
 }
 
 console.log(`\nguard-binder-local: ${pass} pass, ${fail} fail`)

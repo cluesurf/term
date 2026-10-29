@@ -59,7 +59,13 @@ const dir = mkdtempSync(join(tmpdir(), 'term-negated-compare-'))
 const only = process.env.NEGATED_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'negated' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'negated',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
@@ -69,7 +75,9 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
   ok(
     `${backend}: a negated ordering over NaN is true, over 2 the opposite ordering`,
     ran.form === 'ran' && ran.output.trim() === EXPECTED,
-    ran.form === 'ran' ? `got ${ran.output.trim()}` : `${ran.stage}: ${ran.reason}`,
+    ran.form === 'ran'
+      ? `got ${ran.output.trim()}`
+      : `${ran.stage}: ${ran.reason}`,
   )
 }
 
@@ -86,15 +94,34 @@ task run
   save count, host-count()
   back not(is-minimum(count, 1))
 `
-  const built = compile({ file: join(dir, 'host.tree'), text }, { leanOf: () => true } as never)
+  const built = compile({ file: join(dir, 'host.tree'), text }, {
+    leanOf: () => true,
+  } as never)
 
   if (!built.ok) {
-    ok('typescript: a host NaN count builds', false, built.diagnostics.map(d => d.message).join(' | '))
+    ok(
+      'typescript: a host NaN count builds',
+      false,
+      built.diagnostics.map(d => d.message).join(' | '),
+    )
   } else {
     const file = join(dir, 'host.mjs')
-    writeFileSync(file, transformSync(built.typescript, { loader: 'ts', format: 'esm' }).code)
-    const answer = await ((await import(pathToFileURL(file).href)) as { run: () => unknown }).run()
-    ok('typescript: not(is-minimum(count, 1)) over a host NaN is true', answer === true, `got ${String(answer)}: ${built.typescript.split('\n').filter(l => /count/.test(l)).join(' / ')}`)
+    writeFileSync(
+      file,
+      transformSync(built.typescript, { loader: 'ts', format: 'esm' })
+        .code,
+    )
+    const answer = await (
+      (await import(pathToFileURL(file).href)) as { run: () => unknown }
+    ).run()
+    ok(
+      'typescript: not(is-minimum(count, 1)) over a host NaN is true',
+      answer === true,
+      `got ${String(answer)}: ${built.typescript
+        .split('\n')
+        .filter(l => /count/.test(l))
+        .join(' / ')}`,
+    )
   }
 
   // an integer literal against a number with a width cannot be NaN, so that one still flips
@@ -104,9 +131,21 @@ task run
 
   back not(is-minimum(b, 1))
 `
-  const width = compile({ file: join(dir, 'width.tree'), text: widthText }, { leanOf: () => true } as never)
+  const width = compile(
+    { file: join(dir, 'width.tree'), text: widthText },
+    { leanOf: () => true } as never,
+  )
 
-  ok('typescript: a u8 against 1 still flips to b < 1', width.ok && /b < 1/.test(width.typescript), width.ok ? width.typescript.split('\n').filter(l => /return/.test(l)).join(' / ') : width.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'typescript: a u8 against 1 still flips to b < 1',
+    width.ok && /b < 1/.test(width.typescript),
+    width.ok
+      ? width.typescript
+          .split('\n')
+          .filter(l => /return/.test(l))
+          .join(' / ')
+      : width.diagnostics.map(d => d.message).join(' | '),
+  )
 }
 
 console.log(`\nnegated-compare: ${pass} pass, ${fail} fail`)

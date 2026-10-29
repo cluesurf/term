@@ -14,8 +14,15 @@ import { compile } from '@term/make/code/compile/compile'
 let pass = 0
 let fail = 0
 
-function expect(name: string, rule: string, want: 'ok' | 'refused'): void {
-  const result = compile({ file: 'r.tree', text: `${PRELUDE}\n${rule}\n` }, { leanOf: () => true })
+function expect(
+  name: string,
+  rule: string,
+  want: 'ok' | 'refused',
+): void {
+  const result = compile(
+    { file: 'r.tree', text: `${PRELUDE}\n${rule}\n` },
+    { leanOf: () => true },
+  )
   const good = want === 'ok' ? result.ok : !result.ok
 
   if (good) {
@@ -23,7 +30,9 @@ function expect(name: string, rule: string, want: 'ok' | 'refused'): void {
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (wanted ${want})\n      ${result.ok ? 'accepted' : result.diagnostics.map(d => d.message).join(' | ')}`)
+    console.log(
+      `FAIL  ${name}  (wanted ${want})\n      ${result.ok ? 'accepted' : result.diagnostics.map(d => d.message).join(' | ')}`,
+    )
   }
 }
 
@@ -80,7 +89,7 @@ task determinant
 `
 
 expect(
-  'THE LATENT UNSOUNDNESS: dot(u, v) == dot(u, u), the callee\'s own names, stays refused',
+  "THE LATENT UNSOUNDNESS: dot(u, v) == dot(u, u), the callee's own names, stays refused",
   `rule dangling
   seat u, like vector-two
   seat v, like vector-two
@@ -203,10 +212,14 @@ rule every-two-functions-agree
 
   if (!result.ok) {
     pass++
-    console.log('ok    a task calling its parameter unfolds to a call of the argument: apply(g, a) == apply(h, a) is refused')
+    console.log(
+      'ok    a task calling its parameter unfolds to a call of the argument: apply(g, a) == apply(h, a) is refused',
+    )
   } else {
     fail++
-    console.log('FAIL  apply(g, a) == apply(h, a) was accepted: the unfolding kept the callee\'s parameter name')
+    console.log(
+      "FAIL  apply(g, a) == apply(h, a) was accepted: the unfolding kept the callee's parameter name",
+    )
   }
 }
 

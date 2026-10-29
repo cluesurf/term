@@ -71,28 +71,74 @@ task piece-name
 `
 
 const out = compile({ file: '/gate/code/fieldless-owner.tree', text })
-ok('it compiles', out.ok, out.ok ? '' : out.diagnostics.map(d => d.message).join(' | '))
+ok(
+  'it compiles',
+  out.ok,
+  out.ok ? '' : out.diagnostics.map(d => d.message).join(' | '),
+)
 const ts = out.ok ? out.typescript : ''
-const lines = ts.split('\n').filter(line => /__termVariant|__termIs/.test(line) && /const|function/.test(line))
+const lines = ts
+  .split('\n')
+  .filter(
+    line =>
+      /__termVariant|__termIs/.test(line) &&
+      /const|function/.test(line),
+  )
 
-ok('the shared case has one constant per form, tagged as its form declares',
-  /const __termVariantInspectBlank = Object\.freeze\(\{ kind: "blank" as const \}\)/.test(ts) &&
-    /const __termVariantPieceBlank = Object\.freeze\(\{ form: "blank" as const \}\)/.test(ts), lines.join('\n'))
-ok('no constant is named by the shared case alone', !/__termVariantBlank\b/.test(ts), lines.join('\n'))
-ok('a case one form declares keeps its plain name', /const __termVariantLone = Object\.freeze\(\{ form: "lone" as const \}\)/.test(ts), lines.join('\n'))
+ok(
+  'the shared case has one constant per form, tagged as its form declares',
+  /const __termVariantInspectBlank = Object\.freeze\(\{ kind: "blank" as const \}\)/.test(
+    ts,
+  ) &&
+    /const __termVariantPieceBlank = Object\.freeze\(\{ form: "blank" as const \}\)/.test(
+      ts,
+    ),
+  lines.join('\n'),
+)
+ok(
+  'no constant is named by the shared case alone',
+  !/__termVariantBlank\b/.test(ts),
+  lines.join('\n'),
+)
+ok(
+  'a case one form declares keeps its plain name',
+  /const __termVariantLone = Object\.freeze\(\{ form: "lone" as const \}\)/.test(
+    ts,
+  ),
+  lines.join('\n'),
+)
 
 if (out.ok) {
   const dir = mkdtempSync(join(tmpdir(), 'term-fieldless-owner-'))
   const file = join(dir, 'fieldless-owner.ts')
   writeFileSync(file, ts)
-  const m = (await import(pathToFileURL(file).href)) as Record<string, (...args: unknown[]) => unknown>
+  const m = (await import(pathToFileURL(file).href)) as Record<
+    string,
+    (...args: unknown[]) => unknown
+  >
 
-  ok('inspect blank carries kind', JSON.stringify(m.first!()) === '{"kind":"blank"}', JSON.stringify(m.first!()))
-  ok('piece blank carries form', JSON.stringify(m.second!()) === '{"form":"blank"}', JSON.stringify(m.second!()))
+  ok(
+    'inspect blank carries kind',
+    JSON.stringify(m.first!()) === '{"kind":"blank"}',
+    JSON.stringify(m.first!()),
+  )
+  ok(
+    'piece blank carries form',
+    JSON.stringify(m.second!()) === '{"form":"blank"}',
+    JSON.stringify(m.second!()),
+  )
   ok('the two are different values', m.first!() !== m.second!())
-  ok('each match finds its own blank', m.inspectName!(m.first!()) === 'inspect blank' && m.pieceName!(m.second!()) === 'piece blank',
-    `${String(m.inspectName!(m.first!()))} / ${String(m.pieceName!(m.second!()))}`)
-  ok('the other cases still match', m.pieceName!(m.third!()) === 'lone' && m.pieceName!({ form: 'chain', parts: [] }) === 'chain')
+  ok(
+    'each match finds its own blank',
+    m.inspectName!(m.first!()) === 'inspect blank' &&
+      m.pieceName!(m.second!()) === 'piece blank',
+    `${String(m.inspectName!(m.first!()))} / ${String(m.pieceName!(m.second!()))}`,
+  )
+  ok(
+    'the other cases still match',
+    m.pieceName!(m.third!()) === 'lone' &&
+      m.pieceName!({ form: 'chain', parts: [] }) === 'chain',
+  )
 }
 
 // every backend: each form's blank is its own value and each match finds it. The native backends emit one enum per
@@ -147,15 +193,24 @@ task run
 const dir = mkdtempSync(join(tmpdir(), 'term-fieldless-owner-native-'))
 const only = process.env.FIELDLESS_ONLY ?? ''
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: NATIVE, resolve: env => projectResolver(process.cwd(), env), dir, name: 'fieldless-owner' })
+  const ran = runOn({
+    backend,
+    program: NATIVE,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'fieldless-owner',
+  })
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
     continue
   }
   ok(
     `${backend}: each form's blank is its own, and each match finds it`,
-    ran.form === 'ran' && ran.output === 'inspect-blank piece-blank lone blank blank',
-    ran.form === 'ran' ? `got ${JSON.stringify(ran.output)}` : `${ran.stage}: ${ran.reason}`,
+    ran.form === 'ran' &&
+      ran.output === 'inspect-blank piece-blank lone blank blank',
+    ran.form === 'ran'
+      ? `got ${JSON.stringify(ran.output)}`
+      : `${ran.stage}: ${ran.reason}`,
   )
 }
 

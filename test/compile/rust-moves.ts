@@ -11,7 +11,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
-import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
+import {
+  withNativeEnv,
+  nativePrelude,
+} from '@term/make/code/compile/native'
 import { emitRust } from '@term/make/code/compile/rust'
 
 let pass = 0
@@ -29,8 +32,19 @@ function ok(name: string, holds: boolean, detail = ''): void {
 
 const TERM = join(import.meta.dirname, '../..')
 const dir = mkdtempSync(join(tmpdir(), 'term-rust-moves-'))
-const rust = (text: string, entry: string, file = 'main.tree'): string => {
-  const built = compile({ file, text }, { resolve: withNativeEnv('rust', stdlibResolver()!), env: 'rust', entryPoints: [entry] })
+const rust = (
+  text: string,
+  entry: string,
+  file = 'main.tree',
+): string => {
+  const built = compile(
+    { file, text },
+    {
+      resolve: withNativeEnv('rust', stdlibResolver()!),
+      env: 'rust',
+      entryPoints: [entry],
+    },
+  )
 
   if (!built.ok) {
     throw new Error(`${file}: ${built.diagnostics[0]?.message}`)
@@ -39,21 +53,69 @@ const rust = (text: string, entry: string, file = 'main.tree'): string => {
   return `${nativePrelude(built.program, 'rust', () => undefined)}\n${emitRust(built.program)}`
 }
 // whether rustc builds the program as a library: a move it cannot make is E0382 or E0505
-const builds = (label: string, text: string): { ok: boolean; errors: string } => {
+const builds = (
+  label: string,
+  text: string,
+): { ok: boolean; errors: string } => {
   const path = join(dir, `${label}.rs`)
   writeFileSync(path, text)
-  const out = spawnSync('rustc', ['--edition', '2021', '--crate-type', 'lib', '-A', 'warnings', '-o', join(dir, `lib${label}.rlib`), path], { encoding: 'utf8' })
+  const out = spawnSync(
+    'rustc',
+    [
+      '--edition',
+      '2021',
+      '--crate-type',
+      'lib',
+      '-A',
+      'warnings',
+      '-o',
+      join(dir, `lib${label}.rlib`),
+      path,
+    ],
+    { encoding: 'utf8' },
+  )
 
-  return { ok: out.status === 0, errors: out.stderr.split('\n').filter(l => /^error/.test(l)).join(' | ') }
+  return {
+    ok: out.status === 0,
+    errors: out.stderr
+      .split('\n')
+      .filter(l => /^error/.test(l))
+      .join(' | '),
+  }
 }
-const lines = (text: string, pattern: RegExp): string => text.split('\n').filter(l => pattern.test(l)).join(' | ')
+const lines = (text: string, pattern: RegExp): string =>
+  text
+    .split('\n')
+    .filter(l => pattern.test(l))
+    .join(' | ')
 
 // 1. List: the payload behind one `Rc`, and `tail`'s third call moving each list at its last read
-const list = rust(readFileSync(join(TERM, 'mark/list/term.tree'), 'utf8'), 'list-runs', 'mark/list/term.tree')
-ok('list: a cloned form holds its payload in one Rc', /Link\(std::rc::Rc<ChainLink>\)/.test(list) && /struct ChainLink \{ value: i64, next: Chain \}/.test(list), lines(list, /Link|ChainLink/))
-ok('list: the third call moves z, x and y', /tail\(rest\(z\), x, y\)/.test(list), lines(list, /return tail/))
-ok('list: the earlier calls still clone', /tail\(rest\(x\.clone\(\)\), y\.clone\(\), z\.clone\(\)\)/.test(list), lines(list, /return tail/))
-ok('list: rustc builds it', builds('list', list).ok, builds('list', list).errors)
+const list = rust(
+  readFileSync(join(TERM, 'mark/list/term.tree'), 'utf8'),
+  'list-runs',
+  'mark/list/term.tree',
+)
+ok(
+  'list: a cloned form holds its payload in one Rc',
+  /Link\(std::rc::Rc<ChainLink>\)/.test(list) &&
+    /struct ChainLink \{ value: i64, next: Chain \}/.test(list),
+  lines(list, /Link|ChainLink/),
+)
+ok(
+  'list: the third call moves z, x and y',
+  /tail\(rest\(z\), x, y\)/.test(list),
+  lines(list, /return tail/),
+)
+ok(
+  'list: the earlier calls still clone',
+  /tail\(rest\(x\.clone\(\)\), y\.clone\(\), z\.clone\(\)\)/.test(list),
+  lines(list, /return tail/),
+)
+ok(
+  'list: rustc builds it',
+  builds('list', list).ok,
+  builds('list', list).errors,
+)
 
 // 2. an earlier read that is a BORROW: `peek` only reads its chain, so it takes it as `&`, and the last read after it
 // must clone, or the move would meet the live borrow
@@ -101,8 +163,16 @@ task use
 `,
   'use',
 )
-ok('a read beside a borrow of its name keeps its clone', !/keep\(c, /.test(borrowed), lines(borrowed, /keep\(/))
-ok('rustc builds it', builds('borrowed', borrowed).ok, builds('borrowed', borrowed).errors)
+ok(
+  'a read beside a borrow of its name keeps its clone',
+  !/keep\(c, /.test(borrowed),
+  lines(borrowed, /keep\(/),
+)
+ok(
+  'rustc builds it',
+  builds('borrowed', borrowed).ok,
+  builds('borrowed', borrowed).errors,
+)
 
 // the borrow FIRST, the read by value last: `wrap(peek(&c), c)` would move `c` while `&c` is still an argument
 const borrowFirst = rust(
@@ -126,8 +196,16 @@ task use
 `,
   'use',
 )
-ok('a read after a borrow of its name keeps its clone', /wrap\(peek\(&c\), c\.clone\(\)\)/.test(borrowFirst), lines(borrowFirst, /wrap\(/))
-ok('rustc builds it', builds('borrow-first', borrowFirst).ok, builds('borrow-first', borrowFirst).errors)
+ok(
+  'a read after a borrow of its name keeps its clone',
+  /wrap\(peek\(&c\), c\.clone\(\)\)/.test(borrowFirst),
+  lines(borrowFirst, /wrap\(/),
+)
+ok(
+  'rustc builds it',
+  builds('borrow-first', borrowFirst).ok,
+  builds('borrow-first', borrowFirst).errors,
+)
 
 // 3. a read inside a loop: the next turn reads it again, so no read there is last
 const looped = rust(
@@ -155,8 +233,16 @@ task use
 `,
   'use',
 )
-ok('a read inside a loop is never moved', !/keep\(c, /.test(looped), lines(looped, /keep\(/))
-ok('rustc builds it', builds('looped', looped).ok, builds('looped', looped).errors)
+ok(
+  'a read inside a loop is never moved',
+  !/keep\(c, /.test(looped),
+  lines(looped, /keep\(/),
+)
+ok(
+  'rustc builds it',
+  builds('looped', looped).ok,
+  builds('looped', looped).errors,
+)
 
 console.log(`\nrust-moves: ${pass} pass, ${fail} fail`)
 

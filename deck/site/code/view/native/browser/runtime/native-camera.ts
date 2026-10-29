@@ -5,18 +5,27 @@
 export const nativeCamera = {
   // `photo <blob address>`, or denied, unavailable or failed
   async capture(): Promise<string> {
-    if (typeof document === 'undefined' || typeof navigator.mediaDevices?.getUserMedia !== 'function') {
+    if (
+      typeof document === 'undefined' ||
+      typeof navigator.mediaDevices?.getUserMedia !== 'function'
+    ) {
       return 'unavailable'
     }
 
     let stream: MediaStream
 
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: true })
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+      })
     } catch (error) {
       const name = (error as Error).name
 
-      return name === 'NotAllowedError' ? 'denied' : name === 'NotFoundError' ? 'unavailable' : 'failed'
+      return name === 'NotAllowedError'
+        ? 'denied'
+        : name === 'NotFoundError'
+          ? 'unavailable'
+          : 'failed'
     }
 
     try {
@@ -29,7 +38,9 @@ export const nativeCamera = {
       canvas.width = video.videoWidth
       canvas.height = video.videoHeight
       canvas.getContext('2d')?.drawImage(video, 0, 0)
-      const blob = await new Promise<Blob | null>(settle => canvas.toBlob(settle, 'image/jpeg', 0.9))
+      const blob = await new Promise<Blob | null>(settle =>
+        canvas.toBlob(settle, 'image/jpeg', 0.9),
+      )
 
       return blob ? `photo ${URL.createObjectURL(blob)}` : 'failed'
     } catch {

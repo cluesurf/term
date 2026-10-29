@@ -36,7 +36,8 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 const LIMIT = 20_000
-const DEFECT = 'defect: the program waits on work that nothing can finish'
+const DEFECT =
+  'defect: the program waits on work that nothing can finish'
 
 const dir = mkdtempSync(join(tmpdir(), 'term-hand-back-native-'))
 const only = process.env.HAND_BACK_ONLY ?? ''
@@ -145,25 +146,49 @@ task run
   back got
 `
 
-type Outcome = { status: number | null; output: string; error: string; timedOut: boolean }
+type Outcome = {
+  status: number | null
+  output: string
+  error: string
+  timedOut: boolean
+}
 
-function runBuilt(backend: Backend, name: string, program: string): Outcome | string {
-  const built = buildOn({ backend, program, resolve: env => projectResolver(process.cwd(), env), dir, name })
+function runBuilt(
+  backend: Backend,
+  name: string,
+  program: string,
+): Outcome | string {
+  const built = buildOn({
+    backend,
+    program,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name,
+  })
 
   if (built.form === 'skipped') return `skip ${built.reason}`
   if (built.form === 'failed') return `${built.stage}: ${built.reason}`
 
-  const ran = spawnSync(built.command[0]!, built.command.slice(1), { encoding: 'utf8', timeout: LIMIT })
+  const ran = spawnSync(built.command[0]!, built.command.slice(1), {
+    encoding: 'utf8',
+    timeout: LIMIT,
+  })
 
   return {
     status: ran.status,
     output: String(ran.stdout ?? ''),
     error: String(ran.stderr ?? ''),
-    timedOut: ran.error !== undefined && /ETIMEDOUT/.test(String(ran.error)),
+    timedOut:
+      ran.error !== undefined && /ETIMEDOUT/.test(String(ran.error)),
   }
 }
 
-function report(backend: Backend, says: string, outcome: Outcome | string, want: (o: Outcome) => boolean): void {
+function report(
+  backend: Backend,
+  says: string,
+  outcome: Outcome | string,
+  want: (o: Outcome) => boolean,
+): void {
   if (typeof outcome === 'string') {
     if (outcome.startsWith('skip ')) {
       console.log(`skip  ${backend}: ${outcome.slice(5)}`)
@@ -181,10 +206,16 @@ function report(backend: Backend, says: string, outcome: Outcome | string, want:
 }
 
 async function serve(): Promise<{ port: number; stop: () => void }> {
-  const child = spawn(process.execPath, ['-e', SERVER], { stdio: ['ignore', 'pipe', 'inherit'] })
+  const child = spawn(process.execPath, ['-e', SERVER], {
+    stdio: ['ignore', 'pipe', 'inherit'],
+  })
   const port = await new Promise<number>((resolve, reject) => {
-    child.stdout.once('data', chunk => resolve(Number(String(chunk).trim())))
-    child.once('exit', code => reject(new Error(`server exited ${code}`)))
+    child.stdout.once('data', chunk =>
+      resolve(Number(String(chunk).trim())),
+    )
+    child.once('exit', code =>
+      reject(new Error(`server exited ${code}`)),
+    )
   })
 
   return { port, stop: () => child.kill() }

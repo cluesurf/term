@@ -23,7 +23,9 @@ function selfAssignments(text: string): number {
   const parsed = parse({ file: 't.tree', text })
 
   if (!parsed.ok) {
-    throw new Error(`parse failed: ${JSON.stringify(parsed.diagnostics)}`)
+    throw new Error(
+      `parse failed: ${JSON.stringify(parsed.diagnostics)}`,
+    )
   }
 
   const built = mill(parsed.tree, 't.tree')
@@ -32,15 +34,26 @@ function selfAssignments(text: string): number {
     throw new Error(`mill failed: ${JSON.stringify(built.diagnostics)}`)
   }
 
-  return lint(built.program, 't.tree', text).filter(f => f.code === 'L010').length
+  return lint(built.program, 't.tree', text).filter(
+    f => f.code === 'L010',
+  ).length
 }
 
 const shape = (target: string, value: string): string =>
   `task go\n  take grid, like list, like number\n  take i, like number\n  take j, like number\n  save ${target}, read ${value}\n`
 
-ok('two different indexes are two places', selfAssignments(shape('grid/{i}', 'grid/{j}')) === 0)
-ok('the same index is one place, and is reported', selfAssignments(shape('grid/{i}', 'grid/{i}')) === 1)
-ok('a plain field to itself is still reported', selfAssignments(shape('grid/size', 'grid/size')) === 1)
+ok(
+  'two different indexes are two places',
+  selfAssignments(shape('grid/{i}', 'grid/{j}')) === 0,
+)
+ok(
+  'the same index is one place, and is reported',
+  selfAssignments(shape('grid/{i}', 'grid/{i}')) === 1,
+)
+ok(
+  'a plain field to itself is still reported',
+  selfAssignments(shape('grid/size', 'grid/size')) === 1,
+)
 
 console.log(`\nexpr-equal-index: ${pass} pass, ${fail} fail`)
 

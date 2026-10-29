@@ -23,7 +23,9 @@ type SeedResponse = {
   body?: string
 }
 
-type Handler = (request: SeedRequest) => SeedResponse | Promise<SeedResponse>
+type Handler = (
+  request: SeedRequest,
+) => SeedResponse | Promise<SeedResponse>
 
 const server = {
   // start a server on (port, host); resolves to the listening http.Server. With secure, serves HTTPS from the PEM cert/key.

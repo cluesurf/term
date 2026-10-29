@@ -7,7 +7,6 @@ import { join } from 'node:path'
 import { tempDir } from '../temp'
 import { LINE } from './cli'
 
-
 let pass = 0
 let fail = 0
 
@@ -106,7 +105,9 @@ function main(): void {
 
   console.log(`\nverifier: ${pass} pass, ${fail} fail`)
 
-  if (fail) {process.exit(1)}
+  if (fail) {
+    process.exit(1)
+  }
 }
 
 main()

@@ -36,7 +36,10 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 const root = tempDir('term-files-')
 
-const put = (name: string, text = 'task probe\n  like number\n  send back, code 1\n'): void => {
+const put = (
+  name: string,
+  text = 'task probe\n  like number\n  send back, code 1\n',
+): void => {
   const full = join(root, name)
 
   mkdirSync(join(full, '..'), { recursive: true })
@@ -45,7 +48,10 @@ const put = (name: string, text = 'task probe\n  like number\n  send back, code 
 
 put('code/plain.tree')
 put('code/shelved.tree', 'mark draft\n\nthis is not Term at all\n')
-put('code/shelved-old.tree', 'note draft\n\nthis is not Term at all either\n')
+put(
+  'code/shelved-old.tree',
+  'note draft\n\nthis is not Term at all either\n',
+)
 put('code/deep/draft.tree', '')
 put('code/deep/inside.tree')
 put('code/deep/further/down.tree')
@@ -53,9 +59,15 @@ put('link/@term/other/borrowed.tree')
 put('host/emitted.tree')
 put('node_modules/dep/thing.tree')
 
-const walked = (await collectTreeFiles([], root)).map(f => f.slice(root.length + 1))
+const walked = (await collectTreeFiles([], root)).map(f =>
+  f.slice(root.length + 1),
+)
 
-ok('an ordinary file is collected', walked.includes('code/plain.tree'), walked.join(' '))
+ok(
+  'an ordinary file is collected',
+  walked.includes('code/plain.tree'),
+  walked.join(' '),
+)
 
 ok(
   'a file declaring `mark draft` is not',
@@ -83,11 +95,17 @@ ok(
 
 ok(
   'host/ and node_modules/ are left alone, as before',
-  !walked.some(f => f.startsWith('host/') || f.startsWith('node_modules/')),
+  !walked.some(
+    f => f.startsWith('host/') || f.startsWith('node_modules/'),
+  ),
   walked.join(' '),
 )
 
-ok('so exactly one file is collected here', walked.length === 1, walked.join(' '))
+ok(
+  'so exactly one file is collected here',
+  walked.length === 1,
+  walked.join(' '),
+)
 
 // ---- naming a file is a direct request ----
 
@@ -99,7 +117,10 @@ ok(
   named.join(' '),
 )
 
-const namedInside = await collectTreeFiles(['code/deep/inside.tree'], root)
+const namedInside = await collectTreeFiles(
+  ['code/deep/inside.tree'],
+  root,
+)
 
 ok(
   'and so is a file inside a shelved directory',
@@ -118,28 +139,41 @@ ok(
 // role file is `role/base.tree`, so a filename test would have missed the one that counts.
 
 {
-  const { isRoleFileText } = await import('@term/call/code/manifest-name')
+  const { isRoleFileText } =
+    await import('@term/call/code/manifest-name')
 
   ok(
     'a `role <name>` with `take` globs reads as a role file',
-    isRoleFileText('role site\n  take @/code/route/**/*.tree\n', 'anything.tree'),
+    isRoleFileText(
+      'role site\n  take @/code/route/**/*.tree\n',
+      'anything.tree',
+    ),
   )
 
   ok(
     'whatever it is called',
-    isRoleFileText('role call\n  take @/code/line/**/*.tree\n', 'base.tree'),
+    isRoleFileText(
+      'role call\n  take @/code/line/**/*.tree\n',
+      'base.tree',
+    ),
   )
 
   // a MANIFEST writes `role ./base/role` as a field under `deck`, not a top-level statement with `take` children
   ok(
     'a manifest naming a role directory is not one',
-    !isRoleFileText('deck @term/thing\n  code <0.0.1>\n  role ./role\n', 'deck.tree'),
+    !isRoleFileText(
+      'deck @term/thing\n  code <0.0.1>\n  role ./role\n',
+      'deck.tree',
+    ),
   )
 
   // and ordinary code is not one
   ok(
     'ordinary code is not one',
-    !isRoleFileText('task role\n  like void\n  send back\n', 'role.tree'),
+    !isRoleFileText(
+      'task role\n  like void\n  send back\n',
+      'role.tree',
+    ),
   )
 }
 
@@ -189,7 +223,10 @@ ok(
     writeFileSync(join(declared, name), text)
   }
 
-  put2('deck.tree', 'deck @term/probe\n  code <0.0.1>\n  role ./elsewhere\n')
+  put2(
+    'deck.tree',
+    'deck @term/probe\n  code <0.0.1>\n  role ./elsewhere\n',
+  )
   put2('elsewhere/base.tree', 'role call\n  take @/code/**/*.tree\n')
   put2('code/one.tree', 'task t\n')
 
@@ -226,7 +263,10 @@ ok(
 
   // a nested package with its OWN role file, saying something the outer one does not
   add('deck/inner/deck.tree', 'deck @term/inner\n  code <0.0.1>\n')
-  add('deck/inner/base/role.tree', 'role site\n  take @/code/route/**/*.tree\n')
+  add(
+    'deck/inner/base/role.tree',
+    'role site\n  take @/code/route/**/*.tree\n',
+  )
   add('deck/inner/code/route/page.tree', 'task t\n')
   add('deck/inner/code/other.tree', 'task t\n')
 

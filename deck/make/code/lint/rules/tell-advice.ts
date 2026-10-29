@@ -14,9 +14,16 @@
 // program's own tasks and routes (check/effects.ts), computed once per program.
 
 import type { Program, Statement } from '@term/make/code/compile/node'
-import type { LintContext, LintNode, Rule } from '@term/make/code/lint/rule'
+import type {
+  LintContext,
+  LintNode,
+  Rule,
+} from '@term/make/code/lint/rule'
 import { raiseSetsOf } from '@term/make/code/check/effects'
-import { exceptionForm, isGenericException } from '@term/make/code/check/extend'
+import {
+  exceptionForm,
+  isGenericException,
+} from '@term/make/code/check/extend'
 
 const EXCEPTION_FORM = exceptionForm()
 
@@ -24,8 +31,25 @@ type RecordType = Extract<Statement, { form: 'record-type' }>
 type Tell = Extract<Statement, { form: 'tell' }>
 
 // the roots a caller can act on, the roots that are the server's own business, and the roots a link would betray
-const FIX_THE_INPUT = new Set(['defect', 'omission', 'excess', 'shortage', 'mismatch', 'exclusion', 'absence', 'conflict', 'refusal'])
-const SERVER_FAILURE = new Set(['failure', 'overload', 'outage', 'timeout'])
+const FIX_THE_INPUT = new Set([
+  'defect',
+  'omission',
+  'excess',
+  'shortage',
+  'mismatch',
+  'exclusion',
+  'absence',
+  'conflict',
+  'refusal',
+])
+
+const SERVER_FAILURE = new Set([
+  'failure',
+  'overload',
+  'outage',
+  'timeout',
+])
+
 const CONFIDENTIAL = new Set(['anonymity', 'denial'])
 
 type Facts = {
@@ -66,6 +90,7 @@ function facts(context: LintContext): Facts {
 
   const records = new Map<string, RecordType>()
   const tells: Tell[] = []
+
   let decides = false
 
   for (const s of program) {
@@ -83,7 +108,10 @@ function facts(context: LintContext): Facts {
   // up (itself, when it is one of them)
   const rootOf = new Map<string, string>()
 
-  const climb = (name: string, seen: Set<string>): string | undefined => {
+  const climb = (
+    name: string,
+    seen: Set<string>,
+  ): string | undefined => {
     if (seen.has(name)) {
       return undefined
     }
@@ -125,7 +153,10 @@ function facts(context: LintContext): Facts {
 
     if (s.form === 'dock') {
       const walk = (route: (typeof s)['route']): void => {
-        for (const call of [...route.calls, ...route.methods.flatMap(m => m.calls)]) {
+        for (const call of [
+          ...route.calls,
+          ...route.methods.flatMap(m => m.calls),
+        ]) {
           for (const name of sets.raises.get(call.name) ?? []) {
             reachable.add(name)
           }
@@ -163,7 +194,10 @@ export const tellMissing: Rule = {
   docs: 'a reachable exception a caller could act on (under defect, omission, excess, shortage, mismatch, exclusion, absence, conflict or refusal) has no tell, so a customer sees only which of the seventeen it is',
   fixable: false,
   check(target: LintNode, context: LintContext): void {
-    if (target.kind !== 'statement' || target.node.form !== 'record-type') {
+    if (
+      target.kind !== 'statement' ||
+      target.node.form !== 'record-type'
+    ) {
       return
     }
 
@@ -177,7 +211,13 @@ export const tellMissing: Rule = {
     const record = target.node
     const root = rootOf.get(record.name)
 
-    if (!decides || root === undefined || !FIX_THE_INPUT.has(root) || !reachable.has(record.name) || told.has(record.name)) {
+    if (
+      !decides ||
+      root === undefined ||
+      !FIX_THE_INPUT.has(root) ||
+      !reachable.has(record.name) ||
+      told.has(record.name)
+    ) {
       return
     }
 
@@ -192,7 +232,7 @@ export const tellOfFailure: Rule = {
   name: 'tell-of-failure',
   code: 'L038',
   severity: 'warning',
-  docs: 'a tell for an exception under failure, overload, outage or timeout: a server failure is never the caller\'s business',
+  docs: "a tell for an exception under failure, overload, outage or timeout: a server failure is never the caller's business",
   fixable: false,
   check(target: LintNode, context: LintContext): void {
     if (target.kind !== 'statement' || target.node.form !== 'tell') {
@@ -243,7 +283,11 @@ export const tellReveals: Rule = {
     const bare = tell.name.slice(tell.name.lastIndexOf('/') + 1)
     const root = rootOf.get(bare)
 
-    if (root === undefined || !CONFIDENTIAL.has(root) || tell.links.length === 0) {
+    if (
+      root === undefined ||
+      !CONFIDENTIAL.has(root) ||
+      tell.links.length === 0
+    ) {
       return
     }
 

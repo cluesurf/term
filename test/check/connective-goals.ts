@@ -35,7 +35,11 @@ const PRELUDE = `form thing
   case b
 `
 
-function goal(connective: string, leftEq: [string, string], rightEq: [string, string]): string {
+function goal(
+  connective: string,
+  leftEq: [string, string],
+  rightEq: [string, string],
+): string {
   return `${PRELUDE}
 rule connective-goal
   show hold
@@ -51,10 +55,16 @@ rule connective-goal
 }
 
 // conjunction: both conjuncts true -> discharges
-ok('conjunction of two truths discharges', discharges(goal('and', ['a', 'a'], ['b', 'b'])))
+ok(
+  'conjunction of two truths discharges',
+  discharges(goal('and', ['a', 'a'], ['b', 'b'])),
+)
 
 // disjunction: only the right disjunct true -> discharges
-ok('disjunction with one true disjunct discharges', discharges(goal('or', ['a', 'b'], ['a', 'a'])))
+ok(
+  'disjunction with one true disjunct discharges',
+  discharges(goal('or', ['a', 'b'], ['a', 'a'])),
+)
 
 // SOUNDNESS: conjunction with a false conjunct must NOT discharge
 ok(

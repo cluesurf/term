@@ -33,7 +33,12 @@ export {
   listGlobalLinks,
   consumeGlobalLink,
 } from './package/link'
-export { hashFile, hashBuffer, hashText, verifyHash } from './package/hash'
+export {
+  hashFile,
+  hashBuffer,
+  hashText,
+  verifyHash,
+} from './package/hash'
 export {
   parseCode,
   parseCodeHold,
@@ -119,7 +124,11 @@ export {
   markOfPath,
 } from './object/dataset'
 export type { PackageFile } from './object/dataset'
-export { restoreFiles, restoreVersion, safeJoin } from './object/restore'
+export {
+  restoreFiles,
+  restoreVersion,
+  safeJoin,
+} from './object/restore'
 export { publishPackage } from './object/publish'
 export { installPackage } from './object/install'
 export { localObjectStore } from './object/store'
@@ -143,12 +152,23 @@ export {
   pinnedReference,
   parsePinnedReference,
 } from './oci/reference'
-export type { OciRegistryReference, OciRepository } from './oci/reference'
+export type {
+  OciRegistryReference,
+  OciRepository,
+} from './oci/reference'
 export { credentialsFor, parseChallenge } from './oci/auth'
 export type { OciCredentials } from './oci/auth'
 export { httpTransport, OciError, sha256Digest } from './oci/transport'
-export type { OciTransport, Descriptor, FetchedManifest } from './oci/transport'
-export { layoutTransport, layoutObjectStore, initLayout } from './oci/layout'
+export type {
+  OciTransport,
+  Descriptor,
+  FetchedManifest,
+} from './oci/transport'
+export {
+  layoutTransport,
+  layoutObjectStore,
+  initLayout,
+} from './oci/layout'
 export {
   ARTIFACT_TYPE,
   buildArtifact,
@@ -157,12 +177,30 @@ export {
   verifyDeckConfig,
   deckStatement,
 } from './oci/artifact'
-export type { BuiltArtifact, DeckConfig, FilesLayer } from './oci/artifact'
-export { trustedKeys, ensurePublisher, rotateKeys, KEYS_TAG } from './oci/keys'
+export type {
+  BuiltArtifact,
+  DeckConfig,
+  FilesLayer,
+} from './oci/artifact'
+export {
+  trustedKeys,
+  ensurePublisher,
+  rotateKeys,
+  KEYS_TAG,
+} from './oci/keys'
 export type { KeySet, TrustedKeys } from './oci/keys'
-export { publishToOci, buildOciArtifact, attachSignature, tagOfTarget } from './oci/publish'
+export {
+  publishToOci,
+  buildOciArtifact,
+  attachSignature,
+  tagOfTarget,
+} from './oci/publish'
 export type { OciPublishResult } from './oci/publish'
-export { listOciVersions, readOciVersion, installOciVersion } from './oci/install'
+export {
+  listOciVersions,
+  readOciVersion,
+  installOciVersion,
+} from './oci/install'
 export type { OciVersion } from './oci/install'
 export {
   ociRouteOf,
@@ -186,11 +224,23 @@ export {
   verifyReleaseConfig,
 } from './oci/release'
 export type { ReleaseConfig, ReleaseEntry } from './oci/release'
-export { TOOLCHAIN, newestMatching, pinNeed, pinSatisfies, releasedVersions, showPin } from './oci/need'
+export {
+  TOOLCHAIN,
+  newestMatching,
+  pinNeed,
+  pinSatisfies,
+  releasedVersions,
+  showPin,
+} from './oci/need'
 export type { DeckNeed, LockNeed } from './form'
 export { readTree, valueOf } from './package/read'
 export type { Form } from './package/read'
 export { pingIndex, publishStatement } from './oci/index-ping'
 export type { IndexPing } from './oci/index-ping'
-export { parseRoleFile, matchRole, matchRoleRule, globMatch } from './package/role'
+export {
+  parseRoleFile,
+  matchRole,
+  matchRoleRule,
+  globMatch,
+} from './package/role'
 export type { RoleConfig, RoleRule } from './form'

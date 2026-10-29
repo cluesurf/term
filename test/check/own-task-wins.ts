@@ -28,7 +28,10 @@ function ok(name: string, cond: boolean, info = ''): void {
 function build(main: string, files: Record<string, string> = {}) {
   const resolve = (path: string, from: string): Source | undefined =>
     files[path] !== undefined
-      ? { file: `${path.slice('@app/'.length)}.tree`, text: files[path]! }
+      ? {
+          file: `${path.slice('@app/'.length)}.tree`,
+          text: files[path]!,
+        }
       : projectResolve(path, from)
 
   return compile({ file: 'main.tree', text: main }, { resolve })
@@ -37,7 +40,9 @@ function build(main: string, files: Record<string, string> = {}) {
 type Result = ReturnType<typeof build>
 
 const said = (result: Result): string =>
-  result.ok ? result.typescript.slice(0, 400) : result.diagnostics.map(d => d.message).join(' | ')
+  result.ok
+    ? result.typescript.slice(0, 400)
+    : result.diagnostics.map(d => d.message).join(' | ')
 
 // every callee name the body of task `name` calls, from the checked program
 function calleesOf(result: Result, name: string): string[] {
@@ -46,7 +51,8 @@ function calleesOf(result: Result, name: string): string[] {
   }
 
   const task = result.program.find(
-    statement => statement.form === 'function' && statement.name === name,
+    statement =>
+      statement.form === 'function' && statement.name === name,
   )
   const out: string[] = []
   const stack: unknown[] = [task]
@@ -63,9 +69,16 @@ function calleesOf(result: Result, name: string): string[] {
       continue
     }
 
-    const record = node as { form?: string; callee?: { form?: string; name?: string } }
+    const record = node as {
+      form?: string
+      callee?: { form?: string; name?: string }
+    }
 
-    if (record.form === 'call' && record.callee?.form === 'variable' && record.callee.name) {
+    if (
+      record.form === 'call' &&
+      record.callee?.form === 'variable' &&
+      record.callee.name
+    ) {
       out.push(record.callee.name)
     }
 
@@ -86,8 +99,13 @@ const LOADS = `load @term/base/list\n  find list\n\n`
   const main = `${LOADS}task last\n  take xs, like list, like number\n  like number\n  send back, code 99\n\ntask run\n  like number\n  send back, call last(make(list, 3, 1, 2))\n`
   const result = build(main)
   const callees = calleesOf(result, 'run')
-  ok('a file\'s own task builds', result.ok, said(result))
-  ok('a file\'s own task wins over list\'s method of the same name', callees.includes('last') && !callees.some(c => /^list_last/.test(c)), callees.join(','))
+  ok("a file's own task builds", result.ok, said(result))
+  ok(
+    "a file's own task wins over list's method of the same name",
+    callees.includes('last') &&
+      !callees.some(c => /^list_last/.test(c)),
+    callees.join(','),
+  )
 }
 
 {
@@ -95,7 +113,11 @@ const LOADS = `load @term/base/list\n  find list\n\n`
   const main = `${LOADS}task run\n  send back, call last(make(list, 3, 1, 2))\n`
   const result = build(main)
   const callees = calleesOf(result, 'run')
-  ok('without a task of its own, the call still dispatches to list\'s method', callees.some(c => /^list_last/.test(c)), `${callees.join(',')} ${said(result)}`)
+  ok(
+    "without a task of its own, the call still dispatches to list's method",
+    callees.some(c => /^list_last/.test(c)),
+    `${callees.join(',')} ${said(result)}`,
+  )
 }
 
 {
@@ -104,7 +126,11 @@ const LOADS = `load @term/base/list\n  find list\n\n`
   const result = build(main)
   const callees = calleesOf(result, 'run')
   // the method may be inlined to `b.n`, so what is held is that the same-named task is not the one called
-  ok('a method of the file\'s own form still dispatches beside a same-named task', result.ok && !callees.includes('size'), `${callees.join(',')} ${said(result)}`)
+  ok(
+    "a method of the file's own form still dispatches beside a same-named task",
+    result.ok && !callees.includes('size'),
+    `${callees.join(',')} ${said(result)}`,
+  )
 }
 
 {
@@ -113,7 +139,11 @@ const LOADS = `load @term/base/list\n  find list\n\n`
   const main = `${LOADS}load @app/other\n  find other\n\ntask run\n  send back, call last(make(list, 3, 1, 2))\n`
   const result = build(main, { '@app/other': other })
   const callees = calleesOf(result, 'run')
-  ok('another file\'s task of the name does not take the call from the method', !callees.includes('last'), `${callees.join(',')} ${said(result)}`)
+  ok(
+    "another file's task of the name does not take the call from the method",
+    !callees.includes('last'),
+    `${callees.join(',')} ${said(result)}`,
+  )
 }
 
 // term-module-scope-0001: the same rule for the compiler's own words. A file's `task add` is what its `add(2, 3)` calls,
@@ -121,17 +151,33 @@ const LOADS = `load @term/base/list\n  find list\n\n`
 {
   const main = `task add\n  take a, like number\n  take b, like number\n  like number\n  send back, multiply(a, b)\n\ntask five\n  like number\n  send back, add(2, 3)\n`
   const result = build(main)
-  ok('a file\'s own task named like a compiler word builds', result.ok, said(result))
+  ok(
+    "a file's own task named like a compiler word builds",
+    result.ok,
+    said(result),
+  )
   // the one-line task may be inlined, so the emitted `five` is a call of it or its body, never the sum
-  const five = result.ok ? /function five\(\)[^{]*\{([^}]*)\}/.exec(result.typescript)?.[1] ?? '' : ''
-  ok('a file\'s own `add` is the one its call reaches, not the operator', /add\(2, 3\)|2 \* 3|\b6\b/.test(five) && !/2 \+ 3|\b5\b/.test(five), five)
+  const five = result.ok
+    ? (/function five\(\)[^{]*\{([^}]*)\}/.exec(
+        result.typescript,
+      )?.[1] ?? '')
+    : ''
+  ok(
+    "a file's own `add` is the one its call reaches, not the operator",
+    /add\(2, 3\)|2 \* 3|\b6\b/.test(five) && !/2 \+ 3|\b5\b/.test(five),
+    five,
+  )
 }
 
 {
   // a file without such a task still folds the word to the operator
   const main = `task five\n  like number\n  send back, add(2, 3)\n`
   const result = build(main)
-  ok('without a task of its own, `add` is still the operator', result.ok && !calleesOf(result, 'five').includes('add'), `${calleesOf(result, 'five').join(',')} ${said(result)}`)
+  ok(
+    'without a task of its own, `add` is still the operator',
+    result.ok && !calleesOf(result, 'five').includes('add'),
+    `${calleesOf(result, 'five').join(',')} ${said(result)}`,
+  )
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

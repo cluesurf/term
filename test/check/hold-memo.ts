@@ -7,7 +7,11 @@
 
 import { compile } from '@term/make/code/compile/compile'
 import { CompileCache } from '@term/make/code/compile/cache'
-import { checkHolds, clearHoldMemo, holdsReplayed } from '@term/make/code/check/holds'
+import {
+  checkHolds,
+  clearHoldMemo,
+  holdsReplayed,
+} from '@term/make/code/check/holds'
 import type { Tally } from '@term/make/code/check/holds'
 import type { Program } from '@term/make/code/compile/node'
 
@@ -25,38 +29,69 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 // tasks that each owe obligations, one with a read the provers cannot prove, so the module has a failure too
-const task = (name: string, body: string): string => `task ${name}\n  take xs, like list, like number\n  like number\n${body}\n`
+const task = (name: string, body: string): string =>
+  `task ${name}\n  take xs, like list, like number\n  like number\n${body}\n`
 const reads = (at: number): string =>
   `  save total, code ${at}\n  walk size\n    bind base, code 0\n    bind head\n      read xs/length\n    hook next\n      take site, name i\n      save total\n        call add\n          read total\n          read xs/{i}\n  send back, read total`
 // a read at an index the task is handed, which may be past the end
 const unproven = `task third\n  take xs, like list, like number\n  take n, like number\n  like number\n  save one, read xs/{n}\n  send back, read one\n`
-const halve = (k: number): string => `  send back\n    call divide\n      code ${k}\n      code 2`
+const halve = (k: number): string =>
+  `  send back\n    call divide\n      code ${k}\n      code 2`
 
 const moduleText = (k: number): string =>
-  [task('sum-all', reads(0)), unproven, task('half', halve(k)), task('sum-again', reads(1))].join('\n')
+  [
+    task('sum-all', reads(0)),
+    unproven,
+    task('half', halve(k)),
+    task('sum-again', reads(1)),
+  ].join('\n')
 
-const build = (text: string) => compile({ file: 'm.tree', text }, { resolve: () => undefined })
+const build = (text: string) =>
+  compile({ file: 'm.tree', text }, { resolve: () => undefined })
 
 const answer = (result: ReturnType<typeof build>): string =>
   JSON.stringify({
     ok: result.ok,
-    said: (result.ok ? result.warnings : result.diagnostics).map(d => `${d.name} ${d.span.start.line}:${d.span.start.column} ${d.message}`).sort(),
+    said: (result.ok ? result.warnings : result.diagnostics)
+      .map(
+        d =>
+          `${d.name} ${d.span.start.line}:${d.span.start.column} ${d.message}`,
+      )
+      .sort(),
     owed: result.ok ? result.obligations : undefined,
   })
 
 clearHoldMemo()
 const first = build(moduleText(8))
-ok('the module builds', first.ok, first.ok ? '' : first.diagnostics.map(d => d.message).join(' | '))
-ok('and owes obligations, one of them unproven', first.ok && (first.obligations?.total ?? 0) > 0 && (first.obligations?.proven ?? 0) < (first.obligations?.total ?? 0), JSON.stringify(first.ok ? first.obligations : null))
+ok(
+  'the module builds',
+  first.ok,
+  first.ok ? '' : first.diagnostics.map(d => d.message).join(' | '),
+)
+ok(
+  'and owes obligations, one of them unproven',
+  first.ok &&
+    (first.obligations?.total ?? 0) > 0 &&
+    (first.obligations?.proven ?? 0) < (first.obligations?.total ?? 0),
+  JSON.stringify(first.ok ? first.obligations : null),
+)
 
 const replayedBefore = holdsReplayed.tasks
 const kept = build(moduleText(10))
 const replayed = holdsReplayed.tasks - replayedBefore
-ok('an edit to one task replays the walks of the tasks it did not touch', replayed >= 2, `${replayed} replayed`)
+ok(
+  'an edit to one task replays the walks of the tasks it did not touch',
+  replayed >= 2,
+  `${replayed} replayed`,
+)
 
 clearHoldMemo()
 const fresh = build(moduleText(10))
-ok('and the build is the build the provers give afresh', answer(kept) === answer(fresh), `${answer(kept)}\n      ${answer(fresh)}`)
+ok(
+  'and the build is the build the provers give afresh',
+  answer(kept) === answer(fresh),
+  `${answer(kept)}\n      ${answer(fresh)}`,
+)
 
 // THE KEY IS NODE-JSON'S TEXT (decision 034 section 1, item 0319): a `need false` field absent and the same field at its
 // default are one node, so the walk of a task that differs only so is answered from the memo. Here every task that
@@ -75,7 +110,11 @@ const writeDefaults = (value: unknown): void => {
   if (value && typeof value === 'object') {
     const node = value as Record<string, unknown>
 
-    if (node.form === 'function' && Array.isArray(node.body) && !('async' in node)) {
+    if (
+      node.form === 'function' &&
+      Array.isArray(node.body) &&
+      !('async' in node)
+    ) {
       node.async = false
       written++
     }
@@ -89,13 +128,25 @@ const writeDefaults = (value: unknown): void => {
   }
 }
 writeDefaults(withDefaults)
-ok('the copy writes a default the program left out', written > 0, `${written} written`)
+ok(
+  'the copy writes a default the program left out',
+  written > 0,
+  `${written} written`,
+)
 
 const holdsOf = (of: Program): string => {
   const tally: Tally = { total: 0, proven: 0, failed: [] }
-  const said = checkHolds(of, 'm.tree', { tally }).map(d => `${d.name} ${d.span.start.line}:${d.span.start.column} ${d.message}`)
+  const said = checkHolds(of, 'm.tree', { tally }).map(
+    d =>
+      `${d.name} ${d.span.start.line}:${d.span.start.column} ${d.message}`,
+  )
 
-  return JSON.stringify({ said: said.sort(), total: tally.total, proven: tally.proven, kinds: tally.kinds })
+  return JSON.stringify({
+    said: said.sort(),
+    total: tally.total,
+    proven: tally.proven,
+    kinds: tally.kinds,
+  })
 }
 
 clearHoldMemo()
@@ -103,40 +154,72 @@ const plain = holdsOf(program)
 const replayedBeforeSame = holdsReplayed.tasks
 holdsOf(program)
 const replayedSame = holdsReplayed.tasks - replayedBeforeSame
-ok('the program checked twice replays its kept walks', replayedSame >= 2, `${replayedSame} replayed`)
+ok(
+  'the program checked twice replays its kept walks',
+  replayedSame >= 2,
+  `${replayedSame} replayed`,
+)
 const replayedBeforeDefaults = holdsReplayed.tasks
 const defaulted = holdsOf(withDefaults)
 const replayedDefaults = holdsReplayed.tasks - replayedBeforeDefaults
-ok('a task differing only absent against default replays from the memo', replayedDefaults === replayedSame, `${replayedDefaults} replayed, ${replayedSame} as written`)
-ok('and answers as the program as written', plain === defaulted, `${plain}\n      ${defaulted}`)
+ok(
+  'a task differing only absent against default replays from the memo',
+  replayedDefaults === replayedSame,
+  `${replayedDefaults} replayed, ${replayedSame} as written`,
+)
+ok(
+  'and answers as the program as written',
+  plain === defaulted,
+  `${plain}\n      ${defaulted}`,
+)
 
 clearHoldMemo()
-ok('which is what the provers give afresh', holdsOf(withDefaults) === defaulted)
+ok(
+  'which is what the provers give afresh',
+  holdsOf(withDefaults) === defaulted,
+)
 
 // THE KEY HOLDS EVERY DEFINITION THE WALK CAN UNFOLD (item 0326): the same entry file and task text over a dependency
 // whose task changed is another question. `run`'s hold is true over lift = x + 2 and false over lift = x + 1, and each
 // program is answered as it is alone, in either order
-const dependency = (k: number): string => `task lift\n  take a, like integer\n  like integer\n  send back, add(a, ${k})\n`
-const entry = 'load ./dep\n  find lift\n\ntask run\n  take x, like integer\n  like integer\n  hold is-equal(lift(x), add(x, 2))\n  send back, x\n'
+const dependency = (k: number): string =>
+  `task lift\n  take a, like integer\n  like integer\n  send back, add(a, ${k})\n`
+const entry =
+  'load ./dep\n  find lift\n\ntask run\n  take x, like integer\n  like integer\n  hold is-equal(lift(x), add(x, 2))\n  send back, x\n'
 const over = (k: number): boolean =>
   compile(
     { file: 'e.tree', text: entry },
-    { resolve: path => (path === './dep' ? { file: 'dep.tree', text: dependency(k) } : undefined), cache: new CompileCache() },
+    {
+      resolve: path =>
+        path === './dep'
+          ? { file: 'dep.tree', text: dependency(k) }
+          : undefined,
+      cache: new CompileCache(),
+    },
   ).ok
 
 clearHoldMemo()
 const trueAlone = over(2)
 clearHoldMemo()
 const falseAlone = over(1)
-ok('the hold over lift = x + 2 holds, and over lift = x + 1 is refused, each alone', trueAlone && !falseAlone)
+ok(
+  'the hold over lift = x + 2 holds, and over lift = x + 1 is refused, each alone',
+  trueAlone && !falseAlone,
+)
 clearHoldMemo()
 const trueFirst = over(2)
 const falseAfter = over(1)
-ok('the false one is refused after the true one', trueFirst && !falseAfter)
+ok(
+  'the false one is refused after the true one',
+  trueFirst && !falseAfter,
+)
 clearHoldMemo()
 const falseFirst = over(1)
 const trueAfter = over(2)
-ok('and the true one holds after the false one', !falseFirst && trueAfter)
+ok(
+  'and the true one holds after the false one',
+  !falseFirst && trueAfter,
+)
 
 console.log(`\nhold-memo: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)

@@ -16,7 +16,15 @@ import { infoText } from '@term/make/code/show'
 import { showKink } from '@term/call/code/kink'
 import { showContext } from '@term/call/code/context'
 import { askTool } from '@term/call/code/work/small/tool-asking'
-import { closeRun, field, location, openRun, printData, report, showPath } from '@term/call/code/output'
+import {
+  closeRun,
+  field,
+  location,
+  openRun,
+  printData,
+  report,
+  showPath,
+} from '@term/call/code/output'
 
 export async function callShow(input: {
   root: string
@@ -54,15 +62,28 @@ export async function callShow(input: {
 
   // one name of the project with what a reader needs around it, sized to a budget (call/code/context.ts)
   if (input.what === 'name') {
-    await showContext({ root: input.root, query: input.name, json, budget: input.budget })
+    await showContext({
+      root: input.root,
+      query: input.name,
+      json,
+      budget: input.budget,
+    })
 
     return
   }
 
   if (input.what !== 'mark' && input.what !== 'code') {
     openRun({ verb: 'show', root: input.root })
-    report({ glyph: 'failed', kind: 'problem', subject: `There is nothing named ${input.what} to show` })
-    closeRun({ verdict: 'Nothing shown', next: 'term show, term show mark, term show tools, term show kink or term show name', failure: 'usage' })
+    report({
+      glyph: 'failed',
+      kind: 'problem',
+      subject: `There is nothing named ${input.what} to show`,
+    })
+    closeRun({
+      verdict: 'Nothing shown',
+      next: 'term show, term show mark, term show tools, term show kink or term show name',
+      failure: 'usage',
+    })
 
     return
   }
@@ -71,8 +92,16 @@ export async function callShow(input: {
 
   if (!manifest) {
     openRun({ verb: 'show', root: input.root })
-    report({ glyph: 'failed', kind: 'problem', subject: 'There is no deck.tree here or above', fields: [field('looked', showPath(input.root))] })
-    closeRun({ verdict: 'No version to show', next: 'term wake, to make a project here' })
+    report({
+      glyph: 'failed',
+      kind: 'problem',
+      subject: 'There is no deck.tree here or above',
+      fields: [field('looked', showPath(input.root))],
+    })
+    closeRun({
+      verdict: 'No version to show',
+      next: 'term wake, to make a project here',
+    })
 
     return
   }
@@ -102,7 +131,12 @@ export async function callShow(input: {
 // can dock it: line.ts exports nothing, and loading it runs the whole CLI
 export function termVersion(): string {
   try {
-    const manifest = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+    const manifest = JSON.parse(
+      fs.readFileSync(
+        new URL('../package.json', import.meta.url),
+        'utf8',
+      ),
+    )
 
     return String(manifest.version ?? '0.0.0')
   } catch {
@@ -126,7 +160,13 @@ const TOOLS: { backend: string; name: string; args: string[] }[] = [
 export function toolVersion(name: string): string | undefined {
   const tool = TOOLS.find(one => one.name === name)
   // through work/small/tool-asking.tree: swiftc --version leaves a folder in TMPDIR, so it is asked in one it removes
-  const run = askTool(name, tool?.args ?? ['--version'], 30_000) as { stdout?: string; stderr?: string; status: number | null; error?: Error }
+  const run = askTool(name, tool?.args ?? ['--version'], 30_000) as {
+    stdout?: string
+    stderr?: string
+    status: number | null
+    error?: Error
+  }
+
   // the first line that names a version, from stdout or stderr: `java -version` and `kotlinc -version` print on
   // stderr
   const said = `${run.stdout ?? ''}\n${run.stderr ?? ''}`
@@ -139,10 +179,15 @@ export function toolVersion(name: string): string | undefined {
 }
 
 function showTools(json: boolean): void {
-  const found = TOOLS.map(tool => ({ ...tool, version: toolVersion(tool.name) }))
+  const found = TOOLS.map(tool => ({
+    ...tool,
+    version: toolVersion(tool.name),
+  }))
 
   if (json) {
-    printData(`${JSON.stringify(found.map(({ backend, name, version }) => ({ backend, tool: name, version: version ?? null })))}\n`)
+    printData(
+      `${JSON.stringify(found.map(({ backend, name, version }) => ({ backend, tool: name, version: version ?? null })))}\n`,
+    )
 
     return
   }
@@ -151,7 +196,10 @@ function showTools(json: boolean): void {
 
   printData(
     found
-      .map(tool => `${tool.backend.padEnd(7)} ${tool.name.padEnd(width)}  ${tool.version ?? 'not found'}\n`)
+      .map(
+        tool =>
+          `${tool.backend.padEnd(7)} ${tool.name.padEnd(width)}  ${tool.version ?? 'not found'}\n`,
+      )
       .join(''),
   )
 }

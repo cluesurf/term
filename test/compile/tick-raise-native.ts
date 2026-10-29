@@ -76,14 +76,24 @@ const only = process.env.TR_ONLY
 const dir = mkdtempSync(join(tmpdir(), 'term-tick-raise-'))
 
 for (const backend of BACKENDS.filter(one => !only || one === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'tick-raise' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'tick-raise',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
     continue
   }
 
-  ok(`${backend}: a ticked raising task builds, starts and runs`, ran.form === 'ran' && ran.output === 'count 3', ran.form === 'ran' ? ran.output : `${ran.stage}: ${ran.reason}`)
+  ok(
+    `${backend}: a ticked raising task builds, starts and runs`,
+    ran.form === 'ran' && ran.output === 'count 3',
+    ran.form === 'ran' ? ran.output : `${ran.stage}: ${ran.reason}`,
+  )
 }
 
 console.log(`\ntick-raise-native: ${pass} pass, ${fail} fail`)

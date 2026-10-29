@@ -73,7 +73,9 @@ function makeStubElement(tag: string): any {
     before(n: any) {
       const parent = this.parent
 
-      if (!parent) {return}
+      if (!parent) {
+        return
+      }
 
       n.remove()
       parent.childNodes.splice(parent.childNodes.indexOf(this), 0, n)
@@ -86,13 +88,17 @@ function makeStubElement(tag: string): any {
       if (siblings) {
         const i = siblings.indexOf(this)
 
-        if (i >= 0) {siblings.splice(i, 1)}
+        if (i >= 0) {
+          siblings.splice(i, 1)
+        }
       }
 
       this.parent = null
     },
     fire(e: string) {
-      for (const h of this.listeners[e] ?? []) {h()}
+      for (const h of this.listeners[e] ?? []) {
+        h()
+      }
     },
   }
 }
@@ -188,7 +194,8 @@ async function main(): Promise<void> {
     posts?.tagName === 'div' && posts.children.length === 0,
   )
 
-  const settled = (): Promise<void> => new Promise(done => setTimeout(done, 0))
+  const settled = (): Promise<void> =>
+    new Promise(done => setTimeout(done, 0))
 
   // create the first post
   titleInput.value = 'First Post'
@@ -200,7 +207,8 @@ async function main(): Promise<void> {
 
   // a post is a `stack` component; `render-each` keeps it in one item node (a `seed-fragment`) so it can remove it
   // later, and the stack's `text`s are an h2 (level 2) and a span
-  const card = (item: any): any => (item?.tagName === 'seed-fragment' ? item.children?.[0] : item)
+  const card = (item: any): any =>
+    item?.tagName === 'seed-fragment' ? item.children?.[0] : item
   const post1 = card(posts.children[0])
   ok(
     'post renders heading + body',

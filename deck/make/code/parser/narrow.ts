@@ -20,7 +20,13 @@ export type DecimalNode = Extract<Node, { kind: 'decimal' }>
 export type RadixNode = Extract<Node, { kind: 'radix' }>
 
 // what a group holds, and a name's and a text's parts
-export type GroupChild = GroupNode | NameNode | TextNode | IntegerNode | DecimalNode | RadixNode
+export type GroupChild =
+  | GroupNode
+  | NameNode
+  | TextNode
+  | IntegerNode
+  | DecimalNode
+  | RadixNode
 export type Part = ChunkNode | InterpolationNode
 
 export function isGroup(node: Node | undefined): node is GroupNode {
@@ -34,15 +40,23 @@ export function groupsOf(nodes: Node[]): GroupNode[] {
 
 // what a group holds: every node but a chunk and an interpolation, which only a name or a text holds
 export function childrenOf(group: { nodes: Node[] }): GroupChild[] {
-  return group.nodes.filter((node): node is GroupChild => node.kind !== 'chunk' && node.kind !== 'interpolation')
+  return group.nodes.filter(
+    (node): node is GroupChild =>
+      node.kind !== 'chunk' && node.kind !== 'interpolation',
+  )
 }
 
 // a name's or a text's parts
 export function partsOf(owner: { parts: Node[] }): Part[] {
-  return owner.parts.filter((node): node is Part => node.kind === 'chunk' || node.kind === 'interpolation')
+  return owner.parts.filter(
+    (node): node is Part =>
+      node.kind === 'chunk' || node.kind === 'interpolation',
+  )
 }
 
 // the group an interpolation holds, when it holds one
-export function groupOf(hole: InterpolationNode): GroupNode | undefined {
+export function groupOf(
+  hole: InterpolationNode,
+): GroupNode | undefined {
   return isGroup(hole.group) ? hole.group : undefined
 }

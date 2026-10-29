@@ -61,8 +61,9 @@ async function main(): Promise<void> {
   if (!result.ok) {
     const lines = SOURCE.split('\n')
 
-    for (const d of result.diagnostics)
-      {console.log(render(d, lines, false))}
+    for (const d of result.diagnostics) {
+      console.log(render(d, lines, false))
+    }
 
     console.log('\ncompile/data: 0 pass, 1 fail')
 

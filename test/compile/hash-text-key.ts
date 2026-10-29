@@ -44,7 +44,13 @@ const dir = mkdtempSync(join(tmpdir(), 'term-hash-key-'))
 const only = process.env.KEY_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'keys' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'keys',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
@@ -54,16 +60,25 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
   ok(
     `${backend}: a word, a text and a computed key in one literal`,
     ran.form === 'ran' && ran.output === EXPECTED,
-    ran.form === 'ran' ? `got ${JSON.stringify(ran.output)}` : `${ran.stage}: ${ran.reason}`,
+    ran.form === 'ran'
+      ? `got ${JSON.stringify(ran.output)}`
+      : `${ran.stage}: ${ran.reason}`,
   )
 }
 
 if (!only || only === 'typescript') {
   const outside = compile(
-    { file: join(dir, 'outside.tree'), text: 'task run\n  like number\n\n  save <x>, 1\n  back 1\n' },
+    {
+      file: join(dir, 'outside.tree'),
+      text: 'task run\n  like number\n\n  save <x>, 1\n  back 1\n',
+    },
     { resolve: projectResolver(process.cwd(), 'node'), env: 'node' },
   )
-  ok('outside make hash, save with a text first is still refused', !outside.ok, 'it built')
+  ok(
+    'outside make hash, save with a text first is still refused',
+    !outside.ok,
+    'it built',
+  )
 }
 
 console.log(`\nhash-text-key: ${pass} pass, ${fail} fail`)

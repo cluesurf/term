@@ -17,8 +17,11 @@ import * as tsPreludes from '@term/make/code/compile/ts-preludes'
 import * as port from '@term/make/code/compile/ts-program'
 
 type Maybe<T> = { form: 'some'; value: T } | { form: 'none' }
-const unbox = <T>(value: Maybe<T>): T | undefined => (value.form === 'some' ? value.value : undefined)
-const boxed = <T>(value: T | undefined): Maybe<T> => (value === undefined ? { form: 'none' } : { form: 'some', value })
+const unbox = <T>(value: Maybe<T>): T | undefined =>
+  value.form === 'some' ? value.value : undefined
+
+const boxed = <T>(value: T | undefined): Maybe<T> =>
+  value === undefined ? { form: 'none' } : { form: 'some', value }
 
 const fail = (reason: string): boolean => {
   throw new Error(reason)
@@ -41,8 +44,12 @@ export function tsEmptyOf(type: Type | undefined): string {
 
 // D10: a `need false` field typed `maybe T` is `f?: T` on TypeScript. Answers the inner type, or undefined for any other
 // field (test/compile/maybe-field.ts)
-export function optionalMaybe(field: { type: Type; optional?: boolean } | undefined): Type | undefined {
-  return field ? (unbox(tsNames.optionalMaybe(field as never)) as Type | undefined) : undefined
+export function optionalMaybe(
+  field: { type: Type; optional?: boolean } | undefined,
+): Type | undefined {
+  return field
+    ? (unbox(tsNames.optionalMaybe(field as never)) as Type | undefined)
+    : undefined
 }
 
 export function toPascal(name: string): string {
@@ -50,7 +57,10 @@ export function toPascal(name: string): string {
 }
 
 // the forms whose field-less cases are only ever their constant (compile/ts-names.tree `identity-cases`)
-export function identityCases(program: Program, perModule: boolean): Set<string> {
+export function identityCases(
+  program: Program,
+  perModule: boolean,
+): Set<string> {
   return new Set(tsNames.identityCases(program as never, perModule))
 }
 

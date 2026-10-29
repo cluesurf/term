@@ -11,9 +11,21 @@
 // the `/base` prefix so `/base/boot.js` maps to the `build/boot.js` the assets binding serves. This
 // replaces the node host's `<global:assets>` filesystem read (there is no filesystem on a Worker).
 
-type TermRequest = { method: string; path: string; body: string; headers: Map<string, string>; query: Map<string, string> }
-type TermResponse = { status: number; body: string; headers?: Map<string, string> }
-type Handle = (request: TermRequest) => TermResponse | Promise<TermResponse>
+type TermRequest = {
+  method: string
+  path: string
+  body: string
+  headers: Map<string, string>
+  query: Map<string, string>
+}
+type TermResponse = {
+  status: number
+  body: string
+  headers?: Map<string, string>
+}
+type Handle = (
+  request: TermRequest,
+) => TermResponse | Promise<TermResponse>
 
 // content-type by file extension, for any body served with a known asset extension. A `.js` module
 // script needs the correct MIME (browsers enforce it strictly); a `.css` needs text/css to apply.
@@ -111,20 +123,27 @@ export const transport = {
     return {
       async fetch(
         request: Request,
-        env: { ASSETS?: { fetch(request: Request): Promise<Response> } },
+        env: {
+          ASSETS?: { fetch(request: Request): Promise<Response> }
+        },
         _context: unknown,
       ): Promise<Response> {
         const url = new URL(request.url)
 
         // static assets: delegate `/base/**` to the ASSETS binding, stripping the `/base` prefix so
         // `/base/boot.js` resolves to the `build/boot.js` the binding serves.
-        if (url.pathname === '/base' || url.pathname.startsWith('/base/')) {
+        if (
+          url.pathname === '/base' ||
+          url.pathname.startsWith('/base/')
+        ) {
           const assets = env && env.ASSETS
 
           if (assets && typeof assets.fetch === 'function') {
             const stripped = url.pathname.slice('/base'.length) || '/'
             const assetUrl = new URL(stripped + url.search, url.origin)
-            return assets.fetch(new Request(assetUrl.toString(), request))
+            return assets.fetch(
+              new Request(assetUrl.toString(), request),
+            )
           }
 
           return new Response('', { status: 404 })
@@ -133,16 +152,23 @@ export const transport = {
         // the router registers GET routes; a HEAD is a GET without a response body (browsers navigate
         // with GET, but health checks / crawlers may HEAD), so dispatch it as GET. The full body is
         // kept so the content-type is computed correctly; the Workers runtime strips it for a HEAD.
-        const method = request.method === 'HEAD' ? 'GET' : request.method
+        const method =
+          request.method === 'HEAD' ? 'GET' : request.method
         let body = ''
 
         if (method !== 'GET' && method !== 'HEAD') {
           if (isTreeCode(request.headers.get('content-type'))) {
-            if ((request.headers.get('content-encoding') ?? '').toLowerCase().trim() === 'zstd') {
+            if (
+              (request.headers.get('content-encoding') ?? '')
+                .toLowerCase()
+                .trim() === 'zstd'
+            ) {
               return new Response('', { status: 415 })
             }
 
-            body = bytesToBase64(new Uint8Array(await request.arrayBuffer()))
+            body = bytesToBase64(
+              new Uint8Array(await request.arrayBuffer()),
+            )
           } else {
             body = await request.text()
           }
@@ -150,8 +176,16 @@ export const transport = {
 
         // the request's headers by lower-case name and its query string decoded, as the `request` form declares them
         const headers = new Map<string, string>()
-        request.headers.forEach((value, name) => headers.set(name.toLowerCase(), value))
-        const response = await handle({ method, path: url.pathname, body, headers, query: new Map(url.searchParams) })
+        request.headers.forEach((value, name) =>
+          headers.set(name.toLowerCase(), value),
+        )
+        const response = await handle({
+          method,
+          path: url.pathname,
+          body,
+          headers,
+          query: new Map(url.searchParams),
+        })
         const out = response.body ?? ''
         const code = response.status ?? 200
 
@@ -162,13 +196,28 @@ export const transport = {
           given[name] = value
         }
 
-        const givenType = Object.entries(given).find(([name]) => name.toLowerCase() === 'content-type')?.[1]
+        const givenType = Object.entries(given).find(
+          ([name]) => name.toLowerCase() === 'content-type',
+        )?.[1]
 
-        if (isTreeCode(givenType) && code !== 1 && !(code >= 300 && code < 400)) {
-          return new Response(base64ToBytes(out), { status: code, headers: { ...given, Vary: 'Accept-Encoding' } })
+        if (
+          isTreeCode(givenType) &&
+          code !== 1 &&
+          !(code >= 300 && code < 400)
+        ) {
+          return new Response(base64ToBytes(out), {
+            status: code,
+            headers: { ...given, Vary: 'Accept-Encoding' },
+          })
         }
 
-        if (Object.keys(given).some(name => name.toLowerCase() === 'content-type') && code !== 1 && !(code >= 300 && code < 400 && out)) {
+        if (
+          Object.keys(given).some(
+            name => name.toLowerCase() === 'content-type',
+          ) &&
+          code !== 1 &&
+          !(code >= 300 && code < 400 && out)
+        ) {
           return new Response(out, { status: code, headers: given })
         }
 
@@ -196,7 +245,8 @@ export const transport = {
         // a body carrying a known asset extension gets the right content-type (parity with node; the
         // primary asset path is the ASSETS binding above, this covers any router-served file bytes)
         const dot = url.pathname.lastIndexOf('.')
-        const ext = dot >= 0 ? url.pathname.slice(dot + 1).toLowerCase() : ''
+        const ext =
+          dot >= 0 ? url.pathname.slice(dot + 1).toLowerCase() : ''
         const assetType = ASSET_TYPES[ext]
 
         if (assetType) {
@@ -219,7 +269,10 @@ export const transport = {
         if (head.startsWith('<!doctype') || head.startsWith('<html')) {
           return new Response(out, {
             status: code,
-            headers: { 'Content-Type': 'text/html; charset=utf-8', ...given },
+            headers: {
+              'Content-Type': 'text/html; charset=utf-8',
+              ...given,
+            },
           })
         }
 

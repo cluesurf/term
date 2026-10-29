@@ -6,16 +6,27 @@
 // Run: npx tsx test/compile/integer-edges.ts   (IE_ONLY=rust, swift, kotlin or typescript runs one)
 
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
 import type { Source } from '@term/make/code/compile/load'
-import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
+import {
+  withNativeEnv,
+  nativePrelude,
+} from '@term/make/code/compile/native'
 import { emitRust } from '@term/make/code/compile/rust'
 import { emitSwift } from '@term/make/code/compile/swift'
-import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
+import {
+  emitKotlin,
+  hoistKotlinImports,
+} from '@term/make/code/compile/kotlin'
 
 let pass = 0
 let fail = 0
@@ -30,11 +41,13 @@ function ok(name: string, holds: boolean, detail = ''): void {
   }
 }
 
-const have = (tool: string): boolean => spawnSync('which', [tool]).status === 0
+const have = (tool: string): boolean =>
+  spawnSync('which', [tool]).status === 0
 const base = join(import.meta.dirname, '../../deck/base')
 // the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
 const stdlib = stdlibResolver()!
-const readRuntime = (path: string): string | undefined => (existsSync(path) ? readFileSync(path, 'utf8') : undefined)
+const readRuntime = (path: string): string | undefined =>
+  existsSync(path) ? readFileSync(path, 'utf8') : undefined
 const dir = mkdtempSync(join(tmpdir(), 'integer-edges-'))
 const only = process.env.IE_ONLY ?? ''
 
@@ -142,61 +155,138 @@ EDGES['a native power past the maximum'] = `  send back
       read x
       code 2`
 
-const program = (body: string): string => `${body.includes('call pow') ? 'load @term/base/code/native/{platform}/math\n  find pow\n\n' : ''}${body.includes('call push') ? 'load @term/base/code/list\n  find list\n\n' : ''}task edge
+const program = (
+  body: string,
+): string => `${body.includes('call pow') ? 'load @term/base/code/native/{platform}/math\n  find pow\n\n' : ''}${body.includes('call push') ? 'load @term/base/code/list\n  find list\n\n' : ''}task edge
   take x, like number
   like number
 ${body}
 `
 
 for (const [label, body] of Object.entries(EDGES)) {
-  for (const target of ['typescript', 'rust', 'swift', 'kotlin'] as const) {
+  for (const target of [
+    'typescript',
+    'rust',
+    'swift',
+    'kotlin',
+  ] as const) {
     if (only && only !== target) continue
 
-    if (label.startsWith('a native power') && target === 'typescript') continue
+    if (label.startsWith('a native power') && target === 'typescript')
+      continue
 
-    const tools = { typescript: ['node'], rust: ['rustc'], swift: ['swiftc'], kotlin: ['kotlinc', 'java'] }[target]
+    const tools = {
+      typescript: ['node'],
+      rust: ['rustc'],
+      swift: ['swiftc'],
+      kotlin: ['kotlinc', 'java'],
+    }[target]
 
     if (tools.some(t => !have(t))) {
-      console.log(`skip  ${target}: ${label} (${tools.join(', ')} not installed)`)
+      console.log(
+        `skip  ${target}: ${label} (${tools.join(', ')} not installed)`,
+      )
       continue
     }
 
     const env = target === 'typescript' ? 'node' : target
-    const built = compile({ file: join(dir, 'edge.tree'), text: program(body) }, { resolve: withNativeEnv(env, stdlib), env })
+    const built = compile(
+      { file: join(dir, 'edge.tree'), text: program(body) },
+      { resolve: withNativeEnv(env, stdlib), env },
+    )
 
     if (!built.ok) {
-      ok(`${target}: ${label} builds`, false, built.diagnostics.map(d => d.message).join(' | '))
+      ok(
+        `${target}: ${label} builds`,
+        false,
+        built.diagnostics.map(d => d.message).join(' | '),
+      )
       continue
     }
 
-    const prelude = nativePrelude(built.program, env as never, readRuntime)
+    const prelude = nativePrelude(
+      built.program,
+      env as never,
+      readRuntime,
+    )
     const stem = join(dir, `${target}-${label.replace(/\W+/g, '-')}`)
     let command: string[]
 
     try {
       if (target === 'typescript') {
-        writeFileSync(`${stem}.ts`, `${prelude}\n${built.typescript}\nconsole.log(edge(4611686018427387904))\n`)
+        writeFileSync(
+          `${stem}.ts`,
+          `${prelude}\n${built.typescript}\nconsole.log(edge(4611686018427387904))\n`,
+        )
         command = ['npx', 'tsx', `${stem}.ts`]
       } else if (target === 'rust') {
-        writeFileSync(`${stem}.rs`, `${prelude}\n${emitRust(built.program)}\nfn main() { println!("{}", edge(4611686018427387904)); }\n`)
-        execFileSync('rustc', ['-A', 'warnings', '-C', 'opt-level=3', `${stem}.rs`, '-o', stem], { stdio: ['ignore', 'pipe', 'pipe'] })
+        writeFileSync(
+          `${stem}.rs`,
+          `${prelude}\n${emitRust(built.program)}\nfn main() { println!("{}", edge(4611686018427387904)); }\n`,
+        )
+        execFileSync(
+          'rustc',
+          [
+            '-A',
+            'warnings',
+            '-C',
+            'opt-level=3',
+            `${stem}.rs`,
+            '-o',
+            stem,
+          ],
+          { stdio: ['ignore', 'pipe', 'pipe'] },
+        )
         command = [stem]
       } else if (target === 'swift') {
-        writeFileSync(`${stem}.swift`, `${prelude}\n${emitSwift(built.program)}\nprint(edge(x: 4611686018427387904))\n`)
-        execFileSync('swiftc', ['-O', '-o', stem, `${stem}.swift`], { stdio: ['ignore', 'pipe', 'pipe'] })
+        writeFileSync(
+          `${stem}.swift`,
+          `${prelude}\n${emitSwift(built.program)}\nprint(edge(x: 4611686018427387904))\n`,
+        )
+        execFileSync('swiftc', ['-O', '-o', stem, `${stem}.swift`], {
+          stdio: ['ignore', 'pipe', 'pipe'],
+        })
         command = [stem]
       } else {
-        writeFileSync(`${stem}.kt`, hoistKotlinImports(`${prelude}\n${emitKotlin(built.program)}\nfun main() { println(edge(4611686018427387904L)) }\n`))
-        execFileSync('kotlinc', [`${stem}.kt`, '-nowarn', '-include-runtime', '-d', `${stem}.jar`], { stdio: ['ignore', 'pipe', 'pipe'] })
+        writeFileSync(
+          `${stem}.kt`,
+          hoistKotlinImports(
+            `${prelude}\n${emitKotlin(built.program)}\nfun main() { println(edge(4611686018427387904L)) }\n`,
+          ),
+        )
+        execFileSync(
+          'kotlinc',
+          [
+            `${stem}.kt`,
+            '-nowarn',
+            '-include-runtime',
+            '-d',
+            `${stem}.jar`,
+          ],
+          { stdio: ['ignore', 'pipe', 'pipe'] },
+        )
         command = ['java', '-jar', `${stem}.jar`]
       }
     } catch (error) {
-      ok(`${target}: ${label} builds`, false, String((error as { stderr?: Buffer }).stderr ?? error).slice(0, 400))
+      ok(
+        `${target}: ${label} builds`,
+        false,
+        String((error as { stderr?: Buffer }).stderr ?? error).slice(
+          0,
+          400,
+        ),
+      )
       continue
     }
 
-    const ran = spawnSync(command[0]!, command.slice(1), { encoding: 'utf8' })
-    ok(`${target}: ${label} stops instead of answering`, ran.status !== 0 && !/^-?\d+\s*$/.test(ran.stdout), `exit ${ran.status}, printed ${JSON.stringify(ran.stdout.trim())}`)
+    const ran = spawnSync(command[0]!, command.slice(1), {
+      encoding: 'utf8',
+    })
+    ok(
+      `${target}: ${label} stops instead of answering`,
+      ran.status !== 0 && !/^-?\d+\s*$/.test(ran.stdout),
+      `exit ${ran.status}, printed ${JSON.stringify(ran.stdout.trim())}`,
+    )
   }
 }
 
@@ -204,7 +294,11 @@ for (const [label, body] of Object.entries(EDGES)) {
 for (const target of ['rust', 'swift', 'kotlin'] as const) {
   if (only && only !== target) continue
 
-  const tools = { rust: ['rustc'], swift: ['swiftc'], kotlin: ['kotlinc', 'java'] }[target]
+  const tools = {
+    rust: ['rustc'],
+    swift: ['swiftc'],
+    kotlin: ['kotlinc', 'java'],
+  }[target]
 
   if (tools.some(t => !have(t))) continue
 
@@ -219,10 +313,17 @@ task edge
       read x
       code 39
 `
-  const built = compile({ file: join(dir, 'exact.tree'), text }, { resolve: withNativeEnv(target, stdlib), env: target })
+  const built = compile(
+    { file: join(dir, 'exact.tree'), text },
+    { resolve: withNativeEnv(target, stdlib), env: target },
+  )
 
   if (!built.ok) {
-    ok(`${target}: the exact power builds`, false, built.diagnostics.map(d => d.message).join(' | '))
+    ok(
+      `${target}: the exact power builds`,
+      false,
+      built.diagnostics.map(d => d.message).join(' | '),
+    )
     continue
   }
 
@@ -232,23 +333,67 @@ task edge
 
   try {
     if (target === 'rust') {
-      writeFileSync(`${stem}.rs`, `${prelude}\n${emitRust(built.program)}\nfn main() { println!("{}", edge(3)); }\n`)
-      execFileSync('rustc', ['-A', 'warnings', '-C', 'opt-level=3', `${stem}.rs`, '-o', stem], { stdio: ['ignore', 'pipe', 'pipe'] })
+      writeFileSync(
+        `${stem}.rs`,
+        `${prelude}\n${emitRust(built.program)}\nfn main() { println!("{}", edge(3)); }\n`,
+      )
+      execFileSync(
+        'rustc',
+        [
+          '-A',
+          'warnings',
+          '-C',
+          'opt-level=3',
+          `${stem}.rs`,
+          '-o',
+          stem,
+        ],
+        { stdio: ['ignore', 'pipe', 'pipe'] },
+      )
       got = execFileSync(stem).toString().trim()
     } else if (target === 'swift') {
-      writeFileSync(`${stem}.swift`, `${prelude}\n${emitSwift(built.program)}\nprint(edge(x: 3))\n`)
-      execFileSync('swiftc', ['-O', '-o', stem, `${stem}.swift`], { stdio: ['ignore', 'pipe', 'pipe'] })
+      writeFileSync(
+        `${stem}.swift`,
+        `${prelude}\n${emitSwift(built.program)}\nprint(edge(x: 3))\n`,
+      )
+      execFileSync('swiftc', ['-O', '-o', stem, `${stem}.swift`], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
       got = execFileSync(stem).toString().trim()
     } else {
-      writeFileSync(`${stem}.kt`, hoistKotlinImports(`${prelude}\n${emitKotlin(built.program)}\nfun main() { println(edge(3L)) }\n`))
-      execFileSync('kotlinc', [`${stem}.kt`, '-nowarn', '-include-runtime', '-d', `${stem}.jar`], { stdio: ['ignore', 'pipe', 'pipe'] })
-      got = execFileSync('java', ['-jar', `${stem}.jar`]).toString().trim()
+      writeFileSync(
+        `${stem}.kt`,
+        hoistKotlinImports(
+          `${prelude}\n${emitKotlin(built.program)}\nfun main() { println(edge(3L)) }\n`,
+        ),
+      )
+      execFileSync(
+        'kotlinc',
+        [
+          `${stem}.kt`,
+          '-nowarn',
+          '-include-runtime',
+          '-d',
+          `${stem}.jar`,
+        ],
+        { stdio: ['ignore', 'pipe', 'pipe'] },
+      )
+      got = execFileSync('java', ['-jar', `${stem}.jar`])
+        .toString()
+        .trim()
     }
   } catch (error) {
-    got = String((error as { stderr?: Buffer }).stderr ?? error).slice(0, 300)
+    got = String((error as { stderr?: Buffer }).stderr ?? error).slice(
+      0,
+      300,
+    )
   }
 
-  ok(`${target}: the native power of 3 to 39 is exact`, got === '4052555153018976267', got)
+  ok(
+    `${target}: the native power of 3 to 39 is exact`,
+    got === '4052555153018976267',
+    got,
+  )
 }
 
 console.log(`\ninteger-edges: ${pass} pass, ${fail} fail`)

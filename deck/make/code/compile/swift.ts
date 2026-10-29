@@ -19,6 +19,13 @@ export const SWIFT_TEXT: string = port.swiftTextText()
 
 // with `units`, each module's statements stay marked, for the caller to write one file per module
 // (compile/unit-split.tree)
-export function emitSwift(written: Program, options?: { wake?: WakeGroup[]; units?: boolean }): string {
-  return port.emitSwift(written as never, options?.wake ?? [], Boolean(options?.units))
+export function emitSwift(
+  written: Program,
+  options?: { wake?: WakeGroup[]; units?: boolean },
+): string {
+  return port.emitSwift(
+    written as never,
+    options?.wake ?? [],
+    Boolean(options?.units),
+  )
 }

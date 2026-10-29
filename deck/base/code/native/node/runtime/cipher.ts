@@ -55,7 +55,11 @@ const cipher = (() => {
     ): Promise<boolean> => {
       try {
         const cryptoKey = await importKey(key)
-        await globalThis.crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce, additionalData: extra }, cryptoKey, sealed)
+        await globalThis.crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv: nonce, additionalData: extra },
+          cryptoKey,
+          sealed,
+        )
         return true
       } catch {
         return false

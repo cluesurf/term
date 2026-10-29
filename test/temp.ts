@@ -16,7 +16,12 @@ let hooked = false
 function removeAll(): void {
   for (const dir of made) {
     try {
-      rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
+      rmSync(dir, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 100,
+      })
     } catch {
       // a child still writing into it; the gate's own folder removal takes the rest
     }

@@ -53,21 +53,43 @@ task renamed-field
       back <>
 `
 
-const built = compile({ file: 'arm-rename.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!), library: true, leanOf: () => true } as never)
+const built = compile({ file: 'arm-rename.tree', text }, {
+  resolve: withNativeEnv('node', stdlibResolver()!),
+  library: true,
+  leanOf: () => true,
+} as never)
 
 if (!built.ok) {
-  ok('a later field is in scope after a rename', false, built.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'a later field is in scope after a rename',
+    false,
+    built.diagnostics.map(d => d.message).join(' | '),
+  )
 } else {
   ok('a later field is in scope after a rename', true)
 
   const dir = mkdtempSync(join(tmpdir(), 'term-arm-rename-'))
   const file = join(dir, 'module.mjs')
-  writeFileSync(file, transformSync(built.typescript, { loader: 'ts', format: 'esm' }).code)
-  const mod = (await import(pathToFileURL(file).href)) as Record<string, (...a: unknown[]) => unknown>
+  writeFileSync(
+    file,
+    transformSync(built.typescript, { loader: 'ts', format: 'esm' })
+      .code,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as Record<
+    string,
+    (...a: unknown[]) => unknown
+  >
   const point = { form: 'point', name: 'n', size: 3 }
 
-  ok('it reads the field', mod.laterField!(point) === 3, String(mod.laterField!(point)))
-  ok('and the renamed field reads under its new name', mod.renamedField!(point) === 'n')
+  ok(
+    'it reads the field',
+    mod.laterField!(point) === 3,
+    String(mod.laterField!(point)),
+  )
+  ok(
+    'and the renamed field reads under its new name',
+    mod.renamedField!(point) === 'n',
+  )
 }
 
 console.log(`\narm-rename-scope: ${pass} pass, ${fail} fail`)

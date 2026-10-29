@@ -28,23 +28,64 @@ function ok(name: string, cond: boolean, info = ''): void {
 const ESC = 27
 
 const CASES: { name: string; runes: number[]; want: string[] }[] = [
-  { name: 'letters are themselves', runes: [104, 105], want: ['h', 'i'] },
-  { name: 'tab, enter as 13 and as 10, space', runes: [9, 13, 10, 32], want: ['tab', 'enter', 'enter', 'space'] },
-  { name: 'backspace as 127 and as 8', runes: [127, 8], want: ['backspace', 'backspace'] },
-  { name: 'the four arrows', runes: [ESC, 91, 65, ESC, 91, 66, ESC, 91, 67, ESC, 91, 68], want: ['up', 'down', 'right', 'left'] },
-  { name: 'shift-tab is ESC [ Z', runes: [ESC, 91, 90], want: ['shift-tab'] },
+  {
+    name: 'letters are themselves',
+    runes: [104, 105],
+    want: ['h', 'i'],
+  },
+  {
+    name: 'tab, enter as 13 and as 10, space',
+    runes: [9, 13, 10, 32],
+    want: ['tab', 'enter', 'enter', 'space'],
+  },
+  {
+    name: 'backspace as 127 and as 8',
+    runes: [127, 8],
+    want: ['backspace', 'backspace'],
+  },
+  {
+    name: 'the four arrows',
+    runes: [ESC, 91, 65, ESC, 91, 66, ESC, 91, 67, ESC, 91, 68],
+    want: ['up', 'down', 'right', 'left'],
+  },
+  {
+    name: 'shift-tab is ESC [ Z',
+    runes: [ESC, 91, 90],
+    want: ['shift-tab'],
+  },
   { name: 'ESC alone is escape', runes: [ESC], want: ['escape'] },
   { name: 'ctrl-c', runes: [3], want: ['ctrl-c'] },
-  { name: 'ctrl-z, which raw mode delivers as 26 rather than as a stop', runes: [26], want: ['ctrl-z'] },
-  { name: 'other controls are dropped', runes: [1, 104, 2], want: ['h'] },
+  {
+    name: 'ctrl-z, which raw mode delivers as 26 rather than as a stop',
+    runes: [26],
+    want: ['ctrl-z'],
+  },
+  {
+    name: 'other controls are dropped',
+    runes: [1, 104, 2],
+    want: ['h'],
+  },
   // F5 is ESC [ 1 5 ~: consumed to the `~`, and the letter after it still arrives
-  { name: 'a function key is consumed whole and dropped', runes: [ESC, 91, 49, 53, 126, 120], want: ['x'] },
-  { name: 'a character past ASCII arrives whole', runes: [233, 26085], want: ['é', '日'] },
+  {
+    name: 'a function key is consumed whole and dropped',
+    runes: [ESC, 91, 49, 53, 126, 120],
+    want: ['x'],
+  },
+  {
+    name: 'a character past ASCII arrives whole',
+    runes: [233, 26085],
+    want: ['é', '日'],
+  },
 ]
 
 // each case's runes built into a list, decoded, and joined with commas; the cases joined with `|`
 const cases = CASES.map((one, i) => {
-  const pushes = one.runes.map(rune => `  call push\n    bind list, read runes\n    bind item, code ${rune}`).join('\n')
+  const pushes = one.runes
+    .map(
+      rune =>
+        `  call push\n    bind list, read runes\n    bind item, code ${rune}`,
+    )
+    .join('\n')
 
   return `task case-${i}
   like text
@@ -115,21 +156,35 @@ const dir = mkdtempSync(join(tmpdir(), 'term-terminal-keys-'))
 const only = process.env.TERMINAL_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: pinned, dir, name: 'keys' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: pinned,
+    dir,
+    name: 'keys',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
     continue
   }
 
-  ok(`${backend}: the decoder compiles, builds and runs`, ran.form === 'ran', ran.form === 'failed' ? `${ran.stage}: ${ran.reason}` : '')
+  ok(
+    `${backend}: the decoder compiles, builds and runs`,
+    ran.form === 'ran',
+    ran.form === 'failed' ? `${ran.stage}: ${ran.reason}` : '',
+  )
 
   if (ran.form === 'ran') {
     const answers = ran.output.split('|')
 
     for (const [i, one] of CASES.entries()) {
       const got = answers[i] === '' ? [] : (answers[i] ?? '').split(',')
-      ok(`${backend}: ${one.name}`, JSON.stringify(got) === JSON.stringify(one.want), `got ${JSON.stringify(got)}`)
+      ok(
+        `${backend}: ${one.name}`,
+        JSON.stringify(got) === JSON.stringify(one.want),
+        `got ${JSON.stringify(got)}`,
+      )
     }
   }
 }

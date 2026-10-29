@@ -35,10 +35,19 @@ function report(name: string, good: boolean, detail: string): void {
 // `want` is 'ok', or a text one of the refusals must contain
 function expect(name: string, source: string, want: string): void {
   const result = compile({ file: 'c.tree', text: source }, LEAN)
-  const messages = result.ok ? [] : result.diagnostics.map(d => `${d.name}: ${d.message}`)
-  const good = want === 'ok' ? result.ok : !result.ok && messages.some(m => m.includes(want))
+  const messages = result.ok
+    ? []
+    : result.diagnostics.map(d => `${d.name}: ${d.message}`)
+  const good =
+    want === 'ok'
+      ? result.ok
+      : !result.ok && messages.some(m => m.includes(want))
 
-  report(name, good, `ok=${result.ok}, wanted ${want}: ${messages.join(' | ')}`)
+  report(
+    name,
+    good,
+    `ok=${result.ok}, wanted ${want}: ${messages.join(' | ')}`,
+  )
 }
 
 const FLAG = `form flag
@@ -287,25 +296,46 @@ rule false-across-files
   cite flip-twice
 `
 
-function separately(entry: string, theory: string): { ok: boolean; messages: string[] } {
-  const resolve: Resolver = path => (path === './theory' ? { file: 'theory.tree', text: theory } : undefined)
+function separately(
+  entry: string,
+  theory: string,
+): { ok: boolean; messages: string[] } {
+  const resolve: Resolver = path =>
+    path === './theory'
+      ? { file: 'theory.tree', text: theory }
+      : undefined
   const result = compileSeparate(
     { file: 'entry.tree', text: entry },
-    { resolve, cache: new CompileCache(), modules: file => `./${file.replace(/\W/g, '_')}.mjs`, ...LEAN },
+    {
+      resolve,
+      cache: new CompileCache(),
+      modules: file => `./${file.replace(/\W/g, '_')}.mjs`,
+      ...LEAN,
+    },
   )
 
-  return { ok: result.ok, messages: result.ok ? [] : result.diagnostics.map(d => `${d.name}: ${d.message}`) }
+  return {
+    ok: result.ok,
+    messages: result.ok
+      ? []
+      : result.diagnostics.map(d => `${d.name}: ${d.message}`),
+  }
 }
 
 const across = separately(USE, FLAG)
 
-report('separately, a rule runs a task and cites a rule of a theory in another file', across.ok, across.messages.join(' | '))
+report(
+  'separately, a rule runs a task and cites a rule of a theory in another file',
+  across.ok,
+  across.messages.join(' | '),
+)
 
 const acrossFalse = separately(USE_FALSE, FLAG)
 
 report(
   'separately, a false rule citing across files is still refused',
-  !acrossFalse.ok && acrossFalse.messages.some(m => m.includes('not an instance of it')),
+  !acrossFalse.ok &&
+    acrossFalse.messages.some(m => m.includes('not an instance of it')),
   `ok=${acrossFalse.ok}: ${acrossFalse.messages.join(' | ')}`,
 )
 
@@ -332,7 +362,13 @@ rule computes-across-files
 const plain = separately(ACROSS_PLAIN, PLAIN)
 const plainMerged = compile(
   { file: 'entry.tree', text: ACROSS_PLAIN },
-  { resolve: path => (path === './theory' ? { file: 'theory.tree', text: PLAIN } : undefined), ...LEAN },
+  {
+    resolve: path =>
+      path === './theory'
+        ? { file: 'theory.tree', text: PLAIN }
+        : undefined,
+    ...LEAN,
+  },
 )
 
 report(

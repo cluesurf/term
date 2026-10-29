@@ -4,7 +4,12 @@
 
 import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
-import { readFileSync, existsSync, writeFileSync, mkdtempSync } from 'node:fs'
+import {
+  readFileSync,
+  existsSync,
+  writeFileSync,
+  mkdtempSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -65,7 +70,9 @@ async function main(): Promise<void> {
     ['a', 'b', 'c'],
     ['d', 'e', 'f'],
   ])
-  eq('trailing newline adds no empty row', m.parse('a,b\n'), [['a', 'b']])
+  eq('trailing newline adds no empty row', m.parse('a,b\n'), [
+    ['a', 'b'],
+  ])
   eq('empty fields survive', m.parse('a,,c'), [['a', '', 'c']])
   eq('quoted field with delimiter', m.parse('a,"b,c",d'), [
     ['a', 'b,c', 'd'],
@@ -90,10 +97,14 @@ async function main(): Promise<void> {
   ])
   eq('quoted empty field at record end', m.parse('a,""'), [['a', '']])
 
-  eq('stringify plain', m.stringify([
-    ['a', 'b'],
-    ['c', 'd'],
-  ]), 'a,b\nc,d')
+  eq(
+    'stringify plain',
+    m.stringify([
+      ['a', 'b'],
+      ['c', 'd'],
+    ]),
+    'a,b\nc,d',
+  )
   eq(
     'stringify quotes only when needed',
     m.stringify([['a,x', 'plain', 'say "hi"', 'line\nbreak']]),
@@ -130,8 +141,16 @@ async function main(): Promise<void> {
     }
   })()
 
-  eq('an open quote raises csv-mismatch', (refused as { form?: string }).form, 'csv-mismatch')
-  eq('at the opening quote', /"at":2\b/.test(JSON.stringify(refused)), true)
+  eq(
+    'an open quote raises csv-mismatch',
+    (refused as { form?: string }).form,
+    'csv-mismatch',
+  )
+  eq(
+    'at the opening quote',
+    /"at":2\b/.test(JSON.stringify(refused)),
+    true,
+  )
 
   console.log(`\ncsv: ${pass} pass, ${fail} fail`)
 

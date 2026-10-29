@@ -18,7 +18,11 @@
 
 import { createReadStream } from 'node:fs'
 import { createInterface } from 'node:readline'
-import { feedLine, finishBlocks, makeBlockSplitter } from '@term/make/code/compile/block-split'
+import {
+  feedLine,
+  finishBlocks,
+  makeBlockSplitter,
+} from '@term/make/code/compile/block-split'
 import type { TopBlock } from '@term/make/code/compile/incremental-parse'
 
 /**

@@ -9,7 +9,11 @@
 // opaque `dock type`, a name the language gives (`list`, `hash`, `unknown`, `type`), or a type parameter its task
 // or form declares. It reads only the file being compiled, so a dependency is held to it where it is compiled itself.
 
-import type { Program, Statement, Type } from '@term/make/code/compile/node'
+import type {
+  Program,
+  Statement,
+  Type,
+} from '@term/make/code/compile/node'
 import type { Span } from '@term/make/code/parser/diagnostic'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
@@ -20,9 +24,39 @@ import { diagnose } from '@term/make/code/parser/diagnostic'
 // `decimal` is not among them since 2026-10-06 (D4): it named the platform float, where every other language's library
 // means exact base 10 by it, so `like decimal` is refused, naming `like float`, and the word is free for a form
 const GIVEN = new Set([
-  'u8', 'u16', 'u32', 'u64', 'u128', 'i8', 'i16', 'i32', 'i64', 'i128', 'integer', 'number', 'float', 'f32', 'f64',
-  'dynamic', 'json', 'bytes', 'buffer', 'text', 'boolean', 'void', 'unknown', 'any', 'unit', 'list', 'hash', 'task',
-  'string', 'natural', 'self', 'type', 'size',
+  'u8',
+  'u16',
+  'u32',
+  'u64',
+  'u128',
+  'i8',
+  'i16',
+  'i32',
+  'i64',
+  'i128',
+  'integer',
+  'number',
+  'float',
+  'f32',
+  'f64',
+  'dynamic',
+  'json',
+  'bytes',
+  'buffer',
+  'text',
+  'boolean',
+  'void',
+  'unknown',
+  'any',
+  'unit',
+  'list',
+  'hash',
+  'task',
+  'string',
+  'natural',
+  'self',
+  'type',
+  'size',
 ])
 
 function namedIn(type: Type | undefined, out: string[]): void {
@@ -58,7 +92,10 @@ function namedIn(type: Type | undefined, out: string[]): void {
   }
 }
 
-export function checkTypeNames(program: Program, file: string): Diagnostic[] {
+export function checkTypeNames(
+  program: Program,
+  file: string,
+): Diagnostic[] {
   const known = new Set<string>(GIVEN)
 
   for (const s of program) {
@@ -119,7 +156,12 @@ export function checkTypeNames(program: Program, file: string): Diagnostic[] {
     )
   }
 
-  const check = (types: (Type | undefined)[], generics: Set<string>, span: Span, where: string): void => {
+  const check = (
+    types: (Type | undefined)[],
+    generics: Set<string>,
+    span: Span,
+    where: string,
+  ): void => {
     for (const type of types) {
       const names: string[] = []
       namedIn(type, names)
@@ -132,7 +174,10 @@ export function checkTypeNames(program: Program, file: string): Diagnostic[] {
     }
   }
 
-  const forms = new Map<string, Extract<Statement, { form: 'record-type' }>>()
+  const forms = new Map<
+    string,
+    Extract<Statement, { form: 'record-type' }>
+  >()
 
   for (const s of program) {
     if (s.form === 'record-type') {
@@ -158,42 +203,75 @@ export function checkTypeNames(program: Program, file: string): Diagnostic[] {
       )
     }
 
-    if (s.form === 'function' && !s.stub && !(s.method && !known.has(s.method.form))) {
+    if (
+      s.form === 'function' &&
+      !s.stub &&
+      !(s.method && !known.has(s.method.form))
+    ) {
       // a method sees its form's type parameters as well as its own
       const owner = s.method ? forms.get(s.method.form) : undefined
-      const declared = s.declared ?? { params: s.params.map(p => ({ type: p.type })), result: s.result }
+      const declared = s.declared ?? {
+        params: s.params.map(p => ({ type: p.type })),
+        result: s.result,
+      }
+
       // and a TYPE FAMILY is a parameter that is a task to `type`, used as a type (`take p / like task / ... / like
       // type`, then `like p / head / read x`): the proof library's substitution and its convoy are built on one
       const families = s.params.filter((p, i) => {
         const type = declared.params[i]?.type ?? p.type
 
-        return type?.kind === 'function' && type.result.kind === 'named' && type.result.name === 'type'
+        return (
+          type?.kind === 'function' &&
+          type.result.kind === 'named' &&
+          type.result.name === 'type'
+        )
       })
+
       const generics = new Set([
         ...s.generics.map(g => g.name),
         ...(owner?.params ?? []),
         ...families.map(p => p.name),
       ])
+
       const where = `in \`${s.method?.name ?? s.name}\``
 
       // each parameter at its own `take` line, the result at the task
-      declared.params.forEach((param, i) => check([param.type], generics, s.params[i]?.span ?? s.span, where))
+      declared.params.forEach((param, i) =>
+        check(
+          [param.type],
+          generics,
+          s.params[i]?.span ?? s.span,
+          where,
+        ),
+      )
       check([declared.result], generics, s.span, where)
     }
 
     if (s.form === 'record-type') {
-      const written = [...s.fields, ...s.variants.flatMap(v => v.fields)]
+      const written = [
+        ...s.fields,
+        ...s.variants.flatMap(v => v.fields),
+      ]
+
       const fields = written.map(f => f.type)
 
       // each field at its own `link` line
       for (const field of written) {
-        check([field.type], new Set(s.params), field.span ?? s.span, `in the form \`${s.name}\``)
+        check(
+          [field.type],
+          new Set(s.params),
+          field.span ?? s.span,
+          `in the form \`${s.name}\``,
+        )
       }
 
       // a generic form that names ITSELF without its parameter: `link rest, like chain` in `form chain / head t`
       // built, and each native backend filled the missing argument its own way, `i64` on Rust and `Any` on Swift and
       // Kotlin, so the rest of a chain of text held numbers on Rust (guides: types/annotations, 2026-10-04)
-      if (s.params.length > 0 && fields.some(type => bareSelf(type, s.name))) {
+      if (
+        s.params.length > 0 &&
+        fields.some(type => bareSelf(type, s.name))
+      ) {
         out.push(
           diagnose('type-mismatch', {
             file,
@@ -212,13 +290,15 @@ export function checkTypeNames(program: Program, file: string): Diagnostic[] {
   // `make hash` / `make list`. `make list(1, 2)` and its kin are the native collections too. `make void` is the
   // language's empty value: `@term/base/void` declares the form, and the program carries it as the primitive
   const constructible = new Set<string>(['hash', 'list', 'void'])
+
   // a `make hash` reaches here as a record only when it has `bind` fields: the native map takes `save` entries and is
   // built as a map by the mill. So a record `hash` is the program's own form or case, or a mistake
   let ownHash = false
 
   for (const s of program) {
     if (s.form === 'record-type') {
-      ownHash ||= s.name === 'hash' || s.variants.some(v => v.name === 'hash')
+      ownHash ||=
+        s.name === 'hash' || s.variants.some(v => v.name === 'hash')
       constructible.add(s.name)
 
       // a form named like a case of another (`expression`, beside `statement`'s case `expression`) is renamed
@@ -271,7 +351,11 @@ export function checkTypeNames(program: Program, file: string): Diagnostic[] {
 
 // every `record` construction under a value, found structurally: any object carrying a `form`, through every field,
 // so a new expression form cannot hide one
-function eachConstruction(value: unknown, visit: (node: { name: string; span?: Span }) => void, seen = new Set<object>()): void {
+function eachConstruction(
+  value: unknown,
+  visit: (node: { name: string; span?: Span }) => void,
+  seen = new Set<object>(),
+): void {
   if (value === null || typeof value !== 'object' || seen.has(value)) {
     return
   }
@@ -286,7 +370,12 @@ function eachConstruction(value: unknown, visit: (node: { name: string; span?: S
     return
   }
 
-  const node = value as { form?: unknown; name?: unknown; span?: Span; type?: unknown }
+  const node = value as {
+    form?: unknown
+    name?: unknown
+    span?: Span
+    type?: unknown
+  }
 
   if (node.form === 'record' && typeof node.name === 'string') {
     visit(node as { name: string; span?: Span })
@@ -308,13 +397,19 @@ function bareSelf(type: Type | undefined, name: string): boolean {
 
   switch (type.kind) {
     case 'named':
-      return (type.name === name && (type.args?.length ?? 0) === 0) || (type.args ?? []).some(arg => bareSelf(arg, name))
+      return (
+        (type.name === name && (type.args?.length ?? 0) === 0) ||
+        (type.args ?? []).some(arg => bareSelf(arg, name))
+      )
     case 'array':
       return bareSelf(type.element, name)
     case 'map':
       return bareSelf(type.key, name) || bareSelf(type.value, name)
     case 'function':
-      return type.params.some(param => bareSelf(param, name)) || bareSelf(type.result, name)
+      return (
+        type.params.some(param => bareSelf(param, name)) ||
+        bareSelf(type.result, name)
+      )
     default:
       return false
   }

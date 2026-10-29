@@ -31,7 +31,13 @@ const ROOT = join(import.meta.dirname, '../..')
 const only = process.env.COMPOSE_MAKE_ONLY ?? ''
 // a folder per run of each target: the gate runs the two targets at once, and a shared folder was wiped by one while
 // the other built in it. The app keeps its name, `composemake`, in each
-const APP = join(ROOT, 'tmp', 'compose-make', only || 'both', 'composemake')
+const APP = join(
+  ROOT,
+  'tmp',
+  'compose-make',
+  only || 'both',
+  'composemake',
+)
 // the line the program must print, read back from Compose after two presses
 const WANT = '<main><button>2</button></main>'
 
@@ -120,27 +126,62 @@ async function desktop(): Promise<void> {
 
   try {
     app = (await makeCompose({ root: APP, target: 'compose' })).app
-    ok('compose: `term make --target compose` builds an app image', existsSync(app), app)
+    ok(
+      'compose: `term make --target compose` builds an app image',
+      existsSync(app),
+      app,
+    )
   } catch (e) {
-    ok('compose: `term make --target compose` builds an app image', false, String((e as Error).message ?? e).slice(0, 1600))
+    ok(
+      'compose: `term make --target compose` builds an app image',
+      false,
+      String((e as Error).message ?? e).slice(0, 1600),
+    )
 
     return
   }
 
   // the launcher jpackage made, inside the image, running the JVM the image carries
-  const launcher = process.platform === 'darwin' ? join(app, 'Contents', 'MacOS', 'composemake') : join(app, 'bin', 'composemake')
-  ok('compose: the image carries its own JVM', existsSync(process.platform === 'darwin' ? join(app, 'Contents', 'runtime') : join(app, 'lib', 'runtime')))
-  const ran = spawnSync(launcher, [], { encoding: 'utf8', env: { ...process.env, TERM_WINDOW_AWAY: '1' }, timeout: 180_000 })
-  ok('compose: the packaged app runs, presses twice and reads it back from Compose', ran.stdout.split('\n').includes(WANT), `${ran.stdout}${ran.stderr}`.slice(-800))
-  ok('compose: it exits 0', ran.status === 0 && ran.stdout.includes('native-view exit 0'), `status ${ran.status}`)
+  const launcher =
+    process.platform === 'darwin'
+      ? join(app, 'Contents', 'MacOS', 'composemake')
+      : join(app, 'bin', 'composemake')
+  ok(
+    'compose: the image carries its own JVM',
+    existsSync(
+      process.platform === 'darwin'
+        ? join(app, 'Contents', 'runtime')
+        : join(app, 'lib', 'runtime'),
+    ),
+  )
+  const ran = spawnSync(launcher, [], {
+    encoding: 'utf8',
+    env: { ...process.env, TERM_WINDOW_AWAY: '1' },
+    timeout: 180_000,
+  })
+  ok(
+    'compose: the packaged app runs, presses twice and reads it back from Compose',
+    ran.stdout.split('\n').includes(WANT),
+    `${ran.stdout}${ran.stderr}`.slice(-800),
+  )
+  ok(
+    'compose: it exits 0',
+    ran.status === 0 && ran.stdout.includes('native-view exit 0'),
+    `status ${ran.status}`,
+  )
 }
 
 async function android(): Promise<void> {
   let apk = ''
 
   try {
-    apk = (await makeCompose({ root: APP, target: 'compose-android' })).app
-    ok('compose-android: `term make --target compose-android` builds an APK', existsSync(apk), apk)
+    apk = (await makeCompose({ root: APP, target: 'compose-android' }))
+      .app
+    ok(
+      'compose-android: `term make --target compose-android` builds an APK',
+      existsSync(apk),
+      apk,
+    )
   } catch (e) {
     const message = String((e as Error).message ?? e)
 
@@ -150,12 +191,21 @@ async function android(): Promise<void> {
       return
     }
 
-    ok('compose-android: `term make --target compose-android` builds an APK', false, message.slice(0, 1600))
+    ok(
+      'compose-android: `term make --target compose-android` builds an APK',
+      false,
+      message.slice(0, 1600),
+    )
 
     return
   }
 
-  const ran = runComposeAndroid({ apk, identifier: 'surf.term.composemake', shot: 'none.png', pulled: join(APP, 'none.png') })
+  const ran = runComposeAndroid({
+    apk,
+    identifier: 'surf.term.composemake',
+    shot: 'none.png',
+    pulled: join(APP, 'none.png'),
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  compose-android: ${ran.reason}`)
@@ -164,7 +214,11 @@ async function android(): Promise<void> {
   }
 
   ok('compose-android: it installs on the emulator', ran.installed)
-  ok('compose-android: the app presses twice and reads it back from Compose', ran.output.split('\n').includes(WANT), ran.output.slice(-800))
+  ok(
+    'compose-android: the app presses twice and reads it back from Compose',
+    ran.output.split('\n').includes(WANT),
+    ran.output.slice(-800),
+  )
   ok('compose-android: it exits 0', ran.exited, ran.output.slice(-400))
 }
 

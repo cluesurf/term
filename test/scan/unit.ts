@@ -13,13 +13,19 @@ import {
   compareVersion,
   satisfies,
 } from '@term/scan/code/version-range'
-import { isAffected, planUpgrade } from '@term/scan/code/advisory-matching'
+import {
+  isAffected,
+  planUpgrade,
+} from '@term/scan/code/advisory-matching'
 import { fromOsv, fromOsvFeed } from '@term/scan/code/osv-reading'
 import { runRules } from '@term/scan/code/rule-running'
 import { nativeDangerRule } from '@term/scan/code/dangerous-import'
 import { taintRule } from '@term/scan/code/taint-tracking'
 import { toSarif } from '@term/scan/code/sarif-writing'
-import { applyUpgradesToManifest, planUpgrades } from '@term/scan/code/upgrade-fixing'
+import {
+  applyUpgradesToManifest,
+  planUpgrades,
+} from '@term/scan/code/upgrade-fixing'
 
 type Advisory = {
   id: string
@@ -34,7 +40,10 @@ type Advisory = {
 }
 type OsvRecord = Record<string, unknown>
 type CodeFinding = { ruleId: string; message: string }
-type ScanResult = { findings: Record<string, unknown>[] } & Record<string, unknown>
+type ScanResult = { findings: Record<string, unknown>[] } & Record<
+  string,
+  unknown
+>
 
 let pass = 0
 let fail = 0
@@ -62,17 +71,29 @@ function milled(text: string): CodeFinding[] {
     throw new Error('mill failed')
   }
 
-  return runRules(m.program, 't.tree', [nativeDangerRule(), taintRule()])
+  return runRules(m.program, 't.tree', [
+    nativeDangerRule(),
+    taintRule(),
+  ])
 }
 
 // ---- semver ----
 ok(toCode('1.2.3')?.patch === 3, 'toCode parses a full version')
-ok(toCode('v1.2')?.minor === 2, 'toCode strips v and pads missing patch')
+ok(
+  toCode('v1.2')?.minor === 2,
+  'toCode strips v and pads missing patch',
+)
 ok(toCode('nope') === undefined, 'toCode rejects non-versions')
-ok(compareVersion('1.2.0', '1.10.0') < 0, 'compareVersion is numeric not lexical')
+ok(
+  compareVersion('1.2.0', '1.10.0') < 0,
+  'compareVersion is numeric not lexical',
+)
 ok(compareVersion('2.0.0', '2.0.0') === 0, 'compareVersion equal')
 ok(satisfies('1.2.3', '>=1.0.0 <2.0.0'), 'satisfies AND range')
-ok(!satisfies('2.0.0', '>=1.0.0 <2.0.0'), 'satisfies excludes upper bound')
+ok(
+  !satisfies('2.0.0', '>=1.0.0 <2.0.0'),
+  'satisfies excludes upper bound',
+)
 ok(satisfies('1.5.0', '<1.2.0 || >=1.4.0'), 'satisfies OR range')
 ok(satisfies('1.2.3', '1.0.0 - 1.3.0'), 'satisfies hyphen range')
 ok(satisfies('1.9.9', '^1.2.0'), 'satisfies caret range')
@@ -115,7 +136,12 @@ ok(
 ok(
   planUpgrade('1.1.0', [
     adv,
-    { ...adv, id: 'GHSA-2', ranges: [{ introduced: '1.0.0', fixed: '1.5.0' }], fixedVersions: ['1.5.0'] },
+    {
+      ...adv,
+      id: 'GHSA-2',
+      ranges: [{ introduced: '1.0.0', fixed: '1.5.0' }],
+      fixedVersions: ['1.5.0'],
+    },
   ]) === '1.5.0',
   'planUpgrade clears every advisory (takes the higher fix)',
 )
@@ -135,17 +161,35 @@ const osv: OsvRecord = {
       ],
     },
   ],
-  references: [{ type: 'ADVISORY', url: 'https://github.com/advisories/GHSA-abcd' }],
+  references: [
+    {
+      type: 'ADVISORY',
+      url: 'https://github.com/advisories/GHSA-abcd',
+    },
+  ],
   database_specific: { severity: 'HIGH' },
 }
 const imported = fromOsv(osv, 'npm')
-ok(imported?.packageName === 'lodash.tree', 'OSV maps package to registry name')
-ok(imported?.severity === 'high', 'OSV maps textual severity')
-ok(imported?.ranges[0]?.fixed === '4.17.21', 'OSV reads the fixed event')
-ok(isAffected('4.17.20', imported!), 'OSV-imported advisory matches an affected version')
-ok(!isAffected('4.17.21', imported!), 'OSV-imported advisory excludes the fix')
 ok(
-  fromOsvFeed([osv], 'npm').length === 1 && fromOsvFeed([osv], 'term').length === 0,
+  imported?.packageName === 'lodash.tree',
+  'OSV maps package to registry name',
+)
+ok(imported?.severity === 'high', 'OSV maps textual severity')
+ok(
+  imported?.ranges[0]?.fixed === '4.17.21',
+  'OSV reads the fixed event',
+)
+ok(
+  isAffected('4.17.20', imported!),
+  'OSV-imported advisory matches an affected version',
+)
+ok(
+  !isAffected('4.17.21', imported!),
+  'OSV-imported advisory excludes the fix',
+)
+ok(
+  fromOsvFeed([osv], 'npm').length === 1 &&
+    fromOsvFeed([osv], 'term').length === 0,
   'OSV feed filters by ecosystem',
 )
 
@@ -166,7 +210,9 @@ ok(
 )
 ok(
   dangerFindings.some(
-    f => f.ruleId === 'scan/taint' && /command . code injection/.test(f.message),
+    f =>
+      f.ruleId === 'scan/taint' &&
+      /command . code injection/.test(f.message),
   ),
   'taint flags param -> cp/exec',
 )
@@ -229,8 +275,18 @@ const result: ScanResult = {
       message: 'tainted',
       at: { file: '/repo/deck/x/code/a.tree', line: 5, column: 3 },
       trace: [
-        { file: '/repo/deck/x/code/a.tree', line: 3, column: 8, label: 'tainted input' },
-        { file: '/repo/deck/x/code/a.tree', line: 5, column: 3, label: 'sink' },
+        {
+          file: '/repo/deck/x/code/a.tree',
+          line: 3,
+          column: 8,
+          label: 'tainted input',
+        },
+        {
+          file: '/repo/deck/x/code/a.tree',
+          line: 5,
+          column: 3,
+          label: 'sink',
+        },
       ],
     },
   ],
@@ -241,40 +297,80 @@ const result: ScanResult = {
   unavailableSources: [],
 }
 const sarif = toSarif(result, { root: '/repo' }) as {
-  runs: { results: { ruleId: string; level: string; locations: { physicalLocation: { artifactLocation: { uri: string }; region: { startLine: number } } }[]; codeFlows?: unknown[] }[] }[]
+  runs: {
+    results: {
+      ruleId: string
+      level: string
+      locations: {
+        physicalLocation: {
+          artifactLocation: { uri: string }
+          region: { startLine: number }
+        }
+      }[]
+      codeFlows?: unknown[]
+    }[]
+  }[]
 }
 const run = sarif.runs[0]!
 ok(run.results.length === 2, 'SARIF emits one result per finding')
 ok(
-  run.results[0]!.locations[0]!.physicalLocation.artifactLocation.uri === 'deck.tree',
+  run.results[0]!.locations[0]!.physicalLocation.artifactLocation
+    .uri === 'deck.tree',
   'SARIF anchors a dependency finding at the manifest, relative to root',
 )
 ok(
-  run.results[1]!.locations[0]!.physicalLocation.artifactLocation.uri === 'deck/x/code/a.tree',
+  run.results[1]!.locations[0]!.physicalLocation.artifactLocation
+    .uri === 'deck/x/code/a.tree',
   'SARIF makes code-finding paths repo-relative',
 )
 ok(
   run.results[1]!.locations[0]!.physicalLocation.region.startLine === 5,
   'SARIF keeps the code finding line',
 )
-ok(Array.isArray(run.results[1]!.codeFlows), 'SARIF renders the taint trace as a code flow')
+ok(
+  Array.isArray(run.results[1]!.codeFlows),
+  'SARIF renders the taint trace as a code flow',
+)
 
 // ---- fix ----
 const upgrades = planUpgrades([result.findings[0]!])
-ok(upgrades.length === 1 && upgrades[0]!.to === '1.3.0', 'planUpgrades collapses to one upgrade per package')
+ok(
+  upgrades.length === 1 && upgrades[0]!.to === '1.3.0',
+  'planUpgrades collapses to one upgrade per package',
+)
 const manifest = `deck app\n  mark <1.0.0>\n\n  link @term/left-pad, mark <^1.1.0>\n  link @term/other, mark <^2.0.0>\n`
 const patched = applyUpgradesToManifest(manifest, [
-  { name: '@term/left-pad', from: '1.1.0', to: '1.3.0', clears: ['GHSA-test'] },
-])
-ok(patched.includes('link @term/left-pad, mark <^1.3.0>'), 'fixer rewrites the vulnerable dependency line')
-ok(patched.includes('link @term/other, mark <^2.0.0>'), 'fixer leaves other lines untouched')
-
-// a manifest still in the old spelling: the rewritten line comes out as `mark`, the rest stays as it was
-const oldSpelling = applyUpgradesToManifest('deck app\n  link @term/left-pad, code <^1.1.0>\n  link @term/other, code <^2.0.0>\n', [
-  { name: '@term/left-pad', from: '1.1.0', to: '1.3.0', clears: ['GHSA-test'] },
+  {
+    name: '@term/left-pad',
+    from: '1.1.0',
+    to: '1.3.0',
+    clears: ['GHSA-test'],
+  },
 ])
 ok(
-  oldSpelling.includes('link @term/left-pad, mark <^1.3.0>') && oldSpelling.includes('link @term/other, code <^2.0.0>'),
+  patched.includes('link @term/left-pad, mark <^1.3.0>'),
+  'fixer rewrites the vulnerable dependency line',
+)
+ok(
+  patched.includes('link @term/other, mark <^2.0.0>'),
+  'fixer leaves other lines untouched',
+)
+
+// a manifest still in the old spelling: the rewritten line comes out as `mark`, the rest stays as it was
+const oldSpelling = applyUpgradesToManifest(
+  'deck app\n  link @term/left-pad, code <^1.1.0>\n  link @term/other, code <^2.0.0>\n',
+  [
+    {
+      name: '@term/left-pad',
+      from: '1.1.0',
+      to: '1.3.0',
+      clears: ['GHSA-test'],
+    },
+  ],
+)
+ok(
+  oldSpelling.includes('link @term/left-pad, mark <^1.3.0>') &&
+    oldSpelling.includes('link @term/other, code <^2.0.0>'),
   'fixer reads the old `code <range>` spelling and writes `mark`',
 )
 

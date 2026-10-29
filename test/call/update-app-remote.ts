@@ -17,7 +17,13 @@
 // Both build and launch through task/term/cask/rust-remote.ts, the code app-smoke uses.
 // Run: UPDATE_REMOTE=windows npx tsx test/call/update-app-remote.ts
 import { join } from 'node:path'
-import { assembleRustBundle, buildPage, buildRustProgram, crateOf, stampRuntimeVersion } from '@term/call/code/cask'
+import {
+  assembleRustBundle,
+  buildPage,
+  buildRustProgram,
+  crateOf,
+  stampRuntimeVersion,
+} from '@term/call/code/cask'
 import { publishUpdate, stampUpdateKey } from '@term/call/code/update'
 // as its default: the task/ scripts are CommonJS, whose exports Node finds only on `default`
 import remoteRust from '../../../../../../task/term/cask/rust-remote'
@@ -28,7 +34,9 @@ type RemoteTarget = 'linux' | 'windows'
 const target = process.env.UPDATE_REMOTE as RemoteTarget
 
 if (target !== 'linux' && target !== 'windows') {
-  console.log('update-app-remote: UPDATE_REMOTE=linux or windows names the machine')
+  console.log(
+    'update-app-remote: UPDATE_REMOTE=linux or windows names the machine',
+  )
   process.exit(1)
 }
 
@@ -64,35 +72,86 @@ function statusOf(said: string): number | undefined {
 }
 
 async function main(): Promise<void> {
-  const bundle = assembleRustBundle({ out: join(dir, 'app'), name: NAME, target })
-  await buildPage({ root: TERM, page: join(APP, 'page.tree'), entry, into: join(bundle.resources, 'webview'), title: 'Term update', work: join(dir, 'work/page') })
+  const bundle = assembleRustBundle({
+    out: join(dir, 'app'),
+    name: NAME,
+    target,
+  })
+  await buildPage({
+    root: TERM,
+    page: join(APP, 'page.tree'),
+    entry,
+    into: join(bundle.resources, 'webview'),
+    title: 'Term update',
+    work: join(dir, 'work/page'),
+  })
   const crate = crateOf(NAME)
   const { project, native } = buildRustProgram({
     root: CASK,
     entry: join(APP, 'main.tree'),
     // the resources directory and the update "server": the app's own `served`, as a file URL
-    driver: 'boot(cask::bundle_path(), format!("file://{}/served", cask::bundle_path()));',
+    driver:
+      'boot(cask::bundle_path(), format!("file://{}/served", cask::bundle_path()));',
     work: join(dir, 'work'),
     crate,
     target,
   })
-  const version = stampRuntimeVersion({ target, native, into: bundle.resources })
+  const version = stampRuntimeVersion({
+    target,
+    native,
+    into: bundle.resources,
+  })
   stampUpdateKey({ identifier, into: bundle.resources, keyFile })
-  ok(`${target}: the app builds with its runtime version and update key`, version.hex.length === 64)
+  ok(
+    `${target}: the app builds with its runtime version and update key`,
+    version.hex.length === 64,
+  )
 
   // the update: the other page, built the same way, published for exactly this runtime version, inside the app
   const next = join(dir, 'next')
-  await buildPage({ root: TERM, page: join(APP, 'page-next.tree'), entry, into: next, title: 'Term update', work: join(dir, 'work/next') })
-  const published = publishUpdate({ page: next, out: join(bundle.resources, 'served'), identifier, platform: target, runtimeVersion: version.hex, channel: 'main', keyFile })
-  ok(`${target}: the update is published for ${target}`, published.manifest.metadata.platform === target)
+  await buildPage({
+    root: TERM,
+    page: join(APP, 'page-next.tree'),
+    entry,
+    into: next,
+    title: 'Term update',
+    work: join(dir, 'work/next'),
+  })
+  const published = publishUpdate({
+    page: next,
+    out: join(bundle.resources, 'served'),
+    identifier,
+    platform: target,
+    runtimeVersion: version.hex,
+    channel: 'main',
+    keyFile,
+  })
+  ok(
+    `${target}: the update is published for ${target}`,
+    published.manifest.metadata.platform === target,
+  )
 
-  const machine = remoteRust.buildRemoteRust({ target, term: TERM, project, name: NAME, crate })
+  const machine = remoteRust.buildRemoteRust({
+    target,
+    term: TERM,
+    project,
+    name: NAME,
+    crate,
+  })
   machine.ship(bundle.app)
 
   const first = machine.launch(TIMEOUT)
-  ok(`${target}: the first launch runs the shipped page`, statusOf(first) === 11, first)
+  ok(
+    `${target}: the first launch runs the shipped page`,
+    statusOf(first) === 11,
+    first,
+  )
   const second = machine.launch(TIMEOUT)
-  ok(`${target}: the second launch runs the update it fetched`, statusOf(second) === 12, second)
+  ok(
+    `${target}: the second launch runs the update it fetched`,
+    statusOf(second) === 12,
+    second,
+  )
   const third = machine.launch(TIMEOUT)
   ok(`${target}: and keeps running it`, statusOf(third) === 12, third)
 
@@ -104,7 +163,9 @@ async function main(): Promise<void> {
 }
 
 main().catch(error => {
-  console.log(`FAIL  update-app-remote ${target}  ${String(error instanceof Error ? error.message : error).slice(0, 1600)}`)
+  console.log(
+    `FAIL  update-app-remote ${target}  ${String(error instanceof Error ? error.message : error).slice(0, 1600)}`,
+  )
   console.log(`\nupdate-app-remote: ${pass} pass, ${fail + 1} fail`)
   process.exit(1)
 })

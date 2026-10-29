@@ -12,7 +12,12 @@
 // The derivation and the applying are Term, fixing.tree (self-hosting, 2026-10-06). This face keeps the signatures its
 // callers use: an absent answer as `undefined`, and the import lookup as an optional option.
 
-import type { Diagnostic, Edit, Fix, Span } from '@term/make/code/parser/diagnostic'
+import type {
+  Diagnostic,
+  Edit,
+  Fix,
+  Span,
+} from '@term/make/code/parser/diagnostic'
 import * as fixing from '@term/make/code/fixing'
 
 // the compiler diagnostics a fix can be offered for, by the checker (a near spelling, a typed hole) or by this module
@@ -44,29 +49,57 @@ export function nameIn(text: string, span: Span): string | undefined {
 }
 
 // the edit that imports `name` from `importPath`
-export function importEdit(text: string, importPath: string, name: string): Edit {
+export function importEdit(
+  text: string,
+  importPath: string,
+  name: string,
+): Edit {
   return fixing.importEdit(text, importPath, name)
 }
 
 // every fix for one diagnostic: the compiler's own, then those read off the text. `findExport` is asked only for an
 // unknown name, because it searches the file system, and an editor computing fixes for a save must not pay for it
-export function fixesOf(diagnostic: Diagnostic, text: string, options?: { findExport?: ExportLookup }): Fix[] {
+export function fixesOf(
+  diagnostic: Diagnostic,
+  text: string,
+  options?: { findExport?: ExportLookup },
+): Fix[] {
   const findExport = options?.findExport
 
-  return fixing.fixesOf(diagnostic, text, Boolean(findExport), findExport ? pathsOf(findExport) : () => [])
+  return fixing.fixesOf(
+    diagnostic,
+    text,
+    Boolean(findExport),
+    findExport ? pathsOf(findExport) : () => [],
+  )
 }
 
 // the fixes read off the text alone, by the diagnostic's name and span
-export function textFixes(name: string, span: Span, text: string): Fix[] {
+export function textFixes(
+  name: string,
+  span: Span,
+  text: string,
+): Fix[] {
   return fixing.textFixes(name, span, text)
 }
 
 // the name under an unknown-name span, imported: one fix per module that exports it, none sure
-export function importFixes(text: string, span: Span, findExport: ExportLookup): Fix[] {
+export function importFixes(
+  text: string,
+  span: Span,
+  findExport: ExportLookup,
+): Fix[] {
   return fixing.importFixes(text, span, pathsOf(findExport))
 }
 
 // Apply fixes to a text. Every edit of a fix lands or none does, and a refused fix is named with why
-export function applyFixes(text: string, fixes: Fix[]): { text: string; applied: Fix[]; refused: { fix: Fix; reason: string }[] } {
+export function applyFixes(
+  text: string,
+  fixes: Fix[],
+): {
+  text: string
+  applied: Fix[]
+  refused: { fix: Fix; reason: string }[]
+} {
   return fixing.applyFixes(text, fixes)
 }

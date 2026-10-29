@@ -32,7 +32,11 @@
 // This face reads files through the callbacks it is handed, asks resolve.ts for the stdlib's folder, and throws a
 // refused include.
 
-import type { LoadHow, Resolver, Source } from '@term/make/code/compile/load'
+import type {
+  LoadHow,
+  Resolver,
+  Source,
+} from '@term/make/code/compile/load'
 import type { Program } from '@term/make/code/compile/node'
 import { stdlibBase } from '@term/make/code/resolve'
 import * as prelude from '@term/make/code/compile/runtime-prelude'
@@ -44,10 +48,14 @@ export type NativeEnv = Env
 
 type Maybe<T> = { form: 'some'; value: T } | { form: 'none' }
 
-const maybeOf = <T>(value: T | undefined): Maybe<T> => (value === undefined ? { form: 'none' } : { form: 'some', value })
+const maybeOf = <T>(value: T | undefined): Maybe<T> =>
+  value === undefined ? { form: 'none' } : { form: 'some', value }
 
 // a TypeScript module with its prelude in front, as ONE file
-export function joinTypeScriptPrelude(prelude_: string, typescript: string): string {
+export function joinTypeScriptPrelude(
+  prelude_: string,
+  typescript: string,
+): string {
   return prelude.joinTypeScriptPrelude(prelude_, typescript)
 }
 
@@ -85,7 +93,11 @@ export function withNativeEnv(
   env: NativeEnv,
   base: Resolver,
 ): Resolver {
-  return (importPath: string, fromFile: string, how?: LoadHow): Source | undefined => {
+  return (
+    importPath: string,
+    fromFile: string,
+    how?: LoadHow,
+  ): Source | undefined => {
     let resolved: Source | undefined
 
     for (const candidate of prelude.nativeCandidates(env, importPath)) {

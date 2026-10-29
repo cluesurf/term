@@ -21,14 +21,22 @@ export type TwinChoice =
   // a twin, by label
   | { use: string }
   // the first choice below `below` items in the named list parameter, the second from there on
-  | { check: 'size'; of: string; below: number; then: TwinChoice; else: TwinChoice }
+  | {
+      check: 'size'
+      of: string
+      below: number
+      then: TwinChoice
+      else: TwinChoice
+    }
 
 // task name -> its choice
 export type TwinChoices = Record<string, TwinChoice>
 
-export const twinTask = (task: string, label: string): string => twinTaskIn(task, label)
+export const twinTask = (task: string, label: string): string =>
+  twinTaskIn(task, label)
 export const chosenTask = (task: string): string => chosenTaskIn(task)
-export const guardTask = (task: string, label: string): string => guardTaskIn(task, label)
+export const guardTask = (task: string, label: string): string =>
+  guardTaskIn(task, label)
 
 function choiceOf(choice: TwinChoice): Choice {
   if (choice === 'reference') {
@@ -39,12 +47,23 @@ function choiceOf(choice: TwinChoice): Choice {
     return { form: 'use', label: choice.use }
   }
 
-  return { form: 'size', of: choice.of, below: choice.below, small: choiceOf(choice.then), large: choiceOf(choice.else) }
+  return {
+    form: 'size',
+    of: choice.of,
+    below: choice.below,
+    small: choiceOf(choice.then),
+    large: choiceOf(choice.else),
+  }
 }
 
 // the choices as ir/selection.tree takes them, one per task in the record's order (compile/program-gate.tree too)
-export function twinChoiceList(choices: TwinChoices): { task: string; choice: Choice }[] {
-  return Object.entries(choices).map(([task, choice]) => ({ task, choice: choiceOf(choice) }))
+export function twinChoiceList(
+  choices: TwinChoices,
+): { task: string; choice: Choice }[] {
+  return Object.entries(choices).map(([task, choice]) => ({
+    task,
+    choice: choiceOf(choice),
+  }))
 }
 
 // the program the port answers, written into the one the caller handed (on TypeScript it is the same list)

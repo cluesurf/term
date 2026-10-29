@@ -4,5 +4,17 @@
 // The original is kept byte for byte at deck/term/deck/term/tmp/retired/make/deck-object-install.
 import * as port from '@term/deck/code/object/package-installing'
 
-export const installPackage = (input: { package: string; ref: unknown; dest: string; local: unknown; registry: unknown }): Promise<{ commitId: string; fetched: number }> =>
-  port.installPackage(input.package, input.ref, input.dest, input.local, input.registry) as Promise<{ commitId: string; fetched: number }>
+export const installPackage = (input: {
+  package: string
+  ref: unknown
+  dest: string
+  local: unknown
+  registry: unknown
+}): Promise<{ commitId: string; fetched: number }> =>
+  port.installPackage(
+    input.package,
+    input.ref,
+    input.dest,
+    input.local,
+    input.registry,
+  ) as Promise<{ commitId: string; fetched: number }>

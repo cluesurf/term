@@ -251,10 +251,7 @@ task probe
 `
   const readResult = compile({ file: 'tmpl.tree', text: readParam })
 
-  if (
-    readResult.ok &&
-    readResult.typescript.includes('x + 5')
-  ) {
+  if (readResult.ok && readResult.typescript.includes('x + 5')) {
     pass++
     console.log('ok    read <param> substitutes the bound value')
   } else {

@@ -31,14 +31,35 @@ const HEIGHT = 10
 
 // the dialog is a box across the column's 24 cells: its corners, 22 cells of edge, and inside them the title and the
 // content, the right edge after the padding of blanks
-const BOX = ['┌──────────────────────┐', '│Saved                 │', '│ok                    │', '└──────────────────────┘']
+const BOX = [
+  '┌──────────────────────┐',
+  '│Saved                 │',
+  '│ok                    │',
+  '└──────────────────────┘',
+]
 
 // nothing focused: the toggle off, the range at 40 of 0 to 100 (4 cells of 10), the choice at `medium`
-const BEFORE = ['[ ] wifi', '[####------] 40', '[medium ▾]', ...BOX, 'one', 'two', ''].join('\n')
+const BEFORE = [
+  '[ ] wifi',
+  '[####------] 40',
+  '[medium ▾]',
+  ...BOX,
+  'one',
+  'two',
+  '',
+].join('\n')
 
 // tab and space flip the toggle on; tab and right step the range by 10, to 50; tab and right move the choice to the
 // option after `medium`, `large`, which keeps focus
-const AFTER = ['[x] wifi', '[#####-----] 50', '>large ▾<', ...BOX, 'one', 'two', ''].join('\n')
+const AFTER = [
+  '[x] wifi',
+  '[#####-----] 50',
+  '>large ▾<',
+  ...BOX,
+  'one',
+  'two',
+  '',
+].join('\n')
 
 const KEYS = ['tab', 'space', 'tab', 'right', 'tab', 'right']
 
@@ -176,26 +197,51 @@ ${KEYS.map(key => `  call press-key\n    read root\n    text <${key}>`).join('\n
 function pinned(env: string): Resolver {
   const base = projectResolver(process.cwd(), env)
 
-  return (importPath, fromFile) => base(importPath.replace(/native\/\{platform\}\/(dom|view)$/, 'native/terminal/$1'), fromFile)
+  return (importPath, fromFile) =>
+    base(
+      importPath.replace(
+        /native\/\{platform\}\/(dom|view)$/,
+        'native/terminal/$1',
+      ),
+      fromFile,
+    )
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'term-terminal-words-'))
 const only = process.env.TERMINAL_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: pinned, dir, name: 'words' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: pinned,
+    dir,
+    name: 'words',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
     continue
   }
 
-  ok(`${backend}: face's controls compile, build and run against the terminal host`, ran.form === 'ran', ran.form === 'failed' ? `${ran.stage}: ${ran.reason}` : '')
+  ok(
+    `${backend}: face's controls compile, build and run against the terminal host`,
+    ran.form === 'ran',
+    ran.form === 'failed' ? `${ran.stage}: ${ran.reason}` : '',
+  )
 
   if (ran.form === 'ran') {
     const [before, after] = ran.output.split('|')
-    ok(`${backend}: a toggle, a range, a choice, an open dialog and a scroll, drawn`, before === BEFORE, `got ${JSON.stringify(before)}`)
-    ok(`${backend}: space flips the toggle, right steps the range and moves the choice`, after === AFTER, `got ${JSON.stringify(after)}`)
+    ok(
+      `${backend}: a toggle, a range, a choice, an open dialog and a scroll, drawn`,
+      before === BEFORE,
+      `got ${JSON.stringify(before)}`,
+    )
+    ok(
+      `${backend}: space flips the toggle, right steps the range and moves the choice`,
+      after === AFTER,
+      `got ${JSON.stringify(after)}`,
+    )
   }
 }
 

@@ -13,9 +13,18 @@
 // until the thread has the reply. One request at a time, which is what one dev loop makes.
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs'
 import { dirname, join } from 'node:path'
-import { MessageChannel, Worker, receiveMessageOnPort } from 'node:worker_threads'
+import {
+  MessageChannel,
+  Worker,
+  receiveMessageOnPort,
+} from 'node:worker_threads'
 
 // what one compilation said: the exit status and the compiler's messages
 export type KotlinRun = { status: number; output: string }
@@ -25,9 +34,15 @@ export type KotlinCompiler = (args: string[]) => KotlinRun
 
 // `kotlinc` itself, a JVM per call: what a one-off build (`term make`, a test) uses
 export const kotlinc: KotlinCompiler = args => {
-  const ran = spawnSync('kotlinc', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  const ran = spawnSync('kotlinc', args, {
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  })
 
-  return { status: ran.status ?? 1, output: `${ran.stdout}${ran.stderr}` }
+  return {
+    status: ran.status ?? 1,
+    output: `${ran.stdout}${ran.stderr}`,
+  }
 }
 
 const DONE = '@@term-kotlin-done '
@@ -114,7 +129,9 @@ port.on('message', request => {
 
 // the Kotlin home the `kotlinc` on the PATH belongs to, whose lib/ holds the compiler jar
 function kotlinHome(): string {
-  const found = spawnSync('which', ['kotlinc'], { encoding: 'utf8' }).stdout.trim()
+  const found = spawnSync('which', ['kotlinc'], {
+    encoding: 'utf8',
+  }).stdout.trim()
 
   if (!found) {
     throw new Error('kotlinc is not installed')
@@ -122,7 +139,9 @@ function kotlinHome(): string {
 
   // Homebrew's bin/kotlinc links into <cellar>/bin, whose libexec is the home; an unpacked release's bin is the home's
   const bin = dirname(realpathSync(found))
-  const home = [join(bin, '..', 'libexec'), join(bin, '..')].find(dir => existsSync(join(dir, 'lib', 'kotlin-compiler.jar')))
+  const home = [join(bin, '..', 'libexec'), join(bin, '..')].find(dir =>
+    existsSync(join(dir, 'lib', 'kotlin-compiler.jar')),
+  )
 
   if (!home) {
     throw new Error(`no lib/kotlin-compiler.jar beside ${found}`)
@@ -133,17 +152,27 @@ function kotlinHome(): string {
 
 // the major version of the `java` on the PATH: `openjdk version "25.0.2"` is 25, `"1.8.0"` is 8
 function javaMajor(): number {
-  const said = spawnSync('java', ['-version'], { encoding: 'utf8' }).stderr ?? ''
+  const said =
+    spawnSync('java', ['-version'], { encoding: 'utf8' }).stderr ?? ''
+
   const found = /version "(\d+)(?:\.(\d+))?/.exec(said)
 
-  return !found ? 0 : found[1] === '1' ? Number(found[2] ?? 0) : Number(found[1])
+  return !found
+    ? 0
+    : found[1] === '1'
+      ? Number(found[2] ?? 0)
+      : Number(found[1])
 }
 
 // a warm compiler, its source written into `dir`, which is also where it runs. `close` ends the JVM; a compile after
 // it answers as failed
-export function startKotlinWorker(dir: string): { compile: KotlinCompiler; close(): void } {
+export function startKotlinWorker(dir: string): {
+  compile: KotlinCompiler
+  close(): void
+} {
   const home = kotlinHome()
   mkdirSync(dir, { recursive: true })
+
   const source = join(dir, 'KotlinWorker.java')
   writeFileSync(source, WORKER_JAVA)
 
@@ -154,14 +183,25 @@ export function startKotlinWorker(dir: string): { compile: KotlinCompiler; close
     '-Xmx3g',
     // what `kotlinc` passes from Java 24, which knows these flags: native access for the compiler, and no
     // `sun.misc.Unsafe` deprecation warnings printed into the session's output (KT-76799)
-    ...(javaMajor() >= 24 ? ['--enable-native-access=ALL-UNNAMED', '--sun-misc-unsafe-memory-access=allow'] : []),
+    ...(javaMajor() >= 24
+      ? [
+          '--enable-native-access=ALL-UNNAMED',
+          '--sun-misc-unsafe-memory-access=allow',
+        ]
+      : []),
     `-Dkotlin.home=${home}`,
     '-Dkotlin.environment.keepalive=true',
     '-cp',
     join(home, 'lib', 'kotlin-compiler.jar'),
     source,
   ]
-  const thread = new Worker(THREAD, { eval: true, workerData: { java: 'java', args, cwd: dir, port: theirs, flag }, transferList: [theirs] })
+
+  const thread = new Worker(THREAD, {
+    eval: true,
+    workerData: { java: 'java', args, cwd: dir, port: theirs, flag },
+    transferList: [theirs],
+  })
+
   thread.unref()
 
   return {
@@ -171,7 +211,15 @@ export function startKotlinWorker(dir: string): { compile: KotlinCompiler; close
       // ten minutes, far past any build: a compiler that never answers fails the build rather than hanging the session
       Atomics.wait(signal, 0, 0, 600_000)
 
-      return (receiveMessageOnPort(mine)?.message as KotlinRun | undefined) ?? { status: 2, output: 'error: the Kotlin worker gave no answer in ten minutes' }
+      return (
+        (receiveMessageOnPort(mine)?.message as
+          | KotlinRun
+          | undefined) ?? {
+          status: 2,
+          output:
+            'error: the Kotlin worker gave no answer in ten minutes',
+        }
+      )
     },
     close: () => {
       mine.postMessage('close')

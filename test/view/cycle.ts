@@ -26,51 +26,76 @@ function cycles(text: string): string {
   const parsed = parse({ file: 'page.tree', text })
 
   return parsed.ok
-    ? viewCycles(parsed.tree, 'page.tree').map(d => d.message).join(' | ')
+    ? viewCycles(parsed.tree, 'page.tree')
+        .map(d => d.message)
+        .join(' | ')
     : 'parse fail'
 }
 
 ok(
   'a macro that fuses itself is named',
-  cycles('tree a\n  hook fuse\n    fuse a\nview page\n  fuse a\n').includes('a fuses a'),
+  cycles(
+    'tree a\n  hook fuse\n    fuse a\nview page\n  fuse a\n',
+  ).includes('a fuses a'),
   cycles('tree a\n  hook fuse\n    fuse a\nview page\n  fuse a\n'),
 )
 
 ok(
   'a two-macro cycle is named',
   /a fuses b fuses a|b fuses a fuses b/.test(
-    cycles('tree a\n  hook fuse\n    fuse b\ntree b\n  hook fuse\n    fuse a\nview page\n  fuse a\n'),
+    cycles(
+      'tree a\n  hook fuse\n    fuse b\ntree b\n  hook fuse\n    fuse a\nview page\n  fuse a\n',
+    ),
   ),
-  cycles('tree a\n  hook fuse\n    fuse b\ntree b\n  hook fuse\n    fuse a\nview page\n  fuse a\n'),
+  cycles(
+    'tree a\n  hook fuse\n    fuse b\ntree b\n  hook fuse\n    fuse a\nview page\n  fuse a\n',
+  ),
 )
 
 ok(
   'a three-macro cycle is named',
-  cycles('tree a\n  hook fuse\n    fuse b\ntree b\n  hook fuse\n    fuse c\ntree c\n  hook fuse\n    fuse a\nview page\n  fuse a\n').includes('fuses'),
+  cycles(
+    'tree a\n  hook fuse\n    fuse b\ntree b\n  hook fuse\n    fuse c\ntree c\n  hook fuse\n    fuse a\nview page\n  fuse a\n',
+  ).includes('fuses'),
 )
 
 ok(
   'a macro used twice is not a cycle',
-  cycles('tree a\n  hook fuse\n    text <x>\ntree b\n  hook fuse\n    fuse a\n    fuse a\nview page\n  fuse b\n') === '',
-  cycles('tree a\n  hook fuse\n    text <x>\ntree b\n  hook fuse\n    fuse a\n    fuse a\nview page\n  fuse b\n'),
+  cycles(
+    'tree a\n  hook fuse\n    text <x>\ntree b\n  hook fuse\n    fuse a\n    fuse a\nview page\n  fuse b\n',
+  ) === '',
+  cycles(
+    'tree a\n  hook fuse\n    text <x>\ntree b\n  hook fuse\n    fuse a\n    fuse a\nview page\n  fuse b\n',
+  ),
 )
 
 ok(
   'a chain with no cycle is not a cycle',
-  cycles('tree a\n  hook fuse\n    text <x>\ntree b\n  hook fuse\n    fuse a\ntree c\n  hook fuse\n    fuse b\nview page\n  fuse c\n') === '',
+  cycles(
+    'tree a\n  hook fuse\n    text <x>\ntree b\n  hook fuse\n    fuse a\ntree c\n  hook fuse\n    fuse b\nview page\n  fuse c\n',
+  ) === '',
 )
 
 // the compile path refuses it rather than crashing
 const roleOf = () => 'view'
 const built = compile(
-  { file: '/app/page/loop.tree', text: 'tree a\n  hook fuse\n    fuse a\nview page\n  fuse a\n' },
+  {
+    file: '/app/page/loop.tree',
+    text: 'tree a\n  hook fuse\n    fuse a\nview page\n  fuse a\n',
+  },
   { roleOf, optimize: false },
 )
 
-ok('the compile path refuses a macro cycle instead of crashing', !built.ok)
+ok(
+  'the compile path refuses a macro cycle instead of crashing',
+  !built.ok,
+)
 ok(
   'and names the cycle',
-  !built.ok && built.diagnostics.some(d => /a macro cannot fuse itself/.test(d.message)),
+  !built.ok &&
+    built.diagnostics.some(d =>
+      /a macro cannot fuse itself/.test(d.message),
+    ),
   built.ok ? '' : built.diagnostics.map(d => d.message).join(' | '),
 )
 
@@ -84,21 +109,29 @@ function places(text: string): string {
 
   const result = readView(parsed.tree, 'page.tree')
 
-  return result.ok ? '' : result.diagnostics.map(d => d.message).join(' | ')
+  return result.ok
+    ? ''
+    : result.diagnostics.map(d => d.message).join(' | ')
 }
 
 ok(
   'a view that places itself is named',
-  places('view page\n  view page\n    bind a, text <x>\n').includes('page places page'),
+  places('view page\n  view page\n    bind a, text <x>\n').includes(
+    'page places page',
+  ),
   places('view page\n  view page\n    bind a, text <x>\n'),
 )
 
 ok(
   'a two-view cycle is named',
   /one places two places one|two places one places two/.test(
-    places('view one\n  view two\n    bind a, text <x>\nview two\n  view one\n    bind a, text <x>\n'),
+    places(
+      'view one\n  view two\n    bind a, text <x>\nview two\n  view one\n    bind a, text <x>\n',
+    ),
   ),
-  places('view one\n  view two\n    bind a, text <x>\nview two\n  view one\n    bind a, text <x>\n'),
+  places(
+    'view one\n  view two\n    bind a, text <x>\nview two\n  view one\n    bind a, text <x>\n',
+  ),
 )
 
 ok(
@@ -141,7 +174,10 @@ function dense(n: number, fan: number): string {
   return lines.join('\n') + '\n'
 }
 
-for (const [n, fan, budget] of [[60, 4, 250], [200, 4, 500]] as [number, number, number][]) {
+for (const [n, fan, budget] of [
+  [60, 4, 250],
+  [200, 4, 500],
+] as [number, number, number][]) {
   const parsed = parse({ file: 'page.tree', text: dense(n, fan) })
 
   if (!parsed.ok) {
@@ -153,12 +189,21 @@ for (const [n, fan, budget] of [[60, 4, 250], [200, 4, 500]] as [number, number,
   const found = viewCycles(parsed.tree, 'page.tree')
   const spent = Date.now() - started
 
-  ok(`${n} macros fanning out to ${fan} report no cycle`, found.length === 0)
-  ok(`and finish well inside ${budget}ms (took ${spent}ms)`, spent < budget)
+  ok(
+    `${n} macros fanning out to ${fan} report no cycle`,
+    found.length === 0,
+  )
+  ok(
+    `and finish well inside ${budget}ms (took ${spent}ms)`,
+    spent < budget,
+  )
 }
 
 // and a cycle buried inside a dense graph is still found
-const buried = dense(40, 4).replace('tree m39\n  hook fuse\n    text <end>', 'tree m39\n  hook fuse\n    fuse m0')
+const buried = dense(40, 4).replace(
+  'tree m39\n  hook fuse\n    text <end>',
+  'tree m39\n  hook fuse\n    fuse m0',
+)
 const parsedBuried = parse({ file: 'page.tree', text: buried })
 
 if (parsedBuried.ok) {
@@ -166,7 +211,8 @@ if (parsedBuried.ok) {
 
   ok(
     'a cycle buried in a dense graph is still found',
-    found.length > 0 && found.some(d => /cannot fuse itself/.test(d.message)),
+    found.length > 0 &&
+      found.some(d => /cannot fuse itself/.test(d.message)),
     found.map(d => d.message).join(' | ') || 'NOT FOUND',
   )
 }

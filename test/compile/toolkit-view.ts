@@ -11,7 +11,13 @@
 
 import { runDir } from './run-dir'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
@@ -19,8 +25,15 @@ import { nativePrelude } from '@term/make/code/compile/native'
 import { emitSwift } from '@term/make/code/compile/swift'
 import { entrySpelling } from '@term/make/code/compile/native-main'
 import { projectResolver } from '@term/call/code/make'
-import { compileLookTable, styleTableText } from '@term/make/code/compile/look-table'
-import { LAYOUT_LABELS, LAYOUT_ROWS, judgeLayout } from './shared/layout-rows'
+import {
+  compileLookTable,
+  styleTableText,
+} from '@term/make/code/compile/look-table'
+import {
+  LAYOUT_LABELS,
+  LAYOUT_ROWS,
+  judgeLayout,
+} from './shared/layout-rows'
 import {
   androidDevice,
   androidTools,
@@ -52,13 +65,21 @@ const dir = runDir('term-toolkit-view-')
 
 // native-dom-0008: face's own theme, compiled to the style table the app hands its host, light scheme
 const THEME = join(ROOT, 'deck/face/code/style/theme.tree')
-const STYLE_TABLE = styleTableText(compileLookTable({ file: THEME, text: readFileSync(THEME, 'utf8') }))
-const STYLE_TABLE_DARK = styleTableText(compileLookTable({ file: THEME, text: readFileSync(THEME, 'utf8') }, 'dark'))
+const STYLE_TABLE = styleTableText(
+  compileLookTable({ file: THEME, text: readFileSync(THEME, 'utf8') }),
+)
+const STYLE_TABLE_DARK = styleTableText(
+  compileLookTable(
+    { file: THEME, text: readFileSync(THEME, 'utf8') },
+    'dark',
+  ),
+)
 
 // what the platform must draw for it, read back off the views: the panel's fill, edge, corners and the text color its
 // children inherit, the overlay's opacity closed then open, a label's font, a fill set inline that the class's row does
 // not override while its edge still applies, and a kbd's fill gone once its class is removed
-const WANT_STYLES = 'styles #fafafa 1px #e4e4e7 8px #18181b 0 1 14px 500 #102030 1px #e4e4e7 #f4f4f5 none'
+const WANT_STYLES =
+  'styles #fafafa 1px #e4e4e7 8px #18181b 0 1 14px 500 #102030 1px #e4e4e7 #f4f4f5 none'
 
 // native-dom-0048: the same panel once the platform turns the device dark, restyled from the dark table: the theme's
 // dark surface and the dark text color its child inherits
@@ -72,13 +93,18 @@ const WANT = [
 
 // every layout row mounted on the root, then each one's frames said: the rows are the root's children 4 onward
 const LAYOUT_CALLS =
-  LAYOUT_LABELS.map(([, view]) => `      call ${view}\n        read root\n`).join('') +
   LAYOUT_LABELS.map(
-    ([label], i) => `      call say-row\n        text <${label}>\n        call child-at\n          read root\n          code ${4 + i}\n`,
+    ([, view]) => `      call ${view}\n        read root\n`,
+  ).join('') +
+  LAYOUT_LABELS.map(
+    ([label], i) =>
+      `      call say-row\n        text <${label}>\n        call child-at\n          read root\n          code ${4 + i}\n`,
   ).join('')
 
 // the dom is loaded the way an app loads it, through the public path, so the `macos` env picks the Apple host
-const program = (shot: string): string => `load @term/site/code/view/reactive
+const program = (
+  shot: string,
+): string => `load @term/site/code/view/reactive
   find make-effect
   find make-signal
   find read-signal
@@ -776,15 +802,31 @@ ${LAYOUT_CALLS}      # native-dom-0026: the slider, two ways. Mounted off the wi
   call run-app
 `
 
-const readRuntime = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, 'utf8') : undefined)
+const readRuntime = (file: string): string | undefined =>
+  existsSync(file) ? readFileSync(file, 'utf8') : undefined
 
 // compile the program for one Apple platform, with the prelude its natives dock, into one Swift file
-function swiftFor(env: 'macos' | 'ios', shot: string): string | undefined {
+function swiftFor(
+  env: 'macos' | 'ios',
+  shot: string,
+): string | undefined {
   const text = program(shot)
   const entry = join(dir, `${env}.tree`)
   writeFileSync(entry, text)
-  const result = compile({ file: entry, text }, { resolve: projectResolver(ROOT, env), env })
-  ok(`${env}: the program compiles`, result.ok, result.ok ? '' : result.diagnostics.slice(0, 4).map(d => d.message).join(' | '))
+  const result = compile(
+    { file: entry, text },
+    { resolve: projectResolver(ROOT, env), env },
+  )
+  ok(
+    `${env}: the program compiles`,
+    result.ok,
+    result.ok
+      ? ''
+      : result.diagnostics
+          .slice(0, 4)
+          .map(d => d.message)
+          .join(' | '),
+  )
 
   if (!result.ok) {
     return undefined
@@ -792,17 +834,29 @@ function swiftFor(env: 'macos' | 'ios', shot: string): string | undefined {
 
   const swift = emitSwift(result.program)
   const prelude = nativePrelude(result.program, env, readRuntime, swift)
-  ok(`${env}: the Apple view runtime is in the prelude`, prelude.includes('enum nativeView'))
+  ok(
+    `${env}: the Apple view runtime is in the prelude`,
+    prelude.includes('enum nativeView'),
+  )
   const file = join(dir, `${env}.swift`)
   // `main` throws when anything it reaches can raise (a native call raises `failure`), and a raise nothing handles
   // ends the program
-  const start = /func main\(\)[^{]*throws/.test(swift) ? 'try main()' : 'main()'
-  writeFileSync(file, ['import Foundation', prelude, swift, start, ''].join('\n'))
+  const start = /func main\(\)[^{]*throws/.test(swift)
+    ? 'try main()'
+    : 'main()'
+  writeFileSync(
+    file,
+    ['import Foundation', prelude, swift, start, ''].join('\n'),
+  )
 
   return file
 }
 
-function builds(label: string, command: string, args: string[]): boolean {
+function builds(
+  label: string,
+  command: string,
+  args: string[],
+): boolean {
   try {
     execFileSync(command, args, { stdio: 'pipe' })
     ok(`${label}: builds`, true)
@@ -810,68 +864,184 @@ function builds(label: string, command: string, args: string[]): boolean {
     return true
   } catch (e) {
     const text = String((e as { stderr?: Buffer }).stderr ?? e)
-    ok(`${label}: builds`, false, text.split('\n').filter(l => /error:/.test(l)).join('\n').slice(0, 1600) || text.slice(0, 800))
+    ok(
+      `${label}: builds`,
+      false,
+      text
+        .split('\n')
+        .filter(l => /error:/.test(l))
+        .join('\n')
+        .slice(0, 1600) || text.slice(0, 800),
+    )
 
     return false
   }
 }
 
 // what both platforms must print: the tree read back from their own views
-function judge(env: string, toolkit: string, output: string, shot: string): void {
-  const lines = output.split('\n').map(l => l.trim()).filter(l => l.startsWith('<main>'))
-  ok(`${env}: five presses read back from ${toolkit}: ${WANT[0]}`, lines[0] === WANT[0], JSON.stringify(lines[0]))
-  ok(`${env}: eleven presses read back from ${toolkit}: ${WANT[1]}`, lines[1] === WANT[1], JSON.stringify(lines[1]))
+function judge(
+  env: string,
+  toolkit: string,
+  output: string,
+  shot: string,
+): void {
+  const lines = output
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => l.startsWith('<main>'))
+  ok(
+    `${env}: five presses read back from ${toolkit}: ${WANT[0]}`,
+    lines[0] === WANT[0],
+    JSON.stringify(lines[0]),
+  )
+  ok(
+    `${env}: eleven presses read back from ${toolkit}: ${WANT[1]}`,
+    lines[1] === WANT[1],
+    JSON.stringify(lines[1]),
+  )
   // the row: the platform's stack put the second button exactly 12 after the first, the first 8 inside the row, and
   // centred them on one line. Read back from the views, so a mapping that did nothing cannot pass
   const frame = (name: string): number[] | undefined => {
-    const line = output.split('\n').map(l => l.trim()).find(l => l.includes(`frame ${name} `))
+    const line = output
+      .split('\n')
+      .map(l => l.trim())
+      .find(l => l.includes(`frame ${name} `))
 
-    return line?.slice(line.indexOf(`frame ${name} `) + `frame ${name} `.length).split(',').map(Number)
+    return line
+      ?.slice(line.indexOf(`frame ${name} `) + `frame ${name} `.length)
+      .split(',')
+      .map(Number)
   }
-  const [row, first, second] = [frame('row'), frame('first'), frame('second')]
+  const [row, first, second] = [
+    frame('row'),
+    frame('first'),
+    frame('second'),
+  ]
   const near = (a: number, b: number) => Math.abs(a - b) <= 1
-  ok(`${env}: the gap is the platform stack's spacing, 12`, !!first && !!second && near(second[0], first[0] + first[2] + 12), JSON.stringify({ first, second }))
-  ok(`${env}: the padding is the stack's inset, 8`, !!row && !!first && near(first[0] - row[0], 8) && first[1] - row[1] >= 7, JSON.stringify({ row, first }))
-  ok(`${env}: align-items center puts both on one line`, !!first && !!second && near(first[1] + first[3] / 2, second[1] + second[3] / 2), JSON.stringify({ first, second }))
+  ok(
+    `${env}: the gap is the platform stack's spacing, 12`,
+    !!first && !!second && near(second[0], first[0] + first[2] + 12),
+    JSON.stringify({ first, second }),
+  )
+  ok(
+    `${env}: the padding is the stack's inset, 8`,
+    !!row &&
+      !!first &&
+      near(first[0] - row[0], 8) &&
+      first[1] - row[1] >= 7,
+    JSON.stringify({ row, first }),
+  )
+  ok(
+    `${env}: align-items center puts both on one line`,
+    !!first &&
+      !!second &&
+      near(first[1] + first[3] / 2, second[1] + second[3] / 2),
+    JSON.stringify({ first, second }),
+  )
   // native-dom-0026: the slider is the platform's control, and the value goes both ways through it
   const sliderLine = (what: string) => {
-    const line = output.split('\n').map(l => l.trim()).find(l => l.includes(`slider ${what} `))
+    const line = output
+      .split('\n')
+      .map(l => l.trim())
+      .find(l => l.includes(`slider ${what} `))
 
-    return line?.slice(line.indexOf(`slider ${what} `) + `slider ${what} `.length)
+    return line?.slice(
+      line.indexOf(`slider ${what} `) + `slider ${what} `.length,
+    )
   }
-  ok(`${env}: the slider shows the range's 40, read back from the platform's control`, sliderLine('shown') === '<div><slider value="40"></slider></div>', String(sliderLine('shown')))
-  ok(`${env}: a move to 37.5 made on the control, half a step, is written into the range`, Number(sliderLine('heard')) === 37.5, String(sliderLine('heard')))
-  ok(`${env}: the range written to 20 moves the control`, sliderLine('moved') === '<div><slider value="20"></slider></div>', String(sliderLine('moved')))
+  ok(
+    `${env}: the slider shows the range's 40, read back from the platform's control`,
+    sliderLine('shown') === '<div><slider value="40"></slider></div>',
+    String(sliderLine('shown')),
+  )
+  ok(
+    `${env}: a move to 37.5 made on the control, half a step, is written into the range`,
+    Number(sliderLine('heard')) === 37.5,
+    String(sliderLine('heard')),
+  )
+  ok(
+    `${env}: the range written to 20 moves the control`,
+    sliderLine('moved') === '<div><slider value="20"></slider></div>',
+    String(sliderLine('moved')),
+  )
   const selectLine = (what: string) => {
-    const line = output.split('\n').map(l => l.trim()).find(l => l.includes(`select ${what} `))
+    const line = output
+      .split('\n')
+      .map(l => l.trim())
+      .find(l => l.includes(`select ${what} `))
 
-    return line?.slice(line.indexOf(`select ${what} `) + `select ${what} `.length)
+    return line?.slice(
+      line.indexOf(`select ${what} `) + `select ${what} `.length,
+    )
   }
-  ok(`${env}: the select shows the signal's medium, read back from the platform's picker`, selectLine('shown') === '<div><select value="medium"></select></div>', String(selectLine('shown')))
-  ok(`${env}: large chosen on the picker is written into the signal`, selectLine('heard') === 'large', String(selectLine('heard')))
-  ok(`${env}: the signal written to small moves the picker`, selectLine('moved') === '<div><select value="small"></select></div>', String(selectLine('moved')))
+  ok(
+    `${env}: the select shows the signal's medium, read back from the platform's picker`,
+    selectLine('shown') ===
+      '<div><select value="medium"></select></div>',
+    String(selectLine('shown')),
+  )
+  ok(
+    `${env}: large chosen on the picker is written into the signal`,
+    selectLine('heard') === 'large',
+    String(selectLine('heard')),
+  )
+  ok(
+    `${env}: the signal written to small moves the picker`,
+    selectLine('moved') ===
+      '<div><select value="small"></select></div>',
+    String(selectLine('moved')),
+  )
   const inputLine = (what: string) => {
-    const line = output.split('\n').map(l => l.trim()).find(l => l.includes(`input ${what} `))
+    const line = output
+      .split('\n')
+      .map(l => l.trim())
+      .find(l => l.includes(`input ${what} `))
 
-    return line?.slice(line.indexOf(`input ${what} `) + `input ${what} `.length)
+    return line?.slice(
+      line.indexOf(`input ${what} `) + `input ${what} `.length,
+    )
   }
-  ok(`${env}: the input shows the signal's hello, read back from the platform's field`, inputLine('shown') === '<div><input value="hello"></input></div>', String(inputLine('shown')))
-  ok(`${env}: hello world typed into the field is written into the signal`, inputLine('heard') === 'hello world', String(inputLine('heard')))
-  ok(`${env}: the signal written to bye shows in the field`, inputLine('moved') === '<div><input value="bye"></input></div>', String(inputLine('moved')))
+  ok(
+    `${env}: the input shows the signal's hello, read back from the platform's field`,
+    inputLine('shown') === '<div><input value="hello"></input></div>',
+    String(inputLine('shown')),
+  )
+  ok(
+    `${env}: hello world typed into the field is written into the signal`,
+    inputLine('heard') === 'hello world',
+    String(inputLine('heard')),
+  )
+  ok(
+    `${env}: the signal written to bye shows in the field`,
+    inputLine('moved') === '<div><input value="bye"></input></div>',
+    String(inputLine('moved')),
+  )
   const dialogLine = (what: string) => {
-    const line = output.split('\n').map(l => l.trim()).find(l => l.includes(`dialog ${what} `))
+    const line = output
+      .split('\n')
+      .map(l => l.trim())
+      .find(l => l.includes(`dialog ${what} `))
 
-    return line?.slice(line.indexOf(`dialog ${what} `) + `dialog ${what} `.length)
+    return line?.slice(
+      line.indexOf(`dialog ${what} `) + `dialog ${what} `.length,
+    )
   }
   ok(
     `${env}: the dialog holds its heading and content, closed, and is not in the page it was given`,
-    dialogLine('closed') === '<sheet open="false"><h2>Delete it?</h2><span>Sure?</span></sheet> page <div></div>',
+    dialogLine('closed') ===
+      '<sheet open="false"><h2>Delete it?</h2><span>Sure?</span></sheet> page <div></div>',
     String(dialogLine('closed')),
   )
-  ok(`${env}: opening the disclosure has the platform present it`, dialogLine('opened') === '<sheet open="true"><h2>Delete it?</h2><span>Sure?</span></sheet>', String(dialogLine('opened')))
+  ok(
+    `${env}: opening the disclosure has the platform present it`,
+    dialogLine('opened') ===
+      '<sheet open="true"><h2>Delete it?</h2><span>Sure?</span></sheet>',
+    String(dialogLine('opened')),
+  )
   ok(
     `${env}: the person's dismissal ends the presentation and closes the disclosure`,
-    dialogLine('dismissed') === '<sheet open="false"><h2>Delete it?</h2><span>Sure?</span></sheet> false',
+    dialogLine('dismissed') ===
+      '<sheet open="false"><h2>Delete it?</h2><span>Sure?</span></sheet> false',
     String(dialogLine('dismissed')),
   )
   // native-dom-0027: the words 0007 did not run, judged by the one judge the web is held to as well
@@ -879,40 +1049,115 @@ function judge(env: string, toolkit: string, output: string, shot: string): void
     ok(`${env}: ${name}`, passed, info)
   }
   // native-dom-0008: face's theme drawn by the platform, read back off the views
-  const styles = output.split('\n').map(l => l.trim()).find(l => l.includes('styles #'))
-  ok(`${env}: face's style table drawn by ${toolkit}: ${WANT_STYLES}`, !!styles && styles.endsWith(WANT_STYLES), String(styles))
-  const dark = output.split('\n').map(l => l.trim()).find(l => l.includes('styles dark '))
-  ok(`${env}: the device turned dark restyles the panel from the dark table: ${WANT_DARK_STYLES}`, !!dark && dark.endsWith(WANT_DARK_STYLES), String(dark))
-  const missing = output.split('\n').map(l => l.trim()).find(l => l.includes('unsupported ['))
-  ok(`${env}: every style mapped onto the platform`, missing !== undefined && missing.endsWith('unsupported []'), String(missing))
-  ok(`${env}: a PNG of the screen was written`, existsSync(shot) && readFileSync(shot).subarray(1, 4).toString() === 'PNG', shot)
+  const styles = output
+    .split('\n')
+    .map(l => l.trim())
+    .find(l => l.includes('styles #'))
+  ok(
+    `${env}: face's style table drawn by ${toolkit}: ${WANT_STYLES}`,
+    !!styles && styles.endsWith(WANT_STYLES),
+    String(styles),
+  )
+  const dark = output
+    .split('\n')
+    .map(l => l.trim())
+    .find(l => l.includes('styles dark '))
+  ok(
+    `${env}: the device turned dark restyles the panel from the dark table: ${WANT_DARK_STYLES}`,
+    !!dark && dark.endsWith(WANT_DARK_STYLES),
+    String(dark),
+  )
+  const missing = output
+    .split('\n')
+    .map(l => l.trim())
+    .find(l => l.includes('unsupported ['))
+  ok(
+    `${env}: every style mapped onto the platform`,
+    missing !== undefined && missing.endsWith('unsupported []'),
+    String(missing),
+  )
+  ok(
+    `${env}: a PNG of the screen was written`,
+    existsSync(shot) &&
+      readFileSync(shot).subarray(1, 4).toString() === 'PNG',
+    shot,
+  )
   // the device traits (native-dom-0012), read from the platform: the span bound to the color scheme reads `light` once
   // the platform is forced light, and `dark` after the platform is forced dark and reports it through its own watcher
   const said = output.split('\n').map(l => l.trim())
-  const themes = said.filter(l => l.includes('theme <')).map(l => l.slice(l.indexOf('theme <') + 'theme '.length))
-  ok(`${env}: the color scheme reads light from the platform`, themes[0] === '<div><span>light</span></div>', JSON.stringify(themes[0]))
-  ok(`${env}: the platform's change to dark rewrites the span`, themes[1] === '<div><span>dark</span></div>', JSON.stringify(themes[1]))
+  const themes = said
+    .filter(l => l.includes('theme <'))
+    .map(l => l.slice(l.indexOf('theme <') + 'theme '.length))
+  ok(
+    `${env}: the color scheme reads light from the platform`,
+    themes[0] === '<div><span>light</span></div>',
+    JSON.stringify(themes[0]),
+  )
+  ok(
+    `${env}: the platform's change to dark rewrites the span`,
+    themes[1] === '<div><span>dark</span></div>',
+    JSON.stringify(themes[1]),
+  )
   const traits = said.find(l => l.includes('traits '))
-  const read = traits?.slice(traits.indexOf('traits ') + 'traits '.length).split(' ') ?? []
+  const read =
+    traits
+      ?.slice(traits.indexOf('traits ') + 'traits '.length)
+      .split(' ') ?? []
   const [idiom, width, pointer, motion, scale] = read
-  const expected = env === 'macos' ? ['desktop', 'fine'] : ['phone', 'touch']
-  ok(`${env}: idiom and pointer are the platform's, ${expected.join(' and ')}`, idiom === expected[0] && pointer === expected[1], String(traits))
+  const expected =
+    env === 'macos' ? ['desktop', 'fine'] : ['phone', 'touch']
+  ok(
+    `${env}: idiom and pointer are the platform's, ${expected.join(' and ')}`,
+    idiom === expected[0] && pointer === expected[1],
+    String(traits),
+  )
   // read from the window: compact or regular. Which one depends on how the device was left, which the turn below
   // relies on and checks both ways over time
-  ok(`${env}: the width class is read`, width === 'compact' || width === 'regular', String(traits))
-  ok(`${env}: reduce motion and text scale are read`, (motion === 'yes' || motion === 'no') && Number(scale) > 0, String(traits))
+  ok(
+    `${env}: the width class is read`,
+    width === 'compact' || width === 'regular',
+    String(traits),
+  )
+  ok(
+    `${env}: reduce motion and text scale are read`,
+    (motion === 'yes' || motion === 'no') && Number(scale) > 0,
+    String(traits),
+  )
   // native-dom-0035: a real turn, reported by the platform. Compact before, regular after, and of the two spans only
   // the one reading the width computed its text again: once before, once after; the scheme span once in all
   const before = said.find(l => l.includes('turn before '))
   const turned = said.find(l => l.includes('turned '))
-  const [widthBefore, widthRunsBefore, schemeRunsBefore] = before?.slice(before.indexOf('turn before ') + 'turn before '.length).split(' ') ?? []
-  const [widthAfter, widthRuns, schemeRuns] = turned?.slice(turned.indexOf('turned ') + 'turned '.length).split(' ') ?? []
+  const [widthBefore, widthRunsBefore, schemeRunsBefore] =
+    before
+      ?.slice(before.indexOf('turn before ') + 'turn before '.length)
+      .split(' ') ?? []
+  const [widthAfter, widthRuns, schemeRuns] =
+    turned
+      ?.slice(turned.indexOf('turned ') + 'turned '.length)
+      .split(' ') ?? []
   // the turn goes to whichever shape the device was not in, so the class flips: compact to regular from portrait or a
   // narrow window, regular to compact from landscape
-  const flipped = { compact: 'regular', regular: 'compact' } as Record<string, string>
-  ok(`${env}: before the turn each span computed once`, !!flipped[widthBefore ?? ''] && widthRunsBefore === '1' && schemeRunsBefore === '1', String(before))
-  ok(`${env}: the platform's turn flips the width class, ${widthBefore} to ${flipped[widthBefore ?? '']}`, !!widthAfter && widthAfter === flipped[widthBefore ?? ''], String(turned))
-  ok(`${env}: only the span reading the width ran again`, widthRuns === '2' && schemeRuns === '1', String(turned))
+  const flipped = { compact: 'regular', regular: 'compact' } as Record<
+    string,
+    string
+  >
+  ok(
+    `${env}: before the turn each span computed once`,
+    !!flipped[widthBefore ?? ''] &&
+      widthRunsBefore === '1' &&
+      schemeRunsBefore === '1',
+    String(before),
+  )
+  ok(
+    `${env}: the platform's turn flips the width class, ${widthBefore} to ${flipped[widthBefore ?? '']}`,
+    !!widthAfter && widthAfter === flipped[widthBefore ?? ''],
+    String(turned),
+  )
+  ok(
+    `${env}: only the span reading the width ran again`,
+    widthRuns === '2' && schemeRuns === '1',
+    String(turned),
+  )
 }
 
 function runMacos(): void {
@@ -920,8 +1165,15 @@ function runMacos(): void {
   const exe = join(dir, 'macos')
 
   if (file && builds('macos', 'swiftc', ['-o', exe, file])) {
-    const run = spawnSync(exe, [], { encoding: 'utf8', timeout: 60_000 })
-    ok('macos: the app exits 0', run.status === 0, `exit ${run.status} ${run.signal ?? ''}: ${run.stdout.slice(0, 400)} | ${run.stderr.slice(0, 1600)}`)
+    const run = spawnSync(exe, [], {
+      encoding: 'utf8',
+      timeout: 60_000,
+    })
+    ok(
+      'macos: the app exits 0',
+      run.status === 0,
+      `exit ${run.status} ${run.signal ?? ''}: ${run.stdout.slice(0, 400)} | ${run.stderr.slice(0, 1600)}`,
+    )
     judge('macos', 'AppKit', run.stdout, png)
   }
 }
@@ -939,10 +1191,33 @@ async function runIos(): Promise<void> {
   const shot = process.env.SNAPSHOT_IOS ?? join(dir, 'ios.png')
   const file = swiftFor('ios', shot)
   const identifier = 'surf.term.native-dom-test'
-  const bundle = assembleIosBundle({ out: join(dir, 'ios'), name: 'NativeDom', identifier, version: '0.0.2' })
-  const sdk = execFileSync('xcrun', ['-sdk', 'iphonesimulator', '--show-sdk-path'], { encoding: 'utf8' }).trim()
+  const bundle = assembleIosBundle({
+    out: join(dir, 'ios'),
+    name: 'NativeDom',
+    identifier,
+    version: '0.0.2',
+  })
+  const sdk = execFileSync(
+    'xcrun',
+    ['-sdk', 'iphonesimulator', '--show-sdk-path'],
+    { encoding: 'utf8' },
+  ).trim()
 
-  if (!file || !builds('ios', 'xcrun', ['-sdk', 'iphonesimulator', 'swiftc', '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk, '-o', bundle.exe, file])) {
+  if (
+    !file ||
+    !builds('ios', 'xcrun', [
+      '-sdk',
+      'iphonesimulator',
+      'swiftc',
+      '-target',
+      'arm64-apple-ios17.0-simulator',
+      '-sdk',
+      sdk,
+      '-o',
+      bundle.exe,
+      file,
+    ])
+  ) {
     return
   }
 
@@ -951,19 +1226,46 @@ async function runIos(): Promise<void> {
   let output = ''
 
   try {
-    spawnSync('xcrun', ['simctl', 'terminate', found.udid, identifier], { stdio: 'ignore' })
-    spawnSync('xcrun', ['simctl', 'uninstall', found.udid, identifier], { stdio: 'ignore' })
-    execFileSync('xcrun', ['simctl', 'install', found.udid, bundle.app], { stdio: 'pipe' })
-    const run = spawnSync('xcrun', ['simctl', 'launch', '--console', '--terminate-running-process', found.udid, identifier], {
-      encoding: 'utf8',
-      timeout: 120_000,
-    })
+    spawnSync(
+      'xcrun',
+      ['simctl', 'terminate', found.udid, identifier],
+      { stdio: 'ignore' },
+    )
+    spawnSync(
+      'xcrun',
+      ['simctl', 'uninstall', found.udid, identifier],
+      { stdio: 'ignore' },
+    )
+    execFileSync(
+      'xcrun',
+      ['simctl', 'install', found.udid, bundle.app],
+      { stdio: 'pipe' },
+    )
+    const run = spawnSync(
+      'xcrun',
+      [
+        'simctl',
+        'launch',
+        '--console',
+        '--terminate-running-process',
+        found.udid,
+        identifier,
+      ],
+      {
+        encoding: 'utf8',
+        timeout: 120_000,
+      },
+    )
     output = `${run.stdout ?? ''}${run.stderr ?? ''}`
   } finally {
     release()
   }
 
-  ok('ios: the app said it exits 0', output.includes('native-view exit 0'), output.slice(0, 600))
+  ok(
+    'ios: the app said it exits 0',
+    output.includes('native-view exit 0'),
+    output.slice(0, 600),
+  )
   judge('ios', 'UIKit', output, shot)
 }
 
@@ -993,14 +1295,34 @@ async function runAndroid(): Promise<void> {
       entry,
       identifier,
       // the Activity Android starts runs the program inside onCreate, once a view can be made
-      driver: ['class TermActivity : TermViewActivity() {', `  override fun program() { ${entrySpelling('kotlin', 'main')}() }`, '}'].join('\n'),
+      driver: [
+        'class TermActivity : TermViewActivity() {',
+        `  override fun program() { ${entrySpelling('kotlin', 'main')}() }`,
+        '}',
+      ].join('\n'),
       work,
       env: 'android',
     })
-    apk = assembleApk({ out: work, name: 'NativeDom', identifier, version: '0.0.2', dex, assets, work })
+    apk = assembleApk({
+      out: work,
+      name: 'NativeDom',
+      identifier,
+      version: '0.0.2',
+      dex,
+      assets,
+      work,
+    })
     ok('android: builds', true)
   } catch (e) {
-    ok('android: builds', false, String((e as { stderr?: Buffer }).stderr ?? e).split('\n').filter(l => /error|e: /.test(l)).join('\n').slice(0, 1600))
+    ok(
+      'android: builds',
+      false,
+      String((e as { stderr?: Buffer }).stderr ?? e)
+        .split('\n')
+        .filter(l => /error|e: /.test(l))
+        .join('\n')
+        .slice(0, 1600),
+    )
 
     return
   }
@@ -1016,14 +1338,29 @@ async function runAndroid(): Promise<void> {
 }
 
 // install, start, read the log and pull the PNG, on the emulator held by the caller
-function judgeAndroid({ found, identifier, apk }: { found: { serial: string }; identifier: string; apk: string }): void {
+function judgeAndroid({
+  found,
+  identifier,
+  apk,
+}: {
+  found: { serial: string }
+  identifier: string
+  apk: string
+}): void {
   const tools = androidTools()
-  const adb = (...args: string[]) => spawnSync(tools.adb, ['-s', found.serial, ...args], { encoding: 'utf8' })
+  const adb = (...args: string[]) =>
+    spawnSync(tools.adb, ['-s', found.serial, ...args], {
+      encoding: 'utf8',
+    })
 
   adb('uninstall', identifier)
   adb('logcat', '-c')
   const installed = adb('install', '-r', apk)
-  ok('android: installs', installed.status === 0, `${installed.stdout}${installed.stderr}`.slice(0, 400))
+  ok(
+    'android: installs',
+    installed.status === 0,
+    `${installed.stdout}${installed.stderr}`.slice(0, 400),
+  )
   adb('shell', 'am', 'start', '-n', `${identifier}/.TermActivity`)
 
   // the app logs every line under `native-dom` and says when it exits
@@ -1042,13 +1379,27 @@ function judgeAndroid({ found, identifier, apk }: { found: { serial: string }; i
 
   const said = log
     .split('\n')
-    .map(line => line.slice(line.indexOf('native-dom:') + 'native-dom:'.length).trim())
+    .map(line =>
+      line
+        .slice(line.indexOf('native-dom:') + 'native-dom:'.length)
+        .trim(),
+    )
     .join('\n')
-  ok('android: the app said it exits 0', said.includes('native-view exit 0'), log.slice(-600))
+  ok(
+    'android: the app said it exits 0',
+    said.includes('native-view exit 0'),
+    log.slice(-600),
+  )
 
   const shot = process.env.SNAPSHOT_ANDROID ?? join(dir, 'android.png')
   // the app's external files directory, which adb reads without a debuggable build
-  const pulled = spawnSync(tools.adb, ['-s', found.serial, 'exec-out', 'cat', `/sdcard/Android/data/${identifier}/files/native-dom.png`])
+  const pulled = spawnSync(tools.adb, [
+    '-s',
+    found.serial,
+    'exec-out',
+    'cat',
+    `/sdcard/Android/data/${identifier}/files/native-dom.png`,
+  ])
 
   if (pulled.status === 0 && pulled.stdout.length > 0) {
     writeFileSync(shot, pulled.stdout)
@@ -1061,11 +1412,15 @@ const only = process.env.TOOLKIT_ONLY ?? ''
 const apple = process.platform === 'darwin'
 
 if (!only || only === 'macos') {
-  apple ? runMacos() : console.log('skip  macos  (AppKit is macOS only)')
+  apple
+    ? runMacos()
+    : console.log('skip  macos  (AppKit is macOS only)')
 }
 
 if (!only || only === 'ios') {
-  apple ? await runIos() : console.log('skip  ios  (the iOS simulator is macOS only)')
+  apple
+    ? await runIos()
+    : console.log('skip  ios  (the iOS simulator is macOS only)')
 }
 
 if (!only || only === 'android') {

@@ -7,7 +7,13 @@
 // never truncated. A record is never rewritten: a new measurement is a new record.
 
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
 import { projectHome } from './home'
@@ -45,11 +51,22 @@ export type RaceRecord = {
   compiler: string
   // the digest of every admitted twin and bend the build could see
   rules: string
-  candidate: { task: string; twin: string; knob: Record<string, number>; step: string[] }
+  candidate: {
+    task: string
+    twin: string
+    knob: Record<string, number>
+    step: string[]
+  }
   admission: 'proven' | 'tested' | 'trusted' | 'reference'
   // what happened: a measurement, a loss to another candidate, a disagreement, or a run that hit its limit
   result: 'measured' | 'lost' | 'disagreed' | 'timed-out'
-  time_ns?: { median: number; mad: number; low: number; high: number; samples: number }
+  time_ns?: {
+    median: number
+    mad: number
+    low: number
+    high: number
+    samples: number
+  }
   memory_peak?: number
   size?: number
   taken: string
@@ -57,7 +74,9 @@ export type RaceRecord = {
 
 // sha256 of a value's stable JSON, in the 8x8 tone shape
 export function toneDigest(value: unknown): string {
-  return dashInEights(hexToTone(createHash('sha256').update(stable(value)).digest('hex')))
+  return dashInEights(
+    hexToTone(createHash('sha256').update(stable(value)).digest('hex')),
+  )
 }
 
 // JSON with object keys sorted, so the same value always hashes the same
@@ -69,7 +88,10 @@ function stable(value: unknown): string {
   if (value && typeof value === 'object') {
     return `{${Object.keys(value)
       .sort()
-      .map(k => `${JSON.stringify(k)}:${stable((value as Record<string, unknown>)[k])}`)
+      .map(
+        k =>
+          `${JSON.stringify(k)}:${stable((value as Record<string, unknown>)[k])}`,
+      )
       .join(',')}}`
   }
 
@@ -85,21 +107,31 @@ export function ratioBucket(ratio: number): number {
   return Math.round(ratio * 10) / 10
 }
 
-const dirOf = (root: string): string => projectHome(root, 'race', RACE_VERSION)
+const dirOf = (root: string): string =>
+  projectHome(root, 'race', RACE_VERSION)
 
 // store a record, giving it its id. Returns the record as stored
-export function writeRace(root: string, record: Omit<RaceRecord, 'id'>): RaceRecord {
+export function writeRace(
+  root: string,
+  record: Omit<RaceRecord, 'id'>,
+): RaceRecord {
   const stored: RaceRecord = { id: toneDigest(record), ...record }
   const shard = join(dirOf(root), stored.id.slice(0, 2))
 
   mkdirSync(shard, { recursive: true })
-  writeFileSync(join(shard, `${stored.id}.json.gz`), gzipSync(JSON.stringify(stored)))
+  writeFileSync(
+    join(shard, `${stored.id}.json.gz`),
+    gzipSync(JSON.stringify(stored)),
+  )
 
   return stored
 }
 
 // every record, or those a predicate keeps
-export function readRaces(root: string, keep: (record: RaceRecord) => boolean = () => true): RaceRecord[] {
+export function readRaces(
+  root: string,
+  keep: (record: RaceRecord) => boolean = () => true,
+): RaceRecord[] {
   const dir = dirOf(root)
 
   if (!existsSync(dir)) {
@@ -115,7 +147,11 @@ export function readRaces(root: string, keep: (record: RaceRecord) => boolean = 
       }
 
       try {
-        const record = JSON.parse(gunzipSync(readFileSync(join(dir, shard, file))).toString('utf8')) as RaceRecord
+        const record = JSON.parse(
+          gunzipSync(readFileSync(join(dir, shard, file))).toString(
+            'utf8',
+          ),
+        ) as RaceRecord
 
         if (keep(record)) {
           out.push(record)
@@ -134,7 +170,15 @@ export function readRaces(root: string, keep: (record: RaceRecord) => boolean = 
 // the old record stays as history without being used as an answer
 export function lookupRace(
   root: string,
-  ask: { region: string; facts: RaceFacts; target: RaceTarget; compiler: string; rules: string; task: string; twin: string },
+  ask: {
+    region: string
+    facts: RaceFacts
+    target: RaceTarget
+    compiler: string
+    rules: string
+    task: string
+    twin: string
+  },
 ): RaceRecord | undefined {
   const facts = stable(ask.facts)
   const target = stable(ask.target)

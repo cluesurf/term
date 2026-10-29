@@ -133,7 +133,13 @@ const dir = mkdtempSync(join(tmpdir(), 'term-loop-name-'))
 const only = process.env.LOOP_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'loops' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'loops',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
@@ -143,29 +149,66 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
   ok(
     `${backend}: a named halt leaves both loops, a named turn next continues the outer walk (a counted one stepping its counter, and from inside a walk test), and an unnamed halt leaves the inner one`,
     ran.form === 'ran' && ran.output === EXPECTED,
-    ran.form === 'ran' ? `got ${JSON.stringify(ran.output)}` : `${ran.stage}: ${ran.reason}`,
+    ran.form === 'ran'
+      ? `got ${JSON.stringify(ran.output)}`
+      : `${ran.stage}: ${ran.reason}`,
   )
 }
 
 // the refusals, which need only the checker
 if (!only || only === 'typescript') {
   const refused = (text: string): string[] => {
-    const built = compile({ file: join(dir, 'refused.tree'), text }, { resolve: projectResolver(process.cwd(), 'node'), env: 'node' })
+    const built = compile(
+      { file: join(dir, 'refused.tree'), text },
+      { resolve: projectResolver(process.cwd(), 'node'), env: 'node' },
+    )
 
     return built.ok ? [] : built.diagnostics.map(d => d.message)
   }
 
-  const nowhere = refused(`load @term/base/list\n  find list\n\ntask run\n  like number\n  walk make(list, 1), name outer\n    take a\n    halt, name inner\n  back 0\n`)
-  ok('a halt naming no loop around it is refused, naming the loops that are', nowhere.some(m => m.includes('`halt, name inner` names no loop around it (the loops around it are named outer)')), nowhere.join(' | '))
+  const nowhere = refused(
+    `load @term/base/list\n  find list\n\ntask run\n  like number\n  walk make(list, 1), name outer\n    take a\n    halt, name inner\n  back 0\n`,
+  )
+  ok(
+    'a halt naming no loop around it is refused, naming the loops that are',
+    nowhere.some(m =>
+      m.includes(
+        '`halt, name inner` names no loop around it (the loops around it are named outer)',
+      ),
+    ),
+    nowhere.join(' | '),
+  )
 
-  const turned = refused(`load @term/base/list\n  find list\n\ntask run\n  like number\n  walk make(list, 1)\n    take a\n    turn next, name outer\n  back 0\n`)
-  ok('a turn next naming no loop around it is refused, saying none has a name', turned.some(m => m.includes('`turn next, name outer` names no loop around it, and none around it has a name')), turned.join(' | '))
+  const turned = refused(
+    `load @term/base/list\n  find list\n\ntask run\n  like number\n  walk make(list, 1)\n    take a\n    turn next, name outer\n  back 0\n`,
+  )
+  ok(
+    'a turn next naming no loop around it is refused, saying none has a name',
+    turned.some(m =>
+      m.includes(
+        '`turn next, name outer` names no loop around it, and none around it has a name',
+      ),
+    ),
+    turned.join(' | '),
+  )
 
-  const twice = refused(`load @term/base/list\n  find list\n\ntask run\n  like number\n  walk make(list, 1), name outer\n    take a\n    walk make(list, 1), name outer\n      take b\n      halt, name outer\n  back 0\n`)
-  ok('a loop named like the loop around it is refused', twice.some(m => m.includes('is named "outer" too')), twice.join(' | '))
+  const twice = refused(
+    `load @term/base/list\n  find list\n\ntask run\n  like number\n  walk make(list, 1), name outer\n    take a\n    walk make(list, 1), name outer\n      take b\n      halt, name outer\n  back 0\n`,
+  )
+  ok(
+    'a loop named like the loop around it is refused',
+    twice.some(m => m.includes('is named "outer" too')),
+    twice.join(' | '),
+  )
 
-  const outside = refused(`task run\n  like number\n  turn next, name outer\n  back 0\n`)
-  ok('a named turn next outside any loop is refused as outside a loop', outside.some(m => m.includes('only valid inside a loop')), outside.join(' | '))
+  const outside = refused(
+    `task run\n  like number\n  turn next, name outer\n  back 0\n`,
+  )
+  ok(
+    'a named turn next outside any loop is refused as outside a loop',
+    outside.some(m => m.includes('only valid inside a loop')),
+    outside.join(' | '),
+  )
 }
 
 console.log(`\nloop-name-native: ${pass} pass, ${fail} fail`)

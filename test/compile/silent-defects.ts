@@ -92,9 +92,21 @@ task use-gap
       bind width, code 4
 `)
 
-  ok('1. a bare call over bind lines emits what `call` emits', bare === long, bare)
-  ok('1. ...and passes width 4, height 3 (returns 1)', /return 1\b/.test(body(bare, 'useGap')), body(bare, 'useGap'))
-  ok('1. ...and not the values in written order (returns -1)', !/return -1\b/.test(bare), body(bare, 'useGap'))
+  ok(
+    '1. a bare call over bind lines emits what `call` emits',
+    bare === long,
+    bare,
+  )
+  ok(
+    '1. ...and passes width 4, height 3 (returns 1)',
+    /return 1\b/.test(body(bare, 'useGap')),
+    body(bare, 'useGap'),
+  )
+  ok(
+    '1. ...and not the values in written order (returns -1)',
+    !/return -1\b/.test(bare),
+    body(bare, 'useGap'),
+  )
 
   const unknown = emit(`${gap}
 task use-gap
@@ -105,7 +117,11 @@ task use-gap
       bind width, code 4
 `)
 
-  ok('1. a bind naming no parameter is refused, as under `call`', unknown.startsWith('DIAGNOSTICS') && /depth/.test(unknown), unknown)
+  ok(
+    '1. a bind naming no parameter is refused, as under `call`',
+    unknown.startsWith('DIAGNOSTICS') && /depth/.test(unknown),
+    unknown,
+  )
 }
 
 // ---- 2. a bare value word is the local of that name ----
@@ -123,8 +139,16 @@ task echo
     ${word}
 `)
 
-  ok(`2. a bare \`${word}\` with a parameter \`${word}\` returns the parameter`, new RegExp(`return ${word}\\b`).test(body(ts, 'echo')), body(ts, 'echo'))
-  ok(`2. ...and not the literal ${literal}`, !body(ts, 'echo').includes(`return ${literal}`), body(ts, 'echo'))
+  ok(
+    `2. a bare \`${word}\` with a parameter \`${word}\` returns the parameter`,
+    new RegExp(`return ${word}\\b`).test(body(ts, 'echo')),
+    body(ts, 'echo'),
+  )
+  ok(
+    `2. ...and not the literal ${literal}`,
+    !body(ts, 'echo').includes(`return ${literal}`),
+    body(ts, 'echo'),
+  )
 }
 
 {
@@ -137,7 +161,11 @@ task echo
 `)
 
   // the optimizer folds the local into the return, so the value is what shows
-  ok('2. a bare `term` with a local `term` returns the local', /return (term|"hi")$/m.test(body(local, 'echo')), body(local, 'echo'))
+  ok(
+    '2. a bare `term` with a local `term` returns the local',
+    /return (term|"hi")$/m.test(body(local, 'echo')),
+    body(local, 'echo'),
+  )
 
   const item = emit(`
 task first
@@ -151,7 +179,11 @@ task first
   send back, read found
 `)
 
-  ok('2. a bare `text` naming a walk item reads the item', /found = text\b/.test(body(item, 'first')), body(item, 'first'))
+  ok(
+    '2. a bare `text` naming a walk item reads the item',
+    /found = text\b/.test(body(item, 'first')),
+    body(item, 'first'),
+  )
 
   const none = emit(`
 task echo
@@ -162,7 +194,9 @@ task echo
 
   ok(
     '2. a bare `term` with no local of that name is refused, naming `read term`',
-    none.startsWith('DIAGNOSTICS') && none.includes('a bare `term` is not a value') && none.includes('`read term`'),
+    none.startsWith('DIAGNOSTICS') &&
+      none.includes('a bare `term` is not a value') &&
+      none.includes('`read term`'),
     none,
   )
 }
@@ -185,9 +219,21 @@ task pick
   send back, read names/{at}
 `)
 
-  ok('3. `back names/{at}` emits what `read names/{at}` emits', lean === long, body(lean, 'pick'))
-  ok('3. ...a bounds-checked read', body(lean, 'pick').includes('names[at]'), body(lean, 'pick'))
-  ok('3. ...and not `return names.`', !/return names\.\s*$/m.test(lean), body(lean, 'pick'))
+  ok(
+    '3. `back names/{at}` emits what `read names/{at}` emits',
+    lean === long,
+    body(lean, 'pick'),
+  )
+  ok(
+    '3. ...a bounds-checked read',
+    body(lean, 'pick').includes('names[at]'),
+    body(lean, 'pick'),
+  )
+  ok(
+    '3. ...and not `return names.`',
+    !/return names\.\s*$/m.test(lean),
+    body(lean, 'pick'),
+  )
 }
 
 // ---- 4. a bare `hold` under `walk test` is the body ----
@@ -214,9 +260,21 @@ task count-up
   const bare = count('hold')
   const hooked = count('hook hold')
 
-  ok('4. a bare `hold` under `walk test` emits what `hook hold` emits', bare === hooked, body(bare, 'countUp'))
-  ok('4. ...with the body in the loop', /while \(i < n\) \{\s*i = i \+ 1/.test(body(bare, 'countUp')), body(bare, 'countUp'))
-  ok('4. ...and not an empty loop', !/while \([^)]*\) \{\}/.test(bare), body(bare, 'countUp'))
+  ok(
+    '4. a bare `hold` under `walk test` emits what `hook hold` emits',
+    bare === hooked,
+    body(bare, 'countUp'),
+  )
+  ok(
+    '4. ...with the body in the loop',
+    /while \(i < n\) \{\s*i = i \+ 1/.test(body(bare, 'countUp')),
+    body(bare, 'countUp'),
+  )
+  ok(
+    '4. ...and not an empty loop',
+    !/while \([^)]*\) \{\}/.test(bare),
+    body(bare, 'countUp'),
+  )
 
   const stray = emit(`
 task spin
@@ -235,7 +293,9 @@ task spin
 
   ok(
     '4. a statement directly under `walk test` is refused, naming `hold`',
-    stray.startsWith('DIAGNOSTICS') && stray.includes('directly under a `walk test`') && stray.includes('under `hold`'),
+    stray.startsWith('DIAGNOSTICS') &&
+      stray.includes('directly under a `walk test`') &&
+      stray.includes('under `hold`'),
     stray,
   )
 
@@ -254,7 +314,11 @@ task spin
       save i, code 2
 `)
 
-  ok('4. a `hook hold` and a bare `hold` together are two bodies, refused', two.includes('has two bodies'), two)
+  ok(
+    '4. a `hook hold` and a bare `hold` together are two bodies, refused',
+    two.includes('has two bodies'),
+    two,
+  )
 }
 
 // ---- 5. `wait f(x)` as a statement ----
@@ -292,8 +356,18 @@ task log
   send back, read x
 `)
 
-  ok('5. `wait f(x)` as a statement emits what `call f / wait true` emits', lean === long, body(lean, 'log'))
-  ok('5. ...the awaited call, before the return', /await append\(target, `\$\{line\}!`\)\n\s*return /.test(body(lean, 'log')), body(lean, 'log'))
+  ok(
+    '5. `wait f(x)` as a statement emits what `call f / wait true` emits',
+    lean === long,
+    body(lean, 'log'),
+  )
+  ok(
+    '5. ...the awaited call, before the return',
+    /await append\(target, `\$\{line\}!`\)\n\s*return /.test(
+      body(lean, 'log'),
+    ),
+    body(lean, 'log'),
+  )
 
   const closure = emit(`${prelude}
 task run
@@ -307,7 +381,13 @@ task run
   wait go()
 `)
 
-  ok('5. ...and in a closure body, both lines, in order', /await append\(target, "a"\)\s*\n\s*await append\(target, "b"\)/.test(closure), closure)
+  ok(
+    '5. ...and in a closure body, both lines, in order',
+    /await append\(target, "a"\)\s*\n\s*await append\(target, "b"\)/.test(
+      closure,
+    ),
+    closure,
+  )
 
   const marker = emit(`${prelude}
 task log
@@ -319,7 +399,11 @@ task log
     wait append(target, text <b>)
 `)
 
-  ok('5. a `wait <call>` under a call is refused, not dropped', marker.includes('a `wait` under a call marks the call itself'), marker)
+  ok(
+    '5. a `wait <call>` under a call is refused, not dropped',
+    marker.includes('a `wait` under a call marks the call itself'),
+    marker,
+  )
 }
 
 // ---- 6. a task named `host` ----
@@ -346,9 +430,21 @@ task boot
   call host(routes, url)
 `)
 
-  ok('6. `host(routes, url)` as a statement emits what `call host` emits', paren === long, body(paren, 'boot'))
-  ok('6. ...the call', /host\(routes, url\)|routes\.push\(url\)/.test(body(paren, 'boot')), body(paren, 'boot'))
-  ok('6. ...and the body is not empty', !/export function boot\([^)]*\): [a-z]+ \{\}/.test(paren), body(paren, 'boot'))
+  ok(
+    '6. `host(routes, url)` as a statement emits what `call host` emits',
+    paren === long,
+    body(paren, 'boot'),
+  )
+  ok(
+    '6. ...the call',
+    /host\(routes, url\)|routes\.push\(url\)/.test(body(paren, 'boot')),
+    body(paren, 'boot'),
+  )
+  ok(
+    '6. ...and the body is not empty',
+    !/export function boot\([^)]*\): [a-z]+ \{\}/.test(paren),
+    body(paren, 'boot'),
+  )
 
   const stacked = emit(`${host}
 task boot
@@ -361,7 +457,9 @@ task boot
 
   ok(
     '6. a stacked `host` over a parameter is refused, naming `host(url, ...)` and `call host`',
-    stacked.includes('`host url` declares a constant named `url`, and `url` is already bound here') && stacked.includes('`call host`'),
+    stacked.includes(
+      '`host url` declares a constant named `url`, and `url` is already bound here',
+    ) && stacked.includes('`call host`'),
     stacked,
   )
 
@@ -373,7 +471,9 @@ task boot
 
   ok(
     '6. a constant in a body, in a file with a task named `host`, is refused as two readings',
-    constant.includes('this file has a task named `host`, so `host limit` reads both as a constant and as a call'),
+    constant.includes(
+      'this file has a task named `host`, so `host limit` reads both as a constant and as a call',
+    ),
     constant,
   )
 
@@ -388,7 +488,11 @@ task area
 `)
 
   // folded by the optimizer to the product, which is the constant having been read
-  ok('6. a `host` constant in a body still builds where no task is named `host`', /return 100\b/.test(body(plain, 'area')), plain)
+  ok(
+    '6. a `host` constant in a body still builds where no task is named `host`',
+    /return 100\b/.test(body(plain, 'area')),
+    plain,
+  )
 }
 
 // ---- 7. a bare call under a view's `seed click` is an event handler ----
@@ -427,11 +531,19 @@ view value
       text <Subscribe>
 `
   const parsed = parse({ file: '/gate/code/view.tree', text: source })
-  const milled = parsed.ok ? mill(parsed.tree, '/gate/code/view.tree') : undefined
+  const milled = parsed.ok
+    ? mill(parsed.tree, '/gate/code/view.tree')
+    : undefined
   const views = milled?.ok
-    ? milled.program.filter((s): s is Extract<typeof s, { form: 'view' }> => s.form === 'view')
+    ? milled.program.filter(
+        (s): s is Extract<typeof s, { form: 'view' }> =>
+          s.form === 'view',
+      )
     : []
-  const eventOf = (name: string, attribute: string): boolean | undefined => {
+  const eventOf = (
+    name: string,
+    attribute: string,
+  ): boolean | undefined => {
     const view = views.find(v => v.name === name)
     const element = view?.body[0]
 
@@ -440,15 +552,38 @@ view value
       : undefined
   }
 
-  ok('7. `call submit-email` under `seed click` is a handler', eventOf('called', 'click') === true)
-  ok('7. a stacked bare `submit-email` is a handler too', eventOf('stacked', 'click') === true, String(eventOf('stacked', 'click')))
-  ok('7. `submit-email(x, y)` is a handler too', eventOf('inline', 'click') === true, String(eventOf('inline', 'click')))
-  ok('7. a literal attribute is still not a handler', eventOf('value', 'title') === false, String(eventOf('value', 'title')))
+  ok(
+    '7. `call submit-email` under `seed click` is a handler',
+    eventOf('called', 'click') === true,
+  )
+  ok(
+    '7. a stacked bare `submit-email` is a handler too',
+    eventOf('stacked', 'click') === true,
+    String(eventOf('stacked', 'click')),
+  )
+  ok(
+    '7. `submit-email(x, y)` is a handler too',
+    eventOf('inline', 'click') === true,
+    String(eventOf('inline', 'click')),
+  )
+  ok(
+    '7. a literal attribute is still not a handler',
+    eventOf('value', 'title') === false,
+    String(eventOf('value', 'title')),
+  )
 
   const ts = emit(source)
 
-  ok('7. the bare call emits `attachEvent`, as `call` does', (ts.match(/attachEvent\(/g) ?? []).length === 3, ts.slice(0, 600))
-  ok('7. ...and binds no click attribute', !/bindAttribute\([^,]+, "click"/.test(ts), ts.slice(0, 600))
+  ok(
+    '7. the bare call emits `attachEvent`, as `call` does',
+    (ts.match(/attachEvent\(/g) ?? []).length === 3,
+    ts.slice(0, 600),
+  )
+  ok(
+    '7. ...and binds no click attribute',
+    !/bindAttribute\([^,]+, "click"/.test(ts),
+    ts.slice(0, 600),
+  )
 }
 
 // ---- 8. a grammar's `mine char, <.>` keeps its check ----
@@ -469,35 +604,63 @@ mine digits
       bind head, <9>
 `
   const reader = (char: string): string => {
-    const parsed = parse({ file: '/gate/code/mine.tree', text: grammar(char) })
+    const parsed = parse({
+      file: '/gate/code/mine.tree',
+      text: grammar(char),
+    })
 
     return parsed.ok
-      ? compileFeedMine(readFeedMineGrammar(parsed.tree), 'text', '@term/mill/feed')
+      ? compileFeedMine(
+          readFeedMineGrammar(parsed.tree),
+          'text',
+          '@term/mill/feed',
+        )
       : 'PARSE FAILED'
   }
 
   const long = reader('mine char, text <.>')
 
-  for (const spelling of ['mine char, <.>', 'mine char, code 46', 'mine char, 46']) {
+  for (const spelling of [
+    'mine char, <.>',
+    'mine char, code 46',
+    'mine char, 46',
+  ]) {
     const short = reader(spelling)
 
-    ok(`8. \`${spelling}\` generates the reader \`mine char, text <.>\` does`, short === long)
-    ok(`8. ...which checks for character 46`, short.includes('code 46)') && short.includes('expected "." at position'), short.slice(0, 400))
+    ok(
+      `8. \`${spelling}\` generates the reader \`mine char, text <.>\` does`,
+      short === long,
+    )
+    ok(
+      `8. ...which checks for character 46`,
+      short.includes('code 46)') &&
+        short.includes('expected "." at position'),
+      short.slice(0, 400),
+    )
   }
 
   const faults = (char: string): string[] => {
-    const parsed = parse({ file: '/gate/code/mine.tree', text: grammar(char) })
+    const parsed = parse({
+      file: '/gate/code/mine.tree',
+      text: grammar(char),
+    })
 
     return parsed.ok ? feedMineFaults(parsed.tree) : ['PARSE FAILED']
   }
 
-  ok('8. a char with its literal has no fault', faults('mine char, <.>').length === 0, faults('mine char, <.>').join(' | '))
+  ok(
+    '8. a char with its literal has no fault',
+    faults('mine char, <.>').length === 0,
+    faults('mine char, <.>').join(' | '),
+  )
 
   const empty = faults('mine char')
 
   ok(
     '8. a `mine char` naming no character is a fault, with the line and the spelling to write',
-    empty.length === 1 && empty[0]!.includes('at line 5') && empty[0]!.includes('`mine char, <.>`'),
+    empty.length === 1 &&
+      empty[0]!.includes('at line 5') &&
+      empty[0]!.includes('`mine char, <.>`'),
     empty.join(' | '),
   )
 }

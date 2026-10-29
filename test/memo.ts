@@ -11,7 +11,14 @@
 // Stored under .base/@term/code/memo/<suite>.json, rebuildable by running.
 
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 
 const TERM = join(import.meta.dirname, '..')
@@ -34,7 +41,13 @@ function codeHash(dirs: string[]): string {
     }
 
     for (const entry of entries) {
-      if (entry === 'node_modules' || entry === 'host' || entry === '.base' || entry === 'tmp' || entry.startsWith('.')) {
+      if (
+        entry === 'node_modules' ||
+        entry === 'host' ||
+        entry === '.base' ||
+        entry === 'tmp' ||
+        entry.startsWith('.')
+      ) {
         continue
       }
 
@@ -72,13 +85,16 @@ export function makeMemo(suite: string, code: string[]): Memo {
   const dir = join(TERM, '.base/@term/code/memo')
   const file = join(dir, `${suite}.json`)
   const salt = codeHash(code)
-  const keyOf = (item: string, input: string | Buffer): string => sha1(`${salt}\0${item}\0${sha1(input)}`)
+  const keyOf = (item: string, input: string | Buffer): string =>
+    sha1(`${salt}\0${item}\0${sha1(input)}`)
 
   let known = new Set<string>()
 
   if (!off && existsSync(file)) {
     try {
-      known = new Set(JSON.parse(readFileSync(file, 'utf8')) as string[])
+      known = new Set(
+        JSON.parse(readFileSync(file, 'utf8')) as string[],
+      )
     } catch {
       known = new Set()
     }

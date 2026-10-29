@@ -11,8 +11,13 @@ export type Workspace = DeckManifest & { dir: string }
 // the folder is a `like maybe` field with `need false`, stored bare (self-host traps T002)
 type PortWorkspace = { manifest: Record<string, unknown>; dir: string }
 
-export async function findWorkspaces(input: { root: string }): Promise<Map<string, Workspace>> {
-  const found = (await refused(() => port.findWorkspaces(input.root, GRAMMARS))) as Map<string, PortWorkspace>
+export async function findWorkspaces(input: {
+  root: string
+}): Promise<Map<string, Workspace>> {
+  const found = (await refused(() =>
+    port.findWorkspaces(input.root, GRAMMARS),
+  )) as Map<string, PortWorkspace>
+
   const out = new Map<string, Workspace>()
 
   for (const [name, deck] of found) {
@@ -22,14 +27,28 @@ export async function findWorkspaces(input: { root: string }): Promise<Map<strin
   return out
 }
 
-export async function findProjectRoot(input: { dir: string }): Promise<string | undefined> {
-  const found = (await port.findProjectRoot(input.dir)) as { form: string; value?: string }
+export async function findProjectRoot(input: {
+  dir: string
+}): Promise<string | undefined> {
+  const found = (await port.findProjectRoot(input.dir)) as {
+    form: string
+    value?: string
+  }
 
   return found.form === 'some' ? found.value : undefined
 }
 
-export function topologicalSort(input: { workspaces: Map<string, DeckManifest> }): string[] {
+export function topologicalSort(input: {
+  workspaces: Map<string, DeckManifest>
+}): string[] {
   // the sort reads a manifest's links' names alone, so a caller's partial manifest (the suite's fixtures carry no
   // version) passes through as it is
-  return port.topologicalSort(new Map([...input.workspaces].map(([name, manifest]) => [name, manifest as never]))) as string[]
+  return port.topologicalSort(
+    new Map(
+      [...input.workspaces].map(([name, manifest]) => [
+        name,
+        manifest as never,
+      ]),
+    ),
+  )
 }

@@ -23,7 +23,10 @@ function ok(name: string, holds: boolean, detail = ''): void {
 }
 
 // the tasks that reuse, and the TypeScript, of a program built from the base and `use`
-function reuse(use: string, extra = ''): { tasks: string[]; ts: string } {
+function reuse(
+  use: string,
+  extra = '',
+): { tasks: string[]; ts: string } {
   const text = `load @term/base/list
   find list
   find push
@@ -80,21 +83,39 @@ task use
 ${use}
   send back, read dots/0/x
 `
-  const built = compile({ file: 'main.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!), env: 'node', entryPoints: ['use'] })
+  const built = compile(
+    { file: 'main.tree', text },
+    {
+      resolve: withNativeEnv('node', stdlibResolver()!),
+      env: 'node',
+      entryPoints: ['use'],
+    },
+  )
 
   if (!built.ok) {
     throw new Error(built.diagnostics.map(d => d.message).join(' | '))
   }
 
-  return { tasks: [...recordReuse(built.program).tasks.keys()], ts: built.typescript }
+  return {
+    tasks: [...recordReuse(built.program).tasks.keys()],
+    ts: built.typescript,
+  }
 }
 
 // 1. the slot written with the task's result in the same statement
 const direct = reuse(`  save dots/0
     call move
       read dots/0`)
-ok('a slot written with the result of a call given that slot reuses', direct.tasks.join() === 'move', direct.tasks.join())
-ok('TypeScript assigns the fields on the object and answers it', /moveReuse\(/.test(direct.ts) && /d\.x = __reuse/.test(direct.ts), direct.ts.slice(direct.ts.indexOf('function moveReuse')))
+ok(
+  'a slot written with the result of a call given that slot reuses',
+  direct.tasks.join() === 'move',
+  direct.tasks.join(),
+)
+ok(
+  'TypeScript assigns the fields on the object and answers it',
+  /moveReuse\(/.test(direct.ts) && /d\.x = __reuse/.test(direct.ts),
+  direct.ts.slice(direct.ts.indexOf('function moveReuse')),
+)
 
 // 2. through a carrier, written back at once, the carrier read after only for its other field
 const carried = reuse(`  host s
@@ -108,7 +129,12 @@ const carried = reuse(`  host s
       save dots/0
         call move
           read dots/0`)
-ok('a carrier written back at once reuses, and the flag is answered alone', carried.tasks.includes('stride') && /function strideReuse\(d: Dot\): boolean/.test(carried.ts), carried.tasks.join())
+ok(
+  'a carrier written back at once reuses, and the flag is answered alone',
+  carried.tasks.includes('stride') &&
+    /function strideReuse\(d: Dot\): boolean/.test(carried.ts),
+  carried.tasks.join(),
+)
 
 // 3. a local read from the slot, alive across the call: the old value must stay
 const kept = reuse(`  save before, read dots/0
@@ -122,7 +148,11 @@ const kept = reuse(`  save before, read dots/0
           read dots/0/x
           read before/x
       bind v, code 0`)
-ok('a local holding the slot\'s object refuses reuse of its form', kept.tasks.length === 0, kept.tasks.join())
+ok(
+  "a local holding the slot's object refuses reuse of its form",
+  kept.tasks.length === 0,
+  kept.tasks.join(),
+)
 
 // 4. a walk over the list: its item is a second name for each object
 const walked = reuse(`  walk list, read dots
@@ -131,7 +161,11 @@ const walked = reuse(`  walk list, read dots
       save dots/0
         call move
           read dots/0`)
-ok('a walk over a list of the form refuses reuse', walked.tasks.length === 0, walked.tasks.join())
+ok(
+  'a walk over a list of the form refuses reuse',
+  walked.tasks.length === 0,
+  walked.tasks.join(),
+)
 
 // 5. the result written to ANOTHER slot: the old object stays where it was
 const other = reuse(`  call push
@@ -143,7 +177,11 @@ const other = reuse(`  call push
   save dots/1
     call move
       read dots/0`)
-ok('a result written to another slot is not a reuse site', other.tasks.length === 0, other.tasks.join())
+ok(
+  'a result written to another slot is not a reuse site',
+  other.tasks.length === 0,
+  other.tasks.join(),
+)
 
 // 6. a task that passes its record on, rather than only reading its fields
 const passes = reuse(
@@ -158,7 +196,11 @@ const passes = reuse(
       read d
 `,
 )
-ok('a task that passes its record on does not reuse it', !passes.tasks.includes('relay'), passes.tasks.join())
+ok(
+  'a task that passes its record on does not reuse it',
+  !passes.tasks.includes('relay'),
+  passes.tasks.join(),
+)
 
 // 7. the carrier read after for the record it carries: that would be the reused object again
 const reread = reuse(`  host s
@@ -169,7 +211,11 @@ const reread = reuse(`  host s
     make dot
       bind x, read s/dot/x
       bind v, code 0`)
-ok('a carrier read again for its record is not a reuse site', reread.tasks.length === 0, reread.tasks.join())
+ok(
+  'a carrier read again for its record is not a reuse site',
+  reread.tasks.length === 0,
+  reread.tasks.join(),
+)
 
 console.log(`\nreuse: ${pass} pass, ${fail} fail`)
 

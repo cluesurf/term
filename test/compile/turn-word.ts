@@ -76,16 +76,31 @@ for (const word of ['turn done', 'turn halt', 'turn stop']) {
 
   ok(
     `\`${word}\` is refused at its line, naming \`turn next\` and a bare \`halt\``,
-    messages.some(m => m.includes(`\`turn ${said}\` is not a statement`) && m.includes('`turn next`') && m.includes('a bare `halt`')),
+    messages.some(
+      m =>
+        m.includes(`\`turn ${said}\` is not a statement`) &&
+        m.includes('`turn next`') &&
+        m.includes('a bare `halt`'),
+    ),
     messages.join(' | ') || 'it built',
   )
 }
 
-ok('`turn next` still builds', refused('halt').length === 0, refused('halt').join(' | '))
+ok(
+  '`turn next` still builds',
+  refused('halt').length === 0,
+  refused('halt').join(' | '),
+)
 
 // the first number above 2 is 5 (the `halt` leaves the walk there), and two numbers are 2 or less
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: searchWith('halt'), resolve: env => projectResolver(process.cwd(), env), dir, name: 'turns' })
+  const ran = runOn({
+    backend,
+    program: searchWith('halt'),
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'turns',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
@@ -95,7 +110,9 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
   ok(
     `${backend}: a bare \`halt\` leaves the walk at the match and \`turn next\` skips a turn`,
     ran.form === 'ran' && ran.output === '5 2',
-    ran.form === 'ran' ? `got ${JSON.stringify(ran.output)}` : `${ran.stage}: ${ran.reason}`,
+    ran.form === 'ran'
+      ? `got ${JSON.stringify(ran.output)}`
+      : `${ran.stage}: ${ran.reason}`,
   )
 }
 

@@ -6,10 +6,7 @@
 
 import { parse } from '@term/make/code/parser/tree'
 import { mill } from '@term/make/code/compile/mill'
-import type {
-  Program,
-  Statement,
-} from '@term/make/code/compile/node'
+import type { Program, Statement } from '@term/make/code/compile/node'
 
 let pass = 0
 let fail = 0
@@ -27,13 +24,15 @@ function ok(name: string, cond: boolean, info = ''): void {
 function lower(text: string, role?: string): Program {
   const parsed = parse({ file: 't.tree', text })
 
-  if (!parsed.ok)
-    {throw new Error('parse: ' + JSON.stringify(parsed.diagnostics))}
+  if (!parsed.ok) {
+    throw new Error('parse: ' + JSON.stringify(parsed.diagnostics))
+  }
 
   const milled = mill(parsed.tree, 't.tree', role)
 
-  if (!milled.ok)
-    {throw new Error('mill: ' + JSON.stringify(milled.diagnostics))}
+  if (!milled.ok) {
+    throw new Error('mill: ' + JSON.stringify(milled.diagnostics))
+  }
 
   return milled.program
 }
@@ -130,17 +129,36 @@ function main(): void {
     // mill is Term since item term-self-host-001-0280, which writes an absent maybe as no key at all, so the flag the
     // original wrote for exactly this question is what is read: decision 034 section 2, absent and default are one.)
     const kindOf = (text: string, role?: string): string => {
-      const route = (lower(text, role).find(
-        (s): s is Extract<Statement, { form: 'dock' }> => s.form === 'dock',
-      ) as { route?: Record<string, unknown> } | undefined)?.route
+      const route = (
+        lower(text, role).find(
+          (s): s is Extract<Statement, { form: 'dock' }> =>
+            s.form === 'dock',
+        ) as { route?: Record<string, unknown> } | undefined
+      )?.route
 
-      return route ? (route.page === true ? 'route' : 'command') : 'none'
+      return route
+        ? route.page === true
+          ? 'route'
+          : 'command'
+        : 'none'
     }
 
-    ok('with no role, a path-shaped hook is a route', kindOf(PATHLIKE) === 'route')
-    ok('with no role, a word-shaped hook is a command', kindOf(WORDLIKE) === 'command')
-    ok('`role call` makes a path-shaped hook a COMMAND', kindOf(PATHLIKE, 'call') === 'command')
-    ok('`role site` makes a word-shaped hook a ROUTE', kindOf(WORDLIKE, 'site') === 'route')
+    ok(
+      'with no role, a path-shaped hook is a route',
+      kindOf(PATHLIKE) === 'route',
+    )
+    ok(
+      'with no role, a word-shaped hook is a command',
+      kindOf(WORDLIKE) === 'command',
+    )
+    ok(
+      '`role call` makes a path-shaped hook a COMMAND',
+      kindOf(PATHLIKE, 'call') === 'command',
+    )
+    ok(
+      '`role site` makes a word-shaped hook a ROUTE',
+      kindOf(WORDLIKE, 'site') === 'route',
+    )
   }
 
   // A COMMAND'S HANDLER, both spellings. `task <impl>` names it and passes the takes in order (the zone console
@@ -152,15 +170,33 @@ function main(): void {
     const withCall = lower(
       `hook one\n  take name\n    like text\n  call run-it\n    bind name, read name\n`,
     )
-    const withTask = lower(`hook two\n  take name\n    like text\n  task run-it\n`)
-    const routeOf = (program: Statement[]): { calls: { name: string; args: unknown[] }[] } | undefined =>
-      (program.find((s): s is Extract<Statement, { form: 'dock' }> => s.form === 'dock') as
-        | { route: { calls: { name: string; args: unknown[] }[] } }
-        | undefined)?.route
+    const withTask = lower(
+      `hook two\n  take name\n    like text\n  task run-it\n`,
+    )
+    const routeOf = (
+      program: Statement[],
+    ): { calls: { name: string; args: unknown[] }[] } | undefined =>
+      (
+        program.find(
+          (s): s is Extract<Statement, { form: 'dock' }> =>
+            s.form === 'dock',
+        ) as
+          | { route: { calls: { name: string; args: unknown[] }[] } }
+          | undefined
+      )?.route
 
-    ok('a `call` handler is collected', routeOf(withCall)?.calls[0]?.name === 'run-it')
-    ok('and its bound arguments come with it', (routeOf(withCall)?.calls[0]?.args.length ?? 0) === 1)
-    ok('a `task` handler is collected', routeOf(withTask)?.calls[0]?.name === 'run-it')
+    ok(
+      'a `call` handler is collected',
+      routeOf(withCall)?.calls[0]?.name === 'run-it',
+    )
+    ok(
+      'and its bound arguments come with it',
+      (routeOf(withCall)?.calls[0]?.args.length ?? 0) === 1,
+    )
+    ok(
+      'a `task` handler is collected',
+      routeOf(withTask)?.calls[0]?.name === 'run-it',
+    )
   }
 
   // a CLI command tree in the `hook` DSL lowers to a route: command name, its takes, the bound implementation task,

@@ -11,14 +11,22 @@
 
 import { runDir } from './run-dir'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import { nativePrelude } from '@term/make/code/compile/native'
 import type { NativeEnv } from '@term/make/code/compile/native'
 import { emitSwift } from '@term/make/code/compile/swift'
-import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
+import {
+  emitKotlin,
+  hoistKotlinImports,
+} from '@term/make/code/compile/kotlin'
 import { emitRust } from '@term/make/code/compile/rust'
 import { projectResolver } from '@term/call/code/make'
 import type { Resolver } from '@term/make/code/compile/load'
@@ -91,7 +99,8 @@ task run
 
 // The same, written in the `view` DSL rather than as render calls, so the view lowering runs on each backend too,
 // and with a `fork` the renderer must swap live: `low` at five clicks, `high` past ten. Two snapshots, joined by `|`.
-const DSL_WANT = '<main><button>5</button><span>low</span></main>|<main><button>11</button><span>high</span></main>'
+const DSL_WANT =
+  '<main><button>5</button><span>low</span></main>|<main><button>11</button><span>high</span></main>'
 const DSL_PROGRAM = `load @term/site/code/view/reactive
   find make-signal
   find read-signal
@@ -250,7 +259,8 @@ task run
 // A device trait as a signal (native-dom-0012): a view shows the colour scheme, the platform changes it, and only the
 // node that read it is rewritten. The change comes through the memory host's `change-trait`, the way a platform's
 // notification would reach the watcher.
-const DEVICE_WANT = '<main><span>light</span></main>|<main><span>dark</span></main>'
+const DEVICE_WANT =
+  '<main><span>light</span></main>|<main><span>dark</span></main>'
 const DEVICE_PROGRAM = `load @term/site/code/view/device
   find device-trait
 
@@ -566,7 +576,13 @@ function pinned(env: NativeEnv): Resolver {
   const base = projectResolver(ROOT, env)
 
   return (importPath, fromFile) =>
-    base(importPath.replace(/native\/\{platform\}\/(dom|device|view)$/, 'native/memory/$1'), fromFile)
+    base(
+      importPath.replace(
+        /native\/\{platform\}\/(dom|device|view)$/,
+        'native/memory/$1',
+      ),
+      fromFile,
+    )
 }
 
 const readRuntime = (file: string): string | undefined =>
@@ -574,15 +590,34 @@ const readRuntime = (file: string): string | undefined =>
 
 // `portable`: the case reaches the memory host only for `create-element` and `serialize`, which every host has, so it
 // also runs on the server's DOM host (reactive-bridge-0004)
-type Case = { name: string; program: string; want: string; portable?: boolean }
+type Case = {
+  name: string
+  program: string
+  want: string
+  portable?: boolean
+}
 
 const CASES: Case[] = [
   { name: 'render calls', program: PROGRAM, want: WANT },
   { name: 'view dsl', program: DSL_PROGRAM, want: DSL_WANT },
-  { name: 'view call statement', program: CALL_PROGRAM, want: CALL_WANT },
+  {
+    name: 'view call statement',
+    program: CALL_PROGRAM,
+    want: CALL_WANT,
+  },
   { name: 'device trait', program: DEVICE_PROGRAM, want: DEVICE_WANT },
-  { name: 'owned branch', program: OWNED_PROGRAM, want: OWNED_WANT, portable: true },
-  { name: 'owned items', program: LIST_PROGRAM, want: LIST_WANT, portable: true },
+  {
+    name: 'owned branch',
+    program: OWNED_PROGRAM,
+    want: OWNED_WANT,
+    portable: true,
+  },
+  {
+    name: 'owned items',
+    program: LIST_PROGRAM,
+    want: LIST_WANT,
+    portable: true,
+  },
 ]
 
 const dir = runDir('term-render-native-')
@@ -590,16 +625,28 @@ const dir = runDir('term-render-native-')
 function build(env: NativeEnv, one: Case) {
   const entry = join(dir, `${one.name.replace(/ /g, '-')}.tree`)
   writeFileSync(entry, one.program)
-  const result = compile({ file: entry, text: one.program }, { resolve: pinned(env), env })
+  const result = compile(
+    { file: entry, text: one.program },
+    { resolve: pinned(env), env },
+  )
 
   if (!result.ok) {
-    throw new Error(`${env}: ${result.diagnostics.slice(0, 4).map(d => d.message).join(' | ')}`)
+    throw new Error(
+      `${env}: ${result.diagnostics
+        .slice(0, 4)
+        .map(d => d.message)
+        .join(' | ')}`,
+    )
   }
 
   return result
 }
 
-function judge(label: string, one: Case, run: { status: number | null; stdout: string; stderr: string }): void {
+function judge(
+  label: string,
+  one: Case,
+  run: { status: number | null; stdout: string; stderr: string },
+): void {
   ok(
     `${label} (${one.name}): renders ${one.want}`,
     run.status === 0 && run.stdout.trim() === one.want,
@@ -617,8 +664,14 @@ function compiles(label: string, args: string[]): boolean {
     // the errors, not the warnings in front of them
     const text = String((e as { stderr?: Buffer }).stderr ?? e)
     // `error:` (swiftc), `e: ` (kotlinc), `error[E0308]:` (rustc), and rustc's ` --> file:line` under each
-    const errors = text.split('\n').filter(line => /error:|^e: |^error\[|^\s+--> /.test(line))
-    ok(`${label}: builds`, false, (errors.length > 0 ? errors.join('\n') : text).slice(0, 1600))
+    const errors = text
+      .split('\n')
+      .filter(line => /error:|^e: |^error\[|^\s+--> /.test(line))
+    ok(
+      `${label}: builds`,
+      false,
+      (errors.length > 0 ? errors.join('\n') : text).slice(0, 1600),
+    )
 
     return false
   }
@@ -626,10 +679,22 @@ function compiles(label: string, args: string[]): boolean {
 
 function runTypeScript(one: Case): void {
   const result = build('node', one)
-  const prelude = nativePrelude(result.program, 'node', readRuntime, result.typescript)
+  const prelude = nativePrelude(
+    result.program,
+    'node',
+    readRuntime,
+    result.typescript,
+  )
   const file = join(dir, `${one.name.replace(/ /g, '-')}.ts`)
-  writeFileSync(file, `${prelude}\n${result.typescript}\nconsole.log(run())\n`)
-  judge('typescript', one, spawnSync('npx', ['tsx', file], { encoding: 'utf8' }))
+  writeFileSync(
+    file,
+    `${prelude}\n${result.typescript}\nconsole.log(run())\n`,
+  )
+  judge(
+    'typescript',
+    one,
+    spawnSync('npx', ['tsx', file], { encoding: 'utf8' }),
+  )
 }
 
 function runSwift(one: Case): void {
@@ -639,11 +704,28 @@ function runSwift(one: Case): void {
 
   const result = build('swift', one)
   const swift = emitSwift(result.program)
-  const prelude = nativePrelude(result.program, 'swift', readRuntime, swift)
+  const prelude = nativePrelude(
+    result.program,
+    'swift',
+    readRuntime,
+    swift,
+  )
   const stem = join(dir, `${one.name.replace(/ /g, '-')}-swift`)
-  writeFileSync(`${stem}.swift`, ['import Foundation', prelude, swift, 'print(run())', ''].join('\n'))
+  writeFileSync(
+    `${stem}.swift`,
+    ['import Foundation', prelude, swift, 'print(run())', ''].join(
+      '\n',
+    ),
+  )
 
-  if (compiles(`swift (${one.name})`, ['swiftc', '-o', stem, `${stem}.swift`])) {
+  if (
+    compiles(`swift (${one.name})`, [
+      'swiftc',
+      '-o',
+      stem,
+      `${stem}.swift`,
+    ])
+  ) {
     judge('swift', one, spawnSync(stem, [], { encoding: 'utf8' }))
   }
 }
@@ -655,12 +737,33 @@ function runKotlin(one: Case): void {
 
   const result = build('kotlin', one)
   const kotlin = emitKotlin(result.program)
-  const prelude = nativePrelude(result.program, 'kotlin', readRuntime, kotlin)
+  const prelude = nativePrelude(
+    result.program,
+    'kotlin',
+    readRuntime,
+    kotlin,
+  )
   const stem = join(dir, `${one.name.replace(/ /g, '-')}-kotlin`)
-  writeFileSync(`${stem}.kt`, `${hoistKotlinImports([prelude, kotlin, 'fun main() { println(run()) }'].join('\n'))}\n`)
+  writeFileSync(
+    `${stem}.kt`,
+    `${hoistKotlinImports([prelude, kotlin, 'fun main() { println(run()) }'].join('\n'))}\n`,
+  )
 
-  if (compiles(`kotlin (${one.name})`, ['kotlinc', `${stem}.kt`, '-include-runtime', '-nowarn', '-d', `${stem}.jar`])) {
-    judge('kotlin', one, spawnSync('java', ['-jar', `${stem}.jar`], { encoding: 'utf8' }))
+  if (
+    compiles(`kotlin (${one.name})`, [
+      'kotlinc',
+      `${stem}.kt`,
+      '-include-runtime',
+      '-nowarn',
+      '-d',
+      `${stem}.jar`,
+    ])
+  ) {
+    judge(
+      'kotlin',
+      one,
+      spawnSync('java', ['-jar', `${stem}.jar`], { encoding: 'utf8' }),
+    )
   }
 }
 
@@ -673,11 +776,30 @@ function runRust(one: Case): void {
 
   const result = build('rust', one)
   const rust = emitRust(result.program)
-  const prelude = nativePrelude(result.program, 'rust', readRuntime, rust)
+  const prelude = nativePrelude(
+    result.program,
+    'rust',
+    readRuntime,
+    rust,
+  )
   const stem = join(dir, `${one.name.replace(/ /g, '-')}-rust`)
-  writeFileSync(`${stem}.rs`, [prelude, rust, 'fn main() { println!("{}", run()); }', ''].join('\n'))
+  writeFileSync(
+    `${stem}.rs`,
+    [prelude, rust, 'fn main() { println!("{}", run()); }', ''].join(
+      '\n',
+    ),
+  )
 
-  if (compiles(`rust (${one.name})`, ['rustc', '-A', 'warnings', '-o', stem, `${stem}.rs`])) {
+  if (
+    compiles(`rust (${one.name})`, [
+      'rustc',
+      '-A',
+      'warnings',
+      '-o',
+      stem,
+      `${stem}.rs`,
+    ])
+  ) {
     judge('rust', one, spawnSync(stem, [], { encoding: 'utf8' }))
   }
 }
@@ -690,39 +812,73 @@ function runDom(one: Case): void {
     return
   }
 
-  const program = one.program.replace('@term/site/code/dom/native/memory/dom', '@term/site/code/dom/dom')
+  const program = one.program.replace(
+    '@term/site/code/dom/native/memory/dom',
+    '@term/site/code/dom/dom',
+  )
   const entry = join(dir, `${one.name.replace(/ /g, '-')}-dom.tree`)
   writeFileSync(entry, program)
-  const result = compile({ file: entry, text: program }, { resolve: projectResolver(ROOT, 'node'), env: 'node' })
+  const result = compile(
+    { file: entry, text: program },
+    { resolve: projectResolver(ROOT, 'node'), env: 'node' },
+  )
 
   if (!result.ok) {
-    throw new Error(`dom: ${result.diagnostics.slice(0, 4).map(d => d.message).join(' | ')}`)
+    throw new Error(
+      `dom: ${result.diagnostics
+        .slice(0, 4)
+        .map(d => d.message)
+        .join(' | ')}`,
+    )
   }
 
-  const prelude = nativePrelude(result.program, 'node', readRuntime, result.typescript)
+  const prelude = nativePrelude(
+    result.program,
+    'node',
+    readRuntime,
+    result.typescript,
+  )
   const file = join(dir, `${one.name.replace(/ /g, '-')}-dom.ts`)
-  writeFileSync(file, `${prelude}\n${result.typescript}\nconsole.log(run())\n`)
+  writeFileSync(
+    file,
+    `${prelude}\n${result.typescript}\nconsole.log(run())\n`,
+  )
   const ran = spawnSync('npx', ['tsx', file], { encoding: 'utf8' })
   // the SSR serializer indents an element that holds elements, a line and two spaces per level; the memory host
   // writes none. That is layout of the HTML text, not of the tree, so it is taken out before the trees are compared
-  judge('server dom', one, { ...ran, stdout: ran.stdout.replace(/>\n *</g, '><') })
+  judge('server dom', one, {
+    ...ran,
+    stdout: ran.stdout.replace(/>\n *</g, '><'),
+  })
 }
 
 const only = process.env.RN_ONLY ?? ''
 
 for (const one of CASES) {
-  for (const [name, run] of [['typescript', runTypeScript], ['dom', runDom], ['swift', runSwift], ['kotlin', runKotlin], ['rust', runRust]] as const) {
+  for (const [name, run] of [
+    ['typescript', runTypeScript],
+    ['dom', runDom],
+    ['swift', runSwift],
+    ['kotlin', runKotlin],
+    ['rust', runRust],
+  ] as const) {
     if (!only || only === name) {
       try {
         run(one)
       } catch (e) {
-        ok(`${name} (${one.name}): compiles`, false, String(e).slice(0, 800))
+        ok(
+          `${name} (${one.name}): compiles`,
+          false,
+          String(e).slice(0, 800),
+        )
       }
     }
   }
 }
 
-console.log(`\nrender-native: ${pass} pass, ${fail} fail, ${skip} skipped`)
+console.log(
+  `\nrender-native: ${pass} pass, ${fail} fail, ${skip} skipped`,
+)
 
 if (fail > 0) {
   process.exit(1)

@@ -20,7 +20,17 @@
 
 import path from 'path'
 import os from 'os'
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, symlinkSync, writeFileSync } from 'fs'
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmdirSync,
+  symlinkSync,
+  writeFileSync,
+} from 'fs'
 import * as ignore from '@term/call/code/home-ignore'
 
 // the directory under `.base`, the toolchain package's own name
@@ -37,7 +47,8 @@ export const LEGACY_HOME = 'term'
 
 // Matches a path inside either name the folder has had, for a reader looking for a marker in a command line or a
 // file list (a boot server an older `term` started runs from the old one)
-export const ANY_HOME = /[\\/]\.base[\\/]@(?:term[\\/]code|cluesurf[\\/]term)[\\/]/
+export const ANY_HOME =
+  /[\\/]\.base[\\/]@(?:term[\\/]code|cluesurf[\\/]term)[\\/]/
 
 // `<root>/.base/@term/code/<...parts>`
 export function projectHome(root: string, ...parts: string[]): string {
@@ -45,7 +56,10 @@ export function projectHome(root: string, ...parts: string[]): string {
 }
 
 // the same path as it was before 2026-08-30, for a fallback read
-export function legacyProjectHome(root: string, ...parts: string[]): string {
+export function legacyProjectHome(
+  root: string,
+  ...parts: string[]
+): string {
   return path.join(root, '.base', LEGACY_HOME, ...parts)
 }
 
@@ -125,12 +139,15 @@ export function settle(base: string, project?: string): string {
 
   const current = path.join(base, HOME)
   const previous = path.join(base, PREVIOUS_HOME)
+
   let home = current
 
   if (isFolder(previous)) {
     // the usual case, nothing new yet: one rename. Both there means something wrote the new folder before this ran
     // (the compiler's own scratch, an install by @term/deck), and the old one is merged into it entry by entry
-    const moved = existsSync(current) ? mergeHome({ from: previous, to: current }) : moveHome({ from: previous, to: current })
+    const moved = existsSync(current)
+      ? mergeHome({ from: previous, to: current })
+      : moveHome({ from: previous, to: current })
 
     home = moved || existsSync(current) ? current : previous
 
@@ -182,7 +199,11 @@ function mergeInto(from: string, to: string): boolean {
       }
     }
 
-    if (isFolder(source) && isFolder(target) && mergeInto(source, target)) {
+    if (
+      isFolder(source) &&
+      isFolder(target) &&
+      mergeInto(source, target)
+    ) {
       try {
         rmdirSync(source)
         continue
@@ -228,7 +249,10 @@ function linkBack(input: { from: string; to: string }): boolean {
     if (process.platform === 'win32') {
       symlinkSync(input.to, input.from, 'junction')
     } else {
-      symlinkSync(path.relative(path.dirname(input.from), input.to), input.from)
+      symlinkSync(
+        path.relative(path.dirname(input.from), input.to),
+        input.from,
+      )
     }
   } catch {
     // the move is what matters, see above
@@ -241,7 +265,9 @@ function linkBack(input: { from: string; to: string }): boolean {
 // per level. Written for the old folder, they would ignore the moved memory, and git would read every remembered fact
 // as deleted. So exactly those lines are renamed, and nothing else in the file is touched. Which lines, and when, is
 // Term since 2026-10-06, call/code/home-ignore.tree
-export const IGNORE_RENAMES: [string, string][] = ignore.ignoreRenames().map(rename => [rename.from, rename.to])
+export const IGNORE_RENAMES: [string, string][] = ignore
+  .ignoreRenames()
+  .map(rename => [rename.from, rename.to])
 
 export function renameIgnoreRules(file: string): void {
   let text: string

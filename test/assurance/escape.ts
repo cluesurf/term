@@ -23,23 +23,61 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 const NOTES = new URL('./notes/', import.meta.url).pathname
 const LINE = new URL('../../host/line.js', import.meta.url).pathname
-const made = spawnSync('node', [LINE, 'make'], { cwd: NOTES, encoding: 'utf8' })
-ok('test/assurance/notes builds', made.status === 0, `${made.stdout}${made.stderr}`.slice(-2000))
+const made = spawnSync('node', [LINE, 'make'], {
+  cwd: NOTES,
+  encoding: 'utf8',
+})
+ok(
+  'test/assurance/notes builds',
+  made.status === 0,
+  `${made.stdout}${made.stderr}`.slice(-2000),
+)
 
-const unit = (await import(new URL('./notes/host/.unit/_term_site_code_http_escape.ts', import.meta.url).href)) as {
+const unit = (await import(
+  new URL(
+    './notes/host/.unit/_term_site_code_http_escape.ts',
+    import.meta.url,
+  ).href
+)) as {
   escapeHtml: (value: string) => string
 }
 
 const meant = (value: string): string =>
-  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 
-const ascii = Array.from({ length: 128 }, (_, code) => String.fromCharCode(code))
-const wrong = ascii.filter(char => unit.escapeHtml(char) !== meant(char))
-ok('every ASCII character alone escapes as meant', wrong.length === 0, JSON.stringify(wrong))
+const ascii = Array.from({ length: 128 }, (_, code) =>
+  String.fromCharCode(code),
+)
+const wrong = ascii.filter(
+  char => unit.escapeHtml(char) !== meant(char),
+)
+ok(
+  'every ASCII character alone escapes as meant',
+  wrong.length === 0,
+  JSON.stringify(wrong),
+)
 
-const named = ['', '<script>alert("x")</script>', "it's", '&amp;', 'a&b<c>d"e\'f', 'नमस्ते <b>', '𝄞 & 𝄞', '<<>>&&""\'\'']
+const named = [
+  '',
+  '<script>alert("x")</script>',
+  "it's",
+  '&amp;',
+  'a&b<c>d"e\'f',
+  'नमस्ते <b>',
+  '𝄞 & 𝄞',
+  '<<>>&&""\'\'',
+]
 for (const text of named) {
-  ok(`${JSON.stringify(text)} escapes as meant`, unit.escapeHtml(text) === meant(text), unit.escapeHtml(text))
+  ok(
+    `${JSON.stringify(text)} escapes as meant`,
+    unit.escapeHtml(text) === meant(text),
+    unit.escapeHtml(text),
+  )
 }
 
 // a fixed generator, so a failure is reproducible
@@ -48,12 +86,31 @@ const next = (): number => {
   seed = (seed * 1103515245 + 12345) % 2147483648
   return seed
 }
-const alphabet = ['<', '>', '&', '"', "'", 'a', ' ', ';', '#', 'l', 't', 'é', '𝄞', '\n', '=']
+const alphabet = [
+  '<',
+  '>',
+  '&',
+  '"',
+  "'",
+  'a',
+  ' ',
+  ';',
+  '#',
+  'l',
+  't',
+  'é',
+  '𝄞',
+  '\n',
+  '=',
+]
 let random = 0
 let differ = ''
 for (let n = 0; n < 5000; n++) {
   const length = next() % 24
-  const text = Array.from({ length }, () => alphabet[next() % alphabet.length]).join('')
+  const text = Array.from(
+    { length },
+    () => alphabet[next() % alphabet.length],
+  ).join('')
   if (unit.escapeHtml(text) === meant(text)) {
     random++
   } else if (!differ) {
@@ -68,7 +125,10 @@ const clean = named.every(text => {
   const out = unit.escapeHtml(text).replace(entity, '')
   return !/[<>&"']/.test(out)
 })
-ok('no output holds <, >, " or \', and every & begins an entity it wrote', clean)
+ok(
+  'no output holds <, >, " or \', and every & begins an entity it wrote',
+  clean,
+)
 
 console.log(`\nescape: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)

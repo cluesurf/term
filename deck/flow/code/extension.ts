@@ -23,7 +23,11 @@ export function activate(context: ExtensionContext): void {
   const server = context.asAbsolutePath(path.join('make', 'server.js'))
 
   const serverOptions: ServerOptions = {
-    run: { command: 'node', args: [server], transport: TransportKind.stdio },
+    run: {
+      command: 'node',
+      args: [server],
+      transport: TransportKind.stdio,
+    },
     debug: {
       command: 'node',
       args: [server],

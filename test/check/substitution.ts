@@ -1,7 +1,13 @@
 // Substitution unit test (Tier 2 modular checker). The unifier extracted from the inference closure, now testable on
 // its own: fresh variables, path-compressed resolve, the occurs check, and structural unification. Run: npx tsx test/check/substitution.ts
 
-import { freshType, newSubstitution, resolveType, unifyTypes, unifyTypesAt } from '@term/make/code/check/substitution'
+import {
+  freshType,
+  newSubstitution,
+  resolveType,
+  unifyTypes,
+  unifyTypesAt,
+} from '@term/make/code/check/substitution'
 import type { Type } from '@term/make/code/compile/node'
 
 let pass = 0
@@ -51,7 +57,10 @@ const STRING: Type = { kind: 'string' }
 // mismatched concretes do not unify
 {
   const s = newSubstitution()
-  ok('number does not unify with string', !unifyTypes(s, NUMBER, STRING))
+  ok(
+    'number does not unify with string',
+    !unifyTypes(s, NUMBER, STRING),
+  )
 }
 
 // structural unification: arrays, functions, maps
@@ -84,7 +93,11 @@ const STRING: Type = { kind: 'string' }
   )
   ok(
     'functions of different arity do not unify',
-    !unifyTypes(s, { kind: 'function', params: [], result: STRING }, f2),
+    !unifyTypes(
+      s,
+      { kind: 'function', params: [], result: STRING },
+      f2,
+    ),
   )
 }
 
@@ -116,4 +129,6 @@ const STRING: Type = { kind: 'string' }
 
 console.log(`\nsubstitution: ${pass} pass, ${fail} fail`)
 
-if (fail > 0) {process.exit(1)}
+if (fail > 0) {
+  process.exit(1)
+}

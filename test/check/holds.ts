@@ -69,11 +69,7 @@ function expectWarning(
 // the same, for a diagnostic that REFUSES the build. `unchecked-hold` moved from warning to error on
 // 2026-09-18: a claim the prover could not reach used to compile, and two plainly false laws did.
 // See note/project/term/proof/archive/law-proof-gate.md.
-function expectError(
-  name: string,
-  source: string,
-  code: string,
-): void {
+function expectError(name: string, source: string, code: string): void {
   const result = compile({ file: 'h.tree', text: source })
   const errors = result.ok ? [] : result.diagnostics
 

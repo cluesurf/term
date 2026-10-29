@@ -5,7 +5,11 @@
 import * as port from '@term/deck/code/object/tone-path'
 
 export const hexToTone = (hex: string): string => port.hexToTone(hex)
-export const dashInEights = (flat: string): string => port.dashInEights(flat)
+export const dashInEights = (flat: string): string =>
+  port.dashInEights(flat)
 export const toneOfId = (id: string): string => port.toneOfId(id)
-export const objectKey = (input: { id: string; extension: string }): string => port.objectKey(input.id, input.extension)
+export const objectKey = (input: {
+  id: string
+  extension: string
+}): string => port.objectKey(input.id, input.extension)
 export const tonePath = (id: string): string => port.tonePath(id)

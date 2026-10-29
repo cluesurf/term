@@ -21,15 +21,17 @@ function ok(name: string, cond: boolean, info = ''): void {
 function program(text: string) {
   const parsed = parse({ file: 't.tree', text })
 
-  if (!parsed.ok)
-    {throw new Error(
+  if (!parsed.ok) {
+    throw new Error(
       'parse failed: ' + JSON.stringify(parsed.diagnostics),
-    )}
+    )
+  }
 
   const built = mill(parsed.tree, 't.tree')
 
-  if (!built.ok)
-    {throw new Error('mill failed: ' + JSON.stringify(built.diagnostics))}
+  if (!built.ok) {
+    throw new Error('mill failed: ' + JSON.stringify(built.diagnostics))
+  }
 
   return built.program
 }
@@ -49,7 +51,9 @@ function main(): void {
     ok(
       'L005 leaves a signature-only task alone',
       findings(declaration).filter(f => f.code === 'L005').length === 0,
-      JSON.stringify(findings(declaration).filter(f => f.code === 'L005')),
+      JSON.stringify(
+        findings(declaration).filter(f => f.code === 'L005'),
+      ),
     )
 
     const emptyBranch = `task go\n  fork test\n    hook test\n      true\n    hook hold\n    hook miss\n      show <x>\n`
@@ -103,7 +107,10 @@ function main(): void {
 
     // an EMPTY list or hash filled after it is bound is not a constant: as a `host` it is generalized and never learns
     // its element, and on Rust comes out a boxed `Vec<Rc<dyn Any>>` (self-hosting, 2026-10-04: the fix broke six ports)
-    for (const [label, empty] of [['list', 'make list'], ['hash', 'make hash']]) {
+    for (const [label, empty] of [
+      ['list', 'make list'],
+      ['hash', 'make hash'],
+    ]) {
       const filled = `task go\n  like number\n  save out, ${empty}\n  send back, code 0\n`
       ok(
         `L004 leaves an empty ${label} alone`,
@@ -679,42 +686,100 @@ function main(): void {
 
     // a library that tells nothing gets no advice
     const library = findings(`${STDLIB}\n${RAISES}`)
-    ok('L037 stays quiet in a program that decides nothing', library.filter(f => f.code === 'L037').length === 0, JSON.stringify(library.filter(f => f.code.startsWith('L03'))))
+    ok(
+      'L037 stays quiet in a program that decides nothing',
+      library.filter(f => f.code === 'L037').length === 0,
+      JSON.stringify(library.filter(f => f.code.startsWith('L03'))),
+    )
 
     // an app that tells one exception is asked about the fix-the-input one it left private
-    const app = findings(`${STDLIB}\n${RAISES}\ntell @local/private-document\n  note <You cannot open this document>\n`)
+    const app = findings(
+      `${STDLIB}\n${RAISES}\ntell @local/private-document\n  note <You cannot open this document>\n`,
+    )
     const missing = app.filter(f => f.code === 'L037')
-    ok('L037 flags a reachable absence with no tell', missing.length === 1 && missing[0]!.message.includes('"missing-user" is an absence'), JSON.stringify(missing))
-    ok('L037 leaves the outage alone (not the caller\'s business)', !missing.some(f => f.message.includes('database-outage')), JSON.stringify(missing))
+    ok(
+      'L037 flags a reachable absence with no tell',
+      missing.length === 1 &&
+        missing[0]!.message.includes('"missing-user" is an absence'),
+      JSON.stringify(missing),
+    )
+    ok(
+      "L037 leaves the outage alone (not the caller's business)",
+      !missing.some(f => f.message.includes('database-outage')),
+      JSON.stringify(missing),
+    )
 
     // a tell on a server failure
-    const failure = findings(`${STDLIB}\n${RAISES}\ntell @local/database-outage\n  note <The database is down>\n`)
+    const failure = findings(
+      `${STDLIB}\n${RAISES}\ntell @local/database-outage\n  note <The database is down>\n`,
+    )
     const ofFailure = failure.filter(f => f.code === 'L038')
-    ok('L038 flags a tell on an outage', ofFailure.length === 1 && ofFailure[0]!.message.includes('never the caller'), JSON.stringify(ofFailure))
+    ok(
+      'L038 flags a tell on an outage',
+      ofFailure.length === 1 &&
+        ofFailure[0]!.message.includes('never the caller'),
+      JSON.stringify(ofFailure),
+    )
 
     // a tell on a denial that names the resource
-    const reveals = findings(`${STDLIB}\n${RAISES}\ntell @local/private-document\n  note <Not yours>\n  link thing\n`)
+    const reveals = findings(
+      `${STDLIB}\n${RAISES}\ntell @local/private-document\n  note <Not yours>\n  link thing\n`,
+    )
     const revealing = reveals.filter(f => f.code === 'L039')
-    ok('L039 flags a denial tell that carries a link', revealing.length === 1 && revealing[0]!.message.includes('confirms it exists'), JSON.stringify(revealing))
-    ok('L039 leaves a denial tell without a link alone', app.filter(f => f.code === 'L039').length === 0, JSON.stringify(app.filter(f => f.code === 'L039')))
+    ok(
+      'L039 flags a denial tell that carries a link',
+      revealing.length === 1 &&
+        revealing[0]!.message.includes('confirms it exists'),
+      JSON.stringify(revealing),
+    )
+    ok(
+      'L039 leaves a denial tell without a link alone',
+      app.filter(f => f.code === 'L039').length === 0,
+      JSON.stringify(app.filter(f => f.code === 'L039')),
+    )
   }
 
   // L041: a call to a raising task outside a guard without `halt kink`
   {
     const STDLIB = `form exception\n  head p\n  link host, like text\n  link form, like text\n  link note, like text\n  link code, like text\n  link time, like number\n  link link, like p\n\nform absence\n  like exception\n    bind note, <Not found>\n    link thing, like text\n\nform failure\n  like exception\n    bind note, <Something went wrong>\n    link thing, like text\n`
     const RAISER = `task find\n  take key, like text\n  like text\n  halt absence\n    bind thing, read key\n`
-    const bare = findings(`${STDLIB}\n${RAISER}\ntask use\n  like text\n  send back\n    call find\n      text <a>\n`)
+    const bare = findings(
+      `${STDLIB}\n${RAISER}\ntask use\n  like text\n  send back\n    call find\n      text <a>\n`,
+    )
     const unhandled = bare.filter(f => f.code === 'L041')
-    ok('L041 flags a bare call to a raising task', unhandled.length === 1 && unhandled[0]!.message.includes('"find" can raise absence'), JSON.stringify(unhandled))
+    ok(
+      'L041 flags a bare call to a raising task',
+      unhandled.length === 1 &&
+        unhandled[0]!.message.includes('"find" can raise absence'),
+      JSON.stringify(unhandled),
+    )
 
-    const passed = findings(`${STDLIB}\n${RAISER}\ntask use\n  like text\n  send back\n    call find\n      text <a>\n      halt kink\n`)
-    ok('L041 leaves a call with halt kink alone', passed.filter(f => f.code === 'L041').length === 0, JSON.stringify(passed.filter(f => f.code === 'L041')))
+    const passed = findings(
+      `${STDLIB}\n${RAISER}\ntask use\n  like text\n  send back\n    call find\n      text <a>\n      halt kink\n`,
+    )
+    ok(
+      'L041 leaves a call with halt kink alone',
+      passed.filter(f => f.code === 'L041').length === 0,
+      JSON.stringify(passed.filter(f => f.code === 'L041')),
+    )
 
-    const guarded = findings(`${STDLIB}\n${RAISER}\ntask use\n  like text\n  fork\n    mark unsafe\n    send back\n      call find\n        text <a>\n  halt take\n    take e\n    send back, read e/note\n`)
-    ok('L041 leaves a guarded call alone', guarded.filter(f => f.code === 'L041').length === 0, JSON.stringify(guarded.filter(f => f.code === 'L041')))
+    const guarded = findings(
+      `${STDLIB}\n${RAISER}\ntask use\n  like text\n  fork\n    mark unsafe\n    send back\n      call find\n        text <a>\n  halt take\n    take e\n    send back, read e/note\n`,
+    )
+    ok(
+      'L041 leaves a guarded call alone',
+      guarded.filter(f => f.code === 'L041').length === 0,
+      JSON.stringify(guarded.filter(f => f.code === 'L041')),
+    )
 
-    const shim = findings(`${STDLIB}\ndock load\n  load <node:fs/promises>, name fs\n\ntask read-file\n  take path, like text\n  like text\n  send back\n    call fs/read-file\n      read path\n\ntask use\n  like text\n  send back\n    call read-file\n      text <a>\n`)
-    ok('L041 leaves a failure-only native shim alone', shim.filter(f => f.code === 'L041').length === 0, JSON.stringify(shim.filter(f => f.code === 'L041')))
+    const shim = findings(
+      `${STDLIB}\ndock load\n  load <node:fs/promises>, name fs\n\ntask read-file\n  take path, like text\n  like text\n  send back\n    call fs/read-file\n      read path\n\ntask use\n  like text\n  send back\n    call read-file\n      text <a>\n`,
+    )
+    ok(
+      'L041 leaves a failure-only native shim alone',
+      shim.filter(f => f.code === 'L041').length === 0,
+      JSON.stringify(shim.filter(f => f.code === 'L041')),
+    )
   }
 
   console.log(`\nlint: ${pass} pass, ${fail} fail`)

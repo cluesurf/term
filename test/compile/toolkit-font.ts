@@ -27,13 +27,22 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const FACE = resolve(process.cwd(), '../../../../mesh/site/word.surf/home/public/text/CrowMark.otf')
+const FACE = resolve(
+  process.cwd(),
+  '../../../../mesh/site/word.surf/home/public/text/CrowMark.otf',
+)
 const MISSING = 'No Such Face'
 
 // where each platform finds the file
-const source = (leg: Leg): string => (leg === 'android' || leg === 'compose-android' ? 'asset:CrowMark.otf' : FACE)
+const source = (leg: Leg): string =>
+  leg === 'android' || leg === 'compose-android'
+    ? 'asset:CrowMark.otf'
+    : FACE
 
-const program = (leg: Leg, shot: string): string => `load @term/site/code/dom/dom
+const program = (
+  leg: Leg,
+  shot: string,
+): string => `load @term/site/code/dom/dom
   find view
 
 load @term/site/code/dom/native/toolkit/dom
@@ -146,33 +155,80 @@ task main
 
 // the text after `<marker> ` on the line holding it
 function after(output: string, marker: string): string {
-  const line = output.split('\n').find(l => l.includes(`${marker} `)) ?? ''
+  const line =
+    output.split('\n').find(l => l.includes(`${marker} `)) ?? ''
 
-  return line.slice(line.indexOf(`${marker} `) + marker.length + 1).trim()
+  return line
+    .slice(line.indexOf(`${marker} `) + marker.length + 1)
+    .trim()
 }
 
 function judge(leg: Leg, toolkit: string, output: string): void {
   const fonts = after(output, 'fonts')
   // a Mac may have CrowMark installed by hand already; the platform's answer before is reported, not judged
-  ok(`${leg}: registering CrowMark from ${source(leg).startsWith('asset:') ? 'the APK' : 'its file'} succeeds (${toolkit})`, fonts.includes('registered=true'), fonts)
-  ok(`${leg}: registering it again is not a failure`, fonts.includes('again=true'), fonts)
-  ok(`${leg}: a file that does not exist is refused`, fonts.includes('unread=false'), fonts)
-  ok(`${leg}: check-font says CrowMark is drawable once registered`, fonts.includes('after=true'), fonts)
-  ok(`${leg}: check-font says a family nobody registered is not`, fonts.includes('missing=false'), fonts)
-  ok(`${leg}: watch-font calls back ready for the registered family`, after(output, 'watch CrowMark') === 'ready', after(output, 'watch CrowMark'))
-  ok(`${leg}: watch-font calls back error for the missing one`, after(output, 'watch missing') === 'error', after(output, 'watch missing'))
+  ok(
+    `${leg}: registering CrowMark from ${source(leg).startsWith('asset:') ? 'the APK' : 'its file'} succeeds (${toolkit})`,
+    fonts.includes('registered=true'),
+    fonts,
+  )
+  ok(
+    `${leg}: registering it again is not a failure`,
+    fonts.includes('again=true'),
+    fonts,
+  )
+  ok(
+    `${leg}: a file that does not exist is refused`,
+    fonts.includes('unread=false'),
+    fonts,
+  )
+  ok(
+    `${leg}: check-font says CrowMark is drawable once registered`,
+    fonts.includes('after=true'),
+    fonts,
+  )
+  ok(
+    `${leg}: check-font says a family nobody registered is not`,
+    fonts.includes('missing=false'),
+    fonts,
+  )
+  ok(
+    `${leg}: watch-font calls back ready for the registered family`,
+    after(output, 'watch CrowMark') === 'ready',
+    after(output, 'watch CrowMark'),
+  )
+  ok(
+    `${leg}: watch-font calls back error for the missing one`,
+    after(output, 'watch missing') === 'error',
+    after(output, 'watch missing'),
+  )
 
-  const drawn = /registered=\[([^\]]*)\]/.exec(after(output, 'drawn'))?.[1] ?? ''
-  const fallen = /missing=\[([^\]]*)\]/.exec(after(output, 'drawn'))?.[1] ?? ''
-  ok(`${leg}: the text in font-family CrowMark is drawn in CrowMark, as the platform reports it`, drawn === 'CrowMark', drawn)
-  ok(`${leg}: the text in a missing family is drawn in the system face, not in it`, fallen !== MISSING && fallen !== 'CrowMark', fallen)
+  const drawn =
+    /registered=\[([^\]]*)\]/.exec(after(output, 'drawn'))?.[1] ?? ''
+  const fallen =
+    /missing=\[([^\]]*)\]/.exec(after(output, 'drawn'))?.[1] ?? ''
+  ok(
+    `${leg}: the text in font-family CrowMark is drawn in CrowMark, as the platform reports it`,
+    drawn === 'CrowMark',
+    drawn,
+  )
+  ok(
+    `${leg}: the text in a missing family is drawn in the system face, not in it`,
+    fallen !== MISSING && fallen !== 'CrowMark',
+    fallen,
+  )
 
   // the registered face's line is sized by its ascent and descent, as on the web: CrowMark's are 650 and 200 on an 800
   // unit em, so a 24px line is about 26 tall, never its 17 em bounding box (Android's font padding drew it 418 tall)
-  const [first, second] = after(output, 'frames').split(' ').map(part => part.split(',').map(Number))
+  const [first, second] = after(output, 'frames')
+    .split(' ')
+    .map(part => part.split(',').map(Number))
   ok(
     `${leg}: the CrowMark line is a line tall, not its bounding box, and the next line sits directly under it`,
-    !!first && !!second && first[3]! > 20 && first[3]! < 48 && Math.abs(second[1]! - (first[1]! + first[3]!)) <= 1,
+    !!first &&
+      !!second &&
+      first[3]! > 20 &&
+      first[3]! < 48 &&
+      Math.abs(second[1]! - (first[1]! + first[3]!)) <= 1,
     after(output, 'frames'),
   )
 }

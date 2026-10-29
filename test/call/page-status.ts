@@ -5,23 +5,38 @@
 // Run: npx tsx test/call/page-status.ts (after `pnpm run make:line`)
 
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { tempDir } from '../temp'
 import { LINE } from './cli'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const MESH = join(HERE, '../../../../../../mesh')
 
 type Page = {
   on: (event: 'pageerror', handler: (error: Error) => void) => void
   goto: (url: string) => Promise<unknown>
   evaluate: <T>(f: () => T) => Promise<T>
-  waitForFunction: (f: string, arg?: unknown, options?: { timeout: number }) => Promise<unknown>
+  waitForFunction: (
+    f: string,
+    arg?: unknown,
+    options?: { timeout: number },
+  ) => Promise<unknown>
 }
-type Launched = { newPage: () => Promise<Page>; close: () => Promise<void> }
-type Chromium = { launch: (o: { headless: boolean }) => Promise<Launched> }
+type Launched = {
+  newPage: () => Promise<Page>
+  close: () => Promise<void>
+}
+type Chromium = {
+  launch: (o: { headless: boolean }) => Promise<Launched>
+}
 
 // Launch Chromium with its `playwright-artifacts-*` and profile folders in a temporary folder of this test's own.
 // Playwright makes them with mkdtemp under os.tmpdir() at launch and removes them only when the browser process exits,
@@ -46,7 +61,11 @@ async function launchOwned(browser: Chromium): Promise<Launched> {
 // Playwright from mesh/, as the other browser suites take it, or the reason it is not there
 function chromium(): Chromium | string {
   try {
-    return (createRequire(join(MESH, 'package.json'))('@playwright/test') as { chromium: Chromium }).chromium
+    return (
+      createRequire(join(MESH, 'package.json'))('@playwright/test') as {
+        chromium: Chromium
+      }
+    ).chromium
   } catch (error) {
     return `no @playwright/test under mesh/: ${String(error).slice(0, 120)}`
   }
@@ -78,24 +97,40 @@ async function serve(
   paths: string[],
   visit?: () => Promise<void>,
 ): Promise<{ answers: Answer[]; log: string }> {
-  const child = spawn('node', [LINE, 'boot', entry, '--port', String(port)], { cwd: dir, env: { ...process.env, NO_COLOR: '1' } })
+  const child = spawn(
+    'node',
+    [LINE, 'boot', entry, '--port', String(port)],
+    { cwd: dir, env: { ...process.env, NO_COLOR: '1' } },
+  )
   let log = ''
   child.stdout.on('data', chunk => (log += String(chunk)))
   child.stderr.on('data', chunk => (log += String(chunk)))
 
   const started = Date.now()
 
-  while (!/✓ start/.test(log) && Date.now() - started < 60_000 && child.exitCode === null) {
+  while (
+    !/✓ start/.test(log) &&
+    Date.now() - started < 60_000 &&
+    child.exitCode === null
+  ) {
     await new Promise(done => setTimeout(done, 100))
   }
 
   // `start` is printed once the server takes connections, so the first request on that line is answered. It was
   // printed at spawn until 2026-10-04, and this asked until it answered; it still does, so a failure here is the one
   // `ok` below and not every case after it
-  answeredAtStart = await fetch(`http://127.0.0.1:${port}/base/__id`).then(() => true, () => false)
+  answeredAtStart = await fetch(
+    `http://127.0.0.1:${port}/base/__id`,
+  ).then(
+    () => true,
+    () => false,
+  )
 
   while (Date.now() - started < 60_000 && child.exitCode === null) {
-    const up = await fetch(`http://127.0.0.1:${port}/base/__id`).then(() => true, () => false)
+    const up = await fetch(`http://127.0.0.1:${port}/base/__id`).then(
+      () => true,
+      () => false,
+    )
 
     if (up) {
       break
@@ -109,7 +144,10 @@ async function serve(
   for (const path of paths) {
     try {
       const response = await fetch(`http://127.0.0.1:${port}${path}`)
-      answers.push({ status: response.status, body: await response.text() })
+      answers.push({
+        status: response.status,
+        body: await response.text(),
+      })
     } catch (error) {
       answers.push({ status: 0, body: String(error) })
     }
@@ -127,7 +165,10 @@ async function serve(
 function project(name: string, entry: string, text: string): string {
   const dir = tempDir(`term-${name}-`)
   mkdirSync(join(dir, 'code'))
-  writeFileSync(join(dir, 'deck.tree'), `deck ${name}\n  mark <0.0.1>\n`)
+  writeFileSync(
+    join(dir, 'deck.tree'),
+    `deck ${name}\n  mark <0.0.1>\n`,
+  )
   writeFileSync(join(dir, entry), text)
 
   return dir
@@ -167,7 +208,9 @@ hook /
     }
 
     const launched = await launchOwned(browser).catch(error => {
-      console.log(`skip  the client in a browser  (Chromium did not launch: ${String(error).slice(0, 160)})`)
+      console.log(
+        `skip  the client in a browser  (Chromium did not launch: ${String(error).slice(0, 160)})`,
+      )
 
       return undefined
     })
@@ -185,30 +228,71 @@ hook /
         history.pushState({}, '', '/')
         dispatchEvent(new PopStateEvent('popstate'))
       })
-      await page.waitForFunction("document.title === 'Shelf'", undefined, { timeout: 10_000 }).catch(() => undefined)
-      const drawn = await page.evaluate(() => `${document.title}|${document.querySelector('h1')?.textContent ?? ''}|${document.querySelector('script[type=importmap]') ? 'map' : 'no map'}`)
+      await page
+        .waitForFunction("document.title === 'Shelf'", undefined, {
+          timeout: 10_000,
+        })
+        .catch(() => undefined)
+      const drawn = await page.evaluate(
+        () =>
+          `${document.title}|${document.querySelector('h1')?.textContent ?? ''}|${document.querySelector('script[type=importmap]') ? 'map' : 'no map'}`,
+      )
       seen = `${drawn}|${errors.join(' ; ')}`
     } finally {
       await launched.close()
     }
   }
 
-  const { answers, log } = await serve(dir, 'code/route.tree', 4971, ['/nope', '/'], visit)
+  const { answers, log } = await serve(
+    dir,
+    'code/route.tree',
+    4971,
+    ['/nope', '/'],
+    visit,
+  )
   const [missing, home] = answers
 
-  ok('`✓ start` prints once the server answers: a request sent on that line is answered', answeredAtStart)
+  ok(
+    '`✓ start` prints once the server answers: a request sent on that line is answered',
+    answeredAtStart,
+  )
 
   if (seen) {
-    ok('in a browser, the client redraws and retitles the page on a popstate, with no error', seen === 'Shelf|Shelf|no map|', seen)
+    ok(
+      'in a browser, the client redraws and retitles the page on a popstate, with no error',
+      seen === 'Shelf|Shelf|no map|',
+      seen,
+    )
   }
 
-  ok('a path no hook matches answers 404', missing?.status === 404, `${missing?.status} ${log.slice(0, 600)}`)
-  ok('and the next request, a page that is there, answers 200', home?.status === 200, String(home?.status))
-  ok('with the title its hook names', /<title>Shelf<\/title>/.test(home?.body ?? ''), home?.body.slice(0, 400))
-  ok('and its client bundle built', /✓ build\s+client bundle/.test(log) && !/already been declared/.test(log), log.slice(0, 1200))
+  ok(
+    'a path no hook matches answers 404',
+    missing?.status === 404,
+    `${missing?.status} ${log.slice(0, 600)}`,
+  )
+  ok(
+    'and the next request, a page that is there, answers 200',
+    home?.status === 200,
+    String(home?.status),
+  )
+  ok(
+    'with the title its hook names',
+    /<title>Shelf<\/title>/.test(home?.body ?? ''),
+    home?.body.slice(0, 400),
+  )
+  ok(
+    'and its client bundle built',
+    /✓ build\s+client bundle/.test(log) &&
+      !/already been declared/.test(log),
+    log.slice(0, 1200),
+  )
 
   const bundle = join(dir, 'build/boot.js')
-  ok('and sets the title in the browser too', existsSync(bundle) && readFileSync(bundle, 'utf8').includes('setTitle("Shelf")'))
+  ok(
+    'and sets the title in the browser too',
+    existsSync(bundle) &&
+      readFileSync(bundle, 'utf8').includes('setTitle("Shelf")'),
+  )
 }
 
 // ---- a route task: `set-status` in its own arm ----
@@ -291,23 +375,50 @@ task boot
         history.pushState({}, '', '/elsewhere')
         dispatchEvent(new PopStateEvent('popstate'))
       })
-      await page.waitForFunction("document.body.textContent.includes('Nothing at /elsewhere')", undefined, { timeout: 10_000 }).catch(() => undefined)
-      const drawn = await page.evaluate(() => document.body.textContent?.replace(/\s+/g, ' ').trim() ?? '')
+      await page
+        .waitForFunction(
+          "document.body.textContent.includes('Nothing at /elsewhere')",
+          undefined,
+          { timeout: 10_000 },
+        )
+        .catch(() => undefined)
+      const drawn = await page.evaluate(
+        () =>
+          document.body.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+      )
       seen = `${drawn}|${errors.join(' ; ')}`
     } finally {
       await launched.close()
     }
   }
 
-  const { answers, log } = await serve(dir, 'code/boot.tree', 4972, ['/nope', '/'], visit)
+  const { answers, log } = await serve(
+    dir,
+    'code/boot.tree',
+    4972,
+    ['/nope', '/'],
+    visit,
+  )
   const [missing, home] = answers
 
   if (seen) {
-    ok('in a browser, a hand-written boot takes the page over and draws the new path', seen === 'Nothing at /elsewhere|', seen)
+    ok(
+      'in a browser, a hand-written boot takes the page over and draws the new path',
+      seen === 'Nothing at /elsewhere|',
+      seen,
+    )
   }
 
-  ok('`set-status 404` in a route task answers 404', missing?.status === 404 && /Nothing at \/nope/.test(missing.body), `${missing?.status} ${log.slice(0, 600)}`)
-  ok('and the page after it answers 200, titled', home?.status === 200 && /<title>Shelf<\/title>/.test(home.body), String(home?.status))
+  ok(
+    '`set-status 404` in a route task answers 404',
+    missing?.status === 404 && /Nothing at \/nope/.test(missing.body),
+    `${missing?.status} ${log.slice(0, 600)}`,
+  )
+  ok(
+    'and the page after it answers 200, titled',
+    home?.status === 200 && /<title>Shelf<\/title>/.test(home.body),
+    String(home?.status),
+  )
 }
 
 // ---- a route that loads first: an async `route` is awaited, so the page holds what it placed after the wait ----
@@ -355,8 +466,14 @@ task boot
   host(route, port)
 `,
   )
-  const { answers, log } = await serve(dir, 'code/boot.tree', 4973, ['/'])
-  ok('an async `route` is awaited: `/` holds the page it placed after its wait', /<h1>Shelf<\/h1>/.test(answers[0]?.body ?? ''), `${answers[0]?.body.slice(0, 200)} ${log.slice(-300)}`)
+  const { answers, log } = await serve(dir, 'code/boot.tree', 4973, [
+    '/',
+  ])
+  ok(
+    'an async `route` is awaited: `/` holds the page it placed after its wait',
+    /<h1>Shelf<\/h1>/.test(answers[0]?.body ?? ''),
+    `${answers[0]?.body.slice(0, 200)} ${log.slice(-300)}`,
+  )
 }
 
 // ---- an API route: the response's headers reach the wire, and the request carries its headers and query ----
@@ -417,23 +534,44 @@ task boot
   serve route-server(routes), port
 `,
   )
-  writeFileSync(join(dir, 'deck.tree'), 'deck api\n  mark <0.0.1>\n  boot ./code/boot\n')
+  writeFileSync(
+    join(dir, 'deck.tree'),
+    'deck api\n  mark <0.0.1>\n  boot ./code/boot\n',
+  )
 
-  const child = spawn('node', [LINE, 'boot', '--port', '4973'], { cwd: dir, env: { ...process.env, NO_COLOR: '1' } })
+  const child = spawn('node', [LINE, 'boot', '--port', '4973'], {
+    cwd: dir,
+    env: { ...process.env, NO_COLOR: '1' },
+  })
   let log = ''
   child.stdout.on('data', chunk => (log += String(chunk)))
   child.stderr.on('data', chunk => (log += String(chunk)))
   const started = Date.now()
 
-  while (!/✓ start/.test(log) && Date.now() - started < 60_000 && child.exitCode === null) {
+  while (
+    !/✓ start/.test(log) &&
+    Date.now() - started < 60_000 &&
+    child.exitCode === null
+  ) {
     await new Promise(done => setTimeout(done, 100))
   }
 
   try {
-    const answer = await fetch('http://127.0.0.1:4973/books/7?fields=title', { headers: { 'user-agent': 'page-status' } }).catch(() => undefined)
+    const answer = await fetch(
+      'http://127.0.0.1:4973/books/7?fields=title',
+      { headers: { 'user-agent': 'page-status' } },
+    ).catch(() => undefined)
     const body = answer ? await answer.text() : ''
-    ok('a response\'s `content-type` header reaches the wire', answer?.headers.get('content-type') === 'application/json', `${answer?.headers.get('content-type')} ${log.slice(-400)}`)
-    ok('and the handler read the query and a request header', body === '{"id":"7","fields":"title","agent":"page-status"}', body)
+    ok(
+      "a response's `content-type` header reaches the wire",
+      answer?.headers.get('content-type') === 'application/json',
+      `${answer?.headers.get('content-type')} ${log.slice(-400)}`,
+    )
+    ok(
+      'and the handler read the query and a request header',
+      body === '{"id":"7","fields":"title","agent":"page-status"}',
+      body,
+    )
   } finally {
     child.kill()
   }

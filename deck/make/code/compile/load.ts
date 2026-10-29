@@ -4,7 +4,10 @@
 // is `undefined` rather than `none`, and hands the port a resolver, a parse and the build cache's scan as tasks.
 // Browser-safe: file reading is delegated to a resolver.
 
-import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
+import type {
+  Diagnostic,
+  Span,
+} from '@term/make/code/parser/diagnostic'
 import type { ParseResult } from '@term/make/code/parser/tree'
 import * as port from '@term/make/code/compile/loading'
 import * as parses from '@term/make/code/compile/loading-parses'
@@ -37,16 +40,33 @@ export type ImportScan = {
 // What each module imports BY NAME, resolved to files (compile/loading.tree `module-scope`)
 export type ImportScope = Map<
   string,
-  { finds: Map<string, string[]>; bears: string[]; at?: Map<string, Span>; aliases?: Map<string, string[]>; plain?: Map<string, string[]> }
+  {
+    finds: Map<string, string[]>
+    bears: string[]
+    at?: Map<string, Span>
+    aliases?: Map<string, string[]>
+    plain?: Map<string, string[]>
+  }
 >
 
 // a file's import scope as a Term pass takes it (compile/import-scope.tree), each map a list in its order. `hasPlain`:
 // whether the scope kept a `plain` map at all, which check/overload reads apart from an empty one
 export type ScopeFind = { name: string; targets: string[]; at?: Span }
-export type FileScope = { file: string; finds: ScopeFind[]; bears: string[]; aliases?: ScopeFind[]; plain?: ScopeFind[]; hasPlain?: boolean }
+export type FileScope = {
+  file: string
+  finds: ScopeFind[]
+  bears: string[]
+  aliases?: ScopeFind[]
+  plain?: ScopeFind[]
+  hasPlain?: boolean
+}
 
-export const scopeList = (scope: ImportScope | undefined): FileScope[] =>
-  port.scopeList((scope ?? new Map()) as Map<string, port.ModuleScope>) as FileScope[]
+export const scopeList = (
+  scope: ImportScope | undefined,
+): FileScope[] =>
+  port.scopeList(
+    (scope ?? new Map()) as Map<string, port.ModuleScope>,
+  ) as FileScope[]
 
 // One parse per module per build (compile/loading-parses.tree `parse-remembered`). SHARE ONE ACROSS THE BUILD: a
 // project build calls `compile()` once per file, and the dependency walk runs before the output cache is consulted
@@ -56,7 +76,9 @@ export const PARSE_MEMO_CAP = 2048
 
 export function makeParseMemo(cap: number = PARSE_MEMO_CAP): ParseMemo {
   const memo = parses.freshParseMemo(cap)
-  return source => parses.parseRemembered(memo, source as never) as ParseResult
+
+  return source =>
+    parses.parseRemembered(memo, source as never) as ParseResult
 }
 
 type PortFind = port.ImportScan['finds'][number]
@@ -64,7 +86,12 @@ type PortFind = port.ImportScan['finds'][number]
 const fromPortScan = (scan: port.ImportScan): ImportScan =>
   ({
     ...scan,
-    finds: scan.finds.map((find: PortFind) => ({ ...find, aliases: find.aliases.map(alias => (alias.form === 'some' ? alias.value : undefined)) })),
+    finds: scan.finds.map((find: PortFind) => ({
+      ...find,
+      aliases: find.aliases.map(alias =>
+        alias.form === 'some' ? alias.value : undefined,
+      ),
+    })),
   }) as ImportScan
 
 // a scan read back from the build cache's JSON has a hole where an alias was absent (its reviver deletes the `null`),
@@ -74,27 +101,53 @@ const toPortScan = (scan: ImportScan): port.ImportScan =>
     ...scan,
     finds: scan.finds.map(find => ({
       ...find,
-      aliases: Array.from(find.aliases, alias => (alias === undefined ? { form: 'none' } : { form: 'some', value: alias })),
+      aliases: Array.from(find.aliases, alias =>
+        alias === undefined
+          ? { form: 'none' }
+          : { form: 'some', value: alias },
+      ),
     })),
   }) as port.ImportScan
 
 // the `load` / `bear` paths a module names, read from its tree: the ONE way to ask that question
-export const importPathsOf = (source: Source, parsed: ParseMemo): string[] => port.scanParsed(parsed(source)).paths
+export const importPathsOf = (
+  source: Source,
+  parsed: ParseMemo,
+): string[] => port.scanParsed(parsed(source)).paths
 
 // the `load` / `bear` blocks a module declares, each with the names its `find` lines ask for and where each is
-export const importFindsOf = (source: Source, parsed: ParseMemo): ImportScan['finds'] => fromPortScan(port.scanParsed(parsed(source))).finds
+export const importFindsOf = (
+  source: Source,
+  parsed: ParseMemo,
+): ImportScan['finds'] =>
+  fromPortScan(port.scanParsed(parsed(source))).finds
 
 // how one `load` asks for its path: `base <dir>` written under it forces the PACKAGE root
 export type LoadHow = { base?: string }
 
 // resolve an import path (e.g. `@term/base/maybe`) from the importing file to its source, or undefined
-export type Resolver = (importPath: string, fromFile: string, how?: LoadHow) => Source | undefined
+export type Resolver = (
+  importPath: string,
+  fromFile: string,
+  how?: LoadHow,
+) => Source | undefined
 
-const some = <T>(value: T | undefined): port.Maybe<T> => (value ? { form: 'some', value } : { form: 'none' })
+const some = <T>(value: T | undefined): port.Maybe<T> =>
+  value ? { form: 'some', value } : { form: 'none' }
 
 // The `{platform}` loads of a closure that the build's env answers with no file, each refused AT THE LOAD
-export const platformRefusals = (sources: Source[], resolve: Resolver, env: string, parsed: ParseMemo): Diagnostic[] =>
-  parses.platformRefusals(sources as never, (path, from) => some(resolve(path, from)) as never, env, source => parsed(source) as never) as Diagnostic[]
+export const platformRefusals = (
+  sources: Source[],
+  resolve: Resolver,
+  env: string,
+  parsed: ParseMemo,
+): Diagnostic[] =>
+  parses.platformRefusals(
+    sources as never,
+    (path, from) => some(resolve(path, from)) as never,
+    env,
+    source => parsed(source) as never,
+  ) as Diagnostic[]
 
 // One module's own part of an import walk (compile/loading.tree `walked-module`)
 export type WalkedModule = {
@@ -115,15 +168,41 @@ export function collectModules(
   entry: Source,
   resolve: Resolver,
   parsed: ParseMemo = makeParseMemo(),
-  scanOf: (source: Source, compute: () => ImportScan) => ImportScan = (_source, compute) => compute(),
+  scanOf: (source: Source, compute: () => ImportScan) => ImportScan = (
+    _source,
+    compute,
+  ) => compute(),
   walked?: WalkMemo,
-): { sources: Source[]; diagnostics: Diagnostic[]; scope: ImportScope; edges: Map<string, string[]> } {
+): {
+  sources: Source[]
+  diagnostics: Diagnostic[]
+  scope: ImportScope
+  edges: Map<string, string[]>
+} {
   const result = port.collectModules(
     entry,
-    (path, from, how) => some(resolve(path, from, how.form === 'some' ? how.value : undefined)),
-    source => toPortScan(scanOf(source, () => fromPortScan(port.scanParsed(parsed(source))))),
+    (path, from, how) =>
+      some(
+        resolve(
+          path,
+          from,
+          how.form === 'some' ? how.value : undefined,
+        ),
+      ),
+    source =>
+      toPortScan(
+        scanOf(source, () =>
+          fromPortScan(port.scanParsed(parsed(source))),
+        ),
+      ),
     (walked ?? new Map()) as Map<string, port.WalkedModule>,
     walked !== undefined,
   )
-  return { sources: result.sources, diagnostics: result.diagnostics, scope: result.scope as ImportScope, edges: result.edges }
+
+  return {
+    sources: result.sources,
+    diagnostics: result.diagnostics,
+    scope: result.scope as ImportScope,
+    edges: result.edges,
+  }
 }

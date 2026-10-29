@@ -27,16 +27,27 @@ function ok(name: string, holds: boolean, detail = ''): void {
 
 // the emitted Swift of one program, or the diagnostics that stopped it
 function swiftOf(text: string): { swift: string } | { failed: string } {
-  const built = compile({ file: 'shim-namespace.tree', text }, { resolve: withNativeEnv('swift', stdlibResolver()!), env: 'swift' })
+  const built = compile(
+    { file: 'shim-namespace.tree', text },
+    {
+      resolve: withNativeEnv('swift', stdlibResolver()!),
+      env: 'swift',
+    },
+  )
 
   if (!built.ok) {
-    return { failed: built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | ') }
+    return {
+      failed: built.diagnostics
+        .map(d => `${d.name}: ${d.message}`)
+        .join(' | '),
+    }
   }
 
   return { swift: emitSwift(built.program) }
 }
 
-const imports = (swift: string): string[] => swift.split('\n').filter(line => /^import /.test(line))
+const imports = (swift: string): string[] =>
+  swift.split('\n').filter(line => /^import /.test(line))
 
 function program(dockType: string, dockLoad: string): string {
   return `dock type
@@ -51,20 +62,32 @@ task nothing
 `
 }
 
-function holds(name: string, text: string, check: (lines: string[]) => boolean, want: string): void {
+function holds(
+  name: string,
+  text: string,
+  check: (lines: string[]) => boolean,
+  want: string,
+): void {
   const out = swiftOf(text)
 
   if ('failed' in out) {
     ok(name, false, out.failed)
   } else {
-    ok(name, check(imports(out.swift)), `${want}; imports: ${imports(out.swift).join(' | ')}`)
+    ok(
+      name,
+      check(imports(out.swift)),
+      `${want}; imports: ${imports(out.swift).join(' | ')}`,
+    )
   }
 }
 
 // a kebab alias: the type names the camelCase namespace the shim declares
 holds(
   'a kebab alias (foo-bar) shims <fooBar.Thing>: no import fooBar',
-  program('fooBar.Thing', 'dock load\n  load <global:foo-bar>, name foo-bar\n'),
+  program(
+    'fooBar.Thing',
+    'dock load\n  load <global:foo-bar>, name foo-bar\n',
+  ),
   lines => !lines.includes('import fooBar'),
   'no import fooBar',
 )
@@ -72,7 +95,10 @@ holds(
 // today's rule, kept: a single-word alias
 holds(
   'a single-word alias (runtime) shims <runtime.Running>: no import runtime',
-  program('runtime.Running', 'dock load\n  load <global:server>, name runtime\n'),
+  program(
+    'runtime.Running',
+    'dock load\n  load <global:server>, name runtime\n',
+  ),
   lines => !lines.includes('import runtime'),
   'no import runtime',
 )
@@ -99,14 +125,30 @@ task open
     call watch
       read path
 `
-  const built = compile({ file: 'shim-namespace.tree', text }, { resolve: withNativeEnv('swift', stdlibResolver()!), env: 'swift' })
+  const built = compile(
+    { file: 'shim-namespace.tree', text },
+    {
+      resolve: withNativeEnv('swift', stdlibResolver()!),
+      env: 'swift',
+    },
+  )
 
   if (!built.ok) {
-    ok('a program that loads @term/base/file/watch: no import watchFile', false, built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+    ok(
+      'a program that loads @term/base/file/watch: no import watchFile',
+      false,
+      built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+    )
   } else {
-    const natives = built.program.filter(n => n.form === 'native') as Array<{ kind?: string; module: string; alias: string }>
-    const dotted = natives.some(n => n.kind === 'type' && n.module === 'watchFile.Watcher')
-    const kebab = natives.some(n => n.module.startsWith('global:') && n.alias === 'watch-file')
+    const natives = built.program.filter(
+      n => n.form === 'native',
+    ) as Array<{ kind?: string; module: string; alias: string }>
+    const dotted = natives.some(
+      n => n.kind === 'type' && n.module === 'watchFile.Watcher',
+    )
+    const kebab = natives.some(
+      n => n.module.startsWith('global:') && n.alias === 'watch-file',
+    )
     const lines = imports(emitSwift(built.program))
     ok(
       'a program that loads @term/base/file/watch: no import watchFile',

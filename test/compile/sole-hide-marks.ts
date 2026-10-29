@@ -47,18 +47,25 @@ function have(tool: string): boolean {
   }
 }
 
-type Milled = { ok: true; program: Program } | { ok: false; messages: string[] }
+type Milled =
+  | { ok: true; program: Program }
+  | { ok: false; messages: string[] }
 
 function milled(text: string): Milled {
   const parsed = parse({ file: 'main.tree', text })
 
   if (!parsed.ok) {
-    return { ok: false, messages: parsed.diagnostics.map(d => d.message) }
+    return {
+      ok: false,
+      messages: parsed.diagnostics.map(d => d.message),
+    }
   }
 
   const built = mill(expandTemplates(parsed.tree), 'main.tree')
 
-  return built.ok ? { ok: true, program: built.program } : { ok: false, messages: built.diagnostics.map(d => d.message) }
+  return built.ok
+    ? { ok: true, program: built.program }
+    : { ok: false, messages: built.diagnostics.map(d => d.message) }
 }
 
 function frontEnd(text: string, entries: string[]): Program {
@@ -71,7 +78,9 @@ function frontEnd(text: string, entries: string[]): Program {
   const out = extendForms(built.program, 'main.tree', []).program
   disambiguateOverloads(out)
   resolveNames(out, 'main.tree')
-  const errors = check(out, 'main.tree').filter(d => d.severity !== 'warning')
+  const errors = check(out, 'main.tree').filter(
+    d => d.severity !== 'warning',
+  )
 
   if (errors.length) {
     throw new Error(`check: ${errors.map(d => d.message).join(' | ')}`)
@@ -82,8 +91,14 @@ function frontEnd(text: string, entries: string[]): Program {
   return simplify(out, new Set(entries))
 }
 
-const formOf = (program: Program, name: string): Extract<Program[number], { form: 'record-type' }> | undefined =>
-  program.find((n): n is Extract<Program[number], { form: 'record-type' }> => n.form === 'record-type' && n.name === name)
+const formOf = (
+  program: Program,
+  name: string,
+): Extract<Program[number], { form: 'record-type' }> | undefined =>
+  program.find(
+    (n): n is Extract<Program[number], { form: 'record-type' }> =>
+      n.form === 'record-type' && n.name === name,
+  )
 
 // ---- the flags ----
 
@@ -95,22 +110,39 @@ ${marks}  link note, like text
 {
   const both = milled(PERMIT('  mark hide\n  mark sole\n'))
   const permit = both.ok ? formOf(both.program, 'permit') : undefined
-  ok('mill: `mark sole` sets sole on the form', permit?.sole === true, both.ok ? '' : both.messages.join(' | '))
+  ok(
+    'mill: `mark sole` sets sole on the form',
+    permit?.sole === true,
+    both.ok ? '' : both.messages.join(' | '),
+  )
   ok('mill: `mark hide` sets hide on the form', permit?.hide === true)
 
   const sole = milled(PERMIT('  mark sole\n'))
   const soleOnly = sole.ok ? formOf(sole.program, 'permit') : undefined
   // a `need false` flag at its default and the flag absent are one value (decision 034 section 2, decision 071): read
   // the value, never the key
-  ok('mill: sole alone leaves hide unset', soleOnly?.sole === true && (soleOnly.hide ?? false) === false)
+  ok(
+    'mill: sole alone leaves hide unset',
+    soleOnly?.sole === true && (soleOnly.hide ?? false) === false,
+  )
 
   const hide = milled(PERMIT('  mark hide\n'))
   const hideOnly = hide.ok ? formOf(hide.program, 'permit') : undefined
-  ok('mill: hide alone leaves sole unset', hideOnly?.hide === true && (hideOnly.sole ?? false) === false)
+  ok(
+    'mill: hide alone leaves sole unset',
+    hideOnly?.hide === true && (hideOnly.sole ?? false) === false,
+  )
 
   const plain = milled(PERMIT(''))
-  const unmarked = plain.ok ? formOf(plain.program, 'permit') : undefined
-  ok('mill: an unmarked form carries neither flag', unmarked !== undefined && (unmarked.sole ?? false) === false && (unmarked.hide ?? false) === false)
+  const unmarked = plain.ok
+    ? formOf(plain.program, 'permit')
+    : undefined
+  ok(
+    'mill: an unmarked form carries neither flag',
+    unmarked !== undefined &&
+      (unmarked.sole ?? false) === false &&
+      (unmarked.hide ?? false) === false,
+  )
 }
 
 // ---- unknown-mark ----
@@ -119,27 +151,55 @@ ${marks}  link note, like text
   const misspelled = milled(PERMIT('  mark sloe\n'))
   ok(
     'mill: `mark sloe` under a form is refused as unknown-mark',
-    !misspelled.ok && misspelled.messages.some(m => m.includes('unknown-mark') && m.includes('mark sloe')),
+    !misspelled.ok &&
+      misspelled.messages.some(
+        m => m.includes('unknown-mark') && m.includes('mark sloe'),
+      ),
     misspelled.ok ? 'it built' : misspelled.messages.join(' | '),
   )
 
   const task = milled(PERMIT('  mark async\n'))
-  ok('mill: a task mark under a form is refused too', !task.ok && task.messages.some(m => m.includes('unknown-mark')))
+  ok(
+    'mill: a task mark under a form is refused too',
+    !task.ok && task.messages.some(m => m.includes('unknown-mark')),
+  )
 
   // every word the closed list holds still builds, and a documentation `note` is not a mark
   for (const word of ['shared', 'deprecated', 'prop', 'sole', 'hide']) {
     const one = milled(PERMIT(`  mark ${word}\n`))
-    ok(`mill: \`mark ${word}\` under a form still builds`, one.ok, one.ok ? '' : one.messages.join(' | '))
+    ok(
+      `mill: \`mark ${word}\` under a form still builds`,
+      one.ok,
+      one.ok ? '' : one.messages.join(' | '),
+    )
   }
 
-  const tagged = milled(`form shape\n  mark tag, name kind\n  case circle\n    link radius, like number\n  case dot\n`)
-  ok('mill: `mark tag, name kind` still builds', tagged.ok, tagged.ok ? '' : tagged.messages.join(' | '))
+  const tagged = milled(
+    `form shape\n  mark tag, name kind\n  case circle\n    link radius, like number\n  case dot\n`,
+  )
+  ok(
+    'mill: `mark tag, name kind` still builds',
+    tagged.ok,
+    tagged.ok ? '' : tagged.messages.join(' | '),
+  )
 
-  const textual = milled(`form op\n  mark text\n  case plus, text <+>\n  case minus, text <->\n`)
-  ok('mill: `mark text` still builds', textual.ok, textual.ok ? '' : textual.messages.join(' | '))
+  const textual = milled(
+    `form op\n  mark text\n  case plus, text <+>\n  case minus, text <->\n`,
+  )
+  ok(
+    'mill: `mark text` still builds',
+    textual.ok,
+    textual.ok ? '' : textual.messages.join(' | '),
+  )
 
-  const documented = milled(`form permit\n  note <Proof that a person may act on a note.>\n  link note, like text\n`)
-  ok('mill: a documentation note under a form is no mark', documented.ok, documented.ok ? '' : documented.messages.join(' | '))
+  const documented = milled(
+    `form permit\n  note <Proof that a person may act on a note.>\n  link note, like text\n`,
+  )
+  ok(
+    'mill: a documentation note under a form is no mark',
+    documented.ok,
+    documented.ok ? '' : documented.messages.join(' | '),
+  )
 }
 
 // ---- Rust ----
@@ -204,27 +264,64 @@ task run
 const dir = runDir('term-sole-hide-')
 
 {
-  const once = emitRust(frontEnd(ONCE('  mark hide\n  mark sole\n'), ['run']))
-  const decl = once.split('\n').find(line => /struct Permit\b/.test(line)) ?? ''
-  const before = once.slice(Math.max(0, once.indexOf('struct Permit') - 80), once.indexOf('struct Permit'))
+  const once = emitRust(
+    frontEnd(ONCE('  mark hide\n  mark sole\n'), ['run']),
+  )
+  const decl =
+    once.split('\n').find(line => /struct Permit\b/.test(line)) ?? ''
+  const before = once.slice(
+    Math.max(0, once.indexOf('struct Permit') - 80),
+    once.indexOf('struct Permit'),
+  )
   ok('rust: a sole form is a struct', decl !== '', once.slice(0, 400))
-  ok('rust: a sole form derives no Clone', !/derive\([^)]*Clone/.test(before), before)
-  ok('rust: nothing clones a permit', !/\bp\.clone\(\)|permit\.clone\(\)/.test(once))
+  ok(
+    'rust: a sole form derives no Clone',
+    !/derive\([^)]*Clone/.test(before),
+    before,
+  )
+  ok(
+    'rust: nothing clones a permit',
+    !/\bp\.clone\(\)|permit\.clone\(\)/.test(once),
+  )
 
   const plain = emitRust(frontEnd(ONCE(''), ['run']))
-  const plainBefore = plain.slice(Math.max(0, plain.indexOf('struct Permit') - 80), plain.indexOf('struct Permit'))
-  ok('rust (control): the unmarked form derives Clone', /derive\([^)]*Clone/.test(plainBefore), plainBefore)
+  const plainBefore = plain.slice(
+    Math.max(0, plain.indexOf('struct Permit') - 80),
+    plain.indexOf('struct Permit'),
+  )
+  ok(
+    'rust (control): the unmarked form derives Clone',
+    /derive\([^)]*Clone/.test(plainBefore),
+    plainBefore,
+  )
 
   if (have('rustc')) {
     const main = join(dir, 'once.rs')
-    writeFileSync(main, `${once}\nfn main() { println!("{}", run()); }\n`)
+    writeFileSync(
+      main,
+      `${once}\nfn main() { println!("{}", run()); }\n`,
+    )
 
     try {
-      execFileSync('rustc', ['-A', 'warnings', '-o', join(dir, 'once'), main], { stdio: 'pipe' })
-      const result = spawnSync(join(dir, 'once'), [], { encoding: 'utf8' })
-      ok('rust: the sole program builds under rustc and reads n1', result.status === 0 && result.stdout.trim() === 'n1', `exit ${result.status}: ${result.stdout}${result.stderr}`)
+      execFileSync(
+        'rustc',
+        ['-A', 'warnings', '-o', join(dir, 'once'), main],
+        { stdio: 'pipe' },
+      )
+      const result = spawnSync(join(dir, 'once'), [], {
+        encoding: 'utf8',
+      })
+      ok(
+        'rust: the sole program builds under rustc and reads n1',
+        result.status === 0 && result.stdout.trim() === 'n1',
+        `exit ${result.status}: ${result.stdout}${result.stderr}`,
+      )
     } catch (e) {
-      ok('rust: the sole program builds under rustc', false, String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 800))
+      ok(
+        'rust: the sole program builds under rustc',
+        false,
+        String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 800),
+      )
     }
   } else {
     skip++
@@ -239,7 +336,11 @@ const dir = runDir('term-sole-hide-')
     refused = String((e as Error).message ?? e)
   }
 
-  ok('rust: a clone of a sole value fails the build at the emitter (sole-cloned)', refused.includes('sole-cloned') && refused.includes('permit'), refused || 'it built')
+  ok(
+    'rust: a clone of a sole value fails the build at the emitter (sole-cloned)',
+    refused.includes('sole-cloned') && refused.includes('permit'),
+    refused || 'it built',
+  )
 
   let control = ''
 
@@ -249,7 +350,11 @@ const dir = runDir('term-sole-hide-')
     control = `threw: ${String(e)}`
   }
 
-  ok('rust (control): the unmarked form is cloned and builds', /\bp\.clone\(\)/.test(control) && !control.startsWith('threw'), control.slice(0, 300))
+  ok(
+    'rust (control): the unmarked form is cloned and builds',
+    /\bp\.clone\(\)/.test(control) && !control.startsWith('threw'),
+    control.slice(0, 300),
+  )
 }
 
 // ---- the record copies TypeScript and Kotlin read ----
@@ -283,7 +388,11 @@ task run
     refused = String((e as Error).message ?? e)
   }
 
-  ok('typescript: copying a sole parameter fails the build (sole-copied)', refused.includes('sole-copied') && refused.includes('permit'), refused || 'it built')
+  ok(
+    'typescript: copying a sole parameter fails the build (sole-copied)',
+    refused.includes('sole-copied') && refused.includes('permit'),
+    refused || 'it built',
+  )
 
   let control = ''
 
@@ -293,10 +402,16 @@ task run
     control = `threw: ${String(e)}`
   }
 
-  ok('typescript (control): the unmarked form is copied and builds', !control.startsWith('threw'), control.slice(0, 300))
+  ok(
+    'typescript (control): the unmarked form is copied and builds',
+    !control.startsWith('threw'),
+    control.slice(0, 300),
+  )
 }
 
-console.log(`\nsole-hide-marks: ${pass} pass, ${fail} fail, ${skip} skipped`)
+console.log(
+  `\nsole-hide-marks: ${pass} pass, ${fail} fail, ${skip} skipped`,
+)
 
 if (fail > 0) {
   process.exit(1)

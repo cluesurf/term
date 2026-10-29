@@ -57,17 +57,40 @@ for (const [env, emit, want] of [
   ['swift', emitSwift, /SeedList<Shape>\(\[/],
   ['kotlin', emitKotlin, /mutableListOf<Shape>\(/],
 ] as const) {
-  const built = compile({ file: 'union-list.tree', text }, { resolve: withNativeEnv(env, stdlibResolver()!), env, entryPoints: ['run'] })
+  const built = compile(
+    { file: 'union-list.tree', text },
+    {
+      resolve: withNativeEnv(env, stdlibResolver()!),
+      env,
+      entryPoints: ['run'],
+    },
+  )
 
   if (!built.ok) {
-    ok(`the program builds for ${env}`, false, built.diagnostics.map(d => d.message).join(' | '))
+    ok(
+      `the program builds for ${env}`,
+      false,
+      built.diagnostics.map(d => d.message).join(' | '),
+    )
     continue
   }
 
   const source = emit(built.program)
-  const line = source.split('\n').find(l => /SeedList|mutableListOf/.test(l) && /(Int|int)/.test(l) && !/^\s*(func|fun|final|class|@)/.test(l)) ?? ''
+  const line =
+    source
+      .split('\n')
+      .find(
+        l =>
+          /SeedList|mutableListOf/.test(l) &&
+          /(Int|int)/.test(l) &&
+          !/^\s*(func|fun|final|class|@)/.test(l),
+      ) ?? ''
 
-  ok(`${env}: the list of cases names its element`, want.test(line), line.trim())
+  ok(
+    `${env}: the list of cases names its element`,
+    want.test(line),
+    line.trim(),
+  )
 }
 
 console.log(`\nunion-list-native: ${pass} pass, ${fail} fail`)

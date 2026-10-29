@@ -13,7 +13,10 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse } from '@term/make/code/parser/tree'
-import { readView, VIEW_REFUSED_HEAD } from '@term/make/code/compile/view'
+import {
+  readView,
+  VIEW_REFUSED_HEAD,
+} from '@term/make/code/compile/view'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const MILL = join(HERE, '../../deck/mill/code/tree/view')
@@ -54,7 +57,9 @@ const rules = walk(MILL)
   .join('\n')
 
 const declared = new Set(
-  [...rules.matchAll(/mine term, term ([a-z-]+)/g)].map(match => match[1]!),
+  [...rules.matchAll(/mine term, term ([a-z-]+)/g)].map(
+    match => match[1]!,
+  ),
 )
 
 // Every word the grammar matches, and where the reader handles it. Adding a rule to the grammar without adding a
@@ -95,12 +100,20 @@ for (const word of declared) {
 }
 
 for (const word of Object.keys(HEADS)) {
-  ok(`"${word}" is still in the grammar`, declared.has(word), 'listed here but no rule matches it')
+  ok(
+    `"${word}" is still in the grammar`,
+    declared.has(word),
+    'listed here but no rule matches it',
+  )
 }
 
 // The four statement heads, read off the file-level rule rather than assumed.
 const STATEMENT = new Set(
-  [...readFileSync(join(MILL, 'mine.tree'), 'utf8').matchAll(/mine form, like view-(\w+)/g)]
+  [
+    ...readFileSync(join(MILL, 'mine.tree'), 'utf8').matchAll(
+      /mine form, like view-(\w+)/g,
+    ),
+  ]
     .map(match => match[1]!)
     .map(part => (part === 'def' ? 'view' : part)),
 )
@@ -116,7 +129,10 @@ ok(
 // file (`task` inside a find, `hook` inside a walk), so this is checked against the statement heads and not
 // against the whole grammar.
 for (const word of VIEW_REFUSED_HEAD.keys()) {
-  ok(`"${word}" is refused and is not a statement head`, !STATEMENT.has(word))
+  ok(
+    `"${word}" is refused and is not a statement head`,
+    !STATEMENT.has(word),
+  )
 }
 
 // The reader accepts a document built only from the declared heads, and its refusals all fire.

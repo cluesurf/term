@@ -29,14 +29,18 @@ function program(text: string): Program {
 
   const built = mill(parsed.tree, 'main.tree')
 
-  if (!built.ok) throw new Error(built.diagnostics.map(d => d.message).join(' | '))
+  if (!built.ok)
+    throw new Error(built.diagnostics.map(d => d.message).join(' | '))
 
   resolveNames(built.program, 'main.tree')
 
   return built.program
 }
 
-const kept = (p: Program): string[] => p.flatMap(n => ('name' in n && typeof n.name === 'string' ? [n.name] : []))
+const kept = (p: Program): string[] =>
+  p.flatMap(n =>
+    'name' in n && typeof n.name === 'string' ? [n.name] : [],
+  )
 
 const shaped = pruneToReachable(
   program(`form knot
@@ -69,10 +73,26 @@ task use
   ['use'],
 )
 
-ok('a form built and matched only by its cases is kept', kept(shaped).includes('knot'), kept(shaped).join(', '))
-ok('a form nothing reaches is dropped', !kept(shaped).includes('unused'), kept(shaped).join(', '))
-ok('a task nothing reaches is dropped', !kept(shaped).includes('stray'), kept(shaped).join(', '))
-ok('the root is kept', kept(shaped).includes('use'), kept(shaped).join(', '))
+ok(
+  'a form built and matched only by its cases is kept',
+  kept(shaped).includes('knot'),
+  kept(shaped).join(', '),
+)
+ok(
+  'a form nothing reaches is dropped',
+  !kept(shaped).includes('unused'),
+  kept(shaped).join(', '),
+)
+ok(
+  'a task nothing reaches is dropped',
+  !kept(shaped).includes('stray'),
+  kept(shaped).join(', '),
+)
+ok(
+  'the root is kept',
+  kept(shaped).includes('use'),
+  kept(shaped).join(', '),
+)
 
 console.log(`\nprune: ${pass} pass, ${fail} fail`)
 

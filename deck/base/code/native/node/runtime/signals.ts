@@ -6,7 +6,11 @@
 // a key would hear no signal until the key came. So the rounds read through `next` here instead: the terminal's input
 // as a stream, which waits without holding the loop, and either the next bytes or, when a signal or the end of input
 // comes first, empty text. `take` then says which signal it was.
-const SIGNAL_NUMBERS: Record<string, number> = { SIGHUP: 1, SIGTERM: 15, SIGWINCH: 28 }
+const SIGNAL_NUMBERS: Record<string, number> = {
+  SIGHUP: 1,
+  SIGTERM: 15,
+  SIGWINCH: 28,
+}
 const RESIZE = 28
 
 const signals = (() => {

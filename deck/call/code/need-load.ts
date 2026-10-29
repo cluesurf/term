@@ -22,7 +22,17 @@
 
 import { execFileSync } from 'child_process'
 import { createHash, randomUUID } from 'crypto'
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'fs'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'fs'
 import { link as linkFile, lstat } from 'fs/promises'
 import nodePath from 'path'
 
@@ -38,7 +48,11 @@ import {
   trustedKeys,
   valueOf,
 } from '@cluesurf/deck.tree'
-import type { OciRoute, OciTransport, ReleaseConfig } from '@cluesurf/deck.tree'
+import type {
+  OciRoute,
+  OciTransport,
+  ReleaseConfig,
+} from '@cluesurf/deck.tree'
 import type { CodeHold } from '@term/deck/code/form'
 
 import { frontDir, userHome } from '@term/call/code/home'
@@ -61,7 +75,14 @@ const LOCK_POLL_MS = 250
 
 // On Windows the system's own tar.exe, by its full path: Git for Windows puts GNU tar on PATH, which reads the `C:` of
 // `-C C:\...` as a remote host name and fails
-const TAR = process.platform === 'win32' ? nodePath.join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar'
+const TAR =
+  process.platform === 'win32'
+    ? nodePath.join(
+        process.env.SystemRoot ?? 'C:\\Windows',
+        'System32',
+        'tar.exe',
+      )
+    : 'tar'
 
 export type Install = {
   version: string
@@ -76,7 +97,13 @@ const NONE_SHARED = { files: 0, bytes: 0 }
 const LINK_WIDTH = 4
 
 export type Verified =
-  | { ok: true; layer: string; size: number; keys: string; config: ReleaseConfig }
+  | {
+      ok: true
+      layer: string
+      size: number
+      keys: string
+      config: ReleaseConfig
+    }
   | { ok: false; reason: string }
 
 export type Loaded =
@@ -103,14 +130,20 @@ export function routeOf(): OciRoute {
 export async function listReleases(): Promise<string[]> {
   const route = routeOf()
 
-  return releasedVersions({ transport: transportFor({ host: route.registry.host }), repository: route.repository.name })
+  return releasedVersions({
+    transport: transportFor({ host: route.registry.host }),
+    repository: route.repository.name,
+  })
 }
 
 /**
  * One release, verified in full: the index, the platform's manifest, the signature over the layer, and the signer in the
  * scope's key set
  */
-export async function verifyRelease(input: { version: string; platform: string }): Promise<Verified> {
+export async function verifyRelease(input: {
+  version: string
+  platform: string
+}): Promise<Verified> {
   const route = routeOf()
   const transport = transportFor({ host: route.registry.host })
 
@@ -122,6 +155,7 @@ export async function verifyRelease(input: { version: string; platform: string }
       version: input.version,
       platform: input.platform,
     })
+
     const trusted = await trustedKeys({
       transport,
       repository: route.keysRepository,
@@ -131,11 +165,17 @@ export async function verifyRelease(input: { version: string; platform: string }
     })
 
     if (!trusted) {
-      return { ok: false, reason: `${route.scope} publishes no key set at ${route.registry.host}/${route.keysRepository}` }
+      return {
+        ok: false,
+        reason: `${route.scope} publishes no key set at ${route.registry.host}/${route.keysRepository}`,
+      }
     }
 
     if (!trusted.keys.includes(release.config.key)) {
-      return { ok: false, reason: `${PACKAGE}@${input.version} is signed by a key outside the key set of ${route.scope}` }
+      return {
+        ok: false,
+        reason: `${PACKAGE}@${input.version} is signed by a key outside the key set of ${route.scope}`,
+      }
     }
 
     return {
@@ -146,7 +186,10 @@ export async function verifyRelease(input: { version: string; platform: string }
       keys: `the key set of ${route.scope} (${trusted.source})`,
     }
   } catch (error) {
-    return { ok: false, reason: error instanceof Error ? error.message : String(error) }
+    return {
+      ok: false,
+      reason: error instanceof Error ? error.message : String(error),
+    }
   }
 }
 
@@ -163,43 +206,84 @@ export async function loadVersion(input: {
   const platform = input.platform ?? currentPlatform()
 
   if (!platform) {
-    return { ok: false, reason: `No release is built for ${process.platform}-${process.arch}` }
+    return {
+      ok: false,
+      reason: `No release is built for ${process.platform}-${process.arch}`,
+    }
   }
 
   const route = routeOf()
   const transport = transportFor({ host: route.registry.host })
+
   let version = input.version
 
   if (!version) {
     if (!input.hold) {
-      return { ok: false, reason: 'loadVersion needs a version or a range' }
+      return {
+        ok: false,
+        reason: 'loadVersion needs a version or a range',
+      }
     }
 
     let versions: string[]
 
     try {
-      versions = await releasedVersions({ transport, repository: route.repository.name })
+      versions = await releasedVersions({
+        transport,
+        repository: route.repository.name,
+      })
     } catch (error) {
-      return { ok: false, reason: `the releases at ${route.registry.host}/${route.repository.name} could not be read: ${(error as Error).message}` }
+      return {
+        ok: false,
+        reason: `the releases at ${route.registry.host}/${route.repository.name} could not be read: ${(error as Error).message}`,
+      }
     }
 
     version = newestMatching({ versions, hold: input.hold })
 
     if (!version) {
-      return { ok: false, reason: `${PACKAGE} has no release in that range${versions[0] ? `. The newest is ${versions[0]}: term self find` : ''}` }
+      return {
+        ok: false,
+        reason: `${PACKAGE} has no release in that range${versions[0] ? `. The newest is ${versions[0]}: term self find` : ''}`,
+      }
     }
   }
 
   if (isInstalled(version)) {
-    return { ok: true, version, platform, layer: readInstall(installFile(version))?.hash ?? '', keys: '', bytes: 0, duration: 0, fresh: false, shared: NONE_SHARED }
+    return {
+      ok: true,
+      version,
+      platform,
+      layer: readInstall(installFile(version))?.hash ?? '',
+      keys: '',
+      bytes: 0,
+      duration: 0,
+      fresh: false,
+      shared: NONE_SHARED,
+    }
   }
 
-  return withInstallLock(version, () => install({ version: version!, platform, expect: input.expect, route, transport }))
+  return withInstallLock(version, () =>
+    install({
+      version: version,
+      platform,
+      expect: input.expect,
+      route,
+      transport,
+    }),
+  )
 }
 
 /** `2,104 files shared, 37.9 MB`: what a new version did not cost, by linking to a version already installed */
-export function sharedFacts(shared: { files: number; bytes: number }): string[] {
-  return shared.files > 0 ? [`${shared.files.toLocaleString('en-US')} files shared, ${(shared.bytes / 1e6).toFixed(1)} MB`] : []
+export function sharedFacts(shared: {
+  files: number
+  bytes: number
+}): string[] {
+  return shared.files > 0
+    ? [
+        `${shared.files.toLocaleString('en-US')} files shared, ${(shared.bytes / 1e6).toFixed(1)} MB`,
+      ]
+    : []
 }
 
 /** Is this version unpacked here, with its install.tree? */
@@ -214,12 +298,17 @@ export function readInstall(file: string): Install | undefined {
   }
 
   const read = readTree({ file, text: readFileSync(file, 'utf8') })
-  const form = read.ok ? read.forms.find(one => one.head === 'install') : undefined
+  const form = read.ok
+    ? read.forms.find(one => one.head === 'install')
+    : undefined
+
   const version = form && valueOf(form, 'code')
   const platform = form && valueOf(form, 'form')
   const hash = form && valueOf(form, 'hash')
 
-  return version && platform && hash ? { version, platform, hash } : undefined
+  return version && platform && hash
+    ? { version, platform, hash }
+    : undefined
 }
 
 /** A version's install.tree. */
@@ -246,7 +335,10 @@ export function linkFront(version: string): void {
   if (windows) {
     writeFileSync(next, plan.frontShimText(version))
   } else {
-    symlinkSync(nodePath.join('..', 'code', version, 'term', 'bin', 'term'), next)
+    symlinkSync(
+      nodePath.join('..', 'code', version, 'term', 'bin', 'term'),
+      next,
+    )
   }
 
   renameSync(next, front)
@@ -259,7 +351,10 @@ export function frontVersion(): string | undefined {
 
 /** When a command last ran on a version, or when it was installed if never. */
 export function lastUsed(version: string): Date | undefined {
-  for (const file of [userHome('code', version, 'used'), installFile(version)]) {
+  for (const file of [
+    userHome('code', version, 'used'),
+    installFile(version),
+  ]) {
     try {
       return statSync(file).mtime
     } catch {
@@ -296,10 +391,16 @@ async function install(input: {
   const started = Date.now()
 
   if (input.expect) {
-    const index = await input.transport.getManifest({ repository: input.route.repository.name, reference: input.version })
+    const index = await input.transport.getManifest({
+      repository: input.route.repository.name,
+      reference: input.version,
+    })
 
     if (!index) {
-      return { ok: false, reason: `${PACKAGE}@${input.version} is not released` }
+      return {
+        ok: false,
+        reason: `${PACKAGE}@${input.version} is not released`,
+      }
     }
 
     if (index.digest !== input.expect) {
@@ -310,7 +411,10 @@ async function install(input: {
     }
   }
 
-  const verified = await verifyRelease({ version: input.version, platform: input.platform })
+  const verified = await verifyRelease({
+    version: input.version,
+    platform: input.platform,
+  })
 
   if (!verified.ok) {
     return { ok: false, reason: verified.reason }
@@ -322,13 +426,25 @@ async function install(input: {
     size: verified.size,
     limit: PAYLOAD_LIMIT,
   })
+
   const digest = `sha256:${createHash('sha256').update(bytes).digest('hex')}`
 
   if (digest !== verified.layer) {
-    return { ok: false, reason: `The download hashes to ${digest}, not the signed ${verified.layer}` }
+    return {
+      ok: false,
+      reason: `The download hashes to ${digest}, not the signed ${verified.layer}`,
+    }
   }
 
-  const shared = await unpack({ version: input.version, bytes, install: { version: input.version, platform: input.platform, hash: verified.layer } })
+  const shared = await unpack({
+    version: input.version,
+    bytes,
+    install: {
+      version: input.version,
+      platform: input.platform,
+      hash: verified.layer,
+    },
+  })
 
   return {
     ok: true,
@@ -344,23 +460,49 @@ async function install(input: {
 }
 
 function writeInstall(input: { file: string; install: Install }): void {
-  writeFileSync(input.file, plan.installText(input.install.version, input.install.platform, input.install.hash))
+  writeFileSync(
+    input.file,
+    plan.installText(
+      input.install.version,
+      input.install.platform,
+      input.install.hash,
+    ),
+  )
 }
 
 // Unpack a payload beside the others and write its install.tree. Into a temporary directory first, renamed into place
 // whole, so a failed unpack never leaves a half-written version that anything could later run
-async function unpack(input: { version: string; bytes: Buffer; install: Install }): Promise<{ files: number; bytes: number }> {
+async function unpack(input: {
+  version: string
+  bytes: Buffer
+  install: Install
+}): Promise<{ files: number; bytes: number }> {
   const code = userHome('code')
   const target = nodePath.join(code, input.version)
-  const staging = nodePath.join(code, `.${input.version}.${randomUUID()}`)
+  const staging = nodePath.join(
+    code,
+    `.${input.version}.${randomUUID()}`,
+  )
+
   const archive = `${staging}.tar.gz`
 
   mkdirSync(staging, { recursive: true })
 
   try {
     writeFileSync(archive, input.bytes)
-    const shared = await extractShared({ archive, into: staging, others: installedVersions(userHome()).map(version => nodePath.join(code, version, 'term')) })
-    writeInstall({ file: nodePath.join(staging, 'install.tree'), install: input.install })
+
+    const shared = await extractShared({
+      archive,
+      into: staging,
+      others: installedVersions(userHome()).map(version =>
+        nodePath.join(code, version, 'term'),
+      ),
+    })
+
+    writeInstall({
+      file: nodePath.join(staging, 'install.tree'),
+      install: input.install,
+    })
     rmSync(target, { recursive: true, force: true })
     renameSync(staging, target)
 
@@ -389,18 +531,25 @@ export function writeFileList(root: string): ListedFile[] {
 
       return {
         path: path.split(nodePath.sep).join('/'),
-        hash: createHash('sha256').update(readFileSync(file)).digest('hex'),
+        hash: createHash('sha256')
+          .update(readFileSync(file))
+          .digest('hex'),
         mode: (statSync(file).mode & 0o777).toString(8),
       }
     })
 
-  writeFileSync(nodePath.join(root, FILE_LIST), plan.fileListText(listed))
+  writeFileSync(
+    nodePath.join(root, FILE_LIST),
+    plan.fileListText(listed),
+  )
 
   return listed
 }
 
 /** A payload's file list, through the one `.tree` reader, keyed by path. Undefined when the payload has none. */
-export function readFileList(file: string): Map<string, ListedFile> | undefined {
+export function readFileList(
+  file: string,
+): Map<string, ListedFile> | undefined {
   let text: string
 
   try {
@@ -447,20 +596,44 @@ export function readFileList(file: string): Map<string, ListedFile> | undefined 
  *
  * Returns how many files and bytes are shared.
  */
-export async function extractShared(input: { archive: string; into: string; others: string[] }): Promise<{ files: number; bytes: number }> {
+export async function extractShared(input: {
+  archive: string
+  into: string
+  others: string[]
+}): Promise<{ files: number; bytes: number }> {
   const listFile = nodePath.join(input.into, 'term', FILE_LIST)
 
   try {
-    execFileSync(TAR, ['-xzf', input.archive, '-C', input.into, `term/${FILE_LIST}`], { stdio: 'ignore' })
+    execFileSync(
+      TAR,
+      ['-xzf', input.archive, '-C', input.into, `term/${FILE_LIST}`],
+      { stdio: 'ignore' },
+    )
   } catch {
     // an older payload with no list: unpack it whole
   }
 
   const mine = readFileList(listFile)
-  const theirs = mine ? input.others.map(root => ({ root, listed: readFileList(nodePath.join(root, FILE_LIST)) })).filter(one => one.listed) : []
+  const theirs = mine
+    ? input.others
+        .map(root => ({
+          root,
+          listed: readFileList(nodePath.join(root, FILE_LIST)),
+        }))
+        .filter(one => one.listed)
+    : []
+
   // which files are linked, and from which version, is need-files.tree `shared-files`
-  const shared = plan.sharedFiles([...(mine?.values() ?? [])], theirs.map((one, at) => ({ at, listed: one.listed! })))
-  const links = shared.map(file => ({ from: nodePath.join(theirs[file.at]!.root, file.path), to: nodePath.join(input.into, 'term', file.path), path: file.path }))
+  const shared = plan.sharedFiles(
+    [...(mine?.values() ?? [])],
+    theirs.map((one, at) => ({ at, listed: one.listed! })),
+  )
+
+  const links = shared.map(file => ({
+    from: nodePath.join(theirs[file.at]!.root, file.path),
+    to: nodePath.join(input.into, 'term', file.path),
+    path: file.path,
+  }))
 
   if (links.length === 0) {
     execFileSync(TAR, ['-xzf', input.archive, '-C', input.into])
@@ -470,6 +643,7 @@ export async function extractShared(input: { archive: string; into: string; othe
 
   let files = 0
   let bytes = 0
+
   const made = new Set<string>()
   const linked = new Set<string>()
 
@@ -509,7 +683,10 @@ export async function extractShared(input: { archive: string; into: string; othe
   // name still arrives. Named with `-T`, never excluded with `-X`: tar matches each entry against every pattern, and
   // 4,600 exclusions took 5.4 s where the whole extract takes 1.1 s, while a few dozen names cost nothing
   const rest = plan.restEntries(
-    execFileSync(TAR, ['-tzf', input.archive], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 }),
+    execFileSync(TAR, ['-tzf', input.archive], {
+      encoding: 'utf8',
+      maxBuffer: 256 * 1024 * 1024,
+    }),
     new Map([...linked].map(entry => [entry, true])),
   )
 
@@ -519,7 +696,14 @@ export async function extractShared(input: { archive: string; into: string; othe
     writeFileSync(names, rest.map(entry => `${entry}\n`).join(''))
 
     try {
-      execFileSync(TAR, ['-xzf', input.archive, '-C', input.into, '-T', names])
+      execFileSync(TAR, [
+        '-xzf',
+        input.archive,
+        '-C',
+        input.into,
+        '-T',
+        names,
+      ])
     } finally {
       rmSync(names, { force: true })
     }
@@ -532,9 +716,17 @@ export async function extractShared(input: { archive: string; into: string; othe
 function filesUnder(dir: string): string[] {
   const found: string[] = []
 
-  for (const entry of readdirSync(dir, { withFileTypes: true, recursive: true })) {
+  for (const entry of readdirSync(dir, {
+    withFileTypes: true,
+    recursive: true,
+  })) {
     if (entry.isFile()) {
-      found.push(nodePath.relative(dir, nodePath.join(entry.parentPath, entry.name)))
+      found.push(
+        nodePath.relative(
+          dir,
+          nodePath.join(entry.parentPath, entry.name),
+        ),
+      )
     }
   }
 
@@ -543,7 +735,10 @@ function filesUnder(dir: string): string[] {
 
 // One install of a version at a time on this machine: an atomic `mkdir` of a lock directory beside it. A lock older
 // than the wait is taken to be from a process that died, and is cleared
-async function withInstallLock(version: string, work: () => Promise<Loaded>): Promise<Loaded> {
+async function withInstallLock(
+  version: string,
+  work: () => Promise<Loaded>,
+): Promise<Loaded> {
   const lock = userHome('code', `.${version}.lock`)
   const started = Date.now()
 
@@ -564,7 +759,10 @@ async function withInstallLock(version: string, work: () => Promise<Loaded>): Pr
       }
 
       if (Date.now() - started > LOCK_WAIT_MS) {
-        return { ok: false, reason: `another install of ${PACKAGE}@${version} has held ${lock} for five minutes` }
+        return {
+          ok: false,
+          reason: `another install of ${PACKAGE}@${version} has held ${lock} for five minutes`,
+        }
       }
 
       await new Promise(resolve => setTimeout(resolve, LOCK_POLL_MS))

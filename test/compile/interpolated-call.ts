@@ -11,7 +11,10 @@ import { pathToFileURL } from 'node:url'
 import { transformSync } from 'esbuild'
 import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
-import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
+import {
+  withNativeEnv,
+  nativePrelude,
+} from '@term/make/code/compile/native'
 import { existsSync, readFileSync } from 'node:fs'
 import { tempDir } from '../temp'
 
@@ -50,18 +53,44 @@ task field
   send back, text <at {p/x} named {p/label}>
 `
 
-const built = compile({ file: '/gate/code/interpolated-call.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!) })
+const built = compile(
+  { file: '/gate/code/interpolated-call.tree', text },
+  { resolve: withNativeEnv('node', stdlibResolver()!) },
+)
 
 if (!built.ok) {
-  ok('the program builds', false, built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the program builds',
+    false,
+    built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
 } else {
-  const prelude = nativePrelude(built.program, 'node', path => (existsSync(path) ? readFileSync(path, 'utf8') : undefined))
+  const prelude = nativePrelude(built.program, 'node', path =>
+    existsSync(path) ? readFileSync(path, 'utf8') : undefined,
+  )
   const dir = tempDir('term-interpolated-call-')
   const file = join(dir, 'module.mjs')
-  writeFileSync(file, transformSync(`${prelude}\n${built.typescript}`, { loader: 'ts', format: 'esm' }).code)
-  const mod = (await import(pathToFileURL(file).href)) as { shown: () => string; field: () => string }
-  ok('a method call in an interpolation is called', mod.shown() === 'value 42 here', mod.shown())
-  ok('a field path in an interpolation still reads the field', mod.field() === 'at 3 named a', mod.field())
+  writeFileSync(
+    file,
+    transformSync(`${prelude}\n${built.typescript}`, {
+      loader: 'ts',
+      format: 'esm',
+    }).code,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as {
+    shown: () => string
+    field: () => string
+  }
+  ok(
+    'a method call in an interpolation is called',
+    mod.shown() === 'value 42 here',
+    mod.shown(),
+  )
+  ok(
+    'a field path in an interpolation still reads the field',
+    mod.field() === 'at 3 named a',
+    mod.field(),
+  )
 }
 
 console.log(`\ninterpolated-call: ${pass} pass, ${fail} fail`)

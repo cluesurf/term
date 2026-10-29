@@ -64,11 +64,17 @@ export const CACHE_EPOCH = '11'
 const BIGINT_TAG = '$bigint'
 
 export function storeBigint(_key: string, value: unknown): unknown {
-  return typeof value === 'bigint' ? { [BIGINT_TAG]: value.toString() } : value
+  return typeof value === 'bigint'
+    ? { [BIGINT_TAG]: value.toString() }
+    : value
 }
 
 export function reviveBigint(_key: string, value: unknown): unknown {
-  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+  if (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value)
+  ) {
     const tagged = (value as Record<string, unknown>)[BIGINT_TAG]
 
     if (typeof tagged === 'string' && Object.keys(value).length === 1) {
@@ -79,7 +85,10 @@ export function reviveBigint(_key: string, value: unknown): unknown {
   return value
 }
 
-function readEntry<T>(stored: string | undefined, kind = 'output'): T | undefined {
+function readEntry<T>(
+  stored: string | undefined,
+  kind = 'output',
+): T | undefined {
   if (stored === undefined) {
     return undefined
   }
@@ -106,7 +115,12 @@ function usable(kind: string, value: unknown): boolean {
 
   switch (kind) {
     case 'mill':
-      return typeof entry.ok === 'boolean' && (entry.ok ? Array.isArray(entry.program) : Array.isArray(entry.diagnostics))
+      return (
+        typeof entry.ok === 'boolean' &&
+        (entry.ok
+          ? Array.isArray(entry.program)
+          : Array.isArray(entry.diagnostics))
+      )
     case 'scan':
       return Array.isArray(entry.paths) && Array.isArray(entry.finds)
     case 'unit':
@@ -127,7 +141,9 @@ function readScan<T>(stored: string | undefined): T | undefined {
   }
 
   try {
-    const value = JSON.parse(stored, (_key, value: unknown) => (value === null ? undefined : value)) as unknown
+    const value = JSON.parse(stored, (_key, value: unknown) =>
+      value === null ? undefined : value,
+    ) as unknown
 
     return usable('scan', value) ? (value as T) : undefined
   } catch {
@@ -160,7 +176,7 @@ export type MilledUnit =
 
 // a persistent backend for the cache. `kind` separates namespaces (`mill` / `output`). Synchronous and string-valued,
 // so the in-memory cache stays simple. A node implementation reads / writes `.base/@term/code/cache`; the browser passes none.
-export interface CacheStore {
+export type CacheStore = {
   load(kind: string, key: string): string | undefined
   save(kind: string, key: string, value: string): void
 }
@@ -198,12 +214,18 @@ export class CompileCache {
   ) {
     this.state = makeCompileCache(
       {
-        versionOf: typeof version === 'string' ? () => version : version,
+        versionOf:
+          typeof version === 'string' ? () => version : version,
         readEntry: (kind: string, key: string, shape: string) => {
           const stored = store?.load(kind, key)
-          const value = shape === 'scan' ? readScan<unknown>(stored) : readEntry<unknown>(stored, shape)
+          const value =
+            shape === 'scan'
+              ? readScan<unknown>(stored)
+              : readEntry<unknown>(stored, shape)
 
-          return value === undefined ? { form: 'none' } : { form: 'some', value }
+          return value === undefined
+            ? { form: 'none' }
+            : { form: 'some', value }
         },
         writeEntry: (kind: string, key: string, value: unknown) => {
           store?.save(kind, key, JSON.stringify(value, storeBigint))
@@ -237,7 +259,11 @@ export class CompileCache {
   }
 
   // the milled unit for (file, text): memory, then the store, then built, handed back as a fresh clone
-  milledUnit(file: string, text: string, build: () => MilledUnit): MilledUnit {
+  milledUnit(
+    file: string,
+    text: string,
+    build: () => MilledUnit,
+  ): MilledUnit {
     return milledUnitPort(this.state, file, text, build) as MilledUnit
   }
 

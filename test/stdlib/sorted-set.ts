@@ -95,7 +95,13 @@ const dir = mkdtempSync(join(tmpdir(), 'term-sorted-set-'))
 const only = process.env.SORTED_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'sorted-set' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'sorted-set',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
@@ -105,7 +111,9 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
   ok(
     `${backend}: 3,000 adds and removes answer what a sorted Set does`,
     ran.form === 'ran' && ran.output === EXPECTED,
-    ran.form === 'ran' ? `got ${ran.output.slice(0, 160)}... want ${EXPECTED.slice(0, 160)}...` : `${ran.stage}: ${ran.reason}`,
+    ran.form === 'ran'
+      ? `got ${ran.output.slice(0, 160)}... want ${EXPECTED.slice(0, 160)}...`
+      : `${ran.stage}: ${ran.reason}`,
   )
 }
 

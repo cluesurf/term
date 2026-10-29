@@ -7,7 +7,10 @@
 // type test that may be absent is a maybe.
 
 import { diagnose } from '@term/make/code/parser/diagnostic'
-import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
+import type {
+  Diagnostic,
+  Span,
+} from '@term/make/code/parser/diagnostic'
 import type { Expression, Type } from '@term/make/code/compile/node'
 import { showType } from '@term/make/code/compile/type-text'
 import { resolveType } from '@term/make/code/check/substitution'
@@ -32,9 +35,16 @@ export type TypeTest = { test: string; label: string; subject: string }
 
 // a branch test that is one of them applied to one local, `is-text(value)`, by its name and the local's
 export function typeTestOf(cond: Expression): Maybe<TypeTest> {
-  const subject = cond.form === 'call' && cond.args.length === 1 ? cond.args[0] : undefined
+  const subject =
+    cond.form === 'call' && cond.args.length === 1
+      ? cond.args[0]
+      : undefined
 
-  if (cond.form !== 'call' || cond.callee.form !== 'variable' || subject?.form !== 'variable') {
+  if (
+    cond.form !== 'call' ||
+    cond.callee.form !== 'variable' ||
+    subject?.form !== 'variable'
+  ) {
     return { form: 'none' }
   }
 
@@ -42,15 +52,32 @@ export function typeTestOf(cond: Expression): Maybe<TypeTest> {
   const test = cond.callee.name.replace(/__\d+(__\d+)?$/, '')
   const label = TYPE_TESTS.get(test)
 
-  return label ? { form: 'some', value: { test, label, subject: subject.name } } : { form: 'none' }
+  return label
+    ? { form: 'some', value: { test, label, subject: subject.name } }
+    : { form: 'none' }
 }
 
 // a type a value of its own goes into: not the gradual pair, and not a variable still being solved
-const typed = (type: Type): boolean => type.kind !== 'unknown' && type.kind !== 'dynamic' && type.kind !== 'variable'
+const typed = (type: Type): boolean =>
+  type.kind !== 'unknown' &&
+  type.kind !== 'dynamic' &&
+  type.kind !== 'variable'
 
 // the refusal of an `unknown` handed to a typed place, when the seam is `on` and the two sides already unified
-export function unknownSeam(on: boolean, sub: Substitution, actual: Type, wanted: Type, span: Span, what: string, file: string): Diagnostic[] {
-  if (!on || resolveType(sub, actual).kind !== 'unknown' || !typed(resolveType(sub, wanted))) {
+export function unknownSeam(
+  on: boolean,
+  sub: Substitution,
+  actual: Type,
+  wanted: Type,
+  span: Span,
+  what: string,
+  file: string,
+): Diagnostic[] {
+  if (
+    !on ||
+    resolveType(sub, actual).kind !== 'unknown' ||
+    !typed(resolveType(sub, wanted))
+  ) {
     return []
   }
 

@@ -70,24 +70,50 @@ task probe
 let passed = 0
 let failed = 0
 const ok = (name: string, holds: boolean, detail = ''): void => {
-  console.log(`${holds ? 'ok  ' : 'FAIL'} ${name}${detail ? `: ${detail}` : ''}`)
+  console.log(
+    `${holds ? 'ok  ' : 'FAIL'} ${name}${detail ? `: ${detail}` : ''}`,
+  )
   passed += holds ? 1 : 0
   failed += holds ? 0 : 1
 }
 
 for (const one of CASES) {
   const file = join(ROOT, 'code', '__port-prelude-once.tree')
-  const result = compile({ file, text: one.text }, { resolve: projectResolver(ROOT), leanOf: projectLeanOf(ROOT), library: true })
+  const result = compile(
+    { file, text: one.text },
+    {
+      resolve: projectResolver(ROOT),
+      leanOf: projectLeanOf(ROOT),
+      library: true,
+    },
+  )
 
   if (!result.ok) {
-    ok(`${one.name}: compiles`, false, result.diagnostics.slice(0, 3).map(d => `${d.name}: ${d.message}`).join('; '))
+    ok(
+      `${one.name}: compiles`,
+      false,
+      result.diagnostics
+        .slice(0, 3)
+        .map(d => `${d.name}: ${d.message}`)
+        .join('; '),
+    )
     continue
   }
 
   const content = portContent(result.program, result.typescript)
-  const names = [...content.matchAll(/^(?:export )?const ([A-Za-z_$][\w$]*) =/gm)].map(match => match[1]!)
-  const twice = [...new Set(names.filter((name, index) => names.indexOf(name) !== index))]
-  ok(`${one.name}: each top-level const once`, twice.length === 0, twice.join(', '))
+  const names = [
+    ...content.matchAll(/^(?:export )?const ([A-Za-z_$][\w$]*) =/gm),
+  ].map(match => match[1]!)
+  const twice = [
+    ...new Set(
+      names.filter((name, index) => names.indexOf(name) !== index),
+    ),
+  ]
+  ok(
+    `${one.name}: each top-level const once`,
+    twice.length === 0,
+    twice.join(', '),
+  )
 
   let refusal = ''
 

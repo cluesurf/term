@@ -42,8 +42,9 @@ async function loadProgram(
   )
 
   if (!result.ok) {
-    for (const d of result.diagnostics)
-      {console.log(render(d, source.split('\n'), false))}
+    for (const d of result.diagnostics) {
+      console.log(render(d, source.split('\n'), false))
+    }
 
     throw new Error('compile failed')
   }
@@ -169,7 +170,9 @@ async function main(): Promise<void> {
     `\nsite/router: ${pass} pass, ${fail} fail  (the real site.tree trie router over the base stdlib)`,
   )
 
-  if (fail > 0) {process.exit(1)}
+  if (fail > 0) {
+    process.exit(1)
+  }
 }
 
 main()

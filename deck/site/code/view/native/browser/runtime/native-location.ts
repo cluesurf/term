@@ -8,14 +8,22 @@ export const nativeLocation = {
 
   // `<latitude> <longitude> <accuracy>`, or denied, unavailable or failed
   position(): Promise<string> {
-    if (typeof navigator === 'undefined' || typeof navigator.geolocation?.getCurrentPosition !== 'function') {
+    if (
+      typeof navigator === 'undefined' ||
+      typeof navigator.geolocation?.getCurrentPosition !== 'function'
+    ) {
       return Promise.resolve('unavailable')
     }
 
     return new Promise(settle =>
       navigator.geolocation.getCurrentPosition(
         at => settle(nativeLocation.describe(at)),
-        error => settle(error.code === error.PERMISSION_DENIED ? 'denied' : 'failed'),
+        error =>
+          settle(
+            error.code === error.PERMISSION_DENIED
+              ? 'denied'
+              : 'failed',
+          ),
         { enableHighAccuracy: true, timeout: 10_000 },
       ),
     )
@@ -25,7 +33,10 @@ export const nativeLocation = {
   // answers: one subscription shared by every watcher (native-watch.ts). `denied` or `unavailable` once
   watch(handler: (value: string) => void): number {
     return nativeWatch.join('position', handler, tell => {
-      if (typeof navigator === 'undefined' || typeof navigator.geolocation?.watchPosition !== 'function') {
+      if (
+        typeof navigator === 'undefined' ||
+        typeof navigator.geolocation?.watchPosition !== 'function'
+      ) {
         tell('unavailable')
 
         return () => {}
@@ -33,7 +44,12 @@ export const nativeLocation = {
 
       const watching = navigator.geolocation.watchPosition(
         at => tell(nativeLocation.describe(at)),
-        error => tell(error.code === error.PERMISSION_DENIED ? 'denied' : 'failed'),
+        error =>
+          tell(
+            error.code === error.PERMISSION_DENIED
+              ? 'denied'
+              : 'failed',
+          ),
         { enableHighAccuracy: true },
       )
 

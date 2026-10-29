@@ -11,7 +11,9 @@ let fail = 0
 function said(text: string): string[] {
   const result = compile({ file: 'x.tree', text })
 
-  return result.ok ? [] : result.diagnostics.map(d => `${d.name}: ${d.message}`)
+  return result.ok
+    ? []
+    : result.diagnostics.map(d => `${d.name}: ${d.message}`)
 }
 
 function ok(name: string, good: boolean, detail: string[]): void {
@@ -32,7 +34,15 @@ function ok(name: string, good: boolean, detail: string[]): void {
 
   ok(
     'a false law names the values that break it, and its goal',
-    out.some(m => m.includes('This rule is FALSE: at n = 0 the goal does not hold (goal: 2 * n == n + 1)') || m.includes('this rule is FALSE: at n = 0 the goal does not hold (goal: 2 * n == n + 1)')),
+    out.some(
+      m =>
+        m.includes(
+          'This rule is FALSE: at n = 0 the goal does not hold (goal: 2 * n == n + 1)',
+        ) ||
+        m.includes(
+          'this rule is FALSE: at n = 0 the goal does not hold (goal: 2 * n == n + 1)',
+        ),
+    ),
     out,
   )
 }
@@ -46,7 +56,11 @@ function ok(name: string, good: boolean, detail: string[]): void {
 
   ok(
     'and its hypotheses, which hold at those values',
-    out.some(m => m.includes('FALSE: at n = 1 every hypothesis holds and the goal does not (goal: n * n >= 2 * n, given: n >= 1)')),
+    out.some(m =>
+      m.includes(
+        'FALSE: at n = 1 every hypothesis holds and the goal does not (goal: n * n >= 2 * n, given: n >= 1)',
+      ),
+    ),
     out,
   )
 }
@@ -58,7 +72,11 @@ function ok(name: string, good: boolean, detail: string[]): void {
   show hold, is-minimum multiply(n, n), multiply(2, n)
 `)
 
-  ok('control: a true law is proven, and nothing is said', out.length === 0, out)
+  ok(
+    'control: a true law is proven, and nothing is said',
+    out.length === 0,
+    out,
+  )
 }
 
 // false, but only past the values searched: no FALSE, the ordinary message, with the goal and hypothesis printed
@@ -71,7 +89,9 @@ function ok(name: string, good: boolean, detail: string[]): void {
 
   ok(
     'a law false only past the values searched is not called false, and is still refused',
-    out.length > 0 && !out.some(m => /FALSE/.test(m)) && out.some(m => m.includes('(goal: n * n <= 100, given: n >= 10)')),
+    out.length > 0 &&
+      !out.some(m => /FALSE/.test(m)) &&
+      out.some(m => m.includes('(goal: n * n <= 100, given: n >= 10)')),
     out,
   )
 }
@@ -92,7 +112,11 @@ rule double-is-one-more
 
   ok(
     'a goal that calls a one-expression task runs it: double(n) == n + 1 is false at n = 0',
-    out.some(m => m.includes('FALSE: at n = 0 the goal does not hold (goal: double(n) == n + 1)')),
+    out.some(m =>
+      m.includes(
+        'FALSE: at n = 0 the goal does not hold (goal: double(n) == n + 1)',
+      ),
+    ),
     out,
   )
 }
@@ -108,7 +132,11 @@ rule double-is-one-more
   show hold, is-minimum x(n), 0
 `)
 
-  ok('a rule over a function mark is described, never called false', out.length > 0 && !out.some(m => /FALSE/.test(m)), out)
+  ok(
+    'a rule over a function mark is described, never called false',
+    out.length > 0 && !out.some(m => /FALSE/.test(m)),
+    out,
+  )
 }
 
 console.log(`\nexplain: ${pass} pass, ${fail} fail`)

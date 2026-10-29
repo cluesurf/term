@@ -23,16 +23,33 @@
 // definition shadows a form of the same name. Runs before `extendForms`, which reads a form's base by name.
 
 import type { Program, Statement } from '@term/make/code/compile/node'
-import type { FileScope, ImportScope, ScopeFind } from '@term/make/code/compile/load'
-import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
+import type {
+  FileScope,
+  ImportScope,
+  ScopeFind,
+} from '@term/make/code/compile/load'
+import type {
+  Diagnostic,
+  Span,
+} from '@term/make/code/parser/diagnostic'
 
 type Defining = Extract<Statement, { form: 'record-type' | 'mask' }>
 
 // `last` is the file of the definition merged last, the one the flat program let win, for an unimported reference
-type Group = { name: string; files: string[]; byFile: Map<string, Defining[]>; renamed: Map<string, string>; last: string }
+type Group = {
+  name: string
+  files: string[]
+  byFile: Map<string, Defining[]>
+  renamed: Map<string, string>
+  last: string
+}
 
 // a file and every file its `bear` chain re-exports
-function exportedBy(scope: ImportScope | undefined, file: string, into = new Set<string>()): Set<string> {
+function exportedBy(
+  scope: ImportScope | undefined,
+  file: string,
+  into = new Set<string>(),
+): Set<string> {
   if (into.has(file)) {
     return into
   }
@@ -67,7 +84,10 @@ function typeParameters(statement: Statement): Set<string> {
 // construction names, the case where that does not decide. A union or a mask is never built by its own name, so a
 // construction of it is always the case: it keeps its name in every file (decision 066 section 2), since a case is
 // never a type and never renames its form
-function separateCaseNames(program: Program, scope: ImportScope | undefined): void {
+function separateCaseNames(
+  program: Program,
+  scope: ImportScope | undefined,
+): void {
   type Owner = { file: string; form: string; fields: string[] }
   const cases = new Map<string, Owner[]>()
   const forms = new Map<string, Defining[]>()
@@ -75,29 +95,55 @@ function separateCaseNames(program: Program, scope: ImportScope | undefined): vo
   for (const statement of program) {
     if (statement.form === 'record-type' && statement.span.file) {
       for (const v of statement.variants) {
-        cases.set(v.name, [...(cases.get(v.name) ?? []), { file: statement.span.file, form: statement.name, fields: v.fields.map(f => f.name) }])
+        cases.set(v.name, [
+          ...(cases.get(v.name) ?? []),
+          {
+            file: statement.span.file,
+            form: statement.name,
+            fields: v.fields.map(f => f.name),
+          },
+        ])
       }
     }
 
-    if ((statement.form === 'record-type' || statement.form === 'mask') && statement.span.file) {
-      forms.set(statement.name, [...(forms.get(statement.name) ?? []), statement])
+    if (
+      (statement.form === 'record-type' || statement.form === 'mask') &&
+      statement.span.file
+    ) {
+      forms.set(statement.name, [
+        ...(forms.get(statement.name) ?? []),
+        statement,
+      ])
     }
   }
 
   // every match over a caught exception: its subject is the variable a guard's handler binds
   const caughtMatches = new Set<unknown>()
-  const findCaught = (node: unknown, caught: Set<string>): void => {
-    if (!node || typeof node !== 'object') return
-    if (Array.isArray(node)) return node.forEach(child => findCaught(child, caught))
-    const record = node as Record<string, unknown>
-    const subject = record.subject as { form?: string; name?: string } | undefined
 
-    if (record.form === 'match' && subject?.form === 'variable' && caught.has(subject.name!)) {
+  const findCaught = (node: unknown, caught: Set<string>): void => {
+    if (!node || typeof node !== 'object') {return}
+
+    if (Array.isArray(node))
+      {return node.forEach(child => findCaught(child, caught))}
+
+    const record = node as Record<string, unknown>
+    const subject = record.subject as
+      | { form?: string; name?: string }
+      | undefined
+
+    if (
+      record.form === 'match' &&
+      subject?.form === 'variable' &&
+      caught.has(subject.name!)
+    ) {
       caughtMatches.add(record)
     }
 
     if (record.form === 'guard') {
-      const handler = record.catch as { name: string; body: unknown } | undefined
+      const handler = record.catch as
+        | { name: string; body: unknown }
+        | undefined
+
       findCaught(record.body, caught)
 
       if (handler) {
@@ -108,7 +154,7 @@ function separateCaseNames(program: Program, scope: ImportScope | undefined): vo
     }
 
     for (const [key, value] of Object.entries(record)) {
-      if (key !== 'span' && key !== 'type') findCaught(value, caught)
+      if (key !== 'span' && key !== 'type') {findCaught(value, caught)}
     }
   }
 
@@ -125,7 +171,9 @@ function separateCaseNames(program: Program, scope: ImportScope | undefined): vo
     // whichever file is the entry (term-self-host-001-0294: ir/selection.tree's `make twin-choice` meant
     // parser/diagnostic.tree's case, and once selection was not the entry its own union `twin-choice` took it). Such a
     // form keeps its name (below), so only a record form is renamed and bound here
-    const constructible = defining.some(d => d.form === 'record-type' && d.variants.length === 0)
+    const constructible = defining.some(
+      d => d.form === 'record-type' && d.variants.length === 0,
+    )
 
     // THE ENTRY'S RECORD FORM IS RENAMED AS A LOADED ONE IS (decision 045, term-self-host-001-0295): kept by its name in
     // the entry, the checker built the case for every construction there (it reads a case before a record), so a file
@@ -141,31 +189,57 @@ function separateCaseNames(program: Program, scope: ImportScope | undefined): vo
 
     const renamed = `${name}__form`
     const formFiles = new Set(defining.map(d => d.span.file!))
-    const formFields = new Set(defining.flatMap(d => (d.form === 'record-type' ? d.fields.map(f => f.name) : [])))
+    const formFields = new Set(
+      defining.flatMap(d =>
+        d.form === 'record-type' ? d.fields.map(f => f.name) : [],
+      ),
+    )
+
     const caseFiles = new Set(owners.map(o => o.file))
     const caseForms = new Set(owners.map(o => o.form))
 
     defining.forEach(d => (d.name = renamed))
 
     // what a file reaches through its imports of `of`
-    const reaches = (file: string | undefined, of: string): Set<string> => {
+    const reaches = (
+      file: string | undefined,
+      of: string,
+    ): Set<string> => {
       const reach = new Set<string>()
 
-      for (const target of (file && scope?.get(file)?.finds.get(of)) || []) {
+      for (const target of (file && scope?.get(file)?.finds.get(of)) ||
+        []) {
         exportedBy(scope, target, reach)
       }
 
       return reach
     }
+
     // whether a construction in `file` naming `fields` means the form
-    const meansForm = (file: string | undefined, fields: string[]): boolean => {
-      if (file && caseFiles.has(file)) return false
-      if (file && formFiles.has(file)) return true
+    const meansForm = (
+      file: string | undefined,
+      fields: string[],
+    ): boolean => {
+      if (file && caseFiles.has(file)) {return false}
+
+      if (file && formFiles.has(file)) {return true}
+
       // a find of the form by its written name is the nearer binding, so it wins over a union import that brings a
       // case of the name (decision 049, term-self-host-001-0332): a name is scoped to its module
-      if ([...reaches(file, name)].some(f => formFiles.has(f))) return true
-      if ([...caseForms].some(form => [...reaches(file, form)].some(f => caseFiles.has(f)))) return false
-      const caseFit = owners.some(o => fields.every(f => o.fields.includes(f)))
+      if ([...reaches(file, name)].some(f => formFiles.has(f)))
+        {return true}
+
+      if (
+        [...caseForms].some(form =>
+          [...reaches(file, form)].some(f => caseFiles.has(f)),
+        )
+      )
+        {return false}
+
+      const caseFit = owners.some(o =>
+        fields.every(f => o.fields.includes(f)),
+      )
+
       const formFit = fields.every(f => formFields.has(f))
 
       return formFit && !caseFit
@@ -179,26 +253,41 @@ function separateCaseNames(program: Program, scope: ImportScope | undefined): vo
         continue
       }
 
-      if (statement.form === 'function' && statement.method?.form === name) {
+      if (
+        statement.form === 'function' &&
+        statement.method?.form === name
+      ) {
         statement.method.form = renamed
         statement.name = `${renamed}_${statement.method.name}`
       }
 
       if (statement.form === 'instance') {
-        if (statement.mask === name) statement.mask = renamed
-        if (statement.target === name) statement.target = renamed
+        if (statement.mask === name) {statement.mask = renamed}
+
+        if (statement.target === name) {statement.target = renamed}
       }
 
       const visit = (node: unknown): void => {
-        if (!node || typeof node !== 'object') return
-        if (Array.isArray(node)) return node.forEach(visit)
+        if (!node || typeof node !== 'object') {return}
+
+        if (Array.isArray(node)) {return node.forEach(visit)}
+
         const record = node as Record<string, unknown>
 
         if (record.kind === 'named' && record.name === name) {
           record.name = renamed
         }
 
-        if (record.form === 'record' && record.name === name && meansForm(file, ((record.fields as { name: string }[]) ?? []).map(f => f.name))) {
+        if (
+          record.form === 'record' &&
+          record.name === name &&
+          meansForm(
+            file,
+            ((record.fields as { name: string }[]) ?? []).map(
+              f => f.name,
+            ),
+          )
+        ) {
           record.name = renamed
         }
 
@@ -219,7 +308,7 @@ function separateCaseNames(program: Program, scope: ImportScope | undefined): vo
         }
 
         for (const [key, value] of Object.entries(record)) {
-          if (key !== 'span') visit(value)
+          if (key !== 'span') {visit(value)}
         }
       }
 
@@ -234,7 +323,8 @@ function scopeMap(scopes: FileScope[]): ImportScope | undefined {
     return undefined
   }
 
-  const entries = (list: ScopeFind[]): Map<string, string[]> => new Map(list.map(one => [one.name, one.targets]))
+  const entries = (list: ScopeFind[]): Map<string, string[]> =>
+    new Map(list.map(one => [one.name, one.targets]))
 
   return new Map(
     scopes.map(own => [
@@ -251,19 +341,42 @@ function scopeMap(scopes: FileScope[]): ImportScope | undefined {
 
 // The original moved first to check/scope.tree's shape: the scope a list, the entry `''` for none (no form is
 // defined in a file named `''`), and the program handed back beside the diagnostics
-export function bindFormsByImport(program: Program, scopes: FileScope[], entry: string): { program: Program; diagnostics: Diagnostic[] } {
-  return { program, diagnostics: bindForms(program, scopeMap(scopes), entry === '' ? undefined : entry) }
+export function bindFormsByImport(
+  program: Program,
+  scopes: FileScope[],
+  entry: string,
+): { program: Program; diagnostics: Diagnostic[] } {
+  return {
+    program,
+    diagnostics: bindForms(
+      program,
+      scopeMap(scopes),
+      entry === '' ? undefined : entry,
+    ),
+  }
 }
 
-function bindForms(program: Program, scope: ImportScope | undefined, entry?: string): Diagnostic[] {
+function bindForms(
+  program: Program,
+  scope: ImportScope | undefined,
+  entry?: string,
+): Diagnostic[] {
   separateCaseNames(program, scope)
 
   const byName = new Map<string, Map<string, Defining[]>>()
 
   for (const statement of program) {
-    if ((statement.form === 'record-type' || statement.form === 'mask') && statement.span.file) {
-      const byFile = byName.get(statement.name) ?? new Map<string, Defining[]>()
-      byFile.set(statement.span.file, [...(byFile.get(statement.span.file) ?? []), statement])
+    if (
+      (statement.form === 'record-type' || statement.form === 'mask') &&
+      statement.span.file
+    ) {
+      const byFile =
+        byName.get(statement.name) ?? new Map<string, Defining[]>()
+
+      byFile.set(statement.span.file, [
+        ...(byFile.get(statement.span.file) ?? []),
+        statement,
+      ])
       byName.set(statement.name, byFile)
     }
   }
@@ -279,20 +392,31 @@ function bindForms(program: Program, scope: ImportScope | undefined, entry?: str
       order.set(statement.span.file, index)
     }
 
-    if ((statement.form === 'record-type' || statement.form === 'mask') && statement.span.file) {
+    if (
+      (statement.form === 'record-type' || statement.form === 'mask') &&
+      statement.span.file
+    ) {
       lastFile.set(statement.name, statement.span.file)
     }
   })
 
   for (const [name, byFile] of byName) {
     if (byFile.size > 1) {
-      groups.set(name, { name, files: [...byFile.keys()].sort(), byFile, renamed: new Map(), last: lastFile.get(name)! })
+      groups.set(name, {
+        name,
+        files: [...byFile.keys()].sort(),
+        byFile,
+        renamed: new Map(),
+        last: lastFile.get(name)!,
+      })
     }
   }
 
   if (groups.size === 0) {
     // nothing to bind, and the aliases a `make` or a `like` carries are dropped all the same
-    program.forEach(statement => rewrite(statement, statement.span, () => undefined))
+    program.forEach(statement =>
+      rewrite(statement, statement.span, () => undefined),
+    )
     bindSharedCases(program, scope)
 
     return []
@@ -303,7 +427,9 @@ function bindForms(program: Program, scope: ImportScope | undefined, entry?: str
   // (task/term/edit-replay.ts, 2026-10-05). `k` counts the name's own files, which its key holds
   ;[...groups.values()].forEach(group =>
     group.files.forEach((file, k) => {
-      const renamed = file === entry ? group.name : `${group.name}__in0_${k}`
+      const renamed =
+        file === entry ? group.name : `${group.name}__in0_${k}`
+
       group.renamed.set(file, renamed)
       group.byFile.get(file)!.forEach(d => (d.name = renamed))
     }),
@@ -332,7 +458,12 @@ function bindForms(program: Program, scope: ImportScope | undefined, entry?: str
   // a task's does (overload.ts `reached`). Both read every find of the name until 2026-10-04, so a file that loaded
   // `element` from one module and aliased another's bound both spellings to the form merged last (guides:
   // language/modules)
-  const bind = (group: Group, file: string | undefined, _span: Span, alias?: string): string | undefined => {
+  const bind = (
+    group: Group,
+    file: string | undefined,
+    _span: Span,
+    alias?: string,
+  ): string | undefined => {
     if (file && group.byFile.has(file) && alias === undefined) {
       return group.renamed.get(file)
     }
@@ -340,7 +471,11 @@ function bindForms(program: Program, scope: ImportScope | undefined, entry?: str
     const reach = new Set<string>()
     const entry = file ? scope?.get(file) : undefined
     const targets =
-      (alias !== undefined ? entry?.aliases?.get(alias) : entry?.plain?.get(group.name)) ?? entry?.finds.get(group.name) ?? []
+      (alias !== undefined
+        ? entry?.aliases?.get(alias)
+        : entry?.plain?.get(group.name)) ??
+      entry?.finds.get(group.name) ??
+      []
 
     for (const target of targets) {
       exportedBy(scope, target, reach)
@@ -358,7 +493,9 @@ function bindForms(program: Program, scope: ImportScope | undefined, entry?: str
     }
 
     // several reached: the one of them merged last, which is the one the flat program let win among them
-    const latest = hits.reduce((a, b) => ((order.get(b) ?? -1) > (order.get(a) ?? -1) ? b : a))
+    const latest = hits.reduce((a, b) =>
+      (order.get(b) ?? -1) > (order.get(a) ?? -1) ? b : a,
+    )
 
     return group.renamed.get(latest)
   }
@@ -366,10 +503,17 @@ function bindForms(program: Program, scope: ImportScope | undefined, entry?: str
   for (const statement of program) {
     const file = statement.span.file
     const shadowed = typeParameters(statement)
-    const rebind = (name: string, span: Span, alias?: string): string | undefined => {
+
+    const rebind = (
+      name: string,
+      span: Span,
+      alias?: string,
+    ): string | undefined => {
       const group = groups.get(name)
 
-      return group && !shadowed.has(name) ? bind(group, file, span, alias) : undefined
+      return group && !shadowed.has(name)
+        ? bind(group, file, span, alias)
+        : undefined
     }
 
     // a method, by the form it belongs to: the function's own name follows (`<form>_<method>`)
@@ -384,8 +528,10 @@ function bindForms(program: Program, scope: ImportScope | undefined, entry?: str
 
     // a mask instance: the mask, and the form it is worn on
     if (statement.form === 'instance') {
-      statement.mask = rebind(statement.mask, statement.span) ?? statement.mask
-      statement.target = rebind(statement.target, statement.span) ?? statement.target
+      statement.mask =
+        rebind(statement.mask, statement.span) ?? statement.mask
+      statement.target =
+        rebind(statement.target, statement.span) ?? statement.target
     }
 
     rewrite(statement, statement.span, rebind, isTask)
@@ -407,19 +553,29 @@ function bindForms(program: Program, scope: ImportScope | undefined, entry?: str
 // what module scope added to a form's name: `__form` (named apart from a case), then `__in0_<k>` (split by file)
 const WRITTEN_FORM = /(?:__form)?(?:__in\d+_\d+)?$/
 
-function bindSharedCases(program: Program, scope: ImportScope | undefined): void {
+function bindSharedCases(
+  program: Program,
+  scope: ImportScope | undefined,
+): void {
   type Owner = { file: string; form: string }
   const owners = new Map<string, Owner[]>()
 
   for (const statement of program) {
     if (statement.form === 'record-type' && statement.span.file) {
       for (const variant of statement.variants) {
-        owners.set(variant.name, [...(owners.get(variant.name) ?? []), { file: statement.span.file, form: statement.name }])
+        owners.set(variant.name, [
+          ...(owners.get(variant.name) ?? []),
+          { file: statement.span.file, form: statement.name },
+        ])
       }
     }
   }
 
-  const shared = new Map([...owners].filter(([, list]) => new Set(list.map(o => o.file)).size > 1))
+  const shared = new Map(
+    [...owners].filter(
+      ([, list]) => new Set(list.map(o => o.file)).size > 1,
+    ),
+  )
 
   if (shared.size === 0) {
     return
@@ -430,7 +586,10 @@ function bindSharedCases(program: Program, scope: ImportScope | undefined): void
   // builds node.tree's `scan-node` cases of the same names, which it imports, and read.tree reaches both
   // (`compile/host-native` on Kotlin, 2026-10-05). The checker's own choice, by the type the construction flows into,
   // stays for those, as before
-  const ownerFor = (name: string, file: string | undefined): string | undefined => {
+  const ownerFor = (
+    name: string,
+    file: string | undefined,
+  ): string | undefined => {
     if (!file) {
       return undefined
     }
@@ -442,9 +601,15 @@ function bindSharedCases(program: Program, scope: ImportScope | undefined): void
     // one split by file `<name>__in0_<k>`: compile/view-document imports node.tree's `statement`, which analyzer.tree's
     // closure had renamed `statement__form`, so its `make view` read as importing no other owner and was told its own
     // `view-body` (traps.md T-0079, term-self-host-001-0310)
-    const importsAnother = list.some(o => o.file !== file && imported?.has(o.form.replace(WRITTEN_FORM, '')))
+    const importsAnother = list.some(
+      o =>
+        o.file !== file &&
+        imported?.has(o.form.replace(WRITTEN_FORM, '')),
+    )
 
-    return own.length === 1 && !importsAnother ? own[0]!.form : undefined
+    return own.length === 1 && !importsAnother
+      ? own[0]!.form
+      : undefined
   }
 
   const visit = (node: unknown, file: string | undefined): void => {
@@ -460,7 +625,12 @@ function bindSharedCases(program: Program, scope: ImportScope | undefined): void
 
     const record = node as Record<string, unknown>
 
-    if (record.form === 'record' && typeof record.name === 'string' && shared.has(record.name) && record.owner === undefined) {
+    if (
+      record.form === 'record' &&
+      typeof record.name === 'string' &&
+      shared.has(record.name) &&
+      record.owner === undefined
+    ) {
       const owner = ownerFor(record.name, file)
 
       if (owner) {
@@ -485,7 +655,11 @@ function bindSharedCases(program: Program, scope: ImportScope | undefined): void
 function rewrite(
   node: unknown,
   span: Span,
-  rebind: (name: string, span: Span, alias?: string) => string | undefined,
+  rebind: (
+    name: string,
+    span: Span,
+    alias?: string,
+  ) => string | undefined,
   isTask: (name: string) => boolean = () => true,
 ): void {
   if (!node || typeof node !== 'object') {
@@ -502,7 +676,11 @@ function rewrite(
   const here = (record.span as Span | undefined) ?? span
   // the alias a `like` or a `make` was written with (mint-bridge.ts `applyAliases`): read here, then dropped, so a type
   // compared field by field later carries nothing binding was the only reader of
-  const alias = typeof record.alias === 'string' && (record.kind === 'named' || record.form === 'record') ? record.alias : undefined
+  const alias =
+    typeof record.alias === 'string' &&
+    (record.kind === 'named' || record.form === 'record')
+      ? record.alias
+      : undefined
 
   if (alias !== undefined) {
     delete record.alias
@@ -513,7 +691,9 @@ function rewrite(
   }
 
   if (record.form === 'record' && typeof record.name === 'string') {
-    record.name = rebindConstruction(record.name, name => rebind(name, here, alias))
+    record.name = rebindConstruction(record.name, name =>
+      rebind(name, here, alias),
+    )
   }
 
   if (record.form === 'throw' && typeof record.raise === 'string') {
@@ -525,7 +705,11 @@ function rewrite(
   // rebound as a `make` is, or a form split by file (a grammar's `pair` beside @term/base/pair's) left no form of the
   // written name and the resolver called it undefined (mesh deck-build, 2026-10-13). A task or method of the name
   // keeps it: a bare call to a name that is both means the task, as the checker reads it
-  if (record.form === 'call' && record.lean === true && !isTask(calleeName(record))) {
+  if (
+    record.form === 'call' &&
+    record.lean === true &&
+    !isTask(calleeName(record))
+  ) {
     const callee = record.callee as Record<string, unknown>
 
     callee.name = rebind(callee.name as string, here) ?? callee.name
@@ -543,7 +727,10 @@ function rewrite(
 // keeps its name, or the checker read an owner no form has and typed the construction as itself: 'expected
 // resolution__in0_1, found resolution/file' (deck/make/code/deck/resolve.tree beside deck/deck's resolution.tree,
 // term-compiler-0074, test/compile/split-form-qualified.ts). A bare name is rebound whole
-function rebindConstruction(name: string, rebind: (name: string) => string | undefined): string {
+function rebindConstruction(
+  name: string,
+  rebind: (name: string) => string | undefined,
+): string {
   const slash = name.lastIndexOf('/')
 
   if (slash <= 0) {
@@ -559,5 +746,7 @@ function rebindConstruction(name: string, rebind: (name: string) => string | und
 function calleeName(call: Record<string, unknown>): string {
   const callee = call.callee as Record<string, unknown> | undefined
 
-  return callee?.form === 'variable' && typeof callee.name === 'string' ? callee.name : ''
+  return callee?.form === 'variable' && typeof callee.name === 'string'
+    ? callee.name
+    : ''
 }

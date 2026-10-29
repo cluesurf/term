@@ -63,7 +63,9 @@ export function projectLeanOf(root: string): (file: string) => boolean {
  * The matched RULE for a file, cached per package and per file. Both of the above read it, so a build that asks
  * for the role and the lean flag reads the role files once, not twice.
  */
-function projectRuleOf(root: string): (file: string) => RoleRule | null {
+function projectRuleOf(
+  root: string,
+): (file: string) => RoleRule | null {
   // one role config per PACKAGE, read once. A build touches thousands of files across a handful of packages, so
   // the cache is on the package rather than on the file.
   const byPackage = new Map<string, RoleConfig | undefined>()
@@ -103,6 +105,7 @@ function readRoles(root: string): RoleConfig | undefined {
     path.join(root, 'base', 'role.tree'),
     path.join(root, 'role.tree'),
   ]
+
   const manifestPath = path.join(root, 'deck.tree')
 
   if (existsSync(manifestPath)) {
@@ -145,6 +148,7 @@ function readRoles(root: string): RoleConfig | undefined {
 // checks, and the roles there are, are Term since 2026-10-06, call/code/role-check.tree
 function checkedRoles(file: string, root: string): RoleConfig {
   let config: RoleConfig
+
   const text = readFileSync(file, 'utf8')
 
   // a rule's flag is `mark <word>`, and a `note` there is read by nothing
@@ -157,10 +161,15 @@ function checkedRoles(file: string, root: string): RoleConfig {
   try {
     config = parseRoleFile({ text, root })
   } catch (cause) {
-    throw new Error(`${file}: ${cause instanceof Error ? cause.message : String(cause)}`)
+    throw new Error(
+      `${file}: ${cause instanceof Error ? cause.message : String(cause)}`,
+    )
   }
 
-  const unknown = port.roleProblem(config.rules.map(rule => rule.name), file)
+  const unknown = port.roleProblem(
+    config.rules.map(rule => rule.name),
+    file,
+  )
 
   if (unknown !== '') {
     throw new Error(unknown)

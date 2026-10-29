@@ -44,8 +44,14 @@ import { writeCatalogSized } from '@term/make/code/compile/catalog-derive'
 import type { SiteEntry } from '@term/make/code/compile/catalog-derive'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 
-export { deriveSites, readRows } from '@term/make/code/compile/catalog-derive'
-export type { IndexRow, SiteEntry } from '@term/make/code/compile/catalog-derive'
+export {
+  deriveSites,
+  readRows,
+} from '@term/make/code/compile/catalog-derive'
+export type {
+  IndexRow,
+  SiteEntry,
+} from '@term/make/code/compile/catalog-derive'
 
 export type ViewField = {
   // the predicates this field accepts, because its index can answer them
@@ -72,14 +78,22 @@ export type ViewCatalog = {
 }
 
 export function emptyCatalog(): ViewCatalog {
-  return { view: new Set(), call: new Set(), load: new Set(), task: new Map() }
+  return {
+    view: new Set(),
+    call: new Set(),
+    load: new Set(),
+    task: new Map(),
+  }
 }
 
 export type CatalogResult =
   | { ok: true; catalog: ViewCatalog }
   | { ok: false; diagnostics: Diagnostic[] }
 
-export function readCatalog(source: { file: string; text: string }): CatalogResult {
+export function readCatalog(source: {
+  file: string
+  text: string
+}): CatalogResult {
   const read = readCatalogText(source)
 
   if (!read.ok) {
@@ -88,7 +102,9 @@ export function readCatalog(source: { file: string; text: string }): CatalogResu
 
   // a `void` or a `fuse` where a query or a field belongs was `null` to the JSON the original read, and it threw here
   if (read.nullRead) {
-    throw new TypeError("Cannot read properties of null (reading 'name')")
+    throw new TypeError(
+      "Cannot read properties of null (reading 'name')",
+    )
   }
 
   const catalog = emptyCatalog()
@@ -105,7 +121,10 @@ export function readCatalog(source: { file: string; text: string }): CatalogResu
     const site = new Map<string, ViewField>()
 
     for (const [fieldName, field] of query.site) {
-      site.set(fieldName, { hold: new Set(field.hold), sort: field.sort })
+      site.set(fieldName, {
+        hold: new Set(field.hold),
+        sort: field.sort,
+      })
     }
 
     catalog.task.set(name, {
@@ -121,6 +140,9 @@ export function readCatalog(source: { file: string; text: string }): CatalogResu
 
 // the `list task` section of a catalog, in the host dialect: a `select:` and a `filter:` per form. The default size
 // lives here, where a TypeScript caller can leave it out
-export function writeCatalog(sites: Map<string, SiteEntry[]>, size = 500): string {
+export function writeCatalog(
+  sites: Map<string, SiteEntry[]>,
+  size = 500,
+): string {
   return writeCatalogSized(sites, size)
 }

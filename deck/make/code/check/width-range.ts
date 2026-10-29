@@ -17,7 +17,8 @@ import { widthLimits } from '@term/make/code/check/checker-switches'
 // substitution.tree's `width-switch` bind reads the record (item 0248)
 export function setWidthRanges(ranges: boolean): void {
   checkerSwitches.widths = ranges
-  ;(globalThis as { termWidthRanges?: boolean }).termWidthRanges = ranges
+  ;(globalThis as { termWidthRanges?: boolean }).termWidthRanges =
+    ranges
 }
 
 export function widthRanges(): boolean {
@@ -25,6 +26,10 @@ export function widthRanges(): boolean {
 }
 
 // the range of each width alias of `number`. `u64` stops at the 64-bit signed limit, the range a `number` has
-export const WIDTHS: Record<string, [bigint, bigint]> = Object.fromEntries(
-  widthLimits().map(limit => [limit.width, [BigInt(limit.low), BigInt(limit.high)]]),
-)
+export const WIDTHS: Record<string, [bigint, bigint]> =
+  Object.fromEntries(
+    widthLimits().map(limit => [
+      limit.width,
+      [BigInt(limit.low), BigInt(limit.high)],
+    ]),
+  )

@@ -38,14 +38,14 @@ const MOD_PREFIX = '/@mod/'
 const CLIENT_URL = '/@seed/client.mjs'
 const HMR_URL = '/@seed/hmr'
 
-export interface DevServer {
+export type DevServer = {
   port: number
   // recompile + apply HMR for a changed source file (the watcher calls this; exposed for tests)
   update(file: string): HmrResult
   close(): void
 }
 
-export interface DevOptions {
+export type DevOptions = {
   root: string
   entry: string
   port?: number
@@ -77,6 +77,7 @@ export function startDevServer(options: DevOptions): DevServer {
 
   // the graph is a value (deck/make/code/dev/module-graph.tree): every change hands back the next one
   let graph = makeModuleGraph()
+
   const clients = new Set<SSEStreamingApi>()
   const cache = processCache(projectRoot)
 
@@ -91,7 +92,14 @@ export function startDevServer(options: DevOptions): DevServer {
     // longhand (guides: commands/feed, 2026-10-04)
     const result = compile(
       { file: entryFile, text: readFileSync(entryFile, 'utf8') },
-      { resolve, cache, parsed: processParse(), modules: urlForFile, roleOf: projectRoleOf(projectRoot), leanOf: projectLeanOf(projectRoot) },
+      {
+        resolve,
+        cache,
+        parsed: processParse(),
+        modules: urlForFile,
+        roleOf: projectRoleOf(projectRoot),
+        leanOf: projectLeanOf(projectRoot),
+      },
     )
 
     if (!result.ok) {
@@ -160,7 +168,10 @@ export function startDevServer(options: DevOptions): DevServer {
     } else {
       // stamp each accepted module's URL with its hmr timestamp so the client re-imports a fresh copy
       const updates = result.updates.map(u => {
-        const t = (hasUrl(graph, u.accepted) ? moduleByUrl(graph, u.accepted).lastHmrTimestamp : 0) || clock
+        const t =
+          (hasUrl(graph, u.accepted)
+            ? moduleByUrl(graph, u.accepted).lastHmrTimestamp
+            : 0) || clock
 
         return { ...u, timestamp: t }
       })
@@ -187,15 +198,25 @@ export function startDevServer(options: DevOptions): DevServer {
     '127.0.0.1',
     '[::1]',
     '10.0.2.2',
-    ...(process.env.TERM_DEV_HOSTS ?? '').split(',').map(name => name.trim()).filter(Boolean),
+    ...(process.env.TERM_DEV_HOSTS ?? '')
+      .split(',')
+      .map(name => name.trim())
+      .filter(Boolean),
   ])
-  const hostName = (value: string): string => (value.startsWith('[') ? value.slice(0, value.indexOf(']') + 1) : value.split(':')[0]!)
+
+  const hostName = (value: string): string =>
+    value.startsWith('[')
+      ? value.slice(0, value.indexOf(']') + 1)
+      : value.split(':')[0]!
 
   app.use('*', async (context, next) => {
     const host = context.req.header('host') ?? ''
 
     if (!allowedHosts.has(hostName(host))) {
-      return context.text(`refused: the dev server answers this machine only, not host ${host || '(none)'}`, 403)
+      return context.text(
+        `refused: the dev server answers this machine only, not host ${host || '(none)'}`,
+        403,
+      )
     }
 
     const origin = context.req.header('origin')
@@ -210,7 +231,10 @@ export function startDevServer(options: DevOptions): DevServer {
       }
 
       if (!allowedHosts.has(hostName(originHost))) {
-        return context.text(`refused: a page from ${origin} may not read the dev server`, 403)
+        return context.text(
+          `refused: a page from ${origin} may not read the dev server`,
+          403,
+        )
       }
     }
 
@@ -222,7 +246,10 @@ export function startDevServer(options: DevOptions): DevServer {
     const name = context.req.param('name').replace(/\.mjs$/, '')
     const file = fileByHash.get(name)
     // a module never compiled, or invalidated and not yet rebuilt, holds `<>` where the original held undefined
-    const compiled = file && hasModule(graph, file) ? moduleById(graph, file).compiled : ''
+    const compiled =
+      file && hasModule(graph, file)
+        ? moduleById(graph, file).compiled
+        : ''
 
     if (compiled === '') {
       return context.text('module not found', 404)
@@ -266,7 +293,11 @@ export function startDevServer(options: DevOptions): DevServer {
   )
 
   // loopback only: nothing on the network can reach it at all, whatever it sends as Host
-  const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' })
+  const server = serve({
+    fetch: app.fetch,
+    port,
+    hostname: '127.0.0.1',
+  })
 
   return {
     port,

@@ -45,8 +45,9 @@ async function loadProgram(
   )
 
   if (!result.ok) {
-    for (const d of result.diagnostics)
-      {console.log(render(d, source.split('\n'), false))}
+    for (const d of result.diagnostics) {
+      console.log(render(d, source.split('\n'), false))
+    }
 
     throw new Error('compile failed')
   }
@@ -1116,11 +1117,7 @@ async function main(): Promise<void> {
   expect('list/unique removes duplicates', le.uniqueSize(), 3)
 
   const bg = await loadProgram(BAG)
-  expect(
-    'bag/insert keeps duplicates (multiset size)',
-    bg.bagSize(),
-    2,
-  )
+  expect('bag/insert keeps duplicates (multiset size)', bg.bagSize(), 2)
 
   const ll = await loadProgram(LINKED_LIST)
   expect(
@@ -1219,11 +1216,7 @@ async function main(): Promise<void> {
   expect('list/contains finds a member', l.hasIt(), true)
   expect('list/get reads by index', l.getSecond(), 8)
   expect('list/join joins with a separator', l.joinThem(), '1-2-3')
-  expect(
-    'list/reverse then size is unchanged',
-    l.sizeAfterReverse(),
-    2,
-  )
+  expect('list/reverse then size is unchanged', l.sizeAfterReverse(), 2)
   expect('list/map then size is unchanged', l.sizeAfterMap(), 4)
   expect('list/reduce sums the elements', l.sumOf(), 6)
 
@@ -1263,11 +1256,7 @@ async function main(): Promise<void> {
   )
   expect('maybe/is-some on some is true', m.present(), true)
   expect('maybe/is-some on none is false', m.absent(), false)
-  expect(
-    'maybe/map applies the function under some',
-    m.mapAddOne(),
-    42,
-  )
+  expect('maybe/map applies the function under some', m.mapAddOne(), 42)
 
   const r = await loadProgram(RESULT)
   expect('result/unwrap-or on okay returns the value', r.okValue(), 5)

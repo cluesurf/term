@@ -22,7 +22,10 @@ import { extendForms } from '@term/make/code/check/extend'
 import { disambiguateOverloads } from '@term/make/code/check/overload'
 import { emitSwift } from '@term/make/code/compile/swift'
 import { emitTypeScript } from '@term/make/code/compile/typescript'
-import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
+import {
+  emitKotlin,
+  hoistKotlinImports,
+} from '@term/make/code/compile/kotlin'
 import { emitRust } from '@term/make/code/compile/rust'
 import type { Program } from '@term/make/code/compile/node'
 
@@ -83,19 +86,25 @@ function frontEnd(shared: boolean): Program {
   const parsed = parse({ file: 'main.tree', text: program(shared) })
 
   if (!parsed.ok) {
-    throw new Error(`parse: ${parsed.diagnostics.map(d => d.message).join(', ')}`)
+    throw new Error(
+      `parse: ${parsed.diagnostics.map(d => d.message).join(', ')}`,
+    )
   }
 
   const built = mill(expandTemplates(parsed.tree), 'main.tree')
 
   if (!built.ok) {
-    throw new Error(`mill: ${built.diagnostics.map(d => d.message).join(', ')}`)
+    throw new Error(
+      `mill: ${built.diagnostics.map(d => d.message).join(', ')}`,
+    )
   }
 
   const out = extendForms(built.program, 'main.tree', []).program
   disambiguateOverloads(out)
   resolveNames(out, 'main.tree')
-  const errors = check(out, 'main.tree').filter(d => d.severity !== 'warning')
+  const errors = check(out, 'main.tree').filter(
+    d => d.severity !== 'warning',
+  )
 
   if (errors.length) {
     throw new Error(`check: ${errors.map(d => d.message).join(' | ')}`)
@@ -111,10 +120,20 @@ const only = process.env.SN_ONLY ?? ''
 
 // the mill must carry the note onto the form, and only when it is written
 {
-  const marked = frontEnd(true).find(n => n.form === 'record-type' && n.name === 'tally')
-  const plain = frontEnd(false).find(n => n.form === 'record-type' && n.name === 'tally')
-  ok('mill: `mark shared` sets shared on the form', marked?.form === 'record-type' && marked.shared === true)
-  ok('mill: a form without it is not shared', plain?.form === 'record-type' && (plain.shared ?? false) === false)
+  const marked = frontEnd(true).find(
+    n => n.form === 'record-type' && n.name === 'tally',
+  )
+  const plain = frontEnd(false).find(
+    n => n.form === 'record-type' && n.name === 'tally',
+  )
+  ok(
+    'mill: `mark shared` sets shared on the form',
+    marked?.form === 'record-type' && marked.shared === true,
+  )
+  ok(
+    'mill: a form without it is not shared',
+    plain?.form === 'record-type' && (plain.shared ?? false) === false,
+  )
 }
 
 function build(label: string, args: string[]): boolean {
@@ -123,7 +142,11 @@ function build(label: string, args: string[]): boolean {
 
     return true
   } catch (e) {
-    ok(`${label} builds`, false, String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 600))
+    ok(
+      `${label} builds`,
+      false,
+      String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 600),
+    )
 
     return false
   }
@@ -147,11 +170,20 @@ function runSwift(): void {
     const main = join(dir, `main-${shared}.swift`)
     writeFileSync(main, `${source}\nprint(run())\n`)
 
-    if (!build(label, ['swiftc', '-o', join(dir, `swift-${shared}`), main])) {
+    if (
+      !build(label, [
+        'swiftc',
+        '-o',
+        join(dir, `swift-${shared}`),
+        main,
+      ])
+    ) {
       continue
     }
 
-    const result = spawnSync(join(dir, `swift-${shared}`), [], { encoding: 'utf8' })
+    const result = spawnSync(join(dir, `swift-${shared}`), [], {
+      encoding: 'utf8',
+    })
     const want = shared ? '2' : '0'
     ok(
       `${label}: reads ${want}`,
@@ -168,10 +200,21 @@ function runKotlin(): void {
 
   const source = emitKotlin(frontEnd(true))
   const file = join(dir, 'main.kt')
-  writeFileSync(file, hoistKotlinImports(`${source}\nfun main() { println(run()) }\n`))
+  writeFileSync(
+    file,
+    hoistKotlinImports(`${source}\nfun main() { println(run()) }\n`),
+  )
   const jar = join(dir, 'main.jar')
 
-  if (!build('kotlin (shared)', ['kotlinc', file, '-include-runtime', '-d', jar])) {
+  if (
+    !build('kotlin (shared)', [
+      'kotlinc',
+      file,
+      '-include-runtime',
+      '-d',
+      jar,
+    ])
+  ) {
     return
   }
 
@@ -196,18 +239,34 @@ function runRust(): void {
 
     ok(
       `${label}: the form is ${shared ? 'a TermShared handle' : 'a plain struct'}`,
-      shared ? source.includes('TermShared<Tally>') : !source.includes('TermShared<Tally>'),
+      shared
+        ? source.includes('TermShared<Tally>')
+        : !source.includes('TermShared<Tally>'),
       source.slice(0, 300),
     )
 
     const main = join(dir, `main-${shared}.rs`)
-    writeFileSync(main, `${source}\nfn main() { println!("{}", run()); }\n`)
+    writeFileSync(
+      main,
+      `${source}\nfn main() { println!("{}", run()); }\n`,
+    )
 
-    if (!build(label, ['rustc', '-A', 'warnings', '-o', join(dir, `rust-${shared}`), main])) {
+    if (
+      !build(label, [
+        'rustc',
+        '-A',
+        'warnings',
+        '-o',
+        join(dir, `rust-${shared}`),
+        main,
+      ])
+    ) {
       continue
     }
 
-    const result = spawnSync(join(dir, `rust-${shared}`), [], { encoding: 'utf8' })
+    const result = spawnSync(join(dir, `rust-${shared}`), [], {
+      encoding: 'utf8',
+    })
     const want = shared ? '2' : '0'
     ok(
       `${label}: reads ${want}`,
@@ -220,7 +279,10 @@ function runRust(): void {
 // TypeScript's forms are objects, so one is one object already: the emitted module runs under tsx and reads 2
 function runTypeScript(): void {
   const file = join(dir, 'main.ts')
-  writeFileSync(file, `${emitTypeScript(frontEnd(true))}\nconsole.log(run())\n`)
+  writeFileSync(
+    file,
+    `${emitTypeScript(frontEnd(true))}\nconsole.log(run())\n`,
+  )
   const result = spawnSync('npx', ['tsx', file], { encoding: 'utf8' })
   ok(
     'typescript (shared): reads 2',
@@ -245,7 +307,9 @@ if (!only || only === 'kotlin') {
   runKotlin()
 }
 
-console.log(`\nshared-native: ${pass} pass, ${fail} fail, ${skip} skipped`)
+console.log(
+  `\nshared-native: ${pass} pass, ${fail} fail, ${skip} skipped`,
+)
 
 if (fail > 0) {
   process.exit(1)

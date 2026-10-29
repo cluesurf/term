@@ -31,8 +31,14 @@ task make-box
       bind size, 4
 `
 
-function build(text: string, lean = false): { ok: boolean; ts: string; said: string } {
-  const out = compile({ file: '/gate/code/task-value.tree', text }, lean ? { leanOf: () => true } : {})
+function build(
+  text: string,
+  lean = false,
+): { ok: boolean; ts: string; said: string } {
+  const out = compile(
+    { file: '/gate/code/task-value.tree', text },
+    lean ? { leanOf: () => true } : {},
+  )
 
   return {
     ok: out.ok,
@@ -43,21 +49,35 @@ function build(text: string, lean = false): { ok: boolean; ts: string; said: str
 
 // the empty parentheses are a call
 {
-  const lean = build(`${BOX}
+  const lean = build(
+    `${BOX}
 task use
   like number
   save b, make-box()
   back b/size
-`, true)
-  ok('lean `f()` is a call', lean.ok && !/makeBox\.size/.test(lean.ts), lean.said || lean.ts.slice(lean.ts.indexOf('function use')))
+`,
+    true,
+  )
+  ok(
+    'lean `f()` is a call',
+    lean.ok && !/makeBox\.size/.test(lean.ts),
+    lean.said || lean.ts.slice(lean.ts.indexOf('function use')),
+  )
 
-  const fall = build(`${BOX}
+  const fall = build(
+    `${BOX}
 task use
   take b, like box, fall make-box()
   like number
   back b/size
-`, true)
-  ok('lean `fall f()` is a call', fall.ok && /b: Box = makeBox\(\)/.test(fall.ts), fall.said || fall.ts.slice(fall.ts.indexOf('function use')))
+`,
+    true,
+  )
+  ok(
+    'lean `fall f()` is a call',
+    fall.ok && /b: Box = makeBox\(\)/.test(fall.ts),
+    fall.said || fall.ts.slice(fall.ts.indexOf('function use')),
+  )
 
   const longhand = build(`${BOX}
 task use
@@ -65,7 +85,11 @@ task use
   save b, make-box()
   send back, read b/size
 `)
-  ok('longhand `f()` is a call too', longhand.ok && !/makeBox\.size/.test(longhand.ts), longhand.said || longhand.ts)
+  ok(
+    'longhand `f()` is a call too',
+    longhand.ok && !/makeBox\.size/.test(longhand.ts),
+    longhand.said || longhand.ts,
+  )
 }
 
 // a task has no fields
@@ -75,7 +99,14 @@ task use
   like number
   send back, read make-box/size
 `)
-  ok('a member read off a task is refused', !named.ok && /"make-box" is a task, which has no field "size"/.test(named.said), named.said)
+  ok(
+    'a member read off a task is refused',
+    !named.ok &&
+      /"make-box" is a task, which has no field "size"/.test(
+        named.said,
+      ),
+    named.said,
+  )
 
   const held = build(`${BOX}
 task use
@@ -83,7 +114,11 @@ task use
   save b, read make-box
   send back, read b/size
 `)
-  ok('a member read off a local holding a task is refused', !held.ok && /"b" holds a task/.test(held.said), held.said)
+  ok(
+    'a member read off a local holding a task is refused',
+    !held.ok && /"b" holds a task/.test(held.said),
+    held.said,
+  )
 
   const called = build(`${BOX}
 task use
@@ -103,7 +138,12 @@ task use
   like number
   send back, read n
 `)
-  ok('a text default for a number is refused', !text.ok && /the default of "n": expected number, found text/.test(text.said), text.said)
+  ok(
+    'a text default for a number is refused',
+    !text.ok &&
+      /the default of "n": expected number, found text/.test(text.said),
+    text.said,
+  )
 
   const task = build(`${BOX}
 task use
@@ -113,7 +153,11 @@ task use
   like number
   send back, read b/size
 `)
-  ok('a task default for a record is refused', !task.ok && /the default of "b": expected box/.test(task.said), task.said)
+  ok(
+    'a task default for a record is refused',
+    !task.ok && /the default of "b": expected box/.test(task.said),
+    task.said,
+  )
 
   const right = build(`${BOX}
 task use
@@ -140,7 +184,11 @@ task use
   like t
   send back, read fallback
 `)
-  ok('a default for a generic parameter is not pinned here', generic.ok, generic.said)
+  ok(
+    'a default for a generic parameter is not pinned here',
+    generic.ok,
+    generic.said,
+  )
 }
 
 console.log(`\ntask-value: ${pass} pass, ${fail} fail`)

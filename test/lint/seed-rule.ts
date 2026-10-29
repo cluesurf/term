@@ -24,7 +24,9 @@ const readRuntime = (path: string): string | undefined => {
   const prefix = '@term/base/'
   path = path.replace(/^@term\/base\//, prefix)
 
-  if (!path.startsWith(prefix)) {return undefined}
+  if (!path.startsWith(prefix)) {
+    return undefined
+  }
 
   const file = join(baseTree, path.slice(prefix.length))
 
@@ -71,10 +73,9 @@ const offending = `task compute
 
 const parsed = parse({ file: 'main.tree', text: offending })
 const built = parsed.ok ? mill(parsed.tree, 'main.tree') : undefined
-const findings =
-  built?.ok
-    ? lint(built.program, 'main.tree', offending, {}, rules)
-    : []
+const findings = built?.ok
+  ? lint(built.program, 'main.tree', offending, {}, rules)
+  : []
 
 ok(
   'the Seed rule fires L003 on redundant arithmetic',
@@ -97,10 +98,9 @@ const cleanBuilt = cleanParsed.ok
   ? mill(cleanParsed.tree, 'main.tree')
   : undefined
 
-const cleanFindings =
-  cleanBuilt?.ok
-    ? lint(cleanBuilt.program, 'main.tree', clean, {}, rules)
-    : []
+const cleanFindings = cleanBuilt?.ok
+  ? lint(cleanBuilt.program, 'main.tree', clean, {}, rules)
+  : []
 
 ok(
   'the Seed rule stays quiet on a non-neutral operand',
@@ -110,4 +110,6 @@ ok(
 
 console.log(`\nseed-rule: ${pass} pass, ${fail} fail`)
 
-if (fail > 0) {process.exit(1)}
+if (fail > 0) {
+  process.exit(1)
+}

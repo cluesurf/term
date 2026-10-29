@@ -63,10 +63,21 @@ const cases: [string, string][] = [
 for (const [label, other] of cases) {
   const built = compile(
     { file: 'rename.tree', text: program(other) },
-    { resolve: withNativeEnv('node', stdlibResolver()!), entryPoints: ['run'] },
+    {
+      resolve: withNativeEnv('node', stdlibResolver()!),
+      entryPoints: ['run'],
+    },
   )
 
-  ok(`${label}: the renamed field shadows the task n, and the program builds`, built.ok, built.ok ? '' : built.diagnostics.map(d => d.message.split('\n').join(' ')).join(' | '))
+  ok(
+    `${label}: the renamed field shadows the task n, and the program builds`,
+    built.ok,
+    built.ok
+      ? ''
+      : built.diagnostics
+          .map(d => d.message.split('\n').join(' '))
+          .join(' | '),
+  )
 }
 
 console.log(`\narm-rename-global: ${pass} pass, ${fail} fail`)

@@ -1,31 +1,59 @@
 import { compile } from '@term/make/code/compile/compile'
-import { readFileSync, existsSync, writeFileSync, mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'; import { join } from 'node:path'; import { pathToFileURL } from 'node:url'
-import * as http from 'node:http'; import * as crypto from 'node:crypto'; import type { Duplex } from 'node:stream'
-import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
+import {
+  readFileSync,
+  existsSync,
+  writeFileSync,
+  mkdtempSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import * as http from 'node:http'
+import * as crypto from 'node:crypto'
+import type { Duplex } from 'node:stream'
+import {
+  withNativeEnv,
+  nativePrelude,
+} from '@term/make/code/compile/native'
 import { stdlibResolver } from '@term/make/code/resolve'
-const baseTree=join(process.cwd(),'deck','base')
-const STDLIB_PREFIX=/^@term\/base\//
+const baseTree = join(process.cwd(), 'deck', 'base')
+const STDLIB_PREFIX = /^@term\/base\//
 // the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
-const stdlib=stdlibResolver()!
-const readRuntime=(p:string):any=>{if(existsSync(p))return readFileSync(p,'utf8');if(!STDLIB_PREFIX.test(p))return undefined;const f=join(baseTree,p.replace(STDLIB_PREFIX,''));return existsSync(f)?readFileSync(f,'utf8'):undefined}
+const stdlib = stdlibResolver()!
+const readRuntime = (p: string): any => {
+  if (existsSync(p)) return readFileSync(p, 'utf8')
+  if (!STDLIB_PREFIX.test(p)) return undefined
+  const f = join(baseTree, p.replace(STDLIB_PREFIX, ''))
+  return existsSync(f) ? readFileSync(f, 'utf8') : undefined
+}
 // minimal raw WebSocket echo server (handshake + unmask client text frame + echo unmasked)
-function wsEcho(port:number):http.Server{
-  const srv=http.createServer()
-  srv.on('upgrade',(req,sock:Duplex)=>{
-    const key=req.headers['sec-websocket-key'] as string
-    const accept=crypto.createHash('sha1').update(key+'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64')
-    sock.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: '+accept+'\r\n\r\n')
-    sock.on('data',(buf:Buffer)=>{
-      const len=buf[1]&0x7f; if(len>=126) return
-      const mask=buf.subarray(2,6); const payload=Buffer.from(buf.subarray(6,6+len))
-      for(let i=0;i<payload.length;i++) payload[i]^=mask[i%4]
-      sock.write(Buffer.concat([Buffer.from([0x81,payload.length]),payload]))
+function wsEcho(port: number): http.Server {
+  const srv = http.createServer()
+  srv.on('upgrade', (req, sock: Duplex) => {
+    const key = req.headers['sec-websocket-key'] as string
+    const accept = crypto
+      .createHash('sha1')
+      .update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11')
+      .digest('base64')
+    sock.write(
+      'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ' +
+        accept +
+        '\r\n\r\n',
+    )
+    sock.on('data', (buf: Buffer) => {
+      const len = buf[1] & 0x7f
+      if (len >= 126) return
+      const mask = buf.subarray(2, 6)
+      const payload = Buffer.from(buf.subarray(6, 6 + len))
+      for (let i = 0; i < payload.length; i++) payload[i] ^= mask[i % 4]
+      sock.write(
+        Buffer.concat([Buffer.from([0x81, payload.length]), payload]),
+      )
     })
   })
   return srv
 }
-const SRC=`load @term/base/code/network/websocket
+const SRC = `load @term/base/code/network/websocket
   find connect
 
 task echo
@@ -54,19 +82,55 @@ task echo
 // WebSocket test: a Seed websocket client (connect / send / receive / close) against a minimal raw WS echo server,
 // compiled from base.tree and run. Proves network/websocket works end to end over node global WebSocket.
 // Run: npx tsx test/stdlib/websocket.ts
-async function main(){
-  const srv=wsEcho(8761); await new Promise<void>(r=>srv.listen(8761,'127.0.0.1',r))
-  const r:any=compile({file:'main.tree',text:SRC},{resolve:withNativeEnv('node',stdlib)})
+async function main() {
+  const srv = wsEcho(8761)
+  await new Promise<void>(r => srv.listen(8761, '127.0.0.1', r))
+  const r: any = compile(
+    { file: 'main.tree', text: SRC },
+    { resolve: withNativeEnv('node', stdlib) },
+  )
   // A COMPILE FAILURE FAILS. It used to return with exit 0, and while the stdlib resolver here matched nothing the gate
   // reported this suite `ok, 0 pass` on every run without compiling the program once.
-  if(!r.ok){console.log('COMPILE FAIL',JSON.stringify([...new Set(r.diagnostics?.map((d:any)=>d.message))].slice(0,5)));srv.close();process.exit(1)}
-  const ts=nativePrelude(r.program,'node',readRuntime)+'\n'+r.typescript
-  const dir=mkdtempSync(join(tmpdir(),'ws-'));const f=join(dir,'m.ts');writeFileSync(f,ts)
-  const m:any=await import(pathToFileURL(f).href)
-  let pass=0,fail=0; const eq=(n:string,g:any,w:any)=>{const ok=g===w;ok?pass++:fail++;console.log((ok?'ok   ':'FAIL ')+n+' = '+JSON.stringify(g))}
-  try { eq('websocket connect/send/receive round-trip', await m.echo('ws://127.0.0.1:8761','hello-ws'), 'hello-ws') }
-  finally { srv.close() }
-  console.log('\nnetwork/websocket: '+pass+' pass, '+fail+' fail')
+  if (!r.ok) {
+    console.log(
+      'COMPILE FAIL',
+      JSON.stringify(
+        [...new Set(r.diagnostics?.map((d: any) => d.message))].slice(
+          0,
+          5,
+        ),
+      ),
+    )
+    srv.close()
+    process.exit(1)
+  }
+  const ts =
+    nativePrelude(r.program, 'node', readRuntime) + '\n' + r.typescript
+  const dir = mkdtempSync(join(tmpdir(), 'ws-'))
+  const f = join(dir, 'm.ts')
+  writeFileSync(f, ts)
+  const m: any = await import(pathToFileURL(f).href)
+  let pass = 0,
+    fail = 0
+  const eq = (n: string, g: any, w: any) => {
+    const ok = g === w
+    ok ? pass++ : fail++
+    console.log(
+      (ok ? 'ok   ' : 'FAIL ') + n + ' = ' + JSON.stringify(g),
+    )
+  }
+  try {
+    eq(
+      'websocket connect/send/receive round-trip',
+      await m.echo('ws://127.0.0.1:8761', 'hello-ws'),
+      'hello-ws',
+    )
+  } finally {
+    srv.close()
+  }
+  console.log(
+    '\nnetwork/websocket: ' + pass + ' pass, ' + fail + ' fail',
+  )
   // exit explicitly: `srv.close()` stops new connections but leaves the upgraded socket open, so the process otherwise
   // lives forever after a passing run and the gate waits on it until its own limit
   process.exit(fail ? 1 : 0)

@@ -53,11 +53,16 @@ ok(
 )
 
 // 2. with `main` as the entry point, `dead` is pruned but `main` and the reachable `used` remain.
-const app = compile({ file: 'p.tree', text: SRC }, { entryPoints: ['main'] })
+const app = compile(
+  { file: 'p.tree', text: SRC },
+  { entryPoints: ['main'] },
+)
 ok('application build compiles', app.ok === true)
 ok(
   'application build keeps the entry point and what it reaches',
-  app.ok && app.typescript.includes('main') && app.typescript.includes('used'),
+  app.ok &&
+    app.typescript.includes('main') &&
+    app.typescript.includes('used'),
   app.ok ? app.typescript : '',
 )
 ok(

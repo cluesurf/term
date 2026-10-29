@@ -17,7 +17,10 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { analyze } from '@term/make/code/analyze'
 import type { Program, Statement } from '@term/make/code/compile/node'
-import { importFindsOf, makeParseMemo } from '@term/make/code/compile/load'
+import {
+  importFindsOf,
+  makeParseMemo,
+} from '@term/make/code/compile/load'
 import type { Resolver } from '@term/make/code/compile/load'
 import { withNativeEnv } from '@term/make/code/compile/native'
 import { projectResolver } from '@term/call/code/make'
@@ -51,11 +54,18 @@ export type ReachGraph = {
 export function reachGraph(root: string): ReachGraph {
   const roleOf = projectRoleOf(root)
   const leanOf = projectLeanOf(root)
-  const resolve: Resolver = withNativeEnv('node', projectResolver(root, 'node', root))
+  const resolve: Resolver = withNativeEnv(
+    'node',
+    projectResolver(root, 'node', root),
+  )
+
   const parsed = makeParseMemo()
   const modules = new Map<string, Module | undefined>()
 
-  const moduleOf = (file: string, given?: string): Module | undefined => {
+  const moduleOf = (
+    file: string,
+    given?: string,
+  ): Module | undefined => {
     if (modules.has(file)) {
       return modules.get(file)
     }
@@ -71,20 +81,37 @@ export function reachGraph(root: string): ReachGraph {
       return undefined
     }
 
-    const program: Program | null = analyze({ file, text }, { role: roleOf(file), lean: leanOf(file) ?? false }).program
+    const program: Program | null = analyze(
+      { file, text },
+      { role: roleOf(file), lean: leanOf(file) ?? false },
+    ).program
 
     if (!program) {
       return undefined
     }
 
-    const one: Module = { file, tasks: new Map(), methods: new Map(), natives: new Map(), finds: new Map(), bears: [], loads: [] }
+    const one: Module = {
+      file,
+      tasks: new Map(),
+      methods: new Map(),
+      natives: new Map(),
+      finds: new Map(),
+      bears: [],
+      loads: [],
+    }
 
     for (const statement of program) {
       if (statement.form === 'function') {
-        one.tasks.set(statement.name, [...(one.tasks.get(statement.name) ?? []), statement])
+        one.tasks.set(statement.name, [
+          ...(one.tasks.get(statement.name) ?? []),
+          statement,
+        ])
 
         if (statement.method) {
-          one.methods.set(statement.method.name, [...(one.methods.get(statement.method.name) ?? []), statement])
+          one.methods.set(statement.method.name, [
+            ...(one.methods.get(statement.method.name) ?? []),
+            statement,
+          ])
         }
       } else if (statement.form === 'native') {
         one.natives.set(statement.alias, statement.module)
@@ -100,7 +127,10 @@ export function reachGraph(root: string): ReachGraph {
 
       // under the alias it was found by and under its own name, which is what the mill writes an aliased call as
       find.names.forEach((real, at) => {
-        one.finds.set(find.aliases[at] ?? real, { path: find.path, real })
+        one.finds.set(find.aliases[at] ?? real, {
+          path: find.path,
+          real,
+        })
 
         if (!one.finds.has(real)) {
           one.finds.set(real, { path: find.path, real })
@@ -113,7 +143,10 @@ export function reachGraph(root: string): ReachGraph {
     return one
   }
 
-  const loaded = (importPath: string, from: string): Module | undefined => {
+  const loaded = (
+    importPath: string,
+    from: string,
+  ): Module | undefined => {
     const source = resolve(importPath, from)
 
     return source ? moduleOf(source.file, source.text) : undefined
@@ -121,7 +154,10 @@ export function reachGraph(root: string): ReachGraph {
 
   // the search, the scope rules and the walk over each body are Term (call/code/reach-graph.tree). It asks this face
   // for the modules, which are read and milled once here and kept
-  const asked = (importPath: string, from: string): port.Maybe<port.ReachModule> => {
+  const asked = (
+    importPath: string,
+    from: string,
+  ): port.Maybe<port.ReachModule> => {
     const found = loaded(importPath, from)
 
     return found ? { form: 'some', value: found } : { form: 'none' }
@@ -137,8 +173,13 @@ export function reachGraph(root: string): ReachGraph {
 }
 
 // the file a roll site names (`code/save.tree:12:1`), under the root it is relative to
-export function siteFile(root: string, site: string): { file: string; line: number } | undefined {
+export function siteFile(
+  root: string,
+  site: string,
+): { file: string; line: number } | undefined {
   const parts = port.sitePartsOf(site)
 
-  return parts.line !== '' ? { file: path.resolve(root, parts.file), line: Number(parts.line) } : undefined
+  return parts.line !== ''
+    ? { file: path.resolve(root, parts.file), line: Number(parts.line) }
+    : undefined
 }

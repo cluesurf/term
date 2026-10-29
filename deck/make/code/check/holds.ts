@@ -12,18 +12,35 @@
 // `hold-tally` itself.
 
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
-import type { Expression, HoldOrigin, Program } from '@term/make/code/compile/node'
-import { functionNames, programFacts } from '@term/make/code/check/facts'
+import type {
+  Expression,
+  HoldOrigin,
+  Program,
+} from '@term/make/code/compile/node'
+import {
+  functionNames,
+  programFacts,
+} from '@term/make/code/check/facts'
 import type { ProgramFacts } from '@term/make/code/check/program-facts'
 import { refineState } from '@term/make/code/check/refine'
-import { productProfile, productWork } from '@term/make/code/check/product'
-import { clearHoldMemo as clearHoldMemoIn, freshHoldState, provenRules as provenRulesIn } from '@term/make/code/check/hold-state'
+import {
+  productProfile,
+  productWork,
+} from '@term/make/code/check/product'
+import {
+  clearHoldMemo as clearHoldMemoIn,
+  freshHoldState,
+  provenRules as provenRulesIn,
+} from '@term/make/code/check/hold-state'
 import type { HoldState } from '@term/make/code/check/hold-state'
 import { checkerSwitches } from '@term/make/code/check/strict'
 import * as inequalityPart from '@term/make/code/check/inequality'
 import * as holdWalk from '@term/make/code/check/hold-walk'
 import type { Owed, OwedKinds } from '@term/make/code/check/holding'
-import { addOwed as addOwedIn, describeOwed } from '@term/make/code/check/holding'
+import {
+  addOwed as addOwedIn,
+  describeOwed,
+} from '@term/make/code/check/holding'
 
 export type { Owed } from '@term/make/code/check/holding'
 export { describeOwed }
@@ -33,7 +50,11 @@ export { describeOwed }
 const STATE: HoldState = freshHoldState()
 
 // and its calls: the provers' records, one instance each, and the inequality tasks universal.tree calls back
-const CALLS = inequalityPart.holdCallsOver(refineState, productWork, productProfile)
+const CALLS = inequalityPart.holdCallsOver(
+  refineState,
+  productWork,
+  productProfile,
+)
 
 // how many tasks' walks were answered from the memo, for the step's test (test/check/hold-memo.ts): hold-state's count
 export const holdsReplayed = {
@@ -49,16 +70,31 @@ export function isLinearGoal(expr: Expression): boolean {
 }
 
 // AN ORDER FROM FACTS, for the kernel closing an induction case over its own atoms (check/elaborate.ts `orderCase`)
-export function orderFollows(goal: Expression, facts: Expression[]): boolean {
-  return inequalityPart.orderFollows(STATE, CALLS, goal as never, facts as never)
+export function orderFollows(
+  goal: Expression,
+  facts: Expression[],
+): boolean {
+  return inequalityPart.orderFollows(
+    STATE,
+    CALLS,
+    goal as never,
+    facts as never,
+  )
 }
 
 // the rules this pass has proven so far, and how, without the ones only the kernel proved (hold-state.tree)
-export function provenRules(): ReadonlyMap<string, 'field' | 'integer'> {
-  return provenRulesIn(STATE) as ReadonlyMap<string, 'field' | 'integer'>
+export function provenRules(): ReadonlyMap<
+  string,
+  'field' | 'integer'
+> {
+  return provenRulesIn(STATE) as ReadonlyMap<
+    string,
+    'field' | 'integer'
+  >
 }
 
-const flags = (names: Iterable<string>): Map<string, boolean> => new Map([...names].map(name => [name, true]))
+const flags = (names: Iterable<string>): Map<string, boolean> =>
+  new Map([...names].map(name => [name, true]))
 
 // every `hold` of the program checked, the program's tables forgotten before and after (check/hold-walk.tree
 // `check-holds`)
@@ -87,14 +123,22 @@ export function checkHolds(
   } = {},
 ): Diagnostic[] {
   // the facts once, and only when one of them is not handed in
-  const handed = options.pure && options.stateFree && options.keeping && options.returning
-  const known = options.facts ?? (handed ? undefined : programFacts(program))
+  const handed =
+    options.pure &&
+    options.stateFree &&
+    options.keeping &&
+    options.returning
+
+  const known =
+    options.facts ?? (handed ? undefined : programFacts(program))
 
   return holdWalk.checkHolds(STATE as never, CALLS as never, {
     program: program as never,
     file,
     originOnly: options.originOnly === true,
-    tally: options.tally ? { form: 'some', value: options.tally as never } : { form: 'none' },
+    tally: options.tally
+      ? { form: 'some', value: options.tally as never }
+      : { form: 'none' },
     limited: options.only !== undefined,
     only: flags(options.only ?? []),
     skip: flags(options.skip ?? []),

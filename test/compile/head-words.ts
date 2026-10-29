@@ -16,13 +16,19 @@
 // still to be decided. It may only shrink: a new head outside the list fails, and a KNOWN head that is gone fails too,
 // so the list cannot keep a name that no longer needs it. proof-by-default-0020.
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+} from 'node:fs'
 import { join, relative } from 'node:path'
 // relative, because @term/deck is a published package with no path alias in this repo
 import { readTree } from '../../deck/deck/code/package/read'
 import type { Form } from '../../deck/deck/code/package/read'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const MILL = join(TERM, 'deck/mill/code/tree')
 const TERMS = join(TERM, '../../../../hold/base/terms.json')
@@ -132,7 +138,10 @@ const LITERALS = new Set(['true', 'false', 'void'])
 // list, or inside the list's own `mine any`
 function lineRules(form: Form, into: Set<string>): void {
   const named = (alternative: Form): void => {
-    if (alternative.head === 'mine' && alternative.terms[0] === 'form') {
+    if (
+      alternative.head === 'mine' &&
+      alternative.terms[0] === 'form'
+    ) {
       const like = alternative.forms.find(f => f.head === 'like')
 
       if (like?.terms[0]) {
@@ -157,7 +166,9 @@ function main(): void {
   // hold a head to, and the gate SKIPS, saying why: a gate that cannot evaluate must never read as a pass, and a crash
   // reading the file read as a defect in the grammars
   if (!existsSync(TERMS)) {
-    console.log(`skip  needs ${relative(process.cwd(), TERMS)}, the vocabulary checkout (gitignored at the repository root)`)
+    console.log(
+      `skip  needs ${relative(process.cwd(), TERMS)}, the vocabulary checkout (gitignored at the repository root)`,
+    )
     return
   }
 
@@ -207,7 +218,10 @@ function main(): void {
 
   console.log(`  ${rules} rules read, ${unreadable} file(s) unreadable`)
 
-  ok('every grammar file reads with the compiler parser', unreadable === 0)
+  ok(
+    'every grammar file reads with the compiler parser',
+    unreadable === 0,
+  )
   ok('the gate found rules to check', rules > 100, `${rules}`)
 
   const fresh = [...outside.keys()].filter(h => !KNOWN.has(h)).sort()

@@ -32,21 +32,53 @@ const messages = (file: string, text: string): string => {
   return out.ok ? '' : out.diagnostics.map(d => d.message).join(' | ')
 }
 
-const partial = messages('/gate/code/clock.tree', bind(['node', 'browser']))
-ok('a shared bind that leaves backends out is refused, naming them', /the bind `now-ms` has no case for rust, swift, kotlin/.test(partial), partial || 'built')
+const partial = messages(
+  '/gate/code/clock.tree',
+  bind(['node', 'browser']),
+)
+ok(
+  'a shared bind that leaves backends out is refused, naming them',
+  /the bind `now-ms` has no case for rust, swift, kotlin/.test(partial),
+  partial || 'built',
+)
 
-const whole = messages('/gate/code/clock.tree', bind(['node', 'browser', 'rust', 'swift', 'kotlin']))
-ok('a shared bind with a case for each of the five builds', whole === '', whole)
+const whole = messages(
+  '/gate/code/clock.tree',
+  bind(['node', 'browser', 'rust', 'swift', 'kotlin']),
+)
+ok(
+  'a shared bind with a case for each of the five builds',
+  whole === '',
+  whole,
+)
 
-const native = messages('/gate/code/native/rust/clock.tree', bind(['rust']))
-ok('a bind in a native/<backend>/ file is for that backend alone', native === '', native)
+const native = messages(
+  '/gate/code/native/rust/clock.tree',
+  bind(['rust']),
+)
+ok(
+  'a bind in a native/<backend>/ file is for that backend alone',
+  native === '',
+  native,
+)
 
 // zone's tools are `case node` binds in ordinary files: a node-only CLI, built for node alone
 const single = messages('/gate/code/tool.tree', bind(['node']))
-ok('a bind with one case is for that backend alone, wherever it is written', single === '', single)
+ok(
+  'a bind with one case is for that backend alone, wherever it is written',
+  single === '',
+  single,
+)
 
-const four = messages('/gate/code/clock.tree', bind(['node', 'browser', 'rust', 'swift']))
-ok('a bind with four of the five is refused, naming the fifth', /has no case for kotlin/.test(four), four || 'built')
+const four = messages(
+  '/gate/code/clock.tree',
+  bind(['node', 'browser', 'rust', 'swift']),
+)
+ok(
+  'a bind with four of the five is refused, naming the fifth',
+  /has no case for kotlin/.test(four),
+  four || 'built',
+)
 
 console.log(`\nbind-cases: ${pass} pass, ${fail} fail`)
 

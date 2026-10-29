@@ -5,12 +5,16 @@
 // Run: npx tsx test/call/cast.ts (after `pnpm run make:line`)
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { tempDir } from '../temp'
 import { LINE } from './cli'
-
 
 let pass = 0
 let fail = 0
@@ -29,7 +33,10 @@ function ok(name: string, good: boolean, detail = ''): void {
 function project(last: string): string {
   const root = tempDir('term-cast-')
   mkdirSync(join(root, 'code'))
-  writeFileSync(join(root, 'deck.tree'), 'deck shop\n  mark <0.0.1>\n  boot ./code/boot\n')
+  writeFileSync(
+    join(root, 'deck.tree'),
+    'deck shop\n  mark <0.0.1>\n  boot ./code/boot\n',
+  )
   writeFileSync(
     join(root, 'code/boot.tree'),
     [
@@ -76,7 +83,12 @@ function project(last: string): string {
 }
 
 function cast(root: string): { status: number | null; said: string } {
-  const run = spawnSync('node', [LINE, 'cast'], { cwd: root, encoding: 'utf8', timeout: 240_000, env: { ...process.env, NO_COLOR: '1' } })
+  const run = spawnSync('node', [LINE, 'cast'], {
+    cwd: root,
+    encoding: 'utf8',
+    timeout: 240_000,
+    env: { ...process.env, NO_COLOR: '1' },
+  })
 
   return { status: run.status, said: `${run.stdout}${run.stderr}` }
 }
@@ -85,8 +97,19 @@ function cast(root: string): { status: number | null; said: string } {
 {
   const root = project('host(route, port)')
   const { status, said } = cast(root)
-  ok('a `boot` that returns nothing is refused, exit 1', status === 1 && /`boot` returns no fetch handler, so the Worker would have none/.test(said), `${status} ${said}`)
-  ok('the refusal says how to return the handler', /back host\(route, port\)/.test(said), said)
+  ok(
+    'a `boot` that returns nothing is refused, exit 1',
+    status === 1 &&
+      /`boot` returns no fetch handler, so the Worker would have none/.test(
+        said,
+      ),
+    `${status} ${said}`,
+  )
+  ok(
+    'the refusal says how to return the handler',
+    /back host\(route, port\)/.test(said),
+    said,
+  )
   ok('and nothing is written', !existsSync(join(root, 'work/index.ts')))
 }
 
@@ -94,39 +117,83 @@ function cast(root: string): { status: number | null; said: string } {
 {
   const root = project('back port')
   const { status, said } = cast(root)
-  ok('a `boot` that returns a number is refused the same way, exit 1', status === 1 && /`boot` returns no fetch handler/.test(said), `${status} ${said}`)
+  ok(
+    'a `boot` that returns a number is refused the same way, exit 1',
+    status === 1 && /`boot` returns no fetch handler/.test(said),
+    `${status} ${said}`,
+  )
 }
 
 // ---- a boot that hands the handler back ----
 {
   const root = project('back host(route, port)')
   const { status, said } = cast(root)
-  ok('`back host(route, port)` casts, exit 0', status === 0 && /Cast to a Cloudflare Worker/.test(said), `${status} ${said}`)
+  ok(
+    '`back host(route, port)` casts, exit 0',
+    status === 0 && /Cast to a Cloudflare Worker/.test(said),
+    `${status} ${said}`,
+  )
 
   const app = join(root, 'work/app.mjs')
 
   if (existsSync(app)) {
-    const module = (await import(pathToFileURL(app).href)) as { boot: (url: string, port: number) => Promise<{ fetch?: (r: Request) => Promise<Response> }> }
+    const module = (await import(pathToFileURL(app).href)) as {
+      boot: (
+        url: string,
+        port: number,
+      ) => Promise<{ fetch?: (r: Request) => Promise<Response> }>
+    }
     const worker = await module.boot('', 0)
-    ok('its Worker exports `fetch`', typeof worker?.fetch === 'function', String(Object.keys(worker ?? {})))
+    ok(
+      'its Worker exports `fetch`',
+      typeof worker?.fetch === 'function',
+      String(Object.keys(worker ?? {})),
+    )
 
     if (typeof worker?.fetch === 'function') {
-      const response = await worker.fetch(new Request('http://worker.test/'))
+      const response = await worker.fetch(
+        new Request('http://worker.test/'),
+      )
       const html = await response.text()
-      ok('and answers a request with the page', response.status === 200 && /text\/html/.test(response.headers.get('content-type') ?? ''), `${response.status}`)
+      ok(
+        'and answers a request with the page',
+        response.status === 200 &&
+          /text\/html/.test(response.headers.get('content-type') ?? ''),
+        `${response.status}`,
+      )
       // `home host` alone in `route` was dropped by the mill (`home` is a word of the binding dialect), so the body
       // was an empty `<div></div>` (guides: commands/cast, applications/web, 2026-10-04)
-      ok('whose body holds the component `route` placed', /<h1>Home<\/h1>/.test(html), /<body>[\s\S]*<\/body>/.exec(html)?.[0])
+      ok(
+        'whose body holds the component `route` placed',
+        /<h1>Home<\/h1>/.test(html),
+        /<body>[\s\S]*<\/body>/.exec(html)?.[0],
+      )
       // the Worker is a production build whatever its `process.env` says: no reload poller, no empty `?v=`
-      ok('and carries no development reload script or empty `?v=`, with NODE_ENV unset', process.env.NODE_ENV === undefined && !html.includes('/base/__id') && !/\?v="/.test(html), `${process.env.NODE_ENV} ${(/<head>[\s\S]*<\/head>/.exec(html) ?? [''])[0]}`)
+      ok(
+        'and carries no development reload script or empty `?v=`, with NODE_ENV unset',
+        process.env.NODE_ENV === undefined &&
+          !html.includes('/base/__id') &&
+          !/\?v="/.test(html),
+        `${process.env.NODE_ENV} ${(/<head>[\s\S]*<\/head>/.exec(html) ?? [''])[0]}`,
+      )
       // the client bundle is named by its content, from the manifest baked into the bundle, and that file is there.
       // This project has no stylesheet, so `look.css` has nothing to hash
-      const script = /src="\/base\/(boot-[a-z]{4}-[a-z]{4}\.js)"/.exec(html)?.[1]
-      ok('its client bundle link names a content-hashed file under build/', script !== undefined && existsSync(join(root, 'build', script)), (/<head>[\s\S]*<\/head>/.exec(html) ?? [''])[0])
+      const script = /src="\/base\/(boot-[a-z]{4}-[a-z]{4}\.js)"/.exec(
+        html,
+      )?.[1]
+      ok(
+        'its client bundle link names a content-hashed file under build/',
+        script !== undefined && existsSync(join(root, 'build', script)),
+        (/<head>[\s\S]*<\/head>/.exec(html) ?? [''])[0],
+      )
     }
 
     const bundled = readFileSync(app, 'utf8')
-    ok('and work/app.mjs is minified', bundled.split('\n').length < 40 && !bundled.includes('// '), `${bundled.split('\n').length} lines`)
+    ok(
+      'and work/app.mjs is minified',
+      bundled.split('\n').length < 40 && !bundled.includes('// '),
+      `${bundled.split('\n').length} lines`,
+    )
   } else {
     ok('its Worker exports `fetch`', false, 'no work/app.mjs')
   }

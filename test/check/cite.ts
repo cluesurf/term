@@ -15,15 +15,22 @@ let fail = 0
 // `want` is 'ok', or a text the refusal's message must contain
 function expect(name: string, source: string, want: string): void {
   const result = compile({ file: 'c.tree', text: source })
-  const messages = result.ok ? [] : result.diagnostics.map(d => `${d.name}: ${d.message}`)
-  const good = want === 'ok' ? result.ok : !result.ok && messages.some(m => m.includes(want))
+  const messages = result.ok
+    ? []
+    : result.diagnostics.map(d => `${d.name}: ${d.message}`)
+  const good =
+    want === 'ok'
+      ? result.ok
+      : !result.ok && messages.some(m => m.includes(want))
 
   if (good) {
     pass++
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (ok=${result.ok}, wanted ${want})\n      ${messages.join('\n      ')}`)
+    console.log(
+      `FAIL  ${name}  (ok=${result.ok}, wanted ${want})\n      ${messages.join('\n      ')}`,
+    )
   }
 }
 
@@ -324,10 +331,14 @@ rule pasch
 
   if (result.ok && how === 'field') {
     pass++
-    console.log('ok    a disjunction proven by a case split is measured field-valid')
+    console.log(
+      'ok    a disjunction proven by a case split is measured field-valid',
+    )
   } else {
     fail++
-    console.log(`FAIL  a disjunction proven by a case split is measured field-valid  (ok=${result.ok}, measured ${how})`)
+    console.log(
+      `FAIL  a disjunction proven by a case split is measured field-valid  (ok=${result.ok}, measured ${how})`,
+    )
   }
 }
 
@@ -441,29 +452,50 @@ rule uses-the-square
       code ${least}
 ${SQUARE_GOAL}`
   const square = { file: '/memory/code/square.tree', text: SQUARE }
-  const resolve = (path: string) => (path === './square' ? square : undefined)
+  const resolve = (path: string) =>
+    path === './square' ? square : undefined
   const build = (least: number) =>
-    compile({ file: '/memory/code/base.tree', text: citing(least) }, { resolve })
+    compile(
+      { file: '/memory/code/base.tree', text: citing(least) },
+      { resolve },
+    )
 
   const refused = build(1)
-  const messages = refused.ok ? [] : refused.diagnostics.map(d => d.message)
+  const messages = refused.ok
+    ? []
+    : refused.diagnostics.map(d => d.message)
 
-  if (!refused.ok && messages.some(m => m.includes('cite square-bound: its hypothesis a >= 2 does not follow'))) {
+  if (
+    !refused.ok &&
+    messages.some(m =>
+      m.includes(
+        'cite square-bound: its hypothesis a >= 2 does not follow',
+      ),
+    )
+  ) {
     pass++
-    console.log('ok    a rule in another file is cited: its hypothesis is checked here (a >= 1 is refused)')
+    console.log(
+      'ok    a rule in another file is cited: its hypothesis is checked here (a >= 1 is refused)',
+    )
   } else {
     fail++
-    console.log(`FAIL  a rule in another file is cited  (ok=${refused.ok})\n      ${messages.join('\n      ')}`)
+    console.log(
+      `FAIL  a rule in another file is cited  (ok=${refused.ok})\n      ${messages.join('\n      ')}`,
+    )
   }
 
   const held = build(3)
 
   if (held.ok) {
     pass++
-    console.log('ok    control: and where it holds the citation is accepted (a >= 3)')
+    console.log(
+      'ok    control: and where it holds the citation is accepted (a >= 3)',
+    )
   } else {
     fail++
-    console.log(`FAIL  control: a >= 3 across files\n      ${held.diagnostics.map(d => d.message).join('\n      ')}`)
+    console.log(
+      `FAIL  control: a >= 3 across files\n      ${held.diagnostics.map(d => d.message).join('\n      ')}`,
+    )
   }
 }
 

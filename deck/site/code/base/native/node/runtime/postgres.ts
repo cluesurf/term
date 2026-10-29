@@ -12,7 +12,9 @@ const postgres = {
   pool: null as InstanceType<typeof pg.Pool> | null,
   connect(url: string): void {
     const driver = createRequire(import.meta.url)('pg') as typeof pg
-    postgres.pool = new driver.Pool(url ? { connectionString: url } : {})
+    postgres.pool = new driver.Pool(
+      url ? { connectionString: url } : {},
+    )
   },
   async query(
     sql: string,

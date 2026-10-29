@@ -1,8 +1,18 @@
 // Building events and expected lines for the golden tests, in TypeScript, the way a command will (phase 2): an event is
 // `blankEvent()` with what it has, and every value is a number until the library formats it.
 
-import { blankEvent, plainSubject } from '@term/call/code/work/item/event'
-import type { Event, Frame, ItemField, Tally, Span, TreeNode } from '@term/call/code/work/item/event'
+import {
+  blankEvent,
+  plainSubject,
+} from '@term/call/code/work/item/event'
+import type {
+  Event,
+  Frame,
+  ItemField,
+  Tally,
+  Span,
+  TreeNode,
+} from '@term/call/code/work/item/event'
 import { makeStandard } from '@term/call/code/work/item/standard'
 import { makeRoom } from '@term/call/code/work/item/layout'
 import type { Room, Line } from '@term/call/code/work/item/layout'
@@ -27,12 +37,27 @@ export function room(width: number, ascii = false, utc = false): Room {
 // a clock on the mockups' day, `14:42:00.005`, as epoch milliseconds
 export function T(time: string, day = 3): number {
   const [clock, millis = '0'] = time.split('.')
-  const [hours = 0, minutes = 0, seconds = 0] = clock!.split(':').map(Number)
+  const [hours = 0, minutes = 0, seconds = 0] = clock!
+    .split(':')
+    .map(Number)
 
-  return Date.UTC(2026, 9, day, hours, minutes, seconds, Number(millis.padEnd(3, '0'))) - OFFSET * 60000
+  return (
+    Date.UTC(
+      2026,
+      9,
+      day,
+      hours,
+      minutes,
+      seconds,
+      Number(millis.padEnd(3, '0')),
+    ) -
+    OFFSET * 60000
+  )
 }
 
-export type EventInput = Partial<Omit<Event, 'subject' | 'clock' | 'status'>> & {
+export type EventInput = Partial<
+  Omit<Event, 'subject' | 'clock' | 'status'>
+> & {
   subject?: string | Span[]
   clock?: string | number
   http?: number
@@ -45,7 +70,8 @@ export function ev(input: EventInput): Event {
   const event: Event = { ...blankEvent(), ...rest }
 
   if (subject !== undefined) {
-    event.subject = typeof subject === 'string' ? plainSubject(subject) : subject
+    event.subject =
+      typeof subject === 'string' ? plainSubject(subject) : subject
   }
 
   if (clock !== undefined) {
@@ -67,12 +93,25 @@ export function ev(input: EventInput): Event {
   return event
 }
 
-export function tally(amount: number, noun: string, one = '', total = -1): Tally {
+export function tally(
+  amount: number,
+  noun: string,
+  one = '',
+  total = -1,
+): Tally {
   return { amount, noun, one, total }
 }
 
-export function field(key: string, value: string | Span[], location = false): ItemField {
-  return { key, value: typeof value === 'string' ? plainSubject(value) : value, location }
+export function field(
+  key: string,
+  value: string | Span[],
+  location = false,
+): ItemField {
+  return {
+    key,
+    value: typeof value === 'string' ? plainSubject(value) : value,
+    location,
+  }
 }
 
 // a location field, under the standard's own key (`file` since 2026-10-05, `at` before), as the CLI's `location()`
@@ -80,15 +119,36 @@ export function at(value: string): ItemField {
   return field(SHIPPED.fields.locationKey, value, true)
 }
 
-export function frame(lines: [number, string][], marks: { line: number; column: number; length: number; label?: string; primary?: boolean }[], tabWidth = 8): Frame {
+export function frame(
+  lines: [number, string][],
+  marks: {
+    line: number
+    column: number
+    length: number
+    label?: string
+    primary?: boolean
+  }[],
+  tabWidth = 8,
+): Frame {
   return {
     lines: lines.map(([number, value]) => ({ number, value })),
-    marks: marks.map(mark => ({ line: mark.line, column: mark.column, length: mark.length, label: mark.label ?? '', primary: mark.primary ?? true })),
+    marks: marks.map(mark => ({
+      line: mark.line,
+      column: mark.column,
+      length: mark.length,
+      label: mark.label ?? '',
+      primary: mark.primary ?? true,
+    })),
     tabWidth,
   }
 }
 
-export function node(label: string, detail = '', children: TreeNode[] = [], deduped = false): TreeNode {
+export function node(
+  label: string,
+  detail = '',
+  children: TreeNode[] = [],
+  deduped = false,
+): TreeNode {
   return { label, detail, deduped, children }
 }
 
@@ -99,7 +159,9 @@ export type Mark = { role: string; strong: boolean; focus: boolean }
 // a line as it should be: its text, and the mark each character should carry (null: not checked)
 export type Expected = { text: string; marks: (Mark | null)[] }
 
-export type Part = string | { role: string; text: string; strong?: boolean; focus?: boolean }
+export type Part =
+  | string
+  | { role: string; text: string; strong?: boolean; focus?: boolean }
 
 function part(role: string, text: string, strong = false): Part {
   return { role, text, strong }
@@ -121,11 +183,22 @@ export function row(...parts: Part[]): Expected {
   const marks: (Mark | null)[] = []
 
   for (const each of parts) {
-    const piece = typeof each === 'string' ? { role: 'text', text: each, strong: false, focus: false } : each
+    const piece =
+      typeof each === 'string'
+        ? { role: 'text', text: each, strong: false, focus: false }
+        : each
 
     for (const character of piece.text) {
       text += character
-      marks.push(character === ' ' ? null : { role: piece.role, strong: piece.strong ?? false, focus: piece.focus ?? false })
+      marks.push(
+        character === ' '
+          ? null
+          : {
+              role: piece.role,
+              strong: piece.strong ?? false,
+              focus: piece.focus ?? false,
+            },
+      )
     }
   }
 
@@ -145,13 +218,30 @@ export const I = ' '.repeat(2)
 // a patch to a mockup's lines, naming the entry of note/project/term/output/mockup-differences.md that justifies it
 export type Patch =
   | { entry: string; at: number; remove: number; insert: Expected[] }
-  | { entry: string; retint: number; from: number; to: number; role: string }
+  | {
+      entry: string
+      retint: number
+      from: number
+      to: number
+      role: string
+    }
 
-export function replace(entry: string, at: number, remove: number, ...insert: Expected[]): Patch {
+export function replace(
+  entry: string,
+  at: number,
+  remove: number,
+  ...insert: Expected[]
+): Patch {
   return { entry, at, remove, insert }
 }
 
-export function retint(entry: string, line: number, from: number, to: number, role: string): Patch {
+export function retint(
+  entry: string,
+  line: number,
+  from: number,
+  to: number,
+  role: string,
+): Patch {
   return { entry, retint: line, from, to, role }
 }
 

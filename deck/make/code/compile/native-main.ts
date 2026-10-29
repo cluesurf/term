@@ -26,13 +26,24 @@ export const ENTRY_NAMES = mainEntry.entryNames()
 
 // a Term task name as each backend spells it: `run-all` is `run_all` on Rust and `runAll` elsewhere. `main` is `main_`
 // on Rust and Kotlin, which reserve it for the main this module writes (compile/rust.ts `RUST_RESERVED`, kotlin.ts `camel`)
-export function entrySpelling(backend: MainBackend | 'node', name: string): string {
+export function entrySpelling(
+  backend: MainBackend | 'node',
+  name: string,
+): string {
   return mainEntry.entrySpelling(backend, name)
 }
 
 // the entry `emitted` defines: `named`, or the first of ENTRY_NAMES it has, as the backend spells it
-export function entryOf(backend: MainBackend | 'node', emitted: string, named?: string): string | undefined {
-  const found = mainEntry.entryOf(backend, emitted, named ? { form: 'some', value: named } : { form: 'none' })
+export function entryOf(
+  backend: MainBackend | 'node',
+  emitted: string,
+  named?: string,
+): string | undefined {
+  const found = mainEntry.entryOf(
+    backend,
+    emitted,
+    named ? { form: 'some', value: named } : { form: 'none' },
+  )
 
   return found.form === 'some' ? found.value : undefined
 }
@@ -40,12 +51,20 @@ export function entryOf(backend: MainBackend | 'node', emitted: string, named?: 
 // the main for `entry` (already spelled for the backend) in `emitted`, a backend's output, to be appended to it.
 // `threads` false is a Rust main with no thread of its own, for a target that has none: WebAssembly under WASI
 // `node` is the TypeScript program's main, run on node's event loop: no thread of its own, and a stall stops it
-export function nativeMain(backend: MainBackend | 'node', emitted: string, entry = 'run', threads = true): string {
+export function nativeMain(
+  backend: MainBackend | 'node',
+  emitted: string,
+  entry = 'run',
+  threads = true,
+): string {
   return mainEntry.nativeMain(backend, emitted, entry, threads)
 }
 
 // the stdlib's crates (`cargoToml` is deck/base/code/native/rust/Cargo.toml) a Rust source names, each as its manifest
 // line: a program that names one is a cargo project with those crates alone
-export function cratesNamed(source: string, cargoToml: string): string[] {
+export function cratesNamed(
+  source: string,
+  cargoToml: string,
+): string[] {
   return mainEntry.cratesNamed(source, cargoToml)
 }

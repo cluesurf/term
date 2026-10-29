@@ -8,13 +8,24 @@
 
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  closeSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 
 const RUNNER = 'TermPromptTaps'
 
 // an Xcode object id: 24 hex digits, the same for the same name
-const id = (name: string): string => createHash('sha256').update(name).digest('hex').slice(0, 24).toUpperCase()
+const id = (name: string): string =>
+  createHash('sha256')
+    .update(name)
+    .digest('hex')
+    .slice(0, 24)
+    .toUpperCase()
 
 const ids = {
   file: id('file'),
@@ -105,33 +116,83 @@ export type Taps = {
   start: (udid: string) => void
   // once the app has gone: the test's exit status and its log, or undefined when it was never started
   // `timeout` ms (default 180 s) bounds the wait: past it the test is ended and the log says `timed out`
-  finish: (timeout?: number) => Promise<{ status: number | null; log: string } | undefined>
+  finish: (
+    timeout?: number,
+  ) => Promise<{ status: number | null; log: string } | undefined>
 }
 
 // write and build the UI test in `dir`, its one test method's body `body`, Swift under `import XCTest` with `springboard`
 // in scope
 export function buildTaps(dir: string, body: string): Taps {
   const project = join(dir, `${RUNNER}.xcodeproj`)
-  mkdirSync(join(project, 'xcshareddata', 'xcschemes'), { recursive: true })
+  mkdirSync(join(project, 'xcshareddata', 'xcschemes'), {
+    recursive: true,
+  })
   mkdirSync(join(dir, 'Sources'), { recursive: true })
   writeFileSync(join(project, 'project.pbxproj'), PROJECT)
-  writeFileSync(join(project, 'xcshareddata', 'xcschemes', `${RUNNER}.xcscheme`), SCHEME)
+  writeFileSync(
+    join(project, 'xcshareddata', 'xcschemes', `${RUNNER}.xcscheme`),
+    SCHEME,
+  )
   writeFileSync(
     join(dir, 'Sources', 'Taps.swift'),
-    ['import XCTest', '', 'final class Taps: XCTestCase {', '    func testTaps() {', '        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")', body, '    }', '}', ''].join('\n'),
+    [
+      'import XCTest',
+      '',
+      'final class Taps: XCTestCase {',
+      '    func testTaps() {',
+      '        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")',
+      body,
+      '    }',
+      '}',
+      '',
+    ].join('\n'),
   )
 
   const derived = join(dir, 'derived')
-  const made = spawnSync('xcodebuild', ['build-for-testing', '-project', project, '-scheme', RUNNER, '-destination', 'generic/platform=iOS Simulator', '-derivedDataPath', derived, '-quiet'], { encoding: 'utf8', timeout: 600_000 })
+  const made = spawnSync(
+    'xcodebuild',
+    [
+      'build-for-testing',
+      '-project',
+      project,
+      '-scheme',
+      RUNNER,
+      '-destination',
+      'generic/platform=iOS Simulator',
+      '-derivedDataPath',
+      derived,
+      '-quiet',
+    ],
+    { encoding: 'utf8', timeout: 600_000 },
+  )
   const log = join(dir, 'taps.log')
   let child: ChildProcess | undefined
 
   return {
     built: made.status === 0,
-    errors: `${made.stdout}${made.stderr}`.split('\n').filter(line => /error/.test(line)).join('\n').slice(0, 1600),
+    errors: `${made.stdout}${made.stderr}`
+      .split('\n')
+      .filter(line => /error/.test(line))
+      .join('\n')
+      .slice(0, 1600),
     start(udid: string): void {
       const out = openSync(log, 'w')
-      child = spawn('xcodebuild', ['test-without-building', '-project', project, '-scheme', RUNNER, '-destination', `id=${udid}`, '-derivedDataPath', derived], { stdio: ['ignore', out, out] })
+      child = spawn(
+        'xcodebuild',
+        [
+          'test-without-building',
+          '-project',
+          project,
+          '-scheme',
+          RUNNER,
+          '-destination',
+          `id=${udid}`,
+          '-derivedDataPath',
+          derived,
+        ],
+        { stdio: ['ignore', out, out] },
+      )
       closeSync(out)
     },
     // past `timeout` ms the xcodebuild child is ended (SIGTERM, SIGKILL 5 s later) and the answer is a non-zero status with
@@ -165,7 +226,12 @@ export function buildTaps(dir: string, body: string): Taps {
 
       const text = readFileSync(log, 'utf8')
 
-      return timedOut ? { status: status || 1, log: `${text}\ntimed out after ${timeout} ms\n` } : { status, log: text }
+      return timedOut
+        ? {
+            status: status || 1,
+            log: `${text}\ntimed out after ${timeout} ms\n`,
+          }
+        : { status, log: text }
     },
   }
 }

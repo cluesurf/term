@@ -11,7 +11,12 @@
 // Run: npx tsx test/compile/closure-locals.ts
 
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
@@ -69,26 +74,45 @@ task run
 
 const ROOT = process.cwd()
 const dir = mkdtempSync(join(tmpdir(), 'term-closure-locals-'))
-const readRuntime = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, 'utf8') : undefined)
+const readRuntime = (file: string): string | undefined =>
+  existsSync(file) ? readFileSync(file, 'utf8') : undefined
 
 function build(env: 'node' | 'swift') {
   const entry = join(dir, `${env}.tree`)
   writeFileSync(entry, PROGRAM)
 
-  return compile({ file: entry, text: PROGRAM }, { resolve: projectResolver(ROOT, env), env })
+  return compile(
+    { file: entry, text: PROGRAM },
+    { resolve: projectResolver(ROOT, env), env },
+  )
 }
 
 // TypeScript: the optimized program returns the value the closure wrote
 {
   const result = build('node')
-  ok('the program compiles', result.ok, result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'the program compiles',
+    result.ok,
+    result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '),
+  )
 
   if (result.ok) {
-    ok('the closure writes the outer total, no literal on the left', !/\b\d+\s*=\s*countNames/.test(result.typescript), result.typescript.slice(0, 300))
+    ok(
+      'the closure writes the outer total, no literal on the left',
+      !/\b\d+\s*=\s*countNames/.test(result.typescript),
+      result.typescript.slice(0, 300),
+    )
     const file = join(dir, 'run.ts')
-    writeFileSync(file, `${nativePrelude(result.program, 'node', readRuntime, result.typescript)}\n${result.typescript}\nconsole.log(run())\n`)
+    writeFileSync(
+      file,
+      `${nativePrelude(result.program, 'node', readRuntime, result.typescript)}\n${result.typescript}\nconsole.log(run())\n`,
+    )
     const run = spawnSync('npx', ['tsx', file], { encoding: 'utf8' })
-    ok('typescript: run answers the 2 the closure wrote, not the stale 0', run.stdout.trim() === '2', run.stdout + run.stderr)
+    ok(
+      'typescript: run answers the 2 the closure wrote, not the stale 0',
+      run.stdout.trim() === '2',
+      run.stdout + run.stderr,
+    )
   }
 }
 
@@ -99,27 +123,62 @@ function build(env: 'node' | 'swift') {
   if (result.ok) {
     const swift = emitSwift(result.program)
     const kotlin = emitKotlin(result.program)
-    ok('swift: the closure\'s list is SeedList<String>', /SeedList<String>\(\[\]\)/.test(swift) && !/SeedList<Any>\(\[\]\)/.test(swift))
-    ok('kotlin: the closure\'s list is mutableListOf<String>()', kotlin.includes('mutableListOf<String>()') && !kotlin.includes('mutableListOf<Any>()'))
+    ok(
+      "swift: the closure's list is SeedList<String>",
+      /SeedList<String>\(\[\]\)/.test(swift) &&
+        !/SeedList<Any>\(\[\]\)/.test(swift),
+    )
+    ok(
+      "kotlin: the closure's list is mutableListOf<String>()",
+      kotlin.includes('mutableListOf<String>()') &&
+        !kotlin.includes('mutableListOf<Any>()'),
+    )
 
     if (spawnSync('swiftc', ['--version']).status === 0) {
       const file = join(dir, 'run.swift')
-      writeFileSync(file, ['import Foundation', nativePrelude(result.program, 'swift', readRuntime, swift), swift, 'print(run())', ''].join('\n'))
+      writeFileSync(
+        file,
+        [
+          'import Foundation',
+          nativePrelude(result.program, 'swift', readRuntime, swift),
+          swift,
+          'print(run())',
+          '',
+        ].join('\n'),
+      )
       const exe = join(dir, 'run')
 
       try {
         execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
         const run = spawnSync(exe, [], { encoding: 'utf8' })
-        ok('swift: it builds and answers 2', run.stdout.trim() === '2', run.stdout + run.stderr)
+        ok(
+          'swift: it builds and answers 2',
+          run.stdout.trim() === '2',
+          run.stdout + run.stderr,
+        )
       } catch (error) {
-        const text = String((error as { stderr?: Buffer }).stderr ?? error)
-        ok('swift: it builds and answers 2', false, text.split('\n').filter(l => /error:/.test(l)).join('\n').slice(0, 600))
+        const text = String(
+          (error as { stderr?: Buffer }).stderr ?? error,
+        )
+        ok(
+          'swift: it builds and answers 2',
+          false,
+          text
+            .split('\n')
+            .filter(l => /error:/.test(l))
+            .join('\n')
+            .slice(0, 600),
+        )
       }
     } else {
       console.log('skip  swift build  (no swiftc)')
     }
   } else {
-    ok('the program compiles for swift', false, result.diagnostics.map(d => d.message).join(' | '))
+    ok(
+      'the program compiles for swift',
+      false,
+      result.diagnostics.map(d => d.message).join(' | '),
+    )
   }
 }
 
@@ -153,14 +212,28 @@ task run
 `
   const entry = join(dir, 'siblings.tree')
   writeFileSync(entry, SIBLINGS)
-  const result = compile({ file: entry, text: SIBLINGS }, { resolve: projectResolver(ROOT, 'node'), env: 'node' })
-  ok('two closures that each save the same name both compile', result.ok, result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '))
+  const result = compile(
+    { file: entry, text: SIBLINGS },
+    { resolve: projectResolver(ROOT, 'node'), env: 'node' },
+  )
+  ok(
+    'two closures that each save the same name both compile',
+    result.ok,
+    result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '),
+  )
 
   if (result.ok) {
     const file = join(dir, 'siblings.ts')
-    writeFileSync(file, `${nativePrelude(result.program, 'node', readRuntime, result.typescript)}\n${result.typescript}\nconsole.log(run())\n`)
+    writeFileSync(
+      file,
+      `${nativePrelude(result.program, 'node', readRuntime, result.typescript)}\n${result.typescript}\nconsole.log(run())\n`,
+    )
     const run = spawnSync('npx', ['tsx', file], { encoding: 'utf8' })
-    ok('each closure\'s name is its own, and both still write the outer total: 3 + 4', run.stdout.trim() === '7', run.stdout + run.stderr)
+    ok(
+      "each closure's name is its own, and both still write the outer total: 3 + 4",
+      run.stdout.trim() === '7',
+      run.stdout + run.stderr,
+    )
   }
 }
 

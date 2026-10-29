@@ -23,12 +23,21 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const TOOLS: Record<string, string[]> = { node: [], rust: ['rustc', 'cargo'], swift: ['swiftc'], kotlin: ['kotlinc', 'java'] }
-const have = (tool: string): boolean => spawnSync('which', [tool], { encoding: 'utf8' }).status === 0
+const TOOLS: Record<string, string[]> = {
+  node: [],
+  rust: ['rustc', 'cargo'],
+  swift: ['swiftc'],
+  kotlin: ['kotlinc', 'java'],
+}
+const have = (tool: string): boolean =>
+  spawnSync('which', [tool], { encoding: 'utf8' }).status === 0
 
 const project = tempDir('term-emit-build-')
 mkdirSync(join(project, 'code'))
-writeFileSync(join(project, 'deck.tree'), 'deck @probe/emit-build\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\n')
+writeFileSync(
+  join(project, 'deck.tree'),
+  'deck @probe/emit-build\nhead <Probe>\nmark <0.0.2>\nlink @term/base, mark <0.0.x>\n',
+)
 
 // the answer of `run`, and a second entry `--main` can name
 writeFileSync(
@@ -73,12 +82,21 @@ task run
 )
 
 // nothing to start
-writeFileSync(join(project, 'code/library.tree'), 'task helper\n  take n, like number\n  like number\n  back n\n')
+writeFileSync(
+  join(project, 'code/library.tree'),
+  'task helper\n  take n, like number\n  like number\n  back n\n',
+)
 
-const term = (...args: string[]) => spawnSync(process.execPath, [LINE, ...args], { cwd: project, encoding: 'utf8' })
+const term = (...args: string[]) =>
+  spawnSync(process.execPath, [LINE, ...args], {
+    cwd: project,
+    encoding: 'utf8',
+  })
 const only = process.env.EMIT_BUILD_ONLY ?? ''
 
-for (const target of ['node', 'rust', 'swift', 'kotlin'].filter(one => !only || one === only)) {
+for (const target of ['node', 'rust', 'swift', 'kotlin'].filter(
+  one => !only || one === only,
+)) {
   const missing = TOOLS[target]!.filter(one => !have(one))
 
   if (missing.length > 0) {
@@ -86,23 +104,83 @@ for (const target of ['node', 'rust', 'swift', 'kotlin'].filter(one => !only || 
     continue
   }
 
-  const answer = term('make', '--emit', target, 'code/answer.tree', '--run')
-  ok(`${target}: --run prints what run answers`, answer.status === 0 && answer.stdout === 'answer 42', `${answer.status} ${answer.stdout} ${answer.stderr}`)
+  const answer = term(
+    'make',
+    '--emit',
+    target,
+    'code/answer.tree',
+    '--run',
+  )
+  ok(
+    `${target}: --run prints what run answers`,
+    answer.status === 0 && answer.stdout === 'answer 42',
+    `${answer.status} ${answer.stdout} ${answer.stderr}`,
+  )
 
-  const other = term('make', '--emit', target, 'code/answer.tree', '--run', '--main', 'other')
-  ok(`${target}: --main names the entry`, other.status === 0 && other.stdout === 'the other entry', `${other.status} ${other.stdout} ${other.stderr}`)
+  const other = term(
+    'make',
+    '--emit',
+    target,
+    'code/answer.tree',
+    '--run',
+    '--main',
+    'other',
+  )
+  ok(
+    `${target}: --main names the entry`,
+    other.status === 0 && other.stdout === 'the other entry',
+    `${other.status} ${other.stdout} ${other.stderr}`,
+  )
 
   const boot = term('make', '--emit', target, 'code/boot.tree', '--run')
-  ok(`${target}: boot answers nothing, and only its own output is printed`, boot.status === 0 && boot.stdout.trim() === 'booted', `${boot.status} ${JSON.stringify(boot.stdout)} ${boot.stderr}`)
+  ok(
+    `${target}: boot answers nothing, and only its own output is printed`,
+    boot.status === 0 && boot.stdout.trim() === 'booted',
+    `${boot.status} ${JSON.stringify(boot.stdout)} ${boot.stderr}`,
+  )
 
-  const money = term('make', '--emit', target, 'code/money.tree', '--run')
-  ok(`${target}: a program naming a crate builds (cargo on rust)`, money.status === 0 && money.stdout === '0.3', `${money.status} ${money.stdout} ${money.stderr}`)
+  const money = term(
+    'make',
+    '--emit',
+    target,
+    'code/money.tree',
+    '--run',
+  )
+  ok(
+    `${target}: a program naming a crate builds (cargo on rust)`,
+    money.status === 0 && money.stdout === '0.3',
+    `${money.status} ${money.stdout} ${money.stderr}`,
+  )
 
-  const library = term('make', '--emit', target, 'code/library.tree', '--run')
-  ok(`${target}: a program with nothing to start is refused, naming --main`, library.status !== 0 && /--main/.test(library.stderr), `${library.status} ${library.stderr}`)
+  const library = term(
+    'make',
+    '--emit',
+    target,
+    'code/library.tree',
+    '--run',
+  )
+  ok(
+    `${target}: a program with nothing to start is refused, naming --main`,
+    library.status !== 0 && /--main/.test(library.stderr),
+    `${library.status} ${library.stderr}`,
+  )
 
-  const built = term('make', '--emit', target, 'code/answer.tree', '--build', '--out', `out-${target}`)
-  ok(`${target}: --build alone writes a runnable artifact and does not run it`, built.status === 0 && built.stdout === '' && existsSync(join(project, `out-${target}`)), `${built.status} ${built.stdout} ${built.stderr}`)
+  const built = term(
+    'make',
+    '--emit',
+    target,
+    'code/answer.tree',
+    '--build',
+    '--out',
+    `out-${target}`,
+  )
+  ok(
+    `${target}: --build alone writes a runnable artifact and does not run it`,
+    built.status === 0 &&
+      built.stdout === '' &&
+      existsSync(join(project, `out-${target}`)),
+    `${built.status} ${built.stdout} ${built.stderr}`,
+  )
 }
 
 console.log(`\nemit-build: ${pass} pass, ${fail} fail`)

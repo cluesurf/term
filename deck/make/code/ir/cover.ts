@@ -12,7 +12,10 @@ import { coverProgram as coverProgramIn } from '@term/make/host/port/code/ir/cov
 export type CoverTarget = { prefix: string; root: string }
 
 // probes written into the program, and every key one was written for, in the order written
-export function coverProgram(program: Program, target: CoverTarget): string[] {
+export function coverProgram(
+  program: Program,
+  target: CoverTarget,
+): string[] {
   const answer = coverProgramIn(program, target)
 
   if (answer.program !== program) {

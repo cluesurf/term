@@ -60,24 +60,53 @@ task run
   back ask-through(who, 21)
 `
 
-const built = compile(
-  { file: 'async-field.tree', text },
-  { resolve: withNativeEnv('node', stdlibResolver()!), entryPoints: ['run'], leanOf: () => true } as never,
-)
+const built = compile({ file: 'async-field.tree', text }, {
+  resolve: withNativeEnv('node', stdlibResolver()!),
+  entryPoints: ['run'],
+  leanOf: () => true,
+} as never)
 
 if (!built.ok) {
-  ok('the program builds', false, built.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'the program builds',
+    false,
+    built.diagnostics.map(d => d.message).join(' | '),
+  )
 } else {
-  ok('the caller of an async field is async', /async function askThrough/.test(built.typescript), built.typescript.split('\n').filter(l => /askThrough/.test(l)).join(' | '))
-  ok('the call through the field is awaited', /await who\.ask\(n\)/.test(built.typescript), built.typescript.split('\n').filter(l => /who\.ask/.test(l)).join(' | '))
+  ok(
+    'the caller of an async field is async',
+    /async function askThrough/.test(built.typescript),
+    built.typescript
+      .split('\n')
+      .filter(l => /askThrough/.test(l))
+      .join(' | '),
+  )
+  ok(
+    'the call through the field is awaited',
+    /await who\.ask\(n\)/.test(built.typescript),
+    built.typescript
+      .split('\n')
+      .filter(l => /who\.ask/.test(l))
+      .join(' | '),
+  )
 
   const dir = tempDir('term-async-field-')
   const file = join(dir, 'module.mjs')
-  writeFileSync(file, transformSync(built.typescript, { loader: 'ts', format: 'esm' }).code)
-  const mod = (await import(pathToFileURL(file).href)) as { run: () => Promise<number> }
+  writeFileSync(
+    file,
+    transformSync(built.typescript, { loader: 'ts', format: 'esm' })
+      .code,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as {
+    run: () => Promise<number>
+  }
   const answer = await mod.run()
 
-  ok('and the answer is the number, not a promise', answer === 42, String(answer))
+  ok(
+    'and the answer is the number, not a promise',
+    answer === 42,
+    String(answer),
+  )
 }
 
 console.log(`\nasync-field-call: ${pass} pass, ${fail} fail`)

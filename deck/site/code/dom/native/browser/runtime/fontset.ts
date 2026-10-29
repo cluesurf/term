@@ -32,7 +32,9 @@ const deadlineTimerByFamily = new Map<
 >()
 
 function nowMs(): number {
-  return typeof performance !== 'undefined' ? performance.now() : Date.now()
+  return typeof performance !== 'undefined'
+    ? performance.now()
+    : Date.now()
 }
 
 // A CSS font shorthand that names the family. `document.fonts.check` / `.load` need a font shorthand, not a bare
@@ -92,11 +94,17 @@ export const fontset = {
   // a `data:` URI, a URL, or `asset:<name>`, which is a URL relative to the page. No FontFaceSet (the server): true,
   // as `check` is, since nothing is drawn there.
   register(family: string, source: string): boolean {
-    if (typeof document === 'undefined' || !document.fonts || typeof FontFace === 'undefined') {
+    if (
+      typeof document === 'undefined' ||
+      !document.fonts ||
+      typeof FontFace === 'undefined'
+    ) {
       return true
     }
     try {
-      const url = source.startsWith('asset:') ? source.slice('asset:'.length) : source
+      const url = source.startsWith('asset:')
+        ? source.slice('asset:'.length)
+        : source
       const face = new FontFace(family, `url("${url}")`)
       document.fonts.add(face)
       face.load().catch(() => undefined)

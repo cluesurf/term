@@ -103,37 +103,82 @@ task run
 
 const dir = tempDir('term-shadowed-callee-')
 const resolve = projectResolver(process.cwd(), 'rust')
-const result = compile({ file: join(dir, 'shadowed.tree'), text: PROGRAM }, { resolve, env: 'rust' })
+const result = compile(
+  { file: join(dir, 'shadowed.tree'), text: PROGRAM },
+  { resolve, env: 'rust' },
+)
 
-ok('compiles', result.ok, result.ok ? '' : result.diagnostics.map(d => d.message).slice(0, 4).join(' | '))
+ok(
+  'compiles',
+  result.ok,
+  result.ok
+    ? ''
+    : result.diagnostics
+        .map(d => d.message)
+        .slice(0, 4)
+        .join(' | '),
+)
 
 if (result.ok) {
   const exceptions = ['exception', 'absence', 'outage', 'failure']
   const ts = raiseSetsOf(result.program, exceptions)
-  const tree = raiseSetsOfTree(result.program as never, exceptions) as { raises: Map<string, string[]> }
+  const tree = raiseSetsOfTree(result.program as never, exceptions) as {
+    raises: Map<string, string[]>
+  }
 
-  ok('effects.ts: run raises outage', (ts.raises.get('run') ?? []).includes('outage'), JSON.stringify(ts.raises.get('run')))
-  ok('effects.ts: fire raises nothing', (ts.raises.get('fire') ?? ['missing']).length === 0, JSON.stringify(ts.raises.get('fire')))
-  ok('effects.tree: run raises outage', (tree.raises.get('run') ?? []).includes('outage'), JSON.stringify(tree.raises.get('run')))
-  ok('effects.tree: fire raises nothing', (tree.raises.get('fire') ?? ['missing']).length === 0, JSON.stringify(tree.raises.get('fire')))
+  ok(
+    'effects.ts: run raises outage',
+    (ts.raises.get('run') ?? []).includes('outage'),
+    JSON.stringify(ts.raises.get('run')),
+  )
+  ok(
+    'effects.ts: fire raises nothing',
+    (ts.raises.get('fire') ?? ['missing']).length === 0,
+    JSON.stringify(ts.raises.get('fire')),
+  )
+  ok(
+    'effects.tree: run raises outage',
+    (tree.raises.get('run') ?? []).includes('outage'),
+    JSON.stringify(tree.raises.get('run')),
+  )
+  ok(
+    'effects.tree: fire raises nothing',
+    (tree.raises.get('fire') ?? ['missing']).length === 0,
+    JSON.stringify(tree.raises.get('fire')),
+  )
 
   const rust = emitRust(result.program)
-  const signature = rust.split('\n').find(line => /fn fire\b/.test(line)) ?? ''
-  ok('rust: fire is infallible', signature !== '' && !signature.includes('Result'), signature)
+  const signature =
+    rust.split('\n').find(line => /fn fire\b/.test(line)) ?? ''
+  ok(
+    'rust: fire is infallible',
+    signature !== '' && !signature.includes('Result'),
+    signature,
+  )
   ok('rust: no `run()?` in fire', !/\brun\(\)\?/.test(rust), '')
 }
 
 const only = process.env.SC_ONLY
 
 for (const backend of BACKENDS.filter(one => !only || one === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'shadowed' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'shadowed',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
     continue
   }
 
-  ok(`${backend}: a walk local named like a raising task builds and runs`, ran.form === 'ran' && ran.output === 'fired 3', ran.form === 'ran' ? ran.output : `${ran.stage}: ${ran.reason}`)
+  ok(
+    `${backend}: a walk local named like a raising task builds and runs`,
+    ran.form === 'ran' && ran.output === 'fired 3',
+    ran.form === 'ran' ? ran.output : `${ran.stage}: ${ran.reason}`,
+  )
 }
 
 console.log(`\nshadowed-callee: ${pass} pass, ${fail} fail`)

@@ -9,7 +9,12 @@
 // The same facts test/compile/toolkit-view.ts holds on AppKit, UIKit and Android.
 // Skips, with the reason, when Playwright or its Chromium is absent. Run: npx tsx test/compile/controls-web.ts
 
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -39,7 +44,12 @@ type Page = {
   addScriptTag: (o: { content: string }) => Promise<unknown>
   evaluate: <T>(f: () => T) => Promise<T>
 }
-type Chromium = { launch: (o: { headless: boolean }) => Promise<{ newPage: () => Promise<Page>; close: () => Promise<void> }> }
+type Chromium = {
+  launch: (o: { headless: boolean }) => Promise<{
+    newPage: () => Promise<Page>
+    close: () => Promise<void>
+  }>
+}
 
 const PROGRAM = `load @term/site/code/dom/dom
   find view
@@ -257,9 +267,15 @@ async function main(): Promise<void> {
   let chromium: Chromium
 
   try {
-    chromium = (createRequire(join(MESH, 'package.json'))('@playwright/test') as { chromium: Chromium }).chromium
+    chromium = (
+      createRequire(join(MESH, 'package.json'))('@playwright/test') as {
+        chromium: Chromium
+      }
+    ).chromium
   } catch (error) {
-    console.log(`skip  controls-web  (no @playwright/test under mesh/: ${String(error).slice(0, 120)})`)
+    console.log(
+      `skip  controls-web  (no @playwright/test under mesh/: ${String(error).slice(0, 120)})`,
+    )
 
     return
   }
@@ -267,26 +283,62 @@ async function main(): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), 'term-controls-web-'))
   const entry = join(dir, 'slider.tree')
   writeFileSync(entry, PROGRAM)
-  const result = compile({ file: entry, text: PROGRAM }, { resolve: projectResolver(ROOT, 'browser'), env: 'browser' })
-  ok('the controls compile for the browser', result.ok, result.ok ? '' : result.diagnostics.slice(0, 3).map(d => `${d.file}:${(d.span?.start.line ?? 0) + 1} ${d.message}`).join(' | '))
+  const result = compile(
+    { file: entry, text: PROGRAM },
+    { resolve: projectResolver(ROOT, 'browser'), env: 'browser' },
+  )
+  ok(
+    'the controls compile for the browser',
+    result.ok,
+    result.ok
+      ? ''
+      : result.diagnostics
+          .slice(0, 3)
+          .map(
+            d =>
+              `${d.file}:${(d.span?.start.line ?? 0) + 1} ${d.message}`,
+          )
+          .join(' | '),
+  )
 
   if (!result.ok) {
     return
   }
 
-  ok('the browser gets the generic slider, a range input', result.typescript.includes('"range"'))
+  ok(
+    'the browser gets the generic slider, a range input',
+    result.typescript.includes('"range"'),
+  )
   const readRuntime = (file: string): string | undefined =>
-    !file.endsWith('/position.ts') && existsSync(file) ? readFileSync(file, 'utf8') : undefined
-  const prelude = nativePrelude(result.program, 'browser', readRuntime, result.typescript)
+    !file.endsWith('/position.ts') && existsSync(file)
+      ? readFileSync(file, 'utf8')
+      : undefined
+  const prelude = nativePrelude(
+    result.program,
+    'browser',
+    readRuntime,
+    result.typescript,
+  )
   const source = join(dir, 'slider.ts')
   writeFileSync(source, `${prelude}\n${result.typescript}\n${HARNESS}`)
-  const bundle = await build({ entryPoints: [source], bundle: true, write: false, format: 'iife', platform: 'browser', logLevel: 'silent' })
-
-  const launched = await chromium.launch({ headless: true }).catch(error => {
-    console.log(`skip  controls-web  (Chromium did not launch: ${String(error).slice(0, 160)})`)
-
-    return undefined
+  const bundle = await build({
+    entryPoints: [source],
+    bundle: true,
+    write: false,
+    format: 'iife',
+    platform: 'browser',
+    logLevel: 'silent',
   })
+
+  const launched = await chromium
+    .launch({ headless: true })
+    .catch(error => {
+      console.log(
+        `skip  controls-web  (Chromium did not launch: ${String(error).slice(0, 160)})`,
+      )
+
+      return undefined
+    })
 
   if (!launched) {
     return
@@ -294,21 +346,75 @@ async function main(): Promise<void> {
 
   try {
     const page = await launched.newPage()
-    await page.setContent('<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>')
+    await page.setContent(
+      '<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>',
+    )
     await page.addScriptTag({ content: bundle.outputFiles[0]!.text })
-    const said = await page.evaluate(() => (window as unknown as { __said: Record<string, string> }).__said)
-    ok("the slider is the browser's range input, showing the range's 40", said.shown === 'range 40', String(said.shown))
-    ok('a move to 37.5 made on the input, half a step, is written into the range', said.heard === '37.5', String(said.heard))
-    ok('the range written to 20 moves the input', said.moved === '20', String(said.moved))
-    ok("the select is the browser's own, three options, showing the signal's medium", said.picked === '3 medium', String(said.picked))
-    ok('large chosen on it is written into the signal', said.chosen === 'large', String(said.chosen))
-    ok('the signal written to small moves it', said.repicked === 'small', String(said.repicked))
-    ok("the input is the browser's own text field, its placeholder set, showing the signal's hello", said.field === 'Your name hello', String(said.field))
-    ok('hello world typed into it is written into the signal', said.typed === 'hello world', String(said.typed))
-    ok('the signal written to bye shows in it', said.rewritten === 'bye', String(said.rewritten))
-    ok('the dialog is a modal dialog holding its title and content', said.dialog === 'true Delete it? Sure?', String(said.dialog))
-    ok('it is hidden while the disclosure is closed', said.hidden === 'none', String(said.hidden))
-    ok('and shown when it opens', said.showing === 'block', String(said.showing))
+    const said = await page.evaluate(
+      () =>
+        (window as unknown as { __said: Record<string, string> })
+          .__said,
+    )
+    ok(
+      "the slider is the browser's range input, showing the range's 40",
+      said.shown === 'range 40',
+      String(said.shown),
+    )
+    ok(
+      'a move to 37.5 made on the input, half a step, is written into the range',
+      said.heard === '37.5',
+      String(said.heard),
+    )
+    ok(
+      'the range written to 20 moves the input',
+      said.moved === '20',
+      String(said.moved),
+    )
+    ok(
+      "the select is the browser's own, three options, showing the signal's medium",
+      said.picked === '3 medium',
+      String(said.picked),
+    )
+    ok(
+      'large chosen on it is written into the signal',
+      said.chosen === 'large',
+      String(said.chosen),
+    )
+    ok(
+      'the signal written to small moves it',
+      said.repicked === 'small',
+      String(said.repicked),
+    )
+    ok(
+      "the input is the browser's own text field, its placeholder set, showing the signal's hello",
+      said.field === 'Your name hello',
+      String(said.field),
+    )
+    ok(
+      'hello world typed into it is written into the signal',
+      said.typed === 'hello world',
+      String(said.typed),
+    )
+    ok(
+      'the signal written to bye shows in it',
+      said.rewritten === 'bye',
+      String(said.rewritten),
+    )
+    ok(
+      'the dialog is a modal dialog holding its title and content',
+      said.dialog === 'true Delete it? Sure?',
+      String(said.dialog),
+    )
+    ok(
+      'it is hidden while the disclosure is closed',
+      said.hidden === 'none',
+      String(said.hidden),
+    )
+    ok(
+      'and shown when it opens',
+      said.showing === 'block',
+      String(said.showing),
+    )
   } finally {
     await launched.close()
   }

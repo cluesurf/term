@@ -31,7 +31,10 @@ import { check } from '@term/make/code/check/infer'
 import { resolveAsync } from '@term/make/code/check/async-resolve'
 import { simplify } from '@term/make/code/ir/simplify'
 import { collectModules } from '@term/make/code/compile/load'
-import { bindModules, stampModule } from '@term/make/code/check/bind-modules'
+import {
+  bindModules,
+  stampModule,
+} from '@term/make/code/check/bind-modules'
 import type { Source } from '@term/make/code/compile/load'
 import {
   withNativeEnv,
@@ -101,7 +104,10 @@ function frontEnd(
   env: 'rust' | 'swift' | 'kotlin',
 ): Program {
   const resolver = withNativeEnv(env, stdlib)
-  const { sources, scope } = collectModules({ file: 'main.tree', text }, resolver)
+  const { sources, scope } = collectModules(
+    { file: 'main.tree', text },
+    resolver,
+  )
 
   const program: Program = []
   const roots = new Set<string>()
@@ -219,7 +225,9 @@ function spawnServer(
   return { proc, said: () => heard.trim().slice(0, 600) }
 }
 
-const SERVER = (port: number): string => `load @term/base/code/network/server
+const SERVER = (
+  port: number,
+): string => `load @term/base/code/network/server
   find serve
 
 load @term/base/code/network/server/response
@@ -364,9 +372,13 @@ async function kotlinServer(): Promise<void> {
   const jar = join(dir, 'server.jar')
 
   try {
-    execFileSync('kotlinc', [file, ...nativeFlags('kotlin'), '-include-runtime', '-d', jar], {
-      stdio: 'pipe',
-    })
+    execFileSync(
+      'kotlinc',
+      [file, ...nativeFlags('kotlin'), '-include-runtime', '-d', jar],
+      {
+        stdio: 'pipe',
+      },
+    )
   } catch (e) {
     fail++
     console.log(
@@ -470,11 +482,27 @@ let package = Package(
 
   // the SwiftPM scratch directory is SHARED between runs, so the swift-nio and Hummingbird graph is resolved and
   // built once rather than once per run (a cold resolve is minutes)
-  const scratch = join(process.env.TERM_NATIVE_CACHE ?? join(tmpdir(), 'term-native'), 'swift', 'server-roundtrip')
+  const scratch = join(
+    process.env.TERM_NATIVE_CACHE ?? join(tmpdir(), 'term-native'),
+    'swift',
+    'server-roundtrip',
+  )
   const exe = join(scratch, 'debug', 'server')
 
   const build = (): void => {
-    execFileSync('swift', ['build', '--package-path', dir, '--scratch-path', scratch, '--product', 'server'], { stdio: 'pipe' })
+    execFileSync(
+      'swift',
+      [
+        'build',
+        '--package-path',
+        dir,
+        '--scratch-path',
+        scratch,
+        '--product',
+        'server',
+      ],
+      { stdio: 'pipe' },
+    )
   }
 
   try {
@@ -487,11 +515,26 @@ let package = Package(
       const said = first as { stderr?: Buffer; stdout?: Buffer }
       const text = `${String(said.stdout ?? '')}${String(said.stderr ?? '')}`
 
-      if (!/not found|No such file|missing required module|module cache path/.test(text)) {
+      if (
+        !/not found|No such file|missing required module|module cache path/.test(
+          text,
+        )
+      ) {
         throw first
       }
 
-      execFileSync('swift', ['package', 'reset', '--package-path', dir, '--scratch-path', scratch], { stdio: 'pipe' })
+      execFileSync(
+        'swift',
+        [
+          'package',
+          'reset',
+          '--package-path',
+          dir,
+          '--scratch-path',
+          scratch,
+        ],
+        { stdio: 'pipe' },
+      )
       build()
     }
   } catch (e) {
@@ -507,7 +550,10 @@ let package = Package(
       String(e)
     // the errors themselves, since a build prints pages of warnings after them and the tail held only those
     const errors = all.split('\n').filter(line => /\berror:/.test(line))
-    const why = errors.length > 0 ? errors.slice(0, 8).join('\n') : all.slice(-900)
+    const why =
+      errors.length > 0
+        ? errors.slice(0, 8).join('\n')
+        : all.slice(-900)
 
     console.log(`FAIL  ${name}  (swift build error: ${why})`)
 

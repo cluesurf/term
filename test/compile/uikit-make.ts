@@ -29,7 +29,10 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-if (process.platform !== 'darwin' || spawnSync('xcodebuild', ['-version']).status !== 0) {
+if (
+  process.platform !== 'darwin' ||
+  spawnSync('xcodebuild', ['-version']).status !== 0
+) {
   console.log('skip  uikit-make: needs macOS with Xcode')
   console.log('\nuikit-make: 0 pass, 0 fail, 1 skipped')
   process.exit(0)
@@ -123,42 +126,125 @@ const team = signingTeam()
 // 1. the device build: unsigned whatever the keychain holds, so this half never waits on an identity
 try {
   await makeUikit({ root: APP, team: '' })
-  ok('uikit: `term make --target uikit` writes an Xcode project', existsSync(join(project, 'project.pbxproj')))
-  const exe = join(out, `${NAME}.xcarchive`, 'Products', 'Applications', `${NAME}.app`, NAME)
-  const build = spawnSync('vtool', ['-show-build', exe], { encoding: 'utf8' })
+  ok(
+    'uikit: `term make --target uikit` writes an Xcode project',
+    existsSync(join(project, 'project.pbxproj')),
+  )
+  const exe = join(
+    out,
+    `${NAME}.xcarchive`,
+    'Products',
+    'Applications',
+    `${NAME}.app`,
+    NAME,
+  )
+  const build = spawnSync('vtool', ['-show-build', exe], {
+    encoding: 'utf8',
+  })
   const arch = spawnSync('lipo', ['-archs', exe], { encoding: 'utf8' })
-  ok('uikit: the archive holds arm64 code built for iOS devices, not the simulator', /platform IOS\b/.test(build.stdout) && !/IOSSIMULATOR/.test(build.stdout) && arch.stdout.trim() === 'arm64', `${build.stdout}${build.stderr}${arch.stdout}`)
+  ok(
+    'uikit: the archive holds arm64 code built for iOS devices, not the simulator',
+    /platform IOS\b/.test(build.stdout) &&
+      !/IOSSIMULATOR/.test(build.stdout) &&
+      arch.stdout.trim() === 'arm64',
+    `${build.stdout}${build.stderr}${arch.stdout}`,
+  )
 } catch (e) {
-  ok('uikit: `term make --target uikit` builds for a device', false, String((e as Error).message ?? e))
+  ok(
+    'uikit: `term make --target uikit` builds for a device',
+    false,
+    String((e as Error).message ?? e),
+  )
 }
 
 // 2. the same project for the simulator, run, and read back
 const found = bootedSimulator()
 
 if ('missing' in found) {
-  console.log(`skip  uikit: the project on the simulator (${found.missing})`)
+  console.log(
+    `skip  uikit: the project on the simulator (${found.missing})`,
+  )
 } else if (existsSync(project)) {
   const derived = join(out, 'derived-simulator')
   const built = spawnSync(
     'xcodebuild',
-    ['build', '-project', project, '-scheme', NAME, '-configuration', 'Release', '-destination', 'generic/platform=iOS Simulator', '-derivedDataPath', derived, 'CODE_SIGNING_ALLOWED=NO', '-quiet'],
+    [
+      'build',
+      '-project',
+      project,
+      '-scheme',
+      NAME,
+      '-configuration',
+      'Release',
+      '-destination',
+      'generic/platform=iOS Simulator',
+      '-derivedDataPath',
+      derived,
+      'CODE_SIGNING_ALLOWED=NO',
+      '-quiet',
+    ],
     { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 },
   )
-  const app = join(derived, 'Build', 'Products', 'Release-iphonesimulator', `${NAME}.app`)
-  ok('uikit: the generated project builds for the simulator too', built.status === 0 && existsSync(app), `${built.stdout}${built.stderr}`.split('\n').filter(line => /error/.test(line)).join('\n'))
+  const app = join(
+    derived,
+    'Build',
+    'Products',
+    'Release-iphonesimulator',
+    `${NAME}.app`,
+  )
+  ok(
+    'uikit: the generated project builds for the simulator too',
+    built.status === 0 && existsSync(app),
+    `${built.stdout}${built.stderr}`
+      .split('\n')
+      .filter(line => /error/.test(line))
+      .join('\n'),
+  )
 
   if (existsSync(app)) {
     // the simulator is one device the whole machine shares: held from the first simctl call to the last (D017)
     const release = holdDeviceSync('simulator', 'uikit-make ios')
 
     try {
-      spawnSync('xcrun', ['simctl', 'terminate', found.udid, IDENTIFIER], { stdio: 'ignore' })
-      spawnSync('xcrun', ['simctl', 'uninstall', found.udid, IDENTIFIER], { stdio: 'ignore' })
-      spawnSync('xcrun', ['simctl', 'install', found.udid, app], { stdio: 'ignore' })
-      const ran = spawnSync('xcrun', ['simctl', 'launch', '--console', '--terminate-running-process', found.udid, IDENTIFIER], { encoding: 'utf8', timeout: 120_000 })
+      spawnSync(
+        'xcrun',
+        ['simctl', 'terminate', found.udid, IDENTIFIER],
+        { stdio: 'ignore' },
+      )
+      spawnSync(
+        'xcrun',
+        ['simctl', 'uninstall', found.udid, IDENTIFIER],
+        { stdio: 'ignore' },
+      )
+      spawnSync('xcrun', ['simctl', 'install', found.udid, app], {
+        stdio: 'ignore',
+      })
+      const ran = spawnSync(
+        'xcrun',
+        [
+          'simctl',
+          'launch',
+          '--console',
+          '--terminate-running-process',
+          found.udid,
+          IDENTIFIER,
+        ],
+        { encoding: 'utf8', timeout: 120_000 },
+      )
       const output = `${ran.stdout ?? ''}${ran.stderr ?? ''}`
-      ok('uikit: that app presses twice and reads it back from UIKit', output.split('\n').map(line => line.trim()).includes(WANT), output.slice(-800))
-      ok('uikit: it exits 0', output.includes('native-view exit 0'), output.slice(-400))
+      ok(
+        'uikit: that app presses twice and reads it back from UIKit',
+        output
+          .split('\n')
+          .map(line => line.trim())
+          .includes(WANT),
+        output.slice(-800),
+      )
+      ok(
+        'uikit: it exits 0',
+        output.includes('native-view exit 0'),
+        output.slice(-400),
+      )
     } finally {
       release()
     }
@@ -167,18 +253,55 @@ if ('missing' in found) {
 
 // 3. signed, where the keychain holds one team's identity
 if (!team) {
-  console.log('skip  uikit: the ad hoc .ipa (no Apple signing identity in the keychain: Xcode → Settings → Accounts)')
+  console.log(
+    'skip  uikit: the ad hoc .ipa (no Apple signing identity in the keychain: Xcode → Settings → Accounts)',
+  )
 } else {
   try {
-    const { app: ipa } = await makeUikit({ root: APP, team, link: 'https://example.invalid/uikit' })
-    ok(`uikit: signed ad hoc for ${team}, exported as an .ipa`, existsSync(ipa), ipa)
+    const { app: ipa } = await makeUikit({
+      root: APP,
+      team,
+      link: 'https://example.invalid/uikit',
+    })
+    ok(
+      `uikit: signed ad hoc for ${team}, exported as an .ipa`,
+      existsSync(ipa),
+      ipa,
+    )
     const unpacked = join(out, 'unpacked')
     rmSync(unpacked, { recursive: true, force: true })
     spawnSync('ditto', ['-x', '-k', ipa, unpacked])
-    const verified = spawnSync('codesign', ['--verify', '--deep', '--strict', join(unpacked, 'Payload', `${NAME}.app`)], { encoding: 'utf8' })
-    ok('uikit: its signature verifies', verified.status === 0, verified.stderr)
-    ok('uikit: it carries the ad hoc profile', existsSync(join(unpacked, 'Payload', `${NAME}.app`, 'embedded.mobileprovision')))
-    ok('uikit: the install page and manifest are written beside it', existsSync(join(out, 'export', 'index.html')) && existsSync(join(out, 'export', 'manifest.plist')))
+    const verified = spawnSync(
+      'codesign',
+      [
+        '--verify',
+        '--deep',
+        '--strict',
+        join(unpacked, 'Payload', `${NAME}.app`),
+      ],
+      { encoding: 'utf8' },
+    )
+    ok(
+      'uikit: its signature verifies',
+      verified.status === 0,
+      verified.stderr,
+    )
+    ok(
+      'uikit: it carries the ad hoc profile',
+      existsSync(
+        join(
+          unpacked,
+          'Payload',
+          `${NAME}.app`,
+          'embedded.mobileprovision',
+        ),
+      ),
+    )
+    ok(
+      'uikit: the install page and manifest are written beside it',
+      existsSync(join(out, 'export', 'index.html')) &&
+        existsSync(join(out, 'export', 'manifest.plist')),
+    )
   } catch (e) {
     ok('uikit: signed ad hoc', false, String((e as Error).message ?? e))
   }

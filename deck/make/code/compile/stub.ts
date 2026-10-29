@@ -20,7 +20,11 @@ import * as port from '@term/make/code/compile/stubbing'
 export type StubKnown = port.StubKnown
 
 // one definition of a surface, as the name-level cutoff reads it (compile/names.tree)
-export type NameDef = { gives: string[]; reads: string[]; print: string }
+export type NameDef = {
+  gives: string[]
+  reads: string[]
+  print: string
+}
 
 const same = (text: string): string => text
 
@@ -37,11 +41,17 @@ export function stubKnown(program: Program): StubKnown {
 
 // the fingerprint of a unit's surface, its stubs without where they were written. `portable` writes each deck's root as
 // a token (compile/separate.ts `portableBy`)
-export function surfaceHash(surface: Program, portable: (text: string) => string = same): string {
+export function surfaceHash(
+  surface: Program,
+  portable: (text: string) => string = same,
+): string {
   return port.surfaceHash(surface as never, portable)
 }
 
-export function nameDefs(surface: Program, portable: (text: string) => string = same): NameDef[] {
+export function nameDefs(
+  surface: Program,
+  portable: (text: string) => string = same,
+): NameDef[] {
   return port.nameDefs(surface as never, portable)
 }
 
@@ -53,8 +63,15 @@ export function namesUsed(program: Program): string[] {
 export const NAMES_ALWAYS_USED: string[] = port.namesAlwaysUsed()
 
 // the stub of one checked program: its public, body-less surface, in original order
-export function stubProgram(program: Program, known?: StubKnown, underProof = false): Program {
-  const maybe = known === undefined ? ({ form: 'none' } as const) : ({ form: 'some', value: known } as const)
+export function stubProgram(
+  program: Program,
+  known?: StubKnown,
+  underProof = false,
+): Program {
+  const maybe =
+    known === undefined
+      ? ({ form: 'none' } as const)
+      : ({ form: 'some', value: known } as const)
 
   return port.stubProgram(program as never, maybe, underProof) as never
 }

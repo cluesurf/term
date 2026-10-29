@@ -31,16 +31,27 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const HERE = join(dirname(fileURLToPath(import.meta.url)), 'inspect-native')
-const read = (name: string): string => readFileSync(join(HERE, name), 'utf8')
+const HERE = join(
+  dirname(fileURLToPath(import.meta.url)),
+  'inspect-native',
+)
+const read = (name: string): string =>
+  readFileSync(join(HERE, name), 'utf8')
 const dir = mkdtempSync(join(tmpdir(), 'term-inspect-native-'))
 const only = process.env.INSPECT_ONLY ?? ''
 const golden = read('values.golden')
 const outputs = new Map<string, string>()
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const resolve = (env: Parameters<typeof projectResolver>[1]) => projectResolver(process.cwd(), env)
-  const values = buildOn({ backend, program: read('values.tree'), resolve, dir, name: 'values' })
+  const resolve = (env: Parameters<typeof projectResolver>[1]) =>
+    projectResolver(process.cwd(), env)
+  const values = buildOn({
+    backend,
+    program: read('values.tree'),
+    resolve,
+    dir,
+    name: 'values',
+  })
 
   if (values.form === 'skipped') {
     console.log(`skip  ${backend}: ${values.reason}`)
@@ -48,47 +59,96 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
   }
 
   if (values.form === 'failed') {
-    ok(`${backend}: the values program builds`, false, `${values.stage}: ${values.reason}`)
+    ok(
+      `${backend}: the values program builds`,
+      false,
+      `${values.stage}: ${values.reason}`,
+    )
     continue
   }
 
-  const ran = spawnSync(values.command[0]!, values.command.slice(1), { encoding: 'utf8' })
+  const ran = spawnSync(values.command[0]!, values.command.slice(1), {
+    encoding: 'utf8',
+  })
   outputs.set(backend, String(ran.stdout))
-  ok(`${backend}: every kind prints as the golden says`, ran.status === 0 && ran.stdout === golden, ran.status === 0 ? diff(String(ran.stdout), golden) : String(ran.stderr).slice(0, 600))
+  ok(
+    `${backend}: every kind prints as the golden says`,
+    ran.status === 0 && ran.stdout === golden,
+    ran.status === 0
+      ? diff(String(ran.stdout), golden)
+      : String(ran.stderr).slice(0, 600),
+  )
 
   // one path on every backend, since a frame names its file
   const own = join(dir, backend)
   mkdirSync(own, { recursive: true })
-  const raised = buildOn({ backend, program: read('raise.tree'), resolve, dir: own, name: 'raise', file: join(own, 'raise.tree') })
+  const raised = buildOn({
+    backend,
+    program: read('raise.tree'),
+    resolve,
+    dir: own,
+    name: 'raise',
+    file: join(own, 'raise.tree'),
+  })
 
   if (raised.form !== 'built') {
-    ok(`${backend}: the raise program builds`, false, raised.form === 'failed' ? `${raised.stage}: ${raised.reason}` : raised.reason)
+    ok(
+      `${backend}: the raise program builds`,
+      false,
+      raised.form === 'failed'
+        ? `${raised.stage}: ${raised.reason}`
+        : raised.reason,
+    )
     continue
   }
 
   // the flow is Term frames, the same on every backend (term/hive decision 001): the raise, then the guarded call
-  const caught = spawnSync(raised.command[0]!, raised.command.slice(1), { encoding: 'utf8' })
+  const caught = spawnSync(
+    raised.command[0]!,
+    raised.command.slice(1),
+    { encoding: 'utf8' },
+  )
   const out = String(caught.stdout)
-  const want = 'absence(note <Not found>, flow list(<fails raise.tree:15>, <run raise.tree:24>))'
-  ok(`${backend}: a caught exception prints as its form, its note and its Term frames`, caught.status === 0 && out === want, out.slice(0, 300))
+  const want =
+    'absence(note <Not found>, flow list(<fails raise.tree:15>, <run raise.tree:24>))'
+  ok(
+    `${backend}: a caught exception prints as its form, its note and its Term frames`,
+    caught.status === 0 && out === want,
+    out.slice(0, 300),
+  )
 
   ok(
     `${backend}: print writes to standard error alone`,
-    String(caught.stderr).trim() === 'place(city <Oslo>)' && !out.includes('place('),
+    String(caught.stderr).trim() === 'place(city <Oslo>)' &&
+      !out.includes('place('),
     JSON.stringify(String(caught.stderr).slice(0, 200)),
   )
 }
 
 const seen = [...outputs.values()]
-ok('the values print the same bytes on every backend run', seen.length > 0 && seen.every(one => one === seen[0]), [...outputs.keys()].join(', '))
+ok(
+  'the values print the same bytes on every backend run',
+  seen.length > 0 && seen.every(one => one === seen[0]),
+  [...outputs.keys()].join(', '),
+)
 
 // a type parameter is refused where it is inspected, naming it
-const generic = compile({ file: join(dir, 'generic.tree'), text: read('generic.tree') }, { resolve: projectResolver(process.cwd(), 'node'), env: 'node' })
-const refused = generic.ok ? undefined : generic.diagnostics.find(d => d.name === 'inspect-generic')
+const generic = compile(
+  { file: join(dir, 'generic.tree'), text: read('generic.tree') },
+  { resolve: projectResolver(process.cwd(), 'node'), env: 'node' },
+)
+const refused = generic.ok
+  ? undefined
+  : generic.diagnostics.find(d => d.name === 'inspect-generic')
 ok(
   'inspect of a type parameter is refused as inspect-generic, naming it',
-  refused !== undefined && refused.message.includes('`t` is a type parameter'),
-  generic.ok ? 'built' : generic.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  refused !== undefined &&
+    refused.message.includes('`t` is a type parameter'),
+  generic.ok
+    ? 'built'
+    : generic.diagnostics
+        .map(d => `${d.name}: ${d.message}`)
+        .join(' | '),
 )
 
 // the first line where the two disagree

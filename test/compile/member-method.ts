@@ -5,14 +5,22 @@
 // (`xs/get(i)`, `h/has(k)`, `xs/push(x)`) to the native call it always was. Built AND run.
 // Run: npx tsx test/compile/member-method.ts
 
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { transformSync } from 'esbuild'
 import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
-import { nativePrelude, withNativeEnv } from '@term/make/code/compile/native'
+import {
+  nativePrelude,
+  withNativeEnv,
+} from '@term/make/code/compile/native'
 
 let pass = 0
 let fail = 0
@@ -55,22 +63,58 @@ task natives
   send back, call xs/get, code 1
 `
 
-const built = compile({ file: '/gate/code/member-method.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!) })
+const built = compile(
+  { file: '/gate/code/member-method.tree', text },
+  { resolve: withNativeEnv('node', stdlibResolver()!) },
+)
 
 if (!built.ok) {
-  ok('the program builds', false, built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the program builds',
+    false,
+    built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
 } else {
-  ok('get-or-default is not emitted as a native method', !/\.getOrDefault\(/.test(built.typescript), built.typescript.split('\n').filter(l => /OrDefault/.test(l)).join(' | '))
-  ok('a native member stays native: xs/get is an index read', !/listGet\(xs/.test(built.typescript))
+  ok(
+    'get-or-default is not emitted as a native method',
+    !/\.getOrDefault\(/.test(built.typescript),
+    built.typescript
+      .split('\n')
+      .filter(l => /OrDefault/.test(l))
+      .join(' | '),
+  )
+  ok(
+    'a native member stays native: xs/get is an index read',
+    !/listGet\(xs/.test(built.typescript),
+  )
 
-  const prelude = nativePrelude(built.program, 'node', path => (existsSync(path) ? readFileSync(path, 'utf8') : undefined))
+  const prelude = nativePrelude(built.program, 'node', path =>
+    existsSync(path) ? readFileSync(path, 'utf8') : undefined,
+  )
   const dir = mkdtempSync(join(tmpdir(), 'term-member-method-'))
   const file = join(dir, 'module.mjs')
-  writeFileSync(file, transformSync(`${prelude}\n${built.typescript}`, { loader: 'ts', format: 'esm' }).code)
-  const mod = (await import(pathToFileURL(file).href)) as Record<string, () => unknown>
-  ok('h/get-or-default runs: 1 found, 7 by default', mod.lookups!() === 8, String(mod.lookups!()))
+  writeFileSync(
+    file,
+    transformSync(`${prelude}\n${built.typescript}`, {
+      loader: 'ts',
+      format: 'esm',
+    }).code,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as Record<
+    string,
+    () => unknown
+  >
+  ok(
+    'h/get-or-default runs: 1 found, 7 by default',
+    mod.lookups!() === 8,
+    String(mod.lookups!()),
+  )
   ok('xs/contains runs', mod.holds!() === true, String(mod.holds!()))
-  ok('xs/get still reads the element', mod.natives!() === 6, String(mod.natives!()))
+  ok(
+    'xs/get still reads the element',
+    mod.natives!() === 6,
+    String(mod.natives!()),
+  )
 }
 
 console.log(`\nmember-method: ${pass} pass, ${fail} fail`)

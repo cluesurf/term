@@ -37,7 +37,11 @@ type Script = { name: string; stages: string[]; commit: string }
 
 const SCRIPTS: Script[] = [
   { name: 'korean', stages: ['ㅎ', '하', '한'], commit: '한' },
-  { name: 'japanese', stages: ['か', 'かん', 'かんじ'], commit: '漢字' },
+  {
+    name: 'japanese',
+    stages: ['か', 'かん', 'かんじ'],
+    commit: '漢字',
+  },
   { name: 'chinese', stages: ['z', 'zh', 'zhong'], commit: '中' },
 ]
 
@@ -46,7 +50,11 @@ const typing = SCRIPTS.map(script =>
   [
     `      call say`,
     `        text <script ${script.name}>`,
-    ...script.stages.flatMap(stage => [`      call compose`, `        read field`, `        text <${stage}>`]),
+    ...script.stages.flatMap(stage => [
+      `      call compose`,
+      `        read field`,
+      `        text <${stage}>`,
+    ]),
     `      call commit-composition`,
     `        read field`,
     `        text <${script.commit}>`,
@@ -67,7 +75,10 @@ const listener = (event: string) => `  call listen
       call say
         text <event ${event}|{{marked}}|{{value}}|>`
 
-const program = (_leg: Leg, shot: string): string => `load @term/site/code/dom/dom
+const program = (
+  _leg: Leg,
+  shot: string,
+): string => `load @term/site/code/dom/dom
   find view
 
 load @term/site/code/dom/native/toolkit/dom
@@ -121,14 +132,23 @@ type Event = { event: string; marked: string; value: string }
 function eventsOf(output: string, name: string): Event[] {
   const lines = output.split('\n')
   const start = lines.findIndex(line => line.includes(`script ${name}`))
-  const end = lines.findIndex((line, i) => i > start && line.includes('script '))
+  const end = lines.findIndex(
+    (line, i) => i > start && line.includes('script '),
+  )
   const events: Event[] = []
 
-  for (const line of lines.slice(start + 1, end < 0 ? undefined : end)) {
+  for (const line of lines.slice(
+    start + 1,
+    end < 0 ? undefined : end,
+  )) {
     const found = /event (\w+)\|([^|]*)\|([^|]*)\|/.exec(line)
 
     if (found) {
-      events.push({ event: found[1]!, marked: found[2]!, value: found[3]! })
+      events.push({
+        event: found[1]!,
+        marked: found[2]!,
+        value: found[3]!,
+      })
     }
   }
 
@@ -140,30 +160,40 @@ function judge(leg: Leg, toolkit: string, output: string): void {
 
   for (const script of SCRIPTS) {
     const events = eventsOf(output, script.name)
-    const composing = events.filter(e => e.event.startsWith('composition'))
+    const composing = events.filter(e =>
+      e.event.startsWith('composition'),
+    )
     const names = composing.map(e => e.event)
-    const updates = composing.filter(e => e.event === 'compositionupdate')
+    const updates = composing.filter(
+      e => e.event === 'compositionupdate',
+    )
     const show = JSON.stringify(events)
 
     ok(
       `${leg}: ${script.name} composes in the web's order, start, an update per stage, end (${toolkit})`,
-      names[0] === 'compositionstart' && names.at(-1) === 'compositionend' && names.filter(n => n === 'compositionstart').length === 1 && names.filter(n => n === 'compositionend').length === 1,
+      names[0] === 'compositionstart' &&
+        names.at(-1) === 'compositionend' &&
+        names.filter(n => n === 'compositionstart').length === 1 &&
+        names.filter(n => n === 'compositionend').length === 1,
       show,
     )
     ok(
       `${leg}: ${script.name}: each update carries its stage's marked text, ${script.stages.join(' ')}`,
-      updates.length === script.stages.length && updates.every((e, i) => e.marked === script.stages[i]),
+      updates.length === script.stages.length &&
+        updates.every((e, i) => e.marked === script.stages[i]),
       JSON.stringify(updates.map(e => e.marked)),
     )
     ok(
       `${leg}: ${script.name}: while composing, the value holds the marked text after what came before`,
       // an update per stage first: with none, `every` is true of nothing, which passed a host that saw no composition
-      updates.length === script.stages.length && updates.every((e, i) => e.value === before + script.stages[i]),
+      updates.length === script.stages.length &&
+        updates.every((e, i) => e.value === before + script.stages[i]),
       JSON.stringify(updates.map(e => e.value)),
     )
     ok(
       `${leg}: ${script.name}: an input follows each edit`,
-      events.filter(e => e.event === 'input').length >= script.stages.length + 1,
+      events.filter(e => e.event === 'input').length >=
+        script.stages.length + 1,
       show,
     )
 

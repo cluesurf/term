@@ -6,13 +6,30 @@
 // sources, at most 60 code points: for each pattern up to three the literal matches in V8 and two it does not, so
 // every case exercises something. V8 only picks the inputs; the differential holds every answer to Term's reference.
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+} from 'node:fs'
 import { join, relative } from 'node:path'
 import ts from 'typescript'
 
-export type CorpusCase = { pattern: string; inputs: string[]; origin: string }
+export type CorpusCase = {
+  pattern: string
+  inputs: string[]
+  origin: string
+}
 
-const SKIP = new Set(['node_modules', 'host', '.base', 'tmp', 'link', 'target', '.build'])
+const SKIP = new Set([
+  'node_modules',
+  'host',
+  '.base',
+  'tmp',
+  'link',
+  'target',
+  '.build',
+])
 
 function sources(dir: string, out: string[]): void {
   if (!existsSync(dir)) {
@@ -36,7 +53,13 @@ function sources(dir: string, out: string[]): void {
 
 // every regular expression literal in one file, as written
 function literals(file: string, text: string): string[] {
-  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS)
+  const source = ts.createSourceFile(
+    file,
+    text,
+    ts.ScriptTarget.Latest,
+    false,
+    ts.ScriptKind.TS,
+  )
   const found: string[] = []
   const visit = (node: ts.Node): void => {
     if (node.kind === ts.SyntaxKind.RegularExpressionLiteral) {
@@ -52,7 +75,9 @@ function literals(file: string, text: string): string[] {
 }
 
 // `/body/flags` as a Term pattern, or nothing for a flag Term has no reading of
-function termPattern(literal: string): { pattern: string; js: RegExp } | undefined {
+function termPattern(
+  literal: string,
+): { pattern: string; js: RegExp } | undefined {
   const cut = literal.lastIndexOf('/')
   const body = literal.slice(1, cut)
   const flags = literal.slice(cut + 1)
@@ -75,10 +100,20 @@ function termPattern(literal: string): { pattern: string; js: RegExp } | undefin
 }
 
 // the corpus: up to `limit` distinct patterns, in a fixed order, each with its inputs
-export function harvestCorpus(termRoot: string, limit: number): CorpusCase[] {
+export function harvestCorpus(
+  termRoot: string,
+  limit: number,
+): CorpusCase[] {
   const files: string[] = []
 
-  for (const dir of ['deck/make/code', 'deck/call/code', 'deck/deck/code', 'deck/flow/code', 'deck/scan/code', 'deck/test/code']) {
+  for (const dir of [
+    'deck/make/code',
+    'deck/call/code',
+    'deck/deck/code',
+    'deck/flow/code',
+    'deck/scan/code',
+    'deck/test/code',
+  ]) {
     sources(join(termRoot, dir), files)
   }
 
@@ -97,7 +132,11 @@ export function harvestCorpus(termRoot: string, limit: number): CorpusCase[] {
     text.split('\n').forEach((line, k) => {
       const trimmed = line.trim()
 
-      if (k % 7 === 0 && trimmed.length > 0 && [...trimmed].length <= 60) {
+      if (
+        k % 7 === 0 &&
+        trimmed.length > 0 &&
+        [...trimmed].length <= 60
+      ) {
         pool.push(trimmed)
       }
     })
@@ -138,7 +177,11 @@ export function harvestCorpus(termRoot: string, limit: number): CorpusCase[] {
       }
     }
 
-    cases.push({ pattern: read.pattern, inputs: [...hits, ...misses], origin })
+    cases.push({
+      pattern: read.pattern,
+      inputs: [...hits, ...misses],
+      origin,
+    })
   }
 
   return cases

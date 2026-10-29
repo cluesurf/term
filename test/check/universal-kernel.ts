@@ -43,20 +43,34 @@ form relation
 `
 
 // `want` is 'ok', or a diagnostic name, optionally with a phrase its message must hold
-function expect(name: string, source: string, want: string, phrase?: string): void {
-  const result = compile({ file: 'u.tree', text: source }, { leanOf: () => true })
+function expect(
+  name: string,
+  source: string,
+  want: string,
+  phrase?: string,
+): void {
+  const result = compile(
+    { file: 'u.tree', text: source },
+    { leanOf: () => true },
+  )
   const said = result.ok ? [] : result.diagnostics
   const good =
     want === 'ok'
       ? result.ok
-      : !result.ok && said.some(d => d.name === want && (!phrase || d.message.includes(phrase)))
+      : !result.ok &&
+        said.some(
+          d =>
+            d.name === want && (!phrase || d.message.includes(phrase)),
+        )
 
   if (good) {
     pass++
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (ok=${result.ok}, ${said.map(d => `${d.name}: ${d.message}`).join(' | ')})`)
+    console.log(
+      `FAIL  ${name}  (ok=${result.ok}, ${said.map(d => `${d.name}: ${d.message}`).join(' | ')})`,
+    )
   }
 }
 

@@ -17,11 +17,19 @@ export const FACE_NATIVE_PATH = 'code/component/native'
 
 // a type as one comparable string
 function typeText(type: Type | undefined): string {
-  return type === undefined ? '(inferred)' : JSON.stringify(type, (key, value) => (key === 'span' ? undefined : value))
+  return type === undefined
+    ? '(inferred)'
+    : JSON.stringify(type, (key, value) =>
+        key === 'span' ? undefined : value,
+      )
 }
 
 // the props of `view <name>` in a file, as `name: type`, in order, or undefined when the file declares no such view
-export function propsOf(file: string, text: string, name: string): string[] | undefined {
+export function propsOf(
+  file: string,
+  text: string,
+  name: string,
+): string[] | undefined {
   const parsed = parse({ file, text })
 
   if (!parsed.ok) {
@@ -34,18 +42,30 @@ export function propsOf(file: string, text: string, name: string): string[] | un
     return undefined
   }
 
-  const view = built.program.find(node => node.form === 'view' && node.name === name)
+  const view = built.program.find(
+    node => node.form === 'view' && node.name === name,
+  )
 
-  return view?.form === 'view' ? view.params.map(param => `${param.name}: ${typeText(param.type)}`) : undefined
+  return view?.form === 'view'
+    ? view.params.map(param => `${param.name}: ${typeText(param.type)}`)
+    : undefined
 }
 
-export type ContractFinding = { component: string; rung: string; file: string; problem: string }
+export type ContractFinding = {
+  component: string
+  rung: string
+  file: string
+  problem: string
+}
 
 // every platform implementation under `nativeDir` (a package's `code/component/native`) against the generic
 // implementation of the same component in `faceNativeDir`. For face itself the two are the same directory; for an app
 // they are the app's shadows against face's generics. An app shadow of a component face has no generic for is a
 // finding too: there is no contract to hold it to, so it shadows nothing.
-export function contractFindings(faceNativeDir: string, nativeDir: string = faceNativeDir): ContractFinding[] {
+export function contractFindings(
+  faceNativeDir: string,
+  nativeDir: string = faceNativeDir,
+): ContractFinding[] {
   const findings: ContractFinding[] = []
 
   if (!existsSync(nativeDir)) {
@@ -57,20 +77,36 @@ export function contractFindings(faceNativeDir: string, nativeDir: string = face
     .map(entry => entry.name)
 
   for (const rung of rungs) {
-    for (const file of readdirSync(join(nativeDir, rung)).filter(name => name.endsWith('.tree'))) {
+    for (const file of readdirSync(join(nativeDir, rung)).filter(name =>
+      name.endsWith('.tree'),
+    )) {
       const component = file.replace(/\.tree$/, '')
       const path = join(nativeDir, rung, file)
       const genericFile = join(faceNativeDir, `${component}.tree`)
 
       if (!existsSync(genericFile)) {
-        findings.push({ component, rung, file: path, problem: `face has no generic ${component} to take its contract from` })
+        findings.push({
+          component,
+          rung,
+          file: path,
+          problem: `face has no generic ${component} to take its contract from`,
+        })
         continue
       }
 
-      const contract = propsOf(genericFile, readFileSync(genericFile, 'utf8'), component)
+      const contract = propsOf(
+        genericFile,
+        readFileSync(genericFile, 'utf8'),
+        component,
+      )
 
       if (!contract?.length) {
-        findings.push({ component, rung, file: genericFile, problem: `the generic ${component} declares no props` })
+        findings.push({
+          component,
+          rung,
+          file: genericFile,
+          problem: `the generic ${component} declares no props`,
+        })
         continue
       }
 
@@ -90,7 +126,12 @@ export function contractFindings(faceNativeDir: string, nativeDir: string = face
       const untyped = props!.filter(prop => prop.endsWith('(inferred)'))
 
       if (untyped.length) {
-        findings.push({ component, rung, file: path, problem: `untyped props ${untyped.join(', ')}` })
+        findings.push({
+          component,
+          rung,
+          file: path,
+          problem: `untyped props ${untyped.join(', ')}`,
+        })
       }
     }
   }

@@ -40,8 +40,9 @@ async function main(): Promise<void> {
   const result = compile({ file: 'async.tree', text: SOURCE })
 
   if (!result.ok) {
-    for (const d of result.diagnostics)
-      {console.log(render(d, SOURCE.split('\n'), false))}
+    for (const d of result.diagnostics) {
+      console.log(render(d, SOURCE.split('\n'), false))
+    }
 
     console.log('\nasync: 0 pass, 1 fail')
 

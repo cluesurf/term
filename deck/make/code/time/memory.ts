@@ -11,7 +11,11 @@ import {
   cleanupDir,
 } from '@term/make/code/time/execute'
 import { compileBenchmarks } from '@term/make/code/time/runner'
-import { formatBytes, formatMemoryResult, makeMemoryResult } from '@term/make/code/time/profile'
+import {
+  formatBytes,
+  formatMemoryResult,
+  makeMemoryResult,
+} from '@term/make/code/time/profile'
 import type { MemoryResult } from '@term/make/code/time/profile'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
@@ -58,7 +62,10 @@ export async function runMemoryProfile(input: {
   })
 
   try {
-    await fs.writeFile(path.join(dir, 'harness.mjs'), harness(benchmarks.map(one => one.entry)))
+    await fs.writeFile(
+      path.join(dir, 'harness.mjs'),
+      harness(benchmarks.map(one => one.entry)),
+    )
 
     const stdout = await runNode({
       file: path.join(dir, 'harness.mjs'),
@@ -71,7 +78,12 @@ export async function runMemoryProfile(input: {
       after: { heapUsed: number; rss: number }
     } = JSON.parse(stdout)
 
-    return makeMemoryResult(input.name, usage.before.heapUsed, usage.after.heapUsed, usage.after.rss)
+    return makeMemoryResult(
+      input.name,
+      usage.before.heapUsed,
+      usage.after.heapUsed,
+      usage.after.rss,
+    )
   } finally {
     await cleanupDir(dir)
   }

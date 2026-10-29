@@ -26,19 +26,34 @@ function ok(name: string, holds: boolean, detail = ''): void {
   }
 }
 
-async function run(name: string, text: string, check: (mod: Record<string, (...a: unknown[]) => unknown>) => boolean): Promise<void> {
+async function run(
+  name: string,
+  text: string,
+  check: (mod: Record<string, (...a: unknown[]) => unknown>) => boolean,
+): Promise<void> {
   const built = compile({ file: `/gate/code/${name}.tree`, text })
 
   if (!built.ok) {
-    ok(name, false, built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+    ok(
+      name,
+      false,
+      built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+    )
 
     return
   }
 
   const dir = mkdtempSync(join(tmpdir(), 'term-empty-generic-'))
   const file = join(dir, 'module.mjs')
-  writeFileSync(file, transformSync(built.typescript, { loader: 'ts', format: 'esm' }).code)
-  const mod = (await import(pathToFileURL(file).href)) as Record<string, (...a: unknown[]) => unknown>
+  writeFileSync(
+    file,
+    transformSync(built.typescript, { loader: 'ts', format: 'esm' })
+      .code,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as Record<
+    string,
+    (...a: unknown[]) => unknown
+  >
   ok(name, check(mod))
 }
 
@@ -116,8 +131,14 @@ task count-empty
 // a generic UNION case holding the empty list, written straight in and bound with `host` first: the two spellings of
 // engine/data/array's `empty`
 for (const [label, body] of [
-  ['an empty list straight into a generic union case', '  send back\n    make leaf\n      bind items, make list\n'],
-  ['an empty list bound with host, then into a generic union case', '  host none, make list\n  send back\n    make leaf\n      bind items, read none\n'],
+  [
+    'an empty list straight into a generic union case',
+    '  send back\n    make leaf\n      bind items, make list\n',
+  ],
+  [
+    'an empty list bound with host, then into a generic union case',
+    '  host none, make list\n  send back\n    make leaf\n      bind items, read none\n',
+  ],
 ]) {
   await run(
     label!,
@@ -166,8 +187,16 @@ task count-piles
   send back, read stack/length
 `
   const built = compile({ file: '/gate/code/push-generic.tree', text })
-  const declared = built.ok ? (/const stack: ([^=]+) =/.exec(built.typescript)?.[1] ?? '').trim() : 'failed'
-  ok('a generic value pushed into a fresh list types its element', declared === 'Pile<T>[]', declared)
+  const declared = built.ok
+    ? (
+        /const stack: ([^=]+) =/.exec(built.typescript)?.[1] ?? ''
+      ).trim()
+    : 'failed'
+  ok(
+    'a generic value pushed into a fresh list types its element',
+    declared === 'Pile<T>[]',
+    declared,
+  )
 }
 
 // a non-generic empty list still builds, typed by its declared element

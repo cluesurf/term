@@ -21,21 +21,45 @@
 // the ported passes take, and a missing `skip` as a test that skips nothing.
 
 import type { Program } from '@term/make/code/compile/node'
-import { scopeList, type ImportScope } from '@term/make/code/compile/load'
+import {
+  scopeList,
+  type ImportScope,
+} from '@term/make/code/compile/load'
 import { censusOf } from '@term/make/code/check/census'
 
 export type Namespace = 'value' | 'type'
 
-export type Collision = { namespace: Namespace; name: string; files: string[] }
+export type Collision = {
+  namespace: Namespace
+  name: string
+  files: string[]
+}
 
-export type Unimported = { namespace: Namespace; name: string; file: string; definers: string[] }
+export type Unimported = {
+  namespace: Namespace
+  name: string
+  file: string
+  definers: string[]
+}
 
 // `shadowed`: an unimported reference whose name is ALSO a method of some form in the program, so it is most likely a
 // receiver call (`call size, read items` dispatches to the list's own `size`), which needs no import, and which a
 // top-level task of the same name from a module the file never imported can capture (native-dom-0036). Counted apart
 // from `unimported`, because the fix is resolution by position (module-scope-0005), not a `find`.
-export type ScopeCensus = { collisions: Collision[]; unimported: Unimported[]; shadowed: Unimported[] }
+export type ScopeCensus = {
+  collisions: Collision[]
+  unimported: Unimported[]
+  shadowed: Unimported[]
+}
 
-export function scopeCensus(program: Program, scope: ImportScope, skip?: (file: string) => boolean): ScopeCensus {
-  return censusOf(program as never, scopeList(scope) as never, skip ?? (() => false)) as ScopeCensus
+export function scopeCensus(
+  program: Program,
+  scope: ImportScope,
+  skip?: (file: string) => boolean,
+): ScopeCensus {
+  return censusOf(
+    program as never,
+    scopeList(scope) as never,
+    skip ?? (() => false),
+  ) as ScopeCensus
 }

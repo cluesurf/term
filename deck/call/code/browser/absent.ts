@@ -9,7 +9,9 @@
 
 function absent(name: string): () => never {
   return () => {
-    throw new Error(`\`${name}\` is a Node builtin, and the browser compile has no Node`)
+    throw new Error(
+      `\`${name}\` is a Node builtin, and the browser compile has no Node`,
+    )
   }
 }
 

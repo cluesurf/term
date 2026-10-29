@@ -6,7 +6,13 @@
 
 import { runDir } from './run-dir'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -19,12 +25,21 @@ import { resolveAsync } from '@term/make/code/check/async-resolve'
 import { simplify } from '@term/make/code/ir/simplify'
 import { collectModules } from '@term/make/code/compile/load'
 import type { Source } from '@term/make/code/compile/load'
-import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
+import {
+  withNativeEnv,
+  nativePrelude,
+} from '@term/make/code/compile/native'
 import { expandTemplates } from '@term/make/code/compile/template'
-import { bindModules, stampModule } from '@term/make/code/check/bind-modules'
+import {
+  bindModules,
+  stampModule,
+} from '@term/make/code/check/bind-modules'
 import { emitRust } from '@term/make/code/compile/rust'
 import { emitSwift } from '@term/make/code/compile/swift'
-import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
+import {
+  emitKotlin,
+  hoistKotlinImports,
+} from '@term/make/code/compile/kotlin'
 import type { Program } from '@term/make/code/compile/node'
 
 type Env = 'rust' | 'swift' | 'kotlin'
@@ -71,10 +86,14 @@ function errorsOf(e: unknown): string {
   const text = String((e as { stderr?: Buffer }).stderr ?? e)
   const errors = text.split('\n').filter(l => /error/.test(l))
 
-  return (errors.length ? errors : text.split('\n')).slice(0, 8).join(' | ').slice(0, 900)
+  return (errors.length ? errors : text.split('\n'))
+    .slice(0, 8)
+    .join(' | ')
+    .slice(0, 900)
 }
 
-const readRuntime = (path: string): string | undefined => (existsSync(path) ? readFileSync(path, 'utf8') : undefined)
+const readRuntime = (path: string): string | undefined =>
+  existsSync(path) ? readFileSync(path, 'utf8') : undefined
 
 // a guarded lookup and an unguarded one, over an exception with a prop of its own
 const PROGRAM = `load @term/base/code/exception
@@ -231,20 +250,27 @@ task rest
 `
 
 function frontEnd(env: Env): Program {
-  const { sources, scope } = collectModules({ file: 'main.tree', text: PROGRAM }, withNativeEnv(env, resolver))
+  const { sources, scope } = collectModules(
+    { file: 'main.tree', text: PROGRAM },
+    withNativeEnv(env, resolver),
+  )
   const program: Program = []
 
   for (const unit of sources) {
     const parsed = parse(unit)
 
     if (!parsed.ok) {
-      throw new Error(`parse failed: ${unit.file}: ${parsed.diagnostics.map(d => d.message).join(', ')}`)
+      throw new Error(
+        `parse failed: ${unit.file}: ${parsed.diagnostics.map(d => d.message).join(', ')}`,
+      )
     }
 
     const built = mill(expandTemplates(parsed.tree), unit.file)
 
     if (!built.ok) {
-      throw new Error(`mill failed: ${unit.file}: ${built.diagnostics.map(d => d.message).join(', ')}`)
+      throw new Error(
+        `mill failed: ${unit.file}: ${built.diagnostics.map(d => d.message).join(', ')}`,
+      )
     }
 
     stampModule(built.program, unit.file)
@@ -255,19 +281,42 @@ function frontEnd(env: Env): Program {
   const unbound = bindModules(program, scope, 'main.tree')
 
   if (unbound.length) {
-    throw new Error(`scope failed: ${unbound.slice(0, 5).map(d => d.message).join(' | ')}`)
+    throw new Error(
+      `scope failed: ${unbound
+        .slice(0, 5)
+        .map(d => d.message)
+        .join(' | ')}`,
+    )
   }
 
   resolveNames(program, 'main.tree')
-  const errors = check(program, 'main.tree').filter(d => d.severity !== 'warning')
+  const errors = check(program, 'main.tree').filter(
+    d => d.severity !== 'warning',
+  )
 
   if (errors.length) {
-    throw new Error(`check failed: ${errors.slice(0, 5).map(d => d.message).join(' | ')}`)
+    throw new Error(
+      `check failed: ${errors
+        .slice(0, 5)
+        .map(d => d.message)
+        .join(' | ')}`,
+    )
   }
 
   resolveAsync(program)
 
-  return simplify(program, new Set(['lookup', 'unguarded', 'describe', 'checked', 'translated', 'share', 'rest']))
+  return simplify(
+    program,
+    new Set([
+      'lookup',
+      'unguarded',
+      'describe',
+      'checked',
+      'translated',
+      'share',
+      'rest',
+    ]),
+  )
 }
 
 const dir = runDir('term-guard-native-')
@@ -280,15 +329,48 @@ const WANT_CASED = 'no user zed: No such user'
 const WANT_TEXT = 'caught failure: no such key q'
 const WANT_TRANSLATED = 'translated zed'
 
-function judge(env: Env, built: { status: number | null; stdout: string; stderr: string }, uncaught: { status: number | null; stderr: string }): void {
+function judge(
+  env: Env,
+  built: { status: number | null; stdout: string; stderr: string },
+  uncaught: { status: number | null; stderr: string },
+): void {
   const lines = built.stdout.split('\n')
-  ok(`${env}: the happy path returns`, lines[0] === WANT_FOUND, JSON.stringify(lines[0]))
-  ok(`${env}: the raise reaches the handler with its form and note`, lines[1] === WANT_CAUGHT, JSON.stringify(lines[1]))
-  ok(`${env}: a fork case over the caught value binds the form's prop`, lines[2] === WANT_CASED, JSON.stringify(lines[2]))
-  ok(`${env}: an interpolated text raises failure with the text as its note`, lines[3] === WANT_TEXT, JSON.stringify(lines[3]))
-  ok(`${env}: an arm that binds the caught time raises another exception`, lines[4] === WANT_TRANSLATED, JSON.stringify(lines[4]))
-  ok(`${env}: an uncaught raise ends the program`, uncaught.status !== 0, `exit ${uncaught.status}`)
-  ok(`${env}: the uncaught raise names its form and note`, uncaught.stderr.includes('user-absence') && uncaught.stderr.includes('No such user'), uncaught.stderr.slice(0, 200))
+  ok(
+    `${env}: the happy path returns`,
+    lines[0] === WANT_FOUND,
+    JSON.stringify(lines[0]),
+  )
+  ok(
+    `${env}: the raise reaches the handler with its form and note`,
+    lines[1] === WANT_CAUGHT,
+    JSON.stringify(lines[1]),
+  )
+  ok(
+    `${env}: a fork case over the caught value binds the form's prop`,
+    lines[2] === WANT_CASED,
+    JSON.stringify(lines[2]),
+  )
+  ok(
+    `${env}: an interpolated text raises failure with the text as its note`,
+    lines[3] === WANT_TEXT,
+    JSON.stringify(lines[3]),
+  )
+  ok(
+    `${env}: an arm that binds the caught time raises another exception`,
+    lines[4] === WANT_TRANSLATED,
+    JSON.stringify(lines[4]),
+  )
+  ok(
+    `${env}: an uncaught raise ends the program`,
+    uncaught.status !== 0,
+    `exit ${uncaught.status}`,
+  )
+  ok(
+    `${env}: the uncaught raise names its form and note`,
+    uncaught.stderr.includes('user-absence') &&
+      uncaught.stderr.includes('No such user'),
+    uncaught.stderr.slice(0, 200),
+  )
 }
 
 function runSwift(): void {
@@ -299,10 +381,15 @@ function runSwift(): void {
   const program = frontEnd('swift')
   const source = `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(program)}`
   const main = join(dir, 'main.swift')
-  writeFileSync(main, `${source}\nprint(lookup(key: "a"))\nprint(lookup(key: "b"))\nprint(describe(key: "zed"))\nprint(checked(key: "q"))\nprint(translated(key: "zed"))\nif CommandLine.arguments.count > 1 { print(try! unguarded(key: "z")) }\n`)
+  writeFileSync(
+    main,
+    `${source}\nprint(lookup(key: "a"))\nprint(lookup(key: "b"))\nprint(describe(key: "zed"))\nprint(checked(key: "q"))\nprint(translated(key: "zed"))\nif CommandLine.arguments.count > 1 { print(try! unguarded(key: "z")) }\n`,
+  )
 
   try {
-    execFileSync('swiftc', ['-o', join(dir, 'swift-main'), main], { stdio: 'pipe' })
+    execFileSync('swiftc', ['-o', join(dir, 'swift-main'), main], {
+      stdio: 'pipe',
+    })
   } catch (e) {
     ok('swift: the guard program builds', false, errorsOf(e))
 
@@ -310,8 +397,12 @@ function runSwift(): void {
   }
 
   ok('swift: the guard program builds', true)
-  const built = spawnSync(join(dir, 'swift-main'), [], { encoding: 'utf8' })
-  const uncaught = spawnSync(join(dir, 'swift-main'), ['raise'], { encoding: 'utf8' })
+  const built = spawnSync(join(dir, 'swift-main'), [], {
+    encoding: 'utf8',
+  })
+  const uncaught = spawnSync(join(dir, 'swift-main'), ['raise'], {
+    encoding: 'utf8',
+  })
   judge('swift', built, uncaught)
 }
 
@@ -331,7 +422,9 @@ function runKotlin(): void {
   const jar = join(dir, 'main.jar')
 
   try {
-    execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], { stdio: 'pipe' })
+    execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], {
+      stdio: 'pipe',
+    })
   } catch (e) {
     ok('kotlin: the guard program builds', false, errorsOf(e))
 
@@ -340,13 +433,27 @@ function runKotlin(): void {
 
   ok('kotlin: the guard program builds', true)
   const built = spawnSync('java', ['-jar', jar], { encoding: 'utf8' })
-  const uncaught = spawnSync('java', ['-jar', jar, 'raise'], { encoding: 'utf8' })
+  const uncaught = spawnSync('java', ['-jar', jar, 'raise'], {
+    encoding: 'utf8',
+  })
   judge('kotlin', built, uncaught)
   // the JVM's own ArithmeticException reached the guard as `failure`, where TypeScript raises `defect`
   const lines = built.stdout.split('\n')
-  ok('kotlin: a division by a nonzero divisor answers', lines[5] === '2', JSON.stringify(lines[5]))
-  ok('kotlin: a division by zero raises the defect TypeScript raises', lines[6] === 'caught defect', JSON.stringify(lines[6]))
-  ok('kotlin: a remainder by zero raises the same defect', lines[7] === 'caught defect', JSON.stringify(lines[7]))
+  ok(
+    'kotlin: a division by a nonzero divisor answers',
+    lines[5] === '2',
+    JSON.stringify(lines[5]),
+  )
+  ok(
+    'kotlin: a division by zero raises the defect TypeScript raises',
+    lines[6] === 'caught defect',
+    JSON.stringify(lines[6]),
+  )
+  ok(
+    'kotlin: a remainder by zero raises the same defect',
+    lines[7] === 'caught defect',
+    JSON.stringify(lines[7]),
+  )
 }
 
 // the stdlib's exception module docks crates (uuid for the occurrence code, base64 for its tone shape), so the Rust
@@ -384,18 +491,35 @@ function runRust(): void {
     join(proj, 'src', 'main.rs'),
     `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(program)}\nfn main() { println!("{}", lookup("a".to_string())); println!("{}", lookup("b".to_string())); println!("{}", describe("zed".to_string())); println!("{}", checked("q".to_string())); println!("{}", translated("zed".to_string())); if std::env::args().count() > 1 { match unguarded("z".to_string()) { Ok(v) => println!("{}", v), Err(e) => { eprintln!("{}", e); std::process::exit(1) } } } }\n`,
   )
-  const env = { ...process.env, CARGO_TARGET_DIR: join(tmpdir(), 'seed-rust-runtime', 'target') }
+  const env = {
+    ...process.env,
+    CARGO_TARGET_DIR: join(tmpdir(), 'seed-rust-runtime', 'target'),
+  }
 
   try {
-    execFileSync('cargo', ['build', '--quiet'], { cwd: proj, stdio: 'pipe', env })
+    execFileSync('cargo', ['build', '--quiet'], {
+      cwd: proj,
+      stdio: 'pipe',
+      env,
+    })
   } catch (e) {
-    ok('rust: the guard program builds', false, String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 600))
+    ok(
+      'rust: the guard program builds',
+      false,
+      String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 600),
+    )
 
     return
   }
 
   ok('rust: the guard program builds', true)
-  const exe = join(tmpdir(), 'seed-rust-runtime', 'target', 'debug', 'term-guard-native')
+  const exe = join(
+    tmpdir(),
+    'seed-rust-runtime',
+    'target',
+    'debug',
+    'term-guard-native',
+  )
   const built = spawnSync(exe, [], { encoding: 'utf8' })
   const uncaught = spawnSync(exe, ['raise'], { encoding: 'utf8' })
   judge('rust', built, uncaught)
@@ -413,7 +537,9 @@ if (!only || only === 'rust') {
   runRust()
 }
 
-console.log(`\nguard-native: ${pass} pass, ${fail} fail, ${skip} skipped`)
+console.log(
+  `\nguard-native: ${pass} pass, ${fail} fail, ${skip} skipped`,
+)
 
 if (fail > 0) {
   process.exit(1)

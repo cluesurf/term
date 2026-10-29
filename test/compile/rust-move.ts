@@ -73,7 +73,8 @@ task pass-through
 )
 ok(
   'single-use argument is moved (no clone)',
-  single.includes('take_one(x)') && !single.includes('take_one(x.clone())'),
+  single.includes('take_one(x)') &&
+    !single.includes('take_one(x.clone())'),
   single,
 )
 

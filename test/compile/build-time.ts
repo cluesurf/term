@@ -19,11 +19,18 @@
 // Run: npx tsx test/compile/build-time.ts
 
 import { execFileSync } from 'node:child_process'
-import { cpSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs'
+import {
+  cpSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { runDir } from './run-dir'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const LINE = join(TERM, 'host/line.js')
 const SEED = join(TERM, 'deck/base')
@@ -44,7 +51,11 @@ function build(project: string, cacheHome: string): number {
     // file made each a second type: `expected atomic__in0_0, found atomic`, 59 errors (2026-10-04)
     // and by its real path: the temporary folder is `/var/...`, a link to `/private/var/...` on macOS, and the build
     // walks the real one, so the link would bring every module in twice again
-    env: { ...process.env, TERM_CACHE_HOME: cacheHome, TERM_STDLIB: realpathSync(project) },
+    env: {
+      ...process.env,
+      TERM_CACHE_HOME: cacheHome,
+      TERM_STDLIB: realpathSync(project),
+    },
     maxBuffer: 64 * 1024 * 1024,
   })
 
@@ -58,7 +69,10 @@ function freshProject(): { project: string; cacheHome: string } {
   const project = runDir('term-buildtime-')
 
   cpSync(join(SEED, 'code'), join(project, 'code'), { recursive: true })
-  writeFileSync(join(project, 'deck.tree'), 'deck @term/base\n  code <0.0.0>\n')
+  writeFileSync(
+    join(project, 'deck.tree'),
+    'deck @term/base\n  code <0.0.0>\n',
+  )
 
   return { project, cacheHome: join(project, 'store') }
 }
@@ -78,7 +92,9 @@ function compilerFingerprint(): string {
   const parts: string[] = []
 
   for (const dir of COMPILER_DIRS) {
-    for (const file of (readdirSync(join(TERM, dir), { recursive: true }) as string[]).sort()) {
+    for (const file of (
+      readdirSync(join(TERM, dir), { recursive: true }) as string[]
+    ).sort()) {
       if (!file.endsWith('.ts')) continue
 
       const at = statSync(join(TERM, dir, file))
@@ -101,12 +117,16 @@ for (let attempt = 1; attempt <= ATTEMPTS && !measured; attempt++) {
   if (compilerFingerprint() === before) {
     measured = { cold, warm }
   } else {
-    console.log(`  attempt ${attempt}: the compiler's source changed between the builds (cold ${cold.toFixed(2)}s, warm ${warm.toFixed(2)}s), so the warm build was cold by design`)
+    console.log(
+      `  attempt ${attempt}: the compiler's source changed between the builds (cold ${cold.toFixed(2)}s, warm ${warm.toFixed(2)}s), so the warm build was cold by design`,
+    )
   }
 }
 
 if (!measured) {
-  console.log(`skip  the compiler's source changed during each of ${ATTEMPTS} attempts, so no warm build could be measured`)
+  console.log(
+    `skip  the compiler's source changed during each of ${ATTEMPTS} attempts, so no warm build could be measured`,
+  )
   process.exit(0)
 }
 

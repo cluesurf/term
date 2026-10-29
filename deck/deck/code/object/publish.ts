@@ -18,5 +18,26 @@ export const publishPackage = (input: {
   parents?: string[]
   deps?: Record<string, string>
   params?: unknown
-}): Promise<{ commitId: string; ref: string; uploaded: number; packs: number }> =>
-  port.publishPackage(input.dir, input.package, input.target, input.local, input.registry, input.keypair, input.author, input.time, input.message ?? '', input.params ?? defaultChunkParams()) as Promise<{ commitId: string; ref: string; uploaded: number; packs: number }>
+}): Promise<{
+  commitId: string
+  ref: string
+  uploaded: number
+  packs: number
+}> =>
+  port.publishPackage(
+    input.dir,
+    input.package,
+    input.target,
+    input.local,
+    input.registry,
+    input.keypair,
+    input.author,
+    input.time,
+    input.message ?? '',
+    input.params ?? defaultChunkParams(),
+  ) as Promise<{
+    commitId: string
+    ref: string
+    uploaded: number
+    packs: number
+  }>

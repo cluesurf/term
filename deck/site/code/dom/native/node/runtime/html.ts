@@ -21,7 +21,6 @@ import { join } from 'node:path'
 // `set-title`, which the emitter also spells `setTitle`) whenever the build keeps both, as the per-module dev build
 // does. Scoping the helpers leaves only `html` at the top level.
 function htmlNamespace() {
-
   // per-render SEO metadata, set by the matched route (via the dom `set-title` / `set-meta` tasks) and drained by
   // `documentShell` into the <head>. SSR render is synchronous per request (route -> serialize -> shell, no await
   // between), so a single module slot is safe: each request fills it, the shell reads + clears it. This is how a route's
@@ -163,9 +162,8 @@ function htmlNamespace() {
     }
 
     // baked in by the Cloudflare cast, the way the import map is below: a Worker has no `build/` to read
-    const baked = (globalThis as Record<string, unknown>).__SEED_ASSET_MANIFEST__ as
-      | Record<string, string>
-      | undefined
+    const baked = (globalThis as Record<string, unknown>)
+      .__SEED_ASSET_MANIFEST__ as Record<string, string> | undefined
 
     if (baked) {
       manifest = baked
@@ -239,7 +237,9 @@ function htmlNamespace() {
 
     // baked-in map (Cloudflare Worker): no filesystem, so the cast writes the parsed import map here as a constant.
     const baked = (globalThis as Record<string, unknown>)
-      .__SEED_IMPORT_MAP__ as { imports?: Record<string, string> } | undefined
+      .__SEED_IMPORT_MAP__ as
+      | { imports?: Record<string, string> }
+      | undefined
 
     if (baked) {
       importMapTag = importMapMarkup(baked)

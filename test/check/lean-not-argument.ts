@@ -49,20 +49,39 @@ task run
   back join(bits, <,>)
 `
 
-const built = compile(
-  { file: 'main.tree', text: MAIN },
-  { resolve: withNativeEnv('node', stdlibResolver()!), entryPoints: ['run'], leanOf: () => true } as never,
-)
+const built = compile({ file: 'main.tree', text: MAIN }, {
+  resolve: withNativeEnv('node', stdlibResolver()!),
+  entryPoints: ['run'],
+  leanOf: () => true,
+} as never)
 
-ok('not(...) under a method call builds', built.ok, built.ok ? '' : built.diagnostics.map(d => d.message.split('\n').join(' ')).join(' | '))
+ok(
+  'not(...) under a method call builds',
+  built.ok,
+  built.ok
+    ? ''
+    : built.diagnostics
+        .map(d => d.message.split('\n').join(' '))
+        .join(' | '),
+)
 
 if (built.ok) {
   const dir = mkdtempSync(join(tmpdir(), 'term-lean-not-'))
   const file = join(dir, 'module.mjs')
-  writeFileSync(file, transformSync(built.typescript, { loader: 'ts', format: 'esm' }).code)
-  const mod = (await import(pathToFileURL(file).href)) as { run: () => string }
+  writeFileSync(
+    file,
+    transformSync(built.typescript, { loader: 'ts', format: 'esm' })
+      .code,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as {
+    run: () => string
+  }
 
-  ok('each one negates: false, true, false', mod.run() === 'false,true,false', mod.run())
+  ok(
+    'each one negates: false, true, false',
+    mod.run() === 'false,true,false',
+    mod.run(),
+  )
 }
 
 console.log(`\nlean-not-argument: ${pass} pass, ${fail} fail`)

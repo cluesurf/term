@@ -4,7 +4,12 @@
 // one. Run: npx tsx test/compile/arithmetic-stop.ts
 
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
@@ -16,10 +21,19 @@ import { check } from '@term/make/code/check/infer'
 import { resolveAsync } from '@term/make/code/check/async-resolve'
 import { simplify } from '@term/make/code/ir/simplify'
 import { collectModules } from '@term/make/code/compile/load'
-import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
+import {
+  withNativeEnv,
+  nativePrelude,
+} from '@term/make/code/compile/native'
 import { expandTemplates } from '@term/make/code/compile/template'
-import { bindModules, stampModule } from '@term/make/code/check/bind-modules'
-import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
+import {
+  bindModules,
+  stampModule,
+} from '@term/make/code/check/bind-modules'
+import {
+  emitKotlin,
+  hoistKotlinImports,
+} from '@term/make/code/compile/kotlin'
 import type { Program } from '@term/make/code/compile/node'
 
 let pass = 0
@@ -104,7 +118,9 @@ task nested
 const built = compile({ file: 'main.tree', text: PROGRAM })
 
 if (!built.ok) {
-  console.log(`FAIL  the program compiles  ${JSON.stringify(built.diagnostics?.map(d => d.message) ?? built)}`)
+  console.log(
+    `FAIL  the program compiles  ${JSON.stringify(built.diagnostics?.map(d => d.message) ?? built)}`,
+  )
   process.exit(1)
 }
 
@@ -112,7 +128,11 @@ const dir = mkdtempSync(join(tmpdir(), 'term-arithmetic-stop-'))
 let count = 0
 
 // the emitted module with a tail of calls, run as its own process
-function run(tail: string): { status: number | null; stdout: string; stderr: string } {
+function run(tail: string): {
+  status: number | null
+  stdout: string
+  stderr: string
+} {
   const file = join(dir, `case-${count++}.ts`)
   writeFileSync(file, `${built.typescript}\n${tail}\n`)
 
@@ -124,30 +144,89 @@ const MIN = '-9223372036854775808'
 
 // (a) a zero divisor is a defect, and the guard catches it
 const divide = run('console.log(share(6, 3)); console.log(share(6, 0))')
-ok('a guarded share(6, 3) answers 2', divide.stdout.split('\n')[0] === '2', JSON.stringify(divide.stdout))
-ok('a guarded share(6, 0) prints caught defect', divide.stdout.split('\n')[1] === 'caught defect' && divide.status === 0, JSON.stringify(divide))
+ok(
+  'a guarded share(6, 3) answers 2',
+  divide.stdout.split('\n')[0] === '2',
+  JSON.stringify(divide.stdout),
+)
+ok(
+  'a guarded share(6, 0) prints caught defect',
+  divide.stdout.split('\n')[1] === 'caught defect' &&
+    divide.status === 0,
+  JSON.stringify(divide),
+)
 
 // (b) an overflow past the top is a stop: the handler does not run, the process ends non-zero, stderr names excess
-const grow = run(`console.log(grow(1, 2)); console.log(grow(${MAX}, 1))`)
-ok('a guarded grow(1, 2) answers 3', grow.stdout.split('\n')[0] === '3', JSON.stringify(grow.stdout))
-ok('a guarded overflow does not reach the handler', !/caught/.test(grow.stdout), JSON.stringify(grow.stdout))
-ok('a guarded overflow ends the process non-zero', grow.status !== 0 && grow.status !== null, String(grow.status))
-ok('a guarded overflow names excess on stderr', /excess/.test(grow.stderr), grow.stderr.slice(0, 200))
+const grow = run(
+  `console.log(grow(1, 2)); console.log(grow(${MAX}, 1))`,
+)
+ok(
+  'a guarded grow(1, 2) answers 3',
+  grow.stdout.split('\n')[0] === '3',
+  JSON.stringify(grow.stdout),
+)
+ok(
+  'a guarded overflow does not reach the handler',
+  !/caught/.test(grow.stdout),
+  JSON.stringify(grow.stdout),
+)
+ok(
+  'a guarded overflow ends the process non-zero',
+  grow.status !== 0 && grow.status !== null,
+  String(grow.status),
+)
+ok(
+  'a guarded overflow names excess on stderr',
+  /excess/.test(grow.stderr),
+  grow.stderr.slice(0, 200),
+)
 
 // (c) the same past the bottom, naming shortage
 const shrink = run(`console.log(shrink(${MIN}, 1))`)
-ok('a guarded underflow does not reach the handler', !/caught/.test(shrink.stdout), JSON.stringify(shrink.stdout))
-ok('a guarded underflow ends the process non-zero', shrink.status !== 0 && shrink.status !== null, String(shrink.status))
-ok('a guarded underflow names shortage on stderr', /shortage/.test(shrink.stderr), shrink.stderr.slice(0, 200))
+ok(
+  'a guarded underflow does not reach the handler',
+  !/caught/.test(shrink.stdout),
+  JSON.stringify(shrink.stdout),
+)
+ok(
+  'a guarded underflow ends the process non-zero',
+  shrink.status !== 0 && shrink.status !== null,
+  String(shrink.status),
+)
+ok(
+  'a guarded underflow names shortage on stderr',
+  /shortage/.test(shrink.stderr),
+  shrink.stderr.slice(0, 200),
+)
 
 // (d) a guard inside a guard rethrows at each level
-const nested = run(`console.log(nested(1, 2)); console.log(nested(${MAX}, 1))`)
-ok('a nested guard answers a plain sum', nested.stdout.split('\n')[0] === '3', JSON.stringify(nested.stdout))
-ok('neither handler of a nested guard runs on an overflow', !/caught/.test(nested.stdout), JSON.stringify(nested.stdout))
-ok('a nested overflow ends the process non-zero naming excess', nested.status !== 0 && nested.status !== null && /excess/.test(nested.stderr), `${nested.status} ${nested.stderr.slice(0, 200)}`)
+const nested = run(
+  `console.log(nested(1, 2)); console.log(nested(${MAX}, 1))`,
+)
+ok(
+  'a nested guard answers a plain sum',
+  nested.stdout.split('\n')[0] === '3',
+  JSON.stringify(nested.stdout),
+)
+ok(
+  'neither handler of a nested guard runs on an overflow',
+  !/caught/.test(nested.stdout),
+  JSON.stringify(nested.stdout),
+)
+ok(
+  'a nested overflow ends the process non-zero naming excess',
+  nested.status !== 0 &&
+    nested.status !== null &&
+    /excess/.test(nested.stderr),
+  `${nested.status} ${nested.stderr.slice(0, 200)}`,
+)
 
 // the stop is not a Term exception: no TermException class or hive hook is involved
-ok('the stop is its own class', /class __TermStop extends Error/.test(built.typescript) && !/__TermStop.*TermException/.test(built.typescript))
+ok(
+  'the stop is its own class',
+  /class __TermStop extends Error/.test(built.typescript) &&
+    !/__TermStop.*TermException/.test(built.typescript),
+)
 
 // ---- Kotlin (divisor-0007): the same cases on the real toolchain. AS_ONLY=typescript|kotlin runs one backend ----
 
@@ -162,20 +241,27 @@ function have(tool: string): boolean {
 }
 
 function kotlinFrontEnd(): Program {
-  const { sources, scope } = collectModules({ file: 'main.tree', text: KOTLIN_PROGRAM }, withNativeEnv('kotlin', stdlibResolver()!))
+  const { sources, scope } = collectModules(
+    { file: 'main.tree', text: KOTLIN_PROGRAM },
+    withNativeEnv('kotlin', stdlibResolver()!),
+  )
   const program: Program = []
 
   for (const unit of sources) {
     const parsed = parse(unit)
 
     if (!parsed.ok) {
-      throw new Error(`parse failed: ${unit.file}: ${parsed.diagnostics.map(d => d.message).join(', ')}`)
+      throw new Error(
+        `parse failed: ${unit.file}: ${parsed.diagnostics.map(d => d.message).join(', ')}`,
+      )
     }
 
     const milled = mill(expandTemplates(parsed.tree), unit.file)
 
     if (!milled.ok) {
-      throw new Error(`mill failed: ${unit.file}: ${milled.diagnostics.map(d => d.message).join(', ')}`)
+      throw new Error(
+        `mill failed: ${unit.file}: ${milled.diagnostics.map(d => d.message).join(', ')}`,
+      )
     }
 
     stampModule(milled.program, unit.file)
@@ -185,19 +271,34 @@ function kotlinFrontEnd(): Program {
   const unbound = bindModules(program, scope, 'main.tree')
 
   if (unbound.length) {
-    throw new Error(`scope failed: ${unbound.slice(0, 5).map(d => d.message).join(' | ')}`)
+    throw new Error(
+      `scope failed: ${unbound
+        .slice(0, 5)
+        .map(d => d.message)
+        .join(' | ')}`,
+    )
   }
 
   resolveNames(program, 'main.tree')
-  const errors = check(program, 'main.tree').filter(d => d.severity !== 'warning')
+  const errors = check(program, 'main.tree').filter(
+    d => d.severity !== 'warning',
+  )
 
   if (errors.length) {
-    throw new Error(`check failed: ${errors.slice(0, 5).map(d => d.message).join(' | ')}`)
+    throw new Error(
+      `check failed: ${errors
+        .slice(0, 5)
+        .map(d => d.message)
+        .join(' | ')}`,
+    )
   }
 
   resolveAsync(program)
 
-  return simplify(program, new Set(['share', 'grow', 'shrink', 'nested', 'quotient']))
+  return simplify(
+    program,
+    new Set(['share', 'grow', 'shrink', 'nested', 'quotient']),
+  )
 }
 
 const KOTLIN_PROGRAM = `${PROGRAM}
@@ -219,7 +320,9 @@ task quotient
 
 function runKotlin(): void {
   if (!have('kotlinc') || !have('java')) {
-    console.log('skip  kotlin: arithmetic stop  (kotlinc/java not installed)')
+    console.log(
+      'skip  kotlin: arithmetic stop  (kotlinc/java not installed)',
+    )
 
     return
   }
@@ -238,52 +341,129 @@ function runKotlin(): void {
     '    }',
     '}',
   ].join('\n')
-  const source = hoistKotlinImports(`${nativePrelude(program, 'kotlin', path => (existsSync(path) ? readFileSync(path, 'utf8') : undefined))}\n${emitKotlin(program)}\n${main}\n`)
+  const source = hoistKotlinImports(
+    `${nativePrelude(program, 'kotlin', path => (existsSync(path) ? readFileSync(path, 'utf8') : undefined))}\n${emitKotlin(program)}\n${main}\n`,
+  )
   const file = join(dir, 'main.kt')
   const jar = join(dir, 'main.jar')
   writeFileSync(file, source)
 
   try {
-    execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], { stdio: 'pipe' })
+    execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], {
+      stdio: 'pipe',
+    })
   } catch (e) {
-    ok('kotlin: the program builds', false, String((e as { stderr?: Buffer }).stderr ?? e).split('\n').filter(l => /error/.test(l)).slice(0, 8).join(' | '))
+    ok(
+      'kotlin: the program builds',
+      false,
+      String((e as { stderr?: Buffer }).stderr ?? e)
+        .split('\n')
+        .filter(l => /error/.test(l))
+        .slice(0, 8)
+        .join(' | '),
+    )
 
     return
   }
 
   ok('kotlin: the program builds', true)
-  const kotlinRun = (which: string) => spawnSync('java', ['-jar', jar, which], { encoding: 'utf8' })
+  const kotlinRun = (which: string) =>
+    spawnSync('java', ['-jar', jar, which], { encoding: 'utf8' })
 
   // (a) a zero divisor is a defect, and the guard catches it
   const kShare = kotlinRun('share')
-  ok('kotlin: a guarded share(6, 3) answers 2', kShare.stdout.split('\n')[0] === '2', JSON.stringify(kShare.stdout))
-  ok('kotlin: a guarded share(6, 0) prints caught defect', kShare.stdout.split('\n')[1] === 'caught defect' && kShare.status === 0, JSON.stringify(kShare))
+  ok(
+    'kotlin: a guarded share(6, 3) answers 2',
+    kShare.stdout.split('\n')[0] === '2',
+    JSON.stringify(kShare.stdout),
+  )
+  ok(
+    'kotlin: a guarded share(6, 0) prints caught defect',
+    kShare.stdout.split('\n')[1] === 'caught defect' &&
+      kShare.status === 0,
+    JSON.stringify(kShare),
+  )
 
   // (b) an overflow past the top is a stop
   const kGrow = kotlinRun('grow')
-  ok('kotlin: a guarded grow(1, 2) answers 3', kGrow.stdout.split('\n')[0] === '3', JSON.stringify(kGrow.stdout))
-  ok('kotlin: a guarded overflow does not reach the handler', !/caught/.test(kGrow.stdout), JSON.stringify(kGrow.stdout))
-  ok('kotlin: a guarded overflow ends the process non-zero', kGrow.status !== 0 && kGrow.status !== null, String(kGrow.status))
-  ok('kotlin: a guarded overflow names excess on stderr', /excess/.test(kGrow.stderr), kGrow.stderr.slice(0, 200))
+  ok(
+    'kotlin: a guarded grow(1, 2) answers 3',
+    kGrow.stdout.split('\n')[0] === '3',
+    JSON.stringify(kGrow.stdout),
+  )
+  ok(
+    'kotlin: a guarded overflow does not reach the handler',
+    !/caught/.test(kGrow.stdout),
+    JSON.stringify(kGrow.stdout),
+  )
+  ok(
+    'kotlin: a guarded overflow ends the process non-zero',
+    kGrow.status !== 0 && kGrow.status !== null,
+    String(kGrow.status),
+  )
+  ok(
+    'kotlin: a guarded overflow names excess on stderr',
+    /excess/.test(kGrow.stderr),
+    kGrow.stderr.slice(0, 200),
+  )
 
   // (c) past the bottom, naming shortage
   const kShrink = kotlinRun('shrink')
-  ok('kotlin: a guarded underflow does not reach the handler', !/caught/.test(kShrink.stdout), JSON.stringify(kShrink.stdout))
-  ok('kotlin: a guarded underflow ends the process non-zero', kShrink.status !== 0 && kShrink.status !== null, String(kShrink.status))
-  ok('kotlin: a guarded underflow names shortage on stderr', /shortage/.test(kShrink.stderr), kShrink.stderr.slice(0, 200))
+  ok(
+    'kotlin: a guarded underflow does not reach the handler',
+    !/caught/.test(kShrink.stdout),
+    JSON.stringify(kShrink.stdout),
+  )
+  ok(
+    'kotlin: a guarded underflow ends the process non-zero',
+    kShrink.status !== 0 && kShrink.status !== null,
+    String(kShrink.status),
+  )
+  ok(
+    'kotlin: a guarded underflow names shortage on stderr',
+    /shortage/.test(kShrink.stderr),
+    kShrink.stderr.slice(0, 200),
+  )
 
   // (d) a guard inside a guard rethrows at each level
   const kNested = kotlinRun('nested')
-  ok('kotlin: a nested guard answers a plain sum', kNested.stdout.split('\n')[0] === '3', JSON.stringify(kNested.stdout))
-  ok('kotlin: neither handler of a nested guard runs on an overflow', !/caught/.test(kNested.stdout), JSON.stringify(kNested.stdout))
-  ok('kotlin: a nested overflow ends the process non-zero naming excess', kNested.status !== 0 && kNested.status !== null && /excess/.test(kNested.stderr), `${kNested.status} ${kNested.stderr.slice(0, 200)}`)
+  ok(
+    'kotlin: a nested guard answers a plain sum',
+    kNested.stdout.split('\n')[0] === '3',
+    JSON.stringify(kNested.stdout),
+  )
+  ok(
+    'kotlin: neither handler of a nested guard runs on an overflow',
+    !/caught/.test(kNested.stdout),
+    JSON.stringify(kNested.stdout),
+  )
+  ok(
+    'kotlin: a nested overflow ends the process non-zero naming excess',
+    kNested.status !== 0 &&
+      kNested.status !== null &&
+      /excess/.test(kNested.stderr),
+    `${kNested.status} ${kNested.stderr.slice(0, 200)}`,
+  )
 
   // (e) min / -1 is an overflow, not a defect
   const kQuotient = kotlinRun('quotient')
-  ok('kotlin: a guarded divide(min, -1) does not reach the handler', !/caught/.test(kQuotient.stdout), JSON.stringify(kQuotient.stdout))
-  ok('kotlin: a guarded divide(min, -1) ends the process non-zero naming excess', kQuotient.status !== 0 && kQuotient.status !== null && /excess/.test(kQuotient.stderr), `${kQuotient.status} ${kQuotient.stderr.slice(0, 200)}`)
+  ok(
+    'kotlin: a guarded divide(min, -1) does not reach the handler',
+    !/caught/.test(kQuotient.stdout),
+    JSON.stringify(kQuotient.stdout),
+  )
+  ok(
+    'kotlin: a guarded divide(min, -1) ends the process non-zero naming excess',
+    kQuotient.status !== 0 &&
+      kQuotient.status !== null &&
+      /excess/.test(kQuotient.stderr),
+    `${kQuotient.status} ${kQuotient.stderr.slice(0, 200)}`,
+  )
 
-  ok('kotlin: the stop is its own class, not a TermException', /class TermStop\(message: String\) : Error\(message\)/.test(source))
+  ok(
+    'kotlin: the stop is its own class, not a TermException',
+    /class TermStop\(message: String\) : Error\(message\)/.test(source),
+  )
 }
 
 if (!process.env.AS_ONLY || process.env.AS_ONLY === 'kotlin') {

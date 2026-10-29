@@ -23,8 +23,13 @@ import { type Expr } from '@term/test/code/synthesize'
 let pass = 0
 let fail = 0
 function ok(name: string, cond: boolean, info = ''): void {
-  if (cond) { pass++; console.log(`ok    ${name}${info ? '  ' + info : ''}`) }
-  else { fail++; console.log(`FAIL  ${name}${info ? '  ' + info : ''}`) }
+  if (cond) {
+    pass++
+    console.log(`ok    ${name}${info ? '  ' + info : ''}`)
+  } else {
+    fail++
+    console.log(`FAIL  ${name}${info ? '  ' + info : ''}`)
+  }
 }
 
 const ROOT = process.cwd()
@@ -35,7 +40,8 @@ const VAR = (index: number): Expr => ({ form: 'var', index })
 const maxContract: Contract = {
   name: 'max',
   params: [{ name: 'a' }, { name: 'b' }],
-  post: ([a, b], out) => out >= a && out >= b && (out === a || out === b),
+  post: ([a, b], out) =>
+    out >= a && out >= b && (out === a || out === b),
 }
 
 // --- A. the AI proposes correctly; the loop certifies and emits Seed ---
@@ -48,10 +54,18 @@ const aiDriven = autocomplete({
   resolve,
   proposers: [hintProposer(goodHint)],
 })
-ok('AI proposal -> proven -> compiles', isSound(aiDriven) && aiDriven.ok && aiDriven.proposer === 'ai-hint')
+ok(
+  'AI proposal -> proven -> compiles',
+  isSound(aiDriven) && aiDriven.ok && aiDriven.proposer === 'ai-hint',
+)
 if (aiDriven.ok) {
   console.log('\n  --- AI-proposed, verified, compiling Seed ---')
-  console.log(aiDriven.source.split('\n').map(l => '  ' + l).join('\n'))
+  console.log(
+    aiDriven.source
+      .split('\n')
+      .map(l => '  ' + l)
+      .join('\n'),
+  )
 }
 
 // --- B. a WRONG AI proposal is rejected by proof+compile; CEGIS recovers ---
@@ -64,8 +78,10 @@ const recovered = autocomplete({
   resolve,
   proposers: [hintProposer(badHint)],
 })
-ok('wrong AI proposal rejected, CEGIS recovers, still sound',
-  isSound(recovered) && recovered.ok && recovered.proposer === 'cegis')
+ok(
+  'wrong AI proposal rejected, CEGIS recovers, still sound',
+  isSound(recovered) && recovered.ok && recovered.proposer === 'cegis',
+)
 
 // --- C. CEGIS-only completion for several contracts, all sound ---
 const others: { taskName: string; contract: Contract }[] = [
@@ -74,7 +90,8 @@ const others: { taskName: string; contract: Contract }[] = [
     contract: {
       name: 'min',
       params: [{ name: 'a' }, { name: 'b' }],
-      post: ([a, b], out) => out <= a && out <= b && (out === a || out === b),
+      post: ([a, b], out) =>
+        out <= a && out <= b && (out === a || out === b),
     },
   },
   {
@@ -88,7 +105,10 @@ const others: { taskName: string; contract: Contract }[] = [
 ]
 for (const { taskName, contract } of others) {
   const result = autocomplete({ taskName, contract, resolve })
-  ok(`${taskName}: synthesized -> proven -> emitted -> compiles`, isSound(result))
+  ok(
+    `${taskName}: synthesized -> proven -> emitted -> compiles`,
+    isSound(result),
+  )
 }
 
 console.log(`\nseed-verify pipeline demo: ${pass} pass, ${fail} fail`)

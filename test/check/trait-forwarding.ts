@@ -119,7 +119,9 @@ async function main(): Promise<void> {
 
   console.log(`\ntrait-forwarding: ${pass} pass, ${fail} fail`)
 
-  if (fail) {process.exit(1)}
+  if (fail) {
+    process.exit(1)
+  }
 }
 
 main()

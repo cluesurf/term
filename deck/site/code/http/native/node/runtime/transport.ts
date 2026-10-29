@@ -23,11 +23,25 @@ function acceptsZstd(accept: string | undefined): boolean {
   return (accept ?? '')
     .toLowerCase()
     .split(',')
-    .some(part => part.trim().split(';')[0] === 'zstd' && !/;\s*q=0(\.0*)?\s*$/.test(part.trim()))
+    .some(
+      part =>
+        part.trim().split(';')[0] === 'zstd' &&
+        !/;\s*q=0(\.0*)?\s*$/.test(part.trim()),
+    )
 }
 
-type Request = { method: string; path: string; body: string; headers: Map<string, string>; query: Map<string, string> }
-type Response = { status: number; body: string; headers?: Map<string, string> }
+type Request = {
+  method: string
+  path: string
+  body: string
+  headers: Map<string, string>
+  query: Map<string, string>
+}
+type Response = {
+  status: number
+  body: string
+  headers?: Map<string, string>
+}
 type Handle = (request: Request) => Response | Promise<Response>
 type Listener = { handle: Handle; close(): void }
 
@@ -108,13 +122,22 @@ const transport = {
       const url = new URL(context.req.url)
       let body = ''
 
-      if (context.req.method !== 'GET' && context.req.method !== 'HEAD') {
+      if (
+        context.req.method !== 'GET' &&
+        context.req.method !== 'HEAD'
+      ) {
         if (isTreeCode(context.req.header('content-type'))) {
           let raw = Buffer.from(await context.req.arrayBuffer())
 
-          if ((context.req.header('content-encoding') ?? '').toLowerCase().trim() === 'zstd') {
+          if (
+            (context.req.header('content-encoding') ?? '')
+              .toLowerCase()
+              .trim() === 'zstd'
+          ) {
             try {
-              raw = zstdDecompressSync(raw, { maxOutputLength: TREE_CODE_LIMIT })
+              raw = zstdDecompressSync(raw, {
+                maxOutputLength: TREE_CODE_LIMIT,
+              })
             } catch {
               // past the limit, or not Zstandard at all: refused before the handler sees it
               return context.body('', 413 as never, { ...NO_STORE })
@@ -128,7 +151,9 @@ const transport = {
       }
       // the request's headers by lower-case name, and its query string decoded, as the `request` form declares them
       const headers = new Map<string, string>()
-      context.req.raw.headers.forEach((value, name) => headers.set(name.toLowerCase(), value))
+      context.req.raw.headers.forEach((value, name) =>
+        headers.set(name.toLowerCase(), value),
+      )
       const query = new Map<string, string>(url.searchParams)
       const response = await handle({
         method: context.req.method,
@@ -149,23 +174,43 @@ const transport = {
         given[name] = value
       }
 
-      const typed = Object.keys(given).some(name => name.toLowerCase() === 'content-type')
-      const givenType = Object.entries(given).find(([name]) => name.toLowerCase() === 'content-type')?.[1]
+      const typed = Object.keys(given).some(
+        name => name.toLowerCase() === 'content-type',
+      )
+      const givenType = Object.entries(given).find(
+        ([name]) => name.toLowerCase() === 'content-type',
+      )?.[1]
 
       // tree/code: the body is base64 inside the program and bytes on the wire, packed when the client takes zstd
-      if (isTreeCode(givenType) && code !== 1 && !(code >= 300 && code < 400)) {
+      if (
+        isTreeCode(givenType) &&
+        code !== 1 &&
+        !(code >= 300 && code < 400)
+      ) {
         const plain = Buffer.from(out, 'base64')
         const vary = { Vary: 'Accept-Encoding' }
 
-        if (plain.length >= TREE_CODE_PACK_ABOVE && acceptsZstd(context.req.header('accept-encoding'))) {
+        if (
+          plain.length >= TREE_CODE_PACK_ABOVE &&
+          acceptsZstd(context.req.header('accept-encoding'))
+        ) {
           const packed = zstdCompressSync(plain)
 
           if (packed.length < plain.length) {
-            return context.body(packed as never, status, { ...NO_STORE, ...given, ...vary, 'Content-Encoding': 'zstd' })
+            return context.body(packed as never, status, {
+              ...NO_STORE,
+              ...given,
+              ...vary,
+              'Content-Encoding': 'zstd',
+            })
           }
         }
 
-        return context.body(plain as never, status, { ...NO_STORE, ...given, ...vary })
+        return context.body(plain as never, status, {
+          ...NO_STORE,
+          ...given,
+          ...vary,
+        })
       }
 
       if (typed && code !== 1 && !(code >= 300 && code < 400 && out)) {

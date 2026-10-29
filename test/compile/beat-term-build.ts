@@ -4,7 +4,11 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { BEAT_TERM_ROOT, buildBeatTermForSimulator, xcodebuildBeatTerm } from './shared/beat-term-app'
+import {
+  BEAT_TERM_ROOT,
+  buildBeatTermForSimulator,
+  xcodebuildBeatTerm,
+} from './shared/beat-term-app'
 
 let pass = 0
 let fail = 0
@@ -19,7 +23,10 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-if (process.platform !== 'darwin' || spawnSync('xcodebuild', ['-version']).status !== 0) {
+if (
+  process.platform !== 'darwin' ||
+  spawnSync('xcodebuild', ['-version']).status !== 0
+) {
   console.log('skip  beat-term-build: needs macOS with Xcode')
   console.log('\nbeat-term-build: 0 pass, 0 fail, 1 skipped')
   process.exit(0)
@@ -39,7 +46,11 @@ const ROWS: Row[] = [
 // `json`: the plutil of macOS 26 refuses a scalar as JSON ("Invalid object in plist for JSON format"), so every key read
 // back undefined. Every key checked here is a text, or absent
 function read(plist: string, key: string): unknown {
-  const ran = spawnSync('plutil', ['-extract', key, 'raw', '-o', '-', plist], { encoding: 'utf8' })
+  const ran = spawnSync(
+    'plutil',
+    ['-extract', key, 'raw', '-o', '-', plist],
+    { encoding: 'utf8' },
+  )
 
   return ran.status === 0 ? ran.stdout.replace(/\n$/, '') : undefined
 }
@@ -51,9 +62,18 @@ function check(label: string, app: string): void {
 
   for (const row of ROWS) {
     const value = read(plist, row.key)
-    const good = row.expected === 'absent' ? value === undefined : row.expected === 'text' ? typeof value === 'string' && value.trim() !== '' : value === row.expected
+    const good =
+      row.expected === 'absent'
+        ? value === undefined
+        : row.expected === 'text'
+          ? typeof value === 'string' && value.trim() !== ''
+          : value === row.expected
 
-    ok(`${label}: ${row.key} is ${row.expected === 'text' ? 'a non-empty text' : row.expected}`, good, `read ${JSON.stringify(value)}`)
+    ok(
+      `${label}: ${row.key} is ${row.expected === 'text' ? 'a non-empty text' : row.expected}`,
+      good,
+      `read ${JSON.stringify(value)}`,
+    )
   }
 }
 
@@ -61,17 +81,37 @@ function check(label: string, app: string): void {
 try {
   const built = await buildBeatTermForSimulator()
 
-  ok('simulator: the shipped build is surf.term.beatterm', built.identifier === 'surf.term.beatterm', built.identifier)
+  ok(
+    'simulator: the shipped build is surf.term.beatterm',
+    built.identifier === 'surf.term.beatterm',
+    built.identifier,
+  )
 
-  const swift = join(built.root, 'host', 'uikit', 'beatterm', 'main.swift')
+  const swift = join(
+    built.root,
+    'host',
+    'uikit',
+    'beatterm',
+    'main.swift',
+  )
   const source = existsSync(swift) ? readFileSync(swift, 'utf8') : ''
   const lines = source.split('\n').map(line => line.trim())
 
-  ok('simulator: main.swift starts the boot task (its start line calls boot())', lines.some(line => /^(?:_ = )?(?:try )?(?:await )?boot\(\)$/.test(line)), source.slice(-400))
+  ok(
+    'simulator: main.swift starts the boot task (its start line calls boot())',
+    lines.some(line =>
+      /^(?:_ = )?(?:try )?(?:await )?boot\(\)$/.test(line),
+    ),
+    source.slice(-400),
+  )
 
   check('simulator', built.app)
 } catch (e) {
-  ok('simulator: `term make --target uikit` and xcodebuild build the app', false, String((e as Error).message ?? e))
+  ok(
+    'simulator: `term make --target uikit` and xcodebuild build the app',
+    false,
+    String((e as Error).message ?? e),
+  )
 }
 
 // 2. the same project for a device, unsigned
@@ -85,7 +125,11 @@ try {
 
   check('device', app)
 } catch (e) {
-  ok('device: xcodebuild builds the app unsigned', false, String((e as Error).message ?? e))
+  ok(
+    'device: xcodebuild builds the app unsigned',
+    false,
+    String((e as Error).message ?? e),
+  )
 }
 
 console.log(`\nbeat-term-build: ${pass} pass, ${fail} fail`)

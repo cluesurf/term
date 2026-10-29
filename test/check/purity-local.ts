@@ -13,7 +13,10 @@ import { resolve as resolveNames } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
 import { pureFunctions } from '@term/make/code/check/facts'
 import { collectModules } from '@term/make/code/compile/load'
-import { bindModules, stampModule } from '@term/make/code/check/bind-modules'
+import {
+  bindModules,
+  stampModule,
+} from '@term/make/code/check/bind-modules'
 import type { Source } from '@term/make/code/compile/load'
 import type { Program } from '@term/make/code/compile/node'
 import { existsSync, readFileSync } from 'node:fs'
@@ -38,7 +41,10 @@ const stdlib = stdlibResolver()!
 
 function programOf(text: string): Program {
   const program: Program = []
-  const { sources, scope } = collectModules({ file: 'main.tree', text }, stdlib)
+  const { sources, scope } = collectModules(
+    { file: 'main.tree', text },
+    stdlib,
+  )
 
   for (const unit of sources) {
     const parsed = parse(unit)
@@ -148,15 +154,39 @@ task reads-parameter
 
 const pure = pureFunctions(program)
 
-ok('a task that builds a list of its own and returns it is pure', pure.has('fresh'))
+ok(
+  'a task that builds a list of its own and returns it is pure',
+  pure.has('fresh'),
+)
 ok('a task calling it is pure', pure.has('calls-fresh'))
-ok('a task that pushes onto its parameter is NOT pure', !pure.has('into-parameter'))
-ok('a task that pushes through a second name for its parameter is NOT pure', !pure.has('through-alias'))
-ok('a local made fresh and then rebound to the parameter is NOT its own', !pure.has('rebound'))
-ok('a task handing its parameter to one that writes into it is NOT pure', !pure.has('passes-parameter'))
-ok('a task handing a list it made to one that writes into it is pure', pure.has('passes-fresh'))
-ok('a task that only reads its parameter is pure', pure.has('reads-parameter'))
-ok("the stdlib's own push, which writes through `self`, is NOT pure", !pure.has('list_push'))
+ok(
+  'a task that pushes onto its parameter is NOT pure',
+  !pure.has('into-parameter'),
+)
+ok(
+  'a task that pushes through a second name for its parameter is NOT pure',
+  !pure.has('through-alias'),
+)
+ok(
+  'a local made fresh and then rebound to the parameter is NOT its own',
+  !pure.has('rebound'),
+)
+ok(
+  'a task handing its parameter to one that writes into it is NOT pure',
+  !pure.has('passes-parameter'),
+)
+ok(
+  'a task handing a list it made to one that writes into it is pure',
+  pure.has('passes-fresh'),
+)
+ok(
+  'a task that only reads its parameter is pure',
+  pure.has('reads-parameter'),
+)
+ok(
+  "the stdlib's own push, which writes through `self`, is NOT pure",
+  !pure.has('list_push'),
+)
 
 console.log(`\npurity-local: ${pass} pass, ${fail} fail`)
 

@@ -31,7 +31,10 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 const root = mkdtempSync(join(tmpdir(), 'hook-task-unit-'))
 mkdirSync(join(root, 'code'), { recursive: true })
-writeFileSync(join(root, 'deck.tree'), `deck @probe/hooks\n  mark <0.0.1>\n`)
+writeFileSync(
+  join(root, 'deck.tree'),
+  `deck @probe/hooks\n  mark <0.0.1>\n`,
+)
 
 const files: Record<string, string> = {
   // the form `bank`, and a file that imports it
@@ -49,20 +52,45 @@ for (const [name, text] of Object.entries(files)) {
 const entry = join(root, 'code', 'base.tree')
 const result = compileSeparate(
   { file: entry, text: files['base.tree']! },
-  { resolve: projectResolver(root), cache: new CompileCache(), modules: f => `./${f}` },
+  {
+    resolve: projectResolver(root),
+    cache: new CompileCache(),
+    modules: f => `./${f}`,
+  },
 )
 
-ok('the console builds as units', result.ok, result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '))
+ok(
+  'the console builds as units',
+  result.ok,
+  result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '),
+)
 
 if (result.ok) {
   const names = (routes: DockRoute[]): string[] =>
-    routes.flatMap(route => [...route.calls.map(call => call.name), ...names(route.children)])
+    routes.flatMap(route => [
+      ...route.calls.map(call => call.name),
+      ...names(route.children),
+    ])
   const routed = names(commandRoutes(result.docks as Program))
-  const exported = new Set(result.exports.filter(one => !one.type).map(one => one.exported))
+  const exported = new Set(
+    result.exports.filter(one => !one.type).map(one => one.exported),
+  )
 
-  ok('the routes name both tasks', routed.length === 2, routed.join(' '))
-  ok('`code save` names the task as its unit exports it', routed.includes('bank'), routed.join(' '))
-  ok('`code show` names its task', routed.includes('tell'), routed.join(' '))
+  ok(
+    'the routes name both tasks',
+    routed.length === 2,
+    routed.join(' '),
+  )
+  ok(
+    '`code save` names the task as its unit exports it',
+    routed.includes('bank'),
+    routed.join(' '),
+  )
+  ok(
+    '`code show` names its task',
+    routed.includes('tell'),
+    routed.join(' '),
+  )
   ok(
     'every task a route names is exported by the units',
     routed.every(name => exported.has(name)),
@@ -70,7 +98,12 @@ if (result.ok) {
   )
   ok(
     '`bank` is exported from the file that defines the task',
-    result.exports.some(one => !one.type && one.exported === 'bank' && one.file.endsWith('/code/work.tree')),
+    result.exports.some(
+      one =>
+        !one.type &&
+        one.exported === 'bank' &&
+        one.file.endsWith('/code/work.tree'),
+    ),
   )
 }
 

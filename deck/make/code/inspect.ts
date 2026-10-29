@@ -61,7 +61,7 @@ export function inspectModule(
   // task name to the result type a compile of the module inferred: `task twice / take n / back multiply(n, 2)` printed
   // `-> unit` when only the source was read (guides: commands/look, 2026-10-04). Empty when the module does not compile,
   // and a task it does not name keeps its placeholder
-  results: Map<string, string> = new Map(),
+  results = new Map<string, string>(),
 ): Inspection {
   const { sources, diagnostics, scope } = collectModules(entry, resolve)
   const found = inspection.inspectSources(
@@ -71,7 +71,9 @@ export function inspectModule(
     (tree, file) => {
       const milled = mill(tree as RootNode, file)
 
-      return milled.ok ? { form: 'some', value: milled.program } : { form: 'none' }
+      return milled.ok
+        ? { form: 'some', value: milled.program }
+        : { form: 'none' }
     },
     file => deckOf?.(file)?.name ?? deckFromPath(file),
     results,

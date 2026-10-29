@@ -146,7 +146,10 @@ async function main(): Promise<void> {
   const readRuntime = (p: string): string | undefined =>
     fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : undefined
   const js = (
-    await transform(`${nativePrelude(result.program, 'node', readRuntime)}\n${result.typescript}`, { loader: 'ts', format: 'esm' })
+    await transform(
+      `${nativePrelude(result.program, 'node', readRuntime)}\n${result.typescript}`,
+      { loader: 'ts', format: 'esm' },
+    )
   ).code
   const file = path.join(os.tmpdir(), `seed-zone-${process.pid}.mjs`)
   fs.writeFileSync(file, js)
@@ -209,9 +212,14 @@ async function main(): Promise<void> {
   )
   if (control.ok) {
     ok('fork lowers to a show call', /show\(/.test(control.typescript))
-    ok('walk lowers to a render-each call', /renderEach\(/.test(control.typescript))
+    ok(
+      'walk lowers to a render-each call',
+      /renderEach\(/.test(control.typescript),
+    )
     try {
-      const M = await run(`${nativePrelude(control.program, 'node', readRuntime)}\n${control.typescript}`)
+      const M = await run(
+        `${nativePrelude(control.program, 'node', readRuntime)}\n${control.typescript}`,
+      )
       const host = M.makeElement('root')
       M.gallery(host, true, ['a', 'b', 'c'])
       const found = texts(host)

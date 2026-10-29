@@ -50,11 +50,20 @@ export function toSaved(r: BenchmarkResult): SavedResult {
 
 // one saved result read back as one side of a comparison (time/compare's `side`). A baseline written before
 // 2026-10-04, or a history entry, has the mean alone: its spread is `none`, and it is compared by the 5% rule alone
-export function fromSaved(raw: { name: string; mean_ns: number; std_dev_ns?: number; timings_ns?: number[]; iterations?: number }): Side {
+export function fromSaved(raw: {
+  name: string
+  mean_ns: number
+  std_dev_ns?: number
+  timings_ns?: number[]
+  iterations?: number
+}): Side {
   return {
     name: raw.name,
     meanNs: raw.mean_ns,
-    stdDevNs: raw.std_dev_ns !== undefined ? { form: 'some', value: raw.std_dev_ns } : { form: 'none' },
+    stdDevNs:
+      raw.std_dev_ns !== undefined
+        ? { form: 'some', value: raw.std_dev_ns }
+        : { form: 'none' },
     samples: raw.timings_ns?.length || raw.iterations || 0,
   }
 }
@@ -75,5 +84,9 @@ export function buildHistoryEntry(input: { suite: Suite }): {
 }
 
 export function formatJson(suite: Suite): string {
-  return JSON.stringify({ ...suite, results: suite.results.map(toSaved) }, null, 2)
+  return JSON.stringify(
+    { ...suite, results: suite.results.map(toSaved) },
+    null,
+    2,
+  )
 }

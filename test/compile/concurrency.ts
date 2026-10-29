@@ -3,7 +3,12 @@
 // Built on the async-closure lowering: the `work` closures are async and the runtime awaits them.
 // Run: npx tsx test/compile/concurrency.ts
 
-import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
+import {
+  mkdtempSync,
+  writeFileSync,
+  readFileSync,
+  existsSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -67,13 +72,23 @@ async function loadProgram(
 ): Promise<() => Promise<string>> {
   // the whole compiler, not a hand-picked list of its passes: a `halt <form>` is filled with its exception's
   // `form`, `note` and `host` by passes a partial front end skips, and these tests read those fields
-  const compiled = compile({ file: 'main.tree', text: source }, { resolve: withNativeEnv('node', stdlib) })
+  const compiled = compile(
+    { file: 'main.tree', text: source },
+    { resolve: withNativeEnv('node', stdlib) },
+  )
 
   if (!compiled.ok) {
-    throw new Error(compiled.diagnostics.map(d => `${d.file}:${d.span.start.line + 1} ${d.message}`).join('\n'))
+    throw new Error(
+      compiled.diagnostics
+        .map(d => `${d.file}:${d.span.start.line + 1} ${d.message}`)
+        .join('\n'),
+    )
   }
 
-  const ts = nativePrelude(compiled.program, 'node', readRuntime) + '\n' + compiled.typescript
+  const ts =
+    nativePrelude(compiled.program, 'node', readRuntime) +
+    '\n' +
+    compiled.typescript
   const file = join(dir, `${name}.ts`)
   writeFileSync(file, ts)
 
@@ -148,7 +163,11 @@ load @term/base/code/exception
 `
 
 // a job that sleeps, then answers
-const slow = (name: string, ms: number, value: string) => `  call works/push
+const slow = (
+  name: string,
+  ms: number,
+  value: string,
+) => `  call works/push
     task ${name}
       like text
       call sleep
@@ -185,11 +204,15 @@ ${jobs}  save results
 `
 
 // one job raises at once, the other would take 400 ms: gather must raise without waiting for it
-const GATHER_FAILS_FAST = gatherOf(`${slow('a', 400, 'A')}${raising('b', 0)}`)
+const GATHER_FAILS_FAST = gatherOf(
+  `${slow('a', 400, 'A')}${raising('b', 0)}`,
+)
 
 // the job FIRST in the list is still running when the second fails: the raise is the second's, not an outage for
 // the first, which is cancelled along the way
-const GATHER_RAISES_THE_FAILURE = gatherOf(`${raising('a', 300)}${raising('b', 0)}`)
+const GATHER_RAISES_THE_FAILURE = gatherOf(
+  `${raising('a', 300)}${raising('b', 0)}`,
+)
 
 const CANCELLED = `${HEAD}
 task run
@@ -351,16 +374,29 @@ const BOUND_WITH = '  halt outage\n  halt conflict\n  halt failure\n'
 
 // the build's refusal, or undefined when it builds
 function refusal(source: string): string | undefined {
-  const compiled = compile({ file: 'main.tree', text: source }, { resolve: withNativeEnv('node', stdlib) })
+  const compiled = compile(
+    { file: 'main.tree', text: source },
+    { resolve: withNativeEnv('node', stdlib) },
+  )
 
-  return compiled.ok ? undefined : compiled.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | ')
+  return compiled.ok
+    ? undefined
+    : compiled.diagnostics
+        .map(d => `${d.name}: ${d.message}`)
+        .join(' | ')
 }
 
 // run a program expected to raise: the exception's form, its `link`, and how long it took
 async function raised(
   name: string,
   source: string,
-): Promise<{ form?: string; link?: Record<string, unknown>; ms: number; value?: string; message?: string }> {
+): Promise<{
+  form?: string
+  link?: Record<string, unknown>
+  ms: number
+  value?: string
+  message?: string
+}> {
   const run = await loadProgram(name, source)
   const start = Date.now()
 
@@ -369,9 +405,18 @@ async function raised(
 
     return { ms: Date.now() - start, value }
   } catch (error) {
-    const e = error as { form?: string; link?: Record<string, unknown>; message?: string }
+    const e = error as {
+      form?: string
+      link?: Record<string, unknown>
+      message?: string
+    }
 
-    return { form: e.form, link: e.link, ms: Date.now() - start, message: e.form ? undefined : e.message }
+    return {
+      form: e.form,
+      link: e.link,
+      ms: Date.now() - start,
+      message: e.form ? undefined : e.message,
+    }
   }
 }
 
@@ -404,7 +449,10 @@ async function main(): Promise<void> {
     `${fast.ms} ms`,
   )
 
-  const order = await raised('gather-raises-the-failure', GATHER_RAISES_THE_FAILURE)
+  const order = await raised(
+    'gather-raises-the-failure',
+    GATHER_RAISES_THE_FAILURE,
+  )
 
   ok(
     'gather raises the job that failed, not an outage for a sibling still running',
@@ -419,7 +467,11 @@ async function main(): Promise<void> {
     cancelled.form === 'outage',
     JSON.stringify(cancelled),
   )
-  ok('and does not wait for the work it gave up on', cancelled.ms < 150, `${cancelled.ms} ms`)
+  ok(
+    'and does not wait for the work it gave up on',
+    cancelled.ms < 150,
+    `${cancelled.ms} ms`,
+  )
 
   const timed = await raised('timed-out', TIMED_OUT)
 
@@ -430,7 +482,10 @@ async function main(): Promise<void> {
   )
   ok('and gives up at the limit', timed.ms < 300, `${timed.ms} ms`)
 
-  const quiet = await raised('cancelled-then-raises', CANCELLED_THEN_RAISES)
+  const quiet = await raised(
+    'cancelled-then-raises',
+    CANCELLED_THEN_RAISES,
+  )
 
   ok(
     'a cancelled task that raises later surfaces nothing',
@@ -438,17 +493,24 @@ async function main(): Promise<void> {
     JSON.stringify({ ...quiet, unhandled }),
   )
 
-  ok('a task`s result is typed: a number waits back as a number', (await runProgram('typed-result', TYPED_RESULT)) === (42 as unknown as string))
+  ok(
+    'a task`s result is typed: a number waits back as a number',
+    (await runProgram('typed-result', TYPED_RESULT)) ===
+      (42 as unknown as string),
+  )
   ok(
     'a channel carries a form with variants, received by fork case',
-    (await runProgram('typed-channel', typedChannel(BOTH_CASES))) === 'hello',
+    (await runProgram('typed-channel', typedChannel(BOTH_CASES))) ===
+      'hello',
   )
 
   const missing = refusal(typedChannel(ONE_CASE))
 
   ok(
     'a message variant the receiver has no case for fails the build',
-    missing !== undefined && /non-exhaustive/.test(missing) && /stop/.test(missing),
+    missing !== undefined &&
+      /non-exhaustive/.test(missing) &&
+      /stop/.test(missing),
     missing ?? 'it built',
   )
 
@@ -459,12 +521,20 @@ async function main(): Promise<void> {
     short !== undefined && /conflict/.test(short),
     short ?? 'it built',
   )
-  ok('and builds once it does', refusal(bounded(BOUND_WITH)) === undefined, refusal(bounded(BOUND_WITH)) ?? '')
+  ok(
+    'and builds once it does',
+    refusal(bounded(BOUND_WITH)) === undefined,
+    refusal(bounded(BOUND_WITH)) ?? '',
+  )
 
   // the slow jobs the failures above left behind settle within this, and none of them may surface either
   await new Promise(resolve => setTimeout(resolve, 500))
 
-  ok('no job left behind by a failure becomes an unhandled rejection', unhandled === 0, `${unhandled}`)
+  ok(
+    'no job left behind by a failure becomes an unhandled rejection',
+    unhandled === 0,
+    `${unhandled}`,
+  )
 
   console.log(`\nconcurrency: ${pass} pass, ${fail} fail`)
 
@@ -475,6 +545,8 @@ async function main(): Promise<void> {
 
 // caught here, because the unhandled-rejection counter above would otherwise swallow the suite's own failure
 main().catch(error => {
-  console.log(`FAIL  the suite stopped: ${error instanceof Error ? error.message : String(error)}`)
+  console.log(
+    `FAIL  the suite stopped: ${error instanceof Error ? error.message : String(error)}`,
+  )
   process.exitCode = 1
 })

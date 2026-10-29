@@ -33,6 +33,14 @@ export function hoistKotlinImports(source: string): string {
 
 // with `units`, each module's statements stay marked, for the caller to write one file per module
 // (compile/unit-split.tree)
-export function emitKotlin(written: Program, options?: { wake?: WakeGroup[]; units?: boolean }): string {
-  return port.emitKotlin(written as never, options?.wake ?? [], Boolean(options?.units), fail)
+export function emitKotlin(
+  written: Program,
+  options?: { wake?: WakeGroup[]; units?: boolean },
+): string {
+  return port.emitKotlin(
+    written as never,
+    options?.wake ?? [],
+    Boolean(options?.units),
+    fail,
+  )
 }

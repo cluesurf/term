@@ -33,7 +33,11 @@ task interpolated
 `
 
 const out = compile({ file: '/gate/code/halt-text.tree', text })
-ok('it compiles', out.ok, out.ok ? '' : out.diagnostics.map(d => d.message).join(' | '))
+ok(
+  'it compiles',
+  out.ok,
+  out.ok ? '' : out.diagnostics.map(d => d.message).join(' | '),
+)
 
 if (out.ok) {
   // the `failure` carrier since 2026-10-03 (note/project/term/guides/research/gaps/plan.md phase 1), and since 2026-10-23
@@ -41,14 +45,21 @@ if (out.ok) {
   // `note` and `flow` as it does from any raise
   ok(
     'an interpolated halt throws the failure carrier, a TermException with its frame',
-    /__termRaised\(new TermException\(\{ host: "", form: "failure", note: `it broke at \$\{n\}`/.test(out.typescript) && /"interpolated halt-text\.tree:8"/.test(out.typescript),
-    out.typescript.slice(out.typescript.indexOf('function interpolated')),
+    /__termRaised\(new TermException\(\{ host: "", form: "failure", note: `it broke at \$\{n\}`/.test(
+      out.typescript,
+    ) && /"interpolated halt-text\.tree:8"/.test(out.typescript),
+    out.typescript.slice(
+      out.typescript.indexOf('function interpolated'),
+    ),
   )
 
   const dir = mkdtempSync(join(tmpdir(), 'term-halt-text-'))
   const file = join(dir, 'halt-text.ts')
   writeFileSync(file, out.typescript)
-  const module = (await import(pathToFileURL(file).href)) as Record<string, (...args: unknown[]) => unknown>
+  const module = (await import(pathToFileURL(file).href)) as Record<
+    string,
+    (...args: unknown[]) => unknown
+  >
 
   for (const [name, args, message] of [
     ['plain', [], 'it broke'],
@@ -62,8 +73,16 @@ if (out.ok) {
       caught = error
     }
 
-    ok(`${name}: the raise is an Error`, caught instanceof Error, typeof caught)
-    ok(`${name}: with the text as its message`, caught instanceof Error && caught.message === message, String(caught))
+    ok(
+      `${name}: the raise is an Error`,
+      caught instanceof Error,
+      typeof caught,
+    )
+    ok(
+      `${name}: with the text as its message`,
+      caught instanceof Error && caught.message === message,
+      String(caught),
+    )
   }
 }
 

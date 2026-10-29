@@ -9,12 +9,19 @@ export const nativeTorch = {
   seen: false,
 
   capable(one: MediaStreamTrack): boolean {
-    return typeof one.getCapabilities === 'function' && Boolean((one.getCapabilities() as { torch?: boolean }).torch)
+    return (
+      typeof one.getCapabilities === 'function' &&
+      Boolean((one.getCapabilities() as { torch?: boolean }).torch)
+    )
   },
 
   // on, off or unavailable
   async state(): Promise<string> {
-    return nativeTorch.track ? 'on' : nativeTorch.seen ? 'off' : 'unavailable'
+    return nativeTorch.track
+      ? 'on'
+      : nativeTorch.seen
+        ? 'off'
+        : 'unavailable'
   },
 
   // the state after, or unavailable, or denied
@@ -26,12 +33,17 @@ export const nativeTorch = {
       return nativeTorch.seen ? 'off' : 'unavailable'
     }
 
-    if (typeof navigator === 'undefined' || typeof navigator.mediaDevices?.getUserMedia !== 'function') {
+    if (
+      typeof navigator === 'undefined' ||
+      typeof navigator.mediaDevices?.getUserMedia !== 'function'
+    ) {
       return 'unavailable'
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+      })
       const found = stream.getVideoTracks()[0]
 
       if (!found || !nativeTorch.capable(found)) {
@@ -40,13 +52,17 @@ export const nativeTorch = {
         return 'unavailable'
       }
 
-      await found.applyConstraints({ advanced: [{ torch: true } as MediaTrackConstraintSet] })
+      await found.applyConstraints({
+        advanced: [{ torch: true } as MediaTrackConstraintSet],
+      })
       nativeTorch.seen = true
       nativeTorch.track = found
 
       return 'on'
     } catch (error) {
-      return (error as Error).name === 'NotAllowedError' ? 'denied' : 'unavailable'
+      return (error as Error).name === 'NotAllowedError'
+        ? 'denied'
+        : 'unavailable'
     }
   },
 }

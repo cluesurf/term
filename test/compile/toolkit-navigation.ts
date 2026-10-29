@@ -26,7 +26,10 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const program = (_leg: Leg, shot: string): string => `load @term/site/code/dom/dom
+const program = (
+  _leg: Leg,
+  shot: string,
+): string => `load @term/site/code/dom/dom
   find view
 
 load @term/site/code/dom/native/toolkit/dom
@@ -127,16 +130,38 @@ task main
 
 // the text after `step <name> `
 function step(output: string, name: string): string {
-  const line = output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
+  const line =
+    output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
 
-  return line.slice(line.indexOf(`step ${name} `) + `step ${name} `.length).trim()
+  return line
+    .slice(line.indexOf(`step ${name} `) + `step ${name} `.length)
+    .trim()
 }
 
 function judge(leg: Leg, toolkit: string, output: string): void {
-  ok(`${leg}: the app mounts at / and the window draws it (${toolkit})`, step(output, 'start').includes('<span>/</span>'), step(output, 'start'))
-  ok(`${leg}: navigating to /a then /b draws /b`, step(output, 'b').includes('<span>/b</span>') && !step(output, 'b').includes('<span>/a</span>'), step(output, 'b'))
-  ok(`${leg}: the platform's back takes the app to /a and the window draws it`, step(output, 'back').startsWith('/a ') && step(output, 'back').includes('<span>/a</span>'), step(output, 'back'))
-  ok(`${leg}: back again is the start`, step(output, 'root').startsWith('/ ') && step(output, 'root').includes('<span>/</span>'), step(output, 'root'))
+  ok(
+    `${leg}: the app mounts at / and the window draws it (${toolkit})`,
+    step(output, 'start').includes('<span>/</span>'),
+    step(output, 'start'),
+  )
+  ok(
+    `${leg}: navigating to /a then /b draws /b`,
+    step(output, 'b').includes('<span>/b</span>') &&
+      !step(output, 'b').includes('<span>/a</span>'),
+    step(output, 'b'),
+  )
+  ok(
+    `${leg}: the platform's back takes the app to /a and the window draws it`,
+    step(output, 'back').startsWith('/a ') &&
+      step(output, 'back').includes('<span>/a</span>'),
+    step(output, 'back'),
+  )
+  ok(
+    `${leg}: back again is the start`,
+    step(output, 'root').startsWith('/ ') &&
+      step(output, 'root').includes('<span>/</span>'),
+    step(output, 'root'),
+  )
 }
 
 runToolkits(

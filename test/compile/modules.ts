@@ -170,10 +170,7 @@ ok(
 fs.rmSync(dir, { recursive: true, force: true })
 
 // ---- real multi-module app: the blog (native delegation + bear + types + methods) ----
-const blogEntry = path.join(
-  SEED,
-  'deck/site/test/site/hook/blog.tree',
-)
+const blogEntry = path.join(SEED, 'deck/site/test/site/hook/blog.tree')
 
 const blog = compile(
   { file: blogEntry, text: fs.readFileSync(blogEntry, 'utf8') },
@@ -240,4 +237,6 @@ if (blog.ok && blog.modules) {
 
 console.log(`\nmodules: ${pass} pass, ${fail} fail`)
 
-if (fail > 0) {process.exit(1)}
+if (fail > 0) {
+  process.exit(1)
+}

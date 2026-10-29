@@ -47,7 +47,11 @@ task main
       text <hi>
 `
 
-function attempt(folder: string, load: string, files: Record<string, string>) {
+function attempt(
+  folder: string,
+  load: string,
+  files: Record<string, string>,
+) {
   mkdirSync(folder, { recursive: true })
 
   for (const [name, text] of Object.entries(files)) {
@@ -56,29 +60,56 @@ function attempt(folder: string, load: string, files: Record<string, string>) {
 
   const text = entry(load)
 
-  return compile({ file: join(folder, 'main.tree'), text }, { resolve: projectResolver(ROOT, 'node'), env: 'node' })
+  return compile(
+    { file: join(folder, 'main.tree'), text },
+    { resolve: projectResolver(ROOT, 'node'), env: 'node' },
+  )
 }
 
 const inside = join(ROOT, 'tmp', 'unresolved-relative-load')
-const outside = mkdtempSync(join(tmpdir(), 'term-unresolved-relative-load-'))
+const outside = mkdtempSync(
+  join(tmpdir(), 'term-unresolved-relative-load-'),
+)
 
-const a = attempt(join(inside, 'present'), './extra', { 'extra.tree': EXTRA })
-ok('a: a relative load of a file under the root builds', a.ok, a.ok ? '' : a.diagnostics.map(d => d.message).join(' | '))
+const a = attempt(join(inside, 'present'), './extra', {
+  'extra.tree': EXTRA,
+})
+ok(
+  'a: a relative load of a file under the root builds',
+  a.ok,
+  a.ok ? '' : a.diagnostics.map(d => d.message).join(' | '),
+)
 
-const b = attempt(join(outside, 'present'), './extra', { 'extra.tree': EXTRA })
+const b = attempt(join(outside, 'present'), './extra', {
+  'extra.tree': EXTRA,
+})
 const bMessages = b.ok ? [] : b.diagnostics.map(d => d.message)
 ok('b: a relative load of a file outside the root is refused', !b.ok)
-ok('b: the refusal names the load and the roots', bMessages.some(m => m.includes('load ./extra') && m.includes('project roots')), bMessages.join(' | '))
+ok(
+  'b: the refusal names the load and the roots',
+  bMessages.some(
+    m => m.includes('load ./extra') && m.includes('project roots'),
+  ),
+  bMessages.join(' | '),
+)
 
 const c = attempt(join(inside, 'absent'), './gone', {})
 const cMessages = c.ok ? [] : c.diagnostics.map(d => d.message)
 ok('c: a relative load of a missing file is refused', !c.ok)
-ok('c: the refusal names the load', cMessages.some(m => m.includes('load ./gone')), cMessages.join(' | '))
+ok(
+  'c: the refusal names the load',
+  cMessages.some(m => m.includes('load ./gone')),
+  cMessages.join(' | '),
+)
 
 // d: a `{platform}` slot is the one relative load left to the build on each platform (D027)
 const d = attempt(join(inside, 'slot'), './native/{platform}/gone', {})
 const dMessages = d.ok ? [] : d.diagnostics.map(m => m.message)
-ok('d: a {platform} relative load with no such file is not refused at the load', !dMessages.some(m => m.includes('nothing answers')), dMessages.join(' | '))
+ok(
+  'd: a {platform} relative load with no such file is not refused at the load',
+  !dMessages.some(m => m.includes('nothing answers')),
+  dMessages.join(' | '),
+)
 
 console.log(`unresolved-relative-load: ${pass} pass, ${fail} fail`)
 process.exit(fail ? 1 : 0)

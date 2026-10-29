@@ -38,10 +38,16 @@ registerTruncation('squash', 2)
 const sx = evaluate([], app(kconst('squash'), kconst('A'), kconst('x')))
 const sy = evaluate([], app(kconst('squash'), kconst('A'), kconst('y')))
 
-ok('proof irrelevance: squash A x == squash A y', areConvertible(0, sx, sy))
+ok(
+  'proof irrelevance: squash A x == squash A y',
+  areConvertible(0, sx, sy),
+)
 
 // squash A x  vs  squash B x  -- DIFFERENT type argument must NOT be equated (the type is not the proof)
-const sbx = evaluate([], app(kconst('squash'), kconst('B'), kconst('x')))
+const sbx = evaluate(
+  [],
+  app(kconst('squash'), kconst('B'), kconst('x')),
+)
 
 ok(
   'different type argument is not equated',
@@ -60,8 +66,26 @@ ok(
 // SOUNDNESS CONTROL: applied PAST its arity the constructor is not the proof any more. The eliminator's computing rule
 // applies it to a motive and a branch, and the branch is then the last argument: two different branches must not be
 // equated (they were, before 2026-10-05)
-const branchTrue = evaluate([], app(kconst('squash'), kconst('A'), kconst('x'), kconst('motive'), kconst('yes')))
-const branchFalse = evaluate([], app(kconst('squash'), kconst('A'), kconst('x'), kconst('motive'), kconst('no')))
+const branchTrue = evaluate(
+  [],
+  app(
+    kconst('squash'),
+    kconst('A'),
+    kconst('x'),
+    kconst('motive'),
+    kconst('yes'),
+  ),
+)
+const branchFalse = evaluate(
+  [],
+  app(
+    kconst('squash'),
+    kconst('A'),
+    kconst('x'),
+    kconst('motive'),
+    kconst('no'),
+  ),
+)
 
 ok(
   'past its arity a truncation constructor is proof-relevant again',

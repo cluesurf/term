@@ -7,11 +7,26 @@
 
 type Report = (name: string, value: string) => void
 
-const NAMES = ['idiom', 'width-class', 'pointer', 'color-scheme', 'reduce-motion', 'text-scale']
-const QUERIES = ['(prefers-color-scheme: dark)', '(prefers-reduced-motion: reduce)', '(pointer: fine)', '(pointer: coarse)']
+const NAMES = [
+  'idiom',
+  'width-class',
+  'pointer',
+  'color-scheme',
+  'reduce-motion',
+  'text-scale',
+]
+const QUERIES = [
+  '(prefers-color-scheme: dark)',
+  '(prefers-reduced-motion: reduce)',
+  '(pointer: fine)',
+  '(pointer: coarse)',
+]
 
-const live = (): boolean => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-const matches = (query: string): boolean => live() && window.matchMedia(query).matches
+const live = (): boolean =>
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function'
+const matches = (query: string): boolean =>
+  live() && window.matchMedia(query).matches
 
 let report: Report | undefined
 let last: Record<string, string> = {}
@@ -19,13 +34,20 @@ let installed = false
 
 // the root font size over the browser default of 16, to two places, `1` at the default
 function textScale(): string {
-  if (typeof document === 'undefined' || typeof getComputedStyle !== 'function') {
+  if (
+    typeof document === 'undefined' ||
+    typeof getComputedStyle !== 'function'
+  ) {
     return '1'
   }
 
-  const size = parseFloat(getComputedStyle(document.documentElement).fontSize)
+  const size = parseFloat(
+    getComputedStyle(document.documentElement).fontSize,
+  )
 
-  return Number.isFinite(size) && size > 0 ? String(Math.round((size / 16) * 100) / 100) : '1'
+  return Number.isFinite(size) && size > 0
+    ? String(Math.round((size / 16) * 100) / 100)
+    : '1'
 }
 
 function readTrait(name: string): string {
@@ -39,7 +61,9 @@ function readTrait(name: string): string {
         return 'desktop'
       }
 
-      return Math.min(window.screen.width, window.screen.height) >= 600 ? 'tablet' : 'phone'
+      return Math.min(window.screen.width, window.screen.height) >= 600
+        ? 'tablet'
+        : 'phone'
     }
     case 'width-class':
       return live() && window.innerWidth >= 600 ? 'regular' : 'compact'
@@ -78,7 +102,9 @@ export const nativeDevice = {
 
   watch(handler: Report): void {
     report = handler
-    last = Object.fromEntries(NAMES.map(name => [name, readTrait(name)]))
+    last = Object.fromEntries(
+      NAMES.map(name => [name, readTrait(name)]),
+    )
 
     if (installed || !live()) {
       return

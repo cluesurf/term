@@ -92,22 +92,53 @@ task run
 
 const want = '12'
 
-const node = compile({ file: 'closure-field.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!), entryPoints: ['run'] })
+const node = compile(
+  { file: 'closure-field.tree', text },
+  {
+    resolve: withNativeEnv('node', stdlibResolver()!),
+    entryPoints: ['run'],
+  },
+)
 
 if (!node.ok) {
-  ok('the program builds for node', false, node.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the program builds for node',
+    false,
+    node.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
 } else {
   const dir = mkdtempSync(join(tmpdir(), 'term-rust-closure-field-'))
   const file = join(dir, 'module.mjs')
-  writeFileSync(file, transformSync(node.typescript, { loader: 'ts', format: 'esm' }).code)
-  const mod = (await import(pathToFileURL(file).href)) as { run: () => number }
-  ok('TypeScript answers 3 turns of 2 + 2', String(mod.run()) === want, String(mod.run()))
+  writeFileSync(
+    file,
+    transformSync(node.typescript, { loader: 'ts', format: 'esm' })
+      .code,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as {
+    run: () => number
+  }
+  ok(
+    'TypeScript answers 3 turns of 2 + 2',
+    String(mod.run()) === want,
+    String(mod.run()),
+  )
 }
 
-const built = compile({ file: 'closure-field.tree', text }, { resolve: withNativeEnv('rust', stdlibResolver()!), env: 'rust', entryPoints: ['run'] })
+const built = compile(
+  { file: 'closure-field.tree', text },
+  {
+    resolve: withNativeEnv('rust', stdlibResolver()!),
+    env: 'rust',
+    entryPoints: ['run'],
+  },
+)
 
 if (!built.ok) {
-  ok('the program builds for rust', false, built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the program builds for rust',
+    false,
+    built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
 } else {
   const rust = `${emitRust(built.program)}\nfn main() {\n    println!("{}", run());\n}\n`
   const rustc = spawnSync('rustc', ['--version'], { encoding: 'utf8' })
@@ -118,12 +149,35 @@ if (!built.ok) {
     const dir = mkdtempSync(join(tmpdir(), 'term-rust-closure-field-'))
     writeFileSync(join(dir, 'main.rs'), rust)
     const binary = join(dir, 'main')
-    const out = spawnSync('rustc', ['--edition', '2021', '-A', 'warnings', '-o', binary, join(dir, 'main.rs')], { encoding: 'utf8' })
-    ok('rustc compiles it', out.status === 0, out.stderr.split('\n').filter(l => /^error/.test(l)).join(' | '))
+    const out = spawnSync(
+      'rustc',
+      [
+        '--edition',
+        '2021',
+        '-A',
+        'warnings',
+        '-o',
+        binary,
+        join(dir, 'main.rs'),
+      ],
+      { encoding: 'utf8' },
+    )
+    ok(
+      'rustc compiles it',
+      out.status === 0,
+      out.stderr
+        .split('\n')
+        .filter(l => /^error/.test(l))
+        .join(' | '),
+    )
 
     if (out.status === 0) {
       const ran = spawnSync(binary, [], { encoding: 'utf8' })
-      ok('Rust answers what TypeScript does', ran.stdout.trim() === want, (ran.stdout + ran.stderr).trim())
+      ok(
+        'Rust answers what TypeScript does',
+        ran.stdout.trim() === want,
+        (ran.stdout + ran.stderr).trim(),
+      )
     }
   }
 }

@@ -14,15 +14,34 @@
 
 import { spawn, spawnSync } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, rmSync, watch } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  watch,
+} from 'node:fs'
 import { join, relative, resolve } from 'node:path'
-import { androidDevice, androidTools, launchOnAndroid } from '@term/call/code/cask'
-import { buildCompose, buildComposeAndroid, composeIdentity } from '@term/call/code/compose'
+import {
+  androidDevice,
+  androidTools,
+  launchOnAndroid,
+} from '@term/call/code/cask'
+import {
+  buildCompose,
+  buildComposeAndroid,
+  composeIdentity,
+} from '@term/call/code/compose'
 import type { Stages } from '@term/call/code/compose'
 import { startKotlinWorker } from '@term/call/code/kotlin-worker'
 import { CompileCache } from '@term/make/code/compile/cache'
 import { makeParseMemo } from '@term/make/code/compile/load'
-import { closeRun, followChild, openRun, report } from '@term/call/code/output'
+import {
+  closeRun,
+  followChild,
+  openRun,
+  report,
+} from '@term/call/code/output'
 import { findEntry } from '@term/call/code/boot'
 
 export type ComposeTarget = 'compose' | 'compose-android'
@@ -31,8 +50,18 @@ export type ComposeTarget = 'compose' | 'compose-android'
 // desktop, `adb logcat` of the app's process on Android. A `failed` names its stage: a build stage (`compile`, `build`,
 // ...), a toolchain this machine lacks (`skipped`), or `launch`
 export type WorkEvent =
-  | { kind: 'built'; generation: number; duration: number; stages: Stages }
-  | { kind: 'failed'; generation: number; stage: string; reason: string }
+  | {
+      kind: 'built'
+      generation: number
+      duration: number
+      stages: Stages
+    }
+  | {
+      kind: 'failed'
+      generation: number
+      stage: string
+      reason: string
+    }
   | { kind: 'launch'; generation: number; child: ChildProcess }
   | { kind: 'exit'; generation: number }
 
@@ -62,11 +91,15 @@ export function startComposeWork(input: {
 }): ComposeWork {
   const root = resolve(input.root)
   // the file `--entry` names, else the manifest's `boot` line, else the older `app.tree` (compose.ts `makeCompose`)
-  const entry = findEntry(root, input.entry) ?? join(root, input.entry ?? 'app.tree')
+  const entry =
+    findEntry(root, input.entry) ??
+    join(root, input.entry ?? 'app.tree')
+
   const out = join(root, 'host', input.target)
   const { identifier } = composeIdentity(root)
   const address = join(out, ADDRESS)
   mkdirSync(out, { recursive: true })
+
   // what the session keeps warm between builds: one Kotlin compiler, so a rebuild pays for the code and not for
   // starting a JVM, and the Term compiler's parsed modules, so an edit reparses only the files that changed
   const kotlin = startKotlinWorker(join(out, 'kotlin'))
@@ -97,14 +130,22 @@ export function startComposeWork(input: {
     building = (async () => {
       do {
         dirty = false
+
         try {
           await buildAndLaunch()
         } catch (error) {
           // a launch that could not happen (no device online, a JVM that would not start) is reported and the loop
           // goes on: the next edit tries again
-          input.onEvent({ kind: 'failed', generation, stage: 'launch', reason: error instanceof Error ? error.message : String(error) })
+          input.onEvent({
+            kind: 'failed',
+            generation,
+            stage: 'launch',
+            reason:
+              error instanceof Error ? error.message : String(error),
+          })
         }
       } while (dirty && !stopped)
+
       building = undefined
     })()
 
@@ -113,42 +154,84 @@ export function startComposeWork(input: {
 
   const buildAndLaunch = async (): Promise<void> => {
     generation += 1
+
     const current = generation
     // two folders in turn: the build never writes over the jar the running app was loaded from
     const dir = join(out, 'work', String(current % 2))
     rmSync(dir, { recursive: true, force: true })
     mkdirSync(dir, { recursive: true })
+
     const started = Date.now()
     const text = existsSync(entry) ? readFileSync(entry, 'utf8') : ''
-    const warm = { file: entry, compiler: kotlin.compile, cache, scope: { root, memo } }
+    const warm = {
+      file: entry,
+      compiler: kotlin.compile,
+      cache,
+      scope: { root, memo },
+    }
+
     const built =
       input.target === 'compose'
         ? buildCompose({ root, dir, name: 'app', text, ...warm })
-        : buildComposeAndroid({ root, dir, name: 'app', text, identifier, ...warm })
+        : buildComposeAndroid({
+            root,
+            dir,
+            name: 'app',
+            text,
+            identifier,
+            ...warm,
+          })
+
     const duration = Date.now() - started
 
     if (built.form !== 'built') {
       // the running app is kept: an edit that does not build changes nothing a person can see but the report
       const stage = built.form === 'skipped' ? 'skipped' : built.stage
-      input.onEvent({ kind: 'failed', generation: current, stage, reason: built.reason })
+      input.onEvent({
+        kind: 'failed',
+        generation: current,
+        stage,
+        reason: built.reason,
+      })
 
       return
     }
 
-    input.onEvent({ kind: 'built', generation: current, duration, stages: built.stages })
+    input.onEvent({
+      kind: 'built',
+      generation: current,
+      duration,
+      stages: built.stages,
+    })
 
     if (stopped) {
       return
     }
 
     await running?.stop()
-    const onExit = () => input.onEvent({ kind: 'exit', generation: current })
+
+    const onExit = () =>
+      input.onEvent({ kind: 'exit', generation: current })
+
     const launched =
       'jar' in built
-        ? launchDesktop({ root, jar: built.jar, classpath: built.classpath, main: built.main, address, env: input.env ?? {}, onExit })
+        ? launchDesktop({
+            root,
+            jar: built.jar,
+            classpath: built.classpath,
+            main: built.main,
+            address,
+            env: input.env ?? {},
+            onExit,
+          })
         : await launchAndroid({ apk: built.apk, identifier, onExit })
+
     running = launched.running
-    input.onEvent({ kind: 'launch', generation: current, child: launched.child })
+    input.onEvent({
+      kind: 'launch',
+      generation: current,
+      child: launched.child,
+    })
   }
 
   // the source files: every `.tree` under the root, never the build's own output
@@ -156,7 +239,11 @@ export function startComposeWork(input: {
     const file = typeof name === 'string' ? name : ''
     const inside = relative(root, join(root, file))
 
-    if (!file.endsWith('.tree') || inside.startsWith('host/') || inside.startsWith('node_modules/')) {
+    if (
+      !file.endsWith('.tree') ||
+      inside.startsWith('host/') ||
+      inside.startsWith('node_modules/')
+    ) {
       return
     }
 
@@ -173,7 +260,8 @@ export function startComposeWork(input: {
   return {
     idle: async () => {
       while (scheduled || building) {
-        await (building ?? new Promise(done => setTimeout(done, SETTLE_MS)))
+        await (building ??
+          new Promise(done => setTimeout(done, SETTLE_MS)))
       }
     },
     stop: async () => {
@@ -189,7 +277,11 @@ export function startComposeWork(input: {
 }
 
 // the history of an earlier session thrown away: the desktop's file, or the one in the Android app's files
-function forgetAddress(target: ComposeTarget, address: string, identifier: string): void {
+function forgetAddress(
+  target: ComposeTarget,
+  address: string,
+  identifier: string,
+): void {
   if (target === 'compose') {
     rmSync(address, { force: true })
 
@@ -199,7 +291,14 @@ function forgetAddress(target: ComposeTarget, address: string, identifier: strin
   const found = androidDevice()
 
   if ('serial' in found) {
-    spawnSync(androidTools().adb, ['-s', found.serial, 'shell', 'rm', '-f', `/sdcard/Android/data/${identifier}/files/${ADDRESS}`])
+    spawnSync(androidTools().adb, [
+      '-s',
+      found.serial,
+      'shell',
+      'rm',
+      '-f',
+      `/sdcard/Android/data/${identifier}/files/${ADDRESS}`,
+    ])
   }
 }
 
@@ -216,12 +315,29 @@ function launchDesktop(input: {
   env: Record<string, string>
   onExit: () => void
 }): { running: Running; child: ChildProcess } {
-  const child = spawn('java', ['--enable-native-access=ALL-UNNAMED', '-classpath', `${input.jar}:${input.classpath}`, input.main], {
-    cwd: input.root,
-    env: { ...process.env, ...input.env, TERM_DEV_ADDRESS: input.address },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  const ended = new Promise<void>(done => child.once('exit', () => done()))
+  const child = spawn(
+    'java',
+    [
+      '--enable-native-access=ALL-UNNAMED',
+      '-classpath',
+      `${input.jar}:${input.classpath}`,
+      input.main,
+    ],
+    {
+      cwd: input.root,
+      env: {
+        ...process.env,
+        ...input.env,
+        TERM_DEV_ADDRESS: input.address,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  )
+
+  const ended = new Promise<void>(done =>
+    child.once('exit', () => done()),
+  )
+
   void ended.then(input.onExit)
 
   return {
@@ -233,6 +349,7 @@ function launchDesktop(input: {
         }
 
         child.kill('SIGTERM')
+
         const late = setTimeout(() => child.kill('SIGKILL'), 3000)
         await ended
         clearTimeout(late)
@@ -243,7 +360,11 @@ function launchDesktop(input: {
 
 // the app installed over the running one and started with its address; its lines are its own process's `native-dom`
 // log, read while it runs. It has ended when its process is gone
-async function launchAndroid(input: { apk: string; identifier: string; onExit: () => void }): Promise<{ running: Running; child: ChildProcess }> {
+async function launchAndroid(input: {
+  apk: string
+  identifier: string
+  onExit: () => void
+}): Promise<{ running: Running; child: ChildProcess }> {
   const found = androidDevice()
 
   if ('missing' in found) {
@@ -251,18 +372,50 @@ async function launchAndroid(input: { apk: string; identifier: string; onExit: (
   }
 
   const adb = androidTools().adb
-  const pidOf = (): string => (spawnSync(adb, ['-s', found.serial, 'shell', 'pidof', input.identifier], { encoding: 'utf8' }).stdout ?? '').trim().split(/\s+/)[0] ?? ''
-  launchOnAndroid({ serial: found.serial, apk: input.apk, identifier: input.identifier, extras: { TERM_DEV_ADDRESS: ADDRESS } })
+  const pidOf = (): string =>
+    (
+      spawnSync(
+        adb,
+        ['-s', found.serial, 'shell', 'pidof', input.identifier],
+        { encoding: 'utf8' },
+      ).stdout ?? ''
+    )
+      .trim()
+      .split(/\s+/)[0] ?? ''
+
+  launchOnAndroid({
+    serial: found.serial,
+    apk: input.apk,
+    identifier: input.identifier,
+    extras: { TERM_DEV_ADDRESS: ADDRESS },
+  })
 
   // the process the Activity starts in, looked for over five seconds
   let pid = ''
+
   for (let tries = 0; tries < 50 && !pid; tries++) {
     pid = pidOf()
-    if (!pid) await new Promise(done => setTimeout(done, 100))
+
+    if (!pid) {await new Promise(done => setTimeout(done, 100))}
   }
 
-  const child = spawn(adb, ['-s', found.serial, 'logcat', '-v', 'raw', `--pid=${pid}`, '-s', 'native-dom:I'], { stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn(
+    adb,
+    [
+      '-s',
+      found.serial,
+      'logcat',
+      '-v',
+      'raw',
+      `--pid=${pid}`,
+      '-s',
+      'native-dom:I',
+    ],
+    { stdio: ['ignore', 'pipe', 'pipe'] },
+  )
+
   let ended = false
+
   const poll = setInterval(() => {
     if (pidOf() !== pid) {
       clearInterval(poll)
@@ -280,7 +433,14 @@ async function launchAndroid(input: { apk: string; identifier: string; onExit: (
         child.kill()
 
         if (!ended) {
-          spawnSync(adb, ['-s', found.serial, 'shell', 'am', 'force-stop', input.identifier])
+          spawnSync(adb, [
+            '-s',
+            found.serial,
+            'shell',
+            'am',
+            'force-stop',
+            input.identifier,
+          ])
           ended = true
           input.onExit()
         }
@@ -291,7 +451,11 @@ async function launchAndroid(input: { apk: string; identifier: string; onExit: (
 
 // `term work --target compose|compose-android`: the loop, each build and launch an item, the app's lines followed
 // under its name, until Ctrl-C
-export async function workCompose(input: { root: string; target: ComposeTarget; entry?: string }): Promise<void> {
+export async function workCompose(input: {
+  root: string
+  target: ComposeTarget
+  entry?: string
+}): Promise<void> {
   const root = resolve(input.root)
   const { name } = composeIdentity(root)
   openRun({ verb: 'work', root, facts: [`--target ${input.target}`] })
@@ -300,7 +464,9 @@ export async function workCompose(input: { root: string; target: ComposeTarget; 
     kind: 'lifecycle',
     verb: 'start',
     subject: name,
-    message: ['Edit a .tree file and the app is rebuilt and relaunched on the screen it was on. Ctrl-C stops.'],
+    message: [
+      'Edit a .tree file and the app is rebuilt and relaunched on the screen it was on. Ctrl-C stops.',
+    ],
   })
 
   const work = startComposeWork({
@@ -310,11 +476,29 @@ export async function workCompose(input: { root: string; target: ComposeTarget; 
     onEvent: event => {
       if (event.kind === 'built') {
         // where the time went, stage by stage: what a person waiting on a rebuild wants to know
-        report({ glyph: 'done', verb: 'build', subject: input.target, duration: event.duration, facts: event.stages.map(([stage, ms]) => `${stage} ${(ms / 1000).toFixed(1)}s`) })
+        report({
+          glyph: 'done',
+          verb: 'build',
+          subject: input.target,
+          duration: event.duration,
+          facts: event.stages.map(
+            ([stage, ms]) => `${stage} ${(ms / 1000).toFixed(1)}s`,
+          ),
+        })
       } else if (event.kind === 'failed') {
-        report({ glyph: 'failed', verb: event.stage === 'launch' ? 'start' : 'build', subject: input.target, message: [event.reason, 'The running app is kept.'] })
+        report({
+          glyph: 'failed',
+          verb: event.stage === 'launch' ? 'start' : 'build',
+          subject: input.target,
+          message: [event.reason, 'The running app is kept.'],
+        })
       } else if (event.kind === 'launch') {
-        report({ glyph: 'info', kind: 'lifecycle', verb: 'start', subject: `${name} #${event.generation}` })
+        report({
+          glyph: 'info',
+          kind: 'lifecycle',
+          verb: 'start',
+          subject: `${name} #${event.generation}`,
+        })
         followChild(event.child, name)
       }
     },
@@ -322,5 +506,11 @@ export async function workCompose(input: { root: string; target: ComposeTarget; 
 
   await new Promise<void>(done => process.once('SIGINT', () => done()))
   await work.stop()
-  process.exit(closeRun({ verdict: 'Stopped', failure: 'interrupted', uptime: true }))
+  process.exit(
+    closeRun({
+      verdict: 'Stopped',
+      failure: 'interrupted',
+      uptime: true,
+    }),
+  )
 }

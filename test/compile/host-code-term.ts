@@ -6,7 +6,14 @@
 // leading U+FEFF, which the reference dropped as a byte order mark and Term keeps. Compiles a probe entry that links
 // the stdlib and the package, runs the emitted module. Run: npx tsx test/compile/host-code-term.ts
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -14,10 +21,20 @@ import { transformSync } from 'esbuild'
 import { compile } from '@term/make/code/compile/compile'
 import { projectResolver } from '@term/call/code/make'
 import { projectDeckOf } from '@term/call/code/deck-of'
-import { nativePrelude, withNativeEnv } from '@term/make/code/compile/native'
+import {
+  nativePrelude,
+  withNativeEnv,
+} from '@term/make/code/compile/native'
 import type { Data } from '@term/make/code/compile/host'
-import { expandData, readDataText, writeLong } from '@term/make/code/compile/host'
-import { decodeTree, encodeTree } from '../../tmp/retired/make/host-code'
+import {
+  expandData,
+  readDataText,
+  writeLong,
+} from '@term/make/code/compile/host'
+import {
+  decodeTree,
+  encodeTree,
+} from '../../tmp/retired/make/host-code'
 
 let pass = 0
 let fail = 0
@@ -32,7 +49,8 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const FIXTURE = join(TERM, 'deck/host/test/fixture')
 
@@ -81,7 +99,12 @@ function hex(bytes: Uint8Array): string {
 }
 
 function bytes(text: string): Uint8Array {
-  return Uint8Array.from(text.split(/\s+/).filter(Boolean).map(b => Number.parseInt(b, 16)))
+  return Uint8Array.from(
+    text
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(b => Number.parseInt(b, 16)),
+  )
 }
 
 // the value a data file's text reads to, as the reference reads it
@@ -89,13 +112,17 @@ function oracle(text: string): Data {
   const read = readDataText({ file: 'x.tree', text })
 
   if (!read.ok) {
-    throw new Error(`${read.diagnostics.map(d => d.message).join(' | ')}, reading ${JSON.stringify(text)}`)
+    throw new Error(
+      `${read.diagnostics.map(d => d.message).join(' | ')}, reading ${JSON.stringify(text)}`,
+    )
   }
 
   const expanded = expandData(read.data, 'x.tree')
 
   if (!expanded.ok) {
-    throw new Error(expanded.diagnostics.map(d => d.message).join(' | '))
+    throw new Error(
+      expanded.diagnostics.map(d => d.message).join(' | '),
+    )
   }
 
   return expanded.data
@@ -114,31 +141,93 @@ function generator(seed: number): () => number {
   }
 }
 
-const WORDS = ['name', 'age', 'active', '', 'é', '世界', '😀', 'x-y', '<>{}', 'line\nbreak', 'tab\there']
-const KEYS = ['name', 'age', 'active', 'tags', 'id', 'kind', 'size', 'note']
+const WORDS = [
+  'name',
+  'age',
+  'active',
+  '',
+  'é',
+  '世界',
+  '😀',
+  'x-y',
+  '<>{}',
+  'line\nbreak',
+  'tab\there',
+]
+const KEYS = [
+  'name',
+  'age',
+  'active',
+  'tags',
+  'id',
+  'kind',
+  'size',
+  'note',
+]
 
 // values a data file can hold, kept inside what Term carries: integers in the signed 64-bit range
 function generated(random: () => number, depth: number): Data {
-  const pick = <T>(list: T[]): T => list[Math.floor(random() * list.length)] as T
+  const pick = <T>(list: T[]): T =>
+    list[Math.floor(random() * list.length)] as T
   const roll = random()
 
   if (depth > 0 && roll < 0.15) {
-    return { kind: 'list', list: Array.from({ length: Math.floor(random() * 6) }, () => generated(random, depth - 1)) }
+    return {
+      kind: 'list',
+      list: Array.from({ length: Math.floor(random() * 6) }, () =>
+        generated(random, depth - 1),
+      ),
+    }
   }
 
   if (depth > 0 && roll < 0.3) {
-    return { kind: 'hash', list: KEYS.filter(() => random() < 0.5).map(name => ({ name, base: generated(random, depth - 1) })) }
+    return {
+      kind: 'hash',
+      list: KEYS.filter(() => random() < 0.5).map(name => ({
+        name,
+        base: generated(random, depth - 1),
+      })),
+    }
   }
 
   switch (Math.floor(random() * 7)) {
     case 0:
-      return { kind: 'number', value: Math.floor((random() - 0.5) * 2 ** Math.floor(random() * 50)) }
+      return {
+        kind: 'number',
+        value: Math.floor(
+          (random() - 0.5) * 2 ** Math.floor(random() * 50),
+        ),
+      }
     case 1:
-      return { kind: 'number', value: pick([0, 1, 27, 28, -1, -28, -29, 255, 4096, -100000, 2 ** 40]) }
+      return {
+        kind: 'number',
+        value: pick([
+          0,
+          1,
+          27,
+          28,
+          -1,
+          -28,
+          -29,
+          255,
+          4096,
+          -100000,
+          2 ** 40,
+        ]),
+      }
     case 2:
-      return { kind: 'decimal', value: pick([0.5, 0.1, -2.75, 1e300, -1e-300, 3.25, 123456.789, 2.0, -7.0, 1.5e20]) }
+      return {
+        kind: 'decimal',
+        value: pick([
+          0.5, 0.1, -2.75, 1e300, -1e-300, 3.25, 123456.789, 2.0, -7.0,
+          1.5e20,
+        ]),
+      }
     case 3:
-      return { kind: 'decimal', value: (random() - 0.5) * 10 ** Math.floor(random() * 12) }
+      return {
+        kind: 'decimal',
+        value: (random() - 0.5) * 10 ** Math.floor(random() * 12),
+      }
     case 4:
       return { kind: 'text', value: pick(WORDS) }
     case 5:
@@ -154,54 +243,103 @@ async function main(): Promise<void> {
   mkdirSync(join(root, 'code'), { recursive: true })
   symlinkSync(join(TERM, 'deck/base'), join(root, 'link/@term/base'))
   symlinkSync(join(TERM, 'deck/host'), join(root, 'link/@term/host'))
-  writeFileSync(join(root, 'deck.tree'), 'deck @probe/host-code\n  code <0.0.0>\n')
+  writeFileSync(
+    join(root, 'deck.tree'),
+    'deck @probe/host-code\n  code <0.0.0>\n',
+  )
   const entry = join(root, 'code/data.tree')
   writeFileSync(entry, ENTRY)
 
-  const result = compile({ file: entry, text: ENTRY }, { resolve: withNativeEnv('node', projectResolver(root)), deckOf: projectDeckOf() })
+  const result = compile(
+    { file: entry, text: ENTRY },
+    {
+      resolve: withNativeEnv('node', projectResolver(root)),
+      deckOf: projectDeckOf(),
+    },
+  )
 
-  ok('the package compiles with the codec', result.ok, result.ok ? '' : result.diagnostics.map(d => `${d.file?.split('/').pop()}: ${d.message}`).join(' | '))
+  ok(
+    'the package compiles with the codec',
+    result.ok,
+    result.ok
+      ? ''
+      : result.diagnostics
+          .map(d => `${d.file?.split('/').pop()}: ${d.message}`)
+          .join(' | '),
+  )
 
   if (!result.ok) {
     console.log(`\nhost-code-term: ${pass} pass, ${fail} fail`)
     process.exit(1)
   }
 
-  const prelude = nativePrelude(result.program, 'node', p => (existsSync(p) ? readFileSync(p, 'utf8') : undefined))
+  const prelude = nativePrelude(result.program, 'node', p =>
+    existsSync(p) ? readFileSync(p, 'utf8') : undefined,
+  )
   const out = join(root, 'data.mjs')
 
   writeFileSync(join(root, 'host-code-emit.ts'), result.typescript)
-  writeFileSync(out, transformSync(prelude + '\n' + result.typescript, { loader: 'ts', format: 'esm' }).code)
+  writeFileSync(
+    out,
+    transformSync(prelude + '\n' + result.typescript, {
+      loader: 'ts',
+      format: 'esm',
+    }).code,
+  )
 
   const mod = await import(pathToFileURL(out).href)
 
   // the problem a stream is refused with, by Term: its name, and its byte and message after it
-  const refused = (stream: Uint8Array): { name: string; full: string } => {
+  const refused = (
+    stream: Uint8Array,
+  ): { name: string; full: string } => {
     try {
       mod.recode(stream)
 
       return { name: 'accepted', full: 'accepted' }
     } catch (error) {
-      const link = (error as { link?: { problem?: string; at?: number; reason?: string } }).link
+      const link = (
+        error as {
+          link?: { problem?: string; at?: number; reason?: string }
+        }
+      ).link
 
-      return link?.problem ? { name: link.problem, full: `${link.problem} @${link.at}: ${link.reason}` } : { name: String(error), full: String(error) }
+      return link?.problem
+        ? {
+            name: link.problem,
+            full: `${link.problem} @${link.at}: ${link.reason}`,
+          }
+        : { name: String(error), full: String(error) }
     }
   }
   const refusal = (stream: Uint8Array): string => refused(stream).name
 
   // the same, by the reference
-  const referenceRefused = (stream: Uint8Array): { name: string; full: string } => {
+  const referenceRefused = (
+    stream: Uint8Array,
+  ): { name: string; full: string } => {
     const decoded = decodeTree(stream)
 
-    return decoded.ok ? { name: 'accepted', full: 'accepted' } : { name: decoded.problem.name, full: `${decoded.problem.name} @${decoded.problem.at}: ${decoded.problem.message}` }
+    return decoded.ok
+      ? { name: 'accepted', full: 'accepted' }
+      : {
+          name: decoded.problem.name,
+          full: `${decoded.problem.name} @${decoded.problem.at}: ${decoded.problem.message}`,
+        }
   }
 
   // ---- the worked example of 10-code.md ----
 
-  const example = 'list member\n  mesh\n    host name, <ada>\n    host age, 36\n    host active, true\n  mesh\n    host name, <alan>\n    host age, 41\n    host active, false\n'
-  const spec = 'd3 54 52 01 01 2a a1 46 6d 65 6d 62 65 72 82 a3 44 6e 61 6d 65 43 61 67 65 46 61 63 74 69 76 65 43 61 64 61 1c 08 e1 c1 44 61 6c 61 6e 1c 0d e0'
+  const example =
+    'list member\n  mesh\n    host name, <ada>\n    host age, 36\n    host active, true\n  mesh\n    host name, <alan>\n    host age, 41\n    host active, false\n'
+  const spec =
+    'd3 54 52 01 01 2a a1 46 6d 65 6d 62 65 72 82 a3 44 6e 61 6d 65 43 61 67 65 46 61 63 74 69 76 65 43 61 64 61 1c 08 e1 c1 44 61 6c 61 6e 1c 0d e0'
 
-  ok('Term writes the worked example byte for byte', hex(mod.codeOf(example)) === spec, hex(mod.codeOf(example)))
+  ok(
+    'Term writes the worked example byte for byte',
+    hex(mod.codeOf(example)) === spec,
+    hex(mod.codeOf(example)),
+  )
 
   // ---- fixtures, both ways ----
 
@@ -211,8 +349,15 @@ async function main(): Promise<void> {
     const reference = encodeTree(value)
     const term = mod.codeOf(text) as Uint8Array
 
-    ok(`${name}: Term writes the reference's bytes`, hex(term) === hex(reference), `\n      term ${hex(term)}\n      ref  ${hex(reference)}`)
-    ok(`${name}: Term reads the reference's bytes back to the same long form`, mod.longOfCode(reference) === writeLong(value))
+    ok(
+      `${name}: Term writes the reference's bytes`,
+      hex(term) === hex(reference),
+      `\n      term ${hex(term)}\n      ref  ${hex(reference)}`,
+    )
+    ok(
+      `${name}: Term reads the reference's bytes back to the same long form`,
+      mod.longOfCode(reference) === writeLong(value),
+    )
   }
 
   // ---- generated values, both ways ----
@@ -221,7 +366,10 @@ async function main(): Promise<void> {
   const failures: string[] = []
 
   for (let at = 0; at < 1500; at++) {
-    const value: Data = { kind: 'hash', list: [{ name: 'value', base: generated(random, 3) }] }
+    const value: Data = {
+      kind: 'hash',
+      list: [{ name: 'value', base: generated(random, 3) }],
+    }
     const text = writeLong(value)
 
     try {
@@ -233,20 +381,34 @@ async function main(): Promise<void> {
       const decoded = decodeTree(term)
 
       if (hex(term) !== hex(reference)) {
-        failures.push(`bytes differ for ${JSON.stringify(text)}\n      term ${hex(term)}\n      ref  ${hex(reference)}`)
+        failures.push(
+          `bytes differ for ${JSON.stringify(text)}\n      term ${hex(term)}\n      ref  ${hex(reference)}`,
+        )
       } else if (back !== writeLong(oracle(text))) {
-        failures.push(`Term read the reference's bytes to ${JSON.stringify(back)}, not ${JSON.stringify(text)}`)
+        failures.push(
+          `Term read the reference's bytes to ${JSON.stringify(back)}, not ${JSON.stringify(text)}`,
+        )
       } else if (hex(recoded) !== hex(reference)) {
-        failures.push(`Term's decode then encode changed the bytes of ${JSON.stringify(text)}`)
+        failures.push(
+          `Term's decode then encode changed the bytes of ${JSON.stringify(text)}`,
+        )
       } else if (!decoded.ok) {
-        failures.push(`the reference refused Term's bytes: ${decoded.problem.message}`)
+        failures.push(
+          `the reference refused Term's bytes: ${decoded.problem.message}`,
+        )
       }
     } catch (error) {
-      failures.push(`${JSON.stringify(text)}: ${String(error)} ${JSON.stringify((error as { link?: unknown }).link ?? '')}`)
+      failures.push(
+        `${JSON.stringify(text)}: ${String(error)} ${JSON.stringify((error as { link?: unknown }).link ?? '')}`,
+      )
     }
   }
 
-  ok('1500 generated values: Term and the reference write the same bytes and read each other\'s', failures.length === 0, `${failures.length} failed\n      ${failures.slice(0, 3).join('\n      ')}`)
+  ok(
+    "1500 generated values: Term and the reference write the same bytes and read each other's",
+    failures.length === 0,
+    `${failures.length} failed\n      ${failures.slice(0, 3).join('\n      ')}`,
+  )
 
   // ---- refusals, named as the reference names them ----
 
@@ -286,24 +448,49 @@ async function main(): Promise<void> {
     const term = refused(bytes(stream))
     const reference = referenceRefused(bytes(stream))
 
-    ok(`${stream.slice(0, 40)}: refused as ${want}, by both, at the same byte with the same message`, term.name === want && reference.name === want && term.full === reference.full, `\n      term      ${term.full}\n      reference ${reference.full}`)
+    ok(
+      `${stream.slice(0, 40)}: refused as ${want}, by both, at the same byte with the same message`,
+      term.name === want &&
+        reference.name === want &&
+        term.full === reference.full,
+      `\n      term      ${term.full}\n      reference ${reference.full}`,
+    )
   }
 
-  ok('a canonical stream with an end marker is accepted by Term', refusal(bytes(`${H} 01 01 e0 00`)) === 'accepted')
+  ok(
+    'a canonical stream with an end marker is accepted by Term',
+    refusal(bytes(`${H} 01 01 e0 00`)) === 'accepted',
+  )
 
   // an integer of any width, as the format says (10-code.md): past 2^53 Term reads the nearest double, as the reference
-  for (const body of ['1c ff ff ff ff ff ff ff ff ff 01', '3c ff ff ff ff ff ff ff ff ff 01', '1c 80 80 80 80 80 80 80 80 80 80 01']) {
-    const stream = bytes(`${H} 01 ${(bytes(body).length).toString(16).padStart(2, '0')} ${body}`)
+  for (const body of [
+    '1c ff ff ff ff ff ff ff ff ff 01',
+    '3c ff ff ff ff ff ff ff ff ff 01',
+    '1c 80 80 80 80 80 80 80 80 80 80 01',
+  ]) {
+    const stream = bytes(
+      `${H} 01 ${bytes(body).length.toString(16).padStart(2, '0')} ${body}`,
+    )
     const reference = decodeTree(stream)
     const term = refused(stream)
 
-    ok(`an integer past 64 bits (${body.slice(0, 14)}...) reads as the reference reads it`, reference.ok && term.name === 'accepted' && hex(mod.recode(stream)) === hex(encodeTree(reference.values)), term.full)
+    ok(
+      `an integer past 64 bits (${body.slice(0, 14)}...) reads as the reference reads it`,
+      reference.ok &&
+        term.name === 'accepted' &&
+        hex(mod.recode(stream)) === hex(encodeTree(reference.values)),
+      term.full,
+    )
   }
 
   // decision 041: a text's leading U+FEFF is a character, kept, where the reference dropped it as a byte order mark
   const marked = bytes(`${H} 01 05 44 ef bb bf 61`)
 
-  ok('a leading U+FEFF in a text is kept: decode then encode gives back the same bytes', hex(mod.recode(marked)) === hex(marked), hex(mod.recode(marked)))
+  ok(
+    'a leading U+FEFF in a text is kept: decode then encode gives back the same bytes',
+    hex(mod.recode(marked)) === hex(marked),
+    hex(mod.recode(marked)),
+  )
 
   console.log('')
   console.log(`host-code-term: ${pass} pass, ${fail} fail`)

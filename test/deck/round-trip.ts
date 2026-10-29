@@ -20,11 +20,15 @@
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
-import { parseManifest, writeManifest } from '../../deck/deck/code/package/manifest'
+import {
+  parseManifest,
+  writeManifest,
+} from '../../deck/deck/code/package/manifest'
 import { parse } from '@term/make/code/parser/tree'
 import { headWord } from '@term/make/code/compile/mill-run'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 
 // how many distinct field heads the tree's own manifests use, of the 27 the grammar knows. A new one is welcome;
@@ -53,7 +57,12 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 function manifests(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
-    if (entry === 'node_modules' || entry === 'host' || entry === 'link' || entry.startsWith('.')) {
+    if (
+      entry === 'node_modules' ||
+      entry === 'host' ||
+      entry === 'link' ||
+      entry.startsWith('.')
+    ) {
       continue
     }
 
@@ -124,9 +133,14 @@ for (const file of files) {
   let after: Set<string>
 
   try {
-    after = fieldsOf(file, writeManifest({ manifest: parseManifest({ text }) }))
+    after = fieldsOf(
+      file,
+      writeManifest({ manifest: parseManifest({ text }) }),
+    )
   } catch (error) {
-    losses.push(`${relative(TERM, file)}: threw ${String((error as Error).message).slice(0, 80)}`)
+    losses.push(
+      `${relative(TERM, file)}: threw ${String((error as Error).message).slice(0, 80)}`,
+    )
     continue
   }
 
@@ -203,7 +217,10 @@ const WHOLE = `deck @scope/whole
 `
 
 const wholeBefore = fieldsOf('whole.tree', WHOLE)
-const wholeAfter = fieldsOf('whole.tree', writeManifest({ manifest: parseManifest({ text: WHOLE }) }))
+const wholeAfter = fieldsOf(
+  'whole.tree',
+  writeManifest({ manifest: parseManifest({ text: WHOLE }) }),
+)
 const wholeLost = [...wholeBefore].filter(f => !wholeAfter.has(f))
 
 ok(

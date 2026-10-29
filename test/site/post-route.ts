@@ -31,7 +31,10 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const TERM = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+const TERM = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../..',
+)
 const PORT = 38563
 
 const HEAD = `load @term/site/code/http/http
@@ -150,8 +153,16 @@ hook /notes
 
 const resolve = projectResolver(TERM, 'node')
 
-function build1(name: string, text: string): ReturnType<typeof compile> {
-  const entry = path.join(TERM, 'test', 'tmp', `post-route-${name}.tree`)
+function build1(
+  name: string,
+  text: string,
+): ReturnType<typeof compile> {
+  const entry = path.join(
+    TERM,
+    'test',
+    'tmp',
+    `post-route-${name}.tree`,
+  )
   fs.mkdirSync(path.dirname(entry), { recursive: true })
   fs.writeFileSync(entry, text)
 
@@ -159,37 +170,84 @@ function build1(name: string, text: string): ReturnType<typeof compile> {
 }
 
 const messages = (result: ReturnType<typeof compile>): string =>
-  result.ok ? '' : [...new Set(result.diagnostics.map(d => `${d.file?.split('/').pop()}:${d.span?.start?.line}: ${d.message}`))].slice(0, 6).join(' | ')
+  result.ok
+    ? ''
+    : [
+        ...new Set(
+          result.diagnostics.map(
+            d =>
+              `${d.file?.split('/').pop()}:${d.span?.start?.line}: ${d.message}`,
+          ),
+        ),
+      ]
+        .slice(0, 6)
+        .join(' | ')
 
 async function main(): Promise<void> {
   // the wrong shapes first: they need no server
   for (const [name, text, why] of [
     ['one-parameter', ONE_PARAMETER, 'it takes 1 parameters'],
-    ['wrong-answer', WRONG_ANSWER, 'it answers something other than a `response`'],
+    [
+      'wrong-answer',
+      WRONG_ANSWER,
+      'it answers something other than a `response`',
+    ],
   ] as const) {
     const refused = build1(name, text)
     const said = messages(refused)
-    ok(`a handler where ${why} is refused at build`, !refused.ok && said.includes('is not a handler') && said.includes(why), said || 'it compiled')
+    ok(
+      `a handler where ${why} is refused at build`,
+      !refused.ok &&
+        said.includes('is not a handler') &&
+        said.includes(why),
+      said || 'it compiled',
+    )
   }
 
   const getTask = build1('get-task', GET_TASK)
   const getSaid = messages(getTask)
-  ok('`task get` under a page route is refused: GET draws the view', !getTask.ok && getSaid.includes('GET and HEAD draw the route'), getSaid || 'it compiled')
+  ok(
+    '`task get` under a page route is refused: GET draws the view',
+    !getTask.ok && getSaid.includes('GET and HEAD draw the route'),
+    getSaid || 'it compiled',
+  )
 
   const result = build1('app', APP)
-  ok('the app with a page route and its methods compiles', result.ok, messages(result))
+  ok(
+    'the app with a page route and its methods compiles',
+    result.ok,
+    messages(result),
+  )
 
   if (!result.ok) {
     console.log(`\npost-route: ${pass} pass, ${fail} fail`)
     process.exit(1)
   }
 
-  ok('the dispatcher takes the request', /function route\(host: View, request: Request\)/.test(result.typescript), result.typescript.match(/function route\([^)]*\)/)?.[0] ?? 'no route')
+  ok(
+    'the dispatcher takes the request',
+    /function route\(host: View, request: Request\)/.test(
+      result.typescript,
+    ),
+    result.typescript.match(/function route\([^)]*\)/)?.[0] ??
+      'no route',
+  )
 
-  const readRuntime = (p: string): string | undefined => (fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : undefined)
-  const prelude = nativePrelude(result.program, 'node', readRuntime, result.typescript)
-  const dir = fs.mkdtempSync(path.join(TERM, 'test', 'tmp', 'post-route-'))
-  fs.writeFileSync(path.join(dir, 'app.ts'), `${prelude}\n${result.typescript}`)
+  const readRuntime = (p: string): string | undefined =>
+    fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : undefined
+  const prelude = nativePrelude(
+    result.program,
+    'node',
+    readRuntime,
+    result.typescript,
+  )
+  const dir = fs.mkdtempSync(
+    path.join(TERM, 'test', 'tmp', 'post-route-'),
+  )
+  fs.writeFileSync(
+    path.join(dir, 'app.ts'),
+    `${prelude}\n${result.typescript}`,
+  )
 
   const bundled = await build({
     entryPoints: [path.join(dir, 'app.ts')],
@@ -202,16 +260,27 @@ async function main(): Promise<void> {
   const file = path.join(dir, 'app.mjs')
   fs.writeFileSync(file, bundled.outputFiles[0].text)
 
-  const M = (await import(pathToFileURL(file).href)) as { boot: (url: string, port: number) => unknown; wakeHive?: () => void }
+  const M = (await import(pathToFileURL(file).href)) as {
+    boot: (url: string, port: number) => unknown
+    wakeHive?: () => void
+  }
   M.wakeHive?.()
   await M.boot('', PORT)
   await new Promise(r => setTimeout(r, 300))
 
-  const at = (p: string, init: RequestInit = {}) => fetch(`http://localhost:${PORT}${p}`, { redirect: 'manual', ...init })
+  const at = (p: string, init: RequestInit = {}) =>
+    fetch(`http://localhost:${PORT}${p}`, {
+      redirect: 'manual',
+      ...init,
+    })
 
   const page = await at('/notes')
   const pageBody = await page.text()
-  ok('GET /notes draws the page', page.status === 200 && pageBody.includes('the notes page'), `${page.status} ${pageBody.slice(0, 200)}`)
+  ok(
+    'GET /notes draws the page',
+    page.status === 200 && pageBody.includes('the notes page'),
+    `${page.status} ${pageBody.slice(0, 200)}`,
+  )
 
   const title = 'a "first" & <b>note</b>'
   const posted = await at('/notes', {
@@ -219,25 +288,61 @@ async function main(): Promise<void> {
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: `title=${encodeURIComponent(title).replace(/%20/g, '+')}`,
   })
-  ok('POST /notes with a urlencoded form answers 303', posted.status === 303, `${posted.status} ${await posted.text()}`)
-  ok('the 303 goes to the list, carrying the title the form body held', posted.headers.get('location') === `/notes?made=${title}`, String(posted.headers.get('location')))
+  ok(
+    'POST /notes with a urlencoded form answers 303',
+    posted.status === 303,
+    `${posted.status} ${await posted.text()}`,
+  )
+  ok(
+    'the 303 goes to the list, carrying the title the form body held',
+    posted.headers.get('location') === `/notes?made=${title}`,
+    String(posted.headers.get('location')),
+  )
 
   const listed = await at('/notes')
   const listedBody = await listed.text()
-  ok('GET /notes after the post draws the note the load listed, its markup escaped', listed.status === 200 && listedBody.includes('&lt;b&gt;note&lt;/b&gt;') && !listedBody.includes('<b>note</b>'), listedBody.slice(0, 400))
+  ok(
+    'GET /notes after the post draws the note the load listed, its markup escaped',
+    listed.status === 200 &&
+      listedBody.includes('&lt;b&gt;note&lt;/b&gt;') &&
+      !listedBody.includes('<b>note</b>'),
+    listedBody.slice(0, 400),
+  )
 
   const put = await at('/notes', { method: 'PUT', body: '' })
-  ok('PUT /notes, which no task serves, answers 405', put.status === 405, String(put.status))
-  ok('the 405 names the methods the route serves', put.headers.get('allow') === 'GET, HEAD, POST', String(put.headers.get('allow')))
+  ok(
+    'PUT /notes, which no task serves, answers 405',
+    put.status === 405,
+    String(put.status),
+  )
+  ok(
+    'the 405 names the methods the route serves',
+    put.headers.get('allow') === 'GET, HEAD, POST',
+    String(put.headers.get('allow')),
+  )
 
   const gone = await at('/notes/7', { method: 'DELETE' })
-  ok('DELETE /notes/7 calls the route\'s task with its :id in params', gone.status === 303 && gone.headers.get('location') === '/notes?gone=7', `${gone.status} ${gone.headers.get('location')}`)
+  ok(
+    "DELETE /notes/7 calls the route's task with its :id in params",
+    gone.status === 303 &&
+      gone.headers.get('location') === '/notes?gone=7',
+    `${gone.status} ${gone.headers.get('location')}`,
+  )
 
   const postOnId = await at('/notes/7', { method: 'POST', body: '' })
-  ok('POST /notes/7, which only serves DELETE, answers 405', postOnId.status === 405 && postOnId.headers.get('allow') === 'GET, HEAD, DELETE', `${postOnId.status} ${postOnId.headers.get('allow')}`)
+  ok(
+    'POST /notes/7, which only serves DELETE, answers 405',
+    postOnId.status === 405 &&
+      postOnId.headers.get('allow') === 'GET, HEAD, DELETE',
+    `${postOnId.status} ${postOnId.headers.get('allow')}`,
+  )
 
   const missing = await at('/nowhere')
-  ok('GET of a path no hook names still answers 404', missing.status === 404, String(missing.status))
+  ok(
+    'GET of a path no hook names still answers 404',
+    missing.status === 404,
+    String(missing.status),
+  )
 
   fs.rmSync(dir, { recursive: true, force: true })
   console.log(`\npost-route: ${pass} pass, ${fail} fail`)

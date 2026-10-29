@@ -9,7 +9,10 @@
 //   5. outside every task, an asynchronous call must be ticked (checkCallsOutsideTasks, behind its switch).
 // Browser-safe, no host APIs.
 
-import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
+import type {
+  Diagnostic,
+  Span,
+} from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import type {
   Expression,
@@ -17,7 +20,10 @@ import type {
   Statement,
   Type,
 } from '@term/make/code/compile/node'
-import { exceptionForm, isGenericException } from '@term/make/code/check/extend'
+import {
+  exceptionForm,
+  isGenericException,
+} from '@term/make/code/check/extend'
 
 const EXCEPTION_FORM = exceptionForm()
 
@@ -72,13 +78,18 @@ export function effectRows(program: Program): Map<string, string[]> {
     }
 
     rows.set(name, row)
+
     // a call to one of its own parameters is that parameter, whose effects were added just above, never the
     // top-level task of the same name: `list/find-index` calling its `test` read as `file/test`, and a native backend
     // then put `?` on a callback that returns a plain `bool` (2026-10-04). A local it binds is the same (`boundNames`)
     const bound = boundNames(statement.body)
     calls.set(
       name,
-      new Set([...calledNames(statement.body, names)].filter(callee => !paramNames.has(callee) && !bound.has(callee))),
+      new Set(
+        [...calledNames(statement.body, names)].filter(
+          callee => !paramNames.has(callee) && !bound.has(callee),
+        ),
+      ),
     )
   }
 
@@ -144,6 +155,7 @@ function boundNames(body: Statement[]): Set<string> {
         }
 
         break
+
       case 'guard': {
         const caught = record.catch as { name: string } | undefined
 
@@ -153,6 +165,7 @@ function boundNames(body: Statement[]): Set<string> {
 
         break
       }
+
       case 'closure':
         for (const param of record.params as { name: string }[]) {
           bound.add(param.name)
@@ -183,7 +196,11 @@ function bodyThrows(body: Statement[]): boolean {
       case 'throw':
         return true
       case 'guard':
-        if (node.catch ? bodyThrows(node.catch.body) : bodyThrows(node.body)) {
+        if (
+          node.catch
+            ? bodyThrows(node.catch.body)
+            : bodyThrows(node.body)
+        ) {
           return true
         }
 
@@ -247,8 +264,13 @@ function calledNames(
           known.has(node.callee.name)
         ) {
           found.add(node.callee.name)
-        } else if (node.callee.form === 'variable' && reach?.implementations?.has(node.callee.name)) {
-          for (const implementation of reach.implementations.get(node.callee.name)!) {
+        } else if (
+          node.callee.form === 'variable' &&
+          reach?.implementations?.has(node.callee.name)
+        ) {
+          for (const implementation of reach.implementations.get(
+            node.callee.name,
+          )!) {
             found.add(implementation)
           }
         } else if (
@@ -412,6 +434,7 @@ export function checkEffects(
     // a parameter or local of a task's name shadows it, the way async resolution reads it (check/async-resolve.ts
     // inScope): a call to a callback named `test` is a call to the callback, never to the stdlib's async `test`
     const shadowed = new Set(statement.params.map(p => p.name))
+
     const lets = (node: unknown): void => {
       if (!node || typeof node !== 'object') {
         return
@@ -445,7 +468,8 @@ export function checkEffects(
     const isAsyncName = (name: string, type?: Type): boolean =>
       (asyncFunctions.has(name) && !shadowed.has(name)) ||
       asyncParams.has(name) ||
-      (type?.kind === 'function' && type.effects?.includes('async') === true)
+      (type?.kind === 'function' &&
+        type.effects?.includes('async') === true)
 
     const isKnownSyncName = (name: string): boolean =>
       (allFunctions.has(name) && !asyncFunctions.has(name)) ||
@@ -500,7 +524,9 @@ export function checkEffects(
             node.callee.form === 'variable' &&
             isAsyncName(node.callee.name, node.callee.type)
           ) {
-            diagnostics.push(asyncFromSync(file, node.span, node.callee.name))
+            diagnostics.push(
+              asyncFromSync(file, node.span, node.callee.name),
+            )
           }
 
           // `tick` on a task that is not async starts nothing: the call runs to its end before the next line
@@ -509,7 +535,9 @@ export function checkEffects(
             node.callee.form === 'variable' &&
             isKnownSyncName(node.callee.name)
           ) {
-            diagnostics.push(tickOnSync(file, node.span, node.callee.name))
+            diagnostics.push(
+              tickOnSync(file, node.span, node.callee.name),
+            )
           }
 
           visitExpression(node.callee, false)
@@ -625,7 +653,6 @@ export function checkEffects(
   return diagnostics
 }
 
-
 // a task's name as it was written: a name defined in more than one file is split by file (`name__in<g>_<k>`,
 // check/overload.ts) before this runs
 function written(name: string): string {
@@ -633,7 +660,11 @@ function written(name: string): string {
 }
 
 // a call to an async task, not waited for, from a place that is not async
-function asyncFromSync(file: string, span: Span, called: string): Diagnostic {
+function asyncFromSync(
+  file: string,
+  span: Span,
+  called: string,
+): Diagnostic {
   const name = written(called)
 
   return diagnose('effect-error', {
@@ -644,7 +675,11 @@ function asyncFromSync(file: string, span: Span, called: string): Diagnostic {
 }
 
 // `tick` on a task that is not async
-function tickOnSync(file: string, span: Span, called: string): Diagnostic {
+function tickOnSync(
+  file: string,
+  span: Span,
+  called: string,
+): Diagnostic {
   const name = written(called)
 
   return diagnose('effect-error', {
@@ -670,23 +705,34 @@ function tickOnSync(file: string, span: Span, called: string): Diagnostic {
 // Every un-awaited, un-ticked call to an async task outside a task body. Runs after async resolution, so a task's
 // own body is already awaited and is not walked here. A closure inside a task is the task's business (resolution
 // awaits inside it); a closure outside one is walked, and is exempt only when it is itself async.
-export function checkCallsOutsideTasks(program: Program, file: string): Diagnostic[] {
+export function checkCallsOutsideTasks(
+  program: Program,
+  file: string,
+): Diagnostic[] {
   const asyncFunctions = new Set<string>()
 
   for (const statement of program) {
     // a bind marked `mark async` is waited like an async task (decision 053 of
     // note/project/term/self-host/change/001-finish-self-host)
-    if ((statement.form === 'function' || statement.form === 'bind') && statement.async) {
+    if (
+      (statement.form === 'function' || statement.form === 'bind') &&
+      statement.async
+    ) {
       asyncFunctions.add(statement.name)
     }
   }
 
   const diagnostics: Diagnostic[] = []
+
   let owner = file
 
   // `waiting`: inside an async closure, where an awaited call is in place and an un-awaited one is still the
   // pending value nobody asked for. `bound`: names a closure's parameters and locals bind, which shadow a task
-  const visit = (value: unknown, waiting: boolean, bound: Set<string>): void => {
+  const visit = (
+    value: unknown,
+    waiting: boolean,
+    bound: Set<string>,
+  ): void => {
     if (!value || typeof value !== 'object') {
       return
     }
@@ -712,7 +758,11 @@ export function checkCallsOutsideTasks(program: Program, file: string): Diagnost
     }
 
     if (record.form === 'closure') {
-      const closure = record as unknown as Extract<Expression, { form: 'closure' }>
+      const closure = record as unknown as Extract<
+        Expression,
+        { form: 'closure' }
+      >
+
       const inner = new Set(bound)
 
       for (const param of closure.params) {
@@ -730,8 +780,15 @@ export function checkCallsOutsideTasks(program: Program, file: string): Diagnost
 
     // an EXPRESSION call: a view's setup statement is also `form: 'call'`, holding its call under `value`, and is
     // walked through to that call below
-    if (record.form === 'call' && record.callee && typeof record.callee === 'object') {
-      const call = record as unknown as Extract<Expression, { form: 'call' }>
+    if (
+      record.form === 'call' &&
+      record.callee &&
+      typeof record.callee === 'object'
+    ) {
+      const call = record as unknown as Extract<
+        Expression,
+        { form: 'call' }
+      >
 
       if (
         !call.background &&
@@ -754,7 +811,12 @@ export function checkCallsOutsideTasks(program: Program, file: string): Diagnost
     }
 
     for (const [key, child] of Object.entries(record)) {
-      if (key !== 'span' && key !== 'type' && key !== 'result' && key !== 'declared') {
+      if (
+        key !== 'span' &&
+        key !== 'type' &&
+        key !== 'result' &&
+        key !== 'declared'
+      ) {
         visit(child, waiting, bound)
       }
     }
@@ -767,7 +829,8 @@ export function checkCallsOutsideTasks(program: Program, file: string): Diagnost
 
     // the module the statement came from: a merged program records it on each top-level statement's span, and an
     // expression inside carries a position only, so a finding is placed in its own file rather than the entry's
-    owner = ('span' in statement ? statement.span?.file : undefined) ?? file
+    owner =
+      ('span' in statement ? statement.span?.file : undefined) ?? file
     visit(statement, false, new Set())
   }
 
@@ -776,8 +839,11 @@ export function checkCallsOutsideTasks(program: Program, file: string): Diagnost
 
 // the closure literals an expression makes, outermost first: a closure inside another closure's body is found when
 // that body is scanned, so each is visited once
-function closuresIn(node: Expression): Extract<Expression, { form: 'closure' }>[] {
+function closuresIn(
+  node: Expression,
+): Extract<Expression, { form: 'closure' }>[] {
   const found: Extract<Expression, { form: 'closure' }>[] = []
+
   const visit = (value: unknown): void => {
     if (!value || typeof value !== 'object') {
       return
@@ -842,11 +908,22 @@ export function raiseSetsOf(
   exceptions: string[],
   checkedDivision?: (node: Expression) => boolean,
 ): RaiseSets {
-  const sets = raiseSetsWith(program, new Set(exceptions), checkedDivision)
+  const sets = raiseSetsWith(
+    program,
+    new Set(exceptions),
+    checkedDivision,
+  )
 
   return {
-    raises: new Map([...sets.raises].map(([name, raised]) => [name, [...raised]])),
-    via: new Map([...sets.via].map(([name, from]) => [name, new Map([...from].map(([e, callee]) => [e, callee ?? '']))])),
+    raises: new Map(
+      [...sets.raises].map(([name, raised]) => [name, [...raised]]),
+    ),
+    via: new Map(
+      [...sets.via].map(([name, from]) => [
+        name,
+        new Map([...from].map(([e, callee]) => [e, callee ?? ''])),
+      ]),
+    ),
     native: [...sets.native],
   }
 }
@@ -883,21 +960,34 @@ function raiseSetsWith(
   for (const statement of program) {
     if (statement.form === 'mask') {
       statement.methods.forEach(m => maskMethods.add(m))
-    } else if (statement.form === 'native' && statement.kind !== 'type') {
+    } else if (
+      statement.form === 'native' &&
+      statement.kind !== 'type'
+    ) {
       natives.add(statement.alias)
     }
   }
 
   for (const statement of functions.values()) {
     if (statement.method && maskMethods.has(statement.method.name)) {
-      const set = implementations.get(statement.method.name) ?? new Set<string>()
+      const set =
+        implementations.get(statement.method.name) ?? new Set<string>()
+
       set.add(statement.name)
       implementations.set(statement.method.name, set)
     }
   }
 
   let sawNative = false
-  const reach: CallReach = { implementations, natives, onNative: () => { sawNative = true } }
+
+  const reach: CallReach = {
+    implementations,
+    natives,
+    onNative: () => {
+      sawNative = true
+    },
+  }
+
   const nativeShims = new Set<string>()
 
   // the exceptions a body raises directly, honoring guards, and the functions it calls outside a guarded body
@@ -916,7 +1006,10 @@ function raiseSetsWith(
             exceptions.has(node.value.name)
           ) {
             direct.add(node.value.name)
-          } else if (node.value.form === 'string' || node.value.form === 'template') {
+          } else if (
+            node.value.form === 'string' ||
+            node.value.form === 'template'
+          ) {
             // `halt <text>` raises `failure`, and so does one whose text interpolates (`halt <at {position}>`), which
             // was counted as a re-raise of an unknown exception
             direct.add('failure')
@@ -1001,8 +1094,16 @@ function raiseSetsWith(
   // all, so `halt outage` on the gatherer's signature passed while `conflict` escaped. A handle handed to another
   // task and waited there is the case this over-approximates rather than tracks
   // (note/project/term/research/beam-otp-lessons.md, design 3)
-  const expressionCalls = (node: Expression, called: Set<string>, direct?: Set<string>): void => {
-    for (const name of calledNames([{ form: 'expression', expr: node, span: node.span }], names, reach)) {
+  const expressionCalls = (
+    node: Expression,
+    called: Set<string>,
+    direct?: Set<string>,
+  ): void => {
+    for (const name of calledNames(
+      [{ form: 'expression', expr: node, span: node.span }],
+      names,
+      reach,
+    )) {
       called.add(name)
     }
 
@@ -1018,7 +1119,10 @@ function raiseSetsWith(
   // AN INTEGER DIVISION OR REMAINDER THE EMITTER WRITES CHECKED RAISES `defect`, added by name the way `failure` is for
   // a native shim, so a program whose tree shaking dropped the `defect` form still has it in the set. A closure's body
   // is not entered: `scan` reaches it through `closuresIn`, and the closure's maker takes what it raises
-  const markDivisions = (node: Expression, direct: Set<string>): void => {
+  const markDivisions = (
+    node: Expression,
+    direct: Set<string>,
+  ): void => {
     if (!checkedDivision) {
       return
     }
@@ -1040,7 +1144,11 @@ function raiseSetsWith(
         return
       }
 
-      if (record.form === 'binary' && (record.op === '/' || record.op === '%') && checkedDivision(record as Expression)) {
+      if (
+        record.form === 'binary' &&
+        (record.op === '/' || record.op === '%') &&
+        checkedDivision(record as Expression)
+      ) {
         direct.add('defect')
       }
 
@@ -1066,7 +1174,10 @@ function raiseSetsWith(
       // a task that raises `failure` once it is counted raises it here when this program counts it, as its own body's
       // scan would: its stored set was closed over its own unit, which may not have held the form (`fails`,
       // compile/stub.ts)
-      if (exceptions.has('failure') && statement.stubFacts?.includes('fails')) {
+      if (
+        exceptions.has('failure') &&
+        statement.stubFacts?.includes('fails')
+      ) {
         known.add('failure')
       }
 
@@ -1178,8 +1289,14 @@ function canonicalVia(
 
       for (const exception of raises.get(name)!) {
         // after the fixed point a callee is recorded for every raise but the task's own, so an unrecorded one is direct
-        const direct = from.has(exception) && from.get(exception) === undefined
-        const leaves = [...calls.get(name)!].some(c => component.get(c) !== component.get(name) && raises.get(c)?.has(exception))
+        const direct =
+          from.has(exception) && from.get(exception) === undefined
+
+        const leaves = [...calls.get(name)!].some(
+          c =>
+            component.get(c) !== component.get(name) &&
+            raises.get(c)?.has(exception),
+        )
 
         if (direct || leaves) {
           own.set(exception, 0)
@@ -1200,9 +1317,15 @@ function canonicalVia(
 
         for (const exception of raises.get(name)!) {
           for (const callee of calls.get(name)!) {
-            const near = component.get(callee) === component.get(name) ? distance.get(callee)?.get(exception) : undefined
+            const near =
+              component.get(callee) === component.get(name)
+                ? distance.get(callee)?.get(exception)
+                : undefined
 
-            if (near !== undefined && (own.get(exception) ?? Infinity) > near + 1) {
+            if (
+              near !== undefined &&
+              (own.get(exception) ?? Infinity) > near + 1
+            ) {
               own.set(exception, near + 1)
               moved = true
             }
@@ -1222,10 +1345,19 @@ function canonicalVia(
         continue
       }
 
-      const out = [...callees].find(c => component.get(c) !== component.get(name) && raises.get(c)?.has(exception))
-      const inside = [...callees].find(
-        c => component.get(c) === component.get(name) && (distance.get(c)?.get(exception) ?? Infinity) < (own.get(exception) ?? Infinity),
+      const out = [...callees].find(
+        c =>
+          component.get(c) !== component.get(name) &&
+          raises.get(c)?.has(exception),
       )
+
+      const inside = [...callees].find(
+        c =>
+          component.get(c) === component.get(name) &&
+          (distance.get(c)?.get(exception) ?? Infinity) <
+            (own.get(exception) ?? Infinity),
+      )
+
       const chosen = out ?? inside
 
       if (chosen !== undefined) {
@@ -1237,12 +1369,15 @@ function canonicalVia(
 
 // each function's strongly connected component over the calls, by Tarjan's algorithm, iteratively: a call chain
 // thousands deep would overflow a recursive walk
-function cyclesOf(calls: Map<string, Set<string>>): Map<string, number> {
+function cyclesOf(
+  calls: Map<string, Set<string>>,
+): Map<string, number> {
   const index = new Map<string, number>()
   const low = new Map<string, number>()
   const onStack = new Set<string>()
   const stack: string[] = []
   const component = new Map<string, number>()
+
   let counter = 0
   let groups = 0
 
@@ -1251,7 +1386,13 @@ function cyclesOf(calls: Map<string, Set<string>>): Map<string, number> {
       continue
     }
 
-    const work: { name: string; next: string[] }[] = [{ name: start, next: [...calls.get(start)!].filter(c => calls.has(c)) }]
+    const work: { name: string; next: string[] }[] = [
+      {
+        name: start,
+        next: [...calls.get(start)!].filter(c => calls.has(c)),
+      },
+    ]
+
     index.set(start, counter)
     low.set(start, counter++)
     stack.push(start)
@@ -1268,9 +1409,15 @@ function cyclesOf(calls: Map<string, Set<string>>): Map<string, number> {
           low.set(callee, counter++)
           stack.push(callee)
           onStack.add(callee)
-          work.push({ name: callee, next: [...calls.get(callee)!].filter(c => calls.has(c)) })
+          work.push({
+            name: callee,
+            next: [...calls.get(callee)!].filter(c => calls.has(c)),
+          })
         } else if (onStack.has(callee)) {
-          low.set(top.name, Math.min(low.get(top.name)!, index.get(callee)!))
+          low.set(
+            top.name,
+            Math.min(low.get(top.name)!, index.get(callee)!),
+          )
         }
 
         continue
@@ -1317,7 +1464,8 @@ export function checkRaiseBounds(
   }
 
   const bounded = program.filter(
-    (s): s is Extract<Statement, { form: 'function' }> => s.form === 'function' && (s.raises?.length ?? 0) > 0,
+    (s): s is Extract<Statement, { form: 'function' }> =>
+      s.form === 'function' && (s.raises?.length ?? 0) > 0,
   )
 
   if (bounded.length === 0) {
@@ -1340,7 +1488,10 @@ export function checkRaiseBounds(
     for (const name of declared) {
       // `failure` the body does raise is bound rightly with no form for it: a `halt <text>` raises it, and the build
       // holds no `failure` form when nothing loads @term/base/exception (item term-self-host-001-0315)
-      if (!exceptions.has(name) && !(name === 'failure' && raised?.has(name))) {
+      if (
+        !exceptions.has(name) &&
+        !(name === 'failure' && raised?.has(name))
+      ) {
         // a stdlib exception the build dropped is one nothing here raises: the bound is wider than the body, not
         // a misspelling, and saying "not an exception form" named the wrong problem
         diagnostics.push(
@@ -1352,17 +1503,22 @@ export function checkRaiseBounds(
               : `"${s.name}" declares "halt ${name}" on its signature, but "${name}" is not an exception form`,
             ...(isGenericException(name)
               ? {}
-              : { hint: 'a bound names a form that is like exception, or like one of the stdlib exceptions' }),
+              : {
+                  hint: 'a bound names a form that is like exception, or like one of the stdlib exceptions',
+                }),
           }),
         )
       }
     }
 
-    const beyond = [...(sets.raises.get(s.name) ?? [])].filter(e => !declared.has(e)).sort()
+    const beyond = [...(sets.raises.get(s.name) ?? [])]
+      .filter(e => !declared.has(e))
+      .sort()
 
     if (beyond.length > 0) {
       const chains = beyond.map(e => {
         const chain: string[] = []
+
         let cur = s.name
 
         while (chain.length < 64) {

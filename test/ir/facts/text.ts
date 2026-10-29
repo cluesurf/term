@@ -21,14 +21,19 @@ function ok(name: string, holds: boolean, detail = ''): void {
 
 // whether every read of the variable `name` inside task `task` is proven ASCII
 function proven(text: string, task: string, name: string): boolean {
-  const built = compile({ file: 'main.tree', text }, { optimize: false })
+  const built = compile(
+    { file: 'main.tree', text },
+    { optimize: false },
+  )
 
   if (!built.ok) {
     throw new Error(built.diagnostics.map(d => d.message).join(' | '))
   }
 
   const facts = asciiTexts(built.program)
-  const fn = (built.program as Program).find(n => n.form === 'function' && n.name === task)
+  const fn = (built.program as Program).find(
+    n => n.form === 'function' && n.name === task,
+  )
   const reads: object[] = []
   const walk = (value: unknown): void => {
     if (typeof value !== 'object' || value === null) {
@@ -67,25 +72,42 @@ const reader = `task first
       code 0
 `
 
-ok('a local made from an ASCII literal IS ASCII', proven(`${reader}
+ok(
+  'a local made from an ASCII literal IS ASCII',
+  proven(
+    `${reader}
 task go
   like text
   save s, text <hello>
   send back
     call first
       read s
-`, 'go', 's'))
+`,
+    'go',
+    's',
+  ),
+)
 
-ok('a local made from a literal with a character above 127 is NOT', !proven(`${reader}
+ok(
+  'a local made from a literal with a character above 127 is NOT',
+  !proven(
+    `${reader}
 task go
   like text
   save s, text <héllo>
   send back
     call first
       read s
-`, 'go', 's'))
+`,
+    'go',
+    's',
+  ),
+)
 
-ok('a local later given a non-ASCII text is NOT', !proven(`${reader}
+ok(
+  'a local later given a non-ASCII text is NOT',
+  !proven(
+    `${reader}
 task go
   like text
   save s, text <hello>
@@ -93,9 +115,16 @@ task go
   send back
     call first
       read s
-`, 'go', 's'))
+`,
+    'go',
+    's',
+  ),
+)
 
-ok('a template of an ASCII text and a number IS', proven(`${reader}
+ok(
+  'a template of an ASCII text and a number IS',
+  proven(
+    `${reader}
 task go
   take n, like number
   like text
@@ -104,17 +133,31 @@ task go
   send back
     call first
       read t
-`, 'go', 't'))
+`,
+    'go',
+    't',
+  ),
+)
 
-ok('a parameter every caller passes ASCII IS', proven(`${reader}
+ok(
+  'a parameter every caller passes ASCII IS',
+  proven(
+    `${reader}
 task go
   like text
   send back
     call first
       text <abc>
-`, 'first', 's'))
+`,
+    'first',
+    's',
+  ),
+)
 
-ok('a parameter one caller passes non-ASCII is NOT', !proven(`${reader}
+ok(
+  'a parameter one caller passes non-ASCII is NOT',
+  !proven(
+    `${reader}
 task go
   like text
   save a
@@ -123,9 +166,16 @@ task go
   send back
     call first
       text <ñ>
-`, 'first', 's'))
+`,
+    'first',
+    's',
+  ),
+)
 
-ok('a parameter of a task nothing calls is NOT (a caller the program cannot see)', !proven(reader, 'first', 's'))
+ok(
+  'a parameter of a task nothing calls is NOT (a caller the program cannot see)',
+  !proven(reader, 'first', 's'),
+)
 
 console.log(`\ntext: ${pass} pass, ${fail} fail`)
 

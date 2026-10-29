@@ -120,7 +120,13 @@ const dir = mkdtempSync(join(tmpdir(), 'term-sorted-'))
 const only = process.env.SORTED_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'sorted' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'sorted',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
@@ -130,7 +136,9 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
   ok(
     `${backend}: 6,000 puts and drops answer what a Map does, and texts order by code point`,
     ran.form === 'ran' && ran.output === EXPECTED,
-    ran.form === 'ran' ? `got ${ran.output.slice(0, 200)}... want ${EXPECTED.slice(0, 200)}...` : `${ran.stage}: ${ran.reason}`,
+    ran.form === 'ran'
+      ? `got ${ran.output.slice(0, 200)}... want ${EXPECTED.slice(0, 200)}...`
+      : `${ran.stage}: ${ran.reason}`,
   )
 }
 

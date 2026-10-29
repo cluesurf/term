@@ -37,13 +37,36 @@ form slot
     need false
 `
 
-const built = compile({ file: 'own.tree', text: declared }, { resolve: withNativeEnv('node', stdlibResolver()!), library: true, leanOf: () => true } as never)
+const built = compile({ file: 'own.tree', text: declared }, {
+  resolve: withNativeEnv('node', stdlibResolver()!),
+  library: true,
+  leanOf: () => true,
+} as never)
 
 if (!built.ok) {
-  ok('a program with its own form type builds', false, built.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'a program with its own form type builds',
+    false,
+    built.diagnostics.map(d => d.message).join(' | '),
+  )
 } else {
-  ok('a case field typed by it is the form', /args\?: Type\[\]/.test(built.typescript), built.typescript.split('\n').filter(l => /args/.test(l)).join(' | '))
-  ok('a record field typed by it is the form', /held: Type\b/.test(built.typescript) && /maybeHeld\?: Type\b/.test(built.typescript), built.typescript.split('\n').filter(l => /held/i.test(l)).join(' | '))
+  ok(
+    'a case field typed by it is the form',
+    /args\?: Type\[\]/.test(built.typescript),
+    built.typescript
+      .split('\n')
+      .filter(l => /args/.test(l))
+      .join(' | '),
+  )
+  ok(
+    'a record field typed by it is the form',
+    /held: Type\b/.test(built.typescript) &&
+      /maybeHeld\?: Type\b/.test(built.typescript),
+    built.typescript
+      .split('\n')
+      .filter(l => /held/i.test(l))
+      .join(' | '),
+  )
   ok('and none is any', !/: any\b/.test(built.typescript))
 }
 
@@ -54,12 +77,27 @@ const universe = `task identity
   back t
 `
 
-const plain = compile({ file: 'universe.tree', text: universe }, { resolve: withNativeEnv('node', stdlibResolver()!), library: true, leanOf: () => true } as never)
+const plain = compile({ file: 'universe.tree', text: universe }, {
+  resolve: withNativeEnv('node', stdlibResolver()!),
+  library: true,
+  leanOf: () => true,
+} as never)
 
 if (!plain.ok) {
-  ok('a program without one builds', false, plain.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'a program without one builds',
+    false,
+    plain.diagnostics.map(d => d.message).join(' | '),
+  )
 } else {
-  ok('without a form type, like type is still the universe, any', /identity\(t: any\): any/.test(plain.typescript), plain.typescript.split('\n').filter(l => /identity/.test(l)).join(' | '))
+  ok(
+    'without a form type, like type is still the universe, any',
+    /identity\(t: any\): any/.test(plain.typescript),
+    plain.typescript
+      .split('\n')
+      .filter(l => /identity/.test(l))
+      .join(' | '),
+  )
 }
 
 console.log(`\nform-named-type: ${pass} pass, ${fail} fail`)

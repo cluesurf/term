@@ -9,7 +9,11 @@
 // in `===` for the supervision walk, which keys its trees by the call that made each, and the host's `undefined`, the
 // value a key holding nothing reads back as. Why each field is there: compile/rolling.tree's header.
 
-import type { Expression, Program, Statement } from '@term/make/code/compile/node'
+import type {
+  Expression,
+  Program,
+  Statement,
+} from '@term/make/code/compile/node'
 import { raiseSetsOf } from '@term/make/code/check/effects'
 import * as rolling from '@term/make/code/compile/rolling'
 import * as plain from '@term/make/code/compile/rolling-plain'
@@ -34,7 +38,9 @@ export type Roll = {
 }
 
 // the deck a source file belongs to: its name (`@term/base`) and its root directory, from the nearest `deck.tree`
-export type DeckOf = (file: string) => { name: string; root: string } | undefined
+export type DeckOf = (
+  file: string,
+) => { name: string; root: string } | undefined
 
 export type RollOptions = {
   // absent means the deck is read off the path (`.../link/@scope/name/...`), and `@local` for the entry's own files
@@ -52,9 +58,11 @@ export type RollOptions = {
   docks?: Statement[]
 }
 
-const toRoll = (roll: Roll): rolling.RollKind[] => plain.rollKindsOf(roll)
+const toRoll = (roll: Roll): rolling.RollKind[] =>
+  plain.rollKindsOf(roll)
 
-const fromRoll = (kinds: rolling.RollKind[]): Roll => plain.plainRoll(kinds, undefined) as Roll
+const fromRoll = (kinds: rolling.RollKind[]): Roll =>
+  plain.plainRoll(kinds, undefined) as Roll
 
 // a definition's identity across builds: its file and where it starts, which no other definition shares
 export function definitionOf(s: Program[number], file: string): string {
@@ -66,14 +74,20 @@ export function deckFromPath(file: string): string {
   return rolling.deckFromPath(file)
 }
 
-export function buildRoll(program: Program, file: string, options?: RollOptions): Roll {
+export function buildRoll(
+  program: Program,
+  file: string,
+  options?: RollOptions,
+): Roll {
   const deckOf = options?.deckOf
   const kinds = rolling.buildRoll(
     program,
     file,
     // the two optional fields as Term holds a `need false` maybe: the value itself, or absent
     {
-      own: options?.own ? new Map([...options.own].map(name => [name, true])) : undefined,
+      own: options?.own
+        ? new Map([...options.own].map(name => [name, true]))
+        : undefined,
       root: options?.root,
       ids: options?.ids === true,
       docks: options?.docks,
@@ -81,7 +95,9 @@ export function buildRoll(program: Program, file: string, options?: RollOptions)
     path => {
       const deck = deckOf?.(path)
 
-      return deck ? { form: 'some', value: { name: deck.name, root: deck.root } } : { form: 'none' }
+      return deck
+        ? { form: 'some', value: { name: deck.name, root: deck.root } }
+        : { form: 'none' }
     },
     names => raiseSetsOf(program, names),
     (left: Expression, right: Expression) => left === right,
@@ -103,7 +119,10 @@ export function mergeRolls(rolls: Roll[]): Roll {
 
 // the merge one roll at a time, the first entry of each name kept, so a caller holds the merged roll and never every
 // roll at once: @term/bind's 3,091 rolls held together ran the main thread out of its 4 GB heap (2026-10-05)
-export function makeRollMerger(): { add: (roll: Roll) => void; done: () => Roll } {
+export function makeRollMerger(): {
+  add: (roll: Roll) => void
+  done: () => Roll
+} {
   const merger = rolling.makeRollMerger()
 
   return {
@@ -114,6 +133,14 @@ export function makeRollMerger(): { add: (roll: Roll) => void; done: () => Roll 
 
 // the roll as a tree, the way `term roll` prints it. `path`: under each exception, one call path per task that can
 // raise it (`term roll exception --path`), and under each task the path to each exception it raises
-export function showRoll(roll: Roll, kind?: string, options?: { path?: boolean }): string {
-  return rolling.showRoll(toRoll(roll), kind ?? '', options?.path === true)
+export function showRoll(
+  roll: Roll,
+  kind?: string,
+  options?: { path?: boolean },
+): string {
+  return rolling.showRoll(
+    toRoll(roll),
+    kind ?? '',
+    options?.path === true,
+  )
 }

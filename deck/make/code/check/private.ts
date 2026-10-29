@@ -15,33 +15,40 @@
 //
 // `note private` is the old spelling. It is still honored, and warned about as `note-private`.
 
-import type { Expression, Program, Statement } from '@term/make/code/compile/node'
+import type {
+  Expression,
+  Program,
+  Statement,
+} from '@term/make/code/compile/node'
 import { diagnose } from '@term/make/code/parser/diagnostic'
-import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
+import type {
+  Diagnostic,
+  Span,
+} from '@term/make/code/parser/diagnostic'
 
 type Definition = Extract<Statement, { form: 'function' }>
 
 // What the checks ask of the build, as data (check/private.tree takes the same): a file's import scope as a list, the
 // deck each file belongs to as the list the build's `deckOf` would answer, and the overload groups, check/overload.ts's
 // module state
-export interface ScopeFind {
+export type ScopeFind = {
   name: string
   targets: string[]
   at?: Span
 }
 
-export interface FileScope {
+export type FileScope = {
   file: string
   finds: ScopeFind[]
   bears: string[]
 }
 
-export interface DeckHome {
+export type DeckHome = {
   file: string
   root: string
 }
 
-export interface OverloadGroup {
+export type OverloadGroup = {
   name: string
   members: string[]
 }
@@ -60,7 +67,8 @@ export const deckOfList = (decks: DeckHome[]): DeckOf | undefined => {
   return file => table.get(file)
 }
 
-const short = (file: string): string => file.split('/').slice(-3).join('/')
+const short = (file: string): string =>
+  file.split('/').slice(-3).join('/')
 
 // top-level tasks by name. A form's method is not a top-level name and has its own visibility story, so it is not
 // a candidate here.
@@ -79,7 +87,11 @@ function tasksByName(program: Program): Map<string, Definition[]> {
 }
 
 // may `file` see `definition`: it is public, or in `file`, or `file` is a test of its package
-function visible(definition: Definition, file: string | undefined, deckOf?: DeckOf): boolean {
+function visible(
+  definition: Definition,
+  file: string | undefined,
+  deckOf?: DeckOf,
+): boolean {
   if (!definition.private) {
     return true
   }
@@ -94,11 +106,18 @@ function visible(definition: Definition, file: string | undefined, deckOf?: Deck
 }
 
 // is `file` a test file of the package that holds `home`
-export function testOf(file: string, home: string, deckOf?: DeckOf): boolean {
+export function testOf(
+  file: string,
+  home: string,
+  deckOf?: DeckOf,
+): boolean {
   const deck = deckOf?.(file)
 
   if (deck) {
-    return file.startsWith(`${deck.root}/test/`) && deckOf?.(home)?.root === deck.root
+    return (
+      file.startsWith(`${deck.root}/test/`) &&
+      deckOf?.(home)?.root === deck.root
+    )
   }
 
   const at = file.lastIndexOf('/test/')
@@ -113,21 +132,36 @@ function refusal(
   span: Definition['span'],
   how: string,
 ): Diagnostic {
-  const homes = [...new Set(definitions.map(d => d.span.file).filter((f): f is string => !!f))]
+  const homes = [
+    ...new Set(
+      definitions.map(d => d.span.file).filter((f): f is string => !!f),
+    ),
+  ]
+
   const where = homes.map(short).join(', ')
 
   return diagnose('private-name', {
     file,
     span: { ...span, file },
     message: `"${name}" is \`mark private\` in ${where}, so ${short(file)} cannot ${how} it`,
-    markers: [{ span: { ...span, file } }, ...definitions.map(d => ({ span: d.span, label: `private "${name}" here` }))],
+    markers: [
+      { span: { ...span, file } },
+      ...definitions.map(d => ({
+        span: d.span,
+        label: `private "${name}" here`,
+      })),
+    ],
     hint: `remove \`mark private\` from ${name} in ${where}, or call it only from that file`,
   })
 }
 
 // A `find` of a private name in a `load` block. Run BEFORE overload disambiguation renames definitions, so a found
 // name is compared with the name as written.
-export function checkPrivateFinds(program: Program, scopes: FileScope[], decks: DeckHome[]): Diagnostic[] {
+export function checkPrivateFinds(
+  program: Program,
+  scopes: FileScope[],
+  decks: DeckHome[],
+): Diagnostic[] {
   if (scopes.length === 0) {
     return []
   }
@@ -141,7 +175,10 @@ export function checkPrivateFinds(program: Program, scopes: FileScope[], decks: 
   }
 
   // a file and everything it re-exports with `bear`, transitively
-  const exported = (file: string, into = new Set<string>()): Set<string> => {
+  const exported = (
+    file: string,
+    into = new Set<string>(),
+  ): Set<string> => {
     if (into.has(file)) {
       return into
     }
@@ -173,13 +210,22 @@ export function checkPrivateFinds(program: Program, scopes: FileScope[], decks: 
         exported(target, reach)
       }
 
-      const reached = definitions.filter(d => d.span.file !== undefined && reach.has(d.span.file))
+      const reached = definitions.filter(
+        d => d.span.file !== undefined && reach.has(d.span.file),
+      )
 
-      if (reached.length === 0 || reached.some(d => visible(d, file, deckOf))) {
+      if (
+        reached.length === 0 ||
+        reached.some(d => visible(d, file, deckOf))
+      ) {
         continue
       }
 
-      const span = at ?? { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } }
+      const span = at ?? {
+        start: { line: 0, column: 0 },
+        end: { line: 0, column: 0 },
+      }
+
       diagnostics.push(refusal(name, reached, file, span, 'find'))
     }
   }
@@ -194,7 +240,7 @@ export function checkPrivateFinds(program: Program, scopes: FileScope[], decks: 
 function eachReference(
   node: unknown,
   visit: (variable: Extract<Expression, { form: 'variable' }>) => void,
-  seen: WeakSet<object> = new WeakSet(),
+  seen = new WeakSet<object>(),
 ): void {
   if (!node || typeof node !== 'object' || seen.has(node)) {
     return
@@ -239,7 +285,12 @@ function eachReference(
 // A call to, or a reference as a value of, a private task from another file. Run AFTER the resolver, so only a
 // name the resolver bound to a top-level task counts (a parameter or a local of the same name is bound to itself),
 // and after overload disambiguation, so an arity or file overload is judged by the definition it was bound to.
-export function checkPrivateReferences(program: Program, file: string, groups: OverloadGroup[], decks: DeckHome[]): Diagnostic[] {
+export function checkPrivateReferences(
+  program: Program,
+  file: string,
+  groups: OverloadGroup[],
+  decks: DeckHome[],
+): Diagnostic[] {
   const byName = tasksByName(program)
 
   if (![...byName.values()].some(list => list.some(d => d.private))) {
@@ -247,12 +298,15 @@ export function checkPrivateReferences(program: Program, file: string, groups: O
   }
 
   const deckOf = deckOfList(decks)
+
   // a same-arity typed overload group is bound to its first member until the checker picks one by argument type,
   // so a reference to the group may mean any member
   const candidates = (name: string): Definition[] => {
     const members = groups.find(group => group.name === name)?.members
 
-    return members ? members.flatMap(member => byName.get(member) ?? []) : (byName.get(name) ?? [])
+    return members
+      ? members.flatMap(member => byName.get(member) ?? [])
+      : (byName.get(name) ?? [])
   }
 
   const diagnostics: Diagnostic[] = []
@@ -268,7 +322,10 @@ export function checkPrivateReferences(program: Program, file: string, groups: O
 
       const definitions = candidates(variable.name)
 
-      if (definitions.length === 0 || definitions.some(d => visible(d, from, deckOf))) {
+      if (
+        definitions.length === 0 ||
+        definitions.some(d => visible(d, from, deckOf))
+      ) {
         return
       }
 
@@ -279,9 +336,12 @@ export function checkPrivateReferences(program: Program, file: string, groups: O
       }
 
       told.add(key)
+
       // an overload is renamed `name__<arity>`; the message names it as written
       const written = variable.name.replace(/__.*$/, '')
-      diagnostics.push(refusal(written, definitions, from, variable.span, 'use'))
+      diagnostics.push(
+        refusal(written, definitions, from, variable.span, 'use'),
+      )
     })
   }
 
@@ -289,13 +349,18 @@ export function checkPrivateReferences(program: Program, file: string, groups: O
 }
 
 // `note private` on a task in this compile's own file: the old spelling, honored and warned about
-export function warnPrivateNotes(program: Program, file: string): Diagnostic[] {
+export function warnPrivateNotes(
+  program: Program,
+  file: string,
+): Diagnostic[] {
   const stamped = program.some(s => s.span.file !== undefined)
 
   return program
     .filter(
       (s): s is Definition =>
-        s.form === 'function' && s.privateNote !== undefined && (stamped ? s.span.file === file : true),
+        s.form === 'function' &&
+        s.privateNote !== undefined &&
+        (stamped ? s.span.file === file : true),
     )
     .map(s =>
       diagnose('note-private', {

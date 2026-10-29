@@ -16,8 +16,9 @@ function expectContains(
   if (!result.ok) {
     fail++
 
-    for (const d of result.diagnostics)
-      {console.log(render(d, source.split('\n'), false))}
+    for (const d of result.diagnostics) {
+      console.log(render(d, source.split('\n'), false))
+    }
 
     console.log(`FAIL  ${name}  (did not compile)`)
 

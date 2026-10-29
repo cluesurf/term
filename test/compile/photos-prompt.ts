@@ -49,7 +49,10 @@ const taps = buildTaps(
 )
 ok('the UI test that taps the prompt builds', taps.built, taps.errors)
 
-const program = (_leg: Leg, _shot: string): string => `load @term/site/code/dom/native/toolkit/dom
+const program = (
+  _leg: Leg,
+  _shot: string,
+): string => `load @term/site/code/dom/native/toolkit/dom
   find open-root
   find launch
   find run-app
@@ -116,44 +119,103 @@ task main
 `
 
 function step(output: string, name: string): string {
-  const line = output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
+  const line =
+    output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
 
-  return line.slice(line.indexOf(`step ${name} `) + `step ${name} `.length).trim()
+  return line
+    .slice(line.indexOf(`step ${name} `) + `step ${name} `.length)
+    .trim()
 }
 
 // once the app is installed and before it launches: the photo in the library, the grant forgotten so the request
 // prompts, and the UI test waiting for that prompt
-function prepare(leg: Leg, target: { udid?: string; identifier: string }): void {
+function prepare(
+  leg: Leg,
+  target: { udid?: string; identifier: string },
+): void {
   if (leg !== 'ios' || !target.udid) return
 
-  spawnSync('xcrun', ['simctl', 'addmedia', target.udid, makePhoto(`term-photos-prompt-${process.pid}.jpg`)])
-  spawnSync('xcrun', ['simctl', 'privacy', target.udid, 'reset', 'photos', target.identifier])
+  spawnSync('xcrun', [
+    'simctl',
+    'addmedia',
+    target.udid,
+    makePhoto(`term-photos-prompt-${process.pid}.jpg`),
+  ])
+  spawnSync('xcrun', [
+    'simctl',
+    'privacy',
+    target.udid,
+    'reset',
+    'photos',
+    target.identifier,
+  ])
 
   if (taps.built) taps.start(target.udid)
 }
 
 function judge(leg: Leg, toolkit: string, output: string): void {
   const named = `${leg} (${toolkit})`
-  ok(`${named}: before asking, the grant is not-determined`, step(output, 'before') === 'not-determined', step(output, 'before'))
-  ok(`${named}: the prompt was tapped, and the request answers granted`, step(output, 'asked') === 'granted', step(output, 'asked'))
+  ok(
+    `${named}: before asking, the grant is not-determined`,
+    step(output, 'before') === 'not-determined',
+    step(output, 'before'),
+  )
+  ok(
+    `${named}: the prompt was tapped, and the request answers granted`,
+    step(output, 'asked') === 'granted',
+    step(output, 'asked'),
+  )
   const fields = step(output, 'newest').split(' ~ ')
   ok(
     `${named}: the newest photo is the one simctl put in the library, by its size, with a UTC time`,
-    fields.length === 3 && fields[0] !== '' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(fields[1] ?? '') && fields[2] === `${SAMPLE.width}x${SAMPLE.height}`,
+    fields.length === 3 &&
+      fields[0] !== '' &&
+      /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(fields[1] ?? '') &&
+      fields[2] === `${SAMPLE.width}x${SAMPLE.height}`,
     step(output, 'newest'),
   )
   // the simulator's files are the Mac's, so the copy is read where the app wrote it
   const where = step(output, 'copied').replace(/^photo /, '')
-  const size = step(output, 'copied').startsWith('photo ') && existsSync(where) ? jpegSize(readFileSync(where)) : undefined
-  ok(`${named}: and its copy is a JPEG of that size, PhotoKit's data made one by ImageIO`, size?.width === SAMPLE.width && size?.height === SAMPLE.height, `${step(output, 'copied')} ${JSON.stringify(size)}`)
+  const size =
+    step(output, 'copied').startsWith('photo ') && existsSync(where)
+      ? jpegSize(readFileSync(where))
+      : undefined
+  ok(
+    `${named}: and its copy is a JPEG of that size, PhotoKit's data made one by ImageIO`,
+    size?.width === SAMPLE.width && size?.height === SAMPLE.height,
+    `${step(output, 'copied')} ${JSON.stringify(size)}`,
+  )
 }
 
 async function main(): Promise<void> {
-  runToolkits({ root: process.cwd(), dir, name: 'Photos', iosIdentifier: APP, androidIdentifier: 'surf.term.photos', program, judge, ok, shots: {}, prepare }, 'ios')
+  runToolkits(
+    {
+      root: process.cwd(),
+      dir,
+      name: 'Photos',
+      iosIdentifier: APP,
+      androidIdentifier: 'surf.term.photos',
+      program,
+      judge,
+      ok,
+      shots: {},
+      prepare,
+    },
+    'ios',
+  )
   const tapped = await taps.finish()
 
   if (tapped) {
-    ok('ios: SpringBoard showed the photo library prompt and took the tap', tapped.status === 0 && tapped.log.includes('taps: full access allowed'), tapped.log.split('\n').filter(line => /error|failed|XCTAssert/i.test(line)).join('\n').slice(0, 1200))
+    ok(
+      'ios: SpringBoard showed the photo library prompt and took the tap',
+      tapped.status === 0 &&
+        tapped.log.includes('taps: full access allowed'),
+      tapped.log
+        .split('\n')
+        .filter(line => /error|failed|XCTAssert/i.test(line))
+        .join('\n')
+        .slice(0, 1200),
+    )
   }
 
   console.log(`\nphotos-prompt: ${pass} pass, ${fail} fail`)

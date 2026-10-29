@@ -11,7 +11,6 @@ import { join } from 'node:path'
 import { tempDir } from '../temp'
 import { LINE } from './cli'
 
-
 let pass = 0
 let fail = 0
 
@@ -34,7 +33,9 @@ const server = http.createServer((request, response) => {
 
   if (request.url === '/sessions/terminal/select!') {
     if (selectStatus !== 200) {
-      response.writeHead(selectStatus, { 'content-type': 'application/json' }).end(JSON.stringify({ note: `refused, ${selectStatus}` }))
+      response
+        .writeHead(selectStatus, { 'content-type': 'application/json' })
+        .end(JSON.stringify({ note: `refused, ${selectStatus}` }))
 
       return
     }
@@ -42,26 +43,50 @@ const server = http.createServer((request, response) => {
     const good = request.headers.authorization === 'Bearer ws-good'
 
     response
-      .writeHead(good ? 200 : 401, { 'content-type': 'application/json' })
-      .end(JSON.stringify(good ? { result: { name: 'term bind · laptop', expires_at: '2027-10-05T00:00:00.000Z', user: { slug: 'alice' } } } : { note: 'This token is unknown, revoked or expired' }))
+      .writeHead(good ? 200 : 401, {
+        'content-type': 'application/json',
+      })
+      .end(
+        JSON.stringify(
+          good
+            ? {
+                result: {
+                  name: 'term bind · laptop',
+                  expires_at: '2027-10-05T00:00:00.000Z',
+                  user: { slug: 'alice' },
+                },
+              }
+            : { note: 'This token is unknown, revoked or expired' },
+        ),
+      )
 
     return
   }
 
   // a login that starts gets no URL, so the run ends before any browser
-  response.writeHead(503, { 'content-type': 'application/json' }).end(JSON.stringify({ note: 'Terminal login is not configured' }))
+  response
+    .writeHead(503, { 'content-type': 'application/json' })
+    .end(JSON.stringify({ note: 'Terminal login is not configured' }))
 })
 
-await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()))
+await new Promise<void>(resolve =>
+  server.listen(0, '127.0.0.1', () => resolve()),
+)
 
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 
-function bind(token: string | undefined, args: string[] = []): Promise<string> {
+function bind(
+  token: string | undefined,
+  args: string[] = [],
+): Promise<string> {
   const home = tempDir('term-bind-')
 
   if (token) {
     mkdirSync(join(home, '.base', '@term', 'code'), { recursive: true })
-    writeFileSync(join(home, '.base', '@term', 'code', 'auth'), `${token}\n`)
+    writeFileSync(
+      join(home, '.base', '@term', 'code', 'auth'),
+      `${token}\n`,
+    )
   }
 
   asked.length = 0
@@ -70,28 +95,61 @@ function bind(token: string | undefined, args: string[] = []): Promise<string> {
     execFile(
       process.execPath,
       [LINE, 'bind', ...args, '--plain', '--color', 'never'],
-      { env: { ...process.env, HOME: home, TERM_INDEX_URL: base, TERM_TOKEN: '' }, encoding: 'utf8' },
+      {
+        env: {
+          ...process.env,
+          HOME: home,
+          TERM_INDEX_URL: base,
+          TERM_TOKEN: '',
+        },
+        encoding: 'utf8',
+      },
       (_error, stdout, stderr) => resolve(`${stdout}${stderr}`),
     ),
   )
 }
 
 const kept = await bind('ws-good')
-ok('a working token is reported, and no login starts', /logged in as @alice/i.test(kept) && !asked.includes('/sessions/terminal/create!'), kept)
+ok(
+  'a working token is reported, and no login starts',
+  /logged in as @alice/i.test(kept) &&
+    !asked.includes('/sessions/terminal/create!'),
+  kept,
+)
 
 const refused = await bind('ws-revoked')
-ok('a token term.surf refuses starts a login', /no longer works/.test(refused) && asked.includes('/sessions/terminal/create!'), refused)
+ok(
+  'a token term.surf refuses starts a login',
+  /no longer works/.test(refused) &&
+    asked.includes('/sessions/terminal/create!'),
+  refused,
+)
 
 const none = await bind(undefined)
-ok('no saved token starts a login', !asked.includes('/sessions/terminal/select!') && asked.includes('/sessions/terminal/create!'), none)
+ok(
+  'no saved token starts a login',
+  !asked.includes('/sessions/terminal/select!') &&
+    asked.includes('/sessions/terminal/create!'),
+  none,
+)
 
 selectStatus = 404
 const unchecked = await bind('ws-good')
-ok('an API that cannot answer keeps the token, and no login starts', /could not be checked/.test(unchecked) && !asked.includes('/sessions/terminal/create!'), unchecked)
+ok(
+  'an API that cannot answer keeps the token, and no login starts',
+  /could not be checked/.test(unchecked) &&
+    !asked.includes('/sessions/terminal/create!'),
+  unchecked,
+)
 selectStatus = 200
 
 const again = await bind('ws-good', ['--again'])
-ok('--again starts a login whatever the token', !asked.includes('/sessions/terminal/select!') && asked.includes('/sessions/terminal/create!'), again)
+ok(
+  '--again starts a login whatever the token',
+  !asked.includes('/sessions/terminal/select!') &&
+    asked.includes('/sessions/terminal/create!'),
+  again,
+)
 
 server.close()
 console.log(`\nbind-keep: ${pass} pass, ${fail} fail`)

@@ -162,6 +162,7 @@ export function emitHvm(input: Program, gaps?: FragmentGap[]): string {
           cond: b.cond,
           value: returnedValue(b.body),
         }))
+
         const otherwise = only.otherwise
           ? returnedValue(only.otherwise)
           : undefined
@@ -215,9 +216,7 @@ export function emitHvm(input: Program, gaps?: FragmentGap[]): string {
     const lambdas = fn.params.map(p => `λ&${name(p.name)}.`).join(' ')
     const value = body(fn.body)
 
-    return `@${name(fn.name)} = ${lambdas}${
-      lambdas ? ' ' : ''
-    }${value}`
+    return `@${name(fn.name)} = ${lambdas}${lambdas ? ' ' : ''}${value}`
   }
 
   const definitions: string[] = []

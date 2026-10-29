@@ -130,7 +130,11 @@ function search(goalTerm: Term, depth: number): Term | null {
   facts.forEach(t => seen.add(showTerm(t)))
 
   for (let round = 0; round <= depth; round++) {
-    for (const t of facts) {if (proves(t)) {return t}}
+    for (const t of facts) {
+      if (proves(t)) {
+        return t
+      }
+    }
 
     const next = [...facts]
 
@@ -139,7 +143,9 @@ function search(goalTerm: Term, depth: number): Term | null {
         const c = app(f, x)
         const k = showTerm(c)
 
-        if (seen.has(k)) {continue}
+        if (seen.has(k)) {
+          continue
+        }
 
         try {
           infer(context, c)

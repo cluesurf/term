@@ -8,11 +8,21 @@
 // after an edit to `helper`, unchanged, and after a file is added.
 // Run: npx tsx test/compile/build-session.ts
 
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildSession, compileProjectSeparate, unitSlug } from '@term/call/code/make'
+import {
+  buildSession,
+  compileProjectSeparate,
+  unitSlug,
+} from '@term/call/code/make'
 import { projectCache } from '@term/call/code/cache-store'
 
 let pass = 0
@@ -32,21 +42,35 @@ function ok(name: string, cond: boolean, info = ''): void {
 // and a module the walk reaches by both names is two modules
 const root = realpathSync(mkdtempSync(join(tmpdir(), 'build-session-')))
 mkdirSync(join(root, 'code'), { recursive: true })
-writeFileSync(join(root, 'deck.tree'), `deck @probe/session\n  mark <0.0.1>\n`)
+writeFileSync(
+  join(root, 'deck.tree'),
+  `deck @probe/session\n  mark <0.0.1>\n`,
+)
 
 const helper = join(root, 'code', 'helper.tree')
 // A unit's answer is stored machine-wide, keyed by its text with the deck's root written as a token, so the temporary
 // directory is not in the key: without a text of this run's own, a second run finds both helpers already built and
 // builds nothing. The run's own comment makes every unit it builds new to the cache
 const RUN = randomUUID()
-const helperText = (word: string): string => `# run ${RUN}\nload @term/base/text\n  find trim\n\ntask greet\n  like text\n  back trim(< ${word} >)\n`
+const helperText = (word: string): string =>
+  `# run ${RUN}\nload @term/base/text\n  find trim\n\ntask greet\n  like text\n  back trim(< ${word} >)\n`
 
 writeFileSync(helper, helperText('first'))
-writeFileSync(join(root, 'code', 'base.tree'), `load ./helper\n  find greet\n\ntask main\n  like text\n  back greet()\n`)
+writeFileSync(
+  join(root, 'code', 'base.tree'),
+  `load ./helper\n  find greet\n\ntask main\n  like text\n  back greet()\n`,
+)
 // an entry the edit cannot reach, with a warning of its own: a local nothing reads
-writeFileSync(join(root, 'code', 'other.tree'), `task other\n  like number\n  save unused, 2\n  back 1\n`)
+writeFileSync(
+  join(root, 'code', 'other.tree'),
+  `task other\n  like number\n  save unused, 2\n  back 1\n`,
+)
 
-const unitText = (): string => readFileSync(join(root, 'host', '.unit', `${unitSlug(root, helper)}.ts`), 'utf8')
+const unitText = (): string =>
+  readFileSync(
+    join(root, 'host', '.unit', `${unitSlug(root, helper)}.ts`),
+    'utf8',
+  )
 const otherShim = join(root, 'host', 'code', 'other.ts')
 
 const session = buildSession(root)
@@ -55,7 +79,11 @@ const cache = projectCache(root)
 const one = compileProjectSeparate(root, cache, 'node', session)
 ok('the first build builds', one.failed === 0, one.errors.join(' | '))
 ok('and emits the helper as written', unitText().includes('first'))
-ok('the unreached entry has its warning', one.warnings.some(w => w.includes('unused')), one.warnings.join(' | '))
+ok(
+  'the unreached entry has its warning',
+  one.warnings.some(w => w.includes('unused')),
+  one.warnings.join(' | '),
+)
 
 const walkedBefore = new Map(session.walked)
 
@@ -65,30 +93,86 @@ writeFileSync(helper, helperText('second edition'))
 writeFileSync(otherShim, '// not rebuilt\n')
 
 const two = compileProjectSeparate(root, cache, 'node', session)
-ok('the rebuild after an edit builds', two.failed === 0, two.errors.join(' | '))
-ok('and emits the helper as it is now, not as the session first read it', unitText().includes('second edition'), unitText())
-ok('the edited module was walked again', session.walked.get(helper) !== walkedBefore.get(helper))
+ok(
+  'the rebuild after an edit builds',
+  two.failed === 0,
+  two.errors.join(' | '),
+)
+ok(
+  'and emits the helper as it is now, not as the session first read it',
+  unitText().includes('second edition'),
+  unitText(),
+)
+ok(
+  'the edited module was walked again',
+  session.walked.get(helper) !== walkedBefore.get(helper),
+)
 
-const kept = [...walkedBefore].filter(([file, walk]) => file.includes('/deck/base/') && session.walked.get(file) === walk)
-const stdlib = [...walkedBefore.keys()].filter(file => file.includes('/deck/base/'))
-ok('every standard library module kept its walk', stdlib.length > 0 && kept.length === stdlib.length, `${kept.length} of ${stdlib.length}`)
-ok('only the edited unit and the units above it were built', two.built > 0 && two.built <= 2, `${two.built} built`)
-ok('the entry the edit cannot reach was replayed, not built', readFileSync(otherShim, 'utf8') === '// not rebuilt\n')
-ok('with its warning', two.warnings.length === one.warnings.length, `${two.warnings.length} of ${one.warnings.length}`)
-ok('and every entry counted', two.compiled === one.compiled, `${two.compiled} of ${one.compiled}`)
+const kept = [...walkedBefore].filter(
+  ([file, walk]) =>
+    file.includes('/deck/base/') && session.walked.get(file) === walk,
+)
+const stdlib = [...walkedBefore.keys()].filter(file =>
+  file.includes('/deck/base/'),
+)
+ok(
+  'every standard library module kept its walk',
+  stdlib.length > 0 && kept.length === stdlib.length,
+  `${kept.length} of ${stdlib.length}`,
+)
+ok(
+  'only the edited unit and the units above it were built',
+  two.built > 0 && two.built <= 2,
+  `${two.built} built`,
+)
+ok(
+  'the entry the edit cannot reach was replayed, not built',
+  readFileSync(otherShim, 'utf8') === '// not rebuilt\n',
+)
+ok(
+  'with its warning',
+  two.warnings.length === one.warnings.length,
+  `${two.warnings.length} of ${one.warnings.length}`,
+)
+ok(
+  'and every entry counted',
+  two.compiled === one.compiled,
+  `${two.compiled} of ${one.compiled}`,
+)
 
 const three = compileProjectSeparate(root, cache, 'node', session)
-ok('an unchanged rebuild builds nothing', three.failed === 0 && three.built === 0, `${three.built} built`)
+ok(
+  'an unchanged rebuild builds nothing',
+  three.failed === 0 && three.built === 0,
+  `${three.built} built`,
+)
 ok('and wrote nothing', three.written === 0, `${three.written} written`)
-ok('and reports what it reported before', three.warnings.join('\n') === two.warnings.join('\n'))
+ok(
+  'and reports what it reported before',
+  three.warnings.join('\n') === two.warnings.join('\n'),
+)
 
 // a new file may be what a load that found nothing now finds, so the session starts over and every entry builds
-writeFileSync(join(root, 'code', 'added.tree'), `task added\n  like number\n  back 3\n`)
+writeFileSync(
+  join(root, 'code', 'added.tree'),
+  `task added\n  like number\n  back 3\n`,
+)
 
 const four = compileProjectSeparate(root, cache, 'node', session)
-ok('a build after a file is added builds', four.failed === 0, four.errors.join(' | '))
-ok('and builds every entry again', readFileSync(otherShim, 'utf8') !== '// not rebuilt\n')
-ok('the added file among them', four.compiled === one.compiled + 1, `${four.compiled}`)
+ok(
+  'a build after a file is added builds',
+  four.failed === 0,
+  four.errors.join(' | '),
+)
+ok(
+  'and builds every entry again',
+  readFileSync(otherShim, 'utf8') !== '// not rebuilt\n',
+)
+ok(
+  'the added file among them',
+  four.compiled === one.compiled + 1,
+  `${four.compiled}`,
+)
 
 console.log(`\nbuild-session: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)

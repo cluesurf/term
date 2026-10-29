@@ -30,9 +30,13 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
 import { mill } from '@term/make/code/compile/mill'
-import { readFeedMineGrammar, compileFeedMine } from '@term/make/code/compile/feed-mill'
+import {
+  readFeedMineGrammar,
+  compileFeedMine,
+} from '@term/make/code/compile/feed-mill'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const GRAMMAR = join(TERM, 'deck/mill/code/text/json/mine.tree')
 
@@ -120,24 +124,36 @@ const declared = text
   .filter(line => line.startsWith('mine '))
   .map(line => line.slice('mine '.length).trim())
 
-const dropped = declared.filter(name => (grammar.get(name) ?? []).length === 0)
+const dropped = declared.filter(
+  name => (grammar.get(name) ?? []).length === 0,
+)
 const unexplained = dropped.filter(name => !(name in KNOWN_DROPPED))
-const fixed = Object.keys(KNOWN_DROPPED).filter(name => !dropped.includes(name))
+const fixed = Object.keys(KNOWN_DROPPED).filter(
+  name => !dropped.includes(name),
+)
 
 ok(
   `every declared rule reads (${declared.length - dropped.length} of ${declared.length}, ${Object.keys(KNOWN_DROPPED).length} known)`,
   unexplained.length === 0,
-  unexplained.length > 0 ? `dropped with no reason: ${unexplained.join(', ')}` : '',
+  unexplained.length > 0
+    ? `dropped with no reason: ${unexplained.join(', ')}`
+    : '',
 )
 
 ok(
   'the known-dropped list has not rotted',
   fixed.length === 0,
-  fixed.length > 0 ? `${fixed.join(', ')} reads now, so take it off KNOWN_DROPPED` : '',
+  fixed.length > 0
+    ? `${fixed.join(', ')} reads now, so take it off KNOWN_DROPPED`
+    : '',
 )
 
 const miscounted = declared
-  .map(name => ({ name, got: (grammar.get(name) ?? []).length, want: RULE_COUNT[name] }))
+  .map(name => ({
+    name,
+    got: (grammar.get(name) ?? []).length,
+    want: RULE_COUNT[name],
+  }))
   .filter(entry => entry.want !== undefined && entry.got !== entry.want)
 
 ok(
@@ -161,7 +177,10 @@ const generated = parse({ file: 'json-generated.tree', text: source })
 ok('the generated reader parses', generated.ok)
 
 if (generated.ok) {
-  ok('the generated reader mills', mill(generated.tree, 'json-generated.tree').ok)
+  ok(
+    'the generated reader mills',
+    mill(generated.tree, 'json-generated.tree').ok,
+  )
 }
 
 // the dispatch: one peek, then a branch per variant
@@ -174,13 +193,17 @@ for (const [variant, code] of DISPATCH) {
     `\`value\` dispatches code ${code} to read-${variant}`,
     // the window is generous because a branch's test can be a chain of ors (`number` is a sign OR a digit range),
     // and what matters is that this code selects this reader, not how tersely the condition is written
-    new RegExp(`code ${code}\\)[\\s\\S]{0,240}call read-${variant}\\(`).test(dispatch),
+    new RegExp(
+      `code ${code}\\)[\\s\\S]{0,240}call read-${variant}\\(`,
+    ).test(dispatch),
   )
 }
 
 // the `halt` is the FALLBACK, and it belongs there: a helper that matched nothing has to refuse. What would be
 // wrong is the halt being all there is, which is what it was before the dispatch existed.
-const halted = dispatch.indexOf('halt <expected a match for value-helper-0 at position')
+const halted = dispatch.indexOf(
+  'halt <expected a match for value-helper-0 at position',
+)
 const branched = dispatch.indexOf('call read-string(')
 
 ok(

@@ -11,14 +11,26 @@
 import type { Program } from '@term/make/code/compile/node'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
-import { loweredListMembers, loweredMapMembers } from '@term/make/code/compile/lowered-members'
+import {
+  loweredListMembers,
+  loweredMapMembers,
+} from '@term/make/code/compile/lowered-members'
 
 const NATIVE = new Set(['rust', 'swift', 'kotlin'])
-const LOWERED_LIST_MEMBERS: ReadonlySet<string> = new Set(loweredListMembers())
-const LOWERED_MAP_MEMBERS: ReadonlySet<string> = new Set(loweredMapMembers())
+const LOWERED_LIST_MEMBERS: ReadonlySet<string> = new Set(
+  loweredListMembers(),
+)
+
+const LOWERED_MAP_MEMBERS: ReadonlySet<string> = new Set(
+  loweredMapMembers(),
+)
 
 // `env` is the env being emitted for, the empty text for none (check/lowered.tree)
-export function checkLoweredMembers(program: Program, file: string, env: string): Diagnostic[] {
+export function checkLoweredMembers(
+  program: Program,
+  file: string,
+  env: string,
+): Diagnostic[] {
   if (!env || !NATIVE.has(env)) {
     return []
   }
@@ -41,11 +53,23 @@ export function checkLoweredMembers(program: Program, file: string, env: string)
     const record = node as Record<string, unknown>
 
     if (record.form === 'call') {
-      const callee = record.callee as Record<string, unknown> | undefined
-      const target = callee?.form === 'member' ? (callee.target as Record<string, unknown>) : undefined
+      const callee = record.callee as
+        | Record<string, unknown>
+        | undefined
+
+      const target =
+        callee?.form === 'member'
+          ? (callee.target as Record<string, unknown>)
+          : undefined
+
       const kind = (target?.type as { kind?: string } | undefined)?.kind
       const name = callee?.name as string | undefined
-      const table = kind === 'array' ? LOWERED_LIST_MEMBERS : kind === 'map' ? LOWERED_MAP_MEMBERS : undefined
+      const table =
+        kind === 'array'
+          ? LOWERED_LIST_MEMBERS
+          : kind === 'map'
+            ? LOWERED_MAP_MEMBERS
+            : undefined
 
       if (table && name && !callee?.index && !table.has(name)) {
         const span = (callee!.span ?? record.span) as Diagnostic['span']
@@ -53,8 +77,12 @@ export function checkLoweredMembers(program: Program, file: string, env: string)
 
         if (!seen.has(at)) {
           seen.add(at)
+
           const what = kind === 'array' ? 'list' : 'hash'
-          const spelled = name.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)
+          const spelled = name.replace(
+            /[A-Z]/g,
+            letter => `-${letter.toLowerCase()}`,
+          )
 
           errors.push(
             diagnose('not-implemented', {

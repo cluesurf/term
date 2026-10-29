@@ -8,7 +8,11 @@
 import { computeStats } from '@term/make/code/time/stats'
 import { compileBenchmarks } from '@term/make/code/time/runner'
 import { benchmark } from '@term/make/code/time/benchmark'
-import { buildSuite, formatJson, fromSaved } from '@term/make/code/time/output'
+import {
+  buildSuite,
+  formatJson,
+  fromSaved,
+} from '@term/make/code/time/output'
 import * as os from 'node:os'
 
 let pass = 0
@@ -29,23 +33,37 @@ async function main(): Promise<void> {
   // since time/stats is Term (2026-10-04); and a saved file reads back as the comparison reads it
   {
     const r = computeStats('disk', [10, 20, 30])
-    const written = JSON.parse(formatJson(buildSuite([r]))) as { results: Record<string, unknown>[] }
+    const written = JSON.parse(formatJson(buildSuite([r]))) as {
+      results: Record<string, unknown>[]
+    }
     const keys = Object.keys(written.results[0]!).sort().join(',')
     ok(
       'the saved baseline is snake_case',
-      keys === 'cv,iterations,max_ns,mean_ns,median_ns,min_ns,name,ops_per_sec,std_dev_ns,timings_ns',
+      keys ===
+        'cv,iterations,max_ns,mean_ns,median_ns,min_ns,name,ops_per_sec,std_dev_ns,timings_ns',
       keys,
     )
 
     // read back as one side of a comparison (time/compare's `side`): the spread a `maybe`, the samples counted
-    const back = fromSaved(written.results[0] as Parameters<typeof fromSaved>[0])
+    const back = fromSaved(
+      written.results[0] as Parameters<typeof fromSaved>[0],
+    )
     ok(
       'a saved result reads back',
-      back.meanNs === 20 && back.stdDevNs.form === 'some' && back.stdDevNs.value === r.stdDevNs && back.samples === 3,
+      back.meanNs === 20 &&
+        back.stdDevNs.form === 'some' &&
+        back.stdDevNs.value === r.stdDevNs &&
+        back.samples === 3,
       JSON.stringify(back),
     )
     const old = fromSaved({ name: 'old', mean_ns: 5 })
-    ok('a pre-2026-10-04 baseline, the mean alone, reads back with no spread', old.meanNs === 5 && old.stdDevNs.form === 'none' && old.samples === 0, JSON.stringify(old))
+    ok(
+      'a pre-2026-10-04 baseline, the mean alone, reads back with no spread',
+      old.meanNs === 5 &&
+        old.stdDevNs.form === 'none' &&
+        old.samples === 0,
+      JSON.stringify(old),
+    )
   }
 
   // discovery finds zero-arg `time-*` tasks and respects the filter
@@ -84,7 +102,9 @@ async function main(): Promise<void> {
       root: os.tmpdir(),
       warmup: 2,
       iterations: 5,
-      baseline: { results: [fromSaved({ name: 'time-noop', mean_ns: 1e9 })] },
+      baseline: {
+        results: [fromSaved({ name: 'time-noop', mean_ns: 1e9 })],
+      },
     })
 
     ok('driver produced one result', run.suite.results.length === 1)

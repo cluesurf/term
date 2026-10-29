@@ -53,20 +53,45 @@ task run
 
 const dir = mkdtempSync(join(tmpdir(), 'term-process-rust-reach-'))
 
-const cases: { key: string; name: string; program: string; want: RegExp }[] = [
-  { key: 'attached', name: 'a program that reaches only run-attached builds and runs', program: ATTACHED, want: /^attached 3$/ },
-  { key: 'current', name: 'a program that loads process/current builds and runs', program: CURRENT, want: /^current \d+$/ },
+const cases: {
+  key: string
+  name: string
+  program: string
+  want: RegExp
+}[] = [
+  {
+    key: 'attached',
+    name: 'a program that reaches only run-attached builds and runs',
+    program: ATTACHED,
+    want: /^attached 3$/,
+  },
+  {
+    key: 'current',
+    name: 'a program that loads process/current builds and runs',
+    program: CURRENT,
+    want: /^current \d+$/,
+  },
 ]
 
 for (const one of cases) {
-  const ran = runOn({ backend: 'rust', program: one.program, resolve: env => projectResolver(process.cwd(), env), dir, name: one.key })
+  const ran = runOn({
+    backend: 'rust',
+    program: one.program,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: one.key,
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${one.name}: ${ran.reason}`)
     continue
   }
 
-  ok(`rust: ${one.name}`, ran.form === 'ran' && one.want.test(ran.output.trim()), ran.form === 'ran' ? ran.output : `${ran.stage}: ${ran.reason}`)
+  ok(
+    `rust: ${one.name}`,
+    ran.form === 'ran' && one.want.test(ran.output.trim()),
+    ran.form === 'ran' ? ran.output : `${ran.stage}: ${ran.reason}`,
+  )
 }
 
 console.log(`\nprocess-rust-reach: ${pass} pass, ${fail} fail`)

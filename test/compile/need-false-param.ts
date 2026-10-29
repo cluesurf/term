@@ -112,46 +112,119 @@ task with-maybe
 `
 
 const dir = mkdtempSync(join(tmpdir(), 'term-need-false-param-'))
-const built = compile({ file: join(dir, 'params.tree'), text: PROGRAM }, { resolve: projectResolver(process.cwd(), 'node'), env: 'node' })
+const built = compile(
+  { file: join(dir, 'params.tree'), text: PROGRAM },
+  { resolve: projectResolver(process.cwd(), 'node'), env: 'node' },
+)
 
 if (!built.ok) {
-  ok('the program builds', false, built.diagnostics.map(d => JSON.stringify(d).slice(0, 600)).join(' | '))
+  ok(
+    'the program builds',
+    false,
+    built.diagnostics
+      .map(d => JSON.stringify(d).slice(0, 600))
+      .join(' | '),
+  )
 } else {
   const emitted = built.typescript
-  const signature = (name: string): string => emitted.match(new RegExp(`function ${name}\\(([^)]*)\\)`))?.[1] ?? `(no ${name})`
+  const signature = (name: string): string =>
+    emitted.match(new RegExp(`function ${name}\\(([^)]*)\\)`))?.[1] ??
+    `(no ${name})`
 
-  ok('a need-false hash is written with its empty value', /table: Map<string, number> = new Map\(\)/.test(signature('withTable')), signature('withTable'))
-  ok('a need-false list is written with its empty value', /items: (Array<string>|string\[\]) = \[\]/.test(signature('withItems')), signature('withItems'))
-  ok('a need-false text is written with its empty value', /label: string = ""/.test(signature('withLabel')), signature('withLabel'))
+  ok(
+    'a need-false hash is written with its empty value',
+    /table: Map<string, number> = new Map\(\)/.test(
+      signature('withTable'),
+    ),
+    signature('withTable'),
+  )
+  ok(
+    'a need-false list is written with its empty value',
+    /items: (Array<string>|string\[\]) = \[\]/.test(
+      signature('withItems'),
+    ),
+    signature('withItems'),
+  )
+  ok(
+    'a need-false text is written with its empty value',
+    /label: string = ""/.test(signature('withLabel')),
+    signature('withLabel'),
+  )
 
   // tsc --strict over the emitted module: no read of a need-false parameter is `T | undefined`
   const file = join(dir, 'params.ts')
-  const options: ts.CompilerOptions = { strict: true, noEmit: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, skipLibCheck: true, lib: ['lib.es2022.d.ts'] }
+  const options: ts.CompilerOptions = {
+    strict: true,
+    noEmit: true,
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.ESNext,
+    skipLibCheck: true,
+    lib: ['lib.es2022.d.ts'],
+  }
   const host = ts.createCompilerHost(options)
   const readFile = host.readFile
-  host.readFile = (name: string) => (name === file ? emitted : readFile.call(host, name))
+  host.readFile = (name: string) =>
+    name === file ? emitted : readFile.call(host, name)
   const exists = host.fileExists
-  host.fileExists = (name: string) => name === file || exists.call(host, name)
+  host.fileExists = (name: string) =>
+    name === file || exists.call(host, name)
   const getSource = host.getSourceFile
   host.getSourceFile = (name, version, onError, create) =>
-    name === file ? ts.createSourceFile(name, emitted, version, true, ts.ScriptKind.TS) : getSource.call(host, name, version, onError, create)
+    name === file
+      ? ts.createSourceFile(
+          name,
+          emitted,
+          version,
+          true,
+          ts.ScriptKind.TS,
+        )
+      : getSource.call(host, name, version, onError, create)
   const program = ts.createProgram([file], options, host)
-  const diagnostics = ts.getPreEmitDiagnostics(program).filter(d => d.file?.fileName === file)
-  const undefinedArgument = diagnostics.filter(d => d.code === 2345 || d.code === 18048 || d.code === 2322)
+  const diagnostics = ts
+    .getPreEmitDiagnostics(program)
+    .filter(d => d.file?.fileName === file)
+  const undefinedArgument = diagnostics.filter(
+    d => d.code === 2345 || d.code === 18048 || d.code === 2322,
+  )
   ok(
     'tsc --strict refuses no read of a need-false parameter',
     undefinedArgument.length === 0,
-    undefinedArgument.map(d => `TS${d.code} ${ts.flattenDiagnosticMessageText(d.messageText, ' ')}`).join(' | '),
+    undefinedArgument
+      .map(
+        d =>
+          `TS${d.code} ${ts.flattenDiagnosticMessageText(d.messageText, ' ')}`,
+      )
+      .join(' | '),
   )
 }
 
 {
-  const maybe = compile({ file: join(dir, 'maybe.tree'), text: MAYBE_PROGRAM }, { resolve: projectResolver(process.cwd(), 'node'), env: 'node', library: true } as never)
-  const signature = maybe.ok ? (maybe.typescript.match(/function withMaybe\(([^)]*)\)/)?.[1] ?? '(no withMaybe)') : maybe.diagnostics.map(d => d.message).join(' | ')
-  ok('a need-false maybe keeps `?`, having no empty value', /extra\?: /.test(signature) && !signature.includes('='), signature)
+  const maybe = compile(
+    { file: join(dir, 'maybe.tree'), text: MAYBE_PROGRAM },
+    {
+      resolve: projectResolver(process.cwd(), 'node'),
+      env: 'node',
+      library: true,
+    } as never,
+  )
+  const signature = maybe.ok
+    ? (maybe.typescript.match(/function withMaybe\(([^)]*)\)/)?.[1] ??
+      '(no withMaybe)')
+    : maybe.diagnostics.map(d => d.message).join(' | ')
+  ok(
+    'a need-false maybe keeps `?`, having no empty value',
+    /extra\?: /.test(signature) && !signature.includes('='),
+    signature,
+  )
 }
 
-const ran = runOn({ backend: 'typescript', program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'params' })
+const ran = runOn({
+  backend: 'typescript',
+  program: PROGRAM,
+  resolve: env => projectResolver(process.cwd(), env),
+  dir,
+  name: 'params',
+})
 
 if (ran.form === 'skipped') {
   console.log(`skip  typescript: ${ran.reason}`)
@@ -159,7 +232,9 @@ if (ran.form === 'skipped') {
   ok(
     'typescript: each parameter runs left out and given',
     ran.form === 'ran' && ran.output === '1 3 1 3 1 4',
-    ran.form === 'ran' ? `got ${JSON.stringify(ran.output)}` : `${ran.stage}: ${ran.reason}`,
+    ran.form === 'ran'
+      ? `got ${JSON.stringify(ran.output)}`
+      : `${ran.stage}: ${ran.reason}`,
   )
 }
 

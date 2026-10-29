@@ -32,7 +32,11 @@ export function renderDiagnostic(
 ): string {
   // colour is asked of chalk here: the renderer is Term (parser/diagnostic.tree) and takes it as a flag, `false`
   // when left out
-  return renderKink(diagnostic, sourceLines(diagnostic, text), chalk.level > 0)
+  return renderKink(
+    diagnostic,
+    sourceLines(diagnostic, text),
+    chalk.level > 0,
+  )
 }
 
 // print a diagnostic as a Problem item of the run in progress (section 12 of note/project/term/output/standard.md): its
@@ -54,7 +58,10 @@ export function printDiagnostics(
   reportProblems(
     diagnostics.map(diagnostic => ({
       diagnostic,
-      text: forFile && diagnostic.file === forFile.file ? forFile.text : undefined,
+      text:
+        diagnostic.file === forFile?.file
+          ? forFile.text
+          : undefined,
     })),
     process.cwd(),
   )

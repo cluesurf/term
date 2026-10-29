@@ -9,12 +9,25 @@
 // And with Lean on the PATH (or at TERM_LEAN), it runs `lean` on both files: the export must check, the plant must not.
 // Without Lean that part is reported as skipped, never as passed.
 
-import { readFileSync, mkdirSync, writeFileSync, existsSync } from 'node:fs'
+import {
+  readFileSync,
+  mkdirSync,
+  writeFileSync,
+  existsSync,
+} from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
-import { exportLean, joinSources, plantLean } from '@term/make/code/check/lean-export'
+import {
+  exportLean,
+  joinSources,
+  plantLean,
+} from '@term/make/code/check/lean-export'
 import { findLean } from '@term/make/code/check/lean-run'
-import { check, contextWithSignature, evaluate } from '@term/make/code/check/judge'
+import {
+  check,
+  contextWithSignature,
+  evaluate,
+} from '@term/make/code/check/judge'
 import type { Term } from '@term/make/code/check/judge'
 
 let pass = 0
@@ -30,7 +43,8 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const BASE = new URL('../../deck/base/code/proof/', import.meta.url).pathname
+const BASE = new URL('../../deck/base/code/proof/', import.meta.url)
+  .pathname
 const FILES = [
   'equal.tree',
   'equal/refl.tree',
@@ -40,22 +54,82 @@ const FILES = [
   'equal/substitution.tree',
   'absurd.tree',
 ]
-const CLAIMS = ['refl', 'symmetry', 'transitivity', 'congruence', 'substitution', 'absurd']
+const CLAIMS = [
+  'refl',
+  'symmetry',
+  'transitivity',
+  'congruence',
+  'substitution',
+  'absurd',
+]
 
-const source = joinSources(FILES.map(file => ({ file: `proof/${file}`, text: readFileSync(join(BASE, file), 'utf8') })))
+const source = joinSources(
+  FILES.map(file => ({
+    file: `proof/${file}`,
+    text: readFileSync(join(BASE, file), 'utf8'),
+  })),
+)
 const out = exportLean(source)
 
-ok('the kernel reports no error on the stdlib proofs', out.kernel.diagnostics.length === 0, out.kernel.diagnostics.join('; '))
-ok('the claims read are the six of proof/', CLAIMS.every(c => out.claims.includes(c)) && out.claims.length === CLAIMS.length, out.claims.join(','))
-ok('every claim is proven by the kernel', CLAIMS.every(c => out.kernel.proven.includes(c)), out.kernel.proven.join(','))
-ok('every claim is exported', CLAIMS.every(c => out.exported.some(e => e.name === c && e.claim)), out.exported.map(e => e.name).join(','))
-ok('nothing is refused', out.refused.length === 0, JSON.stringify(out.refused))
-ok('no claim rests on an axiom', out.axioms.length === 0 && out.exported.every(e => e.axioms.length === 0), out.axioms.join(','))
-ok('every form is a Lean inductive', /inductive TermExport\.«equal» \(\w+ : Type\)/.test(out.lean) && out.lean.includes('inductive TermExport.«never» : Type where'))
-ok('the eliminator is defined by casesOn', out.lean.includes('@TermExport.«equal».casesOn'))
-ok('absurd recurses through the recursor, not by name', out.lean.includes('@TermExport.«never».rec') && !/def TermExport\.«absurd»[^\n]*\n[^\n]*TermExport\.«absurd»/.test(out.lean))
-ok('no sorry, no partial, no axiom in the file', !/\bsorry\b|\bpartial\b|^axiom /m.test(out.lean))
-ok('a definition comes after everything it names', out.lean.indexOf('def TermExport.«chain»') < out.lean.indexOf('def TermExport.«transitivity»') && out.lean.indexOf('inductive TermExport.«equal»') < out.lean.indexOf('def TermExport.«refl»'))
+ok(
+  'the kernel reports no error on the stdlib proofs',
+  out.kernel.diagnostics.length === 0,
+  out.kernel.diagnostics.join('; '),
+)
+ok(
+  'the claims read are the six of proof/',
+  CLAIMS.every(c => out.claims.includes(c)) &&
+    out.claims.length === CLAIMS.length,
+  out.claims.join(','),
+)
+ok(
+  'every claim is proven by the kernel',
+  CLAIMS.every(c => out.kernel.proven.includes(c)),
+  out.kernel.proven.join(','),
+)
+ok(
+  'every claim is exported',
+  CLAIMS.every(c => out.exported.some(e => e.name === c && e.claim)),
+  out.exported.map(e => e.name).join(','),
+)
+ok(
+  'nothing is refused',
+  out.refused.length === 0,
+  JSON.stringify(out.refused),
+)
+ok(
+  'no claim rests on an axiom',
+  out.axioms.length === 0 &&
+    out.exported.every(e => e.axioms.length === 0),
+  out.axioms.join(','),
+)
+ok(
+  'every form is a Lean inductive',
+  /inductive TermExport\.«equal» \(\w+ : Type\)/.test(out.lean) &&
+    out.lean.includes('inductive TermExport.«never» : Type where'),
+)
+ok(
+  'the eliminator is defined by casesOn',
+  out.lean.includes('@TermExport.«equal».casesOn'),
+)
+ok(
+  'absurd recurses through the recursor, not by name',
+  out.lean.includes('@TermExport.«never».rec') &&
+    !/def TermExport\.«absurd»[^\n]*\n[^\n]*TermExport\.«absurd»/.test(
+      out.lean,
+    ),
+)
+ok(
+  'no sorry, no partial, no axiom in the file',
+  !/\bsorry\b|\bpartial\b|^axiom /m.test(out.lean),
+)
+ok(
+  'a definition comes after everything it names',
+  out.lean.indexOf('def TermExport.«chain»') <
+    out.lean.indexOf('def TermExport.«transitivity»') &&
+    out.lean.indexOf('inductive TermExport.«equal»') <
+      out.lean.indexOf('def TermExport.«refl»'),
+)
 
 // QUANTITIES FORGOTTEN, as Lean reads a term: every binder `many`. The kept term is the zonked one, and a contextual
 // metavariable `?m a` (elaborating-terms.tree `contextual-type-meta`) used an erased generic `a` at 0 before it was
@@ -65,20 +139,38 @@ function forgetUsage(term: Term): Term {
   switch (term.tag) {
     case 'pi':
     case 'sigma':
-      return { ...term, mult: 'many', domain: forgetUsage(term.domain), codomain: forgetUsage(term.codomain) }
+      return {
+        ...term,
+        mult: 'many',
+        domain: forgetUsage(term.domain),
+        codomain: forgetUsage(term.codomain),
+      }
     case 'lam':
       return { ...term, body: forgetUsage(term.body) }
     case 'app':
-      return { ...term, fun: forgetUsage(term.fun), arg: forgetUsage(term.arg) }
+      return {
+        ...term,
+        fun: forgetUsage(term.fun),
+        arg: forgetUsage(term.arg),
+      }
     case 'ann':
-      return { ...term, term: forgetUsage(term.term), type: forgetUsage(term.type) }
+      return {
+        ...term,
+        term: forgetUsage(term.term),
+        type: forgetUsage(term.type),
+      }
     default:
       return term
   }
 }
 
 // the terms are the kernel's: Term's own judge checks each against its type again, in the signature elaboration used
-const context = contextWithSignature(out.signature.map(entry => ({ name: entry.name, type: forgetUsage(entry.type) })))
+const context = contextWithSignature(
+  out.signature.map(entry => ({
+    name: entry.name,
+    type: forgetUsage(entry.type),
+  })),
+)
 
 for (const [name, { type, value }] of out.terms) {
   let checked = true
@@ -99,7 +191,21 @@ const symmetry = out.terms.get('symmetry')!
 const app = (fun: Term, arg: Term): Term => ({ tag: 'app', fun, arg })
 const lam = (body: Term): Term => ({ tag: 'lam', body })
 // under the four binders a, x, y, proof: a is #3, x is #2
-const wrong = lam(lam(lam(lam(app(app({ tag: 'const', name: 'equal__refl' }, { tag: 'var', index: 3 }), { tag: 'var', index: 2 }))))) as Term
+const wrong = lam(
+  lam(
+    lam(
+      lam(
+        app(
+          app(
+            { tag: 'const', name: 'equal__refl' },
+            { tag: 'var', index: 3 },
+          ),
+          { tag: 'var', index: 2 },
+        ),
+      ),
+    ),
+  ),
+) as Term
 let refused = false
 
 try {
@@ -110,11 +216,25 @@ try {
 
 ok('the judge refuses the planted proof', refused)
 
-const header = out.lean.split('\n').find(line => line.startsWith('def TermExport.«symmetry»'))!
-const [typeName, xName] = [...header.matchAll(/\((\w+) : /g)].map(m => m[1]!)
-const planted = plantLean(out.lean, 'symmetry', `(@TermExport.«equal».«refl» ${typeName} ${xName})`)
-const changed = out.lean.split('\n').filter((line, i) => planted.split('\n')[i] !== line)
-ok('the plant changes exactly one line, the body of symmetry', changed.length === 1 && planted !== out.lean, `${changed.length} lines`)
+const header = out.lean
+  .split('\n')
+  .find(line => line.startsWith('def TermExport.«symmetry»'))!
+const [typeName, xName] = [...header.matchAll(/\((\w+) : /g)].map(
+  m => m[1]!,
+)
+const planted = plantLean(
+  out.lean,
+  'symmetry',
+  `(@TermExport.«equal».«refl» ${typeName} ${xName})`,
+)
+const changed = out.lean
+  .split('\n')
+  .filter((line, i) => planted.split('\n')[i] !== line)
+ok(
+  'the plant changes exactly one line, the body of symmetry',
+  changed.length === 1 && planted !== out.lean,
+  `${changed.length} lines`,
+)
 
 // A CLAIM ABOUT A TASK (term-proof-0004): its type calls `flip`, which the kernel checked and keeps as a transparent
 // definition, so the export writes `flip` as a `def` before the claim and nothing as an axiom
@@ -168,12 +288,21 @@ task flip-twice
 
 ok(
   'a claim whose type calls a task is exported, the task a def before it, no axiom',
-  aboutTask.exported.some(e => e.name === 'flip-twice' && e.claim && e.axioms.length === 0) &&
+  aboutTask.exported.some(
+    e => e.name === 'flip-twice' && e.claim && e.axioms.length === 0,
+  ) &&
     aboutTask.lean.indexOf('def TermExport.«flip»') >= 0 &&
-    aboutTask.lean.indexOf('def TermExport.«flip»') < aboutTask.lean.indexOf('def TermExport.«flip-twice»') &&
+    aboutTask.lean.indexOf('def TermExport.«flip»') <
+      aboutTask.lean.indexOf('def TermExport.«flip-twice»') &&
     aboutTask.axioms.length === 0 &&
-    aboutTask.lean.includes('(TermExport.«flip» (TermExport.«flip» g_1)) g_1)'),
-  JSON.stringify({ exported: aboutTask.exported, refused: aboutTask.refused, axioms: aboutTask.axioms }),
+    aboutTask.lean.includes(
+      '(TermExport.«flip» (TermExport.«flip» g_1)) g_1)',
+    ),
+  JSON.stringify({
+    exported: aboutTask.exported,
+    refused: aboutTask.refused,
+    axioms: aboutTask.axioms,
+  }),
 )
 
 // A CLAIM THROUGH A WALK (proof-by-default-0010): `two-last` walks a list it builds, the kernel computes the walk by its
@@ -261,12 +390,22 @@ task last-is-itself
 
 ok(
   'a claim through a walk is exported, the list an inductive and its eliminator Array.rec, no axiom',
-  throughWalk.exported.some(e => e.name === 'last-of-two' && e.claim && e.axioms.length === 0) &&
-    throughWalk.exported.some(e => e.name === 'last-is-itself' && e.claim && e.axioms.length === 0) &&
+  throughWalk.exported.some(
+    e => e.name === 'last-of-two' && e.claim && e.axioms.length === 0,
+  ) &&
+    throughWalk.exported.some(
+      e =>
+        e.name === 'last-is-itself' && e.claim && e.axioms.length === 0,
+    ) &&
     throughWalk.axioms.length === 0 &&
     throughWalk.lean.includes('inductive TermExport.«Array»') &&
     throughWalk.lean.includes('@TermExport.«Array».rec'),
-  JSON.stringify({ exported: throughWalk.exported, refused: throughWalk.refused, axioms: throughWalk.axioms, kernel: throughWalk.kernel }),
+  JSON.stringify({
+    exported: throughWalk.exported,
+    refused: throughWalk.refused,
+    axioms: throughWalk.axioms,
+    kernel: throughWalk.kernel,
+  }),
 )
 
 // write the files for a Lean run by hand
@@ -277,56 +416,118 @@ if (writeAt > 0) {
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'stdlib.lean'), out.lean)
   writeFileSync(join(dir, 'planted.lean'), planted)
-  console.log(`wrote ${join(dir, 'stdlib.lean')} and ${join(dir, 'planted.lean')}`)
+  console.log(
+    `wrote ${join(dir, 'stdlib.lean')} and ${join(dir, 'planted.lean')}`,
+  )
 }
 
 // LEAN ITSELF, at TERM_LEAN or else on the PATH, found as `term hold --lean` finds it
 const lean = findLean()
 
 if (lean) {
-  const dir = new URL('../../tmp/lean-export/run/', import.meta.url).pathname
+  const dir = new URL('../../tmp/lean-export/run/', import.meta.url)
+    .pathname
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'stdlib.lean'), out.lean)
   writeFileSync(join(dir, 'planted.lean'), planted)
-  const good = spawnSync(lean, [join(dir, 'stdlib.lean')], { encoding: 'utf8' })
-  ok('lean checks the export', good.status === 0, `${good.stdout}${good.stderr}`.slice(0, 2000))
-  const axiomFree = CLAIMS.every(c => new RegExp(`'TermExport\\.${c}' does not depend on any axioms`).test(good.stdout))
-  ok('lean reports every claim free of axioms', axiomFree, good.stdout.slice(0, 2000))
+  const good = spawnSync(lean, [join(dir, 'stdlib.lean')], {
+    encoding: 'utf8',
+  })
+  ok(
+    'lean checks the export',
+    good.status === 0,
+    `${good.stdout}${good.stderr}`.slice(0, 2000),
+  )
+  const axiomFree = CLAIMS.every(c =>
+    new RegExp(
+      `'TermExport\\.${c}' does not depend on any axioms`,
+    ).test(good.stdout),
+  )
+  ok(
+    'lean reports every claim free of axioms',
+    axiomFree,
+    good.stdout.slice(0, 2000),
+  )
   // Lean's own warnings only, `<file>:<line>:<col>: warning:`. The elan proxy says `warning: failed to query latest
   // release` on stderr when it cannot reach the network, and that is not Lean's verdict on the file (traps.md)
-  const leanWarnings = `${good.stdout}${good.stderr}`.split('\n').filter(line => /:\d+:\d+: warning:/.test(line))
-  ok('lean prints no warning on the export', leanWarnings.length === 0, leanWarnings.slice(0, 5).join(' | '))
-  const bad = spawnSync(lean, [join(dir, 'planted.lean')], { encoding: 'utf8' })
-  ok('lean refuses the planted proof', bad.status !== 0, `${bad.stdout}${bad.stderr}`.slice(0, 2000))
+  const leanWarnings = `${good.stdout}${good.stderr}`
+    .split('\n')
+    .filter(line => /:\d+:\d+: warning:/.test(line))
+  ok(
+    'lean prints no warning on the export',
+    leanWarnings.length === 0,
+    leanWarnings.slice(0, 5).join(' | '),
+  )
+  const bad = spawnSync(lean, [join(dir, 'planted.lean')], {
+    encoding: 'utf8',
+  })
+  ok(
+    'lean refuses the planted proof',
+    bad.status !== 0,
+    `${bad.stdout}${bad.stderr}`.slice(0, 2000),
+  )
   // refused for the plant and nothing else: one error, on the planted body line, and symmetry alone rests on sorry
-  const plantedLine = out.lean.split('\n').findIndex((line, i) => planted.split('\n')[i] !== line) + 1
-  const errorLines = [...`${bad.stdout}${bad.stderr}`.matchAll(/planted\.lean:(\d+):\d+: error/g)].map(m => Number(m[1]))
-  const sorried = [...bad.stdout.matchAll(/'TermExport\.(\S+)' depends on axioms: \[sorryAx\]/g)].map(m => m[1])
+  const plantedLine =
+    out.lean
+      .split('\n')
+      .findIndex((line, i) => planted.split('\n')[i] !== line) + 1
+  const errorLines = [
+    ...`${bad.stdout}${bad.stderr}`.matchAll(
+      /planted\.lean:(\d+):\d+: error/g,
+    ),
+  ].map(m => Number(m[1]))
+  const sorried = [
+    ...bad.stdout.matchAll(
+      /'TermExport\.(\S+)' depends on axioms: \[sorryAx\]/g,
+    ),
+  ].map(m => m[1])
   ok(
     'lean refuses the planted body alone',
-    errorLines.length === 1 && errorLines[0] === plantedLine && sorried.join() === 'symmetry',
+    errorLines.length === 1 &&
+      errorLines[0] === plantedLine &&
+      sorried.join() === 'symmetry',
     `errors at ${errorLines.join(', ')}, planted line ${plantedLine}, sorry in ${sorried.join(', ')}`,
   )
 
   // the walk: Lean checks the claim by computing the walk through Array.rec, and refuses the claim that it gives `a`
   writeFileSync(join(dir, 'walk.lean'), throughWalk.lean)
-  const walked = spawnSync(lean, [join(dir, 'walk.lean')], { encoding: 'utf8' })
+  const walked = spawnSync(lean, [join(dir, 'walk.lean')], {
+    encoding: 'utf8',
+  })
   ok(
     'lean checks both claims through a walk, free of axioms',
     walked.status === 0 &&
-      /'TermExport\.«last-of-two»' does not depend on any axioms/.test(walked.stdout) &&
-      /'TermExport\.«last-is-itself»' does not depend on any axioms/.test(walked.stdout),
+      /'TermExport\.«last-of-two»' does not depend on any axioms/.test(
+        walked.stdout,
+      ) &&
+      /'TermExport\.«last-is-itself»' does not depend on any axioms/.test(
+        walked.stdout,
+      ),
     `${walked.stdout}${walked.stderr}`.slice(0, 2000),
   )
   // over a list it does not know, the walk stays a fold: answering `d` for it must be refused by Lean's own reduction
-  const header = throughWalk.lean.split('\n').find(line => line.startsWith('def TermExport.«last-is-itself»'))!
+  const header = throughWalk.lean
+    .split('\n')
+    .find(line => line.startsWith('def TermExport.«last-is-itself»'))!
   const [, dName] = [...header.matchAll(/\((\w+) : /g)].map(m => m[1]!)
-  const wrongWalk = plantLean(throughWalk.lean, 'last-is-itself', `(@TermExport.«equal».«refl» TermExport.«flag» ${dName})`)
+  const wrongWalk = plantLean(
+    throughWalk.lean,
+    'last-is-itself',
+    `(@TermExport.«equal».«refl» TermExport.«flag» ${dName})`,
+  )
   writeFileSync(join(dir, 'walk-planted.lean'), wrongWalk)
-  const wrongRun = spawnSync(lean, [join(dir, 'walk-planted.lean')], { encoding: 'utf8' })
-  ok('lean refuses the claim that a walk over an unknown list gives its default', wrongRun.status !== 0, `${wrongRun.stdout}`.slice(0, 1000))
+  const wrongRun = spawnSync(lean, [join(dir, 'walk-planted.lean')], {
+    encoding: 'utf8',
+  })
+  ok(
+    'lean refuses the claim that a walk over an unknown list gives its default',
+    wrongRun.status !== 0,
+    `${wrongRun.stdout}`.slice(0, 1000),
+  )
 } else {
-  console.log('skip  lean is not installed: the Lean re-check did not run (see note/project/term/proof/lean-export/spec.md)')
+  console.log(
+    'skip  lean is not installed: the Lean re-check did not run (see note/project/term/proof/lean-export/spec.md)',
+  )
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

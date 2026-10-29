@@ -7,7 +7,10 @@
 // handed, as this did, and a variable named `hole` that nothing binds is replaced in its place by a typed hole. This
 // face hands it the overload groups, the `groups` of the bound check/overload.ts holds, read at each call.
 
-import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
+import type {
+  Diagnostic,
+  Span,
+} from '@term/make/code/parser/diagnostic'
 import type { Binding, Program } from '@term/make/code/compile/node'
 import { overloadBound } from '@term/make/code/check/overload'
 import * as port from '@term/make/code/check/resolving'
@@ -28,7 +31,10 @@ export function nameSpan(span: Span, name: string): Span {
 // over the program, so the incremental compiler builds it once and reuses it to resolve each definition in isolation.
 // See note/seed/plan/functional-checker.md (Tier 2, stage 1).
 export function buildGlobalScope(program: Program): Scope {
-  return port.buildGlobalScope(program as never, overloadBound.groups) as Scope
+  return port.buildGlobalScope(
+    program as never,
+    overloadBound.groups,
+  ) as Scope
 }
 
 export function resolve(
@@ -42,7 +48,11 @@ export function resolve(
     program as never,
     file,
     overloadBound.groups,
-    options?.scope ? { form: 'some', value: options.scope as never } : { form: 'none' },
-    options?.only !== undefined ? { form: 'some', value: options.only } : { form: 'none' },
+    options?.scope
+      ? { form: 'some', value: options.scope as never }
+      : { form: 'none' },
+    options?.only !== undefined
+      ? { form: 'some', value: options.only }
+      : { form: 'none' },
   )
 }

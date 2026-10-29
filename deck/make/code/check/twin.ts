@@ -4,12 +4,20 @@
 
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import type { Program, Twin } from '@term/make/code/compile/node'
-import { checkTwins as checkTwinsIn, isTestTwin, twinTaskName } from '@term/make/code/check/admission'
+import {
+  checkTwins as checkTwinsIn,
+  isTestTwin,
+  twinTaskName,
+} from '@term/make/code/check/admission'
 import { proves } from '@term/make/code/check/refine'
 
 // a twin declared under its package's test/: admitted by its signature alone (mocks spec 2.1)
 export { isTestTwin, twinTaskName }
 
-export function checkTwins(program: Program, twins: Twin[], file: string): Diagnostic[] {
+export function checkTwins(
+  program: Program,
+  twins: Twin[],
+  file: string,
+): Diagnostic[] {
   return checkTwinsIn(program, twins, file, proves)
 }

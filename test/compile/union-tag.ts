@@ -78,29 +78,78 @@ task make-green
 `
 
 const out = compile({ file: '/gate/code/union-tag.tree', text })
-ok('it compiles', out.ok, out.ok ? '' : out.diagnostics.map(d => d.message).join(' | '))
+ok(
+  'it compiles',
+  out.ok,
+  out.ok ? '' : out.diagnostics.map(d => d.message).join(' | '),
+)
 const ts = out.ok ? out.typescript : ''
 
-ok('the tagged union discriminates on kind', /\| \{ kind: "circle"; radius: number \}/.test(ts) && /\| \{ kind: "point" \}/.test(ts), ts.slice(ts.indexOf('type Shape'), ts.indexOf('type Shape') + 160))
-ok('the untagged union still discriminates on form', /\| \{ form: "red" \}/.test(ts), ts.slice(ts.indexOf('type Color'), ts.indexOf('type Color') + 80))
-ok('a construction writes kind', /\{ kind: "circle", radius: r \}/.test(ts), ts.slice(ts.indexOf('function makeCircle')))
-ok('a field-less constant writes kind', /Object\.freeze\(\{ kind: "point" as const \}\)/.test(ts))
-ok('the match tests kind', /\.kind === "circle"/.test(ts) && !/s\.form === "circle"/.test(ts))
+ok(
+  'the tagged union discriminates on kind',
+  /\| \{ kind: "circle"; radius: number \}/.test(ts) &&
+    /\| \{ kind: "point" \}/.test(ts),
+  ts.slice(ts.indexOf('type Shape'), ts.indexOf('type Shape') + 160),
+)
+ok(
+  'the untagged union still discriminates on form',
+  /\| \{ form: "red" \}/.test(ts),
+  ts.slice(ts.indexOf('type Color'), ts.indexOf('type Color') + 80),
+)
+ok(
+  'a construction writes kind',
+  /\{ kind: "circle", radius: r \}/.test(ts),
+  ts.slice(ts.indexOf('function makeCircle')),
+)
+ok(
+  'a field-less constant writes kind',
+  /Object\.freeze\(\{ kind: "point" as const \}\)/.test(ts),
+)
+ok(
+  'the match tests kind',
+  /\.kind === "circle"/.test(ts) && !/s\.form === "circle"/.test(ts),
+)
 // a field-less case only ever its frozen constant is tested by identity through its guard (`identityCases`), whose
 // narrowing type names the tag: `form` here, `kind` for the tagged union
-ok('the untagged match tests form', /\.form === "red"/.test(ts) || /function __termIsRed\(value: \{ form: string \}\): value is \{ form: "red" \}/.test(ts))
+ok(
+  'the untagged match tests form',
+  /\.form === "red"/.test(ts) ||
+    /function __termIsRed\(value: \{ form: string \}\): value is \{ form: "red" \}/.test(
+      ts,
+    ),
+)
 
 if (out.ok) {
   const dir = mkdtempSync(join(tmpdir(), 'term-union-tag-'))
   const file = join(dir, 'union-tag.ts')
   writeFileSync(file, ts)
-  const m = (await import(pathToFileURL(file).href)) as Record<string, (...args: unknown[]) => unknown>
+  const m = (await import(pathToFileURL(file).href)) as Record<
+    string,
+    (...args: unknown[]) => unknown
+  >
 
-  ok('a built circle carries kind', JSON.stringify(m.makeCircle!(3)) === '{"kind":"circle","radius":3}', JSON.stringify(m.makeCircle!(3)))
-  ok('a built point carries kind', JSON.stringify(m.makePoint!()) === '{"kind":"point"}', JSON.stringify(m.makePoint!()))
-  ok('the match reads a built value', m.area!(m.makeCircle!(3)) === 9 && m.area!(m.makePoint!()) === 0)
-  ok('the match reads a value built by TypeScript in the declared shape', m.area!({ kind: 'square', side: 4 }) === 16)
-  ok('the untagged union runs as before', m.colorName!(m.makeGreen!()) === 'green')
+  ok(
+    'a built circle carries kind',
+    JSON.stringify(m.makeCircle!(3)) === '{"kind":"circle","radius":3}',
+    JSON.stringify(m.makeCircle!(3)),
+  )
+  ok(
+    'a built point carries kind',
+    JSON.stringify(m.makePoint!()) === '{"kind":"point"}',
+    JSON.stringify(m.makePoint!()),
+  )
+  ok(
+    'the match reads a built value',
+    m.area!(m.makeCircle!(3)) === 9 && m.area!(m.makePoint!()) === 0,
+  )
+  ok(
+    'the match reads a value built by TypeScript in the declared shape',
+    m.area!({ kind: 'square', side: 4 }) === 16,
+  )
+  ok(
+    'the untagged union runs as before',
+    m.colorName!(m.makeGreen!()) === 'green',
+  )
 }
 
 console.log(`\nunion-tag: ${pass} pass, ${fail} fail`)

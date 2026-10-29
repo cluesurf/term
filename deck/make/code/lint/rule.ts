@@ -3,10 +3,7 @@
 // over the type-checked AST (not the CST), so they can see inferred types and resolved bindings. The driver walks the
 // program once and dispatches every enabled rule per node, so N rules cost one traversal. See plans/19-format-and-lint.
 
-import type {
-  Severity,
-  Span,
-} from '@term/make/code/parser/diagnostic'
+import type { Severity, Span } from '@term/make/code/parser/diagnostic'
 import type {
   Expression,
   Program,

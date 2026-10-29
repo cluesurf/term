@@ -12,7 +12,10 @@
 
 type Reply = { id: string; value?: unknown; exception?: unknown }
 
-type Pending = { resolve: (value: unknown) => void; reject: (reason: unknown) => void }
+type Pending = {
+  resolve: (value: unknown) => void
+  reject: (reason: unknown) => void
+}
 
 type TermBridge = {
   post: (text: string) => void
@@ -81,17 +84,35 @@ function settle(message: Reply): void {
 // bare text, which a handler read no field of
 function exceptionOf(text: string): Error {
   const split = /^([a-z][a-z0-9-]*): ([\s\S]*)$/.exec(text)
-  const form = split ? split[1]! : /^[a-z][a-z0-9-]*$/.test(text) ? text : 'failure'
+  const form = split
+    ? split[1]!
+    : /^[a-z][a-z0-9-]*$/.test(text)
+      ? text
+      : 'failure'
   const note = split ? split[2]! : text
 
-  return Object.assign(new Error(note), { name: 'TermException', host: '', form, note, code: '', time: Date.now(), link: {} })
+  return Object.assign(new Error(note), {
+    name: 'TermException',
+    host: '',
+    form,
+    note,
+    code: '',
+    time: Date.now(),
+    link: {},
+  })
 }
 
 // a line for the cask's own log. Fire and forget: `cask_log` is always allowed and answers nothing worth waiting for
 function log(text: string): void {
   const term = window.term
   if (term) {
-    term.post(JSON.stringify({ id: '', command: 'cask_log', arguments: { text } }))
+    term.post(
+      JSON.stringify({
+        id: '',
+        command: 'cask_log',
+        arguments: { text },
+      }),
+    )
   }
 }
 
@@ -126,7 +147,9 @@ function adopt(): TermBridge | undefined {
 function install(): TermBridge {
   const term = window.term ?? adopt()
   if (!term) {
-    throw new Error('This page is not inside a cask: window.term is missing')
+    throw new Error(
+      'This page is not inside a cask: window.term is missing',
+    )
   }
   if (!installed) {
     installed = true
@@ -135,11 +158,15 @@ function install(): TermBridge {
     // a page that throws inside a WebView is invisible from outside it. Every uncaught error and every rejected
     // promise nobody caught goes to the cask's log, where CASK_TRACE and the test runner can read it
     window.addEventListener('error', event => {
-      log(`page error: ${event.message} at ${event.filename}:${event.lineno}`)
+      log(
+        `page error: ${event.message} at ${event.filename}:${event.lineno}`,
+      )
     })
     window.addEventListener('unhandledrejection', event => {
       const reason = event.reason
-      log(`page rejection: ${reason instanceof Error ? `${reason.message}\n${reason.stack ?? ''}` : String(reason)}`)
+      log(
+        `page rejection: ${reason instanceof Error ? `${reason.message}\n${reason.stack ?? ''}` : String(reason)}`,
+      )
     })
   }
   return term
@@ -153,12 +180,20 @@ function install(): TermBridge {
 // release may come late and never comes early; `release` lets a page say it at once.
 const handles =
   typeof FinalizationRegistry === 'function'
-    ? new FinalizationRegistry<{ form: string; handle: string }>(held => {
-        const term = window.term
-        if (term) {
-          term.post(JSON.stringify({ id: '', command: 'cask_release', arguments: held }))
-        }
-      })
+    ? new FinalizationRegistry<{ form: string; handle: string }>(
+        held => {
+          const term = window.term
+          if (term) {
+            term.post(
+              JSON.stringify({
+                id: '',
+                command: 'cask_release',
+                arguments: held,
+              }),
+            )
+          }
+        },
+      )
     : undefined
 
 export const bridge = {
@@ -173,7 +208,11 @@ export const bridge = {
   // each message in a task of its own, so a release posted and not waited for could be overtaken by the very next
   // call using the handle, which the cask then answered. Waiting for the cask's reply is what makes "a use after
   // release is refused" true (native-dom-0019 found it, when the dispatcher gained a suspension point)
-  release(form: string, value: object, handle: string): Promise<unknown> {
+  release(
+    form: string,
+    value: object,
+    handle: string,
+  ): Promise<unknown> {
     handles?.unregister(value)
     return bridge.invoke('cask_release', { form, handle })
   },
@@ -196,7 +235,11 @@ export const bridge = {
   // through `fallback`, which is the browser's watcher. Answers the drop: it stops the events at once, then lets the
   // cask's watch go (or the page's own). A drop that comes before the cask's reply is sent again once it arrives,
   // since the cask answers each message in a task of its own and may start the watch after it heard the drop
-  watch(command: string, handler: (value: string) => unknown, fallback: (handler: (value: string) => unknown) => () => unknown): () => void {
+  watch(
+    command: string,
+    handler: (value: string) => unknown,
+    fallback: (handler: (value: string) => unknown) => () => unknown,
+  ): () => void {
     const id = `w${nextId()}`
     const name = `term-watch/${id}`
     let dropped = false
@@ -216,16 +259,15 @@ export const bridge = {
       }
     }
 
-    bridge.invoke(command, { watch: id }).then(
-      reply => {
-        if (reply === 'unhosted') {
-          page()
-        } else if (dropped) {
-          bridge.invoke('cask_unwatch', { watch: id }).catch(() => undefined)
-        }
-      },
-      page,
-    )
+    bridge.invoke(command, { watch: id }).then(reply => {
+      if (reply === 'unhosted') {
+        page()
+      } else if (dropped) {
+        bridge
+          .invoke('cask_unwatch', { watch: id })
+          .catch(() => undefined)
+      }
+    }, page)
 
     return () => {
       if (dropped) {
@@ -236,7 +278,9 @@ export const bridge = {
       if (local) {
         local()
       } else {
-        bridge.invoke('cask_unwatch', { watch: id }).catch(() => undefined)
+        bridge
+          .invoke('cask_unwatch', { watch: id })
+          .catch(() => undefined)
       }
     }
   },
@@ -259,7 +303,10 @@ export const bridge = {
   },
 
   // a command whose reply is a boolean
-  async invokeBoolean(command: string, args: unknown): Promise<boolean> {
+  async invokeBoolean(
+    command: string,
+    args: unknown,
+  ): Promise<boolean> {
     return Boolean(await bridge.invoke(command, args))
   },
 

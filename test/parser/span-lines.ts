@@ -21,18 +21,22 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 // the line each top-level group's head is on, as the span says and as the source says
-function heads(text: string): { said: number | undefined; real: string }[] {
+function heads(
+  text: string,
+): { said: number | undefined; real: string }[] {
   const parsed = parse({ file: 's.tree', text })
 
   if (!parsed.ok) {
     return []
   }
 
-  return (parsed.tree.nodes as unknown as { nodes: unknown[] }[]).map(node => {
-    const said = spanOfNode(node.nodes[0] as never)?.start.line
+  return (parsed.tree.nodes as unknown as { nodes: unknown[] }[]).map(
+    node => {
+      const said = spanOfNode(node.nodes[0] as never)?.start.line
 
-    return { said, real: text.split('\n')[said ?? -1] ?? '' }
-  })
+      return { said, real: text.split('\n')[said ?? -1] ?? '' }
+    },
+  )
 }
 
 const AFTER_LITERAL = `host a, <one
@@ -42,9 +46,21 @@ host b, 2
 host c, 3
 `
 const found = heads(AFTER_LITERAL)
-ok('a group after a three-line literal is on its own line', found[1]?.real === 'host b, 2' && found[2]?.real === 'host c, 3', JSON.stringify(found))
-ok('the literal itself still opens on its first line', found[0]?.said === 0, JSON.stringify(found))
-ok('the tree is still three groups, the literal one value', found.length === 3, JSON.stringify(found))
+ok(
+  'a group after a three-line literal is on its own line',
+  found[1]?.real === 'host b, 2' && found[2]?.real === 'host c, 3',
+  JSON.stringify(found),
+)
+ok(
+  'the literal itself still opens on its first line',
+  found[0]?.said === 0,
+  JSON.stringify(found),
+)
+ok(
+  'the tree is still three groups, the literal one value',
+  found.length === 3,
+  JSON.stringify(found),
+)
 
 // an interpolation inside a literal that spans lines, then a raw literal, then a code line
 const MIXED = `host name, <x>
@@ -56,7 +72,12 @@ host raw, <<a>b>>
 host last, 1
 `
 const mixed = heads(MIXED)
-ok('after a literal holding interpolations over lines, the next group is on its line', mixed[2]?.real.startsWith('host raw') === true && mixed[3]?.real === 'host last, 1', JSON.stringify(mixed))
+ok(
+  'after a literal holding interpolations over lines, the next group is on its line',
+  mixed[2]?.real.startsWith('host raw') === true &&
+    mixed[3]?.real === 'host last, 1',
+  JSON.stringify(mixed),
+)
 
 // and the place a compiler error is reported: the line the name is on
 const BROKEN = `host greeting, <hello
@@ -67,10 +88,13 @@ task f
   send back, read missing-name
 `
 const result = compile({ file: 'b.tree', text: BROKEN })
-const error = result.ok ? undefined : result.diagnostics.find(d => d.message.includes('missing-name'))
+const error = result.ok
+  ? undefined
+  : result.diagnostics.find(d => d.message.includes('missing-name'))
 ok(
   'an error after a literal over two lines points at its own line',
-  error?.span?.start.line === BROKEN.split('\n').findIndex(line => line.includes('missing-name')),
+  error?.span?.start.line ===
+    BROKEN.split('\n').findIndex(line => line.includes('missing-name')),
   `reported ${error?.span?.start.line}`,
 )
 
@@ -80,8 +104,17 @@ two>
 host b, 2
 `
 const parsed = parse({ file: 'c.tree', text: CLOSING })
-const second = parsed.ok ? spanOfNode((parsed.tree.nodes[1] as unknown as { nodes: unknown[] }).nodes[0] as never) : undefined
-ok('a group after the literal starts at column 0 of its line', second?.start.line === 2 && second?.start.column === 0, JSON.stringify(second))
+const second = parsed.ok
+  ? spanOfNode(
+      (parsed.tree.nodes[1] as unknown as { nodes: unknown[] })
+        .nodes[0] as never,
+    )
+  : undefined
+ok(
+  'a group after the literal starts at column 0 of its line',
+  second?.start.line === 2 && second?.start.column === 0,
+  JSON.stringify(second),
+)
 
 console.log(`\nspan-lines: ${pass} pass, ${fail} fail`)
 

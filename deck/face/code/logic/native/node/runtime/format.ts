@@ -22,7 +22,9 @@ export const format = {
   // current high-resolution time in ms (SSR). Never drives a committed visibility decision (the server render is
   // re-rendered on the client), but present so the abstract `now-ms` resolves on both platforms.
   now(): number {
-    return typeof performance !== 'undefined' ? performance.now() : Date.now()
+    return typeof performance !== 'undefined'
+      ? performance.now()
+      : Date.now()
   },
 
   // the font class token for a family + suffix ("font-CrowMark", "font-CrowMark-fallback", "font-CrowMark-waiting").

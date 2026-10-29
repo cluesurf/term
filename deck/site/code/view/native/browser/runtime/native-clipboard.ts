@@ -4,7 +4,10 @@
 
 export const nativeClipboard = {
   live(): boolean {
-    return typeof navigator !== 'undefined' && typeof navigator.clipboard?.readText === 'function'
+    return (
+      typeof navigator !== 'undefined' &&
+      typeof navigator.clipboard?.readText === 'function'
+    )
   },
 
   // the text on the clipboard now, or empty text when it holds none or the browser refuses to say

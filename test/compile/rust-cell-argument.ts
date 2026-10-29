@@ -54,25 +54,63 @@ task swap
 
 const want = 'cba'
 
-const node = compile({ file: 'swap.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!), entryPoints: ['swap'] })
+const node = compile(
+  { file: 'swap.tree', text },
+  {
+    resolve: withNativeEnv('node', stdlibResolver()!),
+    entryPoints: ['swap'],
+  },
+)
 
 if (!node.ok) {
-  ok('the program builds for node', false, node.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the program builds for node',
+    false,
+    node.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
 } else {
   const dir = mkdtempSync(join(tmpdir(), 'term-rust-cell-argument-'))
   const file = join(dir, 'module.mjs')
-  writeFileSync(file, transformSync(node.typescript, { loader: 'ts', format: 'esm' }).code)
-  const mod = (await import(pathToFileURL(file).href)) as { swap: () => string }
-  ok('TypeScript swaps through set and get', mod.swap() === want, mod.swap())
+  writeFileSync(
+    file,
+    transformSync(node.typescript, { loader: 'ts', format: 'esm' })
+      .code,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as {
+    swap: () => string
+  }
+  ok(
+    'TypeScript swaps through set and get',
+    mod.swap() === want,
+    mod.swap(),
+  )
 }
 
-const built = compile({ file: 'swap.tree', text }, { resolve: withNativeEnv('rust', stdlibResolver()!), env: 'rust', entryPoints: ['swap'] })
+const built = compile(
+  { file: 'swap.tree', text },
+  {
+    resolve: withNativeEnv('rust', stdlibResolver()!),
+    env: 'rust',
+    entryPoints: ['swap'],
+  },
+)
 
 if (!built.ok) {
-  ok('the program builds for rust', false, built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the program builds for rust',
+    false,
+    built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
 } else {
   const rust = `${emitRust(built.program)}\nfn main() {\n    println!("{}", swap());\n}\n`
-  ok('no argument borrows the cell a sibling argument hands over', !/list_set\(items\.clone\(\), [^;]*items\.borrow\(\)/.test(rust), rust.split('\n').filter(l => /list_set\(items/.test(l)).join(' | '))
+  ok(
+    'no argument borrows the cell a sibling argument hands over',
+    !/list_set\(items\.clone\(\), [^;]*items\.borrow\(\)/.test(rust),
+    rust
+      .split('\n')
+      .filter(l => /list_set\(items/.test(l))
+      .join(' | '),
+  )
 
   const rustc = spawnSync('rustc', ['--version'], { encoding: 'utf8' })
 
@@ -82,12 +120,35 @@ if (!built.ok) {
     const dir = mkdtempSync(join(tmpdir(), 'term-rust-cell-argument-'))
     writeFileSync(join(dir, 'main.rs'), rust)
     const binary = join(dir, 'main')
-    const out = spawnSync('rustc', ['--edition', '2021', '-A', 'warnings', '-o', binary, join(dir, 'main.rs')], { encoding: 'utf8' })
-    ok('rustc compiles it', out.status === 0, out.stderr.split('\n').filter(l => /^error/.test(l)).join(' | '))
+    const out = spawnSync(
+      'rustc',
+      [
+        '--edition',
+        '2021',
+        '-A',
+        'warnings',
+        '-o',
+        binary,
+        join(dir, 'main.rs'),
+      ],
+      { encoding: 'utf8' },
+    )
+    ok(
+      'rustc compiles it',
+      out.status === 0,
+      out.stderr
+        .split('\n')
+        .filter(l => /^error/.test(l))
+        .join(' | '),
+    )
 
     if (out.status === 0) {
       const ran = spawnSync(binary, [], { encoding: 'utf8' })
-      ok('Rust answers what TypeScript does, without a borrow panic', ran.stdout.trim() === want, (ran.stdout + ran.stderr).trim())
+      ok(
+        'Rust answers what TypeScript does, without a borrow panic',
+        ran.stdout.trim() === want,
+        (ran.stdout + ran.stderr).trim(),
+      )
     }
   }
 }

@@ -9,7 +9,9 @@ export const nativeNotification = {
     }
 
     if (Notification.permission !== 'granted') {
-      return Notification.permission === 'denied' ? 'denied' : 'not-determined'
+      return Notification.permission === 'denied'
+        ? 'denied'
+        : 'not-determined'
     }
 
     try {

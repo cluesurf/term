@@ -119,8 +119,9 @@ async function main(): Promise<void> {
 
     const checkAll = (): Promise<void> =>
       run(fw, async cx => {
-        for (const n of await fw.defNames(cx, files))
-          {await fw.checkDef(cx, files, n)}
+        for (const n of await fw.defNames(cx, files)) {
+          await fw.checkDef(cx, files, n)
+        }
       })
 
     ok(
@@ -199,8 +200,9 @@ async function main(): Promise<void> {
 
     const resolveAll = (): Promise<void> =>
       run(rc, async cx => {
-        for (const n of await rc.defNames(cx, files))
-          {await rc.resolvedDef(cx, files, n)}
+        for (const n of await rc.defNames(cx, files)) {
+          await rc.resolvedDef(cx, files, n)
+        }
       })
 
     const caller = await run(rc, cx =>
@@ -371,7 +373,9 @@ async function main(): Promise<void> {
 
   console.log(`\nincremental: ${pass} pass, ${fail} fail`)
 
-  if (fail > 0) {process.exit(1)}
+  if (fail > 0) {
+    process.exit(1)
+  }
 }
 
 // span-free structural key, mirroring the compiler's backdating equality (for test assertions)

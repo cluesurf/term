@@ -45,7 +45,7 @@ export type Equals<T> = (a: T, b: T) => boolean
 
 // the handle a query body uses to read inputs and sub-queries. Reads record themselves as dependencies of the running
 // query, onto THIS context's frame (not a global stack), so tracking stays correct across `await` points.
-export interface Cx {
+export type Cx = {
   input<T>(key: string): T
   query<T>(
     key: string,
@@ -80,7 +80,9 @@ export class Database {
     value: unknown,
     durability: Durability = LOW,
   ): void {
-    const same = hasInput(this.store, key) && Object.is(inputValue(this.store, key), value)
+    const same =
+      hasInput(this.store, key) &&
+      Object.is(inputValue(this.store, key), value)
 
     setInput(this.store, key, value, durability, same)
   }
@@ -199,7 +201,9 @@ export class Database {
     const cx = this.makeContext(childActive)
     const value = await compute(cx)
     // backdating is decided by the store: an equal result keeps the old changedAt, so dependents are not invalidated
-    const equal = hasMemo(this.store, key) && equals(memoValue(this.store, key), value)
+    const equal =
+      hasMemo(this.store, key) &&
+      equals(memoValue(this.store, key), value)
 
     storeResult(this.store, key, value, equal, cx.frame)
     this.recipes.set(key, { compute, equals })
@@ -243,7 +247,12 @@ export class Database {
       if (await this.depsChanged(key)) {
         const recipe = this.recipes.get(key)!
 
-        await this.resolveKey(key, recipe.compute, recipe.equals, new Set())
+        await this.resolveKey(
+          key,
+          recipe.compute,
+          recipe.equals,
+          new Set(),
+        )
       } else {
         markVerified(this.store, key)
       }

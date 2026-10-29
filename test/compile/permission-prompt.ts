@@ -28,16 +28,28 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 // which button each run presses: allow the camera on the first app, deny it on the second
-const ANSWER = (process.env.PROMPT_ANSWER ?? 'allow') as 'allow' | 'deny'
+const ANSWER = (process.env.PROMPT_ANSWER ?? 'allow') as
+  | 'allow'
+  | 'deny'
 
 // the allow and deny buttons of Android's permission dialog, by their resource ids (Android 11 on), which do not change
 // with the language the emulator speaks
 const BUTTONS = {
-  allow: ['permission_allow_foreground_only_button', 'permission_allow_button', 'permission_allow_one_time_button'],
-  deny: ['permission_deny_button', 'permission_deny_and_dont_ask_again_button'],
+  allow: [
+    'permission_allow_foreground_only_button',
+    'permission_allow_button',
+    'permission_allow_one_time_button',
+  ],
+  deny: [
+    'permission_deny_button',
+    'permission_deny_and_dont_ask_again_button',
+  ],
 }
 
-const program = (_leg: Leg, shot: string): string => `load @term/site/code/dom/native/toolkit/dom
+const program = (
+  _leg: Leg,
+  shot: string,
+): string => `load @term/site/code/dom/native/toolkit/dom
   find open-root
   find launch
   find run-app
@@ -90,25 +102,41 @@ task main
 `
 
 function step(output: string, name: string): string {
-  const line = output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
+  const line =
+    output.split('\n').find(l => l.includes(`step ${name} `)) ?? ''
 
-  return line.slice(line.indexOf(`step ${name} `) + `step ${name} `.length).trim()
+  return line
+    .slice(line.indexOf(`step ${name} `) + `step ${name} `.length)
+    .trim()
 }
 
 // While the app waits on its prompt, find the dialog's button and tap its centre, as a person would. Runs beside the
 // launch: `prepare` starts it in the background with `sh -c` so the harness's own launch and log read are not held up
-function prepare(leg: Leg, target: { serial?: string; identifier: string }): void {
+function prepare(
+  leg: Leg,
+  target: { serial?: string; identifier: string },
+): void {
   if (!target.serial) {
     return
   }
 
   const adb = androidTools().adb
   // the grant cleared, so the app asks from not-determined. `pm clear` would also clear the asked flag the runtime keeps
-  spawnSync(adb, ['-s', target.serial, 'shell', 'pm', 'revoke', target.identifier, 'android.permission.CAMERA'])
+  spawnSync(adb, [
+    '-s',
+    target.serial,
+    'shell',
+    'pm',
+    'revoke',
+    target.identifier,
+    'android.permission.CAMERA',
+  ])
   // A second Node process, detached, so the harness goes on to launch the app: it reads the screen through
   // `uiautomator dump` once a second for a minute, and the first time one of the buttons is there it taps its centre.
   // From this machine rather than in the device's own shell, whose quoting the loop did not survive
-  const ids = BUTTONS[ANSWER].map(id => `com.android.permissioncontroller:id/${id}`)
+  const ids = BUTTONS[ANSWER].map(
+    id => `com.android.permissioncontroller:id/${id}`,
+  )
   const script = `
     const { spawnSync } = require('node:child_process')
     const adb = (...args) => spawnSync(${JSON.stringify(adb)}, ['-s', ${JSON.stringify(target.serial)}, ...args], { encoding: 'utf8' })
@@ -126,21 +154,52 @@ function prepare(leg: Leg, target: { serial?: string; identifier: string }): voi
       }
       spawnSync('sleep', ['1'])
     }`
-  spawn(process.execPath, ['-e', script], { detached: true, stdio: 'ignore' }).unref()
+  spawn(process.execPath, ['-e', script], {
+    detached: true,
+    stdio: 'ignore',
+  }).unref()
 }
 
 function judge(leg: Leg, toolkit: string, output: string): void {
   const named = `${leg} (${toolkit})`
-  ok(`${named}: before asking, the camera reads not-determined`, step(output, 'before') === 'not-determined', step(output, 'before'))
+  ok(
+    `${named}: before asking, the camera reads not-determined`,
+    step(output, 'before') === 'not-determined',
+    step(output, 'before'),
+  )
 
   if (ANSWER === 'allow') {
-    ok(`${named}: the platform's prompt came up, allow was tapped, and the request answers granted`, step(output, 'after') === 'granted', step(output, 'after'))
-    ok(`${named}: and the grant reads granted after`, step(output, 'now') === 'granted', step(output, 'now'))
-    ok(`${named}: so the photo it was asked for is taken`, step(output, 'photo').startsWith('photo '), step(output, 'photo'))
+    ok(
+      `${named}: the platform's prompt came up, allow was tapped, and the request answers granted`,
+      step(output, 'after') === 'granted',
+      step(output, 'after'),
+    )
+    ok(
+      `${named}: and the grant reads granted after`,
+      step(output, 'now') === 'granted',
+      step(output, 'now'),
+    )
+    ok(
+      `${named}: so the photo it was asked for is taken`,
+      step(output, 'photo').startsWith('photo '),
+      step(output, 'photo'),
+    )
   } else {
-    ok(`${named}: the platform's prompt came up, deny was tapped, and the request answers denied`, step(output, 'after') === 'denied', step(output, 'after'))
-    ok(`${named}: and the grant reads denied after, not not-determined`, step(output, 'now') === 'denied', step(output, 'now'))
-    ok(`${named}: so the photo answers denied, and no camera opened`, step(output, 'photo') === 'denied', step(output, 'photo'))
+    ok(
+      `${named}: the platform's prompt came up, deny was tapped, and the request answers denied`,
+      step(output, 'after') === 'denied',
+      step(output, 'after'),
+    )
+    ok(
+      `${named}: and the grant reads denied after, not not-determined`,
+      step(output, 'now') === 'denied',
+      step(output, 'now'),
+    )
+    ok(
+      `${named}: so the photo answers denied, and no camera opened`,
+      step(output, 'photo') === 'denied',
+      step(output, 'photo'),
+    )
   }
 }
 

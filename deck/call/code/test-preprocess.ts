@@ -5,7 +5,11 @@
 // consumes the `test` grammar (term.tree/code/code/test), this step folds into the mint with no change to any test
 // file. See note/library/seed/test-dsl.md.
 
-import type { Diagnostic, Position, Span } from '@term/make/code/parser/diagnostic'
+import type {
+  Diagnostic,
+  Position,
+  Span,
+} from '@term/make/code/parser/diagnostic'
 import { parseTolerant, renderHead } from '@term/make/code/parser/tree'
 import { groupsOf } from '@term/make/code/parser/narrow'
 import type { Node } from '@term/make/code/parser/tree'
@@ -96,7 +100,10 @@ function guard(
   part?: { at: number; of: number },
 ): { lines: string[]; from: number[] } {
   const line = numbers[0]!
-  const marker = part ? `${WANT_FAILED}${line + 1} part ${part.at} of ${part.of}` : `${WANT_FAILED}${line + 1}`
+  const marker = part
+    ? `${WANT_FAILED}${line + 1} part ${part.at} of ${part.of}`
+    : `${WANT_FAILED}${line + 1}`
+
   const suffix = part ? `-${part.at}` : ''
   // the head line is `want <mode>` with the condition indented under it, or the one-line form
   // `want <mode>, <expr>` with the condition inline after the comma. The inline expression used to
@@ -104,12 +111,14 @@ function guard(
   const head = /^want(?:\s+(hold|miss))?\s*(?:,\s*(.*))?$/.exec(
     group[0]!.trim(),
   )
+
   const mode = head?.[1] ?? 'hold'
   const inline = head?.[2]?.trim()
   // the body (everything under the `want` line) is the boolean condition; shift it +2 to sit under `hook test`
   const condition = inline
     ? [`      ${inline}`]
     : group.slice(1).map(line => (blank(line) ? line : `  ${line}`))
+
   const conditionFrom = inline ? [line] : numbers.slice(1)
 
   const failOn = mode === 'miss' ? 'hook hold' : 'hook miss'
@@ -121,7 +130,10 @@ function guard(
       : conjuncts(
           inline
             ? [{ text: inline, from: line }]
-            : group.slice(1).map((text, at) => ({ text, from: numbers[at + 1]! })).filter(row => !blank(row.text)),
+            : group
+                .slice(1)
+                .map((text, at) => ({ text, from: numbers[at + 1]! }))
+                .filter(row => !blank(row.text)),
         )
 
   if (parts) {
@@ -131,11 +143,20 @@ function guard(
     parts.forEach((rows, at) => {
       const checked =
         rows.length === 1 && rows[0]!.from === line
-          ? guard([`want hold, ${rows[0]!.text}`], [line], false, { at: at + 1, of: parts.length })
+          ? guard([`want hold, ${rows[0]!.text}`], [line], false, {
+              at: at + 1,
+              of: parts.length,
+            })
           : // a written `want` stands at two and its condition at four, which `guard` moves under `hook test` at six;
             // a part's rows come dedented to nothing, so they are set at four like the condition they were part of. At
             // two, a stacked `and`'s parts landed outside `hook test`, and the emitted `if` lost its test
-            guard(['  want hold', ...rows.map(row => `    ${row.text}`)], [line, ...rows.map(row => row.from)], false, { at: at + 1, of: parts.length })
+            guard(
+              ['  want hold', ...rows.map(row => `    ${row.text}`)],
+              [line, ...rows.map(row => row.from)],
+              false,
+              { at: at + 1, of: parts.length },
+            )
+
       lines.push(...checked.lines)
       from.push(...checked.from)
     })
@@ -148,13 +169,20 @@ function guard(
     : comparison(
         inline
           ? [{ text: inline, from: line }]
-          : group.slice(1).map((text, at) => ({ text, from: numbers[at + 1]! })).filter(row => !blank(row.text)),
+          : group
+              .slice(1)
+              .map((text, at) => ({ text, from: numbers[at + 1]! }))
+              .filter(row => !blank(row.text)),
       )
 
   if (compared) {
     const left = `want-left-${line + 1}${suffix}`
     const right = `want-right-${line + 1}${suffix}`
-    const saved = [...saveOf(left, compared.left, line), ...saveOf(right, compared.right, line)]
+    const saved = [
+      ...saveOf(left, compared.left, line),
+      ...saveOf(right, compared.right, line),
+    ]
+
     const rest = [
       '  fork test',
       '    hook test',
@@ -188,7 +216,14 @@ function guard(
 }
 
 // the comparisons whose two values a failing `want` reports
-const COMPARISONS = new Set(['is-equal', 'is-unequal', 'is-above', 'is-below', 'is-minimum', 'is-maximum'])
+const COMPARISONS = new Set([
+  'is-equal',
+  'is-unequal',
+  'is-above',
+  'is-below',
+  'is-minimum',
+  'is-maximum',
+])
 
 // a condition that is ONE comparison of two values: the comparison and each value's own source text. The pieces are
 // cut at the comparison's top-level commas (inline) or are its two lines (stacked), and each is then read again by
@@ -200,10 +235,16 @@ const COMPARISONS = new Set(['is-equal', 'is-unequal', 'is-above', 'is-below', '
 // it. A value is the lines it was written on, one or several, dedented
 type Row = { text: string; from: number }
 
-function comparison(rows: Row[]): { head: string; left: Row[]; right: Row[] } | undefined {
+function comparison(
+  rows: Row[],
+): { head: string; left: Row[]; right: Row[] } | undefined {
   // the condition's lines at their own indent, so the comparison is a top-level group
   const base = Math.min(...rows.map(row => indentOf(row.text)))
-  const flat = rows.map(row => ({ text: row.text.slice(base), from: row.from }))
+  const flat = rows.map(row => ({
+    text: row.text.slice(base),
+    from: row.from,
+  }))
+
   const source = flat.map(row => row.text).join('\n')
   const parsed = parseTolerant({ file: 'want.tree', text: source })
 
@@ -221,11 +262,21 @@ function comparison(rows: Row[]): { head: string; left: Row[]; right: Row[] } | 
   const first = head?.kind === 'name' ? renderHead(head) : undefined
   // `call is-equal`: the comparison is the word under `call`, and the values follow it
   const inner = first === 'call' ? group.nodes[1] : undefined
-  const named = inner?.kind === 'group' && inner.nodes.length === 1 && inner.nodes[0]?.kind === 'name' ? renderHead(inner.nodes[0]) : undefined
+  const named =
+    inner?.kind === 'group' &&
+    inner.nodes.length === 1 &&
+    inner.nodes[0]?.kind === 'name'
+      ? renderHead(inner.nodes[0])
+      : undefined
+
   const word = first === 'call' ? named : first
   const values = group.nodes.slice(first === 'call' ? 2 : 1)
 
-  if (word === undefined || !COMPARISONS.has(word) || values.length !== 2) {
+  if (
+    word === undefined ||
+    !COMPARISONS.has(word) ||
+    values.length !== 2
+  ) {
     return undefined
   }
 
@@ -237,14 +288,22 @@ function comparison(rows: Row[]): { head: string; left: Row[]; right: Row[] } | 
   if (flat.length === 1) {
     // `is-equal a, b`, or `is-equal(a, b)` with its values inside its own parentheses
     const wrapped = /^[\w-]+\((.*)\)$/.exec(source)
-    const cut = wrapped ? topLevelPieces(wrapped[1]!) : inlineArguments(source)
-    pieces.push(...cut.map(piece => [{ text: piece, from: flat[0]!.from }]))
+    const cut = wrapped
+      ? topLevelPieces(wrapped[1]!)
+      : inlineArguments(source)
+
+    pieces.push(
+      ...cut.map(piece => [{ text: piece, from: flat[0]!.from }]),
+    )
   } else {
     for (const row of flat.slice(1)) {
       if (indentOf(row.text) === 2) {
         pieces.push([{ text: row.text.slice(2), from: row.from }])
       } else if (indentOf(row.text) > 2 && pieces.length > 0) {
-        pieces[pieces.length - 1]!.push({ text: row.text.slice(2), from: row.from })
+        pieces[pieces.length - 1]!.push({
+          text: row.text.slice(2),
+          from: row.from,
+        })
       } else {
         return undefined
       }
@@ -253,11 +312,18 @@ function comparison(rows: Row[]): { head: string; left: Row[]; right: Row[] } | 
 
   const stacked = flat.length > 1
 
-  if (pieces.length !== 2 || !pieces.every((piece, at) => readsAs(piece, stacked, values[at]!))) {
+  if (
+    pieces.length !== 2 ||
+    !pieces.every((piece, at) => readsAs(piece, stacked, values[at]!))
+  ) {
     return undefined
   }
 
-  return { head: first === 'call' ? `call ${word}` : word, left: pieces[0]!, right: pieces[1]! }
+  return {
+    head: first === 'call' ? `call ${word}` : word,
+    left: pieces[0]!,
+    right: pieces[1]!,
+  }
 }
 
 // A CONDITION THAT IS AN `and` OF PARTS: each part's own rows, in order, so a failing `want` can be checked part by
@@ -268,7 +334,11 @@ function comparison(rows: Row[]): { head: string; left: Row[]; right: Row[] } | 
 // read again by the parser and must give back the node `and` holds, or the condition is left whole
 function conjuncts(rows: Row[]): Row[][] | undefined {
   const base = Math.min(...rows.map(row => indentOf(row.text)))
-  const flat = rows.map(row => ({ text: row.text.slice(base), from: row.from }))
+  const flat = rows.map(row => ({
+    text: row.text.slice(base),
+    from: row.from,
+  }))
+
   const source = flat.map(row => row.text).join('\n')
   const parsed = parseTolerant({ file: 'want.tree', text: source })
 
@@ -280,7 +350,13 @@ function conjuncts(rows: Row[]): Row[][] | undefined {
   const head = group?.nodes[0]
   const first = head?.kind === 'name' ? renderHead(head) : undefined
   const inner = first === 'call' ? group!.nodes[1] : undefined
-  const named = inner?.kind === 'group' && inner.nodes.length === 1 && inner.nodes[0]?.kind === 'name' ? renderHead(inner.nodes[0]) : undefined
+  const named =
+    inner?.kind === 'group' &&
+    inner.nodes.length === 1 &&
+    inner.nodes[0]?.kind === 'name'
+      ? renderHead(inner.nodes[0])
+      : undefined
+
   const word = first === 'call' ? named : first
   const values = group?.nodes.slice(first === 'call' ? 2 : 1) ?? []
 
@@ -293,14 +369,22 @@ function conjuncts(rows: Row[]): Row[][] | undefined {
   if (flat.length === 1) {
     const text = flat[0]!.text
     const wrapped = /^and\((.*)\)$/.exec(text)
-    const cut = wrapped ? topLevelPieces(wrapped[1]!) : inlineArguments(text)
-    pieces.push(...cut.map(piece => [{ text: piece, from: flat[0]!.from }]))
+    const cut = wrapped
+      ? topLevelPieces(wrapped[1]!)
+      : inlineArguments(text)
+
+    pieces.push(
+      ...cut.map(piece => [{ text: piece, from: flat[0]!.from }]),
+    )
   } else {
     for (const row of flat.slice(1)) {
       if (indentOf(row.text) === 2) {
         pieces.push([{ text: row.text.slice(2), from: row.from }])
       } else if (indentOf(row.text) > 2 && pieces.length > 0) {
-        pieces[pieces.length - 1]!.push({ text: row.text.slice(2), from: row.from })
+        pieces[pieces.length - 1]!.push({
+          text: row.text.slice(2),
+          from: row.from,
+        })
       } else {
         return undefined
       }
@@ -309,7 +393,10 @@ function conjuncts(rows: Row[]): Row[][] | undefined {
 
   const stacked = flat.length > 1
 
-  if (pieces.length !== values.length || !pieces.every((piece, at) => readsAs(piece, stacked, values[at]!))) {
+  if (
+    pieces.length !== values.length ||
+    !pieces.every((piece, at) => readsAs(piece, stacked, values[at]!))
+  ) {
     return undefined
   }
 
@@ -325,12 +412,21 @@ function topLevelPieces(text: string): string[] {
   }
 
   const cuts: number[] = []
+
   let depth = 0
 
   for (const token of tokens.tokens.list) {
-    if (token.kind === 'open-paren' || token.kind === 'open-angle' || token.kind === 'open-brace') {
+    if (
+      token.kind === 'open-paren' ||
+      token.kind === 'open-angle' ||
+      token.kind === 'open-brace'
+    ) {
       depth++
-    } else if (token.kind === 'close-paren' || token.kind === 'close-angle' || token.kind === 'close-brace') {
+    } else if (
+      token.kind === 'close-paren' ||
+      token.kind === 'close-angle' ||
+      token.kind === 'close-brace'
+    ) {
       depth--
     } else if (token.kind === 'comma' && depth === 0) {
       cuts.push(token.span.start.column)
@@ -340,15 +436,28 @@ function topLevelPieces(text: string): string[] {
   const ends = [...cuts, text.length]
   const begins = [0, ...cuts.map(cut => cut + 1)]
 
-  return begins.map((begin, at) => text.slice(begin, ends[at]).trim()).filter(one => one.length > 0)
+  return begins
+    .map((begin, at) => text.slice(begin, ends[at]).trim())
+    .filter(one => one.length > 0)
 }
 
 // `save <name>` of a value: on its line when it was written inline, else the value's own lines under it, each the
 // text the person wrote at another indent, so a diagnostic on one is placed back on its line and column. The `save`
 // line itself is placed on the `want`
-function saveOf(name: string, value: Row[], want: number, stacked = value.length > 1 || value[0]!.from !== want): Row[] {
+function saveOf(
+  name: string,
+  value: Row[],
+  want: number,
+  stacked = value.length > 1 || value[0]!.from !== want,
+): Row[] {
   return stacked
-    ? [{ text: `  save ${name}`, from: want }, ...value.map(row => ({ text: `    ${row.text}`, from: row.from }))]
+    ? [
+        { text: `  save ${name}`, from: want },
+        ...value.map(row => ({
+          text: `    ${row.text}`,
+          from: row.from,
+        })),
+      ]
     : [{ text: `  save ${name}, ${value[0]!.text}`, from: want }]
 }
 
@@ -362,6 +471,7 @@ function inlineArguments(line: string): string[] {
 
   // each piece is the line between two cuts, as written, so an escape inside a text survives
   const cuts: number[] = []
+
   let start: number | undefined
   let depth = 0
   let past = false
@@ -374,9 +484,17 @@ function inlineArguments(line: string): string[] {
       continue
     }
 
-    if (token.kind === 'open-paren' || token.kind === 'open-angle' || token.kind === 'open-brace') {
+    if (
+      token.kind === 'open-paren' ||
+      token.kind === 'open-angle' ||
+      token.kind === 'open-brace'
+    ) {
       depth++
-    } else if (token.kind === 'close-paren' || token.kind === 'close-angle' || token.kind === 'close-brace') {
+    } else if (
+      token.kind === 'close-paren' ||
+      token.kind === 'close-angle' ||
+      token.kind === 'close-brace'
+    ) {
       depth--
     }
 
@@ -392,21 +510,35 @@ function inlineArguments(line: string): string[] {
   const ends = [...cuts, line.length]
   const begins = [start, ...cuts.map(cut => cut + 1)]
 
-  return begins.map((begin, at) => line.slice(begin, ends[at]).trim()).filter(one => one.length > 0)
+  return begins
+    .map((begin, at) => line.slice(begin, ends[at]).trim())
+    .filter(one => one.length > 0)
 }
 
 // does `save x` of a piece hold, beside `x`, exactly the node `want`
 function readsAs(piece: Row[], stacked: boolean, want: Node): boolean {
-  const written = saveOf('x', piece, -1, stacked).map(row => row.text.slice(2))
-  const parsed = parseTolerant({ file: 'want.tree', text: written.join('\n') })
-  const saved = parsed.diagnostics.length === 0 ? groupsOf(parsed.tree.nodes)[0]?.nodes.slice(2) : undefined
+  const written = saveOf('x', piece, -1, stacked).map(row =>
+    row.text.slice(2),
+  )
+
+  const parsed = parseTolerant({
+    file: 'want.tree',
+    text: written.join('\n'),
+  })
+
+  const saved =
+    parsed.diagnostics.length === 0
+      ? groupsOf(parsed.tree.nodes)[0]?.nodes.slice(2)
+      : undefined
 
   return saved?.length === 1 && shapeOf(saved[0]!) === shapeOf(want)
 }
 
 // a node's structure, for comparing two parses: kinds and words, spans and comments aside
 function shapeOf(node: Node): string {
-  return node.kind === 'group' ? `(${node.nodes.map(shapeOf).join(' ')})` : `${node.kind}:${renderHead(node)}`
+  return node.kind === 'group'
+    ? `(${node.nodes.map(shapeOf).join(' ')})`
+    : `${node.kind}:${renderHead(node)}`
 }
 
 // declared once in a file whose `want`s compare values: the exception `guard` raises with the two values, a `failure`
@@ -462,7 +594,10 @@ const SAMPLED_RUNS = 100
 const SAMPLED_SIZE = 20
 
 // the type a `take` samples as: a scalar by its word, a list by what it holds
-type SampledType = { kind: 'number' | 'text' | 'boolean' } | { kind: 'list'; item: SampledType } | { kind: 'refused'; written: string }
+type SampledType =
+  | { kind: 'number' | 'text' | 'boolean' }
+  | { kind: 'list'; item: SampledType }
+  | { kind: 'refused'; written: string }
 
 function sampledTypeOf(like: Form | undefined): SampledType {
   const word = like?.terms[0]
@@ -478,14 +613,20 @@ function sampledTypeOf(like: Form | undefined): SampledType {
   if (word === 'list') {
     const item = like?.forms.find(form => form.head === 'like')
 
-    return item ? { kind: 'list', item: sampledTypeOf(item) } : { kind: 'refused', written: 'list of no stated type' }
+    return item
+      ? { kind: 'list', item: sampledTypeOf(item) }
+      : { kind: 'refused', written: 'list of no stated type' }
   }
 
   return { kind: 'refused', written: word ?? 'no type' }
 }
 
 const refusedIn = (type: SampledType): string | undefined =>
-  type.kind === 'refused' ? type.written : type.kind === 'list' ? refusedIn(type.item) : undefined
+  type.kind === 'refused'
+    ? type.written
+    : type.kind === 'list'
+      ? refusedIn(type.item)
+      : undefined
 
 // the shape a type samples by, as a call
 function shapeCall(type: SampledType): string {
@@ -529,6 +670,7 @@ function sampledTest(input: {
 }): Row[] {
   const { slug, at, lines } = input
   const rows: Row[] = []
+
   const add = (text: string, from = at): void => {
     rows.push({ text, from })
   }
@@ -539,15 +681,24 @@ function sampledTest(input: {
     const read = readTree({ file: 'take.tree', text })
     const take = read.ok ? read.forms[0] : undefined
 
-    return { name: take?.terms[0] ?? 'value', type: sampledTypeOf(take?.forms.find(form => form.head === 'like')), group }
+    return {
+      name: take?.terms[0] ?? 'value',
+      type: sampledTypeOf(
+        take?.forms.find(form => form.head === 'like'),
+      ),
+      group,
+    }
   })
+
   const refused = inputs.find(one => refusedIn(one.type) !== undefined)
 
   // a type no sample is drawn for is the test's own failure, said when it runs
   if (refused) {
     add(`task ${slug}`)
     add('  like boolean')
-    add(`  halt <a sampled test takes number, text, boolean or a list of them, and "${refused.name}" is ${refusedIn(refused.type)}>`)
+    add(
+      `  halt <a sampled test takes number, text, boolean or a list of them, and "${refused.name}" is ${refusedIn(refused.type)}>`,
+    )
     add('')
 
     return rows
@@ -558,12 +709,21 @@ function sampledTest(input: {
   inputs.forEach(one => one.group.forEach(n => add(lines[n]!, n)))
   add('  like boolean')
 
-  for (const group of input.groups.filter(group => !input.takes.includes(group))) {
+  for (const group of input.groups.filter(
+    group => !input.takes.includes(group),
+  )) {
     const head = lines[group[0]!]!.trim().split(/[\s,]/)[0]!
 
     if (head === ASSERTION) {
-      const written = guard(group.map(n => lines[n]!), group, input.plainWants)
-      written.lines.forEach((text, n) => add(text, written.from[n] ?? group[0]!))
+      const written = guard(
+        group.map(n => lines[n]!),
+        group,
+        input.plainWants,
+      )
+
+      written.lines.forEach((text, n) =>
+        add(text, written.from[n] ?? group[0]!),
+      )
     } else {
       group.forEach(n => add(lines[n]!, n))
     }
@@ -575,9 +735,14 @@ function sampledTest(input: {
 
   // a list input read back out of its sample, one task per level
   const readers: string[] = []
+
   const reader = (type: SampledType, name: string): string => {
     if (type.kind !== 'list') {
-      return type.kind === 'text' ? 'sampled-text-in' : type.kind === 'boolean' ? 'sampled-flag-in' : 'sampled-number-in'
+      return type.kind === 'text'
+        ? 'sampled-text-in'
+        : type.kind === 'boolean'
+          ? 'sampled-flag-in'
+          : 'sampled-number-in'
     }
 
     const each = reader(type.item, `${name}-item`)
@@ -597,7 +762,11 @@ function sampledTest(input: {
 
     return name
   }
-  const reads = inputs.map((one, n) => `${reader(one.type, `${slug}-input-${n}`)}(sampled-argument-at(value, ${n}))`)
+
+  const reads = inputs.map(
+    (one, n) =>
+      `${reader(one.type, `${slug}-input-${n}`)}(sampled-argument-at(value, ${n}))`,
+  )
 
   readers.forEach(text => text.split('\n').forEach(line => add(line)))
 
@@ -624,7 +793,9 @@ function sampledTest(input: {
     add(`  names/push(<${one.name}>)`)
     add(`  types/push(${shapeCall(one.type)})`)
   })
-  add(`  save found, sampled-check(sampled-make-record-shape(names, types), ${slug}-claim, ${SAMPLED_RUNS}, ${seedOf(input.label)}, ${SAMPLED_SIZE})`)
+  add(
+    `  save found, sampled-check(sampled-make-record-shape(names, types), ${slug}-claim, ${SAMPLED_RUNS}, ${seedOf(input.label)}, ${SAMPLED_SIZE})`,
+  )
   add('  fork test, found/ok')
   add('    hold')
   add('      back true')
@@ -705,16 +876,28 @@ function snapshotWant(
   const inline = SNAPSHOT_HEAD.exec(group[0]!.trim())?.[1]?.trim()
   const name = `want-snapshot-${line + 1}`
   const saved = inline
-    ? { lines: [`  save ${name}, term-snapshot-of(${inline})`], from: [line] }
+    ? {
+        lines: [`  save ${name}, term-snapshot-of(${inline})`],
+        from: [line],
+      }
     : {
         // the value sat under `want snapshot` at four, and sits under `call term-snapshot-of` at six
-        lines: [`  save ${name}`, '    call term-snapshot-of', ...group.slice(1).map(text => (blank(text) ? text : `  ${text}`))],
+        lines: [
+          `  save ${name}`,
+          '    call term-snapshot-of',
+          ...group
+            .slice(1)
+            .map(text => (blank(text) ? text : `  ${text}`)),
+        ],
         from: [line, line, ...numbers.slice(1)],
       }
 
   if (snapshots?.update) {
     return {
-      lines: [...saved.lines, `  term-snapshot-take(<${escapeText(label)}>, ${name})`],
+      lines: [
+        ...saved.lines,
+        `  term-snapshot-take(<${escapeText(label)}>, ${name})`,
+      ],
       from: [...saved.from, line],
     }
   }
@@ -723,14 +906,24 @@ function snapshotWant(
 
   if (stored === undefined) {
     return {
-      lines: [...saved.lines, `  halt <no snapshot is stored for line ${line + 1}: term test --update writes it>`],
+      lines: [
+        ...saved.lines,
+        `  halt <no snapshot is stored for line ${line + 1}: term test --update writes it>`,
+      ],
       from: [...saved.from, line],
     }
   }
 
-  const held = guard([`want hold, is-equal ${name}, <${escapeText(stored)}>`], [line], plain)
+  const held = guard(
+    [`want hold, is-equal ${name}, <${escapeText(stored)}>`],
+    [line],
+    plain,
+  )
 
-  return { lines: [...saved.lines, ...held.lines], from: [...saved.from, ...held.from] }
+  return {
+    lines: [...saved.lines, ...held.lines],
+    from: [...saved.from, ...held.from],
+  }
 }
 
 // the seed a sampled test draws from, fixed by its phrase: the same values every run, and different ones per test
@@ -750,7 +943,10 @@ const WANT_FAILED = 'want:'
 
 // The line a failing `want` names, and, for a comparison, the two values it compared:
 // `line 12 did not hold: want hold, is-equal double(0), 1, left 0, right 1`. `raised` is what the test threw
-export function wantFailed(raised: unknown, source: string): string | undefined {
+export function wantFailed(
+  raised: unknown,
+  source: string,
+): string | undefined {
   const line = wantLine(raised)
 
   if (line === undefined) {
@@ -761,11 +957,16 @@ export function wantFailed(raised: unknown, source: string): string | undefined 
   const marker = markerOf(raised) ?? ''
   const part = /part \d+ of \d+/.exec(marker)?.[0]
   // and the input a sampled test failed at, after the marker
-  const at = marker.includes(SAMPLED_AT) ? marker.slice(marker.indexOf(SAMPLED_AT) + SAMPLED_AT.length) : undefined
+  const at = marker.includes(SAMPLED_AT)
+    ? marker.slice(marker.indexOf(SAMPLED_AT) + SAMPLED_AT.length)
+    : undefined
+
   const said = `line ${line + 1} did not hold${part ? `, ${part}` : ''}: ${source.split('\n')[line]?.trim() ?? ''}${at ? `, at ${at}` : ''}`
   const link = linkOf(raised)
 
-  return link && 'left' in link && 'right' in link ? `${said}, left ${shown(link.left)}, right ${shown(link.right)}` : said
+  return link && 'left' in link && 'right' in link
+    ? `${said}, left ${shown(link.left)}, right ${shown(link.right)}`
+    : said
 }
 
 // the marker a failing `want` raised: its `thing` when it carries the compared values, else its `note`
@@ -773,7 +974,11 @@ function markerOf(raised: unknown): string | undefined {
   const note = (raised as { note?: unknown } | null)?.note
   const thing = linkOf(raised)?.thing
 
-  return typeof thing === 'string' && thing.startsWith(WANT_FAILED) ? thing : typeof note === 'string' ? note : undefined
+  return typeof thing === 'string' && thing.startsWith(WANT_FAILED)
+    ? thing
+    : typeof note === 'string'
+      ? note
+      : undefined
 }
 
 // the line, counted from zero, of the `want` a failing test's marker names, or undefined for any other raise. The
@@ -781,7 +986,9 @@ function markerOf(raised: unknown): string | undefined {
 export function wantLine(raised: unknown): number | undefined {
   const marker = markerOf(raised)
   // `want:12`, or `want:12 part 2 of 3` for a part of an `and`
-  const line = marker?.startsWith(WANT_FAILED) ? Number(/^\d+/.exec(marker.slice(WANT_FAILED.length))?.[0] ?? NaN) : NaN
+  const line = marker?.startsWith(WANT_FAILED)
+    ? Number(/^\d+/.exec(marker.slice(WANT_FAILED.length))?.[0] ?? NaN)
+    : NaN
 
   return Number.isInteger(line) && line > 0 ? line - 1 : undefined
 }
@@ -789,7 +996,9 @@ export function wantLine(raised: unknown): number | undefined {
 function linkOf(raised: unknown): Record<string, unknown> | undefined {
   const link = (raised as { link?: unknown } | null)?.link
 
-  return typeof link === 'object' && link !== null ? (link as Record<string, unknown>) : undefined
+  return typeof link === 'object' && link !== null
+    ? (link as Record<string, unknown>)
+    : undefined
 }
 
 // a value as Term writes it: a text in angle brackets, a list in brackets, a hash or a record in braces, a `maybe` by
@@ -854,8 +1063,12 @@ function takenNames(lines: string[]): Set<string> {
   const taken = new Set<string>()
 
   for (const line of lines) {
-    const defined = /^(?:task|form|rule|bind|host)\s+([^\s,]+)/.exec(line)
-    const found = /^\s+find\s+([^\s,]+)(?:.*,\s*name\s+([^\s,]+))?/.exec(line)
+    const defined = /^(?:task|form|rule|bind|host)\s+([^\s,]+)/.exec(
+      line,
+    )
+
+    const found =
+      /^\s+find\s+([^\s,]+)(?:.*,\s*name\s+([^\s,]+))?/.exec(line)
 
     if (defined) {
       taken.add(defined[1]!)
@@ -884,10 +1097,16 @@ export function readable(
   snapshots?: Snapshots,
 ): {
   text: string
-  place: (diagnostic: Diagnostic) => { diagnostic: Diagnostic; text: string }
+  place: (diagnostic: Diagnostic) => {
+    diagnostic: Diagnostic
+    text: string
+  }
 } {
   if (!carriesTests(source)) {
-    return { text: source, place: diagnostic => ({ diagnostic, text: source }) }
+    return {
+      text: source,
+      place: diagnostic => ({ diagnostic, text: source }),
+    }
   }
 
   const rewritten = preprocessTests(source, { snapshots })
@@ -905,9 +1124,17 @@ export function readable(
         ? position.column + indentOf(written) - indentOf(compiled)
         : indentOf(written)
 
-    return { line, column: Math.max(0, Math.min(written.length, column)) }
+    return {
+      line,
+      column: Math.max(0, Math.min(written.length, column)),
+    }
   }
-  const span = (s: Span): Span => ({ ...s, start: at(s.start), end: at(s.end) })
+
+  const span = (s: Span): Span => ({
+    ...s,
+    start: at(s.start),
+    end: at(s.end),
+  })
 
   return {
     text: rewritten.text,
@@ -915,7 +1142,10 @@ export function readable(
       diagnostic: {
         ...diagnostic,
         span: span(diagnostic.span),
-        markers: diagnostic.markers.map(m => ({ ...m, span: span(m.span) })),
+        markers: diagnostic.markers.map(m => ({
+          ...m,
+          span: span(m.span),
+        })),
       },
       text: source,
     }),
@@ -926,13 +1156,17 @@ export function readable(
 // backend's report reads a raise's `note` and cannot read the values a `want-missed` carries in its `link`, a generic
 // field that is a boxed dynamic there, so a run on Rust, Swift or Kotlin (`term test --env`) names the line that did not
 // hold and not the values (call/code/test-native.ts)
-export function preprocessTests(source: string, options: { plainWants?: boolean; snapshots?: Snapshots } = {}): Preprocessed {
+export function preprocessTests(
+  source: string,
+  options: { plainWants?: boolean; snapshots?: Snapshots } = {},
+): Preprocessed {
   const lines = source.split('\n')
   const out: string[] = []
   const origin: number[] = []
   const labels = new Map<string, string>()
   const heads = new Map<string, number>()
   const taken = takenNames(lines)
+
   // whether a `want` compares two values, so the file needs WANT_PRELUDE
   let compares = false
   // whether a test takes inputs, so the file needs SAMPLED_PRELUDE
@@ -961,7 +1195,10 @@ export function preprocessTests(source: string, options: { plainWants?: boolean;
     const parsed = parseName(header[1]!)
     const label = parsed.label
     // a test whose name the file already uses for something else gets a task name of its own
-    const slug = taken.has(parsed.slug) ? `${parsed.slug}-test` : parsed.slug
+    const slug = taken.has(parsed.slug)
+      ? `${parsed.slug}-test`
+      : parsed.slug
+
     labels.set(slug, label)
     heads.set(slug, at)
     // gather the block body: the following lines that are blank or indented
@@ -979,11 +1216,21 @@ export function preprocessTests(source: string, options: { plainWants?: boolean;
 
     // a test that TAKES inputs is a property, checked on sampled values of their types
     const groups = statements(lines, body, 2)
-    const takes = groups.filter(group => lines[group[0]!]!.trim().split(/[\s,]/)[0] === 'take')
+    const takes = groups.filter(
+      group => lines[group[0]!]!.trim().split(/[\s,]/)[0] === 'take',
+    )
 
     if (takes.length > 0) {
       sampled = true
-      sampledTest({ slug, label, at, lines, groups, takes, plainWants: true }).forEach(row => emit(row.text, row.from))
+      sampledTest({
+        slug,
+        label,
+        at,
+        lines,
+        groups,
+        takes,
+        plainWants: true,
+      }).forEach(row => emit(row.text, row.from))
       continue
     }
 
@@ -998,18 +1245,40 @@ export function preprocessTests(source: string, options: { plainWants?: boolean;
     for (const group of groups) {
       const head = lines[group[0]!]!.trim().split(/[\s,]/)[0]!
 
-      if (head === ASSERTION && SNAPSHOT_HEAD.test(lines[group[0]!]!.trim())) {
-        const written = snapshotWant(group.map(n => lines[n]!), group, label, snapshotsTaken, options.snapshots, options.plainWants === true)
+      if (
+        head === ASSERTION &&
+        SNAPSHOT_HEAD.test(lines[group[0]!]!.trim())
+      ) {
+        const written = snapshotWant(
+          group.map(n => lines[n]!),
+          group,
+          label,
+          snapshotsTaken,
+          options.snapshots,
+          options.plainWants === true,
+        )
 
         snapshotsTaken += 1
         snapshotted = true
-        compares ||= written.lines.some(text => text.trim() === 'halt want-missed')
-        written.lines.forEach((text, n) => emit(text, written.from[n] ?? group[0]!))
+        compares ||= written.lines.some(
+          text => text.trim() === 'halt want-missed',
+        )
+        written.lines.forEach((text, n) =>
+          emit(text, written.from[n] ?? group[0]!),
+        )
       } else if (head === ASSERTION) {
-        const written = guard(group.map(n => lines[n]!), group, options.plainWants === true)
+        const written = guard(
+          group.map(n => lines[n]!),
+          group,
+          options.plainWants === true,
+        )
 
-        compares ||= written.lines.some(text => text.trim() === 'halt want-missed')
-        written.lines.forEach((text, n) => emit(text, written.from[n] ?? group[0]!))
+        compares ||= written.lines.some(
+          text => text.trim() === 'halt want-missed',
+        )
+        written.lines.forEach((text, n) =>
+          emit(text, written.from[n] ?? group[0]!),
+        )
       } else {
         group.forEach(n => emit(lines[n]!, n))
       }
@@ -1031,7 +1300,10 @@ export function preprocessTests(source: string, options: { plainWants?: boolean;
   }
 
   if (snapshotted) {
-    const prelude = [...SNAPSHOT_PRELUDE, ...(options.snapshots?.update ? SNAPSHOT_RECORD : [])]
+    const prelude = [
+      ...SNAPSHOT_PRELUDE,
+      ...(options.snapshots?.update ? SNAPSHOT_RECORD : []),
+    ]
 
     out.unshift(...prelude)
     origin.unshift(...prelude.map(() => 0))

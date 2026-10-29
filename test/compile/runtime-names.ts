@@ -6,7 +6,12 @@
 // text/util's `join`: the collision stays exercised. Skips without swiftc. Run: npx tsx test/compile/runtime-names.ts
 
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
@@ -91,29 +96,77 @@ writeFileSync(entry, PROGRAM)
 // the dom is the memory host, so the tree can be printed
 const base = projectResolver(ROOT, 'swift')
 const resolve = (importPath: string, fromFile: string) =>
-  base(importPath.replace(/dom\/native\/\{platform\}\/(dom|view)$/, 'dom/native/memory/$1'), fromFile)
-const result = compile({ file: entry, text: PROGRAM }, { resolve, env: 'swift' })
-ok('the program compiles for swift', result.ok, result.ok ? '' : result.diagnostics.slice(0, 3).map(d => d.message).join(' | '))
+  base(
+    importPath.replace(
+      /dom\/native\/\{platform\}\/(dom|view)$/,
+      'dom/native/memory/$1',
+    ),
+    fromFile,
+  )
+const result = compile(
+  { file: entry, text: PROGRAM },
+  { resolve, env: 'swift' },
+)
+ok(
+  'the program compiles for swift',
+  result.ok,
+  result.ok
+    ? ''
+    : result.diagnostics
+        .slice(0, 3)
+        .map(d => d.message)
+        .join(' | '),
+)
 
 if (result.ok) {
   const swift = emitSwift(result.program)
-  const readRuntime = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, 'utf8') : undefined)
-  const prelude = nativePrelude(result.program, 'swift', readRuntime, swift)
-  ok('the string runtime is in it, as `strings`', prelude.includes('enum strings'))
+  const readRuntime = (file: string): string | undefined =>
+    existsSync(file) ? readFileSync(file, 'utf8') : undefined
+  const prelude = nativePrelude(
+    result.program,
+    'swift',
+    readRuntime,
+    swift,
+  )
+  ok(
+    'the string runtime is in it, as `strings`',
+    prelude.includes('enum strings'),
+  )
   const file = join(dir, 'names.swift')
   // the shared main: `run` joins through the docked string runtime, so it can raise `failure` (term/compiler decision
   // 001) and is `throws`, which a bare `print(run())` does not build against
-  writeFileSync(file, ['import Foundation', prelude, swift, nativeMain('swift', swift), ''].join('\n'))
+  writeFileSync(
+    file,
+    [
+      'import Foundation',
+      prelude,
+      swift,
+      nativeMain('swift', swift),
+      '',
+    ].join('\n'),
+  )
   const exe = join(dir, 'names')
 
   try {
     execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
     ok('swiftc builds it: no redeclaration of text', true)
     const run = spawnSync(exe, [], { encoding: 'utf8' })
-    ok('it runs, the joined text in the `text` component', run.stdout.trim() === '<main><span>a,b</span></main>', run.stdout + run.stderr)
+    ok(
+      'it runs, the joined text in the `text` component',
+      run.stdout.trim() === '<main><span>a,b</span></main>',
+      run.stdout + run.stderr,
+    )
   } catch (error) {
     const text = String((error as { stderr?: Buffer }).stderr ?? error)
-    ok('swiftc builds it: no redeclaration of text', false, text.split('\n').filter(l => /error:/.test(l)).join('\n').slice(0, 800))
+    ok(
+      'swiftc builds it: no redeclaration of text',
+      false,
+      text
+        .split('\n')
+        .filter(l => /error:/.test(l))
+        .join('\n')
+        .slice(0, 800),
+    )
   }
 }
 

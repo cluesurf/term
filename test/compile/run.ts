@@ -95,8 +95,9 @@ async function loadModule(
   if (!result.ok) {
     const lines = source.split('\n')
 
-    for (const d of result.diagnostics)
-      {console.log(render(d, lines, false))}
+    for (const d of result.diagnostics) {
+      console.log(render(d, lines, false))
+    }
 
     throw new Error('compile failed')
   }
@@ -144,8 +145,9 @@ async function main(): Promise<void> {
   if (!conditional.ok) {
     const lines = CONDITIONAL_EXPRESSION.split('\n')
 
-    for (const d of conditional.diagnostics)
-      {console.log(render(d, lines, false))}
+    for (const d of conditional.diagnostics) {
+      console.log(render(d, lines, false))
+    }
 
     throw new Error('conditional compile failed')
   }
@@ -169,53 +171,88 @@ async function main(): Promise<void> {
   expect('classify(0)', mod.classify(0), 'non-positive')
 
   // a mistake the compiler used to accept silently is a diagnostic at the site
-  const findAs = compile({ file: 'a.tree', text: 'load ./x\n  find get as pick\n\ntask f\n  like number\n  send back, code 1\n' })
+  const findAs = compile({
+    file: 'a.tree',
+    text: 'load ./x\n  find get as pick\n\ntask f\n  like number\n  send back, code 1\n',
+  })
   expect(
     '`find get as pick` is refused at the import and names the alias form',
-    !findAs.ok && findAs.diagnostics.some(d => d.message.includes('find get, name pick')),
+    !findAs.ok &&
+      findAs.diagnostics.some(d =>
+        d.message.includes('find get, name pick'),
+      ),
     true,
   )
 
-  const braced = compile({ file: 'b.tree', text: 'task f\n  take items, like list\n    like number\n  like number\n  send back, read items/{0}\n' })
+  const braced = compile({
+    file: 'b.tree',
+    text: 'task f\n  take items, like list\n    like number\n  like number\n  send back, read items/{0}\n',
+  })
   expect(
     '`read items/{0}` is refused and names /0',
-    !braced.ok && braced.diagnostics.some(d => d.message.includes('write /0')),
+    !braced.ok &&
+      braced.diagnostics.some(d => d.message.includes('write /0')),
     true,
   )
 
   // a brace in a plain text literal used to compile to an empty string, and then was refused. Since the second lean
   // pass there is one brace syntax: `{x}` naming a parameter is filled at run time, exactly as `{{x}}` is
-  const templateBrace = compile({ file: 't.tree', text: 'task f\n  take x, like text\n  like text\n  send back, text <a/{x}/b>\n' })
+  const templateBrace = compile({
+    file: 't.tree',
+    text: 'task f\n  take x, like text\n  like text\n  send back, text <a/{x}/b>\n',
+  })
   expect(
     '`{x}` in a plain text literal interpolates a parameter at run time',
-    templateBrace.ok && templateBrace.typescript.includes('return `a/${x}/b`'),
+    templateBrace.ok &&
+      templateBrace.typescript.includes('return `a/${x}/b`'),
     true,
   )
 
   // runtime interpolation: `{{x}}` and `{{e/form}}` in a text literal, a template literal on TypeScript
-  const runtimeBrace = compile({ file: 'r.tree', text: 'task f\n  take x, like text\n  take n, like number\n  like text\n  send back, text <a/{{x}}/b {{n}}>\n' })
+  const runtimeBrace = compile({
+    file: 'r.tree',
+    text: 'task f\n  take x, like text\n  take n, like number\n  like text\n  send back, text <a/{{x}}/b {{n}}>\n',
+  })
   expect(
     '`{{x}}` interpolates at run time as a template literal',
-    runtimeBrace.ok && runtimeBrace.typescript.includes('return `a/${x}/b ${n}`'),
+    runtimeBrace.ok &&
+      runtimeBrace.typescript.includes('return `a/${x}/b ${n}`'),
     true,
   )
 
-  const pathBrace = compile({ file: 'q.tree', text: 'form pair\n  link left, like text\n  link right, like text\n\ntask f\n  take p, like pair\n  like text\n  send back, text <{{p/left}}-{{p/right}}>\n' })
+  const pathBrace = compile({
+    file: 'q.tree',
+    text: 'form pair\n  link left, like text\n  link right, like text\n\ntask f\n  take p, like pair\n  like text\n  send back, text <{{p/left}}-{{p/right}}>\n',
+  })
   expect(
     '`{{p/left}}` interpolates a path',
-    pathBrace.ok && pathBrace.typescript.includes('return `${p.left}-${p.right}`'),
+    pathBrace.ok &&
+      pathBrace.typescript.includes('return `${p.left}-${p.right}`'),
     true,
   )
 
-  const unknownInterpolation = compile({ file: 'u.tree', text: 'task f\n  like text\n  send back, text <a {{nothing}} b>\n' })
+  const unknownInterpolation = compile({
+    file: 'u.tree',
+    text: 'task f\n  like text\n  send back, text <a {{nothing}} b>\n',
+  })
   expect(
     'an interpolated name that does not exist is refused',
-    !unknownInterpolation.ok && unknownInterpolation.diagnostics.some(d => d.message.includes('"nothing" is not defined')),
+    !unknownInterpolation.ok &&
+      unknownInterpolation.diagnostics.some(d =>
+        d.message.includes('"nothing" is not defined'),
+      ),
     true,
   )
 
-  const escaped = compile({ file: 'e.tree', text: 'task f\n  like text\n  send back, text <a \\{x\\} b>\n' })
-  expect('escaped braces stay literal text', escaped.ok && escaped.typescript.includes('"a {x} b"'), true)
+  const escaped = compile({
+    file: 'e.tree',
+    text: 'task f\n  like text\n  send back, text <a \\{x\\} b>\n',
+  })
+  expect(
+    'escaped braces stay literal text',
+    escaped.ok && escaped.typescript.includes('"a {x} b"'),
+    true,
+  )
 
   console.log(`\ncompile: ${pass} pass, ${fail} fail`)
 }

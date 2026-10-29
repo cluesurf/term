@@ -29,19 +29,21 @@ function ok(name: string, cond: boolean, info = ''): void {
 function frontEnd(text: string): Program {
   const parsed = parse({ file: 't.tree', text })
 
-  if (!parsed.ok)
-    {throw new Error(
+  if (!parsed.ok) {
+    throw new Error(
       'parse failed: ' +
         parsed.diagnostics.map(d => d.message).join('; '),
-    )}
+    )
+  }
 
   const built = mill(expandTemplates(parsed.tree), 't.tree')
 
-  if (!built.ok)
-    {throw new Error(
+  if (!built.ok) {
+    throw new Error(
       'mill failed: ' +
         built.diagnostics.map(d => d.message).join('; '),
-    )}
+    )
+  }
 
   resolve(built.program, 't.tree')
   check(built.program, 't.tree')

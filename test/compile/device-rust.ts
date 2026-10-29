@@ -7,7 +7,12 @@
 //
 // The person's clipboard is kept and put back. Skips without rustc. Run: npx tsx test/compile/device-rust.ts
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runOn } from './shared/run-on'
@@ -75,49 +80,112 @@ task run
 // the battery the platform reports, as `<level> <state>`'s level, or undefined with no battery
 function platformLevel(): number | undefined {
   if (process.platform === 'darwin') {
-    const percent = /(\d+)%/.exec(spawnSync('pmset', ['-g', 'batt'], { encoding: 'utf8' }).stdout)?.[1]
+    const percent = /(\d+)%/.exec(
+      spawnSync('pmset', ['-g', 'batt'], { encoding: 'utf8' }).stdout,
+    )?.[1]
 
     return percent === undefined ? undefined : Number(percent) / 100
   }
 
   const root = '/sys/class/power_supply'
-  const battery = existsSync(root) ? readdirSync(root).find(one => readFileSync(join(root, one, 'type'), 'utf8').trim() === 'Battery') : undefined
+  const battery = existsSync(root)
+    ? readdirSync(root).find(
+        one =>
+          readFileSync(join(root, one, 'type'), 'utf8').trim() ===
+          'Battery',
+      )
+    : undefined
 
-  return battery ? Number(readFileSync(join(root, battery, 'capacity'), 'utf8')) / 100 : undefined
+  return battery
+    ? Number(readFileSync(join(root, battery, 'capacity'), 'utf8')) /
+        100
+    : undefined
 }
 
-const kept = process.platform === 'darwin' ? spawnSync('pbpaste', [], { encoding: 'utf8' }).stdout : undefined
+const kept =
+  process.platform === 'darwin'
+    ? spawnSync('pbpaste', [], { encoding: 'utf8' }).stdout
+    : undefined
 
 try {
   const dir = mkdtempSync(join(tmpdir(), 'device-rust-'))
-  const program = PROGRAM.replace('load @term/site/view/open', 'load @term/base/list\n  find push\n\nload @term/base/text/util\n  find join\n\nload @term/site/view/open')
-  const ran = runOn({ backend: 'rust', program, resolve: env => projectResolver(ROOT, env, ROOT), dir, name: 'device' })
+  const program = PROGRAM.replace(
+    'load @term/site/view/open',
+    'load @term/base/list\n  find push\n\nload @term/base/text/util\n  find join\n\nload @term/site/view/open',
+  )
+  const ran = runOn({
+    backend: 'rust',
+    program,
+    resolve: env => projectResolver(ROOT, env, ROOT),
+    dir,
+    name: 'device',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  device-rust  (${ran.reason})`)
     process.exit(0)
   }
 
-  ok('the device program builds and runs on Rust', ran.form === 'ran', ran.form === 'ran' ? '' : `${ran.stage}: ${ran.reason.slice(0, 1200)}`)
+  ok(
+    'the device program builds and runs on Rust',
+    ran.form === 'ran',
+    ran.form === 'ran'
+      ? ''
+      : `${ran.stage}: ${ran.reason.slice(0, 1200)}`,
+  )
 
   if (ran.form === 'ran') {
-    const [wrote = '', held = '', battery = '', network = '', opened = '', heard = ''] = ran.output.split('|')
-    ok('the clipboard takes the line and gives it back', wrote === 'written' && held === TOKEN, `${wrote} ${held}`)
+    const [
+      wrote = '',
+      held = '',
+      battery = '',
+      network = '',
+      opened = '',
+      heard = '',
+    ] = ran.output.split('|')
+    ok(
+      'the clipboard takes the line and gives it back',
+      wrote === 'written' && held === TOKEN,
+      `${wrote} ${held}`,
+    )
 
     if (process.platform === 'darwin') {
-      const pasted = spawnSync('pbpaste', [], { encoding: 'utf8' }).stdout
-      ok("and the Mac's pasteboard holds it (pbpaste)", pasted === TOKEN, pasted.slice(0, 80))
+      const pasted = spawnSync('pbpaste', [], {
+        encoding: 'utf8',
+      }).stdout
+      ok(
+        "and the Mac's pasteboard holds it (pbpaste)",
+        pasted === TOKEN,
+        pasted.slice(0, 80),
+      )
     }
 
     const level = platformLevel()
     ok(
       'the battery agrees with the platform',
-      level === undefined ? battery === 'unavailable' : Math.abs(Number(battery.split(' ')[0]) - level) <= 0.01 && /^\d\.\d\d (charging|full|unplugged|unknown)$/.test(battery),
+      level === undefined
+        ? battery === 'unavailable'
+        : Math.abs(Number(battery.split(' ')[0]) - level) <= 0.01 &&
+            /^\d\.\d\d (charging|full|unplugged|unknown)$/.test(
+              battery,
+            ),
       `${battery} against ${level ?? 'no battery'}`,
     )
-    ok('the network has a route out', network === 'online other', network)
-    ok('an address nothing handles is unavailable', opened === 'unavailable', opened)
-    ok('the battery watcher hears the reading once', heard === battery, `${heard} against ${battery}`)
+    ok(
+      'the network has a route out',
+      network === 'online other',
+      network,
+    )
+    ok(
+      'an address nothing handles is unavailable',
+      opened === 'unavailable',
+      opened,
+    )
+    ok(
+      'the battery watcher hears the reading once',
+      heard === battery,
+      `${heard} against ${battery}`,
+    )
   }
 } finally {
   if (kept !== undefined) {

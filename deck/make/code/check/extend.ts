@@ -12,7 +12,10 @@
 // prop, an unknown one, or a pinned one is a diagnostic), fallbacks are filled, and the fields the runtime owns
 // (`host`, `form`, `code`, `time`) are added. See note/project/term/hive/03-exception.md. Pure over the program.
 
-import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
+import type {
+  Diagnostic,
+  Span,
+} from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import type {
   Expression,
@@ -58,6 +61,7 @@ const GENERIC_EXCEPTIONS = new Set([
   'failure',
   'bundle',
 ])
+
 const OCCURRENCE_TASK = 'exception-code'
 const TIME_TASK = 'exception-time'
 
@@ -80,8 +84,13 @@ export function extendForms(
   file: string,
   decks: DeckName[],
 ): { program: Program; diagnostics: Diagnostic[] } {
-  const table = new Map(decks.map(d => [d.file, { name: d.name, root: '' }]))
-  const diagnostics = extendFormsIn(program, file, { deckOf: one => table.get(one) })
+  const table = new Map(
+    decks.map(d => [d.file, { name: d.name, root: '' }]),
+  )
+
+  const diagnostics = extendFormsIn(program, file, {
+    deckOf: one => table.get(one),
+  })
 
   return { program, diagnostics }
 }
@@ -127,6 +136,7 @@ function extendFormsIn(
           ? { ...type, args: type.args.map(a => subst(a, map)) }
           : type
       }
+
       case 'array':
         return { kind: 'array', element: subst(type.element, map) }
       case 'map':
@@ -149,7 +159,9 @@ function extendFormsIn(
   // A node stands at one place (D011 rule 8): an inherited field holds its own copy of the default, and a pin its own
   // record and value. `structuredClone`, not `clone` (a JSON round trip), keeps a BigInt literal.
   const cloneField = (f: Field, type: Type): Field =>
-    f.fallback ? { ...f, type, fallback: structuredClone(f.fallback) } : { ...f, type }
+    f.fallback
+      ? { ...f, type, fallback: structuredClone(f.fallback) }
+      : { ...f, type }
 
   const copyPin = <P extends { value: unknown }>(pin: P): P => ({
     ...pin,
@@ -237,7 +249,9 @@ function extendFormsIn(
           rt,
           head.span,
           `"${base.name}" has no type parameter "${head.name}"${
-            baseParams.length ? ` (it has ${baseParams.join(', ')})` : ''
+            baseParams.length
+              ? ` (it has ${baseParams.join(', ')})`
+              : ''
           }`,
         )
         continue
@@ -263,7 +277,11 @@ function extendFormsIn(
         synth(name, ext.links, ext.span)
         map.set(open[0]!, { kind: 'named', name })
         props = name
-      } else if (open.length === 0 && base.props && types.has(base.props)) {
+      } else if (
+        open.length === 0 &&
+        base.props &&
+        types.has(base.props)
+      ) {
         const inherited = types.get(base.props)!
         const name = `${rt.name}-${base.props.slice(base.name.length + 1)}`
         const merged = [...inherited.fields]
@@ -315,7 +333,10 @@ function extendFormsIn(
       return cloneField(f, type)
     })
 
-    const own = rt.fields.filter(f => !inherited.some(i => i.name === f.name))
+    const own = rt.fields.filter(
+      f => !inherited.some(i => i.name === f.name),
+    )
+
     rt.fields = [...inherited, ...own]
 
     // parameters the extension left open stay parameters of this form
@@ -329,7 +350,12 @@ function extendFormsIn(
     const pins = (base.pins ?? []).map(copyPin)
 
     for (const pin of ext.pins) {
-      if (OWNED.has(pin.name) && (base.chain ?? [base.name]).concat(base.name).includes(EXCEPTION_FORM)) {
+      if (
+        OWNED.has(pin.name) &&
+        (base.chain ?? [base.name])
+          .concat(base.name)
+          .includes(EXCEPTION_FORM)
+      ) {
         error(
           rt,
           ext.span,
@@ -339,7 +365,7 @@ function extendFormsIn(
       }
 
       // a pin names a field of the form, or a prop of its props record (`bind thing, <upload>` on an exception)
-      const propsFields = props ? types.get(props)?.fields ?? [] : []
+      const propsFields = props ? (types.get(props)?.fields ?? []) : []
 
       if (
         !rt.fields.some(f => f.name === pin.name) &&
@@ -396,7 +422,8 @@ function extendFormsIn(
   const isException = (name: string): boolean =>
     types.get(name)?.chain?.includes(EXCEPTION_FORM) ?? false
 
-  const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T
+  const clone = <T>(value: T): T =>
+    JSON.parse(JSON.stringify(value)) as T
 
   const hostOf = (s: Statement): string => {
     const f = fileOf(s)
@@ -433,7 +460,11 @@ function extendFormsIn(
         const slot = slots[i]!
 
         if (node.fields.some(f => f.name === slot.name)) {
-          error(s, value.span, `"${slot.name}" is given twice, by position and by name`)
+          error(
+            s,
+            value.span,
+            `"${slot.name}" is given twice, by position and by name`,
+          )
         } else {
           node.fields.push({ name: slot.name, value })
         }
@@ -448,24 +479,34 @@ function extendFormsIn(
   // found (many String) -> box`, naming nothing a reader wrote (guides: language/forms, 2026-10-04). A case whose
   // fields are `slot`s takes them in order, `make conjunction(p, q)`, as a form's slots are. Any other variant given
   // values by position is refused naming its fields
-  const fillVariant = (s: Statement, node: Extract<Expression, { form: 'record' }>): void => {
+  const fillVariant = (
+    s: Statement,
+    node: Extract<Expression, { form: 'record' }>,
+  ): void => {
     if (!node.positional?.length) {
       return
     }
 
-    const variant = [...types.values()].flatMap(rt => rt.variants).find(v => v.name === node.name)
+    const variant = [...types.values()]
+      .flatMap(rt => rt.variants)
+      .find(v => v.name === node.name)
 
     if (!variant) {
       return
     }
 
     const slots = variant.fields.filter(f => f.positional)
-    const open = variant.fields.filter(f => !node.fields.some(given => given.name === f.name))
+    const open = variant.fields.filter(
+      f => !node.fields.some(given => given.name === f.name),
+    )
 
     if (slots.length > 0) {
       fillSlots(s, node, variant.name, slots)
     } else if (open.length === 1 && node.positional.length === 1) {
-      node.fields.push({ name: open[0]!.name, value: node.positional[0]! })
+      node.fields.push({
+        name: open[0]!.name,
+        value: node.positional[0]!,
+      })
     } else {
       error(
         s,
@@ -522,7 +563,10 @@ function extendFormsIn(
     if (!rt.chain?.length) {
       const pinned = new Set((rt.pins ?? []).map(p => p.name))
       const missing = rt.fields.filter(
-        f => !f.optional && !pinned.has(f.name) && !node.fields.some(x => x.name === f.name),
+        f =>
+          !f.optional &&
+          !pinned.has(f.name) &&
+          !node.fields.some(x => x.name === f.name),
       )
 
       if (missing.length > 0) {
@@ -540,7 +584,9 @@ function extendFormsIn(
       return
     }
 
-    const pins = rt.pins.filter(p => rt.fields.some(f => f.name === p.name))
+    const pins = rt.pins.filter(p =>
+      rt.fields.some(f => f.name === p.name),
+    )
 
     for (const field of node.fields) {
       if (pins.some(p => p.name === field.name)) {
@@ -644,7 +690,11 @@ function extendFormsIn(
       } else if (f.fallback) {
         link.push({ name: f.name, value: clone(f.fallback) })
       } else if (!f.optional) {
-        error(s, span, `"${form}" needs "${f.name}", which this raise does not give`)
+        error(
+          s,
+          span,
+          `"${form}" needs "${f.name}", which this raise does not give`,
+        )
       }
     }
 
@@ -653,6 +703,7 @@ function extendFormsIn(
       value,
       span,
     })
+
     const call = (name: string): Expression => ({
       form: 'call',
       callee: { form: 'variable', name, span },
@@ -671,7 +722,10 @@ function extendFormsIn(
 
     // the pins of the exception itself (`note`, and anything else pinned on the shared form)
     for (const pin of rt.pins ?? []) {
-      if (rt.fields.some(f => f.name === pin.name) && !propsFields.some(f => f.name === pin.name)) {
+      if (
+        rt.fields.some(f => f.name === pin.name) &&
+        !propsFields.some(f => f.name === pin.name)
+      ) {
         fields.push({ name: pin.name, value: clone(pin.value) })
       }
     }
@@ -769,7 +823,9 @@ function extendFormsIn(
     const record = type as Record<string, unknown>
 
     if (Array.isArray(record.valueArgs)) {
-      ;(record.valueArgs as Expression[]).forEach(value => walkExpression(s, value))
+      ;(record.valueArgs as Expression[]).forEach(value =>
+        walkExpression(s, value),
+      )
     }
 
     for (const [key, value] of Object.entries(record)) {
@@ -836,7 +892,9 @@ function extendFormsIn(
         break
       case 'match':
         walkExpression(s, node.subject)
-        node.cases.forEach(c => c.body.forEach(x => walkStatement(s, x)))
+        node.cases.forEach(c =>
+          c.body.forEach(x => walkStatement(s, x)),
+        )
         node.otherwise?.forEach(x => walkStatement(s, x))
         break
       case 'function':
@@ -848,7 +906,9 @@ function extendFormsIn(
       // indices in its fields' types, which are expressions like any other and fill their slots the same way
       case 'record-type':
         for (const variant of node.variants) {
-          variant.indexValues?.forEach(value => walkExpression(s, value))
+          variant.indexValues?.forEach(value =>
+            walkExpression(s, value),
+          )
           variant.fields.forEach(f => walkIndices(s, f.type))
         }
 
@@ -872,7 +932,9 @@ function extendFormsIn(
 }
 
 // every exception form in a program, with its chain, for the emitters and the roll
-export function exceptionForms(program: Program): Map<string, RecordType> {
+export function exceptionForms(
+  program: Program,
+): Map<string, RecordType> {
   const out = new Map<string, RecordType>()
 
   for (const s of program) {

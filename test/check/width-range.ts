@@ -16,35 +16,58 @@ let fail = 0
 const stdlib = stdlibResolver()!
 
 // the `width` obligations of the entry file: how many, and how many proven
-function expect(name: string, source: string, want: { total: number; proven: number }, ranges = true): void {
+function expect(
+  name: string,
+  source: string,
+  want: { total: number; proven: number },
+  ranges = true,
+): void {
   setWidthRanges(ranges)
-  const result = compile({ file: 'w.tree', text: source }, { resolve: withNativeEnv('node', stdlib) })
+  const result = compile(
+    { file: 'w.tree', text: source },
+    { resolve: withNativeEnv('node', stdlib) },
+  )
   setWidthRanges(false)
 
   if (!result.ok) {
     fail++
-    console.log(`FAIL  ${name}  (did not compile: ${result.diagnostics.map(d => d.message).join(' | ')})`)
+    console.log(
+      `FAIL  ${name}  (did not compile: ${result.diagnostics.map(d => d.message).join(' | ')})`,
+    )
 
     return
   }
 
-  const got = result.obligations?.kinds?.width ?? { total: 0, proven: 0 }
+  const got = result.obligations?.kinds?.width ?? {
+    total: 0,
+    proven: 0,
+  }
 
   if (got.total === want.total && got.proven === want.proven) {
     pass++
     console.log(`ok    ${name}  (${got.proven} of ${got.total})`)
   } else {
     fail++
-    const why = (result.obligations?.failed ?? []).filter(f => f.origin === 'width').map(f => f.diagnostic.message)
-    console.log(`FAIL  ${name}  (${got.proven} of ${got.total}, wanted ${want.proven} of ${want.total}${why.length ? `: ${why.join(' | ')}` : ''})`)
+    const why = (result.obligations?.failed ?? [])
+      .filter(f => f.origin === 'width')
+      .map(f => f.diagnostic.message)
+    console.log(
+      `FAIL  ${name}  (${got.proven} of ${got.total}, wanted ${want.proven} of ${want.total}${why.length ? `: ${why.join(' | ')}` : ''})`,
+    )
   }
 }
 
-function expectRefused(name: string, source: string, ranges: boolean): void {
+function expectRefused(
+  name: string,
+  source: string,
+  ranges: boolean,
+): void {
   setWidthRanges(ranges)
   const result = compile({ file: 'w.tree', text: source })
   setWidthRanges(false)
-  const refusal = result.ok ? undefined : result.diagnostics.find(d => /is outside `u8`/.test(d.message))
+  const refusal = result.ok
+    ? undefined
+    : result.diagnostics.find(d => /is outside `u8`/.test(d.message))
 
   if (refusal) {
     pass++
@@ -493,17 +516,45 @@ for (const [way, write] of [
   ['set(xs, i, v)', 'set(xs, i, v)'],
   ['save xs/{i}, v', 'save xs/{i}, v'],
 ] as const) {
-  expect(`on: ${way} with v a number owes the width`, WRITES('number', write), { total: 1, proven: 0 })
-  expect(`on: ${way} with v a u8 owes it, proven`, WRITES('u8', write), { total: 1, proven: 1 })
-  expect(`off: ${way} owes nothing`, WRITES('number', write), { total: 0, proven: 0 }, false)
+  expect(
+    `on: ${way} with v a number owes the width`,
+    WRITES('number', write),
+    { total: 1, proven: 0 },
+  )
+  expect(
+    `on: ${way} with v a u8 owes it, proven`,
+    WRITES('u8', write),
+    { total: 1, proven: 1 },
+  )
+  expect(
+    `off: ${way} owes nothing`,
+    WRITES('number', write),
+    { total: 0, proven: 0 },
+    false,
+  )
 }
 
-expect('on: xs/splice(i, 0, v, v) owes each inserted item', WRITES('number', 'xs/splice(i, 0, v, v)'), { total: 2, proven: 0 })
-expect('on: a literal pushed inside the width is owed and proven', WRITES('number', 'push(xs, 7)'), { total: 1, proven: 1 })
-expect('on: a literal pushed past the width is owed and not proven', WRITES('number', 'push(xs, 300)'), { total: 1, proven: 0 })
+expect(
+  'on: xs/splice(i, 0, v, v) owes each inserted item',
+  WRITES('number', 'xs/splice(i, 0, v, v)'),
+  { total: 2, proven: 0 },
+)
+expect(
+  'on: a literal pushed inside the width is owed and proven',
+  WRITES('number', 'push(xs, 7)'),
+  { total: 1, proven: 1 },
+)
+expect(
+  'on: a literal pushed past the width is owed and not proven',
+  WRITES('number', 'push(xs, 300)'),
+  { total: 1, proven: 0 },
+)
 expect(
   'on: a push into a list of number owes nothing',
-  WRITES('number', 'push(xs, v)').replace('take xs, like list, like u8', 'take xs, like list, like number'),
+  WRITES('number', 'push(xs, v)').replace(
+    'take xs, like list, like u8',
+    'take xs, like list, like number',
+  ),
   { total: 0, proven: 0 },
 )
 
@@ -682,14 +733,22 @@ expectRefused(
     { resolve: withNativeEnv('node', stdlib) },
   )
   setWidthRanges(false)
-  const refused = !result.ok && result.diagnostics.some(d => /a list of number where a list of u8 is wanted/.test(d.message))
+  const refused =
+    !result.ok &&
+    result.diagnostics.some(d =>
+      /a list of number where a list of u8 is wanted/.test(d.message),
+    )
 
   if (refused) {
     pass++
-    console.log('ok    on: a list of number held in a variable is still refused as a list of u8')
+    console.log(
+      'ok    on: a list of number held in a variable is still refused as a list of u8',
+    )
   } else {
     fail++
-    console.log(`FAIL  on: a list of number held in a variable is still refused as a list of u8  (ok=${result.ok})`)
+    console.log(
+      `FAIL  on: a list of number held in a variable is still refused as a list of u8  (ok=${result.ok})`,
+    )
   }
 }
 

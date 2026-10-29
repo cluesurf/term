@@ -71,7 +71,13 @@ const dir = mkdtempSync(join(tmpdir(), 'term-sift-borrowed-'))
 const only = process.env.SIFT_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'sift-borrowed' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'sift-borrowed',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
@@ -81,7 +87,9 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
   ok(
     `${backend}: a sift straight on a call over an arm's field builds and runs`,
     ran.form === 'ran' && ran.output.trim() === EXPECTED,
-    ran.form === 'ran' ? `got ${ran.output.trim()}` : `${ran.stage}: ${ran.reason.slice(0, 600)}`,
+    ran.form === 'ran'
+      ? `got ${ran.output.trim()}`
+      : `${ran.stage}: ${ran.reason.slice(0, 600)}`,
   )
 }
 

@@ -16,14 +16,20 @@
 //
 // Run: npx tsx test/parser/stream.ts
 
-import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs'
+import {
+  readdirSync,
+  readFileSync,
+  statSync,
+  existsSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { parse, printTree } from '@term/make/code/parser/tree'
 import { walkGroups } from '@term/make/code/parser/stream'
 import type { StreamResult } from '@term/make/code/parser/stream'
 import type { GroupNode, RootNode } from '@term/make/code/parser/narrow'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 
 let pass = 0
@@ -52,7 +58,11 @@ function treeFiles(dir: string, out: string[] = []): string[] {
   }
 
   for (const entry of readdirSync(dir)) {
-    if (entry === 'node_modules' || entry === 'host' || entry.startsWith('.')) {
+    if (
+      entry === 'node_modules' ||
+      entry === 'host' ||
+      entry.startsWith('.')
+    ) {
       continue
     }
 
@@ -102,7 +112,10 @@ for (const file of files) {
   const label = file.replace(`${TERM}/`, '')
 
   if (truncated) {
-    ok(`${label}: parses whole, so it must not stream as truncated`, false)
+    ok(
+      `${label}: parses whole, so it must not stream as truncated`,
+      false,
+    )
     continue
   }
 
@@ -128,7 +141,10 @@ for (const file of files) {
   }
 }
 
-ok(`compared ${compared} files (${skipped} skipped: they do not parse)`, compared > 500)
+ok(
+  `compared ${compared} files (${skipped} skipped: they do not parse)`,
+  compared > 500,
+)
 
 // ---- stopping early ----
 
@@ -153,7 +169,10 @@ const one = taken[0]
 
 ok(
   'a consumer can take one group and stop',
-  taken.length === 1 && one !== undefined && one.kind === 'group' && printTree({ kind: 'root', nodes: [one.group] }).startsWith('load'),
+  taken.length === 1 &&
+    one !== undefined &&
+    one.kind === 'group' &&
+    printTree({ kind: 'root', nodes: [one.group] }).startsWith('load'),
   `${taken.length} taken`,
 )
 
@@ -161,9 +180,12 @@ ok(
 
 const cut: StreamResult[] = []
 
-walkGroups({ file: 'x.tree', text: 'task a\n  save s, text <unclosed\n' }, result => {
-  cut.push(result)
-})
+walkGroups(
+  { file: 'x.tree', text: 'task a\n  save s, text <unclosed\n' },
+  result => {
+    cut.push(result)
+  },
+)
 
 ok(
   'a source ending mid-construct reports kink, not end',
@@ -175,13 +197,17 @@ ok(
 
 const commented: StreamResult[] = []
 
-walkGroups({ file: 'x.tree', text: 'task a\n  call b\n\n# a trailing note\n' }, result => {
-  commented.push(result)
-})
+walkGroups(
+  { file: 'x.tree', text: 'task a\n  call b\n\n# a trailing note\n' },
+  result => {
+    commented.push(result)
+  },
+)
 
 ok(
   'a file ending in a comment ends cleanly',
-  commented.some(r => r.kind === 'end') && !commented.some(r => r.kind === 'kink'),
+  commented.some(r => r.kind === 'end') &&
+    !commented.some(r => r.kind === 'kink'),
   JSON.stringify(commented.map(r => r.kind)),
 )
 

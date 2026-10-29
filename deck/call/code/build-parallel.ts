@@ -20,7 +20,11 @@ import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { stdlibBase } from '@term/make/code/resolve'
 import { addOwed } from '@term/make/code/check/holds'
 import type { Owed } from '@term/make/code/check/holds'
-import { isOutOfMemory, outOfMemoryDiagnostic, workerHeapMb } from '@term/call/code/worker-heap'
+import {
+  isOutOfMemory,
+  outOfMemoryDiagnostic,
+  workerHeapMb,
+} from '@term/call/code/worker-heap'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 
@@ -67,7 +71,9 @@ function ensureBuildWorkerBundle(): string {
 
 // A worker module, bundled once per process. `name` is a file beside this one, `deck/call/code/<name>.ts`
 export function bundleWorker(name: string): string {
-  const source = findUp(`${name}.ts`) ?? findUp(path.join('deck', 'call', 'code', `${name}.ts`))
+  const source =
+    findUp(`${name}.ts`) ??
+    findUp(path.join('deck', 'call', 'code', `${name}.ts`))
 
   if (!source || !TSCONFIG) {
     // fail before esbuild does, so the caller's fallback is taken without esbuild first
@@ -88,7 +94,10 @@ export function bundleWorker(name: string): string {
     // the worker imports make.ts for the project resolver, and make.ts dynamically imports THIS module for the parallel
     // build. The worker never runs that path, so keep this module (and the esbuild it pulls) out of the worker bundle
     // rather than bundling esbuild's native binary into a /tmp worker.
-    external: ['@term/call/code/build-parallel', '@term/call/code/build-separate-parallel'],
+    external: [
+      '@term/call/code/build-parallel',
+      '@term/call/code/build-separate-parallel',
+    ],
     // a CJS module in the compiler graph uses `require(...)` (e.g. a node builtin); esbuild's ESM output does not shim
     // dynamic require, so define one from import.meta.url. Without this the worker dies with "Dynamic require not supported".
     banner: {
@@ -177,19 +186,25 @@ export function compileProjectParallel(
   // and a new worker takes its place (worker-heap.ts)
   const heapMb = workerHeapMb(size)
   const spawn = (): Worker =>
-    new Worker(bundle, { workerData: { version: compilerVersions() }, resourceLimits: { maxOldGenerationSizeMb: heapMb } })
+    new Worker(bundle, {
+      workerData: { version: compilerVersions() },
+      resourceLimits: { maxOldGenerationSizeMb: heapMb },
+    })
+
   const workers = Array.from({ length: size }, spawn)
   // the file each busy worker holds, so a worker's death is reported against it
   const holding = new Map<Worker, string>()
 
   let compiled = 0
   let failed = 0
+
   const errors: string[] = []
   const warnings: string[] = []
   const problems: BuildProblem[] = []
   const faults: string[] = []
   const open = new Set<string>()
   const obligations: Owed = { total: 0, proven: 0 }
+
   let next = 0
   let done = 0
 
@@ -201,7 +216,10 @@ export function compileProjectParallel(
     warnings.push(...(reply.warnings ?? []))
 
     for (const diagnostic of reply.problems ?? []) {
-      problems.push({ diagnostic, text: diagnostic.file === reply.file ? reply.text : undefined })
+      problems.push({
+        diagnostic,
+        text: diagnostic.file === reply.file ? reply.text : undefined,
+      })
     }
 
     // a failure with no diagnostic behind it (a worker that threw, or died) is still reported, as a line
@@ -229,7 +247,10 @@ export function compileProjectParallel(
       }
 
       if (reply.isCss && reply.styleDark !== undefined) {
-        writeFileSync(outPath.replace(/\.css$/, '.dark.style'), reply.styleDark)
+        writeFileSync(
+          outPath.replace(/\.css$/, '.dark.style'),
+          reply.styleDark,
+        )
       }
 
       compiled++
@@ -279,7 +300,12 @@ export function compileProjectParallel(
 
         if (isOutOfMemory(error)) {
           const diagnostic = outOfMemoryDiagnostic(file, heapMb)
-          settle({ file, ok: false, error: `${file}: ${diagnostic.message}`, problems: [diagnostic] })
+          settle({
+            file,
+            ok: false,
+            error: `${file}: ${diagnostic.message}`,
+            problems: [diagnostic],
+          })
 
           const replacement = spawn()
           workers.push(replacement)

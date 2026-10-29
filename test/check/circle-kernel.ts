@@ -31,7 +31,9 @@ function ok(name: string, run: () => void): void {
     console.log(`ok    ${name}`)
   } catch (error) {
     fail++
-    console.log(`FAIL  ${name}  ${error instanceof Error ? error.message : String(error)}`)
+    console.log(
+      `FAIL  ${name}  ${error instanceof Error ? error.message : String(error)}`,
+    )
   }
 }
 
@@ -39,7 +41,9 @@ function rejects(name: string, run: () => void): void {
   try {
     run()
     fail++
-    console.log(`FAIL  ${name}  (expected a type error, but it checked)`)
+    console.log(
+      `FAIL  ${name}  (expected a type error, but it checked)`,
+    )
   } catch {
     pass++
     console.log(`ok    ${name}`)
@@ -49,10 +53,24 @@ function rejects(name: string, run: () => void): void {
 const v = (index: number): Term => ({ tag: 'var', index })
 const kconst = (name: string): Term => ({ tag: 'const', name })
 const ty = (n: number): Term => ({ tag: 'type', level: litLevel(n) })
-const pi = (mult: Mult, domain: Term, codomain: Term): Term => ({ tag: 'pi', mult, domain, codomain })
+const pi = (mult: Mult, domain: Term, codomain: Term): Term => ({
+  tag: 'pi',
+  mult,
+  domain,
+  codomain,
+})
 const app = (fun: Term, arg: Term): Term => ({ tag: 'app', fun, arg })
-const id = (type: Term, left: Term, right: Term): Term => ({ tag: 'id', type, left, right })
-const refl = (type: Term, value: Term): Term => ({ tag: 'refl', type, value })
+const id = (type: Term, left: Term, right: Term): Term => ({
+  tag: 'id',
+  type,
+  left,
+  right,
+})
+const refl = (type: Term, value: Term): Term => ({
+  tag: 'refl',
+  type,
+  value,
+})
 const apps = (fun: Term, ...args: Term[]): Term => args.reduce(app, fun)
 
 // the circle signature: the type, its point and recursor, the loop-action, and a concrete target A0 with a point b0 and
@@ -66,13 +84,29 @@ const sig = [
     type: pi(
       'many',
       ty(0),
-      pi('many', v(0), pi('many', id(v(1), v(0), v(0)), pi('many', kconst('circle'), v(3)))),
+      pi(
+        'many',
+        v(0),
+        pi(
+          'many',
+          id(v(1), v(0), v(0)),
+          pi('many', kconst('circle'), v(3)),
+        ),
+      ),
     ),
   },
   // circleApLoop : (A : Type0) (b : A) (l : Id A b b) -> Id A b b   (the recursor's action on the loop)
   {
     name: 'circleApLoop',
-    type: pi('many', ty(0), pi('many', v(0), pi('many', id(v(1), v(0), v(0)), id(v(2), v(1), v(1))))),
+    type: pi(
+      'many',
+      ty(0),
+      pi(
+        'many',
+        v(0),
+        pi('many', id(v(1), v(0), v(0)), id(v(2), v(1), v(1))),
+      ),
+    ),
   },
   { name: 'A0', type: ty(0) },
   { name: 'b0', type: kconst('A0') },
@@ -89,43 +123,92 @@ function context() {
   return contextWithSignature(sig)
 }
 
-const recBase: Term = apps(kconst('circleRec'), kconst('A0'), kconst('b0'), kconst('l0'), kconst('circleBase'))
-const apLoop: Term = apps(kconst('circleApLoop'), kconst('A0'), kconst('b0'), kconst('l0'))
+const recBase: Term = apps(
+  kconst('circleRec'),
+  kconst('A0'),
+  kconst('b0'),
+  kconst('l0'),
+  kconst('circleBase'),
+)
+const apLoop: Term = apps(
+  kconst('circleApLoop'),
+  kconst('A0'),
+  kconst('b0'),
+  kconst('l0'),
+)
 const A0Path = id(kconst('A0'), kconst('b0'), kconst('b0'))
 
 // 1. POINT beta: circleRec A0 b0 l0 circleBase reduces to b0. refl proves Id A0 (circleRec ... circleBase) b0 only if
 // the two sides are definitionally equal.
 ok('point beta: circleRec A0 b0 l0 circleBase == b0', () => {
-  check(context(), refl(kconst('A0'), kconst('b0')), evaluate([], id(kconst('A0'), recBase, kconst('b0'))))
+  check(
+    context(),
+    refl(kconst('A0'), kconst('b0')),
+    evaluate([], id(kconst('A0'), recBase, kconst('b0'))),
+  )
 })
 
 // 2. SOUNDNESS: the recursor on base is b0, NOT the other point c0 -- must be rejected.
 rejects('soundness: circleRec A0 b0 l0 circleBase != c0', () => {
-  check(context(), refl(kconst('A0'), kconst('b0')), evaluate([], id(kconst('A0'), recBase, kconst('c0'))))
+  check(
+    context(),
+    refl(kconst('A0'), kconst('b0')),
+    evaluate([], id(kconst('A0'), recBase, kconst('c0'))),
+  )
 })
 
 // 3. PATH beta (the deliverable): the action of the recursor on the loop reduces to the target loop l0. refl proves
 // Id (Id A0 b0 b0) (circleApLoop A0 b0 l0) l0 only if the path beta-rule holds definitionally.
-ok('PATH beta: circleApLoop A0 b0 l0 == l0  (ap (circRec) loop computes to the target loop)', () => {
-  check(context(), refl(A0Path, kconst('l0')), evaluate([], id(A0Path, apLoop, kconst('l0'))))
-})
+ok(
+  'PATH beta: circleApLoop A0 b0 l0 == l0  (ap (circRec) loop computes to the target loop)',
+  () => {
+    check(
+      context(),
+      refl(A0Path, kconst('l0')),
+      evaluate([], id(A0Path, apLoop, kconst('l0'))),
+    )
+  },
+)
 
 // 4. SOUNDNESS: the action on the loop is l0, NOT the different loop l1 -- must be rejected (the path beta-rule does not
 // collapse distinct targets).
-rejects('soundness: circleApLoop A0 b0 l0 != l1 (distinct loops stay distinct)', () => {
-  check(context(), refl(A0Path, kconst('l0')), evaluate([], id(A0Path, apLoop, kconst('l1'))))
-})
+rejects(
+  'soundness: circleApLoop A0 b0 l0 != l1 (distinct loops stay distinct)',
+  () => {
+    check(
+      context(),
+      refl(A0Path, kconst('l0')),
+      evaluate([], id(A0Path, apLoop, kconst('l1'))),
+    )
+  },
+)
 
 // 5. the recursor stays STUCK on a neutral (non-base) circle element: with `x : circle` a variable, circleRec A0 b0 l0 x
 // does NOT reduce to b0, so refl does not prove them equal -- rejected. (The reduction fires only on the constructor.)
-rejects('recursor is stuck on a neutral scrutinee: circleRec A0 b0 l0 x != b0', () => {
-  const ctx = contextWithSignature([...sig, { name: 'x', type: kconst('circle') }])
-  resetMetas()
-  resetDefinitions()
-  enableCircle()
-  const recX = apps(kconst('circleRec'), kconst('A0'), kconst('b0'), kconst('l0'), kconst('x'))
-  check(ctx, refl(kconst('A0'), kconst('b0')), evaluate([], id(kconst('A0'), recX, kconst('b0'))))
-})
+rejects(
+  'recursor is stuck on a neutral scrutinee: circleRec A0 b0 l0 x != b0',
+  () => {
+    const ctx = contextWithSignature([
+      ...sig,
+      { name: 'x', type: kconst('circle') },
+    ])
+    resetMetas()
+    resetDefinitions()
+    enableCircle()
+    const recX = apps(
+      kconst('circleRec'),
+      kconst('A0'),
+      kconst('b0'),
+      kconst('l0'),
+      kconst('x'),
+    )
+    check(
+      ctx,
+      refl(kconst('A0'), kconst('b0')),
+      evaluate([], id(kconst('A0'), recX, kconst('b0'))),
+    )
+  },
+)
 
 // 6. SOUNDNESS: NOT enabled, the names are only names. A program's own task called `circleApLoop` was rewritten to its
 // third argument against its body until 2026-10-05: here the body answers 0, and `circleApLoop(1, 2, 3) == 3` must be
@@ -150,19 +233,27 @@ rule rewritten
   calm hold
 `
 
-  ok("a program's task named circleApLoop is not rewritten: (1, 2, 3) == 3 is refused", () => {
-    if (compile({ file: 'c.tree', text: program(3) }).ok) {
-      throw new Error('proven equal to 3, against a body answering 0')
-    }
-  })
+  ok(
+    "a program's task named circleApLoop is not rewritten: (1, 2, 3) == 3 is refused",
+    () => {
+      if (compile({ file: 'c.tree', text: program(3) }).ok) {
+        throw new Error('proven equal to 3, against a body answering 0')
+      }
+    },
+  )
 
-  ok('and its body is what it computes: (1, 2, 3) == 0 is proven', () => {
-    const result = compile({ file: 'c.tree', text: program(0) })
+  ok(
+    'and its body is what it computes: (1, 2, 3) == 0 is proven',
+    () => {
+      const result = compile({ file: 'c.tree', text: program(0) })
 
-    if (!result.ok) {
-      throw new Error(result.diagnostics.map(d => d.message).join(' | '))
-    }
-  })
+      if (!result.ok) {
+        throw new Error(
+          result.diagnostics.map(d => d.message).join(' | '),
+        )
+      }
+    },
+  )
 }
 
 console.log(`\ncircle-kernel: ${pass} pass, ${fail} fail`)

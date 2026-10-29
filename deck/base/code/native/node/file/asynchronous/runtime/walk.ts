@@ -19,7 +19,10 @@ const walkFile = {
   dirList: async (at: string, deep: boolean): Promise<string[]> => {
     const out: string[] = []
 
-    const step = async (base: string, prefix: string): Promise<void> => {
+    const step = async (
+      base: string,
+      prefix: string,
+    ): Promise<void> => {
       let entries
 
       try {
@@ -69,7 +72,10 @@ const walkFile = {
 
         out.push({ path: whole, kind, depth: level })
 
-        if (kind === 'directory' && (depth === 0 || level + 1 < depth)) {
+        if (
+          kind === 'directory' &&
+          (depth === 0 || level + 1 < depth)
+        ) {
           await step(whole, level + 1)
         }
       }

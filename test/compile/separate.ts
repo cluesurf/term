@@ -96,7 +96,8 @@ task run
 `
 
 function resolver(dep: string): Resolver {
-  return path => (path === './dep' ? { file: 'dep.tree', text: dep } : undefined)
+  return path =>
+    path === './dep' ? { file: 'dep.tree', text: dep } : undefined
 }
 
 const slug = (file: string): string =>
@@ -138,7 +139,10 @@ async function main(): Promise<void> {
   )
 
   if (!first.ok) {
-    console.log('FAIL cold build', JSON.stringify(first.diagnostics.slice(0, 3)))
+    console.log(
+      'FAIL cold build',
+      JSON.stringify(first.diagnostics.slice(0, 3)),
+    )
     process.exit(1)
   }
 
@@ -146,7 +150,11 @@ async function main(): Promise<void> {
   expect('cold build: nothing reused', first.reused.length, 0)
 
   const dir = mkdtempSync(join(tmpdir(), 'seed-separate-'))
-  expect('emitted modules run (21 doubled)', await runEmitted(first.modules, dir), 42)
+  expect(
+    'emitted modules run (21 doubled)',
+    await runEmitted(first.modules, dir),
+    42,
+  )
 
   // no-op rebuild: everything replays from cache
   const again = compileSeparate(
@@ -168,15 +176,30 @@ async function main(): Promise<void> {
   )
 
   if (!bodyEdit.ok) {
-    console.log('FAIL body edit', JSON.stringify(bodyEdit.diagnostics.slice(0, 3)))
+    console.log(
+      'FAIL body edit',
+      JSON.stringify(bodyEdit.diagnostics.slice(0, 3)),
+    )
     process.exit(1)
   }
 
-  expect('body edit: only the dependency rebuilt', bodyEdit.built.join(','), 'dep.tree')
-  expect('body edit: the dependent was cut off early', bodyEdit.reused.join(','), 'entry.tree')
+  expect(
+    'body edit: only the dependency rebuilt',
+    bodyEdit.built.join(','),
+    'dep.tree',
+  )
+  expect(
+    'body edit: the dependent was cut off early',
+    bodyEdit.reused.join(','),
+    'entry.tree',
+  )
 
   const dir2 = mkdtempSync(join(tmpdir(), 'seed-separate-'))
-  expect('body-edited build still runs', await runEmitted(bodyEdit.modules, dir2), 42)
+  expect(
+    'body-edited build still runs',
+    await runEmitted(bodyEdit.modules, dir2),
+    42,
+  )
 
   // signature edit: the dependent must rebuild too (its check ran against a changed interface)
   const sigEdit = compileSeparate(
@@ -185,14 +208,21 @@ async function main(): Promise<void> {
   )
 
   if (!sigEdit.ok) {
-    console.log('FAIL signature edit', JSON.stringify(sigEdit.diagnostics.slice(0, 3)))
+    console.log(
+      'FAIL signature edit',
+      JSON.stringify(sigEdit.diagnostics.slice(0, 3)),
+    )
     process.exit(1)
   }
 
   expect('signature edit: both units rebuilt', sigEdit.built.length, 2)
 
   const dir3 = mkdtempSync(join(tmpdir(), 'seed-separate-'))
-  expect('signature-edited build still runs', await runEmitted(sigEdit.modules, dir3), 42)
+  expect(
+    'signature-edited build still runs',
+    await runEmitted(sigEdit.modules, dir3),
+    42,
+  )
 
   // a type error in the dependent against the dependency's INTERFACE is still caught (stubs carry real signatures)
   const BAD_ENTRY = `load ./dep
@@ -213,10 +243,20 @@ task run
   expect('interface violation is still a type error', bad.ok, false)
 
   // a one-line body is surface: its edit rebuilds the dependent
-  compileSeparate({ file: 'entry.tree', text: ENTRY }, options(DEP_LINE))
-  const lineEdit = compileSeparate({ file: 'entry.tree', text: ENTRY }, options(DEP_LINE_EDIT))
+  compileSeparate(
+    { file: 'entry.tree', text: ENTRY },
+    options(DEP_LINE),
+  )
+  const lineEdit = compileSeparate(
+    { file: 'entry.tree', text: ENTRY },
+    options(DEP_LINE_EDIT),
+  )
 
-  expect('one-line body edit: the dependent rebuilt too', lineEdit.ok ? lineEdit.built.join(',') : 'failed', 'dep.tree,entry.tree')
+  expect(
+    'one-line body edit: the dependent rebuilt too',
+    lineEdit.ok ? lineEdit.built.join(',') : 'failed',
+    'dep.tree,entry.tree',
+  )
 
   // a name both files define: the entry's own keeps its name, the dependency's is imported under the name its own
   // module exported it by, whichever entry compiled that module first
@@ -246,7 +286,10 @@ task run
     call double
       code 21
 `
-  const shared = compileSeparate({ file: 'entry.tree', text: SHARED_ENTRY }, options(SHARED_DEP))
+  const shared = compileSeparate(
+    { file: 'entry.tree', text: SHARED_ENTRY },
+    options(SHARED_DEP),
+  )
 
   expect('a name two files define builds', shared.ok, true)
 
@@ -277,13 +320,18 @@ task run
     call double
       read base
 `
-  const constant = compileSeparate({ file: 'entry.tree', text: CONSTANT_ENTRY }, options(CONSTANT_DEP))
+  const constant = compileSeparate(
+    { file: 'entry.tree', text: CONSTANT_ENTRY },
+    options(CONSTANT_DEP),
+  )
 
   expect('a constant another module defines builds', constant.ok, true)
 
   if (constant.ok) {
     const dir5 = mkdtempSync(join(tmpdir(), 'seed-separate-'))
-    const ran = await runEmitted(constant.modules, dir5).catch(e => String(e))
+    const ran = await runEmitted(constant.modules, dir5).catch(e =>
+      String(e),
+    )
 
     expect('and runs, the constant imported', ran, 42)
 
@@ -309,13 +357,20 @@ task run
     call add-one
       code 41
 `
-  const bound = compileSeparate({ file: 'entry.tree', text: BIND_ENTRY }, options(BIND_DEP))
+  const bound = compileSeparate(
+    { file: 'entry.tree', text: BIND_ENTRY },
+    options(BIND_DEP),
+  )
 
   expect('a bind another module declares builds', bound.ok, true)
 
   if (bound.ok) {
     const dir6 = mkdtempSync(join(tmpdir(), 'seed-separate-'))
-    expect('and runs, written into its caller', await runEmitted(bound.modules, dir6).catch(e => String(e)), 42)
+    expect(
+      'and runs, written into its caller',
+      await runEmitted(bound.modules, dir6).catch(e => String(e)),
+      42,
+    )
   }
 
   // a record of a form another module declares is a value all the same: `save copy, one` and a field write through
@@ -341,13 +396,20 @@ task run
   save second, bump(first)
   send back, add(second/count, first/count)
 `
-  const formed = compileSeparate({ file: 'entry.tree', text: FORM_ENTRY }, options(FORM_DEP))
+  const formed = compileSeparate(
+    { file: 'entry.tree', text: FORM_ENTRY },
+    options(FORM_DEP),
+  )
 
   expect('a record of an imported form builds', formed.ok, true)
 
   if (formed.ok) {
     const dir7 = mkdtempSync(join(tmpdir(), 'seed-separate-'))
-    expect('and an alias of it is a copy (20 + 1, not 20 + 20)', await runEmitted(formed.modules, dir7).catch(e => String(e)), 21)
+    expect(
+      'and an alias of it is a copy (20 + 1, not 20 + 20)',
+      await runEmitted(formed.modules, dir7).catch(e => String(e)),
+      21,
+    )
   }
 
   console.log(`\nseparate: ${pass} pass, ${fail} fail`)

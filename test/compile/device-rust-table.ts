@@ -12,7 +12,14 @@
 // copy holding the fixture's bytes.
 //
 // The person's clipboard is kept and put back. Skips without rustc. Run: npx tsx test/compile/device-rust-table.ts
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -23,7 +30,10 @@ import { readTree } from '../../deck/deck/code/package/read'
 
 const ROOT = join(import.meta.dirname, '..', '..')
 const VIEW = join(ROOT, 'deck/site/code/view')
-const GUIDE = join(ROOT, '../../../../note/project/term/guides/draft/applications/device.md')
+const GUIDE = join(
+  ROOT,
+  '../../../../note/project/term/guides/draft/applications/device.md',
+)
 
 let pass = 0
 let fail = 0
@@ -38,18 +48,25 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const hosted = (module: string): boolean => existsSync(join(VIEW, 'native/rust', `${module}.tree`))
+const hosted = (module: string): boolean =>
+  existsSync(join(VIEW, 'native/rust', `${module}.tree`))
 
 // ---- the table ----
 
 // the rows of the guide's "On Linux and Windows" table: module, then the Linux, Windows and macOS cells
 function tableRows(): Map<string, string[]> {
   const text = readFileSync(GUIDE, 'utf8')
-  const section = text.slice(text.indexOf('## On Linux and Windows'), text.indexOf('\n## ', text.indexOf('## On Linux and Windows') + 3))
+  const section = text.slice(
+    text.indexOf('## On Linux and Windows'),
+    text.indexOf('\n## ', text.indexOf('## On Linux and Windows') + 3),
+  )
   const rows = new Map<string, string[]>()
 
   for (const line of section.split('\n')) {
-    const cells = line.split('|').slice(1, -1).map(cell => cell.trim())
+    const cells = line
+      .split('|')
+      .slice(1, -1)
+      .map(cell => cell.trim())
     const name = /^`([a-z-]+)`$/.exec(cells[0] ?? '')?.[1]
 
     if (name && cells.length === 4) {
@@ -66,14 +83,28 @@ function tasksOf(module: string): string[] {
   const file = join(VIEW, `${module}.tree`)
   const read = readTree({ file, text: readFileSync(file, 'utf8') })
 
-  return read.ok ? read.forms.flatMap(form => (form.head === 'task' && form.terms.length === 1 ? [form.terms[0]!] : [])) : []
+  return read.ok
+    ? read.forms.flatMap(form =>
+        form.head === 'task' && form.terms.length === 1
+          ? [form.terms[0]!]
+          : [],
+      )
+    : []
 }
 
 const rows = tableRows()
 const modules = [...DEVICE_MODULES].sort()
 
-ok('the guide has a row for every device module', modules.every(one => rows.has(one)), modules.filter(one => !rows.has(one)).join(', '))
-ok('and a row for nothing else', [...rows.keys()].every(one => modules.includes(one)), [...rows.keys()].filter(one => !modules.includes(one)).join(', '))
+ok(
+  'the guide has a row for every device module',
+  modules.every(one => rows.has(one)),
+  modules.filter(one => !rows.has(one)).join(', '),
+)
+ok(
+  'and a row for nothing else',
+  [...rows.keys()].every(one => modules.includes(one)),
+  [...rows.keys()].filter(one => !modules.includes(one)).join(', '),
+)
 
 for (const module of modules) {
   const cells = rows.get(module)
@@ -83,17 +114,38 @@ for (const module of modules) {
   }
 
   if (!hosted(module)) {
-    ok(`${module}: no Rust host, and the row says unavailable on all three`, cells.every(cell => cell === '`unavailable`'), cells.join(' | '))
+    ok(
+      `${module}: no Rust host, and the row says unavailable on all three`,
+      cells.every(cell => cell === '`unavailable`'),
+      cells.join(' | '),
+    )
     continue
   }
 
-  const runtime = readFileSync(join(VIEW, 'native/rust/runtime', `native-${module}.rs`), 'utf8')
+  const runtime = readFileSync(
+    join(VIEW, 'native/rust/runtime', `native-${module}.rs`),
+    'utf8',
+  )
   const own = new Set(['unavailable', ...tasksOf(module)])
-  const named = cells.flatMap(cell => [...cell.matchAll(/`([^`]+)`/g)].map(match => match[1]!)).filter(one => !own.has(one))
-  const missing = named.filter(tool => !tool.split(/\s+/).every(word => runtime.includes(word)))
+  const named = cells
+    .flatMap(cell =>
+      [...cell.matchAll(/`([^`]+)`/g)].map(match => match[1]!),
+    )
+    .filter(one => !own.has(one))
+  const missing = named.filter(
+    tool => !tool.split(/\s+/).every(word => runtime.includes(word)),
+  )
 
-  ok(`${module}: a Rust host, and no cell says unavailable`, cells.every(cell => cell !== '`unavailable`'), cells.join(' | '))
-  ok(`${module}: every tool its row names is in native-${module}.rs`, missing.length === 0, missing.join(', '))
+  ok(
+    `${module}: a Rust host, and no cell says unavailable`,
+    cells.every(cell => cell !== '`unavailable`'),
+    cells.join(' | '),
+  )
+  ok(
+    `${module}: every tool its row names is in native-${module}.rs`,
+    missing.length === 0,
+    missing.join(', '),
+  )
 }
 
 // ---- the run ----
@@ -101,30 +153,98 @@ for (const module of modules) {
 // one call a module, answering text, each harmless where it is answered: nothing is written but the clipboard (kept
 // and put back), and the calls that would reach a person (a banner, a dialog) reach the stand-in
 const CALLS: Record<string, { finds: string[]; call: string[] }> = {
-  permission: { finds: ['permission-status'], call: ['call permission-status', '  text <camera>'] },
+  permission: {
+    finds: ['permission-status'],
+    call: ['call permission-status', '  text <camera>'],
+  },
   camera: { finds: ['take-photo'], call: ['call take-photo'] },
-  microphone: { finds: ['record-audio'], call: ['call record-audio', '  code 1'] },
+  microphone: {
+    finds: ['record-audio'],
+    call: ['call record-audio', '  code 1'],
+  },
   // the length of a sound: its fallback answers unavailable, where the loop's state is `stopped` on every host
-  audio: { finds: ['audio-length'], call: ['call audio-length', '  text <{work}/none.wav>'] },
-  download: { finds: ['download-file'], call: ['call download-file', '  text <https://example.invalid/term>', '  text <{work}/download>'] },
-  files: { finds: ['pick-file'], call: ['call pick-file', '  text <json>'] },
-  contacts: { finds: ['find-contacts'], call: ['call find-contacts', '  text <term>'] },
-  calendar: { finds: ['find-events'], call: ['call find-events', '  text <2031-01-01T00:00:00Z>', '  text <2031-01-02T00:00:00Z>'] },
-  photos: { finds: ['find-photos'], call: ['call find-photos', '  code 1'] },
+  audio: {
+    finds: ['audio-length'],
+    call: ['call audio-length', '  text <{work}/none.wav>'],
+  },
+  download: {
+    finds: ['download-file'],
+    call: [
+      'call download-file',
+      '  text <https://example.invalid/term>',
+      '  text <{work}/download>',
+    ],
+  },
+  files: {
+    finds: ['pick-file'],
+    call: ['call pick-file', '  text <json>'],
+  },
+  contacts: {
+    finds: ['find-contacts'],
+    call: ['call find-contacts', '  text <term>'],
+  },
+  calendar: {
+    finds: ['find-events'],
+    call: [
+      'call find-events',
+      '  text <2031-01-01T00:00:00Z>',
+      '  text <2031-01-02T00:00:00Z>',
+    ],
+  },
+  photos: {
+    finds: ['find-photos'],
+    call: ['call find-photos', '  code 1'],
+  },
   torch: { finds: ['torch-state'], call: ['call torch-state'] },
-  location: { finds: ['current-position'], call: ['call current-position'] },
-  clipboard: { finds: ['write-clipboard'], call: ['call write-clipboard', `  text <term-rust-table-${process.pid}>`] },
-  vibration: { finds: ['vibrate'], call: ['call vibrate', '  text <light>'] },
-  notification: { finds: ['show-notification'], call: ['call show-notification', '  text <Term table>', '  text <Every module once>'] },
-  open: { finds: ['open-address'], call: ['call open-address', '  text <term-no-handler://nothing>'] },
+  location: {
+    finds: ['current-position'],
+    call: ['call current-position'],
+  },
+  clipboard: {
+    finds: ['write-clipboard'],
+    call: [
+      'call write-clipboard',
+      `  text <term-rust-table-${process.pid}>`,
+    ],
+  },
+  vibration: {
+    finds: ['vibrate'],
+    call: ['call vibrate', '  text <light>'],
+  },
+  notification: {
+    finds: ['show-notification'],
+    call: [
+      'call show-notification',
+      '  text <Term table>',
+      '  text <Every module once>',
+    ],
+  },
+  open: {
+    finds: ['open-address'],
+    call: ['call open-address', '  text <term-no-handler://nothing>'],
+  },
   battery: { finds: ['battery-status'], call: ['call battery-status'] },
   network: { finds: ['network-status'], call: ['call network-status'] },
   motion: { finds: ['read-motion'], call: ['call read-motion'] },
-  secret: { finds: ['save-secret'], call: ['call save-secret', '  text <term-rust-table>', '  text <kept>'] },
-  biometric: { finds: ['biometric-kind'], call: ['call biometric-kind'] },
+  secret: {
+    finds: ['save-secret'],
+    call: [
+      'call save-secret',
+      '  text <term-rust-table>',
+      '  text <kept>',
+    ],
+  },
+  biometric: {
+    finds: ['biometric-kind'],
+    call: ['call biometric-kind'],
+  },
 }
 
-ok('the run calls every device module', modules.every(one => CALLS[one]), modules.filter(one => !CALLS[one]).join(', '))
+ok(
+  'the run calls every device module',
+  modules.every(one => CALLS[one]),
+  modules.filter(one => !CALLS[one]).join(', '),
+)
 
 const work = mkdtempSync(join(tmpdir(), 'device-rust-table-'))
 const shims = join(work, 'shims')
@@ -152,17 +272,30 @@ for (const tool of ['osascript', 'notify-send', 'zenity', 'kdialog']) {
 }
 
 const path = `${shims}:${process.env.PATH ?? ''}`
-const reached = spawnSync('sh', ['-c', 'command -v osascript notify-send zenity'], { encoding: 'utf8', env: { ...process.env, PATH: path } }).stdout
+const reached = spawnSync(
+  'sh',
+  ['-c', 'command -v osascript notify-send zenity'],
+  { encoding: 'utf8', env: { ...process.env, PATH: path } },
+).stdout
 
 // the guard: the stand-in must be what the program finds, or a real banner could come up
-if (!reached.split('\n').filter(Boolean).every(found => found.startsWith(shims))) {
+if (
+  !reached
+    .split('\n')
+    .filter(Boolean)
+    .every(found => found.startsWith(shims))
+) {
   ok('the stand-ins are first on the path', false, reached)
   console.log(`\ndevice-rust-table: ${pass} pass, ${fail} fail`)
   process.exit(1)
 }
 
 const program = [
-  ...modules.flatMap(module => [`load @term/site/view/${module}`, ...CALLS[module]!.finds.map(find => `  find ${find}`), '']),
+  ...modules.flatMap(module => [
+    `load @term/site/view/${module}`,
+    ...CALLS[module]!.finds.map(find => `  find ${find}`),
+    '',
+  ]),
   'load @term/base/list',
   '  find push',
   '',
@@ -188,7 +321,10 @@ const program = [
   '',
 ].join('\n')
 
-const kept = process.platform === 'darwin' ? spawnSync('pbpaste', [], { encoding: 'utf8' }).stdout : undefined
+const kept =
+  process.platform === 'darwin'
+    ? spawnSync('pbpaste', [], { encoding: 'utf8' }).stdout
+    : undefined
 const before = { PATH: process.env.PATH }
 
 try {
@@ -196,39 +332,106 @@ try {
   process.env.TERM_TABLE_ASKED = record
   process.env.TERM_TABLE_PICK = fixture
 
-  const ran = runOn({ backend: 'rust', program, resolve: env => projectResolver(ROOT, env, ROOT), dir: work, name: 'table' })
+  const ran = runOn({
+    backend: 'rust',
+    program,
+    resolve: env => projectResolver(ROOT, env, ROOT),
+    dir: work,
+    name: 'table',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  device-rust-table run  (${ran.reason})`)
   } else {
-    ok('the program calling every module builds and runs on Rust', ran.form === 'ran', ran.form === 'ran' ? '' : `${ran.stage}: ${ran.reason.slice(0, 1600)}`)
+    ok(
+      'the program calling every module builds and runs on Rust',
+      ran.form === 'ran',
+      ran.form === 'ran'
+        ? ''
+        : `${ran.stage}: ${ran.reason.slice(0, 1600)}`,
+    )
 
     if (ran.form === 'ran') {
-      const answers = new Map(modules.map((module, index) => [module, ran.output.trim().split('|')[index] ?? '']))
-      console.log(`      ${[...answers].map(([module, answer]) => `${module} ${answer}`).join(', ')}`)
+      const answers = new Map(
+        modules.map((module, index) => [
+          module,
+          ran.output.trim().split('|')[index] ?? '',
+        ]),
+      )
+      console.log(
+        `      ${[...answers].map(([module, answer]) => `${module} ${answer}`).join(', ')}`,
+      )
 
       for (const module of modules.filter(one => !hosted(one))) {
-        ok(`${module}: no Rust host, answers unavailable`, answers.get(module) === 'unavailable', answers.get(module))
+        ok(
+          `${module}: no Rust host, answers unavailable`,
+          answers.get(module) === 'unavailable',
+          answers.get(module),
+        )
       }
 
-      const asked = existsSync(record) ? readFileSync(record, 'utf8') : ''
+      const asked = existsSync(record)
+        ? readFileSync(record, 'utf8')
+        : ''
       const calls = asked.split('--\n').filter(Boolean)
 
-      ok('clipboard: written', answers.get('clipboard') === 'written', answers.get('clipboard'))
-      ok('battery: in the closed set', /^(\d\.\d\d (charging|full|unplugged|unknown)|unavailable)$/.test(answers.get('battery') ?? ''), answers.get('battery'))
-      ok('network: online', /^online /.test(answers.get('network') ?? ''), answers.get('network'))
-      ok('open: an address nothing handles is unavailable', answers.get('open') === 'unavailable', answers.get('open'))
-      ok('notification: shown', answers.get('notification') === 'shown', answers.get('notification'))
+      ok(
+        'clipboard: written',
+        answers.get('clipboard') === 'written',
+        answers.get('clipboard'),
+      )
+      ok(
+        'battery: in the closed set',
+        /^(\d\.\d\d (charging|full|unplugged|unknown)|unavailable)$/.test(
+          answers.get('battery') ?? '',
+        ),
+        answers.get('battery'),
+      )
+      ok(
+        'network: online',
+        /^online /.test(answers.get('network') ?? ''),
+        answers.get('network'),
+      )
+      ok(
+        'open: an address nothing handles is unavailable',
+        answers.get('open') === 'unavailable',
+        answers.get('open'),
+      )
+      ok(
+        'notification: shown',
+        answers.get('notification') === 'shown',
+        answers.get('notification'),
+      )
       ok(
         'and the platform tool was asked with the title and the body',
-        calls.some(call => call.includes('Term table\n') && call.includes('Every module once\n') && /display notification|^Term table$/m.test(call)),
+        calls.some(
+          call =>
+            call.includes('Term table\n') &&
+            call.includes('Every module once\n') &&
+            /display notification|^Term table$/m.test(call),
+        ),
         asked.slice(0, 400),
       )
 
       const picked = /^file (.+)$/.exec(answers.get('files') ?? '')?.[1]
-      ok('files: the choice answered as a copy', picked !== undefined && picked !== fixture && picked.endsWith('/chosen.json'), answers.get('files'))
-      ok('and the copy holds the chosen file', picked !== undefined && existsSync(picked) && readFileSync(picked, 'utf8') === fixtureText)
-      ok('and the dialog was asked for json', calls.some(call => /public\.json|\*\.json/.test(call)), asked.slice(0, 400))
+      ok(
+        'files: the choice answered as a copy',
+        picked !== undefined &&
+          picked !== fixture &&
+          picked.endsWith('/chosen.json'),
+        answers.get('files'),
+      )
+      ok(
+        'and the copy holds the chosen file',
+        picked !== undefined &&
+          existsSync(picked) &&
+          readFileSync(picked, 'utf8') === fixtureText,
+      )
+      ok(
+        'and the dialog was asked for json',
+        calls.some(call => /public\.json|\*\.json/.test(call)),
+        asked.slice(0, 400),
+      )
     }
   }
 } finally {

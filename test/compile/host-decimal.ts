@@ -24,32 +24,81 @@ function ok(name: string, holds: boolean, detail = ''): void {
   }
 }
 
-const text = 'host limit, 5.0\nhost count, 5\n\ntask over\n  take x, like float\n  like boolean\n  back is-above(x, limit)\n\ntask many\n  take n, like number\n  like boolean\n  back is-above(n, count)\n'
-const result = compile({ file: '/gate/code/host.tree', text }, { leanOf: () => true, env: 'swift', entryPoints: ['over', 'many'] })
+const text =
+  'host limit, 5.0\nhost count, 5\n\ntask over\n  take x, like float\n  like boolean\n  back is-above(x, limit)\n\ntask many\n  take n, like number\n  like boolean\n  back is-above(n, count)\n'
+const result = compile(
+  { file: '/gate/code/host.tree', text },
+  { leanOf: () => true, env: 'swift', entryPoints: ['over', 'many'] },
+)
 
 if (!result.ok) {
-  ok('the program builds', false, result.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'the program builds',
+    false,
+    result.diagnostics.map(d => d.message).join(' | '),
+  )
 } else {
   // node-json, which writes a `need false` field at its default as absent (decision 034 section 2, decision 071)
-  const types = new Map(result.program.flatMap(n => (n.form === 'let' ? [[n.name, n.type ? typeJson([], n.type) : 'none'] as const] : [])))
+  const types = new Map(
+    result.program.flatMap(n =>
+      n.form === 'let'
+        ? [[n.name, n.type ? typeJson([], n.type) : 'none'] as const]
+        : [],
+    ),
+  )
   // `float`, the type word since D4 (`decimal` is refused): Swift spells it `Double`, never its 32-bit `Float`
-  ok('a decimal host is a float', types.get('limit') === '{"kind":"named","name":"float"}', types.get('limit'))
-  ok('an integer host is an integer', types.get('count') === '{"kind":"named","name":"integer"}', types.get('count'))
+  ok(
+    'a decimal host is a float',
+    types.get('limit') === '{"kind":"named","name":"float"}',
+    types.get('limit'),
+  )
+  ok(
+    'an integer host is an integer',
+    types.get('count') === '{"kind":"named","name":"integer"}',
+    types.get('count'),
+  )
 
-  const node = compile({ file: '/gate/code/host.tree', text }, { leanOf: () => true, entryPoints: ['over', 'many'] })
-  const declared = node.ok ? (/const limit: (\w+)/.exec(node.typescript)?.[1] ?? '(none)') : 'failed'
-  ok('TypeScript declares it a number, never an undefined `Decimal`', declared === 'number', declared)
+  const node = compile(
+    { file: '/gate/code/host.tree', text },
+    { leanOf: () => true, entryPoints: ['over', 'many'] },
+  )
+  const declared = node.ok
+    ? (/const limit: (\w+)/.exec(node.typescript)?.[1] ?? '(none)')
+    : 'failed'
+  ok(
+    'TypeScript declares it a number, never an undefined `Decimal`',
+    declared === 'number',
+    declared,
+  )
 
   const swift = emitSwift(result.program)
-  ok('Swift declares no integer for the decimal', !/limit: Int\b/.test(swift), swift.split('\n').filter(l => /limit/.test(l)).join(' | '))
+  ok(
+    'Swift declares no integer for the decimal',
+    !/limit: Int\b/.test(swift),
+    swift
+      .split('\n')
+      .filter(l => /limit/.test(l))
+      .join(' | '),
+  )
 
   if (spawnSync('swiftc', ['--version']).status !== 0) {
     console.log('skip  swiftc  (not installed)')
   } else {
     const dir = mkdtempSync(join(tmpdir(), 'term-host-decimal-'))
     writeFileSync(join(dir, 'main.swift'), swift)
-    const out = spawnSync('swiftc', ['-parse-as-library', '-typecheck', join(dir, 'main.swift')], { encoding: 'utf8' })
-    ok('swiftc typechecks it', out.status === 0, out.stderr.split('\n').filter(l => /error:/.test(l)).join(' | '))
+    const out = spawnSync(
+      'swiftc',
+      ['-parse-as-library', '-typecheck', join(dir, 'main.swift')],
+      { encoding: 'utf8' },
+    )
+    ok(
+      'swiftc typechecks it',
+      out.status === 0,
+      out.stderr
+        .split('\n')
+        .filter(l => /error:/.test(l))
+        .join(' | '),
+    )
   }
 }
 

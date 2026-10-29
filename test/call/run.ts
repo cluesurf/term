@@ -1,7 +1,12 @@
 // CLI build test: `compileProject` compiles a project's .tree files to TypeScript under host/, mirroring the tree,
 // and reports failures without writing output for them. Run: npx tsx test/call/run.ts
 
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
+import {
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  existsSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { compileProject } from '@term/call/code/make'
 import { tempDir } from '../temp'
@@ -60,4 +65,6 @@ expect(
 
 console.log(`\ncall: ${pass} pass, ${fail} fail`)
 
-if (fail > 0) {process.exit(1)}
+if (fail > 0) {
+  process.exit(1)
+}

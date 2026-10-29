@@ -166,7 +166,7 @@ task unrelated
 `)
 
   ok(
-    'CONTROL: a LOCAL that shares an open claim\'s spelling does not trip the wall',
+    "CONTROL: a LOCAL that shares an open claim's spelling does not trip the wall",
     !out.refused && out.open.join(',') === 'double',
     `refused=${out.refused} ${out.errors.join(',')}`,
   )
@@ -484,7 +484,9 @@ ${ANYTHING_EQUAL}`,
     named,
     result.ok
       ? 'compiled'
-      : result.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+      : result.diagnostics
+          .map(d => `${d.name}: ${d.message}`)
+          .join(' | '),
   )
 }
 
@@ -661,7 +663,12 @@ task spin
   back spin(g)
 `
 
-const closedClaim = (name: string, left: string, right: string, value: string): string => `${EQUAL}
+const closedClaim = (
+  name: string,
+  left: string,
+  right: string,
+  value: string,
+): string => `${EQUAL}
 ${FLAG}
 rule ${name}
   like equal flag
@@ -676,7 +683,11 @@ task ${name}
       bind c, ${value}
 `
 
-const everyFlagClaim = (name: string, left: string, right: string): string => `${EQUAL}
+const everyFlagClaim = (
+  name: string,
+  left: string,
+  right: string,
+): string => `${EQUAL}
 ${FLAG}
 rule ${name}
   take g, like flag
@@ -700,13 +711,21 @@ task ${name}
 `
 
 {
-  const out = run(closedClaim('flip-yes', 'flip(make yes)', 'make no', 'make no'))
+  const out = run(
+    closedClaim('flip-yes', 'flip(make yes)', 'make no', 'make no'),
+  )
 
-  ok('a claim calling a task: flip(yes) == no, by refl, is proven', !out.refused, out.errors.join(','))
+  ok(
+    'a claim calling a task: flip(yes) == no, by refl, is proven',
+    !out.refused,
+    out.errors.join(','),
+  )
 }
 
 {
-  const out = run(closedClaim('flip-yes', 'flip(make yes)', 'make yes', 'make yes'))
+  const out = run(
+    closedClaim('flip-yes', 'flip(make yes)', 'make yes', 'make yes'),
+  )
 
   ok(
     'FALSE: flip(yes) == yes is refused',
@@ -716,9 +735,15 @@ task ${name}
 }
 
 {
-  const out = run(everyFlagClaim('flip-twice', 'flip(flip(g))', 'read g'))
+  const out = run(
+    everyFlagClaim('flip-twice', 'flip(flip(g))', 'read g'),
+  )
 
-  ok('flip(flip(g)) == g for every flag, by cases, is proven', !out.refused, out.errors.join(','))
+  ok(
+    'flip(flip(g)) == g for every flag, by cases, is proven',
+    !out.refused,
+    out.errors.join(','),
+  )
 }
 
 {
@@ -732,7 +757,9 @@ task ${name}
 }
 
 {
-  const out = run(closedClaim('spin-yes', 'spin(make yes)', 'make yes', 'make yes'))
+  const out = run(
+    closedClaim('spin-yes', 'spin(make yes)', 'make yes', 'make yes'),
+  )
 
   ok(
     'a task the kernel did not keep (it does not terminate) is opaque: spin(yes) == yes is refused',
@@ -744,22 +771,43 @@ task ${name}
 // in a LEAN file a call written under a call is read as a label over its arguments until the resolver nests it, and
 // nothing resolves a type: the kernel's reading nests it the same way, so `flip` over `flip` over `g` is flip(flip(g))
 {
-  const text = everyFlagClaim('flip-twice', 'flip\n        flip\n          read g', 'read g')
-  const lean = compile({ file: 'claim.tree', text }, { leanOf: () => true })
+  const text = everyFlagClaim(
+    'flip-twice',
+    'flip\n        flip\n          read g',
+    'read g',
+  )
+  const lean = compile(
+    { file: 'claim.tree', text },
+    { leanOf: () => true },
+  )
   const falseLean = compile(
-    { file: 'claim.tree', text: everyFlagClaim('flip-fixed', 'flip\n        flip\n          flip\n            read g', 'read g') },
+    {
+      file: 'claim.tree',
+      text: everyFlagClaim(
+        'flip-fixed',
+        'flip\n        flip\n          flip\n            read g',
+        'read g',
+      ),
+    },
     { leanOf: () => true },
   )
 
   ok(
     'lean: a call nested under a call in a claim type reads, and flip(flip(g)) == g is proven',
     lean.ok,
-    lean.ok ? '' : lean.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+    lean.ok
+      ? ''
+      : lean.diagnostics
+          .map(d => `${d.name}: ${d.message}`)
+          .join(' | '),
   )
   ok(
     'FALSE, lean: flip(flip(flip(g))) == g is refused',
-    !falseLean.ok && falseLean.diagnostics.some(d => d.name === 'unverified-proof'),
-    falseLean.ok ? 'compiled' : falseLean.diagnostics.map(d => d.name).join(','),
+    !falseLean.ok &&
+      falseLean.diagnostics.some(d => d.name === 'unverified-proof'),
+    falseLean.ok
+      ? 'compiled'
+      : falseLean.diagnostics.map(d => d.name).join(','),
   )
 }
 

@@ -12,16 +12,24 @@ let pass = 0
 let fail = 0
 
 function expect(name: string, source: string, want: string[]): void {
-  const result = compile({ file: 'd.tree', text: source }, { leanOf: () => true })
+  const result = compile(
+    { file: 'd.tree', text: source },
+    { leanOf: () => true },
+  )
   const codes = result.ok ? [] : result.diagnostics.map(d => d.name)
-  const good = want.length === 0 ? result.ok : !result.ok && want.every(code => codes.includes(code))
+  const good =
+    want.length === 0
+      ? result.ok
+      : !result.ok && want.every(code => codes.includes(code))
 
   if (good) {
     pass++
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (ok=${result.ok}, ${result.ok ? '' : result.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | ')})`)
+    console.log(
+      `FAIL  ${name}  (ok=${result.ok}, ${result.ok ? '' : result.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | ')})`,
+    )
   }
 }
 

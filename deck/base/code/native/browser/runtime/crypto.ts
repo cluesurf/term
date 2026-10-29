@@ -26,8 +26,13 @@ const crypto = (() => {
     // Web Crypto has no MD5, so it is RFC 1321 here, written out: the same bytes as node, Rust, Swift and Kotlin give,
     // where this used to throw on every call
     md5: input => {
-      const shift = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21]
-      const table = Array.from({ length: 64 }, (_, i) => Math.floor(Math.abs(Math.sin(i + 1)) * 2 ** 32) >>> 0)
+      const shift = [
+        7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21,
+      ]
+      const table = Array.from(
+        { length: 64 },
+        (_, i) => Math.floor(Math.abs(Math.sin(i + 1)) * 2 ** 32) >>> 0,
+      )
       const length = input.length
       const total = (((length + 8) >>> 6) + 1) * 64
       const bytes = new Uint8Array(total)
@@ -35,7 +40,11 @@ const crypto = (() => {
       bytes[length] = 0x80
       const view = new DataView(bytes.buffer)
       view.setUint32(total - 8, (length * 8) >>> 0, true)
-      view.setUint32(total - 4, Math.floor((length * 8) / 2 ** 32), true)
+      view.setUint32(
+        total - 4,
+        Math.floor((length * 8) / 2 ** 32),
+        true,
+      )
       let a0 = 0x67452301
       let b0 = 0xefcdab89
       let c0 = 0x98badcfe
@@ -48,11 +57,22 @@ const crypto = (() => {
         for (let i = 0; i < 64; i++) {
           let f
           let g
-          if (i < 16) { f = (b & c) | (~b & d); g = i }
-          else if (i < 32) { f = (d & b) | (~d & c); g = (5 * i + 1) % 16 }
-          else if (i < 48) { f = b ^ c ^ d; g = (3 * i + 5) % 16 }
-          else { f = c ^ (b | ~d); g = (7 * i) % 16 }
-          const sum = (a + f + table[i] + view.getUint32(block + g * 4, true)) >>> 0
+          if (i < 16) {
+            f = (b & c) | (~b & d)
+            g = i
+          } else if (i < 32) {
+            f = (d & b) | (~d & c)
+            g = (5 * i + 1) % 16
+          } else if (i < 48) {
+            f = b ^ c ^ d
+            g = (3 * i + 5) % 16
+          } else {
+            f = c ^ (b | ~d)
+            g = (7 * i) % 16
+          }
+          const sum =
+            (a + f + table[i] + view.getUint32(block + g * 4, true)) >>>
+            0
           const s = shift[(i >>> 4) * 4 + (i % 4)]
           a = d
           d = c
@@ -66,7 +86,9 @@ const crypto = (() => {
       }
       const out = new Uint8Array(16)
       const result = new DataView(out.buffer)
-      ;[a0, b0, c0, d0].forEach((word, i) => result.setUint32(i * 4, word, true))
+      ;[a0, b0, c0, d0].forEach((word, i) =>
+        result.setUint32(i * 4, word, true),
+      )
       return out
     },
     // `uuid.tree` reaches `crypto` too, and finds THIS shim beside it rather than the platform global, since a shim
@@ -80,18 +102,54 @@ const crypto = (() => {
     randomBytes: size => {
       const out = new Uint8Array(size)
       for (let at = 0; at < size; at += 65536) {
-        globalThis.crypto.getRandomValues(out.subarray(at, Math.min(at + 65536, size)))
+        globalThis.crypto.getRandomValues(
+          out.subarray(at, Math.min(at + 65536, size)),
+        )
       }
       return out
     },
     // PBKDF2 and HKDF over HMAC-SHA256, through Web Crypto's deriveBits (asynchronous, as every Web Crypto call is)
     pbkdf2Sha256: async (password, salt, iterations, length) => {
-      const key = await globalThis.crypto.subtle.importKey('raw', password, 'PBKDF2', false, ['deriveBits'])
-      return new Uint8Array(await globalThis.crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: Math.max(iterations, 1) }, key, length * 8))
+      const key = await globalThis.crypto.subtle.importKey(
+        'raw',
+        password,
+        'PBKDF2',
+        false,
+        ['deriveBits'],
+      )
+      return new Uint8Array(
+        await globalThis.crypto.subtle.deriveBits(
+          {
+            name: 'PBKDF2',
+            hash: 'SHA-256',
+            salt,
+            iterations: Math.max(iterations, 1),
+          },
+          key,
+          length * 8,
+        ),
+      )
     },
     hkdfSha256: async (secret, salt, info, length) => {
-      const key = await globalThis.crypto.subtle.importKey('raw', secret, 'HKDF', false, ['deriveBits'])
-      return new Uint8Array(await globalThis.crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt: salt.length ? salt : new Uint8Array(32), info }, key, length * 8))
+      const key = await globalThis.crypto.subtle.importKey(
+        'raw',
+        secret,
+        'HKDF',
+        false,
+        ['deriveBits'],
+      )
+      return new Uint8Array(
+        await globalThis.crypto.subtle.deriveBits(
+          {
+            name: 'HKDF',
+            hash: 'SHA-256',
+            salt: salt.length ? salt : new Uint8Array(32),
+            info,
+          },
+          key,
+          length * 8,
+        ),
+      )
     },
     // equal without leaking where they differ: every byte is read whatever the earlier ones held. A length difference
     // is answered at once, as everywhere (a length is not the secret)

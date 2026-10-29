@@ -5,7 +5,12 @@
 
 import { startDaemon } from '@term/call/code/dev/daemon'
 import type { NativeEnv } from '@term/make/code/compile/native'
-import { closeRun, field, openRun, report } from '@term/call/code/output'
+import {
+  closeRun,
+  field,
+  openRun,
+  report,
+} from '@term/call/code/output'
 
 export async function callWork(input: {
   root: string
@@ -14,6 +19,7 @@ export async function callWork(input: {
 }): Promise<void> {
   const env = input.env ?? 'node'
   openRun({ verb: 'work', root: input.root, facts: [env] })
+
   const started = Date.now()
 
   try {
@@ -30,15 +36,32 @@ export async function callWork(input: {
       verb: 'start',
       subject: `http://localhost:${port}`,
       duration: Date.now() - started,
-      fields: [field('route', 'POST /analyze {file, text}, answers diagnostics')],
+      fields: [
+        field(
+          'route',
+          'POST /analyze {file, text}, answers diagnostics',
+        ),
+      ],
     })
     process.on('SIGINT', () => {
       daemon.close()
       // Ctrl-C: ○ and exit 130 (section 18), as `term boot` and `term feed` end
-      process.exit(closeRun({ verdict: 'Stopped', failure: 'interrupted', uptime: true }))
+      process.exit(
+        closeRun({
+          verdict: 'Stopped',
+          failure: 'interrupted',
+          uptime: true,
+        }),
+      )
     })
   } catch (err) {
-    report({ glyph: 'failed', kind: 'lifecycle', verb: 'start', subject: 'The compiler worker did not start', message: [err instanceof Error ? err.message : String(err)] })
+    report({
+      glyph: 'failed',
+      kind: 'lifecycle',
+      verb: 'start',
+      subject: 'The compiler worker did not start',
+      message: [err instanceof Error ? err.message : String(err)],
+    })
     closeRun({ verdict: 'Not started' })
   }
 }

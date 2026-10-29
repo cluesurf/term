@@ -14,7 +14,11 @@
 
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { exportLean, joinSources, plantLean } from '@term/make/code/check/lean-export'
+import {
+  exportLean,
+  joinSources,
+  plantLean,
+} from '@term/make/code/check/lean-export'
 import { findLean, runLean } from '@term/make/code/check/lean-run'
 
 let pass = 0
@@ -31,7 +35,8 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 const BASE = new URL('./notes/code/', import.meta.url).pathname
-const SITE = new URL('../../deck/site/code/http/', import.meta.url).pathname
+const SITE = new URL('../../deck/site/code/http/', import.meta.url)
+  .pathname
 // law 7 reads @term/site's glyphs and escapes (escape.tree's `escape-html` runs `escape-glyphs`) and its model of the
 // node serializer, and the notes pages (page.tree)
 const FILES = [
@@ -120,46 +125,101 @@ const RECURSIVE = [
   'serialize',
 ]
 
-const source = joinSources(FILES.map(({ file, path }) => ({ file, text: readFileSync(path, 'utf8') })))
+const source = joinSources(
+  FILES.map(({ file, path }) => ({
+    file,
+    text: readFileSync(path, 'utf8'),
+  })),
+)
 const out = exportLean(source)
 
-ok('the kernel reports no error on the demo', out.kernel.diagnostics.length === 0, out.kernel.diagnostics.slice(0, 5).join('; '))
+ok(
+  'the kernel reports no error on the demo',
+  out.kernel.diagnostics.length === 0,
+  out.kernel.diagnostics.slice(0, 5).join('; '),
+)
 ok(
   `the claims read are the demo's ${CLAIMS.length}`,
-  CLAIMS.every(c => out.claims.includes(c)) && out.claims.length === CLAIMS.length,
+  CLAIMS.every(c => out.claims.includes(c)) &&
+    out.claims.length === CLAIMS.length,
   out.claims.join(','),
 )
-ok('every claim is proven by the kernel', CLAIMS.every(c => out.kernel.proven.includes(c)), CLAIMS.filter(c => !out.kernel.proven.includes(c)).join(','))
+ok(
+  'every claim is proven by the kernel',
+  CLAIMS.every(c => out.kernel.proven.includes(c)),
+  CLAIMS.filter(c => !out.kernel.proven.includes(c)).join(','),
+)
 ok(
   'every claim is exported',
   CLAIMS.every(c => out.exported.some(e => e.name === c && e.claim)),
   CLAIMS.filter(c => !out.exported.some(e => e.name === c)).join(','),
 )
-ok('nothing is refused', out.refused.length === 0, JSON.stringify(out.refused))
-ok('no constant is written as an axiom', out.axioms.length === 0 && !/^axiom /m.test(out.lean), out.axioms.join(','))
-ok('no claim rests on an axiom', out.exported.every(e => e.axioms.length === 0), JSON.stringify(out.exported.filter(e => e.axioms.length > 0)))
+ok(
+  'nothing is refused',
+  out.refused.length === 0,
+  JSON.stringify(out.refused),
+)
+ok(
+  'no constant is written as an axiom',
+  out.axioms.length === 0 && !/^axiom /m.test(out.lean),
+  out.axioms.join(','),
+)
+ok(
+  'no claim rests on an axiom',
+  out.exported.every(e => e.axioms.length === 0),
+  JSON.stringify(out.exported.filter(e => e.axioms.length > 0)),
+)
 ok(
   'a record and the unit type are Lean inductives',
-  out.lean.includes('inductive TermExport.«person» : Type where\n  | «make» :') && out.lean.includes('inductive TermExport.«Unit» : Type where\n  | «unitValue» :'),
+  out.lean.includes(
+    'inductive TermExport.«person» : Type where\n  | «make» :',
+  ) &&
+    out.lean.includes(
+      'inductive TermExport.«Unit» : Type where\n  | «unitValue» :',
+    ),
 )
-ok('no sorry, no partial, no termination clause in the file', !/\bsorry\b|\bpartial\b|decreasing_by|termination_by/.test(out.lean))
+ok(
+  'no sorry, no partial, no termination clause in the file',
+  !/\bsorry\b|\bpartial\b|decreasing_by|termination_by/.test(out.lean),
+)
 
 // each recursive definition is written by its recursor: its body names `T.rec` and never the definition itself
 const bodyOf = (name: string): string => {
   const head = `def TermExport.«${name}» `
   const start = out.lean.indexOf(head)
-  return start < 0 ? '' : out.lean.slice(out.lean.indexOf(':=\n', start), out.lean.indexOf('\n\n', start))
+  return start < 0
+    ? ''
+    : out.lean.slice(
+        out.lean.indexOf(':=\n', start),
+        out.lean.indexOf('\n\n', start),
+      )
 }
 
 for (const name of RECURSIVE) {
   const body = bodyOf(name)
-  ok(`${name} recurses through the recursor, not by name`, /\.rec /.test(body) && !body.includes(`TermExport.«${name}»`) && !body.includes(`TermExport.${name} `), body.slice(0, 300))
+  ok(
+    `${name} recurses through the recursor, not by name`,
+    /\.rec /.test(body) &&
+      !body.includes(`TermExport.«${name}»`) &&
+      !body.includes(`TermExport.${name} `),
+    body.slice(0, 300),
+  )
 }
 
 // THE PLANTED TWIN: law 1 "proved" by the empty shelf's evidence, which has type `fair-shelf bare`, not `fair-shelf s`
-const planted = plantLean(out.lean, 'ownership', '@TermExport.«fair-shelf».«clean»')
-const changed = out.lean.split('\n').filter((line, i) => planted.split('\n')[i] !== line)
-ok('the plant changes exactly one line, the body of ownership', changed.length === 1 && planted !== out.lean, `${changed.length} lines`)
+const planted = plantLean(
+  out.lean,
+  'ownership',
+  '@TermExport.«fair-shelf».«clean»',
+)
+const changed = out.lean
+  .split('\n')
+  .filter((line, i) => planted.split('\n')[i] !== line)
+ok(
+  'the plant changes exactly one line, the body of ownership',
+  changed.length === 1 && planted !== out.lean,
+  `${changed.length} lines`,
+)
 
 const writeAt = process.argv.indexOf('--write')
 
@@ -168,36 +228,81 @@ if (writeAt > 0) {
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'notes.lean'), out.lean)
   writeFileSync(join(dir, 'notes-planted.lean'), planted)
-  console.log(`wrote ${join(dir, 'notes.lean')} and ${join(dir, 'notes-planted.lean')}`)
+  console.log(
+    `wrote ${join(dir, 'notes.lean')} and ${join(dir, 'notes-planted.lean')}`,
+  )
 }
 
 // LEAN ITSELF, at TERM_LEAN or else the `lean` on the PATH, found and read by the driver `term hold --lean` uses
 const lean = findLean()
 
 if (lean) {
-  const dir = new URL('../../tmp/lean-export/run/', import.meta.url).pathname
+  const dir = new URL('../../tmp/lean-export/run/', import.meta.url)
+    .pathname
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'notes.lean'), out.lean)
   writeFileSync(join(dir, 'notes-planted.lean'), planted)
 
-  const good = runLean({ lean, file: join(dir, 'notes.lean'), source: out.lean, claims: CLAIMS })
-  ok('lean checks the export', good.status === 0 && good.errors.length === 0, good.output.slice(0, 3000))
-  ok('lean prints no warning on the export', good.warnings === 0, good.output.slice(0, 2000))
+  const good = runLean({
+    lean,
+    file: join(dir, 'notes.lean'),
+    source: out.lean,
+    claims: CLAIMS,
+  })
+  ok(
+    'lean checks the export',
+    good.status === 0 && good.errors.length === 0,
+    good.output.slice(0, 3000),
+  )
+  ok(
+    'lean prints no warning on the export',
+    good.warnings === 0,
+    good.output.slice(0, 2000),
+  )
 
   for (const claim of good.claims) {
-    ok(`lean: ${claim.name} depends on no axiom`, claim.verdict === 'checked', JSON.stringify(claim))
+    ok(
+      `lean: ${claim.name} depends on no axiom`,
+      claim.verdict === 'checked',
+      JSON.stringify(claim),
+    )
   }
 
-  const reported = [...good.output.matchAll(/^'TermExport\.(\S+)' (does not depend|depends)/gm)].length
-  ok('lean reports exactly one axiom line per claim', reported === CLAIMS.length, `${reported} lines`)
+  const reported = [
+    ...good.output.matchAll(
+      /^'TermExport\.(\S+)' (does not depend|depends)/gm,
+    ),
+  ].length
+  ok(
+    'lean reports exactly one axiom line per claim',
+    reported === CLAIMS.length,
+    `${reported} lines`,
+  )
 
-  const bad = runLean({ lean, file: join(dir, 'notes-planted.lean'), source: planted, claims: CLAIMS })
-  ok('lean refuses the planted proof', bad.status !== 0, bad.output.slice(0, 2000))
-  const plantedLine = out.lean.split('\n').findIndex((line, i) => planted.split('\n')[i] !== line) + 1
-  const refused = bad.claims.filter(claim => claim.verdict === 'refused').map(claim => claim.name)
+  const bad = runLean({
+    lean,
+    file: join(dir, 'notes-planted.lean'),
+    source: planted,
+    claims: CLAIMS,
+  })
+  ok(
+    'lean refuses the planted proof',
+    bad.status !== 0,
+    bad.output.slice(0, 2000),
+  )
+  const plantedLine =
+    out.lean
+      .split('\n')
+      .findIndex((line, i) => planted.split('\n')[i] !== line) + 1
+  const refused = bad.claims
+    .filter(claim => claim.verdict === 'refused')
+    .map(claim => claim.name)
   ok(
     'lean refuses the planted body alone, and only law 1 and law 1 of replay rest on it',
-    bad.errors.length === 1 && bad.errors[0]!.line === plantedLine && bad.errors[0]!.definition === 'ownership' && refused.join() === 'ownership,ownership-of-replay',
+    bad.errors.length === 1 &&
+      bad.errors[0]!.line === plantedLine &&
+      bad.errors[0]!.definition === 'ownership' &&
+      refused.join() === 'ownership,ownership-of-replay',
     `errors at ${bad.errors.map(e => `${e.line} in ${e.definition}`).join(', ')}, planted line ${plantedLine}, refused ${refused.join(', ')}`,
   )
 } else {

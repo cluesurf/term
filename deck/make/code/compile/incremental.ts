@@ -12,7 +12,12 @@ import { collectUsedClasses } from '@term/make/code/compile/used-classes'
 import { Database, LOW } from '@term/make/code/compile/query'
 import type { Durability, Cx } from '@term/make/code/compile/query'
 import { hashText } from '@term/make/code/term/hash'
-import { programJson, statementJson, twinJson, typeJson } from '@term/make/code/compile/node-json'
+import {
+  programJson,
+  statementJson,
+  twinJson,
+  typeJson,
+} from '@term/make/code/compile/node-json'
 import type { MilledUnit } from '@term/make/code/compile/cache'
 import type {
   Program,
@@ -49,7 +54,9 @@ function milledKey(unit: MilledUnit): string {
     return `diagnostics:${JSON.stringify(unit.diagnostics, withoutSpans)}`
   }
 
-  const twins = (unit.twins ?? []).map(twin => twinJson(WITHOUT_SPANS, twin as never))
+  const twins = (unit.twins ?? []).map(twin =>
+    twinJson(WITHOUT_SPANS, twin as never),
+  )
 
   return `program:${programJson(WITHOUT_SPANS, unit.program as never)}|twins:[${twins.join(',')}]`
 }
@@ -442,9 +449,12 @@ function definitionKey(def: FunctionDef | undefined): string {
 }
 
 function signatureKey(fn: FunctionDef): string {
-  const typeText = (type: unknown): string => (type === undefined ? 'null' : typeJson(WITHOUT_SPANS, type as never))
+  const typeText = (type: unknown): string =>
+    type === undefined ? 'null' : typeJson(WITHOUT_SPANS, type as never)
+
   const params = fn.params.map(p => typeText(p.type)).join(',')
-  const result = fn.result === undefined ? '' : `,"result":${typeText(fn.result)}`
+  const result =
+    fn.result === undefined ? '' : `,"result":${typeText(fn.result)}`
 
   return hashText(`{"params":[${params}]${result}}`)
 }

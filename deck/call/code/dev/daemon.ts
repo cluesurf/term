@@ -20,7 +20,7 @@ import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import type { NativeEnv } from '@term/make/code/compile/native'
 
-export interface Daemon {
+export type Daemon = {
   port: number
   // number of warm documents (for diagnostics / tests)
   warm(): number
@@ -69,7 +69,10 @@ export function startDaemon(options: {
       { file, text: body.text },
       { resolve, cache, roleOf, leanOf, deckOf, optimize: false },
     )
-    const diagnostics: Diagnostic[] = result.ok ? result.warnings : result.diagnostics
+
+    const diagnostics: Diagnostic[] = result.ok
+      ? result.warnings
+      : result.diagnostics
 
     return context.json({ diagnostics })
   })

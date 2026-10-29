@@ -11,11 +11,20 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-export type MockupCharacter = { role: string; strong: boolean; focus: boolean }
+export type MockupCharacter = {
+  role: string
+  strong: boolean
+  focus: boolean
+}
 
 export type MockupLine = { text: string; marks: MockupCharacter[] }
 
-export type Mockup = { caption: string; command: string; width: number; lines: MockupLine[] }
+export type Mockup = {
+  caption: string
+  command: string
+  width: number
+  lines: MockupLine[]
+}
 
 const ROLE_BY_COLOR: Record<string, string> = {
   '#E6E6E1': 'text',
@@ -59,14 +68,27 @@ function readLine(html: string, base: string): MockupLine {
   while ((found = pattern.exec(html))) {
     const style = found[1] ?? ''
     const value = decode(found[2] ?? found[3] ?? '')
-    const color = /(?:^|;)\s*color:\s*(#[0-9A-Fa-f]{6})/.exec(style)?.[1]?.toUpperCase()
-    const background = /background:\s*(#[0-9A-Fa-f]{6})/.exec(style)?.[1]?.toUpperCase()
+    const color = /(?:^|;)\s*color:\s*(#[0-9A-Fa-f]{6})/
+      .exec(style)?.[1]
+      ?.toUpperCase()
+    const background = /background:\s*(#[0-9A-Fa-f]{6})/
+      .exec(style)?.[1]
+      ?.toUpperCase()
     const focus = background ? FOCUS_BACKGROUNDS.has(background) : false
     // a background that is not the focus highlight is the terminal's cursor, drawn over whatever is under it
     const cursor = Boolean(background) && !focus
-    const named = found[1] !== undefined ? (color ? (ROLE_BY_COLOR[color] ?? `unknown ${color}`) : base) : base
+    const named =
+      found[1] !== undefined
+        ? color
+          ? (ROLE_BY_COLOR[color] ?? `unknown ${color}`)
+          : base
+        : base
     const role = cursor ? 'cursor' : named
-    const mark = { role, strong: /font-weight:\s*600/.test(style), focus }
+    const mark = {
+      role,
+      strong: /font-weight:\s*600/.test(style),
+      focus,
+    }
 
     for (const character of value) {
       text += character
@@ -82,8 +104,13 @@ export function readMockups(html: string): Mockup[] {
   const figures = html.split('<figure class="card"').slice(1)
 
   for (const figure of figures) {
-    const caption = decode(/<figcaption>([^<]*)<\/figcaption>/.exec(figure)?.[1] ?? '')
-    const header = /<span style="white-space: pre">([^<]*)<\/span><span style="white-space: pre">(\d+) columns<\/span>/.exec(figure)
+    const caption = decode(
+      /<figcaption>([^<]*)<\/figcaption>/.exec(figure)?.[1] ?? '',
+    )
+    const header =
+      /<span style="white-space: pre">([^<]*)<\/span><span style="white-space: pre">(\d+) columns<\/span>/.exec(
+        figure,
+      )
     const command = decode(header?.[1] ?? '').replace(/^[^·]*·\s*/, '')
     const width = Number(header?.[2] ?? 0)
 
@@ -92,13 +119,21 @@ export function readMockups(html: string): Mockup[] {
       continue
     }
 
-    const body = figure.split('<div style="padding: 28px 32px; display: flex; flex-direction: column">')[1] ?? ''
+    const body =
+      figure.split(
+        '<div style="padding: 28px 32px; display: flex; flex-direction: column">',
+      )[1] ?? ''
     const lines: MockupLine[] = []
-    const pattern = /<div style="white-space: pre">(.*?)<\/div>|<div style="height: 22px"><\/div>/g
+    const pattern =
+      /<div style="white-space: pre">(.*?)<\/div>|<div style="height: 22px"><\/div>/g
     let found: RegExpExecArray | null
 
     while ((found = pattern.exec(body))) {
-      lines.push(found[1] === undefined ? { text: '', marks: [] } : readLine(found[1], 'text'))
+      lines.push(
+        found[1] === undefined
+          ? { text: '', marks: [] }
+          : readLine(found[1], 'text'),
+      )
     }
 
     cards.push({ caption, command, width, lines })
@@ -108,9 +143,18 @@ export function readMockups(html: string): Mockup[] {
 }
 
 // the repository root, from the Term package root every suite runs in
-export const MOCKUP_PAGE = join(process.cwd(), '../../../../note/project/term/output/mockups.html')
-export const MOCKUP_FIXTURE = join(process.cwd(), 'test/item/mockups.json')
-export const MOCKUP_DIFFERENCES = join(process.cwd(), '../../../../note/project/term/output/mockup-differences.md')
+export const MOCKUP_PAGE = join(
+  process.cwd(),
+  '../../../../note/project/term/output/mockups.html',
+)
+export const MOCKUP_FIXTURE = join(
+  process.cwd(),
+  'test/item/mockups.json',
+)
+export const MOCKUP_DIFFERENCES = join(
+  process.cwd(),
+  '../../../../note/project/term/output/mockup-differences.md',
+)
 
 export function loadMockups(): Mockup[] {
   return JSON.parse(readFileSync(MOCKUP_FIXTURE, 'utf8')) as Mockup[]
@@ -124,10 +168,16 @@ if (isMain) {
 
   if (process.argv.includes('--check')) {
     const current = readFileSync(MOCKUP_FIXTURE, 'utf8')
-    console.log(current === written ? `mockups: ${extracted.length} cards, current` : 'mockups: STALE, run npx tsx test/item/mockup.ts')
+    console.log(
+      current === written
+        ? `mockups: ${extracted.length} cards, current`
+        : 'mockups: STALE, run npx tsx test/item/mockup.ts',
+    )
     process.exit(current === written ? 0 : 1)
   }
 
   writeFileSync(MOCKUP_FIXTURE, written)
-  console.log(`mockups: ${extracted.length} cards written to test/item/mockups.json`)
+  console.log(
+    `mockups: ${extracted.length} cards written to test/item/mockups.json`,
+  )
 }

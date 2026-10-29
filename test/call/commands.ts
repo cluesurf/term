@@ -26,31 +26,49 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import type { DockRoute } from '@term/make/code/compile/node'
-import { commandRoutes, programOf } from '@term/call/code/work/hook/parsing'
+import {
+  commandRoutes,
+  programOf,
+} from '@term/call/code/work/hook/parsing'
 import { projectResolver } from '@term/call/code/make'
 import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import { LINE } from './cli'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const PAGE = join(TERM, '../../../../note/project/term/commands.md')
 const CONSOLE = join(TERM, 'deck/call/code/line/base.tree')
 
 // the console's routes, as `term make` reads the file: its program (the global options) and its commands
-function consoleRoutes(): { program?: DockRoute; commands: DockRoute[] } {
+function consoleRoutes(): {
+  program?: DockRoute
+  commands: DockRoute[]
+} {
   const result = compile(
     { file: CONSOLE, text: readFileSync(CONSOLE, 'utf8') },
-    { resolve: projectResolver(TERM), roleOf: projectRoleOf(TERM), leanOf: projectLeanOf(TERM) },
+    {
+      resolve: projectResolver(TERM),
+      roleOf: projectRoleOf(TERM),
+      leanOf: projectLeanOf(TERM),
+    },
   )
 
   if (!result.ok) {
-    throw new Error(`deck/call/code/line/base.tree does not compile: ${result.diagnostics.slice(0, 3).map(d => d.message).join('; ')}`)
+    throw new Error(
+      `deck/call/code/line/base.tree does not compile: ${result.diagnostics
+        .slice(0, 3)
+        .map(d => d.message)
+        .join('; ')}`,
+    )
   }
 
   // the port answers the program as a maybe (work/hook/parsing.tree `console-program`)
   const split = programOf(commandRoutes(result.program))
 
-  return split.program.form === 'some' ? { program: split.program.value, commands: split.commands } : { commands: split.commands }
+  return split.program.form === 'some'
+    ? { program: split.program.value, commands: split.commands }
+    : { commands: split.commands }
 }
 
 const ROUTES = consoleRoutes()
@@ -90,7 +108,9 @@ function commands(text: string, prefix: string): Command[] {
       break
     }
 
-    const entry = new RegExp(`^\\s+${prefix}\\s+(\\S+)((?:\\s+[<\\[]\\S*)*)\\s{2,}(.*)$`).exec(line)
+    const entry = new RegExp(
+      `^\\s+${prefix}\\s+(\\S+)((?:\\s+[<\\[]\\S*)*)\\s{2,}(.*)$`,
+    ).exec(line)
 
     if (entry) {
       out.push({
@@ -130,14 +150,18 @@ function options(text: string, verb: string): string[] {
       break
     }
 
-    const flag = /^\s+(-[^\s,]+(?:,\s*--[^\s,]+)?)\s{2,}(.*)$/.exec(line)
+    const flag = /^\s+(-[^\s,]+(?:,\s*--[^\s,]+)?)\s{2,}(.*)$/.exec(
+      line,
+    )
 
     if (flag && !GLOBAL.has(flag[1]!.split(',')[0]!.trim())) {
       const flags = flag[1]!.trim()
       const long = /--([\w-]+)/.exec(flags)?.[1]
       const note =
-        (long ? (OPTION_NOTE.get(`${verb}|${long}`) ?? OPTION_NOTE.get(`*|${long}`)) : undefined) ??
-        flag[2]!.trim().replace(/\s+/g, ' ')
+        (long
+          ? (OPTION_NOTE.get(`${verb}|${long}`) ??
+            OPTION_NOTE.get(`*|${long}`))
+          : undefined) ?? flag[2]!.trim().replace(/\s+/g, ' ')
 
       out.push(`\`${flags}\` ${note}`)
     }
@@ -203,7 +227,10 @@ function optionNotes(): Map<string, string> {
 // the written description for a command (its path: `make`, `self find`), falling back to what help printed when its
 // hook has no note
 function noteFor(command: Command, parent?: string): string {
-  return NOTE.get(parent ? `${parent} ${command.name}` : command.name) ?? command.note
+  return (
+    NOTE.get(parent ? `${parent} ${command.name}` : command.name) ??
+    command.note
+  )
 }
 
 const root = help([])
@@ -229,20 +256,37 @@ const body: string[] = [
   '',
   '| verb | what |',
   '| --- | --- |',
-  ...verbs.map(v => `| [\`${v.name}\`](#${v.name}) | ${v.args ? `\`${v.args}\` ` : ''}${noteFor(v)} |`),
+  ...verbs.map(
+    v =>
+      `| [\`${v.name}\`](#${v.name}) | ${v.args ? `\`${v.args}\` ` : ''}${noteFor(v)} |`,
+  ),
   '',
 ]
 
 for (const verb of verbs) {
   const text = help([verb.name])
   const subs = commands(text, `term ${verb.name}`)
-  const flags = OWN_HELP_ONLY.has(verb.name) ? [] : options(text, verb.name)
+  const flags = OWN_HELP_ONLY.has(verb.name)
+    ? []
+    : options(text, verb.name)
 
-  body.push(`## ${verb.name}`, '', `\`term ${verb.name}${verb.args ? ` ${verb.args}` : ''}\``, '', noteFor(verb), '')
+  body.push(
+    `## ${verb.name}`,
+    '',
+    `\`term ${verb.name}${verb.args ? ` ${verb.args}` : ''}\``,
+    '',
+    noteFor(verb),
+    '',
+  )
 
   if (subs.length > 0) {
     body.push('| subcommand | what |', '| --- | --- |')
-    body.push(...subs.map(s => `| \`${s.name}${s.args ? ` ${s.args}` : ''}\` | ${noteFor(s, verb.name)} |`))
+    body.push(
+      ...subs.map(
+        s =>
+          `| \`${s.name}${s.args ? ` ${s.args}` : ''}\` | ${noteFor(s, verb.name)} |`,
+      ),
+    )
     body.push('')
   }
 
@@ -268,14 +312,18 @@ const commit = process.argv.includes('--commit')
 
 if (commit) {
   writeFileSync(PAGE, page)
-  console.log(`wrote note/project/term/commands.md (${verbs.length} verbs)`)
+  console.log(
+    `wrote note/project/term/commands.md (${verbs.length} verbs)`,
+  )
 } else if (!same) {
   console.log(
     'note/project/term/commands.md is out of date. Run `npx tsx test/call/commands.ts --commit` from deck/term/deck/term',
   )
 }
 
-console.log(`\ncommands: ${same || commit ? 1 : 0} pass, ${same || commit ? 0 : 1} fail`)
+console.log(
+  `\ncommands: ${same || commit ? 1 : 0} pass, ${same || commit ? 0 : 1} fail`,
+)
 
 if (!same && !commit) {
   process.exit(1)

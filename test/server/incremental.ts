@@ -124,7 +124,9 @@ async function main(): Promise<void> {
 
   console.log(`\nserver/incremental: ${pass} pass, ${fail} fail`)
 
-  if (fail > 0) {process.exit(1)}
+  if (fail > 0) {
+    process.exit(1)
+  }
 }
 
 void main()

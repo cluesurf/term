@@ -92,7 +92,11 @@ walkGroups({ file: 'big.tree', lines: generate(GROUPS) }, result => {
 const end = heapMb()
 const ratio = early > 0 ? Math.max(end, peak) / early : Infinity
 
-ok(`every group is read (${seen} of ${GROUPS})`, seen === GROUPS, `read ${seen}`)
+ok(
+  `every group is read (${seen} of ${GROUPS})`,
+  seen === GROUPS,
+  `read ${seen}`,
+)
 
 ok(
   `heap is flat: ${early} MB early, ${Math.max(end, peak)} MB at the end, ratio ${ratio.toFixed(2)} (limit ${LIMIT})`,

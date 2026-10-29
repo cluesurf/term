@@ -140,7 +140,9 @@ export function storedEntries(
       }
 
       // `<dir>/<kind>/<version>/<shard>/<key>.json.gz`, so the version is two levels above the file
-      const version = path.basename(path.dirname(path.dirname(entry.file)))
+      const version = path.basename(
+        path.dirname(path.dirname(entry.file)),
+      )
 
       found.push({
         kind,
@@ -187,7 +189,11 @@ export function cacheEntries(
         if (stat.isDirectory()) {
           walk(full)
         } else {
-          found.push({ file: full, size: stat.size, when: stat.mtimeMs })
+          found.push({
+            file: full,
+            size: stat.size,
+            when: stat.mtimeMs,
+          })
         }
       } catch {
         // a file removed underneath the walk is not an error
@@ -254,6 +260,7 @@ export function reclaimStaleVersions(
   keep: number = KEEP_VERSIONS,
 ): string[] {
   const base = path.join(dir, kind)
+
   let names: string[]
 
   try {
@@ -312,7 +319,12 @@ export function enforceBudget(
 // namespace whose mtime is the last sweep; a stamp that cannot be read or written means the sweep runs
 export const BUDGET_INTERVAL_MS = 60 * 60 * 1000
 
-export function budgetDue(dir: string, kind: string, slug: string, now: number = Date.now()): boolean {
+export function budgetDue(
+  dir: string,
+  kind: string,
+  slug: string,
+  now: number = Date.now(),
+): boolean {
   const stamp = path.join(dir, kind, slug, '.budget')
 
   try {
@@ -353,6 +365,7 @@ export function diskCacheStore(
   version: string | ((kind: string) => string),
 ): CacheStore {
   const slugs = new Map<string, string>()
+
   const slugFor = (kind: string): string => {
     const already = slugs.get(kind)
 
@@ -363,6 +376,7 @@ export function diskCacheStore(
     const slug = versionSlug(
       typeof version === 'string' ? version : version(kind),
     )
+
     slugs.set(kind, slug)
 
     return slug
@@ -422,7 +436,10 @@ export function diskCacheStore(
       const temp = `${file}.${process.pid}.${tempCounter++}.tmp`
 
       try {
-        writeFileSync(temp, gzipSync(Buffer.from(value, 'utf8'), { level: 6 }))
+        writeFileSync(
+          temp,
+          gzipSync(Buffer.from(value, 'utf8'), { level: 6 }),
+        )
         renameSync(temp, file)
       } catch {
         // a cache write failure must never fail the build
@@ -722,6 +739,7 @@ export function sharedCacheStore(
 // time and every module came back from disk (gunzip and JSON.parse); `term boot` and `term feed` also made a new parse
 // memo per compile, so a template-bearing module was parsed again on every edit. A long-lived process asks here
 const processCaches = new Map<string, CompileCache>()
+
 let processParseMemo: ParseMemo | undefined
 
 export function processCache(projectRoot: string): CompileCache {
@@ -752,7 +770,11 @@ export function projectCache(
     version[kind] ?? compilerVersion(kind)
 
   return new CompileCache(
-    sharedCacheStore(projectCacheDir(projectRoot), cacheHome(), forKind),
+    sharedCacheStore(
+      projectCacheDir(projectRoot),
+      cacheHome(),
+      forKind,
+    ),
     // per kind here too: the key folds the version in, so passing one version would put the output fingerprint
     // into every mill key and undo the split the store directory just made
     forKind,

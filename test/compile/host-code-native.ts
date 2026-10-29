@@ -6,7 +6,12 @@
 
 import { runDir } from './run-dir'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
@@ -18,15 +23,27 @@ import { resolveAsync } from '@term/make/code/check/async-resolve'
 import { simplify } from '@term/make/code/ir/simplify'
 import { collectModules } from '@term/make/code/compile/load'
 import type { Source } from '@term/make/code/compile/load'
-import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
+import {
+  withNativeEnv,
+  nativePrelude,
+} from '@term/make/code/compile/native'
 import { expandTemplates } from '@term/make/code/compile/template'
-import { bindModules, stampModule } from '@term/make/code/check/bind-modules'
+import {
+  bindModules,
+  stampModule,
+} from '@term/make/code/check/bind-modules'
 import { emitRust } from '@term/make/code/compile/rust'
 import { emitSwift } from '@term/make/code/compile/swift'
-import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
+import {
+  emitKotlin,
+  hoistKotlinImports,
+} from '@term/make/code/compile/kotlin'
 import type { Program } from '@term/make/code/compile/node'
 import { expandData, readDataText } from '@term/make/code/compile/host'
-import { decodeTree, encodeTree } from '@term/make/code/compile/host-code'
+import {
+  decodeTree,
+  encodeTree,
+} from '@term/make/code/compile/host-code'
 
 let pass = 0
 let fail = 0
@@ -39,7 +56,9 @@ function ok(name: string, cond: boolean, info = ''): void {
   } else {
     fail++
     // a toolchain prints warnings first and the error last, so a long failure keeps its end
-    console.log(`FAIL  ${name}  ${info.length > 2400 ? `...${info.slice(-2400)}` : info}`)
+    console.log(
+      `FAIL  ${name}  ${info.length > 2400 ? `...${info.slice(-2400)}` : info}`,
+    )
   }
 }
 
@@ -58,10 +77,14 @@ function have(tool: string): boolean {
   }
 }
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const FIXTURE = join(TERM, 'deck/host/test/fixture')
-const PACKS: Record<string, string> = { base: join(TERM, 'deck/base'), host: join(TERM, 'deck/host') }
+const PACKS: Record<string, string> = {
+  base: join(TERM, 'deck/base'),
+  host: join(TERM, 'deck/host'),
+}
 const SEP = '\u001e'
 
 const resolver = (path: string, from: string): Source | undefined => {
@@ -79,10 +102,15 @@ const resolver = (path: string, from: string): Source | undefined => {
 
   const found = /^@term\/(base|host)\/(.*)$/.exec(path)
 
-  return found ? sourceOf(resolvePackagePath({ dir: PACKS[found[1]!]!, rest: found[2]! })) : undefined
+  return found
+    ? sourceOf(
+        resolvePackagePath({ dir: PACKS[found[1]!]!, rest: found[2]! }),
+      )
+    : undefined
 }
 
-const readRuntime = (p: string): string | undefined => (existsSync(p) ? readFileSync(p, 'utf8') : undefined)
+const readRuntime = (p: string): string | undefined =>
+  existsSync(p) ? readFileSync(p, 'utf8') : undefined
 
 const ENTRY = `load @term/host/code/base
   find read
@@ -152,7 +180,9 @@ const ALL_INPUTS: string[] = [
 ]
 
 // HCN_INPUTS=0,2 runs only those inputs, to find which one a backend trips on
-const INPUTS = process.env.HCN_INPUTS ? process.env.HCN_INPUTS.split(',').map(at => ALL_INPUTS[Number(at)]!) : ALL_INPUTS
+const INPUTS = process.env.HCN_INPUTS
+  ? process.env.HCN_INPUTS.split(',').map(at => ALL_INPUTS[Number(at)]!)
+  : ALL_INPUTS
 
 function reference(text: string): string {
   const read = readDataText({ file: 'input', text })
@@ -163,7 +193,9 @@ function reference(text: string): string {
 
   const expanded = expandData(read.data, 'input')
 
-  return expanded.ok ? Buffer.from(encodeTree(expanded.data)).toString('hex') : expanded.diagnostics.map(d => d.message).join(' | ')
+  return expanded.ok
+    ? Buffer.from(encodeTree(expanded.data)).toString('hex')
+    : expanded.diagnostics.map(d => d.message).join(' | ')
 }
 
 const WANT = INPUTS.map(reference)
@@ -179,7 +211,9 @@ function leb(value: bigint): string {
   do {
     const low = Number(left & 127n)
     left >>= 7n
-    out.push((left > 0n ? low | 128 : low).toString(16).padStart(2, '0'))
+    out.push(
+      (left > 0n ? low | 128 : low).toString(16).padStart(2, '0'),
+    )
   } while (left > 0n)
 
   return out.join(' ')
@@ -192,13 +226,17 @@ function frame(kind: string, body: string): string {
   return `${H} ${kind} ${leb(BigInt(bytes.length))} ${bytes.join(' ')}`
 }
 
-const compact = (stream: string): string => stream.split(' ').filter(Boolean).join('')
+const compact = (stream: string): string =>
+  stream.split(' ').filter(Boolean).join('')
 
 // refusals whose message carries a decimal: each native backend must give the TypeScript port's name, byte and
 // message, the decimal written as TypeScript writes it
 const REFUSALS: { stream: string; name: string }[] = [
   // a count past 2^53 - 1
-  { stream: `${H} 01 0a 9c ff ff ff ff ff ff ff ff 01`, name: 'too-large' },
+  {
+    stream: `${H} 01 0a 9c ff ff ff ff ff ff ff ff 01`,
+    name: 'too-large',
+  },
   // a frame length past 2^53 - 1
   { stream: `${H} 01 ${'ff '.repeat(8)}7f e0`, name: 'too-large' },
   // a compressed frame's declared size at 2^53, past what a length holds
@@ -210,9 +248,13 @@ const REFUSALS: { stream: string; name: string }[] = [
 ]
 
 function portRefusal(stream: string): string {
-  const decoded = decodeTree(Uint8Array.from(Buffer.from(compact(stream), 'hex')))
+  const decoded = decodeTree(
+    Uint8Array.from(Buffer.from(compact(stream), 'hex')),
+  )
 
-  return decoded.ok ? 'accepted' : `${decoded.problem.name} @${decoded.problem.at}: ${decoded.problem.message}`
+  return decoded.ok
+    ? 'accepted'
+    : `${decoded.problem.name} @${decoded.problem.at}: ${decoded.problem.message}`
 }
 
 const REFUSED = REFUSALS.map(one => portRefusal(one.stream))
@@ -220,41 +262,82 @@ const REFUSED = REFUSALS.map(one => portRefusal(one.stream))
 // integers past 64 bits: the format carries them (TypeScript reads the nearest double), a native number cannot, so each
 // native backend refuses them as `too-large` at the integer's head byte (6), naming its width in bits
 const WIDE: { body: string; value: bigint }[] = [
-  { body: '1c ff ff ff ff ff ff ff ff ff 01', value: 2n ** 64n - 1n + 28n },
-  { body: '3c ff ff ff ff ff ff ff ff ff 01', value: 2n ** 64n - 1n + 28n + 1n },
-  { body: '1c 80 80 80 80 80 80 80 80 80 80 01', value: 2n ** 70n + 28n },
+  {
+    body: '1c ff ff ff ff ff ff ff ff ff 01',
+    value: 2n ** 64n - 1n + 28n,
+  },
+  {
+    body: '3c ff ff ff ff ff ff ff ff ff 01',
+    value: 2n ** 64n - 1n + 28n + 1n,
+  },
+  {
+    body: '1c 80 80 80 80 80 80 80 80 80 80 01',
+    value: 2n ** 70n + 28n,
+  },
 ]
 
-const WIDE_WANT = WIDE.map(one => `too-large @6: an integer of ${one.value.toString(2).length} bits, past the 64-bit range a number holds here`)
+const WIDE_WANT = WIDE.map(
+  one =>
+    `too-large @6: an integer of ${one.value.toString(2).length} bits, past the 64-bit range a number holds here`,
+)
 
 // the two ends of the 64-bit range, read and written back unchanged on every native backend: 2^63 - 1, and -2^63
 // (major 1 carries -1 - value, the same digits)
-const EDGES: string[] = ['1c', '3c'].map(tag => compact(frame('01', `${tag} ${leb(2n ** 63n - 1n - 28n)}`)))
+const EDGES: string[] = ['1c', '3c'].map(tag =>
+  compact(frame('01', `${tag} ${leb(2n ** 63n - 1n - 28n)}`)),
+)
 
 // the calls each backend makes after the round trips, and what each must print
-type Edge = { call: 'refusal' | 'recode'; hex: string; want: string; name: string }
+type Edge = {
+  call: 'refusal' | 'recode'
+  hex: string
+  want: string
+  name: string
+}
 
 const EDGE_CALLS: Edge[] = [
-  ...REFUSALS.map((one, at) => ({ call: 'refusal' as const, hex: compact(one.stream), want: REFUSED[at]!, name: `refuses ${one.stream.slice(12, 40)}... as the TypeScript port does` })),
-  ...WIDE.map((one, at) => ({ call: 'refusal' as const, hex: compact(frame('01', one.body)), want: WIDE_WANT[at]!, name: `refuses the ${one.value.toString(2).length}-bit integer ${one.body.slice(0, 14)}... as too-large` })),
-  ...EDGES.map(hex => ({ call: 'recode' as const, hex, want: hex, name: `reads and writes back ${hex.slice(8, 30)}..., an end of the 64-bit range` })),
+  ...REFUSALS.map((one, at) => ({
+    call: 'refusal' as const,
+    hex: compact(one.stream),
+    want: REFUSED[at]!,
+    name: `refuses ${one.stream.slice(12, 40)}... as the TypeScript port does`,
+  })),
+  ...WIDE.map((one, at) => ({
+    call: 'refusal' as const,
+    hex: compact(frame('01', one.body)),
+    want: WIDE_WANT[at]!,
+    name: `refuses the ${one.value.toString(2).length}-bit integer ${one.body.slice(0, 14)}... as too-large`,
+  })),
+  ...EDGES.map(hex => ({
+    call: 'recode' as const,
+    hex,
+    want: hex,
+    name: `reads and writes back ${hex.slice(8, 30)}..., an end of the 64-bit range`,
+  })),
 ]
 
 function frontEnd(env: 'rust' | 'swift' | 'kotlin'): Program {
-  const { sources, scope } = collectModules({ file: 'main.tree', text: ENTRY }, withNativeEnv(env, resolver))
+  const { sources, scope } = collectModules(
+    { file: 'main.tree', text: ENTRY },
+    withNativeEnv(env, resolver),
+  )
   const program: Program = []
 
   for (const unit of sources) {
     const parsed = parse(unit)
 
     if (!parsed.ok) {
-      throw new Error(`parse failed: ${unit.file}: ${parsed.diagnostics.map(d => d.message).join(', ')}`)
+      throw new Error(
+        `parse failed: ${unit.file}: ${parsed.diagnostics.map(d => d.message).join(', ')}`,
+      )
     }
 
     const built = mill(expandTemplates(parsed.tree), unit.file)
 
     if (!built.ok) {
-      throw new Error(`mill failed: ${unit.file}: ${built.diagnostics.map(d => d.message).join(', ')}`)
+      throw new Error(
+        `mill failed: ${unit.file}: ${built.diagnostics.map(d => d.message).join(', ')}`,
+      )
     }
 
     stampModule(built.program, unit.file)
@@ -264,10 +347,17 @@ function frontEnd(env: 'rust' | 'swift' | 'kotlin'): Program {
   bindModules(program, scope, 'main.tree')
   resolveNames(program, 'main.tree')
 
-  const errors = check(program, 'main.tree').filter(d => d.severity !== 'warning')
+  const errors = check(program, 'main.tree').filter(
+    d => d.severity !== 'warning',
+  )
 
   if (errors.length) {
-    throw new Error(`check failed: ${errors.slice(0, 5).map(d => d.message).join(' | ')}`)
+    throw new Error(
+      `check failed: ${errors
+        .slice(0, 5)
+        .map(d => d.message)
+        .join(' | ')}`,
+    )
   }
 
   resolveAsync(program)
@@ -280,39 +370,67 @@ function compare(env: string, output: string): void {
   const got = output.split(SEP)
 
   INPUTS.forEach((_, at) => {
-    ok(`${env}: input ${at} encodes to the reference's bytes`, got[at] === WANT[at], `\n      got  ${got[at]}\n      want ${WANT[at]}`)
-    ok(`${env}: input ${at} decodes and encodes back unchanged`, got[INPUTS.length + at] === WANT[at], `\n      got  ${got[INPUTS.length + at]}\n      want ${WANT[at]}`)
+    ok(
+      `${env}: input ${at} encodes to the reference's bytes`,
+      got[at] === WANT[at],
+      `\n      got  ${got[at]}\n      want ${WANT[at]}`,
+    )
+    ok(
+      `${env}: input ${at} decodes and encodes back unchanged`,
+      got[INPUTS.length + at] === WANT[at],
+      `\n      got  ${got[INPUTS.length + at]}\n      want ${WANT[at]}`,
+    )
   })
 
   EDGE_CALLS.forEach((edge, at) => {
     const one = got[INPUTS.length * 2 + at]
 
-    ok(`${env}: ${edge.name}`, one === edge.want, `\n      got  ${one}\n      want ${edge.want}`)
+    ok(
+      `${env}: ${edge.name}`,
+      one === edge.want,
+      `\n      got  ${one}\n      want ${edge.want}`,
+    )
   })
 }
 
 // the TypeScript port refuses each stream as named, so the native comparison holds the intended refusal
 REFUSALS.forEach((one, at) => {
-  ok(`typescript: refuses ${one.stream.slice(12, 40)}... as ${one.name}`, REFUSED[at]!.startsWith(`${one.name} @`), REFUSED[at])
+  ok(
+    `typescript: refuses ${one.stream.slice(12, 40)}... as ${one.name}`,
+    REFUSED[at]!.startsWith(`${one.name} @`),
+    REFUSED[at],
+  )
 })
 
 // and reads every wide integer (the nearest double), which is why a native refusal of one is the model's limit
 WIDE.forEach(one => {
-  ok(`typescript: reads the ${one.value.toString(2).length}-bit integer`, portRefusal(frame('01', one.body)) === 'accepted', portRefusal(frame('01', one.body)))
+  ok(
+    `typescript: reads the ${one.value.toString(2).length}-bit integer`,
+    portRefusal(frame('01', one.body)) === 'accepted',
+    portRefusal(frame('01', one.body)),
+  )
 })
 
 // the native calls for the edges, one per backend's spelling
-function edgeCalls(spell: (task: 'refusal' | 'recode', hex: string) => string): string[] {
+function edgeCalls(
+  spell: (task: 'refusal' | 'recode', hex: string) => string,
+): string[] {
   return EDGE_CALLS.map(edge => spell(edge.call, edge.hex))
 }
 
 const dir = runDir('term-host-code-native-')
 const texts = [...INPUTS, ...WANT]
-const CARGO_ENV = { ...process.env, CARGO_TARGET_DIR: join(tmpdir(), 'term-host-native-target') }
+const CARGO_ENV = {
+  ...process.env,
+  CARGO_TARGET_DIR: join(tmpdir(), 'term-host-native-target'),
+}
 
 function runRust(): void {
   if (!have('cargo')) {
-    return skipped('rust: the codec builds and agrees', 'cargo not installed')
+    return skipped(
+      'rust: the codec builds and agrees',
+      'cargo not installed',
+    )
   }
 
   const program = frontEnd('rust')
@@ -325,8 +443,14 @@ function runRust(): void {
   )
 
   const calls = [
-    ...INPUTS.map(input => `print!("{}\\u{1e}", code_hex(${JSON.stringify(input)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }));`),
-    ...WANT.map(hex => `print!("{}\\u{1e}", recode_hex(${JSON.stringify(hex)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }));`),
+    ...INPUTS.map(
+      input =>
+        `print!("{}\\u{1e}", code_hex(${JSON.stringify(input)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }));`,
+    ),
+    ...WANT.map(
+      hex =>
+        `print!("{}\\u{1e}", recode_hex(${JSON.stringify(hex)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }));`,
+    ),
     // refusal-of catches every raise, so Rust gives it no Result
     ...edgeCalls((task, hex) =>
       task === 'refusal'
@@ -335,21 +459,35 @@ function runRust(): void {
     ),
   ]
 
-  writeFileSync(join(out, 'src/main.rs'), `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(program)}\nfn main() {\n${calls.join('\n')}\n}\n`)
+  writeFileSync(
+    join(out, 'src/main.rs'),
+    `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(program)}\nfn main() {\n${calls.join('\n')}\n}\n`,
+  )
 
   try {
-    const output = execFileSync('cargo', ['run', '--quiet'], { cwd: out, stdio: ['ignore', 'pipe', 'pipe'], env: CARGO_ENV }).toString()
+    const output = execFileSync('cargo', ['run', '--quiet'], {
+      cwd: out,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: CARGO_ENV,
+    }).toString()
 
     ok('rust: the codec builds', true)
     compare('rust', output)
   } catch (error) {
-    ok('rust: the codec builds and runs', false, String((error as { stderr?: Buffer }).stderr ?? error))
+    ok(
+      'rust: the codec builds and runs',
+      false,
+      String((error as { stderr?: Buffer }).stderr ?? error),
+    )
   }
 }
 
 function runSwift(): void {
   if (!have('swiftc')) {
-    return skipped('swift: the codec builds and agrees', 'swiftc not installed')
+    return skipped(
+      'swift: the codec builds and agrees',
+      'swiftc not installed',
+    )
   }
 
   const program = frontEnd('swift')
@@ -359,25 +497,46 @@ function runSwift(): void {
   mkdirSync(out, { recursive: true })
 
   const calls = [
-    ...INPUTS.map(input => `print(try! codeHex(input: ${JSON.stringify(input)}), terminator: "\\u{1e}")`),
-    ...WANT.map(hex => `print(try! recodeHex(input: ${JSON.stringify(hex)}), terminator: "\\u{1e}")`),
-    ...edgeCalls((task, hex) => `do { print(try ${task === 'refusal' ? 'refusalOf' : 'recodeHex'}(input: ${JSON.stringify(hex)}), terminator: "\\u{1e}") } catch { print("raised \\(error)", terminator: "\\u{1e}") }`),
+    ...INPUTS.map(
+      input =>
+        `print(try! codeHex(input: ${JSON.stringify(input)}), terminator: "\\u{1e}")`,
+    ),
+    ...WANT.map(
+      hex =>
+        `print(try! recodeHex(input: ${JSON.stringify(hex)}), terminator: "\\u{1e}")`,
+    ),
+    ...edgeCalls(
+      (task, hex) =>
+        `do { print(try ${task === 'refusal' ? 'refusalOf' : 'recodeHex'}(input: ${JSON.stringify(hex)}), terminator: "\\u{1e}") } catch { print("raised \\(error)", terminator: "\\u{1e}") }`,
+    ),
   ]
 
-  writeFileSync(file, `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(program)}\n${calls.join('\n')}\n`)
+  writeFileSync(
+    file,
+    `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(program)}\n${calls.join('\n')}\n`,
+  )
 
   try {
-    execFileSync('swiftc', ['-o', join(out, 'main'), file], { stdio: 'pipe' })
+    execFileSync('swiftc', ['-o', join(out, 'main'), file], {
+      stdio: 'pipe',
+    })
     ok('swift: the codec builds', true)
     compare('swift', execFileSync(join(out, 'main')).toString())
   } catch (error) {
-    ok('swift: the codec builds and runs', false, String((error as { stderr?: Buffer }).stderr ?? error))
+    ok(
+      'swift: the codec builds and runs',
+      false,
+      String((error as { stderr?: Buffer }).stderr ?? error),
+    )
   }
 }
 
 function runKotlin(): void {
   if (!have('kotlinc') || !have('java')) {
-    return skipped('kotlin: the codec builds and agrees', 'kotlinc/java not installed')
+    return skipped(
+      'kotlin: the codec builds and agrees',
+      'kotlinc/java not installed',
+    )
   }
 
   const program = frontEnd('kotlin')
@@ -389,26 +548,46 @@ function runKotlin(): void {
   const calls = [
     ...INPUTS.map(input => `codeHex(${JSON.stringify(input)})`),
     ...WANT.map(hex => `recodeHex(${JSON.stringify(hex)})`),
-    ...edgeCalls((task, hex) => `(try { ${task === 'refusal' ? 'refusalOf' : 'recodeHex'}(${JSON.stringify(hex)}) } catch (e: Throwable) { "raised " + e })`),
+    ...edgeCalls(
+      (task, hex) =>
+        `(try { ${task === 'refusal' ? 'refusalOf' : 'recodeHex'}(${JSON.stringify(hex)}) } catch (e: Throwable) { "raised " + e })`,
+    ),
   ]
 
   writeFileSync(
     file,
-    hoistKotlinImports(`${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(program)}\nfun main() { for (out in listOf(${calls.join(', ')})) { print(out + "\\u001e") } }\n`),
+    hoistKotlinImports(
+      `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(program)}\nfun main() { for (out in listOf(${calls.join(', ')})) { print(out + "\\u001e") } }\n`,
+    ),
   )
 
   try {
-    execFileSync('kotlinc', [file, '-include-runtime', '-d', join(out, 'main.jar')], { stdio: 'pipe' })
+    execFileSync(
+      'kotlinc',
+      [file, '-include-runtime', '-d', join(out, 'main.jar')],
+      { stdio: 'pipe' },
+    )
     ok('kotlin: the codec builds', true)
-    compare('kotlin', execFileSync('java', ['-jar', join(out, 'main.jar')]).toString())
+    compare(
+      'kotlin',
+      execFileSync('java', ['-jar', join(out, 'main.jar')]).toString(),
+    )
   } catch (error) {
-    ok('kotlin: the codec builds and runs', false, String((error as { stderr?: Buffer }).stderr ?? error))
+    ok(
+      'kotlin: the codec builds and runs',
+      false,
+      String((error as { stderr?: Buffer }).stderr ?? error),
+    )
   }
 }
 
 const only = process.env.HN_ONLY ?? ''
 
-for (const [env, run] of [['rust', runRust], ['swift', runSwift], ['kotlin', runKotlin]] as const) {
+for (const [env, run] of [
+  ['rust', runRust],
+  ['swift', runSwift],
+  ['kotlin', runKotlin],
+] as const) {
   if (!only || only === env) {
     try {
       run()
@@ -418,7 +597,9 @@ for (const [env, run] of [['rust', runRust], ['swift', runSwift], ['kotlin', run
   }
 }
 
-console.log(`\nhost-code-native: ${pass} pass, ${fail} fail, ${skip} skipped`)
+console.log(
+  `\nhost-code-native: ${pass} pass, ${fail} fail, ${skip} skipped`,
+)
 
 if (fail > 0) {
   process.exit(1)

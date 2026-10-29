@@ -34,7 +34,11 @@ export type Term =
   | { tag: 'self'; body: Term }
 
 type Closure = judging.KernelClosure // values (normal forms): a closure is the kernel's own, read through `closeOver`
-type Elim = { e: 'app'; arg: Value } | { e: 'j'; motive: Value; base: Value } | { e: 'fst' } | { e: 'snd' }
+type Elim =
+  | { e: 'app'; arg: Value }
+  | { e: 'j'; motive: Value; base: Value }
+  | { e: 'fst' }
+  | { e: 'snd' }
 export type Value =
   | { v: 'type'; level: Level }
   | { v: 'pi'; mult: Mult; domain: Value; codomain: Closure }
@@ -49,7 +53,14 @@ export type Value =
   | { v: 'self'; body: Closure }
 
 // ---- context: `globals` is the signature, `names` what the source called each bound variable ('' for none) ----
-export type Context = { level: number; env: Value[]; types: Value[]; mults: Mult[]; names: string[]; globals: Map<string, Value> }
+export type Context = {
+  level: number
+  env: Value[]
+  types: Value[]
+  mults: Mult[]
+  names: string[]
+  globals: Map<string, Value>
+}
 type Inferred = { type: Value; usage: Mult[] }
 
 const state = judging.newState()
@@ -58,13 +69,20 @@ export class TypeError extends Error {}
 
 // the raise judge-call handed back, as the original's class: the same object, given the class and the message without
 // its prefix, never a second one built (traps.md T039)
-function thrown(out: { raised: unknown; kind: string; message: string }): unknown {
+function thrown(out: {
+  raised: unknown
+  kind: string
+  message: string
+}): unknown {
   if (out.kind === '') {
     return out.raised
   }
 
   const error = out.raised as Error
-  Object.setPrototypeOf(error, out.kind === 'type' ? TypeError.prototype : Error.prototype)
+  Object.setPrototypeOf(
+    error,
+    out.kind === 'type' ? TypeError.prototype : Error.prototype,
+  )
   error.message = out.message
   delete (error as { name?: string }).name
 
@@ -88,61 +106,159 @@ export const judgeState = (): judging.JudgeState => state
 
 export const litLevel = (n: number): Level => judging.litLevel(n)
 export const varLevel = (name: string): Level => judging.varLevel(name)
-export const succLevel = (level: Level): Level => judging.succLevel(level)
-export const maxLevel = (a: Level, b: Level): Level => judging.maxLevel(a, b)
+export const succLevel = (level: Level): Level =>
+  judging.succLevel(level)
+export const maxLevel = (a: Level, b: Level): Level =>
+  judging.maxLevel(a, b)
 // the universe a Pi inhabits: impredicative at the bottom (literally Type 0), predicative above
-export const piLevel = (domainLevel: Level, codomainLevel: Level): Level => judging.piLevel(domainLevel, codomainLevel)
-export const eqLevel = (a: Level, b: Level): boolean => judging.eqLevel(a, b)
-export const neutralVar = (level: number): Value => judging.neutralVar(level) as Value
+export const piLevel = (
+  domainLevel: Level,
+  codomainLevel: Level,
+): Level => judging.piLevel(domainLevel, codomainLevel)
+export const eqLevel = (a: Level, b: Level): boolean =>
+  judging.eqLevel(a, b)
+export const neutralVar = (level: number): Value =>
+  judging.neutralVar(level) as Value
 
 // transparent definitions (delta reduction), truncations WITH their arity, the circle's computation rules
-export const defineConstant = (name: string, value: Value): void => judging.defineConstant(state, name, value as never)
-export const registerTruncation = (name: string, arity: number): void => judging.registerTruncation(state, name, arity)
-export const isTruncationConstructor = (name: string): boolean => judging.isTruncationConstructor(state, name)
+export const defineConstant = (name: string, value: Value): void =>
+  judging.defineConstant(state, name, value as never)
+export const registerTruncation = (name: string, arity: number): void =>
+  judging.registerTruncation(state, name, arity)
+export const isTruncationConstructor = (name: string): boolean =>
+  judging.isTruncationConstructor(state, name)
 export const enableCircle = (): void => judging.enableCircle(state)
-export const resetDefinitions = (): void => judging.resetDefinitions(state)
+export const resetDefinitions = (): void =>
+  judging.resetDefinitions(state)
 
-export const freshMeta = (type: Value): Term => judging.freshMeta(state, type as never) as Term
+export const freshMeta = (type: Value): Term =>
+  judging.freshMeta(state, type as never) as Term
 export const resetMetas = (): void => judging.resetMetas(state)
 
-export const whnf = (value: Value): Value => kernel(() => judging.whnf(state, value as never) as Value)
-export const evaluate = (env: Value[], term: Term): Value => kernel(() => judging.evaluate(state, env as never, term as never) as Value)
-export const closeOver = (closure: Closure, value: Value): Value => kernel(() => judging.closeOver(state, closure, value as never) as Value)
-export const applyValue = (fun: Value, arg: Value): Value => kernel(() => judging.applyValue(state, fun as never, arg as never) as Value)
+export const whnf = (value: Value): Value =>
+  kernel(() => judging.whnf(state, value as never) as Value)
+export const evaluate = (env: Value[], term: Term): Value =>
+  kernel(
+    () => judging.evaluate(state, env as never, term as never) as Value,
+  )
+export const closeOver = (closure: Closure, value: Value): Value =>
+  kernel(
+    () => judging.closeOver(state, closure, value as never) as Value,
+  )
+export const applyValue = (fun: Value, arg: Value): Value =>
+  kernel(
+    () =>
+      judging.applyValue(state, fun as never, arg as never) as Value,
+  )
 
 // A NORMAL FORM TO REWRITE IN: every transparent definition unfolded, except a constant in `opaque` and a call whose
 // unfolding only gets stuck, which stay as written
-export function normalTerm(level: number, value: Value, opaque: ReadonlySet<string>, depth = 0): Term {
-  return kernel(() => judging.normalTerm(state, level, value as never, name => opaque.has(name), depth) as Term)
+export function normalTerm(
+  level: number,
+  value: Value,
+  opaque: ReadonlySet<string>,
+  depth = 0,
+): Term {
+  return kernel(
+    () =>
+      judging.normalTerm(
+        state,
+        level,
+        value as never,
+        name => opaque.has(name),
+        depth,
+      ) as Term,
+  )
 }
 
-export const quote = (level: number, value: Value): Term => kernel(() => judging.quote(state, level, value as never) as Term)
+export const quote = (level: number, value: Value): Term =>
+  kernel(() => judging.quote(state, level, value as never) as Term)
 
 // definitional equality, and equality in the theory extended by the given (induction-) hypothesis equalities
-export const areConvertible = (level: number, a: Value, b: Value): boolean =>
-  kernel(() => judging.areConvertible(state, level, a as never, b as never))
-export const convertibleModulo = (level: number, a: Value, b: Value, hypotheses: [Value, Value][]): boolean =>
-  kernel(() => judging.convertibleModulo(state, level, a as never, b as never, hypotheses as never))
+export const areConvertible = (
+  level: number,
+  a: Value,
+  b: Value,
+): boolean =>
+  kernel(() =>
+    judging.areConvertible(state, level, a as never, b as never),
+  )
+export const convertibleModulo = (
+  level: number,
+  a: Value,
+  b: Value,
+  hypotheses: [Value, Value][],
+): boolean =>
+  kernel(() =>
+    judging.convertibleModulo(
+      state,
+      level,
+      a as never,
+      b as never,
+      hypotheses as never,
+    ),
+  )
 
 export const emptyContext: Context = judging.emptyContext() as Context
 
 // a context whose signature postulates each named constant at the given (closed) type term
-export const contextWithSignature = (signature: { name: string; type: Term }[]): Context =>
-  kernel(() => judging.contextWithSignature(state, signature as never) as Context)
-export const bind = (context: Context, mult: Mult, type: Value, name = ''): Context =>
-  judging.bindContext(context as never, mult, type as never, name) as Context
+export const contextWithSignature = (
+  signature: { name: string; type: Term }[],
+): Context =>
+  kernel(
+    () =>
+      judging.contextWithSignature(
+        state,
+        signature as never,
+      ) as Context,
+  )
+export const bind = (
+  context: Context,
+  mult: Mult,
+  type: Value,
+  name = '',
+): Context =>
+  judging.bindContext(
+    context as never,
+    mult,
+    type as never,
+    name,
+  ) as Context
 
-export const infer = (context: Context, term: Term): Inferred => kernel(() => judging.infer(state, context as never, term as never) as Inferred)
-export const check = (context: Context, term: Term, expected: Value): Mult[] =>
-  kernel(() => judging.check(state, context as never, term as never, expected as never) as Mult[])
+export const infer = (context: Context, term: Term): Inferred =>
+  kernel(
+    () =>
+      judging.infer(state, context as never, term as never) as Inferred,
+  )
+export const check = (
+  context: Context,
+  term: Term,
+  expected: Value,
+): Mult[] =>
+  kernel(
+    () =>
+      judging.check(
+        state,
+        context as never,
+        term as never,
+        expected as never,
+      ) as Mult[],
+  )
 
 // a term as a person reads it (a variable by its source name, a binder by a fresh one), and the exact form
-export const showNamed = (term: Term, names: string[] = []): string => judging.showNamed(term as never, names)
-export const showTerm = (term: Term): string => judging.showTerm(term as never)
+export const showNamed = (term: Term, names: string[] = []): string =>
+  judging.showNamed(term as never, names)
+export const showTerm = (term: Term): string =>
+  judging.showTerm(term as never)
 
 // replace a level variable with a concrete level throughout a level-polymorphic term
-export const instantiateLevel = (term: Term, name: string, replacement: Level): Term =>
+export const instantiateLevel = (
+  term: Term,
+  name: string,
+  replacement: Level,
+): Term =>
   judging.instantiateLevel(term as never, name, replacement) as Term
 
 // check a closed term against a closed type
-export const checks = (term: Term, type: Term): boolean => kernel(() => judging.checks(state, term as never, type as never))
+export const checks = (term: Term, type: Term): boolean =>
+  kernel(() => judging.checks(state, term as never, type as never))

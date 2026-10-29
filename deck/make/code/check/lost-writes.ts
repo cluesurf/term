@@ -13,7 +13,11 @@
 // `mark shared`, one object every binding sees. A task that reads its copy after writing it (to compute a value, or
 // in a `hold` about it) is using the copy, and is left alone.
 
-import type { Program, Statement, Type } from '@term/make/code/compile/node'
+import type {
+  Program,
+  Statement,
+  Type,
+} from '@term/make/code/compile/node'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 
@@ -25,14 +29,22 @@ function returnsNothing(task: Task): boolean {
   return (
     result === undefined ||
     result.kind === 'unit' ||
-    (result.kind === 'named' && (result.name === 'void' || result.name === 'unit'))
+    (result.kind === 'named' &&
+      (result.name === 'void' || result.name === 'unit'))
   )
 }
 
 // a written field path, `box/inner/count`, as its root parameter and the fields read on the way to the one written
 // (`inner`), or nothing when the target is not a plain field path
-function writtenPath(target: unknown): { root: string; through: string[] } | undefined {
-  let node = target as { form?: string; target?: unknown; name?: string; index?: unknown }
+function writtenPath(
+  target: unknown,
+): { root: string; through: string[] } | undefined {
+  let node = target as {
+    form?: string
+    target?: unknown
+    name?: string
+    index?: unknown
+  }
 
   if (node?.form !== 'member' || node.index) {
     return undefined
@@ -45,10 +57,15 @@ function writtenPath(target: unknown): { root: string; through: string[] } | und
     node = node.target as typeof node
   }
 
-  return node?.form === 'variable' && node.name ? { root: node.name, through: names.slice(0, -1) } : undefined
+  return node?.form === 'variable' && node.name
+    ? { root: node.name, through: names.slice(0, -1) }
+    : undefined
 }
 
-export function checkLostWrites(program: Program, file: string): Diagnostic[] {
+export function checkLostWrites(
+  program: Program,
+  file: string,
+): Diagnostic[] {
   const shared = new Set<string>()
   const forms = new Map<string, Map<string, Type>>()
 
@@ -71,7 +88,11 @@ export function checkLostWrites(program: Program, file: string): Diagnostic[] {
     for (const name of through) {
       const type = forms.get(current)?.get(name)
 
-      if (type?.kind !== 'named' || !forms.has(type.name) || shared.has(type.name)) {
+      if (
+        type?.kind !== 'named' ||
+        !forms.has(type.name) ||
+        shared.has(type.name)
+      ) {
         return false
       }
 
@@ -84,7 +105,12 @@ export function checkLostWrites(program: Program, file: string): Diagnostic[] {
   const out: Diagnostic[] = []
 
   for (const task of program) {
-    if (task.form !== 'function' || task.span.file !== file || task.body.length === 0 || !returnsNothing(task)) {
+    if (
+      task.form !== 'function' ||
+      task.span.file !== file ||
+      task.body.length === 0 ||
+      !returnsNothing(task)
+    ) {
       continue
     }
 
@@ -92,9 +118,13 @@ export function checkLostWrites(program: Program, file: string): Diagnostic[] {
     const values = new Map<string, string>()
 
     task.params.forEach((param, i) => {
-      const type = (task.declared?.params[i]?.type ?? param.type) as Type | undefined
+      const type = (task.declared?.params[i]?.type ?? param.type)
 
-      if (type?.kind === 'named' && forms.has(type.name) && !shared.has(type.name)) {
+      if (
+        type?.kind === 'named' &&
+        forms.has(type.name) &&
+        !shared.has(type.name)
+      ) {
         values.set(param.name, type.name)
       }
     })
@@ -107,8 +137,13 @@ export function checkLostWrites(program: Program, file: string): Diagnostic[] {
     // assignment's value is read before its write lands (`save box/count, add(box/count, 1)` reads the old count), so
     // it is visited first. A copy read after it was written is in use (a `hold` on it, or a value computed from it),
     // and only a write nothing reads afterwards is lost
-    const firstWrite = new Map<string, { at: number; span: Diagnostic['span'] }>()
+    const firstWrite = new Map<
+      string,
+      { at: number; span: Diagnostic['span'] }
+    >()
+
     const lastRead = new Map<string, number>()
+
     let clock = 0
 
     const visit = (node: unknown): void => {
@@ -135,9 +170,17 @@ export function checkLostWrites(program: Program, file: string): Diagnostic[] {
         const path = writtenPath(record.target)
         const root = path?.root
 
-        if (path && root !== undefined && values.has(root) && staysInCopy(values.get(root)!, path.through)) {
+        if (
+          path &&
+          root !== undefined &&
+          values.has(root) &&
+          staysInCopy(values.get(root)!, path.through)
+        ) {
           if (!firstWrite.has(root)) {
-            firstWrite.set(root, { at: clock, span: record.span as Diagnostic['span'] })
+            firstWrite.set(root, {
+              at: clock,
+              span: record.span as Diagnostic['span'],
+            })
           }
         } else {
           visit(record.target)
@@ -148,7 +191,11 @@ export function checkLostWrites(program: Program, file: string): Diagnostic[] {
         return
       }
 
-      if (record.form === 'variable' && typeof record.name === 'string' && values.has(record.name)) {
+      if (
+        record.form === 'variable' &&
+        typeof record.name === 'string' &&
+        values.has(record.name)
+      ) {
         lastRead.set(record.name, clock)
       }
 
@@ -199,9 +246,23 @@ export function checkLostWrites(program: Program, file: string): Diagnostic[] {
 // a place that relies on two names sharing one collection
 
 // the native methods that change a list or a native map in place
-const MUTATORS = new Set(['push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse', 'fill', 'copyWithin', 'set', 'delete', 'clear'])
+const MUTATORS = new Set([
+  'push',
+  'pop',
+  'shift',
+  'unshift',
+  'splice',
+  'sort',
+  'reverse',
+  'fill',
+  'copyWithin',
+  'set',
+  'delete',
+  'clear',
+])
 
-const isCollection = (type: Type | undefined): boolean => type?.kind === 'array' || type?.kind === 'map'
+const isCollection = (type: Type | undefined): boolean =>
+  type?.kind === 'array' || type?.kind === 'map'
 
 type Loose = Record<string, unknown> & { form?: string }
 
@@ -215,16 +276,29 @@ function indexedRoot(target: unknown): string | undefined {
 
   const inner = node.target as Loose
 
-  return inner?.form === 'variable' && typeof inner.name === 'string' ? inner.name : undefined
+  return inner?.form === 'variable' && typeof inner.name === 'string'
+    ? inner.name
+    : undefined
 }
 
 // for each task, the positions of the parameters it writes: directly, or by handing them to a task that does
-export function collectionWrites(program: Program): Map<Task, Set<number>> {
-  const tasks = program.filter((s): s is Task => s.form === 'function' && s.body.length > 0)
+export function collectionWrites(
+  program: Program,
+): Map<Task, Set<number>> {
+  const tasks = program.filter(
+    (s): s is Task => s.form === 'function' && s.body.length > 0,
+  )
+
   // a separately compiled task: the positions its own unit found it writes through (`stubWrites`), fixed, since its
   // body is not here. Without them a write handed on to a standard library task was not seen (@term/host's
   // `pop-last`), and its warning was missing from a separate build
-  const settled = program.filter((s): s is Task => s.form === 'function' && s.stub === true && s.stubWrites !== undefined)
+  const settled = program.filter(
+    (s): s is Task =>
+      s.form === 'function' &&
+      s.stub === true &&
+      s.stubWrites !== undefined,
+  )
+
   const byName = new Map<string, Task[]>()
 
   for (const task of [...tasks, ...settled]) {
@@ -232,17 +306,26 @@ export function collectionWrites(program: Program): Map<Task, Set<number>> {
   }
 
   const writes = new Map<Task, Set<number>>([
-    ...tasks.map(task => [task, new Set<number>()] as [Task, Set<number>]),
-    ...settled.map(task => [task, new Set(task.stubWrites)] as [Task, Set<number>]),
+    ...tasks.map(
+      task => [task, new Set<number>()] as [Task, Set<number>],
+    ),
+    ...settled.map(
+      task => [task, new Set(task.stubWrites)] as [Task, Set<number>],
+    ),
   ])
+
   let changed = true
 
   while (changed) {
     changed = false
 
     for (const task of tasks) {
-      const positions = new Map(task.params.map((param, i) => [param.name, i]))
+      const positions = new Map(
+        task.params.map((param, i) => [param.name, i]),
+      )
+
       const found = writes.get(task)!
+
       const mark = (name: string): void => {
         const at = positions.get(name)
 
@@ -289,10 +372,15 @@ function eachWrite(
     if (record.form === 'call') {
       const callee = record.callee as Loose
       const args = (record.args as unknown[]) ?? []
-      const receiver = callee?.form === 'member' ? (callee.target as Loose) : undefined
+      const receiver =
+        callee?.form === 'member' ? (callee.target as Loose) : undefined
 
       // `xs/push(1)`: the receiver is written, not read
-      if (receiver?.form === 'variable' && typeof receiver.name === 'string' && MUTATORS.has(callee.name as string)) {
+      if (
+        receiver?.form === 'variable' &&
+        typeof receiver.name === 'string' &&
+        MUTATORS.has(callee.name as string)
+      ) {
         visit(args)
         write(receiver.name, record.span)
 
@@ -300,13 +388,22 @@ function eachWrite(
       }
 
       // `push(xs, 1)`: a variable in a position the callee writes
-      if (callee?.form === 'variable' && typeof callee.name === 'string') {
-        const defs = (byName.get(callee.name) ?? []).filter(def => def.params.length === args.length)
+      if (
+        callee?.form === 'variable' &&
+        typeof callee.name === 'string'
+      ) {
+        const defs = (byName.get(callee.name) ?? []).filter(
+          def => def.params.length === args.length,
+        )
 
         args.forEach((arg, i) => {
           const one = arg as Loose
 
-          if (one?.form === 'variable' && typeof one.name === 'string' && defs.some(def => writes.get(def)?.has(i))) {
+          if (
+            one?.form === 'variable' &&
+            typeof one.name === 'string' &&
+            defs.some(def => writes.get(def)?.has(i))
+          ) {
             write(one.name, record.span)
           } else {
             visit(arg)
@@ -355,21 +452,37 @@ function eachWrite(
 // Every backend shares the collection today, so both read the write now, and neither will once a list is a value.
 // Found in source order: the alias or the store, then a write through one holder, then a read of the OTHER. A write
 // the other holder never reads afterwards changes nothing anybody sees, and is left alone. WARNED, like the first
-function holdersOf(task: Task, file: string, byName: Map<string, Task[]>, writes: Map<Task, Set<number>>): Diagnostic[] {
+function holdersOf(
+  task: Task,
+  file: string,
+  byName: Map<string, Task[]>,
+  writes: Map<Task, Set<number>>,
+): Diagnostic[] {
   type Event = { at: number; span: unknown }
   // `pairs`: two names holding one collection, from the moment they were joined
-  const pairs: { one: string; other: string; at: number; kind: 'alias' | 'store' }[] = []
+  const pairs: {
+    one: string
+    other: string
+    at: number
+    kind: 'alias' | 'store'
+  }[] = []
+
   const written = new Map<string, Event[]>()
   const reads = new Map<string, number[]>()
   // every time a name is bound again: from then on it holds whatever it was given, and a pair it was in has ended
   const rebinds = new Map<string, number[]>()
+
   let clock = 0
 
-  const collection = (node: unknown): boolean => isCollection((node as { type?: Type })?.type)
+  const collection = (node: unknown): boolean =>
+    isCollection((node as { type?: Type })?.type)
+
   const variableName = (node: unknown): string | undefined => {
     const one = node as Loose
 
-    return one?.form === 'variable' && typeof one.name === 'string' ? one.name : undefined
+    return one?.form === 'variable' && typeof one.name === 'string'
+      ? one.name
+      : undefined
   }
 
   // the collection variables a value stores into a container it builds: a record's fields, a list's items
@@ -400,12 +513,26 @@ function holdersOf(task: Task, file: string, byName: Map<string, Task[]>, writes
 
     const source = variableName(value)
 
-    if (source !== undefined && source !== holder && collection(value)) {
-      pairs.push({ one: holder, other: source, at: clock, kind: 'alias' })
+    if (
+      source !== undefined &&
+      source !== holder &&
+      collection(value)
+    ) {
+      pairs.push({
+        one: holder,
+        other: source,
+        at: clock,
+        kind: 'alias',
+      })
     }
 
     for (const stored of storedIn(value)) {
-      pairs.push({ one: stored, other: holder, at: clock, kind: 'store' })
+      pairs.push({
+        one: stored,
+        other: holder,
+        at: clock,
+        kind: 'store',
+      })
     }
   }
 
@@ -450,9 +577,18 @@ function holdersOf(task: Task, file: string, byName: Map<string, Task[]>, writes
       const root = writtenPath(target)?.root
       const stored = variableName(record.value)
 
-      if (root !== undefined && stored !== undefined && collection(record.value)) {
+      if (
+        root !== undefined &&
+        stored !== undefined &&
+        collection(record.value)
+      ) {
         clock++
-        pairs.push({ one: stored, other: root, at: clock, kind: 'store' })
+        pairs.push({
+          one: stored,
+          other: root,
+          at: clock,
+          kind: 'store',
+        })
 
         return
       }
@@ -461,15 +597,26 @@ function holdersOf(task: Task, file: string, byName: Map<string, Task[]>, writes
     // a collection pushed or set into another: `list/push(xs)`, `m/set(k, xs)`, `push(list, xs)`
     if (record.form === 'call') {
       const callee = record.callee as Loose
-      const receiver = callee?.form === 'member' ? variableName(callee.target) : undefined
+      const receiver =
+        callee?.form === 'member'
+          ? variableName(callee.target)
+          : undefined
 
-      if (receiver !== undefined && MUTATORS.has(callee.name as string)) {
+      if (
+        receiver !== undefined &&
+        MUTATORS.has(callee.name as string)
+      ) {
         for (const arg of (record.args as unknown[]) ?? []) {
           const stored = variableName(arg)
 
           if (stored !== undefined && collection(arg)) {
             clock++
-            pairs.push({ one: stored, other: receiver, at: clock, kind: 'store' })
+            pairs.push({
+              one: stored,
+              other: receiver,
+              at: clock,
+              kind: 'store',
+            })
           }
         }
       }
@@ -483,7 +630,10 @@ function holdersOf(task: Task, file: string, byName: Map<string, Task[]>, writes
         writes,
         (name, span) => {
           clock++
-          written.set(name, [...(written.get(name) ?? []), { at: clock, span }])
+          written.set(name, [
+            ...(written.get(name) ?? []),
+            { at: clock, span },
+          ])
         },
         name => {
           clock++
@@ -514,16 +664,31 @@ function holdersOf(task: Task, file: string, byName: Map<string, Task[]>, writes
   for (const pair of pairs) {
     // an alias joins both ways: a write through either, then a read of the other. A store is one way: the stored
     // collection written, then its container read
-    const ways: [string, string][] = pair.kind === 'alias' ? [[pair.one, pair.other], [pair.other, pair.one]] : [[pair.one, pair.other]]
+    const ways: [string, string][] =
+      pair.kind === 'alias'
+        ? [
+            [pair.one, pair.other],
+            [pair.other, pair.one],
+          ]
+        : [[pair.one, pair.other]]
 
     // a pair lasts until either name is bound again: `save next, read slots` then `save next, copy-numbers(slots)`
     // writes a fresh copy, which pattern/pike.tree does on the path that writes
-    const end = (name: string): number => (rebinds.get(name) ?? []).find(at => at > pair.at) ?? Infinity
+    const end = (name: string): number =>
+      (rebinds.get(name) ?? []).find(at => at > pair.at) ?? Infinity
 
     for (const [through, other] of ways) {
-      const write = (written.get(through) ?? []).find(w => w.at > pair.at && w.at < end(through))
+      const write = (written.get(through) ?? []).find(
+        w => w.at > pair.at && w.at < end(through),
+      )
 
-      if (!write || told.has(write.span) || !(reads.get(other) ?? []).some(at => at > write.at && at < end(other))) {
+      if (
+        !write ||
+        told.has(write.span) ||
+        !(reads.get(other) ?? []).some(
+          at => at > write.at && at < end(other),
+        )
+      ) {
         continue
       }
 
@@ -549,7 +714,10 @@ function holdersOf(task: Task, file: string, byName: Map<string, Task[]>, writes
   return out
 }
 
-export function warnLostCollectionWrites(program: Program, file: string): Diagnostic[] {
+export function warnLostCollectionWrites(
+  program: Program,
+  file: string,
+): Diagnostic[] {
   const writes = collectionWrites(program)
   const byName = new Map<string, Task[]>()
 
@@ -566,14 +734,24 @@ export function warnLostCollectionWrites(program: Program, file: string): Diagno
   }
 
   for (const [task, positions] of writes) {
-    if (task.span.file !== file || !returnsNothing(task) || positions.size === 0) {
+    if (
+      task.span.file !== file ||
+      !returnsNothing(task) ||
+      positions.size === 0
+    ) {
       continue
     }
 
     // the collection parameters it writes
     const written = new Set(
       task.params
-        .filter((param, i) => positions.has(i) && isCollection((task.declared?.params[i]?.type ?? param.type) as Type | undefined))
+        .filter(
+          (param, i) =>
+            positions.has(i) &&
+            isCollection(
+              (task.declared?.params[i]?.type ?? param.type),
+            ),
+        )
         .map(param => param.name),
     )
 
@@ -584,6 +762,7 @@ export function warnLostCollectionWrites(program: Program, file: string): Diagno
     // in source order: the first write to each, and the last read of each. A copy read after it was written is in use
     const firstWrite = new Map<string, { at: number; span: unknown }>()
     const lastRead = new Map<string, number>()
+
     let clock = 0
 
     eachWrite(

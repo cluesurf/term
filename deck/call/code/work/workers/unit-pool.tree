@@ -12,6 +12,11 @@
 # worker ran out of its heap (heap-limit.tree): it is answered here as its own `out-of-memory` failure, since the main
 # thread compiling it again would run out the same way.
 #
+# THE POOL STARTS ONLY FOR MISSES (decision 077 section 7, item term-self-host-001-0419). Asked with `probe`, every job
+# is first asked of the store on this thread, before any worker exists, exactly as its worker would ask it (`probe-units`).
+# Under `pool-floor` misses the answer holds no worker and the build on this thread builds the misses itself; at or above
+# it the pool starts with no more workers than misses, and a job that was read back is released without one.
+#
 # Docked: compile/load.ts (collectModules), compile/separate.ts (units), compile/resolve.ts (stdlibBase) and node's
 # worker_threads. The compiler versions, the cache, the role reader and a file's reading are the build and cache lanes'
 # ports (term-cli-in-term-0214).
@@ -33,6 +38,15 @@ load ../build/role-reading
 
 load ../build/host-faces
   find face-role-reader
+  find face-lean-reader
+  find face-deck-finder
+
+load ../build/deck-finding
+  find make-deck-finder
+
+load ../build/unit-naming
+  find unit-slug
+  find entry-shim
 
 load ../cache/compile-store
   find compiler-versions
@@ -50,6 +64,10 @@ dock load
   load <@term/make/code/compile/load>, name load-module
   load <@term/make/code/compile/separate>, name separate-module
   load <@term/make/code/resolve>, name resolving-module
+
+# below this many misses the build on this thread builds them: a worker's start and its reading of the standard library
+# cost more than they save (@term/test's no-op spent 13 s of workers on 0 units)
+host pool-floor, 16
 
 # a function value called on one value
 bind units-apply
@@ -275,6 +293,8 @@ form unit-run
   link built, like number
   link spent, like units-spent
   link settle, like dynamic
+  # the jobs the probe found missing (a set), undefined when nothing was probed
+  link missed, like dynamic
 
 task spawn-unit-worker
   take run, like unit-run
@@ -292,9 +312,14 @@ task dispatch-units
     hook test, and(is-above(run/idle/length, 0), is-above(run/ready/length, 0))
     hook hold
       save file, units-shift(run/ready)
-      save worker, units-pop(run/idle)
-      units-map-set(run/holding, worker, file)
-      worker/post-message(make(unit-job, bind(type, <job>), bind(root, run/root), bind(file, file), bind(entry, run/entries/has(file))))
+      # a job the probe read back from the store needs no worker: what waits on it is ready at once
+      fork test, units-is-read-back(run/missed, file)
+        hold
+          release-unit(run, file)
+        miss
+          save worker, units-pop(run/idle)
+          units-map-set(run/holding, worker, file)
+          worker/post-message(make(unit-job, bind(type, <job>), bind(root, run/root), bind(file, file), bind(entry, run/entries/has(file))))
   # every job answered, or nobody left to answer the rest, which the main build then compiles itself (all but an
   # out-of-memory unit, which is answered as its failure)
   fork test, or(is-equal(run/done, run/graph-size), is-equal(run/alive, 0))
@@ -461,7 +486,22 @@ task compile-units-parallel
         save at, add(at, 1)
   # at most eight: each worker holds every unit it has read, which on @term/bind is the standard library and more
   save graph-size, units-hash-size(graph)
-  save size, units-size-of(options, graph-size)
+  # the jobs a worker is handed: every one, or with `probe` only the misses, and none under the floor
+  save jobs, graph-size
+  save missed, units-nothing()
+  save found, make hash
+  save found-built, 0
+  fork test, units-probe-asked(options)
+    hold
+      save probed, probe-units(root, session, entries, graph)
+      save missed, probed/missed
+      save found, probed/results
+      save found-built, probed/built
+      save jobs, units-set-size(missed)
+      fork test, is-below(jobs, pool-floor)
+        hold
+          back make(units-answer, bind(results, found), bind(jobs, 0), bind(workers, 0), bind(failures, make list), bind(out-of-memory, units-new-set()), bind(heap-mb, 0), bind(built, found-built), bind(spent, spent))
+  save size, units-size-of(options, jobs)
   save bundle, bundle-worker(<separate-worker>)
   # the worker is a bundle (host/separate-worker.mjs, decision 003) whose own stdlibBase() walk is not the parent's
   save stdlib, resolving-module/stdlibBase()
@@ -469,7 +509,7 @@ task compile-units-parallel
   # each worker's heap is limited, so one that runs out of memory ends alone and its unit is reported (heap-limit.tree)
   save heap, worker-heap-mb(size)
   save plan, make-schedule(graph)
-  save run, make(unit-run, bind(root, root), bind(bundle, bundle), bind(heap, heap), bind(entries, entries), bind(graph-size, graph-size), bind(plan, plan), bind(ready, first-ready(plan)), bind(results, make hash), bind(failures, make list), bind(out-of-memory, units-new-set()), bind(workers, make list), bind(idle, make list), bind(holding, units-new-map()), bind(alive, 0), bind(done, 0), bind(built, 0), bind(spent, spent), bind(settle, units-nothing()))
+  save run, make(unit-run, bind(root, root), bind(bundle, bundle), bind(heap, heap), bind(entries, entries), bind(graph-size, graph-size), bind(plan, plan), bind(ready, first-ready(plan)), bind(results, found), bind(failures, make list), bind(out-of-memory, units-new-set()), bind(workers, make list), bind(idle, make list), bind(holding, units-new-map()), bind(alive, 0), bind(done, 0), bind(built, found-built), bind(spent, spent), bind(settle, units-nothing()), bind(missed, missed))
   save count, 0
   walk test
     hook test, is-below(count, size)
@@ -488,7 +528,7 @@ task compile-units-parallel
       dispatch-units(run)
   wait units-promise(start)
   wait units-terminate(run/workers)
-  back make(units-answer, bind(results, run/results), bind(jobs, graph-size), bind(workers, size), bind(failures, run/failures), bind(out-of-memory, run/out-of-memory), bind(heap-mb, heap), bind(built, run/built), bind(spent, run/spent))
+  back make(units-answer, bind(results, run/results), bind(jobs, jobs), bind(workers, size), bind(failures, run/failures), bind(out-of-memory, run/out-of-memory), bind(heap-mb, heap), bind(built, run/built), bind(spent, run/spent))
 
 bind units-nothing
   like dynamic
@@ -519,3 +559,236 @@ task units-edges-of
     hold
       back edges/get(file)
   back make list
+
+# ---- the probe: which jobs the store cannot answer (decision 077 section 7) ----
+
+bind units-probe-asked
+  take options, like dynamic
+  like boolean
+  case node
+    text <Boolean($options?.probe)>
+
+bind units-hash-keys
+  take hash, like dynamic
+  like list, like text
+  case node
+    text <[...$hash.keys()]>
+
+bind units-set-size
+  take set, like dynamic
+  like number
+  case node
+    text <$set.size>
+
+bind units-set-has
+  take set, like dynamic
+  take value, like dynamic
+  like boolean
+  case node
+    text <$set.has($value)>
+
+# whether a job was read back by the probe: a probe ran, and the job is not among its misses
+bind units-is-read-back
+  take missed, like dynamic
+  take file, like text
+  like boolean
+  case node
+    text <($missed !== undefined && !$missed.has($file))>
+
+# the cache as the probe asks it: a unit's name pointer (`surface:`) found or worked out as the build does, since it
+# builds nothing, and a unit's stored answer read back, or raised as a miss where the build would build it
+bind units-probe-cache
+  take store, like dynamic
+  like dynamic
+  case node
+    text <Object.assign(Object.create($store), \{ unit: (probeKey, probeBuild) =\> $store.unit(probeKey, probeKey.startsWith("surface:") ? probeBuild : () =\> \{ throw new Error("unit probe: no stored answer") \}) \})>
+
+# compileSeparate's options as the worker and the build hand them, over the session's memos
+bind units-probe-options
+  take session, like dynamic
+  take store, like dynamic
+  take naming, like dynamic
+  take roles, like dynamic
+  take leans, like dynamic
+  take decks, like dynamic
+  like dynamic
+  case node
+    text <(\{ resolve: $session.resolve, cache: $store, modules: $naming, roleOf: $roles, leanOf: $leans, deckOf: $decks, parsed: $session.parsed, units: $session.units, walked: $session.walked \})>
+
+# a project file's answer as its worker sends it: each module's code and each unit's roll only the first time an answer
+# carries it, and the entry's shim in place of its exports (unit-worker.tree `answer-unit`)
+bind units-fresh-modules
+  take result, like dynamic
+  take sent, like dynamic
+  like dynamic
+  case node
+    text <new Map([...$result.modules].filter(([probeFile]) =\> !$sent.has(probeFile)))>
+
+bind units-mark-modules
+  take fresh, like dynamic
+  take sent, like dynamic
+  like void
+  case node
+    text <$fresh.forEach((_, probeFile) =\> $sent.add(probeFile))>
+
+bind units-fresh-rolls
+  take result, like dynamic
+  take sent, like dynamic
+  like dynamic
+  case node
+    text <$result.rolls.filter(([probeLabel]) =\> !$sent.has(probeLabel))>
+
+bind units-mark-rolls
+  take rolls, like dynamic
+  take sent, like dynamic
+  like void
+  case node
+    text <$rolls.forEach(([probeLabel]) =\> $sent.add(probeLabel))>
+
+bind units-entry-answer
+  take result, like dynamic
+  take fresh, like dynamic
+  take rolls, like dynamic
+  take shim, like dynamic
+  like dynamic
+  case node
+    text <(\{ ...$result, modules: $fresh, rolls: $rolls, exports: [], shim: $shim \})>
+
+bind units-built-count
+  take result, like dynamic
+  like number
+  case node
+    text <($result.ok ? $result.built.length : 0)>
+
+# what the probe found: the jobs the store could not answer, each project file's answer as its worker would have sent
+# it, and the units built outside the project (only a stored answer that does not read back is built, as the build does)
+form units-probed
+  link missed, like dynamic
+  link results, like hash, like text, like dynamic
+  link built, like number
+
+# what the probe keeps across its jobs: the modules and rolls an answer carried already, as one worker keeps them
+form probe-held
+  mark shared
+  link sent, like dynamic
+  link sent-rolls, like dynamic
+
+# Every job asked of the store, in dependency order, as its worker would ask it: its file compiled as its own entry
+# through a cache that never builds. A job reaching a missed job is a miss too, since its key waits on that answer. The
+# answers read back stay in the session's memo, and each project file's answer is kept as a worker sends it, so the
+# build after this reads them and builds none of them again
+task probe-units
+  take root, like text
+  take session, like dynamic
+  take entries, like hash, like text, like boolean
+  take graph, like hash, like text, like list, like text
+  like units-probed
+  mark private
+
+  save store, units-probe-cache(project-cache(root))
+  save finder, make-deck-finder()
+  save reader, make-role-reader(root)
+  save role-of, face-role-reader(reader)
+  save naming
+    task
+      take module, like dynamic
+      like text
+      back <./{unit-slug(root, module, finder)}>
+  save options, units-probe-options(session, store, naming, role-of, face-lean-reader(reader), face-deck-finder(finder))
+  save slug
+    task
+      take module, like text
+      like text
+      back unit-slug(root, module, finder)
+  save held, make(probe-held, bind(sent, units-new-set()), bind(sent-rolls, units-new-set()))
+  save missed, units-new-set()
+  save results, make hash
+  save built, 0
+  walk units-hash-keys(graph)
+    take file
+    save waits, false
+    walk units-edges-of(graph, file)
+      take dep
+      fork test, units-set-has(missed, dep)
+        hold
+          save waits, true
+    fork test, waits
+      hold
+        units-set-add(missed, file)
+        turn next
+    save entry, entries/has(file)
+    save answer, probe-unit(file, entry, role-of, options)
+    fork test, units-is-nothing(answer)
+      hold
+        units-set-add(missed, file)
+        turn next
+    # a file that is no program answers `true`: no unit, and nothing for the build to take
+    fork test, not(units-is-answer(answer))
+      hold
+        turn next
+    fork test, not(entry)
+      hold
+        save built, add(built, units-built-count(answer))
+        turn next
+    fork test, units-truthy(units-reply-member(answer, <ok>))
+      hold
+        save fresh, units-fresh-modules(answer, held/sent)
+        units-mark-modules(fresh, held/sent)
+        save rolls, units-fresh-rolls(answer, held/sent-rolls)
+        units-mark-rolls(rolls, held/sent-rolls)
+        save shim, entry-shim(root, file, units-reply-member(answer, <exports>), slug)
+        save results/{file}, units-entry-answer(answer, fresh, rolls, shim)
+      miss
+        save results/{file}, answer
+  back make(units-probed, bind(missed, missed), bind(results, results), bind(built, built))
+
+# an answer of compileSeparate, as against the `true` of a file that is no program
+bind units-is-answer
+  take answer, like dynamic
+  like boolean
+  case node
+    text <($answer !== true)>
+
+# one job asked of the store: compileSeparate's answer when every unit it reaches was read back, undefined when one was
+# not. A project file is read as its worker reads it (a file of tests rewritten), and one that is no program needs no
+# unit and answers true
+task probe-unit
+  take file, like text
+  take entry, like boolean
+  take role-of, like dynamic
+  take options, like dynamic
+  like dynamic
+  mark private
+
+  save answer, units-nothing()
+  fork
+    mark unsafe
+    save text, node-file/read-file-sync(file, <utf8>)
+    save whole, false
+    fork test, entry
+      hold
+        save unit, face-buildable(file, text, units-apply(role-of, file))
+        fork test, units-has-faults(unit)
+          hold
+            save whole, true
+          miss
+            save unit-text, units-reply-member(unit, <text>)
+            fork test, face-is-whole-file(file, unit-text, units-apply(role-of, file))
+              hold
+                save whole, true
+              miss
+                save text, unit-text
+    fork test, whole
+      hold
+        save answer, units-whole()
+      miss
+        save answer, separate-module/compile-separate(make(scan-source, bind(file, file), bind(text, text)), options)
+  halt take
+    take problem
+    save answer, units-nothing()
+  back answer
+
+bind units-whole
+  like dynamic
+  case node
+    text <true>

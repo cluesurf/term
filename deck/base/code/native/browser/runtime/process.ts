@@ -68,11 +68,7 @@ const process = {
     new Promise(resolve => {
       let timer: ReturnType<typeof setTimeout> | undefined
 
-      const settle = (
-        code: number,
-        stdout: string,
-        stderr: string,
-      ) => {
+      const settle = (code: number, stdout: string, stderr: string) => {
         if (timer) {
           clearTimeout(timer)
         }
@@ -129,7 +125,9 @@ const process = {
         if (data && data.type === 'exit') {
           resolve(chunks.join(''))
         } else {
-          chunks.push(typeof data === 'string' ? data : JSON.stringify(data))
+          chunks.push(
+            typeof data === 'string' ? data : JSON.stringify(data),
+          )
         }
       })
 

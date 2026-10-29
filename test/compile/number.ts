@@ -59,10 +59,15 @@ task ratio
       read b
 `
 
-const result = compile({ file: 'number.tree', text }, { optimize: false })
+const result = compile(
+  { file: 'number.tree', text },
+  { optimize: false },
+)
 
 if (!result.ok) {
-  console.log(result.diagnostics.map(d => `${d.name}: ${d.message}`).join('\n'))
+  console.log(
+    result.diagnostics.map(d => `${d.name}: ${d.message}`).join('\n'),
+  )
   process.exit(1)
 }
 
@@ -84,7 +89,11 @@ const raised = (f: () => unknown): string | undefined => {
     f()
     return undefined
   } catch (e) {
-    const error = e as { name?: string; message?: string; form?: string }
+    const error = e as {
+      name?: string
+      message?: string
+      form?: string
+    }
 
     if (error.name === '__TermStop') {
       return `stop ${/^(\w+):/.exec(error.message ?? '')?.[1] ?? 'unnamed'}`
@@ -102,7 +111,11 @@ for (const [a, b, want] of [
   [6, 3, 2],
 ] as const) {
   const got = run.quotient(a, b)
-  check(`typescript: ${a} / ${b} is ${want}`, got === want, `got ${got}`)
+  check(
+    `typescript: ${a} / ${b} is ${want}`,
+    got === want,
+    `got ${got}`,
+  )
 }
 
 for (const [a, b, want] of [
@@ -111,13 +124,25 @@ for (const [a, b, want] of [
   [7, -2, 1],
 ] as const) {
   const got = run.remainder(a, b)
-  check(`typescript: ${a} % ${b} is ${want}, the sign of the dividend`, got === want, `got ${got}`)
+  check(
+    `typescript: ${a} % ${b} is ${want}, the sign of the dividend`,
+    got === want,
+    `got ${got}`,
+  )
 }
 
-check('typescript: a float quotient stays a float', run.ratio(7, 2) === 3.5, `got ${run.ratio(7, 2)}`)
+check(
+  'typescript: a float quotient stays a float',
+  run.ratio(7, 2) === 3.5,
+  `got ${run.ratio(7, 2)}`,
+)
 
 // past the safe integers a double is a DIFFERENT integer: 2^30 * 2^30 would come back as 2^60 rounded
-check('typescript: a product inside the safe integers is exact', run.grow(2 ** 26, 2 ** 26) === 2 ** 52, '')
+check(
+  'typescript: a product inside the safe integers is exact',
+  run.grow(2 ** 26, 2 ** 26) === 2 ** 52,
+  '',
+)
 check(
   'typescript: a product past the safe integers stops with excess (D15), not a rounded integer',
   raised(() => run.grow(2 ** 30, 2 ** 30)) === 'stop excess',
@@ -146,13 +171,26 @@ for (const [name, emit, type] of [
   ['kotlin', emitKotlin, 'Long'],
 ] as const) {
   const out = String((emit as (p: unknown) => unknown)(result.program))
-  const signature = out.split('\n').find(line => /quotient/.test(line)) ?? ''
-  check(`${name}: number is ${type}, whose / truncates`, signature.includes(type), signature.trim())
+  const signature =
+    out.split('\n').find(line => /quotient/.test(line)) ?? ''
+  check(
+    `${name}: number is ${type}, whose / truncates`,
+    signature.includes(type),
+    signature.trim(),
+  )
 
   // and whose product stops past the edge rather than wrapping: Rust's release `*` and Kotlin's `*` wrap, and Swift's
   // traps (a signal), so each goes through a check that stops naming excess (D15, term-stdlib-parity-0015)
-  const guard = { rust: 'i64::checked_mul', kotlin: 'Math.multiplyExact', swift: 'termMultiply(a, b)' }[name]
-  check(`${name}: a product past ${type} stops rather than wrapping (${guard})`, out.includes(guard), '')
+  const guard = {
+    rust: 'i64::checked_mul',
+    kotlin: 'Math.multiplyExact',
+    swift: 'termMultiply(a, b)',
+  }[name]
+  check(
+    `${name}: a product past ${type} stops rather than wrapping (${guard})`,
+    out.includes(guard),
+    '',
+  )
 }
 
 console.log(`\nnumber: ${pass} pass, ${fail} fail`)

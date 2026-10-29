@@ -53,14 +53,41 @@ task key-sum
   send back, read total
 `
 
-const built = compile({ file: 'main.tree', text }, { resolve: withNativeEnv('rust', stdlibResolver()!), env: 'rust', entryPoints: ['slice-length', 'key-sum'] })
+const built = compile(
+  { file: 'main.tree', text },
+  {
+    resolve: withNativeEnv('rust', stdlibResolver()!),
+    env: 'rust',
+    entryPoints: ['slice-length', 'key-sum'],
+  },
+)
 
 if (!built.ok) {
-  ok('the program builds', false, built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the program builds',
+    false,
+    built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
 } else {
   const rust = emitRust(built.program)
-  ok('a slice\'s length is the list\'s length, not a field', !/kept\.length\b/.test(rust), rust.split('\n').filter(l => /kept/.test(l)).join(' | '))
-  ok('a walk over keys() borrows the list', !/for \w+ in std::rc::Rc::new\(std::cell::RefCell::new\(/.test(rust), rust.split('\n').filter(l => /for \w+ in/.test(l)).join(' | '))
+  ok(
+    "a slice's length is the list's length, not a field",
+    !/kept\.length\b/.test(rust),
+    rust
+      .split('\n')
+      .filter(l => /kept/.test(l))
+      .join(' | '),
+  )
+  ok(
+    'a walk over keys() borrows the list',
+    !/for \w+ in std::rc::Rc::new\(std::cell::RefCell::new\(/.test(
+      rust,
+    ),
+    rust
+      .split('\n')
+      .filter(l => /for \w+ in/.test(l))
+      .join(' | '),
+  )
 
   const rustc = spawnSync('rustc', ['--version'], { encoding: 'utf8' })
 
@@ -69,8 +96,29 @@ if (!built.ok) {
   } else {
     const dir = mkdtempSync(join(tmpdir(), 'term-member-result-'))
     writeFileSync(join(dir, 'main.rs'), rust)
-    const out = spawnSync('rustc', ['--edition', '2021', '--crate-type', 'lib', '-A', 'warnings', '-o', join(dir, 'libmain.rlib'), join(dir, 'main.rs')], { encoding: 'utf8' })
-    ok('rustc compiles both', out.status === 0, out.stderr.split('\n').filter(l => /^error/.test(l)).join(' | '))
+    const out = spawnSync(
+      'rustc',
+      [
+        '--edition',
+        '2021',
+        '--crate-type',
+        'lib',
+        '-A',
+        'warnings',
+        '-o',
+        join(dir, 'libmain.rlib'),
+        join(dir, 'main.rs'),
+      ],
+      { encoding: 'utf8' },
+    )
+    ok(
+      'rustc compiles both',
+      out.status === 0,
+      out.stderr
+        .split('\n')
+        .filter(l => /^error/.test(l))
+        .join(' | '),
+    )
   }
 }
 
@@ -94,9 +142,21 @@ task mean-of
   save found, call by-name/get, read name
   send back, read found/mean
 `
-  const out = compile({ file: 'typed.tree', text: typed }, { resolve: withNativeEnv('node', stdlibResolver()!), entryPoints: ['mean-of'] })
-  const declared = out.ok ? (/const found: ([^=]+) =/.exec(out.typescript)?.[1] ?? '').trim() : out.diagnostics.map(d => d.message).join(' | ')
-  ok('a value read from a native map is typed as the map\'s value', declared === 'Side', declared)
+  const out = compile(
+    { file: 'typed.tree', text: typed },
+    {
+      resolve: withNativeEnv('node', stdlibResolver()!),
+      entryPoints: ['mean-of'],
+    },
+  )
+  const declared = out.ok
+    ? (/const found: ([^=]+) =/.exec(out.typescript)?.[1] ?? '').trim()
+    : out.diagnostics.map(d => d.message).join(' | ')
+  ok(
+    "a value read from a native map is typed as the map's value",
+    declared === 'Side',
+    declared,
+  )
 }
 
 console.log(`\nmember-result: ${pass} pass, ${fail} fail`)

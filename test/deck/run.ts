@@ -95,11 +95,7 @@ function main(): void {
     findDeckRoot('/proj/code/widget/base.tree', exists),
     '/proj',
   )
-  expect(
-    'no deck root',
-    findDeckRoot('/other/x.tree', exists),
-    '',
-  )
+  expect('no deck root', findDeckRoot('/other/x.tree', exists), '')
 
   // store path layout
   expect(

@@ -13,11 +13,17 @@ export type Polynomial = Map<string, Rational>
 
 export type Rational = { n: bigint; d: bigint }
 
-export type Fact = { polynomial: Polynomial; relation: 'nonnegative' | 'positive' | 'zero' }
+export type Fact = {
+  polynomial: Polynomial
+  relation: 'nonnegative' | 'positive' | 'zero'
+}
 
 // how a certificate row was made: a fact (alone, times a monomial, or times a variable's square), a product of facts,
 // or a square
-type RowFrom = { fact: number; times?: string; square?: string } | { facts: number[] } | { square: string[] }
+type RowFrom =
+  | { fact: number; times?: string; square?: string }
+  | { facts: number[] }
+  | { square: string[] }
 
 export type Certificate = { rows: RowFrom[]; multipliers: Rational[] }
 
@@ -25,37 +31,70 @@ export type Certificate = { rows: RowFrom[]; multipliers: Rational[] }
 // multiplied by each of `multipliers`
 export type LinearMode = { multipliers: string[] }
 
-const toBig = (value: bigint): port.BigInteger => ({ dock: value }) as port.BigInteger
+const toBig = (value: bigint): port.BigInteger =>
+  ({ dock: value }) as port.BigInteger
+
 const fromBig = (value: port.BigInteger): bigint => value.dock as bigint
-const toRational = (r: Rational): port.Rational => ({ n: toBig(r.n), d: toBig(r.d) })
-const fromRational = (r: port.Rational): Rational => ({ n: fromBig(r.n), d: fromBig(r.d) })
-const toPolynomial = (p: Polynomial): Map<string, port.Rational> => new Map([...p].map(([key, r]) => [key, toRational(r)]))
-const fromPolynomial = (p: Map<string, port.Rational>): Polynomial => new Map([...p].map(([key, r]) => [key, fromRational(r)]))
-const toFact = (f: Fact): port.Fact => ({ polynomial: toPolynomial(f.polynomial), relation: f.relation })
-const given = (text: string | undefined): port.Maybe<string> => (text === undefined ? { form: 'none' } : { form: 'some', value: text })
+const toRational = (r: Rational): port.Rational => ({
+  n: toBig(r.n),
+  d: toBig(r.d),
+})
+
+const fromRational = (r: port.Rational): Rational => ({
+  n: fromBig(r.n),
+  d: fromBig(r.d),
+})
+
+const toPolynomial = (p: Polynomial): Map<string, port.Rational> =>
+  new Map([...p].map(([key, r]) => [key, toRational(r)]))
+
+const fromPolynomial = (p: Map<string, port.Rational>): Polynomial =>
+  new Map([...p].map(([key, r]) => [key, fromRational(r)]))
+
+const toFact = (f: Fact): port.Fact => ({
+  polynomial: toPolynomial(f.polynomial),
+  relation: f.relation,
+})
+
+const given = (text: string | undefined): port.Maybe<string> =>
+  text === undefined ? { form: 'none' } : { form: 'some', value: text }
 
 function toFrom(from: RowFrom): port.RowFrom {
   if ('fact' in from) {
-    return { form: 'from-fact', fact: from.fact, times: given(from.times), square: given(from.square) }
+    return {
+      form: 'from-fact',
+      fact: from.fact,
+      times: given(from.times),
+      square: given(from.square),
+    }
   }
 
   if ('square' in from && Array.isArray(from.square)) {
     return { form: 'from-square', vars: from.square }
   }
 
-  return { form: 'from-facts', facts: 'facts' in from ? from.facts : [] }
+  return {
+    form: 'from-facts',
+    facts: 'facts' in from ? from.facts : [],
+  }
 }
 
 function fromFrom(from: port.RowFrom): RowFrom {
   if (from.form === 'from-fact') {
     return {
       fact: from.fact,
-      ...(from.times.form === 'some' ? { times: from.times.value } : {}),
-      ...(from.square.form === 'some' ? { square: from.square.value } : {}),
+      ...(from.times.form === 'some'
+        ? { times: from.times.value }
+        : {}),
+      ...(from.square.form === 'some'
+        ? { square: from.square.value }
+        : {}),
     }
   }
 
-  return from.form === 'from-square' ? { square: from.vars } : { facts: from.facts }
+  return from.form === 'from-square'
+    ? { square: from.vars }
+    : { facts: from.facts }
 }
 
 export function rational(n: bigint, d = 1n): Rational {
@@ -63,20 +102,31 @@ export function rational(n: bigint, d = 1n): Rational {
 }
 
 export function multiply(a: Polynomial, b: Polynomial): Polynomial {
-  return fromPolynomial(port.multiplyPolynomials(toPolynomial(a), toPolynomial(b)))
+  return fromPolynomial(
+    port.multiplyPolynomials(toPolynomial(a), toPolynomial(b)),
+  )
 }
 
 // THE CHECKER: does the certificate's combination of the facts come out identically a negative constant, or zero with
 // a strict row used
-export function replay(facts: Fact[], certificate: Certificate): boolean {
-  return port.replay(facts.map(toFact), { rows: certificate.rows.map(toFrom), multipliers: certificate.multipliers.map(toRational) })
+export function replay(
+  facts: Fact[],
+  certificate: Certificate,
+): boolean {
+  return port.replay(facts.map(toFact), {
+    rows: certificate.rows.map(toFrom),
+    multipliers: certificate.multipliers.map(toRational),
+  })
 }
 
 // WHERE THE TIME GOES, counted for `TERM_PRODUCT_PROFILE=1`, read by holds.ts per goal (products.tree
 // `product-profile`, the one instance)
-export const productProfile: port.ProductProfile = port.freshProductProfile()
+export const productProfile: port.ProductProfile =
+  port.freshProductProfile()
 
-const profiling = typeof process !== 'undefined' && Boolean(process.env?.TERM_PRODUCT_PROFILE)
+const profiling =
+  typeof process !== 'undefined' &&
+  Boolean(process.env?.TERM_PRODUCT_PROFILE)
 
 // THE BUDGET of the current goal (products.tree `work-budget`, the one instance): infinite until a caller opens one
 export const productWork: port.WorkBudget = port.freshWorkBudget()
@@ -100,30 +150,78 @@ export function spendWork(units: number): void {
 }
 
 const now = (): number => Date.now()
-const linearOf = (linear: LinearMode | undefined): port.Maybe<string[]> =>
-  linear ? { form: 'some', value: linear.multipliers } : { form: 'none' }
+const linearOf = (
+  linear: LinearMode | undefined,
+): port.Maybe<string[]> =>
+  linear
+    ? { form: 'some', value: linear.multipliers }
+    : { form: 'none' }
 
 // search for a certificate that the facts are contradictory
-export function refute(facts: Fact[], focus?: number, linear?: LinearMode): Certificate | undefined {
-  const found = port.refute(facts.map(toFact), focus ?? -1, linearOf(linear), work, productProfile, profiling, now)
+export function refute(
+  facts: Fact[],
+  focus?: number,
+  linear?: LinearMode,
+): Certificate | undefined {
+  const found = port.refute(
+    facts.map(toFact),
+    focus ?? -1,
+    linearOf(linear),
+    work,
+    productProfile,
+    profiling,
+    now,
+  )
 
   return found.form === 'some'
-    ? { rows: found.value.rows.map(fromFrom), multipliers: found.value.multipliers.map(fromRational) }
+    ? {
+        rows: found.value.rows.map(fromFrom),
+        multipliers: found.value.multipliers.map(fromRational),
+      }
     : undefined
 }
 
 // does the goal follow from the facts? The goal is `polynomial >= 0` (or `> 0` when strict)
-export function productProves(facts: Fact[], goal: Polynomial, strict: boolean, linear?: LinearMode): boolean {
-  return port.productProves(facts.map(toFact), toPolynomial(goal), strict, linearOf(linear), work, productProfile, profiling, now)
+export function productProves(
+  facts: Fact[],
+  goal: Polynomial,
+  strict: boolean,
+  linear?: LinearMode,
+): boolean {
+  return port.productProves(
+    facts.map(toFact),
+    toPolynomial(goal),
+    strict,
+    linearOf(linear),
+    work,
+    productProfile,
+    profiling,
+    now,
+  )
 }
 
 // the same, on facts already in the port's shape, under this module's budget: check/induction.tree asks through it
-export function portProves(facts: port.Fact[], goal: Map<string, port.Rational>, strict: boolean): boolean {
-  return port.productProves(facts, goal, strict, { form: 'none' }, work, productProfile, profiling, now)
+export function portProves(
+  facts: port.Fact[],
+  goal: Map<string, port.Rational>,
+  strict: boolean,
+): boolean {
+  return port.productProves(
+    facts,
+    goal,
+    strict,
+    { form: 'none' },
+    work,
+    productProfile,
+    profiling,
+    now,
+  )
 }
 
 // a number coefficient (from the integer-valued polynomial expansion in holds.ts) as an exact rational
-export function fromNumbers(poly: Map<string, number>): Polynomial | undefined {
+export function fromNumbers(
+  poly: Map<string, number>,
+): Polynomial | undefined {
   const out: Polynomial = new Map()
 
   for (const [key, c] of poly) {

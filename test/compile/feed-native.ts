@@ -6,7 +6,13 @@
 // (HN_ONLY=rust|swift|kotlin runs one backend.)
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
@@ -18,12 +24,24 @@ import { resolveAsync } from '@term/make/code/check/async-resolve'
 import { simplify } from '@term/make/code/ir/simplify'
 import { collectModules } from '@term/make/code/compile/load'
 import type { Source } from '@term/make/code/compile/load'
-import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
-import { collectTemplates, expandTemplates } from '@term/make/code/compile/template'
-import { bindModules, stampModule } from '@term/make/code/check/bind-modules'
+import {
+  withNativeEnv,
+  nativePrelude,
+} from '@term/make/code/compile/native'
+import {
+  collectTemplates,
+  expandTemplates,
+} from '@term/make/code/compile/template'
+import {
+  bindModules,
+  stampModule,
+} from '@term/make/code/check/bind-modules'
 import { emitRust } from '@term/make/code/compile/rust'
 import { emitSwift } from '@term/make/code/compile/swift'
-import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
+import {
+  emitKotlin,
+  hoistKotlinImports,
+} from '@term/make/code/compile/kotlin'
 import type { Program } from '@term/make/code/compile/node'
 
 let pass = 0
@@ -55,9 +73,13 @@ function have(tool: string): boolean {
   }
 }
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
-const PACKS: Record<string, string> = { base: join(TERM, 'deck/base'), mill: join(TERM, 'deck/mill') }
+const PACKS: Record<string, string> = {
+  base: join(TERM, 'deck/base'),
+  mill: join(TERM, 'deck/mill'),
+}
 
 // the stdlib and the package by name, and relative loads from the file that makes them
 const resolver = (path: string, from: string): Source | undefined => {
@@ -80,22 +102,33 @@ const resolver = (path: string, from: string): Source | undefined => {
   }
 
   // inside the package by the package path rule every resolver calls (code root, then package root)
-  return sourceOf(resolvePackagePath({ dir: PACKS[found[1]!]!, rest: found[2]! }))
+  return sourceOf(
+    resolvePackagePath({ dir: PACKS[found[1]!]!, rest: found[2]! }),
+  )
 }
 
-const readRuntime = (p: string): string | undefined => (existsSync(p) ? readFileSync(p, 'utf8') : undefined)
+const readRuntime = (p: string): string | undefined =>
+  existsSync(p) ? readFileSync(p, 'utf8') : undefined
 
 type Env = 'rust' | 'swift' | 'kotlin'
 
 function frontEnd(env: Env, entry: string, roots: string[]): Program {
-  const { sources, scope } = collectModules({ file: 'main.tree', text: entry }, withNativeEnv(env, resolver))
+  const { sources, scope } = collectModules(
+    { file: 'main.tree', text: entry },
+    withNativeEnv(env, resolver),
+  )
   const program: Program = []
 
   // every module's templates, before any is expanded, as the build gathers them (compile/compile.ts): a `fuse` may
   // name a template another module defines, which is how @term/base/integer/unsigned makes `to-u8` from
   // integer/n.tree's `integer`. Expanding each file against its own templates alone left that fuse unexpanded, and
   // the gzip writer's `to-u8` undefined on every native backend
-  const templates = new Map<string, ReturnType<typeof collectTemplates> extends Map<string, infer T> ? T : never>()
+  const templates = new Map<
+    string,
+    ReturnType<typeof collectTemplates> extends Map<string, infer T>
+      ? T
+      : never
+  >()
 
   for (const unit of sources) {
     const parsed = parse(unit)
@@ -111,13 +144,20 @@ function frontEnd(env: Env, entry: string, roots: string[]): Program {
     const parsed = parse(unit)
 
     if (!parsed.ok) {
-      throw new Error(`parse failed: ${unit.file}: ${parsed.diagnostics.map(d => d.message).join(', ')}`)
+      throw new Error(
+        `parse failed: ${unit.file}: ${parsed.diagnostics.map(d => d.message).join(', ')}`,
+      )
     }
 
-    const built = mill(expandTemplates(parsed.tree, templates), unit.file)
+    const built = mill(
+      expandTemplates(parsed.tree, templates),
+      unit.file,
+    )
 
     if (!built.ok) {
-      throw new Error(`mill failed: ${unit.file}: ${built.diagnostics.map(d => d.message).join(', ')}`)
+      throw new Error(
+        `mill failed: ${unit.file}: ${built.diagnostics.map(d => d.message).join(', ')}`,
+      )
     }
 
     stampModule(built.program, unit.file)
@@ -128,10 +168,17 @@ function frontEnd(env: Env, entry: string, roots: string[]): Program {
   bindModules(program, scope, 'main.tree')
   resolveNames(program, 'main.tree')
 
-  const errors = check(program, 'main.tree').filter(d => d.severity !== 'warning')
+  const errors = check(program, 'main.tree').filter(
+    d => d.severity !== 'warning',
+  )
 
   if (errors.length) {
-    throw new Error(`check failed: ${errors.slice(0, 5).map(d => d.message).join(' | ')}`)
+    throw new Error(
+      `check failed: ${errors
+        .slice(0, 5)
+        .map(d => d.message)
+        .join(' | ')}`,
+    )
   }
 
   resolveAsync(program)
@@ -170,7 +217,11 @@ task round-hex
     ['lowercase round trips', '00ff7a', '00ff7a'],
     ['uppercase input still lower-cases', '00FF7A', '00ff7a'],
     ['the empty string round trips to itself', '', ''],
-    ['a longer real-looking value', 'deadbeefcafef00d', 'deadbeefcafef00d'],
+    [
+      'a longer real-looking value',
+      'deadbeefcafef00d',
+      'deadbeefcafef00d',
+    ],
   ],
 }
 
@@ -195,8 +246,16 @@ task round-json
   cases: [
     ['a bare number', '42', '42'],
     ['a negative decimal', '-3.5', '-3.5'],
-    ['an escaped quote in a string', '"a \\"quoted\\" word"', '"a \\"quoted\\" word"'],
-    ['a nested object and array', '{"a": [1, {"b": true}, null]}', '{"a":[1,{"b":true},null]}'],
+    [
+      'an escaped quote in a string',
+      '"a \\"quoted\\" word"',
+      '"a \\"quoted\\" word"',
+    ],
+    [
+      'a nested object and array',
+      '{"a": [1, {"b": true}, null]}',
+      '{"a":[1,{"b":true},null]}',
+    ],
   ],
 }
 
@@ -223,7 +282,13 @@ task round-gzip
   send back
     call write-hex(call write-gzip(call read-gzip(call read-hex(read input))))
 `,
-  cases: [['a minimal header+trailer round trips byte for byte', '1f8b08000000000000ffaabb7856341202000000', '1f8b08000000000000ffaabb7856341202000000']],
+  cases: [
+    [
+      'a minimal header+trailer round trips byte for byte',
+      '1f8b08000000000000ffaabb7856341202000000',
+      '1f8b08000000000000ffaabb7856341202000000',
+    ],
+  ],
 }
 
 // deck/mill/test/feed/otf-head.tree's own sample-head-table, byte-count plus three fields already proven on
@@ -278,7 +343,13 @@ task round-otf-head
   send back
     text <{{byte-count}}|{{reread/units-per-em}}|{{reread/x-min}}|{{reread/created}}>
 `,
-  cases: [['write then read agrees with the fixed sample', '', '54|1000|-100|3610281600']],
+  cases: [
+    [
+      'write then read agrees with the fixed sample',
+      '',
+      '54|1000|-100|3610281600',
+    ],
+  ],
 }
 
 // deck/mill/test/feed/otf-hhea-maxp.tree's own sample-hhea-table.
@@ -327,7 +398,9 @@ task round-otf-hhea
   send back
     text <{{byte-count}}|{{reread/descender}}|{{reread/number-of-h-metrics}}>
 `,
-  cases: [['write then read agrees with the fixed sample', '', '36|-500|230']],
+  cases: [
+    ['write then read agrees with the fixed sample', '', '36|-500|230'],
+  ],
 }
 
 // deck/mill/test/feed/otf-hhea-maxp.tree's own sample-maxp-table.
@@ -377,7 +450,9 @@ task round-otf-maxp
   send back
     text <{{byte-count}}|{{reread/num-glyphs}}>
 `,
-  cases: [['write then read agrees with the fixed sample', '', '32|500']],
+  cases: [
+    ['write then read agrees with the fixed sample', '', '32|500'],
+  ],
 }
 
 // deck/mill/test/feed/otf-os2.tree's own version-0-table (no version-1/version-2 tail: every `maybe` field `none`).
@@ -488,7 +563,13 @@ task round-otf-os2
   send back
     text <{{byte-count}}|{{reread/us-weight-class}}|{{reread/s-typo-descender}}>
 `,
-  cases: [['a version-0 table round trips its always-present fields', '', '78|400|-200']],
+  cases: [
+    [
+      'a version-0 table round trips its always-present fields',
+      '',
+      '78|400|-200',
+    ],
+  ],
 }
 
 // deck/mill/test/feed/otf-loca.tree's own sample-offsets fixture, short format (4 entries, so 8 bytes: entries are
@@ -535,7 +616,13 @@ task round-otf-loca
   send back
     text <{{byte-count}}|{{last-offset}}>
 `,
-  cases: [['a short-format table round trips, including the middle empty-glyph span', '', '8|96']],
+  cases: [
+    [
+      'a short-format table round trips, including the middle empty-glyph span',
+      '',
+      '8|96',
+    ],
+  ],
 }
 
 // deck/mill/test/feed/otf-glyf.tree's own triangle fixture: one contour, three on-curve points, no instructions. The
@@ -624,7 +711,13 @@ task round-otf-glyf
   send back
     text <{{byte-count}}|{{third-x}}>
 `,
-  cases: [['a simple triangle round trips its byte count and third point', '', '29|250']],
+  cases: [
+    [
+      'a simple triangle round trips its byte count and third point',
+      '',
+      '29|250',
+    ],
+  ],
 }
 
 // deck/mill/test/feed/otf-cmap.tree's own cmap-bytes fixture (one encoding record pointing at a format-12 subtable
@@ -694,7 +787,11 @@ task round-otf-cmap
     text <{{byte-count}}|{{record/platform-id}}|{{group/start-char-code}}|{{group/end-char-code}}|{{record-2/subtable-offset}}|{{group-2/start-glyph-id}}>
 `,
   cases: [
-    ['a format-12 group reads, then survives a write and reread', '000000010003000a0000000c000c00000000001c0000000000000001000000410000005a00000024', '40|3|65|90|12|36'],
+    [
+      'a format-12 group reads, then survives a write and reread',
+      '000000010003000a0000000c000c00000000001c0000000000000001000000410000005a00000024',
+      '40|3|65|90|12|36',
+    ],
   ],
 }
 
@@ -719,31 +816,66 @@ task round-pdf-value
       call parse-pdf-value(call make-text-cursor(read input))
 `,
   cases: [
-    ['a dictionary round trips compact', '<< /Type /Catalog /Count 3 >>', '<</Type /Catalog /Count 3>>'],
-    ['two references inside an array round trip', '[12 0 R 13 0 R]', '[12 0 R 13 0 R]'],
+    [
+      'a dictionary round trips compact',
+      '<< /Type /Catalog /Count 3 >>',
+      '<</Type /Catalog /Count 3>>',
+    ],
+    [
+      'two references inside an array round trip',
+      '[12 0 R 13 0 R]',
+      '[12 0 R 13 0 R]',
+    ],
     ['a negative decimal round trips', '-3.5', '-3.5'],
   ],
 }
 
-const SUITES: Suite[] = [HEX, JSON_SUITE, GZIP, OTF_HEAD, OTF_HHEA, OTF_MAXP, OTF_OS2, OTF_CMAP, OTF_LOCA, OTF_GLYF, PDF_OBJECT]
+const SUITES: Suite[] = [
+  HEX,
+  JSON_SUITE,
+  GZIP,
+  OTF_HEAD,
+  OTF_HHEA,
+  OTF_MAXP,
+  OTF_OS2,
+  OTF_CMAP,
+  OTF_LOCA,
+  OTF_GLYF,
+  PDF_OBJECT,
+]
 
 const SEP = ''
 const dir = mkdtempSync(join(tmpdir(), 'term-feed-native-'))
 
-function compare(env: string, label: string, cases: Suite['cases'], output: string): void {
+function compare(
+  env: string,
+  label: string,
+  cases: Suite['cases'],
+  output: string,
+): void {
   const got = output.split(SEP)
   cases.forEach(([name, , want], at) =>
-    ok(`${env} ${label}: ${name}`, got[at] === want, `got ${JSON.stringify(got[at] ?? '')} want ${JSON.stringify(want)}`),
+    ok(
+      `${env} ${label}: ${name}`,
+      got[at] === want,
+      `got ${JSON.stringify(got[at] ?? '')} want ${JSON.stringify(want)}`,
+    ),
   )
 }
 
-const CARGO_ENV = { ...process.env, CARGO_TARGET_DIR: join(tmpdir(), 'term-feed-native-target') }
+const CARGO_ENV = {
+  ...process.env,
+  CARGO_TARGET_DIR: join(tmpdir(), 'term-feed-native-target'),
+}
 
 function runSuiteRust(suite: Suite): void {
   const program = frontEnd('rust', suite.entry, [suite.root])
   const out = join(dir, `rust-${suite.id}`)
   mkdirSync(join(out, 'src'), { recursive: true })
-  writeFileSync(join(out, 'Cargo.toml'), `[package]\nname = "feed_${suite.id.replace(/-/g, '_')}"\nversion = "0.1.0"\nedition = "2021"\n`)
+  writeFileSync(
+    join(out, 'Cargo.toml'),
+    `[package]\nname = "feed_${suite.id.replace(/-/g, '_')}"\nversion = "0.1.0"\nedition = "2021"\n`,
+  )
   const fn = suite.root.replace(/-/g, '_')
   const inputs = suite.cases.map(([, input]) => JSON.stringify(input))
   const emitted = emitRust(program)
@@ -751,18 +883,33 @@ function runSuiteRust(suite: Suite): void {
   // in its closure can actually halt (hex/json/gzip/otf-head/otf-maxp all have a raising path somewhere;
   // otf-hhea/otf-os2 don't, since neither reader validates anything that halts), so the call site has to match
   // whichever the emitter actually produced rather than assume every suite is fallible.
-  const fallible = new RegExp(`fn ${fn}\\([^)]*\\)\\s*->\\s*(?:std::result::)?Result<`).test(emitted)
+  const fallible = new RegExp(
+    `fn ${fn}\\([^)]*\\)\\s*->\\s*(?:std::result::)?Result<`,
+  ).test(emitted)
   const callExpr = (arg: string): string =>
-    fallible ? `${fn}(${arg}).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) })` : `${fn}(${arg})`
+    fallible
+      ? `${fn}(${arg}).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) })`
+      : `${fn}(${arg})`
   const main = `\nfn main() {\n  let inputs: Vec<&str> = vec![${inputs.join(', ')}];\n  for input in inputs { print!("{}\\u{1e}", ${callExpr('input.to_string()')}); }\n}\n`
-  writeFileSync(join(out, 'src/main.rs'), `${nativePrelude(program, 'rust', readRuntime)}\n${emitted}${main}`)
+  writeFileSync(
+    join(out, 'src/main.rs'),
+    `${nativePrelude(program, 'rust', readRuntime)}\n${emitted}${main}`,
+  )
 
   try {
-    const output = execFileSync('cargo', ['run', '--quiet'], { cwd: out, stdio: ['ignore', 'pipe', 'pipe'], env: CARGO_ENV }).toString()
+    const output = execFileSync('cargo', ['run', '--quiet'], {
+      cwd: out,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: CARGO_ENV,
+    }).toString()
     ok(`rust: the ${suite.label} package builds`, true)
     compare('rust', suite.label, suite.cases, output)
   } catch (error) {
-    ok(`rust: the ${suite.label} package builds`, false, String((error as { stderr?: Buffer }).stderr ?? error))
+    ok(
+      `rust: the ${suite.label} package builds`,
+      false,
+      String((error as { stderr?: Buffer }).stderr ?? error),
+    )
   }
 }
 
@@ -771,31 +918,48 @@ function runSuiteSwift(suite: Suite): void {
   const out = join(dir, 'swift')
   mkdirSync(out, { recursive: true })
   const file = join(out, `${suite.id}.swift`)
-  const fn = suite.root.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())
+  const fn = suite.root.replace(/-([a-z0-9])/g, (_, c: string) =>
+    c.toUpperCase(),
+  )
   const inputs = suite.cases.map(([, input]) => JSON.stringify(input))
   const emitted = emitSwift(program)
   // `try!` on a call to a function Swift did NOT mark `throws` is a compile error ("no calls to throwing
   // functions occur"), so this has to match the emitter's own signature, same reasoning as Rust's Result check.
-  const fallible = new RegExp(`func ${fn}\\([^)]*\\)\\s*throws\\s*->`).test(emitted)
+  const fallible = new RegExp(
+    `func ${fn}\\([^)]*\\)\\s*throws\\s*->`,
+  ).test(emitted)
   // Swift calls a Term task by its parameter's label, so read the label off the emitted signature
   const label = new RegExp(`func ${fn}\\((\\w+)[ :]`).exec(emitted)?.[1]
-  const labeled = (arg: string): string => (label && label !== '_' ? `${label}: ${arg}` : arg)
-  const call = (arg: string): string => (fallible ? `try! ${fn}(${labeled(arg)})` : `${fn}(${labeled(arg)})`)
+  const labeled = (arg: string): string =>
+    label && label !== '_' ? `${label}: ${arg}` : arg
+  const call = (arg: string): string =>
+    fallible ? `try! ${fn}(${labeled(arg)})` : `${fn}(${labeled(arg)})`
   writeFileSync(
     file,
     `${nativePrelude(program, 'swift', readRuntime)}\n${emitted}\nfor input in [${inputs.join(', ')}] { print(${call('input')}, terminator: "\\u{1e}") }\n`,
   )
 
   try {
-    execFileSync('swiftc', ['-o', join(out, suite.id), file], { stdio: 'pipe' })
+    execFileSync('swiftc', ['-o', join(out, suite.id), file], {
+      stdio: 'pipe',
+    })
   } catch (error) {
-    ok(`swift: the ${suite.label} package builds`, false, String((error as { stderr?: Buffer }).stderr ?? error))
+    ok(
+      `swift: the ${suite.label} package builds`,
+      false,
+      String((error as { stderr?: Buffer }).stderr ?? error),
+    )
 
     return
   }
 
   ok(`swift: the ${suite.label} package builds`, true)
-  compare('swift', suite.label, suite.cases, execFileSync(join(out, suite.id)).toString())
+  compare(
+    'swift',
+    suite.label,
+    suite.cases,
+    execFileSync(join(out, suite.id)).toString(),
+  )
 }
 
 function runSuiteKotlin(suite: Suite): void {
@@ -803,7 +967,9 @@ function runSuiteKotlin(suite: Suite): void {
   const out = join(dir, 'kotlin')
   mkdirSync(out, { recursive: true })
   const file = join(out, `${suite.id}.kt`)
-  const fn = suite.root.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())
+  const fn = suite.root.replace(/-([a-z0-9])/g, (_, c: string) =>
+    c.toUpperCase(),
+  )
   const inputs = suite.cases.map(([, input]) => JSON.stringify(input))
   writeFileSync(
     file,
@@ -813,15 +979,31 @@ function runSuiteKotlin(suite: Suite): void {
   )
 
   try {
-    execFileSync('kotlinc', [file, '-include-runtime', '-d', join(out, `${suite.id}.jar`)], { stdio: 'pipe' })
+    execFileSync(
+      'kotlinc',
+      [file, '-include-runtime', '-d', join(out, `${suite.id}.jar`)],
+      { stdio: 'pipe' },
+    )
   } catch (error) {
-    ok(`kotlin: the ${suite.label} package builds`, false, String((error as { stderr?: Buffer }).stderr ?? error))
+    ok(
+      `kotlin: the ${suite.label} package builds`,
+      false,
+      String((error as { stderr?: Buffer }).stderr ?? error),
+    )
 
     return
   }
 
   ok(`kotlin: the ${suite.label} package builds`, true)
-  compare('kotlin', suite.label, suite.cases, execFileSync('java', ['-jar', join(out, `${suite.id}.jar`)]).toString())
+  compare(
+    'kotlin',
+    suite.label,
+    suite.cases,
+    execFileSync('java', [
+      '-jar',
+      join(out, `${suite.id}.jar`),
+    ]).toString(),
+  )
 }
 
 const only = process.env.HN_ONLY ?? ''
@@ -830,7 +1012,10 @@ if (!only || only === 'rust') {
   if (have('cargo')) {
     SUITES.forEach(runSuiteRust)
   } else {
-    skipped('rust: the package builds and round-trips', 'cargo not installed')
+    skipped(
+      'rust: the package builds and round-trips',
+      'cargo not installed',
+    )
   }
 }
 
@@ -838,7 +1023,10 @@ if (!only || only === 'swift') {
   if (have('swiftc')) {
     SUITES.forEach(runSuiteSwift)
   } else {
-    skipped('swift: the package builds and round-trips', 'swiftc not installed')
+    skipped(
+      'swift: the package builds and round-trips',
+      'swiftc not installed',
+    )
   }
 }
 
@@ -846,11 +1034,16 @@ if (!only || only === 'kotlin') {
   if (have('kotlinc') && have('java')) {
     SUITES.forEach(runSuiteKotlin)
   } else {
-    skipped('kotlin: the package builds and round-trips', 'kotlinc/java not installed')
+    skipped(
+      'kotlin: the package builds and round-trips',
+      'kotlinc/java not installed',
+    )
   }
 }
 
-console.log(`\nfeed-native: ${pass} pass, ${fail} fail, ${skip} skipped`)
+console.log(
+  `\nfeed-native: ${pass} pass, ${fail} fail, ${skip} skipped`,
+)
 
 if (fail > 0) {
   process.exit(1)

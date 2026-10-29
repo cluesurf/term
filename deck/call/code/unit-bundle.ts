@@ -30,7 +30,12 @@ export function writeUnitBundle(input: {
   entry: string
   modules: [string, ModuleEmit][]
   slug: (file: string) => string
-  exports: { name: string; exported: string; file: string; type: boolean }[]
+  exports: {
+    name: string
+    exported: string
+    file: string
+    type: boolean
+  }[]
   // the shims the program docks (compile/native.ts `nativePrelude`)
   prelude: string
   // names the run calls that the entry neither defines nor imports: a command table's tasks (`runtimeExports`)
@@ -40,18 +45,37 @@ export function writeUnitBundle(input: {
   mkdirSync(path.join(host, '.unit'), { recursive: true })
 
   // the namespaces the modules dock, and of those the ones a shim defines
-  const docked = port.dockedOf(input.modules.map(([, emit]) => emit.code))
+  const docked = port.dockedOf(
+    input.modules.map(([, emit]) => emit.code),
+  )
+
   const offered = port.offeredOf(input.prelude, docked)
 
   for (const [file, emit] of input.modules) {
-    writeFileSync(path.join(host, '.unit', `${input.slug(file)}.ts`), port.rewriteDocked(emit.code, offered))
+    writeFileSync(
+      path.join(host, '.unit', `${input.slug(file)}.ts`),
+      port.rewriteDocked(emit.code, offered),
+    )
   }
 
-  writeFileSync(path.join(host, 'prelude.ts'), port.preludeModule(input.prelude, offered))
+  writeFileSync(
+    path.join(host, 'prelude.ts'),
+    port.preludeModule(input.prelude, offered),
+  )
 
   const app = path.join(host, 'app.ts')
-  const entryCode = input.modules.find(([file]) => file === input.entry)?.[1].code ?? ''
-  writeFileSync(app, entryShim(input.dir, path.join(input.dir, 'app.tree'), runtimeExports(input.entry, entryCode, input.exports, input.keep), input.slug))
+  const entryCode =
+    input.modules.find(([file]) => file === input.entry)?.[1].code ?? ''
+
+  writeFileSync(
+    app,
+    entryShim(
+      input.dir,
+      path.join(input.dir, 'app.tree'),
+      runtimeExports(input.entry, entryCode, input.exports, input.keep),
+      input.slug,
+    ),
+  )
 
   return app
 }
@@ -62,13 +86,21 @@ export function writeUnitBundle(input: {
 // starts from, and this entry re-exported the whole closure, so a command that trims one text shipped every task of the
 // text module (19 of 20 functions unused, tmp/shake-probe.sh, 2026-10-05). The artifact `term make` writes under host/
 // keeps the whole closure: a TypeScript importer reads any name off it
-export function runtimeExports<T extends { name: string; file: string }>(
+export function runtimeExports<
+  T extends { name: string; file: string },
+>(
   entry: string,
   entryCode: string,
   exports: T[],
   keep: string[] = [],
 ): T[] {
-  const kept = port.runtimeExports(entry, entryCode, exports.map(one => ({ name: one.name, file: one.file })), keep, toCamel)
+  const kept = port.runtimeExports(
+    entry,
+    entryCode,
+    exports.map(one => ({ name: one.name, file: one.file })),
+    keep,
+    toCamel,
+  )
 
   return exports.filter((_, at) => kept[at])
 }

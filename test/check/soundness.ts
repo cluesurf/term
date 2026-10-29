@@ -44,7 +44,9 @@ function expect(
 function expectEnds(name: string, source: string, ends: boolean): void {
   const result = compile({ file: 's.tree', text: source })
   const unshown = result.ok
-    ? (result.obligations?.failed ?? []).filter(f => f.origin === 'ends').length
+    ? (result.obligations?.failed ?? []).filter(
+        f => f.origin === 'ends',
+      ).length
     : -1
   const good = result.ok && (ends ? unshown === 0 : unshown > 0)
 
@@ -53,7 +55,9 @@ function expectEnds(name: string, source: string, ends: boolean): void {
     console.log(`ok    ${name}`)
   } else {
     fail++
-    console.log(`FAIL  ${name}  (ok=${result.ok}, unshown ends=${unshown}, wanted ${ends ? 'none' : 'some'})`)
+    console.log(
+      `FAIL  ${name}  (ok=${result.ok}, unshown ends=${unshown}, wanted ${ends ? 'none' : 'some'})`,
+    )
   }
 }
 
@@ -86,8 +90,16 @@ hold
     ${value}
 `
 
-  expect('a task saved twice computes its last save', about(saved, 'call twice-saved(code 1)', 'code 6'), proven)
-  expect('not its first', about(saved, 'call twice-saved(code 1)', 'code 0'), refused('unchecked-hold'))
+  expect(
+    'a task saved twice computes its last save',
+    about(saved, 'call twice-saved(code 1)', 'code 6'),
+    proven,
+  )
+  expect(
+    'not its first',
+    about(saved, 'call twice-saved(code 1)', 'code 0'),
+    refused('unchecked-hold'),
+  )
 
   // The kernel computes a `fork case` (its eliminator reduces on a constructor), and leaves `cond` and a comparison of
   // numbers standing, so a join's VALUE is decided here through `fork case`. A `fork test` join is held to being one
@@ -109,12 +121,29 @@ task choose
       save m, read m
   send back m
 `
-  const chosen = (which: string): string => `call choose\n      make ${which}\n      code 10`
+  const chosen = (which: string): string =>
+    `call choose\n      make ${which}\n      code 10`
 
-  expect('a fork that saves joins its value: the arm taken', about(choose, chosen('left'), 'code 3'), proven)
-  expect('and an arm that keeps it passes the old version', about(choose, chosen('right'), 'code 10'), proven)
-  expect('the value before the arm is not a fact after it', about(choose, chosen('left'), 'code 10'), refused('invalid-proof'))
-  expect('nor is the arm`s value on the other path', about(choose, chosen('right'), 'code 3'), refused('invalid-proof'))
+  expect(
+    'a fork that saves joins its value: the arm taken',
+    about(choose, chosen('left'), 'code 3'),
+    proven,
+  )
+  expect(
+    'and an arm that keeps it passes the old version',
+    about(choose, chosen('right'), 'code 10'),
+    proven,
+  )
+  expect(
+    'the value before the arm is not a fact after it',
+    about(choose, chosen('left'), 'code 10'),
+    refused('invalid-proof'),
+  )
+  expect(
+    'nor is the arm`s value on the other path',
+    about(choose, chosen('right'), 'code 3'),
+    refused('invalid-proof'),
+  )
 
   const spread = `${side}
 task spread
@@ -135,11 +164,24 @@ task spread
       read high
       read low
 `
-  const spreadOf = (which: string): string => `call spread\n      make ${which}\n      code 2\n      code 5`
+  const spreadOf = (which: string): string =>
+    `call spread\n      make ${which}\n      code 2\n      code 5`
 
-  expect('a join over two names swapped in one arm', about(spread, spreadOf('left'), 'code -3'), proven)
-  expect('and unswapped in the other', about(spread, spreadOf('right'), 'code 3'), proven)
-  expect('not the unswapped difference after the swap', about(spread, spreadOf('left'), 'code 3'), refused('unchecked-hold'))
+  expect(
+    'a join over two names swapped in one arm',
+    about(spread, spreadOf('left'), 'code -3'),
+    proven,
+  )
+  expect(
+    'and unswapped in the other',
+    about(spread, spreadOf('right'), 'code 3'),
+    proven,
+  )
+  expect(
+    'not the unswapped difference after the swap',
+    about(spread, spreadOf('left'), 'code 3'),
+    refused('unchecked-hold'),
+  )
 
   const nested = `${side}
 task bucket
@@ -159,13 +201,34 @@ task bucket
       save b, read b
   send back b
 `
-  const bucketOf = (s: string, t: string): string => `call bucket\n      make ${s}\n      make ${t}`
+  const bucketOf = (s: string, t: string): string =>
+    `call bucket\n      make ${s}\n      make ${t}`
 
-  expect('a fork inside an arm joins into the outer join', about(nested, bucketOf('left', 'left'), 'code 2'), proven)
-  expect('the inner arm that keeps the value', about(nested, bucketOf('left', 'right'), 'code 1'), proven)
-  expect('the outer arm that keeps the value', about(nested, bucketOf('right', 'left'), 'code 0'), proven)
-  expect('not the inner value on the path that skips it', about(nested, bucketOf('left', 'right'), 'code 2'), refused('invalid-proof'))
-  expect('not the outer arm`s value on the path that skips it', about(nested, bucketOf('right', 'left'), 'code 1'), refused('invalid-proof'))
+  expect(
+    'a fork inside an arm joins into the outer join',
+    about(nested, bucketOf('left', 'left'), 'code 2'),
+    proven,
+  )
+  expect(
+    'the inner arm that keeps the value',
+    about(nested, bucketOf('left', 'right'), 'code 1'),
+    proven,
+  )
+  expect(
+    'the outer arm that keeps the value',
+    about(nested, bucketOf('right', 'left'), 'code 0'),
+    proven,
+  )
+  expect(
+    'not the inner value on the path that skips it',
+    about(nested, bucketOf('left', 'right'), 'code 2'),
+    refused('invalid-proof'),
+  )
+  expect(
+    'not the outer arm`s value on the path that skips it',
+    about(nested, bucketOf('right', 'left'), 'code 1'),
+    refused('invalid-proof'),
+  )
 
   // a closure reads the variable when it RUNS, so it sees the later save. A lowering that gave it the version at its
   // creation would prove late(1) == 1, and the program returns 2. Such a task is not lowered
@@ -185,7 +248,11 @@ task bucket
     call f
 `
 
-  expect('a closure does not see the version at its creation', about(late, 'call late(code 1)', 'code 1'), refused('unchecked-hold'))
+  expect(
+    'a closure does not see the version at its creation',
+    about(late, 'call late(code 1)', 'code 1'),
+    refused('unchecked-hold'),
+  )
 
   // ---- walks (proof-by-default-0010) ----
   //
@@ -213,10 +280,19 @@ ${items.map(item => `        code ${item}`).join('\n')}
           read t
           read x
   send back t`
-  const at = (value: number, task: string, items: number[]): string => listed(task, items).replace('VALUE', String(value))
+  const at = (value: number, task: string, items: number[]): string =>
+    listed(task, items).replace('VALUE', String(value))
 
-  expect('a walk over a list adds every item', at(6, sum, [1, 2, 3]), proven)
-  expect('not one item fewer', at(5, sum, [1, 2, 3]), refused('unchecked-hold'))
+  expect(
+    'a walk over a list adds every item',
+    at(6, sum, [1, 2, 3]),
+    proven,
+  )
+  expect(
+    'not one item fewer',
+    at(5, sum, [1, 2, 3]),
+    refused('unchecked-hold'),
+  )
 
   const indexed = `task weigh
   take xs, like list, like number
@@ -234,8 +310,16 @@ ${items.map(item => `        code ${item}`).join('\n')}
             read i
   send back t`
 
-  expect('the index counts from 0, in order', at(17, indexed, [5, 7, 5]), proven)
-  expect('not from 1', at(29, indexed, [5, 7, 5]), refused('unchecked-hold'))
+  expect(
+    'the index counts from 0, in order',
+    at(17, indexed, [5, 7, 5]),
+    proven,
+  )
+  expect(
+    'not from 1',
+    at(29, indexed, [5, 7, 5]),
+    refused('unchecked-hold'),
+  )
 
   // the three ways out of a turn, decided by a `fork case` (the kernel leaves `cond` standing)
   const steps = `form step
@@ -279,12 +363,36 @@ ${items.map(item => `        make ${item}`).join('\n')}
     code ${value}
 `
 
-  expect('turn next skips the rest of the turn', runOf(11, ['skip', 'keep', 'skip']), proven)
-  expect('not running it', runOf(31, ['skip', 'keep', 'skip']), refused('unchecked-hold'))
-  expect('halt leaves the walk with the versions it holds', runOf(11, ['keep', 'stop', 'keep']), proven)
-  expect('not finishing it', runOf(22, ['keep', 'stop', 'keep']), refused('unchecked-hold'))
-  expect('send back answers for the task', runOf(99, ['keep', 'answer', 'keep']), proven)
-  expect('not the walk`s count', runOf(11, ['keep', 'answer', 'keep']), refused('invalid-proof'))
+  expect(
+    'turn next skips the rest of the turn',
+    runOf(11, ['skip', 'keep', 'skip']),
+    proven,
+  )
+  expect(
+    'not running it',
+    runOf(31, ['skip', 'keep', 'skip']),
+    refused('unchecked-hold'),
+  )
+  expect(
+    'halt leaves the walk with the versions it holds',
+    runOf(11, ['keep', 'stop', 'keep']),
+    proven,
+  )
+  expect(
+    'not finishing it',
+    runOf(22, ['keep', 'stop', 'keep']),
+    refused('unchecked-hold'),
+  )
+  expect(
+    'send back answers for the task',
+    runOf(99, ['keep', 'answer', 'keep']),
+    proven,
+  )
+  expect(
+    'not the walk`s count',
+    runOf(11, ['keep', 'answer', 'keep']),
+    refused('invalid-proof'),
+  )
 
   // a lifted `walk test` is a definition the kernel unfolds only when it has a `down`, which rests on the build failing
   // for a `down` that does not fall
@@ -306,8 +414,16 @@ ${items.map(item => `        make ${item}`).join('\n')}
   send back m
 `
 
-  expect('a down that grows fails the build', measured('add'), refused('unproven'))
-  expect('control: a down that falls builds', measured('subtract'), proven)
+  expect(
+    'a down that grows fails the build',
+    measured('add'),
+    refused('unproven'),
+  )
+  expect(
+    'control: a down that falls builds',
+    measured('subtract'),
+    proven,
+  )
 
   // ---- guarded forks (proof-by-default-0011) ----
   //
@@ -349,10 +465,22 @@ hold
     code ${value}
 `
 
-  expect('a raise takes the handler with the version it holds', capped(104, 'left'), proven)
-  expect('not the version at the fork', capped(103, 'left'), refused('unchecked-hold'))
+  expect(
+    'a raise takes the handler with the version it holds',
+    capped(104, 'left'),
+    proven,
+  )
+  expect(
+    'not the version at the fork',
+    capped(103, 'left'),
+    refused('unchecked-hold'),
+  )
   expect('and no raise does not take it', capped(5, 'right'), proven)
-  expect('not the handler`s value on the path that does not raise', capped(105, 'right'), refused('unchecked-hold'))
+  expect(
+    'not the handler`s value on the path that does not raise',
+    capped(105, 'right'),
+    refused('unchecked-hold'),
+  )
 
   // ---- a save through a field (proof-by-default-0014, decision 002) ----
   //
@@ -388,9 +516,21 @@ hold
     code ${value}
 `
 
-  expect('a write through a field is the record made again, every other field kept', boxed(8), proven)
-  expect('not the field it held before the write', boxed(3), refused('unchecked-hold'))
-  expect('not the first write alone', boxed(7), refused('unchecked-hold'))
+  expect(
+    'a write through a field is the record made again, every other field kept',
+    boxed(8),
+    proven,
+  )
+  expect(
+    'not the field it held before the write',
+    boxed(3),
+    refused('unchecked-hold'),
+  )
+  expect(
+    'not the first write alone',
+    boxed(7),
+    refused('unchecked-hold'),
+  )
 
   // the signature's bound is still the surface checker's: a raise it does not declare is refused
   expect(
@@ -448,9 +588,21 @@ rule every-flag-is-yes
 ${steps}`
 
   expect('control: the conditional rule itself is proven', flag, proven)
-  expect('cite of a rule with a have does not drop the have', everyFlag('  cite assumed\n'), refused('unproven'))
-  expect('nor does seek, rewriting by every lemma', everyFlag('  seek\n'), refused('invalid-proof'))
-  expect('nor a cite under a fold', everyFlag('  fold g\n    cite assumed\n'), refused('invalid-proof'))
+  expect(
+    'cite of a rule with a have does not drop the have',
+    everyFlag('  cite assumed\n'),
+    refused('unproven'),
+  )
+  expect(
+    'nor does seek, rewriting by every lemma',
+    everyFlag('  seek\n'),
+    refused('invalid-proof'),
+  )
+  expect(
+    'nor a cite under a fold',
+    everyFlag('  fold g\n    cite assumed\n'),
+    refused('invalid-proof'),
+  )
   expect(
     'control: under the same have, the goal still holds',
     `${flag}
@@ -1252,9 +1404,18 @@ task anything
   // these was a descent with no condition, so a proof that recursed at every step, and so never had a base case to type,
   // was "terminating", and with `like equal a` as the result it proved any two values equal
   for (const [what, step] of [
-    ['n % 2, which is n itself at 0 and 1', 'call modulo\n        read n\n        code 2'],
-    ['n / 2, which is 0 again at 0', 'call divide\n        read n\n        code 2'],
-    ['n - 1 with no floor, which runs down forever from 0', 'call subtract\n        read n\n        code 1'],
+    [
+      'n % 2, which is n itself at 0 and 1',
+      'call modulo\n        read n\n        code 2',
+    ],
+    [
+      'n / 2, which is 0 again at 0',
+      'call divide\n        read n\n        code 2',
+    ],
+    [
+      'n - 1 with no floor, which runs down forever from 0',
+      'call subtract\n        read n\n        code 1',
+    ],
   ] as const) {
     expect(
       `a claim filled by a recursion on ${what} is refused`,
@@ -1319,14 +1480,20 @@ task count-down
             code 1
 `,
     })
-    const said = result.ok ? result.warnings.map(d => d.name) : result.diagnostics.map(d => d.name)
+    const said = result.ok
+      ? result.warnings.map(d => d.name)
+      : result.diagnostics.map(d => d.name)
 
     if (result.ok && !said.includes('non-terminating')) {
       pass++
-      console.log('ok    control: n - 1 in the miss arm of a value fork on n <= 0 descends')
+      console.log(
+        'ok    control: n - 1 in the miss arm of a value fork on n <= 0 descends',
+      )
     } else {
       fail++
-      console.log(`FAIL  control: n - 1 in the miss arm of a value fork on n <= 0 descends  (ok=${result.ok}, ${said.join(',')})`)
+      console.log(
+        `FAIL  control: n - 1 in the miss arm of a value fork on n <= 0 descends  (ok=${result.ok}, ${said.join(',')})`,
+      )
     }
   }
 
@@ -1597,10 +1764,16 @@ ${have}  save r
 
   expect(
     'a remainder by a positive divisor is below it',
-    remainder('  have\n    call is-above\n      read y\n      code 0\n'),
+    remainder(
+      '  have\n    call is-above\n      read y\n      code 0\n',
+    ),
     proven,
   )
-  expect('not when the divisor may be negative', remainder(''), refused('unproven'))
+  expect(
+    'not when the divisor may be negative',
+    remainder(''),
+    refused('unproven'),
+  )
 
   // ---- a branch that changes a list ----
 
@@ -1672,8 +1845,16 @@ ${inner}  hold
       code 1
 `
 
-  expect('a bound every path through a fork shows holds after it', join('code 510'), proven)
-  expect('not when one path breaks it', join('code 255'), refused('unproven'))
+  expect(
+    'a bound every path through a fork shows holds after it',
+    join('code 510'),
+    proven,
+  )
+  expect(
+    'not when one path breaks it',
+    join('code 255'),
+    refused('unproven'),
+  )
 
   // ---- the far side of a min or max ----
 
@@ -1743,7 +1924,11 @@ ${between}  hold
       code 1
 `
 
-  expect('a field is a fact while nothing writes it', counter(''), proven)
+  expect(
+    'a field is a fact while nothing writes it',
+    counter(''),
+    proven,
+  )
 
   const pair = (between: string): string => `form pair
   mark shared
@@ -1837,7 +2022,9 @@ ${body}`
 
   expect(
     'a write into a number field states its new value',
-    written('  save a/count, read k\n  hold\n    call is-equal\n      read a/count\n      read k\n'),
+    written(
+      '  save a/count, read k\n  hold\n    call is-equal\n      read a/count\n      read k\n',
+    ),
     proven,
   )
   expect(
@@ -2058,8 +2245,16 @@ task use
       code 1
 `
 
-  expect('a walk pushing to another fresh list keeps a list`s exact length', pushWalk('w'), proven)
-  expect('not when the walk pushes to that list', pushWalk('m'), refused('unproven'))
+  expect(
+    'a walk pushing to another fresh list keeps a list`s exact length',
+    pushWalk('w'),
+    proven,
+  )
+  expect(
+    'not when the walk pushes to that list',
+    pushWalk('m'),
+    refused('unproven'),
+  )
 
   // ---- a text's length ----
 
@@ -2123,7 +2318,9 @@ task t
 
   expect(
     'a masked roll is inside its mask, whatever the roll was',
-    masked('call is-maximum\n      call bitwise-and\n        call roll\n        code 255\n      code 255'),
+    masked(
+      'call is-maximum\n      call bitwise-and\n        call roll\n        code 255\n      code 255',
+    ),
     proven,
   )
   expect(
@@ -2145,12 +2342,16 @@ ${have}  call xs/pop
 
   expect(
     'a pop off a list of three leaves two',
-    popped('  have\n    call is-equal\n      read xs/length\n      code 3\n'),
+    popped(
+      '  have\n    call is-equal\n      read xs/length\n      code 3\n',
+    ),
     proven,
   )
   expect(
     'a pop off a list that may be empty says nothing',
-    popped('  have\n    call is-maximum\n      read xs/length\n      code 3\n'),
+    popped(
+      '  have\n    call is-maximum\n      read xs/length\n      code 3\n',
+    ),
     refused('unproven'),
   )
 
@@ -2167,7 +2368,8 @@ ${have}  save p
   hold
     ${goal}
 `
-  const iAbove = '  have\n    call is-above\n      read i\n      code 0\n'
+  const iAbove =
+    '  have\n    call is-above\n      read i\n      code 0\n'
 
   expect(
     'a parent index (i - 1) / 2 is below i when i > 0',
@@ -2176,7 +2378,10 @@ ${have}  save p
   )
   expect(
     'and not below i - 1 for every i',
-    half(iAbove, 'call is-below\n      read p\n      call subtract\n        read i\n        code 1'),
+    half(
+      iAbove,
+      'call is-below\n      read p\n      call subtract\n        read i\n        code 1',
+    ),
     refused('unproven'),
   )
 
@@ -2199,7 +2404,11 @@ ${have}  save p
   send back, code 0
 `
 
-  expect('a length that is not zero is at least one', otherwise('0', '0'), proven)
+  expect(
+    'a length that is not zero is at least one',
+    otherwise('0', '0'),
+    proven,
+  )
   expect(
     'a length that is not two is not thereby above two',
     otherwise('2', '2'),

@@ -22,12 +22,24 @@ const fail = (reason: string): boolean => {
 
 // with `units`, each module's statements stay marked, for the caller to write one file per module
 // (compile/unit-split.tree)
-export function emitRust(handed: Program, options?: { wake?: WakeGroup[]; units?: boolean }): string {
-  return port.emitRust(handed as never, options?.wake ?? [], Boolean(options?.units), fail)
+export function emitRust(
+  handed: Program,
+  options?: { wake?: WakeGroup[]; units?: boolean },
+): string {
+  return port.emitRust(
+    handed as never,
+    options?.wake ?? [],
+    Boolean(options?.units),
+    fail,
+  )
 }
 
 // what the first pass recorded and which forms it boxes, for a test to assert (test/compile/rust-box.ts)
-export function rustBoxing(program: Program): { cloned: string[]; generic: boolean; boxed: string[] } {
+export function rustBoxing(program: Program): {
+  cloned: string[]
+  generic: boolean
+  boxed: string[]
+} {
   return port.rustBoxingOf(program as never, fail)
 }
 

@@ -42,31 +42,59 @@ const CASES: [string, string][] = [
 ]
 
 async function main(): Promise<void> {
-  const source = CASES.map(([literal], i) => `task case-${i}\n  like text\n  send back, text ${literal}\n`).join('\n') +
+  const source =
+    CASES.map(
+      ([literal], i) =>
+        `task case-${i}\n  like text\n  send back, text ${literal}\n`,
+    ).join('\n') +
     `\ntask pair\n  take a, like text\n  take b, like text\n  like text\n  send back, text <{a}{b}>\n` +
     `\ntask both\n  like text\n  save joined, call pair(text(<<a>>), text(<<b>>))\n  send back, read joined\n`
   const result = compile({ file: 'raw.tree', text: source })
-  ok('every spelling compiles', result.ok, result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'every spelling compiles',
+    result.ok,
+    result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '),
+  )
 
   if (result.ok) {
     const dir = mkdtempSync(join(tmpdir(), 'term-raw-text-'))
     const file = join(dir, 'raw.mjs')
-    writeFileSync(file, transformSync(result.typescript, { loader: 'ts', format: 'esm' }).code)
+    writeFileSync(
+      file,
+      transformSync(result.typescript, { loader: 'ts', format: 'esm' })
+        .code,
+    )
     const mod = await import(pathToFileURL(file).href)
 
     CASES.forEach(([literal, want], i) => {
       const got = mod[`case${i}`]()
-      ok(`${literal} means ${JSON.stringify(want)}`, got === want, JSON.stringify(got))
+      ok(
+        `${literal} means ${JSON.stringify(want)}`,
+        got === want,
+        JSON.stringify(got),
+      )
     })
 
-    ok('two raw literals on one line close apart', mod.both() === 'ab', JSON.stringify(mod.both()))
+    ok(
+      'two raw literals on one line close apart',
+      mod.both() === 'ab',
+      JSON.stringify(mod.both()),
+    )
   }
 
-  const open = parse({ file: 'open.tree', text: 'task x\n  send back, text <<abc>\n' })
+  const open = parse({
+    file: 'open.tree',
+    text: 'task x\n  send back, text <<abc>\n',
+  })
   ok(
     'a raw literal left open is refused on its line',
-    !open.ok && open.diagnostics.some(d => (d.message ?? '').includes('must end with `>>`')),
-    open.ok ? 'parsed' : open.diagnostics.map(d => d.message).join(' | '),
+    !open.ok &&
+      open.diagnostics.some(d =>
+        (d.message ?? '').includes('must end with `>>`'),
+      ),
+    open.ok
+      ? 'parsed'
+      : open.diagnostics.map(d => d.message).join(' | '),
   )
 
   // a printer writes a raw literal back raw, and an ordinary literal opening with an angle never as `<<`
@@ -75,7 +103,11 @@ async function main(): Promise<void> {
     const parsed = parse({ file: 'print.tree', text })
 
     if (!parsed.ok) {
-      ok(`${literal} parses`, false, parsed.diagnostics.map(d => d.message).join(' | '))
+      ok(
+        `${literal} parses`,
+        false,
+        parsed.diagnostics.map(d => d.message).join(' | '),
+      )
       continue
     }
 
@@ -83,8 +115,18 @@ async function main(): Promise<void> {
     const formatted = format({ file: 'print.tree', text })
     const raw = literal.startsWith('<<')
 
-    ok(`${literal} prints back ${raw ? 'raw' : 'without a leading <<'}`, raw ? printed.includes(literal) : !printed.includes('<<x') && printed.includes(literal), printed.trim())
-    ok(`${literal} formats back the same`, formatted === text, formatted.trim())
+    ok(
+      `${literal} prints back ${raw ? 'raw' : 'without a leading <<'}`,
+      raw
+        ? printed.includes(literal)
+        : !printed.includes('<<x') && printed.includes(literal),
+      printed.trim(),
+    )
+    ok(
+      `${literal} formats back the same`,
+      formatted === text,
+      formatted.trim(),
+    )
   }
 }
 

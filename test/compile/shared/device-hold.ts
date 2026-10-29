@@ -3,13 +3,21 @@
 // other's token. The hold is a folder, `<home>/<device>/`, made with `mkdirSync` (atomic: the process that makes it holds
 // it) and holding `owner.json`. A holder whose process is gone holds nothing.
 
-import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs'
+import {
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+  writeSync,
+} from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 export type Device = 'simulator' | 'emulator' | 'pasteboard'
 
-type Owner = { pid: number, who: string, since: string }
+type Owner = { pid: number; who: string; since: string }
 
 // a lock folder with no owner.json is a taker that died between `mkdir` and the write once it is this old
 const ORPHAN_MS = 10_000
@@ -32,9 +40,15 @@ function alive(pid: number): boolean {
 
 function readOwner(dir: string): Owner | undefined {
   try {
-    const owner = JSON.parse(readFileSync(join(dir, 'owner.json'), 'utf8')) as Partial<Owner>
+    const owner = JSON.parse(
+      readFileSync(join(dir, 'owner.json'), 'utf8'),
+    ) as Partial<Owner>
 
-    if (typeof owner.pid === 'number' && typeof owner.who === 'string' && typeof owner.since === 'string') {
+    if (
+      typeof owner.pid === 'number' &&
+      typeof owner.who === 'string' &&
+      typeof owner.since === 'string'
+    ) {
       return { pid: owner.pid, who: owner.who, since: owner.since }
     }
   } catch {
@@ -45,7 +59,9 @@ function readOwner(dir: string): Owner | undefined {
 }
 
 // who holds `device` now; a holder whose process is gone holds nothing
-export function holderOf(device: Device): { pid: number, who: string, since: string } | undefined {
+export function holderOf(
+  device: Device,
+): { pid: number; who: string; since: string } | undefined {
   const owner = readOwner(join(home(), device))
 
   return owner && alive(owner.pid) ? owner : undefined
@@ -101,8 +117,14 @@ function pause(ms: number): Promise<void> {
 // `mkdirSync` attempt, stale and orphan clearing, the waiting line said once, `owner.json`, the release) and yields
 // whenever it must pause one second before trying again. The door decides what a pause is (a timer awaited, or an
 // `Atomics.wait`) and whether the release also hangs on SIGINT and SIGTERM (`signals`).
-function* lock(device: Device, who: string, signals: boolean): Generator<void, () => void, void> {
-  const inherited = (process.env.TERM_HELD ?? '').split(',').map(name => name.trim())
+function* lock(
+  device: Device,
+  who: string,
+  signals: boolean,
+): Generator<void, () => void, void> {
+  const inherited = (process.env.TERM_HELD ?? '')
+    .split(',')
+    .map(name => name.trim())
 
   if (inherited.includes(device)) {
     return () => {}
@@ -133,7 +155,10 @@ function* lock(device: Device, who: string, signals: boolean): Generator<void, (
 
         // writeSync, so the line shows at once even while the thread is blocked
         try {
-          writeSync(2, `hold  ${device} is held by ${holder ? `${holder.who} (pid ${holder.pid}, since ${holder.since})` : 'another process'}, waiting\n`)
+          writeSync(
+            2,
+            `hold  ${device} is held by ${holder ? `${holder.who} (pid ${holder.pid}, since ${holder.since})` : 'another process'}, waiting\n`,
+          )
         } catch {
           // a full non-blocking pipe (EAGAIN): the line is only information, the wait goes on
         }
@@ -149,7 +174,11 @@ function* lock(device: Device, who: string, signals: boolean): Generator<void, (
     break
   }
 
-  const owner: Owner = { pid: process.pid, who, since: new Date().toISOString() }
+  const owner: Owner = {
+    pid: process.pid,
+    who,
+    since: new Date().toISOString(),
+  }
   const written = join(dir, `owner.json.${process.pid}`)
 
   // written whole, then renamed in: a reader never sees half of it
@@ -196,7 +225,10 @@ function* lock(device: Device, who: string, signals: boolean): Generator<void, (
 // takes the machine-wide hold on `device` for this process, waiting while another live process holds it (it says
 // once who holds it, then checks again every second), and answers the release. A device named in TERM_HELD (a
 // comma-separated list) is held by an ancestor process: the answer is a release that does nothing, at once
-export async function holdDevice(device: Device, who: string): Promise<() => void> {
+export async function holdDevice(
+  device: Device,
+  who: string,
+): Promise<() => void> {
   const steps = lock(device, who, true)
 
   for (;;) {
@@ -213,7 +245,10 @@ export async function holdDevice(device: Device, who: string): Promise<() => voi
 // the same hold as holdDevice, for a process whose work under the hold is synchronous (spawnSync, execFileSync,
 // beat-term D024): it waits with Atomics.wait, and releases on exit only, never from a signal listener, so a SIGINT
 // or SIGTERM ends the process at once and the next taker clears the folder its dead pid left
-export function holdDeviceSync(device: Device, who: string): () => void {
+export function holdDeviceSync(
+  device: Device,
+  who: string,
+): () => void {
   const steps = lock(device, who, false)
 
   for (;;) {

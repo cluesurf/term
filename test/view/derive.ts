@@ -5,7 +5,12 @@
 // deck/make/test/catalog-derive.tree. What stays here reads the written catalog back through `readCatalog`, which goes
 // through the data reader (compile/host.ts) and is TypeScript.
 
-import { deriveSites, writeCatalog, readCatalog, type IndexRow } from '@term/make/code/compile/view-catalog'
+import {
+  deriveSites,
+  writeCatalog,
+  readCatalog,
+  type IndexRow,
+} from '@term/make/code/compile/view-catalog'
 
 let pass = 0
 let fail = 0
@@ -38,16 +43,26 @@ const text = writeCatalog(
   ]),
 )
 
-const back = readCatalog({ file: 'derived.tree', text: `host deck, <x>\n${text}` })
+const back = readCatalog({
+  file: 'derived.tree',
+  text: `host deck, <x>\n${text}`,
+})
 
-ok('the compiler reads what it wrote', back.ok, back.ok ? '' : back.diagnostics.map(d => d.message).join(' | '))
+ok(
+  'the compiler reads what it wrote',
+  back.ok,
+  back.ok ? '' : back.diagnostics.map(d => d.message).join(' | '),
+)
 
 if (back.ok) {
   const filter = back.catalog.task.get('filter:phoneme')
 
   ok('the filter returns a list', filter?.back === 'list')
   ok('an ordered field sorts', filter?.site.get('rank')?.sort === true)
-  ok('an unordered field does not', filter?.site.get('kind')?.sort === false)
+  ok(
+    'an unordered field does not',
+    filter?.site.get('kind')?.sort === false,
+  )
   ok(
     'a foreign key takes equality alone',
     filter?.site.get('language__id')?.hold.has('is-above') === false,

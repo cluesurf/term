@@ -6,6 +6,8 @@
 import type { Expression, Program } from '@term/make/code/compile/node'
 import { provenIncrements as provenNodes } from '@term/make/code/ir/facts/steps'
 
-export function provenIncrements(program: Program): WeakSet<Expression> {
+export function provenIncrements(
+  program: Program,
+): WeakSet<Expression> {
   return new WeakSet<Expression>(provenNodes(program))
 }

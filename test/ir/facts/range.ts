@@ -21,8 +21,15 @@ function ok(name: string, holds: boolean, detail = ''): void {
 }
 
 // how many `+` nodes the program holds, and how many of them are proven
-function count(text: string): { adds: number; proven: number; program: Program } {
-  const built = compile({ file: 'main.tree', text }, { optimize: false })
+function count(text: string): {
+  adds: number
+  proven: number
+  program: Program
+} {
+  const built = compile(
+    { file: 'main.tree', text },
+    { optimize: false },
+  )
 
   if (!built.ok) {
     throw new Error(built.diagnostics.map(d => d.message).join(' | '))
@@ -33,7 +40,11 @@ function count(text: string): { adds: number; proven: number; program: Program }
   let hits = 0
   const seen = new Set<object>()
   const visit = (value: unknown): void => {
-    if (typeof value !== 'object' || value === null || seen.has(value)) {
+    if (
+      typeof value !== 'object' ||
+      value === null ||
+      seen.has(value)
+    ) {
       return
     }
 
@@ -87,9 +98,25 @@ const walk = count(
           read sum
           read i`),
 )
-ok('a walk size increment is proven', walk.proven === 1, JSON.stringify(walk))
-ok('the sum inside the walk is not', walk.adds === 2, JSON.stringify(walk))
-ok('Rust writes the proven step as a plain +', /\bi (\+= 1|= i \+ 1)/.test(emitRust(walk.program)) && /checked_add\(sum, i\)/.test(emitRust(walk.program)), emitRust(walk.program).split('\n').filter(l => /checked_add|\+ 1/.test(l)).join(' | '))
+ok(
+  'a walk size increment is proven',
+  walk.proven === 1,
+  JSON.stringify(walk),
+)
+ok(
+  'the sum inside the walk is not',
+  walk.adds === 2,
+  JSON.stringify(walk),
+)
+ok(
+  'Rust writes the proven step as a plain +',
+  /\bi (\+= 1|= i \+ 1)/.test(emitRust(walk.program)) &&
+    /checked_add\(sum, i\)/.test(emitRust(walk.program)),
+  emitRust(walk.program)
+    .split('\n')
+    .filter(l => /checked_add|\+ 1/.test(l))
+    .join(' | '),
+)
 
 // 2. a hand-written `walk test` of the same shape is proven too
 const test = count(
@@ -105,7 +132,11 @@ const test = count(
           read i
           code 1`),
 )
-ok('a walk test with i < n and one i = i + 1 is proven', test.proven === 1, JSON.stringify(test))
+ok(
+  'a walk test with i < n and one i = i + 1 is proven',
+  test.proven === 1,
+  JSON.stringify(test),
+)
 
 // 3. counterexample: `<=` lets i reach the bound, and i + 1 may then be past it
 const atMost = count(
@@ -141,7 +172,11 @@ const twice = count(
           read i
           code 1`),
 )
-ok('a loop that writes i twice is NOT proven', twice.proven === 0, JSON.stringify(twice))
+ok(
+  'a loop that writes i twice is NOT proven',
+  twice.proven === 0,
+  JSON.stringify(twice),
+)
 
 // 5. counterexample: the step inside a nested walk runs many times per test of the outer condition
 const nested = count(
@@ -162,7 +197,11 @@ const nested = count(
               read i
               code 1`),
 )
-ok('a step inside a nested loop is NOT proven for the outer counter', nested.proven === 1, `${JSON.stringify(nested)} (only the inner k step)`)
+ok(
+  'a step inside a nested loop is NOT proven for the outer counter',
+  nested.proven === 1,
+  `${JSON.stringify(nested)} (only the inner k step)`,
+)
 
 // 6. counterexample: a closure that writes the counter
 const closure = count(
@@ -185,7 +224,11 @@ const closure = count(
           read i
           code 1`),
 )
-ok('a counter some closure writes is NOT proven', closure.proven === 0, JSON.stringify(closure))
+ok(
+  'a counter some closure writes is NOT proven',
+  closure.proven === 0,
+  JSON.stringify(closure),
+)
 
 // 7. the other side of the condition: `high = high - 1` under `low < high` is proven
 const down = count(
@@ -211,13 +254,23 @@ const minus = (p: Program): number => {
     seen.add(v)
     if (Array.isArray(v)) return v.forEach(visit)
     const node = v as { form?: string; op?: string }
-    if (node.form === 'binary' && node.op === '-' && proven.has(node as Expression)) n++
-    for (const [k, c] of Object.entries(node)) if (k !== 'type' && k !== 'span') visit(c)
+    if (
+      node.form === 'binary' &&
+      node.op === '-' &&
+      proven.has(node as Expression)
+    )
+      n++
+    for (const [k, c] of Object.entries(node))
+      if (k !== 'type' && k !== 'span') visit(c)
   }
   visit(p)
   return n
 }
-ok('a decrement of the big side of `low < high` is proven', minus(down.program) === 1, JSON.stringify(down))
+ok(
+  'a decrement of the big side of `low < high` is proven',
+  minus(down.program) === 1,
+  JSON.stringify(down),
+)
 
 // 8. counterexample: decrementing the SMALL side can go below the minimum
 const wrongWay = count(
@@ -233,7 +286,11 @@ const wrongWay = count(
           read low
           code 1`),
 )
-ok('a decrement of the small side is NOT proven', minus(wrongWay.program) === 0, JSON.stringify(wrongWay))
+ok(
+  'a decrement of the small side is NOT proven',
+  minus(wrongWay.program) === 0,
+  JSON.stringify(wrongWay),
+)
 
 // 9. a read of `i + 1` before the step is proven; the same read AFTER the step is not
 const reads = count(
@@ -261,11 +318,18 @@ const reads = count(
             read i
             code 1`),
 )
-ok('`i + 1` read before the step is proven, and the one after it is not', reads.proven === 2 && reads.adds === 5, JSON.stringify(reads))
+ok(
+  '`i + 1` read before the step is proven, and the one after it is not',
+  reads.proven === 2 && reads.adds === 5,
+  JSON.stringify(reads),
+)
 
 // whether each `+` or `-` on the counter `i` is proven
 function subtractionsAndSums(text: string): boolean[] {
-  const built = compile({ file: 'main.tree', text }, { optimize: false })
+  const built = compile(
+    { file: 'main.tree', text },
+    { optimize: false },
+  )
 
   if (!built.ok) {
     throw new Error(built.diagnostics.map(d => d.message).join(' | '))
@@ -277,9 +341,18 @@ function subtractionsAndSums(text: string): boolean[] {
     if (typeof value !== 'object' || value === null) return
     if (Array.isArray(value)) return value.forEach(visit)
 
-    const node = value as { form?: string; op?: string; left?: { form?: string; name?: string } }
+    const node = value as {
+      form?: string
+      op?: string
+      left?: { form?: string; name?: string }
+    }
 
-    if (node.form === 'binary' && (node.op === '+' || node.op === '-') && node.left?.form === 'variable' && node.left.name === 'i') {
+    if (
+      node.form === 'binary' &&
+      (node.op === '+' || node.op === '-') &&
+      node.left?.form === 'variable' &&
+      node.left.name === 'i'
+    ) {
       out.push(proven.has(node as Expression))
     }
 
@@ -294,7 +367,12 @@ function subtractionsAndSums(text: string): boolean[] {
 }
 
 // a non-strict comparison against a literal: `i >= 0` counting down, `i <= 5` counting up
-const countdown = (cond: string, bound: string, step: string, by = '1'): boolean[] =>
+const countdown = (
+  cond: string,
+  bound: string,
+  step: string,
+  by = '1',
+): boolean[] =>
   subtractionsAndSums(`task total
   take n, like number
   like number
@@ -317,14 +395,29 @@ const countdown = (cond: string, bound: string, step: string, by = '1'): boolean
   send back, read sum
 `)
 
-ok('`i - 1` under `i >= 0` is proven', countdown('is-minimum', 'code 0', 'subtract').every(Boolean))
-ok('`i + 1` under `i <= 5` is proven', countdown('is-maximum', 'code 5', 'add').slice(-1).every(Boolean))
-ok('`i - 1` under `i >= n`, a name, is NOT proven', countdown('is-minimum', 'read n', 'subtract').every(p => !p))
-ok('`i - 2` under `i >= 0` is NOT proven', countdown('is-minimum', 'code 0', 'subtract', '2').every(p => !p))
+ok(
+  '`i - 1` under `i >= 0` is proven',
+  countdown('is-minimum', 'code 0', 'subtract').every(Boolean),
+)
+ok(
+  '`i + 1` under `i <= 5` is proven',
+  countdown('is-maximum', 'code 5', 'add').slice(-1).every(Boolean),
+)
+ok(
+  '`i - 1` under `i >= n`, a name, is NOT proven',
+  countdown('is-minimum', 'read n', 'subtract').every(p => !p),
+)
+ok(
+  '`i - 2` under `i >= 0` is NOT proven',
+  countdown('is-minimum', 'code 0', 'subtract', '2').every(p => !p),
+)
 
 // `x - c` from a local proven not negative: whether each subtraction in a task is proven
 function subtractions(text: string): boolean[] {
-  const built = compile({ file: 'main.tree', text }, { optimize: false })
+  const built = compile(
+    { file: 'main.tree', text },
+    { optimize: false },
+  )
 
   if (!built.ok) {
     throw new Error(built.diagnostics.map(d => d.message).join(' | '))
@@ -384,23 +477,40 @@ const sieve = subtractions(
             read k
             code 1`),
 )
-ok('`i - 1` and `k - 1` from locals that only grow from 2 are proven', sieve.length === 2 && sieve.every(Boolean), JSON.stringify(sieve))
+ok(
+  '`i - 1` and `k - 1` from locals that only grow from 2 are proven',
+  sieve.length === 2 && sieve.every(Boolean),
+  JSON.stringify(sieve),
+)
 
 // a parameter minus 1 is NOT: a caller may pass the minimum
-ok('a parameter minus 1 is NOT proven', subtractions(differ(`  save sum
+ok(
+  'a parameter minus 1 is NOT proven',
+  subtractions(
+    differ(`  save sum
     call subtract
       read n
-      code 1`)).every(p => !p))
+      code 1`),
+  ).every(p => !p),
+)
 
 // a local given a parameter's value is NOT
-ok('a local given a parameter is NOT proven', subtractions(differ(`  save m, read n
+ok(
+  'a local given a parameter is NOT proven',
+  subtractions(
+    differ(`  save m, read n
   save sum
     call subtract
       read m
-      code 1`)).every(p => !p))
+      code 1`),
+  ).every(p => !p),
+)
 
 // a local also given a difference is NOT: it can fall below 0
-ok('a local that is also written by a subtraction is NOT proven', subtractions(differ(`  save m, code 5
+ok(
+  'a local that is also written by a subtraction is NOT proven',
+  subtractions(
+    differ(`  save m, code 5
   save m
     call subtract
       read m
@@ -408,7 +518,9 @@ ok('a local that is also written by a subtraction is NOT proven', subtractions(d
   save sum
     call subtract
       read m
-      code 1`)).every(p => !p))
+      code 1`),
+  ).every(p => !p),
+)
 
 console.log(`\nrange: ${pass} pass, ${fail} fail`)
 

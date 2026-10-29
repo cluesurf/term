@@ -31,7 +31,10 @@ const runner = {
     }),
   // the command on this terminal: it reads the keyboard and writes as it goes (a password prompt, a progress bar),
   // and the answer is its exit code, -1 when it could not start
-  attached: (command: string, argumentList: string[]): Promise<number> =>
+  attached: (
+    command: string,
+    argumentList: string[],
+  ): Promise<number> =>
     new Promise(resolve => {
       try {
         const child = spawn(command, argumentList, { stdio: 'inherit' })

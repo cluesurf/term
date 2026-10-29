@@ -169,7 +169,9 @@ task run
 
   console.log(`\ntrait-dispatch: ${pass} pass, ${fail} fail`)
 
-  if (fail) {process.exit(1)}
+  if (fail) {
+    process.exit(1)
+  }
 }
 
 main()

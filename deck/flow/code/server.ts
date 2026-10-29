@@ -14,7 +14,9 @@ import * as emittedGeometry from '@term/flow/code/geometry'
 import type { Message } from '@term/flow/code/protocol'
 
 // the emitted ports may load as CommonJS (deck/flow/package.json has no `"type": "module"`), exports under `default`
-const unwrap = (module: unknown): any => (module as { default?: unknown }).default ?? module
+const unwrap = (module: unknown): any =>
+  (module as { default?: unknown }).default ?? module
+
 const ls = unwrap(emittedServer)
 const rl = unwrap(emittedLoop)
 const coloring = unwrap(emittedColoring)
@@ -54,8 +56,18 @@ export class LanguageServer {
   }
 }
 
-export function semanticTokens(text: string, index: any, map?: any): { data: number[] } {
-  return { data: coloring.semanticTokens(text, index, map ?? geometry.identityMapping()) }
+export function semanticTokens(
+  text: string,
+  index: any,
+  map?: any,
+): { data: number[] } {
+  return {
+    data: coloring.semanticTokens(
+      text,
+      index,
+      map ?? geometry.identityMapping(),
+    ),
+  }
 }
 
 export function inlayHints(
@@ -64,6 +76,15 @@ export function inlayHints(
   range: { start: { line: number }; end: { line: number } },
   options?: { lean?: boolean; signatures?: Map<string, any> },
 ): any[] {
-  const signatures = options?.signatures ? { form: 'some', value: options.signatures } : { form: 'none' }
-  return hinting.inlayHints(program, text, range, Boolean(options?.lean), signatures)
+  const signatures = options?.signatures
+    ? { form: 'some', value: options.signatures }
+    : { form: 'none' }
+
+  return hinting.inlayHints(
+    program,
+    text,
+    range,
+    Boolean(options?.lean),
+    signatures,
+  )
 }

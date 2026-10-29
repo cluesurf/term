@@ -47,31 +47,58 @@ function biv(terms: [number, number, bigint][]): { dock: bigint }[][] {
 // 1. x^2 + y^2 >= 0 everywhere (a sum of squares -- the easy case, but still bivariate).
 ok(
   'x^2 + y^2 >= 0 for all x, y',
-  bivariateNonNegative(biv([[2, 0, 1n], [0, 2, 1n]])),
+  bivariateNonNegative(
+    biv([
+      [2, 0, 1n],
+      [0, 2, 1n],
+    ]),
+  ),
 )
 
 // 2. (x - y)^2 = x^2 - 2xy + y^2 >= 0 everywhere (touches zero along the line x = y).
 ok(
   '(x - y)^2 >= 0 for all x, y (touches zero on a line)',
-  bivariateNonNegative(biv([[2, 0, 1n], [1, 1, -2n], [0, 2, 1n]])),
+  bivariateNonNegative(
+    biv([
+      [2, 0, 1n],
+      [1, 1, -2n],
+      [0, 2, 1n],
+    ]),
+  ),
 )
 
 // 3. SOUNDNESS: x^2 + y^2 - 1 is NEGATIVE inside the unit disc, so NOT >= 0 everywhere.
 ok(
   'soundness: x^2 + y^2 - 1 is rejected (negative near origin)',
-  !bivariateNonNegative(biv([[2, 0, 1n], [0, 2, 1n], [0, 0, -1n]])),
+  !bivariateNonNegative(
+    biv([
+      [2, 0, 1n],
+      [0, 2, 1n],
+      [0, 0, -1n],
+    ]),
+  ),
 )
 
 // 4. SOUNDNESS: x^2 - y^2 takes both signs (negative when |y| > |x|), so NOT >= 0 everywhere.
 ok(
   'soundness: x^2 - y^2 is rejected (saddle)',
-  !bivariateNonNegative(biv([[2, 0, 1n], [0, 2, -1n]])),
+  !bivariateNonNegative(
+    biv([
+      [2, 0, 1n],
+      [0, 2, -1n],
+    ]),
+  ),
 )
 
 // 5. SOUNDNESS: y^2 - x is negative for x > 0 (e.g. x = 1, y = 0), so NOT >= 0 everywhere.
 ok(
   'soundness: y^2 - x is rejected (negative for x > 0)',
-  !bivariateNonNegative(biv([[0, 2, 1n], [1, 0, -1n]])),
+  !bivariateNonNegative(
+    biv([
+      [0, 2, 1n],
+      [1, 0, -1n],
+    ]),
+  ),
 )
 
 // 6. THE MOTZKIN POLYNOMIAL: x^4 y^2 + x^2 y^4 - 3 x^2 y^2 + 1 >= 0 everywhere (by AM-GM) yet NOT a sum of squares. CAD
@@ -79,7 +106,12 @@ ok(
 ok(
   'MOTZKIN x^4 y^2 + x^2 y^4 - 3 x^2 y^2 + 1 >= 0 (non-negative, not a sum of squares)',
   bivariateNonNegative(
-    biv([[4, 2, 1n], [2, 4, 1n], [2, 2, -3n], [0, 0, 1n]]),
+    biv([
+      [4, 2, 1n],
+      [2, 4, 1n],
+      [2, 2, -3n],
+      [0, 0, 1n],
+    ]),
   ),
 )
 
@@ -87,13 +119,24 @@ ok(
 // x^2 y^2 (x^2 + y^2 - 3), below zero when x^2 + y^2 < 3 with x, y != 0, e.g. x = y = 1 gives 1 + 1 - 3 = -1).
 ok(
   'soundness: x^4 y^2 + x^2 y^4 - 3 x^2 y^2 is rejected (Motzkin minus its constant)',
-  !bivariateNonNegative(biv([[4, 2, 1n], [2, 4, 1n], [2, 2, -3n]])),
+  !bivariateNonNegative(
+    biv([
+      [4, 2, 1n],
+      [2, 4, 1n],
+      [2, 2, -3n],
+    ]),
+  ),
 )
 
 // 8. 1 + x^2 y^2 >= 0 everywhere (a sum of squares).
 ok(
   '1 + x^2 y^2 >= 0 for all x, y',
-  bivariateNonNegative(biv([[0, 0, 1n], [2, 2, 1n]])),
+  bivariateNonNegative(
+    biv([
+      [0, 0, 1n],
+      [2, 2, 1n],
+    ]),
+  ),
 )
 
 // 9. SOUNDNESS: 2xy takes both signs, so NOT >= 0 everywhere.
@@ -112,13 +155,24 @@ ok(
 // y = x^2). The discriminant projection handles the parabola of tangency.
 ok(
   '(x^2 - y)^2 >= 0 for all x, y (touches zero on a parabola)',
-  bivariateNonNegative(biv([[4, 0, 1n], [2, 1, -2n], [0, 2, 1n]])),
+  bivariateNonNegative(
+    biv([
+      [4, 0, 1n],
+      [2, 1, -2n],
+      [0, 2, 1n],
+    ]),
+  ),
 )
 
 // 12. SOUNDNESS: x^2 - y (one branch of the above before squaring) is negative for y > x^2, so NOT >= 0 everywhere.
 ok(
   'soundness: x^2 - y is rejected (negative above the parabola)',
-  !bivariateNonNegative(biv([[2, 0, 1n], [0, 1, -1n]])),
+  !bivariateNonNegative(
+    biv([
+      [2, 0, 1n],
+      [0, 1, -1n],
+    ]),
+  ),
 )
 
 console.log(`\ncad-multivariate: ${pass} pass, ${fail} fail`)

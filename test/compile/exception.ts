@@ -72,13 +72,22 @@ async function main(): Promise<void> {
 
   const ts = raised.ok ? raised.typescript : ''
   // its Term frame added as it is thrown (term/hive decision 001)
-  ok('the raise throws the runtime class', ts.includes('throw __termRaised(new TermException('))
-  ok('the class is emitted once', ts.split('class TermException').length === 2)
+  ok(
+    'the raise throws the runtime class',
+    ts.includes('throw __termRaised(new TermException('),
+  )
+  ok(
+    'the class is emitted once',
+    ts.split('class TermException').length === 2,
+  )
   ok('host is filled', ts.includes('host: "@local"'))
   ok('form is filled', ts.includes('form: "excess"'))
   ok('the note is pinned in', ts.includes('note: "Too large"'))
   ok('the occurrence is a call', ts.includes('code: exceptionCode()'))
-  ok('the props sit under link', /link: \{ thing: "upload", limit: 5, actual: 0 \}/.test(ts))
+  ok(
+    'the props sit under link',
+    /link: \{ thing: "upload", limit: 5, actual: 0 \}/.test(ts),
+  )
 
   // run it: the thrown value is an Error with the fields
   if (raised.ok) {
@@ -86,7 +95,8 @@ async function main(): Promise<void> {
     const file = join(dir, 'x.mjs')
     writeFileSync(
       file,
-      transformSync(raised.typescript, { loader: 'ts', format: 'esm' }).code,
+      transformSync(raised.typescript, { loader: 'ts', format: 'esm' })
+        .code,
     )
 
     try {
@@ -96,11 +106,18 @@ async function main(): Promise<void> {
         mod.store(9)
         ok('the raise throws', false, 'nothing thrown')
       } catch (e) {
-        const err = e as { form?: string; note?: string; link?: { limit?: number; actual?: number } }
+        const err = e as {
+          form?: string
+          note?: string
+          link?: { limit?: number; actual?: number }
+        }
         ok('the thrown value is an Error', e instanceof Error)
         ok('it carries form', err.form === 'excess')
         ok('it carries the pinned note', err.note === 'Too large')
-        ok('it carries the props', err.link?.limit === 5 && err.link?.actual === 0)
+        ok(
+          'it carries the props',
+          err.link?.limit === 5 && err.link?.actual === 0,
+        )
       }
     } catch (e) {
       ok('the emitted module loads', false, String(e))
@@ -127,7 +144,10 @@ task store
   ok('the derived note wins', dts.includes('note: "Upload too large"'))
   ok('the pinned thing is filled', dts.includes('thing: "upload"'))
   ok('the added prop is carried', dts.includes('policy: "avatar"'))
-  ok('the derived props record is synthesized', dts.includes('interface UploadExcessLink'))
+  ok(
+    'the derived props record is synthesized',
+    dts.includes('interface UploadExcessLink'),
+  )
 
   // refusals
   const PINNED = `task store
@@ -135,20 +155,31 @@ task store
     bind thing, text <upload>
     bind note, text <no>
 `
-  ok('giving a pinned field is refused', !build(PINNED).ok && messages(build(PINNED)).includes('pinned'))
+  ok(
+    'giving a pinned field is refused',
+    !build(PINNED).ok && messages(build(PINNED)).includes('pinned'),
+  )
 
   const UNKNOWN = `task store
   halt excess
     bind thing, text <upload>
     bind size, code 1
 `
-  ok('an unknown prop is refused', !build(UNKNOWN).ok && messages(build(UNKNOWN)).includes('no prop "size"'))
+  ok(
+    'an unknown prop is refused',
+    !build(UNKNOWN).ok &&
+      messages(build(UNKNOWN)).includes('no prop "size"'),
+  )
 
   const MISSING = `task store
   halt excess
     bind limit, code 5
 `
-  ok('a missing required prop is refused', !build(MISSING).ok && messages(build(MISSING)).includes('needs "thing"'))
+  ok(
+    'a missing required prop is refused',
+    !build(MISSING).ok &&
+      messages(build(MISSING)).includes('needs "thing"'),
+  )
 
   const NOT_EXCEPTION = `form point
   link x, like number
@@ -157,13 +188,21 @@ task store
   halt point
     bind x, code 1
 `
-  ok('raising a plain form is refused', !build(NOT_EXCEPTION).ok && messages(build(NOT_EXCEPTION)).includes('not an exception'))
+  ok(
+    'raising a plain form is refused',
+    !build(NOT_EXCEPTION).ok &&
+      messages(build(NOT_EXCEPTION)).includes('not an exception'),
+  )
 
   const NO_NOTE = `form quiet
   like exception
     link thing, like text
 `
-  ok('an exception without a note is refused', !build(NO_NOTE).ok && messages(build(NO_NOTE)).includes('pin its note'))
+  ok(
+    'an exception without a note is refused',
+    !build(NO_NOTE).ok &&
+      messages(build(NO_NOTE)).includes('pin its note'),
+  )
 
   // named type arguments on a form with several parameters
   const NAMED = `form foo
@@ -192,8 +231,14 @@ task use
   const named = build(NAMED)
   ok('named type arguments compile', named.ok, messages(named))
   const nts = named.ok ? named.typescript : ''
-  ok('the anonymous record is named after the field it types', nts.includes('interface ExampleLeft'))
-  ok('the pin is added at construction', nts.includes('note: "Example"'))
+  ok(
+    'the anonymous record is named after the field it types',
+    nts.includes('interface ExampleLeft'),
+  )
+  ok(
+    'the pin is added at construction',
+    nts.includes('note: "Example"'),
+  )
 
   const AMBIGUOUS = `form foo
   head a
@@ -205,7 +250,11 @@ form example
   like foo
     link x, like text
 `
-  ok('a bare link under a two-parameter base is refused', !build(AMBIGUOUS).ok && messages(build(AMBIGUOUS)).includes('takes 2 type parameters'))
+  ok(
+    'a bare link under a two-parameter base is refused',
+    !build(AMBIGUOUS).ok &&
+      messages(build(AMBIGUOUS)).includes('takes 2 type parameters'),
+  )
 
   // a bound: `halt <form>` lines with no children on the signature name what the task may raise
   const BOUNDED = `task store
@@ -225,9 +274,25 @@ form example
   send back, read size
 `
   const bounded = build(BOUNDED.replace('  halt kink\n', ''))
-  ok('a task bounded to what it raises compiles', bounded.ok, messages(bounded))
-  ok('the bound is not a raise', bounded.ok && !bounded.typescript.includes('throw new TermException(new Excess({}'))
-  ok('the roll still infers the set', bounded.ok && bounded.typescript.includes('throw __termRaised(new TermException('))
+  ok(
+    'a task bounded to what it raises compiles',
+    bounded.ok,
+    messages(bounded),
+  )
+  ok(
+    'the bound is not a raise',
+    bounded.ok &&
+      !bounded.typescript.includes(
+        'throw new TermException(new Excess({}',
+      ),
+  )
+  ok(
+    'the roll still infers the set',
+    bounded.ok &&
+      bounded.typescript.includes(
+        'throw __termRaised(new TermException(',
+      ),
+  )
 
   const ABSENCE = `form absence
   like exception
@@ -252,15 +317,23 @@ task outer
     call store
       read size
 `)
-  ok('a body that raises past its bound is refused', !beyond.ok, messages(beyond))
+  ok(
+    'a body that raises past its bound is refused',
+    !beyond.ok,
+    messages(beyond),
+  )
   ok(
     'the message names the task and the exception',
-    messages(beyond).includes('"store" can raise excess, which its signature does not declare'),
+    messages(beyond).includes(
+      '"store" can raise excess, which its signature does not declare',
+    ),
     messages(beyond),
   )
   ok(
     'a bound is held through callees, with the path',
-    messages(beyond).includes('"outer" can raise excess (through store)'),
+    messages(beyond).includes(
+      '"outer" can raise excess (through store)',
+    ),
     messages(beyond),
   )
 
@@ -270,7 +343,12 @@ task outer
   halt nothing
   send back, read size
 `)
-  ok('a bound naming no exception form is refused', !unknown.ok && messages(unknown).includes('"nothing" is not an exception form'), messages(unknown))
+  ok(
+    'a bound naming no exception form is refused',
+    !unknown.ok &&
+      messages(unknown).includes('"nothing" is not an exception form'),
+    messages(unknown),
+  )
 
   // the raise set of a call through a mask is the union over every implementation in the build
   const MASKED = `${ABSENCE}
@@ -305,11 +383,29 @@ task describe
     call measure
       read x
 `
-  const masked = compile({ file: 'x.tree', text: `${STDLIB}\n${MASKED}` }, { roll: true })
-  const halts = (name: string) => ((masked.ok ? masked.roll?.task : []) ?? []).find(t => t.name === name)?.halt as string[] | undefined
-  ok('a mask program compiles with a roll', masked.ok && masked.roll !== undefined, messages(masked))
-  ok('a call through a mask raises what any implementation raises', Boolean(halts('describe')?.includes('absence')), JSON.stringify(halts('describe')))
-  ok('the implementation that raises nothing stays empty', halts('box/measure')?.length === 0, JSON.stringify(halts('box/measure')))
+  const masked = compile(
+    { file: 'x.tree', text: `${STDLIB}\n${MASKED}` },
+    { roll: true },
+  )
+  const halts = (name: string) =>
+    ((masked.ok ? masked.roll?.task : []) ?? []).find(
+      t => t.name === name,
+    )?.halt as string[] | undefined
+  ok(
+    'a mask program compiles with a roll',
+    masked.ok && masked.roll !== undefined,
+    messages(masked),
+  )
+  ok(
+    'a call through a mask raises what any implementation raises',
+    Boolean(halts('describe')?.includes('absence')),
+    JSON.stringify(halts('describe')),
+  )
+  ok(
+    'the implementation that raises nothing stays empty',
+    halts('box/measure')?.length === 0,
+    JSON.stringify(halts('box/measure')),
+  )
 
   // a task that calls into a dock load module raises failure, plus what its signature declares
   const NATIVE = `${ABSENCE}
@@ -339,12 +435,35 @@ task load-config
       text <config.tree>
       wait true
 `
-  const native = compile({ file: 'x.tree', text: `${STDLIB}\n${NATIVE}` }, { roll: true })
-  const nativeHalts = (name: string) => ((native.ok ? native.roll?.task : []) ?? []).find(t => t.name === name)?.halt as string[] | undefined
-  ok('a native shim compiles with a roll', native.ok && native.roll !== undefined, messages(native))
-  ok('a native shim raises failure', Boolean(nativeHalts('read-file')?.includes('failure')), JSON.stringify(nativeHalts('read-file')))
-  ok('a native shim raises what its signature declares', Boolean(nativeHalts('read-file')?.includes('absence')), JSON.stringify(nativeHalts('read-file')))
-  ok('a caller of the shim inherits both', JSON.stringify(nativeHalts('load-config')) === '["absence","failure"]', JSON.stringify(nativeHalts('load-config')))
+  const native = compile(
+    { file: 'x.tree', text: `${STDLIB}\n${NATIVE}` },
+    { roll: true },
+  )
+  const nativeHalts = (name: string) =>
+    ((native.ok ? native.roll?.task : []) ?? []).find(
+      t => t.name === name,
+    )?.halt as string[] | undefined
+  ok(
+    'a native shim compiles with a roll',
+    native.ok && native.roll !== undefined,
+    messages(native),
+  )
+  ok(
+    'a native shim raises failure',
+    Boolean(nativeHalts('read-file')?.includes('failure')),
+    JSON.stringify(nativeHalts('read-file')),
+  )
+  ok(
+    'a native shim raises what its signature declares',
+    Boolean(nativeHalts('read-file')?.includes('absence')),
+    JSON.stringify(nativeHalts('read-file')),
+  )
+  ok(
+    'a caller of the shim inherits both',
+    JSON.stringify(nativeHalts('load-config')) ===
+      '["absence","failure"]',
+    JSON.stringify(nativeHalts('load-config')),
+  )
 
   console.log(`\nexception: ${pass} pass, ${fail} fail`)
 

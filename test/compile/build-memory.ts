@@ -30,7 +30,8 @@ import { withNativeEnv } from '@term/make/code/compile/native'
 import { projectResolver, findTreeFiles } from '@term/call/code/make'
 import { projectDeckOf } from '@term/call/code/deck-of'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 
 // the largest package in the tree, which is the only one big enough for the curve to show
 const PACKAGE = join(HERE, '../../deck/bind')
@@ -66,7 +67,9 @@ const verbose = process.argv.includes('--verbose')
 const files = findTreeFiles(PACKAGE, [], 'node')
 
 if (files.length < HIGH) {
-  console.log(`${PACKAGE} has ${files.length} .tree files, fewer than the ${HIGH} this needs`)
+  console.log(
+    `${PACKAGE} has ${files.length} .tree files, fewer than the ${HIGH} this needs`,
+  )
   process.exit(1)
 }
 
@@ -78,7 +81,10 @@ let low = 0
 let high = 0
 
 for (const [index, file] of files.slice(0, HIGH).entries()) {
-  compile({ file, text: readFileSync(file, 'utf8') }, { resolve, cache, deckOf })
+  compile(
+    { file, text: readFileSync(file, 'utf8') },
+    { resolve, cache, deckOf },
+  )
 
   const done = index + 1
 
@@ -110,7 +116,9 @@ if (!flat) {
   )
 }
 
-console.log(`\nbuild-memory: ${flat ? 1 : 0} pass, ${flat ? 0 : 1} fail`)
+console.log(
+  `\nbuild-memory: ${flat ? 1 : 0} pass, ${flat ? 0 : 1} fail`,
+)
 
 if (!flat) {
   process.exit(1)

@@ -45,13 +45,29 @@ import {
 } from '@term/call/code/remote-cache'
 import { toConstant } from '@term/make/code/compile/typescript'
 import { manifestValueOf } from '@term/call/code/manifest-name'
-import { closeRun, count, failRun, field, followChild, isRunOpen, location, openRun, report, reportProblems, showPath } from '@term/call/code/output'
+import {
+  closeRun,
+  count,
+  failRun,
+  field,
+  followChild,
+  isRunOpen,
+  location,
+  openRun,
+  report,
+  reportProblems,
+  showPath,
+} from '@term/call/code/output'
 import { HOME_POSIX, projectHome } from '@term/call/code/home'
 // named `booting`: `plan` is a local of the build below
 import * as booting from '@term/call/code/boot-plan'
 // a program's docks resolve as the project's own build resolves them, one rule for `term test` and `term boot`
 // (decision 009): the tsconfig's paths inlined, every other bare dock external
-import { bundleDocks, inlinedHold, nearestTsconfig } from '@term/call/code/test-run'
+import {
+  bundleDocks,
+  inlinedHold,
+  nearestTsconfig,
+} from '@term/call/code/test-run'
 import type { InlinedSource } from '@term/call/code/test-run'
 
 // WHAT BOOTING DECIDES WITHOUT A TOOL is Term since 2026-10-06, call/code/boot-plan.tree: the mode a word names, the
@@ -93,7 +109,10 @@ export const lastBootUnits = { built: 0, reused: 0 }
 
 // whether the server child is taking connections on `port`: asked every 50 ms for up to 10 s. False only when the
 // child exits first, so a server that is merely slow is still reported started when the time runs out
-async function listening(port: number, child: ChildProcess): Promise<boolean> {
+async function listening(
+  port: number,
+  child: ChildProcess,
+): Promise<boolean> {
   const started = Date.now()
 
   while (Date.now() - started < 10_000) {
@@ -243,7 +262,10 @@ function loadHostEnv(appDir: string): string[] {
 
   const loaded: string[] = []
 
-  for (const setting of booting.hostSettings(readFileSync(file, 'utf8'), file)) {
+  for (const setting of booting.hostSettings(
+    readFileSync(file, 'utf8'),
+    file,
+  )) {
     const name = toConstant(setting.key)
 
     if (process.env[name] !== undefined) {
@@ -293,7 +315,10 @@ export async function buildClientBundle(opts: {
     )
 
     if (!result.ok) {
-      reportProblems(result.diagnostics.map(diagnostic => ({ diagnostic })), projectRoot)
+      reportProblems(
+        result.diagnostics.map(diagnostic => ({ diagnostic })),
+        projectRoot,
+      )
       // a warning, not a failure: the server still renders every page, only without the client taking over
       report({
         glyph: 'warning',
@@ -301,7 +326,9 @@ export async function buildClientBundle(opts: {
         subject: 'client bundle',
         duration: Date.now() - started,
         counts: [count(result.diagnostics.length, 'errors', 'error')],
-        message: ['The server still renders every page, without the client taking over.'],
+        message: [
+          'The server still renders every page, without the client taking over.',
+        ],
       })
 
       return
@@ -356,7 +383,14 @@ export async function buildClientBundle(opts: {
       existsSync(stampFile) &&
       readFileSync(stampFile, 'utf8') === key
     ) {
-      report({ glyph: 'skipped', verb: 'build', subject: 'client bundle', duration: Date.now() - started, facts: ['cached'], fields: [location('build/boot.js')] })
+      report({
+        glyph: 'skipped',
+        verb: 'build',
+        subject: 'client bundle',
+        duration: Date.now() - started,
+        facts: ['cached'],
+        fields: [location('build/boot.js')],
+      })
 
       return
     }
@@ -392,16 +426,24 @@ export async function buildClientBundle(opts: {
           {
             name: 'externalize-bare-specifiers',
             setup(b) {
-              b.onResolve({ filter: /^[^./]/ }, args => ({ path: args.path, external: true, sideEffects: false }))
+              b.onResolve({ filter: /^[^./]/ }, args => ({
+                path: args.path,
+                external: true,
+                sideEffects: false,
+              }))
             },
           },
         ],
       })
+
       const externals = [
         ...new Set(
           Object.values(built.metafile.outputs)
             .flatMap(output => output.imports)
-            .filter(found => found.external && !found.path.startsWith('node:'))
+            .filter(
+              found =>
+                found.external && !found.path.startsWith('node:'),
+            )
             .map(found => found.path),
         ),
       ]
@@ -425,14 +467,23 @@ export async function buildClientBundle(opts: {
     }
 
     writeFileSync(stampFile, key)
-    report({ glyph: 'done', verb: 'build', subject: 'client bundle', duration: Date.now() - started, fields: [location('build/boot.js')] })
+    report({
+      glyph: 'done',
+      verb: 'build',
+      subject: 'client bundle',
+      duration: Date.now() - started,
+      fields: [location('build/boot.js')],
+    })
   } catch (err) {
     report({
       glyph: 'warning',
       verb: 'build',
       subject: 'client bundle',
       duration: Date.now() - started,
-      message: [err instanceof Error ? err.message : String(err), 'The server still renders every page, without the client taking over.'],
+      message: [
+        err instanceof Error ? err.message : String(err),
+        'The server still renders every page, without the client taking over.',
+      ],
     })
   }
 }
@@ -511,7 +562,13 @@ export function hashAssets(buildDir: string, prod: boolean): void {
   }
 
   writeFileSync(manifestFile, JSON.stringify(map, null, 2))
-  report({ glyph: 'done', verb: 'write', subject: 'asset manifest', counts: [count(Object.keys(map).length, 'assets', 'asset')], fields: [location('build/asset-manifest.json')] })
+  report({
+    glyph: 'done',
+    verb: 'write',
+    subject: 'asset manifest',
+    counts: [count(Object.keys(map).length, 'assets', 'asset')],
+    fields: [location('build/asset-manifest.json')],
+  })
 }
 
 // the dev live-reload build id: the client polls `/base/__id` and reloads when it changes. Bumped on boot and on every
@@ -552,7 +609,10 @@ export function buildStyles(appDir: string): void {
 
       // a refused sheet is reported, and its last good `.css` stays served, as a code error leaves the server up
       if (!result.ok) {
-        reportProblems(result.diagnostics.map(diagnostic => ({ diagnostic, text })), appDir)
+        reportProblems(
+          result.diagnostics.map(diagnostic => ({ diagnostic, text })),
+          appDir,
+        )
       }
 
       if (result.ok && result.css !== undefined) {
@@ -587,7 +647,12 @@ function watchStyles(appDir: string): () => void {
     timer = setTimeout(() => {
       buildStyles(appDir)
       writeBuildId(appDir)
-      report({ glyph: 'info', kind: 'lifecycle', verb: 'reload', subject: 'styles' })
+      report({
+        glyph: 'info',
+        kind: 'lifecycle',
+        verb: 'reload',
+        subject: 'styles',
+      })
     }, 60)
   })
 
@@ -607,12 +672,22 @@ export type BootMode = 'development' | 'production'
 // `term boot [mode] [entry]`: the first word is a mode when it is one of the six, and otherwise it is the entry, so
 // `term boot app.tree` still boots that file. A mode the command line does not name is left undefined, and the boot
 // falls back to `NODE_ENV`, which is development unless it says `production`
-export function bootMode(first?: string, second?: string): { mode?: BootMode; entry?: string } {
-  const some = (word: string | undefined): booting.Maybe<string> => (word === undefined ? { form: 'none' } : { form: 'some', value: word })
-  const read = booting.bootMode(some(first), some(second))
-  const entry = read.entry.form === 'some' ? read.entry.value : undefined
+export function bootMode(
+  first?: string,
+  second?: string,
+): { mode?: BootMode; entry?: string } {
+  const some = (word: string | undefined): booting.Maybe<string> =>
+    word === undefined
+      ? { form: 'none' }
+      : { form: 'some', value: word }
 
-  return read.mode === '' ? { entry } : { mode: read.mode as BootMode, entry }
+  const read = booting.bootMode(some(first), some(second))
+  const entry =
+    read.entry.form === 'some' ? read.entry.value : undefined
+
+  return read.mode === ''
+    ? { entry }
+    : { mode: read.mode as BootMode, entry }
 }
 
 export async function callBoot(input: {
@@ -639,27 +714,52 @@ export async function callBoot(input: {
 
   // the mode, read once: a console caller passes the word as given, so it is read here as well as on the command line.
   // A word that is not a mode is the entry
-  const read = input.mode === undefined ? { entry: input.entry } : bootMode(input.mode, input.entry)
-  const mode: BootMode = read.mode ?? (process.env.NODE_ENV === 'production' ? 'production' : 'development')
+  const read =
+    input.mode === undefined
+      ? { entry: input.entry }
+      : bootMode(input.mode, input.entry)
+
+  const mode: BootMode =
+    read.mode ??
+    (process.env.NODE_ENV === 'production'
+      ? 'production'
+      : 'development')
 
   // everything below reads `NODE_ENV`, the child server included, so the mode is written there before any of it runs
   process.env.NODE_ENV = mode
   input = { ...input, entry: read.entry }
 
   // development in a browser is the hot-reloading module server, which was `term feed`. It opens its own run
-  if (mode === 'development' && input.env === 'browser' && !input.out && owned) {
-    const { serveBrowserDevelopment } = await import('@term/call/code/feed')
+  if (
+    mode === 'development' &&
+    input.env === 'browser' &&
+    !input.out &&
+    owned
+  ) {
+    const { serveBrowserDevelopment } =
+      await import('@term/call/code/feed')
 
-    return serveBrowserDevelopment({ root: input.root, entry: input.entry, port: input.port, env: input.env })
+    return serveBrowserDevelopment({
+      root: input.root,
+      entry: input.entry,
+      port: input.port,
+      env: input.env,
+    })
   }
 
   if (owned) {
-    openRun({ verb: 'boot', root: input.root, facts: [mode, ...(input.out ? ['--out'] : [])] })
+    openRun({
+      verb: 'boot',
+      root: input.root,
+      facts: [mode, ...(input.out ? ['--out'] : [])],
+    })
   }
 
   // the run closed, when this call opened it
-  const finish = (verdict: string, extra: { failure?: string; uptime?: boolean; next?: string } = {}): number =>
-    owned ? closeRun({ verdict, ...extra }) : 0
+  const finish = (
+    verdict: string,
+    extra: { failure?: string; uptime?: boolean; next?: string } = {},
+  ): number => (owned ? closeRun({ verdict, ...extra }) : 0)
 
   try {
     const cwd = input.root
@@ -670,10 +770,15 @@ export async function callBoot(input: {
       report({
         glyph: 'failed',
         kind: 'problem',
-        subject: entry ? 'The entry is not there' : 'No entry was given, and deck.tree names none',
+        subject: entry
+          ? 'The entry is not there'
+          : 'No entry was given, and deck.tree names none',
         fields: entry ? [field('looked', showPath(entry, cwd))] : [],
       })
-      finish('Nothing was booted', { failure: 'usage', next: 'term boot <file.tree>, or a `boot <path>` line in deck.tree' })
+      finish('Nothing was booted', {
+        failure: 'usage',
+        next: 'term boot <file.tree>, or a `boot <path>` line in deck.tree',
+      })
 
       return
     }
@@ -690,7 +795,10 @@ export async function callBoot(input: {
         verb: 'load',
         subject: 'environment',
         counts: [count(loadedEnv.length, 'variables', 'variable')],
-        fields: [location('bind/host/base.tree'), field('names', loadedEnv.join(', '))],
+        fields: [
+          location('bind/host/base.tree'),
+          field('names', loadedEnv.join(', ')),
+        ],
       })
     }
 
@@ -706,7 +814,13 @@ export async function callBoot(input: {
         )
 
         if (pulled) {
-          report({ glyph: 'done', verb: 'pull', subject: 'build cache', counts: [count(pulled, 'artifacts', 'artifact')], facts: [input.remote] })
+          report({
+            glyph: 'done',
+            verb: 'pull',
+            subject: 'build cache',
+            counts: [count(pulled, 'artifacts', 'artifact')],
+            facts: [input.remote],
+          })
         }
       } catch {
         // a remote-cache failure must never fail the build
@@ -773,7 +887,10 @@ export async function callBoot(input: {
 
       // the compile failed: its problems, and the build item that says so
       const failed = (diagnostics: Diagnostic[]): null => {
-        reportProblems(diagnostics.map(diagnostic => ({ diagnostic })), cwd)
+        reportProblems(
+          diagnostics.map(diagnostic => ({ diagnostic })),
+          cwd,
+        )
         report({
           glyph: 'failed',
           verb: 'build',
@@ -785,7 +902,8 @@ export async function callBoot(input: {
         return null
       }
 
-      const readRuntime = (p: string): string | undefined => (existsSync(p) ? readFileSync(p, 'utf8') : undefined)
+      const readRuntime = (p: string): string | undefined =>
+        existsSync(p) ? readFileSync(p, 'utf8') : undefined
 
       // ONE UNIT AT A TIME, as `term make` builds (note/project/term/incremental-best-in-class.md, step 9). The program's
       // modules are each built against the stubs of what they load, and a rebuild in the same process (the dev loop,
@@ -801,7 +919,9 @@ export async function callBoot(input: {
         }
 
         const deckOf = projectDeckOf()
-        const slug = (file: string): string => unitSlug(projectRoot, file, deckOf)
+        const slug = (file: string): string =>
+          unitSlug(projectRoot, file, deckOf)
+
         const built = compileSeparate(
           { file: entry, text: readFileSync(entry, 'utf8') },
           {
@@ -828,11 +948,19 @@ export async function callBoot(input: {
 
         const modules = [...built.modules]
 
-        if (modules.some(([, emit]) => /\bdocumentShell\b/.test(emit.code))) {
+        if (
+          modules.some(([, emit]) =>
+            /\bdocumentShell\b/.test(emit.code),
+          )
+        ) {
           return undefined
         }
 
-        const cliRoutes = commandRoutes([...(built.surface ?? []), ...built.docks])
+        const cliRoutes = commandRoutes([
+          ...(built.surface ?? []),
+          ...built.docks,
+        ])
+
         const prelude = nativePrelude(built.natives, env, readRuntime)
 
         return {
@@ -844,7 +972,15 @@ export async function callBoot(input: {
           // and every task a command calls, which a hook table names only in its routes, so its own module neither
           // defines nor imports it: zone's commands are other files' tasks (`call`, `show`, `moor`)
           write: dir =>
-            writeUnitBundle({ dir, entry, modules, slug, exports: built.exports, prelude, keep: routeCalls(cliRoutes) }),
+            writeUnitBundle({
+              dir,
+              entry,
+              modules,
+              slug,
+              exports: built.exports,
+              prelude,
+              keep: routeCalls(cliRoutes),
+            }),
         }
       }
 
@@ -912,7 +1048,10 @@ export async function callBoot(input: {
         }
       }
 
-      const viaUnits = env === 'node' && process.env.TERM_BOOT_MERGED !== '1' ? unitPlan() : undefined
+      const viaUnits =
+        env === 'node' && process.env.TERM_BOOT_MERGED !== '1'
+          ? unitPlan()
+          : undefined
 
       if (viaUnits === null) {
         return null
@@ -938,7 +1077,8 @@ export async function callBoot(input: {
           glyph: 'failed',
           kind: 'problem',
           // a subject is a sentence and starts capitalized, so it leads with the word, not the flag (guides: commands/boot)
-          subject: 'An `--out` folder holds a command-line program, and this entry declares no `hook` commands',
+          subject:
+            'An `--out` folder holds a command-line program, and this entry declares no `hook` commands',
           fields: [location(showPath(entry, cwd))],
         })
 
@@ -1000,13 +1140,23 @@ export async function callBoot(input: {
       const bundle = path.join(out, 'app.mjs')
       // `at` only for an `--out` folder, which the person chose and will open. The boot cache under `.base/` is the
       // build's own business: the title already names the source, and the cache path read as where the program was
-      const shown = input.out ? path.relative(cwd, out) || '.' : undefined
+      const shown = input.out
+        ? path.relative(cwd, out) || '.'
+        : undefined
 
       // what the bundle inlined, each source with its hash: a kept bundle is reused only while every one still holds it
       const listed = path.join(cached, 'inputs.json')
+
       const inlinedStill = (): boolean => {
         try {
-          return existsSync(listed) && inlinedHold(JSON.parse(readFileSync(listed, 'utf8')) as InlinedSource[])
+          return (
+            existsSync(listed) &&
+            inlinedHold(
+              JSON.parse(
+                readFileSync(listed, 'utf8'),
+              ) as InlinedSource[],
+            )
+          )
         } catch {
           return false
         }
@@ -1014,14 +1164,28 @@ export async function callBoot(input: {
 
       // an `--out` directory is always rewritten: it is somebody's published copy, not a cache keyed by its input
       if (!input.out && existsSync(bundle) && inlinedStill()) {
-        report({ glyph: 'skipped', verb: 'build', subject: path.relative(cwd, entry) || entry, duration: Date.now() - started, facts: ['cached'], fields: shown ? [location(shown)] : [] })
+        report({
+          glyph: 'skipped',
+          verb: 'build',
+          subject: path.relative(cwd, entry) || entry,
+          duration: Date.now() - started,
+          facts: ['cached'],
+          fields: shown ? [location(shown)] : [],
+        })
       } else {
         mkdirSync(cached, { recursive: true })
         mkdirSync(out, { recursive: true })
 
         // the units' prelude goes in front of the whole bundle, after the `require` the node banner defines, so every
         // module of the closure sees the shims it docks, as the one merged module did
-        const banner = ['banner' in bundleConfig ? (bundleConfig.banner?.js ?? '') : '', plan.banner].filter(part => part).join('\n')
+        const banner = [
+          'banner' in bundleConfig
+            ? (bundleConfig.banner?.js ?? '')
+            : '',
+          plan.banner,
+        ]
+          .filter(part => part)
+          .join('\n')
 
         const bundled = await bundleDocks({
           root: dockRoot,
@@ -1030,9 +1194,16 @@ export async function callBoot(input: {
           banner,
           platform: bundleConfig.platform,
         })
+
         writeFileSync(bundle, bundled.text)
         writeFileSync(listed, JSON.stringify(bundled.inlined))
-        report({ glyph: 'done', verb: 'build', subject: path.relative(cwd, entry) || entry, duration: Date.now() - started, fields: shown ? [location(shown)] : [] })
+        report({
+          glyph: 'done',
+          verb: 'build',
+          subject: path.relative(cwd, entry) || entry,
+          duration: Date.now() - started,
+          fields: shown ? [location(shown)] : [],
+        })
       }
 
       // link the CLI install's node_modules next to the bundle so ESM resolves the external bare specifiers
@@ -1040,7 +1211,11 @@ export async function callBoot(input: {
       const installModules = path.join(installRoot, 'node_modules')
 
       // not for `--out`: a shipped bundle resolves through the package that carries it
-      if (!input.out && !existsSync(bundleModules) && existsSync(installModules)) {
+      if (
+        !input.out &&
+        !existsSync(bundleModules) &&
+        existsSync(installModules)
+      ) {
         try {
           symlinkSync(installModules, bundleModules, 'dir')
         } catch {
@@ -1064,7 +1239,10 @@ export async function callBoot(input: {
           buildSync({
             // beside this module when it runs from source, and under `deck/` from the bundle in `host/`
             entryPoints: [
-              [path.join(here, 'hook-dispatch.ts'), path.join(here, '../deck/call/code/hook-dispatch.ts')].find(existsSync) ??
+              [
+                path.join(here, 'hook-dispatch.ts'),
+                path.join(here, '../deck/call/code/hook-dispatch.ts'),
+              ].find(existsSync) ??
                 path.join(here, '../deck/call/code/hook-dispatch.ts'),
             ],
             outfile: path.join(out, 'dock.mjs'),
@@ -1081,12 +1259,18 @@ export async function callBoot(input: {
           key === 'span' ? undefined : (value as unknown),
         )
 
-        writeFileSync(path.join(out, 'run.mjs'), booting.cliRunText(routes, JSON.stringify(binName)))
+        writeFileSync(
+          path.join(out, 'run.mjs'),
+          booting.cliRunText(routes, JSON.stringify(binName)),
+        )
 
         return { run: path.join(out, 'run.mjs'), cli: true }
       }
 
-      writeFileSync(path.join(out, 'run.mjs'), booting.serverRunText(port))
+      writeFileSync(
+        path.join(out, 'run.mjs'),
+        booting.serverRunText(port),
+      )
 
       return { run: path.join(out, 'run.mjs'), cli: false }
     }
@@ -1096,7 +1280,9 @@ export async function callBoot(input: {
     if (!built) {
       // a caller holding the run (term host) cannot go on with a console that did not build: it fails its own run
       if (!owned) {
-        throw new Error(`${path.relative(cwd, entry) || entry} did not build`)
+        throw new Error(
+          `${path.relative(cwd, entry) || entry} did not build`,
+        )
       }
 
       finish('Build failed')
@@ -1133,11 +1319,10 @@ export async function callBoot(input: {
       // there), but a CLI resolves the user's relative paths -- a
       // `.zone.tree` in the directory they invoked from, an output
       // file they named -- so it must inherit the invocation cwd.
-      const child = spawn(
-        'node',
-        [runPath, ...(input.args ?? [])],
-        { cwd: input.root, stdio: 'inherit' },
-      )
+      const child = spawn('node', [runPath, ...(input.args ?? [])], {
+        cwd: input.root,
+        stdio: 'inherit',
+      })
 
       const code = await new Promise<number>(done =>
         child.once('exit', c => done(c ?? 1)),
@@ -1156,7 +1341,13 @@ export async function callBoot(input: {
         )
 
         if (pushed) {
-          report({ glyph: 'done', verb: 'push', subject: 'build cache', counts: [count(pushed, 'artifacts', 'artifact')], facts: [input.remote] })
+          report({
+            glyph: 'done',
+            verb: 'push',
+            subject: 'build cache',
+            counts: [count(pushed, 'artifacts', 'artifact')],
+            facts: [input.remote],
+          })
         }
       } catch {
         // a remote-cache failure must never fail the build
@@ -1173,10 +1364,12 @@ export async function callBoot(input: {
     // the server child: spawned now from the APP dir (where deck.tree + build/ live), killed + respawned by the dev
     // watcher on an app-code rebuild. stdin stays the terminal's; stdout and stderr are piped to be adapted
     const spawned = Date.now()
+
     let child: ChildProcess = spawn('node', [runPath], {
       cwd: serverCwd,
       stdio: ['inherit', 'pipe', 'pipe'],
     })
+
     // its lines are tagged with the deck's name, the source they come from: `server` was wrong for a program that
     // prints and returns, and is told apart from a server only once it has (2026-10-04)
     followChild(child, binName)
@@ -1185,14 +1378,26 @@ export async function callBoot(input: {
     // a script that waits for the line before asking met every time (2026-10-04, test/call/page-status.ts). Bounded,
     // so a server slow to listen still gets its line, and skipped when the child stopped instead
     if (await listening(port, child)) {
-      report({ glyph: 'done', kind: 'lifecycle', verb: 'start', subject: address, duration: Date.now() - spawned })
+      report({
+        glyph: 'done',
+        kind: 'lifecycle',
+        verb: 'start',
+        subject: address,
+        duration: Date.now() - spawned,
+      })
     } else if (child.exitCode !== null || child.signalCode !== null) {
       // A ONE-SHOT RUN: the program returned without ever listening, so it was a program that does its work and
       // ends, not a server. The boot ends with it, its exit code passed on, and starts no watcher: it kept watching,
       // and said `stop http://localhost:2400` for a port nothing had served on (guides: basics/first-program,
       // commands/boot, 2026-10-04)
       if (child.exitCode) {
-        report({ glyph: 'failed', kind: 'lifecycle', verb: 'exit', subject: `code ${child.exitCode}`, exit: child.exitCode })
+        report({
+          glyph: 'failed',
+          kind: 'lifecycle',
+          verb: 'exit',
+          subject: `code ${child.exitCode}`,
+          exit: child.exitCode,
+        })
       }
 
       finish('Done', { uptime: true })
@@ -1211,11 +1416,14 @@ export async function callBoot(input: {
         })
       }
 
-      child = spawn('node', [next], { cwd: serverCwd, stdio: ['inherit', 'pipe', 'pipe'] })
+      child = spawn('node', [next], {
+        cwd: serverCwd,
+        stdio: ['inherit', 'pipe', 'pipe'],
+      })
       followChild(child, binName)
     }
 
-    const stops: Array<() => void> = []
+    const stops: (() => void)[] = []
 
     if (dev && appDir) {
       // styles hot-reload (look.css -> bump reload id), as before
@@ -1234,15 +1442,34 @@ export async function callBoot(input: {
 
           if (next) {
             await restart(next.run)
-            report({ glyph: 'info', kind: 'lifecycle', verb: 'reload', subject: `${name} changed`, duration: Date.now() - started })
+            report({
+              glyph: 'info',
+              kind: 'lifecycle',
+              verb: 'reload',
+              subject: `${name} changed`,
+              duration: Date.now() - started,
+            })
           }
         },
         // both names of the toolchain's folder: the old one is a link to the new since 2026-10-05 (home.ts)
-        ['build/', `${HOME_POSIX}/`, '.base/@cluesurf/term/', 'node_modules/', 'host/'],
+        [
+          'build/',
+          `${HOME_POSIX}/`,
+          '.base/@cluesurf/term/',
+          'node_modules/',
+          'host/',
+        ],
       )
+
       stops.push(() => codeWatcher.close())
 
-      report({ glyph: 'info', kind: 'lifecycle', verb: 'watch', subject: 'app code and styles', message: ['An edit rebuilds and reloads. Ctrl-C stops.'] })
+      report({
+        glyph: 'info',
+        kind: 'lifecycle',
+        verb: 'watch',
+        subject: 'app code and styles',
+        message: ['An edit rebuilds and reloads. Ctrl-C stops.'],
+      })
     }
 
     // keep the CLI alive; ctrl-c stops the watchers and the server child. Ctrl-C exits 130 (section 18), a SIGTERM
@@ -1258,8 +1485,18 @@ export async function callBoot(input: {
         // already gone
       }
 
-      report({ glyph: 'info', kind: 'lifecycle', verb: 'stop', subject: address })
-      process.exit(finish('Stopped', { uptime: true, failure: signal === 'SIGINT' ? 'interrupted' : '' }))
+      report({
+        glyph: 'info',
+        kind: 'lifecycle',
+        verb: 'stop',
+        subject: address,
+      })
+      process.exit(
+        finish('Stopped', {
+          uptime: true,
+          failure: signal === 'SIGINT' ? 'interrupted' : '',
+        }),
+      )
     }
 
     process.on('SIGINT', () => shutdown('SIGINT'))
@@ -1275,10 +1512,18 @@ export async function callBoot(input: {
       const code =
         child.exitCode !== null || child.signalCode !== null
           ? child.exitCode
-          : await new Promise<number | null>(done => child.once('exit', exit => done(exit)))
+          : await new Promise<number | null>(done =>
+              child.once('exit', exit => done(exit)),
+            )
 
       if (code) {
-        report({ glyph: 'failed', kind: 'lifecycle', verb: 'exit', subject: `code ${code}`, exit: code })
+        report({
+          glyph: 'failed',
+          kind: 'lifecycle',
+          verb: 'exit',
+          subject: `code ${code}`,
+          exit: code,
+        })
       }
 
       finish('Stopped', { uptime: true })

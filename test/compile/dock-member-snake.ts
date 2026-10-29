@@ -60,22 +60,62 @@ const main = [
   '',
 ].join('\n')
 
-const result = compile({ file: 'main.tree', text: main }, { resolve: () => undefined })
-const said = result.ok ? result.typescript : result.diagnostics.map(d => d.message).join(' | ')
-ok('a dock module read by UPPER_SNAKE members compiles', result.ok, said)
+const result = compile(
+  { file: 'main.tree', text: main },
+  { resolve: () => undefined },
+)
+const said = result.ok
+  ? result.typescript
+  : result.diagnostics.map(d => d.message).join(' | ')
+ok(
+  'a dock module read by UPPER_SNAKE members compiles',
+  result.ok,
+  said,
+)
 
 if (result.ok) {
-  ok('the member keeps its underscores', /\.HUNT_FUZZ_CHILD\b/.test(result.typescript), said)
+  ok(
+    'the member keeps its underscores',
+    /\.HUNT_FUZZ_CHILD\b/.test(result.typescript),
+    said,
+  )
 
   const file = join(dir, 'module.mjs')
-  writeFileSync(file, transformSync(result.typescript, { loader: 'ts', format: 'esm' }).code)
-  const mod = (await import(pathToFileURL(file).href)) as Record<string, () => unknown>
+  writeFileSync(
+    file,
+    transformSync(result.typescript, { loader: 'ts', format: 'esm' })
+      .code,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as Record<
+    string,
+    () => unknown
+  >
 
-  ok('HUNT_FUZZ_CHILD reads the host value', mod.child?.() === '__child', String(mod.child?.()))
-  ok('FOO reads the host value', mod.foo?.() === 'foo', String(mod.foo?.()))
-  ok('a snake_case member reads the host value', mod.snake?.() === 7, String(mod.snake?.()))
-  ok('a kebab member is still converted (read-word is readWord)', mod.word?.() === 'word', String(mod.word?.()))
-  ok('an UPPER_SNAKE callee is called as written', mod.made?.() === 'made', String(mod.made?.()))
+  ok(
+    'HUNT_FUZZ_CHILD reads the host value',
+    mod.child?.() === '__child',
+    String(mod.child?.()),
+  )
+  ok(
+    'FOO reads the host value',
+    mod.foo?.() === 'foo',
+    String(mod.foo?.()),
+  )
+  ok(
+    'a snake_case member reads the host value',
+    mod.snake?.() === 7,
+    String(mod.snake?.()),
+  )
+  ok(
+    'a kebab member is still converted (read-word is readWord)',
+    mod.word?.() === 'word',
+    String(mod.word?.()),
+  )
+  ok(
+    'an UPPER_SNAKE callee is called as written',
+    mod.made?.() === 'made',
+    String(mod.made?.()),
+  )
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

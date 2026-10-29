@@ -9,7 +9,13 @@
 //
 // Run: npx tsx test/call/output-only.ts [--commit]
 
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import path from 'node:path'
 
 const CODE = path.join(process.cwd(), 'deck/call/code')
@@ -41,14 +47,23 @@ function files(dir: string): string[] {
       return []
     }
 
-    return statSync(full).isDirectory() ? files(full) : name.endsWith('.ts') ? [full] : []
+    return statSync(full).isDirectory()
+      ? files(full)
+      : name.endsWith('.ts')
+        ? [full]
+        : []
   })
 }
 
 function sites(file: string): number {
   return readFileSync(file, 'utf8')
     .split('\n')
-    .filter(line => !line.trim().startsWith('//') && !PROTOCOL.test(line) && PRINTS.some(shape => shape.test(line))).length
+    .filter(
+      line =>
+        !line.trim().startsWith('//') &&
+        !PROTOCOL.test(line) &&
+        PRINTS.some(shape => shape.test(line)),
+    ).length
 }
 
 const counts: Record<string, number> = {}
@@ -65,19 +80,25 @@ for (const file of scanned) {
 let baseline: Record<string, number> = {}
 
 try {
-  baseline = JSON.parse(readFileSync(BASELINE, 'utf8')) as Record<string, number>
+  baseline = JSON.parse(readFileSync(BASELINE, 'utf8')) as Record<
+    string,
+    number
+  >
 } catch {
   baseline = {}
 }
 
-const risen = Object.entries(counts).filter(([file, found]) => found > (baseline[file] ?? 0))
+const risen = Object.entries(counts).filter(
+  ([file, found]) => found > (baseline[file] ?? 0),
+)
 const total = Object.values(counts).reduce((sum, one) => sum + one, 0)
 const was = Object.values(baseline).reduce((sum, one) => sum + one, 0)
 
 if (process.argv.includes('--commit')) {
   // the first commit SEEDS the baseline with today's counts (an absent or empty baseline); every later one may only
   // lower them
-  const seeding = !existsSync(BASELINE) || Object.keys(baseline).length === 0
+  const seeding =
+    !existsSync(BASELINE) || Object.keys(baseline).length === 0
   // every file at the lower of its held count and today's: what fell is held there, and what rose is NOT raised
   const held: Record<string, number> = {}
 
@@ -91,10 +112,14 @@ if (process.argv.includes('--commit')) {
 
   writeFileSync(BASELINE, `${JSON.stringify(held, null, 2)}\n`)
   const now = Object.values(held).reduce((sum, one) => sum + one, 0)
-  console.log(`wrote ${path.relative(process.cwd(), BASELINE)}: ${now} sites held in ${Object.keys(held).length} files (was ${was})`)
+  console.log(
+    `wrote ${path.relative(process.cwd(), BASELINE)}: ${now} sites held in ${Object.keys(held).length} files (was ${was})`,
+  )
 
   if (!seeding && risen.length > 0) {
-    console.log(`not raised, and still failing: ${risen.map(([file, found]) => `${file} ${baseline[file] ?? 0} -> ${found}`).join(', ')}`)
+    console.log(
+      `not raised, and still failing: ${risen.map(([file, found]) => `${file} ${baseline[file] ?? 0} -> ${found}`).join(', ')}`,
+    )
     process.exit(1)
   }
 
@@ -106,18 +131,26 @@ let fail = 0
 
 for (const [file, found] of risen) {
   fail++
-  console.log(`FAIL  ${file} prints directly at ${found} sites, held to ${baseline[file] ?? 0}: report through code/output.ts`)
+  console.log(
+    `FAIL  ${file} prints directly at ${found} sites, held to ${baseline[file] ?? 0}: report through code/output.ts`,
+  )
 }
 
 // every file scanned and held at or under its count is a pass, so a clean CLI reads as the files it checked
 pass += scanned.length - risen.length
-const fallen = Object.entries(baseline).filter(([file, held]) => (counts[file] ?? 0) < held)
+const fallen = Object.entries(baseline).filter(
+  ([file, held]) => (counts[file] ?? 0) < held,
+)
 
 for (const [file, held] of fallen) {
-  console.log(`ok    ${file} fell from ${held} to ${counts[file] ?? 0}: run with --commit to hold it there`)
+  console.log(
+    `ok    ${file} fell from ${held} to ${counts[file] ?? 0}: run with --commit to hold it there`,
+  )
 }
 
-console.log(`\ncall/output-only: ${pass} pass, ${fail} fail (${total} direct-print sites left in ${Object.keys(counts).length} files)`)
+console.log(
+  `\ncall/output-only: ${pass} pass, ${fail} fail (${total} direct-print sites left in ${Object.keys(counts).length} files)`,
+)
 
 if (fail > 0) {
   process.exit(1)

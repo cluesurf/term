@@ -6,7 +6,13 @@
 
 import { runDir } from './run-dir'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
@@ -18,14 +24,27 @@ import { resolveAsync } from '@term/make/code/check/async-resolve'
 import { simplify } from '@term/make/code/ir/simplify'
 import { collectModules } from '@term/make/code/compile/load'
 import type { Source } from '@term/make/code/compile/load'
-import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
+import {
+  withNativeEnv,
+  nativePrelude,
+} from '@term/make/code/compile/native'
 import { expandTemplates } from '@term/make/code/compile/template'
-import { bindModules, stampModule } from '@term/make/code/check/bind-modules'
+import {
+  bindModules,
+  stampModule,
+} from '@term/make/code/check/bind-modules'
 import { emitRust } from '@term/make/code/compile/rust'
 import { emitSwift } from '@term/make/code/compile/swift'
-import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
+import {
+  emitKotlin,
+  hoistKotlinImports,
+} from '@term/make/code/compile/kotlin'
 import type { Program } from '@term/make/code/compile/node'
-import { expandData, readDataText, writeLong } from '@term/make/code/compile/host'
+import {
+  expandData,
+  readDataText,
+  writeLong,
+} from '@term/make/code/compile/host'
 
 let pass = 0
 let fail = 0
@@ -56,11 +75,16 @@ function have(tool: string): boolean {
   }
 }
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const FIXTURE = join(TERM, 'deck/host/test/fixture')
-const PACKS: Record<string, string> = { base: join(TERM, 'deck/base'), host: join(TERM, 'deck/host') }
-const fixture = (name: string): string => readFileSync(join(FIXTURE, name), 'utf8')
+const PACKS: Record<string, string> = {
+  base: join(TERM, 'deck/base'),
+  host: join(TERM, 'deck/host'),
+}
+const fixture = (name: string): string =>
+  readFileSync(join(FIXTURE, name), 'utf8')
 
 // the record separator between one program's outputs
 const SEP = ''
@@ -86,10 +110,13 @@ const resolver = (path: string, from: string): Source | undefined => {
   }
 
   // inside the package by the package path rule every resolver calls (code root, then package root)
-  return sourceOf(resolvePackagePath({ dir: PACKS[found[1]!]!, rest: found[2]! }))
+  return sourceOf(
+    resolvePackagePath({ dir: PACKS[found[1]!]!, rest: found[2]! }),
+  )
 }
 
-const readRuntime = (p: string): string | undefined => (existsSync(p) ? readFileSync(p, 'utf8') : undefined)
+const readRuntime = (p: string): string | undefined =>
+  existsSync(p) ? readFileSync(p, 'utf8') : undefined
 
 const ENTRY = `load @term/host/code/base
   find read
@@ -162,31 +189,46 @@ task fill-caught
     send back, read problem/form
 `
 
-const FILL_GOOD = 'host name, <api>\nhost retry-after, 3\nhost secure, true\nhost limit\n  host burst, 10\n  host rate, 2.5\nlist tags\n  <a>, <b>\n'
+const FILL_GOOD =
+  'host name, <api>\nhost retry-after, 3\nhost secure, true\nhost limit\n  host burst, 10\n  host rate, 2.5\nlist tags\n  <a>, <b>\n'
 // the melt writes fields in the form's declared order, so `region` comes back before `limit`
 const FILL_REGION = FILL_GOOD + 'host region, <eu>\n'
-const FILL_REGION_BACK = FILL_GOOD.replace('host limit\n', 'host region, <eu>\nhost limit\n')
+const FILL_REGION_BACK = FILL_GOOD.replace(
+  'host limit\n',
+  'host region, <eu>\nhost limit\n',
+)
 // no `retry-after`, which the form needs
 const FILL_MISSING = FILL_GOOD.replace('host retry-after, 3\n', '')
 
 type Env = 'rust' | 'swift' | 'kotlin'
 
 // the package and its closure, front-ended for one backend
-function frontEnd(env: Env, entry = ENTRY, roots = ['round-long']): Program {
-  const { sources, scope } = collectModules({ file: 'main.tree', text: entry }, withNativeEnv(env, resolver))
+function frontEnd(
+  env: Env,
+  entry = ENTRY,
+  roots = ['round-long'],
+): Program {
+  const { sources, scope } = collectModules(
+    { file: 'main.tree', text: entry },
+    withNativeEnv(env, resolver),
+  )
   const program: Program = []
 
   for (const unit of sources) {
     const parsed = parse(unit)
 
     if (!parsed.ok) {
-      throw new Error(`parse failed: ${unit.file}: ${parsed.diagnostics.map(d => d.message).join(', ')}`)
+      throw new Error(
+        `parse failed: ${unit.file}: ${parsed.diagnostics.map(d => d.message).join(', ')}`,
+      )
     }
 
     const built = mill(expandTemplates(parsed.tree), unit.file)
 
     if (!built.ok) {
-      throw new Error(`mill failed: ${unit.file}: ${built.diagnostics.map(d => d.message).join(', ')}`)
+      throw new Error(
+        `mill failed: ${unit.file}: ${built.diagnostics.map(d => d.message).join(', ')}`,
+      )
     }
 
     stampModule(built.program, unit.file)
@@ -197,10 +239,17 @@ function frontEnd(env: Env, entry = ENTRY, roots = ['round-long']): Program {
   bindModules(program, scope, 'main.tree')
   resolveNames(program, 'main.tree')
 
-  const errors = check(program, 'main.tree').filter(d => d.severity !== 'warning')
+  const errors = check(program, 'main.tree').filter(
+    d => d.severity !== 'warning',
+  )
 
   if (errors.length) {
-    throw new Error(`check failed: ${errors.slice(0, 5).map(d => d.message).join(' | ')}`)
+    throw new Error(
+      `check failed: ${errors
+        .slice(0, 5)
+        .map(d => d.message)
+        .join(' | ')}`,
+    )
   }
 
   resolveAsync(program)
@@ -211,16 +260,28 @@ function frontEnd(env: Env, entry = ENTRY, roots = ['round-long']): Program {
 // each case: a name, the input text, and the long form it must give back (the compiler's writer is the oracle for
 // an input that is not a fixture, so HN_INPUT=<text> tries one input on the backends)
 const CASES: [string, string, string][] = process.env.HN_INPUTS
-  ? (JSON.parse(process.env.HN_INPUTS) as string[]).map((input, at) => [`input ${at}`, input, oracle(input)])
+  ? (JSON.parse(process.env.HN_INPUTS) as string[]).map((input, at) => [
+      `input ${at}`,
+      input,
+      oracle(input),
+    ])
   : process.env.HN_INPUT
-  ? [['input', process.env.HN_INPUT, oracle(process.env.HN_INPUT)]]
-  : [
-      ['basic long', fixture('basic.tree'), fixture('basic.tree')],
-      ['basic compact', fixture('basic.line'), fixture('basic.tree')],
-      // `read` expands the anchors, so the long form back is the expanded one the compiler's writer gives
-      ['anchors long', fixture('anchors.tree'), oracle(fixture('anchors.tree'))],
-      ['anchors compact', fixture('anchors.line'), oracle(fixture('anchors.tree'))],
-    ]
+    ? [['input', process.env.HN_INPUT, oracle(process.env.HN_INPUT)]]
+    : [
+        ['basic long', fixture('basic.tree'), fixture('basic.tree')],
+        ['basic compact', fixture('basic.line'), fixture('basic.tree')],
+        // `read` expands the anchors, so the long form back is the expanded one the compiler's writer gives
+        [
+          'anchors long',
+          fixture('anchors.tree'),
+          oracle(fixture('anchors.tree')),
+        ],
+        [
+          'anchors compact',
+          fixture('anchors.line'),
+          oracle(fixture('anchors.tree')),
+        ],
+      ]
 
 function oracle(text: string): string {
   const read = readDataText({ file: 'input', text })
@@ -231,7 +292,9 @@ function oracle(text: string): string {
 
   const expanded = expandData(read.data, 'input')
 
-  return expanded.ok ? writeLong(expanded.data) : expanded.diagnostics.map(d => d.message).join(' | ')
+  return expanded.ok
+    ? writeLong(expanded.data)
+    : expanded.diagnostics.map(d => d.message).join(' | ')
 }
 
 const dir = runDir('term-host-native-')
@@ -240,13 +303,20 @@ const inputs = CASES.map(([, input]) => JSON.stringify(input))
 function compare(env: string, output: string): void {
   const got = output.split(SEP)
   CASES.forEach(([name, , want], at) =>
-    ok(`${env}: ${name} round-trips`, got[at] === want, `got ${JSON.stringify(got[at] ?? '')}\n      want ${JSON.stringify(want)}`),
+    ok(
+      `${env}: ${name} round-trips`,
+      got[at] === want,
+      `got ${JSON.stringify(got[at] ?? '')}\n      want ${JSON.stringify(want)}`,
+    ),
   )
 }
 
 function runRust(): void {
   if (!have('cargo')) {
-    return skipped('rust: the package builds and round-trips', 'cargo not installed')
+    return skipped(
+      'rust: the package builds and round-trips',
+      'cargo not installed',
+    )
   }
 
   const program = frontEnd('rust')
@@ -257,14 +327,25 @@ function runRust(): void {
     '[package]\nname = "host_native"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nserde_json = "1"\nregex = "1"\nbase64 = "0.22"\nhex = "0.4"\nsha2 = "0.10"\nuuid = { version = "1", features = ["v4"] }\nrand = "0.8"\n',
   )
   const main = `\nfn main() {\n  let inputs: Vec<&str> = vec![${inputs.join(', ')}];\n  for input in inputs { print!("{}\\u{1e}", round_long(input.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) })); }\n}\n`
-  writeFileSync(join(out, 'src/main.rs'), `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(program)}${main}`)
+  writeFileSync(
+    join(out, 'src/main.rs'),
+    `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(program)}${main}`,
+  )
 
   let output: string
 
   try {
-    output = execFileSync('cargo', ['run', '--quiet'], { cwd: out, stdio: ['ignore', 'pipe', 'pipe'], env: CARGO_ENV }).toString()
+    output = execFileSync('cargo', ['run', '--quiet'], {
+      cwd: out,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: CARGO_ENV,
+    }).toString()
   } catch (error) {
-    ok('rust: the package builds', false, String((error as { stderr?: Buffer }).stderr ?? error))
+    ok(
+      'rust: the package builds',
+      false,
+      String((error as { stderr?: Buffer }).stderr ?? error),
+    )
 
     return
   }
@@ -273,31 +354,70 @@ function runRust(): void {
   compare('rust', output)
 
   // fill and melt with a form
-  const fill = frontEnd('rust', FILL_ENTRY, ['fill-round', 'fill-burst', 'fill-caught'])
+  const fill = frontEnd('rust', FILL_ENTRY, [
+    'fill-round',
+    'fill-burst',
+    'fill-caught',
+  ])
   const fillOut = join(dir, 'rust-fill')
   mkdirSync(join(fillOut, 'src'), { recursive: true })
-  writeFileSync(join(fillOut, 'Cargo.toml'), readFileSync(join(out, 'Cargo.toml'), 'utf8').replace('host_native', 'host_fill'))
+  writeFileSync(
+    join(fillOut, 'Cargo.toml'),
+    readFileSync(join(out, 'Cargo.toml'), 'utf8').replace(
+      'host_native',
+      'host_fill',
+    ),
+  )
   writeFileSync(
     join(fillOut, 'src/main.rs'),
     `${nativePrelude(fill, 'rust', readRuntime)}\n${emitRust(fill)}\nfn main() { print!("{}\\u{1e}{}\\u{1e}{}\\u{1e}{}\\u{1e}{}", fill_round(${JSON.stringify(FILL_GOOD)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }), fill_round(${JSON.stringify(FILL_REGION)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }), fill_burst(${JSON.stringify(FILL_GOOD)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }), fill_caught(${JSON.stringify(FILL_GOOD)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }), fill_caught(${JSON.stringify(FILL_MISSING)}.to_string()).unwrap_or_else(|e| { eprintln!("uncaught {}", e); std::process::exit(1) })); }\n`,
   )
 
   try {
-    const got = execFileSync('cargo', ['run', '--quiet'], { cwd: fillOut, stdio: ['ignore', 'pipe', 'pipe'], env: CARGO_ENV }).toString().split(SEP)
+    const got = execFileSync('cargo', ['run', '--quiet'], {
+      cwd: fillOut,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: CARGO_ENV,
+    })
+      .toString()
+      .split(SEP)
     ok('rust: fill and melt with a form build', true)
-    ok('rust: fill into a form melts back to the data', got[0] === FILL_GOOD, got[0] ?? '')
-    ok('rust: an optional field present is kept', got[1] === FILL_REGION_BACK, got[1] ?? '')
+    ok(
+      'rust: fill into a form melts back to the data',
+      got[0] === FILL_GOOD,
+      got[0] ?? '',
+    )
+    ok(
+      'rust: an optional field present is kept',
+      got[1] === FILL_REGION_BACK,
+      got[1] ?? '',
+    )
     ok('rust: a nested form is filled', got[2] === '10', got[2] ?? '')
-    ok('rust: a fill that fits runs the guarded body', got[3] === 'api', got[3] ?? '')
-    ok('rust: a value that does not fit raises data-mismatch, and the guard catches it', got[4] === 'data-mismatch', got[4] ?? '')
+    ok(
+      'rust: a fill that fits runs the guarded body',
+      got[3] === 'api',
+      got[3] ?? '',
+    )
+    ok(
+      'rust: a value that does not fit raises data-mismatch, and the guard catches it',
+      got[4] === 'data-mismatch',
+      got[4] ?? '',
+    )
   } catch (error) {
-    ok('rust: fill and melt with a form build', false, String((error as { stderr?: Buffer }).stderr ?? error))
+    ok(
+      'rust: fill and melt with a form build',
+      false,
+      String((error as { stderr?: Buffer }).stderr ?? error),
+    )
   }
 }
 
 function runSwift(): void {
   if (!have('swiftc')) {
-    return skipped('swift: the package builds and round-trips', 'swiftc not installed')
+    return skipped(
+      'swift: the package builds and round-trips',
+      'swiftc not installed',
+    )
   }
 
   const program = frontEnd('swift')
@@ -310,9 +430,15 @@ function runSwift(): void {
   )
 
   try {
-    execFileSync('swiftc', ['-o', join(out, 'main'), file], { stdio: 'pipe' })
+    execFileSync('swiftc', ['-o', join(out, 'main'), file], {
+      stdio: 'pipe',
+    })
   } catch (error) {
-    ok('swift: the package builds', false, String((error as { stderr?: Buffer }).stderr ?? error))
+    ok(
+      'swift: the package builds',
+      false,
+      String((error as { stderr?: Buffer }).stderr ?? error),
+    )
 
     return
   }
@@ -321,7 +447,11 @@ function runSwift(): void {
   compare('swift', execFileSync(join(out, 'main')).toString())
 
   // fill and melt with a form
-  const fill = frontEnd('swift', FILL_ENTRY, ['fill-round', 'fill-burst', 'fill-caught'])
+  const fill = frontEnd('swift', FILL_ENTRY, [
+    'fill-round',
+    'fill-burst',
+    'fill-caught',
+  ])
   const fillFile = join(out, 'fill.swift')
   writeFileSync(
     fillFile,
@@ -329,22 +459,47 @@ function runSwift(): void {
   )
 
   try {
-    execFileSync('swiftc', ['-o', join(out, 'fill'), fillFile], { stdio: 'pipe' })
+    execFileSync('swiftc', ['-o', join(out, 'fill'), fillFile], {
+      stdio: 'pipe',
+    })
     const got = execFileSync(join(out, 'fill')).toString().split(SEP)
     ok('swift: fill and melt with a form build', true)
-    ok('swift: fill into a form melts back to the data', got[0] === FILL_GOOD, got[0] ?? '')
-    ok('swift: an optional field present is kept', got[1] === FILL_REGION_BACK, got[1] ?? '')
+    ok(
+      'swift: fill into a form melts back to the data',
+      got[0] === FILL_GOOD,
+      got[0] ?? '',
+    )
+    ok(
+      'swift: an optional field present is kept',
+      got[1] === FILL_REGION_BACK,
+      got[1] ?? '',
+    )
     ok('swift: a nested form is filled', got[2] === '10', got[2] ?? '')
-    ok('swift: a fill that fits runs the guarded body', got[3] === 'api', got[3] ?? '')
-    ok('swift: a value that does not fit raises data-mismatch, and the guard catches it', got[4] === 'data-mismatch', got[4] ?? '')
+    ok(
+      'swift: a fill that fits runs the guarded body',
+      got[3] === 'api',
+      got[3] ?? '',
+    )
+    ok(
+      'swift: a value that does not fit raises data-mismatch, and the guard catches it',
+      got[4] === 'data-mismatch',
+      got[4] ?? '',
+    )
   } catch (error) {
-    ok('swift: fill and melt with a form build', false, String((error as { stderr?: Buffer }).stderr ?? error))
+    ok(
+      'swift: fill and melt with a form build',
+      false,
+      String((error as { stderr?: Buffer }).stderr ?? error),
+    )
   }
 }
 
 function runKotlin(): void {
   if (!have('kotlinc') || !have('java')) {
-    return skipped('kotlin: the package builds and round-trips', 'kotlinc/java not installed')
+    return skipped(
+      'kotlin: the package builds and round-trips',
+      'kotlinc/java not installed',
+    )
   }
 
   const program = frontEnd('kotlin')
@@ -358,18 +513,33 @@ function runKotlin(): void {
     ),
   )
   try {
-    execFileSync('kotlinc', [file, '-include-runtime', '-d', join(out, 'main.jar')], { stdio: 'pipe' })
+    execFileSync(
+      'kotlinc',
+      [file, '-include-runtime', '-d', join(out, 'main.jar')],
+      { stdio: 'pipe' },
+    )
   } catch (error) {
-    ok('kotlin: the package builds', false, String((error as { stderr?: Buffer }).stderr ?? error))
+    ok(
+      'kotlin: the package builds',
+      false,
+      String((error as { stderr?: Buffer }).stderr ?? error),
+    )
 
     return
   }
 
   ok('kotlin: the package builds', true)
-  compare('kotlin', execFileSync('java', ['-jar', join(out, 'main.jar')]).toString())
+  compare(
+    'kotlin',
+    execFileSync('java', ['-jar', join(out, 'main.jar')]).toString(),
+  )
 
   // fill and melt with a form
-  const fill = frontEnd('kotlin', FILL_ENTRY, ['fill-round', 'fill-burst', 'fill-caught'])
+  const fill = frontEnd('kotlin', FILL_ENTRY, [
+    'fill-round',
+    'fill-burst',
+    'fill-caught',
+  ])
   const fillFile = join(out, 'fill.kt')
   writeFileSync(
     fillFile,
@@ -379,22 +549,51 @@ function runKotlin(): void {
   )
 
   try {
-    execFileSync('kotlinc', [fillFile, '-include-runtime', '-d', join(out, 'fill.jar')], { stdio: 'pipe' })
-    const got = execFileSync('java', ['-jar', join(out, 'fill.jar')]).toString().split(SEP)
+    execFileSync(
+      'kotlinc',
+      [fillFile, '-include-runtime', '-d', join(out, 'fill.jar')],
+      { stdio: 'pipe' },
+    )
+    const got = execFileSync('java', ['-jar', join(out, 'fill.jar')])
+      .toString()
+      .split(SEP)
     ok('kotlin: fill and melt with a form build', true)
-    ok('kotlin: fill into a form melts back to the data', got[0] === FILL_GOOD, got[0] ?? '')
-    ok('kotlin: an optional field present is kept', got[1] === FILL_REGION_BACK, got[1] ?? '')
+    ok(
+      'kotlin: fill into a form melts back to the data',
+      got[0] === FILL_GOOD,
+      got[0] ?? '',
+    )
+    ok(
+      'kotlin: an optional field present is kept',
+      got[1] === FILL_REGION_BACK,
+      got[1] ?? '',
+    )
     ok('kotlin: a nested form is filled', got[2] === '10', got[2] ?? '')
-    ok('kotlin: a fill that fits runs the guarded body', got[3] === 'api', got[3] ?? '')
-    ok('kotlin: a value that does not fit raises data-mismatch, and the guard catches it', got[4] === 'data-mismatch', got[4] ?? '')
+    ok(
+      'kotlin: a fill that fits runs the guarded body',
+      got[3] === 'api',
+      got[3] ?? '',
+    )
+    ok(
+      'kotlin: a value that does not fit raises data-mismatch, and the guard catches it',
+      got[4] === 'data-mismatch',
+      got[4] ?? '',
+    )
   } catch (error) {
-    ok('kotlin: fill and melt with a form build', false, String((error as { stderr?: Buffer }).stderr ?? error))
+    ok(
+      'kotlin: fill and melt with a form build',
+      false,
+      String((error as { stderr?: Buffer }).stderr ?? error),
+    )
   }
 }
 
 // the cargo target dir persists across runs, so the package's crates build once on a machine and not once per run
 // (each run writes a fresh package, and a fresh package means a fresh target dir means a full dependency build)
-const CARGO_ENV = { ...process.env, CARGO_TARGET_DIR: join(tmpdir(), 'term-host-native-target') }
+const CARGO_ENV = {
+  ...process.env,
+  CARGO_TARGET_DIR: join(tmpdir(), 'term-host-native-target'),
+}
 
 const only = process.env.HN_ONLY ?? ''
 
@@ -410,7 +609,9 @@ if (!only || only === 'kotlin') {
   runKotlin()
 }
 
-console.log(`\nhost-native: ${pass} pass, ${fail} fail, ${skip} skipped`)
+console.log(
+  `\nhost-native: ${pass} pass, ${fail} fail, ${skip} skipped`,
+)
 
 if (fail > 0) {
   process.exit(1)

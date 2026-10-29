@@ -5,14 +5,29 @@
 // front of the program, so a top-level name here could collide with one of the program's own.
 
 export const nativeWatch = {
-  topics: new Map<string, { handlers: Map<number, (value: string) => void>; last?: string; stop: () => void }>(),
+  topics: new Map<
+    string,
+    {
+      handlers: Map<number, (value: string) => void>
+      last?: string
+      stop: () => void
+    }
+  >(),
   next: 0,
 
   // `handler` added to the capability `name`, and the number that removes it. `start` begins the subscription with the
   // function every answer goes through, and answers the function that ends it
-  join(name: string, handler: (value: string) => void, start: (tell: (value: string) => void) => () => void): number {
+  join(
+    name: string,
+    handler: (value: string) => void,
+    start: (tell: (value: string) => void) => () => void,
+  ): number {
     const id = ++nativeWatch.next
-    const topic = nativeWatch.topics.get(name) ?? { handlers: new Map<number, (value: string) => void>(), last: undefined as string | undefined, stop: () => {} }
+    const topic = nativeWatch.topics.get(name) ?? {
+      handlers: new Map<number, (value: string) => void>(),
+      last: undefined as string | undefined,
+      stop: () => {},
+    }
     nativeWatch.topics.set(name, topic)
     topic.handlers.set(id, handler)
 
@@ -46,7 +61,11 @@ export const nativeWatch = {
   leave(name: string, id: number): void {
     const topic = nativeWatch.topics.get(name)
 
-    if (!topic || !topic.handlers.delete(id) || topic.handlers.size > 0) {
+    if (
+      !topic ||
+      !topic.handlers.delete(id) ||
+      topic.handlers.size > 0
+    ) {
       return
     }
 

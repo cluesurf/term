@@ -15,10 +15,14 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { RULES } from '@term/make/code/lint/lint'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const RULE_DIR = join(TERM, 'deck/make/code/lint/rules')
-const PAGE = join(TERM, '../../../../note/project/term/compiler/lint-rules.md')
+const PAGE = join(
+  TERM,
+  '../../../../note/project/term/compiler/lint-rules.md',
+)
 
 // the rule file each rule is defined in, by its exported name turned back into kebab
 function fileFor(name: string): string | undefined {
@@ -70,7 +74,10 @@ function portedNote(name: string): string | undefined {
     start--
   }
 
-  const note = lines.slice(start, at).map(line => line.replace(/^# ?/, '').trim()).join(' ')
+  const note = lines
+    .slice(start, at)
+    .map(line => line.replace(/^# ?/, '').trim())
+    .join(' ')
 
   return note ? note.replace(/^L\d+:\s*/, '') : undefined
 }
@@ -94,7 +101,9 @@ const body = [
   '| --- | --- | --- | --- | --- |',
   ...rows.map(rule => {
     const file = fileFor(rule.name)
-    const note = file ? leadingNote(file) : (portedNote(rule.name) ?? rule.docs)
+    const note = file
+      ? leadingNote(file)
+      : (portedNote(rule.name) ?? rule.docs)
 
     return `| \`${rule.code}\` | \`${rule.name}\` | ${rule.severity} | ${rule.fixable ? 'yes' : 'no'} | ${note} |`
   }),
@@ -108,8 +117,8 @@ const body = [
   '`test/lint/audit.ts` reports, for every rule, whether a test names it and how many',
   'findings it produces across the stdlib, `@term/site`, `@term/face` and `@term/host`.',
   'It fails when a rule has no test at all, which is the state that let `L001` and',
-  '`L005` report 10,190 findings that were all the compiler\'s own generated names and',
-  'the language\'s own signature-only tasks.',
+  "`L005` report 10,190 findings that were all the compiler's own generated names and",
+  "the language's own signature-only tasks.",
   '',
   '## Writing one',
   '',
@@ -123,14 +132,18 @@ const same = current === body
 
 if (process.argv.includes('--commit')) {
   writeFileSync(PAGE, body)
-  console.log(`wrote note/project/term/compiler/lint-rules.md (${rows.length} rules)`)
+  console.log(
+    `wrote note/project/term/compiler/lint-rules.md (${rows.length} rules)`,
+  )
 } else if (!same) {
   console.log(
     'note/project/term/compiler/lint-rules.md is out of date. Run `npx tsx test/lint/catalog.ts --commit` from deck/term/deck/term',
   )
 }
 
-console.log(`\ncatalog: ${same || process.argv.includes('--commit') ? 1 : 0} pass, ${same || process.argv.includes('--commit') ? 0 : 1} fail`)
+console.log(
+  `\ncatalog: ${same || process.argv.includes('--commit') ? 1 : 0} pass, ${same || process.argv.includes('--commit') ? 0 : 1} fail`,
+)
 
 if (!same && !process.argv.includes('--commit')) {
   process.exit(1)

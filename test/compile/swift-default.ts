@@ -64,7 +64,10 @@ task slow
   back add(n, 1)
 `
 
-const result = compile({ file: '/tmp/swift-default.tree', text: PROGRAM }, { resolve: stdlibResolver(), env: 'swift' })
+const result = compile(
+  { file: '/tmp/swift-default.tree', text: PROGRAM },
+  { resolve: stdlibResolver(), env: 'swift' },
+)
 
 if (!result.ok) {
   console.log(result.diagnostics.map(d => d.message).join('\n'))
@@ -73,26 +76,69 @@ if (!result.ok) {
 
 const swift = emitSwift(result.program)
 // the inputs of a task's declaration, up to the arrow, since a default may hold parentheses of its own
-const signature = (name: string): string => new RegExp(`func ${name}\\((.*)\\)( async)?( throws)? ->`).exec(swift)?.[1] ?? ''
+const signature = (name: string): string =>
+  new RegExp(`func ${name}\\((.*)\\)( async)?( throws)? ->`).exec(
+    swift,
+  )?.[1] ?? ''
 
-ok('a call as a default is Swift\'s default', /n: Int = base\(\)/.test(signature('scale')), signature('scale'))
-ok('a literal still is', /by: Int = 2/.test(signature('scale')), signature('scale'))
+ok(
+  "a call as a default is Swift's default",
+  /n: Int = base\(\)/.test(signature('scale')),
+  signature('scale'),
+)
+ok(
+  'a literal still is',
+  /by: Int = 2/.test(signature('scale')),
+  signature('scale'),
+)
 // the rest are optional inputs the body fills: Swift allows no `try` or `await` in a default, and no other input
-ok('a default that calls a raising task is filled in the body', /n: \(Int\)\? = nil/.test(signature('careful')), signature('careful'))
-ok('so is one that reads another input', /m: \(Int\)\? = nil/.test(signature('twice')), signature('twice'))
-ok('and one that waits, in an asynchronous task', /n: \(Int\)\? = nil/.test(signature('slow')), signature('slow'))
+ok(
+  'a default that calls a raising task is filled in the body',
+  /n: \(Int\)\? = nil/.test(signature('careful')),
+  signature('careful'),
+)
+ok(
+  'so is one that reads another input',
+  /m: \(Int\)\? = nil/.test(signature('twice')),
+  signature('twice'),
+)
+ok(
+  'and one that waits, in an asynchronous task',
+  /n: \(Int\)\? = nil/.test(signature('slow')),
+  signature('slow'),
+)
 
 // Swift itself leaves the input out
 if (spawnSync('which', ['swiftc']).status === 0) {
   const dir = mkdtempSync(join(tmpdir(), 'swift-default-'))
-  writeFileSync(join(dir, 'main.swift'), `import Foundation\n${swift}\nprint("\\(scale()) \\(twice(n: 5)) \\(await slow())", terminator: "")\n`)
+  writeFileSync(
+    join(dir, 'main.swift'),
+    `import Foundation\n${swift}\nprint("\\(scale()) \\(twice(n: 5)) \\(await slow())", terminator: "")\n`,
+  )
 
   try {
-    execFileSync('swiftc', ['-o', join(dir, 'run'), join(dir, 'main.swift')], { stdio: 'pipe' })
-    const out = spawnSync(join(dir, 'run'), [], { encoding: 'utf8' }).stdout
-    ok('Swift calls each task with the defaulted inputs left out: 42, 5 + 5 and 7 + 1', out === '42 10 8', out)
+    execFileSync(
+      'swiftc',
+      ['-o', join(dir, 'run'), join(dir, 'main.swift')],
+      { stdio: 'pipe' },
+    )
+    const out = spawnSync(join(dir, 'run'), [], {
+      encoding: 'utf8',
+    }).stdout
+    ok(
+      'Swift calls each task with the defaulted inputs left out: 42, 5 + 5 and 7 + 1',
+      out === '42 10 8',
+      out,
+    )
   } catch (error) {
-    ok('Swift builds a call that leaves the inputs out', false, String((error as { stderr?: Buffer }).stderr ?? error).slice(0, 600))
+    ok(
+      'Swift builds a call that leaves the inputs out',
+      false,
+      String((error as { stderr?: Buffer }).stderr ?? error).slice(
+        0,
+        600,
+      ),
+    )
   }
 } else {
   console.log('skip  swiftc not installed')

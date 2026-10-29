@@ -317,13 +317,9 @@ task keyword-items
   save kept, make list
   walk items
     take item
-    save inserted, <>
-    sift item/insert-text
-      case some
-        link body
-        save inserted, body
-      case none
-        save skipped, true
+    # a left-out insert text reads as its empty value, as the original's `item.insertText ?? ''` (a `sift` with `case
+    # some` over this text field took neither arm until item 0056 refused it, so the guard never read an insert text)
+    save inserted, item/insert-text
     fork test, is-retired(<{item/label} {inserted}>)
       miss
         push(kept, item)

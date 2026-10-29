@@ -14,12 +14,20 @@ import { blankLine, lineText } from '@term/call/code/work/item/layout'
 import type { Line } from '@term/call/code/work/item/layout'
 import { drawCommand } from '@term/call/code/work/item/run'
 import { measureText } from '@term/call/code/work/item/measure'
-import { makePalette, paintLines } from '@term/call/code/work/item/paint'
+import {
+  makePalette,
+  paintLines,
+} from '@term/call/code/work/item/paint'
 import { writeJsonEvent } from '@term/call/code/work/item/json'
 import { CARDS, machineEvents } from './cards'
 import { OFFSET, STANDARD, room } from './build'
 import type { Card, Expected, Mark, Patch } from './build'
-import { MOCKUP_DIFFERENCES, MOCKUP_FIXTURE, MOCKUP_PAGE, readMockups } from './mockup'
+import {
+  MOCKUP_DIFFERENCES,
+  MOCKUP_FIXTURE,
+  MOCKUP_PAGE,
+  readMockups,
+} from './mockup'
 import type { Mockup } from './mockup'
 
 let pass = 0
@@ -38,27 +46,64 @@ function ok(name: string, holds: boolean, detail = ''): void {
 // ---- the fixture is the page ----
 
 const mockups = readMockups(readFileSync(MOCKUP_PAGE, 'utf8'))
-const fixture = JSON.parse(readFileSync(MOCKUP_FIXTURE, 'utf8')) as Mockup[]
+const fixture = JSON.parse(
+  readFileSync(MOCKUP_FIXTURE, 'utf8'),
+) as Mockup[]
 
-ok('test/item/mockups.json is what the mockup page extracts to', JSON.stringify(mockups) === JSON.stringify(fixture))
-ok('every card on the page has a golden test, and in page order', mockups.length === CARDS.length && mockups.every((one, at) => one.caption === CARDS[at]!.caption))
+ok(
+  'test/item/mockups.json is what the mockup page extracts to',
+  JSON.stringify(mockups) === JSON.stringify(fixture),
+)
+ok(
+  'every card on the page has a golden test, and in page order',
+  mockups.length === CARDS.length &&
+    mockups.every((one, at) => one.caption === CARDS[at]!.caption),
+)
 
 // every difference from the mockup is written down, and every one written down is still applied
-const written = new Set([...readFileSync(MOCKUP_DIFFERENCES, 'utf8').matchAll(/^### (D\d+)$/gm)].map(match => match[1]!))
+const written = new Set(
+  [
+    ...readFileSync(MOCKUP_DIFFERENCES, 'utf8').matchAll(
+      /^### (D\d+)$/gm,
+    ),
+  ].map(match => match[1]!),
+)
 // D33 and D34 are applied to every card by `elbowQuotes` and `oneSpaceFields`, not by a patch, so they are cited here.
 // D35 and D41 are the other way round: the cards are drawn with the mockups' clocks and gray verb (build.ts `STANDARD`)
 // D43 (a problem's code on its title) is on no card, and test/item/unit.ts holds it
-const cited = new Set(['D33', 'D34', 'D35', 'D41', 'D42', 'D43', 'D44',...CARDS.flatMap(card => [...card.patches.flatMap(patch => patch.entry.split(' ')), ...(card.entry ? [card.entry] : [])])])
+const cited = new Set([
+  'D33',
+  'D34',
+  'D35',
+  'D41',
+  'D42',
+  'D43',
+  'D44',
+  ...CARDS.flatMap(card => [
+    ...card.patches.flatMap(patch => patch.entry.split(' ')),
+    ...(card.entry ? [card.entry] : []),
+  ]),
+])
 const unwritten = [...cited].filter(entry => !written.has(entry))
 const unapplied = [...written].filter(entry => !cited.has(entry))
-const unjustified = CARDS.filter(card => card.whole && !card.entry).map(card => card.caption)
+const unjustified = CARDS.filter(card => card.whole && !card.entry).map(
+  card => card.caption,
+)
 ok(
   'mockup-differences.md and the patches name the same entries',
-  unwritten.length === 0 && unapplied.length === 0 && unjustified.length === 0,
+  unwritten.length === 0 &&
+    unapplied.length === 0 &&
+    unjustified.length === 0,
   [
-    unwritten.length ? `  cited, not in the note: ${unwritten.join(', ')}` : '',
-    unapplied.length ? `  in the note, never cited: ${unapplied.join(', ')}` : '',
-    unjustified.length ? `  a whole card with no entry: ${unjustified.join(', ')}` : '',
+    unwritten.length
+      ? `  cited, not in the note: ${unwritten.join(', ')}`
+      : '',
+    unapplied.length
+      ? `  in the note, never cited: ${unapplied.join(', ')}`
+      : '',
+    unjustified.length
+      ? `  a whole card with no entry: ${unjustified.join(', ')}`
+      : '',
   ]
     .filter(Boolean)
     .join('\n'),
@@ -67,7 +112,10 @@ ok(
 // ---- expected lines ----
 
 function applyPatches(lines: Expected[], patches: Patch[]): Expected[] {
-  const out = lines.map(line => ({ text: line.text, marks: [...line.marks] }))
+  const out = lines.map(line => ({
+    text: line.text,
+    marks: [...line.marks],
+  }))
 
   // recolorings first, at their original line numbers, then line replacements from the bottom up so each patch's
   // line number is the mockup's own
@@ -85,7 +133,11 @@ function applyPatches(lines: Expected[], patches: Patch[]): Expected[] {
     }
   }
 
-  const replacements = patches.filter((patch): patch is Extract<Patch, { at: number }> => 'at' in patch).sort((a, b) => b.at - a.at)
+  const replacements = patches
+    .filter(
+      (patch): patch is Extract<Patch, { at: number }> => 'at' in patch,
+    )
+    .sort((a, b) => b.at - a.at)
 
   for (const patch of replacements) {
     out.splice(patch.at, patch.remove, ...patch.insert)
@@ -96,15 +148,30 @@ function applyPatches(lines: Expected[], patches: Patch[]): Expected[] {
 
 function expectedOf(card: Card, mockup: Mockup): Expected[] {
   if (card.whole) {
-    return attachDurations(fileKey(oneSpaceFields(card.whole, card.colorless === true), card.colorless === true))
+    return attachDurations(
+      fileKey(
+        oneSpaceFields(card.whole, card.colorless === true),
+        card.colorless === true,
+      ),
+    )
   }
 
   const lines: Expected[] = mockup.lines.map(line => ({
     text: line.text,
-    marks: line.marks.map(mark => (mark.role === 'cursor' ? null : mark)),
+    marks: line.marks.map(mark =>
+      mark.role === 'cursor' ? null : mark,
+    ),
   }))
 
-  return attachDurations(fileKey(oneSpaceFields(elbowQuotes(applyPatches(lines, card.patches)), card.colorless === true), card.colorless === true))
+  return attachDurations(
+    fileKey(
+      oneSpaceFields(
+        elbowQuotes(applyPatches(lines, card.patches)),
+        card.colorless === true,
+      ),
+      card.colorless === true,
+    ),
+  )
 }
 
 // D44: a duration's unit is attached to its figure, `410ms` and `2.90s`, where the mockups write `410 ms` and `2.90 s`
@@ -114,7 +181,9 @@ const DURATION_GAP = /(?<=\d)[  ](?=(?:ms|s)(?![\w-]))/g
 
 function attachDurations(lines: Expected[]): Expected[] {
   return lines.map(line => {
-    const gaps = [...line.text.matchAll(DURATION_GAP)].map(found => found.index!)
+    const gaps = [...line.text.matchAll(DURATION_GAP)].map(
+      found => found.index!,
+    )
 
     if (gaps.length === 0) {
       return line
@@ -151,7 +220,14 @@ function fileKey(lines: Expected[], colorless: boolean): Expected[] {
 
     return {
       text: `${found[1]}file${line.text.slice(at + 2)}`,
-      marks: [...line.marks.slice(0, at), mark, mark, mark, mark, ...line.marks.slice(at + 2)],
+      marks: [
+        ...line.marks.slice(0, at),
+        mark,
+        mark,
+        mark,
+        mark,
+        ...line.marks.slice(at + 2),
+      ],
     }
   })
 }
@@ -161,7 +237,10 @@ function fileKey(lines: Expected[], colorless: boolean): Expected[] {
 // a value that is not dim; a table's header row is dim all along, so its gaps are left alone
 const FIELD = /^( {2}[a-z][\w-]*)( {2,})(?=\S)/
 
-function oneSpaceFields(lines: Expected[], colorless: boolean): Expected[] {
+function oneSpaceFields(
+  lines: Expected[],
+  colorless: boolean,
+): Expected[] {
   return lines.map(line => {
     const found = FIELD.exec(line.text)
 
@@ -173,13 +252,21 @@ function oneSpaceFields(lines: Expected[], colorless: boolean): Expected[] {
     const valueAt = keyEnd + found[2]!.length
 
     // a card drawn without color has no marks to tell a key by, and its fields are the same shape
-    if (!colorless && (line.marks[keyEnd - 1]?.role !== 'dim' || line.marks[valueAt]?.role === 'dim')) {
+    if (
+      !colorless &&
+      (line.marks[keyEnd - 1]?.role !== 'dim' ||
+        line.marks[valueAt]?.role === 'dim')
+    ) {
       return line
     }
 
     return {
       text: `${found[1]} ${line.text.slice(valueAt)}`,
-      marks: [...line.marks.slice(0, keyEnd), null, ...line.marks.slice(valueAt)],
+      marks: [
+        ...line.marks.slice(0, keyEnd),
+        null,
+        ...line.marks.slice(valueAt),
+      ],
     }
   })
 }
@@ -204,7 +291,12 @@ function elbowQuotes(lines: Expected[]): Expected[] {
 
     return {
       text: `${' '.repeat(2)}${lead}${rest.join('')}`,
-      marks: [...line.marks.slice(0, 2), first ? ELBOW : null, null, ...line.marks.slice(4)],
+      marks: [
+        ...line.marks.slice(0, 2),
+        first ? ELBOW : null,
+        null,
+        ...line.marks.slice(4),
+      ],
     }
   })
 }
@@ -236,14 +328,23 @@ function marksOf(line: Line): { text: string; marks: Mark[] } {
   for (const span of line.spans) {
     for (const character of span.value) {
       text += character === ' ' ? ' ' : character
-      marks.push({ role: span.role, strong: span.strong, focus: span.focus })
+      marks.push({
+        role: span.role,
+        strong: span.strong,
+        focus: span.focus,
+      })
     }
   }
 
   return { text, marks }
 }
 
-function compareLines(name: string, expected: Expected[], actual: { text: string; marks: Mark[] }[], colorless: boolean): void {
+function compareLines(
+  name: string,
+  expected: Expected[],
+  actual: { text: string; marks: Mark[] }[],
+  colorless: boolean,
+): void {
   const problems: string[] = []
   const count = Math.max(expected.length, actual.length)
 
@@ -252,12 +353,16 @@ function compareLines(name: string, expected: Expected[], actual: { text: string
     const got = actual[at]
 
     if (!want || !got) {
-      problems.push(`  line ${at}: ${want ? 'missing' : 'extra'}: ${JSON.stringify((want ?? got)!.text)}`)
+      problems.push(
+        `  line ${at}: ${want ? 'missing' : 'extra'}: ${JSON.stringify((want ?? got)!.text)}`,
+      )
       continue
     }
 
     if (want.text.trimEnd() !== got.text.trimEnd()) {
-      problems.push(`  line ${at} text\n    want ${JSON.stringify(want.text.trimEnd())}\n    got  ${JSON.stringify(got.text.trimEnd())}`)
+      problems.push(
+        `  line ${at} text\n    want ${JSON.stringify(want.text.trimEnd())}\n    got  ${JSON.stringify(got.text.trimEnd())}`,
+      )
       continue
     }
 
@@ -278,12 +383,15 @@ function compareLines(name: string, expected: Expected[], actual: { text: string
       const seen = got.marks[index]
 
       if (!seen) {
-        problems.push(`  line ${at} column ${index} ${JSON.stringify(character)}: no mark`)
+        problems.push(
+          `  line ${at} column ${index} ${JSON.stringify(character)}: no mark`,
+        )
         break
       }
 
       const roleWrong = seen.role !== mark.role
-      const strongWrong = mark.role === 'text' && seen.strong !== mark.strong
+      const strongWrong =
+        mark.role === 'text' && seen.strong !== mark.strong
       const focusWrong = mark.focus !== seen.focus
 
       if (roleWrong || strongWrong || focusWrong) {
@@ -302,7 +410,9 @@ function compareLines(name: string, expected: Expected[], actual: { text: string
 
 const ESCAPE = '\u001b'
 
-function reverseRoles(theme: 'dark' | 'light' | 'ansi'): Map<string, string> {
+function reverseRoles(
+  theme: 'dark' | 'light' | 'ansi',
+): Map<string, string> {
   const out = new Map<string, string>()
 
   for (const role of STANDARD.roles) {
@@ -314,7 +424,9 @@ function reverseRoles(theme: 'dark' | 'light' | 'ansi'): Map<string, string> {
       out.set(role.ansi, role.name)
     } else {
       const hex = theme === 'dark' ? role.dark : role.light
-      const rgb = [1, 3, 5].map(at => parseInt(hex.slice(at, at + 2), 16)).join(';')
+      const rgb = [1, 3, 5]
+        .map(at => parseInt(hex.slice(at, at + 2), 16))
+        .join(';')
       out.set(`38;2;${rgb}`, role.name)
     }
   }
@@ -323,7 +435,10 @@ function reverseRoles(theme: 'dark' | 'light' | 'ansi'): Map<string, string> {
 }
 
 // the characters of painted text with the role, boldness and focus each was painted with
-function readPainted(painted: string, theme: 'dark' | 'light' | 'ansi'): { text: string; marks: Mark[] }[] {
+function readPainted(
+  painted: string,
+  theme: 'dark' | 'light' | 'ansi',
+): { text: string; marks: Mark[] }[] {
   const roles = reverseRoles(theme)
   const lines: { text: string; marks: Mark[] }[] = []
   let text = ''
@@ -366,7 +481,10 @@ function readPainted(painted: string, theme: 'dark' | 'light' | 'ansi'): { text:
       }
 
       if (rest !== '') {
-        current = { ...current, role: roles.get(rest) ?? `unknown ${rest}` }
+        current = {
+          ...current,
+          role: roles.get(rest) ?? `unknown ${rest}`,
+        }
       }
 
       continue
@@ -400,34 +518,89 @@ for (let index = 0; index < CARDS.length; index++) {
 
   if (card.caption === 'Machine output') {
     // the machine view is data on stdout: one object per event, never wrapped (section 19)
-    const lines = [lineText(drawCommand('term dev --log json', room(width))), ...machineEvents().map(event => writeJsonEvent(event, OFFSET, false, STANDARD))]
-    compareLines(name, expected, lines.map(text => ({ text, marks: [] })), true)
+    const lines = [
+      lineText(drawCommand('term dev --log json', room(width))),
+      ...machineEvents().map(event =>
+        writeJsonEvent(event, OFFSET, false, STANDARD),
+      ),
+    ]
+    compareLines(
+      name,
+      expected,
+      lines.map(text => ({ text, marks: [] })),
+      true,
+    )
     continue
   }
 
   const drawn = drawCard(card, width, card.ascii ?? false)
-  compareLines(name, expected, drawn.map(marksOf), card.colorless ?? false)
+  compareLines(
+    name,
+    expected,
+    drawn.map(marksOf),
+    card.colorless ?? false,
+  )
 
   // the width invariant, in the three views. Color changes no width, so the layout's lines are the color view's
   for (const ascii of [false, true]) {
-    const lines = ascii === (card.ascii ?? false) ? drawn : drawCard(card, width, ascii)
-    const wide = lines.map(line => ({ text: lineText(line), cells: measureText(lineText(line)) })).filter(line => line.cells > width)
-    ok(`${name} ${ascii ? 'ASCII' : 'Unicode'}: every line within ${width} cells`, wide.length === 0, wide.map(line => `  ${line.cells}: ${line.text}`).join('\n'))
+    const lines =
+      ascii === (card.ascii ?? false)
+        ? drawn
+        : drawCard(card, width, ascii)
+    const wide = lines
+      .map(line => ({
+        text: lineText(line),
+        cells: measureText(lineText(line)),
+      }))
+      .filter(line => line.cells > width)
+    ok(
+      `${name} ${ascii ? 'ASCII' : 'Unicode'}: every line within ${width} cells`,
+      wide.length === 0,
+      wide.map(line => `  ${line.cells}: ${line.text}`).join('\n'),
+    )
 
     if (ascii) {
-      const foreign = lines.map(lineText).filter(text => [...text].some(character => character.codePointAt(0)! > 126))
-      ok(`${name} ASCII: every character is ASCII`, foreign.length === 0, foreign.slice(0, 3).map(text => `  ${text}`).join('\n'))
+      const foreign = lines
+        .map(lineText)
+        .filter(text =>
+          [...text].some(character => character.codePointAt(0)! > 126),
+        )
+      ok(
+        `${name} ASCII: every character is ASCII`,
+        foreign.length === 0,
+        foreign
+          .slice(0, 3)
+          .map(text => `  ${text}`)
+          .join('\n'),
+      )
     }
   }
 
   // no color: the painted text is the layout's text exactly, and holds no escape
-  const none = paintLines(drawn, makePalette('none', 'unknown', false), STANDARD)
-  ok(`${name} no color: the text exactly, no escapes`, none === drawn.map(line => `${lineText(line)}\n`).join('') && !none.includes(ESCAPE))
+  const none = paintLines(
+    drawn,
+    makePalette('none', 'unknown', false),
+    STANDARD,
+  )
+  ok(
+    `${name} no color: the text exactly, no escapes`,
+    none === drawn.map(line => `${lineText(line)}\n`).join('') &&
+      !none.includes(ESCAPE),
+  )
 
   // color: the escapes read back into the roles the layout gave
-  for (const theme of [card.light ? 'light' : 'dark', 'ansi'] as const) {
-    const palette = theme === 'ansi' ? makePalette('ansi', 'unknown', false) : makePalette('truecolor', theme, true)
-    const read = readPainted(paintLines(drawn, palette, STANDARD), theme)
+  for (const theme of [
+    card.light ? 'light' : 'dark',
+    'ansi',
+  ] as const) {
+    const palette =
+      theme === 'ansi'
+        ? makePalette('ansi', 'unknown', false)
+        : makePalette('truecolor', theme, true)
+    const read = readPainted(
+      paintLines(drawn, palette, STANDARD),
+      theme,
+    )
     const layout = drawn.map(marksOf)
     const wrong: string[] = []
 
@@ -435,7 +608,9 @@ for (let index = 0; index < CARDS.length; index++) {
       const seen = read[at]
 
       if (!seen || seen.text !== line.text) {
-        wrong.push(`  line ${at}: text ${JSON.stringify(seen?.text)} against ${JSON.stringify(line.text)}`)
+        wrong.push(
+          `  line ${at}: text ${JSON.stringify(seen?.text)} against ${JSON.stringify(line.text)}`,
+        )
         return
       }
 
@@ -443,13 +618,24 @@ for (let index = 0; index < CARDS.length; index++) {
         const want = line.marks[column]!
         const got = seen.marks[column]!
 
-        if (character !== ' ' && (want.role !== got.role || want.strong !== got.strong || want.focus !== got.focus)) {
-          wrong.push(`  line ${at} column ${column} ${JSON.stringify(character)}: ${JSON.stringify(want)} painted as ${JSON.stringify(got)}`)
+        if (
+          character !== ' ' &&
+          (want.role !== got.role ||
+            want.strong !== got.strong ||
+            want.focus !== got.focus)
+        ) {
+          wrong.push(
+            `  line ${at} column ${column} ${JSON.stringify(character)}: ${JSON.stringify(want)} painted as ${JSON.stringify(got)}`,
+          )
         }
       })
     })
 
-    ok(`${name} ${theme === 'ansi' ? '16 colors' : `truecolor ${theme}`}: painted roles read back as drawn`, wrong.length === 0, wrong.slice(0, 4).join('\n'))
+    ok(
+      `${name} ${theme === 'ansi' ? '16 colors' : `truecolor ${theme}`}: painted roles read back as drawn`,
+      wrong.length === 0,
+      wrong.slice(0, 4).join('\n'),
+    )
   }
 }
 

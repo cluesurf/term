@@ -41,7 +41,9 @@ function shape(node: Node): string {
     case 'name':
       return n.parts!.map(p => p.text ?? '').join('')
     case 'text':
-      return n.scope ? `{${n.scope}:${n.raw}}` : `<${n.parts!.map(p => p.text ?? '').join('')}>`
+      return n.scope
+        ? `{${n.scope}:${n.raw}}`
+        : `<${n.parts!.map(p => p.text ?? '').join('')}>`
     default:
       return String(n.value)
   }
@@ -72,42 +74,118 @@ function last(text: string): string {
 
 // ---- where each spelling lands ----
 
-ok('`role note, x + y` is a sibling of the name', tree('a x, role note, x + y') === '(a (x) (role (note) {line:x + y}))', tree('a x, role note, x + y'))
-const spaced = parse({ file: 'scope.tree', text: 'a x, role note x + y' })
+ok(
+  '`role note, x + y` is a sibling of the name',
+  tree('a x, role note, x + y') ===
+    '(a (x) (role (note) {line:x + y}))',
+  tree('a x, role note, x + y'),
+)
+const spaced = parse({
+  file: 'scope.tree',
+  text: 'a x, role note x + y',
+})
 
 ok(
   '`role note x + y` is refused, naming the comma: a role scope follows a comma',
-  !spaced.ok && spaced.diagnostics.some(d => /a `role` scope follows a comma: `role note, x \+ y`/.test(d.message) && d.span.start.column === 14),
-  JSON.stringify(spaced.diagnostics.map(d => [d.message, d.span.start])),
+  !spaced.ok &&
+    spaced.diagnostics.some(
+      d =>
+        /a `role` scope follows a comma: `role note, x \+ y`/.test(
+          d.message,
+        ) && d.span.start.column === 14,
+    ),
+  JSON.stringify(
+    spaced.diagnostics.map(d => [d.message, d.span.start]),
+  ),
 )
-ok('`role note(x + y)` in parentheses', tree('a role note(f(x) + y)') === '(a (role (note {paren:f(x) + y})))', tree('a role note(f(x) + y)'))
+ok(
+  '`role note(x + y)` in parentheses',
+  tree('a role note(f(x) + y)') ===
+    '(a (role (note {paren:f(x) + y})))',
+  tree('a role note(f(x) + y)'),
+)
 ok(
   '`role note` over a block, its lines dedented and kept',
-  tree('a x\n  role note\n    x^2\n      + 1\n\nb') === '(a (x) (role (note {block:x^2\n  + 1}))) (b)',
+  tree('a x\n  role note\n    x^2\n      + 1\n\nb') ===
+    '(a (x) (role (note {block:x^2\n  + 1}))) (b)',
   JSON.stringify(tree('a x\n  role note\n    x^2\n      + 1\n\nb')),
 )
-ok('an imported name: `note x + y`', last(`${LOAD}a x, note x + y`) === '(a (x) (note {line:x + y}))', last(`${LOAD}a x, note x + y`))
-ok('an imported name in parentheses: `note(x + y)`', last(`${LOAD}a note(x + y)`) === '(a (note {paren:x + y}))', last(`${LOAD}a note(x + y)`))
-ok('an imported name over a block', last(`${LOAD}note\n  9.81m/s^2`) === '(note {block:9.81m/s^2})', last(`${LOAD}note\n  9.81m/s^2`))
-ok('an alias: `find note, name math`', last('load @term/mill/text/note\n  find note, name math\n\na math 1 + 2') === '(a (math {line:1 + 2}))')
-ok('a relative mill: `load ./some/mill`', last('load ./some/mill\n  find note\n\na note 1 + 2') === '(a (note {line:1 + 2}))')
-ok('`find role note` under any load', last('load ./x\n  find role note\n\na note 1 + 2') === '(a (note {line:1 + 2}))')
-ok('the text is verbatim: `.tree` never reads it', tree('a role note, {x} \\ <y> # z') === '(a (role (note) {line:{x} \\ <y> # z}))', tree('a role note, {x} \\ <y> # z'))
-ok('trailing spaces are not the scope\'s', tree('a role note, x + y   ') === '(a (role (note) {line:x + y}))', JSON.stringify(tree('a role note, x + y   ')))
+ok(
+  'an imported name: `note x + y`',
+  last(`${LOAD}a x, note x + y`) === '(a (x) (note {line:x + y}))',
+  last(`${LOAD}a x, note x + y`),
+)
+ok(
+  'an imported name in parentheses: `note(x + y)`',
+  last(`${LOAD}a note(x + y)`) === '(a (note {paren:x + y}))',
+  last(`${LOAD}a note(x + y)`),
+)
+ok(
+  'an imported name over a block',
+  last(`${LOAD}note\n  9.81m/s^2`) === '(note {block:9.81m/s^2})',
+  last(`${LOAD}note\n  9.81m/s^2`),
+)
+ok(
+  'an alias: `find note, name math`',
+  last(
+    'load @term/mill/text/note\n  find note, name math\n\na math 1 + 2',
+  ) === '(a (math {line:1 + 2}))',
+)
+ok(
+  'a relative mill: `load ./some/mill`',
+  last('load ./some/mill\n  find note\n\na note 1 + 2') ===
+    '(a (note {line:1 + 2}))',
+)
+ok(
+  '`find role note` under any load',
+  last('load ./x\n  find role note\n\na note 1 + 2') ===
+    '(a (note {line:1 + 2}))',
+)
+ok(
+  'the text is verbatim: `.tree` never reads it',
+  tree('a role note, {x} \\ <y> # z') ===
+    '(a (role (note) {line:{x} \\ <y> # z}))',
+  tree('a role note, {x} \\ <y> # z'),
+)
+ok(
+  "trailing spaces are not the scope's",
+  tree('a role note, x + y   ') === '(a (role (note) {line:x + y}))',
+  JSON.stringify(tree('a role note, x + y   ')),
+)
 
 // ---- what is not a scope ----
 
-ok('`role mill` is a file\'s role, never a scope', tree('role mill\n  take @/code/**') === '(role (mill) (take (@/code/**)))')
+ok(
+  "`role mill` is a file's role, never a scope",
+  tree('role mill\n  take @/code/**') ===
+    '(role (mill) (take (@/code/**)))',
+)
 ok(
   'a `role` heading an unindented line is a role rule, whatever it names, so a misspelling is still refused as a role',
-  tree('role special\n  take @/code/**') === '(role (special) (take (@/code/**)))',
+  tree('role special\n  take @/code/**') ===
+    '(role (special) (take (@/code/**)))',
   tree('role special\n  take @/code/**'),
 )
-ok('`find role note` itself is a load line', !tree('load ./x\n  find role note').includes('{'))
-ok('the name used as a variable: `save note, 3`, `read note`', !last(`${LOAD}save note, 3\nread note`).includes('{'))
-ok('a literal already written: `note <A sentence.>`', last(`${LOAD}note <A sentence.>`) === '(note <A sentence.>)')
-ok('without the import, `note` is code', !tree('a note x').includes('{'))
-ok('`find` of a code module is not a grammar: `load @term/base/list / find get`', !last('load @term/base/list\n  find get\n\na get x').includes('{'))
+ok(
+  '`find role note` itself is a load line',
+  !tree('load ./x\n  find role note').includes('{'),
+)
+ok(
+  'the name used as a variable: `save note, 3`, `read note`',
+  !last(`${LOAD}save note, 3\nread note`).includes('{'),
+)
+ok(
+  'a literal already written: `note <A sentence.>`',
+  last(`${LOAD}note <A sentence.>`) === '(note <A sentence.>)',
+)
+ok(
+  'without the import, `note` is code',
+  !tree('a note x').includes('{'),
+)
+ok(
+  '`find` of a code module is not a grammar: `load @term/base/list / find get`',
+  !last('load @term/base/list\n  find get\n\na get x').includes('{'),
+)
 
 // ---- refused ----
 
@@ -115,7 +193,13 @@ const open = parse({ file: 'scope.tree', text: `${LOAD}a note(x + 1` })
 
 ok(
   'parentheses left open are refused, at the `(`',
-  !open.ok && open.diagnostics.some(d => /must close with `\)` on the same line/.test(d.message) && d.span.start.line === 3 && d.span.start.column === 6),
+  !open.ok &&
+    open.diagnostics.some(
+      d =>
+        /must close with `\)` on the same line/.test(d.message) &&
+        d.span.start.line === 3 &&
+        d.span.start.column === 6,
+    ),
   JSON.stringify(open.diagnostics.map(d => [d.message, d.span.start])),
 )
 
@@ -133,12 +217,18 @@ const WRITTEN = [
 // the lines a scope is written on, as written: its opener's line and, for a block, the lines under it
 function scopeLines(text: string): string[] {
   const lines = text.split('\n')
-  const at = lines.findIndex(line => /role note|note [^<]|note\(/.test(line) && !/find/.test(line))
+  const at = lines.findIndex(
+    line =>
+      /role note|note [^<]|note\(/.test(line) && !/find/.test(line),
+  )
   const own = lines[at]!.length - lines[at]!.trimStart().length
   const out = [lines[at]!]
 
   for (const line of lines.slice(at + 1)) {
-    if (line.trim() !== '' && line.length - line.trimStart().length <= own) {
+    if (
+      line.trim() !== '' &&
+      line.length - line.trimStart().length <= own
+    ) {
       break
     }
 
@@ -155,20 +245,29 @@ for (const text of WRITTEN) {
 
   ok(
     `term form keeps the meaning and writes the scope as written: ${JSON.stringify(scopeLines(text)[0]!.trim())}`,
-    report.refused === undefined && report.text.includes(want) && again.text === report.text,
+    report.refused === undefined &&
+      report.text.includes(want) &&
+      again.text === report.text,
     `\n${report.text}\nrefused: ${report.refused}`,
   )
 }
 
 ok(
   'the canonical printer writes a scope as the literal it reads the same as',
-  printTree(parse({ file: 'scope.tree', text: 'a role note, x + y' }).tree) === 'a\n  role\n    note\n    <<x + y>>',
-  JSON.stringify(printTree(parse({ file: 'scope.tree', text: 'a role note, x + y' }).tree)),
+  printTree(
+    parse({ file: 'scope.tree', text: 'a role note, x + y' }).tree,
+  ) === 'a\n  role\n    note\n    <<x + y>>',
+  JSON.stringify(
+    printTree(
+      parse({ file: 'scope.tree', text: 'a role note, x + y' }).tree,
+    ),
+  ),
 )
 
 ok(
   'and that literal parses back to the same scope',
-  tree('a\n  role\n    note\n    <<x + y>>') === '(a (role (note) <x + y>))',
+  tree('a\n  role\n    note\n    <<x + y>>') ===
+    '(a (role (note) <x + y>))',
   tree('a\n  role\n    note\n    <<x + y>>'),
 )
 

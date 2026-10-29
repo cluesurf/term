@@ -39,7 +39,8 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const FIXTURE = join(TERM, 'deck/host/test/fixture')
 const HOST_ROLE = join(TERM, 'deck/mill/code/tree/host')
@@ -62,12 +63,36 @@ const mints = readMintGrammar(mintTree.tree)
 
 ok(
   'the host mine grammar reads (every rule named)',
-  ['host', 'host-entry', 'host-value', 'host-map', 'host-list', 'host-sublist', 'host-mesh', 'host-item', 'host-tree', 'host-fuse', 'host-scalar'].every(n => grammar.has(n)),
+  [
+    'host',
+    'host-entry',
+    'host-value',
+    'host-map',
+    'host-list',
+    'host-sublist',
+    'host-mesh',
+    'host-item',
+    'host-tree',
+    'host-fuse',
+    'host-scalar',
+  ].every(n => grammar.has(n)),
   [...grammar.keys()].join(', '),
 )
 ok(
   'the host mint grammar reads (every mint named)',
-  ['host', 'host-entry', 'host-value', 'host-map', 'host-list', 'host-sublist', 'host-mesh', 'host-item', 'host-tree', 'host-fuse', 'host-scalar'].every(n => mints.has(n)),
+  [
+    'host',
+    'host-entry',
+    'host-value',
+    'host-map',
+    'host-list',
+    'host-sublist',
+    'host-mesh',
+    'host-item',
+    'host-tree',
+    'host-fuse',
+    'host-scalar',
+  ].every(n => mints.has(n)),
   [...mints.keys()].join(', '),
 )
 
@@ -111,7 +136,10 @@ function toData(minted: Minted): Data {
 
           return {
             kind: 'fuse',
-            name: name?.kind === 'word' || name?.kind === 'text' ? name.value : '',
+            name:
+              name?.kind === 'word' || name?.kind === 'text'
+                ? name.value
+                : '',
           }
         }
         default:
@@ -130,21 +158,29 @@ function toEntry(minted: Minted): DataEntry {
   }
 
   if (minted.kind !== 'form' || minted.form !== 'data-entry') {
-    throw new Error(`expected data-entry, got ${JSON.stringify(minted).slice(0, 120)}`)
+    throw new Error(
+      `expected data-entry, got ${JSON.stringify(minted).slice(0, 120)}`,
+    )
   }
 
   const name = minted.fields.name?.[0]
   const base = minted.fields.base?.[0]
 
   return {
-    name: name?.kind === 'word' || name?.kind === 'text' ? name.value : '',
+    name:
+      name?.kind === 'word' || name?.kind === 'text' ? name.value : '',
     base: base ? toData(base) : { kind: 'void' },
   }
 }
 
 // assemble the DataFile shape the reader produces: anchors into the tree map, entries into a hash root (items
 // into a list root when the file is a list at top level)
-function assemble(match: Map<string, import('@term/make/code/compile/mill-run').MillCapture[]>): {
+function assemble(
+  match: Map<
+    string,
+    import('@term/make/code/compile/mill-run').MillCapture[]
+  >,
+): {
   root: Data
   trees: Map<string, DataTree>
 } {
@@ -206,7 +242,11 @@ for (const name of ['basic.tree', 'anchors.tree']) {
   const reference = readDataText({ file: name, text })
 
   if (!reference.ok) {
-    ok(`${name}: the reference reader reads it`, false, reference.diagnostics.map(d => d.message).join(' | '))
+    ok(
+      `${name}: the reference reader reads it`,
+      false,
+      reference.diagnostics.map(d => d.message).join(' | '),
+    )
     continue
   }
 
@@ -229,7 +269,8 @@ for (const name of ['basic.tree', 'anchors.tree']) {
 
   ok(
     `${name}: writeLong is byte for byte the reader's`,
-    writeLong(built.root, built.trees) === writeLong(reference.data.root, reference.data.trees),
+    writeLong(built.root, built.trees) ===
+      writeLong(reference.data.root, reference.data.trees),
     `executor:\n${writeLong(built.root, built.trees)}\nreader:\n${writeLong(reference.data.root, reference.data.trees)}`,
   )
   ok(
@@ -259,10 +300,18 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
   // key (`twice`), a shelved file (`draft`), and a key's lexical class (`not-a-key`: the mine dialect has no
   // charset rule for a captured term yet — a recorded distance, mill-self-hosting.md). The reader's second
   // pass refuses each of them
-  const semantic = new Set(['fuse-unknown.tree', 'twice.tree', 'draft.tree', 'not-a-key.tree'])
+  const semantic = new Set([
+    'fuse-unknown.tree',
+    'twice.tree',
+    'draft.tree',
+    'not-a-key.tree',
+  ])
 
   if (semantic.has(name)) {
-    ok(`bad/${name}: a semantic refusal, left to the reader's second pass (named skip)`, true)
+    ok(
+      `bad/${name}: a semantic refusal, left to the reader's second pass (named skip)`,
+      true,
+    )
     continue
   }
 
@@ -278,8 +327,11 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
   const roleGrammar = readMineGrammar(
     parse({
       file: 'role-mine.tree',
-      text: readFileSync(join(TERM, 'deck/mill/code/tree/deck/role/mine.tree'), 'utf8'),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      text: readFileSync(
+        join(TERM, 'deck/mill/code/tree/deck/role/mine.tree'),
+        'utf8',
+      ),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any).tree!,
   )
   const roleFile = parse({
@@ -289,7 +341,9 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
 
   if (roleFile.ok) {
     const groups = roleFile.tree.nodes.filter(
-      n => n.nodes[0]?.kind === 'name' && (n.nodes[0].parts[0] as { text?: string }).text === 'role',
+      n =>
+        n.nodes[0]?.kind === 'name' &&
+        (n.nodes[0].parts[0] as { text?: string }).text === 'role',
     )
     const matches = groups.map(g =>
       runMine(roleGrammar, 'role', { kind: 'root', nodes: [g] }),
@@ -306,23 +360,38 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
   const testGrammar = readMineGrammar(
     parse({
       file: 'test-mine.tree',
-      text: readFileSync(join(TERM, 'deck/mill/code/tree/test/mine.tree'), 'utf8'),
+      text: readFileSync(
+        join(TERM, 'deck/mill/code/tree/test/mine.tree'),
+        'utf8',
+      ),
     }).tree!,
   )
   const testMints = readMintGrammar(
     parse({
       file: 'test-mint.tree',
-      text: readFileSync(join(TERM, 'deck/mill/code/tree/test/mint.tree'), 'utf8'),
+      text: readFileSync(
+        join(TERM, 'deck/mill/code/tree/test/mint.tree'),
+        'utf8',
+      ),
     }).tree!,
   )
 
   const want: Record<string, string[]> = {
     'deck/base/code/test/mint/ansi.tree': ['make-ansi-text-from-zone'],
-    'deck/base/code/test/view/tint.tree': ['gray', 'green', 'red', 'test-case', 'side'],
+    'deck/base/code/test/view/tint.tree': [
+      'gray',
+      'green',
+      'red',
+      'test-case',
+      'side',
+    ],
   }
 
   for (const [file, names] of Object.entries(want)) {
-    const parsed = parse({ file, text: readFileSync(join(TERM, file), 'utf8') })
+    const parsed = parse({
+      file,
+      text: readFileSync(join(TERM, file), 'utf8'),
+    })
 
     if (!parsed.ok) {
       ok(`${file} parses`, false)
@@ -336,8 +405,9 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
       continue
     }
 
-    const defs = runMint(testMints, 'test', mined.match)
-      .map(d => (d.kind === 'word' ? d.value : ''))
+    const defs = runMint(testMints, 'test', mined.match).map(d =>
+      d.kind === 'word' ? d.value : '',
+    )
     ok(
       `${file}: the executor lifts its definitions (${names.join(', ')})`,
       names.every(n => defs.includes(n)),
@@ -353,7 +423,8 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
 {
   // the HAND reader is the reference here: parseManifest itself reads through the mill now, so comparing
   // against it would be mill-vs-mill
-  const { parseManifestByHand: parseManifest } = await import('../../deck/deck/code/package/manifest')
+  const { parseManifestByHand: parseManifest } =
+    await import('../../deck/deck/code/package/manifest')
   const { readdirSync } = await import('node:fs')
 
   // the deck grammar with its load closure inlined (the executor takes one grammar map)
@@ -394,7 +465,10 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
 
         const target = group.nodes[1]
 
-        if (target?.kind === 'group' && target.nodes[0]?.kind === 'name') {
+        if (
+          target?.kind === 'group' &&
+          target.nodes[0]?.kind === 'name'
+        ) {
           imports.push(renderHead(target.nodes[0]))
         }
       }
@@ -406,7 +480,9 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
 
     // the mill's own load rule (`resolveMillImport`, the package path rule), never a prefix table of its own
     for (const path of imports) {
-      const found = path.startsWith('@') ? resolveMillImport(MILL, file, path) : undefined
+      const found = path.startsWith('@')
+        ? resolveMillImport(MILL, file, path)
+        : undefined
 
       if (found) {
         collect(found)
@@ -415,14 +491,23 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
   }
 
   collect(join(MILL, 'deck/mine.tree'))
-  const deckGrammarTree = parse({ file: 'deck-grammar.tree', text: parts.join('\n\n') })
+  const deckGrammarTree = parse({
+    file: 'deck-grammar.tree',
+    text: parts.join('\n\n'),
+  })
 
   if (!deckGrammarTree.ok) {
     ok('the deck grammar closure parses', false)
   } else {
     const deckGrammar = readMineGrammar(deckGrammarTree.tree)
-    const words = (caps: import('@term/make/code/compile/mill-run').MillCapture[] | undefined): string[] =>
-      (caps ?? []).flatMap(c => (c.kind === 'word' || c.kind === 'text' ? [c.value] : []))
+    const words = (
+      caps:
+        | import('@term/make/code/compile/mill-run').MillCapture[]
+        | undefined,
+    ): string[] =>
+      (caps ?? []).flatMap(c =>
+        c.kind === 'word' || c.kind === 'text' ? [c.value] : [],
+      )
     let manifests = 0
     let agree = 0
     const disagreements: string[] = []
@@ -462,24 +547,33 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
 
       const fields = deckCap.match
       const name = words(fields.get('name'))[0] ?? ''
-      const wantName = reference.host ? `@${reference.host}/${reference.name}` : reference.name
+      const wantName = reference.host
+        ? `@${reference.host}/${reference.name}`
+        : reference.name
       // the version: `mark <x>`, else the OLD spelling `code <x>` (a text literal, where `code ./dir` is the code
       // root and captures a path instead), defaulting 0.0.0 (note/project/term/manifest/manifest-mark-and-code-root.md)
       const markCap = fields.get('mark')?.[0]
       const versionMatch = (cap: typeof markCap): string =>
-        cap?.kind === 'match' ? (words(cap.match.get('text'))[0] ?? '') : ''
+        cap?.kind === 'match'
+          ? (words(cap.match.get('text'))[0] ?? '')
+          : ''
       const version =
-        versionMatch(markCap) || (fields.get('code') ?? []).map(versionMatch).find(Boolean) || '0.0.0'
+        versionMatch(markCap) ||
+        (fields.get('code') ?? []).map(versionMatch).find(Boolean) ||
+        '0.0.0'
       const wantVersion = `${reference.mark.major}.${reference.mark.minor}.${reference.mark.patch}`
       const links = (fields.get('link') ?? []).flatMap(c =>
         c.kind === 'match' ? words(c.match.get('name')) : [],
       )
-      const wantLinks = reference.link.map(l => (l.host ? `@${l.host}/${l.name}` : l.name))
+      const wantLinks = reference.link.map(l =>
+        l.host ? `@${l.host}/${l.name}` : l.name,
+      )
 
       if (
         name === wantName &&
         version === wantVersion &&
-        JSON.stringify(links.sort()) === JSON.stringify(wantLinks.sort())
+        JSON.stringify(links.sort()) ===
+          JSON.stringify(wantLinks.sort())
       ) {
         agree++
       } else {
@@ -502,7 +596,8 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
 // links the reader sees (no lock.tree is committed in the tree, so the writer's own output is the fixture)
 
 {
-  const { writeLockfile, parseLockfileByHand: parseLockfile } = await import('../../deck/deck/code/package/lock')
+  const { writeLockfile, parseLockfileByHand: parseLockfile } =
+    await import('../../deck/deck/code/package/lock')
   const fixture = writeLockfile({
     lockfile: {
       version: 1,
@@ -522,14 +617,17 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
           link: [],
         },
       ],
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any,
   })
   const reference = parseLockfile({ text: fixture })
   const lockGrammar = readMineGrammar(
     parse({
       file: 'lock-mine.tree',
-      text: readFileSync(join(TERM, 'deck/mill/code/tree/deck/lock/mine.tree'), 'utf8'),
+      text: readFileSync(
+        join(TERM, 'deck/mill/code/tree/deck/lock/mine.tree'),
+        'utf8',
+      ),
     }).tree!,
   )
   const parsed = parse({ file: 'lock.tree', text: fixture })
@@ -542,7 +640,12 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
     if (!mined.ok) {
       ok('the lockfile reads through the lock grammar', false)
     } else {
-      const first = (caps: import('@term/make/code/compile/mill-run').MillCapture[] | undefined, site: string): string => {
+      const first = (
+        caps:
+          | import('@term/make/code/compile/mill-run').MillCapture[]
+          | undefined,
+        site: string,
+      ): string => {
         const cap = caps?.[0]
 
         if (cap?.kind !== 'match') {
@@ -551,7 +654,9 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
 
         const v = cap.match.get(site)?.[0]
 
-        return v && (v.kind === 'word' || v.kind === 'text') ? v.value : ''
+        return v && (v.kind === 'word' || v.kind === 'text')
+          ? v.value
+          : ''
       }
       const deckCaps = mined.match.get('deck') ?? []
       const got = deckCaps.map(cap => {
@@ -563,11 +668,15 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
         const name = f.get('name')?.[0]
 
         return {
-          name: name && (name.kind === 'word' || name.kind === 'text') ? name.value : '',
+          name:
+            name && (name.kind === 'word' || name.kind === 'text')
+              ? name.value
+              : '',
           code: first(f.get('code'), 'text'),
           hash: first(f.get('hash'), 'text'),
           links: (f.get('link') ?? []).map(l =>
-            l.kind === 'match' && l.match.get('name')?.[0]?.kind === 'word'
+            l.kind === 'match' &&
+            l.match.get('name')?.[0]?.kind === 'word'
               ? (l.match.get('name')![0] as { value: string }).value
               : '',
           ),
@@ -581,13 +690,14 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
       }))
 
       ok(
-        'the lockfile reads through the lock grammar with the reader\'s decks, codes, hashes and links',
+        "the lockfile reads through the lock grammar with the reader's decks, codes, hashes and links",
         JSON.stringify(got) === JSON.stringify(want),
         `executor: ${JSON.stringify(got)}\nreader: ${JSON.stringify(want)}`,
       )
       ok(
         'the lockfile version reads',
-        first(mined.match.get('head'), 'version') === String(reference.version),
+        first(mined.match.get('head'), 'version') ===
+          String(reference.version),
         first(mined.match.get('head'), 'version'),
       )
     }
@@ -608,8 +718,10 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
 // would have fallen through to another role, silently.
 
 {
-  const { parseRoleFile, parseRoleFileByHand } = await import('../../deck/deck/code/package/role')
-  const { readFileSync: read, existsSync: has } = await import('node:fs')
+  const { parseRoleFile, parseRoleFileByHand } =
+    await import('../../deck/deck/code/package/role')
+  const { readFileSync: read, existsSync: has } =
+    await import('node:fs')
 
   const roleFile = join(TERM, 'base/role.tree')
 
@@ -620,7 +732,7 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
     const hand = parseRoleFileByHand({ text, root })
 
     ok(
-      'the role file reads through the role grammar with the hand reader\'s roles, globs and misses',
+      "the role file reads through the role grammar with the hand reader's roles, globs and misses",
       JSON.stringify(mill) === JSON.stringify(hand),
       `mill: ${JSON.stringify(mill)}\nhand: ${JSON.stringify(hand)}`,
     )
@@ -632,7 +744,11 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
       JSON.stringify(mill),
     )
 
-    ok('the role file declares roles', mill.rules.length > 0, JSON.stringify(mill))
+    ok(
+      'the role file declares roles',
+      mill.rules.length > 0,
+      JSON.stringify(mill),
+    )
   }
 
   // a `role` whose lines do not fit is refused at its line. The deck grammar's last alternative takes any node, so
@@ -640,12 +756,19 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
   let refused = ''
 
   try {
-    parseRoleFile({ text: 'role code\n  take @/code/**/*.tree\n    skip @/code/data/**/*.tree\n\nrole host\n  take @/code/data/**/*.tree\n', root: '/x' })
+    parseRoleFile({
+      text: 'role code\n  take @/code/**/*.tree\n    skip @/code/data/**/*.tree\n\nrole host\n  take @/code/data/**/*.tree\n',
+      root: '/x',
+    })
   } catch (error) {
     refused = (error as Error).message
   }
 
-  ok('a `role` with a line its grammar does not read is refused at its line', /`role code` at line 1 does not fit the role grammar/.test(refused), refused || 'not refused')
+  ok(
+    'a `role` with a line its grammar does not read is refused at its line',
+    /`role code` at line 1 does not fit the role grammar/.test(refused),
+    refused || 'not refused',
+  )
 }
 
 console.log(`\nmill-run: ${pass} pass, ${fail} fail`)

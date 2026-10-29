@@ -5,7 +5,12 @@
 // Run: npx tsx test/view/handler-body.ts
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
@@ -28,7 +33,8 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 // two buttons: `both` writes two signals in one handler, `one` writes one. Each is clicked once, and the view shows all
 // three signals, so a handler that did not run leaves its zeros
-const WANT = '<main><button>both</button><button>one</button><span>1-1-1</span></main>'
+const WANT =
+  '<main><button>both</button><button>one</button><span>1-1-1</span></main>'
 
 const PROGRAM = `load @term/site/code/view/reactive
   find make-signal
@@ -125,22 +131,51 @@ task run
 function pinned(env: string): Resolver {
   const base = projectResolver(process.cwd(), env)
 
-  return (importPath, fromFile) => base(importPath.replace(/native\/\{platform\}\/(dom|view)$/, 'native/memory/$1'), fromFile)
+  return (importPath, fromFile) =>
+    base(
+      importPath.replace(
+        /native\/\{platform\}\/(dom|view)$/,
+        'native/memory/$1',
+      ),
+      fromFile,
+    )
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'term-handler-body-'))
 const entry = join(dir, 'board.tree')
 writeFileSync(entry, PROGRAM)
-const result = compile({ file: entry, text: PROGRAM }, { resolve: pinned('node'), env: 'node' })
-ok('the view compiles', result.ok, result.ok ? '' : [...new Set(result.diagnostics.map(d => d.message))].slice(0, 6).join(' | '))
+const result = compile(
+  { file: entry, text: PROGRAM },
+  { resolve: pinned('node'), env: 'node' },
+)
+ok(
+  'the view compiles',
+  result.ok,
+  result.ok
+    ? ''
+    : [...new Set(result.diagnostics.map(d => d.message))]
+        .slice(0, 6)
+        .join(' | '),
+)
 
 if (result.ok) {
-  ok('no handler is a closure that only builds a closure', !/=> \(\(\) =>/.test(result.typescript))
-  const readRuntime = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, 'utf8') : undefined)
+  ok(
+    'no handler is a closure that only builds a closure',
+    !/=> \(\(\) =>/.test(result.typescript),
+  )
+  const readRuntime = (file: string): string | undefined =>
+    existsSync(file) ? readFileSync(file, 'utf8') : undefined
   const file = join(dir, 'board.ts')
-  writeFileSync(file, `${nativePrelude(result.program, 'node', readRuntime, result.typescript)}\n${result.typescript}\nconsole.log(run())\n`)
+  writeFileSync(
+    file,
+    `${nativePrelude(result.program, 'node', readRuntime, result.typescript)}\n${result.typescript}\nconsole.log(run())\n`,
+  )
   const ran = spawnSync('npx', ['tsx', file], { encoding: 'utf8' })
-  ok('both handlers run every statement they hold', ran.status === 0 && ran.stdout.trim() === WANT, `exit ${ran.status}: ${(ran.stdout + ran.stderr).slice(0, 400)}`)
+  ok(
+    'both handlers run every statement they hold',
+    ran.status === 0 && ran.stdout.trim() === WANT,
+    `exit ${ran.status}: ${(ran.stdout + ran.stderr).slice(0, 400)}`,
+  )
 }
 
 console.log(`\nhandler-body: ${pass} pass, ${fail} fail`)

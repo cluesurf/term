@@ -123,8 +123,9 @@ function main(): void {
   ok('Type 0 : Type 1', () => {
     const t = infer(emptyContext, ty(0)).type
 
-    if (!(t.v === 'type' && eqLevel(t.level, litLevel(1))))
-      {throw new CoreTypeError('expected Type 1')}
+    if (!(t.v === 'type' && eqLevel(t.level, litLevel(1)))) {
+      throw new CoreTypeError('expected Type 1')
+    }
   })
   ok(
     'Type 0 checks against Type 1',
@@ -149,14 +150,16 @@ function main(): void {
   ok('instantiate u := 0 and it still checks', () => {
     const idType0 = instantiateLevel(idTypePoly, 'u', litLevel(0))
 
-    if (!checks(idTerm, idType0))
-      {throw new CoreTypeError('instantiated identity did not check')}
+    if (!checks(idTerm, idType0)) {
+      throw new CoreTypeError('instantiated identity did not check')
+    }
   })
   ok('instantiate u := 5 and it still checks', () => {
     const idType5 = instantiateLevel(idTypePoly, 'u', litLevel(5))
 
-    if (!checks(idTerm, idType5))
-      {throw new CoreTypeError('instantiated identity did not check')}
+    if (!checks(idTerm, idType5)) {
+      throw new CoreTypeError('instantiated identity did not check')
+    }
   })
 
   // ---- quantities / linearity ----
@@ -179,8 +182,9 @@ function main(): void {
 
   // ---- identity type ----
   ok('refl of a type', () => {
-    if (!checks(refl(ty(1), ty(0)), id(ty(1), ty(0), ty(0))))
-      {throw new CoreTypeError('refl did not check')}
+    if (!checks(refl(ty(1), ty(0)), id(ty(1), ty(0), ty(0)))) {
+      throw new CoreTypeError('refl did not check')
+    }
   })
   rejects(
     'refl with unequal sides',
@@ -247,8 +251,9 @@ function main(): void {
     // the proof is just: lambda A. lambda B. lambda f. lambda g. lambda h. h
     const funextTerm = lam(lam(lam(lam(lam(v(0))))))
 
-    if (!checks(funextTerm, funextType))
-      {throw new CoreTypeError('funext-as-identity did not check')}
+    if (!checks(funextTerm, funextType)) {
+      throw new CoreTypeError('funext-as-identity did not check')
+    }
   })
 
   // ---- metavariables: unification solves a type argument from a value argument ----
@@ -621,8 +626,9 @@ function main(): void {
     // the encoding is a well-formed type (its dependent eliminator is exactly application of a Bool)
     const inferred = infer(context, boolEncoding)
 
-    if (inferred.type.v !== 'type')
-      {throw new CoreTypeError('the Bool self-encoding is not a type')}
+    if (inferred.type.v !== 'type') {
+      throw new CoreTypeError('the Bool self-encoding is not a type')
+    }
   })
 
   // ---- the dead-to-live wall (term-proof-0001, tmp/mult-zero-wall-probe.ts) ----
@@ -634,23 +640,43 @@ function main(): void {
     base,
     level: litLevel(1),
   })
-  const closed = (term: Term, type: Term): void => void check(emptyContext, term, evaluate([], type))
+  const closed = (term: Term, type: Term): void =>
+    void check(emptyContext, term, evaluate([], type))
 
-  rejects('an erased binder returned through the base of J', () => closed(lam(jOver(v(0))), pi(0, ty(0), ty(0))))
-  rejects('a linear binder used twice, once hidden in the base of J', () =>
-    closed(lam(pair(jOver(v(0)), v(0))), pi(1, ty(0), sigma('many', ty(0), ty(0)))),
+  rejects('an erased binder returned through the base of J', () =>
+    closed(lam(jOver(v(0))), pi(0, ty(0), ty(0))),
   )
-  rejects('an erased binder packed as an erased first component, then projected live by fst', () =>
-    closed(lam(fst(ann(pair(v(0), ty(0)), sigma(0, ty(0), ty(1))))), pi(0, ty(0), ty(0))),
+  rejects(
+    'a linear binder used twice, once hidden in the base of J',
+    () =>
+      closed(
+        lam(pair(jOver(v(0)), v(0))),
+        pi(1, ty(0), sigma('many', ty(0), ty(0))),
+      ),
   )
-  ok('control: a linear binder returned once through the base of J', () =>
-    closed(lam(jOver(v(0))), pi(1, ty(0), ty(0))),
+  rejects(
+    'an erased binder packed as an erased first component, then projected live by fst',
+    () =>
+      closed(
+        lam(fst(ann(pair(v(0), ty(0)), sigma(0, ty(0), ty(1))))),
+        pi(0, ty(0), ty(0)),
+      ),
+  )
+  ok(
+    'control: a linear binder returned once through the base of J',
+    () => closed(lam(jOver(v(0))), pi(1, ty(0), ty(0))),
   )
   ok('control: fst of a pair whose first component is live', () =>
-    closed(lam(fst(ann(pair(v(0), ty(0)), sigma('many', ty(0), ty(1))))), pi('many', ty(0), ty(0))),
+    closed(
+      lam(fst(ann(pair(v(0), ty(0)), sigma('many', ty(0), ty(1))))),
+      pi('many', ty(0), ty(0)),
+    ),
   )
   ok('control: snd of a pair whose first component is erased', () =>
-    closed(lam(snd(ann(pair(v(0), ty(0)), sigma(0, ty(0), ty(1))))), pi(0, ty(0), ty(1))),
+    closed(
+      lam(snd(ann(pair(v(0), ty(0)), sigma(0, ty(0), ty(1))))),
+      pi(0, ty(0), ty(1)),
+    ),
   )
 
   console.log(`\njudge: ${pass} pass, ${fail} fail`)

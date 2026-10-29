@@ -33,56 +33,102 @@ view page
 `
 
 const asCode = analyze({ file: 'page.tree', text: DOCUMENT })
-const asView = analyze({ file: 'page.tree', text: DOCUMENT }, { role: 'view' })
+const asView = analyze(
+  { file: 'page.tree', text: DOCUMENT },
+  { role: 'view' },
+)
 
 ok('without the role it is milled as code', asCode.kind === 'code')
 ok('with the role it is a document', asView.kind === 'view')
-ok('and the document has no diagnostics', asView.diagnostics.length === 0, JSON.stringify(asView.diagnostics.map(d => d.message)))
-ok('and it lowers to a program', asView.program !== null && asView.program.length === 1)
+ok(
+  'and the document has no diagnostics',
+  asView.diagnostics.length === 0,
+  JSON.stringify(asView.diagnostics.map(d => d.message)),
+)
+ok(
+  'and it lowers to a program',
+  asView.program !== null && asView.program.length === 1,
+)
 ok(
   'the same text as code has none of that',
-  asCode.program === null || asCode.program.length !== 1 || asCode.diagnostics.length > 0,
+  asCode.program === null ||
+    asCode.program.length !== 1 ||
+    asCode.diagnostics.length > 0,
 )
 
 // a fault is underlined with a span, per keystroke, and it is the SAME message a save gives
-const bad = analyze({ file: 'page.tree', text: 'view page\n  task main\n' }, { role: 'view' })
+const bad = analyze(
+  { file: 'page.tree', text: 'view page\n  task main\n' },
+  { role: 'view' },
+)
 
 ok('a fault is reported', bad.diagnostics.length > 0)
 ok(
   'with the message a save would give',
-  bad.diagnostics.some(d => /cannot declare a function/.test(d.message)),
+  bad.diagnostics.some(d =>
+    /cannot declare a function/.test(d.message),
+  ),
   bad.diagnostics.map(d => d.message).join(' | '),
 )
-ok('and a span to underline', bad.diagnostics.every(d => d.span !== undefined))
+ok(
+  'and a span to underline',
+  bad.diagnostics.every(d => d.span !== undefined),
+)
 
 // the editor takes the catalog too, so an unregistered name is underlined while typing rather than at save
 const HERE = dirname(fileURLToPath(import.meta.url))
-const loaded = readCatalog({ file: 'catalog.tree', text: readFileSync(join(HERE, 'catalog.tree'), 'utf8') })
+const loaded = readCatalog({
+  file: 'catalog.tree',
+  text: readFileSync(join(HERE, 'catalog.tree'), 'utf8'),
+})
 
 if (loaded.ok) {
   const off = analyze(
-    { file: 'page.tree', text: 'view page\n  view text/nowhere\n    bind a, text <x>\n' },
+    {
+      file: 'page.tree',
+      text: 'view page\n  view text/nowhere\n    bind a, text <x>\n',
+    },
     { role: 'view', catalog: loaded.catalog },
   )
 
   ok(
     'an unregistered component is underlined while typing',
-    off.diagnostics.some(d => /not a component this document may place/.test(d.message)),
+    off.diagnostics.some(d =>
+      /not a component this document may place/.test(d.message),
+    ),
     off.diagnostics.map(d => d.message).join(' | '),
   )
 
   const on = analyze(
-    { file: 'page.tree', text: 'view page\n  view text/heading\n    bind a, text <x>\n' },
+    {
+      file: 'page.tree',
+      text: 'view page\n  view text/heading\n    bind a, text <x>\n',
+    },
     { role: 'view', catalog: loaded.catalog },
   )
 
-  ok('a registered one is not', on.diagnostics.length === 0, on.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'a registered one is not',
+    on.diagnostics.length === 0,
+    on.diagnostics.map(d => d.message).join(' | '),
+  )
 }
 
 // a document formats, because it IS tree syntax and the formatter needs no role
-const messy = analyze({ file: 'page.tree', text: 'view page\n  view text/item\n    bind a,   text <x>\n\n\n' }, { role: 'view' })
+const messy = analyze(
+  {
+    file: 'page.tree',
+    text: 'view page\n  view text/item\n    bind a,   text <x>\n\n\n',
+  },
+  { role: 'view' },
+)
 
-ok('a document formats', messy.format() === 'view page\n  view text/item\n    bind a, text <x>\n', JSON.stringify(messy.format()))
+ok(
+  'a document formats',
+  messy.format() ===
+    'view page\n  view text/item\n    bind a, text <x>\n',
+  JSON.stringify(messy.format()),
+)
 
 ok('and carries no code-role lint findings', messy.lint().length === 0)
 
@@ -95,15 +141,29 @@ ok('and carries no code-role lint findings', messy.lint().length === 0)
 const { compile } = await import('@term/make/code/compile/compile')
 
 const serverCompile = (text: string, role: string | null) =>
-  compile({ file: 'page.tree', text }, { roleOf: () => role, optimize: false })
+  compile(
+    { file: 'page.tree', text },
+    { roleOf: () => role, optimize: false },
+  )
 
 const said = (result: ReturnType<typeof serverCompile>): string[] =>
-  (result.ok ? result.warnings : result.diagnostics).map(one => one.message)
+  (result.ok ? result.warnings : result.diagnostics).map(
+    one => one.message,
+  )
 
 const good = serverCompile(DOCUMENT, 'view')
 
-ok('the server path reads a document', good.ok && said(good).length === 0, JSON.stringify(said(good)))
-ok('and hands back its lowered program', good.ok && good.program.length === 1 && good.program[0]?.form === 'view')
+ok(
+  'the server path reads a document',
+  good.ok && said(good).length === 0,
+  JSON.stringify(said(good)),
+)
+ok(
+  'and hands back its lowered program',
+  good.ok &&
+    good.program.length === 1 &&
+    good.program[0]?.form === 'view',
+)
 
 const wrong = serverCompile(DOCUMENT, null)
 
@@ -111,15 +171,24 @@ const wrong = serverCompile(DOCUMENT, null)
 // component, so what comes back is not the one lowered document. That is exactly why the role has to reach here.
 ok(
   'the same text without the role is not read as a document',
-  !(wrong.ok && wrong.program.length === 1 && wrong.program[0]?.form === 'view'),
-  JSON.stringify(wrong.ok ? wrong.program.map(one => one.form) : said(wrong)),
+  !(
+    wrong.ok &&
+    wrong.program.length === 1 &&
+    wrong.program[0]?.form === 'view'
+  ),
+  JSON.stringify(
+    wrong.ok ? wrong.program.map(one => one.form) : said(wrong),
+  ),
 )
 
 const broken = serverCompile('view page\n  task main\n', 'view')
 
 ok(
   'a fault reaches the editor with the message a save gives',
-  !broken.ok && said(broken).some(message => /cannot declare a function/.test(message)),
+  !broken.ok &&
+    said(broken).some(message =>
+      /cannot declare a function/.test(message),
+    ),
   said(broken).join(' | '),
 )
 

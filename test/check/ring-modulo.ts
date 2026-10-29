@@ -69,7 +69,10 @@ rule conditional
 }
 
 // TRUE modulo the hypothesis: e*(a*d) + f = e*(c*b) + f. The hypothesis must thread inside the AC monomial e*a*d.
-ok('conditional ring identity discharges', compiles(conditional('read f', 'read f')))
+ok(
+  'conditional ring identity discharges',
+  compiles(conditional('read f', 'read f')),
+)
 
 // FALSE: e*(a*d) + f = e*(c*b) + g is NOT a consequence of a*d = c*b. Must be rejected, or the prover is unsound.
 ok(

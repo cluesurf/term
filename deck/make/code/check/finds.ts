@@ -59,10 +59,13 @@ function moduleName(file: string): string {
   const parts = file.split('/')
   const leaf = (parts.at(-1) ?? '').replace(/\.tree$/, '')
 
-  return leaf === 'base' || leaf === 'note' ? (parts.at(-2) ?? leaf) : leaf
+  return leaf === 'base' || leaf === 'note'
+    ? (parts.at(-2) ?? leaf)
+    : leaf
 }
 
-const DEFINING =/^(?:task|form|bind|host|tree|fuse|mask|view|rule|mill|suit|list|mesh|save|mine|mint)\s+([^\s,]+)/
+const DEFINING =
+  /^(?:task|form|bind|host|tree|fuse|mask|view|rule|mill|suit|list|mesh|save|mine|mint)\s+([^\s,]+)/
 
 export function checkFinds(
   program: Program,
@@ -71,10 +74,16 @@ export function checkFinds(
   sources: ReadSource[],
 ): { diagnostics: Diagnostic[]; wants: string[] } {
   try {
-    return { diagnostics: findsChecked(program, file, scopes, sources), wants: [] }
+    return {
+      diagnostics: findsChecked(program, file, scopes, sources),
+      wants: [],
+    }
   } catch (error) {
     if ((error as { [WANT]?: string })[WANT] !== undefined) {
-      return { diagnostics: [], wants: [(error as { [WANT]: string })[WANT]] }
+      return {
+        diagnostics: [],
+        wants: [(error as { [WANT]: string })[WANT]],
+      }
     }
 
     throw error
@@ -86,7 +95,14 @@ export function checkFinds(
 // list is one run of the loop, so nothing is kept past it) and each source's names with its record. Rebuilt every
 // pass, the program's definitions and every source's lines were read once per file the check wanted: on a file of
 // @term/bind that was 77% of a whole compile (term-term-gates-0003, 2026-10-21). The answers are the same
-type Scope = Map<string, { finds: Map<string, string[]>; bears: string[]; at: Map<string, Span> }>
+type Scope = Map<
+  string,
+  {
+    finds: Map<string, string[]>
+    bears: string[]
+    at: Map<string, Span>
+  }
+>
 
 // `read` indexes the list by file, the first record of each, as far as `indexed`: the list is only ever appended to
 type Run = {
@@ -101,10 +117,15 @@ type Run = {
 const runMemo = new WeakMap<ReadSource[], Run>()
 const sourceMemo = new WeakMap<ReadSource, Set<string>>()
 
-function findsChecked(program: Program, file: string, scopes: FileScope[], sources: ReadSource[]): Diagnostic[] {
+function findsChecked(
+  program: Program,
+  file: string,
+  scopes: FileScope[],
+  sources: ReadSource[],
+): Diagnostic[] {
   const kept = runMemo.get(sources)
   const run: Run =
-    kept && kept.program === program && kept.scopes === scopes
+    kept?.program === program && kept.scopes === scopes
       ? kept
       : {
           program,
@@ -115,13 +136,18 @@ function findsChecked(program: Program, file: string, scopes: FileScope[], sourc
               {
                 finds: new Map(one.finds.map(f => [f.name, f.targets])),
                 bears: one.bears,
-                at: new Map(one.finds.flatMap(f => (f.at ? [[f.name, f.at] as const] : []))),
+                at: new Map(
+                  one.finds.flatMap(f =>
+                    f.at ? [[f.name, f.at] as const] : [],
+                  ),
+                ),
               },
             ]),
           ) as Scope,
           read: new Map(),
           indexed: 0,
         }
+
   runMemo.set(sources, run)
 
   for (; run.indexed < sources.length; run.indexed++) {
@@ -131,6 +157,7 @@ function findsChecked(program: Program, file: string, scopes: FileScope[], sourc
       run.read.set(source.file, source)
     }
   }
+
   const scope = run.scope
   const own = scope.get(file)
 
@@ -166,7 +193,9 @@ function findsChecked(program: Program, file: string, scopes: FileScope[], sourc
         }
 
         // a dock alias (`load <node:fs>, name fs`) and a `find ..., name alias` are names the module exposes too
-        const alias = /^\s+(?:load|find)\s.*,\s*name\s+([^\s,]+)/.exec(line)
+        const alias = /^\s+(?:load|find)\s.*,\s*name\s+([^\s,]+)/.exec(
+          line,
+        )
 
         if (alias) {
           names.add(alias[1]!)
@@ -185,7 +214,11 @@ function findsChecked(program: Program, file: string, scopes: FileScope[], sourc
 // what each file defines, from the program
 function definedIn(program: Program): Map<string, Set<string>> {
   const defined = new Map<string, Set<string>>()
-  const add = (where: string | undefined, name: string | undefined): void => {
+
+  const add = (
+    where: string | undefined,
+    name: string | undefined,
+  ): void => {
     if (!where || !name) {
       return
     }
@@ -201,7 +234,11 @@ function definedIn(program: Program): Map<string, Set<string>> {
 
   for (const s of program) {
     const where = s.span?.file
-    const record = s as { name?: string; alias?: string; method?: { name: string } }
+    const record = s as {
+      name?: string
+      alias?: string
+      method?: { name: string }
+    }
 
     if (s.form === 'record-type') {
       add(where, s.name)
@@ -234,14 +271,21 @@ function unfound(
   readSource: (target: string) => Set<string>,
 ): Diagnostic[] {
   // a name is reachable from a file when it defines it, or a file it bears does
-  const reaches = (target: string, name: string, seen: Set<string>): boolean => {
+  const reaches = (
+    target: string,
+    name: string,
+    seen: Set<string>,
+  ): boolean => {
     if (seen.has(target)) {
       return false
     }
 
     seen.add(target)
 
-    if (defined.get(target)?.has(name) || readSource(target).has(name)) {
+    if (
+      defined.get(target)?.has(name) ||
+      readSource(target).has(name)
+    ) {
       return true
     }
 
@@ -272,16 +316,21 @@ function unfound(
     if (
       BUILT_IN.has(name) ||
       targets.length === 0 ||
-      targets.some(target => moduleName(target) === name || reaches(target, name, new Set()))
+      targets.some(
+        target =>
+          moduleName(target) === name ||
+          reaches(target, name, new Set()),
+      )
     ) {
       continue
     }
 
-    const span: Span = own.at?.get(name) ?? program.find(s => s.span?.file === file)?.span ?? {
-      file,
-      start: { line: 0, column: 0 },
-      end: { line: 0, column: 0 },
-    }
+    const span: Span = own.at?.get(name) ??
+      program.find(s => s.span?.file === file)?.span ?? {
+        file,
+        start: { line: 0, column: 0 },
+        end: { line: 0, column: 0 },
+      }
 
     out.push(
       diagnose('unknown-name', {

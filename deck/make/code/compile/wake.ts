@@ -9,5 +9,9 @@ export type WakeGroup = {
   entries: WakeEntry[]
   // the deck's static exception, tell and dock entries, for `hive-wake-typed`, which a backend writes as records of
   // `exception-roll`, `tell-roll` and `dock-roll` (seam spec §3.3)
-  typed: { exceptions: WakeEntry[]; tells: WakeEntry[]; docks: WakeEntry[] }
+  typed: {
+    exceptions: WakeEntry[]
+    tells: WakeEntry[]
+    docks: WakeEntry[]
+  }
 }

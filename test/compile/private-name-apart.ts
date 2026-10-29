@@ -28,18 +28,32 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-type Built = { ok: boolean; typescript?: string; diagnostics?: { name: string; message: string }[] }
-
-const said = (r: Built): string => (r.ok ? 'ok' : (r.diagnostics ?? []).map(d => `${d.name}: ${d.message}`).join(' | '))
-
-const slug = (file: string): string => `./${file.replace(/\.tree$/, '').replace(/\W/g, '_')}.mjs`
-
-const resolverOf = (files: Record<string, string>): Resolver => path => {
-  const name = path.replace(/^\.\//, '')
-  const text = files[name]
-
-  return text === undefined ? undefined : { file: `${name}.tree`, text }
+type Built = {
+  ok: boolean
+  typescript?: string
+  diagnostics?: { name: string; message: string }[]
 }
+
+const said = (r: Built): string =>
+  r.ok
+    ? 'ok'
+    : (r.diagnostics ?? [])
+        .map(d => `${d.name}: ${d.message}`)
+        .join(' | ')
+
+const slug = (file: string): string =>
+  `./${file.replace(/\.tree$/, '').replace(/\W/g, '_')}.mjs`
+
+const resolverOf =
+  (files: Record<string, string>): Resolver =>
+  path => {
+    const name = path.replace(/^\.\//, '')
+    const text = files[name]
+
+    return text === undefined
+      ? undefined
+      : { file: `${name}.tree`, text }
+  }
 
 // the private one, and a public task of the same file that uses it
 const PRIV = `task is-given
@@ -120,20 +134,32 @@ for (const [kind, pub] of [
     ['beside priv', BESIDE],
   ] as const) {
     const resolve = resolverOf({ priv: PRIV, pub })
-    const merged = compile({ file: 'entry.tree', text: entry }, { resolve, cache: new CompileCache() }) as Built
+    const merged = compile(
+      { file: 'entry.tree', text: entry },
+      { resolve, cache: new CompileCache() },
+    ) as Built
     const separate = compileSeparate(
       { file: 'entry.tree', text: entry },
       { resolve, cache: new CompileCache(), modules: slug },
     ) as Built
 
-    ok(`${kind}, ${how}: the merged build finds the public is-given`, merged.ok, said(merged))
-    ok(`${kind}, ${how}: the separate build finds the public is-given`, separate.ok, said(separate))
+    ok(
+      `${kind}, ${how}: the merged build finds the public is-given`,
+      merged.ok,
+      said(merged),
+    )
+    ok(
+      `${kind}, ${how}: the separate build finds the public is-given`,
+      separate.ok,
+      said(separate),
+    )
 
     if (kind === 'binding') {
       // the entry's call is the binding's inline text, never a call of the private task
       ok(
         `${kind}, ${how}: the merged entry calls the binding`,
-        merged.ok && /!== undefined && .* !== null/.test(merged.typescript ?? ''),
+        merged.ok &&
+          /!== undefined && .* !== null/.test(merged.typescript ?? ''),
         merged.typescript ?? '',
       )
     }

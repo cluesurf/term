@@ -27,7 +27,8 @@ import { projectResolver, findTreeFiles } from '@term/call/code/make'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { lint, RULES } from '@term/make/code/lint/lint'
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 
 // the packages to lint. Enough Term to be representative, small enough to run inside a gate: the stdlib, the app
@@ -45,7 +46,10 @@ function testText(): string {
 
       if (entry.isDirectory()) {
         walk(full)
-      } else if (entry.name.endsWith('.ts') && entry.name !== 'audit.ts') {
+      } else if (
+        entry.name.endsWith('.ts') &&
+        entry.name !== 'audit.ts'
+      ) {
         out.push(readFileSync(full, 'utf8'))
       }
     }
@@ -98,11 +102,15 @@ let tested = 0
 let firing = 0
 
 if (!quiet) {
-  console.log(`${'code'.padEnd(6)} ${'rule'.padEnd(32)} ${'test'.padEnd(6)} fires`)
+  console.log(
+    `${'code'.padEnd(6)} ${'rule'.padEnd(32)} ${'test'.padEnd(6)} fires`,
+  )
 }
 
 for (const rule of rows) {
-  const hasTest = new RegExp(`(['"\`])(${rule.name}|${rule.code})\\1|\\b${rule.code}\\b`).test(haystack)
+  const hasTest = new RegExp(
+    `(['"\`])(${rule.name}|${rule.code})\\1|\\b${rule.code}\\b`,
+  ).test(haystack)
   const count = fires.get(rule.code) ?? 0
 
   if (hasTest) {
@@ -129,7 +137,7 @@ console.log(
 if (untested > 0) {
   console.log(
     `  ${untested} rule(s) no test names. A rule nothing tests is how L001 and L005 came to report 10,190 findings\n` +
-      '  that were all the compiler\'s own generated names and the language\'s own signature-only tasks.',
+      "  that were all the compiler's own generated names and the language's own signature-only tasks.",
   )
 }
 

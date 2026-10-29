@@ -14,7 +14,12 @@
 // Five slugs name no Unicode script (code, emoji, tone and the two Siyaq number sets) and are listed as unmeasured.
 // GOLDEN_ONLY=macos (or ios, android) runs one platform. Run: npx tsx test/compile/text-golden.ts
 
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import SCRIPT from '../../../../../../mesh/deck/belt/code/base/script'
@@ -56,13 +61,24 @@ const UNICODE_NAME: Record<string, string[]> = {
 }
 
 // the slugs that name no Unicode script: measured by nothing here, and said so
-const UNMEASURED = new Set(['code', 'emoji', 'tone', 'indic-siyaq-numbers', 'ottoman-siyaq'])
+const UNMEASURED = new Set([
+  'code',
+  'emoji',
+  'tone',
+  'indic-siyaq-numbers',
+  'ottoman-siyaq',
+])
 const PROBE = 64
 // what a Term text literal cannot carry, and what is not a glyph
 const UNCARRIABLE = /[<>{}\\\s\p{Cc}\p{Cf}]/u
 
 const unicodeNames = (slug: string): string[] =>
-  UNICODE_NAME[slug] ?? [slug.split('-').map(part => part[0]!.toUpperCase() + part.slice(1)).join('_')]
+  UNICODE_NAME[slug] ?? [
+    slug
+      .split('-')
+      .map(part => part[0]!.toUpperCase() + part.slice(1))
+      .join('_'),
+  ]
 
 // every assigned code point, once, as one string the per-script expressions scan
 const EVERY = (() => {
@@ -89,21 +105,33 @@ for (const slug of Object.keys(SCRIPT).sort()) {
     continue
   }
 
-  const characters = unicodeNames(slug).flatMap(name => EVERY.match(new RegExp(`\\p{Script=${name}}`, 'gu')) ?? [])
+  const characters = unicodeNames(slug)
+    .flatMap(
+      name =>
+        EVERY.match(new RegExp(`\\p{Script=${name}}`, 'gu')) ?? [],
+    )
     .filter(character => !UNCARRIABLE.test(character))
   const step = Math.max(1, characters.length / PROBE)
-  const probe = Array.from({ length: Math.min(PROBE, characters.length) }, (_, i) => characters[Math.floor(i * step)]!)
+  const probe = Array.from(
+    { length: Math.min(PROBE, characters.length) },
+    (_, i) => characters[Math.floor(i * step)]!,
+  )
   rows.push({ slug, probe: probe.join(''), size: characters.length })
 }
 
 const rowCalls = rows
-  .map(row => `  call add-row
+  .map(
+    row => `  call add-row
     read root
     text <${row.slug}>
-    text <${row.probe}>`)
+    text <${row.probe}>`,
+  )
   .join('\n')
 
-const program = (_leg: Leg, shot: string): string => `load @term/site/code/dom/dom
+const program = (
+  _leg: Leg,
+  shot: string,
+): string => `load @term/site/code/dom/dom
   find view
 
 load @term/site/code/dom/native/toolkit/dom
@@ -191,9 +219,14 @@ ${rowCalls}
   call run-app
 `
 
-const BASELINE = join(process.cwd(), 'test/compile/text-golden.baseline.json')
+const BASELINE = join(
+  process.cwd(),
+  'test/compile/text-golden.baseline.json',
+)
 type Baseline = Partial<Record<Leg, Record<string, number>>>
-const baseline: Baseline = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, 'utf8')) : {}
+const baseline: Baseline = existsSync(BASELINE)
+  ? JSON.parse(readFileSync(BASELINE, 'utf8'))
+  : {}
 const measured: Baseline = {}
 
 // the boxes each row reported, by script, as code points: what a person sees as a box
@@ -213,7 +246,11 @@ function gapsOf(output: string): Map<string, string[]> {
 
 function judge(leg: Leg, toolkit: string, output: string): void {
   const gaps = gapsOf(output)
-  ok(`${leg}: every one of the ${rows.length} rows reported (${toolkit})`, gaps.size === rows.length, `${gaps.size} reported`)
+  ok(
+    `${leg}: every one of the ${rows.length} rows reported (${toolkit})`,
+    gaps.size === rows.length,
+    `${gaps.size} reported`,
+  )
 
   const counts: Record<string, number> = {}
   const boxed: string[] = []
@@ -224,18 +261,24 @@ function judge(leg: Leg, toolkit: string, output: string): void {
     counts[row.slug] = missing.length
 
     if (missing.length > 0) {
-      boxed.push(`${row.slug} ${missing.length}/${[...row.probe].length}`)
+      boxed.push(
+        `${row.slug} ${missing.length}/${[...row.probe].length}`,
+      )
     }
 
     if (missing.length > (baseline[leg]?.[row.slug] ?? 0)) {
-      worse.push(`${row.slug} ${baseline[leg]?.[row.slug] ?? 0} -> ${missing.length}`)
+      worse.push(
+        `${row.slug} ${baseline[leg]?.[row.slug] ?? 0} -> ${missing.length}`,
+      )
     }
   }
 
   measured[leg] = counts
   const whole = rows.length - boxed.length
   const total = Object.values(counts).reduce((sum, n) => sum + n, 0)
-  console.log(`      ${leg}: ${whole} of ${rows.length} scripts draw every probe character; ${total} boxes over ${boxed.length} scripts`)
+  console.log(
+    `      ${leg}: ${whole} of ${rows.length} scripts draw every probe character; ${total} boxes over ${boxed.length} scripts`,
+  )
 
   if (boxed.length > 0) {
     console.log(`      ${leg} boxes: ${boxed.join(', ')}`)
@@ -247,15 +290,23 @@ function judge(leg: Leg, toolkit: string, output: string): void {
       const missing = gaps.get(row.slug) ?? []
 
       if (missing.length > 0) {
-        console.log(`      ${leg} ${row.slug}: ${missing.map(c => `U+${c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`).join(' ')}`)
+        console.log(
+          `      ${leg} ${row.slug}: ${missing.map(c => `U+${c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`).join(' ')}`,
+        )
       }
     }
   }
 
-  ok(`${leg}: no script draws more boxes than its baseline`, worse.length === 0, worse.join(', '))
+  ok(
+    `${leg}: no script draws more boxes than its baseline`,
+    worse.length === 0,
+    worse.join(', '),
+  )
 }
 
-console.log(`text-golden: ${rows.length} scripts measured, ${rows.reduce((sum, row) => sum + [...row.probe].length, 0)} probe characters; unmeasured (no Unicode script): ${unmeasured.join(', ')}`)
+console.log(
+  `text-golden: ${rows.length} scripts measured, ${rows.reduce((sum, row) => sum + [...row.probe].length, 0)} probe characters; unmeasured (no Unicode script): ${unmeasured.join(', ')}`,
+)
 
 runToolkits(
   {
@@ -281,8 +332,13 @@ runToolkits(
 )
 
 if (process.env.TEXT_GOLDEN_COMMIT === '1') {
-  writeFileSync(BASELINE, `${JSON.stringify({ ...baseline, ...measured }, null, 2)}\n`)
-  console.log(`      baseline written for ${Object.keys(measured).join(', ')}`)
+  writeFileSync(
+    BASELINE,
+    `${JSON.stringify({ ...baseline, ...measured }, null, 2)}\n`,
+  )
+  console.log(
+    `      baseline written for ${Object.keys(measured).join(', ')}`,
+  )
 }
 
 console.log(`\ntext-golden: ${pass} pass, ${fail} fail`)

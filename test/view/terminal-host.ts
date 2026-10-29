@@ -146,9 +146,11 @@ task run
 // 16 cells across: inside the padding 12, the frame keeps its 8, the divider and the rest stretch to 12.
 const LIST_WIDTH = 16
 const LIST_HEIGHT = 10
-const LIST_BEFORE = '\n  fruit\n  list\n  here\n  ────────────\n  apple\n  banana\n  [ drop ]\n\n'
+const LIST_BEFORE =
+  '\n  fruit\n  list\n  here\n  ────────────\n  apple\n  banana\n  [ drop ]\n\n'
 // one item fewer, and the button still under the list: a walk keeps its place among its siblings
-const LIST_AFTER = '\n  fruit\n  list\n  here\n  ────────────\n  apple\n  [ drop ]\n\n\n'
+const LIST_AFTER =
+  '\n  fruit\n  list\n  here\n  ────────────\n  apple\n  [ drop ]\n\n\n'
 
 const LIST_PROGRAM = `load @term/site/code/view/reactive
   find make-signal
@@ -288,7 +290,14 @@ task run
 function pinned(env: string): Resolver {
   const base = projectResolver(process.cwd(), env)
 
-  return (importPath, fromFile) => base(importPath.replace(/native\/\{platform\}\/(dom|view)$/, 'native/terminal/$1'), fromFile)
+  return (importPath, fromFile) =>
+    base(
+      importPath.replace(
+        /native\/\{platform\}\/(dom|view)$/,
+        'native/terminal/$1',
+      ),
+      fromFile,
+    )
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'term-terminal-host-'))
@@ -297,9 +306,22 @@ const only = process.env.TERMINAL_ONLY ?? ''
 
 // compile one program against the terminal host on every backend, run it, and hold its two paints to the screens worked
 // out by hand. The host and the painter are Term, so every backend must draw the same cells
-function screens(one: { name: string; program: string; before: string; after: string; first: string; second: string }): void {
+function screens(one: {
+  name: string
+  program: string
+  before: string
+  after: string
+  first: string
+  second: string
+}): void {
   for (const backend of BACKENDS.filter(b => !only || b === only)) {
-    const ran = runOn({ backend, program: one.program, resolve: pinned, dir, name: one.name })
+    const ran = runOn({
+      backend,
+      program: one.program,
+      resolve: pinned,
+      dir,
+      name: one.name,
+    })
     const label = `${backend} ${one.name}`
 
     if (ran.form === 'skipped') {
@@ -307,12 +329,24 @@ function screens(one: { name: string; program: string; before: string; after: st
       continue
     }
 
-    ok(`${label}: compiles, builds and runs against the terminal host`, ran.form === 'ran', ran.form === 'failed' ? `${ran.stage}: ${ran.reason}` : '')
+    ok(
+      `${label}: compiles, builds and runs against the terminal host`,
+      ran.form === 'ran',
+      ran.form === 'failed' ? `${ran.stage}: ${ran.reason}` : '',
+    )
 
     if (ran.form === 'ran') {
       const [before, after] = ran.output.split('|')
-      ok(`${label}: ${one.first}`, before === one.before, `got ${JSON.stringify(before)}`)
-      ok(`${label}: ${one.second}`, after === one.after, `got ${JSON.stringify(after)}`)
+      ok(
+        `${label}: ${one.first}`,
+        before === one.before,
+        `got ${JSON.stringify(before)}`,
+      )
+      ok(
+        `${label}: ${one.second}`,
+        after === one.after,
+        `got ${JSON.stringify(after)}`,
+      )
     }
   }
 }
@@ -322,7 +356,7 @@ screens({
   program: PROGRAM,
   before: BEFORE,
   after: AFTER,
-  first: 'a row with a grower, a divider, the fork\'s branch',
+  first: "a row with a grower, a divider, the fork's branch",
   second: 'after three clicks the button reads 3 and the fork swapped',
 })
 
@@ -331,7 +365,7 @@ screens({
   program: LIST_PROGRAM,
   before: LIST_BEFORE,
   after: LIST_AFTER,
-  first: 'face\'s stack, frame and divider, and a walk of two items',
+  first: "face's stack, frame and divider, and a walk of two items",
   second: 'an item dropped, the button still under the list',
 })
 

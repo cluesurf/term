@@ -19,7 +19,10 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { androidDevice } from '@term/call/code/cask'
 import { startComposeWork } from '@term/call/code/compose-work'
-import type { ComposeTarget, WorkEvent } from '@term/call/code/compose-work'
+import type {
+  ComposeTarget,
+  WorkEvent,
+} from '@term/call/code/compose-work'
 
 let pass = 0
 let fail = 0
@@ -116,14 +119,20 @@ ${
 `
 
 // an app that does not compile: a name nothing defines
-const BROKEN = program(false).replace('call current-path', 'call current-place')
+const BROKEN = program(false).replace(
+  'call current-path',
+  'call current-place',
+)
 
 function have(tool: string): boolean {
   return spawnSync('which', [tool], { encoding: 'utf8' }).status === 0
 }
 
 // wait for a condition, checking every quarter second, for at most `seconds`
-async function until(cond: () => boolean, seconds: number): Promise<boolean> {
+async function until(
+  cond: () => boolean,
+  seconds: number,
+): Promise<boolean> {
   const end = Date.now() + seconds * 1000
 
   while (!cond()) {
@@ -186,13 +195,19 @@ async function leg(target: ComposeTarget): Promise<void> {
   })
 
   const step = (generation: number, name: string): string => {
-    const line = (said.get(generation) ?? []).find(l => l.includes(`step ${name} `)) ?? ''
+    const line =
+      (said.get(generation) ?? []).find(l =>
+        l.includes(`step ${name} `),
+      ) ?? ''
 
-    return line.slice(line.indexOf(`step ${name} `) + `step ${name} `.length)
+    return line.slice(
+      line.indexOf(`step ${name} `) + `step ${name} `.length,
+    )
   }
   // build results so far: a written file is taken up by the watcher a moment later, so an edit is waited on until a NEW
   // result appears, never by asking the loop at once whether it is idle (it is, until the watcher hears the write)
-  const results = (): number => events.filter(e => e.kind === 'built' || e.kind === 'failed').length
+  const results = (): number =>
+    events.filter(e => e.kind === 'built' || e.kind === 'failed').length
   const taken = async (before: number): Promise<void> => {
     await until(() => results() > before, 60)
     await work.idle()
@@ -200,46 +215,107 @@ async function leg(target: ComposeTarget): Promise<void> {
   // the latest launch once it has drawn, after the edit before it was taken up
   const settled = async (before: number): Promise<number> => {
     await taken(before)
-    const launched = events.filter(e => e.kind === 'launch').at(-1)?.generation ?? 0
-    await until(() => exited.has(launched) || step(launched, 'drawn') !== '', 120)
+    const launched =
+      events.filter(e => e.kind === 'launch').at(-1)?.generation ?? 0
+    await until(
+      () => exited.has(launched) || step(launched, 'drawn') !== '',
+      120,
+    )
 
     return launched
   }
 
   try {
     const first = await settled(0)
-    const built = events.find(e => e.kind === 'built' || e.kind === 'failed')
-    ok(`${target}: the loop builds the app and launches it`, first === 1 && built?.kind === 'built', JSON.stringify(built))
-    ok(`${target}: run 1 starts at /`, step(first, 'start') === '/', step(first, 'start'))
-    ok(`${target}: run 1 moves to /notes and draws notes v1`, step(first, 'drawn').includes('notes v1'), step(first, 'drawn'))
+    const built = events.find(
+      e => e.kind === 'built' || e.kind === 'failed',
+    )
+    ok(
+      `${target}: the loop builds the app and launches it`,
+      first === 1 && built?.kind === 'built',
+      JSON.stringify(built),
+    )
+    ok(
+      `${target}: run 1 starts at /`,
+      step(first, 'start') === '/',
+      step(first, 'start'),
+    )
+    ok(
+      `${target}: run 1 moves to /notes and draws notes v1`,
+      step(first, 'drawn').includes('notes v1'),
+      step(first, 'drawn'),
+    )
 
     const edited = Date.now()
     let before = results()
     writeFileSync(screen, notes('v2'))
     const second = await settled(before)
     const seconds = ((Date.now() - edited) / 1000).toFixed(1)
-    const build = events.find(e => e.kind === 'built' && e.generation === second)
-    const building = build?.kind === 'built' ? (build.duration / 1000).toFixed(1) : '?'
-    console.log(`      ${target}: an edit to the app on screen in ${seconds}s: the build ${building}s, the rest the old app stopped and the new one started`)
-    ok(`${target}: an edit to a file the entry loads is rebuilt and relaunched`, second > first, `${first} then ${second}`)
-    ok(`${target}: the relaunched app STARTS at /notes, where the last one was`, step(second, 'start') === '/notes', step(second, 'start'))
-    ok(`${target}: it draws the edit, notes v2`, step(second, 'drawn').includes('notes v2'), step(second, 'drawn'))
+    const build = events.find(
+      e => e.kind === 'built' && e.generation === second,
+    )
+    const building =
+      build?.kind === 'built' ? (build.duration / 1000).toFixed(1) : '?'
+    console.log(
+      `      ${target}: an edit to the app on screen in ${seconds}s: the build ${building}s, the rest the old app stopped and the new one started`,
+    )
+    ok(
+      `${target}: an edit to a file the entry loads is rebuilt and relaunched`,
+      second > first,
+      `${first} then ${second}`,
+    )
+    ok(
+      `${target}: the relaunched app STARTS at /notes, where the last one was`,
+      step(second, 'start') === '/notes',
+      step(second, 'start'),
+    )
+    ok(
+      `${target}: it draws the edit, notes v2`,
+      step(second, 'drawn').includes('notes v2'),
+      step(second, 'drawn'),
+    )
 
-    const launchesBefore = events.filter(e => e.kind === 'launch').length
+    const launchesBefore = events.filter(
+      e => e.kind === 'launch',
+    ).length
     before = results()
     writeFileSync(entry, BROKEN)
     await taken(before)
     const broken = events.filter(e => e.kind === 'failed').at(-1)
-    ok(`${target}: an edit that does not compile is reported, naming the stage and the name`, !!broken && broken.kind === 'failed' && broken.stage === 'compile' && broken.reason.includes('current-place'), JSON.stringify(broken))
-    ok(`${target}: and nothing is launched for it`, events.filter(e => e.kind === 'launch').length === launchesBefore, String(launchesBefore))
+    ok(
+      `${target}: an edit that does not compile is reported, naming the stage and the name`,
+      !!broken &&
+        broken.kind === 'failed' &&
+        broken.stage === 'compile' &&
+        broken.reason.includes('current-place'),
+      JSON.stringify(broken),
+    )
+    ok(
+      `${target}: and nothing is launched for it`,
+      events.filter(e => e.kind === 'launch').length === launchesBefore,
+      String(launchesBefore),
+    )
 
     before = results()
     writeFileSync(screen, notes('v3'))
     writeFileSync(entry, program(true))
     const third = await settled(before)
-    ok(`${target}: the fixed edit is relaunched at /notes`, step(third, 'start') === '/notes', step(third, 'start'))
-    ok(`${target}: back from it reaches /, the screen behind it: the whole history crossed`, step(third, 'back') === 'true /', step(third, 'back'))
-    ok(`${target}: and draws the screen back reached, home`, step(third, 'drawn').includes('home') && !step(third, 'drawn').includes('notes'), step(third, 'drawn'))
+    ok(
+      `${target}: the fixed edit is relaunched at /notes`,
+      step(third, 'start') === '/notes',
+      step(third, 'start'),
+    )
+    ok(
+      `${target}: back from it reaches /, the screen behind it: the whole history crossed`,
+      step(third, 'back') === 'true /',
+      step(third, 'back'),
+    )
+    ok(
+      `${target}: and draws the screen back reached, home`,
+      step(third, 'drawn').includes('home') &&
+        !step(third, 'drawn').includes('notes'),
+      step(third, 'drawn'),
+    )
   } finally {
     await work.stop()
   }

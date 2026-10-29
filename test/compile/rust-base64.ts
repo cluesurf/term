@@ -9,11 +9,24 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const RUNTIME = join(process.cwd(), 'deck/base/code/native/rust/runtime')
-const VECTORS = [['', ''], ['f', 'Zg=='], ['fo', 'Zm8='], ['foo', 'Zm9v'], ['foob', 'Zm9vYg=='], ['fooba', 'Zm9vYmE='], ['foobar', 'Zm9vYmFy']]
+const RUNTIME = join(
+  process.cwd(),
+  'deck/base/code/native/rust/runtime',
+)
+const VECTORS = [
+  ['', ''],
+  ['f', 'Zg=='],
+  ['fo', 'Zm8='],
+  ['foo', 'Zm9v'],
+  ['foob', 'Zm9vYg=='],
+  ['fooba', 'Zm9vYmE='],
+  ['foobar', 'Zm9vYmFy'],
+]
 
 if (spawnSync('which', ['rustc'], { encoding: 'utf8' }).status !== 0) {
-  console.log('skip  rustc not installed\n\nrust-base64: 0 pass, 0 fail')
+  console.log(
+    'skip  rustc not installed\n\nrust-base64: 0 pass, 0 fail',
+  )
   process.exit(0)
 }
 
@@ -42,12 +55,24 @@ const program = [
 
 const dir = mkdtempSync(join(tmpdir(), 'term-rust-base64-'))
 writeFileSync(join(dir, 'base64.rs'), program)
-execFileSync('rustc', ['--edition', '2021', '-A', 'warnings', '-o', join(dir, 'base64'), join(dir, 'base64.rs')])
+execFileSync('rustc', [
+  '--edition',
+  '2021',
+  '-A',
+  'warnings',
+  '-o',
+  join(dir, 'base64'),
+  join(dir, 'base64.rs'),
+])
 const output = execFileSync(join(dir, 'base64'), { encoding: 'utf8' })
 process.stdout.write(output)
 
-const pass = output.split('\n').filter(line => line.startsWith('ok')).length
-const fail = output.split('\n').filter(line => line.startsWith('FAIL')).length
+const pass = output
+  .split('\n')
+  .filter(line => line.startsWith('ok')).length
+const fail = output
+  .split('\n')
+  .filter(line => line.startsWith('FAIL')).length
 console.log(`\nrust-base64: ${pass} pass, ${fail} fail`)
 
 if (fail > 0 || pass === 0) {

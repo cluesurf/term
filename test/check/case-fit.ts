@@ -49,13 +49,25 @@ task named
       bind at, code 3
 `
   const built = compile({ file: 'case-fit.tree', text })
-  ok('a construction leaving out a need false field builds', built.ok, built.ok ? '' : built.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    'a construction leaving out a need false field builds',
+    built.ok,
+    built.ok ? '' : built.diagnostics.map(d => d.message).join(' | '),
+  )
 
   if (built.ok) {
     const at = built.typescript.indexOf('function named')
     const body = built.typescript.slice(at, at + 300)
-    ok('it builds the case of the form whose fields it gives', /form: "variable", name: name, at: 3/.test(body), body)
-    ok('and never the other form\'s case', !/kind: "variable"/.test(body), body)
+    ok(
+      'it builds the case of the form whose fields it gives',
+      /form: "variable", name: name, at: 3/.test(body),
+      body,
+    )
+    ok(
+      "and never the other form's case",
+      !/kind: "variable"/.test(body),
+      body,
+    )
   }
 }
 
@@ -69,9 +81,15 @@ task numbered
       bind id, code 7
 `
   const built = compile({ file: 'case-fit.tree', text })
-  const at = built.ok ? built.typescript.indexOf('function numbered') : 0
+  const at = built.ok
+    ? built.typescript.indexOf('function numbered')
+    : 0
   const body = built.ok ? built.typescript.slice(at, at + 200) : ''
-  ok('a construction giving the other case\'s field builds that case', built.ok && /kind: "variable", id: 7/.test(body), built.ok ? body : built.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    "a construction giving the other case's field builds that case",
+    built.ok && /kind: "variable", id: 7/.test(body),
+    built.ok ? body : built.diagnostics.map(d => d.message).join(' | '),
+  )
 }
 
 console.log(`\ncase-fit: ${pass} pass, ${fail} fail`)

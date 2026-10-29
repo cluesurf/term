@@ -57,26 +57,64 @@ task table
 
 const want = '[ab..|..ab][abcdef|abcdef]'
 
-const node = compile({ file: 'pad.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!), entryPoints: ['table'] })
+const node = compile(
+  { file: 'pad.tree', text },
+  {
+    resolve: withNativeEnv('node', stdlibResolver()!),
+    entryPoints: ['table'],
+  },
+)
 
 if (!node.ok) {
-  ok('the program builds for node', false, node.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the program builds for node',
+    false,
+    node.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
 } else {
   const dir = mkdtempSync(join(tmpdir(), 'term-rust-pad-field-'))
   const file = join(dir, 'module.mjs')
-  writeFileSync(file, transformSync(node.typescript, { loader: 'ts', format: 'esm' }).code)
-  const mod = (await import(pathToFileURL(file).href)) as { table: () => string }
-  ok('TypeScript pads a field read in a walk', mod.table() === want, mod.table())
+  writeFileSync(
+    file,
+    transformSync(node.typescript, { loader: 'ts', format: 'esm' })
+      .code,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as {
+    table: () => string
+  }
+  ok(
+    'TypeScript pads a field read in a walk',
+    mod.table() === want,
+    mod.table(),
+  )
 }
 
-const built = compile({ file: 'pad.tree', text }, { resolve: withNativeEnv('rust', stdlibResolver()!), env: 'rust', entryPoints: ['table'] })
+const built = compile(
+  { file: 'pad.tree', text },
+  {
+    resolve: withNativeEnv('rust', stdlibResolver()!),
+    env: 'rust',
+    entryPoints: ['table'],
+  },
+)
 
 if (!built.ok) {
-  ok('the program builds for rust', false, built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the program builds for rust',
+    false,
+    built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
 } else {
   // a main that prints the answer, so the binary is held to it (the console module needs its runtime shim on Rust)
   const rust = `${emitRust(built.program)}\nfn main() {\n    println!("{}", table());\n}\n`
-  ok('the receiver is borrowed, never moved out of the record', !/let o: String = r\.name/.test(rust), rust.split('\n').filter(l => /let o:/.test(l)).join(' | '))
+  ok(
+    'the receiver is borrowed, never moved out of the record',
+    !/let o: String = r\.name/.test(rust),
+    rust
+      .split('\n')
+      .filter(l => /let o:/.test(l))
+      .join(' | '),
+  )
 
   const rustc = spawnSync('rustc', ['--version'], { encoding: 'utf8' })
 
@@ -86,12 +124,35 @@ if (!built.ok) {
     const dir = mkdtempSync(join(tmpdir(), 'term-rust-pad-field-'))
     writeFileSync(join(dir, 'main.rs'), rust)
     const binary = join(dir, 'main')
-    const out = spawnSync('rustc', ['--edition', '2021', '-A', 'warnings', '-o', binary, join(dir, 'main.rs')], { encoding: 'utf8' })
-    ok('rustc compiles it', out.status === 0, out.stderr.split('\n').filter(l => /^error/.test(l)).join(' | '))
+    const out = spawnSync(
+      'rustc',
+      [
+        '--edition',
+        '2021',
+        '-A',
+        'warnings',
+        '-o',
+        binary,
+        join(dir, 'main.rs'),
+      ],
+      { encoding: 'utf8' },
+    )
+    ok(
+      'rustc compiles it',
+      out.status === 0,
+      out.stderr
+        .split('\n')
+        .filter(l => /^error/.test(l))
+        .join(' | '),
+    )
 
     if (out.status === 0) {
       const ran = spawnSync(binary, [], { encoding: 'utf8' })
-      ok('Rust answers what TypeScript does', ran.stdout.trim() === want, ran.stdout.trim())
+      ok(
+        'Rust answers what TypeScript does',
+        ran.stdout.trim() === want,
+        ran.stdout.trim(),
+      )
     }
   }
 }

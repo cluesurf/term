@@ -52,13 +52,26 @@ task use
 `
 
 const mismatch = (text: string) => {
-  const built = compile({ file: 'main.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!), env: 'node' })
-  const found = built.ok ? [] : built.diagnostics.filter(d => d.name === 'type-mismatch')
+  const built = compile(
+    { file: 'main.tree', text },
+    { resolve: withNativeEnv('node', stdlibResolver()!), env: 'node' },
+  )
+  const found = built.ok
+    ? []
+    : built.diagnostics.filter(d => d.name === 'type-mismatch')
 
-  return { found, said: built.ok ? 'it built' : built.diagnostics.map(d => `${d.span.start.line + 1}: ${d.message}`).join(' | ') }
+  return {
+    found,
+    said: built.ok
+      ? 'it built'
+      : built.diagnostics
+          .map(d => `${d.span.start.line + 1}: ${d.message}`)
+          .join(' | '),
+  }
 }
 
-const lineOf = (text: string, needle: string): number => text.split('\n').findIndex(line => line.includes(needle))
+const lineOf = (text: string, needle: string): number =>
+  text.split('\n').findIndex(line => line.includes(needle))
 
 {
   const { found, said } = mismatch(taskFirst)
@@ -67,12 +80,26 @@ const lineOf = (text: string, needle: string): number => text.split('\n').findIn
   const earlier = lineOf(taskFirst, 'save a')
 
   ok('one mismatch', found.length === 1, said)
-  ok('the host checked first but written later is blamed', first?.span.start.line === later, said)
-  ok('saying what the earlier use made it', first?.message === 'argument: expected number, found text', said)
+  ok(
+    'the host checked first but written later is blamed',
+    first?.span.start.line === later,
+    said,
+  )
+  ok(
+    'saying what the earlier use made it',
+    first?.message === 'argument: expected number, found text',
+    said,
+  )
   ok(
     'and marking the earlier use as the one that decided',
-    first?.markers.some(m => m.span.start.line === earlier && m.label === 'first used as number here') === true,
-    JSON.stringify(first?.markers.map(m => [m.span.start.line, m.label])),
+    first?.markers.some(
+      m =>
+        m.span.start.line === earlier &&
+        m.label === 'first used as number here',
+    ) === true,
+    JSON.stringify(
+      first?.markers.map(m => [m.span.start.line, m.label]),
+    ),
   )
 }
 
@@ -82,12 +109,26 @@ const lineOf = (text: string, needle: string): number => text.split('\n').findIn
   const later = lineOf(hostFirst, 'save a')
   const earlier = lineOf(hostFirst, 'host b')
 
-  ok('swapped: the later use is still the one blamed', first?.span.start.line === later, said)
-  ok('swapped: saying what the earlier use made it', first?.message === 'argument: expected text, found number', said)
+  ok(
+    'swapped: the later use is still the one blamed',
+    first?.span.start.line === later,
+    said,
+  )
+  ok(
+    'swapped: saying what the earlier use made it',
+    first?.message === 'argument: expected text, found number',
+    said,
+  )
   ok(
     'swapped: marking the earlier use',
-    first?.markers.some(m => m.span.start.line === earlier && m.label === 'first used as text here') === true,
-    JSON.stringify(first?.markers.map(m => [m.span.start.line, m.label])),
+    first?.markers.some(
+      m =>
+        m.span.start.line === earlier &&
+        m.label === 'first used as text here',
+    ) === true,
+    JSON.stringify(
+      first?.markers.map(m => [m.span.start.line, m.label]),
+    ),
   )
 }
 

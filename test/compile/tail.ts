@@ -21,14 +21,25 @@ function ok(name: string, holds: boolean, detail = ''): void {
   }
 }
 
-function tails(text: string): { names: string[]; ts: string; kotlin: string } {
-  const built = compile({ file: 'main.tree', text }, { optimize: false })
+function tails(text: string): {
+  names: string[]
+  ts: string
+  kotlin: string
+} {
+  const built = compile(
+    { file: 'main.tree', text },
+    { optimize: false },
+  )
 
   if (!built.ok) {
     throw new Error(built.diagnostics.map(d => d.message).join(' | '))
   }
 
-  return { names: [...tailTasks(built.program).keys()], ts: built.typescript, kotlin: emitKotlin(built.program) }
+  return {
+    names: [...tailTasks(built.program).keys()],
+    ts: built.typescript,
+    kotlin: emitKotlin(built.program),
+  }
 }
 
 // 1. a countdown with an accumulator: every self call a tail call
@@ -52,9 +63,23 @@ const sum = tails(`task sum-down
         read acc
         read n
 `)
-ok('a task whose every self call is a tail call is a loop', sum.names.join() === 'sum-down', sum.names.join())
-ok('TypeScript writes it inside while (true), its tail call rebinding the parameters', /while \(true\)/.test(sum.ts) && /n = __tail/.test(sum.ts) && /continue/.test(sum.ts), sum.ts)
-ok('Kotlin marks it tailrec', /tailrec fun sumDown/.test(sum.kotlin), sum.kotlin.split('\n').find(l => /fun sumDown/.test(l)) ?? '')
+ok(
+  'a task whose every self call is a tail call is a loop',
+  sum.names.join() === 'sum-down',
+  sum.names.join(),
+)
+ok(
+  'TypeScript writes it inside while (true), its tail call rebinding the parameters',
+  /while \(true\)/.test(sum.ts) &&
+    /n = __tail/.test(sum.ts) &&
+    /continue/.test(sum.ts),
+  sum.ts,
+)
+ok(
+  'Kotlin marks it tailrec',
+  /tailrec fun sumDown/.test(sum.kotlin),
+  sum.kotlin.split('\n').find(l => /fun sumDown/.test(l)) ?? '',
+)
 
 // 2. a self call whose result is added to: not a tail call
 const size = tails(`task count-down
@@ -75,7 +100,11 @@ const size = tails(`task count-down
           read n
           code 1
 `)
-ok('a self call whose result is used is NOT a loop', size.names.length === 0, size.names.join())
+ok(
+  'a self call whose result is used is NOT a loop',
+  size.names.length === 0,
+  size.names.join(),
+)
 
 // 3. a tail call inside a walk: a continue there would continue the walk
 const walked = tails(`task find
@@ -99,7 +128,11 @@ const walked = tails(`task find
                 code 1
   send back, read n
 `)
-ok('a self call inside a walk is NOT a loop', walked.names.length === 0, walked.names.join())
+ok(
+  'a self call inside a walk is NOT a loop',
+  walked.names.length === 0,
+  walked.names.join(),
+)
 
 // 4. the task taken as a value
 const value = tails(`task again
@@ -119,7 +152,11 @@ const value = tails(`task again
         read n
         code 1
 `)
-ok('a task also taken as a value is NOT a loop', value.names.length === 0, value.names.join())
+ok(
+  'a task also taken as a value is NOT a loop',
+  value.names.length === 0,
+  value.names.join(),
+)
 
 console.log(`\ntail: ${pass} pass, ${fail} fail`)
 

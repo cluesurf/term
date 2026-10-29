@@ -28,7 +28,10 @@ function ok(what: string, held: boolean, note = ''): void {
   }
 }
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+const ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../..',
+)
 const resolve = projectResolver(ROOT, 'node')
 
 // A document. Four statement heads, no head that declares anything: a constant, a query, and the view that
@@ -80,13 +83,19 @@ async function run(program: any, typescript: string): Promise<any> {
     fs.existsSync(at) ? fs.readFileSync(at, 'utf8') : undefined
 
   const js = (
-    await transform(`${nativePrelude(program, 'node', readRuntime)}\n${typescript}`, {
-      loader: 'ts',
-      format: 'esm',
-    })
+    await transform(
+      `${nativePrelude(program, 'node', readRuntime)}\n${typescript}`,
+      {
+        loader: 'ts',
+        format: 'esm',
+      },
+    )
   ).code
 
-  const file = path.join(os.tmpdir(), `term-view-doc-${process.pid}.mjs`)
+  const file = path.join(
+    os.tmpdir(),
+    `term-view-doc-${process.pid}.mjs`,
+  )
 
   fs.writeFileSync(file, js)
 
@@ -102,7 +111,11 @@ async function main(): Promise<void> {
     { file: path.join(ROOT, 'page/doc.tree'), text: DOCUMENT },
     // the role is per FILE. Only the document is a document; the render runtime it pulls in is code, and reading
     // that with the view reader is how this test first failed.
-    { resolve, roleOf: file => (file.endsWith('page/doc.tree') ? 'view' : null), treeShake: false },
+    {
+      resolve,
+      roleOf: file => (file.endsWith('page/doc.tree') ? 'view' : null),
+      treeShake: false,
+    },
   )
 
   ok(
@@ -115,11 +128,19 @@ async function main(): Promise<void> {
     return
   }
 
-  ok('it emits one component', /export function page\(/.test(built.typescript), built.typescript.slice(0, 200))
+  ok(
+    'it emits one component',
+    /export function page\(/.test(built.typescript),
+    built.typescript.slice(0, 200),
+  )
   ok(
     'the component takes the mount host first, then the query',
-    /export function page\(\s*host[^)]*vowel/.test(built.typescript.replace(/\n/g, ' ')),
-    (built.typescript.match(/export function page\([^)]*\)/) ?? [''])[0],
+    /export function page\(\s*host[^)]*vowel/.test(
+      built.typescript.replace(/\n/g, ' '),
+    ),
+    (built.typescript.match(/export function page\([^)]*\)/) ?? [
+      '',
+    ])[0],
   )
 
   const mod = await run(built.program, built.typescript)
@@ -131,8 +152,16 @@ async function main(): Promise<void> {
 
   const said = texts(host)
 
-  ok('it mounts and renders text', said.length > 0, JSON.stringify(said))
-  ok('the static text is there', said.includes('heading'), JSON.stringify(said))
+  ok(
+    'it mounts and renders text',
+    said.length > 0,
+    JSON.stringify(said),
+  )
+  ok(
+    'the static text is there',
+    said.includes('heading'),
+    JSON.stringify(said),
+  )
   ok(
     'the walk rendered one node per resolved item',
     said.filter(one => one === 'row').length === 3,

@@ -37,7 +37,11 @@ task make-box
 
 const check = (name: string, text: string, want: boolean) => {
   const result = compile({ file: 'holes.tree', text })
-  ok(name, result.ok === want, result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '))
+  ok(
+    name,
+    result.ok === want,
+    result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '),
+  )
 }
 
 // the shape of native-dom-0044: a host makes it at text before any body is checked, a task at a number

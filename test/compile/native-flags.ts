@@ -39,7 +39,11 @@ export function nativeFlags(env: 'swift' | 'kotlin'): string[] {
     const out = execFileSync(
       'bash',
       [join(ROOT, `task/term/native/${env}.sh`), 'flags'],
-      { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] },
+      {
+        encoding: 'utf8',
+        maxBuffer: 16 * 1024 * 1024,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
     )
 
     // swift writes one argument per line, kotlin writes a single classpath string

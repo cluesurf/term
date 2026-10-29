@@ -23,6 +23,13 @@ export function mill(
   lean?: boolean,
 ): MillResult {
   return millResultOf(
-    port.mill(tree as never, file, role === undefined ? { form: 'none' } : { form: 'some', value: role }, lean === true),
+    port.mill(
+      tree as never,
+      file,
+      role === undefined
+        ? { form: 'none' }
+        : { form: 'some', value: role },
+      lean === true,
+    ),
   )
 }

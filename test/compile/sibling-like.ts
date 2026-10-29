@@ -36,7 +36,8 @@ const TAKE = `task first-of
 const take = compile({ file: 't.tree', text: TAKE })
 ok(
   'a second like under a take is refused by name',
-  !take.ok && messages(take).filter(m => m.includes(NAMED)).length === 1,
+  !take.ok &&
+    messages(take).filter(m => m.includes(NAMED)).length === 1,
   messages(take).join(' | ') || 'compiled',
 )
 
@@ -64,7 +65,11 @@ const NESTED = `task first-of
 `
 
 const nested = compile({ file: 'n.tree', text: NESTED })
-ok('the nested spelling compiles', nested.ok, messages(nested).join(' | '))
+ok(
+  'the nested spelling compiles',
+  nested.ok,
+  messages(nested).join(' | '),
+)
 
 const LINE = `task first-of
   take names, like list, like text
@@ -75,7 +80,11 @@ const LINE = `task first-of
 `
 
 const line = compile({ file: 'o.tree', text: LINE })
-ok('the one-line spelling compiles', line.ok, messages(line).join(' | '))
+ok(
+  'the one-line spelling compiles',
+  line.ok,
+  messages(line).join(' | '),
+)
 
 // the element type is READ: a number where the nested spelling says text is a type error, which it never was when
 // the second like was dropped
@@ -110,7 +119,11 @@ task key-of
 `
 
 const args = compile({ file: 'a.tree', text: ARGS })
-ok('two type arguments under one like still compile', args.ok, messages(args).join(' | '))
+ok(
+  'two type arguments under one like still compile',
+  args.ok,
+  messages(args).join(' | '),
+)
 
 // beside `like task` the second `like` IS read, as the function's result, and stays legal on a take and a link
 const RESULT = `task apply
@@ -133,7 +146,11 @@ form stepper
 `
 
 const result = compile({ file: 'r.tree', text: RESULT })
-ok('a function result beside like task still compiles', result.ok, messages(result).join(' | '))
+ok(
+  'a function result beside like task still compiles',
+  result.ok,
+  messages(result).join(' | '),
+)
 
 console.log(`\n${pass} pass, ${fail} fail`)
 process.exit(fail === 0 ? 0 : 1)

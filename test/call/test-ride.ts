@@ -27,9 +27,13 @@ const line = LINE
 const root = realpathSync(tempDir('test-ride-'))
 mkdirSync(join(root, 'code'), { recursive: true })
 mkdirSync(join(root, 'test'), { recursive: true })
-writeFileSync(join(root, 'deck.tree'), `deck @probe/ride\n  mark <0.0.1>\n`)
+writeFileSync(
+  join(root, 'deck.tree'),
+  `deck @probe/ride\n  mark <0.0.1>\n`,
+)
 
-const module = (name: string, value: number): string => `task ${name}\n  like number\n  send back, code ${value}\n`
+const module = (name: string, value: number): string =>
+  `task ${name}\n  like number\n  send back, code ${value}\n`
 const testOf = (name: string, value: number): string =>
   `load ../code/${name}\n  find ${name}\n\ntest <${name} is ${value}>\n  want hold, is-equal ${name}(), ${value}\n`
 
@@ -38,7 +42,11 @@ writeFileSync(join(root, 'code', 'two.tree'), module('two', 2))
 writeFileSync(join(root, 'test', 'one.tree'), testOf('one', 1))
 writeFileSync(join(root, 'test', 'two.tree'), testOf('two', 2))
 
-const child = spawn('node', [line, 'test', '--ride', '--color', 'never'], { cwd: root })
+const child = spawn(
+  'node',
+  [line, 'test', '--ride', '--color', 'never'],
+  { cwd: root },
+)
 let output = ''
 child.stdout.on('data', chunk => (output += String(chunk)))
 child.stderr.on('data', chunk => (output += String(chunk)))
@@ -61,25 +69,47 @@ const after = (from: number, text: string): Promise<string> =>
   })
 
 const first = await after(0, 'every file')
-ok('the first round runs every test file', first.includes('test/one.tree') && first.includes('test/two.tree'), first)
+ok(
+  'the first round runs every test file',
+  first.includes('test/one.tree') && first.includes('test/two.tree'),
+  first,
+)
 ok('and both pass', first.includes('2 passed'), first)
 
 // an edit to the first module, which only test/one.tree reaches, into a value its test does not want
 let mark = output.length
 writeFileSync(join(root, 'code', 'one.tree'), module('one', 5))
 const second = await after(mark, '1 of 2 files')
-ok('an edit runs the one test file that reaches it', second.includes('1 of 2 files') && second.includes('test/one.tree'), second)
+ok(
+  'an edit runs the one test file that reaches it',
+  second.includes('1 of 2 files') && second.includes('test/one.tree'),
+  second,
+)
 ok('and not the other', !second.includes('test/two.tree'), second)
-ok('and it fails, as the edit made it', second.includes('One is 1'), second)
+ok(
+  'and it fails, as the edit made it',
+  second.includes('One is 1'),
+  second,
+)
 
 mark = output.length
 writeFileSync(join(root, 'code', 'one.tree'), module('one', 1))
 const third = await after(mark, '1 of 2 files')
-ok('put back, it runs again and passes', third.includes('1 passed') && !third.includes('failed'), third)
+ok(
+  'put back, it runs again and passes',
+  third.includes('1 passed') && !third.includes('failed'),
+  third,
+)
 
 child.kill('SIGINT')
-const code = await new Promise<number | null>(done => child.on('exit', done))
-ok('ctrl-c closes the run', output.includes('Stopped') && code !== 0, `${code}`)
+const code = await new Promise<number | null>(done =>
+  child.on('exit', done),
+)
+ok(
+  'ctrl-c closes the run',
+  output.includes('Stopped') && code !== 0,
+  `${code}`,
+)
 
 console.log(`\ntest-ride: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)

@@ -7,7 +7,12 @@
 //   - a value is still there after its melt (Rust lent it: until 2026-10-22 `melt(got)` moved `got`)
 // Gaps 59 and 157 of the guides. Run: npx tsx test/compile/presence-native.ts   (PRESENCE_ONLY=rust ... runs one)
 
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { projectResolver } from '@term/call/code/make'
@@ -26,7 +31,12 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-type Case = { name: string; says: string; want: string; program: string }
+type Case = {
+  name: string
+  says: string
+  want: string
+  program: string
+}
 
 const LOADS = `load @term/host/code/base
   find data
@@ -118,14 +128,18 @@ task run
   },
 ]
 
-const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
+const HERE =
+  import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const root = mkdtempSync(join(tmpdir(), 'term-presence-'))
 mkdirSync(join(root, 'link/@term'), { recursive: true })
 mkdirSync(join(root, 'code'), { recursive: true })
 symlinkSync(join(TERM, 'deck/base'), join(root, 'link/@term/base'))
 symlinkSync(join(TERM, 'deck/host'), join(root, 'link/@term/host'))
-writeFileSync(join(root, 'deck.tree'), 'deck @probe/presence\n  code <0.0.0>\n')
+writeFileSync(
+  join(root, 'deck.tree'),
+  'deck @probe/presence\n  code <0.0.0>\n',
+)
 
 const dir = join(root, 'out')
 mkdirSync(dir, { recursive: true })
@@ -133,7 +147,13 @@ const only = process.env.PRESENCE_ONLY ?? ''
 
 for (const one of CASES) {
   for (const backend of BACKENDS.filter(b => !only || b === only)) {
-    const ran = runOn({ backend, program: one.program, resolve: env => projectResolver(root, env), dir, name: one.name })
+    const ran = runOn({
+      backend,
+      program: one.program,
+      resolve: env => projectResolver(root, env),
+      dir,
+      name: one.name,
+    })
 
     if (ran.form === 'skipped') {
       console.log(`skip  ${backend}: ${ran.reason}`)
@@ -143,7 +163,9 @@ for (const one of CASES) {
     ok(
       `${backend}: ${one.says} (${one.name})`,
       ran.form === 'ran' && ran.output === one.want,
-      ran.form === 'ran' ? `got ${JSON.stringify(ran.output)}` : `${ran.stage}: ${ran.reason.slice(0, 900)}`,
+      ran.form === 'ran'
+        ? `got ${JSON.stringify(ran.output)}`
+        : `${ran.stage}: ${ran.reason.slice(0, 900)}`,
     )
   }
 }

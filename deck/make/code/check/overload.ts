@@ -37,7 +37,13 @@ export function disambiguateOverloads(
   // the render runtime's file, from the build's resolver. Empty, the binding finds it by the path ending `/view/render.tree`
   render = '',
 ): Diagnostic[] {
-  const answer = port.disambiguate(program, scopeList(scope), runtime, render, entry ?? '')
+  const answer = port.disambiguate(
+    program,
+    scopeList(scope),
+    runtime,
+    render,
+    entry ?? '',
+  )
 
   program.splice(0, program.length, ...(answer.program as Program))
   keepOverloadBound(answer.groups, answer.runtime)

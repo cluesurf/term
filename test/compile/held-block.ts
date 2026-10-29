@@ -77,16 +77,48 @@ task counts-of
   back out
 `
 
-const built = compile({ file: 'held-block.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!), library: true, leanOf: () => true } as never)
+const built = compile({ file: 'held-block.tree', text }, {
+  resolve: withNativeEnv('node', stdlibResolver()!),
+  library: true,
+  leanOf: () => true,
+} as never)
 
 if (!built.ok) {
-  ok('the program builds', false, built.diagnostics.map(d => d.message.split('\n').join(' ')).join(' | '))
+  ok(
+    'the program builds',
+    false,
+    built.diagnostics
+      .map(d => d.message.split('\n').join(' '))
+      .join(' | '),
+  )
 } else {
-  const source = ts.createSourceFile('held-block.ts', built.typescript, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
-  const parsed = (source as unknown as { parseDiagnostics: ts.Diagnostic[] }).parseDiagnostics
-  ok('the emitted module parses as TypeScript', parsed.length === 0, parsed.map(d => ts.flattenDiagnosticMessageText(d.messageText, ' ')).join(' | '))
-  ok('the held subject is in its block', /const __at\d+ = __termMaybe\(value\.items\)/.test(built.typescript))
-  ok('the only arm of a one-case match opens its block with `;`', /;\{\s*\n\s*const counts = value\.counts/.test(built.typescript))
+  const source = ts.createSourceFile(
+    'held-block.ts',
+    built.typescript,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  )
+  const parsed = (
+    source as unknown as { parseDiagnostics: ts.Diagnostic[] }
+  ).parseDiagnostics
+  ok(
+    'the emitted module parses as TypeScript',
+    parsed.length === 0,
+    parsed
+      .map(d => ts.flattenDiagnosticMessageText(d.messageText, ' '))
+      .join(' | '),
+  )
+  ok(
+    'the held subject is in its block',
+    /const __at\d+ = __termMaybe\(value\.items\)/.test(
+      built.typescript,
+    ),
+  )
+  ok(
+    'the only arm of a one-case match opens its block with `;`',
+    /;\{\s*\n\s*const counts = value\.counts/.test(built.typescript),
+  )
 }
 
 console.log(`\nheld-block: ${pass} pass, ${fail} fail`)

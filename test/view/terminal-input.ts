@@ -32,15 +32,37 @@ const HEIGHT = 4
 // each step: what was pressed, and the screen after it. A row is the field (7 cells), a 1 cell gap, the button (7);
 // the notes are under it, and the screen's empty rows end in line breaks
 const STEPS: { did: string; keys: string[]; want: string }[] = [
-  { did: 'nothing focused: the field shows its placeholder', keys: [], want: '[note ] [ add ]\n\n\n' },
-  { did: 'tab focuses the field, and two characters type into it', keys: ['tab', 'h', 'i'], want: '>hi█< [ add ]\n\n\n' },
-  { did: 'tab to the button and enter: the note is added and the field cleared', keys: ['tab', 'enter'], want: '[note ] > add <\nhi\n\n' },
-  { did: 'shift-tab back to the field, a character, then backspace', keys: ['shift-tab', 'o', 'k', 'backspace'], want: '>o█< [ add ]\nhi\n\n' },
-  { did: 'tab wraps past the last control to the first', keys: ['tab', 'tab'], want: '>o█< [ add ]\nhi\n\n' },
+  {
+    did: 'nothing focused: the field shows its placeholder',
+    keys: [],
+    want: '[note ] [ add ]\n\n\n',
+  },
+  {
+    did: 'tab focuses the field, and two characters type into it',
+    keys: ['tab', 'h', 'i'],
+    want: '>hi█< [ add ]\n\n\n',
+  },
+  {
+    did: 'tab to the button and enter: the note is added and the field cleared',
+    keys: ['tab', 'enter'],
+    want: '[note ] > add <\nhi\n\n',
+  },
+  {
+    did: 'shift-tab back to the field, a character, then backspace',
+    keys: ['shift-tab', 'o', 'k', 'backspace'],
+    want: '>o█< [ add ]\nhi\n\n',
+  },
+  {
+    did: 'tab wraps past the last control to the first',
+    keys: ['tab', 'tab'],
+    want: '>o█< [ add ]\nhi\n\n',
+  },
 ]
 
 const presses = STEPS.map((step, i) => {
-  const keys = step.keys.map(key => `  call press-key\n    read root\n    text <${key}>`).join('\n')
+  const keys = step.keys
+    .map(key => `  call press-key\n    read root\n    text <${key}>`)
+    .join('\n')
 
   return `${keys}\n  save paint-${i}\n    call paint-screen\n      read root\n      code ${WIDTH}\n      code ${HEIGHT}`
 }).join('\n')
@@ -164,7 +186,14 @@ ${presses}
 function pinned(env: string): Resolver {
   const base = projectResolver(process.cwd(), env)
 
-  return (importPath, fromFile) => base(importPath.replace(/native\/\{platform\}\/(dom|view)$/, 'native/terminal/$1'), fromFile)
+  return (importPath, fromFile) =>
+    base(
+      importPath.replace(
+        /native\/\{platform\}\/(dom|view)$/,
+        'native/terminal/$1',
+      ),
+      fromFile,
+    )
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'term-terminal-input-'))
@@ -172,20 +201,34 @@ const dir = mkdtempSync(join(tmpdir(), 'term-terminal-input-'))
 const only = process.env.TERMINAL_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: pinned, dir, name: 'notes' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: pinned,
+    dir,
+    name: 'notes',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
     continue
   }
 
-  ok(`${backend}: the note form compiles, builds and runs against the terminal host`, ran.form === 'ran', ran.form === 'failed' ? `${ran.stage}: ${ran.reason}` : '')
+  ok(
+    `${backend}: the note form compiles, builds and runs against the terminal host`,
+    ran.form === 'ran',
+    ran.form === 'failed' ? `${ran.stage}: ${ran.reason}` : '',
+  )
 
   if (ran.form === 'ran') {
     const paints = ran.output.split('|')
 
     for (const [i, step] of STEPS.entries()) {
-      ok(`${backend}: ${step.did}`, paints[i] === step.want, `got ${JSON.stringify(paints[i])}, want ${JSON.stringify(step.want)}`)
+      ok(
+        `${backend}: ${step.did}`,
+        paints[i] === step.want,
+        `got ${JSON.stringify(paints[i])}, want ${JSON.stringify(step.want)}`,
+      )
     }
   }
 }

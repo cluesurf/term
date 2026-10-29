@@ -12,7 +12,12 @@
 //      FORMAT_ONLY=typescript|rust|swift|kotlin runs one backend.
 // Write known.json once, from a run: ... test/stdlib/text-format.ts --known   (refuses to overwrite a file that exists)
 
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { projectResolver } from '@term/call/code/make'
@@ -22,7 +27,10 @@ const HERE = resolve(process.cwd(), 'test/stdlib/text-format')
 const KNOWN_FILE = join(HERE, 'known.json')
 const BACKENDS = ['typescript', 'rust', 'swift', 'kotlin'] as const
 
-type Known = { class: Record<string, string>; case: Record<string, Record<string, string>> }
+type Known = {
+  class: Record<string, string>
+  case: Record<string, Record<string, string>>
+}
 
 let pass = 0
 let fail = 0
@@ -37,27 +45,44 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const lines = readFileSync(join(HERE, 'reference.tsv'), 'utf8').split('\n').filter(line => line !== '' && !line.startsWith('#'))
+const lines = readFileSync(join(HERE, 'reference.tsv'), 'utf8')
+  .split('\n')
+  .filter(line => line !== '' && !line.startsWith('#'))
 const refs = lines.map(line => {
   const parts = line.split('\t')
   const width = parts[0] === 'n' ? 5 : 4
 
-  return { kind: parts[0]!, locale: parts[1]!, key: parts.slice(0, width).join('\t'), expected: parts[width] ?? '' }
+  return {
+    kind: parts[0]!,
+    locale: parts[1]!,
+    key: parts.slice(0, width).join('\t'),
+    expected: parts[width] ?? '',
+  }
 })
 
 // the three classes of the 170 cases the generated data cannot reproduce (locale/log.md, 0004)
 const CLASSES: Record<string, string> = {
-  'en-currency': "ICU writes plain en's currency format (the symbol before the number, en's marks) for en-150 and 25 en-XX locales, where CLDR 48's own file for the locale says otherwise; their number formats agree",
-  'cve-mark': "CLDR gives the currency CVE its own decimal mark `$` in kea and pt-CV (currencies.json, per currency) and ICU applies it to every currency there, and the generated module stores no per-currency mark",
-  'rsd-digits': "CLDR currencyData fractions say RSD has 0 digits, node's ICU writes 2 (sr, sr-Cyrl, sr-Latn)",
+  'en-currency':
+    "ICU writes plain en's currency format (the symbol before the number, en's marks) for en-150 and 25 en-XX locales, where CLDR 48's own file for the locale says otherwise; their number formats agree",
+  'cve-mark':
+    'CLDR gives the currency CVE its own decimal mark `$` in kea and pt-CV (currencies.json, per currency) and ICU applies it to every currency there, and the generated module stores no per-currency mark',
+  'rsd-digits':
+    "CLDR currencyData fractions say RSD has 0 digits, node's ICU writes 2 (sr, sr-Cyrl, sr-Latn)",
 }
 
-function classOf(one: { kind: string; locale: string; key: string }): string {
+function classOf(one: {
+  kind: string
+  locale: string
+  key: string
+}): string {
   if (one.kind === 'c' && /^en-/.test(one.locale)) {
     return 'en-currency'
   }
 
-  if (one.kind === 'c' && (one.locale === 'kea' || one.locale === 'pt-CV')) {
+  if (
+    one.kind === 'c' &&
+    (one.locale === 'kea' || one.locale === 'pt-CV')
+  ) {
     return 'cve-mark'
   }
 
@@ -167,15 +192,25 @@ task run
 const writing = process.argv.includes('--known')
 
 if (writing && existsSync(KNOWN_FILE)) {
-  console.log(`refused: ${KNOWN_FILE} exists. known.json only shrinks: a person removes entries by hand.`)
+  console.log(
+    `refused: ${KNOWN_FILE} exists. known.json only shrinks: a person removes entries by hand.`,
+  )
   process.exit(1)
 }
 
-const known: Known = writing ? { class: CLASSES, case: {} } : (JSON.parse(readFileSync(KNOWN_FILE, 'utf8')) as Known)
+const known: Known = writing
+  ? { class: CLASSES, case: {} }
+  : (JSON.parse(readFileSync(KNOWN_FILE, 'utf8')) as Known)
 const only = process.env.FORMAT_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'format' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'format',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
@@ -183,7 +218,11 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
   }
 
   if (ran.form !== 'ran') {
-    ok(`${backend}: the formatter built and ran`, false, `${ran.stage}: ${ran.reason}`)
+    ok(
+      `${backend}: the formatter built and ran`,
+      false,
+      `${ran.stage}: ${ran.reason}`,
+    )
     continue
   }
 
@@ -208,7 +247,9 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
     failing[one.key] = classOf(one)
 
     if (own[one.key] === undefined) {
-      unknown.push(`${JSON.stringify(one.key)} got ${JSON.stringify(got[at] ?? '')} node ${JSON.stringify(one.expected)}`)
+      unknown.push(
+        `${JSON.stringify(one.key)} got ${JSON.stringify(got[at] ?? '')} node ${JSON.stringify(one.expected)}`,
+      )
     }
   })
 
@@ -216,17 +257,38 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
     known.case[backend] = failing
   }
 
-  console.log(`${backend} ${passed} of ${refs.length}, known.json holds ${Object.keys(own).length}`)
-  ok(`${backend}: every case equals node's Intl except those in known.json`, writing || unknown.length === 0, `${unknown.length} new: ${unknown.slice(0, 5).join(' | ')}`)
-  ok(`${backend}: every known case still differs`, writing || gone.length === 0, `now passing, take off known.json: ${gone.slice(0, 5).join(' | ')}`)
-  ok(`${backend}: every known case has a named class`, writing || Object.values(own).every(name => known.class[name] !== undefined), '')
+  console.log(
+    `${backend} ${passed} of ${refs.length}, known.json holds ${Object.keys(own).length}`,
+  )
+  ok(
+    `${backend}: every case equals node's Intl except those in known.json`,
+    writing || unknown.length === 0,
+    `${unknown.length} new: ${unknown.slice(0, 5).join(' | ')}`,
+  )
+  ok(
+    `${backend}: every known case still differs`,
+    writing || gone.length === 0,
+    `now passing, take off known.json: ${gone.slice(0, 5).join(' | ')}`,
+  )
+  ok(
+    `${backend}: every known case has a named class`,
+    writing ||
+      Object.values(own).every(name => known.class[name] !== undefined),
+    '',
+  )
 }
 
 if (writing) {
-  const unclassified = BACKENDS.filter(b => known.case[b]).flatMap(b => Object.entries(known.case[b]!).filter(([, name]) => name === 'unclassified').map(([key]) => `${b} ${key}`))
+  const unclassified = BACKENDS.filter(b => known.case[b]).flatMap(b =>
+    Object.entries(known.case[b]!)
+      .filter(([, name]) => name === 'unclassified')
+      .map(([key]) => `${b} ${key}`),
+  )
 
   if (unclassified.length > 0) {
-    console.log(`not written: ${unclassified.length} failing cases fit no class, e.g. ${unclassified[0]}`)
+    console.log(
+      `not written: ${unclassified.length} failing cases fit no class, e.g. ${unclassified[0]}`,
+    )
     process.exit(1)
   }
 

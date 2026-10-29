@@ -24,11 +24,15 @@ function ok(name: string, cond: boolean, info = ''): void {
 function frontEnd(text: string): Program {
   const parsed = parse({ file: 'm.tree', text })
 
-  if (!parsed.ok) {throw new Error('parse failed')}
+  if (!parsed.ok) {
+    throw new Error('parse failed')
+  }
 
   const built = mill(parsed.tree, 'm.tree')
 
-  if (!built.ok) {throw new Error('mill failed')}
+  if (!built.ok) {
+    throw new Error('mill failed')
+  }
 
   resolve(built.program, 'm.tree')
   check(built.program, 'm.tree')

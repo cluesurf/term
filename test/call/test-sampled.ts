@@ -28,7 +28,10 @@ function ok(name: string, cond: boolean, info = ''): void {
 const line = LINE
 const root = realpathSync(tempDir('test-sampled-'))
 mkdirSync(join(root, 'test'), { recursive: true })
-writeFileSync(join(root, 'deck.tree'), `deck @probe/sampled\n  mark <0.0.1>\n`)
+writeFileSync(
+  join(root, 'deck.tree'),
+  `deck @probe/sampled\n  mark <0.0.1>\n`,
+)
 writeFileSync(
   join(root, 'test', 'math.tree'),
   [
@@ -60,37 +63,89 @@ writeFileSync(
   ].join('\n'),
 )
 
-const run = (...args: string[]): { code: number | null; out: string } => {
-  const ran = spawnSync('node', [line, 'test', ...args, '--color', 'never'], { cwd: root, encoding: 'utf8', timeout: 900_000 })
+const run = (
+  ...args: string[]
+): { code: number | null; out: string } => {
+  const ran = spawnSync(
+    'node',
+    [line, 'test', ...args, '--color', 'never'],
+    { cwd: root, encoding: 'utf8', timeout: 900_000 },
+  )
 
   // the report wraps a long reason onto an indented line; read as one line
-  return { code: ran.status, out: `${ran.stdout}${ran.stderr}`.replace(/\n {4}(?=\S)/g, ' ') }
+  return {
+    code: ran.status,
+    out: `${ran.stdout}${ran.stderr}`.replace(/\n {4}(?=\S)/g, ' '),
+  }
 }
 
-const checkRun = (on: string, ran: { code: number | null; out: string }): void => {
+const checkRun = (
+  on: string,
+  ran: { code: number | null; out: string },
+): void => {
   const where = on === 'node' ? '' : ` on ${on}`
 
-  ok(`${on}: two of six hold`, ran.out.includes('6 tests · 2 passed · 4 failed') && ran.code === 1, ran.out)
+  ok(
+    `${on}: two of six hold`,
+    ran.out.includes('6 tests · 2 passed · 4 failed') && ran.code === 1,
+    ran.out,
+  )
   // the greedy shrink walks a whole number down one at a time, so the smallest failing one is ten exactly
-  ok(`${on}: a number shrinks to the smallest that fails`, ran.out.includes(`line 12 did not hold${where}: want hold, is-below n, 10, at n 10`), ran.out)
-  ok(`${on}: a flag shrinks to off`, ran.out.includes(`line 16 did not hold${where}: want hold, b, at b false`), ran.out)
+  ok(
+    `${on}: a number shrinks to the smallest that fails`,
+    ran.out.includes(
+      `line 12 did not hold${where}: want hold, is-below n, 10, at n 10`,
+    ),
+    ran.out,
+  )
+  ok(
+    `${on}: a flag shrinks to off`,
+    ran.out.includes(
+      `line 16 did not hold${where}: want hold, b, at b false`,
+    ),
+    ran.out,
+  )
   // a list shrinks by dropping items, never below the three that fail
-  ok(`${on}: a list shrinks to three items`, new RegExp(`line 20 did not hold${where}: want hold, is-below xs/length, 3, at xs \\[-?\\d+, -?\\d+, -?\\d+\\]`).test(ran.out), ran.out)
-  ok(`${on}: an input no sample is drawn for is named`, ran.out.includes('"f" is float'), ran.out)
+  ok(
+    `${on}: a list shrinks to three items`,
+    new RegExp(
+      `line 20 did not hold${where}: want hold, is-below xs/length, 3, at xs \\[-?\\d+, -?\\d+, -?\\d+\\]`,
+    ).test(ran.out),
+    ran.out,
+  )
+  ok(
+    `${on}: an input no sample is drawn for is named`,
+    ran.out.includes('"f" is float'),
+    ran.out,
+  )
 }
 
 // the line and the input each failing property named, without the times around it
-const reasons = (out: string): string => out.split('\n').filter(text => /^\s+why line \d+ did not hold/.test(text)).join('\n')
+const reasons = (out: string): string =>
+  out
+    .split('\n')
+    .filter(text => /^\s+why line \d+ did not hold/.test(text))
+    .join('\n')
 
 const first = run()
 checkRun('node', first)
 
 const again = run()
-ok('node: a second run fails at the same inputs', reasons(again.out) !== '' && reasons(again.out) === reasons(first.out), again.out)
+ok(
+  'node: a second run fails at the same inputs',
+  reasons(again.out) !== '' &&
+    reasons(again.out) === reasons(first.out),
+  again.out,
+)
 
-const have = (tool: string): boolean => spawnSync('which', [tool], { stdio: 'ignore' }).status === 0
+const have = (tool: string): boolean =>
+  spawnSync('which', [tool], { stdio: 'ignore' }).status === 0
 
-for (const [env, tools] of [['rust', ['rustc']], ['swift', ['swiftc']], ['kotlin', ['kotlinc', 'java']]] as const) {
+for (const [env, tools] of [
+  ['rust', ['rustc']],
+  ['swift', ['swiftc']],
+  ['kotlin', ['kotlinc', 'java']],
+] as const) {
   if (!tools.every(have)) {
     console.log(`skip  ${env}: ${tools.join(' and ')} not here`)
     continue
@@ -99,7 +154,12 @@ for (const [env, tools] of [['rust', ['rustc']], ['swift', ['swiftc']], ['kotlin
   const native = run('--env', env)
   checkRun(env, native)
   // the seed is the phrase's, and the generator is Term on every backend, so each fails at node's inputs
-  ok(`${env}: the same inputs as node`, reasons(native.out).replace(new RegExp(` on ${env}`, 'g'), '') === reasons(first.out), native.out)
+  ok(
+    `${env}: the same inputs as node`,
+    reasons(native.out).replace(new RegExp(` on ${env}`, 'g'), '') ===
+      reasons(first.out),
+    native.out,
+  )
 }
 
 console.log(`\ntest-sampled: ${pass} pass, ${fail} fail`)

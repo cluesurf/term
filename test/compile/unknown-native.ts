@@ -20,7 +20,10 @@ import { extendForms } from '@term/make/code/check/extend'
 import { disambiguateOverloads } from '@term/make/code/check/overload'
 import { emitRust } from '@term/make/code/compile/rust'
 import { emitSwift } from '@term/make/code/compile/swift'
-import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
+import {
+  emitKotlin,
+  hoistKotlinImports,
+} from '@term/make/code/compile/kotlin'
 import type { Program } from '@term/make/code/compile/node'
 
 type Env = 'rust' | 'swift' | 'kotlin'
@@ -82,19 +85,25 @@ function frontEnd(): Program {
   const parsed = parse({ file: 'main.tree', text: PROGRAM })
 
   if (!parsed.ok) {
-    throw new Error(`parse: ${parsed.diagnostics.map(d => d.message).join(', ')}`)
+    throw new Error(
+      `parse: ${parsed.diagnostics.map(d => d.message).join(', ')}`,
+    )
   }
 
   const built = mill(expandTemplates(parsed.tree), 'main.tree')
 
   if (!built.ok) {
-    throw new Error(`mill: ${built.diagnostics.map(d => d.message).join(', ')}`)
+    throw new Error(
+      `mill: ${built.diagnostics.map(d => d.message).join(', ')}`,
+    )
   }
 
   const program = extendForms(built.program, 'main.tree', []).program
   disambiguateOverloads(program)
   resolveNames(program, 'main.tree')
-  const errors = check(program, 'main.tree').filter(d => d.severity !== 'warning')
+  const errors = check(program, 'main.tree').filter(
+    d => d.severity !== 'warning',
+  )
 
   if (errors.length) {
     throw new Error(`check: ${errors.map(d => d.message).join(' | ')}`)
@@ -109,7 +118,10 @@ const dir = runDir('term-unknown-native-')
 const only = process.env.UN_ONLY ?? ''
 const WANT = 'user alice'
 
-function judge(env: Env, run: { status: number | null; stdout: string; stderr: string }): void {
+function judge(
+  env: Env,
+  run: { status: number | null; stdout: string; stderr: string },
+): void {
   ok(
     `${env}: a record rides in the unknown slot and downcasts back`,
     run.status === 0 && run.stdout.trim() === WANT,
@@ -135,15 +147,24 @@ function runRust(): void {
   )
 
   try {
-    execFileSync('rustc', ['-O', '-o', join(dir, 'rust-main'), main], { stdio: 'pipe' })
+    execFileSync('rustc', ['-O', '-o', join(dir, 'rust-main'), main], {
+      stdio: 'pipe',
+    })
   } catch (e) {
-    ok('rust: the unknown program builds', false, String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 400))
+    ok(
+      'rust: the unknown program builds',
+      false,
+      String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 400),
+    )
 
     return
   }
 
   ok('rust: the unknown program builds', true)
-  judge('rust', spawnSync(join(dir, 'rust-main'), [], { encoding: 'utf8' }))
+  judge(
+    'rust',
+    spawnSync(join(dir, 'rust-main'), [], { encoding: 'utf8' }),
+  )
 }
 
 function runSwift(): void {
@@ -152,7 +173,11 @@ function runSwift(): void {
   }
 
   const source = emitSwift(frontEnd())
-  ok('swift: unknown lowers to Any', /var base: Any\b/.test(source), source.slice(0, 200))
+  ok(
+    'swift: unknown lowers to Any',
+    /var base: Any\b/.test(source),
+    source.slice(0, 200),
+  )
   const main = join(dir, 'main.swift')
   writeFileSync(
     main,
@@ -160,15 +185,24 @@ function runSwift(): void {
   )
 
   try {
-    execFileSync('swiftc', ['-o', join(dir, 'swift-main'), main], { stdio: 'pipe' })
+    execFileSync('swiftc', ['-o', join(dir, 'swift-main'), main], {
+      stdio: 'pipe',
+    })
   } catch (e) {
-    ok('swift: the unknown program builds', false, String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 400))
+    ok(
+      'swift: the unknown program builds',
+      false,
+      String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 400),
+    )
 
     return
   }
 
   ok('swift: the unknown program builds', true)
-  judge('swift', spawnSync(join(dir, 'swift-main'), [], { encoding: 'utf8' }))
+  judge(
+    'swift',
+    spawnSync(join(dir, 'swift-main'), [], { encoding: 'utf8' }),
+  )
 }
 
 function runKotlin(): void {
@@ -178,7 +212,11 @@ function runKotlin(): void {
 
   const source = emitKotlin(frontEnd())
   // `val` since a field nothing reassigns stopped being a `var` (note/project/term/compiler/codegen/android.md, K4): the type is the point
-  ok('kotlin: unknown lowers to Any', /(var|val) base: Any\b/.test(source), source.slice(0, 200))
+  ok(
+    'kotlin: unknown lowers to Any',
+    /(var|val) base: Any\b/.test(source),
+    source.slice(0, 200),
+  )
   const file = join(dir, 'main.kt')
   writeFileSync(
     file,
@@ -189,15 +227,24 @@ function runKotlin(): void {
   const jar = join(dir, 'main.jar')
 
   try {
-    execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], { stdio: 'pipe' })
+    execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], {
+      stdio: 'pipe',
+    })
   } catch (e) {
-    ok('kotlin: the unknown program builds', false, String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 400))
+    ok(
+      'kotlin: the unknown program builds',
+      false,
+      String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 400),
+    )
 
     return
   }
 
   ok('kotlin: the unknown program builds', true)
-  judge('kotlin', spawnSync('java', ['-jar', jar], { encoding: 'utf8' }))
+  judge(
+    'kotlin',
+    spawnSync('java', ['-jar', jar], { encoding: 'utf8' }),
+  )
 }
 
 if (!only || only === 'rust') {
@@ -212,7 +259,9 @@ if (!only || only === 'kotlin') {
   runKotlin()
 }
 
-console.log(`\nunknown-native: ${pass} pass, ${fail} fail, ${skip} skipped`)
+console.log(
+  `\nunknown-native: ${pass} pass, ${fail} fail, ${skip} skipped`,
+)
 
 if (fail > 0) {
   process.exit(1)

@@ -7,7 +7,12 @@
 // Run: npx tsx test/compile/browser-task.ts
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
@@ -99,18 +104,37 @@ task run
   back <{one} {two}>
 `
 
-function build(program: string, name: string): { ok: true; file: string } | { ok: false; reason: string } {
+function build(
+  program: string,
+  name: string,
+): { ok: true; file: string } | { ok: false; reason: string } {
   const file = join(dir, `${name}.tree`)
   writeFileSync(file, program)
-  const result = compile({ file, text: program }, { resolve: projectResolver(ROOT, 'browser'), env: 'browser' } as never)
+  const result = compile({ file, text: program }, {
+    resolve: projectResolver(ROOT, 'browser'),
+    env: 'browser',
+  } as never)
 
   if (!result.ok) {
-    return { ok: false, reason: [...new Set(result.diagnostics.map(d => d.message))].slice(0, 4).join(' | ') }
+    return {
+      ok: false,
+      reason: [...new Set(result.diagnostics.map(d => d.message))]
+        .slice(0, 4)
+        .join(' | '),
+    }
   }
 
-  const prelude = nativePrelude(result.program, 'browser', p => (existsSync(p) ? readFileSync(p, 'utf8') : undefined), result.typescript)
+  const prelude = nativePrelude(
+    result.program,
+    'browser',
+    p => (existsSync(p) ? readFileSync(p, 'utf8') : undefined),
+    result.typescript,
+  )
   const out = join(dir, `${name}.ts`)
-  writeFileSync(out, `${prelude}\n${result.typescript}\nPromise.resolve(run()).then(text => process.stdout.write(String(text)))\n`)
+  writeFileSync(
+    out,
+    `${prelude}\n${result.typescript}\nPromise.resolve(run()).then(text => process.stdout.write(String(text)))\n`,
+  )
 
   return { ok: true, file: out }
 }
@@ -121,8 +145,15 @@ if (!built.ok) {
   ok('task builds for the browser', false, built.reason)
 } else {
   const text = readFileSync(built.file, 'utf8')
-  ok('the browser build reaches no node module', !/from ['"]node:|new AsyncLocalStorage/.test(text))
-  const ran = spawnSync(process.execPath, ['--import', 'tsx', built.file], { encoding: 'utf8' })
+  ok(
+    'the browser build reaches no node module',
+    !/from ['"]node:|new AsyncLocalStorage/.test(text),
+  )
+  const ran = spawnSync(
+    process.execPath,
+    ['--import', 'tsx', built.file],
+    { encoding: 'utf8' },
+  )
   ok(
     'jobs interleave, a gather answers in order, and a cancelled job raises outage',
     ran.status === 0 && ran.stdout === 'ba ab outage',
@@ -134,10 +165,15 @@ for (const [module, find] of [
   ['@term/base/network/server', 'serve'],
   ['@term/base/file/directory', 'exists'],
 ]) {
-  const refused = build(`load ${module}\n  find ${find}\n\ntask run\n  like text\n  back <x>\n`, module.split('/').pop()!)
+  const refused = build(
+    `load ${module}\n  find ${find}\n\ntask run\n  like text\n  back <x>\n`,
+    module.split('/').pop()!,
+  )
   ok(
     `${module} is refused for the browser at its load, by name`,
-    !refused.ok && refused.reason.includes(module.replace('@term/base/', '')) && refused.reason.includes('browser'),
+    !refused.ok &&
+      refused.reason.includes(module.replace('@term/base/', '')) &&
+      refused.reason.includes('browser'),
     refused.ok ? 'it built' : refused.reason,
   )
 }

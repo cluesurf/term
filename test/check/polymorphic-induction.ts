@@ -217,7 +217,8 @@ task join
       back make through(next, join(rest, q))
 `
 
-const leanCompiles = (source: string): boolean => compile({ file: 'p.tree', text: source }, { leanOf: () => true }).ok
+const leanCompiles = (source: string): boolean =>
+  compile({ file: 'p.tree', text: source }, { leanOf: () => true }).ok
 
 const MARKS = `  head a
   seat r

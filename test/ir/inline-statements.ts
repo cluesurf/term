@@ -24,7 +24,10 @@ function ok(name: string, holds: boolean, detail = ''): void {
 
 // the checked program, before the simplifier
 function checked(text: string): Program {
-  const built = compile({ file: 'main.tree', text }, { optimize: false })
+  const built = compile(
+    { file: 'main.tree', text },
+    { optimize: false },
+  )
 
   if (!built.ok) {
     throw new Error(built.diagnostics.map(d => d.message).join(' | '))
@@ -34,7 +37,10 @@ function checked(text: string): Program {
 }
 
 const fn = (program: Program, name: string) =>
-  (program as Statement[]).find((n): n is Extract<Statement, { form: 'function' }> => n.form === 'function' && n.name === name)
+  (program as Statement[]).find(
+    (n): n is Extract<Statement, { form: 'function' }> =>
+      n.form === 'function' && n.name === name,
+  )
 
 // the names a task's body still calls directly
 function callees(program: Program, owner: string): string[] {
@@ -42,9 +48,14 @@ function callees(program: Program, owner: string): string[] {
   const visit = (value: unknown): void => {
     if (typeof value !== 'object' || value === null) return
     if (Array.isArray(value)) return value.forEach(visit)
-    const node = value as { form?: string; callee?: { form?: string; name?: string } }
-    if (node.form === 'call' && node.callee?.form === 'variable') found.push(node.callee.name!)
-    for (const [key, child] of Object.entries(node)) if (key !== 'type' && key !== 'span') visit(child)
+    const node = value as {
+      form?: string
+      callee?: { form?: string; name?: string }
+    }
+    if (node.form === 'call' && node.callee?.form === 'variable')
+      found.push(node.callee.name!)
+    for (const [key, child] of Object.entries(node))
+      if (key !== 'type' && key !== 'span') visit(child)
   }
 
   visit(fn(program, owner)?.body)
@@ -53,14 +64,19 @@ function callees(program: Program, owner: string): string[] {
 }
 
 // every node of a form in a task's body
-function nodes(program: Program, owner: string, form: string): Record<string, unknown>[] {
+function nodes(
+  program: Program,
+  owner: string,
+  form: string,
+): Record<string, unknown>[] {
   const found: Record<string, unknown>[] = []
   const visit = (value: unknown): void => {
     if (typeof value !== 'object' || value === null) return
     if (Array.isArray(value)) return value.forEach(visit)
     const node = value as Record<string, unknown>
     if (node.form === form) found.push(node)
-    for (const [key, child] of Object.entries(node)) if (key !== 'type' && key !== 'span') visit(child)
+    for (const [key, child] of Object.entries(node))
+      if (key !== 'type' && key !== 'span') visit(child)
   }
 
   visit(fn(program, owner)?.body)
@@ -112,15 +128,43 @@ const MOVE = `task move-top
 `
 
 // 1. Towers' move: pop taken out into a `let`, both bodies in the move, neither called
-const towers = inlineStatements(checked(`${STACK}\n${PUSH}\n${POP}\n${MOVE}`))
-ok('towers: move-top calls neither', callees(towers.program, 'move-top').length === 0, callees(towers.program, 'move-top').join(', '))
-ok('towers: both answered as inlined', towers.inlined.includes('push-disk') && towers.inlined.includes('pop-disk'), [...towers.inlined].join(', '))
+const towers = inlineStatements(
+  checked(`${STACK}\n${PUSH}\n${POP}\n${MOVE}`),
+)
+ok(
+  'towers: move-top calls neither',
+  callees(towers.program, 'move-top').length === 0,
+  callees(towers.program, 'move-top').join(', '),
+)
+ok(
+  'towers: both answered as inlined',
+  towers.inlined.includes('push-disk') &&
+    towers.inlined.includes('pop-disk'),
+  [...towers.inlined].join(', '),
+)
 
-const lets = nodes(towers.program, 'move-top', 'let').map(n => n.name as string)
-ok('towers: the popped size is a `let` named for its task', lets.includes('pop-disk-1'), lets.join(', '))
-ok('towers: each callee local renamed apart', lets.includes('top-1') && lets.includes('top-2'), lets.join(', '))
-ok('towers: the raise kept', nodes(towers.program, 'move-top', 'throw').length === 1)
-ok('towers: the definitions are left for simplify', fn(towers.program, 'push-disk') !== undefined && fn(towers.program, 'pop-disk') !== undefined)
+const lets = nodes(towers.program, 'move-top', 'let').map(
+  n => n.name as string,
+)
+ok(
+  'towers: the popped size is a `let` named for its task',
+  lets.includes('pop-disk-1'),
+  lets.join(', '),
+)
+ok(
+  'towers: each callee local renamed apart',
+  lets.includes('top-1') && lets.includes('top-2'),
+  lets.join(', '),
+)
+ok(
+  'towers: the raise kept',
+  nodes(towers.program, 'move-top', 'throw').length === 1,
+)
+ok(
+  'towers: the definitions are left for simplify',
+  fn(towers.program, 'push-disk') !== undefined &&
+    fn(towers.program, 'pop-disk') !== undefined,
+)
 
 // 1b. the move inlined into its own caller in a later round: the move's body already holds both callees' locals, so
 // every name must come out apart, each with one tag
@@ -137,10 +181,24 @@ const twice = inlineStatements(
     code 2
 `),
 )
-const twiceLets = nodes(twice.program, 'move-twice', 'let').map(n => n.name as string)
-ok('twice: move-twice calls nothing', callees(twice.program, 'move-twice').length === 0, callees(twice.program, 'move-twice').join(', '))
-ok('twice: every local apart', new Set(twiceLets).size === twiceLets.length && twiceLets.length >= 6, twiceLets.join(', '))
-ok('twice: one number a name', twiceLets.every(n => /^[a-z]+(-[a-z]+)*-\d+$/.test(n)), twiceLets.join(', '))
+const twiceLets = nodes(twice.program, 'move-twice', 'let').map(
+  n => n.name as string,
+)
+ok(
+  'twice: move-twice calls nothing',
+  callees(twice.program, 'move-twice').length === 0,
+  callees(twice.program, 'move-twice').join(', '),
+)
+ok(
+  'twice: every local apart',
+  new Set(twiceLets).size === twiceLets.length && twiceLets.length >= 6,
+  twiceLets.join(', '),
+)
+ok(
+  'twice: one number a name',
+  twiceLets.every(n => /^[a-z]+(-[a-z]+)*-\d+$/.test(n)),
+  twiceLets.join(', '),
+)
 
 // 1c. a name an inlining makes is one nothing in the program spells the same way, on any backend: a caller that already
 // has `top-1`, and `top1`, which Swift's camel case writes alike
@@ -155,9 +213,15 @@ const clash = inlineStatements(
     read top1
 `),
 )
-const clashLets = nodes(clash.program, 'crowded', 'let').map(n => n.name as string)
+const clashLets = nodes(clash.program, 'crowded', 'let').map(
+  n => n.name as string,
+)
 ok('clash: inlined', callees(clash.program, 'crowded').length === 0)
-ok('clash: no name the caller spells alike', !clashLets.some(n => ['top1'].includes(n.replace(/[-_]/g, ''))), clashLets.join(', '))
+ok(
+  'clash: no name the caller spells alike',
+  !clashLets.some(n => ['top1'].includes(n.replace(/[-_]/g, ''))),
+  clashLets.join(', '),
+)
 
 // 2. a call whose answer is dropped: the arm's `send back, read size` leaves no statement of a bare variable
 const dropped = inlineStatements(
@@ -168,10 +232,15 @@ const dropped = inlineStatements(
     code 0
 `),
 )
-ok('dropped answer: inlined', callees(dropped.program, 'drop-top').length === 0)
+ok(
+  'dropped answer: inlined',
+  callees(dropped.program, 'drop-top').length === 0,
+)
 ok(
   'dropped answer: no bare variable left as a statement',
-  !nodes(dropped.program, 'drop-top', 'expression').some(n => (n.expr as { form?: string }).form === 'variable'),
+  !nodes(dropped.program, 'drop-top', 'expression').some(
+    n => (n.expr as { form?: string }).form === 'variable',
+  ),
 )
 
 // 2b. a dropped answer that is a construction: its parts that do something, in order, never the construction itself,
@@ -204,15 +273,39 @@ task use
     code 3
 `),
 )
-const usedStatements = nodes(built.program, 'use', 'expression').map(n => (n.expr as { form?: string }).form)
-ok('dropped construction: inlined', callees(built.program, 'use').every(c => c !== 'wrap'), callees(built.program, 'use').join(', '))
-ok('dropped construction: no record left as a statement', !usedStatements.includes('record'), usedStatements.join(', '))
-ok('dropped construction: the field that calls a task kept', callees(built.program, 'use').includes('weigh'), callees(built.program, 'use').join(', '))
+const usedStatements = nodes(built.program, 'use', 'expression').map(
+  n => (n.expr as { form?: string }).form,
+)
+ok(
+  'dropped construction: inlined',
+  callees(built.program, 'use').every(c => c !== 'wrap'),
+  callees(built.program, 'use').join(', '),
+)
+ok(
+  'dropped construction: no record left as a statement',
+  !usedStatements.includes('record'),
+  usedStatements.join(', '),
+)
+ok(
+  'dropped construction: the field that calls a task kept',
+  callees(built.program, 'use').includes('weigh'),
+  callees(built.program, 'use').join(', '),
+)
 
 // 3. what must NOT be inlined, each the shape that is but for one thing
-const refuses = (label: string, text: string, callee: string, owner: string): void => {
+const refuses = (
+  label: string,
+  text: string,
+  callee: string,
+  owner: string,
+): void => {
   const out = inlineStatements(checked(text))
-  ok(`refuses ${label}`, callees(out.program, owner).includes(callee) && !out.inlined.includes(callee), callees(out.program, owner).join(', '))
+  ok(
+    `refuses ${label}`,
+    callees(out.program, owner).includes(callee) &&
+      !out.inlined.includes(callee),
+    callees(out.program, owner).join(', '),
+  )
 }
 
 // nothing is inlined INTO a task that calls itself: Towers' `move-disks` keeps calling `move-top`, into which pop and
@@ -252,10 +345,16 @@ const recursiveCaller = inlineStatements(
 )
 ok(
   'recursive caller: move-disks still calls move-top',
-  callees(recursiveCaller.program, 'move-disks').filter(c => c === 'move-top').length === 2 && !recursiveCaller.inlined.includes('move-top'),
+  callees(recursiveCaller.program, 'move-disks').filter(
+    c => c === 'move-top',
+  ).length === 2 && !recursiveCaller.inlined.includes('move-top'),
   callees(recursiveCaller.program, 'move-disks').join(', '),
 )
-ok('recursive caller: move-top still inlines pop and push', callees(recursiveCaller.program, 'move-top').length === 0, callees(recursiveCaller.program, 'move-top').join(', '))
+ok(
+  'recursive caller: move-top still inlines pop and push',
+  callees(recursiveCaller.program, 'move-top').length === 0,
+  callees(recursiveCaller.program, 'move-top').join(', '),
+)
 
 refuses(
   'a task that calls itself',
@@ -511,7 +610,9 @@ task outer
   send back, read n
 `),
 )
-const arms = nodes(owned.program, 'outer', 'match').flatMap(n => n.cases as { label: string; binds?: string[]; body: unknown }[])
+const arms = nodes(owned.program, 'outer', 'match').flatMap(
+  n => n.cases as { label: string; binds?: string[]; body: unknown }[],
+)
 const diskArm = arms.find(arm => arm.label === 'disk')
 const readInArm: string[] = []
 const visitArm = (value: unknown): void => {
@@ -519,10 +620,15 @@ const visitArm = (value: unknown): void => {
   if (Array.isArray(value)) return value.forEach(visitArm)
   const node = value as Record<string, unknown>
   if (node.form === 'variable') readInArm.push(node.name as string)
-  for (const [key, child] of Object.entries(node)) if (key !== 'type' && key !== 'span') visitArm(child)
+  for (const [key, child] of Object.entries(node))
+    if (key !== 'type' && key !== 'span') visitArm(child)
 }
 visitArm(diskArm?.body)
-ok('owned case: size-of inlined into outer', owned.inlined.includes('size-of'), [...owned.inlined].join(', '))
+ok(
+  'owned case: size-of inlined into outer',
+  owned.inlined.includes('size-of'),
+  [...owned.inlined].join(', '),
+)
 ok(
   "owned case: the arm binds stack's fields, and its first is the name the body reads",
   diskArm?.binds?.length === 2 && readInArm.includes(diskArm.binds[0]!),
@@ -532,14 +638,27 @@ ok(
 // 4. the definitions after `simplify`: dropped when no root, kept when a root, all kept when no roots are named
 const towersText = `${STACK}\n${PUSH}\n${POP}\n${MOVE}`
 const dropAll = simplify(checked(towersText), new Set(['move-top']))
-ok('simplify: inlined tasks that are no root are dropped', !fn(dropAll, 'push-disk') && !fn(dropAll, 'pop-disk'))
+ok(
+  'simplify: inlined tasks that are no root are dropped',
+  !fn(dropAll, 'push-disk') && !fn(dropAll, 'pop-disk'),
+)
 ok('simplify: the root kept', fn(dropAll, 'move-top') !== undefined)
 
-const keepRoot = simplify(checked(towersText), new Set(['move-top', 'pop-disk']))
-ok('simplify: an inlined root keeps its definition', fn(keepRoot, 'pop-disk') !== undefined && !fn(keepRoot, 'push-disk'))
+const keepRoot = simplify(
+  checked(towersText),
+  new Set(['move-top', 'pop-disk']),
+)
+ok(
+  'simplify: an inlined root keeps its definition',
+  fn(keepRoot, 'pop-disk') !== undefined && !fn(keepRoot, 'push-disk'),
+)
 
 const noRoots = simplify(checked(towersText))
-ok('simplify: no roots named keeps every definition', fn(noRoots, 'push-disk') !== undefined && fn(noRoots, 'pop-disk') !== undefined)
+ok(
+  'simplify: no roots named keeps every definition',
+  fn(noRoots, 'push-disk') !== undefined &&
+    fn(noRoots, 'pop-disk') !== undefined,
+)
 
 console.log(`\ninline-statements: ${pass} pass, ${fail} fail`)
 

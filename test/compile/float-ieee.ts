@@ -31,9 +31,18 @@ const CASES: [string, string][] = [
   ['0.3 - 0.1', 'is-equal(subtract(0.3, 0.1), 0.19999999999999998)'],
   ['0.1 * 3', 'is-equal(multiply(0.1, 3.0), 0.30000000000000004)'],
   ['1 / 3', 'is-equal(divide(1.0, 3.0), 0.3333333333333333)'],
-  ['the square root of 2', 'is-equal(square-root(2.0), 1.4142135623730951)'],
-  ['1 + 2^-53, a tie, to even', 'is-equal(add(1.0, power(2.0, -53.0)), 1.0)'],
-  ['1 + 3 * 2^-53, a tie, to even', 'is-equal(add(1.0, multiply(3.0, power(2.0, -53.0))), 1.0000000000000004)'],
+  [
+    'the square root of 2',
+    'is-equal(square-root(2.0), 1.4142135623730951)',
+  ],
+  [
+    '1 + 2^-53, a tie, to even',
+    'is-equal(add(1.0, power(2.0, -53.0)), 1.0)',
+  ],
+  [
+    '1 + 3 * 2^-53, a tie, to even',
+    'is-equal(add(1.0, multiply(3.0, power(2.0, -53.0))), 1.0000000000000004)',
+  ],
 ]
 
 const PROGRAM = `load @term/base/float
@@ -53,7 +62,13 @@ const dir = mkdtempSync(join(tmpdir(), 'term-float-ieee-'))
 const only = process.env.FLOAT_ONLY ?? ''
 
 for (const backend of BACKENDS.filter(b => !only || b === only)) {
-  const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'ieee' })
+  const ran = runOn({
+    backend,
+    program: PROGRAM,
+    resolve: env => projectResolver(process.cwd(), env),
+    dir,
+    name: 'ieee',
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  ${backend}: ${ran.reason}`)
@@ -61,12 +76,16 @@ for (const backend of BACKENDS.filter(b => !only || b === only)) {
   }
 
   const answers = ran.form === 'ran' ? ran.output.trim().split(' ') : []
-  const wrong = CASES.filter((_, at) => answers[at] !== 'true').map(([name]) => name)
+  const wrong = CASES.filter((_, at) => answers[at] !== 'true').map(
+    ([name]) => name,
+  )
 
   ok(
     `${backend}: every case is the correctly rounded binary64 answer`,
     ran.form === 'ran' && ran.output.trim() === EXPECTED,
-    ran.form === 'ran' ? `not: ${wrong.join(', ')}` : `${ran.stage}: ${ran.reason}`,
+    ran.form === 'ran'
+      ? `not: ${wrong.join(', ')}`
+      : `${ran.stage}: ${ran.reason}`,
   )
 }
 

@@ -28,12 +28,27 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 // each placed word, in placement order: which node to ask (the placed node, or its first child for a text, whose
 // label is the child) and the name it must carry
-type Case = { word: string; what: string; inner: boolean; name?: string }
+type Case = {
+  word: string
+  what: string
+  inner: boolean
+  name?: string
+}
 
 const CASES: Case[] = [
   { word: 'text', what: 'plain text', inner: true, name: 'plain' },
-  { word: 'text', what: 'text with a level', inner: true, name: 'Title' },
-  { word: 'image', what: 'an image with words', inner: false, name: 'A dot' },
+  {
+    word: 'text',
+    what: 'text with a level',
+    inner: true,
+    name: 'Title',
+  },
+  {
+    word: 'image',
+    what: 'an image with words',
+    inner: false,
+    name: 'A dot',
+  },
   { word: 'image', what: 'an image with none', inner: false },
   { word: 'field', what: 'a field', inner: false, name: 'Your name' },
   { word: 'button', what: 'a button', inner: false, name: 'Save' },
@@ -48,7 +63,9 @@ const CASES: Case[] = [
 ]
 
 const report = CASES.map((one, i) => {
-  const node = one.inner ? `          call child-at\n            call child-at\n              read root\n              code ${i}\n            code 0` : `          call child-at\n            read root\n            code ${i}`
+  const node = one.inner
+    ? `          call child-at\n            call child-at\n              read root\n              code ${i}\n            code 0`
+    : `          call child-at\n            read root\n            code ${i}`
 
   return `      save said-${i}
         call accessibility-of
@@ -57,7 +74,10 @@ ${node}
         text <a11y ${i}|{{said-${i}}}|>`
 }).join('\n')
 
-const program = (_leg: Leg, shot: string): string => `load @term/site/code/dom/dom
+const program = (
+  _leg: Leg,
+  shot: string,
+): string => `load @term/site/code/dom/dom
   find view
 
 load @term/site/code/dom/native/toolkit/dom
@@ -190,17 +210,39 @@ ${report}
 `
 
 // the contract's column per platform: the cell for each word
-const note = readFileSync(join(process.cwd(), '../../../../note/project/term/view/11-vocabulary.md'), 'utf8')
-const table = note.slice(note.indexOf('## Accessibility'), note.indexOf('## The layout model'))
+const note = readFileSync(
+  join(
+    process.cwd(),
+    '../../../../note/project/term/view/11-vocabulary.md',
+  ),
+  'utf8',
+)
+const table = note.slice(
+  note.indexOf('## Accessibility'),
+  note.indexOf('## The layout model'),
+)
 const rows = new Map(
   table
     .split('\n')
-    .map(line => line.split('|').slice(1, -1).map(cell => cell.trim()))
+    .map(line =>
+      line
+        .split('|')
+        .slice(1, -1)
+        .map(cell => cell.trim()),
+    )
     .filter(cells => cells.length === 10)
     .map(cells => [cells[0]!, cells] as const),
 )
 // both Compose legs read one column: Compose's semantics, from which each platform's bridge is made
-const COLUMN: Record<Leg, number> = { macos: 2, ios: 3, android: 4, compose: 5, 'compose-android': 5, 'compose-linux': 5, 'compose-windows': 5 }
+const COLUMN: Record<Leg, number> = {
+  macos: 2,
+  ios: 3,
+  android: 4,
+  compose: 5,
+  'compose-android': 5,
+  'compose-linux': 5,
+  'compose-windows': 5,
+}
 
 // the cell allows this role: every part of it named in backticks, `none` for an empty role, `hidden` for one out of the tree
 function allows(leg: Leg, word: string, role: string): boolean {
@@ -215,7 +257,8 @@ function allows(leg: Leg, word: string, role: string): boolean {
 
 function judge(leg: Leg, toolkit: string, output: string): void {
   for (const [i, one] of CASES.entries()) {
-    const line = output.split('\n').find(l => l.includes(`a11y ${i}|`)) ?? ''
+    const line =
+      output.split('\n').find(l => l.includes(`a11y ${i}|`)) ?? ''
     const found = /a11y \d+\|([^|]*)\|([^|]*)\|/.exec(line)
 
     if (!found) {
@@ -224,10 +267,18 @@ function judge(leg: Leg, toolkit: string, output: string): void {
     }
 
     const [, role, name] = found
-    ok(`${leg}: ${one.what}: the platform's role ${role || '(none)'} is the contract's`, allows(leg, one.word, role!), `${rows.get(one.word)?.[COLUMN[leg]] ?? 'no row'} | said: ${line.trim()}`)
+    ok(
+      `${leg}: ${one.what}: the platform's role ${role || '(none)'} is the contract's`,
+      allows(leg, one.word, role!),
+      `${rows.get(one.word)?.[COLUMN[leg]] ?? 'no row'} | said: ${line.trim()}`,
+    )
 
     if (one.name !== undefined) {
-      ok(`${leg}: ${one.what}: named ${one.name}`, name === one.name, name ?? '')
+      ok(
+        `${leg}: ${one.what}: named ${one.name}`,
+        name === one.name,
+        name ?? '',
+      )
     }
   }
 }

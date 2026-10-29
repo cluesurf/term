@@ -9,19 +9,37 @@
 // A SERVICE in the terminal output standard's sense (section 11): a `start` item with its address, a `reload` item
 // per hot-applied file, and on ctrl-c the closing `Stopped` item with the uptime, exit 130.
 
-import { realpathSync, readFileSync, watch as fsWatch, existsSync } from 'fs'
+import {
+  realpathSync,
+  readFileSync,
+  watch as fsWatch,
+  existsSync,
+} from 'fs'
 import path from 'path'
 import { startDevServer } from '@term/call/code/dev/server'
 import { findEntry, portIsFree } from '@term/call/code/boot'
 import type { NativeEnv } from '@term/make/code/compile/native'
-import { closeRun, failRun, field, location, openRun, report, showPath } from '@term/call/code/output'
+import {
+  closeRun,
+  failRun,
+  field,
+  location,
+  openRun,
+  report,
+  showPath,
+} from '@term/call/code/output'
 import { ANY_HOME } from '@term/call/code/home'
 import { readTree } from '@term/deck/code/package/read'
 
 // `term feed`: the development server is `term boot`, and this says so. The entry, port and env the retired line
 // named make the `next` the exact `term boot` line that replaces it (decision cli-in-term/017 part 1), each part only
 // when given; with none, the `next` names the two modes
-export function refuseFeed(input: { root: string; entry?: string; port?: number; env?: string }): void {
+export function refuseFeed(input: {
+  root: string
+  entry?: string
+  port?: number
+  env?: string
+}): void {
   const parts = [
     input.entry,
     input.port === undefined ? undefined : `-p ${input.port}`,
@@ -29,7 +47,12 @@ export function refuseFeed(input: { root: string; entry?: string; port?: number;
   ].filter((part): part is string => part !== undefined)
 
   openRun({ verb: 'feed', root: input.root })
-  report({ glyph: 'failed', kind: 'problem', subject: 'The development server is term boot, and term feed no longer starts it' })
+  report({
+    glyph: 'failed',
+    kind: 'problem',
+    subject:
+      'The development server is term boot, and term feed no longer starts it',
+  })
   process.exitCode = closeRun({
     verdict: 'Nothing was started',
     failure: 'usage',
@@ -49,7 +72,11 @@ export async function serveBrowserDevelopment(input: {
   open?: boolean
 }): Promise<void> {
   if (input.open !== false) {
-    openRun({ verb: 'boot', root: input.root, facts: ['development', 'browser'] })
+    openRun({
+      verb: 'boot',
+      root: input.root,
+      facts: ['development', 'browser'],
+    })
   }
 
   // ctrl-c is answered from the opening item on, the port checks and the cold build included: the handler was added
@@ -60,7 +87,13 @@ export async function serveBrowserDevelopment(input: {
 
   process.on('SIGINT', () => {
     close?.()
-    process.exit(closeRun({ verdict: close ? 'Stopped' : 'Not started', failure: 'interrupted', uptime: close !== undefined }))
+    process.exit(
+      closeRun({
+        verdict: close ? 'Stopped' : 'Not started',
+        failure: 'interrupted',
+        uptime: close !== undefined,
+      }),
+    )
   })
 
   try {
@@ -70,7 +103,9 @@ export async function serveBrowserDevelopment(input: {
       report({
         glyph: 'failed',
         kind: 'problem',
-        subject: entry ? 'The entry file does not exist' : 'There is no entry: none was given and deck.tree has no `boot <path>`',
+        subject: entry
+          ? 'The entry file does not exist'
+          : 'There is no entry: none was given and deck.tree has no `boot <path>`',
         fields: entry ? [location(showPath(entry, input.root))] : [],
       })
       // an entry the command line or the manifest owed: wrong usage, exit 2, as `term boot` ends on the same miss
@@ -86,13 +121,27 @@ export async function serveBrowserDevelopment(input: {
     let port = input.port ?? 5173
 
     if (input.port !== undefined && !(await portIsFree(input.port))) {
-      report({ glyph: 'failed', kind: 'problem', subject: `Port ${input.port} is in use`, fields: [field('next', `term halt -p ${input.port}, or term boot -p <another port>`)] })
+      report({
+        glyph: 'failed',
+        kind: 'problem',
+        subject: `Port ${input.port} is in use`,
+        fields: [
+          field(
+            'next',
+            `term halt -p ${input.port}, or term boot -p <another port>`,
+          ),
+        ],
+      })
       closeRun({ verdict: 'Not started', failure: 'environment' })
 
       return
     }
 
-    while (input.port === undefined && !(await portIsFree(port)) && port < 5273) {
+    while (
+      input.port === undefined &&
+      !(await portIsFree(port)) &&
+      port < 5273
+    ) {
       port++
     }
 
@@ -100,10 +149,20 @@ export async function serveBrowserDevelopment(input: {
     // `log` runs. A `hook` table boots itself. Nothing called it, and `term wake`'s program logged nothing
     // Read by the parser, never a pattern (note/project/term/one-parser.md). A file that does not parse calls nothing here, and
     // the build says why
-    const read = readTree({ file: entry, text: readFileSync(entry, 'utf8') })
+    const read = readTree({
+      file: entry,
+      text: readFileSync(entry, 'utf8'),
+    })
+
     const forms = read.ok ? read.forms : []
-    const definesBoot = forms.some(form => form.head === 'task' && (form.terms[0] ?? form.forms[0]?.head) === 'boot')
-    const callsBoot = definesBoot && !forms.some(form => form.head === 'hook')
+    const definesBoot = forms.some(
+      form =>
+        form.head === 'task' &&
+        (form.terms[0] ?? form.forms[0]?.head) === 'boot',
+    )
+
+    const callsBoot =
+      definesBoot && !forms.some(form => form.head === 'hook')
 
     const server = startDevServer({
       root: input.root,
@@ -163,7 +222,14 @@ export async function serveBrowserDevelopment(input: {
       },
     )
 
-    report({ glyph: 'done', kind: 'lifecycle', verb: 'start', subject: `http://localhost:${port}`, duration: Date.now() - started, facts: ['hot reload'] })
+    report({
+      glyph: 'done',
+      kind: 'lifecycle',
+      verb: 'start',
+      subject: `http://localhost:${port}`,
+      duration: Date.now() - started,
+      facts: ['hot reload'],
+    })
 
     // stay alive until interrupted, then clean up and close the run (the handler above)
     close = () => {

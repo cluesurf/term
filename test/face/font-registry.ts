@@ -12,16 +12,27 @@
 // Run: npx tsx test/face/font-registry.ts   (FONT_DIR=<dir> reads the three files from elsewhere, FONT_LEGS=swift one)
 
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
-import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
+import {
+  emitKotlin,
+  hoistKotlinImports,
+} from '@term/make/code/compile/kotlin'
 import { nativePrelude } from '@term/make/code/compile/native'
 import { emitSwift } from '@term/make/code/compile/swift'
 import { projectResolver } from '@term/call/code/make'
 import FONT from '../../../../../../mesh/deck/belt/code/base/font'
-import SCRIPT, { SCRIPT_ALIAS, scriptFontName } from '../../../../../../mesh/deck/belt/code/base/script'
+import SCRIPT, {
+  SCRIPT_ALIAS,
+  scriptFontName,
+} from '../../../../../../mesh/deck/belt/code/base/script'
 import { resolveFontForScript } from '../../../../../../mesh/deck/face/code/tool/font/resolve'
 
 let pass = 0
@@ -38,15 +49,28 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 const ROOT = process.cwd()
-const FONT_DIR = resolve(process.env.FONT_DIR || join(ROOT, 'deck/face/code/font'))
+const FONT_DIR = resolve(
+  process.env.FONT_DIR || join(ROOT, 'deck/face/code/font'),
+)
 const HOUSE = 'CrowMark'
 
 // every input, with what the web answers for it
 type Probe = { family: string; script: string; web: string }
 
 const probes: Probe[] = []
-const web = ({ family, script }: { family?: string; script?: string }): string =>
-  resolveFontForScript({ font: family, script, scriptConfig: SCRIPT, fontConfig: FONT })?.family ?? HOUSE
+const web = ({
+  family,
+  script,
+}: {
+  family?: string
+  script?: string
+}): string =>
+  resolveFontForScript({
+    font: family,
+    script,
+    scriptConfig: SCRIPT,
+    fontConfig: FONT,
+  })?.family ?? HOUSE
 
 for (const script of Object.keys(SCRIPT)) {
   probes.push({ family: '', script, web: web({ script }) })
@@ -54,7 +78,11 @@ for (const script of Object.keys(SCRIPT)) {
 
 for (const alias of Object.keys(SCRIPT_ALIAS)) {
   const family = scriptFontName(alias)
-  probes.push({ family: '', script: alias, web: (family && FONT[family]?.family) || HOUSE })
+  probes.push({
+    family: '',
+    script: alias,
+    web: (family && FONT[family]?.family) || HOUSE,
+  })
 }
 
 for (const family of Object.keys(FONT)) {
@@ -62,9 +90,21 @@ for (const family of Object.keys(FONT)) {
 }
 
 // a family named outright wins over the script, and the misses fall through in order
-probes.push({ family: 'Noto Sans Mono', script: 'tibetan', web: web({ family: 'Noto Sans Mono', script: 'tibetan' }) })
-probes.push({ family: 'No Such Face', script: 'tibetan', web: web({ family: 'No Such Face', script: 'tibetan' }) })
-probes.push({ family: 'No Such Face', script: 'no-such-script', web: web({ family: 'No Such Face', script: 'no-such-script' }) })
+probes.push({
+  family: 'Noto Sans Mono',
+  script: 'tibetan',
+  web: web({ family: 'Noto Sans Mono', script: 'tibetan' }),
+})
+probes.push({
+  family: 'No Such Face',
+  script: 'tibetan',
+  web: web({ family: 'No Such Face', script: 'tibetan' }),
+})
+probes.push({
+  family: 'No Such Face',
+  script: 'no-such-script',
+  web: web({ family: 'No Such Face', script: 'no-such-script' }),
+})
 probes.push({ family: '', script: '', web: web({}) })
 
 // the program: an entry that resolves every probe, beside the contract's three files. A relative load may not leave
@@ -72,9 +112,18 @@ probes.push({ family: '', script: '', web: web({}) })
 // the compiler by name and everything else resolves as in a build
 const dir = mkdtempSync(join(tmpdir(), 'term-font-registry-'))
 const CONTRACT = ['font', 'record', 'table']
-const contract = new Map(CONTRACT.map(name => [`./${name}`, { file: join(FONT_DIR, `${name}.tree`), text: readFileSync(join(FONT_DIR, `${name}.tree`), 'utf8') }]))
+const contract = new Map(
+  CONTRACT.map(name => [
+    `./${name}`,
+    {
+      file: join(FONT_DIR, `${name}.tree`),
+      text: readFileSync(join(FONT_DIR, `${name}.tree`), 'utf8'),
+    },
+  ]),
+)
 const base = projectResolver(ROOT, 'node')
-const resolveImport = (importPath: string, fromFile: string) => contract.get(importPath) ?? base(importPath, fromFile)
+const resolveImport = (importPath: string, fromFile: string) =>
+  contract.get(importPath) ?? base(importPath, fromFile)
 
 const quote = (value: string) => `text <${value}>`
 const calls = probes
@@ -142,8 +191,10 @@ task run-weights
 const entry = join(dir, 'probe.tree')
 writeFileSync(entry, PROGRAM)
 
-const readRuntime = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, 'utf8') : undefined)
-const have = (command: string): boolean => spawnSync('which', [command]).status === 0
+const readRuntime = (file: string): string | undefined =>
+  existsSync(file) ? readFileSync(file, 'utf8') : undefined
+const have = (command: string): boolean =>
+  spawnSync('which', [command]).status === 0
 const scripts = Object.keys(SCRIPT).length
 const aliases = Object.keys(SCRIPT_ALIAS).length
 const fonts = Object.keys(FONT).length
@@ -158,21 +209,49 @@ function judge(leg: string, report: string): void {
     families.length === probes.length && wrong.length === 0,
     `${families.length} answers | ${wrong
       .slice(0, 6)
-      .map(probe => `${probe.family || '-'} / ${probe.script || '-'}: term ${families[probes.indexOf(probe)]}, web ${probe.web}`)
+      .map(
+        probe =>
+          `${probe.family || '-'} / ${probe.script || '-'}: term ${families[probes.indexOf(probe)]}, web ${probe.web}`,
+      )
       .join(' | ')}`,
   )
-  ok(`${leg}: a family named outright wins over the script`, families[probes.length - 4] === 'Noto Sans Mono', families[probes.length - 4])
-  ok(`${leg}: an unknown family falls to the script`, families[probes.length - 3] === web({ script: 'tibetan' }), families[probes.length - 3])
-  ok(`${leg}: nothing known falls to the house face`, families[probes.length - 2] === HOUSE && families[probes.length - 1] === HOUSE)
+  ok(
+    `${leg}: a family named outright wins over the script`,
+    families[probes.length - 4] === 'Noto Sans Mono',
+    families[probes.length - 4],
+  )
+  ok(
+    `${leg}: an unknown family falls to the script`,
+    families[probes.length - 3] === web({ script: 'tibetan' }),
+    families[probes.length - 3],
+  )
+  ok(
+    `${leg}: nothing known falls to the house face`,
+    families[probes.length - 2] === HOUSE &&
+      families[probes.length - 1] === HOUSE,
+  )
 }
 
 // the front end for one target, with the diagnostics a failure states
 function frontEnd(env: 'node' | 'swift' | 'kotlin') {
-  const result = compile({ file: entry, text: PROGRAM }, { resolve: resolveImport, env })
+  const result = compile(
+    { file: entry, text: PROGRAM },
+    { resolve: resolveImport, env },
+  )
   ok(
     `${env === 'node' ? 'typescript' : env}: the contract and its table compile`,
     result.ok,
-    result.ok ? '' : [...new Set(result.diagnostics.map(d => `${d.file ?? ''}: ${d.message}`))].slice(0, 8).join(' | '),
+    result.ok
+      ? ''
+      : [
+          ...new Set(
+            result.diagnostics.map(
+              d => `${d.file ?? ''}: ${d.message}`,
+            ),
+          ),
+        ]
+          .slice(0, 8)
+          .join(' | '),
   )
 
   return result.ok ? result : undefined
@@ -182,7 +261,13 @@ function frontEnd(env: 'node' | 'swift' | 'kotlin') {
 const failure = (error: unknown): string => {
   const text = String((error as { stderr?: Buffer }).stderr ?? error)
 
-  return text.split('\n').filter(line => /error:|e: /.test(line)).join('\n').slice(0, 1600) || text.slice(0, 800)
+  return (
+    text
+      .split('\n')
+      .filter(line => /error:|e: /.test(line))
+      .join('\n')
+      .slice(0, 1600) || text.slice(0, 800)
+  )
 }
 
 function runTypescript(): void {
@@ -192,21 +277,36 @@ function runTypescript(): void {
     return
   }
 
-  const prelude = nativePrelude(result.program, 'node', readRuntime, result.typescript)
+  const prelude = nativePrelude(
+    result.program,
+    'node',
+    readRuntime,
+    result.typescript,
+  )
   const file = join(dir, 'probe.ts')
-  writeFileSync(file, `${prelude}\n${result.typescript}\nconsole.log(JSON.stringify({ report: report(), weights: runWeights() }))\n`)
-  const ran = spawnSync('npx', ['tsx', file], { encoding: 'utf8', maxBuffer: 1 << 26 })
+  writeFileSync(
+    file,
+    `${prelude}\n${result.typescript}\nconsole.log(JSON.stringify({ report: report(), weights: runWeights() }))\n`,
+  )
+  const ran = spawnSync('npx', ['tsx', file], {
+    encoding: 'utf8',
+    maxBuffer: 1 << 26,
+  })
   ok('typescript: it runs', ran.status === 0, ran.stderr.slice(0, 600))
 
   if (ran.status !== 0) {
     return
   }
 
-  const { report: said, weights } = JSON.parse(ran.stdout.trim().split('\n').pop()!) as { report: string; weights: number[] }
+  const { report: said, weights } = JSON.parse(
+    ran.stdout.trim().split('\n').pop()!,
+  ) as { report: string; weights: number[] }
   judge('typescript', said)
   ok(
     'typescript: a decided weight is read, under an alias too, and an undecided one is 0',
-    weights[0] === SCRIPT.anatolian.weight && weights[1] === SCRIPT.anatolian.weight && weights[2] === 0,
+    weights[0] === SCRIPT.anatolian.weight &&
+      weights[1] === SCRIPT.anatolian.weight &&
+      weights[2] === 0,
     JSON.stringify(weights),
   )
 }
@@ -225,12 +325,25 @@ function runSwift(): void {
   }
 
   const swift = emitSwift(result.program)
-  const call = /func report\(\)[^{]*throws/.test(swift) ? 'try! report()' : 'report()'
+  const call = /func report\(\)[^{]*throws/.test(swift)
+    ? 'try! report()'
+    : 'report()'
   const file = join(dir, 'probe.swift')
-  writeFileSync(file, ['import Foundation', nativePrelude(result.program, 'swift', readRuntime, swift), swift, `print(${call})`, ''].join('\n'))
+  writeFileSync(
+    file,
+    [
+      'import Foundation',
+      nativePrelude(result.program, 'swift', readRuntime, swift),
+      swift,
+      `print(${call})`,
+      '',
+    ].join('\n'),
+  )
 
   try {
-    execFileSync('swiftc', ['-o', join(dir, 'probe-swift'), file], { stdio: 'pipe' })
+    execFileSync('swiftc', ['-o', join(dir, 'probe-swift'), file], {
+      stdio: 'pipe',
+    })
   } catch (error) {
     ok('swift: builds', false, failure(error))
 
@@ -238,7 +351,12 @@ function runSwift(): void {
   }
 
   ok('swift: builds', true)
-  judge('swift', execFileSync(join(dir, 'probe-swift'), { maxBuffer: 1 << 26 }).toString().trim())
+  judge(
+    'swift',
+    execFileSync(join(dir, 'probe-swift'), { maxBuffer: 1 << 26 })
+      .toString()
+      .trim(),
+  )
 }
 
 function runKotlin(): void {
@@ -256,11 +374,18 @@ function runKotlin(): void {
 
   const kotlin = emitKotlin(result.program)
   const file = join(dir, 'probe.kt')
-  writeFileSync(file, hoistKotlinImports(`${nativePrelude(result.program, 'kotlin', readRuntime, kotlin)}\n${kotlin}\nfun main() { print(report()) }\n`))
+  writeFileSync(
+    file,
+    hoistKotlinImports(
+      `${nativePrelude(result.program, 'kotlin', readRuntime, kotlin)}\n${kotlin}\nfun main() { print(report()) }\n`,
+    ),
+  )
   const jar = join(dir, 'probe.jar')
 
   try {
-    execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], { stdio: 'pipe' })
+    execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], {
+      stdio: 'pipe',
+    })
   } catch (error) {
     ok('kotlin: builds', false, failure(error))
 
@@ -268,18 +393,33 @@ function runKotlin(): void {
   }
 
   ok('kotlin: builds', true)
-  judge('kotlin', execFileSync('java', ['-jar', jar], { maxBuffer: 1 << 26 }).toString().trim())
+  judge(
+    'kotlin',
+    execFileSync('java', ['-jar', jar], { maxBuffer: 1 << 26 })
+      .toString()
+      .trim(),
+  )
 }
 
 // FONT_LEGS=typescript,swift,kotlin picks the targets (all three by default)
-const legs = (process.env.FONT_LEGS || 'typescript,swift,kotlin').split(',')
+const legs = (process.env.FONT_LEGS || 'typescript,swift,kotlin').split(
+  ',',
+)
 
 if (legs.includes('typescript')) {
   // face's table is belt's table as of now: the generator in report mode exits 1 on drift. Only for face's own copy,
   // since a FONT_DIR elsewhere is a scratch copy the generator does not write
   if (!process.env.FONT_DIR) {
-    const drift = spawnSync('npx', ['tsx', join(ROOT, '../../../../task/term/font-table.ts')], { encoding: 'utf8' })
-    ok('the table is belt\'s table (pnpm term:font-table reports it in step)', drift.status === 0, drift.stdout.trim().split('\n').pop() ?? '')
+    const drift = spawnSync(
+      'npx',
+      ['tsx', join(ROOT, '../../../../task/term/font-table.ts')],
+      { encoding: 'utf8' },
+    )
+    ok(
+      "the table is belt's table (pnpm term:font-table reports it in step)",
+      drift.status === 0,
+      drift.stdout.trim().split('\n').pop() ?? '',
+    )
   }
 
   runTypescript()

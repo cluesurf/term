@@ -7,7 +7,12 @@
 // Run: npx tsx test/compile/device-browser.ts
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
@@ -112,26 +117,74 @@ console.log(traitsLine())
 
 const entry = join(dir, 'device.tree')
 writeFileSync(entry, PROGRAM)
-const result = compile({ file: entry, text: PROGRAM }, { resolve: projectResolver(ROOT, 'browser'), env: 'browser' })
-ok('the program compiles for the browser', result.ok, result.ok ? '' : result.diagnostics.slice(0, 4).map(d => `${d.file}:${d.span?.start.line} ${d.message}`).join(' | '))
+const result = compile(
+  { file: entry, text: PROGRAM },
+  { resolve: projectResolver(ROOT, 'browser'), env: 'browser' },
+)
+ok(
+  'the program compiles for the browser',
+  result.ok,
+  result.ok
+    ? ''
+    : result.diagnostics
+        .slice(0, 4)
+        .map(d => `${d.file}:${d.span?.start.line} ${d.message}`)
+        .join(' | '),
+)
 
 if (result.ok) {
   // the device runtime only: the browser dom's own shims ride along with the browser env (floating-ui among them), and
   // this program calls none of them
   const readRuntime = (file: string): string | undefined =>
-    file.endsWith('/native-device.ts') && existsSync(file) ? readFileSync(file, 'utf8') : undefined
-  const prelude = nativePrelude(result.program, 'browser', readRuntime, result.typescript)
-  ok('the browser device runtime is in the prelude', prelude.includes('nativeDevice'))
+    file.endsWith('/native-device.ts') && existsSync(file)
+      ? readFileSync(file, 'utf8')
+      : undefined
+  const prelude = nativePrelude(
+    result.program,
+    'browser',
+    readRuntime,
+    result.typescript,
+  )
+  ok(
+    'the browser device runtime is in the prelude',
+    prelude.includes('nativeDevice'),
+  )
   const file = join(dir, 'device.ts')
-  writeFileSync(file, `${STAND_IN}\n${prelude}\n${result.typescript}\n${HARNESS}`)
+  writeFileSync(
+    file,
+    `${STAND_IN}\n${prelude}\n${result.typescript}\n${HARNESS}`,
+  )
   const run = spawnSync('npx', ['tsx', file], { encoding: 'utf8' })
-  const lines = run.stdout.split('\n').map(l => l.trim()).filter(Boolean)
-  ok('it runs', run.status === 0, `exit ${run.status}: ${(run.stdout + run.stderr).slice(0, 600)}`)
-  ok('light from the media query', lines[0] === 'light', JSON.stringify(lines[0]))
-  ok('a fine pointer 1280 wide is a regular desktop', lines[1] === 'desktop regular fine no', JSON.stringify(lines[1]))
+  const lines = run.stdout
+    .split('\n')
+    .map(l => l.trim())
+    .filter(Boolean)
+  ok(
+    'it runs',
+    run.status === 0,
+    `exit ${run.status}: ${(run.stdout + run.stderr).slice(0, 600)}`,
+  )
+  ok(
+    'light from the media query',
+    lines[0] === 'light',
+    JSON.stringify(lines[0]),
+  )
+  ok(
+    'a fine pointer 1280 wide is a regular desktop',
+    lines[1] === 'desktop regular fine no',
+    JSON.stringify(lines[1]),
+  )
   // the same signal device-trait handed out first, written by the watcher the query's change event ran
-  ok("the query's change event writes the signal", lines[2] === 'dark', JSON.stringify(lines[2]))
-  ok('a resize to 390 makes the width class compact', lines[3] === 'desktop compact fine no', JSON.stringify(lines[3]))
+  ok(
+    "the query's change event writes the signal",
+    lines[2] === 'dark',
+    JSON.stringify(lines[2]),
+  )
+  ok(
+    'a resize to 390 makes the width class compact',
+    lines[3] === 'desktop compact fine no',
+    JSON.stringify(lines[3]),
+  )
 }
 
 console.log(`\ndevice-browser: ${pass} pass, ${fail} fail`)

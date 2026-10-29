@@ -10,12 +10,17 @@ export const nativeMotion = {
   describe(event: DeviceMotionEvent): string | undefined {
     const a = event.accelerationIncludingGravity
 
-    return a?.x == null || a.y == null || a.z == null ? undefined : `${a.x.toFixed(2)} ${a.y.toFixed(2)} ${a.z.toFixed(2)}`
+    return a?.x == null || a.y == null || a.z == null
+      ? undefined
+      : `${a.x.toFixed(2)} ${a.y.toFixed(2)} ${a.z.toFixed(2)}`
   },
 
   // `<x> <y> <z>`, or unavailable
   sample(): Promise<string> {
-    if (typeof window === 'undefined' || typeof DeviceMotionEvent === 'undefined') {
+    if (
+      typeof window === 'undefined' ||
+      typeof DeviceMotionEvent === 'undefined'
+    ) {
       return Promise.resolve('unavailable')
     }
 
@@ -45,7 +50,10 @@ export const nativeMotion = {
   // second, as a browser with no accelerometer sends none
   watch(handler: (value: string) => void): number {
     return nativeWatch.join('motion', handler, tell => {
-      if (typeof window === 'undefined' || typeof DeviceMotionEvent === 'undefined') {
+      if (
+        typeof window === 'undefined' ||
+        typeof DeviceMotionEvent === 'undefined'
+      ) {
         tell('unavailable')
 
         return () => {}
@@ -60,7 +68,10 @@ export const nativeMotion = {
           tell(said)
         }
       }
-      const timer = setTimeout(() => heard || tell('unavailable'), nativeMotion.wait)
+      const timer = setTimeout(
+        () => heard || tell('unavailable'),
+        nativeMotion.wait,
+      )
       window.addEventListener('devicemotion', listen)
 
       return () => {

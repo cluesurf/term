@@ -17,13 +17,20 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
-import { nativePrelude, withNativeEnv } from '@term/make/code/compile/native'
+import {
+  nativePrelude,
+  withNativeEnv,
+} from '@term/make/code/compile/native'
 import { chunked, readRuntime, runProgram } from './pattern-build'
 import { harvestCorpus } from './pattern-corpus'
 import { runDir } from './run-dir'
 
 type Engine = {
-  referenceAt: (source: string, runes: number[], from: number) => number[]
+  referenceAt: (
+    source: string,
+    runes: number[],
+    from: number,
+  ) => number[]
   pikeAt: (source: string, runes: number[], from: number) => number[]
   backAt: (source: string, runes: number[], from: number) => number[]
   chosenAt: (source: string, input: string, from: number) => number[]
@@ -154,22 +161,38 @@ task all-at
 
 async function loadEngine(): Promise<Engine> {
   const compiled = compile(
-    { file: join(process.cwd(), 'test', 'compile', 'pattern-entry.tree'), text: ENTRY },
+    {
+      file: join(
+        process.cwd(),
+        'test',
+        'compile',
+        'pattern-entry.tree',
+      ),
+      text: ENTRY,
+    },
     { resolve: withNativeEnv('node', stdlibResolver()!) },
   )
 
   if (!compiled.ok) {
-    throw new Error(compiled.diagnostics.map(d => `${d.file}:${d.span.start.line + 1} ${d.message}`).join('\n'))
+    throw new Error(
+      compiled.diagnostics
+        .map(d => `${d.file}:${d.span.start.line + 1} ${d.message}`)
+        .join('\n'),
+    )
   }
 
   const file = join(runDir('term-pattern-'), 'engine.ts')
 
-  writeFileSync(file, `${nativePrelude(compiled.program, 'node', readRuntime)}\n${compiled.typescript}`)
+  writeFileSync(
+    file,
+    `${nativePrelude(compiled.program, 'node', readRuntime)}\n${compiled.typescript}`,
+  )
 
   return (await import(pathToFileURL(file).href)) as Engine
 }
 
-const runesOf = (text: string): number[] => [...text].map(c => c.codePointAt(0)!)
+const runesOf = (text: string): number[] =>
+  [...text].map(c => c.codePointAt(0)!)
 
 // V8's answer as the same slots, in code points
 function v8Search(pattern: string, input: string): number[] {
@@ -181,7 +204,11 @@ function v8Search(pattern: string, input: string): number[] {
 
   const toPoint = (unit: number) => [...input.slice(0, unit)].length
 
-  return m.indices.flatMap(span => (span === undefined ? [-1, -1] : [toPoint(span[0]), toPoint(span[1])]))
+  return m.indices.flatMap(span =>
+    span === undefined
+      ? [-1, -1]
+      : [toPoint(span[0]), toPoint(span[1])],
+  )
 }
 
 let pass = 0
@@ -189,14 +216,27 @@ let fail = 0
 // every pattern the rule runs on V8 natively, for the linear-time witness
 const nativeOnNode = new Set<string>()
 // every case the node legs ran through the public API, with node's answer, for the native leg to replay
-const replay: { pattern: string; input: string; want: number[]; feature?: string }[] = []
+const replay: {
+  pattern: string
+  input: string
+  want: number[]
+  feature?: string
+}[] = []
 
-function same(label: string, pattern: string, input: string, want: number[], got: number[]): void {
+function same(
+  label: string,
+  pattern: string,
+  input: string,
+  want: number[],
+  got: number[],
+): void {
   if (JSON.stringify(want) === JSON.stringify(got)) {
     pass++
   } else {
     fail++
-    console.log(`FAIL  ${label} /${pattern}/ on ${JSON.stringify(input)}: want ${JSON.stringify(want)} got ${JSON.stringify(got)}`)
+    console.log(
+      `FAIL  ${label} /${pattern}/ on ${JSON.stringify(input)}: want ${JSON.stringify(want)} got ${JSON.stringify(got)}`,
+    )
   }
 }
 
@@ -252,7 +292,11 @@ const BACKTRACKING: [string, string[]][] = [
 const FEATURES: [string, string, string[]][] = [
   ['literal', 'abc', ['xabcx', 'ABC']],
   ['astral literal', '𝄞+', ['a𝄞𝄞b']],
-  ['escaped punctuation', '\\.\\*\\+\\?\\(\\)\\[\\]\\{\\}\\|\\^\\$\\\\/', ['x.*+?()[]{}|^$\\/']],
+  [
+    'escaped punctuation',
+    '\\.\\*\\+\\?\\(\\)\\[\\]\\{\\}\\|\\^\\$\\\\/',
+    ['x.*+?()[]{}|^$\\/'],
+  ],
   ['class range', '[a-cé-ë]+', ['xbéëz']],
   ['astral class', '[\\u{1F600}-\\u{1F60F}]+', ['hi 😀😃!']],
   ['negated class', '[^a-c]+', ['abcé𝄞d']],
@@ -291,7 +335,11 @@ const FEATURES: [string, string, string[]][] = [
   ['refer-set, through a choice', '(a|b)c\\1', ['acb bcb acac']],
   ['refer-unset', '(?:(a)|b)\\1c', ['bc', 'aac']],
   ['refer-fold', '(?i)(a)\\1', ['aA', 'Ab']],
-  ['refer-fold, past ASCII', '(?i)(\\w|é|σ|k)\\1', ['éÉ', 'σς', 'kK', 'ſs']],
+  [
+    'refer-fold, past ASCII',
+    '(?i)(\\w|é|σ|k)\\1',
+    ['éÉ', 'σς', 'kK', 'ſs'],
+  ],
   ['refer-behind', '(?<=\\1(a))b', ['aab', 'ab']],
   ['atomic', '(?>ab|a)c', ['abc', 'ac']],
   // an atomic group never reopens: `a` taken, `c` fails against `b`, and `ab` is never tried
@@ -299,7 +347,11 @@ const FEATURES: [string, string, string[]][] = [
   ['possessive', '(?:ab)++c', ['ababc', 'abab']],
   // a possessive repetition gives nothing back: it takes every `ab`, so the last `ab` cannot match
   ['possessive, gives nothing back', '(?:ab)++ab', ['ababab', 'ab']],
-  ['word-edge', '\\bcat\\b', ['a cat.', 'cats', 'écat', 'cat_', 'cat٣']],
+  [
+    'word-edge',
+    '\\bcat\\b',
+    ['a cat.', 'cats', 'écat', 'cat_', 'cat٣'],
+  ],
   ['word-edge, past ASCII', '\\bé\\w*', ['aé é']],
   ['word-edge, astral', '\\b𝐀', ['x𝐀 𝐀']],
   ['word-edge, not', '\\Bat', ['cat at']],
@@ -316,14 +368,26 @@ const random = () => {
   seed = (seed * 1103515245 + 12345) % 2147483648
   return seed / 2147483648
 }
-const pick = <T>(items: T[]): T => items[Math.floor(random() * items.length)]!
+const pick = <T>(items: T[]): T =>
+  items[Math.floor(random() * items.length)]!
 let groups = 0
 
 function atom(depth: number): string {
   const roll = random()
 
   if (depth > 2 || roll < 0.35) {
-    return pick(['a', 'b', 'a', 'b', '[ab]', '[^a]', '.', '\\w', '\\s', 'c'])
+    return pick([
+      'a',
+      'b',
+      'a',
+      'b',
+      '[ab]',
+      '[^a]',
+      '.',
+      '\\w',
+      '\\s',
+      'c',
+    ])
   }
 
   if (roll < 0.5) {
@@ -379,13 +443,18 @@ function sequence(depth: number): string {
 }
 
 function alternation(depth: number): string {
-  return random() < 0.25 ? `${sequence(depth)}|${sequence(depth)}` : sequence(depth)
+  return random() < 0.25
+    ? `${sequence(depth)}|${sequence(depth)}`
+    : sequence(depth)
 }
 
 function makePattern(): string {
   groups = 0
 
-  return (random() < 0.15 ? pick(['(?i)', '(?m)', '(?s)']) : '') + alternation(0)
+  return (
+    (random() < 0.15 ? pick(['(?i)', '(?m)', '(?s)']) : '') +
+    alternation(0)
+  )
 }
 
 function makeInput(): string {
@@ -404,14 +473,22 @@ function makeInput(): string {
 // FORCED, asked when `f` is 1 (the probe rows), runs the pattern's capable text on the engine itself, the safety rule
 // bypassed: `x` when the engine's capability set does not admit the pattern. Each is the slots, each followed by a
 // comma, or `-` for no match
-const answerOf = (slots: number[]): string => (slots.length === 0 ? '-' : slots.map(n => `${n},`).join(''))
+const answerOf = (slots: number[]): string =>
+  slots.length === 0 ? '-' : slots.map(n => `${n},`).join('')
 
 // PATTERN_EXPLORE=1: the forced column runs the written text on every row, whatever the capability set says
 const explore = process.env.PATTERN_EXPLORE === '1'
 
 function replayProgram(cases: typeof replay): string {
   const data = cases
-    .map(({ pattern, input, feature }) => `${runesOf(pattern).map(n => `${n},`).join('')};${runesOf(input).map(n => `${n},`).join('')};${feature ? 1 : 0}|`)
+    .map(
+      ({ pattern, input, feature }) =>
+        `${runesOf(pattern)
+          .map(n => `${n},`)
+          .join('')};${runesOf(input)
+          .map(n => `${n},`)
+          .join('')};${feature ? 1 : 0}|`,
+    )
     .join('')
   return `load @term/base/pattern
   find pattern
@@ -553,27 +630,43 @@ type Backend = 'node' | 'rust' | 'swift' | 'kotlin'
 
 // replays every case on one backend; answers each probe feature's forced tally as `agreeing/total`, `-` where the
 // engine does not claim the feature, or nothing when the replay could not build or run
-function replayOn(engine: Engine, backend: Backend): Map<string, string> | undefined {
+function replayOn(
+  engine: Engine,
+  backend: Backend,
+): Map<string, string> | undefined {
   const cases = replay
   const want = cases.map(c => answerOf(c.want))
   // every match, which on a native tier is the host engine's own walk and not one search per match
-  const wantAll = cases.map(c => answerOf(referenceAll(engine, c.pattern, runesOf(c.input))))
+  const wantAll = cases.map(c =>
+    answerOf(referenceAll(engine, c.pattern, runesOf(c.input))),
+  )
   let output: string
 
   try {
-    output = runProgram(backend, replayProgram(cases), join(process.cwd(), 'test', 'compile', 'pattern-replay.tree'))
+    output = runProgram(
+      backend,
+      replayProgram(cases),
+      join(process.cwd(), 'test', 'compile', 'pattern-replay.tree'),
+    )
   } catch (error) {
     fail++
-    console.log(`FAIL  native ${backend}: ${error instanceof Error ? error.message : String(error)}`)
+    console.log(
+      `FAIL  native ${backend}: ${error instanceof Error ? error.message : String(error)}`,
+    )
 
     return
   }
 
-  const got = output.split('|').slice(0, -1).map(answer => answer.split('#') as [string, string, string])
+  const got = output
+    .split('|')
+    .slice(0, -1)
+    .map(answer => answer.split('#') as [string, string, string])
 
   if (got.length !== want.length) {
     fail++
-    console.log(`FAIL  native ${backend}: ${got.length} answers for ${want.length} cases`)
+    console.log(
+      `FAIL  native ${backend}: ${got.length} answers for ${want.length} cases`,
+    )
 
     return
   }
@@ -594,16 +687,21 @@ function replayOn(engine: Engine, backend: Backend): Map<string, string> | undef
       wrong++
 
       if (wrong <= 20) {
-        console.log(chosen === want[k]
-          ? `FAIL  native ${backend} every match /${pattern}/ on ${JSON.stringify(input)}: want ${wantAll[k]} got ${all}`
-          : `FAIL  native ${backend} /${pattern}/ on ${JSON.stringify(input)}: want ${want[k]} got ${chosen}`)
+        console.log(
+          chosen === want[k]
+            ? `FAIL  native ${backend} every match /${pattern}/ on ${JSON.stringify(input)}: want ${wantAll[k]} got ${all}`
+            : `FAIL  native ${backend} /${pattern}/ on ${JSON.stringify(input)}: want ${want[k]} got ${chosen}`,
+        )
       }
     }
 
     // a probe row: the engine itself, wherever its capability set admits the pattern
     if (feature && native !== 'x') {
       const [held, total] = forced.get(feature) ?? [0, 0]
-      forced.set(feature, [held + (native === want[k] ? 1 : 0), total + 1])
+      forced.set(feature, [
+        held + (native === want[k] ? 1 : 0),
+        total + 1,
+      ])
 
       if (native === 'refused') {
         refused.add(feature)
@@ -618,14 +716,23 @@ function replayOn(engine: Engine, backend: Backend): Map<string, string> | undef
       } else {
         fail++
         forcedWrong++
-        console.log(`FAIL  forced ${backend} [${feature}] /${pattern}/ on ${JSON.stringify(input)}: want ${want[k]} got ${native}`)
+        console.log(
+          `FAIL  forced ${backend} [${feature}] /${pattern}/ on ${JSON.stringify(input)}: want ${want[k]} got ${native}`,
+        )
       }
     }
   }
 
-  console.log(`native ${backend}: ${cases.length - wrong} of ${cases.length} cases agree with node; forced probe rows ${forcedWrong === 0 ? 'all agree' : `${forcedWrong} differ`}`)
+  console.log(
+    `native ${backend}: ${cases.length - wrong} of ${cases.length} cases agree with node; forced probe rows ${forcedWrong === 0 ? 'all agree' : `${forcedWrong} differ`}`,
+  )
 
-  return new Map([...forced].map(([feature, [held, total]]) => [feature, refused.has(feature) ? 'refused' : `${held}/${total}`]))
+  return new Map(
+    [...forced].map(([feature, [held, total]]) => [
+      feature,
+      refused.has(feature) ? 'refused' : `${held}/${total}`,
+    ]),
+  )
 }
 
 // 6. the linear-time witness. The safety rule is an argument; this is a measurement. Each native pattern's V8 text is
@@ -636,7 +743,11 @@ function replayOn(engine: Engine, backend: Backend): Map<string, string> | undef
 const WITNESS_N = 4000
 
 function witnessShapes(pattern: string): string[] {
-  const named = [...new Set([...pattern].filter(c => /[\w ,;:./_-]/.test(c) && c !== '\\'))].slice(0, 8)
+  const named = [
+    ...new Set(
+      [...pattern].filter(c => /[\w ,;:./_-]/.test(c) && c !== '\\'),
+    ),
+  ].slice(0, 8)
 
   return [...new Set([...named, 'a', 'ab', 'aab', ' a', '0', 'x y'])]
 }
@@ -697,7 +808,12 @@ function linearWitness(engine: Engine, patterns: Set<string>): void {
     const lead = literalLead(pattern)
 
     found: for (const shape of witnessShapes(pattern)) {
-      for (const [start, ending] of [['', '\u0001'], ['', '\n'], [lead, '\u0001'], [lead, '\n']] as const) {
+      for (const [start, ending] of [
+        ['', '\u0001'],
+        ['', '\n'],
+        [lead, '\u0001'],
+        [lead, '\n'],
+      ] as const) {
         const short = `${start}${shape.repeat(Math.ceil(WITNESS_N / shape.length))}${ending}`
         const long = `${start}${shape.repeat(Math.ceil((2 * WITNESS_N) / shape.length))}${ending}`
         const first = bestTime(re, short)
@@ -706,7 +822,9 @@ function linearWitness(engine: Engine, patterns: Set<string>): void {
         if (second > 1 && second > 3.2 * Math.max(first, 0.05)) {
           slow++
           fail++
-          console.log(`FAIL  native on V8 but not linear: /${pattern}/ on ${JSON.stringify(start)} then ${JSON.stringify(shape)} repeated then ${JSON.stringify(ending)}, ${first.toFixed(2)} ms at n, ${second.toFixed(2)} ms at 2n`)
+          console.log(
+            `FAIL  native on V8 but not linear: /${pattern}/ on ${JSON.stringify(start)} then ${JSON.stringify(shape)} repeated then ${JSON.stringify(ending)}, ${first.toFixed(2)} ms at n, ${second.toFixed(2)} ms at 2n`,
+          )
           break found
         }
       }
@@ -717,19 +835,27 @@ function linearWitness(engine: Engine, patterns: Set<string>): void {
     pass++
   }
 
-  console.log(`linear witness: ${checked} native patterns timed on V8 at ${WITNESS_N} and ${2 * WITNESS_N} code points, ${slow} grew faster than linear`)
+  console.log(
+    `linear witness: ${checked} native patterns timed on V8 at ${WITNESS_N} and ${2 * WITNESS_N} code points, ${slow} grew faster than linear`,
+  )
 }
 
 // a few positions past the start for a search to begin at, as `find-matches` begins each search after the one before:
 // the second code point, the middle and the last. Every leg above searched from 0 alone until 2026-10-04, which hid a
 // DFA whose backward run went below the search's start and answered a match that overlapped the one before it
 function laterStarts(runes: number[]): number[] {
-  return [...new Set([1, Math.floor(runes.length / 2), runes.length - 1])].filter(at => at > 0 && at <= runes.length)
+  return [
+    ...new Set([1, Math.floor(runes.length / 2), runes.length - 1]),
+  ].filter(at => at > 0 && at <= runes.length)
 }
 
 // every match by the reference, searched as `find-matches-prepared` searches: on from where a match ended, or one
 // code point past an empty one
-function referenceAll(engine: Engine, pattern: string, runes: number[]): number[] {
+function referenceAll(
+  engine: Engine,
+  pattern: string,
+  runes: number[],
+): number[] {
   const out: number[] = []
   let at = 0
 
@@ -750,18 +876,42 @@ function referenceAll(engine: Engine, pattern: string, runes: number[]): number[
 
 // the chosen engine and the Pike VM against the reference from each later start, and every match through the public
 // API, which on a native tier is the host engine's own walk (`searchAll`) rather than one search per match
-function sameFromLater(engine: Engine, label: string, pattern: string, input: string, linear: boolean): void {
+function sameFromLater(
+  engine: Engine,
+  label: string,
+  pattern: string,
+  input: string,
+  linear: boolean,
+): void {
   const runes = runesOf(input)
 
-  same(`${label} every match`, pattern, input, referenceAll(engine, pattern, runes), engine.allAt(pattern, input))
+  same(
+    `${label} every match`,
+    pattern,
+    input,
+    referenceAll(engine, pattern, runes),
+    engine.allAt(pattern, input),
+  )
 
   for (const from of laterStarts(runes)) {
     const want = engine.referenceAt(pattern, runes, from)
 
-    same(`${label} from ${from}`, pattern, input, want, engine.chosenAt(pattern, input, from))
+    same(
+      `${label} from ${from}`,
+      pattern,
+      input,
+      want,
+      engine.chosenAt(pattern, input, from),
+    )
 
     if (linear) {
-      same(`${label} linear from ${from}`, pattern, input, want, engine.pikeAt(pattern, runes, from))
+      same(
+        `${label} linear from ${from}`,
+        pattern,
+        input,
+        want,
+        engine.pikeAt(pattern, runes, from),
+      )
     }
   }
 }
@@ -771,7 +921,13 @@ async function main(): Promise<void> {
 
   for (const [pattern, inputs] of SHARED) {
     for (const input of inputs) {
-      same('reference vs v8', pattern, input, v8Search(pattern, input), engine.referenceAt(pattern, runesOf(input), 0))
+      same(
+        'reference vs v8',
+        pattern,
+        input,
+        v8Search(pattern, input),
+        engine.referenceAt(pattern, runesOf(input), 0),
+      )
     }
   }
 
@@ -781,17 +937,45 @@ async function main(): Promise<void> {
     }
 
     for (const input of inputs) {
-      same('linear', pattern, input, engine.referenceAt(pattern, runesOf(input), 0), engine.pikeAt(pattern, runesOf(input), 0))
+      same(
+        'linear',
+        pattern,
+        input,
+        engine.referenceAt(pattern, runesOf(input), 0),
+        engine.pikeAt(pattern, runesOf(input), 0),
+      )
     }
   }
 
-  for (const [pattern, inputs] of [...SHARED, ...LINEAR, ...BACKTRACKING]) {
+  for (const [pattern, inputs] of [
+    ...SHARED,
+    ...LINEAR,
+    ...BACKTRACKING,
+  ]) {
     for (const input of inputs) {
       const want = engine.referenceAt(pattern, runesOf(input), 0)
 
-      same('backtrack', pattern, input, want, engine.backAt(pattern, runesOf(input), 0))
-      same('chosen', pattern, input, want, engine.chosenAt(pattern, input, 0))
-      sameFromLater(engine, 'chosen', pattern, input, !engine.needsBack(pattern))
+      same(
+        'backtrack',
+        pattern,
+        input,
+        want,
+        engine.backAt(pattern, runesOf(input), 0),
+      )
+      same(
+        'chosen',
+        pattern,
+        input,
+        want,
+        engine.chosenAt(pattern, input, 0),
+      )
+      sameFromLater(
+        engine,
+        'chosen',
+        pattern,
+        input,
+        !engine.needsBack(pattern),
+      )
       replay.push({ pattern, input, want })
     }
   }
@@ -808,17 +992,28 @@ async function main(): Promise<void> {
       answer = `raised: ${error instanceof Error ? error.message : String(error)}`
     }
 
-    same('budget over a long input', '(?>ab|a)c', `"ab" x 1,000,000`, [], answer === '[]' ? [] : [-9])
+    same(
+      'budget over a long input',
+      '(?>ab|a)c',
+      `"ab" x 1,000,000`,
+      [],
+      answer === '[]' ? [] : [-9],
+    )
 
     if (answer !== '[]') {
-      console.log(`FAIL  tier C over a long input answered ${answer.slice(0, 80)}`)
+      console.log(
+        `FAIL  tier C over a long input answered ${answer.slice(0, 80)}`,
+      )
     }
   }
 
   // 5. real patterns (regex-engine-0014): the regular expression literals of the toolchain's own TypeScript, on lines of
   // the same sources. Every tier against the reference, and each case replayed on the native backends below
   {
-    const corpus = harvestCorpus(process.cwd(), Number(process.env.PATTERN_CORPUS ?? 400))
+    const corpus = harvestCorpus(
+      process.cwd(),
+      Number(process.env.PATTERN_CORPUS ?? 400),
+    )
     const refused = new Map<string, number>()
     const corpusTiers = new Map<string, number>()
     let read = 0
@@ -835,7 +1030,11 @@ async function main(): Promise<void> {
         }
       } catch (error) {
         // the reason, without the position, so like refusals count together
-        const reason = (error instanceof Error ? error.message : String(error)).replace(/\d+/g, 'N').slice(0, 60)
+        const reason = (
+          error instanceof Error ? error.message : String(error)
+        )
+          .replace(/\d+/g, 'N')
+          .slice(0, 60)
         refused.set(reason, (refused.get(reason) ?? 0) + 1)
         continue
       }
@@ -847,21 +1046,49 @@ async function main(): Promise<void> {
         const runes = runesOf(input)
         const want = engine.referenceAt(pattern, runes, 0)
 
-        same(`corpus ${tier}`, pattern, input, want, engine.chosenAt(pattern, input, 0))
-        same('corpus back', pattern, input, want, engine.backAt(pattern, runes, 0))
+        same(
+          `corpus ${tier}`,
+          pattern,
+          input,
+          want,
+          engine.chosenAt(pattern, input, 0),
+        )
+        same(
+          'corpus back',
+          pattern,
+          input,
+          want,
+          engine.backAt(pattern, runes, 0),
+        )
 
         if (!backOnly) {
-          same('corpus linear', pattern, input, want, engine.pikeAt(pattern, runes, 0))
+          same(
+            'corpus linear',
+            pattern,
+            input,
+            want,
+            engine.pikeAt(pattern, runes, 0),
+          )
         }
 
-        sameFromLater(engine, `corpus ${tier}`, pattern, input, !backOnly)
+        sameFromLater(
+          engine,
+          `corpus ${tier}`,
+          pattern,
+          input,
+          !backOnly,
+        )
         replay.push({ pattern, input, want })
       }
     }
 
-    console.log(`corpus: ${corpus.length} literals harvested, ${read} read by Term, ${corpus.length - read} refused; tiers on node ${JSON.stringify(Object.fromEntries(corpusTiers))}`)
+    console.log(
+      `corpus: ${corpus.length} literals harvested, ${read} read by Term, ${corpus.length - read} refused; tiers on node ${JSON.stringify(Object.fromEntries(corpusTiers))}`,
+    )
 
-    for (const [reason, count] of [...refused].sort((a, b) => b[1] - a[1])) {
+    for (const [reason, count] of [...refused].sort(
+      (a, b) => b[1] - a[1],
+    )) {
       console.log(`  refused ${count}: ${reason}`)
     }
   }
@@ -876,7 +1103,9 @@ async function main(): Promise<void> {
       tier = engine.tierOf(pattern)
     } catch (error) {
       fail++
-      console.log(`FAIL  probe ${feature}: /${pattern}/ is refused: ${error instanceof Error ? error.message : String(error)}`)
+      console.log(
+        `FAIL  probe ${feature}: /${pattern}/ is refused: ${error instanceof Error ? error.message : String(error)}`,
+      )
       continue
     }
 
@@ -887,13 +1116,21 @@ async function main(): Promise<void> {
     for (const input of inputs) {
       const want = engine.referenceAt(pattern, runesOf(input), 0)
 
-      same(`probe ${feature}`, pattern, input, want, engine.chosenAt(pattern, input, 0))
+      same(
+        `probe ${feature}`,
+        pattern,
+        input,
+        want,
+        engine.chosenAt(pattern, input, 0),
+      )
       replay.push({ pattern, input, want, feature })
     }
   }
 
   if (offNative.length) {
-    console.log(`probe rows not native on node, so tier B there: ${offNative.join(', ')}`)
+    console.log(
+      `probe rows not native on node, so tier B there: ${offNative.join(', ')}`,
+    )
   }
 
   const count = Number(process.env.PATTERN_COUNT ?? 150)
@@ -922,27 +1159,62 @@ async function main(): Promise<void> {
       const runes = runesOf(input)
       const want = engine.referenceAt(pattern, runes, 0)
 
-      same('generated back', pattern, input, want, engine.backAt(pattern, runes, 0))
-      same(`generated ${tier}`, pattern, input, want, engine.chosenAt(pattern, input, 0))
+      same(
+        'generated back',
+        pattern,
+        input,
+        want,
+        engine.backAt(pattern, runes, 0),
+      )
+      same(
+        `generated ${tier}`,
+        pattern,
+        input,
+        want,
+        engine.chosenAt(pattern, input, 0),
+      )
       replay.push({ pattern, input, want })
 
       if (!backOnly) {
-        same('generated linear', pattern, input, want, engine.pikeAt(pattern, runes, 0))
+        same(
+          'generated linear',
+          pattern,
+          input,
+          want,
+          engine.pikeAt(pattern, runes, 0),
+        )
       }
 
-      sameFromLater(engine, `generated ${tier}`, pattern, input, !backOnly)
+      sameFromLater(
+        engine,
+        `generated ${tier}`,
+        pattern,
+        input,
+        !backOnly,
+      )
     }
   }
 
-  console.log(`generated: ${count} patterns, tiers ${JSON.stringify(Object.fromEntries(tiers))}`)
+  console.log(
+    `generated: ${count} patterns, tiers ${JSON.stringify(Object.fromEntries(tiers))}`,
+  )
 
   linearWitness(engine, nativeOnNode)
 
   const matrix = new Map<string, Map<string, string>>()
 
-  for (const backend of (process.env.PATTERN_NATIVE ?? '').split(',').filter(Boolean)) {
-    if (backend !== 'node' && backend !== 'rust' && backend !== 'swift' && backend !== 'kotlin') {
-      throw new Error(`PATTERN_NATIVE names ${backend}: node, rust, swift or kotlin`)
+  for (const backend of (process.env.PATTERN_NATIVE ?? '')
+    .split(',')
+    .filter(Boolean)) {
+    if (
+      backend !== 'node' &&
+      backend !== 'rust' &&
+      backend !== 'swift' &&
+      backend !== 'kotlin'
+    ) {
+      throw new Error(
+        `PATTERN_NATIVE names ${backend}: node, rust, swift or kotlin`,
+      )
     }
 
     const tally = replayOn(engine, backend)
@@ -956,11 +1228,17 @@ async function main(): Promise<void> {
   // reference's answer, and `-` where the engine's capability set does not admit the row's pattern
   if (matrix.size) {
     const engines = [...matrix.keys()]
-    const width = Math.max(...FEATURES.map(([feature]) => feature.length))
-    console.log(`\nforced on the engine itself:\n${'feature'.padEnd(width)}  ${engines.map(e => e.padEnd(7)).join(' ')}`)
+    const width = Math.max(
+      ...FEATURES.map(([feature]) => feature.length),
+    )
+    console.log(
+      `\nforced on the engine itself:\n${'feature'.padEnd(width)}  ${engines.map(e => e.padEnd(7)).join(' ')}`,
+    )
 
     for (const [feature] of FEATURES) {
-      console.log(`${feature.padEnd(width)}  ${engines.map(e => (matrix.get(e)!.get(feature) ?? '-').padEnd(7)).join(' ')}`)
+      console.log(
+        `${feature.padEnd(width)}  ${engines.map(e => (matrix.get(e)!.get(feature) ?? '-').padEnd(7)).join(' ')}`,
+      )
     }
   }
 
@@ -972,6 +1250,8 @@ async function main(): Promise<void> {
 }
 
 main().catch(error => {
-  console.log(`FAIL  the suite stopped: ${error instanceof Error ? error.message : String(error)}`)
+  console.log(
+    `FAIL  the suite stopped: ${error instanceof Error ? error.message : String(error)}`,
+  )
   process.exitCode = 1
 })

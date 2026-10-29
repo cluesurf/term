@@ -21,16 +21,31 @@
 // takes a function, do not cross; such a task is emitted as a raise naming the reason, or run in the page where the page
 // has the module too, so the module still builds and the gap is visible rather than silent. Design:
 // note/project/term/cask/readme.md.
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs'
 import { basename, dirname, join, relative } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
 import { mill } from '@term/make/code/compile/mill'
 import { expandTemplates } from '@term/make/code/compile/template'
 import { collectModules } from '@term/make/code/compile/load'
-import type { Expression, Program, Statement, Type } from '@term/make/code/compile/node'
+import type {
+  Expression,
+  Program,
+  Statement,
+  Type,
+} from '@term/make/code/compile/node'
 import { projectResolver } from '@term/call/code/make'
 import { stdlibBase } from '@term/make/code/resolve'
-import { CAPABILITIES, capabilityOf, readScope } from '@term/call/code/scope'
+import {
+  CAPABILITIES,
+  capabilityOf,
+  readScope,
+} from '@term/call/code/scope'
 // a function, read when a bridge is generated, so the two modules loading each other is harmless
 import { appIdentity } from '@term/call/code/cask'
 import type { Access, Scope } from '@term/call/code/scope'
@@ -38,7 +53,14 @@ import type { Access, Scope } from '@term/call/code/scope'
 // the commands every cask answers on its own behalf, in the order the dispatcher lists them
 // `cask_release` lets a handle go: the page sends it when it has dropped one (bridge.ts, a FinalizationRegistry), so a
 // value the cask holds for a page lives exactly as long as the page holds its id (native-dom-0017)
-const CASK_COMMANDS = ['cask_bundle_path', 'cask_data_path', 'cask_exit', 'cask_quit', 'cask_log', 'cask_release'] as const
+const CASK_COMMANDS = [
+  'cask_bundle_path',
+  'cask_data_path',
+  'cask_exit',
+  'cask_quit',
+  'cask_log',
+  'cask_release',
+] as const
 
 // the modules the shim itself is written with, which therefore never cross
 const NEVER_CROSS = new Set(['json', 'float', 'uuid'])
@@ -51,7 +73,28 @@ const CROSS_ANYWAY = new Set(['file', 'environment', 'process'])
 // subset of each (no torch, no haptics, no battery in WKWebView), and the cask's process reaches the platform's own API
 // through the toolkit host. Matched with their package and folder, so another package's `open` or `network` is not
 // caught. A task of one that cannot cross (a watcher, which takes a handler) stays in the page, on the browser host
-export const DEVICE_MODULES: ReadonlySet<string> = new Set(['permission', 'camera', 'microphone', 'audio', 'download', 'files', 'contacts', 'calendar', 'photos', 'torch', 'location', 'clipboard', 'vibration', 'notification', 'open', 'battery', 'network', 'motion', 'secret', 'biometric'])
+export const DEVICE_MODULES: ReadonlySet<string> = new Set([
+  'permission',
+  'camera',
+  'microphone',
+  'audio',
+  'download',
+  'files',
+  'contacts',
+  'calendar',
+  'photos',
+  'torch',
+  'location',
+  'clipboard',
+  'vibration',
+  'notification',
+  'open',
+  'battery',
+  'network',
+  'motion',
+  'secret',
+  'biometric',
+])
 
 // the env directories the page's own build can serve a module from: `webview` borrows `browser`, and the
 // javascript-wide impls serve every javascript env
@@ -91,7 +134,13 @@ type Signature = {
 }
 
 // a public task the bridge cannot carry yet, with the reason
-type Refused = { module: string; task: string; native: string; params: { name: string }[]; reason: string }
+type Refused = {
+  module: string
+  task: string
+  native: string
+  params: { name: string }[]
+  reason: string
+}
 
 // a device watcher (term-device-layer-0002): `watch-x(handler)`, the handler taking one text and the task answering
 // the drop. The handler does not cross; the page keeps it under a watch id, the cask runs the platform's watcher for
@@ -99,7 +148,10 @@ type Refused = { module: string; task: string; native: string; params: { name: s
 type Watcher = { module: string; task: string; native: string }
 
 // the shape a watcher has: one parameter, a task of one text answering nothing, and a task of nothing as the answer
-function isWatcherShape(params: { type?: Type }[], result: Type | undefined): boolean {
+function isWatcherShape(
+  params: { type?: Type }[],
+  result: Type | undefined,
+): boolean {
   const handler = params.length === 1 ? params[0]!.type : undefined
 
   return (
@@ -112,8 +164,11 @@ function isWatcherShape(params: { type?: Type }[], result: Type | undefined): bo
 }
 
 // the command a page sends to start a watcher, and the cask's task that starts it for one window
-const watchCommandOf = (watcher: Watcher): string => `${watcher.module}_${watcher.task}`.replaceAll('-', '_')
-const watchStarterOf = (watcher: Watcher): string => `start-${watcher.module}-${watcher.task}`
+const watchCommandOf = (watcher: Watcher): string =>
+  `${watcher.module}_${watcher.task}`.replaceAll('-', '_')
+
+const watchStarterOf = (watcher: Watcher): string =>
+  `start-${watcher.module}-${watcher.task}`
 
 // a module with a native half, found through the page's closure
 type Module = {
@@ -135,27 +190,43 @@ function programOf(file: string, term: string): Program {
   const parsed = parse({ file, text: readFileSync(file, 'utf8') })
 
   if (!parsed.ok) {
-    throw new Error(`${relative(term, file)} does not parse: ${parsed.diagnostics[0]?.message}`)
+    throw new Error(
+      `${relative(term, file)} does not parse: ${parsed.diagnostics[0]?.message}`,
+    )
   }
 
   const built = mill(expandTemplates(parsed.tree), file)
 
   if (!built.ok) {
-    throw new Error(`${relative(term, file)} does not mill: ${built.diagnostics[0]?.message}`)
+    throw new Error(
+      `${relative(term, file)} does not mill: ${built.diagnostics[0]?.message}`,
+    )
   }
 
   return built.program
 }
 
 // every name a module `find`s, with the files it resolves to, as the build resolves them for node
-function importedNames(file: string, term: string): Map<string, string[]> {
-  const collected = collectModules({ file, text: readFileSync(file, 'utf8') }, projectResolver(term, 'node'))
-  const own = collected.scope?.get(file) ?? [...(collected.scope?.entries() ?? [])].find(([key]) => realOf(key) === realOf(file))?.[1]
+function importedNames(
+  file: string,
+  term: string,
+): Map<string, string[]> {
+  const collected = collectModules(
+    { file, text: readFileSync(file, 'utf8') },
+    projectResolver(term, 'node'),
+  )
+
+  const own =
+    collected.scope?.get(file) ??
+    [...(collected.scope?.entries() ?? [])].find(
+      ([key]) => realOf(key) === realOf(file),
+    )?.[1]
 
   return own?.finds ?? new Map()
 }
 
-const realOf = (file: string): string => (existsSync(file) ? realpathSync(file) : file)
+const realOf = (file: string): string =>
+  existsSync(file) ? realpathSync(file) : file
 
 // the load path a program writes for a file: `<...>/deck/<package>/code/<rest>.tree` is `@term/<package>/<rest>`, the
 // short form, since a package path resolves inside the package's code root first
@@ -168,12 +239,19 @@ function importPathOf(file: string): string | undefined {
 
 // a form whose one field is a private `handle` is an opaque handle: the value stays in the cask, the page holds an id
 function isHandleForm(form: RecordType): boolean {
-  return form.fields.length === 1 && form.fields[0]!.name === 'handle' && form.variants.length === 0
+  return (
+    form.fields.length === 1 &&
+    form.fields[0]!.name === 'handle' &&
+    form.variants.length === 0
+  )
 }
 
 // the forms a module can name, and for each one IMPORTED, the load path of the module that declares it. A form
 // declared in the public or abstract module itself has no `from`: the shim cannot load the module that bears it
-type Forms = { declared: Map<string, RecordType>; from: Map<string, string> }
+type Forms = {
+  declared: Map<string, RecordType>
+  from: Map<string, string>
+}
 
 // the field kinds `fill` and `melt` carry: scalars, lists of them, and nested records
 function crossesByValue(kind: Kind): boolean {
@@ -191,7 +269,11 @@ function crossesByValue(kind: Kind): boolean {
   }
 }
 
-function kindOf(type: Type | undefined, forms: Forms, seen: Set<string> = new Set()): Kind | { refuse: string } {
+function kindOf(
+  type: Type | undefined,
+  forms: Forms,
+  seen = new Set<string>(),
+): Kind | { refuse: string } {
   if (!type) {
     return { kind: 'void' }
   }
@@ -207,6 +289,7 @@ function kindOf(type: Type | undefined, forms: Forms, seen: Set<string> = new Se
       return { kind: 'decimal' }
     case 'unit':
       return { kind: 'void' }
+
     case 'array': {
       const item = kindOf(type.element, forms, seen)
 
@@ -220,6 +303,7 @@ function kindOf(type: Type | undefined, forms: Forms, seen: Set<string> = new Se
 
       return { kind: 'list', item }
     }
+
     case 'named': {
       const form = forms.declared.get(type.name)
 
@@ -234,11 +318,19 @@ function kindOf(type: Type | undefined, forms: Forms, seen: Set<string> = new Se
       const from = forms.from.get(type.name)
 
       if (!from) {
-        return { refuse: `record ${type.name}, declared in the module itself: declare it in a module of its own, which both sides load` }
+        return {
+          refuse: `record ${type.name}, declared in the module itself: declare it in a module of its own, which both sides load`,
+        }
       }
 
-      if (form.variants.length > 0 || form.params.length > 0 || (type.args?.length ?? 0) > 0) {
-        return { refuse: `record ${type.name}, which has variants or type parameters` }
+      if (
+        form.variants.length > 0 ||
+        form.params.length > 0 ||
+        (type.args?.length ?? 0) > 0
+      ) {
+        return {
+          refuse: `record ${type.name}, which has variants or type parameters`,
+        }
       }
 
       if (seen.has(type.name)) {
@@ -246,26 +338,37 @@ function kindOf(type: Type | undefined, forms: Forms, seen: Set<string> = new Se
       }
 
       for (const field of form.fields) {
-        const inner = kindOf(field.type, forms, new Set([...seen, type.name]))
+        const inner = kindOf(
+          field.type,
+          forms,
+          new Set([...seen, type.name]),
+        )
 
         if ('refuse' in inner) {
-          return { refuse: `record ${type.name}, whose field ${field.name} is ${inner.refuse}` }
+          return {
+            refuse: `record ${type.name}, whose field ${field.name} is ${inner.refuse}`,
+          }
         }
 
         if (!crossesByValue(inner)) {
-          return { refuse: `record ${type.name}, whose field ${field.name} is a ${inner.kind}, which a record cannot carry` }
+          return {
+            refuse: `record ${type.name}, whose field ${field.name} is a ${inner.kind}, which a record cannot carry`,
+          }
         }
       }
 
       return { kind: 'record', form: type.name, from }
     }
+
     case 'unknown':
     case 'dynamic':
       return { kind: 'dynamic' }
     case 'bytes':
       return { kind: 'bytes' }
     case 'variable':
-      return { refuse: 'an element left to inference, so write its type' }
+      return {
+        refuse: 'an element left to inference, so write its type',
+      }
     default:
       return { refuse: type.kind }
   }
@@ -304,9 +407,15 @@ function callIn(node: Statement | Expression): string | undefined {
 
 // every task the bridge carries for a module, split from what it refuses. The public module's tasks when it has
 // them, else the abstract module's, whose task names are the native names too
-function signaturesOf(module: Module, term: string): { carried: Signature[]; refused: Refused[]; watched: Watcher[] } {
+function signaturesOf(
+  module: Module,
+  term: string,
+): { carried: Signature[]; refused: Refused[]; watched: Watcher[] } {
   const publicProgram = programOf(module.publicFile, term)
-  const abstractProgram = module.abstractFile ? programOf(module.abstractFile, term) : []
+  const abstractProgram = module.abstractFile
+    ? programOf(module.abstractFile, term)
+    : []
+
   const forms: Forms = { declared: new Map(), from: new Map() }
 
   for (const statement of [...publicProgram, ...abstractProgram]) {
@@ -319,8 +428,10 @@ function signaturesOf(module: Module, term: string): { carried: Signature[]; ref
   for (const [name, files] of importedNames(module.publicFile, term)) {
     for (const file of files) {
       const declared = programOf(file, term).find(
-        (s): s is RecordType => s.form === 'record-type' && s.name === name,
+        (s): s is RecordType =>
+          s.form === 'record-type' && s.name === name,
       )
+
       const path = importPathOf(file)
 
       if (declared && path && !forms.declared.has(name)) {
@@ -331,11 +442,18 @@ function signaturesOf(module: Module, term: string): { carried: Signature[]; ref
   }
 
   const publicTasks = publicProgram.filter(
-    (s): s is Extract<Statement, { form: 'function' }> => s.form === 'function' && !s.private,
+    (s): s is Extract<Statement, { form: 'function' }> =>
+      s.form === 'function' && !s.private,
   )
-  const source = publicTasks.length > 0 ? publicTasks : abstractProgram.filter(
-    (s): s is Extract<Statement, { form: 'function' }> => s.form === 'function' && !s.private,
-  )
+
+  const source =
+    publicTasks.length > 0
+      ? publicTasks
+      : abstractProgram.filter(
+          (s): s is Extract<Statement, { form: 'function' }> =>
+            s.form === 'function' && !s.private,
+        )
+
   const forwards = publicTasks.length > 0
 
   const carried: Signature[] = []
@@ -343,19 +461,30 @@ function signaturesOf(module: Module, term: string): { carried: Signature[]; ref
   const watched: Watcher[] = []
 
   for (const statement of source) {
-    const native = forwards ? forwardedTo(statement.body) : statement.name
+    const native = forwards
+      ? forwardedTo(statement.body)
+      : statement.name
 
     if (!native) {
       continue
     }
 
     // a device module's watcher crosses as a watch: the handler stays in the page
-    if (module.pageEnv && forwards && isWatcherShape(statement.params, statement.result)) {
-      watched.push({ module: module.name, task: statement.name, native })
+    if (
+      module.pageEnv &&
+      forwards &&
+      isWatcherShape(statement.params, statement.result)
+    ) {
+      watched.push({
+        module: module.name,
+        task: statement.name,
+        native,
+      })
       continue
     }
 
     const params: Param[] = []
+
     let reason: string | undefined
 
     for (const param of statement.params) {
@@ -383,8 +512,18 @@ function signaturesOf(module: Module, term: string): { carried: Signature[]; ref
     // the dispatcher names each task `<module>-<task>`, and names are package-global: a record form of the same
     // name would be shadowed by the alias in the one program that needs both
     if (!reason && !('refuse' in result)) {
-      const clash = recordForms([{ module: module.name, task: statement.name, native, params, result, async: false }])
-        .find(({ form }) => source.some(task => `${module.name}-${task.name}` === form))
+      const clash = recordForms([
+        {
+          module: module.name,
+          task: statement.name,
+          native,
+          params,
+          result,
+          async: false,
+        },
+      ]).find(({ form }) =>
+        source.some(task => `${module.name}-${task.name}` === form),
+      )
 
       if (clash) {
         reason = `record ${clash.form} has the name the dispatcher gives the task ${clash.form.slice(module.name.length + 1)}: rename the form`
@@ -402,7 +541,14 @@ function signaturesOf(module: Module, term: string): { carried: Signature[]; ref
       continue
     }
 
-    carried.push({ module: module.name, task: statement.name, native, params, result, async: Boolean(statement.async) })
+    carried.push({
+      module: module.name,
+      task: statement.name,
+      native,
+      params,
+      result,
+      async: Boolean(statement.async),
+    })
   }
 
   return { carried, refused, watched }
@@ -415,7 +561,10 @@ type Orphan = { shimFile: string; forward: string }
 
 // the modules the page reaches that have a native half: the closure resolved for node names them by their node
 // native, and the layout names the rest
-function dockedModules(page: string, root: string): { modules: Module[]; orphans: Orphan[] } {
+function dockedModules(
+  page: string,
+  root: string,
+): { modules: Module[]; orphans: Orphan[] } {
   const sources = collectModules(
     { file: page, text: readFileSync(page, 'utf8') },
     projectResolver(root, 'node'),
@@ -426,10 +575,14 @@ function dockedModules(page: string, root: string): { modules: Module[]; orphans
   // `<package root>/code/<...>/native/node/<name>.tree`, wherever the package was resolved from, or the abstract
   // module beside the env directories (`native/<name>.tree`) when node resolved to that (a module in Term all the
   // way down, with no native anywhere)
-  const native = /^(.*\/deck\/([^/]+)\/code(?:\/(.*?))?)\/native\/(?:node\/)?([^/]+)\.tree$/
+  const native =
+    /^(.*\/deck\/([^/]+)\/code(?:\/(.*?))?)\/native\/(?:node\/)?([^/]+)\.tree$/
 
   for (const source of sources) {
-    const real = existsSync(source.file) ? realpathSync(source.file) : source.file
+    const real = existsSync(source.file)
+      ? realpathSync(source.file)
+      : source.file
+
     const match = native.exec(real)
 
     if (!match) {
@@ -453,16 +606,35 @@ function dockedModules(page: string, root: string): { modules: Module[]; orphans
     // module the page serves itself (dom, graphics, the pure ones) stays in the page. A webview shim somebody
     // wrote by hand (the cask's own) is theirs, not the generator's
     const shimFile = join(codeDir!, 'native', 'webview', `${name}.tree`)
-    const has = (env: string): boolean => existsSync(join(codeDir!, 'native', env, `${name}.tree`))
-    const generated = has('webview') && readFileSync(shimFile, 'utf8').includes('GENERATED by term make')
-    const pageServes = PAGE_ENVS.some(env => env === 'webview' ? has(env) && !generated : has(env))
+    const has = (env: string): boolean =>
+      existsSync(join(codeDir!, 'native', env, `${name}.tree`))
+
+    const generated =
+      has('webview') &&
+      readFileSync(shimFile, 'utf8').includes('GENERATED by term make')
+
+    const pageServes = PAGE_ENVS.some(env =>
+      env === 'webview' ? has(env) && !generated : has(env),
+    )
+
     // a module with no native at all but an abstract module beside the env directories (`native/local.tree`) is
     // Term all the way down: every cask env resolves to it, so the cask serves it too
-    const caskServes = CASK_ENVS.some(has) || existsSync(join(codeDir!, 'native', `${name}.tree`))
-    const device = packageName === 'site' && under === 'view' && DEVICE_MODULES.has(name!)
+    const caskServes =
+      CASK_ENVS.some(has) ||
+      existsSync(join(codeDir!, 'native', `${name}.tree`))
 
-    if (!caskServes || (pageServes && !CROSS_ANYWAY.has(name!) && !device)) {
-      const served = PAGE_ENVS.find(env => env !== 'webview' && has(env))
+    const device =
+      packageName === 'site' &&
+      under === 'view' &&
+      DEVICE_MODULES.has(name!)
+
+    if (
+      !caskServes ||
+      (pageServes && !CROSS_ANYWAY.has(name!) && !device)
+    ) {
+      const served = PAGE_ENVS.find(
+        env => env !== 'webview' && has(env),
+      )
 
       if (generated && served) {
         orphans.push({ shimFile, forward: `../${served}/${name}` })
@@ -484,7 +656,12 @@ function dockedModules(page: string, root: string): { modules: Module[]; orphans
     })
   }
 
-  return { modules: [...found.values()].sort((a, b) => a.importPath.localeCompare(b.importPath)), orphans }
+  return {
+    modules: [...found.values()].sort((a, b) =>
+      a.importPath.localeCompare(b.importPath),
+    ),
+    orphans,
+  }
 }
 
 function orphanText(orphan: Orphan): string {
@@ -500,17 +677,33 @@ function orphanText(orphan: Orphan): string {
 
 // ---- writing tree ----
 
-const commandOf = (signature: Signature): string => `${signature.module}_${signature.task}`.replaceAll('-', '_')
+const commandOf = (signature: Signature): string =>
+  `${signature.module}_${signature.task}`.replaceAll('-', '_')
 
 // the name of the cask's table for a handle form: `row-handles`
 const tableOf = (form: string): string => `${form}-handles`
 
 // whether any parameter or result of these signatures carries bytes, directly or in a list: then both sides load the
 // base64 pair, under names no module's own task can take
-const holdsBytes = (kind: Kind): boolean => kind.kind === 'bytes' || (kind.kind === 'list' && holdsBytes(kind.item))
-const BYTES_LOADS = ['load @term/base/bytes', '  find to-base64, name bytes-to-base64', '  find from-base64, name bytes-from-base64', '']
+const holdsBytes = (kind: Kind): boolean =>
+  kind.kind === 'bytes' ||
+  (kind.kind === 'list' && holdsBytes(kind.item))
+
+const BYTES_LOADS = [
+  'load @term/base/bytes',
+  '  find to-base64, name bytes-to-base64',
+  '  find from-base64, name bytes-from-base64',
+  '',
+]
+
 const bytesLoads = (signatures: Signature[]): string[] =>
-  signatures.some(one => holdsBytes(one.result) || one.params.some(param => holdsBytes(param.kind))) ? BYTES_LOADS : []
+  signatures.some(
+    one =>
+      holdsBytes(one.result) ||
+      one.params.some(param => holdsBytes(param.kind)),
+  )
+    ? BYTES_LOADS
+    : []
 
 function likeOf(kind: Kind): string[] {
   switch (kind.kind) {
@@ -531,13 +724,22 @@ function likeOf(kind: Kind): string[] {
     case 'bytes':
       return ['like bytes']
     case 'list':
-      return ['like list', ...likeOf(kind.item).map(line => `  ${line}`)]
+      return [
+        'like list',
+        ...likeOf(kind.item).map(line => `  ${line}`),
+      ]
     case 'record':
       return [`like ${kind.form}`]
   }
 }
 
-const INVOKE: Record<Exclude<Kind, { kind: 'list' | 'handle' | 'dynamic' | 'record' | 'bytes' }>['kind'], string> = {
+const INVOKE: Record<
+  Exclude<
+    Kind,
+    { kind: 'list' | 'handle' | 'dynamic' | 'record' | 'bytes' }
+  >['kind'],
+  string
+> = {
   text: 'invoke-text',
   boolean: 'invoke-boolean',
   number: 'invoke-number',
@@ -547,31 +749,87 @@ const INVOKE: Record<Exclude<Kind, { kind: 'list' | 'handle' | 'dynamic' | 'reco
 
 // a fresh local name per emitted temporary
 let temporaries = 0
-const temporary = (base: string): string => `${base}-${(temporaries += 1)}`
+
+const temporary = (base: string): string =>
+  `${base}-${(temporaries += 1)}`
 
 // STATEMENTS that leave a json value of `read` in a local, and the local's name. The page side of the seam: what a
 // Term value of this kind is as json. Scalars are one call; a handle is its id; a list walks its items
-function pageToJson(kind: Kind, read: string, indent: string): { lines: string[]; local: string } {
+function pageToJson(
+  kind: Kind,
+  read: string,
+  indent: string,
+): { lines: string[]; local: string } {
   const local = temporary('json')
 
   switch (kind.kind) {
     case 'text':
-      return { local, lines: [`${indent}save ${local}`, `${indent}  call from-text`, `${indent}    read ${read}`] }
+      return {
+        local,
+        lines: [
+          `${indent}save ${local}`,
+          `${indent}  call from-text`,
+          `${indent}    read ${read}`,
+        ],
+      }
     case 'boolean':
-      return { local, lines: [`${indent}save ${local}`, `${indent}  call from-boolean`, `${indent}    read ${read}`] }
+      return {
+        local,
+        lines: [
+          `${indent}save ${local}`,
+          `${indent}  call from-boolean`,
+          `${indent}    read ${read}`,
+        ],
+      }
     case 'number':
-      return { local, lines: [`${indent}save ${local}`, `${indent}  call from-number`, `${indent}    call to-decimal`, `${indent}      read ${read}`] }
+      return {
+        local,
+        lines: [
+          `${indent}save ${local}`,
+          `${indent}  call from-number`,
+          `${indent}    call to-decimal`,
+          `${indent}      read ${read}`,
+        ],
+      }
     case 'decimal':
-      return { local, lines: [`${indent}save ${local}`, `${indent}  call from-number`, `${indent}    read ${read}`] }
+      return {
+        local,
+        lines: [
+          `${indent}save ${local}`,
+          `${indent}  call from-number`,
+          `${indent}    read ${read}`,
+        ],
+      }
     case 'void':
-      return { local, lines: [`${indent}save ${local}`, `${indent}  call make-null`] }
+      return {
+        local,
+        lines: [`${indent}save ${local}`, `${indent}  call make-null`],
+      }
     case 'dynamic':
-      return { local, lines: [`${indent}save ${local}`, `${indent}  read ${read}`] }
+      return {
+        local,
+        lines: [`${indent}save ${local}`, `${indent}  read ${read}`],
+      }
     case 'bytes':
-      return { local, lines: [`${indent}save ${local}`, `${indent}  call from-text`, `${indent}    call bytes-to-base64`, `${indent}      read ${read}`] }
+      return {
+        local,
+        lines: [
+          `${indent}save ${local}`,
+          `${indent}  call from-text`,
+          `${indent}    call bytes-to-base64`,
+          `${indent}      read ${read}`,
+        ],
+      }
     case 'handle':
       // the page holds the id in the form's private field
-      return { local, lines: [`${indent}save ${local}`, `${indent}  call from-text`, `${indent}    read ${read}/handle`] }
+      return {
+        local,
+        lines: [
+          `${indent}save ${local}`,
+          `${indent}  call from-text`,
+          `${indent}    read ${read}/handle`,
+        ],
+      }
     case 'record':
       // the record as host data text: melt walks the form's fields, write lays the data out
       return {
@@ -585,6 +843,7 @@ function pageToJson(kind: Kind, read: string, indent: string): { lines: string[]
           `${indent}        like ${kind.form}`,
         ],
       }
+
     case 'list': {
       const item = temporary('item')
       const inner = pageToJson(kind.item, item, `${indent}    `)
@@ -609,24 +868,71 @@ function pageToJson(kind: Kind, read: string, indent: string): { lines: string[]
 }
 
 // STATEMENTS that leave a Term value of this kind in a local, from the json in `read`. The page side receiving a reply
-function pageFromJson(kind: Kind, read: string, indent: string): { lines: string[]; local: string } {
+function pageFromJson(
+  kind: Kind,
+  read: string,
+  indent: string,
+): { lines: string[]; local: string } {
   const local = temporary('value')
 
   switch (kind.kind) {
     case 'text':
-      return { local, lines: [`${indent}save ${local}`, `${indent}  call as-text`, `${indent}    read ${read}`] }
+      return {
+        local,
+        lines: [
+          `${indent}save ${local}`,
+          `${indent}  call as-text`,
+          `${indent}    read ${read}`,
+        ],
+      }
     case 'boolean':
-      return { local, lines: [`${indent}save ${local}`, `${indent}  call as-boolean`, `${indent}    read ${read}`] }
+      return {
+        local,
+        lines: [
+          `${indent}save ${local}`,
+          `${indent}  call as-boolean`,
+          `${indent}    read ${read}`,
+        ],
+      }
     case 'number':
-      return { local, lines: [`${indent}save ${local}`, `${indent}  call to-number`, `${indent}    call as-number`, `${indent}      read ${read}`] }
+      return {
+        local,
+        lines: [
+          `${indent}save ${local}`,
+          `${indent}  call to-number`,
+          `${indent}    call as-number`,
+          `${indent}      read ${read}`,
+        ],
+      }
     case 'decimal':
-      return { local, lines: [`${indent}save ${local}`, `${indent}  call as-number`, `${indent}    read ${read}`] }
+      return {
+        local,
+        lines: [
+          `${indent}save ${local}`,
+          `${indent}  call as-number`,
+          `${indent}    read ${read}`,
+        ],
+      }
     case 'void':
-      return { local, lines: [`${indent}save ${local}`, `${indent}  call make-null`] }
+      return {
+        local,
+        lines: [`${indent}save ${local}`, `${indent}  call make-null`],
+      }
     case 'dynamic':
-      return { local, lines: [`${indent}save ${local}`, `${indent}  read ${read}`] }
+      return {
+        local,
+        lines: [`${indent}save ${local}`, `${indent}  read ${read}`],
+      }
     case 'bytes':
-      return { local, lines: [`${indent}save ${local}`, `${indent}  call bytes-from-base64`, `${indent}    call as-text`, `${indent}      read ${read}`] }
+      return {
+        local,
+        lines: [
+          `${indent}save ${local}`,
+          `${indent}  call bytes-from-base64`,
+          `${indent}    call as-text`,
+          `${indent}      read ${read}`,
+        ],
+      }
     case 'handle':
       return {
         local,
@@ -664,8 +970,11 @@ function pageFromJson(kind: Kind, read: string, indent: string): { lines: string
 }
 
 // every record form a set of signatures mentions, with the module each is loaded from
-function recordForms(signatures: Signature[]): { form: string; from: string }[] {
+function recordForms(
+  signatures: Signature[],
+): { form: string; from: string }[] {
   const forms = new Map<string, string>()
+
   const visit = (kind: Kind): void => {
     if (kind.kind === 'record') {
       forms.set(kind.form, kind.from)
@@ -679,18 +988,26 @@ function recordForms(signatures: Signature[]): { form: string; from: string }[] 
     visit(signature.result)
   }
 
-  return [...forms].sort(([a], [b]) => a.localeCompare(b)).map(([form, from]) => ({ form, from }))
+  return [...forms]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([form, from]) => ({ form, from }))
 }
 
 // the loads a program carrying records needs: each form from its own module, and the host dialect's reader and
 // writer under names no program around them would use
-function recordLoads(records: { form: string; from: string }[]): string[] {
+function recordLoads(
+  records: { form: string; from: string }[],
+): string[] {
   if (records.length === 0) {
     return []
   }
 
   return [
-    ...records.flatMap(({ form, from }) => [`load ${from}`, `  find ${form}`, '']),
+    ...records.flatMap(({ form, from }) => [
+      `load ${from}`,
+      `  find ${form}`,
+      '',
+    ]),
     // under names of their own, never aliases: the dispatcher imports `file` too, whose `read` and `write` share their
     // names with the host dialect's, and an alias is rewritten to the original name inside its file
     'load @term/host/base',
@@ -704,12 +1021,24 @@ function recordLoads(records: { form: string; from: string }[]): string[] {
 }
 
 // a list from a json array: the items as a list, then each one converted. A list of dynamic is the items as they are
-function listFromJson(item: Kind, read: string, indent: string, one: typeof pageFromJson): { lines: string[]; local: string } {
+function listFromJson(
+  item: Kind,
+  read: string,
+  indent: string,
+  one: typeof pageFromJson,
+): { lines: string[]; local: string } {
   const local = temporary('value')
   const items = temporary('items')
 
   if (item.kind === 'dynamic') {
-    return { local, lines: [`${indent}save ${local}`, `${indent}  call ${itemsOf}`, `${indent}    read ${read}`] }
+    return {
+      local,
+      lines: [
+        `${indent}save ${local}`,
+        `${indent}  call ${itemsOf}`,
+        `${indent}    read ${read}`,
+      ],
+    }
   }
 
   const each = temporary('item')
@@ -735,7 +1064,11 @@ function listFromJson(item: Kind, read: string, indent: string, one: typeof page
 }
 
 // the cask side: a Term value from the json in `read`. A handle id is looked up in the cask's table for its form
-function caskFromJson(kind: Kind, read: string, indent: string): { lines: string[]; local: string } {
+function caskFromJson(
+  kind: Kind,
+  read: string,
+  indent: string,
+): { lines: string[]; local: string } {
   const local = temporary('value')
 
   switch (kind.kind) {
@@ -764,6 +1097,7 @@ function caskFromJson(kind: Kind, read: string, indent: string): { lines: string
         ],
       }
     }
+
     case 'list':
       return listFromJson(kind.item, read, indent, caskFromJson)
     default:
@@ -772,7 +1106,11 @@ function caskFromJson(kind: Kind, read: string, indent: string): { lines: string
 }
 
 // the cask side: json from a Term value. A handle is kept in the table under a fresh id and the id crosses
-function caskToJson(kind: Kind, read: string, indent: string): { lines: string[]; local: string } {
+function caskToJson(
+  kind: Kind,
+  read: string,
+  indent: string,
+): { lines: string[]; local: string } {
   const local = temporary('json')
 
   switch (kind.kind) {
@@ -795,6 +1133,7 @@ function caskToJson(kind: Kind, read: string, indent: string): { lines: string[]
         ],
       }
     }
+
     case 'list': {
       const item = temporary('item')
       const inner = caskToJson(kind.item, item, `${indent}    `)
@@ -815,6 +1154,7 @@ function caskToJson(kind: Kind, read: string, indent: string): { lines: string[]
         ],
       }
     }
+
     default:
       return pageToJson(kind, read, indent)
   }
@@ -858,6 +1198,7 @@ let itemsOf = 'items-of'
 // every handle form a set of signatures mentions
 function handleForms(signatures: Signature[]): string[] {
   const forms = new Set<string>()
+
   const visit = (kind: Kind): void => {
     if (kind.kind === 'handle') {
       forms.add(kind.form)
@@ -875,8 +1216,19 @@ function handleForms(signatures: Signature[]): string[] {
 }
 
 const JSON_FINDS = [
-  'make-object', 'set-field', 'from-text', 'from-boolean', 'from-number', 'make-null',
-  'as-text', 'as-boolean', 'as-number', 'make-array', 'push-item', 'get-item', 'array-size',
+  'make-object',
+  'set-field',
+  'from-text',
+  'from-boolean',
+  'from-number',
+  'make-null',
+  'as-text',
+  'as-boolean',
+  'as-number',
+  'make-array',
+  'push-item',
+  'get-item',
+  'array-size',
 ]
 
 // the lifetime verb: a task named `release` that takes exactly one handle and answers nothing. It is not a command:
@@ -891,8 +1243,15 @@ function isRelease(signature: Signature): boolean {
   )
 }
 
-function shimText(module: Module, carried: Signature[], refused: Refused[], watched: Watcher[], term: string): string {
+function shimText(
+  module: Module,
+  carried: Signature[],
+  refused: Refused[],
+  watched: Watcher[],
+  term: string,
+): string {
   temporaries = 0
+
   const lines: string[] = [
     '',
     `# GENERATED by term make from ${relative(term, module.publicFile)}. Do not edit; regenerate with`,
@@ -922,7 +1281,12 @@ function shimText(module: Module, carried: Signature[], refused: Refused[], watc
   ]
 
   for (const form of handleForms(carried)) {
-    lines.push(`# an opaque handle: the id of a value the cask holds`, `form ${form}`, '  link handle, mark private', '')
+    lines.push(
+      `# an opaque handle: the id of a value the cask holds`,
+      `form ${form}`,
+      '  link handle, mark private',
+      '',
+    )
   }
 
   itemsOf = `${module.name}-items-of`
@@ -952,7 +1316,10 @@ function shimText(module: Module, carried: Signature[], refused: Refused[], watc
     lines.push(`task ${signature.native}`, '  mark async')
 
     for (const param of signature.params) {
-      lines.push(`  take ${param.name}`, ...likeOf(param.kind).map(line => `    ${line}`))
+      lines.push(
+        `  take ${param.name}`,
+        ...likeOf(param.kind).map(line => `    ${line}`),
+      )
     }
 
     lines.push(...likeOf(signature.result).map(line => `  ${line}`))
@@ -962,17 +1329,42 @@ function shimText(module: Module, carried: Signature[], refused: Refused[], watc
 
     for (const param of signature.params) {
       const json = pageToJson(param.kind, param.name, '  ')
-      lines.push(...json.lines, '  save arguments', '    call set-field', '      read arguments', `      text <${param.name}>`, `      read ${json.local}`)
+      lines.push(
+        ...json.lines,
+        '  save arguments',
+        '    call set-field',
+        '      read arguments',
+        `      text <${param.name}>`,
+        `      read ${json.local}`,
+      )
     }
 
     const result = signature.result
 
-    if (result.kind === 'list' || result.kind === 'handle' || result.kind === 'dynamic' || result.kind === 'record' || result.kind === 'bytes') {
-      lines.push('  save reply', '    call bridge/invoke', '      wait true', `      text <${commandOf(signature)}>`, '      read arguments')
+    if (
+      result.kind === 'list' ||
+      result.kind === 'handle' ||
+      result.kind === 'dynamic' ||
+      result.kind === 'record' ||
+      result.kind === 'bytes'
+    ) {
+      lines.push(
+        '  save reply',
+        '    call bridge/invoke',
+        '      wait true',
+        `      text <${commandOf(signature)}>`,
+        '      read arguments',
+      )
+
       const value = pageFromJson(result, 'reply', '  ')
       lines.push(...value.lines, `  send back, read ${value.local}`)
     } else if (result.kind === 'void') {
-      lines.push(`  call bridge/${INVOKE[result.kind]}`, '    wait true', `    text <${commandOf(signature)}>`, '    read arguments')
+      lines.push(
+        `  call bridge/${INVOKE[result.kind]}`,
+        '    wait true',
+        `    text <${commandOf(signature)}>`,
+        '    read arguments',
+      )
     } else if (module.pageEnv && result.kind === 'text') {
       // the cask's answer, unless it has none: a cask with no device host (Linux and Windows, built for bare rust)
       // answers `unhosted` (its dispatcher's `device-answer`), and the WebView may have the capability itself
@@ -992,11 +1384,19 @@ function shimText(module: Module, carried: Signature[], refused: Refused[], watc
         '    hook hold',
         '      send back',
         `        call page-${signature.native}`,
-        ...signature.params.map(param => `          read ${param.name}`),
+        ...signature.params.map(
+          param => `          read ${param.name}`,
+        ),
         '  send back, read reply',
       )
     } else {
-      lines.push('  send back', `    call bridge/${INVOKE[result.kind]}`, '      wait true', `      text <${commandOf(signature)}>`, '      read arguments')
+      lines.push(
+        '  send back',
+        `    call bridge/${INVOKE[result.kind]}`,
+        '      wait true',
+        `      text <${commandOf(signature)}>`,
+        '      read arguments',
+      )
     }
 
     lines.push('')
@@ -1006,7 +1406,9 @@ function shimText(module: Module, carried: Signature[], refused: Refused[], watc
   // asked of it, each through that env's own task
   const asked = module.pageEnv
     ? [
-        ...carried.filter(one => !isRelease(one) && one.result.kind === 'text').map(one => one.native),
+        ...carried
+          .filter(one => !isRelease(one) && one.result.kind === 'text')
+          .map(one => one.native),
         ...refused.map(one => one.native),
         ...watched.map(one => one.native),
       ]
@@ -1043,23 +1445,40 @@ function shimText(module: Module, carried: Signature[], refused: Refused[], watc
 
   for (const one of refused) {
     if (module.pageEnv) {
-      lines.push(`# not carried (${one.reason}): it runs in the page, on the ${module.pageEnv} host`, `task ${one.native}`)
+      lines.push(
+        `# not carried (${one.reason}): it runs in the page, on the ${module.pageEnv} host`,
+        `task ${one.native}`,
+      )
 
       for (const param of one.params) {
         lines.push(`  take ${param.name}, like unknown`)
       }
 
-      lines.push('  like unknown', '  send back', `    call page-${one.native}`, ...one.params.map(param => `      read ${param.name}`), '')
+      lines.push(
+        '  like unknown',
+        '  send back',
+        `    call page-${one.native}`,
+        ...one.params.map(param => `      read ${param.name}`),
+        '',
+      )
       continue
     }
 
-    lines.push(`# not carried: ${one.reason}`, `task ${one.native}`, '  mark async')
+    lines.push(
+      `# not carried: ${one.reason}`,
+      `task ${one.native}`,
+      '  mark async',
+    )
 
     for (const param of one.params) {
       lines.push(`  take ${param.name}, like unknown`)
     }
 
-    lines.push('  like unknown', `  halt <${one.module}/${one.task} does not cross the cask bridge yet: ${one.reason}>`, '')
+    lines.push(
+      '  like unknown',
+      `  halt <${one.module}/${one.task} does not cross the cask bridge yet: ${one.reason}>`,
+      '',
+    )
   }
 
   return lines.join('\n')
@@ -1068,11 +1487,23 @@ function shimText(module: Module, carried: Signature[], refused: Refused[], watc
 // `cask_release`: drop the value under `handle` from the table of `form`. A released id is then one the cask never gave
 // out, so a page that uses it after letting it go is refused by `unwrap`, the same as a forged one
 function releaseLines(forms: string[]): string[] {
-  const lines = ['    hook test', '      call is-equal', '        read command', '        text <cask_release>', '    hook hold']
+  const lines = [
+    '    hook test',
+    '      call is-equal',
+    '        read command',
+    '        text <cask_release>',
+    '    hook hold',
+  ]
 
   if (forms.length > 0) {
     // the id under this window's key: a page can let go only of what its own window holds (native-dom-0030)
-    lines.push('      save released', '        call field-text', '          read arguments', '          text <handle>', '      fork test')
+    lines.push(
+      '      save released',
+      '        call field-text',
+      '          read arguments',
+      '          text <handle>',
+      '      fork test',
+    )
 
     for (const form of forms) {
       lines.push(
@@ -1157,8 +1588,17 @@ function dropLines(forms: string[], watching = false): string[] {
   return lines
 }
 
-function dispatchText(page: string, modules: Module[], all: Signature[], watched: Watcher[], term: string, scope: Scope, name: string): string {
+function dispatchText(
+  page: string,
+  modules: Module[],
+  all: Signature[],
+  watched: Watcher[],
+  term: string,
+  scope: Scope,
+  name: string,
+): string {
   temporaries = 0
+
   const watching = watched.length > 0
   // a release crosses as `cask_release`, never as a command of its own
   const signatures = all.filter(signature => !isRelease(signature))
@@ -1176,7 +1616,7 @@ function dispatchText(page: string, modules: Module[], all: Signature[], watched
     '# command is not allowed, and then nothing runs. An opaque handle a task answers is kept in a table here under a',
     '# fresh id, and the id is what the page gets; a handle the page sends back is looked up in the same table.',
     '#',
-    "# EVERY HANDLE IS OWNED BY THE WINDOW THAT ASKED FOR IT (native-dom-0030). `serve` gives a window a key of its",
+    '# EVERY HANDLE IS OWNED BY THE WINDOW THAT ASKED FOR IT (native-dom-0030). `serve` gives a window a key of its',
     "# own and answers its page under it: a handle is kept under `<key>/<id>`, so an id one window's page was given",
     "# is unknown to every other window's (refused as `absence`, as a forged one is), and when the window closes",
     '# every handle under its key is dropped. `dispatch` answers as one window, for an app that opens only one.',
@@ -1196,7 +1636,14 @@ function dispatchText(page: string, modules: Module[], all: Signature[], watched
     ...(watching ? ['  find emit'] : []),
     // the gate's own: `home-path` whenever there is a gate, used or not, so a scope that adds `$home` later changes only
     // the gate's body
-    ...(gated ? ['  find home-path', '', 'load @term/cask/scope', '  find in-scope'] : []),
+    ...(gated
+      ? [
+          '  find home-path',
+          '',
+          'load @term/cask/scope',
+          '  find in-scope',
+        ]
+      : []),
     '',
     'load @term/base/text',
     '  find starts-with',
@@ -1216,12 +1663,23 @@ function dispatchText(page: string, modules: Module[], all: Signature[], watched
 
     lines.push(`load ${module.importPath}`)
 
-    if (module.pageEnv && !lines.includes('load @term/site/view/hosted')) {
-      lines.splice(lines.length - 1, 0, 'load @term/site/view/hosted', '  find has-device-host', '')
+    if (
+      module.pageEnv &&
+      !lines.includes('load @term/site/view/hosted')
+    ) {
+      lines.splice(
+        lines.length - 1,
+        0,
+        'load @term/site/view/hosted',
+        '  find has-device-host',
+        '',
+      )
     }
 
     for (const signature of own) {
-      lines.push(`  find ${signature.task}, name ${module.name}-${signature.task}`)
+      lines.push(
+        `  find ${signature.task}, name ${module.name}-${signature.task}`,
+      )
     }
 
     for (const one of ownWatched) {
@@ -1243,7 +1701,9 @@ function dispatchText(page: string, modules: Module[], all: Signature[], watched
     '  find field-number',
     '  find field-boolean',
     '  find get-field',
-    ...JSON_FINDS.filter(name => !['make-object', 'set-field'].includes(name) || true).map(name => `  find ${name}`),
+    ...JSON_FINDS.filter(
+      name => !['make-object', 'set-field'].includes(name) || true,
+    ).map(name => `  find ${name}`),
     '',
     'load @term/base/float',
     '  find to-number',
@@ -1283,7 +1743,6 @@ function dispatchText(page: string, modules: Module[], all: Signature[], watched
       '',
     )
   }
-
 
   if (watching) {
     lines.push(
@@ -1373,7 +1832,15 @@ function dispatchText(page: string, modules: Module[], all: Signature[], watched
 
   // a cask with no device host (built for bare rust) answers a device module with its `unavailable` fallback, which
   // is not the platform's answer: the page is told `unhosted` instead, and asks its WebView (device-layer-0013)
-  if (signatures.some(signature => signature.result.kind === 'text' && modules.some(one => one.name === signature.module && one.pageEnv))) {
+  if (
+    signatures.some(
+      signature =>
+        signature.result.kind === 'text' &&
+        modules.some(
+          one => one.name === signature.module && one.pageEnv,
+        ),
+    )
+  ) {
     lines.push(
       '# a device answer, or `unhosted` where this build has no device host and so only the fallback answered',
       'task device-answer',
@@ -1398,19 +1865,38 @@ function dispatchText(page: string, modules: Module[], all: Signature[], watched
     )
   }
 
-  lines.push('# the commands this app allows: what its page docks, and nothing else', 'task is-allowed', '  take command, like text', '  like boolean', '  fork test')
+  lines.push(
+    '# the commands this app allows: what its page docks, and nothing else',
+    'task is-allowed',
+    '  take command, like text',
+    '  like boolean',
+    '  fork test',
+  )
 
-  const watchCommands = watching ? [...watched.map(watchCommandOf), 'cask_unwatch'] : []
+  const watchCommands = watching
+    ? [...watched.map(watchCommandOf), 'cask_unwatch']
+    : []
 
-  for (const command of [...signatures.map(commandOf), ...watchCommands, ...CASK_COMMANDS]) {
-    lines.push('    hook test', '      call is-equal', '        read command', `        text <${command}>`, '    hook hold', '      send back, true')
+  for (const command of [
+    ...signatures.map(commandOf),
+    ...watchCommands,
+    ...CASK_COMMANDS,
+  ]) {
+    lines.push(
+      '    hook test',
+      '      call is-equal',
+      '        read command',
+      `        text <${command}>`,
+      '    hook hold',
+      '      send back, true',
+    )
   }
 
   lines.push(
     '    hook miss',
     '      send back, false',
     '',
-    "# run one command with its arguments and answer the reply value as json, for the window whose key is `owner`",
+    '# run one command with its arguments and answer the reply value as json, for the window whose key is `owner`',
     'task run-command',
     '  mark async',
     '  take owner, like text',
@@ -1425,31 +1911,64 @@ function dispatchText(page: string, modules: Module[], all: Signature[], watched
   )
 
   for (const signature of signatures) {
-    lines.push('    hook test', '      call is-equal', '        read command', `        text <${commandOf(signature)}>`, '    hook hold')
+    lines.push(
+      '    hook test',
+      '      call is-equal',
+      '        read command',
+      `        text <${commandOf(signature)}>`,
+      '    hook hold',
+    )
 
     const argumentLocals: string[] = []
 
     for (const param of signature.params) {
       const field = temporary('field')
-      lines.push(`      save ${field}`, '        call get-field', '          read arguments', `          text <${param.name}>`)
+      lines.push(
+        `      save ${field}`,
+        '        call get-field',
+        '          read arguments',
+        `          text <${param.name}>`,
+      )
+
       const value = caskFromJson(param.kind, field, '      ')
       lines.push(...value.lines)
       argumentLocals.push(value.local)
     }
 
-    const call = [`call ${signature.module}-${signature.task}`, ...(signature.async ? ['  wait true'] : []), ...argumentLocals.map(local => `  read ${local}`)]
+    const call = [
+      `call ${signature.module}-${signature.task}`,
+      ...(signature.async ? ['  wait true'] : []),
+      ...argumentLocals.map(local => `  read ${local}`),
+    ]
 
     // a device module's text answer goes through `device-answer`, which says `unhosted` for a build with no device host
-    const device = signature.result.kind === 'text' && modules.some(one => one.name === signature.module && one.pageEnv)
+    const device =
+      signature.result.kind === 'text' &&
+      modules.some(one => one.name === signature.module && one.pageEnv)
 
     if (signature.result.kind === 'void') {
-      lines.push(...call.map(line => `      ${line}`), '      send back', '        call make-null')
+      lines.push(
+        ...call.map(line => `      ${line}`),
+        '      send back',
+        '        call make-null',
+      )
     } else if (device) {
-      lines.push('      save given', ...call.map(line => `        ${line}`), '      save answer', '        call device-answer', '          read given')
+      lines.push(
+        '      save given',
+        ...call.map(line => `        ${line}`),
+        '      save answer',
+        '        call device-answer',
+        '          read given',
+      )
+
       const json = caskToJson(signature.result, 'answer', '      ')
       lines.push(...json.lines, `      send back, read ${json.local}`)
     } else {
-      lines.push('      save answer', ...call.map(line => `        ${line}`))
+      lines.push(
+        '      save answer',
+        ...call.map(line => `        ${line}`),
+      )
+
       const json = caskToJson(signature.result, 'answer', '      ')
       lines.push(...json.lines, `      send back, read ${json.local}`)
     }
@@ -1628,7 +2147,7 @@ function dispatchText(page: string, modules: Module[], all: Signature[], watched
     '',
     '# every message answered, whatever it holds: one that is not JSON (`parse` raises `json-mismatch`) answers the',
     '# exception with no id, rather than raising out of the bridge and taking the cask down with it. Answered for',
-    "# the window whose key is `owner`",
+    '# the window whose key is `owner`',
     'task dispatch-as',
     '  mark async',
     '  take owner, like text',
@@ -1666,7 +2185,7 @@ function dispatchText(page: string, modules: Module[], all: Signature[], watched
     '      text <>',
     '      read message',
     '',
-    "# every handle a window held, let go: what `serve` runs when the window closes",
+    '# every handle a window held, let go: what `serve` runs when the window closes',
     'task drop-window',
     '  take owner, like text',
     '  like void',
@@ -1679,7 +2198,14 @@ function dispatchText(page: string, modules: Module[], all: Signature[], watched
     '  like text',
     '  save key',
     '    call version4',
-    ...(watching ? ['  call set', '    read cask-windows', '    read key', '    read place'] : []),
+    ...(watching
+      ? [
+          '  call set',
+          '    read cask-windows',
+          '    read key',
+          '    read place',
+        ]
+      : []),
     '  call on-message',
     '    read place',
     '    task reply',
@@ -1708,25 +2234,52 @@ function dispatchText(page: string, modules: Module[], all: Signature[], watched
 // a command the page may send whose capability is scoped, with the access each argument needs. `checks` is absent for
 // a task the capability's table does not map, which the gate refuses: a task added to a module later is out of scope
 // until somebody decides what it touches
-type Scoped = { command: string; capability: string; checks?: [argument: string, access: Access][] }
+type Scoped = {
+  command: string
+  capability: string
+  checks?: [argument: string, access: Access][]
+}
 
-function scopedCommands(signatures: Signature[], modules: Module[]): Scoped[] {
-  const capabilityByModule = new Map(modules.map(module => [module.name, capabilityOf(module.publicFile)]))
+function scopedCommands(
+  signatures: Signature[],
+  modules: Module[],
+): Scoped[] {
+  const capabilityByModule = new Map(
+    modules.map(module => [
+      module.name,
+      capabilityOf(module.publicFile),
+    ]),
+  )
 
   return signatures.flatMap(signature => {
     const capability = capabilityByModule.get(signature.module)
-    const tasks = capability ? CAPABILITIES[capability]!.tasks : undefined
+    const tasks = capability
+      ? CAPABILITIES[capability]!.tasks
+      : undefined
 
-    return capability && tasks ? [{ command: commandOf(signature), capability, checks: tasks[signature.task] }] : []
+    return capability && tasks
+      ? [
+          {
+            command: commandOf(signature),
+            capability,
+            checks: tasks[signature.task],
+          },
+        ]
+      : []
   })
 }
 
 // the constant one capability's access is compiled into
-const scopeHost = (capability: string, access: Access): string => `scope-${capability}-${access}`
+const scopeHost = (capability: string, access: Access): string =>
+  `scope-${capability}-${access}`
 
 // `out-of-scope`, and the patterns it reads: what the gate in `answer` asks before a command runs. It answers the
 // argument it refused, or empty text. `name` is the app's, which its `$data` is the data directory of
-function scopeText(scoped: Scoped[], scope: Scope, name: string): string[] {
+function scopeText(
+  scoped: Scoped[],
+  scope: Scope,
+  name: string,
+): string[] {
   const head = [
     "# the app's scope (scope.tree, deck/call/code/scope.ts): every scoped argument of a command checked against the",
     '# patterns its access lists, before the command runs. Answers the argument refused, or empty text when it may run',
@@ -1734,25 +2287,61 @@ function scopeText(scoped: Scoped[], scope: Scope, name: string): string[] {
   ]
 
   if (scoped.length === 0) {
-    return [...head, '  take command, like text', '  take arguments, like dynamic', '  like text', '  send back, text <>', '']
+    return [
+      ...head,
+      '  take command, like text',
+      '  take arguments, like dynamic',
+      '  like text',
+      '  send back, text <>',
+      '',
+    ]
   }
 
-  const pairs = [...new Set(scoped.flatMap(one => (one.checks ?? []).map(([, access]) => `${one.capability}|${access}`)))]
+  const pairs = [
+    ...new Set(
+      scoped.flatMap(one =>
+        (one.checks ?? []).map(
+          ([, access]) => `${one.capability}|${access}`,
+        ),
+      ),
+    ),
+  ]
+
   const lines: string[] = []
 
   for (const pair of pairs) {
     const [capability, access] = pair.split('|') as [string, Access]
     const patterns = scope.get(capability)?.[access] ?? []
-    lines.push(`# what the scope lets the page ${access} through \`${capability}\``, `host ${scopeHost(capability, access)}`, `  text <${patterns.map(one => one.replace(/\\/g, '\\\\')).join('\\n')}>`, '')
+    lines.push(
+      `# what the scope lets the page ${access} through \`${capability}\``,
+      `host ${scopeHost(capability, access)}`,
+      `  text <${patterns.map(one => one.replace(/\\/g, '\\\\')).join('\\n')}>`,
+      '',
+    )
   }
 
-  lines.push(...head, '  mark async', '  take command, like text', '  take arguments, like dynamic', '  like text', '  fork test')
+  lines.push(
+    ...head,
+    '  mark async',
+    '  take command, like text',
+    '  take arguments, like dynamic',
+    '  like text',
+    '  fork test',
+  )
 
   for (const one of scoped) {
-    lines.push('    hook test', '      call is-equal', '        read command', `        text <${one.command}>`, '    hook hold')
+    lines.push(
+      '    hook test',
+      '      call is-equal',
+      '        read command',
+      `        text <${one.command}>`,
+      '    hook hold',
+    )
 
     if (!one.checks) {
-      lines.push(`      send back, text <${one.command} is not in the scope table>`)
+      lines.push(
+        `      send back, text <${one.command} is not in the scope table>`,
+      )
       continue
     }
 
@@ -1765,20 +2354,40 @@ function scopeText(scoped: Scoped[], scope: Scope, name: string): string[] {
     // a pattern of this command names: `data-path` makes the folder it answers, which a check must never do for a
     // scope that does not mention it. One no pattern names is empty, which matches nothing
     const named = (variable: string) =>
-      one.checks!.some(([, access]) => (scope.get(one.capability)?.[access] ?? []).some(pattern => pattern.startsWith(variable)))
+      one.checks!.some(([, access]) =>
+        (scope.get(one.capability)?.[access] ?? []).some(pattern =>
+          pattern.startsWith(variable),
+        ),
+      )
+
     lines.push(
       '      save data',
-      ...(named('$data') ? ['        call data-path', `          text <${name}>`] : ['        text <>']),
+      ...(named('$data')
+        ? ['        call data-path', `          text <${name}>`]
+        : ['        text <>']),
       '      save bundle',
-      ...(named('$bundle') ? ['        call bundle-path'] : ['        text <>']),
+      ...(named('$bundle')
+        ? ['        call bundle-path']
+        : ['        text <>']),
       '      save home',
-      ...(named('$home') ? ['        call home-path'] : ['        text <>']),
+      ...(named('$home')
+        ? ['        call home-path']
+        : ['        text <>']),
     )
 
     for (const [index, [argument, access]] of one.checks.entries()) {
       const value = `scoped-${index}`
       lines.push(`      save ${value}`)
-      lines.push(...(argument === '*' ? ['        text <*>'] : ['        call as-text', '          call get-field', '            read arguments', `            text <${argument}>`]))
+      lines.push(
+        ...(argument === '*'
+          ? ['        text <*>']
+          : [
+              '        call as-text',
+              '          call get-field',
+              '            read arguments',
+              `            text <${argument}>`,
+            ]),
+      )
       lines.push(
         '      fork test',
         '        hook test',
@@ -1820,41 +2429,84 @@ export type GenerateReport = {
 // generate for one page. `out` is where dispatch.tree goes, which is the cask entry's directory. `root` is the app's,
 // whose scope.tree and manifest the gate is generated from; it is `out` when not given. Reports by default; `commit`
 // writes what differs; the caller acts on `drift`
-export function generateBridge({ page, out, commit, root: app = out }: { page: string; out: string; commit: boolean; root?: string }): GenerateReport {
+export function generateBridge({
+  page,
+  out,
+  commit,
+  root: app = out,
+}: {
+  page: string
+  out: string
+  commit: boolean
+  root?: string
+}): GenerateReport {
   const base = stdlibBase()
 
   if (!base) {
-    throw new Error('the stdlib was not found, so there is nothing to generate the bridge from. Set TERM_STDLIB')
+    throw new Error(
+      'the stdlib was not found, so there is nothing to generate the bridge from. Set TERM_STDLIB',
+    )
   }
 
   const term = dirname(dirname(base))
   const root = dirname(page)
   const { modules, orphans } = dockedModules(page, root)
-  const outputs: { file: string; text: string }[] = orphans.map(orphan => ({ file: orphan.shimFile, text: orphanText(orphan) }))
+  const outputs: { file: string; text: string }[] = orphans.map(
+    orphan => ({ file: orphan.shimFile, text: orphanText(orphan) }),
+  )
+
   const all: Signature[] = []
-  const refusedAll: { module: string; task: string; reason: string }[] = []
+  const refusedAll: { module: string; task: string; reason: string }[] =
+    []
+
   const watchedAll: Watcher[] = []
 
   for (const module of modules) {
     const { carried, refused, watched } = signaturesOf(module, term)
 
-    if (carried.length === 0 && refused.length === 0 && watched.length === 0) {
+    if (
+      carried.length === 0 &&
+      refused.length === 0 &&
+      watched.length === 0
+    ) {
       continue
     }
 
     all.push(...carried)
     watchedAll.push(...watched)
-    refusedAll.push(...refused.map(one => ({ module: module.name, task: one.task, reason: one.reason })))
-    outputs.push({ file: module.shimFile, text: shimText(module, carried, refused, watched, term) })
+    refusedAll.push(
+      ...refused.map(one => ({
+        module: module.name,
+        task: one.task,
+        reason: one.reason,
+      })),
+    )
+    outputs.push({
+      file: module.shimFile,
+      text: shimText(module, carried, refused, watched, term),
+    })
   }
 
   const { scope } = readScope(app)
-  outputs.push({ file: join(out, 'dispatch.tree'), text: dispatchText(page, modules, all, watchedAll, term, scope, appIdentity(app).name) })
+  outputs.push({
+    file: join(out, 'dispatch.tree'),
+    text: dispatchText(
+      page,
+      modules,
+      all,
+      watchedAll,
+      term,
+      scope,
+      appIdentity(app).name,
+    ),
+  })
 
   const drift: { file: string; written: boolean }[] = []
 
   for (const output of outputs) {
-    const before = existsSync(output.file) ? readFileSync(output.file, 'utf8') : undefined
+    const before = existsSync(output.file)
+      ? readFileSync(output.file, 'utf8')
+      : undefined
 
     if (before === output.text) {
       continue

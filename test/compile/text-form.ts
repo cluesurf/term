@@ -84,34 +84,92 @@ task total
   back add(apply(pick(0), 2, 3), apply(times, 4, 5))
 `
 
-const built = compile({ file: '/gate/code/text-form.tree', text }, { leanOf: () => true })
+const built = compile(
+  { file: '/gate/code/text-form.tree', text },
+  { leanOf: () => true },
+)
 
 if (!built.ok) {
-  ok('the program builds', false, built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the program builds',
+    false,
+    built.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
 } else {
   const ts = built.typescript
-  const declared = /type BinaryOp =([^;]*?)\n\n/.exec(`${ts}\n\n`)?.[1]?.replace(/\s+/g, ' ').trim() ?? ''
-  ok('the type is the union of its texts', declared === '| "+" | "-" | "*" | "less_equal"', declared)
+  const declared =
+    /type BinaryOp =([^;]*?)\n\n/
+      .exec(`${ts}\n\n`)?.[1]
+      ?.replace(/\s+/g, ' ')
+      .trim() ?? ''
+  ok(
+    'the type is the union of its texts',
+    declared === '| "+" | "-" | "*" | "less_equal"',
+    declared,
+  )
 
   const dir = mkdtempSync(join(tmpdir(), 'term-text-form-'))
   const file = join(dir, 'module.mjs')
-  writeFileSync(file, transformSync(ts, { loader: 'ts', format: 'esm' }).code)
-  const mod = (await import(pathToFileURL(file).href)) as Record<string, (...a: unknown[]) => unknown>
+  writeFileSync(
+    file,
+    transformSync(ts, { loader: 'ts', format: 'esm' }).code,
+  )
+  const mod = (await import(pathToFileURL(file).href)) as Record<
+    string,
+    (...a: unknown[]) => unknown
+  >
 
-  ok('a construction is its text', mod.pick!(0) === '+' && mod.pick!(1) === '-', `${String(mod.pick!(0))} ${String(mod.pick!(1))}`)
-  ok('a case with no text is its name in snake_case', mod.pick!(2) === 'less_equal', String(mod.pick!(2)))
-  ok('a TypeScript caller passes the text, and the match reads it', mod.apply!('-', 9, 4) === 5 && mod.apply!('*', 3, 3) === 9)
-  ok('two values compare as texts', mod.sameOp!('+', '+') === true && mod.sameOp!('+', '-') === false)
-  ok('to-text is the case\'s text', mod.nameOf!('*') === '*' && mod.nameOf!('less_equal') === 'less_equal')
-  ok('from-text reads a text back, else the fallback', mod.parseOp!('-') === '-' && mod.parseOp!('?') === 'less_equal')
-  ok('built and matched inside Term', mod.total!() === 25, String(mod.total!()))
+  ok(
+    'a construction is its text',
+    mod.pick!(0) === '+' && mod.pick!(1) === '-',
+    `${String(mod.pick!(0))} ${String(mod.pick!(1))}`,
+  )
+  ok(
+    'a case with no text is its name in snake_case',
+    mod.pick!(2) === 'less_equal',
+    String(mod.pick!(2)),
+  )
+  ok(
+    'a TypeScript caller passes the text, and the match reads it',
+    mod.apply!('-', 9, 4) === 5 && mod.apply!('*', 3, 3) === 9,
+  )
+  ok(
+    'two values compare as texts',
+    mod.sameOp!('+', '+') === true && mod.sameOp!('+', '-') === false,
+  )
+  ok(
+    "to-text is the case's text",
+    mod.nameOf!('*') === '*' &&
+      mod.nameOf!('less_equal') === 'less_equal',
+  )
+  ok(
+    'from-text reads a text back, else the fallback',
+    mod.parseOp!('-') === '-' && mod.parseOp!('?') === 'less_equal',
+  )
+  ok(
+    'built and matched inside Term',
+    mod.total!() === 25,
+    String(mod.total!()),
+  )
 }
 
 // natively a field-less enum: the program builds through rustc
-const native = compile({ file: '/gate/code/text-form.tree', text }, { leanOf: () => true, resolve: withNativeEnv('rust', stdlibResolver()!), env: 'rust', entryPoints: ['total', 'same-op', 'name-of', 'parse-op'] })
+const native = compile(
+  { file: '/gate/code/text-form.tree', text },
+  {
+    leanOf: () => true,
+    resolve: withNativeEnv('rust', stdlibResolver()!),
+    env: 'rust',
+    entryPoints: ['total', 'same-op', 'name-of', 'parse-op'],
+  },
+)
 
 if (!native.ok) {
-  ok('the program builds for rust', false, native.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok(
+    'the program builds for rust',
+    false,
+    native.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
 } else if (spawnSync('rustc', ['--version']).status !== 0) {
   console.log('skip  rustc  (not installed)')
 } else {
@@ -119,27 +177,64 @@ if (!native.ok) {
   const dir = mkdtempSync(join(tmpdir(), 'term-text-form-'))
   writeFileSync(join(dir, 'main.rs'), rust)
   const binary = join(dir, 'main')
-  const out = spawnSync('rustc', ['--edition', '2021', '-A', 'warnings', '-o', binary, join(dir, 'main.rs')], { encoding: 'utf8' })
-  ok('rustc compiles it', out.status === 0, out.stderr.split('\n').slice(0, 30).join('\n        '))
+  const out = spawnSync(
+    'rustc',
+    [
+      '--edition',
+      '2021',
+      '-A',
+      'warnings',
+      '-o',
+      binary,
+      join(dir, 'main.rs'),
+    ],
+    { encoding: 'utf8' },
+  )
+  ok(
+    'rustc compiles it',
+    out.status === 0,
+    out.stderr.split('\n').slice(0, 30).join('\n        '),
+  )
 
   if (out.status === 0) {
     const ran = spawnSync(binary, [], { encoding: 'utf8' })
-    ok('Rust answers what TypeScript does', ran.stdout.trim() === '25 * less_equal', ran.stdout.trim())
+    ok(
+      'Rust answers what TypeScript does',
+      ran.stdout.trim() === '25 * less_equal',
+      ran.stdout.trim(),
+    )
   }
 }
 
 // refused: a case that holds a value, and two cases with one text
 const refused = (source: string): string => {
-  const result = compile({ file: '/gate/code/bad.tree', text: source }, { leanOf: () => true })
+  const result = compile(
+    { file: '/gate/code/bad.tree', text: source },
+    { leanOf: () => true },
+  )
 
-  return result.ok ? '(built)' : result.diagnostics.map(d => d.message).join(' | ')
+  return result.ok
+    ? '(built)'
+    : result.diagnostics.map(d => d.message).join(' | ')
 }
 
-const holding = refused('form op\n  mark text\n  case plus, text <+>\n  case named\n    link value, like text\n\ntask run\n  like op\n  back make plus\n')
-ok('a case that holds a value is refused', /cannot hold a value/.test(holding), holding)
+const holding = refused(
+  'form op\n  mark text\n  case plus, text <+>\n  case named\n    link value, like text\n\ntask run\n  like op\n  back make plus\n',
+)
+ok(
+  'a case that holds a value is refused',
+  /cannot hold a value/.test(holding),
+  holding,
+)
 
-const twice = refused('form op\n  mark text\n  case plus, text <+>\n  case add, text <+>\n\ntask run\n  like op\n  back make plus\n')
-ok('two cases with one text are refused', /to both `plus` and `add`/.test(twice), twice)
+const twice = refused(
+  'form op\n  mark text\n  case plus, text <+>\n  case add, text <+>\n\ntask run\n  like op\n  back make plus\n',
+)
+ok(
+  'two cases with one text are refused',
+  /to both `plus` and `add`/.test(twice),
+  twice,
+)
 
 console.log(`\ntext-form: ${pass} pass, ${fail} fail`)
 

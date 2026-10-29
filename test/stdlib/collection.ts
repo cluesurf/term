@@ -52,8 +52,9 @@ async function load(
   )
 
   if (!result.ok) {
-    for (const d of result.diagnostics)
-      {console.log(render(d, source.split('\n'), false))}
+    for (const d of result.diagnostics) {
+      console.log(render(d, source.split('\n'), false))
+    }
 
     throw new Error('compile failed')
   }
@@ -195,11 +196,7 @@ async function main(): Promise<void> {
 
   const s = await load(SET)
   expect('set: union merges both sides', s.unionList(), [1, 2, 3, 4])
-  expect(
-    'set: intersect keeps shared items',
-    s.intersectList(),
-    [2, 3],
-  )
+  expect('set: intersect keeps shared items', s.intersectList(), [2, 3])
   expect(
     'set: difference keeps only the left-only items',
     s.differenceList(),
@@ -215,7 +212,9 @@ async function main(): Promise<void> {
 
   console.log(`\ncollection: ${pass} pass, ${fail} fail`)
 
-  if (fail > 0) {process.exit(1)}
+  if (fail > 0) {
+    process.exit(1)
+  }
 }
 
 main()

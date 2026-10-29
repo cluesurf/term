@@ -37,8 +37,14 @@ export type Analysis = {
 // the severities cross as a table of code to severity, the shape the lint driver reads (item 0078)
 function askedOf(config: LintConfig): port.LintAsked {
   return {
-    severity: config.severity === undefined ? undefined : new Map(Object.entries(config.severity)),
-    lean: 'lean' in config ? { form: 'some', value: config.lean } : { form: 'none' },
+    severity:
+      config.severity === undefined
+        ? undefined
+        : new Map(Object.entries(config.severity)),
+    lean:
+      'lean' in config
+        ? { form: 'some', value: config.lean }
+        : { form: 'none' },
   }
 }
 
@@ -58,17 +64,28 @@ export function analyze(
     catalog?: ViewCatalog
   },
 ): Analysis {
-  const made = port.analyze(source, options?.role ?? undefined, options?.lean ?? false, options?.catalog)
+  const made = port.analyze(
+    source,
+    options?.role ?? undefined,
+    options?.lean ?? false,
+    options?.catalog,
+  )
+
   const held = made.held
 
   return {
     tree: made.tree as unknown as RootNode,
     kind: made.kind,
-    program: made.program.form === 'some' ? (made.program.value as Program) : null,
+    program:
+      made.program.form === 'some'
+        ? (made.program.value as Program)
+        : null,
     diagnostics: made.diagnostics,
     format: () => port.applyFormat(held),
-    lint: (config: LintConfig = {}) => port.applyLint(held, askedOf(config)) as Finding[],
-    fix: (config: LintConfig = {}) => port.applyFix(held, askedOf(config)),
+    lint: (config: LintConfig = {}) =>
+      port.applyLint(held, askedOf(config)) as Finding[],
+    fix: (config: LintConfig = {}) =>
+      port.applyFix(held, askedOf(config)),
     check: () => port.applyCheck(held),
   }
 }

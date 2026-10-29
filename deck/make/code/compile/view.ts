@@ -12,7 +12,10 @@
 
 import type { Node } from '@term/make/code/parser/tree'
 import type { GroupNode, RootNode } from '@term/make/code/parser/narrow'
-import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
+import type {
+  Diagnostic,
+  Span,
+} from '@term/make/code/parser/diagnostic'
 import type { Template } from '@term/make/code/compile/template'
 import type { Program } from '@term/make/code/compile/node'
 import type { ViewCatalog } from '@term/make/code/compile/view-catalog'
@@ -34,7 +37,12 @@ export type Seed =
   | { form: 'read'; value: Road; span: Span }
   | { form: 'call'; value: SeedCall; span: Span }
 // `made` is synthesized by the reader: a `walk size`'s range call skips the operator catalog
-export type SeedCall = { name: string; bind: Bind[]; slot: Seed[]; made?: true }
+export type SeedCall = {
+  name: string
+  bind: Bind[]
+  slot: Seed[]
+  made?: true
+}
 export type ViewNode =
   | { form: 'view'; value: ViewUse; span: Span }
   | { form: 'text'; value: string; span: Span }
@@ -48,24 +56,75 @@ export type ViewForkHook =
   | { form: 'test'; seed: Seed; span: Span }
   | { form: 'hold'; node: ViewNode[]; span: Span }
   | { form: 'miss'; node: ViewNode[]; span: Span }
-export type ViewDef = { name: string; take: Take[]; node: ViewNode[]; span: Span }
+export type ViewDef = {
+  name: string
+  take: Take[]
+  node: ViewNode[]
+  span: Span
+}
 export type ViewLoadFind = { name: string; alias?: string }
-export type ViewLoad = { path: string; find: ViewLoadFind[]; span: Span }
-export type ViewHost = { name: string; bond?: Seed; like?: Like; span: Span }
-export type ViewHold = { name: string; bind: Bind[]; slot: Seed[]; span: Span }
-export type ViewMeet = { mode: string; hold: ViewHold[]; meet: ViewMeet[]; span: Span }
+export type ViewLoad = {
+  path: string
+  find: ViewLoadFind[]
+  span: Span
+}
+export type ViewHost = {
+  name: string
+  bond?: Seed
+  like?: Like
+  span: Span
+}
+export type ViewHold = {
+  name: string
+  bind: Bind[]
+  slot: Seed[]
+  span: Span
+}
+export type ViewMeet = {
+  mode: string
+  hold: ViewHold[]
+  meet: ViewMeet[]
+  span: Span
+}
 export type ViewSort = { way: string; road: Road; span: Span }
-export type ViewFind = { name: string; task: string; meet?: ViewMeet; hold: ViewHold[]; sort: ViewSort[]; size?: number; slot?: number; span: Span }
-export type ViewFile = { load: ViewLoad[]; host: ViewHost[]; find: ViewFind[]; view: ViewDef[] }
-export type ViewResult = { ok: true; file: ViewFile; diagnostics: Diagnostic[] } | { ok: false; diagnostics: Diagnostic[] }
+export type ViewFind = {
+  name: string
+  task: string
+  meet?: ViewMeet
+  hold: ViewHold[]
+  sort: ViewSort[]
+  size?: number
+  slot?: number
+  span: Span
+}
+export type ViewFile = {
+  load: ViewLoad[]
+  host: ViewHost[]
+  find: ViewFind[]
+  view: ViewDef[]
+}
+export type ViewResult =
+  | { ok: true; file: ViewFile; diagnostics: Diagnostic[] }
+  | { ok: false; diagnostics: Diagnostic[] }
 
 // A word the dialect refuses where a STATEMENT or a BODY NODE is expected, and what to say instead
-export const VIEW_REFUSED_HEAD: Map<string, string> = handed.refusedHeadTable()
+export const VIEW_REFUSED_HEAD: Map<string, string> =
+  handed.refusedHeadTable()
 
 // The catalog is the four closed vocabularies: absent means no name is checked, which is what the grammar and
 // lowering tests want. `lean` is the lean surface for a placement's inputs (ViewCheck.lean)
-export function readView(tree: RootNode, file: string, catalog?: ViewCatalog, caps?: ViewCaps, lean?: boolean): ViewResult {
-  return handed.readHandedView(tree as never, file, { catalog: catalog as never, caps, lean }) as ViewResult
+export function readView(
+  tree: RootNode,
+  file: string,
+  catalog?: ViewCatalog,
+  caps?: ViewCaps,
+  lean?: boolean,
+): ViewResult {
+  return handed.readHandedView(tree as never, file, {
+    catalog: catalog as never,
+    caps,
+    lean,
+  }) as ViewResult
 }
 
 // ---- the one gate ----
@@ -83,18 +142,35 @@ export type ViewCheck = {
   lean?: boolean
 }
 
-export function checkView(source: { file: string; text: string }, options: ViewCheck = {}): ViewResult {
+export function checkView(
+  source: { file: string; text: string },
+  options: ViewCheck = {},
+): ViewResult {
   return handed.checkHandedView(source, options as never) as ViewResult
 }
 
 // Every `fuse` names a macro something declares, against this file's macros and every one the graph brought in
-export function viewFused(tree: RootNode, file: string, known: Iterable<string>): Diagnostic[] {
+export function viewFused(
+  tree: RootNode,
+  file: string,
+  known: Iterable<string>,
+): Diagnostic[] {
   return port.viewFused(tree as never, file, [...known])
 }
 
 // What the document will expand to, computed WITHOUT expanding it
-export function viewBomb(tree: RootNode, file: string, known: Map<string, GroupNode>, cap: number): Diagnostic[] {
-  return port.viewBomb(tree as never, file, known as unknown as Map<string, Node> as never, cap)
+export function viewBomb(
+  tree: RootNode,
+  file: string,
+  known: Map<string, GroupNode>,
+  cap: number,
+): Diagnostic[] {
+  return port.viewBomb(
+    tree as never,
+    file,
+    known as unknown as Map<string, Node> as never,
+    cap,
+  )
 }
 
 // a macro that fuses itself, named, before expansion would crash on it

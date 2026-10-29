@@ -12,17 +12,31 @@ import { emitSwift } from '@term/make/code/compile/swift'
 let pass = 0
 let fail = 0
 
-function expect(name: string, text: string, want: 'ok' | 'refused'): void {
+function expect(
+  name: string,
+  text: string,
+  want: 'ok' | 'refused',
+): void {
   const result = compile({ file: 's.tree', text })
-  const refusal = result.ok ? undefined : result.diagnostics.find(d => /`like decimal` is the old name of `like float`/.test(d.message))
+  const refusal = result.ok
+    ? undefined
+    : result.diagnostics.find(d =>
+        /`like decimal` is the old name of `like float`/.test(
+          d.message,
+        ),
+      )
   const good = want === 'ok' ? result.ok : refusal !== undefined
 
   if (good) {
     pass++
-    console.log(`ok    ${name}${refusal ? `  (${refusal.message})` : ''}`)
+    console.log(
+      `ok    ${name}${refusal ? `  (${refusal.message})` : ''}`,
+    )
   } else {
     fail++
-    console.log(`FAIL  ${name}  (ok=${result.ok}, ${result.ok ? '' : result.diagnostics.map(d => d.message).join('; ')})`)
+    console.log(
+      `FAIL  ${name}  (ok=${result.ok}, ${result.ok ? '' : result.diagnostics.map(d => d.message).join('; ')})`,
+    )
   }
 }
 
@@ -125,16 +139,34 @@ for (const [backend, emit, spelled] of [
   ['kotlin', emitKotlin, /\): Decimal\b/],
   ['rust', emitRust, /-> Decimal\b/],
 ] as const) {
-  const result = compile({ file: 's.tree', text: own }, { env: backend, entryPoints: ['make-one', 'get-digits'] })
+  const result = compile(
+    { file: 's.tree', text: own },
+    { env: backend, entryPoints: ['make-one', 'get-digits'] },
+  )
   const code = result.ok ? emit(result.program) : ''
-  const good = result.ok && spelled.test(code) && !/-> Double|\): Double|-> f64/.test(code)
+  const good =
+    result.ok &&
+    spelled.test(code) &&
+    !/-> Double|\): Double|-> f64/.test(code)
 
   if (good) {
     pass++
-    console.log(`ok    ${backend}: \`form decimal\` is that form, never the float`)
+    console.log(
+      `ok    ${backend}: \`form decimal\` is that form, never the float`,
+    )
   } else {
     fail++
-    console.log(`FAIL  ${backend}: \`form decimal\` is that form  (${result.ok ? code.split('\n').filter(l => /make|digits|Decimal|Double|f64/i.test(l)).slice(0, 6).join(' | ') : result.diagnostics.map(d => d.message).join('; ')})`)
+    console.log(
+      `FAIL  ${backend}: \`form decimal\` is that form  (${
+        result.ok
+          ? code
+              .split('\n')
+              .filter(l => /make|digits|Decimal|Double|f64/i.test(l))
+              .slice(0, 6)
+              .join(' | ')
+          : result.diagnostics.map(d => d.message).join('; ')
+      })`,
+    )
   }
 }
 

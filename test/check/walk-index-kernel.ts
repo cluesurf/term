@@ -40,13 +40,17 @@ function frontEnd(text: string): Program {
   const parsed = parse({ file: 't.tree', text })
 
   if (!parsed.ok) {
-    throw new Error(`parse failed: ${parsed.diagnostics.map(d => d.message).join('; ')}`)
+    throw new Error(
+      `parse failed: ${parsed.diagnostics.map(d => d.message).join('; ')}`,
+    )
   }
 
   const built = mill(expandTemplates(parsed.tree), 't.tree')
 
   if (!built.ok) {
-    throw new Error(`mill failed: ${built.diagnostics.map(d => d.message).join('; ')}`)
+    throw new Error(
+      `mill failed: ${built.diagnostics.map(d => d.message).join('; ')}`,
+    )
   }
 
   resolve(built.program, 't.tree')
@@ -63,26 +67,48 @@ const AT_TASK = `task at\n  take value, like text\n  like text\n  send back, rea
 const SHOUT = `task shout\n  take value, like text\n  like number\n  send back, code 1\n\n`
 
 const said = (report: ReturnType<typeof elaborateReport>): string =>
-  JSON.stringify({ statementwise: report.statementwise, declined: report.declined, diagnostics: report.diagnostics.map(d => d.message) })
+  JSON.stringify({
+    statementwise: report.statementwise,
+    declined: report.declined,
+    diagnostics: report.diagnostics.map(d => d.message),
+  })
 
-const alone = elaborateReport(frontEnd(`${LIGHT}${WALK('save total, add(total, at)')}`), 't.tree')
+const alone = elaborateReport(
+  frontEnd(`${LIGHT}${WALK('save total, add(total, at)')}`),
+  't.tree',
+)
 ok(
   'a walk index read on the statement path is verified',
-  alone.verified.includes('total-of') && alone.statementwise.some(s => s.name === 'total-of') && alone.diagnostics.length === 0,
+  alone.verified.includes('total-of') &&
+    alone.statementwise.some(s => s.name === 'total-of') &&
+    alone.diagnostics.length === 0,
   said(alone),
 )
 
-const named = elaborateReport(frontEnd(`${LIGHT}${AT_TASK}${WALK('save total, add(total, at)')}`), 't.tree')
+const named = elaborateReport(
+  frontEnd(`${LIGHT}${AT_TASK}${WALK('save total, add(total, at)')}`),
+  't.tree',
+)
 ok(
   'a task named like the index is not reached from inside the walk',
   named.verified.includes('total-of') && named.diagnostics.length === 0,
   said(named),
 )
 
-const wrong = elaborateReport(frontEnd(`${LIGHT}${SHOUT}${WALK('save total, add(total, shout(at))')}`), 't.tree')
+const wrong = elaborateReport(
+  frontEnd(
+    `${LIGHT}${SHOUT}${WALK('save total, add(total, shout(at))')}`,
+  ),
+  't.tree',
+)
 ok(
   'the index is a number: handing it where a text is taken is the kernel error',
-  wrong.diagnostics.some(d => d.message.startsWith('kernel:') && /expected\s+String/.test(d.message) && /found\s+Number/.test(d.message)),
+  wrong.diagnostics.some(
+    d =>
+      d.message.startsWith('kernel:') &&
+      /expected\s+String/.test(d.message) &&
+      /found\s+Number/.test(d.message),
+  ),
   said(wrong),
 )
 
@@ -93,12 +119,21 @@ const closure = compile(
     file: join(root, 'code/lint/walk-index-probe.tree'),
     text: `load ./rule-check\n  find check-source\n\nload ../format/milled-meaning\n  find program-of\n`,
   },
-  { resolve: projectResolver(root), leanOf: projectLeanOf(root), library: true },
+  {
+    resolve: projectResolver(root),
+    leanOf: projectLeanOf(root),
+    library: true,
+  },
 )
 ok(
   'lint/rule-check.tree and format/milled-meaning.tree build in one closure',
   closure.ok,
-  closure.ok ? '' : closure.diagnostics.filter(d => d.severity !== 'warning').map(d => d.message).join(' | '),
+  closure.ok
+    ? ''
+    : closure.diagnostics
+        .filter(d => d.severity !== 'warning')
+        .map(d => d.message)
+        .join(' | '),
 )
 
 console.log(`\nwalk-index-kernel: ${pass} pass, ${fail} fail`)

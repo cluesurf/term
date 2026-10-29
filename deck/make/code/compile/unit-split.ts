@@ -25,12 +25,21 @@ export function markUnit(file: string, text: string): string {
 
 // the program as one file, every mark removed
 export function unmarked(text: string): string {
-  return text.includes(OPEN) ? text.replace(/[^]*/g, '').split(END).join('') : text
+  return text.includes(OPEN)
+    ? text
+        .replace(/[^]*/g, '')
+        .split(END)
+        .join('')
+    : text
 }
 
 // the program cut by module: what no module owns, in its order, and each module's statements, in their order
-export function splitUnits(text: string): { shared: string; units: { file: string; text: string }[] } {
+export function splitUnits(text: string): {
+  shared: string
+  units: { file: string; text: string }[]
+} {
   const units = new Map<string, string[]>()
+
   let shared = ''
   let at = 0
 
@@ -47,10 +56,19 @@ export function splitUnits(text: string): { shared: string; units: { file: strin
     const close = text.indexOf(CLOSE, open)
     const end = text.indexOf(END, close)
     const file = text.slice(open + 1, close)
-    units.set(file, [...(units.get(file) ?? []), text.slice(close + 1, end)])
+    units.set(file, [
+      ...(units.get(file) ?? []),
+      text.slice(close + 1, end),
+    ])
     at = end + 1
   }
 
   // the blank lines a removed statement left between two shared parts, closed up
-  return { shared: shared.replace(/\n{3,}/g, '\n\n'), units: [...units].map(([file, parts]) => ({ file, text: `${parts.join('\n\n')}\n` })) }
+  return {
+    shared: shared.replace(/\n{3,}/g, '\n\n'),
+    units: [...units].map(([file, parts]) => ({
+      file,
+      text: `${parts.join('\n\n')}\n`,
+    })),
+  }
 }

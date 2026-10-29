@@ -24,7 +24,9 @@ export class IncrementalAnalyzer {
     // the role a project's `role.tree` gives a file. A `view` document takes an early return below: it is read by
     // its own gate, not milled as code, and the incremental machinery buys it nothing because its imports are
     // catalog packages with no cross-module checking to do. Without this the editor underlines every `view` line.
-    private readonly roleOf?: (file: string) => string | null | undefined,
+    private readonly roleOf?: (
+      file: string,
+    ) => string | null | undefined,
     private readonly catalog?: ViewCatalog,
   ) {}
 

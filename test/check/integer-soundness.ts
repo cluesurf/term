@@ -69,17 +69,32 @@ const MUL_60_2 = `    call multiply
       code 2`
 
 // 1. DIRECT literals: equal passes, unequal is rejected.
-ok('direct 120 == 120 discharges', discharges(hold('a', LIT120, LIT120)))
+ok(
+  'direct 120 == 120 discharges',
+  discharges(hold('a', LIT120, LIT120)),
+)
 ok('direct 120 == 999 is rejected', rejected(hold('b', LIT120, LIT999)))
 
 // 2. CLOSED ARITHMETIC: a true product passes (via the linear prover), a false one is rejected.
-ok('product 120 == 60*2 discharges', discharges(hold('c', LIT120, MUL_60_2)))
-ok('product 999 == 60*2 is rejected', rejected(hold('d', LIT999, MUL_60_2)))
+ok(
+  'product 120 == 60*2 discharges',
+  discharges(hold('c', LIT120, MUL_60_2)),
+)
+ok(
+  'product 999 == 60*2 is rejected',
+  rejected(hold('d', LIT999, MUL_60_2)),
+)
 
 // 3. THE KEY REGRESSION: a task call the kernel reduces to 24. True passes, false is rejected — the kernel can no longer
 // treat 24 and 999 as convertible, and the non-linear task call means the linear prover never even sees it.
-ok('task order(tee) == 24 discharges', discharges(hold('e', ORDER_TEE, LIT24)))
-ok('task order(tee) == 999 is rejected', rejected(hold('f', ORDER_TEE, LIT999)))
+ok(
+  'task order(tee) == 24 discharges',
+  discharges(hold('e', ORDER_TEE, LIT24)),
+)
+ok(
+  'task order(tee) == 999 is rejected',
+  rejected(hold('f', ORDER_TEE, LIT999)),
+)
 
 console.log(`\ninteger soundness: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)

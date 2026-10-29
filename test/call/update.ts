@@ -13,9 +13,19 @@
 // macOS only (swiftc and the Security framework). Run: npx tsx test/call/update.ts
 
 import { execFileSync, spawnSync } from 'node:child_process'
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  copyFileSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
-import { publishUpdate, signManifest, stampUpdateKey, updateKey } from '@term/call/code/update'
+import {
+  publishUpdate,
+  signManifest,
+  stampUpdateKey,
+  updateKey,
+} from '@term/call/code/update'
 import { tempDir } from '../temp'
 
 let pass = 0
@@ -32,7 +42,9 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 if (process.platform !== 'darwin') {
-  console.log('skip  update  (the Apple client needs swiftc and the Security framework)')
+  console.log(
+    'skip  update  (the Apple client needs swiftc and the Security framework)',
+  )
   console.log('\nupdate: 0 pass, 0 fail, 1 skipped')
   process.exit(0)
 }
@@ -57,13 +69,24 @@ function page(name: string, text: string): string {
   const at = join(dir, 'pages', name)
   mkdirSync(at, { recursive: true })
   writeFileSync(join(at, 'index.html'), text)
-  writeFileSync(join(at, 'app.js'), `console.log(${JSON.stringify(text)})`)
+  writeFileSync(
+    join(at, 'app.js'),
+    `console.log(${JSON.stringify(text)})`,
+  )
 
   return at
 }
 
 function publish(name: string, text: string, runtimeVersion = VERSION) {
-  return publishUpdate({ page: page(name, text), out: served, identifier, platform: 'macos', runtimeVersion, channel: 'main', keyFile })
+  return publishUpdate({
+    page: page(name, text),
+    out: served,
+    identifier,
+    platform: 'macos',
+    runtimeVersion,
+    channel: 'main',
+    keyFile,
+  })
 }
 
 // the driver: the real client file, plus a `main` that runs one step and prints what it answered
@@ -71,7 +94,13 @@ const driver = join(dir, 'driver.swift')
 writeFileSync(
   driver,
   [
-    readFileSync(join(TERM, 'deck/cask/code/native/swift/runtime/cask-update.swift'), 'utf8'),
+    readFileSync(
+      join(
+        TERM,
+        'deck/cask/code/native/swift/runtime/cask-update.swift',
+      ),
+      'utf8',
+    ),
     `let step = CommandLine.arguments[1]
 let resources = ${JSON.stringify(resources)}
 let data = ${JSON.stringify(data)}
@@ -103,26 +132,41 @@ const run = (step: string): string => {
   const ran = spawnSync(exe, [step], { encoding: 'utf8' })
   const out = ran.stdout.trim()
 
-  return out || `(nothing printed: exit ${ran.status} ${ran.signal ?? ''} ${ran.stderr.trim().slice(0, 300)})`
+  return (
+    out ||
+    `(nothing printed: exit ${ran.status} ${ran.signal ?? ''} ${ran.stderr.trim().slice(0, 300)})`
+  )
 }
 
 // 1. nothing published: the shipped page
-ok('the first launch runs the shipped page', run('launch') === 'shipped')
+ok(
+  'the first launch runs the shipped page',
+  run('launch') === 'shipped',
+)
 ok('ready after a good launch', run('ready') === 'ready')
 ok('nothing published reads none', run('check') === 'none')
 
 // 2. a good update: fetched now, run next launch
 const second = publish('second', 'second')
-ok('a signed update is applied', run('check') === `applied ${second.manifest.id}`)
+ok(
+  'a signed update is applied',
+  run('check') === `applied ${second.manifest.id}`,
+)
 ok('the next launch runs it', run('launch') === 'second')
 ok('ready', run('ready') === 'ready')
 ok('checking again reads current', run('check') === 'current')
 
 // 3. a forged signature: the third update's manifest under the second's signature
 const third = publish('third', 'third')
-const secondSignature = signManifest(Buffer.from(JSON.stringify(second.manifest, null, 2)), updateKey(identifier, keyFile).privatePem)
+const secondSignature = signManifest(
+  Buffer.from(JSON.stringify(second.manifest, null, 2)),
+  updateKey(identifier, keyFile).privatePem,
+)
 writeFileSync(`${third.file}.sig`, secondSignature)
-ok('a forged signature is refused', run('check') === 'refused: the signature does not verify')
+ok(
+  'a forged signature is refused',
+  run('check') === 'refused: the signature does not verify',
+)
 ok('and the running update is untouched', run('launch') === 'second')
 run('ready')
 
@@ -130,23 +174,38 @@ run('ready')
 const other = publish('other', 'other', 'b'.repeat(64))
 copyFileSync(other.file, third.file)
 copyFileSync(`${other.file}.sig`, `${third.file}.sig`)
-ok('another runtime version is refused', run('check') === 'refused: built for another runtime version')
+ok(
+  'another runtime version is refused',
+  run('check') === 'refused: built for another runtime version',
+)
 
 // 5. an asset whose bytes are not the ones the signed manifest names
 const fourth = publish('fourth', 'fourth')
 writeFileSync(join(served, fourth.manifest.launchAsset.url), 'tampered')
-ok('a tampered asset is refused', run('check') === 'refused: index.html does not match its hash')
+ok(
+  'a tampered asset is refused',
+  run('check') === 'refused: index.html does not match its hash',
+)
 ok('and nothing it carried runs', run('launch') === 'second')
 run('ready')
 
 // 6. a crash before the first render: launch, never ready, launch again
 const fifth = publish('fifth', 'fifth')
-ok('a fifth update is applied', run('check') === `applied ${fifth.manifest.id}`)
+ok(
+  'a fifth update is applied',
+  run('check') === `applied ${fifth.manifest.id}`,
+)
 ok('the next launch runs it', run('launch') === 'fifth')
 // no `ready`: this launch crashed before it drew anything
-ok('the launch after a crash rolls back to the shipped page', run('launch') === 'shipped')
+ok(
+  'the launch after a crash rolls back to the shipped page',
+  run('launch') === 'shipped',
+)
 run('ready')
-ok('the failed update is never offered again', run('check') === `refused: ${fifth.manifest.id} failed a launch`)
+ok(
+  'the failed update is never offered again',
+  run('check') === `refused: ${fifth.manifest.id} failed a launch`,
+)
 
 console.log(`\nupdate: ${pass} pass, ${fail} fail`)
 

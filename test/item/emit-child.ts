@@ -3,18 +3,43 @@
 //
 // Usage: npx tsx test/item/emit-child.ts [--log-json] [--plain] [--quiet]
 
-import { beginRun, endRun, printData, report } from '@term/call/code/work/item/emit'
+import {
+  beginRun,
+  endRun,
+  printData,
+  report,
+} from '@term/call/code/work/item/emit'
 import { makeOpening, makeOptions } from '@term/call/code/work/item/run'
-import { blankEvent, plainSubject } from '@term/call/code/work/item/event'
+import {
+  blankEvent,
+  plainSubject,
+} from '@term/call/code/work/item/event'
 import { makeStandard } from '@term/call/code/work/item/standard'
 
 const flags = process.argv.slice(2)
 const standard = makeStandard()
-const options = { ...makeOptions(), json: flags.includes('--log-json'), plain: flags.includes('--plain'), quiet: flags.includes('--quiet') }
+const options = {
+  ...makeOptions(),
+  json: flags.includes('--log-json'),
+  plain: flags.includes('--plain'),
+  quiet: flags.includes('--quiet'),
+}
 const clock = Date.UTC(2026, 9, 3, 21, 42)
 
-let runner = beginRun('make', makeOpening('make', '~/shape', clock, 'term 2.5.24'), options, standard)
-runner = report(runner, { ...blankEvent(), glyph: 'done', verb: 'build', subject: plainSubject('typescript'), clock, duration: 410 })
+let runner = beginRun(
+  'make',
+  makeOpening('make', '~/shape', clock, 'term 2.5.24'),
+  options,
+  standard,
+)
+runner = report(runner, {
+  ...blankEvent(),
+  glyph: 'done',
+  verb: 'build',
+  subject: plainSubject('typescript'),
+  clock,
+  duration: 410,
+})
 runner = report(runner, {
   ...blankEvent(),
   glyph: 'failed',
@@ -29,4 +54,9 @@ if (flags.includes('--data')) {
   printData('the data the user asked for\n')
 }
 
-process.exitCode = endRun(runner, { ...blankEvent(), subject: plainSubject('Build failed'), clock, duration: 302 })
+process.exitCode = endRun(runner, {
+  ...blankEvent(),
+  subject: plainSubject('Build failed'),
+  clock,
+  duration: 302,
+})

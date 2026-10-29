@@ -155,7 +155,9 @@ async function main(): Promise<void> {
     JSON.stringify(one),
   )
 
-  if (M.close) {await M.close()}
+  if (M.close) {
+    await M.close()
+  }
 
   fs.rmSync(dir, { recursive: true, force: true })
   console.log(`\nblog-db: ${pass} pass, ${fail} fail`)
