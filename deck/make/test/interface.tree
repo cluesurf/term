@@ -1,0 +1,71 @@
+note <the interface fingerprint, the early-cutoff key: a body edit keeps it, a signature edit moves it>
+
+# The checks deck/test/code/demo-incremental.ts made of compile/interface's hash (part B), over the program the mill
+# builds from each source.
+
+load ../code/parser/tree
+  find parse
+
+load ../code/parser/token
+  find token-source
+
+load ../code/compile/minting
+  find mill
+
+load ../code/compile/interface
+  find interface-hash
+
+load @term/base/maybe
+  find maybe
+
+# the interface hash of one source, or `ERR` when it does not parse or mill
+task hash-of
+  take source, like text
+  like text
+
+  host parsed
+    parse
+      make token-source
+        bind file, <m.tree>
+        bind text, source
+  fork test, not(parsed/ok)
+    hold
+      back <ERR>
+  host no-role, make none
+  host built, mill(parsed/tree, <m.tree>, no-role, false)
+  fork test, not(built/ok)
+    hold
+      back <ERR>
+
+  back interface-hash(built/program)
+
+task base-source
+  like text
+
+  back <task double\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      read n\n>
+
+# the same signature, another body
+task body-edit
+  like text
+
+  back <task double\n  take n, like number\n  like number\n  save x\n    call add\n      read n\n      read n\n  send back\n    read x\n>
+
+# another signature: a second parameter
+task signature-edit
+  like text
+
+  back <task double\n  take n, like number\n  take m, like number\n  like number\n  send back\n    call add\n      read n\n      read m\n>
+
+test <the interface hash is computed>
+  host found, hash-of(base-source())
+  want hold, and(not(is-equal(found, <ERR>)), is-above(found/length, 0))
+
+test <a body-only edit keeps the interface, the firewall holds>
+  host edited, hash-of(body-edit())
+  want hold
+    and(not(is-equal(edited, <ERR>)), is-equal(edited, hash-of(base-source())))
+
+test <a signature edit moves the interface>
+  host edited, hash-of(signature-edit())
+  want hold
+    and(not(is-equal(edited, <ERR>)), not(is-equal(edited, hash-of(base-source()))))

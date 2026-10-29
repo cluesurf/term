@@ -322,14 +322,14 @@ task call-look
     hold
       look-data(entry, input, root)
       back
-  save inspection, inspect-module/inspect-module(entry, resolve, face-deck-finder(make-deck-finder()))
-  # a task that writes no result type gets the one the checker infers, when the module compiles. One that does not
-  # compile is listed as written, which is what `look` printed for everything until 2026-10-04
+  # a task that writes no result type gets the one the checker infers, when the module compiles: the module is
+  # compiled first and its results handed to the inspector (decision 064 section 2). One that does not compile is
+  # listed as written, which is what `look` printed for everything until 2026-10-04
   save reader, make-role-reader(root)
   save checked, compile-module/compile(entry, make(compile-ask, bind(resolve, resolve), bind(role-of, face-role-reader(reader)), bind(lean-of, face-lean-reader(reader))))
+  save results, new-map()
   fork test, is-truthy(checked/ok)
     hold
-      save results, new-map()
       # the checked program the compiler answers, host values (seam decision 004)
       save statements, like list, like dynamic
         read checked/program
@@ -338,8 +338,9 @@ task call-look
         fork test, and(is-equal(one/form, <function>), is-truthy(one/result))
           hold
             map-set(results, one/name, show-type(one/result))
-      inspect-module/fill-inferred(inspection/symbols, results)
-    miss
+  save inspection, inspect-module/inspect-module(entry, resolve, face-deck-finder(make-deck-finder()), results)
+  fork test, not(is-truthy(checked/ok))
+    hold
       save errors, 0
       walk checked/diagnostics
         take one

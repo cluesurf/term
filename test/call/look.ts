@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { fillInferred, inspectModule, toCsv, toJson, toTable } from '@term/make/code/inspect'
+import { inspectModule, toCsv, toJson, toTable } from '@term/make/code/inspect'
 import { compile } from '@term/make/code/compile/compile'
 import { projectResolver } from '@term/call/code/make'
 import { projectDeckOf } from '@term/call/code/deck-of'
@@ -98,7 +98,6 @@ ok('and one comment line is the whole note', zip?.note === 'pairs of the items a
 {
   const file = join(TERM, 'tmp-look-infer.tree')
   const text = 'task twice\n  take n, like number\n\n  back multiply(n, 2)\n\ntask nothing\n  take n, like number\n  like void\n  save m, n\n'
-  const seen = inspectModule({ file, text }, projectResolver(TERM), deckOf)
   const checked = compile({ file, text })
   const results = new Map<string, string>()
 
@@ -110,7 +109,8 @@ ok('and one comment line is the whole note', zip?.note === 'pairs of the items a
     }
   }
 
-  fillInferred(seen.symbols, results)
+  // the results go in, as looking.tree hands them (decision 064 section 2)
+  const seen = inspectModule({ file, text }, projectResolver(TERM), deckOf, results)
   const twice = seen.symbols.find(s => s.name === 'twice')
   const nothing = seen.symbols.find(s => s.name === 'nothing')
   ok('an unwritten result is the inferred one, and says so', twice?.kind === 'task' && twice.result === 'number' && twice.inferred, JSON.stringify(twice))

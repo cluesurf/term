@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import { emitSwift } from '@term/make/code/compile/swift'
+import { typeJson } from '@term/make/code/compile/node-json'
 
 let pass = 0
 let fail = 0
@@ -29,7 +30,8 @@ const result = compile({ file: '/gate/code/host.tree', text }, { leanOf: () => t
 if (!result.ok) {
   ok('the program builds', false, result.diagnostics.map(d => d.message).join(' | '))
 } else {
-  const types = new Map(result.program.flatMap(n => (n.form === 'let' ? [[n.name, JSON.stringify(n.type)] as const] : [])))
+  // node-json, which writes a `need false` field at its default as absent (decision 034 section 2, decision 071)
+  const types = new Map(result.program.flatMap(n => (n.form === 'let' ? [[n.name, n.type ? typeJson([], n.type) : 'none'] as const] : [])))
   // `float`, the type word since D4 (`decimal` is refused): Swift spells it `Double`, never its 32-bit `Float`
   ok('a decimal host is a float', types.get('limit') === '{"kind":"named","name":"float"}', types.get('limit'))
   ok('an integer host is an integer', types.get('count') === '{"kind":"named","name":"integer"}', types.get('count'))

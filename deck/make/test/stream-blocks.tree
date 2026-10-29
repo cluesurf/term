@@ -1,0 +1,148 @@
+note <a .tree read from disk a chunk at a time splits into the blocks the whole text splits into>
+
+# The checks deck/test/code/demo-stream.ts made of compile/stream.ts, which retired (decision 067): its splitter is
+# compile/block-split.tree, and its file walk is @term/base/file/stream/reader, which reads a character split across a
+# chunk boundary whole (term-self-host-001-0380), feeding block-split.tree a line at a time. The fixtures are files
+# under the system's temporary directory, left for it to clear: nothing here removes a file.
+
+load ../code/compile/block-split
+  find top-block
+  find make-block-splitter
+  find feed-line
+  find finish-blocks
+  find split-lines
+
+load @term/base/file/stream/reader
+  find create, name open-reader
+  find read, name next-chunk
+  find close, name close-reader
+
+load @term/base/file/blocking
+  find read, name read-path
+
+load @term/base/process/run
+  find run
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/text
+  find split
+
+# every block of a file, read through the stream reader and fed to the splitter one line at a time, a line that a
+# chunk cuts carried into the next chunk
+task streamed-blocks
+  take path, like text
+  like list, like top-block
+
+  host splitter, make-block-splitter()
+  host out, make list
+  host stream, open-reader(path)
+  save carry, <>
+  save going, true
+  walk test
+    hook test, going
+    hook hold
+      host chunk, next-chunk(stream)
+      fork test, is-equal(chunk, <>)
+        hold
+          save going, false
+        miss
+          host parts, split(<{carry}{chunk}>, <\n>)
+          save at, 0
+          walk test
+            hook test, is-below(at, subtract(parts/length, 1))
+            hook hold
+              walk feed-line(splitter, get(parts, at))
+                take block
+                out/push(block)
+              save at, add(at, 1)
+          save carry, get(parts, subtract(parts/length, 1))
+  close-reader(stream)
+  walk feed-line(splitter, carry)
+    take block
+    out/push(block)
+  out/push(finish-blocks(splitter))
+
+  back out
+
+# every block of a file read whole, split on its lines
+task whole-blocks
+  take path, like text
+  like list, like top-block
+
+  back split-lines(split(read-path(path), <\n>))
+
+task shape-of
+  take blocks, like list, like top-block
+  like text
+
+  host out, make list
+  walk blocks
+    take block
+    out/push(<{block/start-line}:{block/hash}>)
+
+  back join(out, <,>)
+
+# every .tree file under the stdlib's code root
+task stdlib-files
+  like list, like text
+
+  host found, run(</usr/bin/find>, make list(<../base/code>, <-name>, <*.tree>, <-type>, <f>))
+  host out, make list
+  walk split(found/output, <\n>)
+    take line
+    fork test, not(is-equal(line, <>))
+      hold
+        out/push(line)
+
+  back out
+
+# a new file of `count` definitions, each a two-line task with a blank line after it. It answers the file's path
+task make-many
+  take count, like number
+  like text
+
+  host script, <d=$(mktemp -d); awk 'BEGIN \{ for (i = 0; i \< {count}; i++) printf "task t%d\\n  send back, mark %d\\n\\n", i, i \}' \> "$d/huge.tree"; printf %s "$d/huge.tree">
+  host made, run(</bin/sh>, make list(<-c>, script))
+
+  back made/output
+
+test <streamed blocks equal the whole-text split over the whole stdlib>
+  host files, stdlib-files()
+  save differ, 0
+  save total, 0
+  walk files
+    take file
+    host whole, whole-blocks(file)
+    save total, add(total, whole/length)
+    fork test, not(is-equal(shape-of(streamed-blocks(file)), shape-of(whole)))
+      hold
+        save differ, add(differ, 1)
+  want hold, and(is-above(files/length, 500), and(is-above(total, files/length), is-equal(differ, 0)))
+
+test <a file read from disk gives the right block count and start lines>
+  host file, <../base/code/url.tree>
+  host streamed, streamed-blocks(file)
+  host whole, whole-blocks(file)
+  want hold, and(is-above(whole/length, 1), is-equal(shape-of(streamed), shape-of(whole)))
+
+test <a file of fifty thousand definitions streams block by block>
+  host path, make-many(50000)
+  host streamed, streamed-blocks(path)
+  want hold, is-equal(streamed/length, 50000)
+
+test <streamed blocks arrive in source order>
+  host path, make-many(50000)
+  host streamed, streamed-blocks(path)
+  save ordered, true
+  save last, -1
+  walk streamed
+    take block
+    fork test, not(is-above(block/start-line, last))
+      hold
+        save ordered, false
+    save last, block/start-line
+  want hold, ordered

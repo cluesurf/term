@@ -8,7 +8,7 @@
 
 import { readFileSync } from 'node:fs'
 import { compile } from '@term/make/code/compile/compile'
-import { statementJson } from '@term/make/code/compile/node-json'
+import { statementJson, typeJson } from '@term/make/code/compile/node-json'
 import type { Statement } from '@term/make/code/compile/node'
 import { projectResolver } from '@term/call/code/make'
 
@@ -159,7 +159,8 @@ const lawTake = (listTake.ok ? listTake.program : [])
   ?.route.children.find(child => child.path === 'one')?.takes[0]
 ok(
   'a list take is a repeatable option: list-typed, not positional, not variadic',
-  lawTake?.type?.kind === 'array' && lawTake.positional === undefined && lawTake.variadic === undefined,
+  // a `need false` field at its default and the field absent are one value (decision 034 section 2, decision 071)
+  lawTake?.type?.kind === 'array' && (lawTake.positional ?? false) === false && (lawTake.variadic ?? false) === false,
   JSON.stringify(lawTake),
 )
 
@@ -216,7 +217,7 @@ const passingDock = (passing.ok ? passing.program : []).find((s): s is Dock => s
 const zoneRoute = passingDock?.route.children.find(child => child.path === 'zone')
 const otherRoute = passingDock?.route.children.find(child => child.path === 'other')
 ok('mark pass sets passes on the route', zoneRoute?.passes === true, JSON.stringify(zoneRoute?.passes))
-ok('a hook without the mark does not pass', otherRoute?.passes === undefined, JSON.stringify(otherRoute?.passes))
+ok('a hook without the mark does not pass', otherRoute !== undefined && (otherRoute.passes ?? false) === false, JSON.stringify(otherRoute?.passes))
 ok('the mark is not the help', zoneRoute?.note === 'Run another console', JSON.stringify(zoneRoute?.note))
 const passingJson = passingDock ? statementJson(['span', 'type'], passingDock) : ''
 ok('passes reaches the route JSON once', passingJson.split('"passes":true').length === 2, passingJson)
@@ -315,11 +316,9 @@ const listSlot = callRoute?.takes.find(take => take.name === 'list')
 ok('mark pass on the last slot sets passes on that take', listSlot?.passes === true && listSlot.positional === true, JSON.stringify(listSlot))
 ok('the other takes do not pass', callRoute?.takes.filter(take => take.passes).length === 1)
 ok('the slot mark is not the slot\'s help', listSlot?.note === 'the command\'s own arguments', JSON.stringify(listSlot?.note))
-ok('the hook itself does not pass', callRoute?.passes === undefined)
-ok(
-  'a list slot without the mark does not pass',
-  slotDock?.route.children.find(child => child.path === 'form')?.takes[0]?.passes === undefined,
-)
+ok('the hook itself does not pass', callRoute !== undefined && (callRoute.passes ?? false) === false)
+const formSlot = slotDock?.route.children.find(child => child.path === 'form')?.takes[0]
+ok('a list slot without the mark does not pass', formSlot !== undefined && (formSlot.passes ?? false) === false)
 const slotJson = slotDock ? statementJson(['span', 'type'], slotDock) : ''
 ok(
   'passes reaches the take JSON once',
@@ -385,10 +384,12 @@ const maybeOk = compile({ file: `${process.cwd()}/test/compile/maybe-line.tree`,
 ok('a console of maybe takes compiles', maybeOk.ok, maybeOk.ok ? '' : maybeOk.diagnostics.map(d => d.message).join(' | '))
 const maybeRoute = (maybeOk.ok ? maybeOk.program : []).find((s): s is Dock => s.form === 'dock')?.route.children[0]
 const runsType = maybeRoute?.takes.find(take => take.name === 'runs')?.type
+// node-json, which writes a `need false` field at its default as absent (decision 034 section 2, decision 071)
+const runsJson = runsType ? typeJson([], runsType) : ''
 ok(
   'a maybe take keeps the maybe type with its item',
-  JSON.stringify(runsType) === JSON.stringify({ kind: 'named', name: 'maybe', args: [{ kind: 'number' }] }),
-  JSON.stringify(runsType),
+  runsJson === '{"kind":"named","name":"maybe","args":[{"kind":"number"}]}',
+  runsJson,
 )
 ok('a maybe slot stays positional', maybeRoute?.takes.find(take => take.name === 'glob')?.positional === true)
 

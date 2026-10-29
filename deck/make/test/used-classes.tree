@@ -1,0 +1,118 @@
+note <the class tokens a program uses, and the look catalog cut down to them>
+
+# The checks deck/test/code/demo-jit.ts made of compile/used-classes and compile/look-css (its parts 1 to 3). Its
+# usedClasses query and subscription checks retired with the query engine (decision 068 section 4). The demo wrote its
+# elements as `zone div` over a `site`, the spelling before `view div` and `slot`, so it no longer found them.
+
+load ../code/parser/tree
+  find parse
+
+load ../code/parser/token
+  find token-source
+
+load ../code/compile/minting
+  find mill
+
+load ../code/compile/used-classes
+  find used-classes
+  find collect-used-classes
+
+load ../code/compile/look-css
+  find compile-look-css
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find contains
+
+# the classes one view source uses, or none found and dynamic when it does not parse or mill
+task classes-of
+  take source, like text
+  like used-classes
+
+  host parsed
+    parse
+      make token-source
+        bind file, <t.tree>
+        bind text, source
+  host failed
+    make used-classes
+      bind classes, make list(<ERR>)
+      bind dynamic, true
+  fork test, not(parsed/ok)
+    hold
+      back failed
+  host no-role, make none
+  host built, mill(parsed/tree, <t.tree>, no-role, false)
+  fork test, not(built/ok)
+    hold
+      back failed
+
+  back collect-used-classes(built/program)
+
+task literal-view
+  like text
+
+  back <view demo\n  take host, like view\n  view div\n    bind class, text \<flex gap-2 p-4 md:flex\>\n    slot>
+
+task dynamic-view
+  like text
+
+  back <view demo\n  take host, like view\n  view div\n    bind class, read theme\n    slot>
+
+# a small utility catalog in the look language, so the test does not read the generated tailwind.tree
+task catalog
+  like token-source
+
+  back
+    make token-source
+      bind file, <c.tree>
+      bind text
+        <face flex\n  have display, text \<flex\>\nface gap-2\n  have gap, text \<0.5rem\>\nface p-4\n  have padding, text \<1rem\>\nface bg-zinc-900\n  have background-color, text \<#18181b\>\nface md:flex\n  case md\n    have display, text \<flex\>\ntone\n  have accent, text \<#8b5cf6\>\n>
+
+task full-css
+  like text
+
+  back compile-look-css(catalog())
+
+task cut-css
+  like text
+
+  host used, classes-of(literal-view())
+  back compile-look-css(catalog(), used/classes, true)
+
+test <the literal class tokens are read off the view, sorted>
+  host used, classes-of(literal-view())
+  want hold, is-equal(join(used/classes, < >), <flex gap-2 md:flex p-4>)
+
+test <literal classes raise no dynamic flag>
+  host used, classes-of(literal-view())
+  want hold, not(used/dynamic)
+
+test <a class that is not a literal is flagged dynamic>
+  host used, classes-of(dynamic-view())
+  want hold, and(used/dynamic, not(contains(join(used/classes, < >), <ERR>)))
+
+test <the cut catalog is smaller than the full one>
+  host cut, cut-css()
+  host full, full-css()
+  want hold, is-below(cut/length, full/length)
+
+test <the cut catalog keeps a used base rule>
+  want hold, contains(cut-css(), <.flex \{>)
+
+test <the cut catalog keeps a used variant rule>
+  want hold, contains(cut-css(), <.md\\:flex>)
+
+test <the cut catalog drops an unused rule>
+  want hold
+    and contains(full-css(), <.bg-zinc-900>)
+      not(contains(cut-css(), <.bg-zinc-900>))
+
+test <the cut catalog always keeps the theme tokens>
+  want hold, contains(cut-css(), <--accent>)

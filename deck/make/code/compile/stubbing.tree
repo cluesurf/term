@@ -1,0 +1,1224 @@
+# THE STUBS OF A UNIT, for separate compilation: a dependency unit's CHECKED program reduced to the surface a dependent
+# can observe (task signatures with their bodies dropped and marked `stub`, record types, masks, instances, native and
+# bind declarations, views without their bodies, top-level lets), what the unit's whole-program analyses found about
+# each task, and the fingerprints a dependent's cached build is keyed by. Dependents check against these stubs instead
+# of the dependency's bodies, which is what makes a body-only edit invisible to them (the early-cutoff firewall).
+#
+# Ported from compile/stub.ts (item term-self-host-001-0105), which stays as the face. The decisions:
+#   - the four reflective walks of the original go through compile/node-children.tree and compile/node-rebuild.tree
+#     (spec.md 4.10): a node is rebuilt fresh only when it or a node under it changes, so nothing the caller handed in
+#     is written. The original's skip lists are the same here: `span`, `type`, `result` and `declared` for a carried
+#     shape or body, `span` for the stub's own surface
+#   - a carried shape or body, and every statement of the stub, is a deep copy (`stub-clone-statement`), as the
+#     original's structuredClone made it, so no two stubs and no stub and the input share a node
+#   - the fingerprints and the names a definition mentions read node-json (spec.md 4.7): the texts a statement holds are
+#     the JSON texts its node-json holds as values. A text node-json leaves out (the empty text of a `need false` field,
+#     a key node.tree does not declare) is not among them, and their order is node.tree's, which the name-level cutoff
+#     never reads (compile/names.tree takes the names as a set)
+#   - the whole-program analyses the stubs carry are asked of the unit's program here: its facts (check/program-facts),
+#     and through the caller its raise sets, the tasks shown to end, and the rules the provers proved (`raising`,
+#     `ending`, `proven`), which are TypeScript modules with state of their own until they are Term
+#   - the original's five patterns are written out (`(__in\d+_\d+)?(__\d+)*$`, `__value\d+$`, `__native\d+$`,
+#     `(__in\d+_\d+|__form)+$`, and `__\d+__\d+$` after the first `__in\d+_\d+` is taken out), each over UTF-16 units as
+#     the original's were
+#   - an unsolved inference variable is freed as the original freed one with no field but its number, which is every
+#     variable node.tree can hold
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find contains
+  find sort
+
+load @term/base/hash
+  find hash
+  find get-or-default
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/ordering
+  find from-texts
+
+load @term/base/text
+  find substring
+  find char-at
+  find index-of
+  find starts-with
+  find split
+
+load @term/base/text/unicode
+  find rune-to-text
+
+load ./node
+  find statement
+  find expression
+  find type
+
+load ./node-children
+  find node-handle
+  find node-children
+
+load ./node-rebuild
+  find rebuild-node
+
+load ./node-json
+  find statement-json
+  find program-json
+
+load ./names
+  find name-def
+
+load ../term/hash
+  find hash-text
+
+load ../check/program-facts
+  find program-facts-of
+
+load ../check/extend
+  find exception-form
+
+# what the whole-program analyses found about each task of a checked unit, with every body in hand. A stub carries its
+# own task's share, because a dependent has the stub and not the body, and every one of these analyses reads a callee's
+# body: without them a separately compiled caller was refused what the merged build allowed
+form stub-known
+  link clean, like hash, like text, like boolean
+  # the parameters each task writes through, by position
+  link writes, like hash, like text, like list, like number
+  link state-free, like hash, like text, like boolean
+  link length-keeping, like hash, like text, like boolean
+  link returns-fresh, like hash, like text, like boolean
+  link ends, like hash, like text, like boolean
+  link raises, like hash, like text, like list, like text
+  link native, like hash, like text, like boolean
+  # the tasks that raise `failure` once `failure` is counted: a unit counts it only when it holds the form
+  link fails, like hash, like text, like boolean
+  # each rule the arithmetic provers proved in this unit, and how: `field` or `integer`
+  link proven, like hash, like text, like text
+  # each top-level name this unit's binding renamed (`bump__in0_1`, `sleep__1`, `focus__value0`,
+  # `is-given__native0`), to the name it was written with
+  link written, like hash, like text, like text
+
+# what the caller's raise-set analysis answers (check/effects `raise-sets-of`): the exceptions each task raises, and the
+# tasks that call into a docked module
+form stub-raise-sets
+  link raises, like hash, like text, like list, like text
+  link native, like list, like text
+
+# one walk over a node and everything under it: `carry` writes each variable `written` holds back to the name its
+# module wrote and notes a typed overload member, else the walk frees each unsolved variable and writes each named
+# type under the name its form was written with
+form stub-walk
+  mark shared
+  link carry, like boolean
+  link written, like hash, like text, like text
+  link typed, like boolean
+  link changed, like number
+
+# ---- the names a unit's binding gave ----
+
+task is-digit-at
+  take value, like text
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, is-minimum(at, value/length)
+    hold
+      back false
+  back is-minimum(index-of(<0123456789>, char-at(value, at)), 0)
+
+# where the run of digits from `at` ends
+task digits-end
+  take value, like text
+  take at, like number
+  like number
+  mark private
+
+  save end, at
+  walk test
+    hook test, is-digit-at(value, end)
+    hook hold
+      save end, add(end, 1)
+  back end
+
+# whether `part` stands at `at`
+task stands-at
+  take value, like text
+  take at, like number
+  take part, like text
+  like boolean
+  mark private
+
+  back is-equal(substring(value, at, add(at, part/length)), part)
+
+# where `__in\d+_\d+` from `at` ends, -1 when it does not stand there
+task split-end
+  take value, like text
+  take at, like number
+  like number
+  mark private
+
+  fork test, not(stands-at(value, at, <__in>))
+    hold
+      back -1
+  save first, add(at, 4)
+  save first-end, digits-end(value, first)
+  fork test, is-equal(first-end, first)
+    hold
+      back -1
+  fork test, not(stands-at(value, first-end, <_>))
+    hold
+      back -1
+  save second, add(first-end, 1)
+  save second-end, digits-end(value, second)
+  fork test, is-equal(second-end, second)
+    hold
+      back -1
+  back second-end
+
+# where `__\d+` from `at` ends, -1 when it does not stand there
+task arity-end
+  take value, like text
+  take at, like number
+  like number
+  mark private
+
+  fork test, not(stands-at(value, at, <__>))
+    hold
+      back -1
+  save first, add(at, 2)
+  save end, digits-end(value, first)
+  fork test, is-equal(end, first)
+    hold
+      back -1
+  back end
+
+# whether `(__\d+)*` from `at` reaches the end
+task arities-reach-end
+  take value, like text
+  take at, like number
+  like boolean
+  mark private
+
+  save place, at
+  walk test
+    hook test, is-below(place, value/length)
+    hook hold
+      save end, arity-end(value, place)
+      fork test, is-below(end, 0)
+        hold
+          back false
+      save place, end
+  back true
+
+# whether `(__in\d+_\d+)?(__\d+)*` from `at` reaches the end
+task task-suffix-at
+  take value, like text
+  take at, like number
+  like boolean
+  mark private
+
+  save split, split-end(value, at)
+  fork test, and(is-minimum(split, 0), arities-reach-end(value, split))
+    hold
+      back true
+  back arities-reach-end(value, at)
+
+# a task's name with `(__in\d+_\d+)?(__\d+)*$` taken off, from the leftmost place it reaches the end
+task task-written
+  take name, like text
+  like text
+  mark private
+
+  fork test, is-below(index-of(name, <__>), 0)
+    hold
+      back name
+  save at, 0
+  walk test
+    hook test, is-below(at, name/length)
+    hook hold
+      fork test, task-suffix-at(name, at)
+        hold
+          back substring(name, 0, at)
+      save at, add(at, 1)
+  back name
+
+# a name with `__<word>\d+$` taken off (`__value0`, `__native0`)
+task word-written
+  take name, like text
+  take word, like text
+  like text
+  mark private
+
+  save head, <__{word}>
+  save at, 0
+  walk test
+    hook test, is-below(at, name/length)
+    hook hold
+      fork test, stands-at(name, at, head)
+        hold
+          save first, add(at, head/length)
+          save end, digits-end(name, first)
+          fork test, and(is-above(end, first), is-equal(end, name/length))
+            hold
+              back substring(name, 0, at)
+      save at, add(at, 1)
+  back name
+
+# whether `(__in\d+_\d+|__form)+` from `at` reaches the end
+task form-suffix-at
+  take value, like text
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, is-minimum(at, value/length)
+    hold
+      back false
+  save place, at
+  walk test
+    hook test, is-below(place, value/length)
+    hook hold
+      fork test, stands-at(value, place, <__form>)
+        hold
+          save place, add(place, 6)
+        miss
+          save end, split-end(value, place)
+          fork test, is-below(end, 0)
+            hold
+              back false
+          save place, end
+  back true
+
+# a form's name as its own unit's checker left it, with `(__in\d+_\d+|__form)+$` taken off: split from another form
+# of the name (`pair__in0_1`, check/scope) or from a case of the name (`view__form`)
+task form-written
+  take name, like text
+  like text
+  mark private
+
+  fork test, is-below(index-of(name, <__>), 0)
+    hold
+      back name
+  save at, 0
+  walk test
+    hook test, is-below(at, name/length)
+    hook hold
+      fork test, form-suffix-at(name, at)
+        hold
+          back substring(name, 0, at)
+      save at, add(at, 1)
+  back name
+
+# a member of a same-arity overload told apart by type (`sleep__1__0`): the name, its first `__in\d+_\d+` taken out,
+# ends in `__\d+__\d+`
+task is-typed-member
+  take name, like text
+  like boolean
+  mark private
+
+  save plain, name
+  save at, 0
+  walk test
+    hook test, is-below(at, name/length)
+    hook hold
+      save end, split-end(name, at)
+      fork test, is-minimum(end, 0)
+        hold
+          save plain, <{substring(name, 0, at)}{substring(name, end, name/length)}>
+          halt
+      save at, add(at, 1)
+  save at, 0
+  walk test
+    hook test, is-below(at, plain/length)
+    hook hold
+      save first, arity-end(plain, at)
+      fork test, is-minimum(first, 0)
+        hold
+          save second, arity-end(plain, first)
+          fork test, is-equal(second, plain/length)
+            hold
+              back true
+      save at, add(at, 1)
+  back false
+
+# THE NAMES A UNIT'S BINDING GIVES ARE THAT UNIT'S: a task two files define is split by file (`name__in<g>_<k>`), an
+# overloaded one takes its arity (`name__<n>`, a typed one an index after it), and a value or a native binding a task
+# shares its name with is renamed apart (check/disambiguate.tree). Each renamed top-level name, to the name it was
+# written with
+task written-names
+  take program, like list, like statement
+  like hash, like text, like text
+
+  save out, make hash
+  walk program
+    take one
+    save named, <>
+    save written, <>
+    sift one
+      case function
+        save named, name
+        save written, task-written(name)
+      case let
+        save named, name
+        save written, word-written(name, <value>)
+      case bind
+        save named, name
+        save written, word-written(name, <native>)
+      miss
+        turn next
+    fork test, and(is-unequal(written, named), is-unequal(written, <>))
+      hold
+        out/set(named, written)
+  back out
+
+# ---- the walks ----
+
+# a statement, deep-copied. Natively a value is already a copy
+bind stub-clone-statement
+  take value, like statement
+  like statement
+  case node
+    text <structuredClone($value)>
+  case browser
+    text <structuredClone($value)>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+# whether the walk writes this node itself
+task walk-wants
+  take state, like stub-walk
+  take handle, like node-handle
+  like boolean
+  mark private
+
+  sift handle
+    case expression-handle
+      link inner
+      fork test, not(state/carry)
+        hold
+          back false
+      sift inner
+        case variable
+          back state/written/has(name)
+        miss
+          back false
+    case type-handle
+      link inner
+      fork test, state/carry
+        hold
+          back false
+      sift inner
+        case variable
+          back true
+        case named
+          back is-unequal(form-written(name), name)
+        miss
+          back false
+    miss
+      back false
+
+# the node's own write, on a node the walk made fresh
+task walk-write
+  take state, like stub-walk
+  take handle, like node-handle
+  like node-handle
+  mark private
+
+  sift handle
+    case expression-handle
+      link inner
+      save made, inner
+      sift made
+        case variable
+          save to, get-or-default(state/written, name, name)
+          fork test, is-typed-member(name)
+            hold
+              save state/typed, true
+          save made/name, to
+        miss
+          save nothing, 0
+      back
+        make node-handle/expression-handle
+          bind node, made
+    case type-handle
+      link inner
+      save made, inner
+      sift made
+        case variable
+          save freed
+            make type/unknown
+              bind free, true
+          back
+            make node-handle/type-handle
+              bind node, freed
+        case named
+          save made/name, form-written(name)
+        miss
+          save nothing, 0
+      back
+        make node-handle/type-handle
+          bind node, made
+    miss
+      back handle
+
+# one node, walked: its children first, then the node rebuilt fresh over them and its own write made on the new node,
+# only when it or a node under it changed. A node nothing under it changed comes back as it was
+task walk-node
+  take state, like stub-walk
+  take skip, like list, like text
+  take handle, like node-handle
+  like node-handle
+  mark private
+
+  save before, state/changed
+  save children, make list
+  walk node-children(handle, skip)
+    take child
+    push(children, walk-node(state, skip, child))
+  save own, walk-wants(state, handle)
+  fork test, and(not(own), is-equal(state/changed, before))
+    hold
+      back handle
+  save state/changed, add(state/changed, 1)
+  save made, rebuild-node(handle, children, skip)
+  fork test, own
+    hold
+      back walk-write(state, made)
+  back made
+
+task walk-statement
+  take state, like stub-walk
+  take skip, like list, like text
+  take one, like statement
+  like statement
+  mark private
+
+  save handle
+    make node-handle/statement-handle
+      bind node, one
+  sift walk-node(state, skip, handle)
+    case statement-handle
+      link inner
+      back inner
+    miss
+      halt <stubbing: a statement was rebuilt as another kind of node>
+
+# the keys a carried shape or body is not walked into
+task carry-skip
+  like list, like text
+  mark private
+
+  save skip, make list
+  push(skip, <span>)
+  push(skip, <type>)
+  push(skip, <result>)
+  push(skip, <declared>)
+  back skip
+
+# A CARRIED SHAPE UNDER THE NAMES ITS MODULE WROTE (items 0323, 0324). As its own unit's binding left it, a call held
+# that unit's split name, and the importer's unit gives the same split name to whichever file is k-th among the
+# definers IT holds. Written back, each reference is bound in the importer by the stub's own file's imports, as the
+# merged build binds it. None when a reference names a typed overload member, which the importer could not pick again
+task carried-statement
+  take one, like statement
+  take written, like hash, like text, like text
+  like maybe, like statement
+  mark private
+
+  save state
+    make stub-walk
+      bind carry, true
+      bind written, written
+      bind typed, false
+      bind changed, 0
+  save made, walk-statement(state, carry-skip(), stub-clone-statement(one))
+  fork test, state/typed
+    hold
+      back make none
+  back make(some, made)
+
+# a carried body, the same way: none when any of it names a typed overload member
+task carried-block
+  take body, like list, like statement
+  take written, like hash, like text, like text
+  like maybe, like list, like statement
+  mark private
+
+  save state
+    make stub-walk
+      bind carry, true
+      bind written, written
+      bind typed, false
+      bind changed, 0
+  save skip, carry-skip()
+  save out, make list
+  walk body
+    take one
+    push(out, walk-statement(state, skip, stub-clone-statement(one)))
+  fork test, state/typed
+    hold
+      back make none
+  back make(some, out)
+
+# EVERY FORM IN A STUB UNDER THE NAME IT WAS WRITTEN WITH, and every type that names one, and every inference variable
+# the owning unit's checker left unsolved freed. A form a unit renamed apart (`view__form`) reached a dependent under
+# that name, so the type `view` its route dispatcher names was undefined there; the dependent splits the names again by
+# its own imports, and a form or mask keeps the name its module exports it by as `stub-export`. An unsolved variable is
+# a number in the owning checker's table, and read in the dependent's it is some other variable, so it goes as the mill
+# writes an element nobody named, `unknown` and free
+task surfaced
+  take one, like statement
+  like statement
+  mark private
+
+  save skip, make list
+  push(skip, <span>)
+  save state
+    make stub-walk
+      bind carry, false
+      bind written, make hash
+      bind typed, false
+      bind changed, 0
+  save made, walk-statement(state, skip, one)
+  sift made
+    case record-type
+      save plain, form-written(name)
+      fork test, is-unequal(plain, name)
+        hold
+          save made/stub-export, name
+          save made/name, plain
+      save renamed, false
+      save chain-out, make list
+      walk chain
+        take link-name
+        save plain-link, form-written(link-name)
+        fork test, is-unequal(plain-link, link-name)
+          hold
+            save renamed, true
+        push(chain-out, plain-link)
+      fork test, renamed
+        hold
+          save made/chain, chain-out
+      save plain-props, form-written(props)
+      fork test, is-unequal(plain-props, props)
+        hold
+          save made/props, plain-props
+    case mask
+      save plain, form-written(name)
+      fork test, is-unequal(plain, name)
+        hold
+          save made/stub-export, name
+          save made/name, plain
+    case instance
+      save plain-mask, form-written(mask)
+      fork test, is-unequal(plain-mask, mask)
+        hold
+          save made/mask, plain-mask
+      save plain-target, form-written(target)
+      fork test, is-unequal(plain-target, target)
+        hold
+          save made/target, plain-target
+    case function
+      sift method
+        case some
+          link owner
+          save plain-owner, form-written(owner/form)
+          fork test, is-unequal(plain-owner, owner/form)
+            hold
+              save owner/form, plain-owner
+              save made/method, make(some, owner)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  back made
+
+# ---- the analyses ----
+
+task as-set
+  take names, like list, like text
+  like hash, like text, like boolean
+  mark private
+
+  save out, make hash
+  walk names
+    take name
+    out/set(name, true)
+  back out
+
+task stub-known-of
+  take program, like list, like statement
+  # the caller's raise sets over the program, counting the exceptions named
+  take raising
+    like task
+      take program, like list, like statement
+      take exceptions, like list, like text
+      like stub-raise-sets
+  # the tasks the caller's termination check shows to end
+  take ending
+    like task
+      take program, like list, like statement
+      like list, like text
+  # the rules the provers of this unit proved, each `field` or `integer`
+  take proven, like hash, like text, like text
+  like stub-known
+
+  # the program's facts, each computed once (check/program-facts.tree, item 0368)
+  save facts, program-facts-of(program)
+  save impure, as-set(facts/impure)
+  save exception, exception-form()
+  save exceptions, make list
+  walk program
+    take one
+    sift one
+      case record-type
+        save chained, false
+        walk chain
+          take above
+          fork test, is-equal(above, exception)
+            hold
+              save chained, true
+        fork test, and(chained, not(contains(exceptions, name)))
+          hold
+            push(exceptions, name)
+      miss
+        turn next
+  save sets, raising(program, exceptions)
+  save counted-names, make list
+  walk exceptions
+    take name
+    push(counted-names, name)
+  fork test, not(contains(counted-names, <failure>))
+    hold
+      push(counted-names, <failure>)
+  save counted, raising(program, counted-names)
+  save fails, make hash
+  walk counted/raises/keys()
+    take name
+    save none-raised, make list
+    fork test, contains(get-or-default(counted/raises, name, none-raised), <failure>)
+      hold
+        fails/set(name, true)
+  save clean, make hash
+  walk program
+    take one
+    sift one
+      case function
+        fork test, not(impure/has(name))
+          hold
+            clean/set(name, true)
+      miss
+        turn next
+  back
+    make stub-known
+      bind clean, clean
+      bind writes, facts/writes
+      bind state-free, as-set(facts/state-free)
+      bind length-keeping, as-set(facts/length-keeping)
+      bind returns-fresh, as-set(facts/returns-fresh)
+      bind ends, as-set(ending(program))
+      bind raises, sets/raises
+      bind native, as-set(sets/native)
+      bind fails, fails
+      bind proven, proven
+      bind written, written-names(program)
+
+# one task's share of what its unit found
+task facts-of
+  take name, like text
+  take known, like stub-known
+  like list, like text
+  mark private
+
+  save out, make list
+  fork test, known/clean/has(name)
+    hold
+      push(out, <clean>)
+  fork test, known/state-free/has(name)
+    hold
+      push(out, <state-free>)
+  fork test, known/length-keeping/has(name)
+    hold
+      push(out, <length-keeping>)
+  fork test, known/returns-fresh/has(name)
+    hold
+      push(out, <returns-fresh>)
+  fork test, known/ends/has(name)
+    hold
+      push(out, <ends>)
+  fork test, known/native/has(name)
+    hold
+      push(out, <native>)
+  fork test, known/fails/has(name)
+    hold
+      push(out, <fails>)
+  fork test, known/proven/has(name)
+    hold
+      push(out, <proven-{get-or-default(known/proven, name, <>)}>)
+  back out
+
+# each once, in increasing order
+task sorted-numbers
+  take values, like list, like number
+  like list, like number
+  mark private
+
+  save seen, make hash
+  save out, make list
+  walk values
+    take one
+    fork test, not(seen/has(one))
+      hold
+        seen/set(one, true)
+        push(out, one)
+  save at, 1
+  walk test
+    hook test, is-below(at, out/length)
+    hook hold
+      save one, get(out, at)
+      save place, subtract(at, 1)
+      walk test
+        hook test, and(is-minimum(place, 0), is-above(get(out, place), one))
+        hook hold
+          save out/{add(place, 1)}, get(out, place)
+          save place, subtract(place, 1)
+      save out/{add(place, 1)}, one
+      save at, add(at, 1)
+  back out
+
+# each once, in code point order
+task sorted-texts
+  take values, like list, like text
+  like list, like text
+  mark private
+
+  save seen, make hash
+  save out, make list
+  walk values
+    take one
+    fork test, not(seen/has(one))
+      hold
+        seen/set(one, true)
+        push(out, one)
+  back sort(out, from-texts)
+
+# ---- the stub ----
+
+# the stub of one checked program: its public, body-less surface, in original order
+task stub-program
+  take program, like list, like statement
+  take known, like maybe, like stub-known
+  take under-proof, like boolean
+  like list, like statement
+
+  # A FILE THAT STATES RULES IS A THEORY, and the bodies of its definitions are part of what it says: a proof in
+  # another file computes `both(yes, a)` by running `both`. So is a file a proving unit reaches (`under-proof`,
+  # compile/separate.ts). Any other file keeps a body edit from reaching its dependents, so only these files'
+  # definitions carry their bodies
+  save theory, under-proof
+  walk program
+    take one
+    sift one
+      case function
+        fork test, theorem
+          hold
+            save theory, true
+      miss
+        turn next
+  save out, make list
+  walk program
+    take given
+    save one, stub-clone-statement(given)
+    sift one
+      # A PRIVATE TASK IS IN THE STUB TOO, still marked private: a dependent cannot call it, and the privacy checks
+      # (check/private) need the definition to say why
+      case function
+        # a one-statement body that sends a value back is what the shape readers recognize. Nothing longer is
+        # carried, so an edit inside a longer body still cuts off at the stub
+        save bare, false
+        fork test, is-equal(body/length, 1)
+          hold
+            sift get(body, 0)
+              case return
+                save bare, true
+              miss
+                save nothing, 0
+        save given-name, name
+        sift known
+          case some
+            link found
+            # IN A THEORY, A PURE TASK SHOWN TO END CARRIES ITS WHOLE BODY, for the kernel alone, and a RULE carries
+            # its body too, which is its `show hold`
+            save bodied, false
+            fork test, and(theory, and(not(claim), is-above(body/length, 0)))
+              hold
+                save bodied, or(theorem, and(found/ends/has(name), found/clean/has(name)))
+            # both under the names the module wrote, or neither: one reference the importer could not bind again
+            # drops both
+            save only, make none
+            save opaque, false
+            fork test, bare
+              hold
+                save only, carried-statement(get(body, 0), found/written)
+                sift only
+                  case none
+                    save opaque, true
+                  miss
+                    save nothing, 0
+            save whole, make none
+            fork test, bodied
+              hold
+                save whole, carried-block(body, found/written)
+                sift whole
+                  case none
+                    save opaque, true
+                  miss
+                    save nothing, 0
+            # only a task that HAD a body carries facts: a declaration with none stays a declaration, which its
+            # implementation overrides, and a stub with facts stands for a definition
+            fork test, and(is-above(body/length, 0), not(claim))
+              hold
+                save shared-facts, facts-of(name, found)
+                save one/stub-facts, make(some, shared-facts)
+                save no-writes, make list
+                save one/stub-writes, sorted-numbers(get-or-default(found/writes, name, no-writes))
+                save no-raises, make list
+                save raised, sorted-texts(get-or-default(found/raises, name, no-raises))
+                save one/stub-raises, make(some, raised)
+            fork test, not(opaque)
+              hold
+                sift only
+                  case some
+                    link shape
+                    save one/stub-shape, make(some, shape)
+                  miss
+                    save nothing, 0
+                sift whole
+                  case some
+                    link carried
+                    save one/stub-body, carried
+                  miss
+                    save nothing, 0
+          case none
+            save nothing, 0
+        # the overload and split suffixes come off: the DEPENDENT unit runs its own disambiguation over these stubs
+        # plus its calls, which derives its own names, and `stub-export` is the name this unit's module exports it by
+        save one/name, task-written(given-name)
+        save one/stub-export, given-name
+        save no-body, make list
+        save one/body, no-body
+        save one/stub, true
+        push(out, one)
+
+      # type-level and declaration-level statements are the surface itself: dependents need the whole shape
+      case record-type
+        push(out, one)
+      case mask
+        push(out, one)
+      case instance
+        push(out, one)
+      case native
+        push(out, one)
+
+      # a native binding under the name it was WRITTEN with, which a dependent splits again by its own imports
+      case bind
+        save one/name, word-written(name, <native>)
+        push(out, one)
+
+      # a component's surface is its name and its props
+      case view
+        save no-view-body, make list
+        save one/body, no-view-body
+        push(out, one)
+
+      # a top-level let is observable, under the name it was WRITTEN with, and the name its module exports it by
+      case let
+        save given-name, name
+        save one/name, word-written(given-name, <value>)
+        save one/stub-export, given-name
+        push(out, one)
+
+      # proof obligations, top-level expressions, and everything else belong to the owning unit
+      miss
+        turn next
+  save stubs, make list
+  walk out
+    take one
+    push(stubs, surfaced(one))
+  back stubs
+
+# ---- the fingerprints ----
+
+# the keys a fingerprint leaves out at every depth: a span is provenance, and a `placeRow` where a node stands in one
+# stamped program (D011), never identity
+task without-spans
+  like list, like text
+  mark private
+
+  save skip, make list
+  push(skip, <span>)
+  push(skip, <placeRow>)
+  back skip
+
+# THE FINGERPRINT OF A UNIT'S SURFACE: its stubs, everything in them but where they were written. `portable` writes
+# each deck's root as a token (compile/separate.ts `portableBy`), so the same surface has the same fingerprint in every
+# clone of the repository. The text is node-json's, the node's identity (decision 034)
+task surface-hash
+  take surface, like list, like statement
+  take portable
+    like task
+      take text, like text
+      like text
+  like text
+
+  back hash-text(portable(program-json(without-spans(), surface)))
+
+# the names a unit reaches without writing them: what the checker and the emitters name on a program's behalf
+task names-always-used
+  like list, like text
+
+  save out, make list
+  push(out, <*>)
+  push(out, <data>)
+  push(out, <exception>)
+  push(out, <view>)
+  push(out, <type>)
+  push(out, <text>)
+  push(out, <maybe>)
+  push(out, <some>)
+  push(out, <none>)
+  push(out, <list>)
+  push(out, <hash>)
+  push(out, <handle>)
+  push(out, <spawn>)
+  push(out, <defect>)
+  push(out, <failure>)
+  push(out, <data-mismatch>)
+  push(out, exception-form())
+  back out
+
+# the value of one hex digit, -1 for none
+task hex-digit
+  take one, like text
+  like number
+  mark private
+
+  save digits, <0123456789abcdef>
+  save at, index-of(digits, one)
+  fork test, is-minimum(at, 0)
+    hold
+      back at
+  save upper, <0123456789ABCDEF>
+  back index-of(upper, one)
+
+# a JSON string's inside as the text it stands for
+task json-unescaped
+  take raw, like text
+  like text
+  mark private
+
+  fork test, is-below(index-of(raw, <\\>), 0)
+    hold
+      back raw
+  save parts, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, raw/length)
+    hook hold
+      save slash, index-of(raw, <\\>, at)
+      fork test, is-below(slash, 0)
+        hold
+          push(parts, substring(raw, at, raw/length))
+          halt
+      push(parts, substring(raw, at, slash))
+      save escape, char-at(raw, add(slash, 1))
+      save at, add(slash, 2)
+      fork test, is-equal(escape, <u>)
+        hold
+          save code, 0
+          save place, 0
+          walk test
+            hook test, is-below(place, 4)
+            hook hold
+              save code, add(multiply(code, 16), hex-digit(char-at(raw, add(at, place))))
+              save place, add(place, 1)
+          push(parts, rune-to-text(code))
+          save at, add(at, 4)
+          turn next
+      fork test, is-equal(escape, <b>)
+        hold
+          push(parts, rune-to-text(8))
+          turn next
+      fork test, is-equal(escape, <f>)
+        hold
+          push(parts, rune-to-text(12))
+          turn next
+      fork test, is-equal(escape, <n>)
+        hold
+          push(parts, rune-to-text(10))
+          turn next
+      fork test, is-equal(escape, <r>)
+        hold
+          push(parts, rune-to-text(13))
+          turn next
+      fork test, is-equal(escape, <t>)
+        hold
+          push(parts, rune-to-text(9))
+          turn next
+      # `"`, `\` and `/` stand for themselves
+      push(parts, escape)
+  back join(parts, <>)
+
+# whether a piece of JSON ends in an odd run of backslashes: the quote after it is inside the string
+task escapes-quote
+  take piece, like text
+  like boolean
+  mark private
+
+  save at, subtract(piece/length, 1)
+  save run, 0
+  walk test
+    hook test, and(is-minimum(at, 0), is-equal(char-at(piece, at), <\\>))
+    hook hold
+      save run, add(run, 1)
+      save at, subtract(at, 1)
+  back is-equal(modulo(run, 2), 1)
+
+# EVERY TEXT A NODE HOLDS, read off its node-json: each JSON string that is a value and not a key, added to `into` once
+# and to `seen`. The text is cut at every quote once, so the pieces alternate outside and inside a string, but where a
+# quote is escaped; a string followed by `:` is a key
+task json-texts
+  take json, like text
+  take seen, like hash, like text, like boolean
+  take into, like list, like text
+  mark private
+
+  save pieces, split(json, <">)
+  save count, pieces/length
+  save at, 1
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save raw, get(pieces, at)
+      walk test
+        hook test, and(escapes-quote(raw), is-below(add(at, 1), count))
+        hook hold
+          save at, add(at, 1)
+          save raw, <{raw}"{get(pieces, at)}>
+      save after, add(at, 1)
+      save at, add(at, 2)
+      fork test, and(is-below(after, count), starts-with(get(pieces, after), <:>))
+        hold
+          turn next
+      save text, json-unescaped(raw)
+      fork test, not(seen/has(text))
+        hold
+          seen/set(text, true)
+          push(into, text)
+
+# every name a unit's own program writes: each text in its milled statements, which is more than the names it uses
+# (a literal's text, a field's name) and never fewer, since a surplus name only keeps a definition in its key
+task names-used
+  take program, like list, like statement
+  like list, like text
+
+  save seen, make hash
+  save out, make list
+  walk names-always-used()
+    take name
+    fork test, not(seen/has(name))
+      hold
+        seen/set(name, true)
+        push(out, name)
+  json-texts(program-json(without-spans(), program), seen, out)
+  back out
+
+# the names a definition can be reached by: its own, its cases', its methods'. A definition reached by type rather than
+# by name, a mask instance, gives `*`, which every unit uses
+task gives-of
+  take record, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  sift record
+    case function
+      push(out, name)
+      # a form's method is called by its method's name (`x/push`), which need not be the task's
+      sift method
+        case some
+          link owner
+          fork test, is-unequal(owner/name, name)
+            hold
+              push(out, owner/name)
+        case none
+          save nothing, 0
+    case let
+      push(out, name)
+    case view
+      push(out, name)
+    case bind
+      push(out, name)
+    # a case is reached by its own name, and a form that is `like` another by every form above it
+    case record-type
+      push(out, name)
+      walk variants
+        take variant
+        push(out, variant/name)
+      walk chain
+        take above
+        push(out, above)
+      sift extend
+        case some
+          link extended
+          sift extended/base
+            case named
+              link base-name
+              push(out, base-name)
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+    case mask
+      push(out, name)
+      walk methods
+        take method-name
+        push(out, method-name)
+    case native
+      push(out, alias)
+    miss
+      push(out, <*>)
+  back out
+
+# EACH DEFINITION OF A SURFACE, AS THE NAME-LEVEL CUTOFF READS IT (compile/names.tree): the names it can be reached by,
+# the names it mentions, and its fingerprint
+task name-defs
+  take surface, like list, like statement
+  take portable
+    like task
+      take text, like text
+      like text
+  like list, like name-def
+
+  save skip, without-spans()
+  save out, make list
+  walk surface
+    take one
+    save json, statement-json(skip, one)
+    save seen, make hash
+    save reads, make list
+    json-texts(json, seen, reads)
+    save def
+      make name-def
+        bind gives, gives-of(one)
+        bind reads, reads
+        bind print, hash-text(portable(json))
+    push(out, def)
+  back out

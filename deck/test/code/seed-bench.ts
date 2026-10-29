@@ -19,7 +19,8 @@ import { CompileCache } from '@term/make/code/compile/cache'
 import { collectModules } from '@term/make/code/compile/load'
 import type { Resolver } from '@term/make/code/compile/load'
 import { splitTopLevel } from '@term/make/code/compile/incremental-parse'
-import { splitStreamingToArray } from '@term/make/code/compile/stream'
+// compile/stream.ts retired (decision 067 of change 001-finish-self-host): its loop is block-split.tree's split-lines
+import { splitLines } from '@term/make/code/compile/block-split'
 import { bench, scaling, type BenchResult } from './bench'
 
 export type BenchSuite = {
@@ -104,7 +105,7 @@ export function runCompilerBench(input: {
   // ---- streaming split vs whole-file split (should be comparable) ----
   const bigSrc = manyDefs(2000)
   const wholeSplit = bench({ name: 'splitTopLevel 2000 defs', run: () => void splitTopLevel(bigSrc), iterations: iters, size: 2000 })
-  const streamSplit = bench({ name: 'splitStreaming 2000 defs', run: () => void splitStreamingToArray(bigSrc.split('\n')), iterations: iters, size: 2000 })
+  const streamSplit = bench({ name: 'splitStreaming 2000 defs', run: () => void splitLines(bigSrc.split('\n')), iterations: iters, size: 2000 })
   results.push(wholeSplit, streamSplit)
   insights.push(`streaming split overhead vs whole-file: ${(streamSplit.median / wholeSplit.median).toFixed(2)}x`)
 

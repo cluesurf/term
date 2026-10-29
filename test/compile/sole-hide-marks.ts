@@ -100,15 +100,17 @@ ${marks}  link note, like text
 
   const sole = milled(PERMIT('  mark sole\n'))
   const soleOnly = sole.ok ? formOf(sole.program, 'permit') : undefined
-  ok('mill: sole alone leaves hide unset', soleOnly?.sole === true && soleOnly.hide === undefined)
+  // a `need false` flag at its default and the flag absent are one value (decision 034 section 2, decision 071): read
+  // the value, never the key
+  ok('mill: sole alone leaves hide unset', soleOnly?.sole === true && (soleOnly.hide ?? false) === false)
 
   const hide = milled(PERMIT('  mark hide\n'))
   const hideOnly = hide.ok ? formOf(hide.program, 'permit') : undefined
-  ok('mill: hide alone leaves sole unset', hideOnly?.hide === true && hideOnly.sole === undefined)
+  ok('mill: hide alone leaves sole unset', hideOnly?.hide === true && (hideOnly.sole ?? false) === false)
 
   const plain = milled(PERMIT(''))
   const unmarked = plain.ok ? formOf(plain.program, 'permit') : undefined
-  ok('mill: an unmarked form carries neither flag', unmarked !== undefined && unmarked.sole === undefined && unmarked.hide === undefined)
+  ok('mill: an unmarked form carries neither flag', unmarked !== undefined && (unmarked.sole ?? false) === false && (unmarked.hide ?? false) === false)
 }
 
 // ---- unknown-mark ----

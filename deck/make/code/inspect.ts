@@ -5,8 +5,8 @@
 //
 // The symbols, the doc comments, the `bear` closure and the three renderings are Term, inspection.tree (self-hosting,
 // 2026-10-06). This face walks the load closure with the build's own loader, mills each module (the mill is
-// compile/mint-bridge.ts), names a file's deck the way the roll does, and keeps the tasks whose result was not written
-// in a WeakSet, which is identity Term does not have.
+// compile/mint-bridge.ts) and names a file's deck the way the roll does. A task whose source writes no result takes
+// the one the caller's compile inferred, handed in as `results` (decision 064 section 2).
 
 import { collectModules } from '@term/make/code/compile/load'
 import type { Resolver, Source } from '@term/make/code/compile/load'
@@ -33,24 +33,9 @@ export type TaskSymbol = {
   deck: string
   params: { name: string; type: string }[]
   result: string
-  // the result was not written (no `like` for it) and was read off the checked program instead (`fillInferred`)
+  // the result was not written (no `like` for it) and was read off the checked program instead (`results`)
   inferred: boolean
   note: string
-}
-
-// the tasks whose source writes no result type: their `unit` is a placeholder, not a claim
-const unwritten = new WeakSet<TaskSymbol>()
-
-// fill each unwritten result from a checked program's own: `task twice / take n / back multiply(n, 2)` printed
-// `-> unit` because only the source was read (guides: commands/look, 2026-10-04). `results` is task name to type,
-// from a compile of the module. A task the compile does not name keeps its placeholder
-export function fillInferred(symbols: Symbol[], results: Map<string, string>): void {
-  for (const symbol of symbols) {
-    if (symbol.kind === 'task' && unwritten.has(symbol) && results.has(symbol.name)) {
-      symbol.result = results.get(symbol.name)!
-      symbol.inferred = true
-    }
-  }
 }
 export type Symbol = FormSymbol | TaskSymbol
 
@@ -73,6 +58,10 @@ export function inspectModule(
   resolve: Resolver,
   // the file's deck, the way the CLI and the roll name it (`projectDeckOf`); without it the path's package segment
   deckOf?: (file: string) => { name: string; root: string } | undefined,
+  // task name to the result type a compile of the module inferred: `task twice / take n / back multiply(n, 2)` printed
+  // `-> unit` when only the source was read (guides: commands/look, 2026-10-04). Empty when the module does not compile,
+  // and a task it does not name keeps its placeholder
+  results: Map<string, string> = new Map(),
 ): Inspection {
   const { sources, diagnostics, scope } = collectModules(entry, resolve)
   const found = inspection.inspectSources(
@@ -85,11 +74,8 @@ export function inspectModule(
       return milled.ok ? { form: 'some', value: milled.program } : { form: 'none' }
     },
     file => deckOf?.(file)?.name ?? deckFromPath(file),
+    results,
   )
-
-  for (const task of found.unwritten) {
-    unwritten.add(task as TaskSymbol)
-  }
 
   return {
     symbols: found.symbols as Symbol[],

@@ -114,7 +114,7 @@ const only = process.env.SN_ONLY ?? ''
   const marked = frontEnd(true).find(n => n.form === 'record-type' && n.name === 'tally')
   const plain = frontEnd(false).find(n => n.form === 'record-type' && n.name === 'tally')
   ok('mill: `mark shared` sets shared on the form', marked?.form === 'record-type' && marked.shared === true)
-  ok('mill: a form without it is not shared', plain?.form === 'record-type' && plain.shared === undefined)
+  ok('mill: a form without it is not shared', plain?.form === 'record-type' && (plain.shared ?? false) === false)
 }
 
 function build(label: string, args: string[]): boolean {

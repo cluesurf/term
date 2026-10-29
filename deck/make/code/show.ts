@@ -1,5 +1,3 @@
-import chalk from 'chalk'
-import os from 'os'
 import * as banner from '@term/make/code/banner'
 
 // The banner `term` prints with no verb, and the line `term show` prints. Both said `seed` (the language's old name)
@@ -11,15 +9,15 @@ import * as banner from '@term/make/code/banner'
 // on stdout through the terminal output library (call/code/output.ts, `printData`). The text is byte for byte what
 // the `console.log` lines wrote, a newline after every line.
 //
-// The texts are Term, banner.tree (self-hosting, 2026-10-06), with chalk's escapes written out. This face asks chalk
-// whether the terminal takes color, and `os` and `process` for the platform.
+// The texts are Term, banner.tree (self-hosting, 2026-10-06), and so are their reads: the color, the platform, the
+// runtime and the home come through @term/base (decision 064 section 3). This face only writes them out.
 
 export function bannerText(): string {
-  return banner.bannerText(chalk.level > 0)
+  return banner.bannerShown()
 }
 
 export function infoText(version = '0.0.0'): string {
-  return banner.infoText(chalk.level > 0, version, os.platform(), os.arch(), process.version, os.homedir())
+  return banner.infoShown(version)
 }
 
 export function showBanner(): void {

@@ -6,8 +6,10 @@
 #   - the face walks the load closure (compile/load.ts `collectModules`, with the build's parse memo and scan cache)
 #     and hands in the sources and each module's `bear`s. It also mills, through a task (`mill-of`), since the mill
 #     is compile/mint-bridge.ts, and names a file's deck through another (`deck-of`), since the roll is TypeScript
-#   - a task whose source writes no result type comes back in `unwritten` as well, the very records, and the face
-#     keeps them in the WeakSet `fillInferred` reads
+#   - a task whose source writes no result type takes the one the checker inferred, from `results` (task name to type,
+#     from a compile of the module, empty when it does not compile), marked `inferred`; one `results` does not name
+#     keeps `unit`, a placeholder, not a claim (decision 064 section 2, where the face kept such records in a WeakSet
+#     and filled them after)
 #   - `JSON.stringify` of a text is term/quote.tree's `json-quote`, and of the symbols, with two spaces, is written out
 #     here for their two shapes
 #   - the table pads to a width in UTF-16 units, as `padEnd` did
@@ -69,7 +71,7 @@ form symbol-field
   link type, like text
 
 # a definition a module has: a form, with its fields and variants, or a task, with its parameters and result.
-# `inferred` says the result was not written and was read off a compile of the module (`fillInferred`)
+# `inferred` says the result was not written and was read off a compile of the module (`results`)
 form symbol
   mark tag, name kind
   case form
@@ -94,8 +96,6 @@ form inspected
   link offered, like list, like symbol
   # how many modules `offered` is drawn from: the entry and its `bear` chain
   link offered-modules, like number
-  # the tasks whose source writes no result type: their `unit` is a placeholder, not a claim
-  link unwritten, like list, like symbol
 
 # a module's short label: the last two path segments without the `.tree` suffix
 task module-label
@@ -292,12 +292,12 @@ task inspect-sources
     like task
       take file, like text
       like text
+  take results, like hash, like text, like text
   like inspected
 
   save offering, passed-on(entry, bears-of)
   save symbols, make list
   save offered, make list
-  save unwritten, make list
 
   walk sources
     take one
@@ -375,14 +375,17 @@ task inspect-sources
                     bind type, param-type
                 push(param-list, shown)
               save result-text, <unit>
-              save written-result, false
+              save inferred, false
               sift result
                 case some
                   link written
                   save result-text, show-type(written)
-                  save written-result, true
                 case none
-                  save result-text, result-text
+                  # the result the checker inferred, when the module compiles and names the task
+                  fork test, results/has(name)
+                    hold
+                      save result-text, results/get(name)
+                      save inferred, true
               # a method is written inside its form, not at the top level, so a top-level task of its name is not its note
               save task-note, note-at(notes, <task {name}>)
               sift method
@@ -397,11 +400,8 @@ task inspect-sources
                   bind deck, deck
                   bind params, param-list
                   bind result, result-text
-                  bind inferred, false
+                  bind inferred, inferred
                   bind note, task-note
-              fork test, is-equal(written-result, false)
-                hold
-                  push(unwritten, defined)
               push(symbols, defined)
               fork test, and(offers, is-unequal(statement-private(statement), true))
                 hold
@@ -423,7 +423,6 @@ task inspect-sources
       bind symbols, symbols
       bind offered, offered
       bind offered-modules, counted
-      bind unwritten, unwritten
 
 # `statement.private === true` on a task
 task statement-private

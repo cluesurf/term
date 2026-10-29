@@ -5,8 +5,14 @@
 #   - color is written as the escapes chalk 5 writes, with its rules: an empty text stays empty, a close code already
 #     inside is followed by the open again, and a line break closes the style and opens it again after (`\r\n` kept whole). A chained
 #     style opens outer first and closes inner first: `green.bold` is `\e[32m\e[1m` ... `\e[22m\e[39m`
-#   - `color` is a parameter, the face's `chalk.level > 0`, which asks the terminal
-#   - the platform, the node version and the home folder are handed in, as `os` and `process` gave them
+#   - `banner-text` and `info-text` take the color, the platform, the runtime and the home folder as parameters, and
+#     `banner-shown` and `info-shown` read them through @term/base and hand them in (decision 064 section 3): the
+#     color by `uses-color` (standard output), as every other CLI line asks it, where the face asked chalk; the
+#     platform and architecture by machine's `read-platform` and `read-architecture`, spelled as node's `os` spells
+#     them on every backend; the runtime by `read-runtime` (`node v22.23.4` on node); the home by
+#     `known-directory(<home>)`
+#   - the info line says `Runtime:`, where it said `Node:` and printed `process.version` (decision 064, Diverges): the
+#     native binary has no node
 
 load @term/base/list
   find list
@@ -24,6 +30,17 @@ load @term/base/text
 
 load @term/base/text/string
   find slice
+
+load @term/base/terminal
+  find uses-color
+
+load @term/base/machine
+  find read-platform
+  find read-architecture
+  find read-runtime
+
+load @term/base/environment/path
+  find known-directory
 
 # one command of the banner, as typed, and what it does
 form banner-command
@@ -263,7 +280,7 @@ task info-text
   take version, like text
   take platform, like text
   take arch, like text
-  take node, like text
+  take runtime, like text
   take home, like text
   like text
 
@@ -271,7 +288,22 @@ task info-text
   push(lines, <{name-mark(color, <term>)} {gray(color, version)}>)
   push(lines, <>)
   push(lines, <{white(color, <  Platform:  >)}{platform} {arch}>)
-  push(lines, <{white(color, <  Node:      >)}{node}>)
+  push(lines, <{white(color, <  Runtime:   >)}{runtime}>)
   push(lines, <{white(color, <  Home:      >)}{home}>)
 
   back <{join(lines, <\n>)}\n>
+
+# ---- the texts, as this process shows them ----
+
+# the banner, colored when standard output takes color
+task banner-shown
+  like text
+
+  back banner-text(uses-color())
+
+# the info text of the program running: its platform, architecture, runtime and home, read through @term/base
+task info-shown
+  take version, like text
+  like text
+
+  back info-text(uses-color(), version, read-platform(), read-architecture(), read-runtime(), known-directory(<home>))

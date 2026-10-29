@@ -6,11 +6,9 @@
 //     only when not
 //   - a `Grammar`'s lean rules are a `Set`, and may be absent (the parity gate loads a grammar from disk without them)
 //   - the role and the lean flag may be left out
-//   - every node is in node-json's declared form: a `need false` field at its default is ABSENT, as the original left
-//     it (decision 034 section 2 makes the two one value, but TypeScript readers still test `x !== undefined`, among
-//     them check/infer.ts's loop labels and the emitters' `label`, `index` and `nick`, which read "" as a name). The
-//     port writes the default, since a Term record holds every field, so the face reads each statement and twin back
-//     from its node-json text. Remove this once no TypeScript reader of the program is left.
+// Each statement and twin is the port's own record, every field written, a `need false` field at its default
+// included: decision 034 section 2 makes an absent field and its default one value, and since the checker and the
+// emitters are Term no reader tells them apart (decision 046 section 2, decision 060, item 0318).
 // The original is tmp/retired/make/compile/mint-bridge-minting.ts (and -at.ts, -at-route.ts beside it, decision 042).
 
 import type { RootNode } from '@term/make/code/parser/narrow'
@@ -19,7 +17,6 @@ import type { Program, Twin } from '@term/make/code/compile/node'
 import type { MineGrammar, MintGrammar } from '@term/make/code/compile/mill-run'
 import * as port from '@term/make/code/compile/minting'
 import { maskSelf } from '@term/make/code/compile/minting-reads'
-import { statementJson, twinJson } from '@term/make/code/compile/node-json'
 
 export type MillResult =
   // `twins` sit beside the program and never in it (node.ts, `Twin`), so a reader that ignores them is correct
@@ -40,10 +37,8 @@ export function millResultOf(result: port.MillResult): MillResult {
   if (!result.ok) {
     return { ok: false, diagnostics: result.diagnostics as unknown as Diagnostic[] }
   }
-  const program = result.program.map(one => JSON.parse(statementJson([], one as never))) as Program
-  return result.twins.length > 0
-    ? { ok: true, program, twins: result.twins.map(one => JSON.parse(twinJson([], one as never))) as Twin[] }
-    : { ok: true, program }
+  const program = result.program as unknown as Program
+  return result.twins.length > 0 ? { ok: true, program, twins: result.twins as unknown as Twin[] } : { ok: true, program }
 }
 
 export function millByGrammar(

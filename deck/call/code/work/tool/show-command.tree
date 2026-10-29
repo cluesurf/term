@@ -26,13 +26,12 @@ load ../need/running-install
 load ../small/tool-asking
   find ask-tool
 
-# the info text, in Term, coloured by chalk's rules for standard output (decision cli-in-term/014 part 3,
-# term-cli-in-term-0197), where make/code/show.ts asked `chalk.level > 0`
+# the info text, in Term, colored by chalk's rules for standard output (decision cli-in-term/014 part 3,
+# term-cli-in-term-0197), where make/code/show.ts asked `chalk.level > 0`. Its platform, runtime and home are read
+# through @term/base by banner.tree itself (decision 064 section 3), where this file handed in node's `os` and
+# `process.version`
 load @term/make/banner
-  find info-text
-
-load @term/base/terminal
-  find uses-color
+  find info-shown
 
 # the project's manifest and its version, @term/deck's ports (term-cli-in-term-0236), where a bind imported
 # the package manager's faces at run time
@@ -81,12 +80,6 @@ bind tool-shown-version
   like text
   case node
     text <<String($version ?? "0.0.0")>>
-
-# the running Node's version, as show.ts read `process.version`
-bind tool-node-version
-  like text
-  case node
-    text <process.version>
 
 bind tool-mark-json
   take mark, like dynamic
@@ -344,7 +337,7 @@ task call-show
         hold
           print-data(<{tool-platform-json(node-os, input/version)}\n>)
         miss
-          print-data(info-text(uses-color(), tool-shown-version(input/version), node-os/platform(), node-os/arch(), tool-node-version(), node-os/homedir()))
+          print-data(info-shown(tool-shown-version(input/version)))
       back
 
   fork test, is-equal(what, <tools>)

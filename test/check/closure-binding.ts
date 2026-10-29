@@ -132,7 +132,8 @@ const KINDS = `form analysis-kind\n  mark text\n  case view\n  case code\n\nform
 {
   const main = `load @app/doc\n  find lower\n\n${KINDS}\ntask run\n  like number\n  back lower()/length\n`
   const result = build({ '@app/node': NODE, '@app/doc': DOC }, main)
-  ok('a shared case built by an importer: told the imported owner, its form renamed __form by the closure', result.ok, said(result))
+  // since term-self-host-001-0378 a union keeps its name whatever cases the closure holds, so nothing is renamed here
+  ok('a shared case built by an importer: told the imported owner, with a case named like its form in the closure', result.ok, said(result))
 }
 
 // ---- a record form found by name beside a union whose case has the name (term-self-host-001-0332, decision 049) ----
