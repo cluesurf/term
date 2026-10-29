@@ -24,4 +24,9 @@ mod machine {
         }
         .to_string()
     }
+
+    // the runtime running the program: a compiled binary carries no runtime version of its own to name
+    pub fn runtime() -> String {
+        "rust".to_string()
+    }
 }

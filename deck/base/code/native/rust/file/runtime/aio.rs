@@ -329,12 +329,32 @@ mod aio {
 
     // ---- streams ----
 
-    // A read stream is the open file plus how many bytes of the window are left. `size` 0 means to the end.
+    // A read stream is the open file plus how many bytes of the window are left. `size` 0 means to the end. `tail` holds
+    // the bytes of a character a chunk boundary split, until the next chunk completes it (decision 067 section 3,
+    // term-self-host-001-0380).
     pub type Reader = Arc<Mutex<ReaderState>>;
 
     pub struct ReaderState {
         pub file: std::fs::File,
         pub left: Option<u64>,
+        pub tail: Vec<u8>,
+    }
+
+    // how many trailing bytes begin a character the bytes do not complete: 0 to 3
+    fn incomplete_tail(bytes: &[u8]) -> usize {
+        for back in 1..=bytes.len().min(3) {
+            let byte = bytes[bytes.len() - back];
+
+            if byte & 0xC0 == 0x80 {
+                continue;
+            }
+
+            let need = if byte >= 0xF0 { 4 } else if byte >= 0xE0 { 3 } else if byte >= 0xC0 { 2 } else { 1 };
+
+            return if need > back { back } else { 0 };
+        }
+
+        0
     }
 
     pub async fn reader_open(path: String, start: i64, size: i64) -> Reader {
@@ -353,29 +373,48 @@ mod aio {
         Arc::new(Mutex::new(ReaderState {
             file,
             left: if size > 0 { Some(size as u64) } else { None },
+            tail: Vec::new(),
         }))
     }
 
-    // the next chunk, or "" at the end of the stream (or the end of the window)
+    // the next chunk, or "" at the end of the stream (or the end of the window). A chunk ends before an incomplete
+    // character, held in `tail` for the next one; at the end the held bytes are flushed (as U+FFFD, being incomplete).
+    // A chunk that decoded to nothing while bytes were read reads on, so "" only ever means the end
     pub async fn reader_next(stream: Reader) -> String {
         crate::__term_hand_back(move || {
             let mut state = match stream.lock() {
                 Ok(state) => state,
                 Err(_) => return String::new(),
             };
-            let want = match state.left {
-                Some(0) => return String::new(),
-                Some(left) => left.min(65536) as usize,
-                None => 65536,
-            };
-            let mut buffer = vec![0u8; want];
-            let count = state.file.read(&mut buffer).unwrap_or(0);
 
-            if let Some(left) = state.left.as_mut() {
-                *left = left.saturating_sub(count as u64);
+            loop {
+                let want = match state.left {
+                    Some(0) => 0,
+                    Some(left) => left.min(65536) as usize,
+                    None => 65536,
+                };
+                let mut buffer = vec![0u8; want];
+                let count = if want == 0 { 0 } else { state.file.read(&mut buffer).unwrap_or(0) };
+
+                if count == 0 {
+                    let rest = std::mem::take(&mut state.tail);
+
+                    return String::from_utf8_lossy(&rest).to_string();
+                }
+
+                if let Some(left) = state.left.as_mut() {
+                    *left = left.saturating_sub(count as u64);
+                }
+
+                let mut bytes = std::mem::take(&mut state.tail);
+                bytes.extend_from_slice(&buffer[..count]);
+                let keep = bytes.len() - incomplete_tail(&bytes);
+                state.tail = bytes.split_off(keep);
+
+                if !bytes.is_empty() {
+                    return String::from_utf8_lossy(&bytes).to_string();
+                }
             }
-
-            String::from_utf8_lossy(&buffer[..count]).to_string()
         })
         .await
     }

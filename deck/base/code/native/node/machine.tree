@@ -17,3 +17,8 @@ task host-architecture
   like text
   send back
     call machine/architecture
+
+task host-runtime
+  like text
+  send back
+    call machine/runtime

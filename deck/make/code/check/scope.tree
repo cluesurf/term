@@ -216,18 +216,17 @@ task with-owner-renamed
 
 # A FORM AND A VARIANT CASE OF ONE NAME. `make <name>` constructs either, and the flat program gave every such
 # construction to whichever it met: a user's `case pair` was built by the stdlib's zip in place of its own `pair` form,
-# and the user's own `make pair` was refused for missing the stdlib form's fields. So a form whose name is also some
-# form's case takes a name of its own (`<name>__form`), the entry file's too unless it is a union or a mask (decision
-# 045), and the case keeps its name, which
-# reaches the output (a TypeScript tag, a printed record). Then each reference is bound: a named type, a raise, a method
-# and a mask instance can only mean the form; a construction means the case where its file defines that case's form or
-# imports it, the form where its file defines or imports the form, and otherwise whichever's fields the construction
-# names, the case where that does not decide. A form with cases (a union) or a mask is never built by its own name, so
-# a construction of that name is always the case, as the checker reads it in the entry file (term-self-host-001-0294)
+# and the user's own `make pair` was refused for missing the stdlib form's fields. So a RECORD form whose name is also
+# some form's case takes a name of its own (`<name>__form`), the entry file's too (decision 045), and the case keeps its
+# name, which reaches the output (a TypeScript tag, a printed record). Then each reference is bound: a named type, a
+# raise, a method and a mask instance can only mean the form; a construction means the case where its file defines that
+# case's form or imports it, the form where its file defines or imports the form, and otherwise whichever's fields the
+# construction names, the case where that does not decide. A form with cases (a union) or a mask is never built by its
+# own name, so a construction of that name is always the case, as the checker reads it (term-self-host-001-0294), and
+# it keeps its name in every file: a case is never a type and never renames its form (decision 066 section 2)
 task separate-case-names
   take program, like list, like statement
   take scopes, like list, like file-scope
-  take entry, like text
   like list, like statement
   mark private
 
@@ -295,7 +294,6 @@ task separate-case-names
         turn next
     save found-case, get(cases, at)
     save owners, found-case/owners
-    save in-entry, false
     save form-files, make list
     save form-fields, make list
     save constructible, false
@@ -303,9 +301,6 @@ task separate-case-names
       take i
       save defining, get(program, i)
       save home, file-of(defining)
-      fork test, is-equal(home, entry)
-        hold
-          save in-entry, true
       fork test, not(has-text(form-files, home))
         hold
           push(form-files, home)
@@ -323,17 +318,15 @@ task separate-case-names
           save nothing, 0
     # THE ENTRY'S RECORD FORM IS RENAMED AS A LOADED ONE IS (decision 045, term-self-host-001-0295): kept by its name in
     # the entry, the checker built the case for every construction there, so a file that built its own form failed as
-    # the entry and built loaded. A union or a mask keeps its name in the entry, where nothing builds it and its types
-    # bind alike either way. The build exports the renamed form by its written name too (compile.ts `entryFormAliases`)
-    fork test, and(in-entry, not(constructible))
-      hold
-        turn next
-    # a union or a mask is never built by its own name: no file's construction means it and no field fits it, so
-    # compile/node-rewrite.tree `means-form` answers the case for every construction of the name
+    # the entry and built loaded. The build exports the renamed form by its written name too (compile.ts
+    # `entryFormAliases`).
+    # A UNION OR A MASK KEEPS ITS NAME IN EVERY FILE (decision 066 section 2, term-self-host-001-0378): nothing builds
+    # it by its name, so a construction of the name is the case and a named type the form, renamed or not. Renamed, it
+    # lost what the emitters know by its name: the stdlib's `maybe`, renamed `maybe__form` beside a case `maybe`, no
+    # longer made a `need false` field `f?: T` on TypeScript, so the field was boxed and one left out read undefined
     fork test, not(constructible)
       hold
-        save form-files, make list
-        save form-fields, make list
+        turn next
     save renamed, <{form/name}__form>
     walk form/indices
       take i
@@ -371,7 +364,7 @@ task bind-forms-by-import
   take entry, like text
   like scope-result
 
-  save program, separate-case-names(program, scopes, entry)
+  save program, separate-case-names(program, scopes)
 
   # each name's definitions by file, files in the order first met, and each file's last place in the program
   save by-name, make list

@@ -1,0 +1,98 @@
+# `file/stream/reader` reads a file a chunk at a time, 64 KiB at most, and a character whose bytes a chunk boundary
+# splits reads whole, the same on every backend (decision 067 section 3, term-self-host-001-0380): `three.txt` puts byte
+# 65,536 inside a 3-byte character (65,535 `a` then `€z`), `four.txt` inside a 4-byte one (65,534 `b` then `😀z`), and
+# each read through the reader equals the whole-file read. Held by `pnpm term:base-gate`.
+#
+# The fixture is built by `sh` run through `process/run`, as in test/file/blocking.tree. The directories sit under the
+# system's temporary directory and are left for it to clear: nothing here removes a file.
+
+load @term/base/file/stream/reader
+  find create, name open-reader
+  find read, name next-chunk
+  find close, name close-reader
+
+load @term/base/file/blocking
+  find read, name read-path
+
+load @term/base/text
+  find ends-with
+
+load @term/base/process/run
+  find run
+
+# a new directory holding `three.txt` and `four.txt`. It answers the directory's path, printed without a newline
+task make-fixture
+  like text
+  save arguments
+    make list
+  call arguments/push
+    text <-c>
+  call arguments/push
+    text <d=$(mktemp -d); head -c 65535 /dev/zero | tr '\\0' a \> "$d/three.txt"; printf %s '€z' \>\> "$d/three.txt"; head -c 65534 /dev/zero | tr '\\0' b \> "$d/four.txt"; printf %s '😀z' \>\> "$d/four.txt"; printf %s "$d">
+  save result
+    call run
+      text </bin/sh>
+      read arguments
+  send back, read result/output
+
+# the whole file, read through the stream reader chunk by chunk until the empty chunk that ends it
+task read-streamed
+  take path, like text
+  like text
+  save stream
+    call open-reader
+      read path
+  save out, text <>
+  save going, true
+  walk test
+    hook test
+      read going
+    hook hold
+      save chunk
+        call next-chunk
+          read stream
+      fork test
+        call is-equal
+          read chunk
+          text <>
+        hook hold
+          save going, false
+        hook miss
+          save out, text <{{out}}{{chunk}}>
+  call close-reader
+    read stream
+  send back, read out
+
+test <a 3-byte character across the 64 KiB boundary reads whole through the reader>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/three.txt>
+  save got
+    call read-streamed
+      read path
+  want hold
+    call and
+      call is-equal
+        read got
+        call read-path
+          read path
+      call ends-with
+        read got
+        text <a€z>
+
+test <a 4-byte character across the 64 KiB boundary reads whole through the reader>
+  save dir
+    call make-fixture
+  save path, text <{{dir}}/four.txt>
+  save got
+    call read-streamed
+      read path
+  want hold
+    call and
+      call is-equal
+        read got
+        call read-path
+          read path
+      call ends-with
+        read got
+        text <b😀z>

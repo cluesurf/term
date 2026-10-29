@@ -9,11 +9,11 @@
 #    functions are made transparent / usable as proofs).
 #
 # Ported from check/totality.ts (self-hosting, 2026-10-06), which stays as the face, so this module has a name of its
-# own. Three things come in from it: the
+# own. Two things come in from it: the
 # linear prover (`proves`, check/refine.ts, whose memo and count of uncertified answers are module state, so the
-# prover is asked exactly what and when the original asked it), whether a match arm WROTE its `binds` (an arm a
-# rewrite gave an empty list reads no variant's fields, where an arm with none does, and Term reads an absent list as
-# empty), and the guard that turns a failed termination pass into no warnings. The original handed each walk a callback
+# prover is asked exactly what and when the original asked it), and the guard that turns a failed termination pass
+# into no warnings. An arm's own `binds` are read by their length: an empty list means what an absent one means
+# (decision 060 of change 001), so an arm with none reads the variant's fields. The original handed each walk a callback
 # per call and kept the walk's own map of members, which a later rebinding in the same body still changes; here every
 # call is recorded with the frame it was made in (`call-at`), a shared record whose members change the same way, and
 # filtered afterwards in the order it was visited.
@@ -686,10 +686,6 @@ task walk-calls
   take body, like list, like statement
   take members, like hash, like text, like text
   take guards, like list, like expression
-  take binds-given
-    like task
-      take arm, like match-case
-      like boolean
   like void
   mark private
 
@@ -699,7 +695,7 @@ task walk-calls
       bind path, guards
   walk body
     take one
-    visit-statement(out, frame, one, binds-given)
+    visit-statement(out, frame, one)
 
 # did the resolver bind this name to a local or a parameter, so that it names no task
 task locally-bound
@@ -725,10 +721,6 @@ task visit-expression
   take frame, like frame
   take node, like expression
   take at, like list, like expression
-  take binds-given
-    like task
-      take arm, like match-case
-      like boolean
   like void
   mark private
 
@@ -761,53 +753,53 @@ task visit-expression
                   bind guards, at
               push(out/calls, made)
         miss
-          visit-expression(out, frame, callee, at, binds-given)
+          visit-expression(out, frame, callee, at)
       walk args
         take arg
-        visit-expression(out, frame, arg, at, binds-given)
+        visit-expression(out, frame, arg, at)
     case binary
-      visit-expression(out, frame, left, at, binds-given)
-      visit-expression(out, frame, right, at, binds-given)
+      visit-expression(out, frame, left, at)
+      visit-expression(out, frame, right, at)
     case unary
-      visit-expression(out, frame, operand, at, binds-given)
+      visit-expression(out, frame, operand, at)
     case member
-      visit-expression(out, frame, target, at, binds-given)
+      visit-expression(out, frame, target, at)
     case await
-      visit-expression(out, frame, expr, at, binds-given)
+      visit-expression(out, frame, expr, at)
     case template
       walk parts
         take part
         sift part
           case value
             link inner
-            visit-expression(out, frame, inner, at, binds-given)
+            visit-expression(out, frame, inner, at)
           case chunk
             turn next
     case array
       walk items
         take item
-        visit-expression(out, frame, item, at, binds-given)
+        visit-expression(out, frame, item, at)
     case map
       walk entries
         take entry
-        visit-expression(out, frame, entry/key, at, binds-given)
-        visit-expression(out, frame, entry/value, at, binds-given)
+        visit-expression(out, frame, entry/key, at)
+        visit-expression(out, frame, entry/value, at)
     case record
       walk fields
         take field
-        visit-expression(out, frame, field/value, at, binds-given)
+        visit-expression(out, frame, field/value, at)
     case conditional
       # a branch's value is reached when its condition holds and every earlier one failed
       save failed, make list
       walk branches
         take branch
-        visit-expression(out, frame, branch/cond, joined(at, failed), binds-given)
-        visit-expression(out, frame, branch/value, joined(joined(at, failed), one-of(branch/cond)), binds-given)
+        visit-expression(out, frame, branch/cond, joined(at, failed))
+        visit-expression(out, frame, branch/value, joined(joined(at, failed), one-of(branch/cond)))
         push(failed, negation(branch/cond))
       sift otherwise
         case some
           link last
-          visit-expression(out, frame, last, joined(at, failed), binds-given)
+          visit-expression(out, frame, last, joined(at, failed))
         case none
           save nothing, 0
     case closure
@@ -819,7 +811,7 @@ task visit-expression
         take param
         push(names, param/name)
       save unguarded, make list
-      walk-calls(out, body, members-without(frame/members, names), unguarded, binds-given)
+      walk-calls(out, body, members-without(frame/members, names), unguarded)
     miss
       save nothing, 0
 
@@ -827,56 +819,52 @@ task visit-statement
   take out, like walked
   take frame, like frame
   take node, like statement
-  take binds-given
-    like task
-      take arm, like match-case
-      like boolean
   like void
   mark private
 
   sift node
     case let
-      visit-expression(out, frame, init, frame/path, binds-given)
+      visit-expression(out, frame, init, frame/path)
       save bound, make list
       push(bound, name)
       forget(frame, bound)
     case assign
-      visit-expression(out, frame, target, frame/path, binds-given)
-      visit-expression(out, frame, read(value), frame/path, binds-given)
+      visit-expression(out, frame, target, frame/path)
+      visit-expression(out, frame, read(value), frame/path)
       forget(frame, statement-written(node))
     case expression
-      visit-expression(out, frame, expr, frame/path, binds-given)
+      visit-expression(out, frame, expr, frame/path)
     case return
       sift read(value)
         case some
           link given
-          visit-expression(out, frame, given, frame/path, binds-given)
+          visit-expression(out, frame, given, frame/path)
         case none
           save nothing, 0
     case throw
-      visit-expression(out, frame, read(value), frame/path, binds-given)
+      visit-expression(out, frame, read(value), frame/path)
     case hold
-      visit-expression(out, frame, expr, frame/path, binds-given)
+      visit-expression(out, frame, expr, frame/path)
     case while
       # a later turn sees what an earlier one wrote, so neither a member nor a guard about a name the loop writes holds
       # inside it, beyond the condition each turn tests
       save written, block-written(body)
-      visit-expression(out, frame, cond, without(frame/path, written), binds-given)
-      walk-calls(out, body, members-without(frame/members, written), joined(without(frame/path, written), one-of(cond)), binds-given)
+      visit-expression(out, frame, cond, without(frame/path, written))
+      walk-calls(out, body, members-without(frame/members, written), joined(without(frame/path, written), one-of(cond)))
       forget(frame, written)
     case guard
-      walk-calls(out, body, frame/members, frame/path, binds-given)
+      walk-calls(out, body, frame/members, frame/path)
       sift catch
         case some
           link clause
           save caught, make list
           push(caught, clause/name)
-          walk-calls(out, clause/body, members-without(frame/members, caught), without(frame/path, caught), binds-given)
+          walk-calls(out, clause/body, members-without(frame/members, caught), without(frame/path, caught))
         case none
           save nothing, 0
       forget(frame, statement-written(node))
     case for-each
-      visit-expression(out, frame, iterable, frame/path, binds-given)
+      visit-expression(out, frame, iterable, frame/path)
       save bound, make list
       push(bound, item)
       fork test, is-unequal(index, <>)
@@ -885,19 +873,19 @@ task visit-statement
       walk block-written(body)
         take written
         push(bound, written)
-      walk-calls(out, body, members-without(frame/members, bound), without(frame/path, bound), binds-given)
+      walk-calls(out, body, members-without(frame/members, bound), without(frame/path, bound))
       forget(frame, block-written(body))
     case if
       save failed, make list
       walk branches
         take branch
-        visit-expression(out, frame, branch/cond, joined(frame/path, failed), binds-given)
-        walk-calls(out, branch/body, frame/members, joined(joined(frame/path, failed), one-of(branch/cond)), binds-given)
+        visit-expression(out, frame, branch/cond, joined(frame/path, failed))
+        walk-calls(out, branch/body, frame/members, joined(joined(frame/path, failed), one-of(branch/cond)))
         push(failed, negation(branch/cond))
       sift otherwise
         case some
           link last
-          walk-calls(out, last, frame/members, joined(frame/path, failed), binds-given)
+          walk-calls(out, last, frame/members, joined(frame/path, failed))
         case none
           save nothing, 0
       # what a branch wrote is a new value after the `if`
@@ -911,7 +899,7 @@ task visit-statement
             halt
         save frame/path, joined(frame/path, one-of(negation(branch/cond)))
     case match
-      visit-expression(out, frame, subject, frame/path, binds-given)
+      visit-expression(out, frame, subject, frame/path)
       # if the match is on a plain variable, the matched fields of each branch are members of that variable
       save subject-name, <>
       sift subject
@@ -923,7 +911,7 @@ task visit-statement
       walk cases
         take arm
         save fields, make list
-        fork test, binds-given(arm)
+        fork test, is-above(arm/binds/length, 0)
           hold
             walk arm/binds
               take bound-name
@@ -940,11 +928,11 @@ task visit-statement
             walk fields
               take field-name
               save branch-members/{field-name}, subject-name
-        walk-calls(out, arm/body, branch-members, without(frame/path, fields), binds-given)
+        walk-calls(out, arm/body, branch-members, without(frame/path, fields))
       sift otherwise
         case some
           link last
-          walk-calls(out, last, frame/members, frame/path, binds-given)
+          walk-calls(out, last, frame/members, frame/path)
         case none
           save nothing, 0
       forget(frame, statement-written(node))
@@ -1285,10 +1273,6 @@ task termination-verdict
       take assumptions, like list, like inequality
       take goal, like inequality
       like boolean
-  take binds-given
-    like task
-      take arm, like match-case
-      like boolean
   like verdicts
 
   save known
@@ -1329,7 +1313,7 @@ task termination-verdict
         bind variant-fields, variant-fields
     save no-members, make hash
     save no-guards, make list
-    walk-calls(found, body-of(one), no-members, no-guards, binds-given)
+    walk-calls(found, body-of(one), no-members, no-guards)
     save known/walks/{name}, found
     save locals, local-names(one)
     save values, make list
@@ -1509,13 +1493,9 @@ task terminating-functions
       take assumptions, like list, like inequality
       take goal, like inequality
       like boolean
-  take binds-given
-    like task
-      take arm, like match-case
-      like boolean
   like list, like text
 
-  save verdict, termination-verdict(program, proves, binds-given)
+  save verdict, termination-verdict(program, proves)
   save out, make list
   walk verdict/names
     take name
@@ -1532,13 +1512,9 @@ task termination-warnings
       take assumptions, like list, like inequality
       take goal, like inequality
       like boolean
-  take binds-given
-    like task
-      take arm, like match-case
-      like boolean
   like list, like diagnostic
 
-  save verdict, termination-verdict(program, proves, binds-given)
+  save verdict, termination-verdict(program, proves)
   save by-name, make hash
   walk program
     take one

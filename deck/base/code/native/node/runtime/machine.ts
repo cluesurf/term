@@ -7,4 +7,6 @@ const machine = {
   cores: (): number => Math.max(1, machineCpus().length),
   platform: (): string => process.platform,
   architecture: (): string => process.arch,
+  // the runtime running the program: `node`, a space, and node's own version (`node v22.23.4`)
+  runtime: (): string => `node ${process.version}`,
 }

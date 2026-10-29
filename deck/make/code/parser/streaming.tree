@@ -125,6 +125,95 @@ task group-result
       bind group, group
       bind lines, lines
 
+# THE BOUNDARY RULE, WRITTEN ONCE, AS A STEPPING RECORD (decision 066 section 1, item 0377), the shape
+# compile/block-split.tree proves: a walk holds the file's name and the current group's lines, `step-groups` reads one
+# line and answers the group that line completes, and `end-groups` answers what the held lines come to once the lines
+# run out. `walk-groups` and `list-groups` are two loops over those two, so a Term caller needs no closure
+form group-walk
+  mark shared
+  link file, like text
+  # the lines of the group being read
+  link held, like list, like text
+
+task make-group-walk
+  take file, like text
+  like group-walk
+
+  back
+    make group-walk
+      bind file, file
+      bind held, make list
+
+# read one line. A new group starts here only if what is held is already a complete one: the held group comes back.
+# Held lines that do not parse are an unclosed construct (a `text <...>` spanning lines), and this column-0 line is its
+# content
+task step-groups
+  take reading, like group-walk
+  take line, like text
+  like maybe, like stream-result
+
+  host held, reading/held
+  save done, make none
+  fork test, and(is-above(held/length, 0), opens-group(line))
+    hold
+      sift complete(reading/file, held)
+        case some
+          link group
+          save closed, group-result(group, held/length)
+          save done, make(some, closed)
+          save reading/held, make list
+        case none
+          save nothing, 0
+  reading/held/push(line)
+
+  back done
+
+# what the held lines come to once the lines run out: the last group then the end, the end alone, or a kink
+task end-groups
+  take reading, like group-walk
+  like list, like stream-result
+
+  host held, reading/held
+  save out, make list
+  save ended, make stream-result/end
+  fork test, is-equal(held/length, 0)
+    hold
+      out/push(ended)
+      back out
+
+  sift complete(reading/file, held)
+    case some
+      link group
+      out/push(group-result(group, held/length))
+      out/push(ended)
+      back out
+    case none
+      save nothing, 0
+
+  # Trailing lines that are only comments or blanks are not a group and are not a failure: a file may end with a
+  # comment. Anything else that will not parse ended mid-construct, and saying so is the point
+  fork test, all-notes(held)
+    hold
+      out/push(ended)
+      back out
+
+  save source
+    make token-source
+      bind file, reading/file
+      bind text, join(held, <\n>)
+  save parsed, parse(source)
+  save found, make list
+  fork test, not(parsed/ok)
+    hold
+      save found, parsed/diagnostics
+  save kink
+    make stream-result/kink
+      bind diagnostics, found
+      bind lines, held/length
+  out/push(kink)
+
+  back out
+
 # The groups of a source, in order, each handed over as soon as it is complete. A consumer may stop after any one of
 # them, by `give` answering false, and pays only for what it read: the reader holds the current group's lines and
 # nothing else. `next-line` hands the source's lines one at a time, none at the end
@@ -138,7 +227,7 @@ task walk-groups
       take result, like stream-result
       like boolean
 
-  save held, make list
+  host reading, make-group-walk(file)
   save going, true
   walk test
     hook test, going
@@ -146,59 +235,41 @@ task walk-groups
       sift next-line()
         case some
           link line
-          # a new group starts here only if what is held is already a complete one. Held lines that do not parse are an
-          # unclosed construct (a `text <...>` spanning lines), and this column-0 line is its content
-          fork test, and(is-above(held/length, 0), opens-group(line))
-            hold
-              sift complete(file, held)
-                case some
-                  link group
-                  fork test, not(give(group-result(group, held/length)))
-                    hold
-                      back
-                  save held, make list
-                case none
-                  save nothing, 0
-          push(held, line)
+          sift step-groups(reading, line)
+            case some
+              link result
+              fork test, not(give(result))
+                hold
+                  back
+            case none
+              save nothing, 0
         case none
           save going, false
 
-  fork test, is-equal(held/length, 0)
-    hold
-      save ended, make stream-result/end
-      give(ended)
-      back
+  walk end-groups(reading)
+    take result
+    fork test, not(give(result))
+      hold
+        back
 
-  sift complete(file, held)
-    case some
-      link group
-      fork test, give(group-result(group, held/length))
-        hold
-          save ended, make stream-result/end
-          give(ended)
-      back
-    case none
-      save nothing, 0
+# every result for a list of lines, the end (or the kink) last: what `walk-groups` gives a consumer that never stops
+task list-groups
+  take file, like text
+  take lines, like list, like text
+  like list, like stream-result
 
-  # Trailing lines that are only comments or blanks are not a group and are not a failure: a file may end with a
-  # comment. Anything else that will not parse ended mid-construct, and saying so is the point
-  fork test, all-notes(held)
-    hold
-      save ended, make stream-result/end
-      give(ended)
-      back
+  host reading, make-group-walk(file)
+  host out, make list
+  walk lines
+    take line
+    sift step-groups(reading, line)
+      case some
+        link result
+        out/push(result)
+      case none
+        save nothing, 0
+  walk end-groups(reading)
+    take result
+    out/push(result)
 
-  save source
-    make token-source
-      bind file, file
-      bind text, join(held, <\n>)
-  save parsed, parse(source)
-  save found, make list
-  fork test, not(parsed/ok)
-    hold
-      save found, parsed/diagnostics
-  save kink
-    make stream-result/kink
-      bind diagnostics, found
-      bind lines, held/length
-  give(kink)
+  back out

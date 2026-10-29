@@ -6,9 +6,11 @@ load @term/base/machine
   find count-cores
   find read-platform
   find read-architecture
+  find read-runtime
 
 load @term/base/text
   find char-count
+  find starts-with
 
 test <the core count is above zero>
   want hold
@@ -56,3 +58,32 @@ test <the names are never empty>
         call char-count
           call read-architecture
         code 0
+
+# the runtime names itself, never empty: `node v22.23.4`, `rust`, `swift`, `jvm 21.0.4`
+test <the runtime is never empty>
+  want hold
+    call is-above
+      call char-count
+        call read-runtime
+      code 0
+
+test <the runtime starts with node, rust, swift or jvm>
+  save name
+    call read-runtime
+  want hold
+    call or
+      call starts-with
+        read name
+        text <node >
+      call or
+        call is-equal
+          read name
+          text <rust>
+        call or
+          call is-equal
+            read name
+            text <swift>
+          call starts-with
+            read name
+            text <jvm >
+

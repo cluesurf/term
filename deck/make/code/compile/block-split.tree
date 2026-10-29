@@ -9,8 +9,9 @@
 #
 # Ported from compile/stream.ts (self-hosting, 2026-10-04), where the rule was written twice, once in `splitStreaming`
 # over an iterable and once in `walkFileBlocks` over node's `readline`. Here it is written once, as a splitter fed one
-# line at a time that answers the block a line completes. The two loops stay there and feed it, because reading a file
-# line by line is a node capability at the edge.
+# line at a time that answers the block a line completes. The loop over a list of lines is `split-lines` (item 0381,
+# decision 067: stream.ts retires); a file is read a chunk at a time through @term/base/file/stream/reader and fed
+# here line by line.
 
 load @term/base/list
   find list
@@ -99,9 +100,9 @@ task feed-line
           save trailing, add(trailing, 1)
 
       save keep, subtract(lines/length, trailing)
-      done/push(make-top-block(join(slice(lines, 0, keep), <\n>), splitter/start-line))
+      done/push(make-top-block(join(lines/slice(0, keep), <\n>), splitter/start-line))
       save splitter/start-line, add(splitter/start-line, keep)
-      save splitter/lines, slice(lines, keep, lines/length)
+      save splitter/lines, lines/slice(keep, lines/length)
 
   fork test, is-head(line)
     hold
@@ -117,3 +118,20 @@ task finish-blocks
   like top-block
 
   back make-top-block(join(splitter/lines, <\n>), splitter/start-line)
+
+# every block of a file given as its lines, the last one included: the splitter fed each line, then finished. It answers
+# what compile/incremental-parse.ts `splitTopLevel` answers for the lines joined (decision 067 section 2, item 0381)
+task split-lines
+  take lines, like list, like text
+  like list, like top-block
+
+  host splitter, make-block-splitter()
+  host out, make list
+  walk lines
+    take line
+    walk feed-line(splitter, line)
+      take block
+      out/push(block)
+  out/push(finish-blocks(splitter))
+
+  back out

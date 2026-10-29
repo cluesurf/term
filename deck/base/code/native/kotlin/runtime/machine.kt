@@ -18,4 +18,7 @@ object machine {
         else if (arch == "x86" || arch == "i386" || arch == "i686") "ia32"
         else arch
     }
+
+    // the runtime running the program: `jvm`, a space, and the JVM's own `java.version` (`jvm 21.0.4`)
+    fun runtime(): String = "jvm ${System.getProperty("java.version") ?: ""}".trimEnd()
 }

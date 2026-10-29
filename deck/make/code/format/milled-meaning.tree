@@ -1,0 +1,112 @@
+# What format/meaning.ts held beside format/meanings.tree (item term-self-host-001-0087): the mill, the walk of its
+# answer into the ordered JSON value meanings.tree reads, the import paths, and the formatter's meaning check. The
+# decisions:
+#   - the program is milled by compile/minting.tree's `mill` and each statement is read back from its node-json text,
+#     exactly as compile/mint-bridge.ts reads it for a TypeScript caller (decision 046), so the walk sees node-json's
+#     declared key order with every default left out. The text is parsed by the host's JSON parser and walked by
+#     compile/rolling-plain.tree's `roll-value-of`, the one reader of a plain value that keeps key order
+#   - a raise out of the mill reads as no meaning, as the face's `catch` did
+#   - the import paths are compile/loading.tree's scan of one parse, joined by `|`, as compile/load.ts's
+#     `importPathsOf` answered over a fresh parse memo
+#   - the formatter's meaning check is format/layout.tree's `format-report` handed these two tasks, where format.ts
+#     handed it TypeScript closures
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/native/{platform}/json
+  find json-parse
+
+load ../parser/tree
+  find root-node
+  find parse
+  find print-tree
+
+load ../parser/token
+  find token-source
+
+load ../compile/minting
+  find mill
+
+load ../compile/node-json
+  find statement-json
+
+load ../compile/rolling
+  find roll-value
+
+load ../compile/rolling-plain
+  find roll-value-of
+
+load ../compile/loading
+  find scan-parsed
+
+load ./meanings
+  find meaning-of
+
+load ./layout
+  find layout-options
+  find layout-report
+  find format-report
+
+# The mill's program for a tree, spans dropped and template pieces merged, as JSON, or none when it does not mill.
+# `lean` is the file's `mark lean`: a lean file milled as longhand is a different program
+task program-of
+  take tree, like root-node
+  take file, like text
+  take lean, like boolean
+  like maybe, like text
+
+  save no-role, make none
+  fork
+    mark unsafe
+    save built, mill(tree, file, no-role, lean)
+    fork test, not(built/ok)
+      hold
+        back make none
+    save skip, make list
+    save values, make list
+    walk built/program
+      take statement
+      push(values, roll-value-of(json-parse(statement-json(skip, statement))))
+    save program
+      make item-values
+        bind values, values
+    save meaning, meaning-of(program)
+    back make(some, meaning)
+  halt take
+    take problem
+    back make none
+
+# the `load` / `bear` paths a text names, through the compiler's own reader so this cannot disagree with the build
+task imports-of
+  take file, like text
+  take text, like text
+  like text
+
+  save read
+    make token-source
+      bind file, file
+      bind text, text
+  save scan, scan-parsed(parse(read))
+  back join(scan/paths, <|>)
+
+# a tree's import paths, read off its canonical print
+task tree-imports-of
+  take tree, like root-node
+  take file, like text
+  like text
+
+  back imports-of(file, print-tree(tree))
+
+# Format source text, and say what happened, a file that mills held to its own meaning and import paths
+task format-checked
+  take file, like text
+  take text, like text
+  take options, like layout-options
+  like layout-report
+
+  back format-report(file, text, options, program-of, imports-of)

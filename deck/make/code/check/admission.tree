@@ -9,8 +9,8 @@
 # purity and termination come from the same analyses every other task goes through (check/purity.tree,
 # check/termination.tree) rather than from a second opinion written here.
 #
-# Ported from check/twin.ts (self-hosting, 2026-10-06), which stays as the face, handing in the linear prover and the
-# test of an arm's written `binds` that check/termination.tree takes. The original's synthetic task spread the
+# Ported from check/twin.ts (self-hosting, 2026-10-06), which stays as the face, handing in the linear prover that
+# check/termination.tree takes. The original's synthetic task spread the
 # reference task (`{...task, name, params, body, span}`); Term has no spread, so it carries the fields the two analyses
 # read of a task (its name, parameters, body and span, and whether it is async, a stub and with what facts and writes,
 # a claim, or meant to roam), each a value of its own, so the program is never written. The callees a body names are
@@ -334,10 +334,6 @@ task check-twins
       take assumptions, like list, like inequality
       take goal, like inequality
       like boolean
-  take binds-given
-    like task
-      take arm, like match-case
-      like boolean
   like list, like diagnostic
 
   save refused
@@ -427,7 +423,7 @@ task check-twins
         push(all, one)
       save answer, purity(all)
       save pure, answer/pure
-      save ending, terminating-functions(all, proves, binds-given)
+      save ending, terminating-functions(all, proves)
       save bodies, make hash
       walk all
         take one

@@ -8,7 +8,8 @@
 #
 # Ported from deck/test/code/seed-bench.ts (term-cli-in-term-0110). The decisions:
 #   - tokenize and parse are parser/token.tree and parser/tree.tree, loaded; compile, the compile cache, module
-#     discovery and the two splitters are still TypeScript, docked (decision 004)
+#     discovery and the whole-file splitter are still TypeScript, docked (decision 004); the line splitter is
+#     compile/block-split.tree's split-lines, loaded (item 0381, decision 067)
 #   - every figure in an insight is placed with the original's `toFixed`, in a bind, never the stdlib's `to-fixed`
 #     (which rounds the decimal a number prints as)
 #   - the timing is bench-timing.tree's, the original's ./bench
@@ -23,6 +24,9 @@ load @term/make/parser/token
 load @term/make/parser/tree
   find parse
 
+load @term/make/compile/block-split
+  find split-lines
+
 load ./bench-timing
   find bench
   find bench-ask
@@ -33,7 +37,6 @@ dock load
   load <@term/make/code/compile/cache>, name caching-module
   load <@term/make/code/compile/load>, name loading-module
   load <@term/make/code/compile/incremental-parse>, name splitting-module
-  load <@term/make/code/compile/stream>, name streaming-module
   load <node:fs>, name node-fs
 
 form bench-suite
@@ -295,7 +298,7 @@ task run-compiler-bench
   save stream-run
     task
       like void
-      streaming-module/split-streaming-to-array(compiler-lines-of(big))
+      split-lines(compiler-lines-of(big))
   host streamed, bench(make(bench-ask, bind(name, <splitStreaming 2000 defs>), bind(run, stream-run), bind(iterations, iterations), bind(size, 2000)))
   results/push(whole)
   results/push(streamed)

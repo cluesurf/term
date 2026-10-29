@@ -27,7 +27,23 @@ object aio {
   class Handle(val channel: FileChannel, var at: Long)
 
   // A read stream: the channel, where it is, and how much of the window is left (null for "to the end").
-  class Reader(val channel: FileChannel, var at: Long, var left: Long?)
+  // `tail` holds the bytes of a character a chunk boundary split, until the next chunk completes it (decision 067
+  // section 3, term-self-host-001-0380)
+  class Reader(val channel: FileChannel, var at: Long, var left: Long?, var tail: ByteArray = ByteArray(0))
+
+  // how many trailing bytes begin a character the bytes do not complete: 0 to 3
+  private fun incompleteTail(bytes: ByteArray, size: Int): Int {
+    var back = 1
+    while (back <= minOf(size, 3)) {
+      val byte = bytes[size - back].toInt() and 0xFF
+      if (byte and 0xC0 != 0x80) {
+        val need = if (byte >= 0xF0) 4 else if (byte >= 0xE0) 3 else if (byte >= 0xC0) 2 else 1
+        return if (need > back) back else 0
+      }
+      back += 1
+    }
+    return 0
+  }
 
   class Writer(val channel: FileChannel, var at: Long)
 
@@ -388,27 +404,38 @@ object aio {
       Reader(channel, maxOf(0L, start), if (size > 0L) size else null)
     }
 
-  // the next chunk, or the empty text at the end of the stream (or of the window)
+  // the next chunk, or the empty text at the end of the stream (or of the window). A chunk ends before an incomplete
+  // character, held in `tail` for the next one; at the end the held bytes are flushed (as U+FFFD, being incomplete).
+  // A chunk that decoded to nothing while bytes were read reads on, so the empty text only ever means the end
   suspend fun readerNext(stream: Reader): String = termLoop.handBack {
-    val left = stream.left
-
-    if (left != null && left <= 0L) return@handBack ""
-
-    val want = if (left != null) minOf(left, 65536L) else 65536L
-
     try {
-      val buffer = java.nio.ByteBuffer.allocate(want.toInt())
-      val count = stream.channel.read(buffer, stream.at)
+      while (true) {
+        val left = stream.left
+        val want = if (left != null) maxOf(0L, minOf(left, 65536L)) else 65536L
+        val buffer = java.nio.ByteBuffer.allocate(want.toInt())
+        val count = if (want > 0L) stream.channel.read(buffer, stream.at) else 0
 
-      if (count <= 0) return@handBack ""
+        if (count <= 0) {
+          val rest = stream.tail
+          stream.tail = ByteArray(0)
+          return@handBack String(rest, Charsets.UTF_8)
+        }
 
-      stream.at += count.toLong()
+        stream.at += count.toLong()
 
-      if (left != null) {
-        stream.left = left - count.toLong()
+        if (left != null) {
+          stream.left = left - count.toLong()
+        }
+
+        val bytes = stream.tail + buffer.array().copyOfRange(0, count)
+        val keep = bytes.size - incompleteTail(bytes, bytes.size)
+        stream.tail = bytes.copyOfRange(keep, bytes.size)
+
+        if (keep > 0) {
+          return@handBack String(bytes, 0, keep, Charsets.UTF_8)
+        }
       }
-
-      String(buffer.array(), 0, count, Charsets.UTF_8)
+      ""
     } catch (error: kotlin.Exception) {
       ""
     }

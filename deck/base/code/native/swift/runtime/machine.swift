@@ -28,4 +28,9 @@ enum machine {
         return "arm"
         #endif
     }
+
+    // the runtime running the program: a compiled binary carries no runtime version of its own to name
+    static func runtime() -> String {
+        "swift"
+    }
 }

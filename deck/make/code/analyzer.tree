@@ -10,8 +10,9 @@
 #     stands for all four
 #   - what is Term is loaded (the tolerant parse, the data reader, the layout, the lint driver, the fixes), and what is
 #     not is a dock named for its module (decision 031 section 3): compile/template, compile/mill, compile/view,
-#     compile/compile, format/format (its `format` hands the meaning check to format/meaning.ts) and
-#     lint/rules/data-grammar. The lint driver, lint/rule-check-dispatch.tree, was a dock of lint/lint.ts until item 0078,
+#     compile/compile and format/format (its options are the caller's, a role that may be `null`). L040's findings
+#     are made here of lint/data-check.tree's reports (item 0087), where they were a dock of lint/rules/data-grammar.ts.
+#     The lint driver, lint/rule-check-dispatch.tree, was a dock of lint/lint.ts until item 0078,
 #     and the view gate, compile/view-catalog-handed.tree, a dock of compile/view.ts until item 0079 (loaded here once
 #     check/scope bound a shared case's owner by its written name, item 0310, traps.md T-0079). The view's lowering
 #     stays a dock of compile/view.ts's `lowerView` (Term, compile/view-document.tree, behind it)
@@ -68,6 +69,12 @@ load ./lint/lint-lines
 load ./lint/rule-check-dispatch
   find lint-program
 
+load ./lint/rule-check
+  find rule-report
+
+load ./lint/data-check
+  find data-reports
+
 load ./compile/main-entry
   find whitespace-code
 
@@ -82,7 +89,6 @@ dock load
   load <@term/make/code/compile/view>, name analyzer-view
   load <@term/make/code/compile/compile>, name analyzer-compile
   load <@term/make/code/format/format>, name analyzer-format
-  load <@term/make/code/lint/rules/data-grammar>, name analyzer-data-grammar
 
 # ---- what the docks are handed and answer ----
 
@@ -454,7 +460,26 @@ task data-linted
   like list, like lint-finding
   mark private
 
-  back analyzer-data-grammar/lint-data(tree, file)
+  save findings, make list
+  walk data-reports(tree, file)
+    take report
+    push(findings, data-finding(report))
+  back findings
+
+# L040 (data-grammar): one report of the data reader or the expander as a finding under the rule's name, code and
+# severity
+task data-finding
+  take report, like rule-report
+  like lint-finding
+  mark private
+
+  back
+    make lint-finding
+      bind rule, <data-grammar>
+      bind code, <L040>
+      bind severity, make error
+      bind message, report/message
+      bind span, report/span
 
 # ---- the analysis ----
 

@@ -9,6 +9,7 @@ load @term/base/native/{platform}/machine
   find host-cores
   find host-platform
   find host-architecture
+  find host-runtime
 
 # the logical processors, at least 1
 task count-cores
@@ -27,3 +28,10 @@ task read-architecture
   like text
   send back
     call host-architecture
+
+# the runtime running the program: `node v22.23.4` on node (`node`, a space, its version), `rust` and `swift` for a
+# compiled binary, `jvm 21.0.4` on kotlin (`jvm`, a space, the JVM's `java.version`)
+task read-runtime
+  like text
+  send back
+    call host-runtime

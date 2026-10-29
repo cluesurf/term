@@ -58,15 +58,16 @@ function typeParameters(statement: Statement): Set<string> {
 
 // A FORM AND A VARIANT CASE OF ONE NAME. `make <name>` constructs either, and the flat program gave every such
 // construction to whichever it met: a user's `case pair` was built by the stdlib's zip in place of its own `pair` form,
-// and the user's own `make pair` was refused for missing the stdlib form's fields. So a form whose name is also some
-// form's case takes a name of its own (`<name>__form`), the entry file's too unless it is a union or a mask, and the case keeps its name,
-// which reaches the output (a TypeScript tag, a printed record). Then each reference is bound: a named type, a raise, a
+// and the user's own `make pair` was refused for missing the stdlib form's fields. So a RECORD form whose name is also
+// some form's case takes a name of its own (`<name>__form`), the entry file's too, and the case keeps its name, which
+// reaches the output (a TypeScript tag, a printed record). Then each reference is bound: a named type, a raise, a
 // method and a mask instance can only mean the form; a construction means the case where its file defines that case's
 // form, the form where its file defines the form or finds it by its name (decision 049: the nearer binding, so it wins
 // over an import of the case's union), the case where its file imports that union, and otherwise whichever's fields the
-// construction names, the case where that does not decide. A union or a mask is never built by its own name, so there
-// the construction is always the case
-function separateCaseNames(program: Program, scope: ImportScope | undefined, entry?: string): void {
+// construction names, the case where that does not decide. A union or a mask is never built by its own name, so a
+// construction of it is always the case: it keeps its name in every file (decision 066 section 2), since a case is
+// never a type and never renames its form
+function separateCaseNames(program: Program, scope: ImportScope | undefined): void {
   type Owner = { file: string; form: string; fields: string[] }
   const cases = new Map<string, Owner[]>()
   const forms = new Map<string, Defining[]>()
@@ -122,15 +123,19 @@ function separateCaseNames(program: Program, scope: ImportScope | undefined, ent
 
     // a union or a mask is never built by its own name, so a construction of the name is the case, in every file and
     // whichever file is the entry (term-self-host-001-0294: ir/selection.tree's `make twin-choice` meant
-    // parser/diagnostic.tree's case, and once selection was not the entry its own union `twin-choice` took it)
+    // parser/diagnostic.tree's case, and once selection was not the entry its own union `twin-choice` took it). Such a
+    // form keeps its name (below), so only a record form is renamed and bound here
     const constructible = defining.some(d => d.form === 'record-type' && d.variants.length === 0)
 
     // THE ENTRY'S RECORD FORM IS RENAMED AS A LOADED ONE IS (decision 045, term-self-host-001-0295): kept by its name in
     // the entry, the checker built the case for every construction there (it reads a case before a record), so a file
-    // that built its own form failed as the entry and built as a loaded module. A union or a mask keeps its name in the
-    // entry, where nothing builds it and its types bind alike either way. The entry's renamed form keeps the name it
-    // was written with in what the build exports, through an alias (compile.ts `entryFormAliases`)
-    if (!constructible && defining.some(d => d.span.file === entry)) {
+    // that built its own form failed as the entry and built as a loaded module. The entry's renamed form keeps the name
+    // it was written with in what the build exports, through an alias (compile.ts `entryFormAliases`).
+    // A UNION OR A MASK KEEPS ITS NAME IN EVERY FILE (decision 066 section 2, term-self-host-001-0378): nothing builds
+    // it by its name, so a construction of the name is the case and a named type the form, renamed or not. Renamed, it
+    // lost what the emitters know by its name: the stdlib's `maybe`, renamed `maybe__form` beside a case `maybe`, no
+    // longer made a `need false` field `f?: T` on TypeScript, so the field was boxed and one left out read undefined
+    if (!constructible) {
       continue
     }
 
@@ -154,7 +159,6 @@ function separateCaseNames(program: Program, scope: ImportScope | undefined, ent
     }
     // whether a construction in `file` naming `fields` means the form
     const meansForm = (file: string | undefined, fields: string[]): boolean => {
-      if (!constructible) return false
       if (file && caseFiles.has(file)) return false
       if (file && formFiles.has(file)) return true
       // a find of the form by its written name is the nearer binding, so it wins over a union import that brings a
@@ -252,7 +256,7 @@ export function bindFormsByImport(program: Program, scopes: FileScope[], entry: 
 }
 
 function bindForms(program: Program, scope: ImportScope | undefined, entry?: string): Diagnostic[] {
-  separateCaseNames(program, scope, entry)
+  separateCaseNames(program, scope)
 
   const byName = new Map<string, Map<string, Defining[]>>()
 

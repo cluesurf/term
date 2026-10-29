@@ -19,7 +19,9 @@ import { randomUUID } from 'node:crypto'
 // offset, but `write` at a position does not move it, so the cursor is kept here for the same reason swift and
 // kotlin keep one.
 type Handle = { file: fs.FileHandle; at: number }
-type Reader = { file: fs.FileHandle; at: number; left: number | undefined }
+// a reader keeps one streaming decoder, so a character whose bytes a chunk boundary splits is held until the next
+// chunk completes it (decision 067 section 3, term-self-host-001-0380)
+type Reader = { file: fs.FileHandle; at: number; left: number | undefined; decoder: TextDecoder }
 type Writer = Handle
 
 const aio = {
@@ -317,27 +319,41 @@ const aio = {
     file: await fs.open(at, 'r'),
     at: Math.max(0, start),
     left: size > 0 ? size : undefined,
+    // ignoreBOM keeps a leading byte order mark in the text, as Buffer's decode did
+    decoder: new TextDecoder('utf-8', { ignoreBOM: true }),
   }),
 
-  // the next chunk, or '' at the end of the stream (or of the window)
+  // the next chunk, or '' at the end of the stream (or of the window). A chunk ends before an incomplete character,
+  // whose bytes the decoder holds for the next one; at the end the held bytes are flushed (as U+FFFD, being
+  // incomplete). A chunk that decoded to nothing while bytes were read reads on, so '' only ever means the end
   readerNext: async (stream: Reader): Promise<string> => {
-    if (stream.left !== undefined && stream.left <= 0) {
-      return ''
-    }
-
-    const want =
-      stream.left === undefined ? 65536 : Math.min(stream.left, 65536)
-
     try {
-      const buffer = Buffer.alloc(want)
-      const got = await stream.file.read(buffer, 0, want, stream.at)
-      stream.at += got.bytesRead
+      while (true) {
+        if (stream.left !== undefined && stream.left <= 0) {
+          return stream.decoder.decode()
+        }
 
-      if (stream.left !== undefined) {
-        stream.left -= got.bytesRead
+        const want =
+          stream.left === undefined ? 65536 : Math.min(stream.left, 65536)
+        const buffer = Buffer.alloc(want)
+        const got = await stream.file.read(buffer, 0, want, stream.at)
+
+        if (got.bytesRead === 0) {
+          return stream.decoder.decode()
+        }
+
+        stream.at += got.bytesRead
+
+        if (stream.left !== undefined) {
+          stream.left -= got.bytesRead
+        }
+
+        const text = stream.decoder.decode(buffer.subarray(0, got.bytesRead), { stream: true })
+
+        if (text !== '') {
+          return text
+        }
       }
-
-      return buffer.subarray(0, got.bytesRead).toString('utf8')
     } catch {
       return ''
     }

@@ -1,0 +1,77 @@
+# The `load` blocks a feed grammar writes for itself, as source lines. THE PARSER FINDS THE BOUNDARIES:
+# parser/streaming.tree says where each top-level group ends, and the raw lines of the ones headed `load` are taken
+# from the source untouched. Counting indentation to find a block's extent would be a second reader of the grammar.
+#
+# Ported from compile/feed-mill.ts `feedMineLoads` (item term-self-host-001-0083, decision 066 section 1), which
+# becomes a call of this. The original walked the groups with a closure over its line cursor and output; here
+# `list-groups` answers every result for the text's lines and the walk stops at the first that is not a group (the end,
+# or a kink), as the original's `give` answered false there. The head word is compile/mill-running.tree's, the twin of
+# mill-run.ts `headWord` the original called.
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find split
+  find char-count
+  find char-code-at
+  find substring
+
+load ../parser/streaming
+  find list-groups
+
+load ./mill-running
+  find head-word
+
+# the white space the original's `/\s+$/` took off a line's end: JavaScript's `\s`, which holds U+FEFF and not U+0085,
+# where the stdlib's `trim-end` holds U+0085 and not U+FEFF
+host trailing-space, make list(9, 10, 11, 12, 13, 32, 160, 5760, 8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288, 65279)
+
+task trim-trailing-space
+  take line, like text
+  like text
+  mark private
+
+  save end, char-count(line)
+  walk test
+    hook test, and(is-above(end, 0), trailing-space/contains(char-code-at(line, subtract(end, 1))))
+    hook hold
+      save end, subtract(end, 1)
+
+  back substring(line, 0, end)
+
+task feed-mine-loads
+  take file, like text
+  take text, like text
+  like list, like text
+
+  host lines, split(text, <\n>)
+  host out, make list
+  save at, 0
+  walk list-groups(file, lines)
+    take result
+    sift result
+      case group
+        link group
+        link count
+        save next, add(at, count)
+        sift head-word(group)
+          case some
+            link word
+            fork test, is-equal(word, <load>)
+              hold
+                walk lines/slice(at, next)
+                  take line
+                  out/push(trim-trailing-space(line))
+          case none
+            save nothing, 0
+        save at, next
+      miss
+        halt
+
+  # a trailing blank so the generated file's own `load` blocks do not run into these
+  fork test, is-above(out/length, 0)
+    hold
+      out/push(<>)
+
+  back out

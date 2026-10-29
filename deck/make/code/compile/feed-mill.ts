@@ -7,14 +7,13 @@
 // The grammar reader, the checks over it, the expression printer and the code generator are
 // compile/feed-compile.tree (self-hosting, 2026-10-06). This face keeps the types callers hold, renames the one rule
 // tag Term cannot spell (the port's `optional` is the original's `maybe`: a case named `maybe` there would take the
-// stdlib's `maybe`), answers `undefined` where the port answers an empty substrate, and keeps `feedMineLoads`, which
-// finds a grammar's top-level group boundaries through parser/stream.ts `walkGroups`.
+// stdlib's `maybe`, until item 0379 renames it back), and answers `undefined` where the port answers an empty
+// substrate. `feedMineLoads` is compile/feed-mill-loads.tree (item 0083, decision 066 section 1).
 
 import type { Node } from '@term/make/code/parser/tree'
 import type { GroupNode, RootNode } from '@term/make/code/parser/narrow'
-import { walkGroups } from '@term/make/code/parser/stream'
-import { headWord } from './mill-run'
 import * as port from '@term/make/code/compile/feed-compile'
+import { feedMineLoads as portLoads } from '@term/make/code/compile/feed-mill-loads'
 
 // ---- the rule objects ----
 
@@ -113,32 +112,10 @@ export function feedMineSubstrate(grammar: FeedMineGrammar): Substrate | undefin
   return substrate === '' ? undefined : (substrate as Substrate)
 }
 
-// The `load` blocks a grammar writes for itself, as source lines. THE PARSER FINDS THE BOUNDARIES: `walkGroups`
-// says where each top-level group ends, and the raw lines of the ones headed `load` are taken from the source
-// untouched. Counting indentation to find a block's extent would be a second reader of the grammar.
+// The `load` blocks a grammar writes for itself, as source lines, with a trailing blank when there are any
+// (compile/feed-mill-loads.tree: the parser finds the boundaries)
 export function feedMineLoads(file: string, text: string): string[] {
-  const lines = text.split('\n')
-  const out: string[] = []
-  let at = 0
-
-  walkGroups({ file, text }, result => {
-    if (result.kind !== 'group') {
-      return false
-    }
-
-    const span = lines.slice(at, at + result.lines)
-
-    at += result.lines
-
-    if (headWord(result.group) === 'load') {
-      out.push(...span.map(line => line.replace(/\s+$/, '')))
-    }
-
-    return true
-  })
-
-  // a trailing blank so the generated file's own `load` blocks do not run into these
-  return out.length > 0 ? [...out, ''] : out
+  return portLoads(file, text)
 }
 
 // The rule NAMES a grammar refers to and never defines, sorted

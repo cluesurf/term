@@ -46,10 +46,13 @@ enum aio {
   }
 
   // A read stream: the open file, where it is, and how much of the window is left (nil for "to the end").
+  // `tail` holds the bytes of a character a chunk boundary split, until the next chunk completes it (decision 067
+  // section 3, term-self-host-001-0380)
   final class Reader: @unchecked Sendable {
     let descriptor: Int32
     var at: Int64
     var left: Int64?
+    var tail: [UInt8] = []
     init(descriptor: Int32, at: Int64, left: Int64?) {
       self.descriptor = descriptor
       self.at = at
@@ -348,25 +351,53 @@ enum aio {
     }
   }
 
-  // the next chunk, or the empty text at the end of the stream (or of the window)
+  // how many trailing bytes begin a character the bytes do not complete: 0 to 3
+  private static func incompleteTail(_ bytes: [UInt8]) -> Int {
+    var back = 1
+    while back <= min(bytes.count, 3) {
+      let byte = bytes[bytes.count - back]
+      if byte & 0xC0 != 0x80 {
+        let need = byte >= 0xF0 ? 4 : byte >= 0xE0 ? 3 : byte >= 0xC0 ? 2 : 1
+        return need > back ? back : 0
+      }
+      back += 1
+    }
+    return 0
+  }
+
+  // the next chunk, or the empty text at the end of the stream (or of the window). A chunk ends before an incomplete
+  // character, held in `tail` for the next one; at the end the held bytes are flushed (as U+FFFD, being incomplete).
+  // A chunk that decoded to nothing while bytes were read reads on, so the empty text only ever means the end
   static func readerNext(_ stream: Reader) async -> String {
     await handBack {
-      let want: Int64
-      if let left = stream.left {
-        if left <= 0 { return "" }
-        want = min(left, 65536)
-      } else {
-        want = 65536
+      while true {
+        var want: Int64 = 65536
+        if let left = stream.left {
+          want = max(0, min(left, 65536))
+        }
+
+        let read = readAt(stream.descriptor, Int(want), at: stream.at)
+
+        if read.isEmpty {
+          let rest = stream.tail
+          stream.tail = []
+          return String(decoding: rest, as: UTF8.self)
+        }
+
+        stream.at += Int64(read.count)
+
+        if let left = stream.left {
+          stream.left = left - Int64(read.count)
+        }
+
+        let bytes = stream.tail + read
+        let keep = bytes.count - incompleteTail(bytes)
+        stream.tail = Array(bytes[keep...])
+
+        if keep > 0 {
+          return String(decoding: bytes[..<keep], as: UTF8.self)
+        }
       }
-
-      let bytes = readAt(stream.descriptor, Int(want), at: stream.at)
-      stream.at += Int64(bytes.count)
-
-      if let left = stream.left {
-        stream.left = left - Int64(bytes.count)
-      }
-
-      return String(decoding: bytes, as: UTF8.self)
     }
   }
 

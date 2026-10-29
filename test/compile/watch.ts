@@ -1,8 +1,11 @@
-// Incremental / hot-reload test: the IncrementalCompiler keeps the compiled mesh warm so an unchanged recompile is an
+// Incremental test: one CompileCache held across compiles keeps the compiled mesh warm, so an unchanged recompile is an
 // instant cache hit, and editing one module only re-mills that module (its importers reuse their parse + mill). This
-// is the engine behind `make --ride` watch mode and the LSP. Run: npx tsx test/compile/watch.ts
+// is the engine behind `make --ride` watch mode and the LSP. compile/watch.ts's IncrementalCompiler, a class over this
+// same cache, retired (decision 065 of change 001-finish-self-host), so the test holds the cache itself.
+// Run: npx tsx test/compile/watch.ts
 
-import { IncrementalCompiler } from '@term/make/code/compile/watch'
+import { compile } from '@term/make/code/compile/compile'
+import { CompileCache } from '@term/make/code/compile/cache'
 import type { Source } from '@term/make/code/compile/load'
 
 let pass = 0
@@ -38,18 +41,19 @@ const entry = (constant: number): Source => ({
   text: `load @app/helper\n  find triple\n\ntask run\n  like number\n  send back\n    call triple\n      code ${constant}\n`,
 })
 
-const compiler = new IncrementalCompiler(resolve)
+const cache = new CompileCache()
+const build = (source: Source) => compile(source, { resolve, cache })
 
 // 1. first compile builds everything
-const first = compiler.compile(entry(5))
+const first = build(entry(5))
 expect('first compile succeeds', first.ok, true)
 
 // 2. recompiling the identical graph is an instant output-cache hit: no new misses
-const missesAfterFirst = compiler.stats.misses
-const again = compiler.compile(entry(5))
+const missesAfterFirst = cache.misses
+const again = build(entry(5))
 expect(
   'unchanged recompile adds no misses',
-  compiler.stats.misses,
+  cache.misses,
   missesAfterFirst,
 )
 expect('unchanged recompile is a hit', again === first, true)
@@ -57,18 +61,18 @@ expect('unchanged recompile is a hit', again === first, true)
 // 3. edit the entry but not the helper: the helper's scan, parse and mill are reused (hits), and only the entry's
 // import scan, the entry's mill and the new graph key miss. The scan has had its own entry since the import scan was
 // cached per (file, text) (CompileCache.scanned), which is the third
-const hitsBeforeEdit = compiler.stats.hits
-const missesBeforeEdit = compiler.stats.misses
-const edited = compiler.compile(entry(9))
+const hitsBeforeEdit = cache.hits
+const missesBeforeEdit = cache.misses
+const edited = build(entry(9))
 expect('editing the entry still compiles', edited.ok, true)
 expect(
   'the unchanged helper is reused (a mill hit)',
-  compiler.stats.hits > hitsBeforeEdit,
+  cache.hits > hitsBeforeEdit,
   true,
 )
 expect(
   'only the entry (its scan and its mill) and the new graph key miss',
-  compiler.stats.misses - missesBeforeEdit,
+  cache.misses - missesBeforeEdit,
   3,
 )
 
@@ -78,12 +82,12 @@ files.set(
   'task triple\n  take n, like number\n  like number\n  send back\n    call multiply\n      read n\n      code 4\n',
 )
 
-const hitsBeforeHelper = compiler.stats.hits
-const afterHelper = compiler.compile(entry(9))
+const hitsBeforeHelper = cache.hits
+const afterHelper = build(entry(9))
 expect('editing the helper still compiles', afterHelper.ok, true)
 expect(
   'the unchanged entry is reused after a helper edit',
-  compiler.stats.hits > hitsBeforeHelper,
+  cache.hits > hitsBeforeHelper,
   true,
 )
 

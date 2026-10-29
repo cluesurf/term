@@ -1,12 +1,12 @@
 // The formatter: re-print a `.tree` CST in canonical form, by the five rules in note/project/term/compiler/format-rules.md, and refuse
 // any layout that mills to a different program. The pass is Term, format/layout.tree (self-hosting, 2026-10-06), and its
-// header says what each rule does. This face keeps the options as its callers write them (a `Set` of extra stacking
-// heads, `undefined` for a choice left to the file) and hands in the meaning check, the milled program and the import
-// paths (format/meaning.ts). Pure and browser-safe.
+// header says what each rule does; the meaning check it is handed is Term too, format/milled-meaning.tree (item
+// term-self-host-001-0087). This face keeps the options as its callers write them (a `Set` of extra stacking heads,
+// `undefined` for a choice left to the file). Pure and browser-safe.
 
 import type { GroupNode, RootNode } from '@term/make/code/parser/narrow'
-import { importsOf, programOf } from '@term/make/code/format/meaning'
 import * as port from '@term/make/code/format/layout'
+import * as milled from '@term/make/code/format/milled-meaning'
 
 // how a tree is printed. `wrap: false` keeps every comment line exactly as written; `stack` names heads to keep stacked
 // beyond the ones always stacked; `calls: false` turns rule 3 off; `lean` and `role` are the file's, as the build reads
@@ -65,14 +65,7 @@ export type FormatReport = {
 // Format source text, and say what happened. Tolerant: a file that does not parse comes back unchanged, and a file that
 // mills is held to its own meaning
 export function formatReport(source: { file: string; text: string }, options: FormatOptions = {}): FormatReport {
-  const report = port.formatReport(
-    source.file,
-    source.text,
-    optionsOf(options),
-    (tree, file, lean) => given(programOf(tree, file, lean)),
-    (file, text) => importsOf(file, text),
-  )
-
+  const report = milled.formatChecked(source.file, source.text, optionsOf(options) as never)
   return report.refused.form === 'some' ? { text: report.text, refused: report.refused.value } : { text: report.text }
 }
 

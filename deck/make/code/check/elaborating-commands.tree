@@ -45,6 +45,7 @@ load ./elaborating-data
 load ./elaborating-terms
   find term-state
   find expr
+  find label-text
 
 load @term/base/maybe
   find maybe
@@ -506,6 +507,7 @@ task check-commands
         check-commands(ts, host, body, sc, cx, result-value, assumptions)
       case for-each
         link item
+        link index
         link iterable
         link body
         save assumptions, forget-pairs(host, assumptions, host/written-names(statement))
@@ -534,7 +536,16 @@ task check-commands
             decline(<a walk over something that is not a list>)
         save element-type, evaluate(st, cx/env, element-term)
         save inner-scope, scope-with(sc, item, cx/level)
-        check-commands(ts, host, body, inner-scope, bind-context(cx, <many>, element-type, <>), result-value, assumptions)
+        save inner-cx, bind-context(cx, <many>, element-type, <>)
+        # the walk's index, when it names one (`take name` / `take at`), is a number bound after the item, as
+        # elaborating-terms.tree `walk-list-term` binds it. Left unbound, a read of it reached a task of its name
+        # elsewhere in the program (compile/minting-reads.tree `at`), item 0376
+        save index-name, label-text(index)
+        fork test, is-unequal(index-name, <>)
+          hold
+            save inner-scope, scope-with(inner-scope, index-name, inner-cx/level)
+            save inner-cx, bind-context(inner-cx, <many>, number-value(st), index-name)
+        check-commands(ts, host, body, inner-scope, inner-cx, result-value, assumptions)
       case match
         link subject
         link cases
