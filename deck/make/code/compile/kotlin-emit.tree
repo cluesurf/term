@@ -2736,8 +2736,15 @@ task kt-record
             hold
               back need(<longs>, <mutableLongListOf()>, st)
           back <mutableListOf{args}()>
-      # `make void` is the absent value: kotlin's Unit
-      fork test, and(is-equal(record-name, <void>), no-fields)
+      # `make void` is the absent value: kotlin's Unit. Unless its type is a union with a case `void`, which builds that
+      # case (item 0050: it was Unit)
+      save void-owner, named-of(node-type)
+      save own-case, false
+      fork test, and(is-unequal(void-owner, <>), facts/variant-class-of/has(record-name))
+        hold
+          save by-owner, facts/variant-class-of/get(record-name)
+          save own-case, by-owner/has(void-owner)
+      fork test, and(and(is-equal(record-name, <void>), no-fields), not(own-case))
         hold
           back <Unit>
       save cls, class-for(record-name, node-type, facts)

@@ -1665,6 +1665,11 @@ task head-line
                           fork test, is-above(block, 0)
                             hold
                               save limit, block
+  # a loop's name or mode, `walk xs, name outer` and `walk xs, mark parallel`: one such part rides after a one-part list,
+  # a second stacks as the walk's first child (decision 073 of self-host change 001)
+  fork test, and(and(is-equal(word, <walk>), is-equal(limit, 1)), is-loop-word-group(node-at(kids, 1)))
+    hold
+      save limit, 2
   save n, limit
   fork test, is-below(kids/length, n)
     hold
@@ -1766,6 +1771,26 @@ task is-name-group
     case some
       link value
       back and(is-group-node(value), is-equal(head-name(value), <name>))
+    case none
+      back false
+
+# a `name` or `mark` group over exactly one plain word, a loop's name or mode
+task is-loop-word-group
+  take given, like maybe, like node
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link value
+      fork test, is-group-node(value)
+        hold
+          save word, head-name(value)
+          fork test, or(is-equal(word, <name>), is-equal(word, <mark>))
+            hold
+              save kids, kids-of(value)
+              back and(is-equal(kids/length, 1), has-plain(node-at(kids, 0)))
+      back false
     case none
       back false
 

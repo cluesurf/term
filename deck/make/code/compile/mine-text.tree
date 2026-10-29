@@ -172,7 +172,7 @@ task refuse-unrun
       walk repeated
         take one
         refuse-unrun(engine, owner, one)
-    case optional
+    case maybe
       link gate
       link inner
       sift gate
@@ -230,7 +230,7 @@ task children-of
       back children
     case mark
       back children
-    case optional
+    case maybe
       back children
     case span
       back children
@@ -575,7 +575,7 @@ task match-rule
       save run/quiet, subtract(run/quiet, 1)
       back step-to(here, nodes)
 
-    case optional
+    case maybe
       link gate
       link inner-rules
       link optional-send

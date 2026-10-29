@@ -1764,6 +1764,7 @@ task json-of-statement
       link f6
       link f7
       link f8
+      link f9
       fork test, enters(skip-keys, <form>)
         hold
           push(members, <"form":"for-each">)
@@ -1795,6 +1796,9 @@ task json-of-statement
       fork test, and(enters(skip-keys, <placeRow>), is-unequal(f8, 0))
         hold
           push(members, <"placeRow":{number-json(f8)}>)
+      fork test, and(enters(skip-keys, <parallel>), f9)
+        hold
+          push(members, <"parallel":{flag-json(f9)}>)
     case break
       link f1
       link f2

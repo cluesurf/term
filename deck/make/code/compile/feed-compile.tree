@@ -5,9 +5,9 @@
 # each construct is read and emitted the way it is.
 #
 # Ported from compile/feed-mill.ts (self-hosting, 2026-10-06), which stays as the face. The decisions:
-#   - a rule is `feed-rule`, tagged on `kind` as the original's was, with its fields in the original's order. The
-#     original's `maybe` kind is `optional` here: a case named `maybe` takes the stdlib's `maybe` in this module and
-#     boxes every optional field. The face renames that one tag at its boundary
+#   - a rule is `feed-rule`, tagged on `kind` as the original's was, with its kinds' names and its fields in the
+#     original's order (its `maybe` case keeps the stdlib's `maybe` its own name since item 0378, so the face hands the
+#     rules through, item 0379)
 #   - the original's module counters (`inRepetition`, `inSpan`) and the helper-name closure are one `feed-state`,
 #     `mark shared`, threaded through every compiling task
 #   - whether a rule carries a `send` KEY (`'send' in rule`, which the original asked twice, true even when the value
@@ -124,8 +124,7 @@ form feed-rule
     link send
       like maybe, like text
       need false
-  # the original's `maybe`
-  case optional
+  case maybe
     link test
       like maybe, like node
       need false
@@ -470,7 +469,7 @@ task has-send-key
       back true
     case bytes
       back true
-    case optional
+    case maybe
       back true
     case until
       back true
@@ -502,7 +501,7 @@ task send-of
       back send
     case bytes
       back send
-    case optional
+    case maybe
       back send
     case until
       back send
@@ -564,9 +563,9 @@ task with-send
         make bytes
           bind width, width
           bind send, named
-    case optional
+    case maybe
       back
-        make optional
+        make maybe
           bind test, test
           bind children, children
           bind send, named
@@ -607,7 +606,7 @@ task is-sendable
       back true
     case form
       back true
-    case optional
+    case maybe
       back true
     miss
       back false
@@ -1562,7 +1561,7 @@ task read-feed-mine-rule
           case none
             save nothing, 0
       save made
-        make optional
+        make maybe
           bind test, test-expr
           bind children, merge-sends(body)
           bind send, send-read
@@ -1707,7 +1706,7 @@ task rule-children
       back children
     case mark
       back children
-    case optional
+    case maybe
       back children
     case span
       back children
@@ -1748,7 +1747,7 @@ task kind-word
       back <int>
     case bytes
       back <bytes>
-    case optional
+    case maybe
       back <maybe>
     case until
       back <until>
@@ -2353,7 +2352,7 @@ task capture-type-of
     # a maybe of its payload's type, as its helper answers outside a span (mill decision 002)
     case check
       back with-head(<like maybe>, indented(maybe-payload-type(children, false, ops, grammar, seen)))
-    case optional
+    case maybe
       back with-head(<like maybe>, indented(maybe-payload-type(children, false, ops, grammar, seen)))
     case list
       save kids, capturing-rules(children)
@@ -3123,20 +3122,20 @@ task compile-expr
       push(out, <{p}save {local-name}>)
       push(out, <{p}  call {helper-name}({helper-args(built/params)})>)
 
-    case optional
-      link optional-test
-      link optional-children
-      link optional-send
-      save local-name, text-or(optional-send, <maybe-{nth}>)
+    case maybe
+      link maybe-test
+      link maybe-children
+      link maybe-send
+      save local-name, text-or(maybe-send, <maybe-{nth}>)
       save helper-name, next-helper(state)
       save none-text, make none
       save none-reads, make none
       save shape
         make maybe-shape
-          bind test, optional-test
+          bind test, maybe-test
           bind test-text, none-text
           bind test-reads, none-reads
-          bind children, optional-children
+          bind children, maybe-children
       save built, compile-maybe-helper(helper-name, shape, ops, grammar, scope, state)
       push-all(helpers, built/lines)
       bind-typed(scope, local-name, built/declared)
@@ -3252,7 +3251,7 @@ task first-of
       back first-of-sequence(children, grammar, seen)
     case check
       back first-of-sequence(children, grammar, seen)
-    case optional
+    case maybe
       back first-of-sequence(children, grammar, seen)
     case list
       back first-of-sequence(children, grammar, seen)
@@ -3278,7 +3277,7 @@ task is-optional
   mark private
 
   sift rule
-    case optional
+    case maybe
       back true
     miss
       back false

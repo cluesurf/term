@@ -2934,11 +2934,16 @@ task emit-record
       fork test, and(is-equal(record-name, <list>), is-equal(field-count, 0))
         hold
           back <std::rc::Rc::new(std::cell::RefCell::new(Vec::new()))>
-      fork test, and(is-equal(record-name, <void>), is-equal(field-count, 0))
-        hold
-          back <(std::rc::Rc::new(()) as std::rc::Rc\<dyn std::any::Any\>)>
       # a case several forms share is owned by the form the checker gave the construction
       save type-name, named-of(record-type)
+      # `make void` is the void value, unless its type is a union with a case `void` (item 0050: it was the boxed unit)
+      save own-case, false
+      fork test, and(is-unequal(type-name, <>), facts/variant-owners/has(record-name))
+        hold
+          save own-case, has-text(facts/variant-owners/get(record-name), type-name)
+      fork test, and(and(is-equal(record-name, <void>), is-equal(field-count, 0)), not(own-case))
+        hold
+          back <(std::rc::Rc::new(()) as std::rc::Rc\<dyn std::any::Any\>)>
       save owner-form, <>
       fork test, facts/variant-owner/has(record-name)
         hold
@@ -6643,6 +6648,13 @@ task emit-match
           push(arms, <{pad(add(depth, 1))}_ =\> \{\n{emit-block(known, add(depth, 2), st, facts)}\n{pad(add(depth, 1))}\}>)
         case none
           save nothing, 0
+      # A SUBJECT HOLDING A BORROW is bound first (item 0060). A temporary in a block's tail expression lives past the
+      # block's locals in Rust, so `match values.borrow()[0].clone() { .. }` as an arm's last statement, where
+      # `values` is that arm's field, failed E0597. A `let` drops the borrow at its `;`. Only a subject that is no
+      # plain variable can hold one, and a borrowed or referenced subject is a variable
+      fork test, and(not(has-var), borrows(subject))
+        hold
+          back <let __subject = {subject};\n{pad(depth)}match __subject \{\n{join-texts(arms, <\n>)}\n{pad(depth)}\}>
       back <match {subject} \{\n{join-texts(arms, <\n>)}\n{pad(depth)}\}>
     miss
       back <>

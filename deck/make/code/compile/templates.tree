@@ -1047,6 +1047,19 @@ task fill
     hold
       push(problems, problem-of(<type-mismatch>, <`fuse {name}` gives `{param}` {a-kind(found)}, and the template takes {a-kind(kind)} there (`take {param}, like {kind}`)>, at))
 
+# a `fuse` that names a template: one with something after the word. A bare `fuse` is a word like any other, as the
+# name in `case fuse` (a union's case, or a match's arm): until 2026-10-29 it was expanded as a fuse of no template
+# and dropped, so the next node took its place and the case was named `link` (item term-self-host-001-0050)
+task is-template-use
+  take value, like node
+  like boolean
+  mark private
+
+  fork test, head-is(value, <fuse>)
+    hold
+      back is-above(rest-of(value)/length, 0)
+  back false
+
 # instantiate a fuse: resolve the template (static name or `read <param>`), bind its parameters from the fuse's
 # positional / `bind` arguments and `beam`s, then expand its body in the new context
 task expand-fuse
@@ -1513,7 +1526,7 @@ task expand-body
               take made
               push(out, made)
             turn next
-        fork test, head-is(one, <fuse>)
+        fork test, is-template-use(one)
           hold
             walk expand-fuse(one, ctx)
               take made
@@ -1562,7 +1575,7 @@ task expand-top
           back out
         case none
           save nothing, 0
-      fork test, head-is(value, <fuse>)
+      fork test, is-template-use(value)
         hold
           back expand-fuse(value, ctx)
       # a template definition is a TOP-LEVEL statement: only a top-level `tree` drops after expansion

@@ -30,6 +30,8 @@ load ../parser/tree
 
 load ../parser/diagnostic
   find span
+  find diagnose
+  find diagnostic-input
 
 load ./node
   find expression
@@ -722,9 +724,15 @@ task form-statement
         case none
           back no-statements()
 
-  # `turn next, name outer` continues the loop named `outer`
+  # `turn next, name outer` continues the loop named `outer`. `next` is the one word: any other compiled as a continue
+  # until 2026-10-29 (item 0051, `turn done` ran a search past its match), and a bare `halt` is the break
   fork test, is-equal(form, <turn>)
     hold
+      save turn-word, text-else(word-at(held, <term>), <>)
+      fork test, is-unequal(turn-word, <next>)
+        hold
+          refuse(state, value, <`turn {turn-word}` is not a statement: `turn next` goes on to the loop's next turn, and a bare `halt` leaves the loop>)
+          back no-statements()
       save turned
         make continue
           bind label, text-else(word-at(held, <name>), <>)
@@ -1255,6 +1263,16 @@ task loop-of
   save contract, contract-of(state, value)
   # `walk ..., name outer`: the loop's name, for a `turn next` or `halt` in a nested loop to mean this one
   save label, text-else(word-at(held, <name>), <>)
+  # `walk xs, mark parallel`: the turns may run side by side (decision 021 section 1). Any other word is refused by name
+  save parallel, false
+  walk at(held, <mark>)
+    take mark-site
+    save mark-word, text-else(text-of(make(some, mark-site)), <>)
+    fork test, is-equal(mark-word, <parallel>)
+      hold
+        save parallel, true
+      miss
+        refuse-walk-mark(state, value, <`mark {mark-word}` is no walk's mark: the one word a walk takes is `parallel`>)
 
   # The mode is a closed set, so anything outside it is the SEQUENCE: `walk one/stem` is `walk list, ...`
   save mode, <list>
@@ -1345,7 +1363,20 @@ task loop-of
               bind must, contract/must
               bind label, label
               bind span, where
+          # written only when marked, so an unmarked walk mints exactly what it minted before
+          fork test, parallel
+            hold
+              sift looped
+                case for-each
+                  save looped/parallel, true
+                miss
+                  save nothing, 0
           back one-statement(looped)
+
+  # a parallel walk walks a list: its turns are its items
+  fork test, and(parallel, is-unequal(mode, <list>))
+    hold
+      refuse-walk-mark(state, value, <`mark parallel` is on a `walk {mode}`, and a parallel walk walks a list>)
 
   fork test, is-equal(mode, <test>)
     hold
@@ -1449,6 +1480,23 @@ task loop-of
   # any other mode is one the mill has no lowering for: refused rather than compiled into a loop that never runs
   unhandled(state, value, <a `walk {mode}`>)
   back no-statements()
+
+# a walk's `mark` refused, as `parallel-walk-mode`: a word that is not `parallel`, or `parallel` on a walk that is not
+# over a list
+task refuse-walk-mark
+  take state, like mint-state
+  take value, like minted
+  take message, like text
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, state/file
+      bind span, span-of(make(some, value))
+      bind message, make(some, message)
+      bind hint, make none
+  save name, make parallel-walk-mode
+  push(state/diagnostics, diagnose(name, input))
 
 # the value a counted walk's `bind <name>` gives
 task walk-bound

@@ -807,6 +807,22 @@ task variant-case
       back facts/variant-fields/get(name)
   back make list
 
+# a construction whose type is a union holding a case of its name: `make void` of a form with a `case void` builds
+# that case, never the void value
+task names-own-case
+  take name, like text
+  take given, like maybe, like type
+  take facts, like emit-facts
+  like boolean
+  mark private
+
+  save owner, named-of(given)
+  fork test, and(is-unequal(owner, <>), facts/variant-fields-by-owner/has(owner))
+    hold
+      save cases, facts/variant-fields-by-owner/get(owner)
+      back cases/has(name)
+  back false
+
 # the fields a construction left out, each its type's empty value; a `need false` field stays out
 task empty-for
   take declared, like list, like ts-field
@@ -2264,7 +2280,8 @@ task emit-record
       fork test, and(is-equal(record-name, <list>), is-equal(fields/length, 0))
         hold
           back <[]>
-      fork test, and(is-equal(record-name, <void>), is-equal(fields/length, 0))
+      # `make void` is the void value, unless its type is a union with a case `void` (item 0050: it was `undefined`)
+      fork test, and(and(is-equal(record-name, <void>), is-equal(fields/length, 0)), not(names-own-case(record-name, node-type, facts)))
         hold
           back <undefined>
       fork test, is-variant

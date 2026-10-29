@@ -8,12 +8,14 @@
 // (check/inferring-main.tree), which writes the checked program in place and answers the diagnostics. The face holds
 // only what decision 032 left to it: the one profile a process has (`setInferProfile`, handed down so the parts count
 // their generalizes into it), and the count and time of each `check` (section 4.9). The checker's switches are the
-// process's one instance in check/strict.ts.
+// process's one instance in check/strict.ts, and the overload groups the `groups` of check/overload.ts's bound, handed
+// in at each check (decision 069 section 3).
 
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import type { Program } from '@term/make/code/compile/node'
 import { inferProgram } from '@term/make/code/check/inferring-main'
 import { checkerSwitches } from '@term/make/code/check/strict'
+import { overloadBound } from '@term/make/code/check/overload'
 
 // WHAT INFERENCE SPENDS, for `pnpm term:generalize-bench` (decisions-2026-10.md, D10): every `check`, and every
 // `generalize` inside one with the size of the environment it walked. Off unless a profile is handed in, so a build
@@ -65,6 +67,8 @@ function checkProgram(program: Program, file: string, merged: boolean | undefine
     only === undefined ? NONE : { form: 'some', value: only },
     checkerSwitches,
     profile === undefined ? NONE : { form: 'some', value: profile },
+    // the overload groups the last binding left, read now (decision 069 section 3)
+    overloadBound.groups,
   )
 
   // the checked program is written where the caller holds it: a statement the check replaced stands at its place

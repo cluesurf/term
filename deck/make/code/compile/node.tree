@@ -848,6 +848,11 @@ form statement
     link place-row
       like number
       need false
+    # `walk xs, mark parallel`: the turns may run side by side (decision 021 of term/self-host/change/001). The LAST
+    # field, since node-rebuild renames a case's fields by position
+    link parallel
+      like boolean
+      need false
   # `halt` and `turn next`, of the innermost loop or of the loop named `label`
   case break
     link label

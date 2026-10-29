@@ -3,8 +3,8 @@
 # of a hand-written reader. The mine and mint dialects are described in compile/mill-run.ts.
 #
 # Ported from compile/mill-run.ts (self-hosting, 2026-10-06), which stays as the face. The decisions:
-#   - a rule's `maybe` is `optional` here: a case named `maybe` takes the name of the stdlib's `maybe` in this module,
-#     and every optional field of every form in it would then be boxed. Nothing outside reads a rule's kind
+#   - a rule's kinds keep the original's names, its `maybe` among them (beside the stdlib's `maybe` since item 0378,
+#     item 0379)
 #   - a capture is the original's record field for field, and a match is a `hash` of them, a `Map` on TypeScript as
 #     it was, so what `run-mine` hands back needs no conversion
 #   - an integer literal past 2^53 is a bigint read from its own text, as the original's was (`exact-integer`). A
@@ -138,8 +138,7 @@ form mine-rule
     link site
       like maybe, like text
       need false
-  # the original's `maybe`
-  case optional
+  case maybe
     link children, like list, like mine-rule
   case list
     link children, like list, like mine-rule
@@ -711,7 +710,7 @@ task read-mine-rule
   fork test, or(is-equal(kind-text, <maybe>), is-equal(kind-text, <case>))
     hold
       save made
-        make optional
+        make maybe
           bind children, child-rules(group)
       back make(some, made)
   fork test, is-equal(kind-text, <list>)
@@ -1304,10 +1303,10 @@ task match-rule
               back -1
         case none
           back -1
-    case optional
-      link optional-children
+    case maybe
+      link maybe-children
       save trial, empty-match()
-      save next, match-sequence(grammar, optional-children, kids, at, trial)
+      save next, match-sequence(grammar, maybe-children, kids, at, trial)
       fork test, is-equal(next, -1)
         hold
           back at

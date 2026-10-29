@@ -23,6 +23,7 @@ load @term/base/list
 
 load @term/base/integer/big
   find big-integer
+  find big-handle
   find big-from-number
   find big-add
   find big-subtract
@@ -32,6 +33,7 @@ load @term/base/integer/big
 load @term/base/float
   find round
   find to-number
+  find to-decimal
 
 load @term/base/text/number
   find host-parse-float
@@ -51,6 +53,134 @@ form roots-by-sign
   link positive, like number
   link negative, like number
   link zero, like number
+
+# THE WORK root isolation may spend (item 0057): the multivariate lift (cad-nvar.tree) isolates the roots of products
+# whose degree and coefficients grow with every variable, and a Sturm sequence of degree 34 over 100-bit coefficients
+# ran for hours. Counted in the proof budget's units: a remainder step pays the squared hexadecimal length of every
+# coefficient it rewrites, and a bisection step what evaluating the sequence at its two ends costs (evaluation-price),
+# a measure of the rationals reduced, never a clock, so the same goal stops at the same place on every machine. Once
+# `spent` reaches `budget` every loop below stops, and what it answers is partial: a caller that passed a budget asks
+# `out-of-work` before trusting it
+form sample-work
+  mark shared
+  link budget, like float
+  link spent, like float
+
+# ===== the work budget =====
+
+# the hexadecimal digits of a magnitude, as `toString(16).length` counts them (check/products.tree's own, by its name)
+bind sturm-hex-length
+  take value, like big-handle
+  like number
+  case node
+    text <($value \< 0n ? -$value : $value).toString(16).length>
+  case browser
+    text <($value \< 0n ? -$value : $value).toString(16).length>
+  case rust
+    text <((($value.downcast_ref::\<num_bigint::BigInt\>().unwrap().bits() + 3) / 4) as i64)>
+  case swift
+    text <(\{ () -\> Int64 in let l = termbig.big($value).limbs; if l.isEmpty \{ return 1 \}; return Int64((l.count - 1) * 8 + String(l[l.count - 1], radix: 16).count) \})()>
+  case kotlin
+    text <(((($value as java.math.BigInteger).abs().bitLength() + 3) / 4).toLong())>
+
+# a budget of `budget` units, none spent
+task sample-work-of
+  take budget, like float
+  like sample-work
+
+  back
+    make sample-work
+      bind budget, budget
+      bind spent, 0.0
+
+# no limit: what every caller that is not a proof's lift passes
+task unlimited-work
+  like sample-work
+  mark private
+
+  back sample-work-of(divide(1.0, 0.0))
+
+# whether the budget is spent, so what the work answered is partial
+task out-of-work
+  take work, like sample-work
+  like boolean
+
+  back is-minimum(work/spent, work/budget)
+
+task charge
+  take work, like sample-work
+  take units, like float
+  mark private
+
+  save work/spent, add(work/spent, units)
+
+# a rational's price: its hexadecimal length squared, as an exact operation on it costs
+task ratio-price
+  take x, like exact-ratio
+  like float
+  mark private
+
+  save size, to-decimal(ratio-size(x))
+  back multiply(size, size)
+
+# a rational's hexadecimal length, numerator and denominator
+task ratio-size
+  take x, like exact-ratio
+  like number
+  mark private
+
+  back add(sturm-hex-length(x/n/dock), sturm-hex-length(x/d/dock))
+
+# the largest coefficient of each polynomial of a sequence, by its hexadecimal length
+task largest-sizes
+  take seq, like list, like list, like exact-ratio
+  like list, like number
+  mark private
+
+  save out, make list
+  walk seq
+    take poly
+    save largest, 0
+    walk poly
+      take c
+      save size, ratio-size(c)
+      fork test, is-above(size, largest)
+        hold
+          save largest, size
+    push(out, largest)
+  back out
+
+# what counting the sign variations of `seq` at `x` costs: Horner's rule on a polynomial of `k` coefficients grows its
+# value to about `k` times the point's size plus the largest coefficient's, and each of its `k` steps reduces a rational
+# of that size, at a price that grows with its square
+task evaluation-price
+  take seq, like list, like list, like exact-ratio
+  take largest, like list, like number
+  take x, like exact-ratio
+  like float
+  mark private
+
+  save point, to-decimal(ratio-size(x))
+  save total, 0.0
+  save at, 0
+  walk seq
+    take poly
+    save k, to-decimal(poly/length)
+    save grown, add(multiply(k, point), to-decimal(get(largest, at)))
+    save total, add(total, multiply(k, multiply(grown, grown)))
+    save at, add(at, 1)
+  back total
+
+task poly-price
+  take p, like list, like exact-ratio
+  like float
+  mark private
+
+  save total, 0.0
+  walk p
+    take c
+    save total, add(total, ratio-price(c))
+  back total
 
 # ===== exact big-integer rationals =====
 
@@ -362,6 +492,7 @@ task r-subtract-poly
 task r-remainder
   take a, like list, like exact-ratio
   take b, like list, like exact-ratio
+  take work, like sample-work
   like list, like exact-ratio
   mark private
 
@@ -371,7 +502,7 @@ task r-remainder
   save lead, get(bb, db)
 
   walk test
-    hook test, and(is-minimum(subtract(r/length, 1), db), is-above(r/length, 0))
+    hook test, and(and(is-minimum(subtract(r/length, 1), db), is-above(r/length, 0)), not(out-of-work(work)))
     hook hold
       save dr, subtract(r/length, 1)
       save factor, r-multiply(get(r, dr), r-inverse(lead))
@@ -386,6 +517,8 @@ task r-remainder
         take c
         push(term, c)
       save r, r-subtract-poly(r, term)
+      # the step scaled every coefficient of the divisor and rewrote every coefficient of the remainder
+      charge(work, add(poly-price(term), poly-price(r)))
 
       fork test, is-minimum(subtract(r/length, 1), dr)
         hold
@@ -396,6 +529,7 @@ task r-remainder
 # the Sturm sequence of `p`: p_0 = p, p_1 = p', p_{i+1} = -(p_{i-1} mod p_i), to the last nonzero remainder.
 task r-sturm-sequence
   take p, like list, like exact-ratio
+  take work, like sample-work
   like list, like list, like exact-ratio
   mark private
 
@@ -408,11 +542,12 @@ task r-sturm-sequence
       back seq
 
   push(seq, d)
-  back extend-remainders(seq)
+  back extend-remainders(seq, work)
 
-# the negated remainders appended to a sequence of two, to the last nonzero one
+# the negated remainders appended to a sequence of two, to the last nonzero one, or until the work runs out
 task extend-remainders
   take seq, like list, like list, like exact-ratio
+  take work, like sample-work
   like list, like list, like exact-ratio
   mark private
 
@@ -421,8 +556,8 @@ task extend-remainders
     hook hold
       save previous, get(seq, subtract(seq/length, 2))
       save current, get(seq, subtract(seq/length, 1))
-      save rem, r-remainder(previous, current)
-      fork test, is-equal(rem/length, 0)
+      save rem, r-remainder(previous, current, work)
+      fork test, or(is-equal(rem/length, 0), out-of-work(work))
         hold
           halt
       push(seq, r-scale(rem, whole(big(-1))))
@@ -499,6 +634,7 @@ task span-of
 # with non-root endpoints. Sorted by left endpoint.
 task r-isolate-roots
   take p, like list, like exact-ratio
+  take work, like sample-work
   like list, like root-span
   mark private
 
@@ -509,8 +645,13 @@ task r-isolate-roots
     hold
       back out
 
-  save seq, r-sturm-sequence(s)
+  save seq, r-sturm-sequence(s, work)
+  fork test, out-of-work(work)
+    hold
+      back out
   save bound, r-root-bound(s)
+
+  save largest, largest-sizes(seq)
 
   # a queue, read from `head` on
   save queue, make list
@@ -519,13 +660,18 @@ task r-isolate-roots
   save guard, 0
 
   walk test
-    hook test, and(is-below(head, queue/length), is-below(guard, 200000))
+    hook test, and(and(is-below(head, queue/length), is-below(guard, 200000)), not(out-of-work(work)))
     hook hold
       save guard, add(guard, 1)
       save next, get(queue, head)
       save head, add(head, 1)
       save a, next/low
       save b, next/high
+      # paid before it is done, so a step the budget cannot pay is never run
+      charge(work, add(evaluation-price(seq, largest, a), evaluation-price(seq, largest, b)))
+      fork test, out-of-work(work)
+        hold
+          halt
       # roots in (a, b]
       save count, subtract(r-sign-variations(seq, a), r-sign-variations(seq, b))
 
@@ -581,10 +727,11 @@ task sort-spans
 # at the sample. (The roots themselves are the zero-cells.) This is the one-dimensional CAD.
 task r-cell-samples
   take p, like list, like exact-ratio
+  take work, like sample-work
   like list, like exact-ratio
   mark private
 
-  save intervals, r-isolate-roots(p)
+  save intervals, r-isolate-roots(p, work)
   save samples, make list
 
   fork test, is-equal(intervals/length, 0)
@@ -635,7 +782,7 @@ task root-count-in
   take b, like float
   like number
 
-  save seq, r-sturm-sequence(to-r-poly(p))
+  save seq, r-sturm-sequence(to-r-poly(p), unlimited-work())
   back subtract(r-sign-variations(seq, rounded(a)), r-sign-variations(seq, rounded(b)))
 
 # the total number of DISTINCT real roots of `p`
@@ -648,7 +795,7 @@ task real-root-count
     hold
       back 0
 
-  save seq, r-sturm-sequence(t)
+  save seq, r-sturm-sequence(t, unlimited-work())
   save bound, r-root-bound(t)
   back subtract(r-sign-variations(seq, r-negate(bound)), r-sign-variations(seq, bound))
 
@@ -705,7 +852,7 @@ task r-non-negative
     hold
       back true
 
-  walk r-cell-samples(t)
+  walk r-cell-samples(t, unlimited-work())
     take x
     fork test, is-below(r-sign(r-evaluate(t, x)), 0)
       hold
@@ -720,7 +867,7 @@ task cell-samples
   take p, like list, like float
   like list, like exact-ratio
 
-  back r-cell-samples(to-r-poly(p))
+  back r-cell-samples(to-r-poly(p), unlimited-work())
 
 # the same, for a polynomial whose integer coefficients are EXACT big integers (they can exceed 2^53 after the
 # multivariate projection multiplies several polynomials, so they must not pass through a float).
@@ -728,11 +875,20 @@ task cell-samples-big
   take coefficients, like list, like big-integer
   like list, like exact-ratio
 
+  back cell-samples-within(coefficients, unlimited-work())
+
+# the same, paying from `work`: once it runs out the samples are partial, and the caller asks `out-of-work` before it
+# trusts them (cad-nvar.tree, under a proof's budget)
+task cell-samples-within
+  take coefficients, like list, like big-integer
+  take work, like sample-work
+  like list, like exact-ratio
+
   save ratios, make list
   walk coefficients
     take c
     push(ratios, whole(c))
-  back r-cell-samples(r-trim(ratios))
+  back r-cell-samples(r-trim(ratios), work)
 
 # is the polynomial with the given EXACT RATIONAL coefficients (`n / d` per power) non-negative for all reals? The
 # multivariate lift forms a fibre polynomial by substituting a rational sample point, whose coefficients are rationals;
@@ -764,7 +920,7 @@ task positive-on-interval
   save t, to-r-poly(p)
   save low, rounded(a)
   save high, rounded(b)
-  save seq, r-sturm-sequence(t)
+  save seq, r-sturm-sequence(t, unlimited-work())
   # roots in (a, b]; subtract a root exactly at b (allowed, the interval is open at b)
   save half-open, subtract(r-sign-variations(seq, low), r-sign-variations(seq, high))
   save at-b, 0
@@ -858,7 +1014,7 @@ task r-signed-remainder-sequence
     hold
       back seq
   push(seq, r-trim(g))
-  back extend-remainders(seq)
+  back extend-remainders(seq, unlimited-work())
 
 # the STURM-TARSKI query TaQ(g, f) = sum over the distinct real roots `x` of `f` of `sign(g(x))`. It is computed from
 # the signed-remainder sequence of `f` and `f' * g` by the difference of its sign variations at -infinity and

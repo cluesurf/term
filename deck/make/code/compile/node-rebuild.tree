@@ -513,6 +513,7 @@ task place-statement
       link f6
       link f7
       link f8
+      link f9
       save copy/place-row, row
     case break
       link f1
@@ -746,6 +747,7 @@ task place-row-of-statement
       link f6
       link f7
       link f8
+      link f9
       back f8
     case break
       link f1
@@ -2274,6 +2276,7 @@ task rebuild-step-statement
       link f6
       link f7
       link f8
+      link f9
       fork test, enters(skip, <iterable>)
         hold
           save made-93, next-expression(cursor)

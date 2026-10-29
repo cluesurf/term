@@ -769,6 +769,7 @@ form diagnostic-name
   case inspect-generic, text <inspect-generic>
   case dock-member-spelling, text <dock-member-spelling>
   case label-or-call, text <label-or-call>
+  case parallel-walk-mode, text <parallel-walk-mode>
 
 # a name's catalog entry. `fix` is the default actionable hint, so every error says how to resolve it
 task entry-of
@@ -990,6 +991,10 @@ task entry-of
     # also names a task: it reads as a call and ran as the label (check/disambiguate.tree, term/compiler decision 009)
     case label-or-call
       back error-entry(0x44, <this part is both the callee's argument and a call of a task of that name>, <write the label `name \<x\>` for the argument, or `call name(\<x\>)` for the call>)
+    # `mark parallel` on a walk that is not a list walk, or another word in a walk's `mark`: only a list walk's turns
+    # can run side by side (decision 021 of term/self-host/change/001)
+    case parallel-walk-mode
+      back error-entry(0x45, <a parallel walk walks a list>, <write `walk xs, mark parallel` over a list, or drop the mark>)
 
 # every name, in catalog order, for a tool that walks them all (a text form cannot list its cases)
 task diagnostic-names
@@ -1065,3 +1070,4 @@ task diagnostic-names
       make inspect-generic
       make dock-member-spelling
       make label-or-call
+      make parallel-walk-mode

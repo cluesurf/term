@@ -450,6 +450,20 @@ function rules(): void {
     ok('a path after a call keeps its spelling, `greeting()/text`', path.includes('  log greeting()/text\n  log greet(<ada>)/text\n  log <{greet(who)/count} left>\n'), path)
   }
 
+  // a walk's head line keeps ONE name or mark part after a one-part list, a second stacks as its first child, and a
+  // longhand `walk list, read xs` keeps its mark stacked (decision 073 of term/self-host change 001)
+  for (const [label, text, want, lean] of [
+    ['lean: `walk xs` over `mark parallel` becomes `walk xs, mark parallel`', 'task f\n  take xs, like list\n\n  walk xs\n    mark parallel\n    take x\n    log x\n', 'task f\n  take xs, like list\n\n  walk xs, mark parallel\n    take x\n    log x\n', true],
+    ['lean: `walk xs, name outer` stays on one line', 'task f\n  take xs, like list\n\n  walk xs, name outer\n    take x\n    log x\n', 'task f\n  take xs, like list\n\n  walk xs, name outer\n    take x\n    log x\n', true],
+    ['lean: `walk xs, name outer` over `mark parallel` keeps the mark a child', 'task f\n  take xs, like list\n\n  walk xs, name outer\n    mark parallel\n    take x\n    log x\n', 'task f\n  take xs, like list\n\n  walk xs, name outer\n    mark parallel\n    take x\n    log x\n', true],
+    ['longhand: `walk list, read xs` over `mark parallel` stays stacked', 'task f\n  take xs, like list\n\n  walk list\n    read xs\n    mark parallel\n    hook next\n      take site, name x\n      log x\n', 'task f\n  take xs, like list\n\n  walk list, read xs\n    mark parallel\n    hook next\n      take site, name x\n      log x\n', false],
+  ] as const) {
+    const once = format({ file: 'w.tree', text }, { lean })
+
+    ok(label, once === want, once)
+    ok(`${label}: and formatting it again changes nothing`, format({ file: 'w.tree', text: want }, { lean }) === want)
+  }
+
   // every rule's output is idempotent
   for (const [label, text] of [
     ['the after column', AFTER],

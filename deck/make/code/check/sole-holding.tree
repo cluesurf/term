@@ -1,0 +1,271 @@
+# THE SOLE DECLARATION IS EARNED (term/affine-kinds-0008, decision note/project/term/affine-kinds/decision/
+# 001-many-by-default-sole-and-hide-declared-per-form.md, section earned).
+#
+# Copyability is declared per form, never derived from its fields: a form is copyable unless it says `mark sole`. So a
+# form that HOLDS a sole value and does not say so would be copied with its permit inside, which is a second use of
+# the permit. It is refused as `sole-unearned`, at the form, naming the field: a `link` or `slot` field, or any case's
+# field, whose type is a sole form directly or through another form that holds one (walked with a visited set, so a
+# recursive form ends). The same form with `mark sole` added builds. This is Bend's `book_valid` walk, on fields.
+#
+# A sole type inside a list, a hash or a type argument is check/sole-spending.tree `sole-generic`, not this.
+#
+# Ported from check/sole-earned.ts (item term-self-host-change-001-finish-self-host-0002). The forms are the original's
+# Map: the last form of a name is the one read, at the place its name was first met. The visited set the original
+# shared across one form's whole walk is handed down and handed back with each answer.
+
+load @term/base/list
+  find list
+  find contains
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find marker
+  find span
+
+load ../compile/node
+  find statement
+  find type
+
+# a form as this check reads it: its name, whether it says `mark sole`, its fields and its cases' fields in order, and
+# where it is declared
+form held-form
+  link name, like text
+  link sole, like boolean
+  link fields, like list, like held-field
+  link span, like span
+
+form held-field
+  link name, like text
+  link type, like type
+  link span, like maybe, like span
+
+# the path of fields from a form to a sole form it holds (empty for none), the sole form, and the forms seen so far
+form held-path
+  link path, like list, like text
+  link sole, like text
+  link seen, like list, like text
+
+# the form a field's type names, none when it names no form of the program
+task form-of-type
+  take given, like type
+  take forms, like hash, like text, like held-form
+  like maybe, like held-form
+  mark private
+
+  sift given
+    case named
+      fork test, forms/has(name)
+        hold
+          save found, forms/get(name)
+          back make(some, found)
+      back make none
+    miss
+      back make none
+
+# the path of fields from `form` to a sole form it holds. A field typed by a sole form ends the path; a field typed by
+# another form not yet seen is walked into
+task path-to-sole
+  take holder, like held-form
+  take forms, like hash, like text, like held-form
+  take seen, like list, like text
+  like held-path
+  mark private
+
+  save known, seen
+  walk holder/fields
+    take field
+    save typed, form-of-type(field/type, forms)
+    sift typed
+      case some
+        link inner
+        fork test, inner/sole
+          hold
+            save path, make list
+            push(path, field/name)
+            back
+              make held-path
+                bind path, path
+                bind sole, inner/name
+                bind seen, known
+        fork test, not(contains(known, inner/name))
+          hold
+            save grown, make list
+            walk known
+              take one
+              push(grown, one)
+            push(grown, inner/name)
+            save deeper, path-to-sole(inner, forms, grown)
+            save known, deeper/seen
+            fork test, is-above(deeper/path/length, 0)
+              hold
+                save path, make list
+                push(path, field/name)
+                walk deeper/path
+                  take one
+                  push(path, one)
+                back
+                  make held-path
+                    bind path, path
+                    bind sole, deeper/sole
+                    bind seen, known
+      case none
+        save nothing, 0
+  back
+    make held-path
+      bind path, make list
+      bind sole, <>
+      bind seen, known
+
+# a span, its file written as `file`
+task with-file
+  take at, like span
+  take file, like text
+  like span
+  mark private
+
+  back
+    make span
+      bind start, at/start
+      bind end, at/end
+      bind file, make(some, file)
+
+# the span of the first field named `name`, else the form's
+task field-span-of
+  take holder, like held-form
+  take name, like text
+  like span
+  mark private
+
+  walk holder/fields
+    take field
+    fork test, is-equal(field/name, name)
+      hold
+        sift field/span
+          case some
+            link held
+            back held
+          case none
+            back holder/span
+  back holder/span
+
+task check-sole-earned
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save out, make list
+  save forms, make hash
+  save order, make list
+  # the original's early answer: no form says `mark sole` (the last form of a name is the one read, so a sole form
+  # declared again without the mark is checked below)
+  save any-marked, false
+  walk program
+    take top
+    sift top
+      case record-type
+        link sole
+        fork test, sole
+          hold
+            save any-marked, true
+      miss
+        save nothing, 0
+  fork test, not(any-marked)
+    hold
+      back out
+  save any-sole, false
+  walk program
+    take top
+    sift top
+      case record-type
+        link name
+        link fields
+        link variants
+        link sole
+        link span
+        save held, make list
+        walk fields
+          take field
+          save one
+            make held-field
+              bind name, field/name
+              bind type, field/type
+              bind span, field/span
+          push(held, one)
+        walk variants
+          take variant
+          walk variant/fields
+            take field
+            save one
+              make held-field
+                bind name, field/name
+                bind type, field/type
+                bind span, field/span
+            push(held, one)
+        fork test, not(forms/has(name))
+          hold
+            push(order, name)
+        save made
+          make held-form
+            bind name, name
+            bind sole, sole
+            bind fields, held
+            bind span, span
+        save forms/{name}, made
+      miss
+        save nothing, 0
+  walk order
+    take each-name
+    save one, forms/get(each-name)
+    fork test, one/sole
+      hold
+        save any-sole, true
+  fork test, not(any-sole)
+    hold
+      back out
+  walk order
+    take each-name
+    save holder, forms/get(each-name)
+    fork test, holder/sole
+      hold
+        turn next
+    save seen, make list
+    push(seen, holder/name)
+    save found, path-to-sole(holder, forms, seen)
+    fork test, is-equal(found/path/length, 0)
+      hold
+        turn next
+    save from, file
+    sift holder/span/file
+      case some
+        link written
+        save from, written
+      case none
+        save nothing, 0
+    save field-name, get(found/path, 0)
+    save at, with-file(field-span-of(holder, field-name), from)
+    save through, <>
+    save joined, join(found/path, </>)
+    fork test, is-above(found/path/length, 1)
+      hold
+        save through, < (through {joined})>
+    save markers, make list
+    save pin
+      make marker
+        bind span, at
+    push(markers, pin)
+    save input
+      make diagnostic-input
+        bind file, from
+        bind span, at
+        bind message, make(some, <the form "{holder/name}" holds the `mark sole` form "{found/sole}" in its field "{field-name}"{through}, so a copy of a {holder/name} would copy the {found/sole}>)
+        bind markers, make(some, markers)
+        bind hint, make(some, <add `mark sole` to {holder/name}: a form that holds a sole value is sole itself>)
+    save kind, make sole-unearned
+    push(out, diagnose(kind, input))
+  back out

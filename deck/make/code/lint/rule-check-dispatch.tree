@@ -11,7 +11,8 @@
 #     `lint-facts`, made once per call, whose two caches are `mark shared`, so a whole-program analysis a rule needs is
 #     still computed at most once
 #   - `report` and `slice` are `report-into` and lint-lines' `slice-span`, and the config is lint-lines' `lint-setting`
-#   - L044's meaning check (format/meaning.ts `programOf`) is a dock, named for its module (decision 031 section 3)
+#   - L044's meaning check is format/milled-meaning.tree's `program-of`, called in Term (item 0087), where it was a
+#     dock of format/meaning.ts
 #   - the plugin seam (a caller's own rule list) is not carried: plugin rules stop loading by decision 029, and the
 #     face's `rules` parameter is read by nothing until REMOVE batch 2 drops it with lint/seed-rule.ts
 
@@ -71,8 +72,8 @@ load ./lint-lines
 load ./layout-check
   find line-layout-reports
 
-dock load
-  load <@term/make/code/format/meaning>, name rule-check-dispatch-meaning
+load ../format/milled-meaning
+  find program-of
 
 # ---- the rules ----
 
@@ -377,23 +378,6 @@ task report-layout
         save nothing, 0
     report-into(findings, one, off, report/message, report/span, offered)
 
-# what format/meaning.ts's `programOf` answers: the program's meaning, absent (`undefined`) when the text does not mill
-form meaning-held
-  link meaning
-    like maybe, like text
-    need false
-
-# the answer as the dock gives it, unread. Read back as `meaning-held`, its absent field is `none`
-form meaning-given
-  link meaning, like dynamic
-
-task held-meaning
-  take given, like dynamic
-  like meaning-held
-  mark private
-
-  back given
-
 # L044's meaning check: a layout is offered as a fix only when the program means the same after it
 task lint-dispatch-meaning
   take tree, like root-node
@@ -402,11 +386,7 @@ task lint-dispatch-meaning
   like maybe, like text
   mark private
 
-  save given
-    make meaning-given
-      bind meaning, rule-check-dispatch-meaning/program-of(tree, file, lean)
-  save held, held-meaning(given)
-  back held/meaning
+  back program-of(tree, file, lean)
 
 # whether an enabled rule reads the concrete tree and the source, so the driver parses only when one does
 task reads-tree

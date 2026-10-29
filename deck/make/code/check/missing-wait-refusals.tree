@@ -1,0 +1,986 @@
+# A MISSING `wait` ON A HOST CALL THAT ANSWERS A PROMISE (term/compiler decision 004, guides: language/async gap 151,
+# architecture/language/async gap 56).
+#
+# The build cannot see inside a host module, so a call into a `dock load` module is awaited only where the program
+# says so: `wait` on the call, `mark async` under the module's load line, or `find <name>` / `mark async` for one
+# function. Left out, the promise itself was handed on as the answer, and the program printed `undefined` where a
+# length belonged, with nothing said.
+#
+# What the build CAN know is a module that answers promises from every function by its own name: Node's
+# `<node:fs/promises>`, `<node:timers/promises>`, `<node:dns/promises>` and the rest, every module path whose last
+# segment is `promises`. A call into one of those is refused as `missing-wait` unless
+#
+#   - it is awaited (`wait`, or the load line's `mark async`, which `resolve-async` turned into an await before this
+#     runs)
+#   - it is started with `tick`, which keeps the promise on purpose
+#   - it is the whole value a task or closure that is async gives `back`: an async function's own promise takes the
+#     value of a promise returned from it, so `back fs/read-file(path)` in a `mark async` task answers the text
+#
+# A module the build cannot name this way stays the program's to mark. Runs after `resolve-async`, on the merged
+# program, so every await the inference wrote is in place.
+#
+# A BIND is the other host code that answers a promise. One marked `mark async` is waited like an async task
+# (decision 053 of note/project/term/self-host/change/001-finish-self-host, check/async-resolve.tree), so its calls
+# are awaits by now. One left unmarked may hand its promise on as a VALUE to more host code (a work queue, a promise
+# kept and waited later), which is right, so the bind itself is never refused. What is never right is reading a FIELD
+# off its promise, which is how `term make --merged` died (traps T-0334). `check-unwaited-bind-reads` refuses that read
+# where it can tell: the bind's TypeScript-family text answers a promise by its outermost shape (`promise-text`), and
+# the field is read off the call, off a local saved from it, or off a call to a task that is not async and hands such
+# a call `back`, to a fixed point. Anything else that answers a promise is known only by its `mark async`.
+#
+# Ported from check/missing-wait.ts (item term-self-host-change-001-finish-self-host-0003). The original's reflective
+# walks (every field but `span`, `type` and `form`) are compile/node-children.tree steps with those skips. The one call
+# a walk may leave a promise (under an await, or an async function's `back`) was the original's object identity; here
+# it is a flag handed to the walk of that one node. The names a body binds are a shared list, added to in place by
+# each `save` as the original added to its Set, and copied for a task or a closure; the locals held from a promising
+# call are a shared hash, one per task or closure, a cleared entry written `<>`.
+
+load @term/base/list
+  find list
+  find contains
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-at
+  find char-count
+  find index-of
+  find starts-with
+  find ends-with
+  find substring
+  find char-code-at
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find statement
+  find statement-span
+  find expression
+  find function-param
+  find closure-param
+
+load ../compile/node-children
+  find node-handle
+  find node-children
+  find block-handles
+
+# the names bound in a body so far, which shadow a module's alias or a bind's name inside it
+form wait-scope
+  mark shared
+  link names, like list, like text
+
+# the locals saved from a call that answers a promise, each to the name of what it called (`<>` once cleared)
+form wait-held
+  mark shared
+  link from, like hash, like text, like text
+
+# the refusals so far, in the order found
+form wait-found
+  mark shared
+  link out, like list, like diagnostic
+
+# the dock aliases of promise modules and of other modules, per file (`<file>\n<alias>`) and anywhere
+form wait-docks
+  link promised-at, like hash, like text, like boolean
+  link plain-at, like hash, like text, like boolean
+  link promised-any, like hash, like text, like boolean
+  link plain-any, like hash, like text, like boolean
+  link any-promised, like boolean
+
+# ---- texts ----
+
+# whether one character is white space, as JavaScript's `\s` and `trim` read it: tab to carriage return, space,
+# U+00A0, U+1680, U+2000 to U+200A, U+2028, U+2029, U+202F, U+205F, U+3000 and U+FEFF (the stdlib's `trim` keeps U+FEFF)
+task is-space
+  take char, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(char, <>)
+    hold
+      back false
+  save code, char-code-at(char, 0)
+  fork test, or(and(is-minimum(code, 9), is-maximum(code, 13)), and(is-minimum(code, 8192), is-maximum(code, 8202)))
+    hold
+      back true
+  save others, make list
+  push(others, 32)
+  push(others, 160)
+  push(others, 5760)
+  push(others, 8232)
+  push(others, 8233)
+  push(others, 8239)
+  push(others, 8287)
+  push(others, 12288)
+  push(others, 65279)
+  back contains(others, code)
+
+# the text with white space (`is-space`) cut from both ends, as JavaScript's `trim`
+task trim-space
+  take text, like text
+  like text
+  mark private
+
+  save size, char-count(text)
+  save from, 0
+  walk test
+    hook test, and(is-below(from, size), is-space(char-at(text, from)))
+    hook hold
+      save from, add(from, 1)
+  save to, size
+  walk test
+    hook test, and(is-above(to, from), is-space(char-at(text, subtract(to, 1))))
+    hook hold
+      save to, subtract(to, 1)
+  back substring(text, from, to)
+
+# the text with white space cut from its end, as JavaScript's `trimEnd`
+task trim-space-end
+  take text, like text
+  like text
+  mark private
+
+  save to, char-count(text)
+  walk test
+    hook test, and(is-above(to, 0), is-space(char-at(text, subtract(to, 1))))
+    hook hold
+      save to, subtract(to, 1)
+  back substring(text, 0, to)
+
+task is-word-char
+  take char, like text
+  like boolean
+  mark private
+
+  back is-above(index-of(<ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_>, char), -1)
+
+task is-lower-letter
+  take char, like text
+  like boolean
+  mark private
+
+  back and(is-unequal(char, <>), is-above(index-of(<abcdefghijklmnopqrstuvwxyz>, char), -1))
+
+task is-quote
+  take char, like text
+  like boolean
+  mark private
+
+  back or(is-equal(char, <">), or(is-equal(char, <'>), is-equal(char, <`>)))
+
+task is-open
+  take char, like text
+  like boolean
+  mark private
+
+  back or(is-equal(char, <(>), or(is-equal(char, <[>), is-equal(char, <\{>)))
+
+task is-close
+  take char, like text
+  like boolean
+  mark private
+
+  back or(is-equal(char, <)>), or(is-equal(char, <]>), is-equal(char, <\}>)))
+
+# a host module whose every function answers a promise, known by its path: a leading `<scheme>:` of lowercase letters
+# left out, the path is `promises` or ends `/promises`
+task answers-promises
+  take module, like text
+  like boolean
+
+  save path, module
+  save colon, index-of(module, <:>)
+  fork test, is-above(colon, 0)
+    hold
+      save lower, true
+      save at, 0
+      walk test
+        hook test, is-below(at, colon)
+        hook hold
+          fork test, not(is-lower-letter(char-at(module, at)))
+            hold
+              save lower, false
+          save at, add(at, 1)
+      fork test, lower
+        hold
+          save path, substring(module, add(colon, 1))
+  back or(is-equal(path, <promises>), ends-with(path, </promises>))
+
+# the index of the bracket that closes the one opened at `open`, skipping quoted text, or -1
+task closing
+  take text, like text
+  take open, like number
+  like number
+  mark private
+
+  save depth, 0
+  save quote, <>
+  save size, char-count(text)
+  save at, open
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save char, char-at(text, at)
+      fork test, is-unequal(quote, <>)
+        hold
+          fork test, is-equal(char, <\\>)
+            hold
+              save at, add(at, 1)
+            miss
+              fork test, is-equal(char, quote)
+                hold
+                  save quote, <>
+        miss
+          fork test, is-quote(char)
+            hold
+              save quote, char
+            miss
+              fork test, is-open(char)
+                hold
+                  save depth, add(depth, 1)
+                miss
+                  fork test, is-close(char)
+                    hold
+                      save depth, subtract(depth, 1)
+                      fork test, is-equal(depth, 0)
+                        hold
+                          back at
+      save at, add(at, 1)
+  back -1
+
+# the index of the bracket that opens the one closing at `close`, skipping quoted text, or -1
+task opening
+  take text, like text
+  take close, like number
+  like number
+  mark private
+
+  save depth, 0
+  save quote, <>
+  save at, close
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      save char, char-at(text, at)
+      fork test, is-unequal(quote, <>)
+        hold
+          save before, <>
+          fork test, is-above(at, 0)
+            hold
+              save before, char-at(text, subtract(at, 1))
+          fork test, and(is-equal(char, quote), is-unequal(before, <\\>))
+            hold
+              save quote, <>
+        miss
+          fork test, is-quote(char)
+            hold
+              save quote, char
+            miss
+              fork test, is-close(char)
+                hold
+                  save depth, add(depth, 1)
+                miss
+                  fork test, is-open(char)
+                    hold
+                      save depth, subtract(depth, 1)
+                      fork test, is-equal(depth, 0)
+                        hold
+                          back at
+      save at, subtract(at, 1)
+  back -1
+
+# `word` at the start of `text`, ending there or before a character that is not a word character (`^word\b`)
+task starts-word
+  take text, like text
+  take word, like text
+  like boolean
+  mark private
+
+  fork test, not(starts-with(text, word))
+    hold
+      back false
+  save size, char-count(word)
+  fork test, is-equal(char-count(text), size)
+    hold
+      back true
+  back not(is-word-char(char-at(text, size)))
+
+# `new`, white space, `Promise`: the head `new\s+Promise`
+task is-new-promise
+  take head, like text
+  like boolean
+  mark private
+
+  fork test, not(and(starts-with(head, <new>), ends-with(head, <Promise>)))
+    hold
+      back false
+  save size, char-count(head)
+  fork test, is-below(size, 11)
+    hold
+      back false
+  save at, 3
+  walk test
+    hook test, is-below(at, subtract(size, 7))
+    hook hold
+      fork test, not(is-space(char-at(head, at)))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+# a head that ends `.`, white space, then `word` (`\.\s*word$`)
+task ends-member
+  take head, like text
+  take word, like text
+  like boolean
+  mark private
+
+  fork test, not(ends-with(head, word))
+    hold
+      back false
+  save rest, trim-space-end(substring(head, 0, subtract(char-count(head), char-count(word))))
+  back ends-with(rest, <.>)
+
+task is-promise-head
+  take head, like text
+  like boolean
+  mark private
+
+  fork test, is-new-promise(head)
+    hold
+      back true
+  save names, make list
+  push(names, <Promise.resolve>)
+  push(names, <Promise.reject>)
+  push(names, <Promise.all>)
+  push(names, <Promise.allSettled>)
+  push(names, <Promise.race>)
+  push(names, <Promise.any>)
+  push(names, <fetch>)
+  push(names, <import>)
+  fork test, contains(names, head)
+    hold
+      back true
+  back or(ends-member(head, <then>), or(ends-member(head, <catch>), ends-member(head, <finally>)))
+
+# Whether a bind's host text answers a promise, by its outermost shape: `new Promise(...)`, `Promise.resolve(...)` and
+# its siblings, `fetch(...)`, `import(...)`, or a chain whose last call is `.then`, `.catch` or `.finally`. A text in
+# parentheses is read inside them. A text that starts with `void` answers nothing, and one that starts with `await`
+# answers what it waited for. Anything else is not known to answer a promise
+task promise-text
+  take text, like text
+  like boolean
+
+  save t, trim-space(text)
+  fork test, or(is-equal(t, <>), or(starts-word(t, <void>), starts-word(t, <await>)))
+    hold
+      back false
+  save size, char-count(t)
+  fork test, and(starts-with(t, <(>), is-equal(closing(t, 0), subtract(size, 1)))
+    hold
+      back promise-text(substring(t, 1, subtract(size, 1)))
+  fork test, not(ends-with(t, <)>))
+    hold
+      back false
+  save open, opening(t, subtract(size, 1))
+  fork test, is-maximum(open, 0)
+    hold
+      back false
+  back is-promise-head(trim-space-end(substring(t, 0, open)))
+
+# ---- shared ----
+
+task skipped-keys
+  like list, like text
+  mark private
+
+  save skip, make list
+  push(skip, <span>)
+  push(skip, <type>)
+  push(skip, <form>)
+  back skip
+
+task expression-handle
+  take value, like expression
+  like node-handle
+  mark private
+
+  back
+    make node-handle/expression-handle
+      bind node, value
+
+# a body's scope: the names it was handed, and every parameter
+task function-scope
+  take outer, like wait-scope
+  take params, like list, like function-param
+  like wait-scope
+  mark private
+
+  save names, make list
+  walk outer/names
+    take one
+    push(names, one)
+  walk params
+    take one
+    push(names, one/name)
+  back
+    make wait-scope
+      bind names, names
+
+task closure-scope
+  take outer, like wait-scope
+  take params, like list, like closure-param
+  like wait-scope
+  mark private
+
+  save names, make list
+  walk outer/names
+    take one
+    push(names, one)
+  walk params
+    take one
+    push(names, one/name)
+  back
+    make wait-scope
+      bind names, names
+
+task empty-scope
+  like wait-scope
+  mark private
+
+  back
+    make wait-scope
+      bind names, make list
+
+task empty-held
+  like wait-held
+  mark private
+
+  back
+    make wait-held
+      bind from, make hash
+
+# a task's own file, else the one it is in
+task file-or
+  take at, like span
+  take outer, like text
+  like text
+  mark private
+
+  sift at/file
+    case some
+      link written
+      fork test, is-unequal(written, <>)
+        hold
+          back written
+    case none
+      save nothing, 0
+  back outer
+
+# the call's own file, else the build's entry file, else none known
+task told-file
+  take at, like text
+  take file, like text
+  like text
+  mark private
+
+  fork test, is-unequal(at, <>)
+    hold
+      back at
+  back file
+
+task refusal
+  take file, like text
+  take at, like span
+  take message, like text
+  like diagnostic
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, message)
+  save kind, make missing-wait
+  back diagnose(kind, input)
+
+# ---- calls into a promise module ----
+
+task module-docks
+  take program, like list, like statement
+  like wait-docks
+  mark private
+
+  save docks
+    make wait-docks
+      bind promised-at, make hash
+      bind plain-at, make hash
+      bind promised-any, make hash
+      bind plain-any, make hash
+      bind any-promised, false
+  walk program
+    take one
+    sift one
+      case native
+        link alias
+        link module
+        link kind
+        link async
+        link span
+        link file
+        sift kind
+          case some
+            link given
+            sift given
+              case type
+                turn next
+              miss
+                save nothing, 0
+          case none
+            save nothing, 0
+        save at, file
+        fork test, is-equal(at, <>)
+          hold
+            save at, file-or(span, <>)
+        save key, <{at}\n{alias}>
+        fork test, or(async, not(answers-promises(module)))
+          hold
+            save docks/plain-at/{key}, true
+            save docks/plain-any/{alias}, true
+          miss
+            save docks/promised-at/{key}, true
+            save docks/promised-any/{alias}, true
+            save docks/any-promised, true
+      miss
+        turn next
+  back docks
+
+# the promise module an alias names in `at`: its own file's dock, else one dock anywhere when no file disagrees
+task promise-alias
+  take docks, like wait-docks
+  take at, like text
+  take alias, like text
+  like boolean
+  mark private
+
+  save key, <{at}\n{alias}>
+  fork test, docks/promised-at/has(key)
+    hold
+      back true
+  fork test, docks/plain-at/has(key)
+    hold
+      back false
+  back and(docks/promised-any/has(alias), not(docks/plain-any/has(alias)))
+
+# `exempt`: this one node may stay a promise (under an await, or an async function's `back`)
+task module-walk
+  take handle, like node-handle
+  take at, like text
+  take waiting, like boolean
+  take shadow, like wait-scope
+  take exempt, like boolean
+  take docks, like wait-docks
+  take found, like wait-found
+  take file, like text
+  like void
+  mark private
+
+  sift handle
+    case statement-handle
+      sift node
+        case function
+          link params
+          link body
+          link async
+          link span
+          save inner, function-scope(shadow, params)
+          save own, file-or(span, at)
+          walk block-handles(body)
+            take one
+            module-walk(one, own, async, inner, false, docks, found, file)
+          back
+        case let
+          link name
+          push(shadow/names, name)
+        case return
+          link value
+          sift value
+            case some
+              link given
+              module-walk(expression-handle(given), at, waiting, shadow, waiting, docks, found, file)
+            case none
+              save nothing, 0
+          back
+        miss
+          save nothing, 0
+    case expression-handle
+      sift node
+        case closure
+          link params
+          link body
+          link async
+          save inner, closure-scope(shadow, params)
+          walk block-handles(body)
+            take one
+            module-walk(one, at, async, inner, false, docks, found, file)
+          back
+        case await
+          link expr
+          module-walk(expression-handle(expr), at, waiting, shadow, true, docks, found, file)
+          back
+        case call
+          link callee
+          link span
+          link background
+          # the call's own span, read below inside a member arm that binds the member's
+          save call-span, span
+          fork test, and(not(exempt), not(background))
+            hold
+              sift callee
+                case member
+                  link member-target
+                  link member-name
+                  sift member-target
+                    case variable
+                      link name
+                      fork test, and(not(contains(shadow/names, name)), promise-alias(docks, at, name))
+                        hold
+                          save message, <"{name}/{member-name}" answers a promise, and nothing waits for it, so the promise itself is handed on as the answer. Write `wait {name}/{member-name}(...)`, `tick` to start it without waiting, or `mark async` under the load line of "{name}">
+                          push(found/out, refusal(told-file(at, file), call-span, message))
+                    miss
+                      save nothing, 0
+                miss
+                  save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+
+  walk node-children(handle, skipped-keys())
+    take one
+    module-walk(one, at, waiting, shadow, false, docks, found, file)
+
+task check-promise-module-calls
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+  mark private
+
+  save found
+    make wait-found
+      bind out, make list
+  save docks, module-docks(program)
+  fork test, not(docks/any-promised)
+    hold
+      back found/out
+  walk program
+    take one
+    sift one
+      case function
+        module-walk(statement-handle(one), <>, false, empty-scope(), false, docks, found, file)
+      miss
+        save nothing, 0
+  back found/out
+
+task statement-handle
+  take value, like statement
+  like node-handle
+  mark private
+
+  back
+    make node-handle/statement-handle
+      bind node, value
+
+# ---- field reads off a bind's promise ----
+
+# the name a call goes to, when it is a call of a bare name that is not ticked, else `<>`
+task callee-name
+  take value, like expression
+  like text
+  mark private
+
+  sift value
+    case call
+      link callee
+      link background
+      fork test, background
+        hold
+          back <>
+      sift callee
+        case variable
+          link name
+          back name
+        miss
+          back <>
+    miss
+      back <>
+
+# whether a body gives `back` a call to one of `names`, outside any task or closure written in it
+task hands-back
+  take handle, like node-handle
+  take names, like hash, like text, like boolean
+  like boolean
+  mark private
+
+  sift handle
+    case statement-handle
+      sift node
+        case function
+          back false
+        case return
+          link value
+          sift value
+            case some
+              link given
+              save called, callee-name(given)
+              back and(is-unequal(called, <>), names/has(called))
+            case none
+              back false
+        miss
+          save nothing, 0
+    case expression-handle
+      sift node
+        case closure
+          back false
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk node-children(handle, skipped-keys())
+    take one
+    fork test, hands-back(one, names)
+      hold
+        back true
+  back false
+
+# a call to one of `promised`, unawaited, and not shadowed by a local or parameter of its name, else `<>`
+task promise-call
+  take value, like expression
+  take shadow, like wait-scope
+  take promised, like hash, like text, like boolean
+  like text
+  mark private
+
+  save called, callee-name(value)
+  fork test, and(is-unequal(called, <>), and(promised/has(called), not(contains(shadow/names, called))))
+    hold
+      back called
+  back <>
+
+task keep-local
+  take held, like wait-held
+  take name, like text
+  take from, like text
+  like void
+  mark private
+
+  save held/from/{name}, from
+
+task held-from
+  take held, like wait-held
+  take name, like text
+  like text
+  mark private
+
+  fork test, held/from/has(name)
+    hold
+      back held/from/get(name)
+  back <>
+
+task is-promise-member
+  take name, like text
+  like boolean
+  mark private
+
+  back or(is-equal(name, <then>), or(is-equal(name, <catch>), is-equal(name, <finally>)))
+
+task bind-walk
+  take handle, like node-handle
+  take at, like text
+  take shadow, like wait-scope
+  take held, like wait-held
+  take promised, like hash, like text, like boolean
+  take found, like wait-found
+  take file, like text
+  like void
+  mark private
+
+  sift handle
+    case statement-handle
+      sift node
+        case function
+          link params
+          link body
+          link span
+          save inner, function-scope(shadow, params)
+          save own, file-or(span, at)
+          save fresh, empty-held()
+          walk block-handles(body)
+            take one
+            bind-walk(one, own, inner, fresh, promised, found, file)
+          back
+        case let
+          link name
+          link init
+          bind-walk(expression-handle(init), at, shadow, held, promised, found, file)
+          keep-local(held, name, promise-call(init, shadow, promised))
+          back
+        case assign
+          link target
+          link value
+          bind-walk(expression-handle(value), at, shadow, held, promised, found, file)
+          sift target
+            case variable
+              link name
+              keep-local(held, name, promise-call(value, shadow, promised))
+            miss
+              save nothing, 0
+          back
+        miss
+          save nothing, 0
+    case expression-handle
+      sift node
+        case closure
+          link params
+          link body
+          save inner, closure-scope(shadow, params)
+          save fresh, empty-held()
+          walk block-handles(body)
+            take one
+            bind-walk(one, at, inner, fresh, promised, found, file)
+          back
+        case member
+          link member-target
+          link member-name
+          link member-index
+          link member-nick
+          link member-tag
+          link member-span
+          save from, <>
+          sift member-target
+            case variable
+              link name
+              save from, held-from(held, name)
+            miss
+              save from, promise-call(member-target, shadow, promised)
+          fork test, and(is-unequal(from, <>), not(is-promise-member(member-name)))
+            hold
+              save message, <"{member-name}" is read off the promise "{from}" answers, and nothing waits for it, so the read finds nothing. Mark the bind that answers the promise `mark async`, so every call to it is waited, or write `wait` on the call>
+              push(found/out, refusal(told-file(at, file), member-span, message))
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+
+  walk node-children(handle, skipped-keys())
+    take one
+    bind-walk(one, at, shadow, held, promised, found, file)
+
+# the host environments whose bind text is TypeScript, where a promise is a value the text can answer
+task script-envs
+  like list, like text
+  mark private
+
+  save envs, make list
+  push(envs, <node>)
+  push(envs, <browser>)
+  push(envs, <javascript>)
+  push(envs, <cloudflare>)
+  push(envs, <typescript>)
+  push(envs, <deno>)
+  push(envs, <bun>)
+  push(envs, <worker>)
+  back envs
+
+# Refuse a field read off the promise an unmarked bind answers (the header above, decision 053)
+task check-unwaited-bind-reads
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save found
+    make wait-found
+      bind out, make list
+  # the unmarked binds whose text answers a promise on a TypeScript-family host
+  save promised, make hash
+  save any-promised, false
+  save envs, script-envs()
+  walk program
+    take one
+    sift one
+      case bind
+        link name
+        link targets
+        link async
+        fork test, async
+          hold
+            turn next
+        walk targets
+          take target
+          fork test, and(contains(envs, target/env), promise-text(target/expression))
+            hold
+              save promised/{name}, true
+              save any-promised, true
+      miss
+        turn next
+  fork test, not(any-promised)
+    hold
+      back found/out
+
+  # what hands on such a promise: the binds, then each task that is not async and gives `back` a call to one, to a
+  # fixed point (the T-0334 shape: a plain task answering `pool-after(...)`)
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      walk program
+        take one
+        sift one
+          case function
+            link name
+            link body
+            link async
+            fork test, and(not(async), not(promised/has(name)))
+              hold
+                save gives, false
+                walk block-handles(body)
+                  take part
+                  fork test, hands-back(part, promised)
+                    hold
+                      save gives, true
+                fork test, gives
+                  hold
+                    save promised/{name}, true
+                    save changed, true
+          miss
+            save nothing, 0
+
+  walk program
+    take one
+    sift one
+      case function
+        bind-walk(statement-handle(one), <>, empty-scope(), empty-held(), promised, found, file)
+      miss
+        save nothing, 0
+  back found/out
+
+# every refusal: the calls into a promise module first, then the field reads off a bind's promise
+task check-missing-waits
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save out, make list
+  walk check-promise-module-calls(program, file)
+    take one
+    push(out, one)
+  walk check-unwaited-bind-reads(program, file)
+    take one
+    push(out, one)
+  back out

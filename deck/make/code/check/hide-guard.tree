@@ -1,0 +1,465 @@
+# UNFORGEABLE. `mark hide` on a form: only the file that declares it may make one (term/affine-kinds-0009, decision
+# note/project/term/affine-kinds/decision/001-many-by-default-sole-and-hide-declared-per-form.md, section hide).
+#
+# The form's NAME stays public, so another file writes `like permit` in a signature, reads `permit/note` and matches on
+# its cases. Only its MAKING is hidden, and each way to produce one from nothing outside the declaring file is refused
+# as `hidden-make`, naming the form and the file that may make it:
+#
+#   1. `make permit`, or `make <case>` of any of its cases
+#   2. `call fill ... / like permit`, a typed read of data into a value whose type holds the form (`melt` is allowed:
+#      it makes data from a value, not a value from data)
+#   3. a task with no body, or a `dock` binding, whose result type holds the form: each is an axiom that would hand
+#      one out from nothing
+#
+# A file under the package's own `test/` may make one, the same exemption as `mark private` (check/private.tree
+# `test-of`, written again here since that one is private to its file). Runs after the checker, so a `fill` carries
+# the type it was read into.
+#
+# NOT HERE YET (decision 001, hide rule 3): a value of type `unknown` or `dynamic` reaching a place typed by the form
+# (`hidden-unknown`), and an unfilled `rule` claim whose result holds the form.
+#
+# Ported from check/hide.ts (item term-self-host-change-001-finish-self-host-0001). The original's reflective walk
+# (every object once, skipping `span`, `type`, `result`, `declared`, `stubBody` and `stubShape`) is
+# compile/node-reach.tree with the same skips: a subtree a lowered program shares is reached once per place here, and
+# the refusal key (file, line, column, form) tells each refusal once, as it did. The deck table is the list the build
+# hands in, a later entry for a file winning as the original's Map did.
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find starts-with
+  find last-index-of
+  find index-of
+  find substring
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find marker
+  find span
+
+load ../compile/node
+  find statement
+  find statement-span
+  find expression
+  find type
+
+load ../compile/node-reach
+  find reach-statements
+
+# the deck root a file belongs to, as the build knows it (check/private.tree's `deck-home`, the same shape)
+form hide-home
+  link file, like text
+  link root, like text
+
+# a form as this check reads it: its name, whether it is `mark hide`, and where it is declared
+form hide-form
+  link name, like text
+  link hide, like boolean
+  link span, like span
+
+# what the walk refuses as it goes: the refusals in order, and the keys already told
+form hide-refusals
+  mark shared
+  link diagnostics, like list, like diagnostic
+  link told, like hash, like text, like boolean
+
+# the file a span is in, `<>` for none (the original's falsy `span.file`)
+task home-of
+  take at, like span
+  like text
+  mark private
+
+  sift at/file
+    case some
+      link written
+      back written
+    case none
+      back <>
+
+# the last three segments of a path, as a message names a file
+task short-file
+  take file, like text
+  like text
+  mark private
+
+  save parts, split(file, </>)
+  save from, subtract(parts/length, 3)
+  save kept, make list
+  save at, 0
+  walk parts
+    take part
+    fork test, is-minimum(at, from)
+      hold
+        push(kept, part)
+    save at, add(at, 1)
+  back join(kept, </>)
+
+# the root the deck table gives a file, `<>` when it gives none. A later entry wins, as the original's Map
+task deck-root
+  take decks, like list, like hide-home
+  take file, like text
+  like text
+  mark private
+
+  save found, <>
+  walk decks
+    take one
+    fork test, is-equal(one/file, file)
+      hold
+        save found, one/root
+  back found
+
+task has-deck
+  take decks, like list, like hide-home
+  take file, like text
+  like boolean
+  mark private
+
+  walk decks
+    take one
+    fork test, is-equal(one/file, file)
+      hold
+        back true
+  back false
+
+# is `file` a test file of the package that holds `home`
+task test-of
+  take file, like text
+  take home, like text
+  take decks, like list, like hide-home
+  like boolean
+  mark private
+
+  fork test, has-deck(decks, file)
+    hold
+      save root, deck-root(decks, file)
+      fork test, not(starts-with(file, <{root}/test/>))
+        hold
+          back false
+      back and(has-deck(decks, home), is-equal(deck-root(decks, home), root))
+  save at, last-index-of(file, </test/>)
+  fork test, is-below(at, 0)
+    hold
+      back false
+  save package, substring(file, 0, at)
+  back starts-with(home, <{package}/>)
+
+# may `file` make a value of `held`: it declares it, or it is a test of the declaring package
+task may-make
+  take held, like hide-form
+  take file, like text
+  take decks, like list, like hide-home
+  like boolean
+  mark private
+
+  save home, home-of(held/span)
+  fork test, or(is-equal(home, <>), or(is-equal(file, <>), is-equal(home, file)))
+    hold
+      back true
+  back test-of(file, home, decks)
+
+task holds-form
+  take found, like list, like hide-form
+  take name, like text
+  like boolean
+  mark private
+
+  walk found
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        back true
+  back false
+
+# every hidden form a type holds, through lists, hashes, type arguments and function results, each once, in the order
+# met, after those `into` already holds
+task hidden-in
+  take given, like type
+  take hidden, like hash, like text, like hide-form
+  take into, like list, like hide-form
+  like list, like hide-form
+  mark private
+
+  save out, into
+  sift given
+    case named
+      fork test, hidden/has(name)
+        hold
+          save held, hidden/get(name)
+          fork test, not(holds-form(out, held/name))
+            hold
+              push(out, held)
+      walk args
+        take arg
+        save out, hidden-in(arg, hidden, out)
+      back out
+    case array
+      back hidden-in(element, hidden, out)
+    case map
+      save out, hidden-in(key, hidden, out)
+      back hidden-in(value, hidden, out)
+    case function
+      back hidden-in(result, hidden, out)
+    miss
+      back out
+
+task hidden-in-maybe
+  take given, like maybe, like type
+  take hidden, like hash, like text, like hide-form
+  like list, like hide-form
+  mark private
+
+  save none-yet, make list
+  sift given
+    case some
+      link value
+      back hidden-in(value, hidden, none-yet)
+    case none
+      back none-yet
+
+# a span, its file written as `file`
+task with-file
+  take at, like span
+  take file, like text
+  like span
+  mark private
+
+  back
+    make span
+      bind start, at/start
+      bind end, at/end
+      bind file, make(some, file)
+
+task refusal
+  take held, like hide-form
+  take file, like text
+  take at, like span
+  take how, like text
+  like diagnostic
+  mark private
+
+  save declared, home-of(held/span)
+  save home, <its own file>
+  fork test, is-unequal(declared, <>)
+    hold
+      save home, short-file(declared)
+  save here, with-file(at, file)
+  save markers, make list
+  save first
+    make marker
+      bind span, here
+  push(markers, first)
+  save second
+    make marker
+      bind span, held/span
+      bind label, <hidden form "{held/name}" here>
+  push(markers, second)
+  save shown-file, short-file(file)
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, here
+      bind message, make(some, <"{held/name}" is `mark hide` in {home}, so {shown-file} cannot {how}: only {home} makes one>)
+      bind markers, make(some, markers)
+      bind hint, make(some, <get a {held/name} from a task in {home} that makes one, or remove `mark hide` from {held/name}>)
+  save kind, make hidden-make
+  back diagnose(kind, input)
+
+# a name as it was written: the part before the first `__` (the original's `/__.*$/`)
+task written-name
+  take name, like text
+  like text
+  mark private
+
+  save cut, index-of(name, <__>)
+  fork test, is-below(cut, 0)
+    hold
+      back name
+  back substring(name, 0, cut)
+
+# one refusal, told once per file, line, column and form
+task refuse
+  take state, like hide-refusals
+  take held, like hide-form
+  take from, like text
+  take at, like span
+  take how, like text
+  like void
+  mark private
+
+  save key, <{from}\n{at/start/line}\n{at/start/column}\n{held/name}>
+  fork test, not(state/told/has(key))
+    hold
+      save state/told/{key}, true
+      push(state/diagnostics, refusal(held, from, at, how))
+
+# the forms a `make <name>` builds: the form of that name when it has no cases, else the forms owning a case of that
+# name (the one the construction's `owner` names, where two forms share the case), else the form of that name
+task built-by
+  take name, like text
+  take owner, like text
+  take forms, like hash, like text, like hide-form
+  take cases, like hash, like text, like number
+  take owned, like hash, like text, like list, like hide-form
+  like list, like hide-form
+  mark private
+
+  save out, make list
+  fork test, forms/has(name)
+    hold
+      fork test, is-equal(cases/get(name), 0)
+        hold
+          push(out, forms/get(name))
+          back out
+  fork test, owned/has(name)
+    hold
+      walk owned/get(name)
+        take one
+        fork test, or(is-equal(owner, <>), is-equal(one/name, owner))
+          hold
+            push(out, one)
+  fork test, and(is-equal(out/length, 0), forms/has(name))
+    hold
+      push(out, forms/get(name))
+  back out
+
+task skipped-keys
+  like list, like text
+  mark private
+
+  save skip, make list
+  push(skip, <span>)
+  push(skip, <type>)
+  push(skip, <result>)
+  push(skip, <declared>)
+  push(skip, <stubBody>)
+  push(skip, <stubShape>)
+  back skip
+
+task check-hidden-makes
+  take program, like list, like statement
+  take file, like text
+  take decks, like list, like hide-home
+  like list, like diagnostic
+
+  save hidden, make hash
+  save any-hidden, false
+  # every form by name, its case count, and the forms that own each case name, so `make <case>` finds its form
+  save forms, make hash
+  save cases, make hash
+  save owned, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        save made
+          make hide-form
+            bind name, name
+            bind hide, hide
+            bind span, span
+        fork test, hide
+          hold
+            save hidden/{name}, made
+            save any-hidden, true
+        save forms/{name}, made
+        save cases/{name}, variants/length
+        walk variants
+          take variant
+          save owners, make list
+          fork test, owned/has(variant/name)
+            hold
+              save owners, owned/get(variant/name)
+          push(owners, made)
+          save owned/{variant/name}, owners
+      miss
+        turn next
+
+  save state
+    make hide-refusals
+      bind diagnostics, make list
+      bind told, make hash
+  fork test, not(any-hidden)
+    hold
+      back state/diagnostics
+
+  save skip, skipped-keys()
+  walk program
+    take top
+    save from, file
+    save top-span, statement-span(top)
+    sift top-span/file
+      case some
+        link written
+        save from, written
+      case none
+        save nothing, 0
+
+    # 3. a declaration that hands one out from nothing
+    sift top
+      case function
+        fork test, and(not(stub), and(is-equal(body/length, 0), not(claim)))
+          hold
+            walk hidden-in-maybe(result, hidden)
+              take held
+              fork test, not(may-make(held, from, decks))
+                hold
+                  refuse(state, held, from, span, <declare "{written-name(name)}", a task with no body that answers one>)
+      case bind
+        walk hidden-in-maybe(result, hidden)
+          take held
+          fork test, not(may-make(held, from, decks))
+            hold
+              refuse(state, held, from, span, <bind "{name}", a host binding that answers one>)
+      case record-type
+        turn next
+      miss
+        save nothing, 0
+
+    save tops, make list
+    push(tops, top)
+    save reached, reach-statements(tops, skip)
+    walk reached/expressions
+      take node
+      sift node
+        # 1. `make permit`, or a case of it
+        case record
+          link name
+          link span
+          link owner
+          walk built-by(name, owner, forms, cases, owned)
+            take held
+            fork test, and(held/hide, not(may-make(held, from, decks)))
+              hold
+                save what, <make a {held/name}>
+                fork test, is-unequal(name, held/name)
+                  hold
+                    save what, <make a {held/name} (its case "{name}")>
+                refuse(state, held, from, span, what)
+        # 2. `call fill ... / like permit`: a typed read of data into one
+        case call
+          link called
+          link arguments
+          link at
+          link typed
+          sift called
+            case variable
+              fork test, is-equal(name, <fill>)
+                hold
+                  walk hidden-in-maybe(typed, hidden)
+                    take held
+                    fork test, not(may-make(held, from, decks))
+                      hold
+                        refuse(state, held, from, at, <fill a {held/name} from data>)
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+  back state/diagnostics

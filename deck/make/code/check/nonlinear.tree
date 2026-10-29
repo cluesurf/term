@@ -66,6 +66,7 @@ load ./explain
 load ./sturm
   find positive-everywhere
   find non-negative-everywhere
+  find sample-work
 
 load ./cad
   find bivariate-non-negative
@@ -73,7 +74,7 @@ load ./cad
 load ./cad-nvar
   find n-term
   find n-poly
-  find non-negative-everywhere-nvar
+  find non-negative-nvar-within
 
 load ./eliminate
   find utf16-order
@@ -1964,6 +1965,7 @@ task bivariate-proves
 task nvar-proves
   take state, like hold-state
   take expr, like expression
+  take work, like sample-work
   like boolean
   mark private
 
@@ -2008,7 +2010,7 @@ task nvar-proves
                 bind exponents, exponents
                 bind coefficient, big-of(coefficient)
             push(terms, term)
-          back non-negative-everywhere-nvar(n-poly(terms), sorted-vars/length)
+          back non-negative-nvar-within(n-poly(terms), sorted-vars/length, work)
         case none
           back false
     case none
@@ -2021,6 +2023,8 @@ task nonlinear-proves
   take expr, like expression
   take on-uncertified
     like task
+  # what the n-variable lift may spend of the goal's proof budget (item 0057)
+  take work, like sample-work
   like boolean
 
   fork test, positivity-proves(expr)
@@ -2041,4 +2045,4 @@ task nonlinear-proves
   fork test, bivariate-proves(state, expr)
     hold
       back true
-  back nvar-proves(state, expr)
+  back nvar-proves(state, expr, work)

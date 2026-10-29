@@ -1,0 +1,225 @@
+mark draft
+
+# What `term time` keeps of a run: the suite (its results, when, and on what), the saved baseline and history entry,
+# and the JSON a baseline is written as. The text table is time/table.tree, the comparison time/compare.tree.
+#
+# Ported from time/output.ts (item term-self-host-change-001-finish-self-host-0010, decision 029), which stays as the
+# face. The decisions:
+#   - the saved shapes keep their snake_case keys (`mean_ns`): they are an on-disk format older than the port of
+#     time/stats. A Term field is camelCase on TypeScript, so a saved result and a history entry are built as JSON values
+#     through @term/base/json, key by key in the original's order, and read back the same way
+#   - the JSON is laid out here, two spaces an indent as `JSON.stringify(value, null, 2)` lays it out; every leaf is
+#     written by the host's own stringify, so a number or a text is spelled exactly as before (NaN as `null`)
+#   - the platform is read through @term/base/machine (decision 064 section 3): `read-platform`, `read-architecture`,
+#     and the node version from `read-runtime` (`node v22.23.4`), where the original read `process.versions.node`. The
+#     stamp is @term/base/date `now-text`, the ISO text `toISOString` wrote
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/text
+  find starts-with
+  find substring
+  find replace-all
+  find contains
+
+load @term/base/float
+  find to-decimal
+
+load @term/base/json
+  find get-field
+  find stringify
+  find make-object
+  find set-field
+  find make-array
+  find push-item
+  find from-text
+  find from-number
+  find is-array
+  find is-object
+  find is-null
+  find array-size
+  find array-item
+  find object-keys
+  find as-text
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/machine
+  find read-platform
+  find read-architecture
+  find read-runtime
+
+load @term/base/date
+  find now-text
+
+load ./stats
+  find benchmark-result
+
+load ./compare
+  find side
+
+# a run of benchmarks: its results, when it ran, and on what
+form suite
+  link results, like list, like benchmark-result
+  link timestamp, like text
+  link platform, like text
+
+# the run's platform as the original spelled it: `darwin-arm64-node-22.23.4`. A runtime that is not node (the native
+# binary) is its own words, a hyphen for each space
+task platform-text
+  like text
+  mark private
+
+  save runtime, read-runtime()
+  save named, replace-all(runtime, < >, <->)
+  fork test, starts-with(runtime, <node v>)
+    hold
+      save named, <node-{substring(runtime, 6)}>
+  back <{read-platform()}-{read-architecture()}-{named}>
+
+task build-suite
+  take results, like list, like benchmark-result
+  like suite
+
+  back
+    make suite
+      bind results, results
+      bind timestamp, now-text()
+      bind platform, platform-text()
+
+# a number as a JSON value
+task number-value
+  take n, like float
+  like dynamic
+  mark private
+
+  back from-number(n)
+
+# a result as the saved baseline and `term time --json` spell it: snake_case keys, in this order
+task to-saved
+  take r, like benchmark-result
+  like dynamic
+
+  save timings, make-array()
+  walk r/timings-ns
+    take sample
+    push-item(timings, number-value(sample))
+  save out, make-object()
+  set-field(out, <name>, from-text(r/name))
+  set-field(out, <iterations>, number-value(to-decimal(r/iterations)))
+  set-field(out, <mean_ns>, number-value(r/mean-ns))
+  set-field(out, <median_ns>, number-value(r/median-ns))
+  set-field(out, <std_dev_ns>, number-value(r/std-dev-ns))
+  set-field(out, <min_ns>, number-value(r/min-ns))
+  set-field(out, <max_ns>, number-value(r/max-ns))
+  set-field(out, <ops_per_sec>, number-value(r/ops-per-sec))
+  set-field(out, <cv>, number-value(r/cv))
+  set-field(out, <timings_ns>, timings)
+  back out
+
+# whether a JSON object holds a key, whatever its value
+task holds-key
+  take value, like dynamic
+  take key, like text
+  like boolean
+  mark private
+
+  back contains(object-keys(value), key)
+
+# one saved result read back as one side of a comparison. A baseline written before 2026-10-04, or a history entry, has
+# the mean alone: its spread is `none`. The samples are the timings counted, else the iterations, else 0, as
+# `timings_ns?.length || iterations || 0` counted them
+task from-saved
+  take raw, like dynamic
+  like side
+
+  save spread, make none
+  fork test, holds-key(raw, <std_dev_ns>)
+    hold
+      save given, get-field(raw, <std_dev_ns>)
+      save spread, make(some, given)
+  save samples, 0
+  save timings, get-field(raw, <timings_ns>)
+  save iterations, get-field(raw, <iterations>)
+  fork test, and(is-array(timings), is-above(array-size(timings), 0))
+    hold
+      save samples, array-size(timings)
+    miss
+      fork test, not(is-null(iterations))
+        hold
+          save samples, iterations
+  back
+    make side
+      bind name, get-field(raw, <name>)
+      bind mean-ns, get-field(raw, <mean_ns>)
+      bind std-dev-ns, spread
+      bind samples, samples
+
+# a run as the history file keeps it, one mean per benchmark, snake_case like the baseline
+task build-history-entry
+  take suite, like suite
+  like dynamic
+
+  save benchmarks, make-array()
+  walk suite/results
+    take r
+    save one, make-object()
+    set-field(one, <name>, from-text(r/name))
+    set-field(one, <mean_ns>, number-value(r/mean-ns))
+    push-item(benchmarks, one)
+  save out, make-object()
+  set-field(out, <timestamp>, from-text(suite/timestamp))
+  set-field(out, <benchmarks>, benchmarks)
+  back out
+
+# a JSON value laid out as `JSON.stringify(value, null, 2)` lays it out, `indent` the spaces its line starts at
+task laid-out
+  take value, like dynamic
+  take indent, like text
+  like text
+
+  save inner, <{indent}  >
+  fork test, is-array(value)
+    hold
+      save size, array-size(value)
+      fork test, is-equal(size, 0)
+        hold
+          back <[]>
+      save parts, make list
+      save at, 0
+      walk test
+        hook test, is-below(at, size)
+        hook hold
+          parts/push(<{inner}{laid-out(array-item(value, at), inner)}>)
+          save at, add(at, 1)
+      back <[\n{join(parts, <,\n>)}\n{indent}]>
+  fork test, is-object(value)
+    hold
+      save keys, object-keys(value)
+      fork test, is-equal(keys/length, 0)
+        hold
+          back <\{\}>
+      save parts, make list
+      walk keys
+        take key
+        parts/push(<{inner}{stringify(from-text(key))}: {laid-out(get-field(value, key), inner)}>)
+      back <\{\n{join(parts, <,\n>)}\n{indent}\}>
+  back stringify(value)
+
+# the suite as the saved baseline and `term time --json` write it
+task format-json
+  take suite, like suite
+  like text
+
+  save saved, make-array()
+  walk suite/results
+    take r
+    push-item(saved, to-saved(r))
+  save out, make-object()
+  set-field(out, <results>, saved)
+  set-field(out, <timestamp>, from-text(suite/timestamp))
+  set-field(out, <platform>, from-text(suite/platform))
+  back laid-out(out, <>)

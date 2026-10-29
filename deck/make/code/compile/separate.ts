@@ -1,184 +1,87 @@
-// Separate compilation with cross-boundary early cutoff: what `term make` runs since 2026-10-05 (`--merged` is the
-// whole-program build). See note/project/term/compiler/incremental-compilation.md.
-//
-// Where `compile()` merges the whole import closure into one program and checks + emits it as a blob,
-// `compileSeparate()` partitions the module graph into UNITS (the strongly connected components of the graph
-// collectModules walked, injected runtimes included: a unit is a module or a cyclic module group), then checks and
-// emits each unit separately, in dependency order:
-//
-//   - a unit is checked against the STUBS of the units it depends on (their checked, body-less surface, each task
-//     carrying what the whole-program analyses found about its body, see compile/stub.ts), never against their bodies
-//   - a unit emits only its OWN modules (per-module ESM, the same shape the dev server serves), with imports
-//     reconnecting cross-unit references under the names each module exports
-//   - a unit's result is cached keyed by its own content + the SURFACE hashes of its dependencies, so an edit that
-//     leaves a dependency's surface unchanged replays every dependent unit from cache: EARLY CUTOFF
-//   - a unit is named the same way whichever entry reached it, so its module is one module
-//
-// It agrees with `compile()` on what each file builds and refuses: `pnpm term:separate-diff` holds the two side by side
-// over a package, and test/compile/separate.ts the cutoff, the names and the emitted modules running.
-//
-// The unit result (stubs included) is JSON-serializable, so the cache persists across processes and can be shared.
+// Separate compilation with early cutoff, what `term make` runs: compile/separate-units.tree (item term-self-host-001-0113)
+// is the build. This face keeps the exported shapes and hands the port what Term cannot hold: the import walk, the mill
+// cache, `compileProgram`, the options' lookups, the cache's two closures (each runs a port `unit-job` on a miss), and
+// the stored entry's JSON, in the original's shape key for key. note/project/term/compiler/incremental-compilation.md
 
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
-import type {
-  Program,
-  Statement,
-  Twin,
-} from '@term/make/code/compile/node'
+import type { Program, Statement } from '@term/make/code/compile/node'
 import { collectModules, makeParseMemo } from '@term/make/code/compile/load'
-import { headWord } from '@term/make/code/compile/mill-run'
-import type { ImportScope, ParseMemo, Resolver, WalkMemo } from '@term/make/code/compile/load'
-import { awaitsOutsideTasks, compileProgram, entryWarnings, graphTemplates, milledModule } from '@term/make/code/compile/compile'
+import type { ParseMemo, Resolver, WalkMemo } from '@term/make/code/compile/load'
+import { awaitsOutsideTasks, compileProgram, milledModule } from '@term/make/code/compile/compile'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
 import type { Roll } from '@term/make/code/compile/roll'
-import { nameDefs, namesUsed, stubKnown, stubProgram, surfaceHash } from '@term/make/code/compile/stub'
-import type { NameDef } from '@term/make/code/compile/stub'
-import { namesPrinted, namesReachedIndexed } from '@term/make/code/compile/names'
-import type { DefAt } from '@term/make/code/compile/names'
-import { portableIn, portableOut, portableRoots, units as unitsOf } from '@term/make/code/compile/unit-graph'
-
-// more definitions than any one unit holds, so a place's key (`unit * span + at`) sorts by unit and then by place
-const NAME_SPAN = 1_000_000
-import { why } from '@term/make/code/compile/explain'
+import { units as unitsOf } from '@term/make/code/compile/unit-graph'
 import type { UnitInputs } from '@term/make/code/compile/explain'
-
-// `term make --explain` (step 6): the inputs each unit was last built from, kept under the unit's identity, and why
-// each unit built this run was built, by its label
-export type UnitExplain = {
-  recall: (id: string) => UnitInputs | undefined
-  remember: (id: string, inputs: UnitInputs) => void
-  reasons: Map<string, string[]>
-}
-import { contentHash, hashFields, reviveBigint, storeBigint } from '@term/make/code/compile/cache'
+import { reviveBigint, storeBigint } from '@term/make/code/compile/cache'
 import type { CompileCache } from '@term/make/code/compile/cache'
-import { unknownSeamOn } from '@term/make/code/check/strict'
-import { checkerSwitchKey } from '@term/make/code/check/strict'
-import { checkTwins } from '@term/make/code/check/twin'
+import type { Template } from '@term/make/code/compile/template'
+import { checkerSwitchKey, unknownSeamOn } from '@term/make/code/check/strict'
 import type { Tally } from '@term/make/code/check/holds'
+import * as port from '@term/make/code/compile/separate-units'
 
+// `term make --explain`: the inputs each unit was last built from, by its identity, and why each unit built this run was
+export type UnitExplain = { recall: (id: string) => UnitInputs | undefined; remember: (id: string, inputs: UnitInputs) => void; reasons: Map<string, string[]> }
+
+type Export = { name: string; exported: string; file: string; type: boolean }
 export type SeparateResult =
   | {
       ok: true
-      // every emitted module across all units (file -> emit), in dependency order
       modules: Map<string, ModuleEmit>
       warnings: Diagnostic[]
-      // the entry's own open claims and tier-0 obligations, as `compile()` reports them
       openClaims?: string[]
       obligations?: Tally
-      // WHAT THE MERGED BUILD'S ARTIFACT EXPORTED: every public task, constant and type of the entry's whole closure,
-      // the standard library's included, each the LAST definition of its name in dependency order (the merged emit's
-      // dedup), with the module that exports it and the name it exports it by. The entry's classic artifact re-exports
-      // these, so a TypeScript importer reading `tonePack` off `host/code/seal/base` still finds it (zone's tests)
-      exports: { name: string; exported: string; file: string; type: boolean }[]
-      // observability (and the early-cutoff tests): units rebuilt vs replayed from cache this run
+      exports: Export[]
       built: string[]
       reused: string[]
-      // every unit's key in the entry's closure, as one: it moves exactly when a file the entry reaches, a role, a
-      // lean or a setting does, so what is computed from the whole closure (the roll) is cached by it
-      // (note/project/term/incremental-best-in-class.md, step 8)
       closureKey: string
-      // every native module the closure docks, from its units' stubs, which carry them whole: what a program built from
-      // these modules needs in front of it (compile/native.ts `nativePrelude`), as the merged program's statements gave
       natives: Statement[]
-      // every route and command the closure declares, each unit's own `dock` statements in dependency order
       docks: Statement[]
-      // each unit's roll of its own definitions, by the unit's label, every unit of the closure once
       rolls: [string, Roll][]
-      // with `keepProgram`: the entry unit's checked program, its stubs before its own statements, when that unit was
-      // built this run (an editor's keystroke always builds it), and the stubs of every unit the entry reaches, typed,
-      // which is every signature the closure offers
+      // with `keepProgram`: the entry unit's checked program when built this run, and the stubs of every unit reached
       program?: Program
       surface?: Program
     }
   | { ok: false; diagnostics: Diagnostic[] }
 
-// one unit's cached build: its own modules' emits, its public stub surface (for dependents), and its warnings.
-// Everything is JSON-serializable so the entry persists.
-export type UnitBuild = {
-  files: [string, ModuleEmit][]
-  stubs: [string, Statement[]][]
-  interfaceHash: string
-  // each stub definition as the name-level cutoff reads it, in the order of `stubs` (compile/names.tree)
-  defs: NameDef[]
-  // the unit's own routes and commands (`dock` statements, checked): what a program built from units dispatches on
-  // (call/code/boot.ts `commandRoutes`), which a stub does not carry
-  docks?: Statement[]
-  // the roll of the unit's own definitions, each with its identity, typed here once (compile/roll.ts `own`): a
-  // project's roll is every unit's of the build (call/code/roll.ts `projectRoll`)
-  roll?: Roll
-  warnings: Diagnostic[]
-  openClaims?: string[]
-  obligations?: Tally
-}
-
-// A unit's answer, a build or what stopped it. A project build hands the same map to every entry, so a unit the
-// closure of many entries shares (the standard library's) is read once per run rather than once per entry
-export type UnitMemo = Map<string, UnitBuild | { diagnostics: Diagnostic[] }>
-
-// A deck's root written as a token (`␞@term/base␞`), and read back as this machine's. Longest root first, so a deck
-// nested inside another is written as itself. The token's mark is a character no path and no compiler output holds
+// the unit answers of one run, shared by a batch build's entries (each the port's `unit-answer`)
+export type UnitMemo = Map<string, unknown>
 export type Portable = { out: (text: string) => string; in: (text: string) => string }
 
-// the roots, the token and both directions are compile/unit-graph.tree (self-hosting, 2026-10-06); this keeps the two
-// closures a caller holds
-export function portableBy(decks: { name: string; root: string }[]): Portable {
-  const roots = portableRoots(decks)
+const [none, some] = [{ form: 'none' } as const, <T>(value: T) => ({ form: 'some', value }) as const]
+const given = <T>(value: T | undefined | null) => (value ? some(value) : none)
 
-  return {
-    out: text => portableOut(roots, text),
-    in: text => portableIn(roots, text),
-  }
+const tasksOf = (held: port.Portable): Portable & port.PortableTasks => {
+  const [out, inward] = [(text: string) => port.portableWrite(held, text), (text: string) => port.portableRead(held, text)]
+  return { out, in: inward, outward: out, inward }
 }
 
-// Tarjan strongly connected components over the file import graph. Returns units in REVERSE topological order of
-// the condensation (dependencies first), which is exactly the build order. compile/unit-graph.tree since 2026-10-06
-export function units(
-  files: string[],
-  edges: Map<string, string[]>,
-): string[][] {
-  return unitsOf(files, edges)
+// `portableBy`'s two closures over the port's `portable` form
+export const portableBy = (decks: { name: string; root: string }[]): Portable => tasksOf(port.portableBy(decks as never))
+
+// Tarjan strongly connected components, dependencies first: compile/unit-graph.tree
+export const units = (files: string[], edges: Map<string, string[]>): string[][] => unitsOf(files, edges)
+
+// a unit's answer as the stored entry, key for key the original's, and back: what does not read back is a miss
+const kept = (key: string, value: { form: string; value?: unknown }) => (value.form === 'some' ? { [key]: value.value } : {})
+function stored(answer: port.UnitAnswer): unknown {
+  if (answer.refused.form === 'some') return { diagnostics: answer.refused.value }
+  const b = (answer.build as { value: port.UnitBuild }).value
+  const head = { files: b.files.map(f => [f.file, f.emit]), stubs: b.stubs.map(s => [s.file, s.statements]), interfaceHash: b.interfaceHash }
+  return { ...head, ...kept('defs', b.defs), ...kept('docks', b.docks), ...kept('roll', b.roll), warnings: b.warnings, ...kept('openClaims', b.openClaims), ...kept('obligations', b.obligations) }
 }
 
-// A ROUTE NAMES ITS TASK AS THE TASK'S UNIT EXPORTS IT. The import binding binds a hook's `task bank` like a call
-// (term-compiler-0034), so where two files of the unit's program define the name (zone: the task `bank` in
-// work/code.tree, the form `bank` in base.tree, which another file imports) the route carries `bank__in0_0`, a name
-// of this unit's checked program only. A unit's module exports its written name, and the run looks the route's name
-// up among the bundle's exports (boot-plan.tree `cli-run-text`) and keeps only the names routes give (boot-running
-// `route-calls`), so the task was shaken out and the command failed, `task "bank__in0_0" is not exported`
-// (term-compiler-0064). Each call a route makes to another unit's task takes that task's exported name back.
-// What is left: two units that both export a task of the name meet in the entry's export surface, which keeps the
-// last, so a route bound to the other one would still reach the wrong task (no console does this today)
-function exportedRouteCalls(docks: Statement[], program: Program, own: Set<string>): Statement[] {
-  const exported = new Map<string, string>()
-
-  for (const s of program) {
-    if (s.form !== 'function' || own.has(s.span.file ?? '')) {
-      continue
-    }
-
-    const written = s.name.replace(/__in\d+_\d+$/, '')
-
-    if (written !== s.name) {
-      exported.set(s.name, s.stubExport ?? written)
-    }
+function restored(text: string): ReturnType<port.SeparateGiven['restore']> {
+  try {
+    const v = JSON.parse(text, reviveBigint) as Record<string, any>
+    if (Array.isArray(v.diagnostics)) return some({ refused: some(v.diagnostics), build: none }) as never
+    if (!Array.isArray(v.files) || !Array.isArray(v.stubs) || typeof v.interfaceHash !== 'string' || typeof v.roll !== 'object') return none
+    const [files, stubs] = [v.files.map(([file, emit]: [string, unknown]) => ({ file, emit })), v.stubs.map(([file, statements]: [string, unknown]) => ({ file, statements }))]
+    const [defs, docks] = [v.defs != null ? some(v.defs) : none, v.docks != null ? some(v.docks) : none]
+    const build = { files, stubs, interfaceHash: v.interfaceHash, defs, docks, roll: given(v.roll), warnings: v.warnings, openClaims: given(v.openClaims), obligations: given(v.obligations) }
+    return some({ refused: none, build: some(build) }) as never
+  } catch {
+    return none
   }
-
-  if (exported.size === 0) {
-    return docks
-  }
-
-  type Route = Extract<Statement, { form: 'dock' }>['route']
-  type Call = Route['calls'][number]
-  const call = (one: Call): Call => (exported.has(one.name) ? { ...one, name: exported.get(one.name)! } : one)
-  const route = (one: Route): Route => ({
-    ...one,
-    calls: one.calls.map(call),
-    ...(one.methods ? { methods: one.methods.map(method => ({ ...method, calls: method.calls.map(call) })) } : {}),
-    ...(one.hooks ? { hooks: one.hooks.map(hook => ({ ...hook, calls: hook.calls.map(call) })) } : {}),
-    children: (one.children ?? []).map(route),
-  })
-
-  return docks.map(s => (s.form === 'dock' ? { ...s, route: route(s.route) } : s))
 }
 
 export function compileSeparate(
@@ -186,573 +89,60 @@ export function compileSeparate(
   options: {
     resolve: Resolver
     cache?: CompileCache
-    // maps a source file to the URL/path its emitted module is imported by (same contract as compile()'s `modules`)
     modules: (file: string) => string
     env?: string
-    // the role a project's role.tree gives a file, same contract as compile()'s `roleOf`. The mill needs it to
-    // tell a CLI `hook` from a route one (`role call` vs `role site`), so a unit compiled here must be asked the
-    // same question a unit compiled through compile() is, or the two paths disagree about what a file means.
     roleOf?: (file: string) => string | null | undefined
-    // `mark lean` on the unit's role rule, same contract as compile()'s `leanOf`. Asked here for the same reason
-    // roleOf is: a unit compiled separately must read the way one compiled through the merged path reads.
     leanOf?: (file: string) => boolean | undefined
-    // the deck a file belongs to, same contract as compile()'s `deckOf`: it names the host of every raise
     deckOf?: (file: string) => { name: string; root: string } | undefined
-    // a parse memo shared across a batch build, same contract as compile()'s `parsed`
     parsed?: ParseMemo
-    // the unit answers of this run, shared across the entries of a batch build (`UnitMemo`)
     units?: UnitMemo
-    // each module's own part of the import walk, shared across the entries of a batch build (compile/load.ts)
     walked?: WalkMemo
-    // why each unit this run builds was built (`term make --explain`)
     explain?: UnitExplain
-    // hand back what the editor reads (`program`, `surface`): the language server (flow/code/server.ts)
+    // hand back what the editor reads (`program`, `surface`): the language server
     keepProgram?: boolean
   },
 ): SeparateResult {
-  // one parse per module, shared by the dependency walk, the edge graph, the templates and the mill
   const parsed = options.parsed ?? makeParseMemo()
-  const cache = options.cache
-  const collected = collectModules(
-    source,
-    options.resolve,
+  const { cache, explain } = options
+  const [role, lean] = [(file: string) => options.roleOf?.(file) ?? undefined, (file: string) => options.leanOf?.(file) ?? false]
+  const compileUnit: port.SeparateGiven['compileUnit'] = (program, checkedAs, scope, naming, files) => {
+    const r = compileProgram(program as never, checkedAs, undefined, true, options.modules, undefined, options.env, false, false, options.deckOf, scope as never, undefined, undefined, naming, new Set(files))
+    if (!r.ok) return { ok: false, diagnostics: r.diagnostics, program: [], modules: [], warnings: [], roll: none, openClaims: [], obligations: none } as never
+    const modules = [...(r.modules ?? [])].map(([file, emit]) => ({ file, emit }))
+    return { ok: true, diagnostics: [], program: r.program, modules, warnings: r.warnings, roll: given(r.roll), openClaims: r.openClaims ?? [], obligations: given(r.obligations) } as never
+  }
+  const answer = port.compileSeparate(source, {
+    collect: () => collectModules(source, options.resolve, parsed, cache ? (unit, compute) => cache.scanned(unit.file, unit.text, compute) : undefined, options.walked),
+    deckOf: file => given(options.deckOf?.(file)),
+    roleOf: file => role(file) ?? '',
+    leanOf: lean,
+    moduleOf: file => options.modules(file),
     parsed,
-    cache ? (unit, compute) => cache.scanned(unit.file, unit.text, compute) : undefined,
-    options.walked,
-  )
-  const { sources } = collected
-
-  // a load the build cannot answer is refused with its own cause, as compile() refuses it
-  const loadErrors = collected.diagnostics.filter(d => d.severity !== 'warning')
-
-  if (loadErrors.length > 0) {
-    return { ok: false, diagnostics: loadErrors }
-  }
-
-  // THE SAME UNIT IS THE SAME ENTRY ON EVERY MACHINE (step 13). A unit's key, its fingerprints and its stored answer
-  // name files by where they are on this disk, so a second clone of the repository at another path missed every one.
-  // Each deck's root is written as a token in all three, and read back as this machine's
-  const portable = portableBy(sources.map(s => options.deckOf?.(s.file)).filter(deck => deck !== undefined))
-
-  // the edges the walk itself followed, injected runtimes included: reading the written imports again missed the route
-  // runtime a `hook` table is given, so a route's unit never saw the `view` form its dispatcher names
-  const edges = collected.edges
-  const order = units(
-    sources.map(s => s.file),
-    edges,
-  )
-
-  const byFile = new Map(sources.map(s => [s.file, s]))
-
-  // templates are global (a module's `fuse` can expand a template an import defines), so gather them once, exactly
-  // as compile() does. The fingerprint joins the key of a unit only when one of its modules can expand a template
-  const { templates, templateKey } = graphTemplates(sources, parsed)
-
-  // transitive dependency units of each unit, from the condensation
-  const unitOf = new Map<string, number>()
-  order.forEach((files, i) =>
-    files.forEach(f => unitOf.set(f, i)),
-  )
-
-  const unitDeps: Set<number>[] = order.map((files, i) => {
-    const deps = new Set<number>()
-
-    for (const f of files) {
-      for (const d of edges.get(f) ?? []) {
-        const u = unitOf.get(d)!
-
-        if (u !== i) {
-          deps.add(u)
-        }
-      }
-    }
-
-    return deps
-  })
-
-  // close over transitivity (a unit sees the stubs of everything it reaches: the flat namespace means a module may
-  // reference names its direct imports re-surface)
-  const reach: Set<number>[] = order.map(() => new Set<number>())
-
-  for (let i = 0; i < order.length; i++) {
-    for (const d of unitDeps[i]!) {
-      reach[i]!.add(d)
-
-      for (const t of reach[d]!) {
-        reach[i]!.add(t)
-      }
-    }
-  }
-
-  // THE UNITS A PROOF REACHES (term-proof-0011). A claim's type may call a task of another file, and the kernel proves
-  // it by running that task's body (term-proof-0004), so a pure task shown to end in a unit some proving unit reaches
-  // must carry its body in its stub, as a theory's own tasks do (compile/stub.ts `stubProgram`). A unit proves when one
-  // of its files states a top-level `rule` (a claim or a theorem), read off the file's parse (the build's own memo), so
-  // a unit's key depends on nothing but its files' text. Only these units' dependencies give up the early cutoff for a
-  // body edit, which is what a proof that ran the old body requires
-  const statesRule = (file: string): boolean => {
-    const result = parsed(byFile.get(file)!)
-
-    return result.ok && result.tree.nodes.some(node => node.kind === 'group' && headWord(node) === 'rule')
-  }
-  const proves = order.map(files => files.some(statesRule))
-  const underProof = order.map(() => false)
-
-  for (let j = 0; j < order.length; j++) {
-    if (proves[j]) {
-      for (const d of reach[j]!) {
-        underProof[d] = true
-      }
-    }
-  }
-
-  // WHAT A UNIT IS CHECKED WITH IS ITS OWN, and what it reaches. The walk's import scope holds every file the entry
-  // reached, the files that IMPORT a unit among them, and handed whole to a unit's check it let an importer decide the
-  // unit's answer: `a.tree`, checked inside `main.tree`'s build, failed with main's `find` of a private task of a, and
-  // that answer was kept and handed to `public.tree`, which imports a and refers to nothing private (the language
-  // server's suite found it). Neither the unit's key nor its cache knew the importer was there
-  const scopeOf = (unit: number): ImportScope => {
-    const sees = new Set([...order[unit]!, ...[...reach[unit]!].flatMap(d => order[d]!)])
-
-    return new Map([...collected.scope].filter(([file]) => sees.has(file)))
-  }
-
-  const builds: UnitBuild[] = []
-  const built: string[] = []
-
-  // THE BUILD'S NAME INDEX (step 4, compile/names.tree `names-reached-indexed`): each name to where it is defined,
-  // unit by unit, grown as units are answered. A unit reaches only units answered before it, so the index holds
-  // everything its walk can take
-  const nameIndex = new Map<string, DefAt[]>()
-  const unitDefs: NameDef[][] = []
-
-  const indexNames = (upTo: number): void => {
-    while (unitDefs.length < upTo) {
-      const unit = unitDefs.length
-      const defs = builds[unit]!.defs ?? nameDefs(builds[unit]!.stubs.flatMap(([, list]) => list), portable.out)
-      unitDefs.push(defs)
-
-      defs.forEach((def, at) => {
-        for (const name of def.gives) {
-          let places = nameIndex.get(name)
-
-          if (!places) {
-            places = []
-            nameIndex.set(name, places)
-          }
-
-          places.push({ unit, at })
-        }
-      })
-    }
-  }
-  const reused: string[] = []
-  const allModules = new Map<string, ModuleEmit>()
-  const allWarnings: Diagnostic[] = []
-
-  let openClaims: string[] | undefined
-  let obligations: Tally | undefined
-  const surface = new Map<string, { name: string; exported: string; file: string; type: boolean }>()
-  const closureKeys: string[] = []
-  const natives: Statement[] = []
-  const docks: Statement[] = []
-  const rolls: [string, Roll][] = []
-  // `keepProgram`: the entry unit's checked program, and every unit's stubs
-  let entryProgram: Program | undefined
-  const surfaceProgram: Program = []
-
-  for (let i = 0; i < order.length; i++) {
-    const files = order[i]!
-    const label = files.join('+')
-
-    // THE ENTRY'S OWN UNIT IS CHECKED AS THE ENTRY. compile() holds the file it was asked to build to everything a
-    // file owes (its binds, its finds, its duplicates, its claims) and an imported module only to what the program as
-    // a whole owes, which that module meets again when it is built as an entry itself. A unit compiled here is asked
-    // the same way: as the entry when the entry is in it, and otherwise under a name no statement carries, so a
-    // dependency unit's answer does not depend on which entry reached it and is shared by every one that does
-    const entry = files.includes(source.file)
-    const asImport = `${files[0]}#unit`
-    // A ONE-FILE UNIT IS CHECKED AS ITSELF, whichever entry reached it, since that is the build its own file gets
-    // when it is the entry. Compiled once as itself and once as an import, @term/bind's 3,091 files were each checked
-    // twice. Checked as itself it is held to more, never less, so an answer that builds is the import's answer too,
-    // and only one that fails is asked again as an import, which may build (`answer` below)
-    const asSelf = entry ? source.file : files.length === 1 ? files[0]! : undefined
-
-    // the unit key: own content (with each module's role and lean, which change what it mills to) + the interface
-    // hash of every reachable dependency unit + whatever else shapes the answer. A body-only dependency edit leaves
-    // its interface hash unchanged, so this key, and the cached build it points at, survive: early cutoff.
-    const depHashes = [...reach[i]!]
-      .map(d => builds[d]!.interfaceHash)
-      .sort()
-
-    const usesTemplates = files.some(f => options.roleOf?.(f) === 'view' || /\bfuse\b/.test(byFile.get(f)!.text))
-
-    const ownKey = (checkedAs: string): string[] => [
-      'separate',
-      usesTemplates ? templateKey : '',
-      options.env ?? '',
-      checkedAs === asImport ? '' : `entry:${portable.out(checkedAs)}`,
-      // the checker's switches: the await switch decides whether an un-ticked async call outside a task is refused
-      // (check/effects.ts), and the seam and the strict switch two more refusals (check/seam.ts, check/strict.ts)
-      checkerSwitchKey(awaitsOutsideTasks(), unknownSeamOn()),
-      // whether its stubs carry the bodies a proof above it runs: the same unit under no proof has other stubs
-      underProof[i] ? 'bodies' : '',
-      ...files.map(f => {
-        const role = options.roleOf?.(f) ?? ''
-        const lean = options.leanOf?.(f) ? '#lean' : ''
-        // the deck a file belongs to names the host of every raise and roll entry it makes, and comes from a
-        // manifest, not from the file
-        const deck = options.deckOf?.(f)?.name ?? ''
-        // and the name its module is imported by, which the unit's emitted imports are written with: units are shared
-        // machine-wide, so a unit named one way is never handed to a build that names it another
-        const module = options.modules(f)
-
-        return `${portable.out(f)}@${contentHash(byFile.get(f)!.text)}${role ? `#${role}` : ''}${lean}${deck ? `@${deck}` : ''}>${module}`
-      }),
-    ]
-
-    // the run's key, for the memo: the whole surface of everything reached. Cheap, and exact within a run
-    const keyAs = (checkedAs: string): string => hashFields([...ownKey(checkedAs), ...depHashes])
-
-    // THE CACHE'S KEY, BY NAME (step 4, compile/names.tree): the fingerprints of only the dependency definitions this
-    // unit can reach by name, from the names its own modules write. An edit to a task it never names leaves the key,
-    // and so its stored answer, where they were. Asked only when the memo has no answer, since it mills the unit
-    let used: string[] | undefined
-    let defs: NameDef[] | undefined
-
-    const reached = (): { used: string[]; defs: NameDef[] } => {
-      used ??= namesOfUnit()
-
-      if (defs === undefined) {
-        defs = []
-
-        for (const d of [...reach[i]!].sort((a, b) => a - b)) {
-          defs.push(...(builds[d]!.defs ?? nameDefs(builds[d]!.stubs.flatMap(([, list]) => list), portable.out)))
-        }
-      }
-
-      return { used, defs }
-    }
-
-    // the same fingerprints `namesReached` gives over `reached().defs`, from the build's index (`indexNames`), so a
-    // unit's walk costs the names it reaches and not every definition of everything it reaches
-    const namedKeyAs = (checkedAs: string): string => {
-      used ??= namesOfUnit()
-      indexNames(i)
-
-      const sees = new Map([...reach[i]!].map(d => [d, true]))
-
-      return hashFields(['names', ...ownKey(checkedAs), ...namesReachedIndexed(nameIndex, unitDefs, sees, used, NAME_SPAN)])
-    }
-
-    // the name key, through a pointer kept under the whole-surface key. The same surface always gives the same name
-    // key, so a warm build reads the pointer and the unit and works out no names, and the names are worked out only
-    // when a surface moved, which is when they can spare a rebuild. Without it a new process milled every unit and
-    // walked its whole reach before it could ask the cache anything: a warm `term test` of the standard library was
-    // no faster through units than whole
-    const namedKeyOf = (checkedAs: string, surfaceKey: string): string =>
-      cache ? cache.unit<{ portable: string }>(`surface:${surfaceKey}`, () => ({ portable: namedKeyAs(checkedAs) })).portable : namedKeyAs(checkedAs)
-
-    // what the unit is built from, as `term make --explain` compares it: the same inputs its key is made of, each kept
-    // apart so a change can be named. The first SETTINGS fields of `ownKey` are its settings, then one per file
-    const SETTINGS = 6
-    const inputsAs = (checkedAs: string): UnitInputs => {
-      const { used, defs } = reached()
-      const key = ownKey(checkedAs)
-
-      return {
-        compiler: cache?.versionOf('unit') ?? '',
-        own: new Map(files.map(f => [f, contentHash(byFile.get(f)!.text)])),
-        // everything else the key says of the file, after its text's fingerprint
-        read: new Map(files.map((f, at) => [f, key[SETTINGS + at]!.slice(portable.out(f).length + 1 + contentHash(byFile.get(f)!.text).length)])),
-        settings: hashFields(key.slice(0, SETTINGS)),
-        names: namesPrinted(defs, used),
-      }
-    }
-
-    // the names the unit's own modules write, and the names their loads find. A module that does not mill uses
-    // nothing: its answer is the mill's refusal, which its own text decides
-    const namesOfUnit = (): string[] => {
-      const out = new Set<string>()
-
-      for (const f of files) {
-        const milled = milledModule(byFile.get(f)!, {
-          parsed,
-          templates,
-          templateKey,
-          cache,
-          role: options.roleOf?.(f) ?? undefined,
-          lean: options.leanOf?.(f) ?? false,
-        })
-
-        if (milled.ok) {
-          namesUsed(milled.program).forEach(name => out.add(name))
-        }
-
-        for (const name of collected.scope.get(f)?.finds.keys() ?? []) {
-          out.add(name)
-        }
-      }
-
-      return [...out]
-    }
-
-    const make = (checkedAs: string): UnitBuild | { diagnostics: Diagnostic[] } => {
-      // dependency context: the stubs of every reachable unit, dependency order preserved. Copied, because the checker
-      // annotates what it is handed and one unit's stubs are read by every unit after it
-      const program: Program = []
-      for (const d of [...reach[i]!].sort((a, b) => a - b)) {
-        for (const [file, statements] of builds[d]!.stubs) {
-          for (const s of structuredClone(statements)) {
-            s.span.file = file
-            program.push(s)
-          }
-        }
-      }
-
-      const ownStart = program.length
-      const twins: Twin[] = []
-
-      for (const f of files) {
-        const unit = byFile.get(f)!
-        const milled = milledModule(unit, {
-          parsed,
-          templates,
-          templateKey,
-          cache,
-          role: options.roleOf?.(unit.file) ?? undefined,
-          lean: options.leanOf?.(unit.file) ?? false,
-        })
-
-        if (!milled.ok) {
-          return { diagnostics: milled.diagnostics }
-        }
-
-        for (const s of milled.program) {
-          s.span.file = unit.file
-          program.push(s)
-        }
-
-        for (const twin of milled.twins ?? []) {
-          twin.span.file = unit.file
-          twins.push(twin)
-        }
-      }
-
-      const ownStatements = program.slice(ownStart)
-      // ONE NAMING PER UNIT, whichever entry reached it: the unit's own (first) file keeps its names, as the merged
-      // build keeps the entry's. Where two files define a name, the merged build keeps the entry's and renames the rest
-      // (check/overload.ts), so the same module compiled as an entry and as a dependency exported two sets of names,
-      // and the `.unit` artifact both write held whichever came first. Named under no file at all it was stable but
-      // wrong: a module's own task `for-of` was renamed beside a case `for-of` of an imported form, and its own calls
-      // reached the case (make's test/engine.tree). A cycle of several files keeps its first file's, and a task of
-      // another file in it that is renamed is re-exported under its written name by an entry's shim (`renamed`
-      // below). No roots either: in a unit every task is reachable from outside it, so none is marked internal
-      const result = compileProgram(
-        program,
-        checkedAs,
-        undefined,
-        true,
-        options.modules,
-        undefined,
-        options.env,
-        false,
-        false,
-        options.deckOf,
-        scopeOf(i),
-        undefined,
-        undefined,
-        files[0],
-        new Set(files),
-      )
-
-      if (!result.ok) {
-        return { diagnostics: result.diagnostics }
-      }
-
-      if (options.keepProgram && checkedAs === source.file) {
-        entryProgram = result.program
-      }
-
-      // a twin is checked against the program it twins a task of, as compile() checks it
-      const refused = twins.length > 0 ? checkTwins(program, twins, checkedAs) : []
-
-      if (refused.length > 0) {
-        return { diagnostics: refused }
-      }
-
-      // this unit's emits: only its own files (stub buckets belong to their owning units)
-      const own = new Set(files)
-      const filesOut: [string, ModuleEmit][] = []
-
-      for (const [file, emit] of result.modules ?? []) {
-        if (own.has(file)) {
-          filesOut.push([file, emit])
-        }
-      }
-
-      // the stub surface dependents will check against, per own file, from the in-place annotated statements (the
-      // checker zonks types onto these objects, so inferred signatures are part of the surface), each task carrying
-      // what the whole-program analyses found about it here, where its body is (compile/stub.ts `stubKnown`)
-      const known = stubKnown(program)
-      const stubbed: [string, Statement[]][] = files.map(f => [
-        f,
-        stubProgram(ownStatements.filter(s => s.span.file === f), known, underProof[i]),
-      ])
-
-      const surface = stubbed.flatMap(([, list]) => list)
-
-      return {
-        files: filesOut,
-        stubs: stubbed,
-        interfaceHash: surfaceHash(surface, portable.out),
-        defs: nameDefs(surface, portable.out),
-        docks: exportedRouteCalls(
-          (result.program ?? []).filter(s => s.form === 'dock' && own.has(s.span.file ?? '')),
-          result.program ?? [],
-          own,
-        ),
-        ...(result.roll ? { roll: result.roll } : {}),
-        warnings: result.warnings,
-        // what the file states and owes, which compile() reports when it is the entry
-        ...(checkedAs !== asImport && result.openClaims?.length ? { openClaims: result.openClaims } : {}),
-        ...(checkedAs !== asImport && result.obligations ? { obligations: result.obligations } : {}),
-      }
-    }
-
-    let ran = false
-
-    // a unit's answer as the cache keeps it, every deck's root a token, so the entry serves every clone (step 13)
-    const toStore = (value: UnitBuild | { diagnostics: Diagnostic[] }): { portable: string } => ({
-      portable: portable.out(JSON.stringify(value, storeBigint)),
-    })
-
-    // and back, with this machine's roots. One that does not read back as a unit's answer is built again rather than
-    // trusted (compile/cache.ts `usable` checks only the wrapper)
-    const fromStore = (stored: { portable: string }): UnitBuild | { diagnostics: Diagnostic[] } => {
-      try {
-        const value = JSON.parse(portable.in(stored.portable), reviveBigint) as Record<string, unknown>
-
-        // a unit's answer carries its roll since 2026-10-05 (step 5): one stored before is read as a miss and built
-        // again, or the project's roll would lack that unit's definitions
-        if (
-          Array.isArray(value.diagnostics) ||
-          (Array.isArray(value.files) &&
-            Array.isArray(value.stubs) &&
-            typeof value.interfaceHash === 'string' &&
-            typeof value.roll === 'object')
-        ) {
-          return value as UnitBuild | { diagnostics: Diagnostic[] }
-        }
-      } catch {
-        // read as a miss, below
-      }
-
-      ran = true
-
-      return make(answering)
-    }
-
-    // the `checkedAs` the cache is being asked for, which a stored answer that cannot be read is built as
-    let answering = asSelf ?? asImport
-
-    // the unit checked as `checkedAs`: this run's answer first, then the cache (memory, then disk), then a build
-    const answer = (checkedAs: string): UnitBuild | { diagnostics: Diagnostic[] } => {
-      answering = checkedAs
-      const key = keyAs(checkedAs)
-      const memo = options.units?.get(key)
-      const wrapped = (): UnitBuild | { diagnostics: Diagnostic[] } => {
-        ran = true
-
-        if (options.explain) {
-          const now = inputsAs(checkedAs)
-          const before = options.explain.recall(checkedAs)
-          const reasons = before ? why(before, now) : ['nothing recorded: its first build, or the record was washed']
-
-          options.explain.reasons.set(label, reasons.length > 0 ? reasons : ['its stored answer was missing'])
-          options.explain.remember(checkedAs, now)
-        }
-
-        return make(checkedAs)
-      }
-      const found = memo ?? (cache ? fromStore(cache.unit<{ portable: string }>(namedKeyOf(checkedAs, key), () => toStore(wrapped()))) : wrapped())
-
-      options.units?.set(key, found)
-
-      return found
-    }
-
-    closureKeys.push(keyAs(asSelf ?? asImport))
-
-    let cached = answer(asSelf ?? asImport)
-
-    // a one-file unit that fails as itself may still build as an import: an import is held only to what the program
-    // as a whole owes, as the merged build holds a module it reaches
-    if ('diagnostics' in cached && !entry && asSelf !== undefined) {
-      cached = answer(asImport)
-    }
-
-    if ('diagnostics' in cached) {
-      return { ok: false, diagnostics: cached.diagnostics }
-    }
-
-    ;(ran ? built : reused).push(label)
-    builds.push(cached)
-
-    for (const [file, emit] of cached.files) {
-      allModules.set(file, emit)
-    }
-
-    docks.push(...(cached.docks ?? []))
-
-    if (cached.roll) {
-      rolls.push([label, cached.roll])
-    }
-
-    allWarnings.push(...cached.warnings)
-
-    if (entry) {
-      openClaims = cached.openClaims
-      obligations = cached.obligations
-    }
-
-    // the surface, in dependency order, so a later definition of a name replaces an earlier one (`exports`)
-    for (const [file, statements] of cached.stubs) {
-      for (const s of statements) {
-        if (s.form === 'native') {
-          natives.push(s)
-        }
-
-        if (options.keepProgram) {
-          surfaceProgram.push(s)
-        }
-
-        // a private task is in the stub for the privacy checks, and is no part of what an entry's shim exports
-        if ((s.form === 'function' && !s.private) || s.form === 'let') {
-          surface.set(`value:${s.name}`, { name: s.name, exported: s.stubExport ?? s.name, file, type: false })
-        } else if (s.form === 'record-type' || s.form === 'mask') {
-          surface.set(`type:${s.name}`, { name: s.name, exported: s.stubExport ?? s.name, file, type: true })
-        }
-      }
-    }
-  }
-
-  // the entry's own spelling, warned about once, for the file the build was asked for
-  allWarnings.push(...entryWarnings(source, sources, parsed, templates))
-
-  return {
-    ok: true,
-    modules: allModules,
-    warnings: allWarnings,
-    ...(openClaims ? { openClaims } : {}),
-    ...(obligations ? { obligations } : {}),
-    exports: [...surface.values()],
-    built,
-    reused,
-    closureKey: hashFields(closureKeys),
-    natives,
-    docks,
-    rolls,
-    ...(options.keepProgram ? { surface: surfaceProgram, ...(entryProgram ? { program: entryProgram } : {}) } : {}),
-  }
+    milled: (unit, templates, templateKey) => milledModule(unit, { parsed, templates: templates as Map<string, Template>, templateKey, cache, role: role(unit.file), lean: lean(unit.file) }),
+    compileUnit,
+    hasStubExport: s => (s as { stubExport?: string }).stubExport !== undefined,
+    portableTasks: tasksOf,
+    switchKey: () => checkerSwitchKey(awaitsOutsideTasks(), unknownSeamOn()),
+    env: options.env ?? '',
+    hasCache: cache !== undefined,
+    unitVersion: () => cache?.versionOf('unit') ?? '',
+    cachedUnit: (key, job) => cache!.unit<{ portable: string }>(key, () => ({ portable: port.jobStored(job) })).portable,
+    cachedNameKey: (key, job) => cache!.unit<{ portable: string }>(key, () => ({ portable: port.jobNamedKey(job) })).portable,
+    store: unit => JSON.stringify(stored(unit), storeBigint),
+    restore: restored,
+    hasUnits: options.units !== undefined,
+    units: (options.units ?? new Map()) as never,
+    hasExplain: explain !== undefined,
+    recall: id => given(explain?.recall(id)) as never,
+    remember: (id, inputs) => (explain?.remember(id, inputs as never), true),
+    giveReasons: (label, reasons) => (explain?.reasons.set(label, reasons), true),
+    keepProgram: options.keepProgram === true,
+  } as never)
+
+  if (answer.refused.form === 'some') return { ok: false, diagnostics: answer.refused.value as Diagnostic[] }
+  const kept = options.keepProgram ? { surface: answer.surface as Program, ...(answer.program.form === 'some' ? { program: answer.program.value as Program } : {}) } : {}
+  const claims = answer.openClaims.form === 'some' ? { openClaims: answer.openClaims.value } : {}
+  const owed = answer.obligations.form === 'some' ? { obligations: answer.obligations.value as Tally } : {}
+  const { modules, warnings, exports, built, reused, closureKey, natives, docks } = answer as never as Extract<SeparateResult, { ok: true }>
+  return { ok: true, modules, warnings, ...claims, ...owed, exports, built, reused, closureKey, natives, docks, rolls: answer.rolls.map(r => [r.label, r.roll as Roll]), ...kept }
 }

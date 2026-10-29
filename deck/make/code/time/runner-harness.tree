@@ -1,0 +1,225 @@
+mark draft
+
+# The benchmark runner. Finds the `time-*` tasks of a compiled program, runs them in a child `node` against the
+# compiled module, and reduces the raw samples to statistics. A benchmark is a zero-argument top-level task whose name
+# starts with `time-` (`task time-sort`).
+#
+# Ported from time/runner.ts (item term-self-host-change-001-finish-self-host-0010, decision 029), which stays as the
+# face. The decisions:
+#   - the harness is JavaScript TEXT for a node child, written here line by line exactly as the original's template
+#     wrote it: `process.hrtime` lives in that text and never in Term
+#   - a compile that fails is an answer (`benchmark-build`, `ok` false with the diagnostics); the face throws the
+#     original's `CompileFailure` from it
+#   - the arguments are positional, a left-out filter the empty text, a left-out warmup and iteration count filled in
+#     by the face (10 and 100)
+#   - the original's `try / finally` is a guarded block: the folder is removed either way, and a failure is raised
+#     again as a `failure` with the same message
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/text
+  find starts-with
+  find contains
+
+load @term/base/float
+  find to-decimal
+
+load @term/base/path
+  find join, name join-path
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/json
+  find parse
+  find stringify
+  find make-object
+  find set-field
+  find make-array
+  find push-item
+  find from-text
+  find get-field
+  find array-size
+  find array-item
+  find as-text
+  find as-number
+
+load ../compile/node
+  find statement
+
+load ../compile/ts-names
+  find to-camel
+
+load ./stats
+  find benchmark-result
+  find compute-stats
+
+load ./execute-steps
+  find compile-to-module
+  find prepare-module-dir
+  find run-node
+  find cleanup-dir
+
+# what a raise or a host error caught in a guarded block says: a raise's note, a host error's message, as the
+# original's caller read `err.message` (check/elaborating-main.tree's raise-message)
+bind thrown-message
+  take raised, like unknown
+  like text
+  case node
+    text <($raised instanceof Error ? $raised.message : String($raised))>
+  case browser
+    text <($raised instanceof Error ? $raised.message : String($raised))>
+  case rust
+    text <String::new()>
+  case swift
+    text <"">
+  case kotlin
+    text <"">
+
+form benchmark
+  link name, like text
+  link entry, like text
+
+# what compiling a benchmark file answered: its TypeScript and its benchmarks, or the compiler's diagnostics
+form benchmark-build
+  link ok, like boolean
+  link code, like text
+  link benchmarks, like list, like benchmark
+  link diagnostics, like list, like dynamic
+
+# the benchmarks of a program: zero-argument top-level tasks named `time-*`, those whose name holds `filter` when it is
+# not empty
+task discover-benchmarks
+  take program, like list, like statement
+  take filter, like text
+  like list, like benchmark
+
+  save found, make list
+  walk program
+    take s
+    sift s
+      case function
+        link name
+        link params
+        fork test, and(is-equal(params/length, 0), starts-with(name, <time->))
+          hold
+            fork test, or(is-equal(filter, <>), contains(name, filter))
+              hold
+                found/push(make(benchmark, bind(name, name), bind(entry, to-camel(name))))
+      miss
+        turn next
+  back found
+
+task compile-benchmarks
+  take text, like text
+  take file, like text
+  take resolve, like dynamic
+  take filter, like text
+  like benchmark-build
+
+  save compiled, compile-to-module(text, file, resolve)
+  save benchmarks, make list
+  fork test, compiled/ok
+    hold
+      save benchmarks, discover-benchmarks(compiled/program, filter)
+  back
+    make benchmark-build
+      bind ok, compiled/ok
+      bind code, compiled/code
+      bind benchmarks, benchmarks
+      bind diagnostics, compiled/diagnostics
+
+# the child's program, as JavaScript text: each benchmark warmed up, then timed one call at a time in nanoseconds, the
+# samples written to standard output as JSON
+task build-harness
+  take benchmarks, like list, like benchmark
+  take warmup, like number
+  take iterations, like number
+  like text
+
+  save specs, make-array()
+  walk benchmarks
+    take one
+    save spec, make-object()
+    set-field(spec, <name>, from-text(one/name))
+    set-field(spec, <entry>, from-text(one/entry))
+    push-item(specs, spec)
+  save lines, make list
+  lines/push(<import * as M from './module.mjs'>)
+  lines/push(<const specs = {stringify(specs)}>)
+  lines/push(<const warmup = {warmup}, iterations = {iterations}>)
+  lines/push(<async function main() \{>)
+  lines/push(<  const out = []>)
+  lines/push(<  for (const s of specs) \{>)
+  lines/push(<    const fn = M[s.entry]>)
+  lines/push(<    if (typeof fn !== 'function') continue>)
+  lines/push(<    for (let i = 0; i \< warmup; i++) await fn()>)
+  lines/push(<    const timings = []>)
+  lines/push(<    for (let i = 0; i \< iterations; i++) \{>)
+  lines/push(<      const a = process.hrtime.bigint()>)
+  lines/push(<      await fn()>)
+  lines/push(<      const b = process.hrtime.bigint()>)
+  lines/push(<      timings.push(Number(b - a))>)
+  lines/push(<    \}>)
+  lines/push(<    out.push(\{ name: s.name, timings \})>)
+  lines/push(<  \}>)
+  lines/push(<  process.stdout.write(JSON.stringify(out))>)
+  lines/push(<\}>)
+  lines/push(<main().catch((e) =\> \{ console.error(e); process.exit(1) \})>)
+  lines/push(<>)
+  back join(lines, <\n>)
+
+# one benchmark's samples, as the child wrote them, reduced to its statistics
+task stats-of
+  take sample, like dynamic
+  like benchmark-result
+
+  save timings, make list
+  save raw, get-field(sample, <timings>)
+  save at, 0
+  walk test
+    hook test, is-below(at, array-size(raw))
+    hook hold
+      timings/push(as-number(array-item(raw, at)))
+      save at, add(at, 1)
+  back compute-stats(as-text(get-field(sample, <name>)), timings)
+
+task run-benchmarks
+  take code, like text
+  take benchmarks, like list, like benchmark
+  take root, like text
+  take warmup, like number
+  take iterations, like number
+  like list, like benchmark-result
+
+  save results, make list
+  fork test, is-equal(benchmarks/length, 0)
+    hold
+      back results
+
+  save dir, prepare-module-dir(root, code, <time>)
+  save failed, false
+  save said, <>
+  fork
+    mark unsafe
+    save harness, join-path(dir, <harness.mjs>)
+    write-file(harness, build-harness(benchmarks, warmup, iterations))
+    save stdout, run-node(harness, dir, false)
+    save samples, parse(stdout)
+    save at, 0
+    walk test
+      hook test, is-below(at, array-size(samples))
+      hook hold
+        results/push(stats-of(array-item(samples, at)))
+        save at, add(at, 1)
+  halt take
+    take problem
+    save failed, true
+    save said, thrown-message(problem)
+  cleanup-dir(dir)
+  fork test, failed
+    hold
+      halt <{said}>
+  back results

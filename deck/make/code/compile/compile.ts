@@ -45,7 +45,7 @@ import type {
 } from '@term/make/code/compile/program-driver'
 import type { WakeGroup } from '@term/make/code/compile/program-warnings'
 import type { RollKind, RollValue } from '@term/make/code/compile/rolling'
-import { overloadGroups, runtimeBound } from '@term/make/code/check/overload'
+import { keepOverloadBound } from '@term/make/code/check/overload'
 import type { Roll, RollEntry } from '@term/make/code/compile/roll'
 import type { Tally } from '@term/make/code/check/holds'
 import { checkerSwitches } from '@term/make/code/check/strict'
@@ -368,16 +368,7 @@ function givenOf(
     emitOnly,
     switches: checkerSwitches,
     keepBound: bound => {
-      overloadGroups.clear()
-      runtimeBound.clear()
-
-      for (const group of bound.groups) {
-        overloadGroups.set(group.name, group.members)
-      }
-
-      for (const pair of bound.runtime) {
-        runtimeBound.set(pair.name, pair.bound)
-      }
+      keepOverloadBound(bound.groups, bound.runtime)
 
       return true
     },

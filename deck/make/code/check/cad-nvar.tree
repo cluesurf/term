@@ -53,7 +53,10 @@ load @term/base/integer/big
 
 load ./sturm
   find exact-ratio
-  find cell-samples-big
+  find sample-work
+  find sample-work-of
+  find out-of-work
+  find cell-samples-within
 
 # one term of a polynomial: the exponent of each variable, and the coefficient
 form n-term
@@ -873,19 +876,21 @@ task origin-samples
 
 task samples-of
   take product, like list, like big-integer
+  take work, like sample-work
   like list, like exact-ratio
   mark private
 
   fork test, is-maximum(product/length, 1)
     hold
       back origin-samples()
-  back cell-samples-big(product)
+  back cell-samples-within(product, work)
 
 # the rational sample points (one per full-dimensional open cell) of the CAD of R^nvars induced by `set`. Each sample is
-# a list of `nvars` rationals.
+# a list of `nvars` rationals. Paid from `work`: once it runs out the samples are partial (out-of-work says so)
 task cad-samples
   take set, like list, like hash, like text, like big-integer
   take nvars, like number
+  take work, like sample-work
   like list, like list, like exact-ratio
   mark private
 
@@ -897,7 +902,7 @@ task cad-samples
       walk set
         take p
         push(univariate, fibre-univariate(p))
-      walk samples-of(uni-product(univariate))
+      walk samples-of(uni-product(univariate), work)
         take s
         save one, make list
         push(one, s)
@@ -905,9 +910,12 @@ task cad-samples
       back out
 
   save projected, project(set, nvars)
-  walk cad-samples(projected, subtract(nvars, 1))
+  walk cad-samples(projected, subtract(nvars, 1), work)
     take s
-    walk samples-of(uni-product(fibre-polys(set, nvars, s)))
+    fork test, out-of-work(work)
+      hold
+        back out
+    walk samples-of(uni-product(fibre-polys(set, nvars, s)), work)
       take fs
       save point, s/slice(0, s/length)
       push(point, fs)
@@ -958,10 +966,20 @@ task sign-at
     save acc, nv-add(acc, term)
   back nv-sign(acc/n)
 
-# is `p(x_0, ..., x_{nvars-1}) >= 0` for ALL real arguments? The n-variable CAD decision.
+# is `p(x_0, ..., x_{nvars-1}) >= 0` for ALL real arguments? The n-variable CAD decision, with no limit on its work.
 task non-negative-everywhere-nvar
   take p, like hash, like text, like big-integer
   take nvars, like number
+  like boolean
+
+  back non-negative-nvar-within(p, nvars, sample-work-of(divide(1.0, 0.0)))
+
+# the same, paying the root isolation from `work` (a proof's budget, item 0057). Out of work it answers false, which
+# only declines: a negative sign at a rational sample is a real counterexample, but `true` needs every cell's sample
+task non-negative-nvar-within
+  take p, like hash, like text, like big-integer
+  take nvars, like number
+  take work, like sample-work
   like boolean
 
   fork test, is-zero-poly(p)
@@ -971,18 +989,22 @@ task non-negative-everywhere-nvar
   fork test, is-equal(nvars, 1)
     hold
       # defer to the exact univariate cell decision
-      walk samples-of(fibre-univariate(p))
+      walk samples-of(fibre-univariate(p), work)
         take s
         save point, make list
         push(point, s)
         fork test, is-below(sign-at(p, point), 0)
           hold
             back false
-      back true
+      back not(out-of-work(work))
 
   save set, make list
   push(set, p)
-  walk cad-samples(set, nvars)
+  save samples, cad-samples(set, nvars, work)
+  fork test, out-of-work(work)
+    hold
+      back false
+  walk samples
     take sample
     fork test, is-below(sign-at(p, sample), 0)
       hold

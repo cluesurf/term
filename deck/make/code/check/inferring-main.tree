@@ -84,7 +84,8 @@ load ./inferring-expressions
 # ---- the entry ----
 
 # ONE CHECK OF A PROGRAM, in the original's order. `only` names the one task whose body is checked and zonked (the
-# incremental path); none checks every body and every zone
+# incremental path); none checks every body and every zone. `overload-groups` is the binding's same-arity groups
+# (check/overload.ts hands the `groups` of its bound, decision 069 section 3)
 task infer-program
   take program, like list, like statement
   take file, like text
@@ -92,9 +93,10 @@ task infer-program
   take only, like maybe, like text
   take switches, like checker-switches
   take profile, like maybe, like infer-profile
+  take overload-groups, like hash, like text, like list, like text
   like infer-state
 
-  save st, make-infer-state(program, file, merged, only, switches, profile)
+  save st, make-infer-state(program, file, merged, only, switches, profile, overload-groups)
   fill-tables(st)
   check-module-bindings(st)
   check-bodies(st)

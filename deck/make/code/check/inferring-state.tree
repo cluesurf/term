@@ -328,6 +328,9 @@ form infer-state
   link profile, like maybe, like infer-profile
   # the checker's switches (check/checker-switches.tree): `seam`, `strict` and the ambiguous refusal
   link switches, like checker-switches
+  # same-name, same-arity overloads as the binding left them: a group's key (the first candidate's mangled name or a
+  # typed choice's own) to every candidate's name (check/disambiguate.tree's overload-bound `groups`, decision 069)
+  link overload-groups, like hash, like text, like list, like text
 
 # ---- the state, made ----
 
@@ -340,6 +343,7 @@ task make-infer-state
   take only, like maybe, like text
   take switches, like checker-switches
   take profile, like maybe, like infer-profile
+  take overload-groups, like hash, like text, like list, like text
   like infer-state
 
   save sub, new-substitution()
@@ -401,6 +405,7 @@ task make-infer-state
       bind bindings, 0
       bind profile, profile
       bind switches, switches
+      bind overload-groups, overload-groups
   back made
 
 # a statement's file: its span's, else the entry's (`statement.span.file ?? file`)

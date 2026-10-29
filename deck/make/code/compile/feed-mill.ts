@@ -5,9 +5,8 @@
 // note/term/project/feed-compiler.md.
 //
 // The grammar reader, the checks over it, the expression printer and the code generator are
-// compile/feed-compile.tree (self-hosting, 2026-10-06). This face keeps the types callers hold, renames the one rule
-// tag Term cannot spell (the port's `optional` is the original's `maybe`: a case named `maybe` there would take the
-// stdlib's `maybe`, until item 0379 renames it back), and answers `undefined` where the port answers an empty
+// compile/feed-compile.tree (self-hosting, 2026-10-06). This face keeps the types callers hold, hands the port's rules
+// through (its `maybe` is spelled `maybe` since item 0379), and answers `undefined` where the port answers an empty
 // substrate. `feedMineLoads` is compile/feed-mill-loads.tree (item 0083, decision 066 section 1).
 
 import type { Node } from '@term/make/code/parser/tree'
@@ -58,39 +57,8 @@ export type FeedMineGrammar = Map<string, FeedMineRule[]>
 // the two cursor substrates every dialect in this package reads against (`02-cursor.md`)
 export type Substrate = 'byte' | 'text'
 
-// ---- the boundary: the one tag the port spells otherwise ----
-
-type PortRule = port.FeedRule
-
-function fromPort(rule: PortRule): FeedMineRule {
-  const children = (rule as { children?: PortRule[] }).children
-
-  if (rule.kind === 'optional') {
-    return { ...rule, kind: 'maybe', children: rule.children.map(fromPort) } as FeedMineRule
-  }
-
-  return (children ? { ...rule, children: children.map(fromPort) } : rule) as FeedMineRule
-}
-
-function toPort(rule: FeedMineRule): PortRule {
-  const children = (rule as { children?: FeedMineRule[] }).children
-
-  if (rule.kind === 'maybe') {
-    return { ...rule, kind: 'optional', children: rule.children.map(toPort) } as PortRule
-  }
-
-  return (children ? { ...rule, children: children.map(toPort) } : rule) as PortRule
-}
-
-function grammarToPort(grammar: FeedMineGrammar): Map<string, PortRule[]> {
-  const out = new Map<string, PortRule[]>()
-
-  for (const [name, rules] of grammar) {
-    out.set(name, rules.map(toPort))
-  }
-
-  return out
-}
+// the port's grammar, whose rules are this face's shape, every kind spelled as here (item 0379)
+const portGrammar = (grammar: FeedMineGrammar): Map<string, port.FeedRule[]> => grammar as never
 
 // ---- reading and checking a grammar ----
 
@@ -98,7 +66,7 @@ export function readFeedMineGrammar(tree: RootNode): FeedMineGrammar {
   const out: FeedMineGrammar = new Map()
 
   for (const [name, rules] of port.readFeedMineGrammar(tree as never)) {
-    out.set(name, rules.map(fromPort))
+    out.set(name, rules as FeedMineRule[])
   }
 
   return out
@@ -107,7 +75,7 @@ export function readFeedMineGrammar(tree: RootNode): FeedMineGrammar {
 // Which substrate a grammar reads: bytes or characters, INFERRED from the constructs it uses. A grammar that uses
 // both, or neither, answers undefined rather than a guess.
 export function feedMineSubstrate(grammar: FeedMineGrammar): Substrate | undefined {
-  const substrate = port.feedMineSubstrate(grammarToPort(grammar))
+  const substrate = port.feedMineSubstrate(portGrammar(grammar))
 
   return substrate === '' ? undefined : (substrate as Substrate)
 }
@@ -120,7 +88,7 @@ export function feedMineLoads(file: string, text: string): string[] {
 
 // The rule NAMES a grammar refers to and never defines, sorted
 export function feedMineUnknownRefs(grammar: FeedMineGrammar): string[] {
-  return port.feedMineUnknownRefs(grammarToPort(grammar))
+  return port.feedMineUnknownRefs(portGrammar(grammar))
 }
 
 // The rules a grammar DECLARES with a body that read to nothing
@@ -153,5 +121,5 @@ export function compileFeedMine(
   cursorImportPath: string,
   extraImports: string[] = [],
 ): string {
-  return port.compileFeedMine(grammarToPort(grammar), substrate, cursorImportPath, extraImports, STATE)
+  return port.compileFeedMine(portGrammar(grammar), substrate, cursorImportPath, extraImports, STATE)
 }

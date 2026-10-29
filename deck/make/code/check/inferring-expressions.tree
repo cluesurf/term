@@ -22,7 +22,8 @@
 # The decisions of infer-expression:
 #   - an arithmetic operator on a form that wears its mask is rewritten into a call of the mask's task (decisions-2026-10,
 #     D5): the original changed the node's tag in place; here the call is a new node, inferred, and kept
-#   - check/overload.ts's `overloadGroups` is docked by its TypeScript name (section 4.6, item 0085 ports it)
+#   - the overload groups are the state's `overload-groups`, which check/infer.ts hands in from the bound
+#     check/overload.ts holds (decision 069 section 3; the dock of decision 032 section 4.6 is gone)
 #   - a call's named arguments are present when the list holds a name: a `need false` list read in Term cannot tell an
 #     empty list from one left out, where the original tested the list's presence (`node.names ||`). The pair of item
 #     0258 holds it
@@ -141,9 +142,6 @@ load ./inferring-state
   find ordinal
   find native-map-members
   find native-list-members
-
-dock load
-  load <@term/make/code/check/overload>, name inferring-overload
 
 # ---- what the cluster answers ----
 
@@ -562,7 +560,7 @@ task arrange-arguments
       save chosen, make list
       walk lean-labels(current)
         take label
-        save named, or(or(or(st/functions/has(label/name), inferring-overload/overload-groups/has(label/name)), or(st/method-names/has(label/name), st/records/has(label/name))), or(st/variant-enum/has(label/name), is-foldable(label/name)))
+        save named, or(or(or(st/functions/has(label/name), st/overload-groups/has(label/name)), or(st/method-names/has(label/name), st/records/has(label/name))), or(st/variant-enum/has(label/name), is-foldable(label/name)))
         fork test, and(not(contains(signature-names, label/written)), named)
           hold
             push(chosen, label/at)
@@ -841,9 +839,9 @@ task choose-overload
 
   save callee, callee-name(node)
   save candidates, make list
-  fork test, inferring-overload/overload-groups/has(callee)
+  fork test, st/overload-groups/has(callee)
     hold
-      save candidates, overload-candidates(callee)
+      save candidates, overload-candidates(st, callee)
   save arg-types, make list
   save args-out, make list
   walk arguments-of(node)
@@ -4072,13 +4070,14 @@ task lean-flagged
       bind args, out-args
       bind names, out-names
 
-# the members of an overload group, by the TypeScript name `overloadGroups` is docked by (decision 032 section 4.6)
+# the members of an overload group, from the state's overload-groups (decision 069 section 3)
 task overload-candidates
+  take st, like infer-state
   take name, like text
   like list, like text
   mark private
 
-  back inferring-overload/overload-groups/get(name)
+  back st/overload-groups/get(name)
 
 # whether an argument's type fits a parameter's: a variable or an unknown on either side fits anything, a form by its
 # name, a list by its element, a map by its key and value, any other kind by its kind
@@ -5052,6 +5051,9 @@ task infer-member
               link index-value
               save index-found, infer-expression(st, index-value, env)
               save node/index, make(some, index-found/node)
+              # the key read or written is the map's key: a `make hash` local first written as `save seen/{w}, 1`
+              # learns its key from `w` (item 0052: it stayed free and was emitted `Map<number, ...>`)
+              expect(st, index-found/type, target-key, expression-span(index-found/node), <map key>)
               back inferred-of(target-value, with-type(node, target-value))
             case none
               save nothing, 0
@@ -5604,7 +5606,7 @@ task infer-call
   save name, callee-name(current)
   fork test, and(is-unequal(name, <>), not(env/has(name)))
     hold
-      fork test, inferring-overload/overload-groups/has(name)
+      fork test, st/overload-groups/has(name)
         hold
           save current, choose-overload(st, current, env)
   # an argument already typed by choose-overload is not inferred twice (that would double its diagnostics)

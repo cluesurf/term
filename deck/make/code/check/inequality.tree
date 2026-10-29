@@ -89,6 +89,11 @@ load ./nonlinear
   find plain-path
   find length-atom
 
+load ./sturm
+  find sample-work
+  find sample-work-of
+  find out-of-work
+
 load ./universal
   find hold-calls
   find hold-provers
@@ -1993,6 +1998,28 @@ task goal-inequalities
     miss
       back make none
 
+# the nonlinear decision under the goal's proof budget (item 0057): the n-variable lift is handed what is left of it,
+# and what it spent is charged back. Run out, it charges the whole budget, so the goal is reported as stopped at the
+# budget (it may still be true), never as false
+task nonlinear-proves-within
+  take state, like hold-state
+  take calls, like hold-calls
+  take expr, like expression
+  take on-uncertified
+    like task
+  like boolean
+  mark private
+
+  save goal-work, calls/provers/work
+  save lift, sample-work-of(subtract(goal-work/budget, goal-work/spent))
+  save proved, nonlinear-proves(state, expr, on-uncertified, lift)
+  fork test, out-of-work(lift)
+    hold
+      spend-work(goal-work, goal-work/budget)
+    miss
+      spend-work(goal-work, lift/spent)
+  back proved
+
 # whether a hold's goal lies in the decidable fragment: a nonlinear non-negativity proven here, a disequality whose
 # sides are linear, or a goal whose inequalities are
 task is-linear-goal
@@ -2004,7 +2031,7 @@ task is-linear-goal
   save on-uncertified
     task
       note-uncertified(calls/provers/refine)
-  fork test, nonlinear-proves(state, expr, on-uncertified)
+  fork test, nonlinear-proves-within(state, calls, expr, on-uncertified)
     hold
       back true
   sift expr
@@ -2303,7 +2330,7 @@ task goal-provable
   save on-uncertified
     task
       note-uncertified(calls/provers/refine)
-  fork test, nonlinear-proves(state, expr, on-uncertified)
+  fork test, nonlinear-proves-within(state, calls, expr, on-uncertified)
     hold
       back make proven
 

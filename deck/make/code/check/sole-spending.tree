@@ -1,0 +1,1291 @@
+# UNCOPYABLE. A value of a `mark sole` form has one owner: it is used AT MOST ONCE (term-affine-kinds-0001, decision
+# note/project/term/affine-kinds/decision/001-many-by-default-sole-and-hide-declared-per-form.md, section sole).
+#
+# One pass over the checked program, so TypeScript, Rust, Swift and Kotlin refuse a second use the same way, before
+# any of them emits a line. A local, a parameter or a field read whose type is a sole form is CONSUMED by any use that
+# hands it on: an argument, a `bind` into a `make`, a `send back`, a `save` into another name, an element of a list.
+# Reading a field that is not itself sole (`read permit/note`) does not consume it, and neither does matching on it.
+#
+#   sole-reused     a use after a consuming use on the same path, naming both lines. A `fork` (and a `sift`) joins
+#                   by the MAXIMUM of its arms, never the sum, so a permit spent once in each arm is spent once. A path
+#                   that leaves (`back`, `halt`, a raise) joins nothing. A consuming use inside a `walk` of a name
+#                   bound outside it is refused too: the loop may run twice
+#   sole-captured   a closure (or a task written inside a task) that names a sole value bound outside it. No
+#                   once-closures in this version
+#   sole-generic    a sole type as a type argument or an element (`like list, like permit`): what a list does with its
+#                   elements is not one use. Composition by meet is a later item
+#   sole-unknown    a sole value handed to a parameter typed `unknown` or `dynamic`, where nothing tracks it
+#
+# It is affine, not linear: a value never used is fine, so an error path need not spend its permit.
+#
+# Ported from check/sole.ts (item term-self-host-change-001-finish-self-host-0002). The original's path state was a
+# record of Maps of Slots, copied for each arm, written in place and joined back into the state the caller held. Here
+# a path is an immutable record: every step hands back a new one, an arm starts from the path it branches from, and
+# a join builds a new path from the arms it is given. A slot keeps the count of the uses and the first one, which is
+# all the original read of its list of uses. The loop depth was a counter the walk raised and lowered; here it is
+# handed down. The refusals and the keys already told are one shared record, written in the order the original wrote
+# them. The closure's two reflective walks are compile/node-reach.tree with the original's six skips: a subtree a
+# lowered program shares is reached once per place, and the refusal key tells each refusal once, as it did.
+
+load @term/base/list
+  find list
+  find contains
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find index-of
+  find substring
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find diagnostic-name
+  find marker
+  find span
+
+load ../compile/node
+  find statement
+  find statement-span
+  find expression
+  find expression-type
+  find binding
+  find type
+  find function-param
+
+load ../compile/node-reach
+  find reach-statements
+
+# the uses of one name on one path: how many, the first, and the loop depth the name was bound at
+form sole-slot
+  link count, like number
+  link first, like maybe, like span
+  link depth, like number
+
+form sole-var
+  link name, like text
+  link slot, like sole-slot
+
+# the uses on one path so far, never written once made. A dead path (one that has left by `back`, `halt` or a raise)
+# joins nothing
+form sole-path
+  link dead, like boolean
+  link vars, like list, like sole-var
+
+# the sole forms of the program, the field names of each (its cases' included), and each task's parameters
+form sole-forms
+  link sole, like hash, like text, like boolean
+  link fields, like hash, like text, like list, like text
+  link tasks, like hash, like text, like list, like function-param
+
+# the refusals so far, in order, and the keys already told
+form sole-found
+  mark shared
+  link diagnostics, like list, like diagnostic
+  link told, like hash, like text, like boolean
+
+# what every step of one body's walk reads
+form sole-walk
+  link forms, like sole-forms
+  link found, like sole-found
+  link from, like text
+
+# ---- paths ----
+
+task fresh-slot
+  take depth, like number
+  like sole-slot
+  mark private
+
+  back
+    make sole-slot
+      bind count, 0
+      bind first, make none
+      bind depth, depth
+
+# the slot a name has on a path, none for a name it never bound
+task slot-on
+  take path, like sole-path
+  take name, like text
+  like maybe, like sole-slot
+  mark private
+
+  walk path/vars
+    take entry
+    fork test, is-equal(entry/name, name)
+      hold
+        back make(some, entry/slot)
+  back make none
+
+# the path with `name` holding `slot`: in its place when the name is bound, else last
+task with-slot
+  take path, like sole-path
+  take name, like text
+  take slot, like sole-slot
+  like sole-path
+  mark private
+
+  save vars, make list
+  save placed, false
+  walk path/vars
+    take entry
+    fork test, is-equal(entry/name, name)
+      hold
+        save placed, true
+        save swapped
+          make sole-var
+            bind name, name
+            bind slot, slot
+        push(vars, swapped)
+      miss
+        push(vars, entry)
+  fork test, not(placed)
+    hold
+      save added
+        make sole-var
+          bind name, name
+          bind slot, slot
+      push(vars, added)
+  back
+    make sole-path
+      bind dead, path/dead
+      bind vars, vars
+
+# a name bound anew at `depth`: nothing of it is spent yet
+task bind-fresh
+  take path, like sole-path
+  take name, like text
+  take depth, like number
+  like sole-path
+  mark private
+
+  back with-slot(path, name, fresh-slot(depth))
+
+task ended
+  take path, like sole-path
+  like sole-path
+  mark private
+
+  back
+    make sole-path
+      bind dead, true
+      bind vars, path/vars
+
+task revived
+  take path, like sole-path
+  like sole-path
+  mark private
+
+  back
+    make sole-path
+      bind dead, false
+      bind vars, path/vars
+
+# the paths meet: each name carries the most uses any live arm made of it, never the sum, and the depth of the first
+# arm that held it. With no live arm the meet is dead, holding the first arm's names
+task join-paths
+  take arms, like list, like sole-path
+  like sole-path
+  mark private
+
+  save best, make hash
+  save order, make list
+  save any-live, false
+  walk arms
+    take arm
+    fork test, not(arm/dead)
+      hold
+        save any-live, true
+        walk arm/vars
+          take entry
+          fork test, best/has(entry/name)
+            hold
+              save had, best/get(entry/name)
+              fork test, is-above(entry/slot/count, had/count)
+                hold
+                  save more
+                    make sole-slot
+                      bind count, entry/slot/count
+                      bind first, entry/slot/first
+                      bind depth, had/depth
+                  save best/{entry/name}, more
+            miss
+              save best/{entry/name}, entry/slot
+              push(order, entry/name)
+  fork test, not(any-live)
+    hold
+      save kept, make list
+      fork test, is-above(arms/length, 0)
+        hold
+          save head-arm, get(arms, 0)
+          save kept, head-arm/vars
+      back
+        make sole-path
+          bind dead, true
+          bind vars, kept
+  save vars, make list
+  walk order
+    take each-name
+    save joined
+      make sole-var
+        bind name, each-name
+        bind slot, best/get(each-name)
+    push(vars, joined)
+  back
+    make sole-path
+      bind dead, false
+      bind vars, vars
+
+# ---- types ----
+
+task is-sole-type
+  take given, like maybe, like type
+  take forms, like sole-forms
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link held
+      sift held
+        case named
+          back forms/sole/has(name)
+        miss
+          back false
+    case none
+      back false
+
+# the name a refusal calls a sole value by
+task sole-type-name
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link held
+      sift held
+        case named
+          back name
+        miss
+          back <sole value>
+    case none
+      back <sole value>
+
+# a local or a parameter, never a task or a builtin
+task is-held-binding
+  take given, like maybe, like binding
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link held
+      sift held
+        case local
+          back true
+        case parameter
+          back true
+        miss
+          back false
+    case none
+      back false
+
+# ---- refusals ----
+
+# a span, its file written as `file`
+task with-file
+  take at, like span
+  take file, like text
+  like span
+  mark private
+
+  back
+    make span
+      bind start, at/start
+      bind end, at/end
+      bind file, make(some, file)
+
+# a name as it was written: the part before the first `__` (the original's `/__.*$/`)
+task written-name
+  take name, like text
+  like text
+  mark private
+
+  save cut, index-of(name, <__>)
+  fork test, is-below(cut, 0)
+    hold
+      back name
+  back substring(name, 0, cut)
+
+# one refusal, told once per name, file, kind, line and column
+task tell-once
+  take found, like sole-found
+  take name, like text
+  take key, like text
+  take from, like text
+  take at, like span
+  take refusal, like diagnostic
+  like void
+  mark private
+
+  save id, <{name}\n{from}\n{key}\n{at/start/line}\n{at/start/column}>
+  fork test, not(found/told/has(id))
+    hold
+      save found/told/{id}, true
+      push(found/diagnostics, refusal)
+
+# "x" handed on twice, the second use at `here` and the first at `earlier`
+task reused-refusal
+  take name, like text
+  take from, like text
+  take here, like span
+  take earlier, like span
+  take message, like text
+  take hint, like text
+  like diagnostic
+  mark private
+
+  save markers, make list
+  save one
+    make marker
+      bind span, here
+  push(markers, one)
+  save two
+    make marker
+      bind span, with-file(earlier, from)
+      bind label, <"{name}" handed on here>
+  push(markers, two)
+  save input
+    make diagnostic-input
+      bind file, from
+      bind span, here
+      bind message, make(some, message)
+      bind markers, make(some, markers)
+      bind hint, make(some, hint)
+  save kind, make sole-reused
+  back diagnose(kind, input)
+
+# a refusal with one marker, at `here`
+task single-refusal
+  take kind, like diagnostic-name
+  take from, like text
+  take here, like span
+  take message, like text
+  take hint, like text
+  like diagnostic
+  mark private
+
+  save markers, make list
+  save one
+    make marker
+      bind span, here
+  push(markers, one)
+  save input
+    make diagnostic-input
+      bind file, from
+      bind span, here
+      bind message, make(some, message)
+      bind markers, make(some, markers)
+      bind hint, make(some, hint)
+  back diagnose(kind, input)
+
+# ---- uses ----
+
+# a sole value handed on: a second use on the path is refused, and so is a first one in a walk the name was bound
+# outside of
+task spend-variable
+  take walk-in, like sole-walk
+  take path, like sole-path
+  take name, like text
+  take at, like span
+  take given, like maybe, like type
+  take depth, like number
+  like sole-path
+  mark private
+
+  fork test, path/dead
+    hold
+      back path
+  save slot, fresh-slot(0)
+  save known, slot-on(path, name)
+  sift known
+    case some
+      link bound
+      save slot, bound
+    case none
+      save nothing, 0
+  save from, walk-in/from
+  save here, with-file(at, from)
+  save sort, sole-type-name(given)
+  sift slot/first
+    case some
+      link earlier
+      save message, <"{name}" is a `mark sole` {sort}, used here again after it was handed on at line {add(earlier/start/line, 1)}>
+      save hint, <a {sort} has one owner: hand it on once, or take a fresh one for the second use>
+      tell-once(walk-in/found, name, <reused>, from, here, reused-refusal(name, from, here, earlier, message, hint))
+    case none
+      fork test, is-above(depth, slot/depth)
+        hold
+          save message, <"{name}" is a `mark sole` {sort} bound outside this walk, and a walk may run its body twice>
+          save hint, <make or take the {sort} inside the walk, or hand it on after the walk ends>
+          save kind, make sole-reused
+          tell-once(walk-in/found, name, <loop>, from, here, single-refusal(kind, from, here, message, hint))
+  save first-use, slot/first
+  fork test, is-equal(slot/count, 0)
+    hold
+      save first-use, make(some, at)
+  save spent
+    make sole-slot
+      bind count, add(slot/count, 1)
+      bind first, first-use
+      bind depth, slot/depth
+  back with-slot(path, name, spent)
+
+# a read that hands nothing on (a plain field, a match) is still a use of a value already handed on: what was moved is
+# gone, as on Rust
+task touch-variable
+  take walk-in, like sole-walk
+  take path, like sole-path
+  take name, like text
+  take at, like span
+  take given, like maybe, like type
+  like void
+  mark private
+
+  fork test, path/dead
+    hold
+      back
+  save known, slot-on(path, name)
+  sift known
+    case some
+      link bound
+      sift bound/first
+        case some
+          link earlier
+          save from, walk-in/from
+          save here, with-file(at, from)
+          save sort, sole-type-name(given)
+          save message, <"{name}" is a `mark sole` {sort}, read here after it was handed on at line {add(earlier/start/line, 1)}>
+          save hint, <read what you need of the {sort} before handing it on>
+          tell-once(walk-in/found, name, <read>, from, here, reused-refusal(name, from, here, earlier, message, hint))
+        case none
+          back
+    case none
+      back
+
+# a sole value handed to a parameter typed `unknown` or `dynamic`
+task refuse-unknown
+  take walk-in, like sole-walk
+  take callee, like text
+  take at, like span
+  take given, like maybe, like type
+  take word, like text
+  like void
+  mark private
+
+  save from, walk-in/from
+  save here, with-file(at, from)
+  save sort, sole-type-name(given)
+  save message, <a `mark sole` {sort} cannot be handed to "{written-name(callee)}", whose parameter is `like {word}`: nothing would track its one use>
+  save hint, <give the parameter the type {sort}>
+  save kind, make sole-unknown
+  tell-once(walk-in/found, callee, <unknown>, from, here, single-refusal(kind, from, here, message, hint))
+
+# the word of a parameter type nothing tracks a sole value through, `<>` for any other
+task untracked-word
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link held
+      sift held
+        case unknown
+          back <unknown>
+        case dynamic
+          back <dynamic>
+        miss
+          back <>
+    case none
+      back <>
+
+# the parameters of the task a call's callee names, none when it names no task of the program
+task callee-params
+  take callee, like expression
+  take forms, like sole-forms
+  like maybe, like list, like function-param
+  mark private
+
+  sift callee
+    case variable
+      link called
+      link at-span
+      link given
+      link bound-as
+      sift bound-as
+        case some
+          link held
+          sift held
+            case function
+              fork test, forms/tasks/has(called)
+                hold
+                  save params, forms/tasks/get(called)
+                  back make(some, params)
+            miss
+              save nothing, 0
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  back make none
+
+task callee-name
+  take callee, like expression
+  like text
+  mark private
+
+  sift callee
+    case variable
+      back name
+    miss
+      back <>
+
+# a method called on a sole value (`p/stamp()`) hands the receiver on: the method takes it as its first parameter. A
+# field of the form that holds a task (`p/handler()`) is a read
+task is-method-call
+  take callee, like expression
+  take forms, like sole-forms
+  like boolean
+  mark private
+
+  sift callee
+    case member
+      link target
+      link member-name
+      link index
+      sift index
+        case some
+          back false
+        case none
+          save target-type, expression-type(target)
+          fork test, not(is-sole-type(target-type, forms))
+            hold
+              back false
+          save owner, sole-type-name(target-type)
+          back not(contains(forms/fields/get(owner), member-name))
+    miss
+      back false
+
+task member-target
+  take callee, like expression
+  like expression
+  mark private
+
+  sift callee
+    case member
+      back target
+    miss
+      back callee
+
+# ---- the walk ----
+
+task spend-maybe
+  take walk-in, like sole-walk
+  take path, like sole-path
+  take given, like maybe, like expression
+  take consuming, like boolean
+  take depth, like number
+  like sole-path
+  mark private
+
+  sift given
+    case some
+      link inner
+      back spend-expression(walk-in, path, inner, consuming, depth)
+    case none
+      back path
+
+task spend-expression
+  take walk-in, like sole-walk
+  take path, like sole-path
+  take node, like expression
+  take consuming, like boolean
+  take depth, like number
+  like sole-path
+  mark private
+
+  fork test, path/dead
+    hold
+      back path
+  save forms, walk-in/forms
+  save at, path
+  sift node
+    case variable
+      link called
+      link at-span
+      link given
+      link bound-as
+      fork test, and(is-held-binding(bound-as), is-sole-type(given, forms))
+        hold
+          fork test, consuming
+            hold
+              back spend-variable(walk-in, at, called, at-span, given, depth)
+          touch-variable(walk-in, at, called, at-span, given)
+      back at
+    case member
+      link target
+      link index
+      save given, expression-type(node)
+      save at, spend-maybe(walk-in, at, index, true, depth)
+      # a sole field handed on is its holder handed on; any other field is a read
+      back spend-expression(walk-in, at, target, and(consuming, is-sole-type(given, forms)), depth)
+    case call
+      link callee
+      link args
+      fork test, is-method-call(callee, forms)
+        hold
+          save at, spend-expression(walk-in, at, member-target(callee), true, depth)
+        miss
+          save at, spend-expression(walk-in, at, callee, false, depth)
+      save params, callee-params(callee, forms)
+      save called, callee-name(callee)
+      save i, 0
+      walk args
+        take arg
+        sift params
+          case some
+            link held
+            fork test, is-below(i, held/length)
+              hold
+                save param, get(held, i)
+                save word, untracked-word(param/type)
+                save arg-type, expression-type(arg)
+                fork test, and(is-unequal(word, <>), is-sole-type(arg-type, forms))
+                  hold
+                    refuse-unknown(walk-in, called, expression-span-of(arg), arg-type, word)
+          case none
+            save nothing, 0
+        save at, spend-expression(walk-in, at, arg, true, depth)
+        save i, add(i, 1)
+      back at
+    case binary
+      link left
+      link right
+      save at, spend-expression(walk-in, at, left, true, depth)
+      back spend-expression(walk-in, at, right, true, depth)
+    case unary
+      link operand
+      back spend-expression(walk-in, at, operand, true, depth)
+    case array
+      link items
+      walk items
+        take item
+        save at, spend-expression(walk-in, at, item, true, depth)
+      back at
+    case map
+      link entries
+      walk entries
+        take entry
+        save at, spend-expression(walk-in, at, entry/key, true, depth)
+        save at, spend-expression(walk-in, at, entry/value, true, depth)
+      back at
+    case record
+      link fields
+      link positional
+      walk fields
+        take field
+        save at, spend-expression(walk-in, at, field/value, true, depth)
+      walk positional
+        take item
+        save at, spend-expression(walk-in, at, item, true, depth)
+      back at
+    case template
+      link parts
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            save at, spend-expression(walk-in, at, inner, true, depth)
+          case chunk
+            save nothing, 0
+      back at
+    case await
+      link inner
+      back spend-expression(walk-in, at, inner, consuming, depth)
+    case closure
+      link params
+      link body
+      save names, make list
+      walk params
+        take param
+        push(names, param/name)
+      spend-closure(walk-in, names, body, at)
+      back at
+    case conditional
+      link branches
+      link otherwise
+      save arms, make list
+      walk branches
+        take branch
+        save at, spend-expression(walk-in, at, branch/cond, true, depth)
+        push(arms, spend-expression(walk-in, at, branch/value, consuming, depth))
+      push(arms, spend-maybe(walk-in, at, otherwise, consuming, depth))
+      back join-paths(arms)
+    miss
+      back at
+
+task expression-span-of
+  take node, like expression
+  like span
+  mark private
+
+  back expression-span(node)
+
+task spend-block
+  take walk-in, like sole-walk
+  take path, like sole-path
+  take statements, like list, like statement
+  take depth, like number
+  like sole-path
+  mark private
+
+  save at, path
+  walk statements
+    take one
+    fork test, at/dead
+      hold
+        back at
+    save at, spend-statement(walk-in, at, one, depth)
+  back at
+
+task spend-maybe-block
+  take walk-in, like sole-walk
+  take path, like sole-path
+  take given, like maybe, like list, like statement
+  take depth, like number
+  like sole-path
+  mark private
+
+  sift given
+    case some
+      link body
+      back spend-block(walk-in, path, body, depth)
+    case none
+      back path
+
+task spend-statement
+  take walk-in, like sole-walk
+  take path, like sole-path
+  take node, like statement
+  take depth, like number
+  like sole-path
+  mark private
+
+  save at, path
+  sift node
+    case let
+      link bound
+      link init
+      save at, spend-expression(walk-in, at, init, true, depth)
+      back bind-fresh(at, bound, depth)
+    case assign
+      link target
+      link value
+      save at, spend-expression(walk-in, at, value, true, depth)
+      sift target
+        case variable
+          link assigned
+          # a new value under the old name: nothing of it is spent yet
+          save kept-depth, depth
+          save known, slot-on(at, assigned)
+          sift known
+            case some
+              link bound
+              save kept-depth, bound/depth
+            case none
+              save nothing, 0
+          back bind-fresh(at, assigned, kept-depth)
+        case member
+          link index
+          back spend-maybe(walk-in, at, index, true, depth)
+        miss
+          back at
+    case expression
+      link expr
+      back spend-expression(walk-in, at, expr, true, depth)
+    case if
+      link branches
+      link otherwise
+      save arms, make list
+      walk branches
+        take branch
+        save at, spend-expression(walk-in, at, branch/cond, true, depth)
+        push(arms, spend-block(walk-in, at, branch/body, depth))
+      push(arms, spend-maybe-block(walk-in, at, otherwise, depth))
+      back join-paths(arms)
+    case match
+      link subject
+      link cases
+      link otherwise
+      # a match whose arms take the subject's fields (`case granted` / `link note`) hands the subject on to them, as a
+      # match by value does on Rust: what an arm took is no longer the subject's. A match that binds nothing only reads
+      save takes, false
+      walk cases
+        take arm
+        fork test, is-above(arm/binds/length, 0)
+          hold
+            save takes, true
+      save at, spend-expression(walk-in, at, subject, takes, depth)
+      save arms, make list
+      walk cases
+        take arm
+        save one, at
+        walk arm/binds
+          take each-name
+          save one, bind-fresh(one, each-name, depth)
+        push(arms, spend-block(walk-in, one, arm/body, depth))
+      push(arms, spend-maybe-block(walk-in, at, otherwise, depth))
+      back join-paths(arms)
+    case while
+      link cond
+      link body
+      save inner, add(depth, 1)
+      save turn, spend-expression(walk-in, at, cond, true, inner)
+      save turn, spend-block(walk-in, turn, body, inner)
+      save arms, make list
+      push(arms, at)
+      push(arms, revived(turn))
+      back join-paths(arms)
+    case for-each
+      link item
+      link index
+      link iterable
+      link body
+      save at, spend-expression(walk-in, at, iterable, true, depth)
+      save inner, add(depth, 1)
+      save turn, bind-fresh(at, item, inner)
+      fork test, is-unequal(index, <>)
+        hold
+          save turn, bind-fresh(turn, index, inner)
+      save turn, spend-block(walk-in, turn, body, inner)
+      save arms, make list
+      push(arms, at)
+      push(arms, revived(turn))
+      back join-paths(arms)
+    case return
+      link value
+      back ended(spend-maybe(walk-in, at, value, true, depth))
+    case throw
+      link value
+      back ended(spend-expression(walk-in, at, value, true, depth))
+    case break
+      back ended(at)
+    case continue
+      back ended(at)
+    case exit
+      back ended(at)
+    case guard
+      link body
+      link catch
+      save tried, spend-block(walk-in, at, body, depth)
+      sift catch
+        case some
+          link clause
+          # the handler runs after any part of the body: everything the body handed on may be gone
+          save handler, bind-fresh(revived(tried), clause/name, depth)
+          save handler, spend-block(walk-in, handler, clause/body, depth)
+          save arms, make list
+          push(arms, tried)
+          push(arms, handler)
+          back join-paths(arms)
+        case none
+          save arms, make list
+          push(arms, tried)
+          back join-paths(arms)
+    case function
+      link params
+      link body
+      save names, make list
+      walk params
+        take param
+        push(names, param/name)
+      spend-closure(walk-in, names, body, at)
+      back at
+    miss
+      back at
+
+# one body: a task's, a closure's or a nested task's, with its own parameters
+task spend-body
+  take walk-in, like sole-walk
+  take body, like list, like statement
+  take params, like list, like text
+  like void
+  mark private
+
+  save start
+    make sole-path
+      bind dead, false
+      bind vars, make list
+  walk params
+    take each-name
+    save start, bind-fresh(start, each-name, 0)
+  spend-block(walk-in, start, body, 0)
+
+task skipped-keys
+  like list, like text
+  mark private
+
+  save skip, make list
+  push(skip, <span>)
+  push(skip, <type>)
+  push(skip, <result>)
+  push(skip, <declared>)
+  push(skip, <stubBody>)
+  push(skip, <stubShape>)
+  back skip
+
+# a closure is a body of its own, and names nothing sole from outside it
+task spend-closure
+  take walk-in, like sole-walk
+  take params, like list, like text
+  take body, like list, like statement
+  take outer, like sole-path
+  like void
+  mark private
+
+  save forms, walk-in/forms
+  save reached, reach-statements(body, skipped-keys())
+  # every name the closure binds itself
+  save inside, make hash
+  walk params
+    take each-name
+    save inside/{each-name}, true
+  walk reached/statements
+    take one
+    sift one
+      case let
+        link bound
+        save inside/{bound}, true
+      case for-each
+        link item
+        link index
+        save inside/{item}, true
+        fork test, is-unequal(index, <>)
+          hold
+            save inside/{index}, true
+      case match
+        link cases
+        walk cases
+          take arm
+          walk arm/binds
+            take each-name
+            save inside/{each-name}, true
+      case function
+        link params
+        walk params
+          take param
+          save inside/{param/name}, true
+      case guard
+        link catch
+        sift catch
+          case some
+            link clause
+            save inside/{clause/name}, true
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  walk reached/expressions
+    take one
+    sift one
+      case closure
+        link params
+        walk params
+          take param
+          save inside/{param/name}, true
+      miss
+        save nothing, 0
+  walk reached/expressions
+    take one
+    sift one
+      case variable
+        link called
+        link at-span
+        link given
+        link bound-as
+        fork test, and(and(is-held-binding(bound-as), is-sole-type(given, forms)), and(not(inside/has(called)), is-bound-on(outer, called)))
+          hold
+            save from, walk-in/from
+            save here, with-file(at-span, from)
+            save sort, sole-type-name(given)
+            save message, <"{called}" is a `mark sole` {sort}, and a closure that names it could use it any number of times>
+            save hint, <pass the {sort} to the closure as a parameter, or use it outside the closure>
+            save kind, make sole-captured
+            tell-once(walk-in/found, called, <captured>, from, here, single-refusal(kind, from, here, message, hint))
+      miss
+        save nothing, 0
+  spend-body(walk-in, body, params)
+
+task is-bound-on
+  take path, like sole-path
+  take name, like text
+  like boolean
+  mark private
+
+  walk path/vars
+    take entry
+    fork test, is-equal(entry/name, name)
+      hold
+        back true
+  back false
+
+task check-sole-uses
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save sole-names, make hash
+  save field-names, make hash
+  save task-params, make hash
+  save any-sole, false
+  walk program
+    take top
+    sift top
+      case record-type
+        link name
+        link fields
+        link variants
+        link sole
+        fork test, sole
+          hold
+            save any-sole, true
+            save sole-names/{name}, true
+            # each sole form's field names, its cases' included, so `p/note` (a field) and `p/stamp()` (a method) are
+            # told apart
+            save names, make list
+            walk fields
+              take field
+              push(names, field/name)
+            walk variants
+              take variant
+              walk variant/fields
+                take field
+                push(names, field/name)
+            save field-names/{name}, names
+      miss
+        save nothing, 0
+  save found
+    make sole-found
+      bind diagnostics, make list
+      bind told, make hash
+  fork test, not(any-sole)
+    hold
+      back found/diagnostics
+  walk program
+    take top
+    sift top
+      case function
+        link name
+        link params
+        save task-params/{name}, params
+      miss
+        save nothing, 0
+  save forms
+    make sole-forms
+      bind sole, sole-names
+      bind fields, field-names
+      bind tasks, task-params
+  walk program
+    take top
+    sift top
+      case function
+        link params
+        link body
+        link stub
+        link span
+        fork test, not(stub)
+          hold
+            save from, file
+            sift span/file
+              case some
+                link written
+                save from, written
+              case none
+                save nothing, 0
+            save walk-in
+              make sole-walk
+                bind forms, forms
+                bind found, found
+                bind from, from
+            save names, make list
+            walk params
+              take param
+              push(names, param/name)
+            spend-body(walk-in, body, names)
+      miss
+        save nothing, 0
+  back found/diagnostics
+
+# ---- generics ----
+
+# a sole type as a type argument or an element, in a type written on a signature or a form's field, `<>` for none
+task sole-inside
+  take given, like type
+  take sole, like hash, like text, like boolean
+  take top, like boolean
+  like text
+  mark private
+
+  sift given
+    case named
+      fork test, and(not(top), sole/has(name))
+        hold
+          back name
+      walk args
+        take arg
+        save found, sole-inside(arg, sole, false)
+        fork test, is-unequal(found, <>)
+          hold
+            back found
+      back <>
+    case array
+      back sole-inside(element, sole, false)
+    case map
+      save found, sole-inside(key, sole, false)
+      fork test, is-unequal(found, <>)
+        hold
+          back found
+      back sole-inside(value, sole, false)
+    case function
+      walk params
+        take param
+        save found, sole-inside(param, sole, true)
+        fork test, is-unequal(found, <>)
+          hold
+            back found
+      back sole-inside(result, sole, true)
+    miss
+      back <>
+
+task sole-inside-maybe
+  take given, like maybe, like type
+  take sole, like hash, like text, like boolean
+  like text
+  mark private
+
+  sift given
+    case some
+      link held
+      back sole-inside(held, sole, true)
+    case none
+      back <>
+
+task refuse-generic
+  take out, like list, like diagnostic
+  take found, like text
+  take where, like text
+  take at, like span
+  take from, like text
+  like void
+  mark private
+
+  save here, with-file(at, from)
+  save message, <{where} holds the `mark sole` form "{found}" as a type argument or an element, and what a list, a hash or a generic form does with its elements is not one use>
+  save hint, <hold one {found} in a field of its own, or a form that is `mark sole` itself>
+  save kind, make sole-generic
+  push(out, single-refusal(kind, from, here, message, hint))
+
+task check-sole-generics
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save sole-names, make hash
+  save any-sole, false
+  walk program
+    take top
+    sift top
+      case record-type
+        link name
+        link sole
+        fork test, sole
+          hold
+            save any-sole, true
+            save sole-names/{name}, true
+      miss
+        save nothing, 0
+  save out, make list
+  fork test, not(any-sole)
+    hold
+      back out
+  walk program
+    take top
+    save from, file
+    save top-span, statement-span(top)
+    sift top-span/file
+      case some
+        link written
+        save from, written
+      case none
+        save nothing, 0
+    sift top
+      case function
+        link name
+        link params
+        link result
+        link stub
+        link span
+        fork test, not(stub)
+          hold
+            save shown, written-name(name)
+            walk params
+              take param
+              save found, sole-inside-maybe(param/type, sole-names)
+              fork test, is-unequal(found, <>)
+                hold
+                  refuse-generic(out, found, <the parameter "{param/name}" of "{shown}">, span, from)
+            save found, sole-inside-maybe(result, sole-names)
+            fork test, is-unequal(found, <>)
+              hold
+                refuse-generic(out, found, <the result of "{shown}">, span, from)
+      case record-type
+        link name
+        link fields
+        link variants
+        link span
+        walk fields
+          take field
+          save found, sole-inside(field/type, sole-names, true)
+          fork test, is-unequal(found, <>)
+            hold
+              refuse-generic(out, found, <the field "{field/name}" of "{name}">, field-span(field/span, span), from)
+        walk variants
+          take variant
+          walk variant/fields
+            take field
+            save found, sole-inside(field/type, sole-names, true)
+            fork test, is-unequal(found, <>)
+              hold
+                refuse-generic(out, found, <the field "{field/name}" of "{name}">, field-span(field/span, span), from)
+      miss
+        save nothing, 0
+  back out
+
+# a field's own span, else its form's
+task field-span
+  take given, like maybe, like span
+  take fallback, like span
+  like span
+  mark private
+
+  sift given
+    case some
+      link held
+      back held
+    case none
+      back fallback

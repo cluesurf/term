@@ -1,0 +1,179 @@
+# A COMPONENT'S LOWERED CODE IS TYPE-CHECKED.
+#
+# Views are lowered to plain functions over the render runtime AFTER the checker (compile/view-lower.tree runs last,
+# after simplify), so the code a component actually runs was never checked: `read read-signal(count)` handed a `number`
+# to `make-dynamic-text`, which takes a task to `text`, and the build went on (guides: applications/web/components,
+# 2026-10-03). The checker reads a `view` as markup and cannot see that call.
+#
+# So a program with a component of this file is checked a second time with its views lowered: a copy taken before the
+# main check (which annotates the program it reads), lowered, and put through the surface pass and the kernel, as the
+# main program is. The kernel is needed: the surface pass is gradual about a closure's result and lets that call
+# through, and the kernel refuses it in ordinary code as well. An error the copy raises inside a component of this file
+# refuses the build. The main check has already passed by then, so anything else the copy says is about the lowering
+# itself and is left to the lowering's own tests.
+#
+# Ported from check/views.ts (item term-self-host-001-0103), which stays as the face. The surface pass and the kernel
+# are docks of their faces, check/infer.ts `check` and check/elaborate.ts `elaborateReport`, since each reads state the
+# face holds (the overload groups, the checker switches, the kernel's judge state); the surface pass writes the checked
+# program into the list it is handed, so the kernel reads the checked program, as in the original. The runtime names the
+# lowering writes are the face's overload-bound `runtime`, handed in as its hash and listed in its order.
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+  find span
+
+load ../compile/node
+  find statement
+
+load ../compile/view-lower
+  find lower-views
+  find runtime-bound
+
+dock load
+  load <@term/make/code/check/infer>, name views-infer
+  load <@term/make/code/check/elaborate>, name views-elaborate
+
+# a whole program, deep-copied as the original's `structuredClone`. Natively a value is already a copy
+bind views-clone
+  take value, like list, like statement
+  like list, like statement
+  case node
+    text <structuredClone($value)>
+  case browser
+    text <structuredClone($value)>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+# the copy to check later, or none when the file defines no component
+task copy-for-views
+  take program, like list, like statement
+  take file, like text
+  like maybe, like list, like statement
+
+  walk program
+    take one
+    sift one
+      case view
+        sift span/file
+          case some
+            link view-file
+            fork test, is-equal(view-file, file)
+              hold
+                save copied, views-clone(program)
+                back make(some, copied)
+          case none
+            turn next
+      miss
+        turn next
+  back make none
+
+# the diagnostics the host hands back, as the list they are
+task as-diagnostics
+  take value, like dynamic
+  like list, like diagnostic
+  mark private
+
+  back value
+
+# whether a position is at or after a span's start and at or before its end
+task within-span
+  take line, like number
+  take column, like number
+  take view-span, like span
+  like boolean
+  mark private
+
+  save start, view-span/start
+  save end, view-span/end
+  save after, or(is-above(line, start/line), and(is-equal(line, start/line), is-minimum(column, start/column)))
+  save before, or(is-below(line, end/line), and(is-equal(line, end/line), is-maximum(column, end/column)))
+  back and(after, before)
+
+# inside a component of this file, by the source position the lowering kept: the user's own expressions keep theirs,
+# and what the lowering built carries the component's
+task inside-views
+  take one, like diagnostic
+  take file, like text
+  take views, like list, like span
+  like boolean
+  mark private
+
+  sift one/span/file
+    case some
+      link at-file
+      fork test, is-unequal(at-file, file)
+        hold
+          back false
+    case none
+      back false
+  save line, one/span/start/line
+  save column, one/span/start/column
+  walk views
+    take view-span
+    fork test, within-span(line, column, view-span)
+      hold
+        back true
+  back false
+
+# the copy's views lowered and checked, the errors inside a component of this file. The surface pass's first, and when
+# it has none, the kernel's
+task check-lowered-views
+  take copy, like list, like statement
+  take file, like text
+  take merged, like boolean
+  take runtime, like hash, like text, like text
+  like list, like diagnostic
+
+  save views, make list
+  walk copy
+    take one
+    sift one
+      case view
+        sift span/file
+          case some
+            link view-file
+            fork test, is-equal(view-file, file)
+              hold
+                push(views, span)
+          case none
+            turn next
+      miss
+        turn next
+
+  save bound, make list
+  walk runtime/entries()
+    take entry
+    save made
+      make runtime-bound
+        bind name, entry/first
+        bind bound, entry/second
+    push(bound, made)
+  save lowered, lower-views(copy, bound)
+
+  save surface, make list
+  walk as-diagnostics(views-infer/check(lowered, file, merged))
+    take found
+    fork test, and(is-unequal(found/severity, make warning), inside-views(found, file, views))
+      hold
+        push(surface, found)
+  fork test, is-above(surface/length, 0)
+    hold
+      back surface
+
+  save kernel, make list
+  walk as-diagnostics(views-elaborate/elaborate-report(lowered, file)/diagnostics)
+    take found
+    fork test, inside-views(found, file, views)
+      hold
+        push(kernel, found)
+  back kernel

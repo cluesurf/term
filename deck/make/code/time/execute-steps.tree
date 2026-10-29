@@ -1,0 +1,131 @@
+mark draft
+
+# Compiled execution: we never interpret. A `.tree` file is compiled to TypeScript, its types stripped to an ES module
+# (esbuild's transform), written to a folder under the project, and run by `node` in a child process. `term time` and
+# its profiles build on this. No `eval`, no interpreter.
+#
+# Ported from time/execute.ts (item term-self-host-change-001-finish-self-host-0010, decision 029), which stays as the
+# face. The decisions:
+#   - a compile that fails is an ANSWER here (`compiled-module`, `ok` false with the diagnostics), and the face throws
+#     the original's `CompileFailure` from it, so a caller's `instanceof` still tells it apart
+#   - the folder, the module and the child go through @term/base: file/directory `make` and `remove` (recursive, best
+#     effort, as `rm -rf` was), file `write`, process/run `run`, process/current `read` for the id, time `now`. esbuild
+#     is docked (F4), the way the ported CLI docks it
+#   - the child is `node` from PATH where the original ran `process.execPath` (decision 029, Diverges): the native
+#     binary has no node of its own. A child that fails raises a `failure` whose note is the original's message, its
+#     standard error trimmed, else `node exited with code <n>`
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find trim
+
+load @term/base/path
+  find join
+
+load @term/base/time
+  find now
+
+load @term/base/file
+  find write, name write-file
+
+load @term/base/file/directory
+  find make, name make-directory
+  find remove, name remove-directory
+
+load @term/base/process/run
+  find run, name run-process
+  find run-result
+
+load @term/base/process/current
+  find read, name read-process
+
+dock load
+  load <@term/make/code/compile/compile>, name execute-compiling
+  load <esbuild>, name execute-esbuild
+
+form compile-source
+  link file, like text
+  link text, like text
+
+form compile-options
+  link resolve, like dynamic
+
+form transform-ask
+  link loader, like text
+  link format, like text
+  link target, like text
+
+# what compiling a file answered: its TypeScript and checked program, or the compiler's diagnostics
+form compiled-module
+  link ok, like boolean
+  link code, like text
+  link program, like dynamic
+  link diagnostics, like list, like dynamic
+
+# Compile a `.tree` file to a runnable TypeScript module plus its checked program (for discovery). The resolver makes
+# an entry with imports compile the way `term make` compiles it; one left out (undefined) compiles a file alone
+task compile-to-module
+  take text, like text
+  take file, like text
+  take resolve, like dynamic
+  like compiled-module
+
+  save result, execute-compiling/compile(make(compile-source, bind(file, file), bind(text, text)), make(compile-options, bind(resolve, resolve)))
+  fork test, not(result/ok)
+    hold
+      back
+        make compiled-module
+          bind ok, false
+          bind code, <>
+          bind program, result/program
+          bind diagnostics, result/diagnostics
+  back
+    make compiled-module
+      bind ok, true
+      bind code, result/typescript
+      bind program, result/program
+      bind diagnostics, make list
+
+# the emitted TypeScript as an ES module, written into a fresh folder under the project. The answer is the folder; the
+# caller writes a `harness.mjs` beside `module.mjs` and runs it
+task prepare-module-dir
+  take root, like text
+  take code, like text
+  take tag, like text
+  like text
+
+  save transformed, wait execute-esbuild/transform(code, make(transform-ask, bind(loader, <ts>), bind(format, <esm>), bind(target, <node18>)))
+  save dir, join(root, <.base/@term/code/tmp/{tag}-{read-process()/id}-{now()}>)
+  make-directory(dir)
+  write-file(join(dir, <module.mjs>), transformed/code)
+  back dir
+
+# run an ES module with `node` and answer its standard output. `gc` exposes `global.gc` for memory work
+task run-node
+  take file, like text
+  take cwd, like text
+  take gc, like boolean
+  like text
+
+  save arguments, make list
+  fork test, gc
+    hold
+      arguments/push(<--expose-gc>)
+  arguments/push(file)
+  save done, run-process(<node>, arguments, cwd)
+  fork test, is-equal(done/code, 0)
+    hold
+      back done/output
+  save said, trim(done/error)
+  fork test, is-equal(said, <>)
+    hold
+      halt <node exited with code {done/code}>
+  halt <{said}>
+
+task cleanup-dir
+  take dir, like text
+  like void
+
+  remove-directory(dir)

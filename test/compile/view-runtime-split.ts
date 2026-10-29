@@ -8,7 +8,7 @@
 //   B  the entry file defines a task `append` of its own: it keeps its name, the lowering calls the dom's
 //   B2 the entry's `append` takes views, so a wrong binding still compiles: only the text witness can see it
 //   C  nothing is split: no @term/base/file, the lowering calls the dom's plain `append`
-//   D  the map: disambiguateOverloads leaves runtimeBound naming append, remove and replace by the dom's renamed
+//   D  the map: disambiguateOverloads leaves overloadBound.runtime naming append, remove and replace by the dom's renamed
 //      names and make-element by itself
 //
 // and one for the simplifier (beat-term-0055, review 0045 finding 1):
@@ -31,7 +31,7 @@ import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import { nativePrelude } from '@term/make/code/compile/native'
 import { emitSwift } from '@term/make/code/compile/swift'
-import { runtimeBound } from '@term/make/code/check/overload'
+import { overloadBound } from '@term/make/code/check/overload'
 import { projectResolver } from '@term/call/code/make'
 import { SWIFT_MODULE } from '@term/call/code/cask'
 import { existsSync, readFileSync } from 'node:fs'
@@ -319,7 +319,7 @@ for (const leg of ['ios', 'macos'] as const) {
     ok(`a ${leg}: the build split append by file`, renamed.length >= 1, `renamed: ${renamed.join(', ')}`)
     ok(`a ${leg}: no call of a plain append whose definition is absent`, calls(a.swift, 'append') === 0 || defines(a.swift, 'append'), `calls ${calls(a.swift, 'append')}`)
     // the body of the lowered `screen` alone: render.tree's own `mount` calls a renamed append too
-    const bound = runtimeBound.get('append') ?? ''
+    const bound = overloadBound.runtime.get('append') ?? ''
     const lowered = freeCalls(bodyOf(a.swift, 'screen'), 'append')
     ok(`a ${leg}: the lowered screen calls append, and only as the bound name`, /^append__in0_\d+$/.test(bound) && lowered.length > 0 && lowered.every(c => c === bound), `bound ${bound}, calls: ${lowered.join(', ')}`)
     ok(`a ${leg}: the bound append has the dom's labels`, a.swift.includes(`func ${bound}(parent:`), `bound ${bound}`)
@@ -334,7 +334,7 @@ for (const leg of ['ios', 'macos'] as const) {
     ok(`b ${leg}: the entry keeps its own append`, mine)
     // the body of the lowered `screen` alone: the entry's own call is folded by the inliner and render.tree's own calls
     // are not the lowering's
-    const bound = runtimeBound.get('append') ?? ''
+    const bound = overloadBound.runtime.get('append') ?? ''
     const lowered = freeCalls(bodyOf(b.swift, 'screen'), 'append')
     ok(`b ${leg}: the lowered screen calls append, and only as the bound name`, /^append__in0_\d+$/.test(bound) && lowered.length > 0 && lowered.every(c => c === bound), `bound ${bound}, calls: ${lowered.join(', ')}`)
     ok(`b ${leg}: the lowered screen never calls the entry's append`, mine && !lowered.includes('append'), `calls: ${lowered.join(', ')}`)
@@ -345,7 +345,7 @@ for (const leg of ['ios', 'macos'] as const) {
   typecheck('b2', b2, leg)
 
   if (b2) {
-    const bound = runtimeBound.get('append') ?? ''
+    const bound = overloadBound.runtime.get('append') ?? ''
     const lowered = freeCalls(bodyOf(b2.swift, 'screen'), 'append')
     ok(`b2 ${leg}: the entry keeps its own append`, defines(b2.swift, 'append'))
     ok(`b2 ${leg}: the lowered screen calls append, and only as the bound name`, /^append__in0_\d+$/.test(bound) && lowered.length > 0 && lowered.every(c => c === bound), `bound ${bound}, calls: ${lowered.join(', ')}`)
@@ -372,7 +372,7 @@ for (const leg of ['ios', 'macos'] as const) {
     ok(`e ${leg}: the lowered screen is found`, screen.length > 0 && /\w\(/.test(screen))
 
     for (const name of ['make-text', 'write-attribute']) {
-      const bound = runtimeBound.get(name) ?? ''
+      const bound = overloadBound.runtime.get(name) ?? ''
       const spelled = swiftName(bound)
       const plain = swiftName(name)
       ok(`e ${leg}: ${name} is split, render's is renamed`, new RegExp(`^${name}__in0_\\d+$`).test(bound), `bound ${bound}`)
@@ -394,7 +394,7 @@ for (const leg of ['ios', 'macos'] as const) {
   typecheck('f', f, leg)
 
   if (f) {
-    const bound = runtimeBound.get('append') ?? ''
+    const bound = overloadBound.runtime.get('append') ?? ''
     const lowered = freeCalls(bodyOf(f.swift, 'screen'), 'append')
     ok(`f ${leg}: append is bound to the dom's renamed append, not left plain`, /^append__in0_\d+$/.test(bound), `bound ${bound}`)
     ok(`f ${leg}: the lowered screen calls append, and only as the bound name`, lowered.length > 0 && lowered.every(c => c === bound), `bound ${bound}, calls: ${lowered.join(', ')}`)
@@ -406,7 +406,7 @@ for (const leg of ['ios', 'macos'] as const) {
   typecheck('f2', f2, leg)
 
   if (f2) {
-    const bound = runtimeBound.get('append') ?? ''
+    const bound = overloadBound.runtime.get('append') ?? ''
     const lowered = freeCalls(bodyOf(f2.swift, 'screen'), 'append')
     ok(`f2 ${leg}: append is bound to the dom's renamed append, not left plain`, /^append__in0_\d+$/.test(bound), `bound ${bound}`)
     ok(`f2 ${leg}: the lowered screen calls append, and only as the bound name`, lowered.length > 0 && lowered.every(c => c === bound), `bound ${bound}, calls: ${lowered.join(', ')}`)
@@ -418,12 +418,12 @@ const mapped = build('d', caseA, 'ios')
 
 if (mapped) {
   for (const name of ['append', 'remove', 'replace']) {
-    const bound = runtimeBound.get(name) ?? ''
+    const bound = overloadBound.runtime.get(name) ?? ''
     // `remove` and `replace` are split only when @term/base/file defines them too, which it does
     ok(`d: ${name} is bound to the dom's renamed ${name}`, new RegExp(`^${name}__in0_\\d+$`).test(bound), `bound ${bound}`)
   }
 
-  ok('d: make-element is bound to itself', runtimeBound.get('make-element') === 'make-element', `bound ${runtimeBound.get('make-element')}`)
+  ok('d: make-element is bound to itself', overloadBound.runtime.get('make-element') === 'make-element', `bound ${overloadBound.runtime.get('make-element')}`)
 }
 
 console.log(`view-runtime-split: ${pass} pass, ${fail} fail`)

@@ -1,0 +1,1877 @@
+# THE SEPARATE BUILD, with cross-boundary early cutoff: what `term make` runs (`--merged` is the whole-program build).
+# See note/project/term/compiler/incremental-compilation.md.
+#
+# The module graph the entry reaches splits into UNITS (its strongly connected components, compile/unit-graph.tree),
+# and each unit is checked and emitted apart, in dependency order:
+#   - a unit is checked against the STUBS of the units it reaches (their checked, body-less surface, compile/stubbing.tree),
+#     never against their bodies
+#   - a unit emits only its OWN modules, with imports reconnecting cross-unit references under the names each exports
+#   - a unit's answer is cached keyed by its own content and what it reaches of its dependencies' surfaces, so an edit
+#     that leaves a surface where it was replays every dependent unit from the cache: EARLY CUTOFF
+#   - a unit is named the same way whichever entry reached it, so its module is one module
+# It agrees with the merged build on what each file builds and refuses (`pnpm term:separate-diff`).
+#
+# Ported from compile/separate.ts `compileSeparate` and `portableBy` (item 0113 of term/self-host/change/001), which
+# stays as the face. The decisions:
+#   - `portableBy`'s two closures are the form `portable`, the roots they captured, run by `portable-write` and
+#     `portable-read` (spec.md 4.9). A pass that takes the writing as a task (a stub's fingerprint, compile/stubbing.tree)
+#     takes the pair the face makes of the form, `portable-tasks`
+#   - the cache's two lookups take a build the cache runs on a miss. Term holds no closure, so that build is a
+#     `unit-job` (the run, the unit, how it is checked), run by `job-stored` and `job-named-key`, which the face's
+#     closure calls (spec.md 4.9)
+#   - what the run cannot hold as Term (the import walk, the mill cache, compileProgram, the parse memo, the options'
+#     lookups, a field's presence, the stored entry's JSON with its bigint tag) comes in `separate-given`, filled by the
+#     face. A unit's answer is held as Term (`unit-answer`), and the face writes and reads the stored entry in the
+#     original's shape, key for key, so an entry on disk is the bytes the original wrote (spec.md 4.15)
+#   - docked: compile/cache (the text hash and the field hash, one memo for the process), compile/stub (the facts each
+#     task carries, which hands the TypeScript analyses) and check/twin (the twin refusals)
+#   - a route's calls and a dock statement are copied as the original spread them (`shallow-*`), so a renamed call is
+#     written on a copy and the checked program keeps its own names
+
+load @term/base/list
+  find list
+  find get
+  find sort
+  find join
+
+load @term/base/hash
+  find hash
+  find get-or-default
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find char-at
+  find last-index-of
+  find substring
+  find contains
+
+load @term/base/ordering
+  find from-texts
+  find from-numbers
+
+load ../parser/diagnostic
+  find diagnostic
+
+load ../parser/token
+  find token-source
+
+load ../parser/tree
+  find parse-result
+  find node
+
+load ../parser/words
+  find head-word
+
+load ./node
+  find statement
+  find statement-span
+  find twin
+  find dock-route
+  find dock-call
+  find dock-method
+  find dock-hook
+
+load ./names
+  find name-def
+  find def-at
+  find names-reached-indexed
+  find names-printed
+
+load ./stubbing
+  find stub-known
+  find stub-program
+  find surface-hash
+  find name-defs
+  find names-used
+
+load ./unit-graph
+  find units
+  find deck-root
+  find portable-roots
+  find portable-out
+  find portable-in
+
+load ./unit-mill
+  find graph-template-set
+  find graph-templates
+  find entry-warnings
+
+load ./explain
+  find unit-inputs
+  find why
+
+dock load
+  load <@term/make/code/compile/cache>, name separate-cache
+  load <@term/make/code/compile/stub>, name separate-stub
+  load <@term/make/code/check/twin>, name separate-twin
+
+# ---- the deck roots as tokens ----
+
+# A DECK'S ROOT WRITTEN AS A TOKEN, and read back as this machine's: the roots `portableBy`'s closures captured
+form portable
+  link roots, like list, like deck-root
+
+# the two directions as tasks, for a pass that takes the writing as one. The face makes them of a `portable`
+form portable-tasks
+  link outward
+    like task
+      take given, like text
+      like text
+  link inward
+    like task
+      take given, like text
+      like text
+
+task portable-by
+  take decks, like list, like deck-root
+  like portable
+
+  back
+    make portable
+      bind roots, portable-roots(decks)
+
+task portable-write
+  take held, like portable
+  take given, like text
+  like text
+
+  back portable-out(held/roots, given)
+
+task portable-read
+  take held, like portable
+  take given, like text
+  like text
+
+  back portable-in(held/roots, given)
+
+# ---- what the build is handed ----
+
+# one module's import scope as the import walk made it (compile/load.ts `ImportScope`): read here only for its finds,
+# and handed on whole
+form separate-scope
+  link finds
+    like hash
+      like text
+      like list, like text
+
+# what the import walk answers (compile/load.ts `collectModules`)
+form separate-collected
+  link sources, like list, like token-source
+  link diagnostics, like list, like diagnostic
+  link scope
+    like hash
+      like text
+      like separate-scope
+  link edges
+    like hash
+      like text
+      like list, like text
+
+# one module milled, as compile.ts's `milledModule` answers it
+form separate-milled
+  link ok, like boolean
+  link program
+    like list, like statement
+    need false
+  link twins
+    like list, like twin
+    need false
+  link diagnostics
+    like list, like diagnostic
+    need false
+
+# one unit compiled (compile.ts `compileProgram`), as the face reads the result: every field there either way, the
+# emitted modules as their files and emits in the result's order, and the roll and the obligations only when given
+form separate-compiled
+  link ok, like boolean
+  link diagnostics, like list, like diagnostic
+  link program, like list, like statement
+  link modules, like list, like unit-file
+  link warnings, like list, like diagnostic
+  link roll, like maybe, like dynamic
+  link open-claims, like list, like text
+  link obligations, like maybe, like dynamic
+
+# one emitted module of a unit
+form unit-file
+  link file, like text
+  link emit, like dynamic
+
+# one file's stubs
+form unit-stubs
+  link file, like text
+  link statements, like list, like statement
+
+# ONE UNIT'S BUILD: its own modules' emits, its public stub surface for dependents, its fingerprint, each stub
+# definition as the name-level cutoff reads it, its routes and commands (`dock` statements, which no stub carries), the
+# roll of its own definitions, and its warnings. A field a stored entry may lack is a maybe
+form unit-build
+  link files, like list, like unit-file
+  link stubs, like list, like unit-stubs
+  link interface-hash, like text
+  link defs, like maybe, like list, like name-def
+  link docks, like maybe, like list, like statement
+  link roll, like maybe, like dynamic
+  link warnings, like list, like diagnostic
+  link open-claims, like maybe, like list, like text
+  link obligations, like maybe, like dynamic
+
+# a unit's answer: its build, or what refused it
+form unit-answer
+  link refused, like maybe, like list, like diagnostic
+  link build, like maybe, like unit-build
+
+# a definition the closure exports, the last of its name in dependency order: what an entry's shim re-exports
+form export-entry
+  link name, like text
+  link exported, like text
+  link file, like text
+  link type, like boolean
+
+# a unit's roll, by the unit's label
+form unit-roll
+  link label, like text
+  link roll, like dynamic
+
+# WHAT THE RUN CANNOT HOLD AS TERM READS IT, filled by the face
+form separate-given
+  # the import walk over the build's resolver, parse memo, scan cache and walk memo
+  link collect
+    like task
+      like separate-collected
+  # the options' lookups: the deck a file belongs to, its role (`<>` for none), its lean, and its module's name
+  link deck-of
+    like task
+      take file, like text
+      like maybe, like deck-root
+  link role-of
+    like task
+      take file, like text
+      like text
+  link lean-of
+    like task
+      take file, like text
+      like boolean
+  link module-of
+    like task
+      take file, like text
+      like text
+  link parsed
+    like task
+      take unit, like token-source
+      like parse-result
+  # one module milled through the mill cache, with the graph's templates and their fingerprint
+  link milled
+    like task
+      take unit, like token-source
+      take templates, like hash, like text, like dynamic
+      take template-key, like text
+      like separate-milled
+  # one unit's program compiled as `checked-as`, under `naming`, emitting only `files`
+  link compile-unit
+    like task
+      take program, like list, like statement
+      take checked-as, like text
+      take scope
+        like hash
+          like text
+          like separate-scope
+      take naming, like text
+      take files, like list, like text
+      like separate-compiled
+  # whether a statement carries a `stub-export`
+  link has-stub-export
+    like task
+      take one, like statement
+      like boolean
+  link portable-tasks
+    like task
+      take held, like portable
+      like portable-tasks
+  # the checker's switches as a key (check/strict.ts `checkerSwitchKey`)
+  link switch-key
+    like task
+      like text
+  link env, like text
+  # the build cache: whether there is one, the compiler's fingerprint for units, and its two lookups, each building
+  # with the job on a miss
+  link has-cache, like boolean
+  link unit-version
+    like task
+      like text
+  link cached-unit
+    like task
+      take key, like text
+      take job, like unit-job
+      like text
+  link cached-name-key
+    like task
+      take key, like text
+      take job, like unit-job
+      like text
+  # a unit's answer as the stored entry's JSON, and back: none when it does not read back as an answer
+  link store
+    like task
+      take answer, like unit-answer
+      like text
+  link restore
+    like task
+      take stored, like text
+      like maybe, like unit-answer
+  # the run's answers, shared by a batch build's entries
+  link has-units, like boolean
+  link units
+    like hash
+      like text
+      like unit-answer
+  # `term make --explain`: the inputs a unit was last built from, and why each unit built this run was built
+  link has-explain, like boolean
+  link recall
+    like task
+      take id, like text
+      like maybe, like unit-inputs
+  link remember
+    like task
+      take id, like text
+      take inputs, like unit-inputs
+      like boolean
+  link give-reasons
+    like task
+      take label, like text
+      take reasons, like list, like text
+      like boolean
+  link keep-program, like boolean
+
+# WHAT THE SEPARATE BUILD CAME TO: a refusal, or what the result is built from
+form separate-answer
+  link refused, like maybe, like list, like diagnostic
+  link modules
+    like hash
+      like text
+      like dynamic
+  link warnings, like list, like diagnostic
+  link open-claims, like maybe, like list, like text
+  link obligations, like maybe, like dynamic
+  link exports, like list, like export-entry
+  link built, like list, like text
+  link reused, like list, like text
+  link closure-key, like text
+  link natives, like list, like statement
+  link docks, like list, like statement
+  link rolls, like list, like unit-roll
+  link program, like maybe, like list, like statement
+  link surface, like list, like statement
+
+# ONE BUILD'S RUN, made once and read by every unit
+form separate-run
+  mark shared
+  link source, like token-source
+  link given, like separate-given
+  link portable, like portable
+  link tasks, like portable-tasks
+  link collected, like separate-collected
+  link by-file
+    like hash
+      like text
+      like token-source
+  link order
+    like list
+      like list, like text
+  # each unit's transitive dependency units
+  link reach
+    like list
+      like hash
+        like number
+        like boolean
+  # whether a proof above a unit runs its bodies
+  link under-proof, like list, like boolean
+  link template-set, like graph-template-set
+  link builds, like list, like unit-build
+  # each name to where it is defined, unit by unit, grown as units are answered (compile/names.tree)
+  link name-index
+    like hash
+      like text
+      like list, like def-at
+  link unit-defs
+    like list
+      like list, like name-def
+  # `keep-program`: the entry unit's checked program, when this run built it
+  link entry-program, like maybe, like list, like statement
+
+# ONE UNIT'S PART OF THE RUN, kept while it is answered
+form unit-state
+  mark shared
+  link at, like number
+  link files, like list, like text
+  link label, like text
+  link entry, like boolean
+  link as-import, like text
+  link as-self, like maybe, like text
+  link dep-hashes, like list, like text
+  link uses-templates, like boolean
+  link used, like maybe, like list, like text
+  link defs, like maybe, like list, like name-def
+  # whether this run built the unit rather than replaying it
+  link ran, like boolean
+  # the `checked-as` the cache is being asked for, which a stored answer that cannot be read is built as
+  link answering, like text
+
+# the build a cache lookup runs on a miss: the unit, checked as `checked-as`
+form unit-job
+  link run, like separate-run
+  link state, like unit-state
+  link checked-as, like text
+
+# ---- small helpers ----
+
+task as-known
+  take value, like dynamic
+  like stub-known
+  mark private
+
+  back value
+
+task as-diagnostics
+  take value, like dynamic
+  like list, like diagnostic
+  mark private
+
+  back value
+
+# a shallow copy, as the original's spread. Natively a value is already a copy
+bind shallow-statement
+  take value, like statement
+  like statement
+  case node
+    text <({...$value})>
+  case browser
+    text <({...$value})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+bind shallow-route
+  take value, like dock-route
+  like dock-route
+  case node
+    text <({...$value})>
+  case browser
+    text <({...$value})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+bind shallow-method
+  take value, like dock-method
+  like dock-method
+  case node
+    text <({...$value})>
+  case browser
+    text <({...$value})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+bind shallow-hook
+  take value, like dock-hook
+  like dock-hook
+  case node
+    text <({...$value})>
+  case browser
+    text <({...$value})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+bind shallow-call
+  take value, like dock-call
+  like dock-call
+  case node
+    text <({...$value})>
+  case browser
+    text <({...$value})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+# the stubs a unit is checked against, deep-copied, as the original's `structuredClone`: the checker annotates what it
+# is handed, and one unit's stubs are read by every unit after it
+bind copy-statements
+  take value, like list, like statement
+  like list, like statement
+  case node
+    text <structuredClone($value)>
+  case browser
+    text <structuredClone($value)>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+task refused-answer
+  take found, like list, like diagnostic
+  like separate-answer
+  mark private
+
+  back
+    make separate-answer
+      bind refused, make(some, found)
+      bind modules, make hash
+      bind warnings, make list
+      bind open-claims, make none
+      bind obligations, make none
+      bind exports, make list
+      bind built, make list
+      bind reused, make list
+      bind closure-key, <>
+      bind natives, make list
+      bind docks, make list
+      bind rolls, make list
+      bind program, make none
+      bind surface, make list
+
+task job-of
+  take run, like separate-run
+  take state, like unit-state
+  take checked-as, like text
+  like unit-job
+  mark private
+
+  back
+    make unit-job
+      bind run, run
+      bind state, state
+      bind checked-as, checked-as
+
+task refused-unit
+  take found, like list, like diagnostic
+  like unit-answer
+  mark private
+
+  back
+    make unit-answer
+      bind refused, make(some, found)
+      bind build, make none
+
+# the file a statement was written in, `<>` for none
+task statement-file
+  take one, like statement
+  like text
+  mark private
+
+  save span-here, statement-span(one)
+  sift span-here/file
+    case some
+      link known
+      back known
+    case none
+      back <>
+
+# a statement told the file it was written in
+task filed-in
+  take one, like statement
+  take file-name, like text
+  like statement
+  mark private
+
+  sift one
+    case let
+      save one/span/file, make(some, file-name)
+    case assign
+      save one/span/file, make(some, file-name)
+    case expression
+      save one/span/file, make(some, file-name)
+    case if
+      save one/span/file, make(some, file-name)
+    case while
+      save one/span/file, make(some, file-name)
+    case match
+      save one/span/file, make(some, file-name)
+    case for-each
+      save one/span/file, make(some, file-name)
+    case break
+      save one/span/file, make(some, file-name)
+    case continue
+      save one/span/file, make(some, file-name)
+    case return
+      save one/span/file, make(some, file-name)
+    case exit
+      save one/span/file, make(some, file-name)
+    case debug
+      save one/span/file, make(some, file-name)
+    case probe
+      save one/span/file, make(some, file-name)
+    case guard
+      save one/span/file, make(some, file-name)
+    case throw
+      save one/span/file, make(some, file-name)
+    case hold
+      save one/span/file, make(some, file-name)
+    case function
+      save one/span/file, make(some, file-name)
+    case record-type
+      save one/span/file, make(some, file-name)
+    case mask
+      save one/span/file, make(some, file-name)
+    case instance
+      save one/span/file, make(some, file-name)
+    case native
+      save one/span/file, make(some, file-name)
+    case bind
+      save one/span/file, make(some, file-name)
+    case view
+      save one/span/file, make(some, file-name)
+    case dock
+      save one/span/file, make(some, file-name)
+    case roll
+      save one/span/file, make(some, file-name)
+    case tell
+      save one/span/file, make(some, file-name)
+  back one
+
+# a JavaScript word character, `\w`
+task is-word-char
+  take one, like text
+  like boolean
+  mark private
+
+  fork test, not(is-equal(one/length, 1))
+    hold
+      back false
+  back contains(<abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_>, one)
+
+# whether a text writes the word `fuse` (`/\bfuse\b/`), cut once (one native pass) rather than searched from each place
+task writes-fuse
+  take given, like text
+  like boolean
+  mark private
+
+  save pieces, split(given, <fuse>)
+  save last-at, subtract(pieces/length, 1)
+  save k, 0
+  walk test
+    hook test, is-below(k, last-at)
+    hook hold
+      save before, get(pieces, k)
+      save after, get(pieces, add(k, 1))
+      # the character before this `fuse`: its piece's last, or the `e` of the `fuse` before when the piece is empty
+      save left-word, false
+      fork test, is-above(before/length, 0)
+        hold
+          save left-word, is-word-char(char-at(before, subtract(before/length, 1)))
+        miss
+          save left-word, is-above(k, 0)
+      # the character after: the next piece's first, or the `f` of the next `fuse` when that piece is empty
+      save right-word, false
+      fork test, is-above(after/length, 0)
+        hold
+          save right-word, is-word-char(char-at(after, 0))
+        miss
+          save right-word, is-below(add(k, 1), last-at)
+      fork test, and(not(left-word), not(right-word))
+        hold
+          back true
+      save k, add(k, 1)
+  back false
+
+# the name a split task was written with: `__in<g>_<k>` at its end removed
+task written-of
+  take name, like text
+  like text
+  mark private
+
+  save at-in, last-index-of(name, <__in>)
+  fork test, is-below(at-in, 0)
+    hold
+      back name
+  save rest, substring(name, add(at-in, 4))
+  save parts, split(rest, <_>)
+  fork test, not(is-equal(parts/length, 2))
+    hold
+      back name
+  walk parts
+    take part
+    fork test, is-equal(part/length, 0)
+      hold
+        back name
+    walk split(part, <>)
+      take digit
+      fork test, not(and(is-equal(digit/length, 1), contains(<0123456789>, digit)))
+        hold
+          back name
+  back substring(name, 0, at-in)
+
+# ---- the routes ----
+
+# A ROUTE NAMES ITS TASK AS THE TASK'S UNIT EXPORTS IT. The import binding binds a hook's `task bank` like a call, so
+# where two files of the unit's program define the name the route carries `bank__in0_0`, a name of this unit's checked
+# program only, and the run looked it up among the bundle's exports and failed (term-compiler-0064). Each call a route
+# makes to another unit's task takes that task's exported name back
+task exported-route-calls
+  take docks, like list, like statement
+  take program, like list, like statement
+  take own, like hash, like text, like boolean
+  take given, like separate-given
+  like list, like statement
+  mark private
+
+  save has-export, given/has-stub-export
+  save exported, make hash
+  save renamed-count, 0
+  walk program
+    take one
+    sift one
+      case function
+        link name
+        link stub-export
+        fork test, own/has(statement-file(one))
+          hold
+            turn next
+        save written, written-of(name)
+        fork test, not(is-equal(written, name))
+          hold
+            save renamed-count, add(renamed-count, 1)
+            fork test, has-export(one)
+              hold
+                save exported/{name}, stub-export
+              miss
+                save exported/{name}, written
+      miss
+        turn next
+
+  fork test, is-equal(renamed-count, 0)
+    hold
+      back docks
+
+  save out, make list
+  walk docks
+    take one
+    sift one
+      case dock
+        link route
+        save statement-copy, shallow-statement(one)
+        sift statement-copy
+          case dock
+            save statement-copy/route, route-renamed(route, exported)
+          miss
+            save nothing, 0
+        push(out, statement-copy)
+      miss
+        push(out, one)
+  back out
+
+task call-renamed
+  take one, like dock-call
+  take exported, like hash, like text, like text
+  like dock-call
+  mark private
+
+  fork test, exported/has(one/name)
+    hold
+      save call-copy, shallow-call(one)
+      save call-copy/name, get-or-default(exported, one/name, one/name)
+      back call-copy
+  back one
+
+task calls-renamed
+  take calls, like list, like dock-call
+  take exported, like hash, like text, like text
+  like list, like dock-call
+  mark private
+
+  save out, make list
+  walk calls
+    take one
+    push(out, call-renamed(one, exported))
+  back out
+
+task route-renamed
+  take one, like dock-route
+  take exported, like hash, like text, like text
+  like dock-route
+  mark private
+
+  save route-copy, shallow-route(one)
+  save route-copy/calls, calls-renamed(one/calls, exported)
+  save methods-renamed, make list
+  walk one/methods
+    take method-one
+    save method-copy, shallow-method(method-one)
+    save method-copy/calls, calls-renamed(method-one/calls, exported)
+    push(methods-renamed, method-copy)
+  save route-copy/methods, methods-renamed
+  save hooks-renamed, make list
+  walk one/hooks
+    take hook-one
+    save hook-copy, shallow-hook(hook-one)
+    save hook-copy/calls, calls-renamed(hook-one/calls, exported)
+    push(hooks-renamed, hook-copy)
+  save route-copy/hooks, hooks-renamed
+  save children-renamed, make list
+  walk one/children
+    take child
+    push(children-renamed, route-renamed(child, exported))
+  save route-copy/children, children-renamed
+  back route-copy
+
+# ---- one unit's key ----
+
+# the unit key's fields: its settings, then one per file. The first `settings-count` are its settings
+task settings-count
+  like number
+  mark private
+
+  back 6
+
+# how a file is read, after its text's fingerprint: its role, its lean, its deck, and the name its module is imported by
+task read-part
+  take run, like separate-run
+  take file, like text
+  like text
+  mark private
+
+  save given, run/given
+  save role-of, given/role-of
+  save lean-of, given/lean-of
+  save deck-of, given/deck-of
+  save module-of, given/module-of
+  save role-name, role-of(file)
+  save role-part, <>
+  fork test, not(is-equal(role-name, <>))
+    hold
+      save role-part, <#{role-name}>
+  save lean-part, <>
+  fork test, lean-of(file)
+    hold
+      save lean-part, <#lean>
+  save deck-part, <>
+  sift deck-of(file)
+    case some
+      link deck
+      fork test, not(is-equal(deck/name, <>))
+        hold
+          save deck-part, <@{deck/name}>
+    case none
+      save nothing, 0
+  save module-name, module-of(file)
+  back <{role-part}{lean-part}{deck-part}\>{module-name}>
+
+# a file's own part of the key: where it is, written portably, and its text's fingerprint
+task file-part
+  take run, like separate-run
+  take file, like text
+  like text
+  mark private
+
+  save unit, get-or-default(run/by-file, file, run/source)
+  back <{portable-write(run/portable, file)}@{separate-cache/content-hash(unit/text)}>
+
+# the unit key: own content (with each module's role and lean, which change what it mills to) and whatever else
+# shapes the answer
+task own-key
+  take run, like separate-run
+  take state, like unit-state
+  take checked-as, like text
+  like list, like text
+  mark private
+
+  save given, run/given
+  save switch-key, given/switch-key
+  save out, make list
+  push(out, <separate>)
+  fork test, state/uses-templates
+    hold
+      push(out, run/template-set/template-key)
+    miss
+      push(out, <>)
+  push(out, given/env)
+  fork test, is-equal(checked-as, state/as-import)
+    hold
+      push(out, <>)
+    miss
+      push(out, <entry:{portable-write(run/portable, checked-as)}>)
+  push(out, switch-key())
+  fork test, get(run/under-proof, state/at)
+    hold
+      push(out, <bodies>)
+    miss
+      push(out, <>)
+  walk state/files
+    take file
+    save mine, file-part(run, file)
+    push(out, <{mine}{read-part(run, file)}>)
+  back out
+
+# the run's key, for the memo: the whole surface of everything reached
+task key-as
+  take run, like separate-run
+  take state, like unit-state
+  take checked-as, like text
+  like text
+  mark private
+
+  save fields, own-key(run, state, checked-as)
+  walk state/dep-hashes
+    take one
+    push(fields, one)
+  back separate-cache/hash-fields(fields)
+
+# a unit's stub definitions, as the stored answer has them or worked out from its stubs
+task defs-of
+  take run, like separate-run
+  take build, like unit-build
+  like list, like name-def
+  mark private
+
+  sift build/defs
+    case some
+      link known
+      back known
+    case none
+      save nothing, 0
+  save surface, make list
+  walk build/stubs
+    take group
+    walk group/statements
+      take one
+      push(surface, one)
+  back name-defs(surface, run/tasks/outward)
+
+# the build's name index grown to hold every unit before `up-to`
+task index-names
+  take run, like separate-run
+  take up-to, like number
+  like boolean
+  mark private
+
+  walk test
+    hook test, is-below(run/unit-defs/length, up-to)
+    hook hold
+      save unit, run/unit-defs/length
+      save defs, defs-of(run, get(run/builds, unit))
+      push(run/unit-defs, defs)
+      save place, 0
+      walk defs
+        take def
+        walk def/gives
+          take name
+          save places, get-or-default(run/name-index, name, make list)
+          save placed
+            make def-at
+              bind unit, unit
+              bind at, place
+          push(places, placed)
+          save run/name-index/{name}, places
+        save place, add(place, 1)
+  back true
+
+# the names the unit's own modules write, and the names their loads find. A module that does not mill uses nothing
+task names-of-unit
+  take run, like separate-run
+  take state, like unit-state
+  like list, like text
+  mark private
+
+  save given, run/given
+  save milled, given/milled
+  save seen, make hash
+  save out, make list
+  walk state/files
+    take file
+    save unit, get-or-default(run/by-file, file, run/source)
+    save one-milled, milled(unit, run/template-set/templates, run/template-set/template-key)
+    fork test, one-milled/ok
+      hold
+        # read, never written: the mill cache holds this answer
+        save milled-program, make list
+        walk one-milled/program
+          take one
+          push(milled-program, one)
+        walk names-used(milled-program)
+          take name
+          fork test, not(seen/has(name))
+            hold
+              save seen/{name}, true
+              push(out, name)
+    fork test, run/collected/scope/has(file)
+      hold
+        save scope-here, run/collected/scope/get(file)
+        save find-names, scope-here/finds/keys()
+        walk find-names
+          take name
+          fork test, not(seen/has(name))
+            hold
+              save seen/{name}, true
+              push(out, name)
+  back out
+
+task used-of
+  take run, like separate-run
+  take state, like unit-state
+  like list, like text
+  mark private
+
+  sift state/used
+    case some
+      link known
+      back known
+    case none
+      save nothing, 0
+  save made, names-of-unit(run, state)
+  save state/used, make(some, made)
+  back made
+
+# a unit's reach in dependency order
+task reach-sorted
+  take run, like separate-run
+  take unit-at, like number
+  like list, like number
+  mark private
+
+  save reached, get(run/reach, unit-at)
+  back sort(reached/keys(), from-numbers)
+
+# THE CACHE'S KEY, BY NAME (compile/names.tree): the fingerprints of only the dependency definitions this unit can reach
+# by name, from the names its own modules write, read off the build's index
+task named-key-as
+  take run, like separate-run
+  take state, like unit-state
+  take checked-as, like text
+  like text
+  mark private
+
+  save used, used-of(run, state)
+  index-names(run, state/at)
+  save sees, make hash
+  walk reach-sorted(run, state/at)
+    take d
+    save sees/{d}, true
+  save fields, make list
+  push(fields, <names>)
+  walk own-key(run, state, checked-as)
+    take one
+    push(fields, one)
+  walk names-reached-indexed(run/name-index, run/unit-defs, sees, used, 1000000)
+    take one
+    push(fields, one)
+  back separate-cache/hash-fields(fields)
+
+# the name key, through a pointer kept under the whole-surface key: the same surface always gives the same name key,
+# so a warm build reads the pointer and works out no names
+task named-key-of
+  take run, like separate-run
+  take state, like unit-state
+  take checked-as, like text
+  take surface-key, like text
+  like text
+  mark private
+
+  save given, run/given
+  fork test, given/has-cache
+    hold
+      save cached-name-key, given/cached-name-key
+      back cached-name-key(<surface:{surface-key}>, job-of(run, state, checked-as))
+  back named-key-as(run, state, checked-as)
+
+# the inputs and their definitions for `term make --explain`
+task reached-defs
+  take run, like separate-run
+  take state, like unit-state
+  like list, like name-def
+  mark private
+
+  sift state/defs
+    case some
+      link known
+      back known
+    case none
+      save nothing, 0
+  save out, make list
+  walk reach-sorted(run, state/at)
+    take d
+    walk defs-of(run, get(run/builds, d))
+      take def
+      push(out, def)
+  save state/defs, make(some, out)
+  back out
+
+# what the unit is built from, as `term make --explain` compares it: the same inputs its key is made of, each kept
+# apart so a change can be named
+task inputs-as
+  take run, like separate-run
+  take state, like unit-state
+  take checked-as, like text
+  like unit-inputs
+  mark private
+
+  save used, used-of(run, state)
+  save defs, reached-defs(run, state)
+  save key, own-key(run, state, checked-as)
+  save given, run/given
+  save unit-version, given/unit-version
+  save compiler, unit-version()
+  save own, make hash
+  walk state/files
+    take file
+    save unit, get-or-default(run/by-file, file, run/source)
+    save own/{file}, separate-cache/content-hash(unit/text)
+  save read, make hash
+  walk state/files
+    take file
+    save read/{file}, read-part(run, file)
+  save settings, make list
+  save k, 0
+  walk test
+    hook test, is-below(k, settings-count())
+    hook hold
+      push(settings, get(key, k))
+      save k, add(k, 1)
+  back
+    make unit-inputs
+      bind compiler, compiler
+      bind own, own
+      bind read, read
+      bind settings, separate-cache/hash-fields(settings)
+      bind names, names-printed(defs, used)
+
+# ---- one unit built ----
+
+# THE UNIT BUILT, checked as `checked-as`
+task make-unit
+  take run, like separate-run
+  take state, like unit-state
+  take checked-as, like text
+  like unit-answer
+  mark private
+
+  save given, run/given
+  save milled, given/milled
+  save compile-unit, given/compile-unit
+
+  # the stubs of every reachable unit, dependency order preserved, copied
+  save program, make list
+  walk reach-sorted(run, state/at)
+    take d
+    walk get(run/builds, d)/stubs
+      take group
+      walk copy-statements(group/statements)
+        take one
+        push(program, filed-in(one, group/file))
+
+  save own-statements, make list
+  save twins, make list
+  walk state/files
+    take file
+    save unit, get-or-default(run/by-file, file, run/source)
+    save one-milled, milled(unit, run/template-set/templates, run/template-set/template-key)
+    fork test, not(one-milled/ok)
+      hold
+        # read, never written: the mill cache holds this answer
+        save mill-errors, make list
+        walk one-milled/diagnostics
+          take mill-error
+          push(mill-errors, mill-error)
+        back refused-unit(mill-errors)
+    walk one-milled/program
+      take one
+      save filed, filed-in(one, unit/file)
+      push(program, filed)
+      push(own-statements, filed)
+    walk one-milled/twins
+      take one-twin
+      save one-twin/span/file, make(some, unit/file)
+      push(twins, one-twin)
+
+  # ONE NAMING PER UNIT, whichever entry reached it: the unit's own (first) file keeps its names, as the merged build
+  # keeps the entry's
+  save naming, get(state/files, 0)
+  save result, compile-unit(program, checked-as, scope-of(run, state/at), naming, state/files)
+  fork test, not(result/ok)
+    hold
+      back refused-unit(result/diagnostics)
+
+  fork test, and(given/keep-program, is-equal(checked-as, run/source/file))
+    hold
+      save run/entry-program, make(some, result/program)
+
+  # a twin is checked against the program it twins a task of, as the merged build checks it
+  fork test, is-above(twins/length, 0)
+    hold
+      save twin-refused, as-diagnostics(separate-twin/check-twins(program, twins, checked-as))
+      fork test, is-above(twin-refused/length, 0)
+        hold
+          back refused-unit(twin-refused)
+
+  # this unit's emits: only its own files
+  save own, make hash
+  walk state/files
+    take file
+    save own/{file}, true
+  save files-out, make list
+  walk result/modules
+    take emitted
+    fork test, own/has(emitted/file)
+      hold
+        push(files-out, emitted)
+
+  # the stub surface dependents check against, per own file, each task carrying what the whole-program analyses found
+  # about it here, where its body is
+  save known, as-known(separate-stub/stub-known(program))
+  save stubbed, make list
+  save surface, make list
+  save under, get(run/under-proof, state/at)
+  walk state/files
+    take file
+    save mine, make list
+    walk own-statements
+      take one
+      fork test, is-equal(statement-file(one), file)
+        hold
+          push(mine, one)
+    save stubs, stub-program(mine, make(some, known), under)
+    save file-stubs
+      make unit-stubs
+        bind file, file
+        bind statements, stubs
+    push(stubbed, file-stubs)
+    walk stubs
+      take one
+      push(surface, one)
+
+  save own-docks, make list
+  walk result/program
+    take one
+    sift one
+      case dock
+        fork test, own/has(statement-file(one))
+          hold
+            push(own-docks, one)
+      miss
+        turn next
+
+  save entered, not(is-equal(checked-as, state/as-import))
+  save open-claims, make none
+  fork test, and(entered, is-above(result/open-claims/length, 0))
+    hold
+      save open-claims, make(some, result/open-claims)
+  save obligations, make none
+  fork test, entered
+    hold
+      save obligations, result/obligations
+
+  save interface-hash, surface-hash(surface, run/tasks/outward)
+  save surface-defs, name-defs(surface, run/tasks/outward)
+  save routed, exported-route-calls(own-docks, result/program, own, given)
+  save made
+    make unit-build
+      bind files, files-out
+      bind stubs, stubbed
+      bind interface-hash, interface-hash
+      bind defs, make(some, surface-defs)
+      bind docks, make(some, routed)
+      bind roll, result/roll
+      bind warnings, result/warnings
+      bind open-claims, open-claims
+      bind obligations, obligations
+  back
+    make unit-answer
+      bind refused, make none
+      bind build, make(some, made)
+
+# WHAT A UNIT IS CHECKED WITH IS ITS OWN, and what it reaches: the walk's import scope cut to those files, so an importer
+# never decides the unit's answer
+task scope-of
+  take run, like separate-run
+  take unit-at, like number
+  like hash, like text, like separate-scope
+  mark private
+
+  save sees, make hash
+  walk get(run/order, unit-at)
+    take file
+    save sees/{file}, true
+  walk reach-sorted(run, unit-at)
+    take d
+    walk get(run/order, d)
+      take file
+      save sees/{file}, true
+  save out, make hash
+  save scoped-files, run/collected/scope/keys()
+  walk scoped-files
+    take file
+    fork test, sees/has(file)
+      hold
+        save out/{file}, run/collected/scope/get(file)
+  back out
+
+# the unit built this run, told why when the build explains
+task built-now
+  take run, like separate-run
+  take state, like unit-state
+  take checked-as, like text
+  like unit-answer
+  mark private
+
+  save given, run/given
+  save state/ran, true
+  fork test, given/has-explain
+    hold
+      save now, inputs-as(run, state, checked-as)
+      save recall, given/recall
+      save reasons, make list
+      sift recall(checked-as)
+        case some
+          link before
+          save reasons, why(before, now)
+        case none
+          push(reasons, <nothing recorded: its first build, or the record was washed>)
+      fork test, is-equal(reasons/length, 0)
+        hold
+          push(reasons, <its stored answer was missing>)
+      save give-reasons, given/give-reasons
+      give-reasons(state/label, reasons)
+      save remember, given/remember
+      remember(checked-as, now)
+  back make-unit(run, state, checked-as)
+
+# A STORED ANSWER, read back with this machine's roots. One that does not read back as a unit's answer is built again
+task from-store
+  take run, like separate-run
+  take state, like unit-state
+  take stored, like text
+  like unit-answer
+  mark private
+
+  save given, run/given
+  save restore, given/restore
+  sift restore(portable-read(run/portable, stored))
+    case some
+      link value
+      back value
+    case none
+      save state/ran, true
+  back make-unit(run, state, state/answering)
+
+# the unit checked as `checked-as`: this run's answer first, then the cache (memory, then disk), then a build
+task answer-unit
+  take run, like separate-run
+  take state, like unit-state
+  take checked-as, like text
+  like unit-answer
+  mark private
+
+  save given, run/given
+  save state/answering, checked-as
+  save key, key-as(run, state, checked-as)
+  save found, make none
+  fork test, and(given/has-units, given/units/has(key))
+    hold
+      save memo-held, given/units/get(key)
+      save found, make(some, memo-held)
+  save answer, refused-unit(make list)
+  sift found
+    case some
+      link memo
+      save answer, memo
+    case none
+      fork test, given/has-cache
+        hold
+          save cached-unit, given/cached-unit
+          save stored, cached-unit(named-key-of(run, state, checked-as, key), job-of(run, state, checked-as))
+          save answer, from-store(run, state, stored)
+        miss
+          save answer, built-now(run, state, checked-as)
+  fork test, given/has-units
+    hold
+      save given/units/{key}, answer
+  back answer
+
+# ---- the jobs the cache runs on a miss ----
+
+# the unit built and stored, every deck's root a token, so the entry serves every clone
+task job-stored
+  take job, like unit-job
+  like text
+
+  save run, job/run
+  save given, run/given
+  save store, given/store
+  save answer, built-now(run, job/state, job/checked-as)
+  back portable-write(run/portable, store(answer))
+
+# the unit's key by name
+task job-named-key
+  take job, like unit-job
+  like text
+
+  back named-key-as(job/run, job/state, job/checked-as)
+
+# ---- the build ----
+
+# whether a file states a top-level `rule`, read off its parse (the build's own memo)
+task states-rule
+  take given, like separate-given
+  take unit, like token-source
+  like boolean
+  mark private
+
+  save parsed, given/parsed
+  save result, parsed(unit)
+  fork test, not(result/ok)
+    hold
+      back false
+  sift result/tree
+    case root
+      link nodes
+      walk nodes
+        take one
+        sift one
+          case group
+            sift head-word(one)
+              case some
+                link word
+                fork test, is-equal(word, <rule>)
+                  hold
+                    back true
+              case none
+                save nothing, 0
+          miss
+            turn next
+  back false
+
+# each unit's transitive dependency units, from the condensation: its direct ones in the order its files' edges name
+# them, each with everything it reaches
+task reach-of
+  take order, like list, like list, like text
+  take edges
+    like hash
+      like text
+      like list, like text
+  like list
+    like hash
+      like number
+      like boolean
+  mark private
+
+  save unit-of, make hash
+  save ui, 0
+  walk order
+    take group
+    walk group
+      take file
+      save unit-of/{file}, ui
+    save ui, add(ui, 1)
+  save out, make list
+  save ui, 0
+  walk order
+    take group
+    save deps, make list
+    save deps-seen, make hash
+    walk group
+      take file
+      save targets, get-or-default(edges, file, make list)
+      walk targets
+        take dep
+        save du, get-or-default(unit-of, dep, 0)
+        fork test, and(not(is-equal(du, ui)), not(deps-seen/has(du)))
+          hold
+            save deps-seen/{du}, true
+            push(deps, du)
+    save reached, make hash
+    walk deps
+      take du
+      save reached/{du}, true
+      save further, get(out, du)
+      save further-units, further/keys()
+      walk further-units
+        take t
+        save reached/{t}, true
+    push(out, reached)
+    save ui, add(ui, 1)
+  back out
+
+# THE UNITS A PROOF REACHES (term-proof-0011): a unit proves when one of its files states a top-level `rule`, and every
+# unit it reaches carries its bodies in its stubs, giving up the early cutoff for a body edit
+task under-proof-of
+  take given, like separate-given
+  take by-file
+    like hash
+      like text
+      like token-source
+  take source, like token-source
+  take order, like list, like list, like text
+  take reach
+    like list
+      like hash
+        like number
+        like boolean
+  like list, like boolean
+  mark private
+
+  save proven, make hash
+  save uj, 0
+  walk order
+    take group
+    save rule-stated, false
+    walk group
+      take file
+      fork test, states-rule(given, get-or-default(by-file, file, source))
+        hold
+          save rule-stated, true
+          halt
+    fork test, rule-stated
+      hold
+        save reached, get(reach, uj)
+        save reached-units, reached/keys()
+        walk reached-units
+          take d
+          save proven/{d}, true
+    save uj, add(uj, 1)
+  save out, make list
+  save uj, 0
+  walk order
+    take group
+    push(out, proven/has(uj))
+    save uj, add(uj, 1)
+  back out
+
+# THE SEPARATE BUILD of `source`'s closure
+task compile-separate
+  take source, like token-source
+  take given, like separate-given
+  like separate-answer
+
+  save collect, given/collect
+  save collected, collect()
+
+  # a load the build cannot answer is refused with its own cause, as the merged build refuses it
+  save load-errors, make list
+  walk collected/diagnostics
+    take found
+    fork test, not(is-equal(found/severity, make warning))
+      hold
+        push(load-errors, found)
+  fork test, is-above(load-errors/length, 0)
+    hold
+      back refused-answer(load-errors)
+
+  save sources, collected/sources
+
+  # THE SAME UNIT IS THE SAME ENTRY ON EVERY MACHINE: each deck's root is written as a token
+  save deck-of, given/deck-of
+  save decks, make list
+  walk sources
+    take unit
+    sift deck-of(unit/file)
+      case some
+        link deck
+        push(decks, deck)
+      case none
+        save nothing, 0
+  save held-roots, portable-by(decks)
+  save tasks-of, given/portable-tasks
+
+  # the edges the walk itself followed, injected runtimes included
+  save edges, collected/edges
+  save files, make list
+  walk sources
+    take unit
+    push(files, unit/file)
+  save order, units(files, edges)
+  save by-file, make hash
+  walk sources
+    take unit
+    save by-file/{unit/file}, unit
+
+  # templates are global, so gathered once, exactly as the merged build gathers them
+  save parsed, given/parsed
+  save template-set, graph-templates(sources, parsed)
+
+  save reach, reach-of(order, edges)
+  save proving, under-proof-of(given, by-file, source, order, reach)
+
+  save run
+    make separate-run
+      bind source, source
+      bind given, given
+      bind portable, held-roots
+      bind tasks, tasks-of(held-roots)
+      bind collected, collected
+      bind by-file, by-file
+      bind order, order
+      bind reach, reach
+      bind under-proof, proving
+      bind template-set, template-set
+      bind builds, make list
+      bind name-index, make hash
+      bind unit-defs, make list
+      bind entry-program, make none
+
+  save built, make list
+  save reused, make list
+  save all-modules
+    like hash
+      like text
+      like dynamic
+    make hash
+  save all-warnings, make list
+  save open-claims, make none
+  save obligations, make none
+  # typed where it is made: its key is a text built in an arm, which inference has not met here
+  save exports
+    like hash
+      like text
+      like export-entry
+    make hash
+  save closure-keys, make list
+  save natives, make list
+  save docks, make list
+  save rolls, make list
+  save surface-program, make list
+  save role-of, given/role-of
+
+  save ui, 0
+  walk order
+    take group
+    save label, join(group, <+>)
+
+    # THE ENTRY'S OWN UNIT IS CHECKED AS THE ENTRY, and any other unit under a name no statement carries, so its
+    # answer does not depend on which entry reached it. A ONE-FILE UNIT IS CHECKED AS ITSELF, whichever entry reached
+    # it, and asked again as an import only when that fails
+    save entry, false
+    walk group
+      take file
+      fork test, is-equal(file, source/file)
+        hold
+          save entry, true
+    save first-file, get(group, 0)
+    save as-import, <{first-file}#unit>
+    save as-self, make none
+    save asked-first, as-import
+    fork test, entry
+      hold
+        save as-self, make(some, source/file)
+        save asked-first, source/file
+      miss
+        fork test, is-equal(group/length, 1)
+          hold
+            save as-self, make(some, first-file)
+            save asked-first, first-file
+
+    # every reachable dependency unit's fingerprint: a body-only edit leaves it, and so the key, where it was
+    save dep-hashes, make list
+    walk reach-sorted(run, ui)
+      take d
+      save dep-build, get(run/builds, d)
+      push(dep-hashes, dep-build/interface-hash)
+    save dep-hashes, sort(dep-hashes, from-texts)
+
+    save uses-templates, false
+    walk group
+      take file
+      save unit, get-or-default(by-file, file, source)
+      fork test, or(is-equal(role-of(file), <view>), writes-fuse(unit/text))
+        hold
+          save uses-templates, true
+          halt
+
+    save state
+      make unit-state
+        bind at, ui
+        bind files, group
+        bind label, label
+        bind entry, entry
+        bind as-import, as-import
+        bind as-self, as-self
+        bind dep-hashes, dep-hashes
+        bind uses-templates, uses-templates
+        bind used, make none
+        bind defs, make none
+        bind ran, false
+        bind answering, asked-first
+
+    push(closure-keys, key-as(run, state, asked-first))
+
+    save cached, answer-unit(run, state, asked-first)
+    # a one-file unit that fails as itself may still build as an import: an import is held only to what the program as
+    # a whole owes, as the merged build holds a module it reaches
+    sift cached/refused
+      case some
+        link found
+        fork test, and(not(entry), is-unequal(asked-first, as-import))
+          hold
+            save cached, answer-unit(run, state, as-import)
+      case none
+        save nothing, 0
+
+    sift cached/refused
+      case some
+        link found
+        back refused-answer(found)
+      case none
+        save nothing, 0
+
+    sift cached/build
+      case some
+        link build
+        fork test, state/ran
+          hold
+            push(built, label)
+          miss
+            push(reused, label)
+        push(run/builds, build)
+        walk build/files
+          take emitted
+          save all-modules/{emitted/file}, emitted/emit
+        sift build/docks
+          case some
+            link own-docks
+            walk own-docks
+              take one
+              push(docks, one)
+          case none
+            save nothing, 0
+        sift build/roll
+          case some
+            link roll
+            save rolled
+              make unit-roll
+                bind label, label
+                bind roll, roll
+            push(rolls, rolled)
+          case none
+            save nothing, 0
+        walk build/warnings
+          take warned
+          push(all-warnings, warned)
+        fork test, entry
+          hold
+            save open-claims, build/open-claims
+            save obligations, build/obligations
+
+        # the surface, in dependency order, so a later definition of a name replaces an earlier one
+        walk build/stubs
+          take group-stubs
+          walk group-stubs/statements
+            take one
+            sift one
+              case native
+                push(natives, one)
+              miss
+                save nothing, 0
+            fork test, given/keep-program
+              hold
+                push(surface-program, one)
+            sift exported-of(one, group-stubs/file, given)
+              case some
+                link made
+                save export-key, <value:{made/name}>
+                fork test, made/type
+                  hold
+                    save export-key, <type:{made/name}>
+                save exports/{export-key}, made
+              case none
+                save nothing, 0
+      case none
+        save nothing, 0
+    save ui, add(ui, 1)
+
+  # the entry's own spelling, warned about once, for the file the build was asked for
+  walk entry-warnings(source, sources, parsed, template-set/templates)
+    take warned
+    push(all-warnings, warned)
+
+  back
+    make separate-answer
+      bind refused, make none
+      bind modules, all-modules
+      bind warnings, all-warnings
+      bind open-claims, open-claims
+      bind obligations, obligations
+      bind exports, exports/values()
+      bind built, built
+      bind reused, reused
+      bind closure-key, separate-cache/hash-fields(closure-keys)
+      bind natives, natives
+      bind docks, docks
+      bind rolls, rolls
+      bind program, run/entry-program
+      bind surface, surface-program
+
+# what a stub definition exports: a public task or a constant as a value, a form or a mask as a type. A private task is
+# in the stub for the privacy checks, and is no part of what an entry's shim exports
+task exported-of
+  take one, like statement
+  take file, like text
+  take given, like separate-given
+  like maybe, like export-entry
+  mark private
+
+  save has-export, given/has-stub-export
+  sift one
+    case function
+      link name
+      link stub-export
+      fork test, one/private
+        hold
+          back make none
+      save made, export-made(name, stub-export, has-export(one), file, false)
+      back make(some, made)
+    case let
+      link name
+      link stub-export
+      save made, export-made(name, stub-export, has-export(one), file, false)
+      back make(some, made)
+    case record-type
+      link name
+      link stub-export
+      save made, export-made(name, stub-export, has-export(one), file, true)
+      back make(some, made)
+    case mask
+      link name
+      link stub-export
+      save made, export-made(name, stub-export, has-export(one), file, true)
+      back make(some, made)
+    miss
+      back make none
+  back make none
+
+task export-made
+  take name, like text
+  take stub-export, like text
+  take export-given, like boolean
+  take file, like text
+  take is-type, like boolean
+  like export-entry
+  mark private
+
+  save exported, name
+  fork test, export-given
+    hold
+      save exported, stub-export
+  back
+    make export-entry
+      bind name, name
+      bind exported, exported
+      bind file, file
+      bind type, is-type

@@ -2606,8 +2606,10 @@ task emit-record
             case none
               save nothing, 0
           back <SeedList{type-args}()>
-      # `make void` is the absent value: the unit tuple
-      fork test, and(is-equal(record-name, <void>), empty)
+      # `make void` is the absent value: the unit tuple. Unless its type is a union with a case `void`, which builds that
+      # case (item 0050: it was the unit tuple)
+      save own-case, and(and(facts/variant-set/has(record-name), is-equal(kind-of(node-type), <named>)), is-unequal(named-of(node-type), <void>))
+      fork test, and(and(is-equal(record-name, <void>), empty), not(own-case))
         hold
           back <()>
       # leading-dot construction: Swift infers the enum or struct type from context

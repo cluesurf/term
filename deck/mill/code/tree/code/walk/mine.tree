@@ -43,7 +43,9 @@ mine walk
     # `must` (invariant) and `down` (measure) are matched here and in the trailing list, before `flow`, whose value
     # fallback would read either as a call. See must/mine.tree.
     # `name outer` names the loop, so a `turn next` or a `halt` inside a loop nested in it can say which loop it means
-    # (`turn next, name outer`). Matched beside the arms, before `flow`, whose value fallback would read it as a call
+    # (`turn next, name outer`). Matched beside the arms, before `flow`, whose value fallback would read it as a call.
+    # `mark parallel` runs the walk's turns side by side (decision 021 of term/self-host/change/001): any word is read
+    # here, so the mint refuses every other word by name, and refuses the mark on `walk size` and `walk test`
     mine list
       mine any
         mine form, like hook
@@ -59,6 +61,9 @@ mine walk
         mine term, term name
           mine term
             site name
+        mine term, term mark
+          mine term
+            site mark
     mine maybe
       mine form, like seed
         site seed
@@ -77,6 +82,9 @@ mine walk
         mine term, term name
           mine term
             site name
+        mine term, term mark
+          mine term
+            site mark
         mine form, like flow
           site flow
 

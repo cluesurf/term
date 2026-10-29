@@ -5,8 +5,8 @@
 # checker. Before that, a task, a component, a `host` value and a native binding that two files define are each bound
 # by what the referring file imported (bindByImport and its siblings, below).
 #
-# Ported from check/overload.ts (self-hosting, 2026-10-05), which stays as a face: it keeps `overloadGroups`, the
-# module state check/infer.ts and check/resolve.ts read, and fills it from what this answers. Its walks are one ordered
+# Ported from check/overload.ts (self-hosting, 2026-10-05), which stays as a face: it holds the one `overload-bound`
+# (below) the checker, the resolver and the view lowering read, and fills it from what this answers (decision 069). Its walks are one ordered
 # rewrite here, `rewrite-in`, over every field but `span`, `type`, `result`, `declared` and `generics` in the order
 # node.tree declares them, with a mode per pass: the reference passes (a call's callee bound with its arity, then only
 # its arguments; any other variable bound with none; a placed component bound as a value), and the call passes (lean
@@ -3169,3 +3169,51 @@ task disambiguate
       bind diagnostics, state/diagnostics
       bind groups, state/overloads
       bind runtime, bound
+
+# ---- the bound the build keeps (decision 069, item term-self-host-001-0385) ----
+
+# WHAT THE LAST BINDING LEFT, read after it by the checker (check/inferring-main.tree takes `groups` as its state's
+# overload-groups), the resolver (check/resolve.ts) and the view lowering (check/views.ts, compile.ts): `groups` is each
+# same-arity overload group's key and every member, `runtime` each render runtime name and the name it is bound as
+# (D020). check/overload.ts holds the one instance until the driver is Term (0117), and keep-overload-bound replaces both
+# fields from each answer, so a reader that reads a field when it reads never holds a table an earlier build filled
+form overload-bound
+  mark shared
+  link groups, like hash, like text, like list, like text
+  link runtime, like hash, like text, like text
+
+# an empty bound, as the face holds it before any build has bound a program
+task fresh-overload-bound
+  like overload-bound
+
+  save groups, like hash, like text, like list, like text
+    make hash
+  save runtime, like hash, like text, like text
+    make hash
+  back
+    make overload-bound
+      bind groups, groups
+      bind runtime, runtime
+
+# both fields replaced from a binding's answer, each in the order the answer lists them: a key met twice keeps its first
+# place and takes its last members, as the Map the face cleared and filled did
+task keep-overload-bound
+  take bound, like overload-bound
+  take groups, like list, like overload-group
+  take runtime, like list, like runtime-bound
+  like void
+
+  save kept-groups, like hash, like text, like list, like text
+    make hash
+  walk groups
+    take group
+    save key, group/name
+    save kept-groups/{key}, group/members
+  save kept-runtime, like hash, like text, like text
+    make hash
+  walk runtime
+    take pair
+    save key, pair/name
+    save kept-runtime/{key}, pair/bound
+  save bound/groups, kept-groups
+  save bound/runtime, kept-runtime
