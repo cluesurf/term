@@ -54,6 +54,131 @@ mod runner {
         RunResult { code: -1, output: String::new(), error: cause.to_string(), signal: 0 }
     }
 
+    // a signal sent to the child, with no crate (the numbers are the same on macOS and Linux: SIGKILL 9, SIGTERM 15).
+    // Off unix only the kill there is
+    #[cfg(unix)]
+    fn signal_child(child: &mut std::process::Child, signum: i32) {
+        extern "C" {
+            fn kill(pid: i32, signum: i32) -> i32;
+        }
+        unsafe { kill(child.id() as i32, signum) };
+    }
+
+    #[cfg(not(unix))]
+    fn signal_child(child: &mut std::process::Child, _signum: i32) {
+        let _ = child.kill();
+    }
+
+    // wait for `child` by a poll of `try_wait`, `pause` milliseconds apart, calling `each` with its pid on every turn.
+    // With a `limit` above 0 the child is sent TERM once `limit` milliseconds have passed and KILL 2000 ms after that.
+    // The status (none when the wait failed) and whether the limit ended it
+    fn wait_limited(
+        child: &mut std::process::Child,
+        limit: i64,
+        pause: u64,
+        each: &mut dyn FnMut(u32),
+    ) -> (Option<std::process::ExitStatus>, bool) {
+        let start = std::time::Instant::now();
+        let deadline = std::time::Duration::from_millis(limit.max(0) as u64);
+        let mut termed: Option<std::time::Instant> = None;
+        let mut killed = false;
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => return (Some(status), termed.is_some()),
+                Ok(None) => {
+                    each(child.id());
+                    if limit > 0 {
+                        match termed {
+                            None => {
+                                if start.elapsed() >= deadline {
+                                    signal_child(child, 15);
+                                    termed = Some(std::time::Instant::now());
+                                }
+                            }
+                            Some(at) => {
+                                if !killed && at.elapsed() >= std::time::Duration::from_millis(2000) {
+                                    signal_child(child, 9);
+                                    killed = true;
+                                }
+                            }
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(pause));
+                }
+                Err(_) => return (None, termed.is_some()),
+            }
+        }
+    }
+
+    // a stream read to its end on a thread of its own, into a buffer the caller can read at any time
+    fn reading<R: std::io::Read + Send + 'static>(
+        mut from: R,
+    ) -> (std::sync::Arc<std::sync::Mutex<Vec<u8>>>, std::thread::JoinHandle<()>) {
+        let kept = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let into = kept.clone();
+        let handle = std::thread::spawn(move || {
+            let mut chunk = [0u8; 8192];
+            loop {
+                match from.read(&mut chunk) {
+                    Ok(0) | Err(_) => break,
+                    Ok(count) => {
+                        if let Ok(mut held) = into.lock() {
+                            held.extend_from_slice(&chunk[..count]);
+                        }
+                    }
+                }
+            }
+        });
+        (kept, handle)
+    }
+
+    fn read_text(kept: &std::sync::Arc<std::sync::Mutex<Vec<u8>>>) -> String {
+        match kept.lock() {
+            Ok(held) => String::from_utf8_lossy(&held).to_string(),
+            Err(_) => String::new(),
+        }
+    }
+
+    // a captured run under a limit above 0: stdout and stderr each read on a thread, the child waited by a poll and
+    // ended at the limit, and the answer taken once both readers are done or 500 ms after the exit (a grandchild may
+    // hold a pipe). Code -2 when the limit ended it
+    fn captured_limited(mut shaped: std::process::Command, input: Option<String>, limit: i64) -> RunResult {
+        use std::io::Write;
+        let spawned = shaped
+            .stdin(if input.is_some() { std::process::Stdio::piped() } else { std::process::Stdio::null() })
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn();
+        let mut child = match spawned {
+            Ok(child) => child,
+            Err(cause) => return refused(cause),
+        };
+        let (output, output_reader) = match child.stdout.take() {
+            Some(stream) => reading(stream),
+            None => reading(std::io::empty()),
+        };
+        let (error, error_reader) = match child.stderr.take() {
+            Some(stream) => reading(stream),
+            None => reading(std::io::empty()),
+        };
+        if let (Some(text), Some(mut stdin)) = (input, child.stdin.take()) {
+            let _ = stdin.write_all(text.as_bytes());
+        }
+        let (status, ended) = wait_limited(&mut child, limit, 10, &mut |_| {});
+        let drained = std::time::Instant::now();
+        while !(output_reader.is_finished() && error_reader.is_finished())
+            && drained.elapsed() < std::time::Duration::from_millis(500)
+        {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let (code, signal) = match status {
+            _ if ended => (-2, 0),
+            Some(status) => finished(status),
+            None => (-1, 0),
+        };
+        RunResult { code, output: read_text(&output), error: read_text(&error), signal }
+    }
+
     // `argument_list` arrives as the seed list representation (a reference-counted mutable vec); borrow it to read the
     // arguments without taking ownership.
     pub async fn run(
@@ -61,7 +186,11 @@ mod runner {
         argument_list: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
         directory: String,
         environment: Environment,
+        limit: i64,
     ) -> RunResult {
+        if limit > 0 {
+            return captured_limited(shaped(&command, &argument_list, &directory, &environment), None, limit);
+        }
         match shaped(&command, &argument_list, &directory, &environment).output() {
             Ok(out) => answered(out),
             Err(cause) => refused(cause),
@@ -153,30 +282,24 @@ mod runner {
     // the command on this terminal: it reads the keyboard and writes as it goes; its exit code (128 plus the signal for
     // a signal death), -1 when it could not start. While it runs, INT and QUIT are ignored here and TERM and HUP sent to
     // this process are passed to it (`passing`, as system(3) does). The wait is a poll of `try_wait` with a short sleep,
-    // so a recorded signal is passed within a few milliseconds
+    // so a recorded signal is passed within a few milliseconds. A `limit` above 0 ends the child as `wait_limited` does,
+    // and answers -2
     pub async fn attached(
         command: String,
         argument_list: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
         directory: String,
         environment: Environment,
+        limit: i64,
     ) -> i64 {
         let mut child = match shaped(&command, &argument_list, &directory, &environment).spawn() {
             Ok(child) => child,
             Err(_) => return -1,
         };
         let held = passing::hold();
-        let status = loop {
-            match child.try_wait() {
-                Ok(Some(status)) => break Some(status),
-                Ok(None) => {
-                    passing::pass(child.id());
-                    std::thread::sleep(std::time::Duration::from_millis(5));
-                }
-                Err(_) => break None,
-            }
-        };
+        let (status, ended) = wait_limited(&mut child, limit, 5, &mut |pid| passing::pass(pid));
         passing::release(held);
         match status {
+            _ if ended => -2,
             Some(status) => finished(status).0,
             None => -1,
         }
@@ -189,8 +312,12 @@ mod runner {
         input: String,
         directory: String,
         environment: Environment,
+        limit: i64,
     ) -> RunResult {
         use std::io::Write;
+        if limit > 0 {
+            return captured_limited(shaped(&command, &argument_list, &directory, &environment), Some(input), limit);
+        }
         let spawned = shaped(&command, &argument_list, &directory, &environment)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())

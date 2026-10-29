@@ -1,0 +1,98 @@
+# Where a program is, before running it: `find-tool(<cargo>)` is the path in TERM_CARGO when that variable is set and
+# names a file that is there, else the first `<dir>/cargo` on PATH, else the empty text (D022 §T3, D025). The variable
+# is the name in upper case with every dash an underscore (`swift-format` reads TERM_SWIFT_FORMAT). PATH is split on
+# `:`, or on `;` on Windows (the variable OS is `Windows_NT` there), where `<dir>/<name>.exe` is tried too. Written in
+# Term over `environment` and `file`, so every target answers alike.
+
+mark stable
+
+load @term/base/environment
+  find variable
+
+load @term/base/file
+  find exists
+
+load @term/base/list
+  find list
+
+# the path of the program `name`, the empty text when it is nowhere to be found
+task find-tool
+  mark async
+  take name, like text
+  like text
+  save named
+    call variable
+      call tool-variable
+        read name
+  fork test
+    hook test
+      call is-unequal
+        read named
+        text <>
+    hook hold
+      fork test
+        hook test
+          call exists
+            read named
+        hook hold
+          send back, read named
+  save windows
+    call is-equal
+      call variable
+        text <OS>
+      text <Windows_NT>
+  save separator, text <:>
+  fork test
+    hook test
+      read windows
+    hook hold
+      save separator, text <;>
+  save path
+    call variable
+      text <PATH>
+  save directories
+    call path/split
+      read separator
+  walk list, read directories
+    hook next
+      take site, name directory
+      fork test
+        hook test
+          call is-equal
+            read directory
+            text <>
+        hook hold
+          turn next
+      save candidates
+        make list
+      call candidates/push
+        text <{directory}/{name}>
+      fork test
+        hook test
+          read windows
+        hook hold
+          call candidates/push
+            text <{directory}/{name}.exe>
+      walk list, read candidates
+        hook next
+          take site, name candidate
+          fork test
+            hook test
+              call exists
+                read candidate
+            hook hold
+              send back, read candidate
+  send back, text <>
+
+# the variable that names a program's path: TERM_ and the name in upper case, each dash an underscore
+task tool-variable
+  mark private
+  take name, like text
+  like text
+  save upper
+    call name/to-upper-case
+  save joined
+    call upper/replace-all
+      text <->
+      text <_>
+  send back, text <TERM_{joined}>

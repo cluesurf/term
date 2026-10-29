@@ -7,6 +7,11 @@
 # not there is a `command-absence` too) and `environment` (entries added over the inherited one, which holds
 # `set-variable` writes), left out by a caller that sets neither (D025). A child a signal ended answers code 128 plus the
 # signal's number and `signal` that number, on every target, so a killed child never reads as success (D024).
+# `limit` is the milliseconds the child may run, 0 or below for no limit. At the limit the runner sends TERM, then KILL
+# 2000 ms later if the child is still there, and answers once the child has exited and both pipes closed, or 500 ms
+# after the exit (a grandchild may hold a pipe). The task then raises `command-timeout` with what the child wrote
+# (D025 §3). So a runner answers -1 for a command that could not start and -2 for a run its limit ended, and both are
+# raised here.
 # While `run-attached` waits, node and rust ignore INT and QUIT (the terminal sends them to the child's own group, so it
 # gets each) and pass TERM and HUP sent to this process on to the child, as system(3) does, so a TERM to a program that
 # runs a tool never orphans it, and put every disposition back when the child ends. Swift and Kotlin do not (D024).
@@ -20,6 +25,7 @@ load @term/base/native/{platform}/process/run
 
 load @term/base/exception
   find absence
+  find timeout
 
 # the outcome of a finished subprocess
 form run-result
@@ -36,6 +42,12 @@ form command-absence
     bind note, <Command not found>
     link reason, like text
 
+# a command its `limit` ended: `thing` the command, `waited` the limit in milliseconds, and what it wrote before
+form command-timeout
+  like timeout
+    link output, like text
+    link error, like text
+
 # run `command` with `argument-list`, wait for it to finish, return its result
 task run
   mark async
@@ -51,6 +63,9 @@ task run
       like text
       like text
     need false
+  take limit
+    like number
+    fall 0
   like run-result
   save result
     call spawn-process
@@ -58,9 +73,15 @@ task run
       read argument-list
       read directory
       read environment
+      read limit
       wait true
   call started
     read command
+    read result
+    halt kink
+  call limited
+    read command
+    read limit
     read result
     halt kink
   send back, read result
@@ -82,6 +103,9 @@ task run-attached
       like text
       like text
     need false
+  take limit
+    like number
+    fall 0
   like number
   save code
     call spawn-on-terminal
@@ -89,6 +113,7 @@ task run-attached
       read argument-list
       read directory
       read environment
+      read limit
       wait true
   fork test
     hook test
@@ -99,6 +124,17 @@ task run-attached
       halt command-absence
         bind thing, read command
         bind reason, text <could not start>
+  fork test
+    hook test
+      call is-equal
+        read code
+        code -2
+    hook hold
+      halt command-timeout
+        bind thing, read command
+        bind waited, read limit
+        bind output, text <>
+        bind error, text <>
   send back, read code
 
 # run `command` with `input` written to its standard input, then closed: the answers to a program's prompts (the `y` an
@@ -118,6 +154,9 @@ task run-with-input
       like text
       like text
     need false
+  take limit
+    like number
+    fall 0
   like run-result
   save result
     call spawn-with-input
@@ -126,9 +165,15 @@ task run-with-input
       read input
       read directory
       read environment
+      read limit
       wait true
   call started
     read command
+    read result
+    halt kink
+  call limited
+    read command
+    read limit
     read result
     halt kink
   send back, read result
@@ -147,3 +192,21 @@ task started
       halt command-absence
         bind thing, read command
         bind reason, read result/error
+
+# a runner answers -2 for a run its limit ended, with what the child wrote before
+task limited
+  mark private
+  take command, like text
+  take limit, like number
+  take result, like run-result
+  fork test
+    hook test
+      call is-equal
+        read result/code
+        code -2
+    hook hold
+      halt command-timeout
+        bind thing, read command
+        bind waited, read limit
+        bind output, read result/output
+        bind error, read result/error

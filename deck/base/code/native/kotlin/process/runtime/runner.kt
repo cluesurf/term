@@ -8,7 +8,9 @@
 // waits on the other), and returns the exit code with both streams. A failure returns code -1 and the error text, so
 // the public run API stays total. `directory` (empty is this process's own) and `environment` (entries added over the
 // inherited one, after what `set-variable` stored as `term.env.<NAME>` and removed as `term.env-removed.<NAME>`) shape
-// the child, and a directory that is not there fails the start, as a missing command does. `attached` spawns with no
+// the child, and a directory that is not there fails the start, as a missing command does. `limit` (milliseconds, 0 or
+// below none) ends the child at the limit with TERM, then KILL 2000 ms later, and answers code -2 with what it wrote
+// once both pipes closed or 500 ms after the exit (`kill` and a WNOHANG `waitpid` poll). `attached` spawns with no
 // pipes, so the child keeps this terminal. Fully qualified (no top-level imports) so the file can be prepended as a
 // runtime prelude. Reached only through the public run API. Native access is restricted: a JDK 24 or newer prints one
 // warning to stderr unless the program runs with --enable-native-access=ALL-UNNAMED.
@@ -48,6 +50,7 @@ object runner {
         val adddup2: java.lang.invoke.MethodHandle,
         val addclose: java.lang.invoke.MethodHandle,
         val addchdir: java.lang.invoke.MethodHandle?,
+        val kill: java.lang.invoke.MethodHandle,
     )
 
     val native: Native by lazy {
@@ -76,6 +79,7 @@ object runner {
             need("posix_spawn_file_actions_adddup2", java.lang.foreign.FunctionDescriptor.of(int, pointer, int, int)),
             need("posix_spawn_file_actions_addclose", java.lang.foreign.FunctionDescriptor.of(int, pointer, int)),
             find("posix_spawn_file_actions_addchdir_np", java.lang.foreign.FunctionDescriptor.of(int, pointer, pointer)),
+            need("kill", java.lang.foreign.FunctionDescriptor.of(int, int, int)),
         )
     }
 
@@ -149,6 +153,11 @@ object runner {
     }
 
     // waitpid's raw status as (code, signal): a signal's death is 128 plus its number and that number, an exit its code and 0
+    fun statusOf(raw: Int): LongArray {
+        val signal = raw and 0x7f
+        return if (signal == 0) longArrayOf(((raw shr 8) and 0xff).toLong(), 0L) else longArrayOf(128L + signal, signal.toLong())
+    }
+
     fun wait(arena: java.lang.foreign.Arena, pid: Int): LongArray {
         val status = arena.allocate(4L, 4L)
         var tries = 0
@@ -162,17 +171,44 @@ object runner {
                 throw IllegalStateException("waitpid failed")
             }
         }
-        val raw = status.get(java.lang.foreign.ValueLayout.JAVA_INT, 0L)
-        val signal = raw and 0x7f
-        return if (signal == 0) longArrayOf(((raw shr 8) and 0xff).toLong(), 0L) else longArrayOf(128L + signal, signal.toLong())
+        return statusOf(status.get(java.lang.foreign.ValueLayout.JAVA_INT, 0L))
     }
 
-    // everything the descriptor yields until it ends, then closed
-    fun drain(fd: Int): ByteArray {
+    // waitpid by a poll (WNOHANG, 1 on macOS and Linux) every 10 ms, ending the child at the limit: TERM (15) once
+    // `limit` milliseconds have passed, KILL (9) 2000 ms after. The status and whether the limit ended it
+    fun waitLimited(arena: java.lang.foreign.Arena, pid: Int, limit: Long): Pair<LongArray, Boolean> {
+        val status = arena.allocate(4L, 4L)
+        val start = System.nanoTime()
+        var termedAt = 0L
+        var termed = false
+        var killed = false
+        while (true) {
+            val answer = call(native.waitpid, pid, status, 1) as Int
+            if (answer == pid) {
+                return Pair(statusOf(status.get(java.lang.foreign.ValueLayout.JAVA_INT, 0L)), termed)
+            }
+            if (answer < 0) {
+                throw IllegalStateException("waitpid failed")
+            }
+            val now = System.nanoTime()
+            if (!termed && (now - start) / 1_000_000L >= limit) {
+                call(native.kill, pid, 15)
+                termed = true
+                termedAt = now
+            } else if (termed && !killed && (now - termedAt) / 1_000_000L >= 2000L) {
+                call(native.kill, pid, 9)
+                killed = true
+            }
+            Thread.sleep(10L)
+        }
+    }
+
+    // everything the descriptor yields until it ends, written into `sink` as it comes (so a reader cut short still
+    // leaves what it read), then closed
+    fun drain(fd: Int, sink: java.io.ByteArrayOutputStream) {
         val arena = java.lang.foreign.Arena.ofConfined()
         try {
             val buffer = arena.allocate(65536L, 8L)
-            val collected = java.io.ByteArrayOutputStream()
             val chunk = ByteArray(65536)
             while (true) {
                 val count = call(native.read, fd, buffer, 65536L) as Long
@@ -180,13 +216,18 @@ object runner {
                     break
                 }
                 java.lang.foreign.MemorySegment.copy(buffer, java.lang.foreign.ValueLayout.JAVA_BYTE, 0L, chunk, 0, count.toInt())
-                collected.write(chunk, 0, count.toInt())
+                synchronized(sink) {
+                    sink.write(chunk, 0, count.toInt())
+                }
             }
-            return collected.toByteArray()
         } finally {
             arena.close()
             closeFd(fd)
         }
+    }
+
+    fun textOf(sink: java.io.ByteArrayOutputStream): String {
+        return synchronized(sink) { String(sink.toByteArray(), Charsets.UTF_8) }
     }
 
     // `input` written to the descriptor, then closed
@@ -209,7 +250,10 @@ object runner {
         }
     }
 
-    fun capture(command: String, argumentList: List<String>, input: ByteArray, directory: String, environment: Map<String, String>): RunResult {
+    // a captured run. Under a `limit` above 0 the child is waited by a poll and ended at the limit, and the answer is
+    // taken once both readers are done or 500 ms after the exit (a grandchild may hold a pipe; the reader threads are
+    // daemons, so one left reading never holds the program open). Code -2 when the limit ended it
+    fun capture(command: String, argumentList: List<String>, input: ByteArray, directory: String, environment: Map<String, String>, limit: Long): RunResult {
         val arena = java.lang.foreign.Arena.ofShared()
         try {
             val stdin = makePipe(arena)
@@ -228,41 +272,66 @@ object runner {
             closeFd(stdin[0])
             closeFd(stdout[1])
             closeFd(stderr[1])
-            var output = ByteArray(0)
-            var error = ByteArray(0)
-            val outputThread = Thread { output = drain(stdout[0]) }
-            val errorThread = Thread { error = drain(stderr[0]) }
+            val output = java.io.ByteArrayOutputStream()
+            val error = java.io.ByteArrayOutputStream()
+            val outputThread = Thread { drain(stdout[0], output) }
+            val errorThread = Thread { drain(stderr[0], error) }
             val inputThread = Thread { feed(stdin[1], input) }
+            if (limit > 0L) {
+                outputThread.isDaemon = true
+                errorThread.isDaemon = true
+                inputThread.isDaemon = true
+            }
             outputThread.start()
             errorThread.start()
             inputThread.start()
-            inputThread.join()
-            outputThread.join()
-            errorThread.join()
-            val status = wait(arena, pid)
-            return RunResult(status[0], String(output, Charsets.UTF_8), String(error, Charsets.UTF_8), status[1])
+            if (limit <= 0L) {
+                inputThread.join()
+                outputThread.join()
+                errorThread.join()
+                val status = wait(arena, pid)
+                return RunResult(status[0], textOf(output), textOf(error), status[1])
+            }
+            val (status, ended) = waitLimited(arena, pid, limit)
+            val drained = System.nanoTime() + 500L * 1_000_000L
+            for (reader in listOf(outputThread, errorThread)) {
+                val left = (drained - System.nanoTime()) / 1_000_000L
+                if (left > 0L) {
+                    reader.join(left)
+                }
+            }
+            if (ended) {
+                return RunResult(-2L, textOf(output), textOf(error), 0L)
+            }
+            return RunResult(status[0], textOf(output), textOf(error), status[1])
         } finally {
             arena.close()
         }
     }
 
-    suspend fun run(command: String, argumentList: List<String>, directory: String, environment: Map<String, String>): RunResult {
+    suspend fun run(command: String, argumentList: List<String>, directory: String, environment: Map<String, String>, limit: Long): RunResult {
         return try {
-            capture(command, argumentList, ByteArray(0), directory, environment)
+            capture(command, argumentList, ByteArray(0), directory, environment, limit)
         } catch (cause: Throwable) {
             RunResult(-1L, "", cause.toString(), 0L)
         }
     }
 
-    // the command on this terminal: it reads the keyboard and writes as it goes; its exit code, -1 when it could not start
-    suspend fun attached(command: String, argumentList: List<String>, directory: String, environment: Map<String, String>): Long {
+    // the command on this terminal: it reads the keyboard and writes as it goes; its exit code, -1 when it could not
+    // start, -2 when its limit ended it
+    suspend fun attached(command: String, argumentList: List<String>, directory: String, environment: Map<String, String>, limit: Long): Long {
         return try {
             val arena = java.lang.foreign.Arena.ofShared()
             try {
                 System.out.flush()
                 System.err.flush()
                 val pid = spawn(arena, command, argumentList, directory, environment, null)
-                wait(arena, pid)[0]
+                if (limit > 0L) {
+                    val (status, ended) = waitLimited(arena, pid, limit)
+                    if (ended) -2L else status[0]
+                } else {
+                    wait(arena, pid)[0]
+                }
             } finally {
                 arena.close()
             }
@@ -272,9 +341,9 @@ object runner {
     }
 
     // the command with `input` written to its standard input and then closed, its output captured as `run` captures it
-    suspend fun withInput(command: String, argumentList: List<String>, input: String, directory: String, environment: Map<String, String>): RunResult {
+    suspend fun withInput(command: String, argumentList: List<String>, input: String, directory: String, environment: Map<String, String>, limit: Long): RunResult {
         return try {
-            capture(command, argumentList, input.toByteArray(), directory, environment)
+            capture(command, argumentList, input.toByteArray(), directory, environment, limit)
         } catch (cause: Throwable) {
             RunResult(-1L, "", cause.toString(), 0L)
         }

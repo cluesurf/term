@@ -1,0 +1,118 @@
+# A run under a `limit` raises `command-timeout` with what the child wrote, and is over within the limit and the
+# 2000 ms the KILL waits plus the 500 ms drain, even when a grandchild holds a pipe; a run that finishes first answers
+# as it would with no limit. `find-tool` finds `sh` on PATH and answers the empty text for a program that is nowhere.
+# The same on node, rust, swift and kotlin (D025 §3, item 0156). Held by `pnpm term:base-gate`, whose browser leg skips
+# it by name (`process-run` in BROWSER_GAP): a page runs no processes.
+
+load @term/base/process/run
+  find run
+  find command-timeout
+  find command-absence
+
+load @term/base/process/tool
+  find find-tool
+
+load @term/base/clock
+  find read-nanoseconds
+
+load @term/base/list
+  find list
+
+# the arguments `sh` takes to run a script
+task script-words
+  take script, like text
+  like list
+    like text
+  save words
+    make list
+  call words/push
+    text <-c>
+  call words/push
+    read script
+  send back, read words
+
+# what a run of `script` under `limit` comes to: `timeout <waited> <output>`, or `code <code> <signal>`
+task outcome
+  mark async
+  take script, like text
+  take limit, like number
+  like text
+  fork
+    mark unsafe
+    save result
+      call run
+        text <sh>
+        call script-words
+          read script
+        bind limit, read limit
+    send back, text <code {result/code} {result/signal}>
+  halt take
+    take problem
+    sift problem
+      case command-timeout
+        send back, text <timeout {waited} {output}>
+      case command-absence
+        send back, text <absent {thing}>
+      case failure
+        send back, text <failure>
+
+# the milliseconds `outcome` takes, beside its answer: `<answer> | <whether it took under bound>`
+task timed
+  mark async
+  take script, like text
+  take limit, like number
+  take bound, like number
+  like text
+  save start
+    call read-nanoseconds
+  save answer
+    call outcome
+      read script
+      read limit
+  save spent
+    call divide
+      call subtract
+        call read-nanoseconds
+        read start
+      code 1000000
+  send back, text <{answer} | {is-below(spent, bound)}>
+
+test <a run past its limit raises command-timeout with what it wrote, in time>
+  want hold
+    call is-equal
+      call timed
+        text <echo early; sleep 5>
+        code 500
+        code 3000
+      text <timeout 500 early\n | true>
+
+test <a grandchild holding the pipe cannot hold the run past its limit>
+  want hold
+    call is-equal
+      call timed
+        text <sleep 5; true>
+        code 500
+        code 3000
+      text <timeout 500  | true>
+
+test <a run that ends before its limit answers its code>
+  want hold
+    call is-equal
+      call outcome
+        text <exit 3>
+        code 5000
+      text <code 3 0>
+
+test <find-tool finds sh>
+  want hold
+    call is-unequal
+      call find-tool
+        text <sh>
+      text <>
+
+test <find-tool answers empty for a program that is nowhere>
+  want hold
+    call is-equal
+      call find-tool
+        text <term-no-such-tool>
+      text <>

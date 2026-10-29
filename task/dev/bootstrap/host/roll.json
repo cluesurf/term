@@ -1,0 +1,6092 @@
+{
+  "deck": [
+    {
+      "host": "@term/base",
+      "kind": "deck",
+      "name": "@term/base",
+      "site": "",
+      "file": 35
+    },
+    {
+      "host": "@term/code",
+      "kind": "deck",
+      "name": "@term/code",
+      "site": "",
+      "file": 6
+    }
+  ],
+  "exception": [
+    {
+      "host": "@term/base",
+      "kind": "exception",
+      "name": "absence",
+      "site": "code/exception.tree:157:1",
+      "like": "exception",
+      "chain": [
+        "exception"
+      ],
+      "note": "Not found",
+      "link": {
+        "thing": "text"
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "exception",
+      "name": "anonymity",
+      "site": "code/exception.tree:182:1",
+      "like": "exception",
+      "chain": [
+        "exception"
+      ],
+      "note": "Not signed in",
+      "link": {
+        "thing": "text, need false"
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "exception",
+      "name": "bundle",
+      "site": "code/exception.tree:252:1",
+      "like": "exception",
+      "chain": [
+        "exception"
+      ],
+      "note": "Several problems",
+      "link": {
+        "thing": "text, need false",
+        "list": "list, like unknown"
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "exception",
+      "name": "command-absence",
+      "site": "code/process/run.tree:40:1",
+      "like": "absence",
+      "chain": [
+        "exception",
+        "absence"
+      ],
+      "note": "Command not found",
+      "link": {
+        "thing": "text",
+        "reason": "text"
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "exception",
+      "name": "command-timeout",
+      "site": "code/process/run.tree:46:1",
+      "like": "timeout",
+      "chain": [
+        "exception",
+        "timeout"
+      ],
+      "note": "Timed out",
+      "link": {
+        "thing": "text",
+        "waited": "number, need false",
+        "output": "text",
+        "error": "text"
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "exception",
+      "name": "conflict",
+      "site": "code/exception.tree:162:1",
+      "like": "exception",
+      "chain": [
+        "exception"
+      ],
+      "note": "Conflict",
+      "link": {
+        "thing": "text",
+        "current": "text, need false"
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "exception",
+      "name": "defect",
+      "site": "code/exception.tree:85:1",
+      "like": "exception",
+      "chain": [
+        "exception"
+      ],
+      "note": "Invalid",
+      "link": {
+        "thing": "text",
+        "value": "text, need false",
+        "expected": "text, need false"
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "exception",
+      "name": "denial",
+      "site": "code/exception.tree:190:1",
+      "like": "exception",
+      "chain": [
+        "exception"
+      ],
+      "note": "Not permitted",
+      "link": {
+        "thing": "text, need false"
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "exception",
+      "name": "excess",
+      "site": "code/exception.tree:103:1",
+      "like": "exception",
+      "chain": [
+        "exception"
+      ],
+      "note": "Too large",
+      "link": {
+        "thing": "text",
+        "limit": "number, need false",
+        "actual": "number, need false"
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "exception",
+      "name": "exclusion",
+      "site": "code/exception.tree:142:1",
+      "like": "exception",
+      "chain": [
+        "exception"
+      ],
+      "note": "Not accepted",
+      "link": {
+        "thing": "text",
+        "value": "text, need false",
+        "accepted": "list, like unknown, need false"
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "exception",
+      "name": "failure",
+      "site": "code/exception.tree:245:1",
+      "like": "exception",
+      "chain": [
+        "exception"
+      ],
+      "note": "Something went wrong",
+      "link": {
+        "thing": "text"
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "exception",
+      "name": "mismatch",
+      "site": "code/exception.tree:129:1",
+      "like": "exception",
+      "chain": [
+        "exception"
+      ],
+      "note": "Mismatch",
+      "link": {
+        "thing": "text",
+        "expected": "text, need false",
+        "actual": "text, need false"
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "exception",
+      "name": "omission",
+      "site": "code/exception.tree:98:1",
+      "like": "exception",
+      "chain": [
+        "exception"
+      ],
+      "note": "Missing",
+      "link": {
+        "thing": "text"
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "exception",
+      "name": "outage",
+      "site": "code/exception.tree:212:1",
+      "like": "exception",
+      "chain": [
+        "exception"
+      ],
+      "note": "Unavailable",
+      "link": {
+        "thing": "text",
+        "retry-after": "number, need false"
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "exception",
+      "name": "overage",
+      "site": "code/exception.tree:230:1",
+      "like": "exception",
+      "chain": [
+        "exception"
+      ],
+      "note": "Over the limit",
+      "link": {
+        "thing": "text",
+        "limit": "number, need false",
+        "retry-after": "number, need false"
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "exception",
+      "name": "overload",
+      "site": "code/exception.tree:200:1",
+      "like": "exception",
+      "chain": [
+        "exception"
+      ],
+      "note": "Overloaded",
+      "link": {
+        "thing": "text, need false",
+        "retry-after": "number, need false"
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "exception",
+      "name": "refusal",
+      "site": "code/exception.tree:171:1",
+      "like": "exception",
+      "chain": [
+        "exception"
+      ],
+      "note": "Refused",
+      "link": {
+        "thing": "text",
+        "reason": "text, need false"
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "exception",
+      "name": "shortage",
+      "site": "code/exception.tree:116:1",
+      "like": "exception",
+      "chain": [
+        "exception"
+      ],
+      "note": "Too small",
+      "link": {
+        "thing": "text",
+        "limit": "number, need false",
+        "actual": "number, need false"
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "exception",
+      "name": "timeout",
+      "site": "code/exception.tree:221:1",
+      "like": "exception",
+      "chain": [
+        "exception"
+      ],
+      "note": "Timed out",
+      "link": {
+        "thing": "text",
+        "waited": "number, need false"
+      }
+    }
+  ],
+  "task": [
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "append",
+      "site": "code/file.tree:77:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        },
+        {
+          "name": "data",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "append-file"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "append-file",
+      "site": "code/native/node/file.tree:47:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        },
+        {
+          "name": "data",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "binary-search",
+      "site": "code/list.tree:1295:1",
+      "take": [
+        {
+          "name": "items",
+          "like": "list, like t"
+        },
+        {
+          "name": "target",
+          "like": "t"
+        },
+        {
+          "name": "compare",
+          "like": "task(t, t) -> ordering"
+        }
+      ],
+      "like": "maybe, like number",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "bit-and",
+      "site": "code/native/node/bit.tree:6:1",
+      "take": [
+        {
+          "name": "left",
+          "like": "number"
+        },
+        {
+          "name": "right",
+          "like": "number"
+        }
+      ],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "bit-exclusive-or",
+      "site": "code/native/node/bit.tree:24:1",
+      "take": [
+        {
+          "name": "left",
+          "like": "number"
+        },
+        {
+          "name": "right",
+          "like": "number"
+        }
+      ],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "bit-multiply-32",
+      "site": "code/native/node/bit.tree:67:1",
+      "take": [
+        {
+          "name": "left",
+          "like": "number"
+        },
+        {
+          "name": "right",
+          "like": "number"
+        }
+      ],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "bit-not",
+      "site": "code/native/node/bit.tree:33:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "number"
+        }
+      ],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "bit-or",
+      "site": "code/native/node/bit.tree:15:1",
+      "take": [
+        {
+          "name": "left",
+          "like": "number"
+        },
+        {
+          "name": "right",
+          "like": "number"
+        }
+      ],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "bit-shift-left",
+      "site": "code/native/node/bit.tree:40:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "number"
+        },
+        {
+          "name": "count",
+          "like": "number"
+        }
+      ],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "bit-shift-right",
+      "site": "code/native/node/bit.tree:49:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "number"
+        },
+        {
+          "name": "count",
+          "like": "number"
+        }
+      ],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "bit-shift-right-unsigned",
+      "site": "code/native/node/bit.tree:58:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "number"
+        },
+        {
+          "name": "count",
+          "like": "number"
+        }
+      ],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "bitwise-and",
+      "site": "code/bit.tree:15:1",
+      "take": [
+        {
+          "name": "left",
+          "like": "number"
+        },
+        {
+          "name": "right",
+          "like": "number"
+        }
+      ],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "bit-and"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "bitwise-exclusive-or",
+      "site": "code/bit.tree:33:1",
+      "take": [
+        {
+          "name": "left",
+          "like": "number"
+        },
+        {
+          "name": "right",
+          "like": "number"
+        }
+      ],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "bit-exclusive-or"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "bitwise-not",
+      "site": "code/bit.tree:42:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "number"
+        }
+      ],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "bit-not"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "bitwise-or",
+      "site": "code/bit.tree:24:1",
+      "take": [
+        {
+          "name": "left",
+          "like": "number"
+        },
+        {
+          "name": "right",
+          "like": "number"
+        }
+      ],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "bit-or"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "bytes-concat",
+      "site": "code/native/node/bytes.tree:55:1",
+      "take": [
+        {
+          "name": "left",
+          "like": "bytes"
+        },
+        {
+          "name": "right",
+          "like": "bytes"
+        }
+      ],
+      "like": "bytes",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "bytes-slice",
+      "site": "code/native/node/bytes.tree:64:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "bytes"
+        },
+        {
+          "name": "start",
+          "like": "number"
+        },
+        {
+          "name": "end",
+          "like": "number"
+        }
+      ],
+      "like": "bytes",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "change-directory",
+      "site": "code/environment.tree:32:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "enter-directory"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "char-at",
+      "site": "code/text.tree:53:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        },
+        {
+          "name": "index",
+          "like": "number"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "char-code-at",
+      "site": "code/text.tree:61:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        },
+        {
+          "name": "index",
+          "like": "number"
+        }
+      ],
+      "like": "number",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "char-count",
+      "site": "code/text.tree:46:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        }
+      ],
+      "like": "number",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "chunk",
+      "site": "code/list.tree:905:1",
+      "take": [
+        {
+          "name": "items",
+          "like": "list, like t"
+        },
+        {
+          "name": "count",
+          "like": "number"
+        }
+      ],
+      "like": "list, like list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "concat",
+      "site": "code/bytes.tree:118:1",
+      "take": [
+        {
+          "name": "left",
+          "like": "bytes"
+        },
+        {
+          "name": "right",
+          "like": "bytes"
+        }
+      ],
+      "like": "bytes",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "bytes-concat"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "contains",
+      "site": "code/text.tree:202:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        },
+        {
+          "name": "search",
+          "like": "text"
+        }
+      ],
+      "like": "boolean",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "copy",
+      "site": "code/file.tree:93:1",
+      "take": [
+        {
+          "name": "from",
+          "like": "text"
+        },
+        {
+          "name": "to",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "copy-file"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "copy-file",
+      "site": "code/native/node/file.tree:63:1",
+      "take": [
+        {
+          "name": "from",
+          "like": "text"
+        },
+        {
+          "name": "to",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "count",
+      "site": "code/bytes.tree:110:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "bytes"
+        }
+      ],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "octets-length"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "current-directory",
+      "site": "code/native/node/environment.tree:7:1",
+      "take": [],
+      "like": "text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "debug",
+      "site": "code/log.tree:29:1",
+      "take": [
+        {
+          "name": "message",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "write-debug"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "decode",
+      "site": "code/bytes.tree:53:1",
+      "take": [
+        {
+          "name": "text",
+          "like": "text"
+        },
+        {
+          "name": "base",
+          "like": "number"
+        }
+      ],
+      "like": "bytes",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "octets-from-base64"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "directory",
+      "site": "code/environment.tree:26:1",
+      "take": [],
+      "like": "text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "current-directory"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "directory-exists",
+      "site": "code/native/node/file/directory.tree:20:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "boolean",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "directory-list",
+      "site": "code/native/node/file/directory.tree:27:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "list, like text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "directory-make",
+      "site": "code/native/node/file/directory.tree:6:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "directory-remove",
+      "site": "code/native/node/file/directory.tree:13:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "directory-walk",
+      "site": "code/native/node/file/directory.tree:35:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "list, like text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "drop-variable",
+      "site": "code/native/node/environment/variable.tree:24:1",
+      "take": [
+        {
+          "name": "name",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "encode",
+      "site": "code/bytes.tree:34:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "bytes"
+        },
+        {
+          "name": "base",
+          "like": "number"
+        }
+      ],
+      "like": "text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "octets-to-base64"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "ends-with",
+      "site": "code/text.tree:136:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        },
+        {
+          "name": "suffix",
+          "like": "text"
+        }
+      ],
+      "like": "boolean",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "enter-directory",
+      "site": "code/native/node/environment/directory.tree:14:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "enumerate",
+      "site": "code/list.tree:879:1",
+      "take": [
+        {
+          "name": "items",
+          "like": "list, like t"
+        }
+      ],
+      "like": "list, like pair, like number, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "epoch-millis",
+      "site": "code/native/node/time.tree:7:1",
+      "take": [],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "error",
+      "site": "code/log.tree:23:1",
+      "take": [
+        {
+          "name": "message",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "write-error"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "exception-code",
+      "site": "code/exception.tree:40:1",
+      "take": [],
+      "like": "text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "version4",
+          "generate-v4"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "exception-time",
+      "site": "code/exception.tree:76:1",
+      "take": [],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "now",
+          "epoch-millis"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "exists",
+      "site": "code/file.tree:121:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "boolean",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "test",
+          "file-exists"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "exists",
+      "site": "code/file/directory.tree:28:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "boolean",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "directory-exists"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "exit",
+      "site": "code/process.tree:15:1",
+      "take": [
+        {
+          "name": "code",
+          "like": "number"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "exit-with"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "exit-with",
+      "site": "code/native/node/process.tree:12:1",
+      "take": [
+        {
+          "name": "code",
+          "like": "number"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "fetch-variable",
+      "site": "code/native/node/environment/variable.tree:8:1",
+      "take": [
+        {
+          "name": "name",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "file-exists",
+      "site": "code/native/node/file.tree:81:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "boolean",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "flat-map",
+      "site": "code/list.tree:1115:1",
+      "take": [
+        {
+          "name": "items",
+          "like": "list, like t"
+        },
+        {
+          "name": "call",
+          "like": "task(t) -> list, like s"
+        }
+      ],
+      "like": "list, like s",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "flatten",
+      "site": "code/list.tree:529:1",
+      "take": [
+        {
+          "name": "lists",
+          "like": "list, like list, like t"
+        }
+      ],
+      "like": "list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "from-base64",
+      "site": "code/bytes.tree:94:1",
+      "take": [
+        {
+          "name": "text",
+          "like": "text"
+        }
+      ],
+      "like": "bytes",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "octets-from-base64"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "from-hex",
+      "site": "code/bytes.tree:80:1",
+      "take": [
+        {
+          "name": "text",
+          "like": "text"
+        }
+      ],
+      "like": "bytes",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "octets-from-hex"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "from-numbers",
+      "site": "code/ordering.tree:56:1",
+      "take": [
+        {
+          "name": "left",
+          "like": "number"
+        },
+        {
+          "name": "right",
+          "like": "number"
+        }
+      ],
+      "like": "ordering",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "from-runes",
+      "site": "code/text/unicode.tree:215:1",
+      "take": [
+        {
+          "name": "runes",
+          "like": "list, like number"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "from-text",
+      "site": "code/bytes.tree:17:1",
+      "take": [
+        {
+          "name": "text",
+          "like": "text"
+        }
+      ],
+      "like": "bytes",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "octets-from-text"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "from-texts",
+      "site": "code/ordering.tree:81:1",
+      "take": [
+        {
+          "name": "left",
+          "like": "text"
+        },
+        {
+          "name": "right",
+          "like": "text"
+        }
+      ],
+      "like": "ordering",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "gather-variables",
+      "site": "code/native/node/environment/variable.tree:30:1",
+      "take": [],
+      "like": "hash, like text, like text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "generate-v4",
+      "site": "code/native/node/uuid.tree:10:1",
+      "take": [],
+      "like": "text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "get-platform",
+      "site": "code/native/node/process.tree:7:1",
+      "take": [],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "get-variable",
+      "site": "code/native/node/environment.tree:12:1",
+      "take": [
+        {
+          "name": "name",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "group-by",
+      "site": "code/list.tree:1027:1",
+      "take": [
+        {
+          "name": "items",
+          "like": "list, like t"
+        },
+        {
+          "name": "key-of",
+          "like": "task(t) -> k"
+        }
+      ],
+      "like": "hash, like k, like list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "has-variable",
+      "site": "code/environment.tree:45:1",
+      "take": [
+        {
+          "name": "name",
+          "like": "text"
+        }
+      ],
+      "like": "boolean",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "holds-variable"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "hash/change",
+      "site": "code/hash.tree:177:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "hash, like k, like v"
+        },
+        {
+          "name": "key",
+          "like": "k"
+        },
+        {
+          "name": "fallback",
+          "like": "v"
+        },
+        {
+          "name": "call",
+          "like": "task(v) -> v"
+        }
+      ],
+      "like": "v",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "hash/clear",
+      "site": "code/hash.tree:122:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "hash, like k, like v"
+        }
+      ],
+      "like": "hash, like k, like v",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "hash/count",
+      "site": "code/hash.tree:100:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "hash, like k, like v"
+        }
+      ],
+      "like": "number",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "hash/entries",
+      "site": "code/hash.tree:138:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "hash, like k, like v"
+        }
+      ],
+      "like": "list, like pair, like k, like v",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "hash/get",
+      "site": "code/hash.tree:17:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "hash, like k, like v"
+        },
+        {
+          "name": "key",
+          "like": "k"
+        }
+      ],
+      "like": "maybe, like v",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "hash/get-or-default",
+      "site": "code/hash.tree:107:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "hash, like k, like v"
+        },
+        {
+          "name": "key",
+          "like": "k"
+        },
+        {
+          "name": "fallback",
+          "like": "v"
+        }
+      ],
+      "like": "v",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "hash/has",
+      "site": "code/hash.tree:48:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "hash, like k, like v"
+        },
+        {
+          "name": "key",
+          "like": "k"
+        }
+      ],
+      "like": "boolean",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "hash/is-empty",
+      "site": "code/hash.tree:77:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "hash, like k, like v"
+        }
+      ],
+      "like": "boolean",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "hash/keys",
+      "site": "code/hash.tree:85:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "hash, like k, like v"
+        }
+      ],
+      "like": "list, like k",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "hash/length",
+      "site": "code/hash.tree:65:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "hash, like k, like v"
+        }
+      ],
+      "like": "number",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "hash/map-values",
+      "site": "code/hash.tree:198:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "hash, like k, like v"
+        },
+        {
+          "name": "call",
+          "like": "task(v) -> w"
+        }
+      ],
+      "like": "hash, like k, like w",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "hash/merge",
+      "site": "code/hash.tree:237:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "hash, like k, like v"
+        },
+        {
+          "name": "other",
+          "like": "hash, like k, like v"
+        }
+      ],
+      "like": "hash, like k, like v",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "hash/remove",
+      "site": "code/hash.tree:56:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "hash, like k, like v"
+        },
+        {
+          "name": "key",
+          "like": "k"
+        }
+      ],
+      "like": "boolean",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "hash/set",
+      "site": "code/hash.tree:36:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "hash, like k, like v"
+        },
+        {
+          "name": "key",
+          "like": "k"
+        },
+        {
+          "name": "value",
+          "like": "v"
+        }
+      ],
+      "like": "hash, like k, like v",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "hash/size",
+      "site": "code/hash.tree:71:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "hash, like k, like v"
+        }
+      ],
+      "like": "number",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "hash/values",
+      "site": "code/hash.tree:92:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "hash, like k, like v"
+        }
+      ],
+      "like": "list, like v",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "holds-variable",
+      "site": "code/native/node/environment/variable.tree:38:1",
+      "take": [
+        {
+          "name": "name",
+          "like": "text"
+        }
+      ],
+      "like": "boolean",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "index-of",
+      "site": "code/text.tree:69:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        },
+        {
+          "name": "search",
+          "like": "text"
+        },
+        {
+          "name": "start-index",
+          "like": "number",
+          "need": false
+        }
+      ],
+      "like": "number",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "info",
+      "site": "code/log.tree:11:1",
+      "take": [
+        {
+          "name": "message",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "write-info"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "insert-at",
+      "site": "code/list.tree:1143:1",
+      "take": [
+        {
+          "name": "items",
+          "like": "list, like t"
+        },
+        {
+          "name": "at",
+          "like": "number"
+        },
+        {
+          "name": "item",
+          "like": "t"
+        }
+      ],
+      "like": "list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "known-locales",
+      "site": "code/native/node/environment/language.tree:49:1",
+      "take": [],
+      "like": "list",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "last-index-of",
+      "site": "code/text.tree:85:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        },
+        {
+          "name": "search",
+          "like": "text"
+        }
+      ],
+      "like": "number",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "length",
+      "site": "code/bytes.tree:102:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "bytes"
+        }
+      ],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "octets-length"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list",
+      "site": "code/file/directory.tree:35:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "list, like text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "directory-list"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/all",
+      "site": "code/list.tree:235:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "test",
+          "like": "task(t) -> boolean"
+        }
+      ],
+      "like": "boolean",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/any",
+      "site": "code/list.tree:224:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "test",
+          "like": "task(t) -> boolean"
+        }
+      ],
+      "like": "boolean",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/clear",
+      "site": "code/list.tree:84:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        }
+      ],
+      "like": "list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/concat",
+      "site": "code/list.tree:177:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "other",
+          "like": "list, like t"
+        }
+      ],
+      "like": "list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/contains",
+      "site": "code/list.tree:107:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "item",
+          "like": "t"
+        }
+      ],
+      "like": "boolean",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/copy",
+      "site": "code/list.tree:99:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        }
+      ],
+      "like": "list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/count",
+      "site": "code/list.tree:329:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        }
+      ],
+      "like": "number",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/drop",
+      "site": "code/list.tree:389:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "count",
+          "like": "number"
+        },
+        {
+          "name": "side",
+          "like": "side"
+        }
+      ],
+      "like": "list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/drop-first",
+      "site": "code/list.tree:319:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "count",
+          "like": "number"
+        }
+      ],
+      "like": "list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/drop-last",
+      "site": "code/list.tree:428:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "count",
+          "like": "number"
+        }
+      ],
+      "like": "list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/filter",
+      "site": "code/list.tree:212:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "test",
+          "like": "task(t) -> boolean"
+        }
+      ],
+      "like": "list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/find",
+      "site": "code/list.tree:498:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "test",
+          "like": "task(t) -> boolean"
+        }
+      ],
+      "like": "maybe, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/find-index",
+      "site": "code/list.tree:117:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "test",
+          "like": "task(t) -> boolean"
+        }
+      ],
+      "like": "number",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/first",
+      "site": "code/list.tree:261:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        }
+      ],
+      "like": "maybe, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/get",
+      "site": "code/list.tree:62:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "index",
+          "like": "number"
+        }
+      ],
+      "like": "t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/index-of",
+      "site": "code/list.tree:301:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "item",
+          "like": "t"
+        }
+      ],
+      "like": "number",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/is-empty",
+      "site": "code/list.tree:40:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        }
+      ],
+      "like": "boolean",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/join",
+      "site": "code/list.tree:162:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "separator",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/last",
+      "site": "code/list.tree:280:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        }
+      ],
+      "like": "maybe, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/last-index-of",
+      "site": "code/list.tree:441:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "item",
+          "like": "t"
+        }
+      ],
+      "like": "number",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/length",
+      "site": "code/list.tree:28:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        }
+      ],
+      "like": "number",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/map",
+      "site": "code/list.tree:199:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "call",
+          "like": "task(t) -> s"
+        }
+      ],
+      "like": "list, like s",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/pop",
+      "site": "code/list.tree:56:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        }
+      ],
+      "like": "t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/product",
+      "site": "code/list.tree:463:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like number"
+        }
+      ],
+      "like": "number",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/push",
+      "site": "code/list.tree:48:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "item",
+          "like": "t"
+        }
+      ],
+      "like": "number",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/reduce",
+      "site": "code/list.tree:246:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "call",
+          "like": "task(s, t) -> s"
+        },
+        {
+          "name": "initial",
+          "like": "s"
+        }
+      ],
+      "like": "s",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/reverse",
+      "site": "code/list.tree:170:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        }
+      ],
+      "like": "list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/set",
+      "site": "code/list.tree:71:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "index",
+          "like": "number"
+        },
+        {
+          "name": "item",
+          "like": "t"
+        }
+      ],
+      "like": "list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/size",
+      "site": "code/list.tree:34:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        }
+      ],
+      "like": "number",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/slice",
+      "site": "code/list.tree:188:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "start",
+          "like": "number"
+        },
+        {
+          "name": "end",
+          "like": "number"
+        }
+      ],
+      "like": "list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/sum",
+      "site": "code/list.tree:450:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like number"
+        }
+      ],
+      "like": "number",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/take",
+      "site": "code/list.tree:337:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "count",
+          "like": "number"
+        },
+        {
+          "name": "side",
+          "like": "side"
+        }
+      ],
+      "like": "list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/take-first",
+      "site": "code/list.tree:309:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "count",
+          "like": "number"
+        }
+      ],
+      "like": "list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/take-last",
+      "site": "code/list.tree:417:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        },
+        {
+          "name": "count",
+          "like": "number"
+        }
+      ],
+      "like": "list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "list/unique",
+      "site": "code/list.tree:476:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "list, like t"
+        }
+      ],
+      "like": "list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "locale",
+      "site": "code/environment.tree:73:1",
+      "take": [],
+      "like": "locale",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "read-locale"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "locales",
+      "site": "code/environment.tree:79:1",
+      "take": [],
+      "like": "list, like text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "known-locales"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "make",
+      "site": "code/file/directory.tree:14:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "directory-make"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "max-by",
+      "site": "code/list.tree:1255:1",
+      "take": [
+        {
+          "name": "items",
+          "like": "list, like t"
+        },
+        {
+          "name": "compare",
+          "like": "task(t, t) -> ordering"
+        }
+      ],
+      "like": "maybe, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "maybe/and-then",
+      "site": "code/maybe.tree:56:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "maybe, like t"
+        },
+        {
+          "name": "call",
+          "like": "task(t) -> maybe"
+        }
+      ],
+      "like": "maybe",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "maybe/filter",
+      "site": "code/maybe.tree:83:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "maybe, like t"
+        },
+        {
+          "name": "test",
+          "like": "task(t) -> boolean"
+        }
+      ],
+      "like": "maybe, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "maybe/get-or-else",
+      "site": "code/maybe.tree:105:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "maybe, like t"
+        },
+        {
+          "name": "fallback",
+          "like": "task() -> t"
+        }
+      ],
+      "like": "t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "maybe/is-none",
+      "site": "code/maybe.tree:18:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "maybe, like t"
+        }
+      ],
+      "like": "boolean",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "maybe/is-some",
+      "site": "code/maybe.tree:9:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "maybe, like t"
+        }
+      ],
+      "like": "boolean",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "maybe/map",
+      "site": "code/maybe.tree:37:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "maybe, like t"
+        },
+        {
+          "name": "call",
+          "like": "task(t) -> s"
+        }
+      ],
+      "like": "maybe, like s",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "maybe/or-else",
+      "site": "code/maybe.tree:73:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "maybe, like t"
+        },
+        {
+          "name": "fallback",
+          "like": "maybe, like t"
+        }
+      ],
+      "like": "maybe, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "maybe/unwrap",
+      "site": "code/maybe.tree:118:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "maybe, like t"
+        }
+      ],
+      "like": "t",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "maybe/unwrap-or",
+      "site": "code/maybe.tree:27:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "maybe, like t"
+        },
+        {
+          "name": "fallback",
+          "like": "t"
+        }
+      ],
+      "like": "t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "min-by",
+      "site": "code/list.tree:1216:1",
+      "take": [
+        {
+          "name": "items",
+          "like": "list, like t"
+        },
+        {
+          "name": "compare",
+          "like": "task(t, t) -> ordering"
+        }
+      ],
+      "like": "maybe, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "move",
+      "site": "code/file.tree:102:1",
+      "take": [
+        {
+          "name": "from",
+          "like": "text"
+        },
+        {
+          "name": "to",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "move-file"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "move-file",
+      "site": "code/native/node/file.tree:72:1",
+      "take": [
+        {
+          "name": "from",
+          "like": "text"
+        },
+        {
+          "name": "to",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "multiply-32",
+      "site": "code/bit.tree:84:1",
+      "take": [
+        {
+          "name": "left",
+          "like": "number"
+        },
+        {
+          "name": "right",
+          "like": "number"
+        }
+      ],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "bit-multiply-32"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "normalize",
+      "site": "code/text/unicode.tree:157:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        },
+        {
+          "name": "form",
+          "like": "normal-form"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "now",
+      "site": "code/time.tree:9:1",
+      "take": [],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "epoch-millis"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "octets-from-base64",
+      "site": "code/native/node/bytes.tree:41:1",
+      "take": [
+        {
+          "name": "text",
+          "like": "text"
+        }
+      ],
+      "like": "bytes",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "octets-from-hex",
+      "site": "code/native/node/bytes.tree:27:1",
+      "take": [
+        {
+          "name": "text",
+          "like": "text"
+        }
+      ],
+      "like": "bytes",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "octets-from-text",
+      "site": "code/native/node/bytes.tree:6:1",
+      "take": [
+        {
+          "name": "text",
+          "like": "text"
+        }
+      ],
+      "like": "bytes",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "octets-length",
+      "site": "code/native/node/bytes.tree:48:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "bytes"
+        }
+      ],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "octets-to-base64",
+      "site": "code/native/node/bytes.tree:34:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "bytes"
+        }
+      ],
+      "like": "text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "octets-to-hex",
+      "site": "code/native/node/bytes.tree:20:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "bytes"
+        }
+      ],
+      "like": "text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "octets-to-text",
+      "site": "code/native/node/bytes.tree:13:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "bytes"
+        }
+      ],
+      "like": "text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "ordering/is-equal",
+      "site": "code/ordering.tree:21:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "ordering"
+        }
+      ],
+      "like": "boolean",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "ordering/is-greater",
+      "site": "code/ordering.tree:32:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "ordering"
+        }
+      ],
+      "like": "boolean",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "ordering/is-less",
+      "site": "code/ordering.tree:10:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "ordering"
+        }
+      ],
+      "like": "boolean",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "ordering/reverse",
+      "site": "code/ordering.tree:44:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "ordering"
+        }
+      ],
+      "like": "ordering",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "pad-left",
+      "site": "code/text.tree:162:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        },
+        {
+          "name": "length",
+          "like": "number"
+        },
+        {
+          "name": "fill",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "pad-right",
+      "site": "code/text.tree:172:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        },
+        {
+          "name": "length",
+          "like": "number"
+        },
+        {
+          "name": "fill",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "pair/get-first",
+      "site": "code/pair.tree:9:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "pair, like a, like b"
+        }
+      ],
+      "like": "a",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "pair/get-second",
+      "site": "code/pair.tree:14:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "pair, like a, like b"
+        }
+      ],
+      "like": "b",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "pair/map-both",
+      "site": "code/pair.tree:57:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "pair, like a, like b"
+        },
+        {
+          "name": "on-first",
+          "like": "task(a) -> c"
+        },
+        {
+          "name": "on-second",
+          "like": "task(b) -> d"
+        }
+      ],
+      "like": "pair, like c, like d",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "pair/map-first",
+      "site": "code/pair.tree:27:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "pair, like a, like b"
+        },
+        {
+          "name": "call",
+          "like": "task(a) -> c"
+        }
+      ],
+      "like": "pair, like c, like b",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "pair/map-second",
+      "site": "code/pair.tree:42:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "pair, like a, like b"
+        },
+        {
+          "name": "call",
+          "like": "task(b) -> c"
+        }
+      ],
+      "like": "pair, like a, like c",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "pair/swap",
+      "site": "code/pair.tree:19:3",
+      "take": [
+        {
+          "name": "self",
+          "like": "pair, like a, like b"
+        }
+      ],
+      "like": "pair, like b, like a",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "partition",
+      "site": "code/list.tree:1073:1",
+      "take": [
+        {
+          "name": "items",
+          "like": "list, like t"
+        },
+        {
+          "name": "test",
+          "like": "task(t) -> boolean"
+        }
+      ],
+      "like": "list, like list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "platform",
+      "site": "code/process.tree:10:1",
+      "take": [],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "read",
+      "site": "code/file.tree:27:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": [
+        "absence",
+        "failure"
+      ],
+      "path": {
+        "absence": [],
+        "failure": [
+          "file-exists"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "read-bytes",
+      "site": "code/file.tree:53:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "bytes",
+      "halt": [
+        "absence",
+        "failure"
+      ],
+      "path": {
+        "absence": [],
+        "failure": [
+          "file-exists"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "read-file",
+      "site": "code/native/node/file.tree:12:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "read-file-bytes",
+      "site": "code/native/node/file.tree:30:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "bytes",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "read-locale",
+      "site": "code/native/node/environment/language.tree:12:1",
+      "take": [],
+      "like": "locale",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "remove",
+      "site": "code/file.tree:86:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "remove-file"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "remove",
+      "site": "code/file/directory.tree:21:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "directory-remove"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "remove-at",
+      "site": "code/list.tree:1187:1",
+      "take": [
+        {
+          "name": "items",
+          "like": "list, like t"
+        },
+        {
+          "name": "at",
+          "like": "number"
+        }
+      ],
+      "like": "list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "remove-file",
+      "site": "code/native/node/file.tree:56:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "remove-variable",
+      "site": "code/environment.tree:59:1",
+      "take": [
+        {
+          "name": "name",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "drop-variable"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "replace",
+      "site": "code/text.tree:182:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        },
+        {
+          "name": "search",
+          "like": "text"
+        },
+        {
+          "name": "replacement",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "replace-all",
+      "site": "code/text.tree:192:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        },
+        {
+          "name": "search",
+          "like": "text"
+        },
+        {
+          "name": "replacement",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "run",
+      "site": "code/process/run.tree:52:1",
+      "take": [
+        {
+          "name": "command",
+          "like": "text"
+        },
+        {
+          "name": "argument-list",
+          "like": "list, like text"
+        },
+        {
+          "name": "directory",
+          "like": "text",
+          "need": false
+        },
+        {
+          "name": "environment",
+          "like": "hash, like text, like text",
+          "need": false
+        },
+        {
+          "name": "limit",
+          "like": "number",
+          "need": false
+        }
+      ],
+      "like": "run-result",
+      "halt": [
+        "command-absence",
+        "command-timeout",
+        "failure"
+      ],
+      "path": {
+        "command-absence": [
+          "started"
+        ],
+        "command-timeout": [
+          "limited"
+        ],
+        "failure": [
+          "spawn-process"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "run-attached",
+      "site": "code/process/run.tree:92:1",
+      "take": [
+        {
+          "name": "command",
+          "like": "text"
+        },
+        {
+          "name": "argument-list",
+          "like": "list, like text"
+        },
+        {
+          "name": "directory",
+          "like": "text",
+          "need": false
+        },
+        {
+          "name": "environment",
+          "like": "hash, like text, like text",
+          "need": false
+        },
+        {
+          "name": "limit",
+          "like": "number",
+          "need": false
+        }
+      ],
+      "like": "number",
+      "halt": [
+        "command-absence",
+        "command-timeout",
+        "failure"
+      ],
+      "path": {
+        "command-absence": [],
+        "command-timeout": [],
+        "failure": [
+          "spawn-on-terminal"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "run-with-input",
+      "site": "code/process/run.tree:142:1",
+      "take": [
+        {
+          "name": "command",
+          "like": "text"
+        },
+        {
+          "name": "argument-list",
+          "like": "list, like text"
+        },
+        {
+          "name": "input",
+          "like": "text"
+        },
+        {
+          "name": "directory",
+          "like": "text",
+          "need": false
+        },
+        {
+          "name": "environment",
+          "like": "hash, like text, like text",
+          "need": false
+        },
+        {
+          "name": "limit",
+          "like": "number",
+          "need": false
+        }
+      ],
+      "like": "run-result",
+      "halt": [
+        "command-absence",
+        "command-timeout",
+        "failure"
+      ],
+      "path": {
+        "command-absence": [
+          "started"
+        ],
+        "command-timeout": [
+          "limited"
+        ],
+        "failure": [
+          "spawn-with-input"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "set-variable",
+      "site": "code/environment.tree:52:1",
+      "take": [
+        {
+          "name": "name",
+          "like": "text"
+        },
+        {
+          "name": "value",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "store-variable"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "shift-left",
+      "site": "code/bit.tree:49:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "number"
+        },
+        {
+          "name": "count",
+          "like": "number"
+        }
+      ],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "bit-shift-left"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "shift-right",
+      "site": "code/bit.tree:58:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "number"
+        },
+        {
+          "name": "count",
+          "like": "number"
+        }
+      ],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "bit-shift-right"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "slice",
+      "site": "code/bytes.tree:127:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "bytes"
+        },
+        {
+          "name": "start",
+          "like": "number"
+        },
+        {
+          "name": "end",
+          "like": "number"
+        }
+      ],
+      "like": "bytes",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "bytes-slice"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "sort",
+      "site": "code/list.tree:706:1",
+      "take": [
+        {
+          "name": "items",
+          "like": "list, like t"
+        },
+        {
+          "name": "compare",
+          "like": "task(t, t) -> ordering"
+        }
+      ],
+      "like": "list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "sort-by",
+      "site": "code/list.tree:794:1",
+      "take": [
+        {
+          "name": "items",
+          "like": "list, like t"
+        },
+        {
+          "name": "key",
+          "like": "task(t) -> number"
+        }
+      ],
+      "like": "list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "spawn-on-terminal",
+      "site": "code/native/node/process/run.tree:31:1",
+      "take": [
+        {
+          "name": "command",
+          "like": "text"
+        },
+        {
+          "name": "argument-list",
+          "like": "list, like text"
+        },
+        {
+          "name": "directory",
+          "like": "text"
+        },
+        {
+          "name": "environment",
+          "like": "hash, like text, like text"
+        },
+        {
+          "name": "limit",
+          "like": "number"
+        }
+      ],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "spawn-process",
+      "site": "code/native/node/process/run.tree:9:1",
+      "take": [
+        {
+          "name": "command",
+          "like": "text"
+        },
+        {
+          "name": "argument-list",
+          "like": "list, like text"
+        },
+        {
+          "name": "directory",
+          "like": "text"
+        },
+        {
+          "name": "environment",
+          "like": "hash, like text, like text"
+        },
+        {
+          "name": "limit",
+          "like": "number"
+        }
+      ],
+      "like": "run-result",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "spawn-with-input",
+      "site": "code/native/node/process/run.tree:53:1",
+      "take": [
+        {
+          "name": "command",
+          "like": "text"
+        },
+        {
+          "name": "argument-list",
+          "like": "list, like text"
+        },
+        {
+          "name": "input",
+          "like": "text"
+        },
+        {
+          "name": "directory",
+          "like": "text"
+        },
+        {
+          "name": "environment",
+          "like": "hash, like text, like text"
+        },
+        {
+          "name": "limit",
+          "like": "number"
+        }
+      ],
+      "like": "run-result",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "split",
+      "site": "code/text.tree:93:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        },
+        {
+          "name": "delimiter",
+          "like": "text"
+        }
+      ],
+      "like": "list, like text",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "starts-with",
+      "site": "code/text.tree:128:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        },
+        {
+          "name": "prefix",
+          "like": "text"
+        }
+      ],
+      "like": "boolean",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "stat",
+      "site": "code/file.tree:130:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "path-info",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "stat-file"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "stat-file",
+      "site": "code/native/node/file.tree:89:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "path-info",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "store-variable",
+      "site": "code/native/node/environment/variable.tree:16:1",
+      "take": [
+        {
+          "name": "name",
+          "like": "text"
+        },
+        {
+          "name": "value",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "substring",
+      "site": "code/text.tree:106:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        },
+        {
+          "name": "start-index",
+          "like": "number"
+        },
+        {
+          "name": "end-index",
+          "like": "number",
+          "need": false
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "test",
+      "site": "code/file.tree:111:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "boolean",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "file-exists"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "to-base64",
+      "site": "code/bytes.tree:87:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "bytes"
+        }
+      ],
+      "like": "text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "octets-to-base64"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "to-hex",
+      "site": "code/bytes.tree:73:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "bytes"
+        }
+      ],
+      "like": "text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "octets-to-hex"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "to-lower-case",
+      "site": "code/text.tree:116:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "to-text",
+      "site": "code/bytes.tree:24:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "bytes"
+        }
+      ],
+      "like": "text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "octets-to-text"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "to-upper-case",
+      "site": "code/text.tree:122:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "tone-encode",
+      "site": "code/tone.tree:23:1",
+      "take": [
+        {
+          "name": "hex",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "tone-pack",
+      "site": "code/tone.tree:96:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "bytes"
+        }
+      ],
+      "like": "text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "to-hex",
+          "octets-to-hex"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "tone-unpack",
+      "site": "code/tone.tree:232:1",
+      "take": [
+        {
+          "name": "code",
+          "like": "text"
+        }
+      ],
+      "like": "bytes",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "bitwise-and",
+          "bit-and"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "trim",
+      "site": "code/text.tree:144:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "trim-end",
+      "site": "code/text.tree:156:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "trim-start",
+      "site": "code/text.tree:150:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "unsigned-shift-right",
+      "site": "code/bit.tree:68:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "number"
+        },
+        {
+          "name": "count",
+          "like": "number"
+        }
+      ],
+      "like": "number",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "bit-shift-right-unsigned"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "variable",
+      "site": "code/environment.tree:38:1",
+      "take": [
+        {
+          "name": "name",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "get-variable"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "variables",
+      "site": "code/environment.tree:65:1",
+      "take": [],
+      "like": "hash, like text, like text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "gather-variables"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "version4",
+      "site": "code/uuid.tree:8:1",
+      "take": [],
+      "like": "text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "generate-v4"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "walk",
+      "site": "code/file/directory.tree:45:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "list, like text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "directory-walk"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "warn",
+      "site": "code/log.tree:17:1",
+      "take": [
+        {
+          "name": "message",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "write-warn"
+        ]
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "window",
+      "site": "code/list.tree:956:1",
+      "take": [
+        {
+          "name": "items",
+          "like": "list, like t"
+        },
+        {
+          "name": "count",
+          "like": "number"
+        }
+      ],
+      "like": "list, like list, like t",
+      "halt": []
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "working-directory",
+      "site": "code/native/node/environment/directory.tree:8:1",
+      "take": [],
+      "like": "text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "write",
+      "site": "code/file.tree:42:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        },
+        {
+          "name": "data",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "write-file"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "write-bytes",
+      "site": "code/file.tree:68:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        },
+        {
+          "name": "data",
+          "like": "bytes"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "write-file-bytes"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "write-debug",
+      "site": "code/native/node/log.tree:21:1",
+      "take": [
+        {
+          "name": "message",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "write-error",
+      "site": "code/native/node/log.tree:16:1",
+      "take": [
+        {
+          "name": "message",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "write-file",
+      "site": "code/native/node/file.tree:21:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        },
+        {
+          "name": "data",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "write-file-bytes",
+      "site": "code/native/node/file.tree:38:1",
+      "take": [
+        {
+          "name": "path",
+          "like": "text"
+        },
+        {
+          "name": "data",
+          "like": "bytes"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      },
+      "async": true
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "write-info",
+      "site": "code/native/node/log.tree:6:1",
+      "take": [
+        {
+          "name": "message",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "write-warn",
+      "site": "code/native/node/log.tree:11:1",
+      "take": [
+        {
+          "name": "message",
+          "like": "text"
+        }
+      ],
+      "like": "void",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": []
+      }
+    },
+    {
+      "host": "@term/base",
+      "kind": "task",
+      "name": "zip",
+      "site": "code/list.tree:830:1",
+      "take": [
+        {
+          "name": "left",
+          "like": "list, like a"
+        },
+        {
+          "name": "right",
+          "like": "list, like b"
+        }
+      ],
+      "like": "list, like pair, like a, like b",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "android-archive",
+      "site": "task/dev/bootstrap/share.tree:256:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "android-tool",
+      "site": "task/dev/bootstrap/share.tree:301:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        },
+        {
+          "name": "home",
+          "like": "text"
+        }
+      ],
+      "like": "tool",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "answered-command",
+      "site": "task/dev/bootstrap/plan.tree:204:1",
+      "take": [
+        {
+          "name": "note",
+          "like": "text"
+        },
+        {
+          "name": "program",
+          "like": "text"
+        },
+        {
+          "name": "arguments",
+          "like": "list, like text"
+        },
+        {
+          "name": "input",
+          "like": "text"
+        }
+      ],
+      "like": "step",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "answers",
+      "site": "task/dev/bootstrap/base.tree:108:1",
+      "take": [
+        {
+          "name": "program",
+          "like": "text"
+        }
+      ],
+      "like": "boolean",
+      "halt": [
+        "command-absence",
+        "command-timeout",
+        "failure"
+      ],
+      "path": {
+        "command-absence": [
+          "run",
+          "started"
+        ],
+        "command-timeout": [
+          "run",
+          "limited"
+        ],
+        "failure": [
+          "run",
+          "spawn-process"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "apply-settings",
+      "site": "task/dev/bootstrap/base.tree:314:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "boolean",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "present-settings",
+          "exists",
+          "directory-exists"
+        ]
+      }
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "architecture-of",
+      "site": "task/dev/bootstrap/base.tree:124:1",
+      "take": [
+        {
+          "name": "system",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": [
+        "command-absence",
+        "command-timeout",
+        "failure"
+      ],
+      "path": {
+        "command-absence": [
+          "run",
+          "started"
+        ],
+        "command-timeout": [
+          "run",
+          "limited"
+        ],
+        "failure": [
+          "variable",
+          "get-variable"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "arguments",
+      "site": "task/dev/bootstrap/plan.tree:94:1",
+      "take": [
+        {
+          "name": "a",
+          "like": "text",
+          "need": false
+        },
+        {
+          "name": "b",
+          "like": "text",
+          "need": false
+        },
+        {
+          "name": "c",
+          "like": "text",
+          "need": false
+        },
+        {
+          "name": "d",
+          "like": "text",
+          "need": false
+        },
+        {
+          "name": "e",
+          "like": "text",
+          "need": false
+        },
+        {
+          "name": "f",
+          "like": "text",
+          "need": false
+        },
+        {
+          "name": "g",
+          "like": "text",
+          "need": false
+        },
+        {
+          "name": "h",
+          "like": "text",
+          "need": false
+        },
+        {
+          "name": "i",
+          "like": "text",
+          "need": false
+        },
+        {
+          "name": "j",
+          "like": "text",
+          "need": false
+        },
+        {
+          "name": "k",
+          "like": "text",
+          "need": false
+        },
+        {
+          "name": "l",
+          "like": "text",
+          "need": false
+        }
+      ],
+      "like": "list, like text",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "brew-prefix",
+      "site": "task/dev/bootstrap/mac.tree:44:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "check",
+      "site": "task/dev/bootstrap/base.tree:730:1",
+      "take": [],
+      "like": "boolean",
+      "halt": [
+        "command-absence",
+        "command-timeout",
+        "failure"
+      ],
+      "path": {
+        "command-absence": [
+          "detect-machine",
+          "architecture-of",
+          "run",
+          "started"
+        ],
+        "command-timeout": [
+          "detect-machine",
+          "architecture-of",
+          "run",
+          "limited"
+        ],
+        "failure": [
+          "detect-machine",
+          "variable",
+          "get-variable"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "cmd-safe",
+      "site": "task/dev/bootstrap/base.tree:376:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        }
+      ],
+      "like": "boolean",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "command",
+      "site": "task/dev/bootstrap/plan.tree:168:1",
+      "take": [
+        {
+          "name": "note",
+          "like": "text"
+        },
+        {
+          "name": "program",
+          "like": "text"
+        },
+        {
+          "name": "arguments",
+          "like": "list, like text"
+        }
+      ],
+      "like": "step",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "describe",
+      "site": "task/dev/bootstrap/base.tree:461:1",
+      "take": [
+        {
+          "name": "step",
+          "like": "step"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "detect-machine",
+      "site": "task/dev/bootstrap/base.tree:208:1",
+      "take": [],
+      "like": "machine",
+      "halt": [
+        "command-absence",
+        "command-timeout",
+        "failure"
+      ],
+      "path": {
+        "command-absence": [
+          "architecture-of",
+          "run",
+          "started"
+        ],
+        "command-timeout": [
+          "architecture-of",
+          "run",
+          "limited"
+        ],
+        "failure": [
+          "variable",
+          "get-variable"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "distro-step",
+      "site": "task/dev/bootstrap/linux.tree:65:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        },
+        {
+          "name": "note",
+          "like": "text"
+        },
+        {
+          "name": "apt",
+          "like": "text"
+        },
+        {
+          "name": "dnf",
+          "like": "text"
+        },
+        {
+          "name": "pacman",
+          "like": "text"
+        },
+        {
+          "name": "zypper",
+          "like": "text"
+        }
+      ],
+      "like": "step",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "download-step",
+      "site": "task/dev/bootstrap/plan.tree:277:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        },
+        {
+          "name": "note",
+          "like": "text"
+        },
+        {
+          "name": "url",
+          "like": "text"
+        },
+        {
+          "name": "into",
+          "like": "text"
+        }
+      ],
+      "like": "step",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "examine",
+      "site": "task/dev/bootstrap/base.tree:606:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        },
+        {
+          "name": "tool",
+          "like": "tool"
+        }
+      ],
+      "like": "finding",
+      "halt": [
+        "command-absence",
+        "command-timeout",
+        "failure"
+      ],
+      "path": {
+        "command-absence": [
+          "run",
+          "started"
+        ],
+        "command-timeout": [
+          "run",
+          "limited"
+        ],
+        "failure": [
+          "test",
+          "file-exists"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "first-line",
+      "site": "task/dev/bootstrap/base.tree:584:1",
+      "take": [
+        {
+          "name": "text",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "first-path-line",
+      "site": "task/dev/bootstrap/base.tree:1124:1",
+      "take": [
+        {
+          "name": "output",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "install",
+      "site": "task/dev/bootstrap/base.tree:766:1",
+      "take": [
+        {
+          "name": "commit",
+          "like": "boolean"
+        },
+        {
+          "name": "all",
+          "like": "boolean"
+        },
+        {
+          "name": "only",
+          "like": "text"
+        }
+      ],
+      "like": "boolean",
+      "halt": [
+        "absence",
+        "command-absence",
+        "command-timeout",
+        "failure"
+      ],
+      "path": {
+        "absence": [
+          "write-profile",
+          "read"
+        ],
+        "command-absence": [
+          "detect-machine",
+          "architecture-of",
+          "run",
+          "started"
+        ],
+        "command-timeout": [
+          "detect-machine",
+          "architecture-of",
+          "run",
+          "limited"
+        ],
+        "failure": [
+          "detect-machine",
+          "variable",
+          "get-variable"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "invocation-of",
+      "site": "task/dev/bootstrap/base.tree:411:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        },
+        {
+          "name": "program",
+          "like": "text"
+        },
+        {
+          "name": "arguments",
+          "like": "list, like text"
+        }
+      ],
+      "like": "invocation",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "join-path",
+      "site": "task/dev/bootstrap/share.tree:33:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        },
+        {
+          "name": "a",
+          "like": "text"
+        },
+        {
+          "name": "b",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "kotlin-tool",
+      "site": "task/dev/bootstrap/share.tree:144:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "tool",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "last-word",
+      "site": "task/dev/bootstrap/base.tree:1143:1",
+      "take": [
+        {
+          "name": "line",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "license-answers",
+      "site": "task/dev/bootstrap/share.tree:282:1",
+      "take": [],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "line-break",
+      "site": "task/dev/bootstrap/base.tree:83:1",
+      "take": [],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "linux-android-home",
+      "site": "task/dev/bootstrap/linux.tree:84:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "linux-settings",
+      "site": "task/dev/bootstrap/linux.tree:103:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "list, like setting",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "linux-tools",
+      "site": "task/dev/bootstrap/linux.tree:141:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "list, like tool",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "mac-android-home",
+      "site": "task/dev/bootstrap/mac.tree:56:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "mac-settings",
+      "site": "task/dev/bootstrap/mac.tree:62:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "list, like setting",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "mac-tools",
+      "site": "task/dev/bootstrap/mac.tree:105:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "list, like tool",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "make-directory-step",
+      "site": "task/dev/bootstrap/plan.tree:242:1",
+      "take": [
+        {
+          "name": "note",
+          "like": "text"
+        },
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "step",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "make-setting",
+      "site": "task/dev/bootstrap/plan.tree:336:1",
+      "take": [
+        {
+          "name": "name",
+          "like": "text"
+        },
+        {
+          "name": "value",
+          "like": "text"
+        }
+      ],
+      "like": "setting",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "maven-tool",
+      "site": "task/dev/bootstrap/share.tree:197:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "tool",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "move-step",
+      "site": "task/dev/bootstrap/plan.tree:264:1",
+      "take": [
+        {
+          "name": "note",
+          "like": "text"
+        },
+        {
+          "name": "from",
+          "like": "text"
+        },
+        {
+          "name": "to",
+          "like": "text"
+        }
+      ],
+      "like": "step",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "node-directory",
+      "site": "task/dev/bootstrap/linux.tree:90:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "package-step",
+      "site": "task/dev/bootstrap/plan.tree:356:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        },
+        {
+          "name": "note",
+          "like": "text"
+        },
+        {
+          "name": "package",
+          "like": "text"
+        }
+      ],
+      "like": "step",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "packager-of",
+      "site": "task/dev/bootstrap/base.tree:165:1",
+      "take": [
+        {
+          "name": "system",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": [
+        "command-absence",
+        "command-timeout",
+        "failure"
+      ],
+      "path": {
+        "command-absence": [
+          "answers",
+          "run",
+          "started"
+        ],
+        "command-timeout": [
+          "answers",
+          "run",
+          "limited"
+        ],
+        "failure": [
+          "answers",
+          "run",
+          "spawn-process"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "path-setting",
+      "site": "task/dev/bootstrap/plan.tree:346:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        }
+      ],
+      "like": "setting",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "perform",
+      "site": "task/dev/bootstrap/base.tree:482:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        },
+        {
+          "name": "step",
+          "like": "step"
+        }
+      ],
+      "like": "boolean",
+      "halt": [
+        "command-absence",
+        "command-timeout",
+        "failure"
+      ],
+      "path": {
+        "command-absence": [
+          "run-with-input",
+          "started"
+        ],
+        "command-timeout": [
+          "run-with-input",
+          "limited"
+        ],
+        "failure": [
+          "make",
+          "directory-make"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "pick",
+      "site": "task/dev/bootstrap/linux.tree:36:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        },
+        {
+          "name": "apt",
+          "like": "text"
+        },
+        {
+          "name": "dnf",
+          "like": "text"
+        },
+        {
+          "name": "pacman",
+          "like": "text"
+        },
+        {
+          "name": "zypper",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "pnpm-tool",
+      "site": "task/dev/bootstrap/share.tree:64:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "tool",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "present-settings",
+      "site": "task/dev/bootstrap/base.tree:353:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "list, like setting",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "exists",
+          "directory-exists"
+        ]
+      }
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "probe-command",
+      "site": "task/dev/bootstrap/plan.tree:321:1",
+      "take": [
+        {
+          "name": "program",
+          "like": "text"
+        },
+        {
+          "name": "a",
+          "like": "text",
+          "need": false
+        },
+        {
+          "name": "b",
+          "like": "text",
+          "need": false
+        },
+        {
+          "name": "c",
+          "like": "text",
+          "need": false
+        }
+      ],
+      "like": "step",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "profile",
+      "site": "task/dev/bootstrap/base.tree:877:1",
+      "take": [
+        {
+          "name": "commit",
+          "like": "boolean"
+        }
+      ],
+      "like": "boolean",
+      "halt": [
+        "absence",
+        "command-absence",
+        "command-timeout",
+        "failure"
+      ],
+      "path": {
+        "absence": [
+          "write-profile",
+          "read"
+        ],
+        "command-absence": [
+          "detect-machine",
+          "architecture-of",
+          "run",
+          "started"
+        ],
+        "command-timeout": [
+          "detect-machine",
+          "architecture-of",
+          "run",
+          "limited"
+        ],
+        "failure": [
+          "detect-machine",
+          "variable",
+          "get-variable"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "profile-block",
+      "site": "task/dev/bootstrap/base.tree:923:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "text",
+      "halt": [
+        "failure"
+      ],
+      "path": {
+        "failure": [
+          "present-settings",
+          "exists",
+          "directory-exists"
+        ]
+      }
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "remove-directory-step",
+      "site": "task/dev/bootstrap/plan.tree:253:1",
+      "take": [
+        {
+          "name": "note",
+          "like": "text"
+        },
+        {
+          "name": "path",
+          "like": "text"
+        }
+      ],
+      "like": "step",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "report-line",
+      "site": "task/dev/bootstrap/base.tree:700:1",
+      "take": [
+        {
+          "name": "tool",
+          "like": "tool"
+        },
+        {
+          "name": "finding",
+          "like": "finding"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "rust-steps",
+      "site": "task/dev/bootstrap/share.tree:104:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "list, like step",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "script-name",
+      "site": "task/dev/bootstrap/share.tree:50:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        },
+        {
+          "name": "name",
+          "like": "text"
+        },
+        {
+          "name": "extension",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "settings-for",
+      "site": "task/dev/bootstrap/base.tree:288:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "list, like setting",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "shell-word",
+      "site": "task/dev/bootstrap/base.tree:906:1",
+      "take": [
+        {
+          "name": "value",
+          "like": "text"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "system-name",
+      "site": "task/dev/bootstrap/base.tree:88:1",
+      "take": [],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "tolerant-command",
+      "site": "task/dev/bootstrap/plan.tree:186:1",
+      "take": [
+        {
+          "name": "note",
+          "like": "text"
+        },
+        {
+          "name": "program",
+          "like": "text"
+        },
+        {
+          "name": "arguments",
+          "like": "list, like text"
+        }
+      ],
+      "like": "step",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "tools-for",
+      "site": "task/dev/bootstrap/base.tree:263:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "list, like tool",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "unpack-step",
+      "site": "task/dev/bootstrap/plan.tree:305:1",
+      "take": [
+        {
+          "name": "note",
+          "like": "text"
+        },
+        {
+          "name": "archive",
+          "like": "text"
+        },
+        {
+          "name": "into",
+          "like": "text"
+        }
+      ],
+      "like": "step",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "windows-android-home",
+      "site": "task/dev/bootstrap/windows.tree:30:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "text",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "windows-settings",
+      "site": "task/dev/bootstrap/windows.tree:39:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "list, like setting",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "windows-tools",
+      "site": "task/dev/bootstrap/windows.tree:121:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "list, like tool",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "winget-tool",
+      "site": "task/dev/bootstrap/windows.tree:95:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        },
+        {
+          "name": "name",
+          "like": "text"
+        },
+        {
+          "name": "need",
+          "like": "text"
+        },
+        {
+          "name": "id",
+          "like": "text"
+        },
+        {
+          "name": "program",
+          "like": "text"
+        },
+        {
+          "name": "optional",
+          "like": "boolean"
+        }
+      ],
+      "like": "tool",
+      "halt": []
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "write-profile",
+      "site": "task/dev/bootstrap/base.tree:975:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "boolean",
+      "halt": [
+        "absence",
+        "command-absence",
+        "command-timeout",
+        "failure"
+      ],
+      "path": {
+        "absence": [
+          "read"
+        ],
+        "command-absence": [
+          "write-windows-environment",
+          "run",
+          "started"
+        ],
+        "command-timeout": [
+          "write-windows-environment",
+          "run",
+          "limited"
+        ],
+        "failure": [
+          "write-windows-environment",
+          "present-settings",
+          "exists",
+          "directory-exists"
+        ]
+      },
+      "async": true
+    },
+    {
+      "host": "@term/code",
+      "kind": "task",
+      "name": "write-windows-environment",
+      "site": "task/dev/bootstrap/base.tree:1045:1",
+      "take": [
+        {
+          "name": "machine",
+          "like": "machine"
+        }
+      ],
+      "like": "boolean",
+      "halt": [
+        "command-absence",
+        "command-timeout",
+        "failure"
+      ],
+      "path": {
+        "command-absence": [
+          "run",
+          "started"
+        ],
+        "command-timeout": [
+          "run",
+          "limited"
+        ],
+        "failure": [
+          "present-settings",
+          "exists",
+          "directory-exists"
+        ]
+      },
+      "async": true
+    }
+  ],
+  "dock": [
+    {
+      "host": "@term/code",
+      "kind": "dock",
+      "name": "check",
+      "site": "task/dev/bootstrap/base.tree:1180:1",
+      "halt": [
+        "command-absence",
+        "command-timeout",
+        "failure"
+      ],
+      "__file": "/Users/lancepollard/base/crew/cluesurf/deck/term/deck/term/task/dev/bootstrap/base.tree"
+    },
+    {
+      "host": "@term/code",
+      "kind": "dock",
+      "name": "install",
+      "site": "task/dev/bootstrap/base.tree:1184:1",
+      "halt": [
+        "absence",
+        "command-absence",
+        "command-timeout",
+        "failure"
+      ],
+      "__file": "/Users/lancepollard/base/crew/cluesurf/deck/term/deck/term/task/dev/bootstrap/base.tree"
+    },
+    {
+      "host": "@term/code",
+      "kind": "dock",
+      "name": "profile",
+      "site": "task/dev/bootstrap/base.tree:1200:1",
+      "halt": [
+        "absence",
+        "command-absence",
+        "command-timeout",
+        "failure"
+      ],
+      "__file": "/Users/lancepollard/base/crew/cluesurf/deck/term/deck/term/task/dev/bootstrap/base.tree"
+    }
+  ],
+  "tell": [],
+  "kind": [],
+  "supervision": []
+}

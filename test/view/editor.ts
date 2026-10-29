@@ -1,6 +1,6 @@
 // The editor sees a document the same way a save does.
 //
-// `analyze` is what the language server calls per keystroke. Without the role it mills a document as code and
+// `analyze` is what the language server lints a document with per keystroke. Without the role it mills a document as code and
 // underlines every `view` line as an undefined name, which is both wrong and the opposite of helpful. With it,
 // the editor calls the SAME gate the compiler and `term view` call, so it can never be more permissive than a
 // save, and never more strict.
@@ -87,49 +87,40 @@ ok('a document formats', messy.format() === 'view page\n  view text/item\n    bi
 ok('and carries no code-role lint findings', messy.lint().length === 0)
 
 // ---- the language server's own path ----
-// The server runs an IncrementalAnalyzer, a per-definition query compiler rather than `compile`. A document takes
-// an early return out of it: it is read by the same gate, and the incremental machinery buys it nothing because
-// its imports are catalog packages with no cross-module checking to do.
+// The server compiles every open document with the build's own `compile`, handed the project's `roleOf`
+// (deck/flow/code/document-analysis.tree `analyze-now`, the whole-file compile it falls back to), so a document is
+// read by the same gate a save uses. The server hands `compile` no catalog: `compile` takes none, so an unregistered
+// name is underlined while typing only through `analyze` above, and is not checked here (decision 068, item 0108).
 
-const { IncrementalAnalyzer } = await import('@term/make/code/compile/analyzer')
+const { compile } = await import('@term/make/code/compile/compile')
 
-const asDoc = new IncrementalAnalyzer(undefined, () => 'view')
-const asProgram = new IncrementalAnalyzer(undefined, () => null)
+const serverCompile = (text: string, role: string | null) =>
+  compile({ file: 'page.tree', text }, { roleOf: () => role, optimize: false })
 
-const good = await asDoc.analyze({ file: 'page.tree', text: DOCUMENT })
+const said = (result: ReturnType<typeof serverCompile>): string[] =>
+  (result.ok ? result.warnings : result.diagnostics).map(one => one.message)
 
-ok('the server path reads a document', good.diagnostics.length === 0, JSON.stringify(good.diagnostics.map(d => d.message)))
-ok('and hands back its lowered program', good.program?.length === 1 && good.program[0]?.form === 'view')
+const good = serverCompile(DOCUMENT, 'view')
 
-const wrong = await asProgram.analyze({ file: 'page.tree', text: DOCUMENT })
+ok('the server path reads a document', good.ok && said(good).length === 0, JSON.stringify(said(good)))
+ok('and hands back its lowered program', good.ok && good.program.length === 1 && good.program[0]?.form === 'view')
 
-// Without the role the same text goes through the code mill, which produces something else entirely. The
-// incremental path reports undefined names per DEFINITION, and a document declares none, so it reports nothing
-// and hands back a program that is not a component. That silence is exactly why the role has to reach here.
+const wrong = serverCompile(DOCUMENT, null)
+
+// Without the role the same text goes through the code mill, which reads the `host` as a constant beside the
+// component, so what comes back is not the one lowered document. That is exactly why the role has to reach here.
 ok(
   'the same text without the role is not read as a document',
-  !(wrong.program?.length === 1 && wrong.program[0]?.form === 'view'),
-  JSON.stringify(wrong.program?.map(one => one.form)),
+  !(wrong.ok && wrong.program.length === 1 && wrong.program[0]?.form === 'view'),
+  JSON.stringify(wrong.ok ? wrong.program.map(one => one.form) : said(wrong)),
 )
 
-const broken = await asDoc.analyze({ file: 'page.tree', text: 'view page\n  task main\n' })
+const broken = serverCompile('view page\n  task main\n', 'view')
 
 ok(
   'a fault reaches the editor with the message a save gives',
-  broken.diagnostics.some(d => /cannot declare a function/.test(d.message)),
-  broken.diagnostics.map(d => d.message).join(' | '),
-)
-
-const withCatalog = new IncrementalAnalyzer(undefined, () => 'view', loaded.ok ? loaded.catalog : undefined)
-const unregistered = await withCatalog.analyze({
-  file: 'page.tree',
-  text: 'view page\n  view text/nowhere\n    bind a, text <x>\n',
-})
-
-ok(
-  'and the catalog reaches it too',
-  unregistered.diagnostics.some(d => /not a component this document may place/.test(d.message)),
-  unregistered.diagnostics.map(d => d.message).join(' | '),
+  !broken.ok && said(broken).some(message => /cannot declare a function/.test(message)),
+  said(broken).join(' | '),
 )
 
 console.log(`\nview-editor: ${pass} pass, ${fail} fail`)

@@ -17,6 +17,7 @@ task spawn-process
     like hash
       like text
       like text
+  take limit, like number
   like run-result
   send back
     call runner/run
@@ -24,6 +25,7 @@ task spawn-process
       read argument-list
       read directory
       read environment
+      read limit
       wait true
 
 task spawn-on-terminal
@@ -37,6 +39,7 @@ task spawn-on-terminal
     like hash
       like text
       like text
+  take limit, like number
   like number
   send back
     call runner/attached
@@ -44,6 +47,7 @@ task spawn-on-terminal
       read argument-list
       read directory
       read environment
+      read limit
       wait true
 
 task spawn-with-input
@@ -58,6 +62,7 @@ task spawn-with-input
     like hash
       like text
       like text
+  take limit, like number
   like run-result
   send back
     call runner/with-input
@@ -66,4 +71,5 @@ task spawn-with-input
       read input
       read directory
       read environment
+      read limit
       wait true
